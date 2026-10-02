@@ -1,58 +1,28 @@
 // src/api/services/apiKey.service.ts
-import { api } from "../client";
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client. Every call and every type is
+// read off `paths` (generated from backend/src/routes/api/apiKeys.openapi.ts);
+// the exported names are unchanged, so no caller changed.
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type components } from "../typed";
 import { PaginatedResponse } from "@/types";
 
-export interface ApiKey {
-  id: string;
-  tenantId: string;
-  name: string;
-  keyPrefix: string;
-  scopes: string[];
-  lastUsedAt?: string | null;
-  expiresAt?: string | null;
-  isActive: boolean;
-  createdBy?: string | null;
-  createdAt: string;
-}
+export type ApiKey = components["schemas"]["ApiKey"];
 
 /** Returned only once, on creation — includes the raw secret key. */
-export interface CreatedApiKey extends ApiKey {
-  key: string;
-}
+export type CreatedApiKey = DataOf<Op<"/api/v1/api-keys", "post">>;
 
-export interface ApiKeyCreateInput {
-  name: string;
-  scopes: string[];
-  expiresAt?: string;
-}
+export type ApiKeyCreateInput = JsonBody<Op<"/api/v1/api-keys", "post">>;
 
-// Backend envelope: for LIST endpoints `data` is the array itself and
-// `meta` sits at the TOP level of the envelope.
-interface BackendApiKeysResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: ApiKey[] | null;
-  meta?: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-interface BackendApiKeyResponse<T = ApiKey> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+const byId = (id: string) => ({ params: { path: { id } } });
 
 export const apiKeyService = {
   getAll: async (page = 1, limit = 20): Promise<PaginatedResponse<ApiKey>> => {
-    const response = await api.get<BackendApiKeysResponse>("/api/v1/api-keys", {
-      params: { page, limit },
-    });
+    const response = await typedApi
+      .GET("/api/v1/api-keys", {
+        // The contract publishes the query as the strings the controller parses.
+        params: { query: { page: String(page), limit: String(limit) } },
+      })
+      .then(unwrap);
 
     // Defensive: `data` may be null and `meta` may be missing.
     const rows: ApiKey[] = Array.isArray(response?.data) ? response.data : [];
@@ -73,32 +43,19 @@ export const apiKeyService = {
     };
   },
 
-  getById: async (id: string): Promise<ApiKey> => {
-    const response = await api.get<BackendApiKeyResponse>(
-      `/api/v1/api-keys/${id}`,
-    );
-    return response.data;
-  },
+  getById: async (id: string): Promise<ApiKey> =>
+    (await typedApi.GET("/api/v1/api-keys/{id}", byId(id)).then(unwrap)).data,
 
   /**
    * Create a new API key. The returned `key` is the raw secret and is
    * shown ONLY ONCE — it can never be retrieved again.
    */
-  create: async (data: ApiKeyCreateInput): Promise<CreatedApiKey> => {
-    const response = await api.post<BackendApiKeyResponse<CreatedApiKey>>(
-      "/api/v1/api-keys",
-      data,
-    );
-    return response.data;
-  },
+  create: async (data: ApiKeyCreateInput): Promise<CreatedApiKey> =>
+    (await typedApi.POST("/api/v1/api-keys", { body: data }).then(unwrap)).data,
 
   /** Revoke (delete) an API key. */
-  revoke: async (id: string): Promise<{ id: string }> => {
-    const response = await api.delete<BackendApiKeyResponse<{ id: string }>>(
-      `/api/v1/api-keys/${id}`,
-    );
-    return response.data;
-  },
+  revoke: async (id: string): Promise<{ id: string }> =>
+    (await typedApi.DELETE("/api/v1/api-keys/{id}", byId(id)).then(unwrap)).data,
 };
 
 export default apiKeyService;

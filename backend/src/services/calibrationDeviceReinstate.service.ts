@@ -119,9 +119,10 @@ const isRetirementTerminalViolation = (error: unknown): boolean => {
 
 /** Who reinstates, and from where (auditActor(req)). */
 interface Actor {
-  userId?: UserId | null;
+  userId?: UserId | string | null;
   ipAddress?: string | null;
-  userAgent?: string | null;
+  /** auditActor(req) reads the header as Node gives it. */
+  userAgent?: string | string[] | null;
 }
 
 /**

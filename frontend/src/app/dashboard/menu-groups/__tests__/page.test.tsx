@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 /**
- * Menu-group assignment, against the backend contract (menuGroup.controller.js,
+ * Menu-group assignment, against the backend contract (menuGroup.controller.ts,
  * menuGroup.service.js):
  *  - GET  /api/v1/menu-groups/roles                    → rows in `data`
  *  - GET  /api/v1/menu-groups/menu-groups?roleId=      → `data: [{ id, label, path, isAssigned, items[] }]`
@@ -342,9 +342,10 @@ describe("Menu groups page", () => {
     jest.useFakeTimers();
     try {
       fireEvent.click(within(card("Stock")).getByRole("button", { name: "Assign" }));
+      // The typed client (P9-25) settles the call over more ticks than two
+      // microtasks (openapi-fetch reads a Response): flush them, no further.
       await act(async () => {
-        await Promise.resolve();
-        await Promise.resolve();
+        for (let tick = 0; tick < 10; tick += 1) await jest.advanceTimersByTimeAsync(0);
       });
       expect(screen.getByText("Menu Group Assigned")).toBeInTheDocument();
       act(() => {

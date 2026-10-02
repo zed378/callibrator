@@ -117,7 +117,7 @@ live("P8-03 schema lock — two instances, real PostgreSQL", () => {
     );
     expect(n).toBe(0);
   });
-  test("P8-03: `npm run migrate` (scripts/migrate.js up) WAITS for a held lock, then runs and exits 0", async () => {
+  test("P8-03: `npm run migrate` (scripts/migrate.ts up) WAITS for a held lock, then runs and exits 0", async () => {
     const { spawn } = require("child_process");
     const path = require("path");
     const holder = await a.db.connectionManager.getConnection({ type: "write" });
@@ -125,7 +125,7 @@ live("P8-03 schema lock — two instances, real PostgreSQL", () => {
     let output = "";
     // ADR-087 Amendment 4: `--import tsx` — the script loads TypeScript modules
     // (the logger among them); plain `node` cannot resolve them.
-    const child = spawn(process.execPath, ["--import", "tsx", path.join(__dirname, "../../scripts/migrate.js"), "up"], {
+    const child = spawn(process.execPath, ["--import", "tsx", path.join(__dirname, "../../scripts/migrate.ts"), "up"], {
       cwd: path.join(__dirname, "../../.."),
       env: { ...process.env, NODE_ENV: "test" },
     });

@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /**
  * Managing CMS categories against /api/v1/content/categories
- * (content.controller.js: list rows in `data`; POST/PATCH answer the category;
+ * (content.controller.ts: list rows in `data`; POST/PATCH answer the category;
  * DELETE answers `data: null`; an unknown id is 404 "Category not found").
  * Real: the dialog and the content service. Mocked: the transport.
  */

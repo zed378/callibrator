@@ -1,62 +1,29 @@
 // src/api/services/content.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/content.openapi.ts →
+// @callibrator/contracts/content). The exported names are unchanged. The
+// media upload stays on `api` (multipart).
 import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type components } from "../typed";
 import { PaginatedResponse } from "@/types";
 
-export type PostType = "BLOG" | "NEWS";
-export type PostStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+type Schemas = components["schemas"];
 
-export interface CategoryRef {
-  id: string;
-  name: string;
-  slug: string;
-}
+/** A post on the admin surface (the whole row, with its categories). */
+export type Post = Schemas["ContentPost"];
+/** A post on the public reads (the marketing site): no status, no body on the list. */
+export type PublicPost = Schemas["ContentPublicPost"];
+export type PostType = Post["type"];
+export type PostStatus = Post["status"];
 
-export interface Category extends CategoryRef {
-  description?: string | null;
-  createdAt?: string;
-}
+export type CategoryRef = Schemas["ContentCategoryRef"];
+export type Category = Schemas["ContentCategory"];
 
-export interface Post {
-  id: string;
-  type: PostType;
-  title: string;
-  slug: string;
-  excerpt?: string | null;
-  coverImageUrl?: string | null;
-  contentHtml?: string | null;
-  status: PostStatus;
-  publishedAt?: string | null;
-  authorName?: string | null;
-  authorRole?: string | null;
-  authorAvatarUrl?: string | null;
-  readingMinutes: number;
-  featured: boolean;
-  categories?: CategoryRef[];
-  createdAt: string;
-  updatedAt?: string;
-}
-
-export interface PostInput {
-  type: PostType;
-  title: string;
-  slug?: string;
-  excerpt?: string;
-  coverImageUrl?: string;
-  contentHtml?: string;
-  status?: PostStatus;
-  publishedAt?: string;
-  authorName?: string;
-  authorRole?: string;
-  authorAvatarUrl?: string;
-  featured?: boolean;
-  categoryIds?: string[];
-}
-
-export interface CategoryInput {
-  name: string;
-  slug?: string;
-  description?: string;
-}
+/** The body without its `null`s: the editor's form state, which never holds one (a subtype of the body). */
+type NoNull<T> = { [K in keyof T]: Exclude<T[K], null> };
+export type PostInput = NoNull<JsonBody<Op<"/api/v1/content/posts", "post">>>;
+export type CategoryInput = NoNull<JsonBody<Op<"/api/v1/content/categories", "post">>>;
 
 export interface PostFilters {
   type?: PostType;
@@ -65,29 +32,10 @@ export interface PostFilters {
   find?: string;
 }
 
-interface ListEnvelope<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T[] | null;
-  meta?: { total: number; page: number; limit: number; totalPages: number };
-}
-
-interface ObjEnvelope<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
-
 /** A CMS image uploaded to the backend's PUBLIC class (ADR-042 step 3). */
-export interface ContentMedia {
-  /** Host-relative, permanent, public: `/uploads/public/cms/<file>`. */
-  url: string;
-  fileName: string;
-  mimeType: string;
-  size: number;
-}
+export type ContentMedia = DataOf<Op<"/api/v1/content/media", "post">>;
+
+const byId = (id: string) => ({ params: { path: { id } } });
 
 export const contentService = {
   media: {
@@ -100,7 +48,7 @@ export const contentService = {
     upload: async (file: File): Promise<ContentMedia> => {
       const formData = new FormData();
       formData.append("file", file);
-      const response = await api.post<ObjEnvelope<ContentMedia>>(
+      const response = await api.post<{ data: ContentMedia }>(
         "/api/v1/content/media",
         formData,
       );
@@ -114,11 +62,12 @@ export const contentService = {
       limit = 20,
       filters: PostFilters = {},
     ): Promise<PaginatedResponse<Post>> => {
-      const response = await api.get<ListEnvelope<Post>>("/api/v1/content/posts", {
-        params: { page, limit, ...filters },
-      });
+      const response = await typedApi
+        .GET("/api/v1/content/posts", { params: { query: { page, limit, ...filters } } })
+        .then(unwrap);
+      // Defensive, as built: a body without a row array or `meta` still renders.
       const rows = Array.isArray(response?.data) ? response.data : [];
-      const meta = response?.meta;
+      const meta = response?.meta as Schemas["PaginationMeta"] | undefined;
       const total = meta?.total ?? rows.length;
       const lim = meta?.limit ?? limit;
       return {
@@ -134,57 +83,42 @@ export const contentService = {
       };
     },
 
-    get: async (id: string): Promise<Post> => {
-      const response = await api.get<ObjEnvelope<Post>>(`/api/v1/content/posts/${id}`);
-      return response.data;
-    },
+    get: async (id: string): Promise<Post> =>
+      (await typedApi.GET("/api/v1/content/posts/{id}", byId(id)).then(unwrap)).data,
 
-    create: async (data: PostInput): Promise<Post> => {
-      const response = await api.post<ObjEnvelope<Post>>("/api/v1/content/posts", data);
-      return response.data;
-    },
+    create: async (data: PostInput): Promise<Post> =>
+      (await typedApi.POST("/api/v1/content/posts", { body: data }).then(unwrap)).data,
 
-    update: async (id: string, data: Partial<PostInput>): Promise<Post> => {
-      const response = await api.patch<ObjEnvelope<Post>>(`/api/v1/content/posts/${id}`, data);
-      return response.data;
-    },
+    update: async (id: string, data: Partial<PostInput>): Promise<Post> =>
+      (await typedApi.PATCH("/api/v1/content/posts/{id}", { ...byId(id), body: data }).then(unwrap)).data,
 
     remove: async (id: string): Promise<void> => {
-      await api.delete(`/api/v1/content/posts/${id}`);
+      await typedApi.DELETE("/api/v1/content/posts/{id}", byId(id));
     },
 
     checkSlug: async (
       slug: string,
       excludeId?: string,
-    ): Promise<{ slug: string; available: boolean; suggestion: string }> => {
-      const response = await api.get<
-        ObjEnvelope<{ slug: string; available: boolean; suggestion: string }>
-      >("/api/v1/content/slug-check", { params: { slug, excludeId } });
-      return response.data;
-    },
+    ): Promise<DataOf<Op<"/api/v1/content/slug-check", "get">>> =>
+      (await typedApi.GET("/api/v1/content/slug-check", { params: { query: { slug, excludeId } } }).then(unwrap))
+        .data,
   },
 
   categories: {
     getAll: async (): Promise<Category[]> => {
-      const response = await api.get<ListEnvelope<Category>>("/api/v1/content/categories");
+      const response = await typedApi.GET("/api/v1/content/categories").then(unwrap);
+      // Defensive, as built: anything but an array reads as none.
       return Array.isArray(response?.data) ? response.data : [];
     },
 
-    create: async (data: CategoryInput): Promise<Category> => {
-      const response = await api.post<ObjEnvelope<Category>>("/api/v1/content/categories", data);
-      return response.data;
-    },
+    create: async (data: CategoryInput): Promise<Category> =>
+      (await typedApi.POST("/api/v1/content/categories", { body: data }).then(unwrap)).data,
 
-    update: async (id: string, data: Partial<CategoryInput>): Promise<Category> => {
-      const response = await api.patch<ObjEnvelope<Category>>(
-        `/api/v1/content/categories/${id}`,
-        data,
-      );
-      return response.data;
-    },
+    update: async (id: string, data: Partial<CategoryInput>): Promise<Category> =>
+      (await typedApi.PATCH("/api/v1/content/categories/{id}", { ...byId(id), body: data }).then(unwrap)).data,
 
     remove: async (id: string): Promise<void> => {
-      await api.delete(`/api/v1/content/categories/${id}`);
+      await typedApi.DELETE("/api/v1/content/categories/{id}", byId(id));
     },
   },
 };

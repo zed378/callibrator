@@ -245,7 +245,7 @@ describe("createPost", () => {
 describe("updatePost", () => {
   it("should update post fields", async () => {
     const p = mockPost();
-    p.update = jest.fn(function (patch) {
+    p.update = jest.fn((patch) => {
       Object.assign(p, patch);
       return Promise.resolve(p);
     });
@@ -397,7 +397,7 @@ describe("createCategory", () => {
 describe("updateCategory", () => {
   it("should update category fields", async () => {
     const cat = mockCategory("c-1", "Tech", "tech");
-    cat.update = jest.fn(function (patch) {
+    cat.update = jest.fn((patch) => {
       Object.assign(cat, patch);
       return Promise.resolve(cat);
     });
@@ -720,7 +720,7 @@ describe("createPost — branches", () => {
 describe("updatePost — branches", () => {
   const mockUpdatable = (extra = {}) => {
     const p = mockPost(extra);
-    p.update = jest.fn(function (patch) {
+    p.update = jest.fn((patch) => {
       Object.assign(p, patch);
       return Promise.resolve(p);
     });
@@ -1091,7 +1091,7 @@ describe("createCategory — branches", () => {
 describe("updateCategory — branches", () => {
   const mockUpdatableCat = () => {
     const cat = mockCategory("c-1", "Tech", "tech");
-    cat.update = jest.fn(function (patch) {
+    cat.update = jest.fn((patch) => {
       Object.assign(cat, patch);
       return Promise.resolve(cat);
     });

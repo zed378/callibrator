@@ -34,7 +34,7 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0032-esignature-technical-roles-only.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const fakeQueryInterface = ({
   seeded = true,

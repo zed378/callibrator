@@ -8,12 +8,12 @@
  * SQL statement, the delivery claim (answered by `onQuery`, which asserts the
  * claim carries the caller's tenant — raw SQL bypasses the hooks).
  *
- * @two-tenant api/webhooks.route.js GET /:id
- * @two-tenant api/webhooks.route.js PATCH /:id
- * @two-tenant api/webhooks.route.js DELETE /:id
- * @two-tenant api/webhooks.route.js GET /:id/deliveries
- * @two-tenant api/webhooks.route.js POST /:id/test
- * @two-tenant api/webhooks.route.js POST /:id/rotate-secret
+ * @two-tenant api/webhooks.route.ts GET /:id
+ * @two-tenant api/webhooks.route.ts PATCH /:id
+ * @two-tenant api/webhooks.route.ts DELETE /:id
+ * @two-tenant api/webhooks.route.ts GET /:id/deliveries
+ * @two-tenant api/webhooks.route.ts POST /:id/test
+ * @two-tenant api/webhooks.route.ts POST /:id/rotate-secret
  */
 
 jest.mock("../../config", () => ({ db: require("../fixtures/memoryDb").memoryDb().sequelize }));
@@ -46,9 +46,10 @@ beforeEach(() => {
   });
   // The claim is the only raw SQL on these paths. It must name the tenant.
   mdb.onQuery((sql, options) => {
-    expect(sql).toContain("tenant_id = :tenantId");
-    expect(options.replacements.tenantId).toBe(fx.tenantA.id);
-    return [[]]; // nothing claimed: the test delivery stays pending
+    // P9-18: the claim is sent through sql() — the tenant is bound as $4.
+    expect(sql).toContain("tenant_id = $4");
+    expect(options.bind[3]).toBe(fx.tenantA.id);
+    return []; // nothing claimed: the test delivery stays pending
   });
   jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, status: 200, text: async () => "" });
 });

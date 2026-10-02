@@ -6201,7 +6201,281 @@ The second came from a conversion shape nothing checked: an `export interface` b
 - **`scripts/load-check.ts` sets a random `STRIPE_SECRET_KEY` in its production child** (ADR-111), as it does the other required secrets.
 - **Finding:** A-330 (vendor search uses a case-sensitive LIKE), open.
 
-**Status:** Accepted, implemented 2026-09-28; amended 2026-09-28/30 (Amendments 1–22).
+### Amendment 23 (2026-10-01) — P9-18 (part), the leaf helper's later rounds: search, storage/local.driver, rabbitmq, batchJob, notification, gdpr, storage/s3.driver; A-333 fixed by removal
+
+(Placed by the Phase 9 lead from the leaf-services helper's texts. Record: `MEMORY/records/2026-09-30-p9-stage-c-leaf-services.md`.)
+
+- **`search`:**
+  - Its SQL moved to `sql()`/bind first, as its own change. Fail-before `search.sqlBind.p918.test.ts`: 2/2 failed before the change.
+  - Then the conversion under the four gates: identity 3,173 checks; 6 of 7 plants caught; isolation 25 suites / 195 tests; a live PG18 two-tenant probe 6/6.
+  - The surviving plant (removing the soft-delete predicate) is now pinned by `search.softDelete.p918.test.ts`.
+- **`storage/local.driver`**, under four gates:
+  - identity: 102 steps on a real filesystem, including a junction escape;
+  - plants: 7 of 9 caught; one survivor is an equivalent mutant, and the fsync gap is now caught by `storage.localFsync.p918.test.ts`;
+  - isolation: 87 storage/attachment suites plus the guards, 1,527 tests.
+- **`rabbitmq`, `batchJob` and `notification`:** `config/socket.d.ts` was added as a sibling declaration, held by `declarationDrift.p912`, and the interim `notification.service.d.ts` was retired.
+- **`gdpr`**, under four gates:
+  - identity: 320 checks;
+  - plants: 18 of 22 caught by the suites. The three tenant-predicate gaps are closed by `gdpr.tenantPredicates.p918.test.ts`, and the fourth (a late binding in updateConsent) is caught by the identity harness;
+  - suites: 25 / 464, at 100%;
+  - live PG18 as `callibrator_app` with two tenants: 19/19, on the schema built from the real migration chain;
+  - the P6-11 audit baseline is preserved.
+- **A-333, found by the gdpr conversion and fixed as its own change:** `updatePrivacyPreferences` wrote a User attribute that does not exist, so `getPrivacyPreferences` always returned `{}`, and no route called either.
+  - The pair is removed, not given a column: no document names such a store, and the consent records already hold each choice with its history.
+  - Fail-before: `gdpr.privacyPreferences.a333.test.ts`.
+  - It sits beside the P9-22 helper's Q-55 addendum in the same file (`decimalsAsNumbers`, ADR-097 Am. 4); the gdpr suites pass with both, 26 / 442.
+- **`storage/s3.driver`**, after the SSRF lane finished with it. Gates (a) to (c):
+  - identity: 88 checks, using the real ssrf.util, with the SSRF refusals compared;
+  - plants: 9 of 11 caught; the traversal-key and unprefixed-list gaps are now caught by `storage.s3Keys.p918.test.ts`;
+  - suites: 11 / 274, at 100%.
+  - **Gate (d), a live MinIO check, has NOT been run:** no MinIO image can be pulled on this host (Docker Hub "pull access denied", Quay 401). It is recorded as an unverified claim (`TASKS/BACKLOG.md` U-09), not as done.
+- **Bad implication:** the S3 driver's conversion is proved against doubles and the real SSRF guard, never against an S3 server. The same was true of the JavaScript, so this is not a regression, but it is not a demonstration either.
+
+### Amendment 24 (2026-10-01) — P9-18 (part), continued: storage/index, storageSettings, storageMigration, attachmentFileSweep, predictiveMaintenance, dashboard, ai; D-05 accepts a bound-tenant INSERT
+
+(Placed by the Phase 9 lead from the leaf-services helper's text. Record: `MEMORY/records/2026-09-30-p9-stage-c-leaf-services.md`. The numbers are the helper's.)
+
+- **`storage/index`, `storageSettings` and `storageMigration`** passed the four gates; the live PG18 checks as `callibrator_app` passed 12/12, 21/21 and 13/13.
+- **`attachmentFileSweep`** passed the four gates, and `dataLayer.dbD.live` 6/6. `resolveAbsPath` is now typed in `attachment.service.d.ts`.
+- **`predictiveMaintenance` and `dashboard`** are converted.
+- **`ai`:**
+  - its SQL moved to `sql()` first, as its own change: fail-before `ai.sqlBind.p918`, and a live PG18 + pgvector check with two tenants, 9/9 before and after;
+  - then the conversion, under the four gates.
+- **New tests for the gaps the plants exposed:** `storage.probeNotCached`, `storageSettings.actor`, `storageMigration.tenant`, `predictiveMaintenance.scope`, `dashboard.pins` and `ai.grounding` (all `*.p918`).
+- **D-05 rule (`rawSqlTenantPredicate.d05`):** a helper INSERT passes when its column list names `tenant_id` and that position's value is a bound `$n` (optionally cast). An INSERT has no predicate to bind, so this is its equivalent.
+  - A literal or missing tenant column is still flagged, and a bite case shows it.
+  - The lead asked for one more bite case: an `INSERT … SELECT` whose SELECT lacks a bound predicate must still fail.
+  - **Bad implication:** like the SELECT rule, it checks that the tenant is bound, not that the bound value is the caller's tenant.
+- **A gap found in `auditCoverage.p611`:** a class method whose return type contains `{` was not parsed, so its body was counted as part of the method above. A mutation there could pass silently whenever that method was audited or exempt.
+  - The lead released the guard fix to the helper, with a bite test, and the audited and exempt sets must come out unchanged.
+  - Until it lands, `ai` names its return type as a workaround.
+
+### Amendment 25 (2026-10-01) — P9-20 / P9-21, the calibration core: controllers and routes, and the evidence that proves them
+
+(Placed by the Phase 9 lead from the services helper's text. Record: `MEMORY/records/2026-10-01-p9-20-21-calibration-core.md`.)
+
+**Converted to `.ts`, gates green:**
+- **Services:** calibrationDevices, calibrationScheduler, certificate and eSignature, plus calibrationRecords, calibrationDeviceReinstate and certificatePdf from the earlier round.
+- **Controllers and routes, each with a `<name>.openapi.ts`:** calibrationScheduler, calibrationRecords, calibrationDevices (with reinstate), certificates (with certificatePdf), eSignature, quota, sop and workflows.
+- **Live PG18 as `callibrator_app`:** services 53/53, HTTP 44/44.
+- vendor, risk, supplierScorecard, finance, billing and meteredBilling were handed to the P9-22 helper at its request.
+
+**Rules:**
+1. **A controller is `export =`** of one object in the `.js` key order. Named exports reorder the keys (tsc emits `exports.b = exports.a = void 0`) and add `__esModule`. A route reads the handlers off that object, or destructures it at load where the `.js` did.
+2. **Destructure `req.user` inline** where the `.js` did. V8's destructuring TypeError quotes the source expression, and that message reaches a 500 body.
+3. **A module with named exports is imported with `import * as`** (for example `certificateDocument.service`). A default import compiles under `esModuleInterop` but is `undefined` at run time. The load gate (Amendment 15) catches it only if the value is read at load.
+4. **The evidence for a controller or route conversion:**
+   - (a) **A mounted-route-table identity** that labels gate factories by their arguments and handlers by their export; it is bite-tested.
+   - (b) **A controller identity** over a request matrix and service modes, run under `node --import tsx`. The validators re-export the `@callibrator/contracts` `.ts` source, which plain node cannot load, so a harness under plain node compares error paths only.
+   - (c) **The module's suites, the route guards** (P6-04, P6-08, A-127, P9-25), **and the contract gates:** `openapi:generate` / `lint` / `check` and the frontend `api:types`.
+5. **A harness must exit 0 on its unplanted baseline before any plant is counted.** A difference in `.name` only is reported by a comparison with names stripped, never left in the raw module equality.
+6. **Plants go into a scratch copy, never the shared tree.** A plant in the tree turns a gate red for every other lane. This supersedes the earlier tolerance of short in-tree plants.
+
+**Correction, on the record:** the plant counts reported earlier for the P9-14 calibration services were unproven, for two reasons:
+- the raw module equality differed on function `.name`, so every run exited 1;
+- under plain node, the validators never loaded.
+
+Both harness defects are fixed, every plant was re-run with exit-0 baselines, and the corrected counts are in the record.
+
+**Shared builder additions** (`docs/openapi/operation.ts`, additive): `bodyMediaType: "multipart/form-data"`, and `Permission.resource` may be a `string[]` for an array gate.
+
+### Amendment 26 (2026-10-01) — P9-20 / P9-21, tenancy and identity: 19 controllers and 17 routes, the isolation-critical routes under four gates
+
+(Placed by the P9-20/21 helper itself, at the coordinator's instruction; the lead was idle. Record: `MEMORY/records/2026-10-01-p9-20-21-tenancy-identity.md`.)
+
+**Converted to `.ts`, gates green:**
+- **Controllers (19):** tenant, tenantLifecycle, tenantHierarchy, tenantBackup, customDomains, featureFlag, networkSecurity, dataRetention, admin, auth, user, userPermission, session, ownSessions, webauthn, oidcProvider, sso, scim, apiKey.
+- **Routes (17), each with a `<name>.openapi.ts`:** tenant, tenantLifecycle, tenantHierarchy, tenantBackup, customDomains, featureFlags, networkSecurity, dataRetention, admin, auth, user, userPermissions, session, webauthn, oidc, scim, apiKeys.
+- **Fixed as their own changes, each with a fail-before test:** A-334 (session list/detail `createdAt`), A-339 (`/sessions/mine` `createdAt`), A-338 (offboard reads `force`, as the module reference specifies).
+
+**Rules, adding to Amendment 25:**
+1. **A closure the route defines that calls an imported helper keeps a load-time capture** (`import { f as loadedF }`, `const f = loadedF`). Otherwise the compiled closure reads `(0, import_x.f)(…)` at call time (tenantHierarchy `isSuperAdmin`, scim `scopeAllows` / `MENU_SLUGS` / `isSuperAdmin`, auth `hashedKey`).
+2. **Gate text another module quotes stays byte-identical** (`menuPageAccess`, `authorizationWiring`; `effectivePermission.adr102` checks every quote). A cast moves out of the quoted expression.
+3. **`import * as` also for an `export =` module that a test replaces with a Proxy answering `__esModule`.** A default import reads `.default` and registers `undefined` (auth.route's `sso.controller`, `authRequestBudget.a291`).
+4. **A route conversion is proved by two harnesses together, each bitten.**
+   - The mounted route table: every exported function of `middlewares/`, `utils/`, `validators/` and `services/` is wrapped by replacing the module's exports in `require.cache`, retried until no module is left unwrapped, so a factory's product carries its factory and arguments.
+   - The module text: both sides printed by esbuild, imports and captures removed; the one sanctioned rewrite is `env("X")` ↔ `process.env.X`.
+   - The table cannot see a helper a closure calls; the text cannot see a factory's behaviour.
+5. **The isolation-critical routes take four gates.**
+   - (a) Plants in a scratch mirror of the `.ts`, against every suite that names the route or its mount. Each route gets a control run first, and a plant counts as caught only by a test that passes in the control. The scratch jest config must REQUIRE the real one, which loads `.env`; results are read from `jest --json`.
+   - (b) Identity.
+   - (c) The isolation suites together.
+   - (d) Live over HTTP as `callibrator_app` with two tenants, the super admin included: TOTP is enrolled through `/auth/mfa/setup` and `/auth/mfa/verify`, as the E2E setup does.
+6. **A plant no suite catches is a gap to pin, not a pass.** Four route gates were pinned in `tests/routes/routeGatePins.p921.test.ts`.
+
+**Type-only changes made for the conversion**, none emitting code:
+- **Twins:** `middlewares/{auth,dynamicAccess,enforceQuota,abac}.middleware.d.ts`, each deleted when its `.js` converted.
+- **Declaration and type files:**
+  - `services/rateLimiter.redis.service.d.ts` (`noteAuthFailure`, `noteAuthSuccess`, `authPreCheck`, `mfaLoginPreCheck`, `mfaManagePreCheck`);
+  - `services/audit.service.d.ts` `userAgent`;
+  - `utils/response.util.ts` `ServiceResult`;
+  - `utils/upload.util.ts` `UploadOptions` and `types/express.d.ts` `req.allowedMimes` / `allowedExtensions`, now `readonly string[]`.
+- **Service actor and input interfaces** widened to what the controllers pass: customDomains, userPermission, ownSessions, apiKey, admin, dataRetention, tenantLifecycle, tenantHierarchy, networkSecurity, oidcProvider, scim, webauthn, tenantBackup (and its model's list options), tenant, tenantUpload, user and auth. The list is in the record.
+
+**ADR-103 builder additions** (`docs/openapi/operation.ts`, additive):
+- `Permission.kind: "authenticated"`: a route with `auth` and no gate factory, its reason published as `x-permission.note`. The p925 guard reads it as "no gate", so declaring it on a gated chain or a public one fails; both directions are pinned.
+- `Success` variants for a 204 with no body and a 302 redirect.
+- Shared tenant schemas in `docs/openapi/tenantSchemas.ts`.
+- The JSDoc `Tenant`, `TenantBackup` and `User` components are removed; their ids are now code-first.
+
+### Amendment 27 (2026-10-01) — P9-19 middlewares, the batch-job worker, and the five core services; `src/middlewares/` is all TypeScript
+
+(Placed by the P9-22 helper, assigned by the coordinator. Record: `MEMORY/records/2026-10-01-p9-19-middlewares-core-services.md`.)
+
+**Converted, `.js` removed in an atomic step after `cmp` against a snapshot:**
+- **Middlewares (15):** abac, auth, dynamicAccess, enforceQuota, bodyDefault, auditLog, webhookDeliveryScheduler and the eight schedulers. No `.js` is left in `src/middlewares/`, and `jest.config.js` drops its `src/middlewares/**/*.js` pattern (coverageScope.p614).
+- **The worker:** `workers/batchJob.worker`.
+- **Services:** redis, emailQueue, mfa, rateLimiter.redis (the ADR-100 Am. 5 file as baseline) and audit. Their `.d.ts` twins are deleted.
+
+**Evidence:**
+- **Identity:** 0 different in every module, with every planted bite reported.
+- **Coverage:** 100% under each module's related suites.
+- **The four gates** for auth, dynamicAccess and abac: live HTTP 17/17 on PG18.
+- **The four gates** for audit.service, live as `callibrator_app` on PG18 18.6: q34 upgrade 7/7, q34 fresh 7/7, p611 4/4, p804 4/4, and the new `auditService.p918.live` 6/6.
+
+**Decisions:**
+1. **A-07:** `dynamicAccess`'s resource is `SeededMenuSlug`, the union of the 63 seeded slugs (`constants/seededMenuSlugs.ts`). It is pinned equal to the seed.
+2. **bodyDefault** is an assertion signature: the body is never `undefined` after it runs.
+3. **Dead arms are removed, never ignored for coverage.**
+   - A defensive arm that provably cannot run is removed with a comment naming why. It is not kept under an istanbul ignore (A-32's ceiling stays 30).
+   - Two arms of rateLimiter.redis's memory path were removed this way. Behaviour changes only in a state no writer can produce, and identity still holds.
+4. **A conversion's planted defects that survive are pinned.** audit.service had three, now pinned in `audit.service.pins.p918.test.ts`:
+   - the A-126 fail-secure fallback;
+   - `required: false` on the list's `User` includes;
+   - the call-time `logAction` lookup.
+
+**Found:**
+- **A-340 (open):** `revokeTokenByHash` and `revokeAllUserTokens` write camelCase attributes on the snake_case `Session` model. They have no production caller.
+- **auditLog.middleware has no production caller.** Whether to delete it is not decided here.
+
+### Amendment 28 (2026-10-02) — P9-21's non-route files: utils, the CLIs, the doc generators, `src/config/`, and the entry point; `src/config/` is all TypeScript and the entry is `index.ts`
+
+(Placed by the P9-21 helper, assigned by the coordinator. Record: `MEMORY/records/2026-10-01-p9-21-non-route-files.md`.)
+
+**Converted, `.js` removed in an atomic step after `cmp` against a snapshot:**
+- **utils:** `kmsVerify` (its SQL moved to `sql()` first, as its own change, with a fail-before test), `seedMenuGroups`, `session`.
+- **`src/scripts`:** the seven CLIs (`migrate`, `verifySchema`, `seedDemo`, `rotateKeys`, `migrateStorage`, `breakGlassMfaReset`, `backfillEmbeddings`).
+- **`backend/scripts`:** the seven doc generators.
+- **`src/config`:** `index`, `migrate`, `migrator`, `socket`. Their `.d.ts` twins are deleted.
+- **The entry point:** `backend/index.js` → `index.ts`.
+
+**Deleted without conversion:** `backend/scripts/rotate-default-credentials.js`. It failed at its first `require` and had since the first commit (A-344).
+
+**Evidence (the record holds the commands and counts):**
+- **The CLIs:** pairwise runs of the `.js` and the `.ts` against separate copies of a seeded PostgreSQL 18 database. Exit code, stdout and stderr were identical over every documented argument set and failure path.
+- **The generators:** byte-identical output and a manifest of `docs/`. Headless Chrome and `mmdc`, which are nondeterministic in the *original*, were replaced by scratch fakes that record what the script hands them.
+- **`config/index`:** an identity harness over 28 environment scenarios, plus live `Connection()` runs.
+- **`config/migrate` and `config/migrator`:** identical schemas after `Up`/`Down` and `down` ×3 + `up`.
+- **`config/socket`:** `socket.test.js` unchanged (58 tests, 100% of the file), and an identity run over every helper, return values included (160 observations).
+- **The entry point:** a boot-identity harness recorded the `src` load order, every app and router call with its factory arguments, the log sequence, the HTTP answers once ready, and the SIGTERM shutdown.
+  - Identical in development (2,010 observations), in production with `FORCE_HTTPS` (1,757) and on the CLI-dispatch branch (1,468).
+  - The one exception is the position of the batch-worker retry warning, a timer racing the probes, which varies between runs of either side.
+- **Plants:** every harness caught at least one planted defect.
+
+**Rules, adding to Amendments 13, 25 and 27:**
+1. **`export =`, not named exports, for a module whose callers destructure an object of functions.** Tried on `config/index`, named exports were emitted by tsx as **alphabetical getters with `__esModule`**, so `Object.keys` order and own keys changed (caught by the identity harness). `export =` keeps the `.js` object, and the 62 `import { db } from "../config"` callers type-check against it unchanged. The 04 § Module shape row "named exports" holds only where no caller observes key order or descriptors.
+2. **A module keeps literal `require`s where an `import` would move a load.** esbuild hoists `import`s above the code between them (measured). This applies to:
+   - code between the requires (the entry's routes load after the middleware is wired; `config/index` creates the CLS namespace before sequelize loads);
+   - a load inside a branch or function;
+   - a manifest that tests read as text (`migrator`'s 79 lines).
+
+   Each such `require` is typed through `import type`, since `typeof import()` annotations are a lint error. The literal paths also keep `load-check`'s boot-order parse and the bundlers' static analysis working.
+3. **An ESM-only dependency loaded with `require(esm)`** (puppeteer 25) is typed with `import type … with { "resolution-mode": "import" }` and keeps its `.js` load position.
+4. **A declaration twin is deleted with its module.** declarationDrift's "finds" test now compares its walker with an independent scan: an orphan `.d.ts` outside `types/` and `tests/` fails (bitten).
+5. **A generator whose real output is nondeterministic is proved on its inputs to the renderer.** Those inputs are captured by a scratch fake, together with its deterministic outputs. The original's own run-to-run variance is measured first.
+6. **A source-text test of a converted file is re-keyed, not weakened.** That means its path, its label, or its pattern rewritten to the `.ts` syntax of the same assertion (three in the entry's tests: the typed `db` passed to `runSchemaSetup`, the typed `health.route` require, `env("RATE_LIMIT_MAX")`).
+
+**The entry point's wiring:**
+- `package.json` `start`/`dev` and both CI boots run `index.ts`, which both tsconfigs include.
+- `build-dist` compiles it to `dist/index.js` (`bin`/`main` unchanged) and refuses an `index.js` beside it.
+- `load-check` reads it; its boot order is 104 listed requires, one more than before because the `config/env` require is new. activityLog has already loaded that module, so the measured load order is unchanged.
+- `routeGateExemptions` keys app routes `"index.ts"`.
+- `jest.config.js` drops the `config`, `controllers` and `routes` `.js` coverage patterns (coverageScope.p614).
+
+**Found:**
+- **A-344** (DONE): the dead `rotate-default-credentials.js`, deleted.
+- **A-345** (DONE): the live Redis-adapter test had failed since P6-12 (its token named no session). One line fixed; it passes 2/2 on Redis 7.
+
+**Left unchanged on purpose:** two printed strings still name `.js` files (migration 0086's operator message, `generate-markdown-html`'s usage line). Changing printed output is a behaviour change.
+
+### Amendment 29 (2026-10-02) — the last four services (`src/services/` is all TypeScript); A-340's dead revokers and the after-response audit middleware removed
+
+(Placed by the P9-22 helper, assigned by the coordinator. Record: `MEMORY/records/2026-10-01-p9-19-middlewares-core-services.md` § Round 3.)
+
+**Converted, `.js` removed after `cmp`, `.d.ts` twins deleted:** `menuGroup`, `migration`, `maintenance`, and `attachment` (the last two keep their twins' types as the floor). `src/services/` holds no `.js`. Identity was 0 different in each module (552, 3,888, 1,320 and 2,088 scenarios), with every bite reported, and each module is at 100% under its suites.
+
+**Four gates** for `attachment` (file access, tenant) and `migration` (schema setup):
+- Plants in a scratch mirror. Six survivors, now pinned in `attachment.service.pins.p918` and `migration.service.pins.p918`:
+  - S-01's post-commit file removal;
+  - A-259's refusal at one calibration record;
+  - A-125's platform tenant (seeded first, looked up with `includePlatformTenant`);
+  - the role seed's `ignoreDuplicates`;
+  - the demo flag count.
+- The authz/isolation suites.
+- Live on PG18 18.6 as `callibrator_app`:
+  - `attachmentService.p918.live` 6/6, two tenants and real files;
+  - `migrationService.p918.live` 5/5, on a schema built by the boot path;
+  - `authCards.a215.live` 8/8.
+
+**Decisions:**
+1. **listOrphans runs through `sql()` with bound `$1`…`$3`.** It no longer uses named replacements. The statements, the tenant predicate and the rows are the same; this is a mechanism change for the P9-07 lint rule.
+   - Identity compared the two channels' statements with their values substituted.
+   - `attachment.cascade.d22` asserts the bound form.
+2. **A-340, the coordinator's decision, as A-333.** `revokeTokenByHash` / `revokeAllUserTokens` are removed: they wrote camelCase keys to a snake_case model, and nothing called them. Session revocation is session.service's. `rateLimiter.deadRevokers.a340` failed 2/4 before the removal and passes 4/4 after.
+3. **auditLog.middleware is removed, the coordinator's decision.** No route mounted it, and it wrote after the response, outside the transaction. Its two suites, five route-test mocks and one f8 case went with it.
+   - `auditInTransaction.p611` still fails a route that mounts an after-response `recordAudit` / `withAudit`.
+   - Nine `docs/` documents are amended to name `audit.service#logAction` in the mutation's transaction as the enforcement point.
+4. **migration.service's seed boundary is typed as `SeedModel`** (six calls), not against each model's creation attributes. The JavaScript's five unread constant bindings and `DEFAULT_MENUS` are not carried over (reading them had no effect).
+5. **The identity runner never writes into `src/`.** Its copies live in the scratchpad, with relative requires made absolute. Before this, a hanging bite held `zzp919*` copies in `src/` and turned build:dist and the ratchet red for other lanes. The coordinator reported it.
+
+### Amendment 30 (2026-10-02) — P9-02a: the lint warnings at zero, both rules at `error`; P9-05: the state-machine unions from one source; P9-06 part 2: the fail-listing boot
+
+(Placed by the P9-22 helper, assigned by the coordinator. Records: `MEMORY/records/2026-10-02-p9-02a-lint-triage.md`, `2026-10-02-p9-05-state-unions.md`, `2026-10-02-p9-06-env-schema.md`; spec `MEMORY/specs/P9-05-shared-types.md`.)
+
+**P9-02a.**
+- All 126 `no-unused-vars` warnings were in tests. Each was resolved one of two ways:
+  - a deletion, keeping a call that has an effect as a statement;
+  - a `_` prefix where position or a rest pattern makes the name load-bearing (Express's 4-argument error handlers, mock signatures, `{ update, toJSON, ...rest }`).
+- 6 `prefer-arrow-callback` warnings fixed. 4 unused `eslint-disable` directives removed. 4 errors in `scripts/seedDemo.ts`, from migration.service's types, fixed at the source.
+- **Decision:** `no-console` is an error everywhere except a reasoned allow-list in `eslint.config.js`:
+  - the operator CLIs in `src/scripts/` (CLAUDE.md);
+  - the live E2E harness's readiness lines;
+  - the dead `checkMenu.util.js` (A-18).
+- `no-unused-vars`, `no-console` and `prefer-arrow-callback` are raised to `error`. Lint is 0 errors, 0 warnings, ratchet baseline 0.
+- The full suite proved the edits: 860 suites, 0 failed. The e2e files pass `node --check`.
+
+**P9-05.**
+- **Decision:** `@callibrator/contracts/states` holds every state machine's statuses: certificate, stock transfer, opname, CAPA (re-exported from `qmsValues`), work order, tenant lifecycle, webhook delivery and workflow instance. Each is a frozen tuple in database ENUM order, with its union.
+- The copies are replaced by imports:
+  - 7 models;
+  - 3 contracts files;
+  - 5 `.openapi.ts` files and `docs/openapi/tenantSchemas.ts`;
+  - `admin.service`;
+  - `constants/tenantStatus`;
+  - `Certificate.STATUS`.
+- `openapi.json` is byte-identical.
+- `stateUnions.p905.guard` pins every model ENUM, schema and object to `states.ts` and fails on a written-out copy. It found 7 copies before the fix.
+- The tenant request body's `ACTIVE/INACTIVE/SUSPENDED` field is a different field and is not merged (spec § Decision 4).
+- `switch-exhaustiveness-check` was already an error. It now has unions to be exhaustive over.
+
+**P9-06 part 2.**
+- **Decision:** `config/env.ts` holds `environmentSchema` (Zod) and `validateEnvironment`. `index.ts` calls it right after dotenv. It refuses the boot naming **every** failing variable, on stderr.
+- It enforces exactly the refusals the modules already made one at a time:
+  - `config/index` (DB);
+  - `jwt.util` (secrets set and different, algorithm);
+  - `certificateDocument` (`CERT_SIGNING_SECRET`);
+  - `kms.service` (production key, 32-byte keys);
+  - `publicAccess` (production pepper);
+  - `billing` (ADR-111).
+- `ENCRYPT_KEY`, `HOST_URL`/`PUBLIC_BASE_URL`, `PRIVACY_NOTICE_URL` and `FORCE_HTTPS` are **not** required: requiring any of them would refuse configurations that boot today.
+- **Evidence:**
+  - `environmentSchema.p906` puts 158 configurations through each module's own load-time check in an isolated registry. The refusing modules equal the schema's in every case. Two plants (a rule dropped, a requirement added) each fail it.
+  - A real boot from `dist` on PG18 and Redis: the logs with and without the check are identical as multisets (283 lines).
+  - A broken production environment: the old boot stopped at the first module (JWT), printed as a winston JSON record. The new boot lists all 8 problems at once.
+  - `.env.example` and `docs/BACKEND/11` gain the four variables they lacked, plus a "Validated at boot" table; a test keeps them in step with the schema.
+- **Deviation protocol:** `docs/BACKEND/11` is amended by this amendment.
+
+**Status:** Accepted, implemented 2026-09-28; amended 2026-09-28/10-02 (Amendments 1–30).
 
 ---
 
@@ -7563,6 +7837,28 @@ Each decision above carries its own.
   - The scan covers the route suites that drive a router (routeClient) or a real Express app. It does not cover controller unit tests with hand-made `res` doubles, which also mock their services.
   - A response built by hand with a credential under a name outside the list is caught only if the value is hash-shaped.
 
+
+### Amendment 5 (2026-10-01) — A request budget is a fixed window: a refused request never extends it
+
+**Found by** the P10-13 live E2E (`MEMORY/records/2026-09-30-p10-13-e2e.md`). **Decided by** the main session, under the owner's delegation.
+
+- **The defect.** The budgets (§4) and `endpointRateLimiter` counted through the failure counter's script, which refreshes the key's TTL on EVERY increment — refused requests included.
+  - "10 an hour" therefore behaved as "10, then an hour of silence after the LAST try".
+  - Retry-After stopped being true as soon as the client retried.
+  - A retrying client — or every browser behind one hospital NAT — stayed locked out for as long as anyone kept trying.
+- **The decision: a budget counter is a FIXED window.** It works through `rateLimiter.redis.service#storeIncrFixed`, a Lua script on Redis plus the same rule on the memory fallback.
+  - The window opens at the first request, and its `expiresAt` never moves. Every request in it is counted, admitted or refused, but none extends it.
+  - Retry-After is `expiresAt − now`, taken from the stored entry. That is exactly when the key expires and the next request opens a new window. No PTTL round trip remains; `storeTtl` is removed.
+  - The memory fallback ends a window AT `expiresAt`, as Redis PX does. It keeps last-written order, so W-19's eviction still spares a counter that is still being written.
+- **Failure throttles keep their semantics.** Failures still count in a sliding window, and a failure extends the pause. Their pause also ends on schedule, for two reasons:
+  - A paused attempt is refused BEFORE anything is counted. That is how `loginUser`'s `checkLoginThrottle` and `authPreCheck` already worked, and it is now pinned by a test.
+  - `checkAuthLockout` reports the lock's real end: the counter's expiry. Before, it reported `firstAttempt + lockoutMs`, an instant the lock outlived whenever failures were spread out. The IP lock reported "now + 5 minutes" on every check, a lock that never seemed to end.
+- *Alternatives considered:*
+  - **A sliding window that counts only admitted requests.** It needs a read-then-write, or a sorted set per key; a fixed window gets the same truthful Retry-After in one atomic script.
+  - **A token bucket.** It recovers smoothly, but Retry-After becomes a per-token estimate, and the budgets are stated as "N per window".
+  - **Not counting refused requests at all.** That is equivalent under a fixed window, since the window's end does not depend on the count.
+- **Cost.** A fixed window allows a burst at its edge — up to 2N within a short span across a boundary. The budgets are abuse bounds, not precise quotas, so that is accepted.
+
 ---
 
 ## ADR-101: A Certificate's Author May Not Approve It (Separation of Duties), Refused With a 403 Inside the Tenant
@@ -8032,7 +8328,232 @@ This amends decision 5 and the P9-22 plan's step 2. Decision 5's "the frontend i
 - Migration 0099 now reads its ENUM values through the package. The values are identical, but a frozen migration's inputs now live in a shared package. Changing a vocabulary there without a migration that alters the type is still a defect (the rule `qmsConstants` already states).
 - Two validator modules stay outside the package on purpose. A future "finish P9-22" sweep must not move them without revisiting item 2.
 
-**Status:** Accepted — first slice implemented 2026-09-29; amended 2026-10-01 (Amendments 1–2).
+### Amendment 3 (2026-10-01) — five route modules converted with their code-first contract; the boot gate scan reads converted routes; three operation-shape extensions
+
+**1. The slice (P9-20 / P9-21, assigned by the main session; the Phase 9 lead confirmed it).** `warehouse`, `stock`, `roles`, `maintenance` and `qms`:
+- **What converted:** each module's `routes/api/<m>.route.ts` and `controllers/<m>.controller.ts`.
+- **New per module:** a code-first `routes/api/<m>.openapi.ts` (ADR-103 item 12; its `@swagger` JSDoc is deleted in the same change) and response schemas in `@callibrator/contracts/<m>`.
+- **Baseline:** the working copy, snapshotted before the first edit and re-checked byte for byte (`cmp`) before each swap.
+- **The swap:** each module's `.js` pair was deleted in one step, after its identity evidence.
+- **What a conversion keeps:**
+  - The routes keep every middleware in order. Imports are named, so the gate factories are still read at load, after a test's reassignment.
+  - The controllers keep load-time capture (the `loaded*` pattern).
+  - The controllers keep inline reads of `req.user` / `req.params` wherever a missing value throws. The TypeError's message names the expression and reaches the client outside production; a helper changed it, which the maintenance harness caught (2,100 cases).
+- **Service type widenings, nothing emitted:**
+  - `| undefined` on the list-query interfaces of `warehouse.service` and `stock.service`, and on `roles.service`'s role inputs.
+  - `string[]` on `userAgent` in the `roles` and `qms` actors.
+  - The five untyped members of `services/maintenance.service.d.ts`, typed from the `.js` (the twin's own rule).
+
+**2. Identity evidence, per module.**
+- **Controllers:** the TypeScript 7 emit is run against the working-copy `.js` by a sampled-input harness (`scratchpad/p922/p920/ctrl-identity.js`). It compares every service call, every write to `res`, `next`, and what was thrown, with stack frames disabled because file paths differ by construction.
+  - **The bite check:** each harness was also run with one change planted in the emit, and each reported differences.
+  - **Results:**
+
+    | Module | Cases | Different | Planted change caught |
+    |---|---|---|---|
+    | warehouse | 9,072 | 0 | 18 |
+    | stock | 13,500 | 0 | yes |
+    | roles | 17,640 | 0 | 504 |
+    | maintenance | 6,300 | 0 | 72 |
+    | qms | 8,640 | 0 | 36 |
+
+- **Routes:** the mounted route table (method, path, middleware chain with gate, schema, rbac and uuid tags, in order; the liveContract `dumpRoutes`) is identical before and after for each module. That is 9, 15, 14, 5 and 6 routes. The whole 478-route table was also identical, until other lanes' OIDC changes moved 4 OIDC routes.
+- **Tests that changed:** the four `routes/<m>.route.test.js` files changed only their `require` specifier (`…route.js` → `…route`). `routeGuards.a66` now reads `qms.route.{ts,js}`, whichever exists.
+
+**3. The A-58 boot check saw no converted route (fixed).** `utils/authorizationWiring.util#collectRouteGates` walked `.js` route files only. In `dist/` the TypeScript 7 emit reads `(0, dynamicAccess_middleware_1.dynamicAccess)(constants_1.MENU_SLUGS.QMS, …)`, which its regexes did not match. With warehouse and stock converted, the boot check validated 149 gates instead of 173, and said nothing.
+- **What it reads now:**
+  - every route source, `.js` or `.ts` (not `.d.ts`, not `*.openapi.ts`);
+  - the emitted call form;
+  - an import-prefixed `MENU_SLUGS.X`.
+- **Gate counts:** src 173 and dist 173.
+- **New test:** `tests/utils/authorizationWiring.routeSources.p921.test.ts`.
+  - **PARITY:** every `.ts` route file is transpiled to CommonJS and must yield the gates of its source.
+  - **The bite check:** with the old regex restored, 2 of 3 fail. It also caught `MENU_SLUGS.QMS` on the qms conversion.
+- **The other guard fixed:** `effectivePermission.adr102` needed the same treatment. `constants/menuPageAccess.ts#MENU_PAGE_GATE_SOURCES` names route files WITHOUT an extension, and the test reads whichever exists.
+- **Scope:** both guards are generic, for every lane's conversions.
+
+**4. `docs/openapi/operation.ts` gained three operation shapes, each for an as-built answer:**
+- `Success.file` is a download that is not the envelope (the stock CSV export).
+- `Success.body` is a handler's own JSON shape. `roles.controller` answers `{ success, data }` with no `status` / `message`; it is documented as it is, and converging on the envelope is a behaviour change for its own card.
+- `errorBodies` covers an error status the handler answers in its own shape (roles' `{ success: false, message }` 404).
+- **Component ids:** JSDoc component ids reused code-first were removed from `docs/components.js`: Warehouse, StorageLocation and the four Stock* (and their unused `*CreateRequest`). Roles' components are `RoleRow` / `MenuGroupRow` / `RoleMenuPermissionRow`, because other modules' JSDoc still uses `Role` and `MenuGroup`.
+
+**5. The contract work removed or exposed:**
+- **Guard-list entries removed:**
+  - 2 lines of `openapiRoutes.undocumented.json`: roles' permission routes, which were JSDoc'd under `:roleId`, a path no one serves;
+  - 4 `swaggerValidatorAlignment.knownDrift` entries (roles ×2, maintenance ×2);
+  - 4 Spectral baseline errors (18 → 14).
+- **Spectral warnings:** 969 → 857.
+- **A-331 (security, fixed by its lane):** `POST /roles/assign` answered the whole user row, credentials included.
+- **Q-55:** five work-order fields are accepted and not stored.
+- **Validator schemas defined but not mounted:** the roles permission and assignment bodies are read raw (`assignRoleSchema` / `assignPermissionSchema` exist, unused). This is documented on the operations.
+
+**Implications, including the bad ones.**
+- A route conversion is now three artefacts (route, controller, contract) plus regenerated `openapi.json` and `schema.d.ts`. A snapshot taken between an `.openapi.ts` edit and its regeneration fails `openapi:check` (the lead's image build hit exactly that).
+- `Success.body` / `errorBodies` let a module publish a non-envelope answer honestly, and so let one stay non-envelope longer. Each use names the module in the operation description.
+- A stale tsx cache entry (`%TEMP%/tsx-<user>/…`) once served a broken transform of `roles.service.ts` (`roles_service_module is not defined`). `TSX_DISABLE_CACHE=1` and deleting that entry cleared it. The load gate is run with the cache disabled.
+
+**Evidence (2026-10-01):**
+- **Backend:**
+  - Typecheck: 0 errors.
+  - ESLint: clean on every touched file.
+  - `ts-ratchet` floor: 877 → 848, across the five modules and other lanes' conversions.
+- **Build and load:** `build:dist` 149 JavaScript files copied and 406 TypeScript compiled, plus 49 contracts modules. `load:check` OK in src (tsx, cache disabled) and dist.
+- **Contract docs:** `openapi:check` current; Spectral reports no new error (14 baselined); `openapiRoutes.p925` / `apiDocs.p925` / p608 green.
+- **Coverage:** each module's suites and the gate guards pass, and each converted file is at 100/100/100/100. For example, qms ran 468 tests across its suites, `bodyless.a09`, `routeGuards`, `twoTenantRoutes`, p604 and the A-282 guards.
+- **Package:** 1,060 tests at 100%.
+
+### Amendment 4 (2026-10-01) — Q-55: a work order stores its schedule, costs and resolution
+
+**Decision.** Q-55's working decision (`TASKS/BACKLOG.md`, the coordinating session acting under the owner's delegation) is carried out: the columns are **added**. Before this, `POST /maintenance` and `PATCH /maintenance/:orderId` accepted five fields and answered 201/200, and Sequelize dropped all five.
+- **Migration `0107-work-order-schedule-cost.ts`.** It is TypeScript and registered in `config/migrator.js` after 0106. It runs in one transaction with `lock_timeout` 10s.
+  - **Columns:**
+    - `scheduled_date` and `completed_date`: TIMESTAMPTZ, the model's date convention (`DataTypes.DATE`, as on `capa.dueDate`).
+    - `estimated_cost` and `actual_cost`: NUMERIC(14,2).
+    - `resolution_notes`: TEXT.
+  - **CHECKs:** each cost is ≥ 0, and `char_length(resolution_notes) <= 5000`. Each is added `NOT VALID`, then `VALIDATE`d, so an existing bad value fails the migration and rolls it back.
+  - **Idempotent:** a column or CHECK already present is skipped. On a fresh database `db.sync()` has made the columns, and the migration adds only the CHECKs.
+  - **A missing table throws.** There is no blanket catch, so the migration is never recorded as applied having done nothing.
+  - **`down`** drops exactly those CHECKs and columns.
+  - **No index** (ADR-100 Am. 3): nothing filters or orders on these columns.
+- **Model.** Five nullable attributes. The two costs carry the **D-21 number getter**: `decimalGetters.d21` found them and failed until they had it. The model's reviewed DECIMAL list grows from four to six.
+- **Contract (`@callibrator/contracts/maintenance`):**
+  - A cost is `0 ≤ x ≤ 999,999,999,999.99` (`MAX_COST`, the NUMERIC(14,2) ceiling, so a client gets a 400, not a pg overflow 500).
+  - `resolutionNotes` is at most 5,000 characters (`MAX_RESOLUTION_NOTES`).
+  - `updateWorkOrder` refuses `completedDate` before `scheduledDate` when both are given, with a 400 on `completedDate`.
+  - The date order is **only** in the contract. A DB CHECK could not see a stored date that the request does not repeat, and would answer an update that gives one date with a 500.
+  - The response schema has the five fields, costs as numbers.
+- **Audit.** The rows' `changes` carry `scheduledDate`, `completedDate`, `estimatedCost` and `actualCost` (in `AUDITED_FIELDS`). The notes are carried as **`resolutionNotesLength`, not their text**: A-190's rule keeps free text out of the permanent audit row. The text is in the work order and its history.
+- **Docs.** `maintenance.openapi.ts` no longer says "accepted and not stored"; it states the bounds and the audit. `openapi.json` and `frontend/src/api/generated/schema.d.ts` were regenerated.
+- **Frontend.** The work-order modal has **Scheduled date** and **Estimated cost** on create and edit. Edit only: **Completed date** (its `min` is the scheduled date), **Actual cost** and **Resolution notes** (`maxLength` 5000). On an edit a blank field is sent as `null`, which clears it; on a create it is left out. The list has **Schedule** (Planned / Done) and **Cost** (Est. / Actual) columns.
+
+**Alternatives considered.**
+- **Remove the fields from the schema.** A client that sends them would get a 400: a behaviour change, and the data is needed. A work order's cost and how the device went back into service are evidence.
+- **Store the notes' text in the audit row.** Rejected under A-190.
+- **DATE instead of TIMESTAMPTZ.** A date input sends a calendar day, but the model's own convention is `DataTypes.DATE`, and a completion is a moment.
+- **A DB CHECK for the date order.** Rejected for the 500 above.
+
+**Implications, including the bad ones.**
+- A cost is a number in JavaScript (D-21). Sums of costs in a raw query still come back as strings.
+- The date order holds only for writes through the API. A direct SQL write can store completed < scheduled.
+- The form sends a cost as typed text (`"1250.50"`), and the contract's `numeric` turns it into a number.
+- **Owner confirmation pending** on the working decision.
+
+**Evidence (2026-10-01):**
+- **Fail-before, backend:** `tests/routes/maintenance.scheduleCost.q55.test.ts` (7 tests, REAL router, models and hooks over memoryDb). It was run against the HEAD model, the pre-Q-55 service and the old contract bounds: **6 of 7 failed**. The files were restored and checked with `cmp`. The test passes after the change.
+- **Fail-before, frontend:** `maintenance/hooks/__tests__/useMaintenance.test.ts` (+2) and `maintenance/__tests__/page.test.tsx` (+3 new, 2 updated). They were run against the HEAD hook, modal and table: **7 of 7 failed**. The files were restored and checked with `cmp`. 27 of 27 pass.
+- **Migration logic:** `tests/migrations/0107-work-order-schedule-cost.test.ts` (6): the manifest order; COLUMNS equal the model's fields and SQL types; up adds and validates, and creates no index; idempotent; a missing table throws; down.
+- **Package:** `packages/contracts/test/maintenance.q55.test.ts`. The package runs 1,063 tests at 100%.
+- **Live, PostgreSQL 18.6** (container `p922-q55-pg`, `pgvector/pgvector:pg18`, every step under `timeout`; removed by name afterwards). Checked with psql (`\d`, `pg_constraint.convalidated`, `pg_indexes`):
+  - **Missing table:** up fails.
+  - **Pre-Q-55 table with a row:** up adds 5 columns and 3 CHECKs (`valid=true`); the only index is the pkey.
+  - **Idempotence:** up again changes nothing.
+  - **Bounds:** pg refuses −1, 10¹² (numeric overflow) and 5,001 characters; it accepts 999999999999.99 and 5,000 characters.
+  - **Down:** the five columns and three CHECKs are gone.
+  - **Up after down:** identical to the first up, and the row survives.
+  - **A sync()'d table holding −5:** up fails ("violated by some row") with 0 CHECKs left, so the rollback held. Once the value was fixed, up succeeds.
+- **Guards:** `modelIndexColumns.am3` green. A run of 103 suites (maintenance, migrations, models, schemaVerify, enumMirror, p608, p925, calibrationScheduler and decimalGetters) gave 2,203 passed, 38 skipped and 1 failed. The failure was `includeRequired.d12`, while another lane was swapping `eSignature`/`s3.driver` to `.ts`; it passes alone, 24 of 24.
+- **Coverage:** `maintenance.service.js`, `maintenance.controller.ts`, `maintenance.route.ts`, `maintenance.openapi.ts` and the migration are at 100/100/100/100.
+- **Docs:** `openapi:check` current; Spectral reports no new error (14 baselined, 857 warnings); frontend `api:types:check` current.
+- **Gates:** backend and package typecheck 0 errors, frontend typecheck clean, ESLint clean on every touched file. `ratchet` at the floor (847). `build:dist` 148 JavaScript files copied and 408 TypeScript compiled (+49 contracts). `load:check` OK in dist and src (tsx, cache disabled).
+
+**Addendum (2026-10-01, accepted by the coordinator with costs as numbers): raw reads of a DECIMAL.**
+- **The search.** There is **no** SUM over a cost (or any DECIMAL) column anywhere in `backend/src`. The `SUM`s that exist are over integer counts and byte sizes. The `raw: true` reads in `dashboard`, `reporting` and `meteredBilling` select no DECIMAL column.
+- **The one API path that did return a DECIMAL from a raw read** is the GDPR Article 15 export. `subject_records.json` reads `MaintenanceWorkOrder` (by `assignedTo`) with `raw: true` (D-24 keyset pages), which bypasses the getter, so the costs were written as strings.
+- **The fix.** `gdpr.service.ts#decimalsAsNumbers(Model)` turns every DECIMAL attribute of the model into a number for each exported row. NULL stays NULL, and a model with no DECIMAL keeps the identity transform. It is discovered from the model's attributes, so a later DECIMAL on an exported table is covered.
+- **Test:** `backend/src/tests/services/gdpr.exportDecimals.q55.test.ts`, with the REAL model's attributes and the REAL `writeFile`, parsed back.
+  - Fail-before: against the HEAD service the costs were `"1250.50"`, `"0.00"` and `"999999999999.99"` (1 of 1 failed). The file was restored and checked with `cmp`.
+  - All `gdpr` suites pass (193 tests), and `gdpr.service.ts` is at 100/100/100/100.
+
+### Amendment 5 (2026-10-01) — six more route modules converted with their code-first contract (vendor, risk, supplierScorecard, finance, billing, meteredBilling)
+
+**1. The slice.** The services helper (`acdeaeffc1ddaed5d`) released these six on the coordinator's instruction. Their controllers and routes were untouched `.js`, and their services were already `.ts`. The Phase 9 card's lane table records the move. Each module's controller and route are now `.ts`, with a code-first `routes/api/<m>.openapi.ts` (vendor already had one, from the P9-25 pilot) and response schemas in `@callibrator/contracts/<m>`.
+- **Contract modules:**
+  - New: `risk` and `supplierScorecard`.
+  - Gained responses: `vendor`, `finance`, `billing` (the Invoice split into `InvoiceRow` and `Invoice` with its subscription) and `meteredBilling`.
+- **The method is ADR-097 Am. 3's**, applied per module: a working-copy snapshot (`cmp`-checked before each swap), the controller harness on the TypeScript 7 emit with a bite check, a mounted route-table dump, an atomic swap (the `.js` pair deleted in one step, with the one test that required `<m>.route.js` by name re-pointed in the same step), then typecheck, the module's suites and guards, and 100% on every converted file.
+- **The harness gained one outcome:** a synchronous throw, the way Stripe's `constructEvent` refuses a signature. With it, the webhook's 400 path is exercised.
+
+| Module | Cases | Different | Planted change caught |
+|---|---|---|---|
+| vendor | 10,800 | 0 | 300 |
+| risk | 10,800 | 0 | 360 |
+| supplierScorecard | 10,800 | 0 | 360 |
+| finance | 15,120 | 0 | 60 (the CSV path) |
+| billing | 7,920 | 0 | 180 (the webhook's 400) |
+| meteredBilling | 23,760 | 0 | 450 |
+
+- **Route table:** the whole 478-route table is identical before and after, with ONE difference. The Stripe webhook's handler was an anonymous arrow assigned to `exports.handleStripeWebhook`; the `export const` gives it a `Function.name`. Express does not read handler names, so this shows only in a route dump or a stack trace. It is recorded here rather than hidden with a construct that defeats name inference.
+- **Typing conventions** (types only, nothing emitted differently, and the harness agrees):
+  - The services were already strictly typed, so each argument is built exactly as the JavaScript built it and only then cast to `Parameters<typeof service.fn>[n]`. The services were not widened, because they are another lane's.
+  - `|| {}` and `req.tenantId || req.user.tenantId` keep `||` (reason on each `eslint-disable`).
+  - meteredBilling's never-used `logger` is a side-effect import, so `activityLog.middleware` still loads at the same point; an unused named import would be elided.
+
+**2. Documentation fixed by going code-first.**
+- **vendor:** the create and update descriptions said `notes` is "accepted and NOT stored"; it has been stored since migration 0106 (Q-52).
+- **meteredBilling:** the JSDoc said the estimate needs WRITE; the route has gated it on read since ADR-043.
+- **The Finance tag description** came from the route file's own JSDoc; it is now the module's `tagDescription`.
+- **Shrunk:** the Spectral baseline 14 → 13. The metered-billing `trends` array-items error is gone, and the lint reported its baseline line stale. Spectral warnings went from 857 to 760 across this slice and other lanes' work. `openapiRoutes.undocumented.json` had no entries for these six.
+
+**3. Findings (recorded; not changed in a conversion).**
+- **A-335:** the risk register mounts no `validate()`, so its bodies are mass-assigned.
+- **A-336:** a supplier scorecard's update can re-point it to another tenant's vendor, and neither write validates.
+- **A-337:** an asset finance record's `vendorId` is never checked against the tenant.
+- Each is documented on its operation ("NOT validated", "not checked against the tenant").
+- `riskWritableFields` and `scorecardWritableFields` describe what the models store, and say they enforce nothing.
+
+**Implications, including the bad ones.**
+- Two contract modules (risk, supplierScorecard) publish a body schema that no route enforces. It is labelled as such in the schema and the operation. The alternative, publishing no body, would hide the fields a client actually sends.
+- The `InvoiceRow` / `Invoice` split adds a component id. The billing list's `Invoice` keeps its id and gains `subscription`.
+
+**Evidence (2026-10-01):**
+- **Backend:** typecheck 0 errors; ESLint clean on every touched file; `ts-ratchet` 847 → 822 (the 12 files here plus other lanes').
+- **Build and load:** `build:dist` 123 JavaScript files copied and 441 TypeScript compiled (+51 contracts). `load:check` OK in dist and in src (tsx, cache disabled).
+- **Contract docs:** `openapi:check` current, 103 code-first operations; Spectral no new error, 13 baselined. Frontend `schema.d.ts` regenerated, frontend typecheck clean.
+- **Per module:** the suites and the gate guards pass (`twoTenantRoutes`, `openapiRoutes.p925`, `apiDocs`, `dynamicAccessSlugs`, `effectivePermission`, `authorizationWiring`, `swaggerValidator`, `routeGuards`, `bodyless.a09`, `crudAudit`). For example, billing ran 599 tests and meteredBilling 468, and each converted file is at 100/100/100/100.
+- **Package:** 1,081 tests at 100%, with `test/responses.p920.test.ts` (every new response schema accepts its own published example).
+- **Full backend run** (`npm test -- --ci --coverage=false`, a busy tree): 830 of 866 suites passed (33 skipped), 14,720 tests passed and 4 failed.
+  - **Mine, fixed:** `routePermissionGuard.p604`. Its exemption list (`constants/routeGateExemptions.ts`) keys routes by file name and still named `api/billing.route.js` for the public webhook. Re-keyed to `.ts`, it passes (17 tests). `build:dist` and `load:check` were rerun after the fix.
+  - **Not this slice:** `unboundedFindAll.d24` reads `attachmentFileSweep.service.js`, which another lane converted. `tenantLifecycle.w01` was a 1 ms `createdAt` race and passes alone (41 of 41).
+
+### Amendment 6 (2026-10-01) — the three findings of Amendment 5 fixed (A-335, A-336, A-337), each as its own change after the conversion
+
+**Decisions.**
+- **An allow-list, and unknown keys are STRIPPED, not refused.** `validate()` replaces `req.body` with the parsed value, so a server-owned attribute never reaches the model. Refusing an unknown key would break the frontend's risk and scorecard pages, which send their whole form (e.g. `status: "OPEN"` on a risk create), and it would buy no safety over stripping.
+  - The stripped keys are: `id`, `tenantId`, `identifiedBy` / `evaluatedBy`, `rpn` / `overallScore`, the timestamps, and anything else not listed.
+- **A risk's `status` is server-owned on create (a risk starts OPEN)** and settable on update within OPEN, MITIGATED, CLOSED and ACCEPTED.
+  - Update is the only way the register records a mitigation, an acceptance or a closure, so removing it would leave risks unclosable.
+  - No transition matrix is enforced. The four states have no defined ordering (a closed risk may be reopened), and inventing one would be a product decision.
+- **A scorecard's `status`** (APPROVED / PROBATION / DISQUALIFIED) is the evaluator's judgement, so it is accepted within its vocabulary on create and update.
+- **Bounds:** severity and likelihood are integers 1–5, scores integers 0–100, and the categories are the model's five. The edit form already offers only these.
+- **A vendor reference is the caller's tenant's, on create and on update.**
+  - Scorecard: update now checks it (create already did).
+  - Finance: both writes check it (`assertVendor`; an absent or null `vendorId` names no vendor).
+  - Another tenant's vendor and a missing one give the same 404 with the same message, with an explicit tenant predicate (a super admin's context skips the hooks).
+- **The risk request schemas are inline in the published document (no component id)**, like the other code-first request bodies. `swaggerValidatorAlignment.p608` resolves `$ref`s against the legacy JSDoc components only.
+
+**Alternatives considered.**
+- `.strict()` schemas (a 400 for any unknown key): rejected because it breaks the pages, as above.
+- Dropping risk `status` from update entirely: rejected because risks could never be closed.
+- Checking the vendor in the controllers: rejected because the services are where the other tenant checks live (A-277), so a non-HTTP caller is covered too.
+
+**Implications, including the bad ones.**
+- **A client that sent a category or status outside the vocabularies now gets a 400.** A stored legacy value is still returned. Editing such a risk from the form re-sends its category, which is then refused until it is changed to one of the five.
+- **`PUT /risk/:id` and `PUT /supplier-scorecard/:id` with an empty body** still answer 200 and change nothing.
+
+**Evidence (2026-10-01):** each fix has a fail-before test, run against the pre-fix files, which were then restored and checked with `cmp`.
+- **A-335:** `tests/routes/risk.massAssignment.a335.test.ts`, 9 of 9 failed before.
+  - Before the fix, the chosen id, a CLOSED status, a rewritten author and out-of-range values were stored.
+  - The audit row's `after` now holds only the allow-listed keys sent.
+- **A-336:** `tests/routes/supplierScorecard.vendorTenant.a336.test.ts` (`@two-tenant api/supplierScorecard.route.ts PUT /:id`), 8 of 10 failed before.
+- **A-337:** `tests/routes/finance.vendorTenant.a337.test.ts` (`@two-tenant api/finance.route.ts PATCH /:financeId`), 2 of 3 failed before.
+- **Existing tests:** `crudAudit.a278` sent `status: "Mitigated"`; it now sends the model's `MITIGATED`.
+- **Coverage:** the three services, controllers, routes, contracts and both new validators are at 100%.
+- **Suites and guards:** the suites of the three modules and the gate guards pass, 488 tests. The three guards that were red belonged to the certificates conversion and were fixed by its owner, and the re-run is 68/68.
+- **Package:** 1,084 tests at 100%.
+- **Gates:** typecheck 0 errors; `ratchet` floor 809; `build:dist` (463 TypeScript compiled + 51 contracts); `load:check` dist and src OK; `openapi:check` current (138 code-first); Spectral no new error (13 baselined); frontend `api:types` regenerated, typecheck clean, and its risk and scorecard tests pass (47).
+
+**Status:** Accepted — first slice implemented 2026-09-29; amended 2026-10-01 (Amendments 1–6).
 
 ---
 
@@ -8645,6 +9166,144 @@ An edit never writes `status`.
 - **Evidence:**
   - `tests/routes/tenant.statusEmail.a326a327.test.ts`: 6 of 9 failed before, 9/9 pass after.
   - A live PostgreSQL 18 check as `callibrator_app`: 11/11. The before state is the P9-13 probe's measured 500s.
+
+---
+
+## ADR-113: The Request-Access Form Opens Only Once Its Privacy Notice Is Published — `PRIVACY_NOTICE_URL`, Read at Runtime by Both Workloads; Unset, the Intake Is an Absent Route
+
+**Date:** 2026-10-01 · **Status:** Accepted (decided by the main session under the owner's delegation, Q-42 best practice; implemented by the P10 helper) · **Record:** `MEMORY/records/2026-10-01-p10-a341-q43-privacy-ac4.md` · **Relates to:** Q-42, P10-05, P10-06, P10-12 (the self-registration gate — the same shape), doc 20 §8 and §14, ADR-090 (per-request rendering under the nonce CSP)
+
+### Context
+
+`/request-access` collects personal data: a name, a work email and a WhatsApp number. Its consent text (`access.consent`) said the data would be "kept as described in the Privacy Notice", and no privacy notice existed (doc 20 §14, reviewed 2026-10-01). Under UU 27/2022 a data subject consents to a purpose they were told about. A consent that points at a missing document informs no one. The notice's text needs the owner's data controller and counsel (Q-42), so the code cannot write it. What the code can do is refuse to collect before it exists.
+
+### Decision
+
+- **One variable, `PRIVACY_NOTICE_URL`:** the absolute http(s) URL of the published notice.
+  - Anything else (blank, a relative path, `javascript:`, `ftp:`) reads as **unset**, so a typo closes the intake rather than linking to nothing.
+  - It applies in every environment. Self-registration is open outside production; this is not, because the rule is about personal data, not the deployment.
+- **Backend** (`config/publicAccess.ts#privacyNoticeUrl`, `middlewares/accessRequestIntake.middleware.ts`): while the variable is unset, `POST /access-requests` leaves its router (`next("router")`).
+  - It answers what an absent route answers: **404 "Route not found"**, byte-identical for every body.
+  - It answers before the request budget, the validator, the store and the mail.
+  - **Why 404 and not 503:**
+    - 404 is the house rule for a route that is off (P10-12's `/register`).
+    - It is one neutral answer, with no oracle about why.
+    - A 503 would invite retries and monitoring alarms for a state that is deliberate and may last weeks.
+- **Frontend** (`components/public/privacyNotice.ts`): read on the **server, per request**, not as a `NEXT_PUBLIC_*` build value. The public pages already render per request under the nonce CSP (ADR-090), so publishing the notice is a configuration change, not a rebuild.
+  - **Unset:**
+    - `/request-access` shows a short neutral notice ("Requests are not open yet" / "Permintaan akses belum dibuka"), with no form and no input.
+    - It offers the configured contact channels (Q-41, `NEXT_PUBLIC_CONTACT_*`), or "please check back later" when none are configured.
+    - The footer has no privacy link.
+  - **Set:**
+    - The consent's "Privacy Notice" / "Kebijakan Privasi" is a link to it, opening in a new tab, announced as such.
+    - The footer shows "Kebijakan Privasi" / "Privacy Notice".
+    - `CONSENT_VERSION` moves to `2026-10-01`, because the consent text changed.
+- **Deployment:**
+  - Compose: `.env` feeds the backend through `env_file`, and `docker-compose.yml` passes the variable to the frontend.
+  - Helm: `global.privacyNoticeUrl` feeds the backend ConfigMap and the frontend Deployment.
+  - The disposable E2E stack sets `https://example.com/privacy-notice` on both services (`scripts/ci/e2e-env.sh`, `docker-compose.e2e.yml`); `E2E_PRIVACY_NOTICE_URL` overrides it.
+
+### Alternatives considered
+
+- **503 with `Retry-After`.** Rejected:
+  - it says "temporarily broken" about a deliberate state;
+  - it pages whoever watches 5xx rates;
+  - it differs from the house's answer for a route that is off.
+- **An in-app `/privacy` page with placeholder text.** Rejected: a notice without a named controller and counsel review is not a notice. It would make the consent's promise look kept when it is not.
+- **`NEXT_PUBLIC_PRIVACY_NOTICE_URL`, inlined at build.** Rejected:
+  - publishing the notice would need a new image;
+  - the backend needs the value at runtime anyway, and two variables for one fact can disagree.
+- **Gate only the frontend.** Rejected: the public POST would still accept a direct request. A form's absence is not a control.
+
+### Implications
+
+- **Every existing deployment closes its public intake on upgrade** until `PRIVACY_NOTICE_URL` is set, the VM at kalibrasi.zedth.my.id included. This is intended: there never was a notice. The landing's "Request access" links still lead to `/request-access`, which explains the state and offers the contact channels.
+- **Development and the unit suites need the variable** to exercise the intake.
+  - `tests/routes/accessRequest.route.p1005.test.ts` sets it per test.
+  - A developer sets it in `backend/.env` and in the frontend's environment.
+- **The notice itself is still open** (doc 20 §14, Q-42: the owner's controller text, then counsel). This ADR makes its absence safe; it does not supply it.
+- **Evidence:**
+  - Backend: `tests/routes/accessRequest.route.p1005.test.ts`, describe "Q-42 — no privacy notice, no intake":
+    - four unset or invalid shapes each answer 404, the same body as an absent route;
+    - an invalid body is also 404, never 400;
+    - nothing is stored or mailed;
+    - with the variable set, the request is 202.
+  - Backend: `tests/services/phase10.units.p1005.test.ts`, "Q-42 (ADR-113): the privacy notice is an absolute http(s) URL or nothing".
+  - Frontend: `app/request-access/__tests__/privacyGate.q42.test.tsx`.
+  - Live: `p10-access-requests.e2e.test.ts` opens with a named precondition test. `automate/p10.browser.mts` checks the footer link and the consent link.
+
+---
+
+## ADR-114: The GDPR Export Is Downloaded Through `GET /gdpr/exports/:exportId/download` — the Subject's Own Archive Only, One 404 for Everything Else, Audited Before It Is Sent; a Tenant Backup Stores Its `name` and `description`
+
+**Date:** 2026-10-02 · **Status:** Accepted (decided by the A-359…A-363 helper under the owner's delegation, best practice) · **Record:** `MEMORY/records/2026-10-02-a359-a363.md` · **Relates to:** A-360, A-363, W-15 (ADR-079, the export manifest and its sweep), A-252 (one 404 for "not yours"), S-20 / A-331 (ADR-100 Amendment 4, the secret scan), ADR-103 (code-first contracts)
+
+### Context
+
+- **A-360.** `POST /api/v1/gdpr/export` builds the subject's archive (a ZIP of JSON files: profile, the records that name them, consent, requests, sessions, audit trail), writes it with a manifest (owner, tenant, expiry: W-15), and answers `{ exportId, downloadUrl: "/api/v1/gdpr/exports/<id>/download", expiresAt, fileSize }`. No route served `downloadUrl`. The privacy page saved the ANSWER as `my-data-export.json` and said "Export downloaded": the data subject received four fields of metadata, never their data (GDPR Art. 15(3) copy, Art. 20 portability).
+- **A-363.** `POST /tenants/:tenantId/backups` requires `name` (400 without it) and accepts `description`; `TenantBackup.createBackup` passed both to `create`, but neither was a model attribute, so Sequelize dropped them on insert. The backup page lists `backup.name` and uses it as the Restore confirmation phrase: blank on every row.
+
+### Decision
+
+1. **A new route serves the URL the service already answers:** `GET /api/v1/gdpr/exports/:exportId/download`, behind `auth`, a SELF exemption like every other GDPR route (`constants/routeGateExemptions.ts`; the subject acts on their own data, no menu gate).
+   - `gdpr.service#getExportDownload` resolves the id to the archive: the id must match `export-<ms>-<8 hex>` (checked BEFORE any path is built, so it cannot name a file outside the exports directory); the manifest must exist, parse, and name the caller's tenant AND user id; its `expiresAt` must be in the future (an unparsable expiry is expired, as the sweep treats it); the ZIP must exist.
+   - **Every refusal is one 404, "Export not found", thrown from one line** (a development error body carries the stack, so two throw sites would distinguish "not yours" from "never existed"). Another subject's, another tenant's, expired, malformed and unknown are indistinguishable (CLAUDE.md, A-252).
+   - **A download is a disclosure of personal data:** one `EXPORT` audit row (`resourceType: DataExport`, `operation: GDPR_EXPORT_DOWNLOAD`, file size, expiry; actor = the request's principal, subject = the caller) is written in a transaction BEFORE the file is handed to `res.download`. If the row cannot be written, nothing is served.
+   - The answer is `application/zip`, `Content-Disposition: attachment; filename="<exportId>.zip"`, `Cache-Control: no-store`.
+   - The page fetches `downloadUrl` as a blob and saves the ZIP (`<exportId>.zip`).
+2. **A tenant backup stores what the operator called it:** migration `0108-tenant-backup-name-description` adds `tenant_backups.name VARCHAR(100)` and `.description VARCHAR(500)`, both NULLABLE (rows written before it have neither, and nothing can recover them); the model maps them, the contract publishes them nullable, the CREATE audit row records `name`. The create route keeps requiring `name`.
+
+### Alternatives considered
+
+- **Answer the export inline** (the ZIP, or the JSON, as the POST's body). Rejected: the service builds a file with a retention-swept manifest because exports are large and streamed (D-24); an inline answer would hold the whole archive in memory, would change the POST's published answer, and would leave `downloadUrl` pointing nowhere.
+- **A signed, unauthenticated download link** (a capability token in the URL). Rejected: a URL is logged by proxies and browsers and forwarded by people; the subject is signed in when they ask, so `auth` costs nothing and keeps the download attributable.
+- **403 for another subject's export.** Rejected: it confirms the id exists (CLAUDE.md: cross-tenant and not-yours are 404).
+- **410 Gone for an expired export.** Rejected: it would distinguish "existed and expired" from "never existed" for anyone holding an id.
+- **A-363: stop requiring `name`** (drop it from the contract). Rejected: a backup of a hospital tenant's accounts is an operational record an operator chooses among when restoring; the label is how they choose, and the page already uses it as the Restore confirmation phrase. Storing it in `metadata` JSON was rejected too: `metadata` is the archive's technical record (checksum, filename), validated by its own D-27 shape, and a label there is not queryable or typed.
+
+### Implications
+
+- **One more `:id` route.** Its two-tenant test is `tests/routes/gdpr.exportDownload.a360.test.ts` (twoTenantSuite over memoryDb, `@two-tenant` marker); the guard counts it.
+- **The download path is outside the tenant hooks** (the archive is a file, not a row): isolation rests on the manifest's `tenantId` / `userId`, which `exportUserData` writes from the request's principal before any data. An export written before W-15 has no manifest and is not downloadable (it is swept on the age in its id).
+- **`POST /export` itself still writes no audit row** although its contract says `audited: true` — found here, not changed (it would touch the eight export suites' database doubles); recorded in the record as a follow-up for the coordinator to number.
+- **Backups taken before 0108 show no name.** The page shows "Untitled backup" for a NULL name, and the Restore confirmation falls back to the backup id.
+- **Evidence:** named in the record — `routes/gdpr.exportDownload.a360.test.ts`, `services/gdpr.exportDownload.a360.test.ts`, `migrations/0108-tenant-backup-name-description.test.ts`, `routes/tenantBackup.nameDescription.a363.test.ts`, the frontend page tests, and the PostgreSQL 18 up/down/up of 0108 as `callibrator_app`.
+
+---
+
+## ADR-115: The Code-First Contract Replaces the JSDoc Contract on `main` in One Step — a Recorded Baseline Reset of `openapi:breaking`, Not 857 Deprecations
+
+**Date:** 2026-10-02 · **Status:** Accepted (coordinating session, under the owner's stated delegation; the owner may revisit) · **Relates to:** ADR-103 (code-first API), P9-25, `MEMORY/records/2026-10-02-closing-gates-qr.md` § 2
+
+### Context
+
+`openapi:breaking` (oasdiff 1.32.1, `--fail-on ERR`) compares the working tree's `backend/openapi.json` with `origin/main`'s (`fb55605`). It reports **857 errors, 34 warnings**. The base is the last contract written mostly as route JSDoc: 415 operations, 44 with `x-permission`. The new one is generated from the Zod schemas the routes enforce: 479 operations, 427 with `x-permission`. The errors are:
+
+- about 336 request constraints (min/max/pattern/enum) and about 80 newly required fields that the validators **already enforced**. The contract now says what the server did;
+- about 206 response descriptions corrected to what the server sends (P9-25 item 11 drift logs);
+- 148 path-parameter patterns added (the `validateUuid` checks that already ran);
+- **11 paths "removed without deprecation": every one is `/api/v1/e-signature/*`, a prefix the server never mounted.** `index.js` at HEAD mounts `/api/v1/esignature` (line 429), and the route file says so. The old contract published a wrong path; the code-first one publishes the real one;
+- 5 success statuses removed: `POST /auth/register` 202, `POST /oidc/clients` 201, `DELETE /scim/v2/{Users,Groups}/{id}` 200, `POST /user-permissions/{userId}` 201. Each is a status the old JSDoc listed and the handler does not return.
+
+### Decision
+
+Accept the difference as **one recorded baseline reset**: commit the code-first contract to `main` as the new published contract. From that commit on, `openapi:breaking` compares against it and keeps its full force: `--fail-on ERR` is unchanged, with no allow-list and no baseline file.
+
+### Rationale
+
+The check guards **consumers** of the published contract. There are none outside this repository: the only client is the frontend, which is generated from the same file (`api:types:check`) and moves in the same commit. The VM deployment is a pre-production demonstration with no external API-key integrations. Almost every "break" is the contract catching up with behaviour that did not change. Deprecating paths that never existed, or statuses that were never returned, would publish a fiction for one release.
+
+### Alternatives considered
+
+- **Deprecate first, remove a release later.** This is the rule for a contract with consumers. Here it would keep 11 non-existent paths and 5 never-sent statuses in the contract, and delay P9-25 for no consumer's benefit. Rejected.
+- **An oasdiff ignore file for these 857 entries.** It would stay in the repository forever and silently excuse a future break that matched an entry. Rejected.
+- **Loosen the published constraints to match the old contract.** That would make the contract lie again: the validators reject those requests. Rejected (PR-4).
+
+### Implications, including the bad ones
+
+- **A pull request opened from a branch cut before this commit** fails `api-contract` until it is rebased. A direct push to `main` compares the commit with itself and passes.
+- **An unknown external client written against the old JSDoc contract would break.** We know of none. If one appears, this ADR is the record of when the contract changed.
+- **From here on, a break needs an ADR and a deprecation note** before merging, as the script says. The reset happens once.
 
 ---
 

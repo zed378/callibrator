@@ -105,13 +105,13 @@ const REVIEWED_WITHOUT_PARENT = Object.freeze({
       "verifyRegistration's duplicate check: is this credential id enrolled on ANY account (the " +
       "unique index would refuse it); only the yes/no is used, as a 409, and no row is read",
   },
-  "services/kanban.service.js KanbanProjectMember.findAll": {
+  "services/kanban.service.ts KanbanProjectMember.findAll": {
     count: 1,
     why:
       "listProjects: the caller's memberships (userId / roleId) across projects, used only as " +
       "an id filter on the tenant-SCOPED KanbanProject.findAll that follows",
   },
-  "services/ticket.service.js TicketComment.findByPk": {
+  "services/ticket.service.ts TicketComment.findByPk": {
     count: 1,
     why:
       "addComment re-reads the comment it has just created on a ticket loaded by " +

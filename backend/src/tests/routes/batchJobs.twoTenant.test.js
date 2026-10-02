@@ -5,7 +5,7 @@
  * REAL router, dynamicAccess (role matrix granted), controller and batchJob
  * service on the REAL models and tenant hooks (fixtures/memoryDb).
  *
- * @two-tenant api/batchJobs.route.js GET /:id
+ * @two-tenant api/batchJobs.route.ts GET /:id
  */
 
 jest.mock("../../config", () => ({ db: require("../fixtures/memoryDb").memoryDb().sequelize }));

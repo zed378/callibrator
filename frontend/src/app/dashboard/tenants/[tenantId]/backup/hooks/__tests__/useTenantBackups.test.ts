@@ -16,7 +16,7 @@ jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }))
 import { useTenantBackups } from "../useTenantBackups";
 
 const ev = { preventDefault: jest.fn() } as unknown as React.FormEvent;
-const backup = { id: "b1", tenantId: "t1", name: "nightly", status: "COMPLETED", backupType: "FULL" };
+const backup = { id: "b1", tenantId: "t1", name: "nightly", status: "completed", backupType: "FULL" };
 const list = { data: [backup], meta: { total: 12, page: 1, limit: 10, totalPages: 2 } };
 const outcome = {
   tenantId: "t1", recordsProcessed: 3, updated: 1, unchanged: 1, skippedDeleted: 0, retained: 2,

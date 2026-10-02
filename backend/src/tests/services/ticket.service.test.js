@@ -143,7 +143,8 @@ const expectReject = async (promise, message) => {
 beforeEach(() => {
   jest.resetAllMocks();
   sequelize.transaction.mockImplementation(async (cb) => cb("txn"));
-  sequelize.query.mockResolvedValue([[{ seq: 1 }]]);
+  // P9-18: the counter is sent through sql(), which answers the rows directly.
+  sequelize.query.mockResolvedValue([{ seq: 1 }]);
   Ticket.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
   Ticket.findAll.mockResolvedValue([]);
   Ticket.findOne.mockResolvedValue(makeTicket());

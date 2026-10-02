@@ -35,7 +35,7 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0029-audit-log-impersonator.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 /** The REAL AuditLog model on an unconnected PostgreSQL-dialect Sequelize. */
 const AuditLog = defineAuditLog(new Sequelize({ dialect: "postgres", logging: false }));

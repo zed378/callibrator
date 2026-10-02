@@ -9,4 +9,5 @@
 export {
   tenantIdSchema,
   suspendTenantSchema,
+  offboardTenantSchema,
 } from "@callibrator/contracts/tenantLifecycle";

@@ -17,7 +17,18 @@ import DeviceModal from "./components/DeviceModal";
 import DeleteDeviceModal from "./components/DeleteDeviceModal";
 import DevicesTable from "./components/DevicesTable";
 import IotDeviceModal from "./components/IotDeviceModal";
-import { Device } from "@/api/services/device.service";
+import { Device, type BulkImportResult } from "@/api/services/device.service";
+
+/**
+ * A-358: a rejected import row's `errors` is a message (an empty CSV) or a
+ * list of `{ field, message }` (calibrationDevices.service
+ * #bulkImportCalibrationDevices). Rendered as text, the list made React throw;
+ * each field error is shown as "field: message".
+ */
+const rowErrorText = (errors: BulkImportResult["errors"][number]["errors"]) =>
+  typeof errors === "string"
+    ? errors
+    : errors.map((e) => `${e.field}: ${e.message}`).join("; ");
 
 export default function DevicesPage() {
   const {
@@ -122,7 +133,7 @@ export default function DevicesPage() {
                   <ul className="mt-2 list-disc pl-5 text-sm">
                     {importResult.errors.slice(0, 5).map((err, i) => (
                       <li key={i}>
-                        Row {err.row}: {err.errors}
+                        Row {err.row}: {rowErrorText(err.errors)}
                       </li>
                     ))}
                     {importResult.errors.length > 5 && (

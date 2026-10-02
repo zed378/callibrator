@@ -1,63 +1,51 @@
 // src/api/services/maintenance.service.ts
-import { api } from "../client";
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/maintenance.openapi.ts →
+// @callibrator/contracts/maintenance), which replaced the interim `z.input`
+// types (ADR-097 Am. 1). The exported names are unchanged.
+import { typedApi, unwrap, type JsonBody, type Op, type QueryOf, type components } from "../typed";
 import { PaginatedResponse } from "@/types";
-import type {
-  CreateWorkOrderInput,
-  UpdateWorkOrderInput,
-  WorkOrderPriority,
-  WorkOrderStatus,
-  WorkOrderType,
-} from "@callibrator/contracts/maintenance";
 
-export type { WorkOrderPriority, WorkOrderStatus, WorkOrderType };
+type ById = "/api/v1/maintenance/{orderId}";
+type ListItem = components["schemas"]["WorkOrderListItem"];
+type CreateBody = JsonBody<Op<"/api/v1/maintenance", "post">>;
+type UpdateBody = JsonBody<Op<ById, "patch">>;
+type ListQuery = QueryOf<Op<"/api/v1/maintenance", "get">>;
+type ListItemMeta = components["schemas"]["PaginationMeta"];
 
-export interface WorkOrderDevice {
-  id: string;
-  name: string;
-  serialNumber?: string | null;
-}
+export type WorkOrderType = ListItem["type"];
+export type WorkOrderStatus = ListItem["status"];
+export type WorkOrderPriority = ListItem["priority"];
 
-export interface WorkOrderVendor {
-  id: string;
-  name: string;
-}
+export type WorkOrderDevice = NonNullable<ListItem["device"]>;
+export type WorkOrderVendor = NonNullable<ListItem["vendor"]>;
+export type WorkOrderAssignee = NonNullable<ListItem["assignee"]>;
 
-export interface WorkOrderAssignee {
-  id: string;
-  username?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  email?: string | null;
-}
+/**
+ * A work-order row. A list read also carries its device, vendor and assignee
+ * (WorkOrderListItem); a write's answer is the bare row.
+ *
+ * Q-55 (migration 0107): the schedule, costs and resolution are stored since
+ * 2026-10-01. A cost is NUMERIC(14,2), read as a number by the model's getter
+ * (D-21), on a list read and on a write's answer alike.
+ */
+export type WorkOrder = components["schemas"]["WorkOrder"] &
+  Partial<Pick<ListItem, "device" | "vendor" | "assignee">>;
 
-export interface WorkOrder {
-  id: string;
-  tenantId?: string;
-  deviceId: string;
-  title: string;
-  description?: string | null;
-  type: WorkOrderType;
-  status: WorkOrderStatus;
-  priority: WorkOrderPriority;
-  vendorId?: string | null;
-  assignedTo?: string | null;
-  resolutionNotes?: string | null;
-  device?: WorkOrderDevice | null;
-  vendor?: WorkOrderVendor | null;
-  assignee?: WorkOrderAssignee | null;
-  createdAt: string;
-  updatedAt: string;
-}
+/**
+ * The create and update bodies. A cost is published as a number; the form
+ * sends what was typed (a numeric string), which the validator's `numeric()`
+ * accepts and converts — so the input types also take a string (as built).
+ */
+type CostInput = { estimatedCost?: number | string | null };
+export type WorkOrderCreateInput = Omit<CreateBody, "estimatedCost"> & CostInput;
 
-// P9-22 (ADR-097): the request bodies are the backend validator's own schemas
-// (@callibrator/contracts/maintenance). The hand-written update type extended
-// the create type, so it offered `deviceId`, which the update schema does not
-// declare (the API strips it: a work order cannot move to another device).
-export type WorkOrderCreateInput = CreateWorkOrderInput;
-
-export type WorkOrderUpdateInput = UpdateWorkOrderInput & {
-  id: string;
-};
+export type WorkOrderUpdateInput = Omit<UpdateBody, "estimatedCost" | "actualCost"> &
+  CostInput & {
+    actualCost?: number | string | null;
+    id: string;
+  };
 
 export interface WorkOrderListParams {
   page?: number;
@@ -69,27 +57,7 @@ export interface WorkOrderListParams {
   deviceId?: string;
 }
 
-// Backend envelope: for LIST endpoints `data` is the array itself and
-// `meta` sits at the TOP level of the envelope (unlike devices).
-interface BackendWorkOrdersResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: WorkOrder[] | null;
-  meta?: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-interface BackendWorkOrderResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: WorkOrder;
-}
+const byId = (orderId: string) => ({ params: { path: { orderId } } });
 
 export const maintenanceService = {
   getAll: async (
@@ -97,16 +65,18 @@ export const maintenanceService = {
   ): Promise<PaginatedResponse<WorkOrder>> => {
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
-    const response = await api.get<BackendWorkOrdersResponse>(
-      "/api/v1/maintenance",
-      { params: { ...params, page, limit } },
-    );
+    const response = await typedApi
+      .GET("/api/v1/maintenance", {
+        // The page's filter selects offer only the contract's enum values.
+        params: { query: { ...params, page, limit } as ListQuery },
+      })
+      .then(unwrap);
 
     // Defensive: `data` may be null and `meta` may be missing.
     const rows: WorkOrder[] = Array.isArray(response?.data)
       ? response.data
       : [];
-    const meta = response?.meta;
+    const meta = response?.meta as ListItemMeta | undefined;
     const total = meta?.total ?? rows.length;
     const lim = meta?.limit ?? limit;
 
@@ -123,31 +93,24 @@ export const maintenanceService = {
     };
   },
 
-  getById: async (orderId: string): Promise<WorkOrder> => {
-    const response = await api.get<BackendWorkOrderResponse>(
-      `/api/v1/maintenance/${orderId}`,
-    );
-    return response.data;
-  },
+  getById: async (orderId: string): Promise<components["schemas"]["WorkOrderDetail"]> =>
+    (await typedApi.GET("/api/v1/maintenance/{orderId}", byId(orderId)).then(unwrap)).data,
 
-  create: async (data: WorkOrderCreateInput): Promise<WorkOrder> => {
-    const response = await api.post<BackendWorkOrderResponse>(
-      "/api/v1/maintenance",
-      data,
-    );
-    return response.data;
-  },
+  create: async (data: WorkOrderCreateInput): Promise<WorkOrder> =>
+    // As built: a cost may be the typed numeric string (see WorkOrderCreateInput).
+    (await typedApi.POST("/api/v1/maintenance", { body: data as CreateBody }).then(unwrap)).data,
 
   update: async (data: WorkOrderUpdateInput): Promise<WorkOrder> => {
     const { id, ...rest } = data;
-    const response = await api.patch<BackendWorkOrderResponse>(
-      `/api/v1/maintenance/${id}`,
-      rest,
-    );
-    return response.data;
+    return (
+      await typedApi
+        // As built: a cost may be the typed numeric string (see WorkOrderUpdateInput).
+        .PATCH("/api/v1/maintenance/{orderId}", { ...byId(id), body: rest as UpdateBody })
+        .then(unwrap)
+    ).data;
   },
 
   delete: async (orderId: string): Promise<void> => {
-    await api.delete(`/api/v1/maintenance/${orderId}`);
+    await typedApi.DELETE("/api/v1/maintenance/{orderId}", byId(orderId));
   },
 };

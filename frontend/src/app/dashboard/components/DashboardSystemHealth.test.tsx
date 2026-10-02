@@ -2,7 +2,7 @@
 // health it has not measured.
 //
 // The response bodies below are the shape built by
-// backend/src/controllers/health.controller.js#readinessDetail over
+// backend/src/controllers/health.controller.ts#readinessDetail over
 // backend/src/services/health.service.js#buildReport: 200 when every required
 // dependency is healthy, 503 (WITH the breakdown in `data`) when one is not,
 // 403 for anyone who is not a super admin.

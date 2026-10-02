@@ -1,6 +1,6 @@
 # Hospital Device Calibration (HDC) — Backend Module Documentation
 
-> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; the toolchain is ADR-087), compiled to CommonJS and run from one `dist/` tree. The only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18); `noSourceJs.p924.guard` fails on any other. The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The rules are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Behaviour described here is **as-built** unless marked *target*.
 
 > **Product:** Enterprise multi-tenant hospital medical-device calibration platform
 > **Stack:** Express.js · Sequelize ORM · PostgreSQL (only — ADR-039) · Redis · RabbitMQ · Socket.IO
@@ -21,7 +21,7 @@ is grounded in the actual source under `backend/src/` — file references are cl
 > **Phase 0 (Node backend, done):**
 > - **Row-Level Security removed** → tenant isolation is now enforced in the ORM
 >   layer (Sequelize global hooks, **deny-by-default**), engine-agnostic. See
->   `backend/src/utils/tenantScope.util.js` + migration `0015`. **(kept)**
+>   `backend/src/utils/tenantScope.util.ts` + migration `0015`. **(kept)**
 > - **Realtime stays on Socket.IO.** (A plain-WebSocket hub was trialed and then
 >   reverted by decision — the backend and frontend both use Socket.IO /
 >   socket.io-client.)
@@ -44,17 +44,17 @@ Client → helmet/CORS/HPP → rate limiter → body parser → requestId → ac
 
 | Concern | Implementation | Reference |
 | --- | --- | --- |
-| Authentication | JWT access token (Bearer) + rotating refresh token | [auth.middleware.js](../../backend/src/middlewares/auth.middleware.js) |
-| Tenant isolation | `AsyncLocalStorage` tenant context + Sequelize `beforeFind/Create/...` hooks + native **Postgres RLS** (`app.current_tenant` session var) | [models/index.js](../../backend/src/models/index.js), [tenantContext.middleware.js](../../backend/src/middlewares/tenantContext.middleware.js) |
-| Authorization | `dynamicAccess(resource, action)` (RBAC menu read/write + ABAC), `rbac([roles])` role-level gate | [dynamicAccess.middleware.js](../../backend/src/middlewares/dynamicAccess.middleware.js), [rbac.middleware.js](../../backend/src/middlewares/rbac.middleware.js) |
-| Input safety | Global sanitizer + Joi/inline validators + `validateUuid` on path IDs | [globalSanitizer.middleware.js](../../backend/src/middlewares/globalSanitizer.middleware.js) |
-| Error handling | Central `errorHandler` returning `{ success:false, status, message }`; thrown `AppError(status,message)` | [errorHandlers.middleware.js](../../backend/src/middlewares/errorHandlers.middleware.js), [appError.util.js](../../backend/src/utils/appError.util.js) |
-| Response shape | `{ success, status, message, data, meta }` via `response.util` | [response.util.js](../../backend/src/utils/response.util.js) |
+| Authentication | JWT access token (Bearer) + rotating refresh token | [auth.middleware.ts](../../backend/src/middlewares/auth.middleware.ts) |
+| Tenant isolation | `AsyncLocalStorage` tenant context + Sequelize `beforeFind/Create/...` hooks + native **Postgres RLS** (`app.current_tenant` session var) | [models/index.ts](../../backend/src/models/index.ts), [tenantContext.middleware.ts](../../backend/src/middlewares/tenantContext.middleware.ts) |
+| Authorization | `dynamicAccess(resource, action)` (RBAC menu read/write + ABAC), `rbac([roles])` role-level gate | [dynamicAccess.middleware.ts](../../backend/src/middlewares/dynamicAccess.middleware.ts), [rbac.middleware.ts](../../backend/src/middlewares/rbac.middleware.ts) |
+| Input safety | Global sanitizer + Joi/inline validators + `validateUuid` on path IDs | [globalSanitizer.middleware.ts](../../backend/src/middlewares/globalSanitizer.middleware.ts) |
+| Error handling | Central `errorHandler` returning `{ success:false, status, message }`; thrown `AppError(status,message)` | [errorHandlers.middleware.ts](../../backend/src/middlewares/errorHandlers.middleware.ts), [appError.util.ts](../../backend/src/utils/appError.util.ts) |
+| Response shape | `{ success, status, message, data, meta }` via `response.util` | [response.util.ts](../../backend/src/utils/response.util.ts) |
 | Soft delete | `paranoid: true` / `isDeleted` flag on most models | [sequelize-softdelete-gotchas] |
-| Audit trail | Append-only `AuditLog` + `activityLog`/`accessLog` middleware | [auditLog.middleware.js](../../backend/src/middlewares/auditLog.middleware.js) |
-| Rate limiting | Global 500/15min; auth 20/15min; OTP 5/hour | [index.js](../../backend/index.js#L189-L223) |
+| Audit trail | Append-only `AuditLog`, written by `logAction` inside the mutation's transaction; `activityLog`/`accessLog` middleware for logs | [audit.service.ts](../../backend/src/services/audit.service.ts) (the after-response `auditLog.middleware` was removed 2026-10-01, ADR-087 Am. 27) |
+| Rate limiting | Global 500/15min; auth 20/15min; OTP 5/hour | [index.ts](../../backend/index.ts#L189-L223) |
 
-**Role hierarchy** (from [roleConstants.js](../../backend/src/constants/roleConstants.js), higher = more privilege):
+**Role hierarchy** (from [roleConstants.ts](../../backend/src/constants/roleConstants.ts), higher = more privilege):
 
 | Level | Role(s) | Scope |
 | --- | --- | --- |
@@ -130,7 +130,7 @@ Handles user identity verification and stateful session management for the multi
 
 ### 4. Scope
 *   **In Scope:** Registration/activation, password login, OTP password reset, in-house password change, JWT issuance/rotation, TOTP MFA, WebAuthn registration/login, socket.io token minting, session listing/revocation, impersonation.
-*   **Out of Scope:** SSO/OIDC/SAML federation (delegated to Module 2 — Identity Federation; handlers under `sso.controller.js`), authorization/permission resolution (Module 3 — RBAC).
+*   **Out of Scope:** SSO/OIDC/SAML federation (delegated to Module 2 — Identity Federation; handlers under `sso.controller.ts`), authorization/permission resolution (Module 3 — RBAC).
 
 ### 5. Actors/Users
 *   **All authenticated users:** login/logout, change own password, register a security key, set up MFA.
@@ -201,7 +201,7 @@ sequenceDiagram
 *   **OTP** is 6 digits, SHA-256 stored, 5-minute expiry; `sendOTP` returns a generic message to avoid user enumeration.
 *   **MFA:** if enabled, login returns `202` + a 5-minute `typ: "mfa"` token, issued before any session exists; `loginMfa` accepts only that type and verifies the TOTP before issuing real tokens.
 *   **Impersonation:** SUPERADMIN only, target must exist in tenant, no self-impersonation; 1-hour session, `impersonatorId` claim, user-agent annotated.
-*   Access tokens carry `sid`; the `auth` middleware checks the session is live on every request through `session.service.js#isSessionLive` (Redis, ≤60 s TTL, falling back to one primary-key read) — A-48, 2026-09-24. A sid-less access token is refused since 2026-09-27 (`SIDLESS_ACCESS_TOKENS_ACCEPTED = false`, P6-12, ADR-085). It also blocks banned/inactive users and suspended/deleted tenants; only SUPERADMIN may override tenant via `x-tenant-code`/`x-tenant-id`.
+*   Access tokens carry `sid`; the `auth` middleware checks the session is live on every request through `session.service.ts#isSessionLive` (Redis, ≤60 s TTL, falling back to one primary-key read) — A-48, 2026-09-24. A sid-less access token is refused since 2026-09-27 (`SIDLESS_ACCESS_TOKENS_ACCEPTED = false`, P6-12, ADR-085). It also blocks banned/inactive users and suspended/deleted tenants; only SUPERADMIN may override tenant via `x-tenant-code`/`x-tenant-id`.
 
 ### 12. Access Rights
 | Endpoint group | SUPERADMIN | Authenticated user | Public |
@@ -212,11 +212,11 @@ sequenceDiagram
 | `/sessions/*` (list, stats, revoke, delete) | ✓ (`rbac(["SUPERADMIN"])`) | ✗ | ✗ |
 
 ### 13. Database
-*   **`users`** ([user.model.js](../../backend/src/models/user.model.js)) — PK `id` (UUID); unique `username`, `email`; `password`, `roleId`→`roles.id`, `tenantId`→`tenants.id`; security: `failedLoginAttempts`, `lockedUntil`, `status`, `isActive`; MFA: `mfaEnabled`, `mfaSecret`; OTP: `otpCode`, `otpExpiredAt`, `passwordChangedAt`; soft-delete `isDeleted` + `paranoid`.
-*   **`sessions`** ([session.model.js](../../backend/src/models/session.model.js)) — PK `id`; `user_id`→`users.id`, `tenant_id`→`tenants.id`; unique `token_hash` (SHA-256/64); `ip_address`, `user_agent`, `device`, `expired_at`, `last_activity_at`, `is_revoked`, `is_active`, `revoked_reason`; manual soft-delete (`is_deleted`, `deleted_at`).
+*   **`users`** ([user.model.ts](../../backend/src/models/user.model.ts)) — PK `id` (UUID); unique `username`, `email`; `password`, `roleId`→`roles.id`, `tenantId`→`tenants.id`; security: `failedLoginAttempts`, `lockedUntil`, `status`, `isActive`; MFA: `mfaEnabled`, `mfaSecret`; OTP: `otpCode`, `otpExpiredAt`, `passwordChangedAt`; soft-delete `isDeleted` + `paranoid`.
+*   **`sessions`** ([session.model.ts](../../backend/src/models/session.model.ts)) — PK `id`; `user_id`→`users.id`, `tenant_id`→`tenants.id`; unique `token_hash` (SHA-256/64); `ip_address`, `user_agent`, `device`, `expired_at`, `last_activity_at`, `is_revoked`, `is_active`, `revoked_reason`; manual soft-delete (`is_deleted`, `deleted_at`).
 
 ### 14. API
-Base: `/api/v1/auth`, `/api/v1/sessions`, `/api/v1/webauthn` — see [auth.route.js](../../backend/src/routes/api/auth.route.js), [session.route.js](../../backend/src/routes/api/session.route.js), [webauthn.route.js](../../backend/src/routes/api/webauthn.route.js).
+Base: `/api/v1/auth`, `/api/v1/sessions`, `/api/v1/webauthn` — see [auth.route.ts](../../backend/src/routes/api/auth.route.ts), [session.route.ts](../../backend/src/routes/api/session.route.ts), [webauthn.route.ts](../../backend/src/routes/api/webauthn.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -287,8 +287,8 @@ Base: `/api/v1/auth`, `/api/v1/sessions`, `/api/v1/webauthn` — see [auth.route
 *   **Broken single logout:** `logout` controller calls `logoutSession()` with no argument — non-functional as wired.
 *   **Duplicate MFA controller definitions:** later `mfaService`-based overrides win; `/mfa/login` resolves to a handler that throws `501 MFA login flow not fully implemented`, contradicting the working `authService.loginMfa`.
 *   **WebAuthn is effectively stubbed:** attestation verification stores a randomly generated key; challenge store is in-process (not multi-instance safe); several `webauthn*` columns referenced but not defined on the model.
-*   **`mfa.service.js` references a non-existent `mfaSecretTemp` column.**
-*   **No session security middleware: session fixation protection, a concurrent-session limit and IP/user-agent binding are not implemented.** `sessionSecurity.middleware.js` claimed all three, but nothing imported it and its SQL used the wrong table and column casing; it was deleted **2026-09-23** under audit finding A-12. ADR-084 (Q-08) decided: fixation is impossible by construction; no concurrent-session cap and no IP/UA binding; a user lists and revokes their own sessions (`ownSessions.service.js`).
+*   **`mfa.service.ts` references a non-existent `mfaSecretTemp` column.**
+*   **No session security middleware: session fixation protection, a concurrent-session limit and IP/user-agent binding are not implemented.** `sessionSecurity.middleware.js` claimed all three, but nothing imported it and its SQL used the wrong table and column casing; it was deleted **2026-09-23** under audit finding A-12. ADR-084 (Q-08) decided: fixation is impossible by construction; no concurrent-session cap and no IP/UA binding; a user lists and revokes their own sessions (`ownSessions.service.ts`).
 *   Session is created *before* MFA completes, persisting a full 7-day session on a 202 response.
 
 ### 24. Change Log
@@ -371,12 +371,12 @@ sequenceDiagram
 | `/scim/v2/*` | ✓ | ✗ | ✓ (`requireApiKeyOrAdmin`) |
 
 ### 13. Database
-*   **`tenant_settings`** ([tenantSettings.model.js](../../backend/src/models/tenantSettings.model.js)) — holds all OIDC/SSO config keys (`sso_enabled`, `sso_idp_entry_point`, `sso_idp_cert`, `oidc_client_id/secret/authority/redirect_uri`, `oidc_client_<id>`); unique `(tenant_id, key)`; KMS-encrypted sensitive keys.
+*   **`tenant_settings`** ([tenantSettings.model.ts](../../backend/src/models/tenantSettings.model.ts)) — holds all OIDC/SSO config keys (`sso_enabled`, `sso_idp_entry_point`, `sso_idp_cert`, `oidc_client_id/secret/authority/redirect_uri`, `oidc_client_<id>`); unique `(tenant_id, key)`; KMS-encrypted sensitive keys.
 *   **`users`**, **`roles`** — JIT/SCIM provisioning targets (Groups↔Roles).
 *   OIDC provider RSA keypair is generated in-memory (not persisted).
 
 ### 14. API
-Base: `/api/v1/oidc`, `/api/v1/scim/v2`, plus `/api/v1/auth/sso/*` — see [oidc.route.js](../../backend/src/routes/api/oidc.route.js), [scim.route.js](../../backend/src/routes/api/scim.route.js), [auth.route.js](../../backend/src/routes/api/auth.route.js).
+Base: `/api/v1/oidc`, `/api/v1/scim/v2`, plus `/api/v1/auth/sso/*` — see [oidc.route.ts](../../backend/src/routes/api/oidc.route.ts), [scim.route.ts](../../backend/src/routes/api/scim.route.ts), [auth.route.ts](../../backend/src/routes/api/auth.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -422,11 +422,11 @@ Base: `/api/v1/oidc`, `/api/v1/scim/v2`, plus `/api/v1/auth/sso/*` — see [oidc
 *   **Interoperability:** standards-based SAML 2.0, OIDC, SCIM 2.0.
 
 ### 23. Known Limitations
-*   **Live OIDC callback does not verify the id_token signature** (`jwt.decode` only); the secure JWKS-verifying implementation (`oidcJwks.js`) exists but is never imported.
+*   **Live OIDC callback does not verify the id_token signature** (`jwt.decode` only); the secure JWKS-verifying implementation (`oidcJwks.ts`) exists but is never imported.
 *   **OIDC provider RSA keypair is ephemeral** — regenerated each restart, so JWKS/`kid` are unstable across instances; `authorize`/`token`/`userinfo` are advertised in discovery but not routed.
 *   **SCIM** `createUser` duplicate check is global (not tenant-scoped); `DELETE` hard-destroys rather than deactivating; auth relies on a fragile Bearer→ApiKey heuristic; error bodies are not consistently SCIM-formatted.
 *   SAML parsing is regex-based (no XML canonicalization library); unsigned assertions are accepted when no IdP cert is configured.
-*   Duplicate function definitions in `oidcProvider.service.js` (later ones win).
+*   Duplicate function definitions in `oidcProvider.service.ts` (later ones win).
 
 ### 24. Change Log
 | Version | Date | Description |
@@ -504,13 +504,13 @@ graph TD
 | Read own menu set (`/menu-groups`, filter) | ✓ | ✓ (auth only) |
 
 ### 13. Database
-*   **`roles`** ([role.model.js](../../backend/src/models/role.model.js)) — PK `id`; unique `name`; `roleLevel`, `isSystem`, `status`; dual soft-delete (`isDeleted` + paranoid).
-*   **`menu_groups`** ([menuGroup.model.js](../../backend/src/models/menuGroup.model.js)) — PK `id`; unique `slug`; self-referential `parentId` (SET NULL); **not paranoid**.
-*   **`role_menu_permissions`** ([roleMenuPermission.model.js](../../backend/src/models/roleMenuPermission.model.js)) — unique `(role_id, menu_group_id)`; `permissionType` read/write.
-*   **`user_menu_permissions`** ([userMenuPermission.model.js](../../backend/src/models/userMenuPermission.model.js)) — unique `(user_id, menu_group_id)`; `permissionType` read/write/**none**; `grantedBy`.
+*   **`roles`** ([role.model.ts](../../backend/src/models/role.model.ts)) — PK `id`; unique `name`; `roleLevel`, `isSystem`, `status`; dual soft-delete (`isDeleted` + paranoid).
+*   **`menu_groups`** ([menuGroup.model.ts](../../backend/src/models/menuGroup.model.ts)) — PK `id`; unique `slug`; self-referential `parentId` (SET NULL); **not paranoid**.
+*   **`role_menu_permissions`** ([roleMenuPermission.model.ts](../../backend/src/models/roleMenuPermission.model.ts)) — unique `(role_id, menu_group_id)`; `permissionType` read/write.
+*   **`user_menu_permissions`** ([userMenuPermission.model.ts](../../backend/src/models/userMenuPermission.model.ts)) — unique `(user_id, menu_group_id)`; `permissionType` read/write/**none**; `grantedBy`.
 
 ### 14. API
-Base: `/api/v1/roles`, `/api/v1/user-permissions`, `/api/v1/menu-groups` — see [roles.route.js](../../backend/src/routes/api/roles.route.js), [userPermissions.route.js](../../backend/src/routes/api/userPermissions.route.js), [menuGroups.route.js](../../backend/src/routes/api/menuGroups.route.js).
+Base: `/api/v1/roles`, `/api/v1/user-permissions`, `/api/v1/menu-groups` — see [roles.route.ts](../../backend/src/routes/api/roles.route.ts), [userPermissions.route.ts](../../backend/src/routes/api/userPermissions.route.ts), [menuGroups.route.ts](../../backend/src/routes/api/menuGroups.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -539,7 +539,7 @@ Base: `/api/v1/roles`, `/api/v1/user-permissions`, `/api/v1/menu-groups` — see
 | `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` | `redis://localhost:6379` | Permission cache |
 
 ### 19. Dependency
-`sequelize`, `ioredis`, `joi`, `express`; constants in [roleConstants.js](../../backend/src/constants/roleConstants.js) (role names, levels, default menu assignments).
+`sequelize`, `ioredis`, `joi`, `express`; constants in [roleConstants.ts](../../backend/src/constants/roleConstants.ts) (role names, levels, default menu assignments).
 
 ### 20. UI/Screen
 *   Admin → Roles, Menu Groups, Role-Permission matrix, User Permission overrides; dynamic sidebar rendered from the effective menu set.
@@ -645,10 +645,10 @@ graph TD
 | `/users/username-check` | auth only |
 
 ### 13. Database
-*   **`users`** ([user.model.js](../../backend/src/models/user.model.js)) — PK `id`; unique `username`, `email`; `roleId`→`roles.id` (SET NULL), `tenantId`→`tenants.id` (CASCADE); `status`, `isActive`, `avatarUrl` (default `default.svg`); dual soft-delete (`isDeleted` + paranoid). Getter `picture` builds `${HOST_URL}/uploads/profile/<avatarUrl>`. Associations to Role, Tenant, Session, and stock/calibration activity.
+*   **`users`** ([user.model.ts](../../backend/src/models/user.model.ts)) — PK `id`; unique `username`, `email`; `roleId`→`roles.id` (SET NULL), `tenantId`→`tenants.id` (CASCADE); `status`, `isActive`, `avatarUrl` (default `default.svg`); dual soft-delete (`isDeleted` + paranoid). Getter `picture` builds `${HOST_URL}/uploads/profile/<avatarUrl>`. Associations to Role, Tenant, Session, and stock/calibration activity.
 
 ### 14. API
-Base: `/api/v1/users` — see [user.route.js](../../backend/src/routes/api/user.route.js).
+Base: `/api/v1/users` — see [user.route.ts](../../backend/src/routes/api/user.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -771,8 +771,8 @@ graph TD
 | Hierarchy & custom domains | ✓ | ✓ (auth) | ✗ |
 
 ### 13. Database
-*   **`tenants`** ([tenant.model.js](../../backend/src/models/tenant.model.js)) — PK `id`; unique `subdomain`, `domain`, `code`; `plan` (free/professional/business/enterprise), `status` (active/suspended/deleted), `billingCycle`, `settings` JSONB, `limitSeats`, `limitStorageMb`; dual soft-delete.
-*   **`tenant_settings`** ([tenantSettings.model.js](../../backend/src/models/tenantSettings.model.js)) — unique `(tenant_id, key)`; KMS-encrypted sensitive keys.
+*   **`tenants`** ([tenant.model.ts](../../backend/src/models/tenant.model.ts)) — PK `id`; unique `subdomain`, `domain`, `code`; `plan` (free/professional/business/enterprise), `status` (active/suspended/deleted), `billingCycle`, `settings` JSONB, `limitSeats`, `limitStorageMb`; dual soft-delete.
+*   **`tenant_settings`** ([tenantSettings.model.ts](../../backend/src/models/tenantSettings.model.ts)) — unique `(tenant_id, key)`; KMS-encrypted sensitive keys.
 *   Hierarchy/custom-domain records referenced via `TenantHierarchy` / `CustomDomains` tables (raw SQL on Postgres).
 
 ### 14. API
@@ -786,7 +786,7 @@ Base: `/api/v1/tenants`, `/api/v1/tenant-hierarchy`, `/api/v1/custom-domains`.
 | POST/PATCH | `/tenants/settings` | Get / update settings |
 | POST/DELETE | `/tenants/:id/logo` | Logo upload / remove |
 | GET | `/tenant-hierarchy/tree` · `/:id/{children,parent,descendants,ancestors}` | Hierarchy queries |
-| POST/PUT/DELETE | `/tenant-hierarchy/:id/parent` · `/:parentId/children` | Reparent / add child |
+| POST/PUT/DELETE | `/tenant-hierarchy/:id/parent` · `/:tenantId/children` | Reparent / add child |
 | GET/POST/DELETE | `/custom-domains/domains[...]` | Domain add/verify/DNS/status |
 
 ### 15. Integration
@@ -898,7 +898,7 @@ stateDiagram-v2
 *   **`tenant_settings`** stores `lifecycle_status`. Reads `User`, `Subscription`, `Invoice` for export/hard-delete.
 
 ### 14. API
-Base: `/api/v1/tenants` (tenantLifecycle routes) — see [tenantLifecycle.route.js](../../backend/src/routes/api/tenantLifecycle.route.js).
+Base: `/api/v1/tenants` (tenantLifecycle routes) — see [tenantLifecycle.route.ts](../../backend/src/routes/api/tenantLifecycle.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -909,7 +909,7 @@ Base: `/api/v1/tenants` (tenantLifecycle routes) — see [tenantLifecycle.route.
 | GET | `/tenants/:tenantId/export` | Export tenant data |
 
 ### 15. Integration
-*   **Scheduled processor** via `node-cron` (`middlewares/tenantLifecycleScheduler.middleware.js`, `TENANT_LIFECYCLE_SCHEDULER`, default `30 2 * * *`). Each tenant is offboarded inside its own tenant context, so the tenant hooks confine every scoped write to that tenant. `featureFlag.service` is imported and unused.
+*   **Scheduled processor** via `node-cron` (`middlewares/tenantLifecycleScheduler.middleware.ts`, `TENANT_LIFECYCLE_SCHEDULER`, default `30 2 * * *`). Each tenant is offboarded inside its own tenant context, so the tenant hooks confine every scoped write to that tenant. `featureFlag.service` is imported and unused.
 
 ### 16. Error Handling
 *   `404` Tenant not found; `400` Tenant is not offboarded / Retention period has not expired yet / validation. Via `AppError`.
@@ -1011,10 +1011,10 @@ graph TD
 | list/stats/detail/download | ✓ | ✓ (`abac` READ) | ✗ |
 
 ### 13. Database
-*   **`tenant_backups`** ([tenantBackup.model.js](../../backend/src/models/tenantBackup.model.js)) — PK `id`; `tenantId`→`tenants.id` (CASCADE); `status` (pending/in_progress/completed/failed/deleted), `backupType`, `tag`, `filePath`, `fileSize`, `recordCount`, `retentionDays` (default 30), `expiresAt`, `metadata` JSON, `createdBy`, `deletedBy`; paranoid; indexes on tenant_id/status/created_at.
+*   **`tenant_backups`** ([tenantBackup.model.ts](../../backend/src/models/tenantBackup.model.ts)) — PK `id`; `tenantId`→`tenants.id` (CASCADE); `status` (pending/in_progress/completed/failed/deleted), `backupType`, `tag`, `filePath`, `fileSize`, `recordCount`, `retentionDays` (default 30), `expiresAt`, `metadata` JSON, `createdBy`, `deletedBy`; paranoid; indexes on tenant_id/status/created_at.
 
 ### 14. API
-Base: `/api/v1/tenants/:tenantId/backups` — see [tenantBackup.route.js](../../backend/src/routes/api/tenantBackup.route.js).
+Base: `/api/v1/tenants/:tenantId/backups` — see [tenantBackup.route.ts](../../backend/src/routes/api/tenantBackup.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -1025,7 +1025,7 @@ Base: `/api/v1/tenants/:tenantId/backups` — see [tenantBackup.route.js](../../
 | DELETE | `/backups/:backupId` | Delete backup |
 
 ### 15. Integration
-*   Local filesystem (`fs`), **jszip** (archive), Node `crypto` (SHA-256), **moment** (timestamps); recurring `cronBackup()` from [backup.middleware.js](../../backend/src/middlewares/backup.middleware.js) started at boot; storage path via `storagePath.util`.
+*   Local filesystem (`fs`), **jszip** (archive), Node `crypto` (SHA-256), **moment** (timestamps); recurring `cronBackup()` from [backup.middleware.ts](../../backend/src/middlewares/backup.middleware.ts) started at boot; storage path via `storagePath.util`.
 
 ### 16. Error Handling
 *   `400` Backup name required / not ready for download|restore; `404` backup/file/tenant not found; `403` rbac/abac; failures wrapped as `InternalServerError`.
@@ -1054,7 +1054,7 @@ Base: `/api/v1/tenants/:tenantId/backups` — see [tenantBackup.route.js](../../
 
 ### 23. Known Limitations
 *   Simplified scope — backups cover only tenant + users (TenantSettings/roles/permissions not included).
-*   **backupType case mismatch** (validator uppercase `FULL`/`USER_ONLY` vs model constants lowercase) makes user export effectively dead; the model is missing `name`/`description` columns used by `createBackup`.
+*   **backupType case mismatch** (validator uppercase `FULL`/`USER_ONLY` vs model constants lowercase) makes user export effectively dead; `name`/`description` were dropped on insert until migration 0108 stored them (A-363, ADR-114, 2026-10-02); a backup taken before it has neither.
 *   Status values `restoring`/`restored`/`deleting` used by the service are not in the DB ENUM; `retentionDays` default differs (90 validator vs 30 model). Local disk only (no S3/off-site).
 
 ### 24. Change Log
@@ -1129,14 +1129,14 @@ graph TD
 | Adjustments, transfers, opname | `dynamicAccess("warehouse","write")` |
 
 ### 13. Database
-*   **`warehouses`** ([warehouse.model.js](../../backend/src/models/warehouse.model.js)) — PK `id`; `tenantId`; `code`; `status`; soft-delete (`isDeleted`).
-*   **`storage_locations`** ([storageLocation.model.js](../../backend/src/models/storageLocation.model.js)) — belongsTo warehouse; **hard delete**.
-*   **`stocks`** ([stock.model.js](../../backend/src/models/stock.model.js)) — `itemName`, `sku`, `serialNumber`, `quantity`, `minQuantity`; soft-delete.
+*   **`warehouses`** ([warehouse.model.ts](../../backend/src/models/warehouse.model.ts)) — PK `id`; `tenantId`; `code`; `status`; soft-delete (`isDeleted`).
+*   **`storage_locations`** ([storageLocation.model.ts](../../backend/src/models/storageLocation.model.ts)) — belongsTo warehouse; **hard delete**.
+*   **`stocks`** ([stock.model.ts](../../backend/src/models/stock.model.ts)) — `itemName`, `sku`, `serialNumber`, `quantity`, `minQuantity`; soft-delete.
 *   **`stock_transfers`** — `from/toWarehouseId`, `status` (pending/in_transit/completed/cancelled), `requestedBy`/`approvedBy`.
 *   **`stock_adjustments`** — `type`, `quantity`, `reason`, `adjustedBy`. **`stock_opnames`** — `status`, `scheduledAt`, `performedBy`.
 
 ### 14. API
-Base: `/api/v1/warehouses`, `/api/v1/stocks` — see [warehouse.route.js](../../backend/src/routes/api/warehouse.route.js), [stock.route.js](../../backend/src/routes/api/stock.route.js).
+Base: `/api/v1/warehouses`, `/api/v1/stocks` — see [warehouse.route.ts](../../backend/src/routes/api/warehouse.route.ts), [stock.route.ts](../../backend/src/routes/api/stock.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -1246,10 +1246,10 @@ graph TD
 | Create/update/delete/bulk-import | `dynamicAccess("calibration","write")` |
 
 ### 13. Database
-*   **`calibration_devices`** ([calibrationDevice.model.js](../../backend/src/models/calibrationDevice.model.js)) — PK `id`; `tenantId`→`tenants.id` (CASCADE); unique `serialNumber`; `status` (active/inactive/maintenance/retired); `locationId`→`warehouses.id` (SET NULL); `calibrationIntervalDays`, `nextCalibrationDate`, `uncertaintyBudget` (JSONB), `iotDeviceToken` (unique), `iotEnabled`, `readingTolerance` (JSONB), `recommendedCalibrationInterval`, `recommendationReason`; soft-delete (`isDeleted` + paranoid); indexes on tenant_id/serial_number/status/next_calibration_date. hasMany `CalibrationRecord`.
+*   **`calibration_devices`** ([calibrationDevice.model.ts](../../backend/src/models/calibrationDevice.model.ts)) — PK `id`; `tenantId`→`tenants.id` (CASCADE); unique `serialNumber`; `status` (active/inactive/maintenance/retired); `locationId`→`warehouses.id` (SET NULL); `calibrationIntervalDays`, `nextCalibrationDate`, `uncertaintyBudget` (JSONB), `iotDeviceToken` (unique), `iotEnabled`, `readingTolerance` (JSONB), `recommendedCalibrationInterval`, `recommendationReason`; soft-delete (`isDeleted` + paranoid); indexes on tenant_id/serial_number/status/next_calibration_date. hasMany `CalibrationRecord`.
 
 ### 14. API
-Base: `/api/v1/calibration-devices` — see [calibrationDevices.route.js](../../backend/src/routes/api/calibrationDevices.route.js).
+Base: `/api/v1/calibration-devices` — see [calibrationDevices.route.ts](../../backend/src/routes/api/calibrationDevices.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -1359,7 +1359,7 @@ graph TD
 | Scheduler `/run` (scan) | `dynamicAccess("Maintenance","create")` |
 
 ### 13. Database
-*   **`calibration_records`** ([calibrationRecord.model.js](../../backend/src/models/calibrationRecord.model.js)) — PK `id`; `tenantId`, `deviceId`→`calibration_devices.id`, `performedBy`→`users.id` (all CASCADE); `calibrationDate` (default NOW), `dueDate`, `standard`, `results` (JSONB), `measurementUncertainty`, `isCompliant`, `certificateNumber`, `certificateFileUrl`, `notes`; soft-delete; indexes on tenant/device/performer/date/isCompliant.
+*   **`calibration_records`** ([calibrationRecord.model.ts](../../backend/src/models/calibrationRecord.model.ts)) — PK `id`; `tenantId`, `deviceId`→`calibration_devices.id`, `performedBy`→`users.id` (all CASCADE); `calibrationDate` (default NOW), `dueDate`, `standard`, `results` (JSONB), `measurementUncertainty`, `isCompliant`, `certificateNumber`, `certificateFileUrl`, `notes`; soft-delete; indexes on tenant/device/performer/date/isCompliant.
 *   Scheduler reads `calibration_devices` and writes `maintenance_work_orders` (Preventative).
 
 ### 14. API
@@ -1483,8 +1483,8 @@ sequenceDiagram
 | e-signature API (`/esignature/*`) | `auth` only (⚠️ no permission gate) |
 
 ### 13. Database
-*   **`certificates`** ([certificate.model.js](../../backend/src/models/certificate.model.js)) — PK `id`; unique `certificateNumber`; `type`, `status` (draft/pending_approval/approved/signed/revoked); `deviceId`, `calibrationRecordId`; `digitalSignature`, `signedAt`, `filePath`; paranoid; indexes on tenant/number/device/status.
-*   **`e_signature_records`** ([eSignatureRecord.model.js](../../backend/src/models/eSignatureRecord.model.js)) — **immutable** (`timestamps:false`, no paranoid); polymorphic `entityType`/`entityId`; `action`, `meaning`, `authMethod`, `documentHash`, `ipAddress`, `userAgent`, `timestamp`.
+*   **`certificates`** ([certificate.model.ts](../../backend/src/models/certificate.model.ts)) — PK `id`; unique `certificateNumber`; `type`, `status` (draft/pending_approval/approved/signed/revoked); `deviceId`, `calibrationRecordId`; `digitalSignature`, `signedAt`, `filePath`; paranoid; indexes on tenant/number/device/status.
+*   **`e_signature_records`** ([eSignatureRecord.model.ts](../../backend/src/models/eSignatureRecord.model.ts)) — **immutable** (`timestamps:false`, no paranoid); polymorphic `entityType`/`entityId`; `action`, `meaning`, `authMethod`, `documentHash`, `ipAddress`, `userAgent`, `timestamp`.
 *   Standalone workflow uses separate `TenantKey`/`SignatureWorkflow`/`SignatureRecord` tables.
 
 ### 14. API
@@ -1609,7 +1609,7 @@ graph TD
 | Predictive analyze/recommend/approve | `dynamicAccess("calibration","read/write")` |
 
 ### 13. Database
-*   **`maintenance_work_orders`** ([maintenanceWorkOrder.model.js](../../backend/src/models/maintenanceWorkOrder.model.js)) — PK `id`; `tenantId`, `deviceId`→`calibration_devices.id`; `type` (Preventative/Breakdown/Repair), `status` (Open/InProgress/Completed/Cancelled), `priority` (Low/Medium/High/Critical); `vendorId` (SET NULL), `assignedTo`→`users.id` (SET NULL); paranoid.
+*   **`maintenance_work_orders`** ([maintenanceWorkOrder.model.ts](../../backend/src/models/maintenanceWorkOrder.model.ts)) — PK `id`; `tenantId`, `deviceId`→`calibration_devices.id`; `type` (Preventative/Breakdown/Repair), `status` (Open/InProgress/Completed/Cancelled), `priority` (Low/Medium/High/Critical); `vendorId` (SET NULL), `assignedTo`→`users.id` (SET NULL); paranoid.
 *   Predictive has **no model** — reads `CalibrationDevice`, `IotReading`; writes `Notification`.
 
 ### 14. API
@@ -1722,11 +1722,11 @@ graph TD
 | All QMS endpoints | any authenticated tenant user (⚠️ `auth` only, no RBAC) |
 
 ### 13. Database
-*   **`non_conformances`** ([nonConformance.model.js](../../backend/src/models/nonConformance.model.js)) — `status`, `severity`, `reportedBy`, `deviceId`; paranoid.
-*   **`capas`** ([capa.model.js](../../backend/src/models/capa.model.js)) — `capaNumber`, `ncId`, `actionPlan`, `status`, `assignedTo`, `approvedBy`; paranoid.
-*   **`sop_documents`** ([sopDocument.model.js](../../backend/src/models/sopDocument.model.js)) — `documentNumber`, `version`, `status`, `authorId`, `requiresTraining`; paranoid.
+*   **`non_conformances`** ([nonConformance.model.ts](../../backend/src/models/nonConformance.model.ts)) — `status`, `severity`, `reportedBy`, `deviceId`; paranoid.
+*   **`capas`** ([capa.model.ts](../../backend/src/models/capa.model.ts)) — `capaNumber`, `ncId`, `actionPlan`, `status`, `assignedTo`, `approvedBy`; paranoid.
+*   **`sop_documents`** ([sopDocument.model.ts](../../backend/src/models/sopDocument.model.ts)) — `documentNumber`, `version`, `status`, `authorId`, `requiresTraining`; paranoid.
 *   **`sop_training_acknowledgments`** — `documentId`, `userId`, `status` (PENDING/COMPLETED); **not paranoid**.
-*   **`risks`** ([risk.model.js](../../backend/src/models/risk.model.js)) — `severity`/`likelihood` INT, `rpn` VIRTUAL, `status`, `mitigationPlan`; paranoid.
+*   **`risks`** ([risk.model.ts](../../backend/src/models/risk.model.ts)) — `severity`/`likelihood` INT, `rpn` VIRTUAL, `status`, `mitigationPlan`; paranoid.
 
 ### 14. API
 Base: `/api/v1/qms`, `/api/v1/sop`, `/api/v1/risk`.
@@ -1821,7 +1821,7 @@ graph TD
 *   Vendor records, qualification result, scorecard records with `overallScore`.
 
 ### 10. Validation
-*   Joi (`vendor.validator.js`): create/update vendor (name, type/status enums, email, rating 1–5 on update). ⚠️ Scorecard has **no validator**.
+*   Joi (`vendor.validator.ts`): create/update vendor (name, type/status enums, email, rating 1–5 on update). ⚠️ Scorecard has **no validator**.
 
 ### 11. Business Rules
 *   Vendor CRUD is tenant-scoped; `qualifyVendor` conditionally sets approval/scorecard/audit dates (no state machine).
@@ -1836,8 +1836,8 @@ graph TD
 | Supplier scorecard CRUD | ⚠️ `auth` only (no permission, no validation) |
 
 ### 13. Database
-*   **`vendors`** ([vendor.model.js](../../backend/src/models/vendor.model.js)) — PK `id`; `type`, `approvalStatus` (APPROVED/PENDING/REJECTED/CONDITIONAL), `rating` (0–5), `scorecard`, `lastAuditDate`/`nextAuditDate`, `status` (Active/Inactive); paranoid.
-*   **`supplier_scorecards`** ([supplierScorecard.model.js](../../backend/src/models/supplierScorecard.model.js)) — `vendorId`, `evaluationDate`, quality/delivery/service scores, `overallScore` (VIRTUAL avg), `status` (STRING), `evaluatedBy`; paranoid.
+*   **`vendors`** ([vendor.model.ts](../../backend/src/models/vendor.model.ts)) — PK `id`; `type`, `approvalStatus` (APPROVED/PENDING/REJECTED/CONDITIONAL), `rating` (0–5), `scorecard`, `lastAuditDate`/`nextAuditDate`, `status` (Active/Inactive); paranoid.
+*   **`supplier_scorecards`** ([supplierScorecard.model.ts](../../backend/src/models/supplierScorecard.model.ts)) — `vendorId`, `evaluationDate`, quality/delivery/service scores, `overallScore` (VIRTUAL avg), `status` (STRING), `evaluatedBy`; paranoid.
 
 ### 14. API
 Base: `/api/v1/vendors`, `/api/v1/supplier-scorecard`.
@@ -1934,7 +1934,7 @@ graph TD
 
 ### 11. Business Rules
 *   **API keys:** key = `cbk_<hex>`; stored as SHA-256 hash + 12-char prefix; verified by hash (active + not expired); `lastUsedAt` throttled to 60 s; revoke sets inactive + soft-delete. `denyApiKey` prevents a key from minting/revoking keys.
-*   **Webhooks:** delivery matches `events @> [event]` or `["*"]`; body `{id,event,createdAt,data}` signed `X-Webhook-Signature: v1=<HMAC(secret, "<X-Webhook-Timestamp>.<body>")>` (since 2026-09-24, A-10). Durable (ADR-054): `webhook_deliveries` is an outbox claimed with `FOR UPDATE SKIP LOCKED` by `webhookDeliveryScheduler.middleware.js` (boot + every 15 s); up to `WEBHOOK_MAX_ATTEMPTS` (12) with backoff `min(1 min × 2^(n-1), 6 h)` (~20.5 h), then `exhausted`. Domain events are emitted via `emitAfterCommit` (A-11; catalogue `constants/webhookEvents.js`). See `docs/WEBHOOK/`.
+*   **Webhooks:** delivery matches `events @> [event]` or `["*"]`; body `{id,event,createdAt,data}` signed `X-Webhook-Signature: v1=<HMAC(secret, "<X-Webhook-Timestamp>.<body>")>` (since 2026-09-24, A-10). Durable (ADR-054): `webhook_deliveries` is an outbox claimed with `FOR UPDATE SKIP LOCKED` by `webhookDeliveryScheduler.middleware.ts` (boot + every 15 s); up to `WEBHOOK_MAX_ATTEMPTS` (12) with backoff `min(1 min × 2^(n-1), 6 h)` (~20.5 h), then `exhausted`. Domain events are emitted via `emitAfterCommit` (A-11; catalogue `constants/webhookEvents.ts`). See `docs/WEBHOOK/`.
 *   Create endpoints gated by `requireFeature("api_keys"/"webhooks")`.
 
 ### 12. Access Rights
@@ -1945,9 +1945,9 @@ graph TD
 | Webhook list/get/update/delete/deliveries/test | `auth` |
 
 ### 13. Database
-*   **`api_keys`** ([apiKey.model.js](../../backend/src/models/apiKey.model.js)) — `keyPrefix`, unique `keyHash`, `scopes` (JSONB), `expiresAt`, `isActive`; dual soft-delete.
-*   **`webhooks`** ([webhook.model.js](../../backend/src/models/webhook.model.js)) — `url`, `events` (JSONB), `secret`, `isActive`; dual soft-delete.
-*   **`webhook_deliveries`** ([webhookDelivery.model.js](../../backend/src/models/webhookDelivery.model.js)) — `event`, `payload`, `status` (pending/success/failed/exhausted), `attempts`, `responseStatus`, `lastError`, `deliveredAt`; no soft-delete.
+*   **`api_keys`** ([apiKey.model.ts](../../backend/src/models/apiKey.model.ts)) — `keyPrefix`, unique `keyHash`, `scopes` (JSONB), `expiresAt`, `isActive`; dual soft-delete.
+*   **`webhooks`** ([webhook.model.ts](../../backend/src/models/webhook.model.ts)) — `url`, `events` (JSONB), `secret`, `isActive`; dual soft-delete.
+*   **`webhook_deliveries`** ([webhookDelivery.model.ts](../../backend/src/models/webhookDelivery.model.ts)) — `event`, `payload`, `status` (pending/success/failed/exhausted), `attempts`, `responseStatus`, `lastError`, `deliveredAt`; no soft-delete.
 
 ### 14. API
 Base: `/api/v1/api-keys`, `/api/v1/webhooks`.
@@ -2067,9 +2067,9 @@ sequenceDiagram
 | Stripe webhook | none (signature-verified, raw body) |
 
 ### 13. Database
-*   **`subscriptions`** ([subscription.model.js](../../backend/src/models/subscription.model.js)) — `planId`, `status`, `billingCycle`, period dates, `stripeCustomerId`/`stripeSubscriptionId`.
-*   **`invoices`** ([invoice.model.js](../../backend/src/models/invoice.model.js)) — `amountDue`/`amountPaid`, `currency`, `status`, unique `stripeInvoiceId`.
-*   **`asset_finances`** ([assetFinance.model.js](../../backend/src/models/assetFinance.model.js)) — unique `deviceId`, `purchasePrice`, `salvageValue`, `usefulLifeYears`, `depreciationMethod`; paranoid.
+*   **`subscriptions`** ([subscription.model.ts](../../backend/src/models/subscription.model.ts)) — `planId`, `status`, `billingCycle`, period dates, `stripeCustomerId`/`stripeSubscriptionId`.
+*   **`invoices`** ([invoice.model.ts](../../backend/src/models/invoice.model.ts)) — `amountDue`/`amountPaid`, `currency`, `status`, unique `stripeInvoiceId`.
+*   **`asset_finances`** ([assetFinance.model.ts](../../backend/src/models/assetFinance.model.ts)) — unique `deviceId`, `purchasePrice`, `salvageValue`, `usefulLifeYears`, `depreciationMethod`; paranoid.
 *   Metered/quota use `UsageMetric`/`PlanQuota` + `Tenant` fields.
 
 ### 14. API
@@ -2186,10 +2186,10 @@ graph TD
 | Cross-tenant visibility | SUPERADMIN (decided in controller) |
 
 ### 13. Database
-*   **`notifications`** ([notification.model.js](../../backend/src/models/notification.model.js)) — PK `id`; `tenantId`; `userId` (null = broadcast); `type` (SYSTEM/CALIBRATION/INVENTORY/MAINTENANCE); `title`, `message`, `isRead`, `actionUrl`; **hard delete** (no paranoid).
+*   **`notifications`** ([notification.model.ts](../../backend/src/models/notification.model.ts)) — PK `id`; `tenantId`; `userId` (null = broadcast); `type` (SYSTEM/CALIBRATION/INVENTORY/MAINTENANCE); `title`, `message`, `isRead`, `actionUrl`; **hard delete** (no paranoid).
 
 ### 14. API
-Base: `/api/v1/notifications` — see [notifications.route.js](../../backend/src/routes/api/notifications.route.js).
+Base: `/api/v1/notifications` — see [notifications.route.ts](../../backend/src/routes/api/notifications.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -2305,13 +2305,13 @@ graph TD
 | Submit action | `dynamicAccess(["certificate","warehouse","maintenance"],"write")` at the route, then write on the instance's own record type in the service, plus the step-role match and `denyPlatformAuthoring` (A-183, A-145) |
 
 ### 13. Database
-*   **`workflows`** ([workflow.model.js](../../backend/src/models/workflow.model.js)) — `resourceType`, `isActive`; paranoid.
+*   **`workflows`** ([workflow.model.ts](../../backend/src/models/workflow.model.ts)) — `resourceType`, `isActive`; paranoid.
 *   **`workflow_steps`** — `stepOrder`, `roleId` (RESTRICT), `requiredApprovals`.
 *   **`workflow_instances`** — `resourceId` (polymorphic, no FK), `status` (PENDING/APPROVED/REJECTED/CANCELLED), `currentStepOrder`; paranoid.
 *   **`workflow_actions`** — `action` (APPROVED/REJECTED), `userId` (SET NULL), `comments` — the durable approval record.
 
 ### 14. API
-Base: `/api/v1/workflows` — see [workflows.route.js](../../backend/src/routes/api/workflows.route.js).
+Base: `/api/v1/workflows` — see [workflows.route.ts](../../backend/src/routes/api/workflows.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -2412,10 +2412,10 @@ graph TD
 | Query audit logs | `dynamicAccess(["AuditLogs","Audit Logs","audit"], "read", {checkTenant})` |
 
 ### 13. Database
-*   **`audit_logs`** ([auditLog.model.js](../../backend/src/models/auditLog.model.js)) — PK `id`; `tenantId` (CASCADE); `userId` (SET NULL); `action` (CREATE/UPDATE/DELETE/LOGIN/APPROVE/EXPORT); `resourceType`, `resourceId`; `changes` (JSONB `{before, after}`); `ipAddress`, `userAgent`; only `createdAt` (immutable).
+*   **`audit_logs`** ([auditLog.model.ts](../../backend/src/models/auditLog.model.ts)) — PK `id`; `tenantId` (CASCADE); `userId` (SET NULL); `action` (CREATE/UPDATE/DELETE/LOGIN/APPROVE/EXPORT); `resourceType`, `resourceId`; `changes` (JSONB `{before, after}`); `ipAddress`, `userAgent`; only `createdAt` (immutable).
 
 ### 14. API
-Base: `/api/v1/audit` — see [audit.route.js](../../backend/src/routes/api/audit.route.js).
+Base: `/api/v1/audit` — see [audit.route.ts](../../backend/src/routes/api/audit.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -2516,12 +2516,12 @@ graph TD
 | Post/category CRUD | `dynamicAccess("content", read/create/update/delete)` (no tenant check — global) |
 
 ### 13. Database
-*   **`posts`** ([post.model.js](../../backend/src/models/post.model.js)) — `type`, unique `slug`, `status`, `publishedAt`, `readingMinutes`, `featured`, `createdBy`; paranoid.
-*   **`categories`** ([category.model.js](../../backend/src/models/category.model.js)) — `name`, unique `slug`; paranoid.
-*   **`post_categories`** ([postCategory.model.js](../../backend/src/models/postCategory.model.js)) — join, unique `(post_id, category_id)`; hard delete.
+*   **`posts`** ([post.model.ts](../../backend/src/models/post.model.ts)) — `type`, unique `slug`, `status`, `publishedAt`, `readingMinutes`, `featured`, `createdBy`; paranoid.
+*   **`categories`** ([category.model.ts](../../backend/src/models/category.model.ts)) — `name`, unique `slug`; paranoid.
+*   **`post_categories`** ([postCategory.model.ts](../../backend/src/models/postCategory.model.ts)) — join, unique `(post_id, category_id)`; hard delete.
 
 ### 14. API
-Base: `/api/v1/content` — see [content.route.js](../../backend/src/routes/api/content.route.js).
+Base: `/api/v1/content` — see [content.route.ts](../../backend/src/routes/api/content.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -2627,10 +2627,10 @@ graph TD
 | Signed download | none (HMAC token) |
 
 ### 13. Database
-*   **`attachments`** ([attachment.model.js](../../backend/src/models/attachment.model.js)) — PK `id`; `tenantId` (CASCADE); polymorphic `resourceType`/`resourceId`; `fileName` (opaque), `originalName`, `folder`, `mimeType`, `size`, `checksum` (SHA-256), `uploadedBy` (SET NULL); soft-delete; indexes on tenant/resource.
+*   **`attachments`** ([attachment.model.ts](../../backend/src/models/attachment.model.ts)) — PK `id`; `tenantId` (CASCADE); polymorphic `resourceType`/`resourceId`; `fileName` (opaque), `originalName`, `folder`, `mimeType`, `size`, `checksum` (SHA-256), `uploadedBy` (SET NULL); soft-delete; indexes on tenant/resource.
 
 ### 14. API
-Base: `/api/v1/attachments` — see [attachments.route.js](../../backend/src/routes/api/attachments.route.js).
+Base: `/api/v1/attachments` — see [attachments.route.ts](../../backend/src/routes/api/attachments.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -2737,10 +2737,10 @@ graph TD
 | List / status / create test | `auth` (tenant-scoped) |
 
 ### 13. Database
-*   **`batch_jobs`** ([batchJob.model.js](../../backend/src/models/batchJob.model.js)) — PK `id`; `tenantId`, `userId`; `type`; `status` (ENUM); `progress`, `totalItems`, `processedItems`; `resultUrl`, `errorDetails`; no soft-delete, no FK constraints/indexes.
+*   **`batch_jobs`** ([batchJob.model.ts](../../backend/src/models/batchJob.model.ts)) — PK `id`; `tenantId`, `userId`; `type`; `status` (ENUM); `progress`, `totalItems`, `processedItems`; `resultUrl`, `errorDetails`; no soft-delete, no FK constraints/indexes.
 
 ### 14. API
-Base: `/api/v1/jobs` — see [batchJobs.route.js](../../backend/src/routes/api/batchJobs.route.js).
+Base: `/api/v1/jobs` — see [batchJobs.route.ts](../../backend/src/routes/api/batchJobs.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -2922,6 +2922,7 @@ graph TD
     A[POST /gdpr/export] --> B[collect user + tenant data]
     B --> C[write JSON files + ZIP]
     C --> D[return downloadUrl + expiresAt]
+    D --> D2[GET /gdpr/exports/:exportId/download: own export only, else 404; EXPORT audit row, then the ZIP]
     E[POST /tenants/:id/purge] --> F{legal hold?}
     F -- yes --> G[skip]
     F -- no --> H[delete records older than retentionDays]
@@ -2938,7 +2939,7 @@ graph TD
 *   Joi (gdpr): `requestErasure`, `updateConsent`, `rectifyData`, `restrictProcessing`. Joi (dataRetention): `retentionPolicySchema`, `piiMaskSchema`, `anonymizeSchema`, `tenantIdSchema`.
 
 ### 11. Business Rules
-*   **Export:** builds `exports/<id>/` JSON files, ZIPs (archiver), returns expiring URL; scheduled cleanup after `EXPORT_RETENTION_HOURS`.
+*   **Export:** builds `exports/<id>/` JSON files, ZIPs (archiver), returns expiring URL; scheduled cleanup after `EXPORT_RETENTION_HOURS`. The URL is served by `GET /gdpr/exports/:exportId/download` since 2026-10-02 (A-360, ADR-114): the manifest must name the caller's tenant and user and be unexpired; one `EXPORT` audit row is written before the file is sent. The export itself is audited since 2026-10-02 (A-364): once the ZIP is written, one `EXPORT` row (`DataExport`, `GDPR_EXPORT_CREATE`, the export id, size and expiry — no personal data) commits in `db.transaction` before the id is answered; if it cannot be written, the ZIP and manifest are deleted and the request is a 500.
 *   **Erasure:** logs `GDPR_ERASURE` audit; anonymize (default) sets email `erased_<id>@erased.local`, names `[REDACTED]`, status `erased`.
 *   **Retention purge:** skipped under legal hold; per-entity cutoff `now − retentionDays`; deletes only if `retentionDays > 0`.
 *   **maskPII / anonymizeDataset:** blocked under legal hold; mask fixed field maps; anonymize sets STRING attrs to `[ANONYMIZED]` (optional date/id handling).
@@ -2961,6 +2962,7 @@ Base: `/api/v1/gdpr`, `/api/v1/tenants/:tenantId` (data retention).
 | --- | --- | --- |
 | POST | `/gdpr/export` · `/erasure` · `/restrict` | Export / erase / restrict |
 | GET | `/gdpr/erasure/:requestId` · `/consent/history` · `/processing` | Status / consent / activities |
+| GET | `/gdpr/exports/:exportId/download` | The caller's own export ZIP; another subject's, another tenant's, expired or unknown is one 404; audited (A-360, ADR-114) |
 | PUT | `/gdpr/consent` · `/rectify` | Consent / rectification |
 | GET/PUT | `/tenants/:id/policy` | Get / set retention policy |
 | GET/POST/DELETE | `/tenants/:id/legal-hold` | Legal-hold management |
@@ -2973,7 +2975,7 @@ Base: `/api/v1/gdpr`, `/api/v1/tenants/:tenantId` (data retention).
 *   `400` GDPR disabled / unknown policy / negative days / mask under legal hold / validation; `404` user not found; `500` export failure.
 
 ### 17. Log and Audit
-*   `logger` on export/erasure/consent/legal-hold/purge/mask/anonymize; `AuditLog` row `GDPR_ERASURE`.
+*   `logger` on export/erasure/consent/legal-hold/purge/mask/anonymize; `AuditLog` rows `GDPR_ERASURE`, `GDPR_EXPORT_CREATE` (A-364) and `GDPR_EXPORT_DOWNLOAD` (A-360).
 
 ### 18. Configuration
 | Variable | Default | Purpose |
@@ -3064,10 +3066,10 @@ graph TD
 | MQTT ingest | broker subscription |
 
 ### 13. Database
-*   **`iot_readings`** ([iotReading.model.js](../../backend/src/models/iotReading.model.js)) — PK `id`; `tenantId` (CASCADE), `deviceId`→`calibration_devices.id` (CASCADE); `timestamp` (default NOW); `metrics` (JSONB); `isAnomaly`; **immutable** (`updatedAt:false`); indexes on tenant/device/timestamp/(device,timestamp).
+*   **`iot_readings`** ([iotReading.model.ts](../../backend/src/models/iotReading.model.ts)) — PK `id`; `tenantId` (CASCADE), `deviceId`→`calibration_devices.id` (CASCADE); `timestamp` (default NOW); `metrics` (JSONB); `isAnomaly`; **immutable** (`updatedAt:false`); indexes on tenant/device/timestamp/(device,timestamp).
 
 ### 14. API
-Base: `/api/v1/iot` — see [iot.route.js](../../backend/src/routes/api/iot.route.js).
+Base: `/api/v1/iot` — see [iot.route.ts](../../backend/src/routes/api/iot.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -3171,7 +3173,7 @@ graph TD
 *   No AI-specific table; config in **`tenant_settings`** (`ai_*`). RAG references a document embedding column (pgvector), but retrieval is currently simulated.
 
 ### 14. API
-Base: `/api/v1/ai` — see [ai.route.js](../../backend/src/routes/api/ai.route.js).
+Base: `/api/v1/ai` — see [ai.route.ts](../../backend/src/routes/api/ai.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -3278,7 +3280,7 @@ graph TD
 *   Config in **`tenant_settings`** (`feature_flag_*`). No dedicated flag table.
 
 ### 14. API
-Base: `/api/v1/feature-flags` — see [featureFlags.route.js](../../backend/src/routes/api/featureFlags.route.js).
+Base: `/api/v1/feature-flags` — see [featureFlags.route.ts](../../backend/src/routes/api/featureFlags.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -3383,7 +3385,7 @@ graph TD
 *   Config in **`tenant_settings`** (`ip_allowlist`, `geofence`). No dedicated table.
 
 ### 14. API
-Base: `/api/v1/network-security` — see [networkSecurity.route.js](../../backend/src/routes/api/networkSecurity.route.js).
+Base: `/api/v1/network-security` — see [networkSecurity.route.ts](../../backend/src/routes/api/networkSecurity.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -3482,7 +3484,7 @@ graph TD
 *   Raw SQL over `calibration_devices`, `stocks`, `certificates`; uses a `search_vector` column + GIN index (migration `0003-add-search-vectors`).
 
 ### 14. API
-Base: `/api/v1/search` — see [search.route.js](../../backend/src/routes/api/search.route.js).
+Base: `/api/v1/search` — see [search.route.ts](../../backend/src/routes/api/search.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -3692,7 +3694,7 @@ graph TD
 *   **Metrics:** `{summary{total, done, inProgress, completionRate, overdue, unassigned, columns, sprints}, byColumn, byPriority, byAssignee, byLabel, bySprint}`.
 
 ### 10. Validation
-*   Joi via `validate(schema)` ([kanban.validator.js](../../backend/src/validators/kanban.validator.js)).
+*   Joi via `validate(schema)` ([kanban.validator.ts](../../backend/src/validators/kanban.validator.ts)).
 *   Code pattern `^[A-Za-z0-9]+$`; member schema `.xor("userId","roleId")`.
 *   Card `sprintId` accepts a uuid, `"backlog"`, or null; migrate `.or("cardIds","allNotDone")`.
 *   Sprint `status` and relation `type` enums.
@@ -3717,7 +3719,7 @@ graph TD
 *   `kanban_projects` (code, card_seq); `kanban_project_members` (user_id xor role_id, access_level); `kanban_columns` (is_done); `kanban_cards` (sprint_id nullable, number, card_key, priority, due_date, position — paranoid); `kanban_labels`; `kanban_card_assignees` (join); `kanban_card_labels` (join); `kanban_sprints` (status); `kanban_card_relations` (source_card_id, target_card_id, type).
 
 ### 14. API
-Base: `/api/v1/kanban` — see [kanban.route.js](../../backend/src/routes/api/kanban.route.js). All routes require `auth`.
+Base: `/api/v1/kanban` — see [kanban.route.ts](../../backend/src/routes/api/kanban.route.ts). All routes require `auth`.
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -3827,7 +3829,7 @@ During the code-grounded analysis, several **systemic patterns and defects** wer
 
 ### A.4 Scope Notes
 *   `MODULES.old.md` (in the repository root) preserves the previous version of this document for reference.
-*   The 30 modules above map 1:1 to the API base paths mounted in [index.js](../../backend/index.js#L395-L446). Internal-only surfaces (health/live/ready, migration) and cross-cutting middleware are documented within their owning module.
+*   The 30 modules above map 1:1 to the API base paths mounted in [index.ts](../../backend/index.ts#L395-L446). Internal-only surfaces (health/live/ready, migration) and cross-cutting middleware are documented within their owning module.
 
 ---
 # Appendix B: Multi-Tenant Improvement Roadmap (Benchmarked Against Reference Platforms)
@@ -4157,7 +4159,7 @@ graph TD
 *   **`ticket_counters`** — `tenantId`, `seq` (per-tenant number allocator).
 
 ### 14. API
-Base: `/api/v1/tickets` — see [tickets.route.js](../../backend/src/routes/api/tickets.route.js).
+Base: `/api/v1/tickets` — see [tickets.route.ts](../../backend/src/routes/api/tickets.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
@@ -4276,7 +4278,7 @@ graph TD
 *   **`attachments`** — `tenantId`, `resourceType`/`resourceId`, `fileName`, `originalName`, `folder`, `storageKey` (nullable; backfilled by migration), `mimeType`, `size`, `checksum`, `uploadedBy`; soft-delete.
 
 ### 14. API
-Base: `/api/v1/storage`, `/api/v1/attachments` — see [storage.route.js](../../backend/src/routes/api/storage.route.js), [attachments.route.js](../../backend/src/routes/api/attachments.route.js).
+Base: `/api/v1/storage`, `/api/v1/attachments` — see [storage.route.ts](../../backend/src/routes/api/storage.route.ts), [attachments.route.ts](../../backend/src/routes/api/attachments.route.ts).
 
 | Method | Endpoint | Function |
 | --- | --- | --- |

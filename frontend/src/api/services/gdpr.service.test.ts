@@ -34,6 +34,21 @@ describe("gdprService", () => {
     });
   });
 
+  describe("downloadExport (A-360)", () => {
+    it("reads the archive as a blob from the download route, the id encoded into the path", async () => {
+      const archive = new Blob(["PK"], { type: "application/zip" });
+      mockedApi.get.mockResolvedValueOnce(archive);
+
+      await expect(gdprService.downloadExport("export-1790000000000-0a1b2c3d")).resolves.toBe(archive);
+      expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/exports/export-1790000000000-0a1b2c3d/download`, {
+        responseType: "blob",
+      });
+
+      await gdprService.downloadExport("../../users");
+      expect(mockedApi.get).toHaveBeenLastCalledWith(`${BASE}/exports/..%2F..%2Fusers/download`, { responseType: "blob" });
+    });
+  });
+
   describe("erasure", () => {
     it("requires reason and confirm:true", async () => {
       mockedApi.post.mockResolvedValueOnce(envelope({ id: "r1" }));

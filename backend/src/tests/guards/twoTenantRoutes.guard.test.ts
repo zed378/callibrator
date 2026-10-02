@@ -430,7 +430,7 @@ const EARLIER_TESTS: Readonly<Record<string, EarlierTest>> = {
     test: "routes/tenantHierarchy.visibility.q05.test.js",
     title: "the child's administrator reading the parent's /%s gets 404 too",
   },
-  "api/tenantHierarchy.route POST /:parentId/children": {
+  "api/tenantHierarchy.route POST /:tenantId/children": {
     test: "routes/tenantHierarchy.children.a187.test.js",
     title: "a tenant admin of A gets the same answer for B's id, a missing id and its own — and nothing is created",
   },

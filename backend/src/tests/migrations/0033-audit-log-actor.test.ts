@@ -22,7 +22,7 @@ type Context = Parameters<typeof migration.up>[0]["context"];
 const ctx = (context: object): Context => context as Context;
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0033-audit-log-actor.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 interface State {
   table: boolean;

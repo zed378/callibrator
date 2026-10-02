@@ -44,7 +44,6 @@ const mockZipGenerateAsync = jest
   .fn()
   .mockResolvedValue(Buffer.from("mock-zip-data"));
 const mockZipFile = jest.fn();
-const mockZipLoadAsync = jest.fn();
 
 jest.mock("jszip", () => {
   return jest.fn().mockImplementation(() => ({

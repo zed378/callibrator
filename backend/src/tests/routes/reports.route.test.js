@@ -3,7 +3,7 @@
  *
  * Tests the Reports route registrations and middleware chain.
  */
-const reportsRoutes = require("../../routes/api/reports.route.js");
+const reportsRoutes = require("../../routes/api/reports.route");
 
 describe("Reports Routes", () => {
   it("should export an Express router", () => {

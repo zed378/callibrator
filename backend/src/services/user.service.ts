@@ -463,8 +463,9 @@ const safeUserAttributes = {
 // ------------------------------------------------------------------
 /** fetchUsers' query, as the controller passes it. */
 interface FetchUsersQuery {
-  tenantId?: string | null;
-  roleFilter?: string | null;
+  // P9-20: `undefined` admitted, as the validated query gives it (type-only).
+  tenantId?: string | null | undefined;
+  roleFilter?: string | null | undefined;
   role?: unknown;
   find?: unknown;
   page?: number | string;

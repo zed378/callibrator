@@ -3,7 +3,7 @@
  * Tests recursive XSS sanitization of request body, query, and params,
  * as well as excluded fields and non-object inputs.
  */
-const xss = require("xss");
+require("xss");
 
 // We need a spy on the internal xss module to verify calls and to avoid
 // mutating global state.

@@ -143,6 +143,22 @@ describe("config/publicAccess", () => {
     await withEnv({ ACCESS_REQUEST_IP_PEPPER: "s3cret", NODE_ENV: "production" }, () => { expect(publicAccess.accessRequestIpPepper()).toBe("s3cret"); },
     );
   });
+
+  it("Q-42 (ADR-113): the privacy notice is an absolute http(s) URL or nothing, in every environment", async () => {
+    const cases: [string | undefined, string | null][] = [
+      [undefined, null],
+      [" ", null],
+      ["/privacy", null],
+      ["ftp://example.test/privacy", null],
+      [" https://example.test/privacy ", "https://example.test/privacy"],
+      ["http://localhost:3000/privacy", "http://localhost:3000/privacy"],
+    ];
+    for (const [value, expected] of cases) {
+      for (const NODE_ENV of ["production", "test"]) {
+        await withEnv({ PRIVACY_NOTICE_URL: value, NODE_ENV }, () => { expect(publicAccess.privacyNoticeUrl()).toBe(expected); });
+      }
+    }
+  });
 });
 
 // ============================================================================

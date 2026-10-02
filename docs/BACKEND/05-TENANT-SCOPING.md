@@ -1,6 +1,6 @@
 # 05 — Tenant Scoping
 
-> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; the toolchain is ADR-087), compiled to CommonJS and run from one `dist/` tree. The only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18); `noSourceJs.p924.guard` fails on any other. The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The rules are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Behaviour described here is **as-built** unless marked *target*.
 
 The implementation of the number-one security control. Security treatment: [`../SECURITY/05-MULTI-TENANCY-SECURITY.md`](../SECURITY/05-MULTI-TENANCY-SECURITY.md) — mandatory reading.
 
@@ -11,13 +11,13 @@ Code: `backend/src/utils/tenantScope.util.ts`, `backend/src/middlewares/tenantCo
 ## How It Works
 
 ```
-auth.middleware.js
+auth.middleware.ts
     → req.tenantId  (honouring the SUPERADMIN x-tenant-id override)
           │
-tenantContext.middleware.js
+tenantContext.middleware.ts
     → AsyncLocalStorage.run({ tenantId, isSuperAdmin, isSystemTask })
           │
-global Sequelize hooks   (installed once, by models/index.js)
+global Sequelize hooks   (installed once, by models/index.ts)
     beforeFind / beforeBulkUpdate / beforeBulkDestroy → inject WHERE
     beforeCreate / beforeUpdate                       → stamp tenantId
 ```

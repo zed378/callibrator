@@ -142,7 +142,7 @@ describe("Notifications page — list", () => {
     });
     await waitFor(() =>
       expect(get).toHaveBeenLastCalledWith("/api/v1/notifications", {
-        params: { page: 1, limit: 10, isRead: false, type: "MAINTENANCE" },
+        params: { page: 1, limit: 10, isRead: "false", type: "MAINTENANCE" },
       }),
     );
   });

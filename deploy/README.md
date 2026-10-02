@@ -206,6 +206,14 @@ Rolling back means deploying the **previously built image for that environment**
 
 One value is deliberately **not** inlined: `BACKEND_INTERNAL_URL` has no `NEXT_PUBLIC_` prefix and is read at **runtime**, because the server-side Next.js proxy and the browser need different addresses for the same backend. Pointing the server-side hop at the public origin makes it re-enter the proxy that called it and loop.
 
+`PRIVACY_NOTICE_URL` is the other runtime value, and **both** workloads read it (Q-42, ADR-113). It is the absolute `https://` URL of the published privacy notice the request-access consent refers to. A form collecting personal data does not open before its notice exists, so while it is empty (or not an http(s) URL):
+
+- `/request-access` shows a short "not open yet" notice and the configured contact buttons, not the form;
+- `POST /api/v1/access-requests` answers **404** "Route not found", exactly as an absent route does — in every environment;
+- the public footer has no privacy link.
+
+Once set, the consent links to it (new tab) and the footer shows **Kebijakan Privasi / Privacy Notice**. Compose: put it in `.env` — the backend reads it through `env_file`, the frontend through the line `docker-compose.yml` passes. Helm: `global.privacyNoticeUrl`. No rebuild is needed. The disposable E2E stack sets `https://example.com/privacy-notice` (`E2E_PRIVACY_NOTICE_URL` overrides it).
+
 ## The Next.js Runtime
 
 The frontend image runs Next.js **standalone** output on `node:22-alpine`, and two details are not obvious.

@@ -1,38 +1,18 @@
-import { api } from "../client";
+// src/api/services/predictiveMaintenance.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client. The calls and the types are
+// read off `paths` (src/api/generated/schema.d.ts, `npm run api:types`, from
+// backend/src/routes/api/predictiveMaintenance.openapi.ts); the exported names are unchanged, so
+// no caller changed.
+import { typedApi, unwrap, type DataOf, type Op, type components } from "../typed";
 
 // ---------- Types ----------
 
-export interface PredictiveAnalysisResult {
-  status: "analyzed" | "skipped" | "unchanged";
-  deviceId?: string;
-  anomalyRate?: number;
-  totalReadings?: number;
-  currentInterval?: number;
-  recommendedCalibrationInterval?: number | null;
-  recommendationReason?: string | null;
-}
-
-export interface PredictiveRecommendation {
-  id: string;
-  name: string;
-  serialNumber?: string;
-  calibrationIntervalDays?: number;
-  recommendedCalibrationInterval: number;
-  recommendationReason?: string;
-}
-
-export interface ApproveRecommendationResult {
-  deviceId: string;
-  calibrationIntervalDays: number;
-}
-
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+export type PredictiveAnalysisResult = components["schemas"]["PredictiveDeviceAnalysis"];
+export type PredictiveRecommendation = components["schemas"]["CalibrationIntervalRecommendation"];
+export type ApproveRecommendationResult = DataOf<
+  Op<"/api/v1/predictive-maintenance/recommendations/{deviceId}/approve", "post">
+>;
 
 // ---------- Service ----------
 
@@ -42,9 +22,9 @@ export const predictiveMaintenanceService = {
    * POST /api/v1/predictive-maintenance/analyze/:deviceId
    */
   analyzeDevice: async (deviceId: string): Promise<PredictiveAnalysisResult> => {
-    const response = await api.post<BackendResponse<PredictiveAnalysisResult>>(
-      `/api/v1/predictive-maintenance/analyze/${deviceId}`,
-    );
+    const response = await typedApi
+      .POST("/api/v1/predictive-maintenance/analyze/{deviceId}", { params: { path: { deviceId } } })
+      .then(unwrap);
     return response.data;
   },
 
@@ -53,9 +33,7 @@ export const predictiveMaintenanceService = {
    * GET /api/v1/predictive-maintenance/recommendations
    */
   getRecommendations: async (): Promise<PredictiveRecommendation[]> => {
-    const response = await api.get<BackendResponse<PredictiveRecommendation[]>>(
-      "/api/v1/predictive-maintenance/recommendations",
-    );
+    const response = await typedApi.GET("/api/v1/predictive-maintenance/recommendations").then(unwrap);
     return response.data;
   },
 
@@ -63,12 +41,10 @@ export const predictiveMaintenanceService = {
    * Approve (apply) a device's recommended calibration interval.
    * POST /api/v1/predictive-maintenance/recommendations/:deviceId/approve
    */
-  approveRecommendation: async (
-    deviceId: string,
-  ): Promise<ApproveRecommendationResult> => {
-    const response = await api.post<
-      BackendResponse<ApproveRecommendationResult>
-    >(`/api/v1/predictive-maintenance/recommendations/${deviceId}/approve`);
+  approveRecommendation: async (deviceId: string): Promise<ApproveRecommendationResult> => {
+    const response = await typedApi
+      .POST("/api/v1/predictive-maintenance/recommendations/{deviceId}/approve", { params: { path: { deviceId } } })
+      .then(unwrap);
     return response.data;
   },
 };

@@ -53,9 +53,6 @@ jest.mock("../../utils/upload.util", () => ({
   upload: () => (req, res, next) => next(),
   deleteUpload: jest.fn(),
 }));
-jest.mock("../../middlewares/auditLog.middleware", () => ({
-  recordAudit: () => (req, res, next) => next(),
-}));
 jest.mock("../../services/user.service", () => ({
   editUser: jest.fn(async (input) => ({
     status: 200,

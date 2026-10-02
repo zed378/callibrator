@@ -24,6 +24,12 @@ export interface WorkOrderFormState {
   priority: WorkOrderPriority;
   status: WorkOrderStatus;
   vendorId: string;
+  // Q-55: the schedule, costs and resolution (dates as YYYY-MM-DD, costs as typed).
+  scheduledDate: string;
+  completedDate: string;
+  estimatedCost: string;
+  actualCost: string;
+  resolutionNotes: string;
 }
 
 const emptyForm: WorkOrderFormState = {
@@ -34,7 +40,17 @@ const emptyForm: WorkOrderFormState = {
   priority: "Medium",
   status: "Open",
   vendorId: "",
+  scheduledDate: "",
+  completedDate: "",
+  estimatedCost: "",
+  actualCost: "",
+  resolutionNotes: "",
 };
+
+/** An ISO timestamp (or null) as a date input's YYYY-MM-DD value. */
+const dateInput = (value?: string | null): string => (value ? value.slice(0, 10) : "");
+/** A stored cost (decimal string or number, or null) as the form's text. */
+const costInput = (value?: string | number | null): string => (value === null || value === undefined ? "" : String(value));
 
 export function useMaintenance() {
   const { user } = useAuthStore();
@@ -161,6 +177,11 @@ export function useMaintenance() {
       priority: workOrder.priority,
       status: workOrder.status,
       vendorId: workOrder.vendorId || "",
+      scheduledDate: dateInput(workOrder.scheduledDate),
+      completedDate: dateInput(workOrder.completedDate),
+      estimatedCost: costInput(workOrder.estimatedCost),
+      actualCost: costInput(workOrder.actualCost),
+      resolutionNotes: workOrder.resolutionNotes || "",
     });
     setModalType("edit");
     setSelectedWorkOrder(workOrder);
@@ -184,14 +205,23 @@ export function useMaintenance() {
         priority: form.priority,
         status: form.status,
         vendorId: form.vendorId || undefined,
+        // Q-55: a blank field is not sent on create.
+        scheduledDate: form.scheduledDate || undefined,
+        estimatedCost: form.estimatedCost.trim() || undefined,
       };
 
       if (modalType === "create") {
         await maintenanceService.create(payload);
         addToast({ type: "success", title: "Work order created" });
       } else if (modalType === "edit" && selectedWorkOrder) {
+        // Q-55: on an edit a blank field is sent as null, which clears it.
         await maintenanceService.update({
           ...payload,
+          scheduledDate: form.scheduledDate || null,
+          estimatedCost: form.estimatedCost.trim() || null,
+          completedDate: form.completedDate || null,
+          actualCost: form.actualCost.trim() || null,
+          resolutionNotes: form.resolutionNotes.trim() || null,
           id: selectedWorkOrder.id,
         });
         addToast({ type: "success", title: "Work order updated" });

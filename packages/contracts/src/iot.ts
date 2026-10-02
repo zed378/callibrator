@@ -7,7 +7,7 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/iot.validator.ts,
  * which re-exports these same objects by name. The contract for
- * C:/Program Files/Git/api/v1/iot (reading tolerances, the device id and the IoT configuration).
+ * /api/v1/iot (reading tolerances, the device id and the IoT configuration).
  */
 import { z } from "zod";
 import { booleanish, uuid } from "./fields";

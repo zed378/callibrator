@@ -1,10 +1,10 @@
-import { api } from "../client";
+import { typedApi, unwrap, type JsonBody, type Op, type components } from "../typed";
 
 /**
  * Approval workflows and their running instances.
  *
  * The tenant comes from the caller's JWT.
- * Backend: src/routes/api/workflows.route.js (mounted /api/v1/workflows)
+ * Backend: src/routes/api/workflows.route.ts (mounted /api/v1/workflows)
  *   GET    /                              list workflows
  *   POST   /                              create
  *   GET    /:id
@@ -16,147 +16,83 @@ import { api } from "../client";
  * Neither list endpoint paginates — `data` is a plain array (getWorkflows is a
  * bare findAll; getPendingTasks returns a filtered array). There is no
  * per-workflow instances route.
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+ * contract's (backend/src/routes/api/workflows.openapi.ts). The exported
+ * names are unchanged.
  */
 
-const BASE = "/api/v1/workflows";
+type Schemas = components["schemas"];
 
 // ---------- Types ----------
 
+export type WorkflowCreateInput = JsonBody<Op<"/api/v1/workflows", "post">>;
+
+/** PUT accepts a partial; steps (when present) must still be well-formed. resourceType is fixed at creation. */
+export type WorkflowUpdateInput = JsonBody<Op<"/api/v1/workflows/{id}", "put">>;
+
 /** Exactly the resources the validator accepts. */
-export type WorkflowResourceType =
-  | "Certificate"
-  | "StockTransfer"
-  | "MaintenanceWorkOrder";
+export type WorkflowResourceType = WorkflowCreateInput["resourceType"];
+
+export type WorkflowStepInput = WorkflowCreateInput["steps"][number];
+
+export type Workflow = Schemas["Workflow"];
+export type WorkflowStep = Schemas["WorkflowStep"];
+
+/**
+ * A pending instance awaiting the caller (GET /instances/pending), with its
+ * workflow (name, resource type, steps) and the decisions already taken.
+ */
+export type WorkflowInstance = Schemas["WorkflowPendingTask"];
+
+/**
+ * POST /instances/:instanceId/action. `action` is "APPROVED" or "REJECTED"
+ * (uppercase); the comment is `comments` (plural). A-182 — approving a
+ * Certificate is an electronic signature (21 CFR Part 11): the caller
+ * re-authenticates with `authMethod`, `authPayload` and `meaning`, as for
+ * POST /certificates/:id/approve (400 without them); not sent for a rejection
+ * or for other record types.
+ */
+export type SubmitActionInput = JsonBody<Op<"/api/v1/workflows/instances/{instanceId}/action", "post">>;
 
 /** The only actions submitAction accepts — uppercase. */
-export type WorkflowAction = "APPROVED" | "REJECTED";
+export type WorkflowAction = SubmitActionInput["action"];
 
-export interface WorkflowStep {
-  id?: string;
-  /** 1-based. Named stepOrder, not `order`. */
-  stepOrder: number;
-  roleId: string;
-  requiredApprovals?: number;
-}
+/** The instance status after the action. */
+export type SubmitActionResult = Schemas["WorkflowDecision"];
 
-export interface Workflow {
-  id: string;
-  tenantId?: string;
-  name: string;
-  resourceType: WorkflowResourceType;
-  isActive?: boolean;
-  steps?: WorkflowStep[];
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface WorkflowInstance {
-  id: string;
-  workflowId: string;
-  workflow?: Workflow;
-  tenantId?: string;
-  resourceId?: string;
-  resourceType?: WorkflowResourceType;
-  status?: string;
-  currentStepOrder?: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface WorkflowStepInput {
-  stepOrder: number;
-  roleId: string;
-  requiredApprovals?: number;
-}
-
-export interface WorkflowCreateInput {
-  name: string;
-  resourceType: WorkflowResourceType;
-  isActive?: boolean;
-  /** At least one step is required. */
-  steps: WorkflowStepInput[];
-}
-
-/** PUT accepts a partial; steps (when present) must still be well-formed. */
-export interface WorkflowUpdateInput {
-  name?: string;
-  isActive?: boolean;
-  steps?: WorkflowStepInput[];
-}
-
-export interface SubmitActionInput {
-  action: WorkflowAction;
-  /** Named `comments` (plural) server-side. */
-  comments?: string | null;
-  /**
-   * A-182 — approving a Certificate is an electronic signature (21 CFR
-   * Part 11): the caller re-authenticates with these three, as for
-   * POST /certificates/:id/approve. The backend answers 400 without them.
-   * Not sent for a rejection or for other record types.
-   */
-  authMethod?: "password" | "mfa";
-  authPayload?: string;
-  meaning?: string;
-}
-
-export interface SubmitActionResult {
-  /** The instance status after the action. */
-  status: string;
-}
-
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+const byId = (id: string) => ({ params: { path: { id } } });
 
 // ---------- Service ----------
 
 export const workflowService = {
   /** GET /workflows — data is a plain array (not paginated). */
-  getAll: async (): Promise<Workflow[]> => {
-    const response = await api.get<BackendResponse<Workflow[]>>(BASE);
-    return response.data ?? [];
-  },
+  getAll: async (): Promise<Workflow[]> =>
+    (await typedApi.GET("/api/v1/workflows").then(unwrap)).data ?? [],
 
   /** GET /workflows/:id */
-  getById: async (id: string): Promise<Workflow> => {
-    const response = await api.get<BackendResponse<Workflow>>(`${BASE}/${id}`);
-    return response.data;
-  },
+  getById: async (id: string): Promise<Workflow> =>
+    (await typedApi.GET("/api/v1/workflows/{id}", byId(id)).then(unwrap)).data,
 
   /** POST /workflows — returns 201. */
-  create: async (data: WorkflowCreateInput): Promise<Workflow> => {
-    const response = await api.post<BackendResponse<Workflow>>(BASE, data);
-    return response.data;
-  },
+  create: async (data: WorkflowCreateInput): Promise<Workflow> =>
+    (await typedApi.POST("/api/v1/workflows", { body: data }).then(unwrap)).data,
 
   /** PUT /workflows/:id — resourceType is fixed at creation. */
-  update: async (id: string, data: WorkflowUpdateInput): Promise<Workflow> => {
-    const response = await api.put<BackendResponse<Workflow>>(
-      `${BASE}/${id}`,
-      data,
-    );
-    return response.data;
-  },
+  update: async (id: string, data: WorkflowUpdateInput): Promise<Workflow> =>
+    (await typedApi.PUT("/api/v1/workflows/{id}", { ...byId(id), body: data }).then(unwrap)).data,
 
   /** DELETE /workflows/:id */
   delete: async (id: string): Promise<void> => {
-    await api.delete<BackendResponse<null>>(`${BASE}/${id}`);
+    await typedApi.DELETE("/api/v1/workflows/{id}", byId(id));
   },
 
   /**
    * GET /workflows/instances/pending — instances awaiting the calling user,
    * filtered server-side by their role. Plain array.
    */
-  getPendingInstances: async (): Promise<WorkflowInstance[]> => {
-    const response = await api.get<BackendResponse<WorkflowInstance[]>>(
-      `${BASE}/instances/pending`,
-    );
-    return response.data ?? [];
-  },
+  getPendingInstances: async (): Promise<WorkflowInstance[]> =>
+    (await typedApi.GET("/api/v1/workflows/instances/pending").then(unwrap)).data ?? [],
 
   /**
    * POST /workflows/instances/:instanceId/action
@@ -165,13 +101,12 @@ export const workflowService = {
   actionOnInstance: async (
     instanceId: string,
     data: SubmitActionInput,
-  ): Promise<SubmitActionResult> => {
-    const response = await api.post<BackendResponse<SubmitActionResult>>(
-      `${BASE}/instances/${instanceId}/action`,
-      data,
-    );
-    return response.data;
-  },
+  ): Promise<SubmitActionResult> =>
+    (
+      await typedApi
+        .POST("/api/v1/workflows/instances/{instanceId}/action", { params: { path: { instanceId } }, body: data })
+        .then(unwrap)
+    ).data,
 
   /** Convenience wrappers around actionOnInstance. */
   approve: (instanceId: string, comments?: string): Promise<SubmitActionResult> =>

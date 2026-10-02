@@ -260,7 +260,7 @@ seed-demo: ## Seed demo data (dev only — ~80 rows, idempotent)
 		echo -e "$(C_ERR)Refusing: a demo seeder against real data is a data-integrity incident.$(C_OFF)"
 		exit 1
 	fi
-	cd backend && npx --no-install tsx src/scripts/seedDemo.js
+	cd backend && npx --no-install tsx src/scripts/seedDemo.ts
 
 .PHONY: backup
 backup: ## Dump the database to ./backups
@@ -329,11 +329,16 @@ test-browser: ## Browser suite against a RUNNING stack: the smoke (ADR-077), the
 	@echo -e "$(C_DIM)Smoke: sign-in, MFA, one list page, CSP. A11y: WCAG 2.1 AA axe on key pages in both$(C_OFF)"
 	@echo -e "$(C_DIM)themes, the create-dialog focus contract, 200% zoom reflow, reduced motion.$(C_OFF)"
 	@echo -e "$(C_DIM)Not the 71-test Playwright suite the documents once described (A-20).$(C_OFF)"
+	@echo -e "$(C_DIM)Responsive (AC-4): public pages at 375/1024/1440, 200% zoom and 200% text-only zoom; no sideways$(C_OFF)"
+	@echo -e "$(C_DIM)scroll, clipped or overlapping text (RESPONSIVE_SELFTEST=1 proves it can fail).$(C_OFF)"
 	@echo -e "$(C_DIM)P10 (P10-13): landing, identifier-first sign-in, one-time password, request access,$(C_OFF)"
 	@echo -e "$(C_DIM)invitation, forgot/reset, verify, passkeys on a WebAuthn virtual authenticator. Needs$(C_OFF)"
 	@echo -e "$(C_DIM)E2E_MAILPIT_URL, and FRONTEND_URL = the backend's WEBAUTHN_ORIGIN (http://localhost:<port>).$(C_OFF)"
+	@echo -e "$(C_DIM)In-browser SSO (OIDC, a mock IdP in-process): P10_MOCK_IDP_HOST on a NON-production backend$(C_OFF)"
+	@echo -e "$(C_DIM)with SSRF_DEV_ALLOW_HOSTS naming it; skipped by name otherwise. Stack: deploy/compose/docker-compose.e2e.yml.$(C_OFF)"
 	node automate/smoke.browser.js
 	node automate/a11y.browser.js
+	node automate/responsive.browser.js
 	node automate/p10.browser.mts
 
 .PHONY: build

@@ -3,7 +3,7 @@
  * module declares exactly that module's exports.
  *
  * Under `allowJs: false` a TypeScript module imports a JavaScript one through a
- * sibling `x.d.ts` (config/index.d.ts, services/redis.service.d.ts, ...). The
+ * sibling `x.d.ts` (config/index.d.ts, config/socket.d.ts, ...). The
  * compiler trusts the declaration and never reads the `.js`, so an export added
  * to or removed from the JavaScript leaves the declaration silently wrong: a
  * removed function still type-checks and throws at run time. The first such
@@ -84,14 +84,24 @@ const declaredKeys = (file: string): string[] => {
 describe("P9-12 — declaration files match the JavaScript they describe", () => {
   const pairs = declarationPairs();
 
-  it("finds the declaration files (config/index, redis.service, audit.service at least)", () => {
+  // P9-21 (2026-10-01): the config/ twins are all gone (index, migrator, socket converted), so the
+  // walker is checked against an independent scan rather than a list of names that will empty out:
+  // every declaration file outside types/ and tests/ must sit beside its .js. One left behind a
+  // converted module would describe a module that no longer exists, and drift unseen.
+  it("sees every declaration twin, and none is left behind a converted module", () => {
     const names = pairs.map((p) => path.relative(SRC, p.dts).split(path.sep).join("/"));
-    expect(names).toEqual(
-      expect.arrayContaining(["config/index.d.ts", "services/redis.service.d.ts", "services/audit.service.d.ts"]),
-    );
+    const onDisk = (fs.readdirSync(SRC, { recursive: true }) as string[])
+      .map((f) => f.split(path.sep).join("/"))
+      .filter((f) => f.endsWith(".d.ts") && !/^(tests|types)\//.test(f));
+    expect(onDisk.filter((f) => !names.includes(f))).toEqual([]);
+    expect([...names].sort()).toEqual([...onDisk].sort());
   });
 
-  it.each(declarationPairs().map((p) => [path.relative(SRC, p.dts).split(path.sep).join("/"), p] as const))(
+  const twins = declarationPairs().map((p) => [path.relative(SRC, p.dts).split(path.sep).join("/"), p] as const);
+  // P9-24 (2026-10-02): every twin is gone once its module converts, and jest refuses an empty
+  // `.each` table. With none left there is nothing to compare: the case is skipped, and the
+  // test above still fails on any twin that appears without its module, or beside a converted one.
+  (twins.length > 0 ? it.each(twins) : it.skip.each([["(no declaration twin left)", { dts: "", js: "" }] as const]))(
     "%s declares exactly the module's exports",
     (_name, { dts, js }) => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- the JavaScript module itself, as require() returns it

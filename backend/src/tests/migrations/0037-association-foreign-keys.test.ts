@@ -66,7 +66,7 @@ interface QueryOptions {
 
 const { TARGETS, STATE_TABLE, fkName } = migration;
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0037-association-foreign-keys.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const WORD: Record<Code, Word> = { r: "RESTRICT", c: "CASCADE", n: "SET NULL", a: "NO ACTION" };
 const CODE = Object.fromEntries(Object.entries(WORD).map(([k, v]) => [v, k])) as Record<Word, Code>;

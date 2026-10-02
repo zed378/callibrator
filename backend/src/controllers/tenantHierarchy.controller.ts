@@ -41,7 +41,6 @@ interface Caller {
 /** The path parameters these routes name (`validateUuid`). */
 interface HierarchyParams extends Record<string, string> {
   tenantId: TenantId;
-  parentId: TenantId;
 }
 
 /** A move's body; the service checks `newParentId` itself (400 when it is not a UUID or null). */
@@ -128,7 +127,8 @@ const getTenantAncestors = asyncHandler(async (req: Request, res: Response) => {
  * Add a child tenant under a parent
  */
 const addChildTenant = asyncHandler(async (req: Request, res: Response) => {
-  const { parentId } = req.params as HierarchyParams;
+  // The parent tenant: the route names it `:tenantId` (P9-18, one name per path).
+  const { tenantId: parentId } = req.params as HierarchyParams;
 
   // Validated here, and a failure is a 400 whose message lists the problems.
   // A-09: a bodyless POST is checked as {} (checkInput), so the required-field

@@ -10,6 +10,10 @@
  * Env: BASE_URL, E2E_OPERATOR_PASSWORD (+ E2E_BOOTSTRAP_PASSWORD on a fresh
  * stack), E2E_MAILPIT_URL for the invitation mail (without it the invitation
  * and sign-in tests are SKIPPED, by name).
+ *
+ * The SERVER must have PRIVACY_NOTICE_URL set (Q-42, ADR-113): without a
+ * published notice the intake is absent (404). The disposable stack sets it
+ * (scripts/ci/e2e-env.sh); the first test says so by name when it is not.
  */
 import {
   arr,
@@ -48,6 +52,14 @@ beforeAll(async () => {
 });
 
 describe("P10 request access — the public intake (live, production budgets)", () => {
+  test("Q-42: the stack publishes a privacy notice, so the intake EXISTS (an empty body is a 400, not the absent-route 404)", async () => {
+    const res = await call("POST", "/access-requests", { body: {}, from: newClientAddress() });
+    expect({ status: res.status, hint: "404 here means the server has no PRIVACY_NOTICE_URL (Q-42, ADR-113)" }).toEqual({
+      status: 400,
+      hint: "404 here means the server has no PRIVACY_NOTICE_URL (Q-42, ADR-113)",
+    });
+  });
+
   test("a new request, a duplicate, an over-cap address and a honeypot hit get ONE answer: 202 'Request received'", async () => {
     const email = address("neutral");
     const trap = address("honeypot");

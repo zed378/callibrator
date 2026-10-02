@@ -72,7 +72,7 @@ describe("the real repository", () => {
   });
 
   it("the workflow gates name seeded slugs: `workflows`, and the action's record types (A-183)", () => {
-    const gates = collectRouteGates().filter((g) => /workflows\.route\.js$/.test(g.file));
+    const gates = collectRouteGates().filter((g) => /workflows\.route\.ts$/.test(g.file));
 
     expect(gates.map((g) => g.names)).toEqual([
       // A-183 — GET /instances/pending
@@ -98,12 +98,12 @@ describe("the real repository", () => {
     const text = warnings.join("\n");
 
     // Written out by hand so a change in either direction is noticed. Until
-    // A-07 (2026-09-24) this also listed "AuditLogs" (audit.route.js) and
+    // A-07 (2026-09-24) this also listed "AuditLogs" (audit.route.ts) and
     // "Finance" ×6 (finance.route.js); every gate now names a seeded slug
     // (dynamicAccessSlugs.a07.test.js), so the computed search gate is the
     // only thing this scanner cannot verify.
     expect(text).not.toMatch(/dynamicAccess names "/);
-    expect(text).toMatch(/search\.route\.js:\d+ dynamicAccess\(SEARCH_MENUS, …\) is computed/);
+    expect(text).toMatch(/search\.route\.ts:\d+ dynamicAccess\(SEARCH_MENUS, …\) is computed/);
     expect(warnings).toHaveLength(1);
   });
 

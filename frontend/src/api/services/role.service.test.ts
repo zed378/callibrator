@@ -1,4 +1,5 @@
 import { roleService } from "./role.service";
+import axios from "axios";
 import { api } from "../client";
 
 // Mock the api module
@@ -40,7 +41,7 @@ describe("roleService", () => {
       const result = await roleService.getAll(1, 20, "admin");
 
       expect(api.get).toHaveBeenCalledWith("/api/v1/roles", {
-        params: { page: 1, limit: 20, search: "admin" },
+        params: { page: "1", limit: "20", search: "admin" },
       });
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(2);
@@ -60,6 +61,15 @@ describe("roleService", () => {
       const result = await roleService.getAll();
 
       expect(result.data).toHaveLength(0);
+    });
+  });
+
+  describe("the list query on the wire", () => {
+    it("String() page/limit build the same URL as the numbers did (the published query is strings)", () => {
+      // The real axios serializer (the client sets no paramsSerializer).
+      const uri = (params: Record<string, unknown>) => axios.getUri({ url: "/api/v1/roles", params });
+      expect(uri({ page: "1", limit: "20", search: "admin" })).toBe(uri({ page: 1, limit: 20, search: "admin" }));
+      expect(uri({ page: "2", limit: "25", search: undefined })).toBe("/api/v1/roles?page=2&limit=25");
     });
   });
 
@@ -175,6 +185,13 @@ describe("roleService", () => {
       await roleService.delete("role-uuid-1");
 
       expect(api.delete).toHaveBeenCalledWith("/api/v1/roles/role-uuid-1");
+    });
+  });
+
+  describe("A-359: no menu writes that the API would drop", () => {
+    it("offers no createMenu / updateMenu (they sent camelCase fields the API ignores, and had no caller)", () => {
+      expect(roleService).not.toHaveProperty("createMenu");
+      expect(roleService).not.toHaveProperty("updateMenu");
     });
   });
 });

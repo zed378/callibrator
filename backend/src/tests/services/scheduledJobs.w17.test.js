@@ -272,7 +272,8 @@ describe("webhook dispatcher (W-12)", () => {
     let claimContext;
     db.query.mockImplementation(async () => {
       claimContext = tenantStorage.getStore();
-      return [[{ id: "d1", tenantId: "t1" }, { id: "d2", tenantId: "t2" }]];
+      // P9-18: the claim is sent through sql(), which answers the rows directly.
+      return [{ id: "d1", tenantId: "t1" }, { id: "d2", tenantId: "t2" }];
     });
     const seen = [];
     models.WebhookDelivery.findOne.mockImplementation(async () => {

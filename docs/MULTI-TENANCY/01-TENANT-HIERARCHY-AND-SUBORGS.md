@@ -54,7 +54,7 @@ Two structures, written together:
 
 ### Creating a sub-organisation
 
-`POST /api/v1/tenant-hierarchy/:parentId/children` → `tenantHierarchy.controller.js#addChildTenant` → `tenantHierarchy.service.js#createSubOrganization`.
+`POST /api/v1/tenant-hierarchy/:tenantId/children` → `tenantHierarchy.controller.js#addChildTenant` → `tenantHierarchy.service.js#createSubOrganization`.
 
 | Rule | As built |
 |---|---|
@@ -93,7 +93,7 @@ Mounted at `/api/v1/tenant-hierarchy` (`backend/index.js:481`). `platformOnly` i
 | `GET /:tenantId/parent` | same | `getTenantParent` → last of `getAncestorTenants` | 193 |
 | `GET /:tenantId/descendants` | same | `getTenantDescendants` → `getDescendantTenants` | 241 |
 | `GET /:tenantId/ancestors` | same | `getTenantAncestors` → `getAncestorTenants` | 282 |
-| `POST /:parentId/children` | `platformOnly`, `validateUuid` | `addChildTenant` → `createSubOrganization` | 357 |
+| `POST /:tenantId/children` | `platformOnly`, `validateUuid` | `addChildTenant` → `createSubOrganization` | 357 |
 | `PUT /:tenantId/parent` | `platformOnly`, `validateUuid` | `updateTenantParent` → `moveTenant` | 409 |
 | `DELETE /:tenantId/parent` | `platformOnly`, `validateUuid` | `removeTenantParent` → `moveTenant(…, null)` | 451 |
 | `GET /cross-tenant-roles?userId=` | `platformOnly` | `getCrossTenantRoles` → `getUserRolesAcrossTenants` — one user's role and tenant, by an arbitrary user id; no `userId` answers an empty list | 499 |

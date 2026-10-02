@@ -317,7 +317,7 @@ interface ScanOptions {
   /** one tenant, or null for every tenant */
   tenantId?: string | null;
   now?: Date | string | number;
-  leadDays?: number;
+  leadDays?: number | undefined;
   /** auditPrincipal(req) on a manual run; the scheduled scan omits it and is recorded as `system:calibration-scan` */
   actor?: AuditActorInput | null;
   batchSize?: number;

@@ -12,7 +12,7 @@ import { TenantCard } from "../TenantCard";
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
 const tenant = (limitSeats: number | null | undefined): Tenant =>
-  ({ id: "t1", name: "Alpha Clinic", code: "ALPHA", status: "ACTIVE", limitSeats, createdAt: "2026-01-01", updatedAt: "2026-01-01" }) as Tenant;
+  ({ id: "t1", name: "Alpha Clinic", code: "ALPHA", status: "active", limitSeats, createdAt: "2026-01-01", updatedAt: "2026-01-01" }) as Tenant;
 
 const seatValue = (): string | null => screen.getByText("Seat limit").nextElementSibling?.textContent ?? null;
 

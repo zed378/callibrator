@@ -380,20 +380,20 @@ const candidates = () => {
 //  - workflow instance action: an approval or rejection; the final approval
 //    stamps the certificate / transfer / work order as approved by the caller.
 const GUARDED = [
-  "calibrationRecords.route.js POST /",
-  "calibrationRecords.route.js POST /:calibrationRecordId/corrections", // P6-03
-  "calibrationRecords.route.js POST /:calibrationRecordId/void", // P6-03
-  "certificates.route.js DELETE /:certificateId",
-  "certificates.route.js POST /",
-  "certificates.route.js POST /:certificateId/approve",
-  "certificates.route.js POST /:certificateId/revoke",
-  "certificates.route.js POST /:certificateId/sign",
-  "certificates.route.js POST /:certificateId/submit",
-  "certificates.route.js PUT /:certificateId",
-  "eSignature.route.js POST /sign",
-  "sop.route.js PATCH /:id/publish",
-  "sop.route.js POST /:id/acknowledge",
-  "workflows.route.js POST /instances/:instanceId/action",
+  "calibrationRecords.route.ts POST /",
+  "calibrationRecords.route.ts POST /:calibrationRecordId/corrections", // P6-03
+  "calibrationRecords.route.ts POST /:calibrationRecordId/void", // P6-03
+  "certificates.route.ts DELETE /:certificateId",
+  "certificates.route.ts POST /",
+  "certificates.route.ts POST /:certificateId/approve",
+  "certificates.route.ts POST /:certificateId/revoke",
+  "certificates.route.ts POST /:certificateId/sign",
+  "certificates.route.ts POST /:certificateId/submit",
+  "certificates.route.ts PUT /:certificateId",
+  "eSignature.route.ts POST /sign",
+  "sop.route.ts PATCH /:id/publish",
+  "sop.route.ts POST /:id/acknowledge",
+  "workflows.route.ts POST /instances/:instanceId/action",
 ];
 
 // Reviewed 2026-09-24 and deliberately NOT guarded — with the reason. A route
@@ -402,33 +402,33 @@ const GUARDED = [
 const NOT_GUARDED = {
   "accessRequests.route.ts POST /":
     "P10-05 (ADR-098 §6): the PUBLIC access-request intake (matched on its `submit` handler); no principal, no tenant, authors no Part 11 record",
-  "admin.route.js POST /access-requests/:id/approve":
+  "admin.route.ts POST /access-requests/:id/approve":
     "P10-05/P10-07: the super admin approving an access request creates a tenant and its first administrator — a platform operation (A-76), inside no tenant, audited under PLATFORM; not a record a tenant attests",
-  "ai.route.js POST /ocr": "matched on its `certificate` gate; extracts text from a file, authors nothing",
-  "apiKeys.route.js DELETE /:id": "API-key revocation — an administrative act, not a Part 11 record",
-  "attachments.route.js POST /:id/signed-url": "issues a download URL, authors nothing",
-  "auth.route.js POST /first-sign-in/password":
+  "ai.route.ts POST /ocr": "matched on its `certificate` gate; extracts text from a file, authors nothing",
+  "apiKeys.route.ts DELETE /:id": "API-key revocation — an administrative act, not a Part 11 record",
+  "attachments.route.ts POST /:id/signed-url": "issues a download URL, authors nothing",
+  "auth.route.ts POST /first-sign-in/password":
     "P10-16 (ADR-099): public — replaces a one-time password after its first sign-in; the password-change token is the capability, it authors no record content",
-  "eSignature.route.js DELETE /workflows/:workflowId": "workflow management, audited (F-8); authors no signature",
-  "eSignature.route.js POST /workflows": "workflow setup, audited (F-8); the signature itself is POST /sign",
-  "eSignature.route.js POST /workflows/:workflowId/cancel":
+  "eSignature.route.ts DELETE /workflows/:workflowId": "workflow management, audited (F-8); authors no signature",
+  "eSignature.route.ts POST /workflows": "workflow setup, audited (F-8); the signature itself is POST /sign",
+  "eSignature.route.ts POST /workflows/:workflowId/cancel":
     "A-145 reviewed: withdraws a signing request; authors no signature and no record content, signatures already given stay verifiable; a closed workflow answers 409 and the cancel is audited with the impersonator (F-8, A-130). Unsticking a workflow is a legitimate support act",
-  "eSignature.route.js PUT /workflows/:workflowId": "workflow setup, audited (F-8); the signature itself is POST /sign",
-  "iot.route.js DELETE /devices/:deviceId/token":
+  "eSignature.route.ts PUT /workflows/:workflowId": "workflow setup, audited (F-8); the signature itself is POST /sign",
+  "iot.route.ts DELETE /devices/:deviceId/token":
     "IoT device credential revocation — an administrative act on a machine credential, not a Part 11 record",
-  "menuGroups.route.js POST /bulk-revoke": "menu configuration, not a record",
-  "menuGroups.route.js POST /revoke": "menu configuration, not a record",
-  "menuGroups.route.js POST /revoke-item": "menu configuration, not a record",
-  "predictiveMaintenance.route.js POST /recommendations/:deviceId/approve":
+  "menuGroups.route.ts POST /bulk-revoke": "menu configuration, not a record",
+  "menuGroups.route.ts POST /revoke": "menu configuration, not a record",
+  "menuGroups.route.ts POST /revoke-item": "menu configuration, not a record",
+  "predictiveMaintenance.route.ts POST /recommendations/:deviceId/approve":
     "A-145 reviewed: sets a device's calibrationIntervalDays — equipment master data that PUT /calibration-devices/:id edits unguarded under the same grant, so guarding here alone would be theatre. Audited in its transaction (APPROVE, APPLY_RECOMMENDED_INTERVAL)",
-  "session.route.js POST /:id/revoke": "session revocation, not a record",
-  "session.route.js POST /mine/:id/revoke": "the caller ends one of their own sessions (Q-08, ADR-084), not a record",
-  "session.route.js POST /user/:userId/revoke-all": "session revocation, not a record",
-  "workflows.route.js DELETE /:id": "workflow definition management, not a record",
-  "webauthn.route.js DELETE /credentials/:id":
+  "session.route.ts POST /:id/revoke": "session revocation, not a record",
+  "session.route.ts POST /mine/:id/revoke": "the caller ends one of their own sessions (Q-08, ADR-084), not a record",
+  "session.route.ts POST /user/:userId/revoke-all": "session revocation, not a record",
+  "workflows.route.ts DELETE /:id": "workflow definition management, not a record",
+  "webauthn.route.ts DELETE /credentials/:id":
     "ADR-108 Am. 1: the caller removes one of their OWN passkeys (matched on its `revoke` handler); re-authenticated and audited, not a Part 11 record",
-  "workflows.route.js POST /": "workflow definition management, not a record",
-  "workflows.route.js PUT /:id": "workflow definition management, not a record",
+  "workflows.route.ts POST /": "workflow definition management, not a record",
+  "workflows.route.ts PUT /:id": "workflow definition management, not a record",
 };
 
 describe("A-127 — every regulated-looking write route is enumerated and reviewed", () => {

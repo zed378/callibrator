@@ -21,7 +21,7 @@ const express = require("express");
 // P9-25: each serve() loads the gated docs router (and the models) in isolation — slow on a busy machine.
 jest.setTimeout(60000);
 
-const INDEX_SOURCE = fs.readFileSync(path.join(__dirname, "..", "..", "..", "index.js"), "utf8");
+const INDEX_SOURCE = fs.readFileSync(path.join(__dirname, "..", "..", "..", "index.ts"), "utf8");
 
 const ENV_KEYS = ["NODE_ENV", "SWAGGER_ENABLED", "KMS_MASTER_KEY"];
 const saved = {};

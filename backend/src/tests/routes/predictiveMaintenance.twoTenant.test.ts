@@ -9,7 +9,7 @@
  * 20 readings, 5 of them anomalous, so the analysis writes a recommendation,
  * a notification and an audit row.
  *
- * @two-tenant api/predictiveMaintenance.route.js POST /analyze/:deviceId
+ * @two-tenant api/predictiveMaintenance.route.ts POST /analyze/:deviceId
  */
 import type * as MemoryDbModule from "../fixtures/memoryDb";
 import type * as RouteClient from "../fixtures/routeClient";

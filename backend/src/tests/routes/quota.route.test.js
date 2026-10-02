@@ -3,7 +3,7 @@
  *
  * Tests the Quota route registrations and middleware chain.
  */
-const quotaRoutes = require("../../routes/api/quota.route.js");
+const quotaRoutes = require("../../routes/api/quota.route");
 
 describe("Quota Routes", () => {
   it("should export an Express router", () => {

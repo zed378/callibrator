@@ -45,7 +45,9 @@ type CapaRow = ModelInstance<"Capa">;
 interface Actor {
   userId?: string | null;
   ipAddress?: string | null;
-  userAgent?: string | null;
+  // `string[]`: auditActor reads the raw user-agent header, which Node types as
+  // possibly repeated (P9-20: a type-only widening; nothing emitted changes).
+  userAgent?: string | string[] | null;
 }
 
 /**

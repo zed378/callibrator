@@ -1,7 +1,7 @@
 /**
  * The kanban board page, end to end through the REAL useBoard hook, kanban
  * store and kanban service — `@/api/client` is mocked with backend envelopes
- * (backend/src/controllers/kanban.controller.js: `success(res, obj)`, the
+ * (backend/src/controllers/kanban.controller.ts: `success(res, obj)`, the
  * object in `data`). Covers the page and the modals it owns: members, manage
  * board, new sprint, migrate, sprint status/delete, quick add.
  */

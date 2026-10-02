@@ -2,7 +2,7 @@
  * E2E Tests: Predictive Maintenance module (LIVE HTTP)
  *
  * Mount: /api/v1/predictive-maintenance  (see index.js)
- * Route file: src/routes/api/predictiveMaintenance.route.js
+ * Route file: src/routes/api/predictiveMaintenance.route.ts
  *
  * Covered routes:
  *   POST /predictive-maintenance/analyze/:deviceId

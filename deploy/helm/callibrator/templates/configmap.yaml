@@ -27,6 +27,8 @@ data:
   FRONTEND_URL: {{ printf "https://%s" .Values.ingress.host | quote }}
   OIDC_ISSUER: {{ printf "https://%s" .Values.ingress.host | quote }}
   PUBLIC_BASE_URL: {{ printf "https://%s" .Values.ingress.host | quote }}
+  # Q-42 (ADR-113): empty keeps the public access-request intake absent (404).
+  PRIVACY_NOTICE_URL: {{ .Values.global.privacyNoticeUrl | default "" | quote }}
 
   # Empty outside development. Inline mode makes a batch job synchronous with
   # whatever triggered it, reintroducing the 30s timeout it exists to avoid.

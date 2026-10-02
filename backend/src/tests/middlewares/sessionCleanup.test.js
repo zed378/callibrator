@@ -109,7 +109,7 @@ describe("sessionCleanup.middleware", () => {
     it("should schedule cron job with custom schedule from env", () => {
       process.env.SESSION_CLEANUP_SCHEDULER = "0 */6 * * *";
       const cron = require("node-cron");
-      const result = initSessionCleanup();
+      initSessionCleanup();
 
       expect(cron.schedule).toHaveBeenCalledWith(
         "0 */6 * * *",
@@ -118,7 +118,7 @@ describe("sessionCleanup.middleware", () => {
     });
 
     it("should return cleanup and revoke functions", () => {
-      const cron = require("node-cron");
+      require("node-cron");
       const result = initSessionCleanup();
 
       expect(typeof result.cleanupExpiredSessions).toBe("function");

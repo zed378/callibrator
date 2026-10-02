@@ -37,6 +37,7 @@ export const id = {
   "pub.footer.news": "Berita",
   "pub.footer.signin": "Masuk",
   "pub.footer.request": "Minta akses",
+  "pub.footer.privacy": "Kebijakan Privasi",
   "pub.footer.copyright": "© {year} Device Calibrator",
 
   // ── Landing (doc 20 §11.1) ───────────────────────────────────────────
@@ -252,8 +253,14 @@ export const id = {
   "access.whatsappHelp": "Contoh: 0812 3456 7890 atau +62 812 3456 7890.",
   "access.needs": "Kebutuhan Anda",
   "access.needsHelp": "Maksimal 2.000 karakter.",
-  "access.consent":
-    "Saya setuju data di formulir ini digunakan untuk menghubungi saya terkait permintaan akses ini dan disimpan sesuai Kebijakan Privasi.",
+  "access.consent.before":
+    "Saya setuju data di formulir ini digunakan untuk menghubungi saya terkait permintaan akses ini dan disimpan sesuai ",
+  "access.consent.notice": "Kebijakan Privasi",
+  "access.consent.after": ".",
+  "access.newTab": "terbuka di tab baru",
+  "access.closed.title": "Permintaan akses belum dibuka",
+  "access.closed.lead": "Permintaan akses publik belum dibuka. Untuk berbicara dengan kami sekarang, gunakan salah satu saluran di bawah ini.",
+  "access.closed.leadNoChannels": "Permintaan akses publik belum dibuka. Silakan kembali lagi nanti.",
   "access.honeypot": "Jangan diisi",
   "access.submit": "Kirim permintaan",
   "access.busy": "Mengirim…",

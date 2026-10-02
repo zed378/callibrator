@@ -103,7 +103,7 @@ describe("webhookDeliveryScheduler middleware", () => {
   });
 
   it("is started at boot by index.js", () => {
-    const index = fs.readFileSync(path.join(__dirname, "../../../index.js"), "utf8");
+    const index = fs.readFileSync(path.join(__dirname, "../../../index.ts"), "utf8");
     expect(index).toMatch(/initWebhookDeliveryScheduler\(\);/);
   });
 });

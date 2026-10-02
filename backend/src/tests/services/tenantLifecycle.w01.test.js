@@ -306,7 +306,9 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
       const tenant = persistedTenant(T1, { status: "suspended", gracePeriodExpiresAt: expired() });
       mockRef.graceRows = [tenant];
 
+      const startedAt = Date.now();
       const result = await tenantLifecycle.processExpiredGracePeriods();
+      const finishedAt = Date.now();
 
       expect(result).toEqual([{ tenantId: T1, action: "offboarded" }]);
 
@@ -324,9 +326,19 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
       // outlives the offboarded tenant) and the tenant's, one transaction.
       const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
       expect(mockRef.ledger.auditRows().map((r) => r.tenantId)).toEqual([PLATFORM_TENANT_ID, T1]);
-      expect(mockRef.ledger.auditRows()[0]).toEqual(
-        expect.objectContaining({ ...mockRef.ledger.auditRows()[1], tenantId: PLATFORM_TENANT_ID }),
-      );
+      // The two rows are written one after the other, each stamped when it is
+      // created, so their createdAt may differ by a millisecond (a flake until
+      // 2026-10-02). Everything else must be the same row; each createdAt is
+      // checked on its own: a real Date, inside this call.
+      const [platformRow, tenantRow] = mockRef.ledger.auditRows();
+      const { createdAt: platformCreatedAt, ...platformRest } = platformRow;
+      const { createdAt: tenantCreatedAt, ...tenantRest } = tenantRow;
+      expect(platformRest).toEqual({ ...tenantRest, tenantId: PLATFORM_TENANT_ID });
+      for (const createdAt of [platformCreatedAt, tenantCreatedAt]) {
+        expect(createdAt).toBeInstanceOf(Date);
+        expect(createdAt.getTime()).toBeGreaterThanOrEqual(startedAt);
+        expect(createdAt.getTime()).toBeLessThanOrEqual(finishedAt);
+      }
       expect(mockRef.ledger.auditRows().slice(1)).toEqual([
         expect.objectContaining({
           tenantId: T1,

@@ -33,7 +33,7 @@ import type { QueryInterface } from "sequelize";
 import migration from "../../migrations/0019-add-signature-crypto-fields";
 
 const MIGRATIONS_DIR = path.join(__dirname, "../../migrations");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const ALL_COLUMNS = ["id", "signature_value", "signing_key_id", "signature_scheme", "signature_reason"];
 

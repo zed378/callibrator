@@ -98,12 +98,14 @@ module.exports = [
       },
     },
     rules: {
-      // Allow unused vars with _ prefix in production; be lenient in tests
+      // P9-02a (2026-10-02): raised to error once the count reached 0 (126 triaged, every one in a
+      // test: a deletion, or a `_` prefix where position or a rest pattern makes the name load-bearing).
       "no-unused-vars": [
-        "warn",
+        "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_", vars: "all" },
       ],
-      "no-console": "warn",
+      // P9-02a: runtime code logs through winston (A-42); the reasoned exceptions are listed below.
+      "no-console": "error",
       "no-dupe-keys": "error",
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-fallthrough": "error",
@@ -116,7 +118,7 @@ module.exports = [
       "no-unused-expressions": ["error", { allowShortCircuit: true }],
       "no-var": "error",
       "prefer-const": "error",
-      "prefer-arrow-callback": "warn",
+      "prefer-arrow-callback": "error",
       // `null: "ignore"`: `x == null` is the deliberate idiom for "null or
       // undefined" and is used that way here (kanban.service.js wipLimit and
       // sprintId). Requiring `===` there would change behaviour for undefined.
@@ -227,4 +229,14 @@ module.exports = [
   },
   // P9-10 (ADR-087 Amendment 11): the rule that barred production .ts files from importing the
   // JavaScript models barrel (Amendment 7) is retired — the barrel is TypeScript and typed.
+  {
+    // P9-02a — the reasoned no-console allow-list. Each entry writes to a terminal on purpose:
+    //  - src/scripts/: the operator CLIs (CLAUDE.md: `console.*` only in the CLIs of src/scripts/);
+    //    their stdout/stderr IS their interface, read by the operator or a pipeline.
+    //  - src/tests/e2e/setup.js: the live E2E harness reports the server's readiness to the person
+    //    running `make test-e2e`; it never runs inside the application.
+    //  - src/utils/checkMenu.util.js: a dead diagnostic whose deletion awaits the owner (A-18).
+    files: ["src/scripts/**/*.ts", "src/tests/e2e/setup.js", "src/utils/checkMenu.util.js"],
+    rules: { "no-console": "off" },
+  },
 ];

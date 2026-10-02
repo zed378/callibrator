@@ -43,7 +43,7 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0036-flag-never-signed-in-admin-passwords.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const fakeContext = ({
   missingTables = [],

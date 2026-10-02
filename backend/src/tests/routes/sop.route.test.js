@@ -3,7 +3,7 @@
  *
  * Tests the Sop route registrations and middleware chain.
  */
-const sopRoutes = require("../../routes/api/sop.route.js");
+const sopRoutes = require("../../routes/api/sop.route");
 
 describe("Sop Routes", () => {
   it("should export an Express router", () => {

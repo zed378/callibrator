@@ -2,7 +2,7 @@
 /**
  * The dashboard shell a signed-in user actually sees: the sidebar built from
  * the PERSONALISED menu (POST /api/v1/menu-groups/get-assignments, rows in
- * `data` — menuGroup.controller.js getRoleMenuAssignments), the impersonation
+ * `data` — menuGroup.controller.ts getRoleMenuAssignments), the impersonation
  * banner, and sign-out.
  *
  * RBAC: the backend returns only the groups assigned to the caller's role, so

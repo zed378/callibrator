@@ -242,47 +242,6 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     });
   });
 
-  describe("revokeTokenByHash", () => {
-    it("should update Sessions when token is revoked", async () => {
-      const result = await rl.revokeTokenByHash("hash:revoke123", "TEST_REASON");
-      expect(result).toBe(true);
-      expect(mockSessions.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          isRevoked: true,
-          revokedReason: "TEST_REASON",
-        }),
-        expect.any(Object),
-      );
-    });
-
-    it("should return false when update throws", async () => {
-      mockSessions.update.mockRejectedValueOnce(new Error("DB error"));
-      const result = await rl.revokeTokenByHash("hash:fail", "REASON");
-      expect(result).toBe(false);
-    });
-  });
-
-  describe("revokeAllUserTokens", () => {
-    it("should revoke all sessions for a user", async () => {
-      mockSessions.update.mockResolvedValueOnce([3]);
-      const count = await rl.revokeAllUserTokens("user-123", "SECURITY");
-      expect(count).toBe(3);
-      expect(mockSessions.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          isRevoked: true,
-          revokedReason: "SECURITY",
-        }),
-        expect.any(Object),
-      );
-    });
-
-    it("should return 0 when update throws", async () => {
-      mockSessions.update.mockRejectedValueOnce(new Error("DB error"));
-      const count = await rl.revokeAllUserTokens("user-456", "REASON");
-      expect(count).toBe(0);
-    });
-  });
-
   describe("isTokenBlocked", () => {
     it("should return isBlocked false when no entry exists", async () => {
       const result = await rl.isTokenBlocked("nonexistent-token", "login");
@@ -525,7 +484,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
   // IN-MEMORY STORE TTL EXPIRY
   // ==============================================================
   describe("in-memory store expiry", () => {
-    const { logger } = require("../../middlewares/activityLog.middleware");
+    require("../../middlewares/activityLog.middleware");
 
     it("should treat an entry as absent once its TTL has elapsed", async () => {
       // login window is 15 minutes
@@ -1101,13 +1060,16 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         await rl.recordAuthFailure({ userId: "first-user", endpoint: "login" });
       }
 
-      // checkAuthLockout derives lockoutUntil from firstAttempt + lockoutMs
+      // ADR-100 Amendment 5: lockoutUntil is when the lock really ends — the
+      // counter's expiry (the last failure + the window), not firstAttempt +
+      // lockoutMs, which named an instant the lock outlived. firstAttempt is
+      // still preserved on the entry.
       const lockout = await rl.checkAuthLockout({
         userId: "first-user",
         endpoint: "login",
       });
       expect(lockout.locked).toBe(true);
-      expect(lockout.lockoutUntil.getTime()).toBe(realNow + 15 * 60 * 1000);
+      expect(lockout.lockoutUntil.getTime()).toBe(realNow + 1000 + 15 * 60 * 1000);
     });
 
     it("should use the register config for the register endpoint", async () => {
@@ -1215,37 +1177,6 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         (await rl.getRateLimitStatus({ userId: "multi", endpoint: "register", type: "auth" }))
           .user,
       ).toBeNull();
-    });
-  });
-
-  describe("revokeAllUserTokens", () => {
-    it("should return 0 when no sessions matched", async () => {
-      mockSessions.update.mockResolvedValueOnce([0]);
-      await expect(rl.revokeAllUserTokens("nobody", "REASON")).resolves.toBe(0);
-    });
-
-    it("should default the reason to SECURITY_REVOCATION", async () => {
-      mockSessions.update.mockResolvedValueOnce([1]);
-      await rl.revokeAllUserTokens("user-default");
-      expect(mockSessions.update).toHaveBeenCalledWith(
-        expect.objectContaining({ revokedReason: "SECURITY_REVOCATION" }),
-        { where: { userId: "user-default", isRevoked: false } },
-      );
-    });
-  });
-
-  describe("revokeTokenByHash", () => {
-    it("should return false when no session row was affected", async () => {
-      mockSessions.update.mockResolvedValueOnce([0]);
-      await expect(rl.revokeTokenByHash("hash:none")).resolves.toBe(false);
-    });
-
-    it("should default the reason to RATE_LIMIT_EXCEEDED", async () => {
-      await rl.revokeTokenByHash("hash:default-reason");
-      expect(mockSessions.update).toHaveBeenCalledWith(
-        expect.objectContaining({ revokedReason: "RATE_LIMIT_EXCEEDED" }),
-        { where: { tokenHash: "hash:default-reason", isRevoked: false } },
-      );
     });
   });
 

@@ -42,16 +42,19 @@
     // emitting CommonJS from `import` syntax, which ADR-038 requires. Turning
     // it on does not fail here — it fails later, inside the pkg binary.
 
-    // Migration only — `false` when Phase 9 closes (P9-24). The release build
-    // sets it to false already (tsconfig.build.json), so a .ts file that
-    // imports an unconverted .js file fails the build: ADR-038 rule 1,
-    // enforced by the compiler rather than by review.
+    // For the .js TESTS only (ADR-109 §5, P9-24): `typecheck` must still read
+    // the existing .js test files that import .ts source, until P9-26 converts
+    // them; then this goes. SOURCE is held .js-free twice: the release build
+    // sets it to false (tsconfig.build.json), so a .ts file importing a .js
+    // one fails the build (ADR-038 rule 1), and the guard
+    // src/tests/guards/noSourceJs.p924.guard.test.ts fails on any non-test .js
+    // in the counted set (index, src/** outside src/tests/, scripts/**).
     "allowJs": true,
     "checkJs": false,
 
     // TypeScript 6 no longer loads every @types package by default.
     "types": ["node", "jest"]
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "__tests__/**/*.ts"],
+  "include": ["index.ts", "src/**/*.ts", "scripts/**/*.ts", "__tests__/**/*.ts"],
   "exclude": ["node_modules", "dist", "coverage"]
 }

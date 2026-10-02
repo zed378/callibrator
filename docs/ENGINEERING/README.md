@@ -2,7 +2,7 @@
 
 How code in this repository is written, laid out, named, layered, tested, logged and reviewed. The rest of `docs/` says **what** the system does; this category says **how** it is built, so that work done by different people and different agent sessions lands as one codebase.
 
-> **Target standard: TypeScript, strict (ADR-038).** The backend is still **JavaScript/CommonJS** while [`../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md) runs. Documents here state the target for new and converted code and label current behaviour **as-built**. The database is PostgreSQL only (ADR-039).
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087), compiled to CommonJS; the only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18). The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The frontend is TypeScript too. The database is PostgreSQL only (ADR-039).
 
 Start with [`00-CODING-CONTEXT.md`](./00-CODING-CONTEXT.md) — it fits in one read and points at everything else.
 

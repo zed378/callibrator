@@ -85,7 +85,7 @@ Every requirement below is **implemented**; the "Where" column names the code th
 
 | ID | Requirement | Where |
 |---|---|---|
-| R40 | Every mutation writes an audit row with action, resource, before and after changes, actor, IP and user agent | `audit_logs`, `auditLog.middleware.js` |
+| R40 | Every mutation writes an audit row with action, resource, before and after changes, actor, IP and user agent | `audit_logs`, `audit.service#logAction` in the mutation's transaction (the after-response `auditLog.middleware.js` was removed 2026-10-01, ADR-087 Am. 27) |
 | R41 | Approval workflows can gate Certificate, StockTransfer and MaintenanceWorkOrder with ordered, role-gated steps | `workflows`, `workflow_steps`, `workflow_instances` |
 | R42 | Notifications are typed, per-user, and delivered in-app in realtime plus by email | `notifications`, `notification_states`, Socket.IO |
 | R43 | Attachments are tenant-scoped, checksummed, virus-scannable, and served through signed URLs | `attachments`, `ATTACHMENT_URL_SECRET` |

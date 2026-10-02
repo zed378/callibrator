@@ -46,6 +46,10 @@ jest.mock("@/api/services/kanban.service", () => ({
 const board = (projectId: string): KanbanBoard => ({
   id: projectId,
   name: "Board",
+  code: null,
+  description: null,
+  color: null,
+  createdBy: null,
   myAccess: "viewer",
   activeSprintId: "all",
   columns: [],

@@ -30,7 +30,7 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { getApiConfig, makeKey } from "../constants/rateLimitConstants";
 import { envOr, isProduction } from "../config/env";
 import { logger } from "./activityLog.middleware";
-import rateLimiter = require("../services/rateLimiter.redis.service");
+import * as rateLimiter from "../services/rateLimiter.redis.service";
 
 /** What a budget can be told beyond its API_ENDPOINTS entry. */
 export interface RequestBudgetOptions {
@@ -84,15 +84,18 @@ export const requestBudget = (endpointKey: string, options: RequestBudgetOptions
       }
       const limit = effectiveLimit(config.maxRequests);
       for (const key of keys) {
-        const count = await rateLimiter.storeIncr(key, config.windowMs);
+        // ADR-100 Amendment 5: a FIXED window. A refused request is counted
+        // but never extends it, so the budget recovers exactly when the
+        // Retry-After below says — a retrying client or a NAT is not locked out
+        // for as long as it keeps trying.
+        const { count, expiresAt } = await rateLimiter.storeIncrFixed(key, config.windowMs);
         if (count > limit) {
-          const ttlMs = await rateLimiter.storeTtl(key, config.windowMs);
-          const retryAfter = Math.max(1, Math.ceil(ttlMs / 1000));
+          const retryAfter = Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000));
           res.setHeader("Retry-After", String(retryAfter));
           res.status(429).json({
             success: false,
             status: 429,
-            message: `Too many requests. ${config.description} is paused for this caller; try again in ${retryAfter} seconds.`,
+            message: `Too many requests. ${config.description} is paused for this caller; try again in ${String(retryAfter)} seconds.`,
             data: null,
             retryAfter,
           });

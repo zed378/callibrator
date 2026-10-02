@@ -101,8 +101,9 @@ type SignInUser = UserRow & { mfaPolicy?: MfaPolicy };
 
 /** loginUser's input: the validated fields, plus where the request came from. */
 type LoginInput = Record<string, unknown> & {
-  ip?: string | null;
-  userAgent?: string | null;
+  // P9-20: `undefined` admitted, as the request gives it (type-only).
+  ip?: string | null | undefined;
+  userAgent?: string | null | undefined;
   location?: unknown;
 };
 
@@ -372,7 +373,6 @@ const registerUser = async (
     const user = await Users.create(values as InferCreationAttributes<UserRow>, { transaction });
     await auditService.logAction(
       {
-        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as the LOGIN row: no tenant is PLATFORM
         tenantId: user.tenantId || PLATFORM_TENANT_ID,
         userId: user.id,
         action: "CREATE",
@@ -1156,7 +1156,7 @@ const getAuthUserWithTenant = async (userId: string): Promise<SignInUser | null>
 //  - every session of the operator is revoked;
 //  - it is written to the audit trail in the same transaction, actor
 //    `system:break-glass`, naming the person and the ticket;
-//  - it has no HTTP route. It runs from scripts/breakGlassMfaReset.js, which
+//  - it has no HTTP route. It runs from scripts/breakGlassMfaReset.ts, which
 //    needs the database credentials — the break-glass is holding those, and
 //    the audit row is what makes its use visible.
 // A tenant user is refused here: that is an administrator's MFA reset.
@@ -1271,7 +1271,8 @@ const providerLabel = (value: unknown): string | null => {
  *   when the password is managed here
  */
 const passwordManagedBy = async (
-  user: SignInUser | null,
+  // P9-20: what auth.controller#verify passes (req.user), typed by the two members read (type-only).
+  user: { mustChangePassword?: boolean | null; tenantId?: string | null } | null,
   signInMethod: string | null | undefined,
 ): Promise<{ protocol: string; provider: string | null } | null> => {
   if (!user || !isFederatedMethod(signInMethod) || user.mustChangePassword) {

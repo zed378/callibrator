@@ -37,7 +37,7 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0030-tenant-foreign-keys-restrict.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const WORD: Record<string, string> = { r: "RESTRICT", c: "CASCADE", n: "SET NULL", a: "NO ACTION", d: "SET DEFAULT" };
 const CODE: Record<string, string> = Object.fromEntries(Object.entries(WORD).map(([k, v]) => [v, k]));

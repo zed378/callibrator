@@ -34,6 +34,14 @@ interface WorkOrdersTableProps {
 
 const asNode = (value: unknown) => value as React.ReactNode;
 
+/** Q-55: a stored timestamp as its calendar day (YYYY-MM-DD, the form's own format). */
+const formatDay = (value: string): string => value.slice(0, 10);
+/** Q-55: whether a NUMERIC(14,2) cost is set (pg answers a decimal string). */
+const hasCost = (value?: string | number | null): value is string | number => value !== null && value !== undefined && value !== "";
+/** Q-55: a cost with two decimals and digit grouping. */
+const formatCost = (value: string | number): string =>
+  Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const getAssigneeName = (assignee?: WorkOrderAssignee | null): string => {
   if (!assignee) return "";
   const fullName = [assignee.firstName, assignee.lastName]
@@ -96,6 +104,8 @@ export const WorkOrdersTable: React.FC<WorkOrdersTableProps> = ({
     { key: "status", header: "Status", render: asNode },
     { key: "vendor", header: "Vendor", render: asNode },
     { key: "assignee", header: "Assignee", render: asNode },
+    { key: "schedule", header: "Schedule", render: asNode },
+    { key: "cost", header: "Cost", render: asNode },
     { key: "actions", header: "Actions", render: asNode, className: "w-28" },
   ];
 
@@ -143,6 +153,23 @@ export const WorkOrdersTable: React.FC<WorkOrdersTableProps> = ({
                   <span className="text-muted-foreground">-</span>
                 ),
                 assignee: getAssigneeName(order.assignee) || (
+                  <span className="text-muted-foreground">-</span>
+                ),
+                // Q-55: the schedule (and completion), and the estimate / actual cost.
+                schedule: order.scheduledDate || order.completedDate ? (
+                  <div className="text-xs">
+                    {order.scheduledDate && <div>Planned {formatDay(order.scheduledDate)}</div>}
+                    {order.completedDate && <div className="text-muted-foreground">Done {formatDay(order.completedDate)}</div>}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">-</span>
+                ),
+                cost: hasCost(order.estimatedCost) || hasCost(order.actualCost) ? (
+                  <div className="text-xs">
+                    {hasCost(order.estimatedCost) && <div>Est. {formatCost(order.estimatedCost)}</div>}
+                    {hasCost(order.actualCost) && <div className="text-muted-foreground">Actual {formatCost(order.actualCost)}</div>}
+                  </div>
+                ) : (
                   <span className="text-muted-foreground">-</span>
                 ),
                 actions: (

@@ -20,7 +20,7 @@ const fs = require("fs");
 const path = require("path");
 const migration = require("../../migrations/0043-webhook-durable-delivery");
 
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const fakeContext = ({ table = true, column = false, index = false } = {}) => {
   const calls = [];

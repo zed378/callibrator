@@ -54,7 +54,7 @@ const { collectRouteGates } = require("../../utils/authorizationWiring.util");
 const KNOWN_SUPERADMIN_ONLY = ["content"];
 
 const SEED = fs.readFileSync(
-  path.join(__dirname, "..", "..", "utils", "seedMenuGroups.util.js"),
+  path.join(__dirname, "..", "..", "utils", "seedMenuGroups.util.ts"),
   "utf8",
 );
 const START = SEED.indexOf("const menuData = [");

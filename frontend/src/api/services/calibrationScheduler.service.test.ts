@@ -34,7 +34,8 @@ describe("calibrationSchedulerService", () => {
 
       expect(mockedApi.get).toHaveBeenCalledWith(
         "/api/v1/calibration-scheduler/due",
-        { params: { leadDays: 30, allTenants: true } },
+        // The contract's query value; the same `allTenants=true` on the wire.
+        { params: { leadDays: 30, allTenants: "true" } },
       );
       expect(res).toEqual([{ id: "d1" }]);
     });

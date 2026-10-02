@@ -88,7 +88,7 @@ describe("tenant-hierarchy route guards (A-01)", () => {
 
   describe("re-parenting is a platform operation", () => {
     const mutations = [
-      ["/:parentId/children", "post"],
+      ["/:tenantId/children", "post"],
       ["/:tenantId/parent", "put"],
       ["/:tenantId/parent", "delete"],
       ["/cross-tenant-roles", "get"],

@@ -31,7 +31,7 @@ const RSA_JWK = crypto
 const EC_JWK = crypto
   .generateKeyPairSync("ec", { namedCurve: "P-256" })
   .publicKey.export({ format: "jwk" });
-const { AppError } = require("../../utils/appError.util");
+require("../../utils/appError.util");
 const axios = require("axios");
 
 // A-68: every callback verification carries the sign-in's stored nonce and PKCE

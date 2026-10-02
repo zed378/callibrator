@@ -446,7 +446,7 @@ Rules: every claim cites a code file or a `docs/` document; where research 05 su
 | `landing.work.title` | Cara kami bekerja dengan rumah sakit | How we work with hospitals | — |
 | `landing.work.steps` | Diskusi kebutuhan · Uji coba · Penerapan dan pendampingan | Discuss your needs · Pilot · Rollout and support | describes the sales process, not a product claim; no durations promised |
 | `landing.faq.*` | six Q&As, §6.7; each answer reuses a string above | — | as above |
-| `landing.footer.privacy` | Kebijakan privasi | Privacy notice | the notice page is a P10-06 go-live prerequisite (§14) |
+| `pub.footer.privacy` | Kebijakan Privasi | Privacy Notice | shown only while `PRIVACY_NOTICE_URL` is set (ADR-113); the notice itself is a go-live prerequisite (§14) |
 
 ### 11.2 Sign-in, request access, reset, verify
 
@@ -481,7 +481,8 @@ Rules: every claim cites a code file or a `docs/` document; where research 05 su
 | `auth.error.network` | Tidak dapat terhubung. Periksa koneksi Anda lalu coba lagi. | Could not connect. Check your connection and try again. |
 | `access.title` | Minta akses untuk institusi Anda | Request access for your institution |
 | `access.lead` | Ceritakan sedikit tentang fasilitas Anda. Tim kami akan menghubungi Anda untuk menjadwalkan diskusi. | Tell us a little about your facility. Our team will contact you to arrange a conversation. |
-| `access.consent` | Saya setuju data di formulir ini digunakan untuk menghubungi saya terkait permintaan akses ini dan disimpan sesuai Kebijakan Privasi. | I agree that the data in this form may be used to contact me about this access request and kept as described in the Privacy Notice. |
+| `access.consent.before` + `.notice` + `.after` | Saya setuju data di formulir ini digunakan untuk menghubungi saya terkait permintaan akses ini dan disimpan sesuai [Kebijakan Privasi]. | I agree that the data in this form may be used to contact me about this access request and kept as described in the [Privacy Notice]. |
+| `access.closed.title` / `.lead` / `.leadNoChannels` | Permintaan akses belum dibuka · Permintaan akses publik belum dibuka. Untuk berbicara dengan kami sekarang, gunakan salah satu saluran di bawah ini. · … Silakan kembali lagi nanti. | Requests are not open yet · Public access requests are not open yet. To talk to us now, use one of the channels below. · … Please check back later. |
 | `access.submit` | Kirim permintaan | Send request |
 | `access.success.title` | Terima kasih, permintaan Anda sudah kami terima. | Thank you — we have received your request. |
 | `access.success.body` | Tim kami akan menghubungi Anda. | Our team will contact you. |
@@ -555,14 +556,16 @@ Measured on a production build (`next build` + `next start`), not the dev server
 
 ## 14. Release Checklist (before the public pages go live)
 
-- [ ] **Legal (counsel) review of every string in §11**, in both languages, including the exact accreditation-standard names (ADR-098 §8.2) — claims, the compliance section, the disclaimer, the consent text and the privacy notice (UU 8/1999, UU 27/2022, Etika Pariwara Indonesia; research 04 §4.1 is not legal advice). **Q-42.**
-- [ ] A privacy notice exists (data controller named, the 12-month request retention stated) and is linked from the footer and the consent checkbox. **Q-42.**
-- [ ] `NEXT_PUBLIC_CONTACT_WHATSAPP` / `NEXT_PUBLIC_CONTACT_EMAIL` configured on the deployment, and someone answers them (research 04 Q8). An empty one is hidden, never a placeholder. **Q-41.**
-- [ ] No regulation or decree number is cited in the copy (**Q-40**), and the accreditation line is the working-decision wording (**Q-39**).
-- [ ] "Device Calibrator" (**Q-43**) applied to `<title>`, header, footer, the auth default and the blog metadata; the legal entity for the copyright line supplied by the owner (until then the line reads `© {year} Device Calibrator`).
-- [ ] The certificate-token and minimal-verdict change (**Q-47**, the security agent's work tracked as P10-14) DONE before the landing's lookup field ships.
-- [ ] Screenshots re-captured from the demo tenant on the release build.
-- [ ] P10-13 acceptance run recorded with named tests.
+*Walked 2026-10-01 for P10-13 (record `MEMORY/records/2026-10-01-p10-13-sso-a11y-ci.md`): an item is ticked only with evidence cited beside it; human-only, owner-only and release-time items stay open.*
+
+- [ ] **Legal (counsel) review of every string in §11**, in both languages, including the exact accreditation-standard names (ADR-098 §8.2) — claims, the compliance section, the disclaimer, the consent text and the privacy notice (UU 8/1999, UU 27/2022, Etika Pariwara Indonesia; research 04 §4.1 is not legal advice). **Q-42.** *OPEN — human-only (counsel).*
+- [ ] A privacy notice exists (data controller named, the 12-month request retention stated) and is linked from the footer and the consent checkbox. **Q-42.** *Reviewed 2026-10-01: OPEN — no privacy page exists in `frontend/src/app`; the notice text needs the owner's data controller and counsel. **Made safe 2026-10-01 (ADR-113):** the form does not open until `PRIVACY_NOTICE_URL` names the published notice — unset, `/request-access` shows "not open yet" plus the contact channels, `POST /access-requests` is the absent-route 404, and the footer has no privacy link; set, the consent links to it and the footer shows Kebijakan Privasi / Privacy Notice. Go-live step: publish the notice, then set the variable (deploy/README.md).*
+- [ ] `NEXT_PUBLIC_CONTACT_WHATSAPP` / `NEXT_PUBLIC_CONTACT_EMAIL` configured on the deployment, and someone answers them (research 04 Q8). An empty one is hidden, never a placeholder. **Q-41.** *Reviewed 2026-10-01: the code half holds (`components/public/contact.ts`: an empty or blank value is hidden); the values and someone to answer them are the owner's — OPEN (owner, at deploy).*
+- [x] No regulation or decree number is cited in the copy (**Q-40**), and the accreditation line is the working-decision wording (**Q-39**). *Evidence 2026-10-01: `landing.compliance.accreditation` is the ADR-098 §8.2 wording in both dictionaries; the copy-truthfulness guard (`frontend/src/tests/public/copyTruthfulness.p1011.test.ts`, 60/60) now bans Permenkes/Kepmenkes/UU/PP/"Nomor … Tahun …" citations (`copyRules.ts`) besides SNARS/KARS. Q-39/Q-40 still await the owner's confirmation and the legal review (MEMORY/records/2026-10-01-p10-13-sso-a11y-ci.md).*
+- [ ] "Device Calibrator" (**Q-43**) applied to `<title>`, header, footer, the auth default and the blog metadata; the legal entity for the copyright line supplied by the owner (until then the line reads `© {year} Device Calibrator`). *Reviewed 2026-10-01: the name half holds (`app/layout.tsx` title, `BrandLockup`, `pub.footer.copyright`, `useAuthBrand` default, `content.blog/news.meta.title`); the legal entity is the owner's — OPEN. Outside this item's public scope, "HDC" / "Hospital Device Callibrator" remain in the dashboard sidebar, `constants/index.ts` APP_NAME (unused) and an unreachable branding fallback (MEMORY/records/2026-10-01-p10-13-sso-a11y-ci.md).*
+- [x] The certificate-token and minimal-verdict change (**Q-47**, the security agent's work tracked as P10-14) DONE before the landing's lookup field ships. *Evidence: A-293 (ADR-100 §1); live in P10-13 runs G and H — `p10-verify-passkey.e2e.test.ts` (token → full verdict, number → minimal, budget 60/61st 429) and the browser check *verify* (`MEMORY/records/2026-09-30-p10-13-e2e.md`). P10-14 stays IN REVIEW for the commit and the owner's confirmation of Q-47.*
+- [ ] Screenshots re-captured from the demo tenant on the release build. *OPEN — release-time (needs the release build).*
+- [ ] P10-13 acceptance run recorded with named tests. *Partly: AC-1/2/8/9/10/11/12 have named runs (`2026-09-30-p10-13-e2e.md`, MEMORY/records/2026-10-01-p10-13-sso-a11y-ci.md); AC-3 (keyboard) and the NVDA walk are human-only; AC-5/AC-6 (Lighthouse/LCP) are VM-only (a quiet host or the VM); AC-4 **met 2026-10-01**: all ten public page states at 320/375/768/1024/1280/1440/1920, 200 % zoom and 200 % text-only zoom — 90 captures in `research/screens/ac4-*`; 0 sideways scroll, 0 clipped and 0 overlapping text, one `<main>`/`<h1>` and `lang` on every one, checked by `automate/responsive.browser.js` (in `make test-browser`; `RESPONSIVE_SELFTEST=1` shows it fails on a planted defect); MEMORY/records/2026-10-01-p10-a341-q43-privacy-ac4.md §5; the valid (SAH) and expired verification pages added 2026-10-02 at every width, `ac4-verify-valid-*` / `ac4-verify-expired-*`, MEMORY/records/2026-10-02-p10-live-pair-ij.md.*
 
 ## 15. Owner Questions — working decisions awaiting confirmation
 

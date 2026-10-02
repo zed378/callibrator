@@ -12,7 +12,7 @@ Cross-cutting platform services: audit, search, reports, dashboard, notification
 
 `audit_logs`: `tenantId`, `userId`, `action` (`CREATE`, `UPDATE`, `DELETE`, `LOGIN`, `APPROVE`, `EXPORT`), `resourceType`, `resourceId`, `changes` (JSONB with before and after), `ipAddress`, `userAgent`.
 
-**One endpoint, read-only, and that is the design.** There is no create, no update, no delete. Rows are written by `auditLog.middleware.js` inside the transaction of the action they describe — an audit row that survives a rolled-back action records something that did not happen.
+**One endpoint, read-only, and that is the design.** There is no create, no update, no delete. Rows are written by `services/audit.service.ts#logAction`, called with the mutation's transaction, inside the transaction of the action they describe (ADR-087 Am. 27, round 3: the after-response `auditLog.middleware` was removed on 2026-10-01; no route had mounted it) — an audit row that survives a rolled-back action records something that did not happen.
 
 `audit_logs` is the one significant table with **no** `paranoid` flag and no delete path. The absence is the control (BR-6).
 

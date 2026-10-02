@@ -39,6 +39,30 @@ export const selfRegistrationEnabled = (): boolean => {
  */
 export const accessRequestNotifyEmail = (): string | null => trimmed("ACCESS_REQUEST_NOTIFY_EMAIL");
 
+/**
+ * Q-42 (decision 2026-10-01, ADR-113) — the published privacy notice the
+ * access-request form's consent refers to, or null.
+ *
+ * A form collecting personal data does not open before its notice exists:
+ * while this is null the public intake behaves as ABSENT
+ * (`accessRequestIntakeGate`: 404, the standard not-found envelope), in every
+ * environment. Only an absolute http(s) URL counts; anything else reads as
+ * unset, so a typo closes the intake rather than linking to nothing. The
+ * frontend reads the same variable (`components/public/privacyNotice.ts`).
+ */
+export const privacyNoticeUrl = (): string | null => {
+  const value = trimmed("PRIVACY_NOTICE_URL");
+  if (value === null) {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
 /** The pepper used outside production when none is set. Never a secret. */
 export const DEVELOPMENT_IP_PEPPER = "development-only-access-request-pepper";
 

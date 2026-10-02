@@ -1,6 +1,6 @@
 # 02 — Service Layer
 
-> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; the toolchain is ADR-087), compiled to CommonJS and run from one `dist/` tree. The only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18); `noSourceJs.p924.guard` fails on any other. The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The rules are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Behaviour described here is **as-built** unless marked *target*.
 
 76 services in `backend/src/services/`. Business logic and transactions live here and nowhere else.
 
@@ -34,7 +34,7 @@ await sequelize.transaction(async (t) => {
 
 ### `sequelize`, not `db`
 
-`models/index.js` exports **`sequelize`**. Destructuring `db` yields `undefined`, and `db.sequelize.transaction()` throws — which broke every workflow create, update and submit-action across three functions.
+`models/index.ts` exports **`sequelize`**. Destructuring `db` yields `undefined`, and `db.sequelize.transaction()` throws — which broke every workflow create, update and submit-action across three functions.
 
 ### What must be atomic
 
@@ -51,7 +51,7 @@ await sequelize.transaction(async (t) => {
 
 An audit row that survives a rolled-back action records something that did not happen. An action that commits without its audit row is unattributable.
 
-The transaction is what makes both impossible — which means `auditLog.middleware.js` and the service transaction have to cooperate, not run independently.
+The transaction is what makes both impossible — which means the audit write is part of the service's transaction: `services/audit.service.ts#logAction`, called with the mutation's transaction, never a separate write (ADR-087 Am. 27, round 3: the after-response `auditLog.middleware` was removed on 2026-10-01; no route had mounted it).
 
 ## Tenant Scoping Is Not Your Job
 

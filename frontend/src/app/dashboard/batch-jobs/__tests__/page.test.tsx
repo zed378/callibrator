@@ -1,11 +1,11 @@
 /** @jest-environment jsdom */
 /**
  * Background jobs page against the backend contract
- * (backend/src/routes/api/batchJobs.route.js, mounted /api/v1/jobs;
- * controllers/batchJob.controller.js; services/batchJob.service.js;
+ * (backend/src/routes/api/batchJobs.route.ts, mounted /api/v1/jobs;
+ * controllers/batchJob.controller.ts; services/batchJob.service.js;
  * models/batchJob.model.ts):
- *  - GET  /?page&limit → data { total, page, limit, totalPages, jobs } — the
- *    documented `data.jobs` exception;
+ *  - GET  /?page&limit → the house envelope: rows in `data`, pagination in a
+ *    top-level `meta` (A-342; it was `data.jobs`);
  *  - a BatchJob row: { type, status: PENDING|PROCESSING|COMPLETED|FAILED,
  *    progress, totalItems, processedItems, resultUrl, errorDetails, … };
  *  - POST /test { type, totalItems } → 201.
@@ -61,7 +61,8 @@ const listAnswer = (page: number) => ({
   success: true,
   status: 200,
   message: "Jobs retrieved successfully",
-  data: { total, page, limit: 10, totalPages: Math.ceil(total / 10), jobs },
+  data: jobs,
+  meta: { total, page, limit: 10, totalPages: Math.ceil(total / 10) },
 });
 
 const toasts = () => useToastStore.getState().toasts.map((t) => ({ type: t.type, title: t.title, description: t.description }));
@@ -102,7 +103,7 @@ const renderLoaded = async () => {
 const rowOf = (type: string) => screen.getByText(type).closest("tr") as HTMLElement;
 
 describe("background jobs — reading", () => {
-  it("lists jobs from data.jobs with progress, a result link and a failure's reason", async () => {
+  it("lists jobs from data with progress, a result link and a failure's reason", async () => {
     const open = jest.spyOn(window, "open").mockImplementation(() => null);
     const { container } = await renderLoaded();
 
@@ -124,6 +125,21 @@ describe("background jobs — reading", () => {
     expect(screen.queryByText(/Auto-refreshing/)).not.toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);
     open.mockRestore();
+  });
+
+  it("A-354: reads only errorDetails — no failed-item count or errorMessage a row never carries", async () => {
+    // Stray fields riding on a row must not be shown: the BatchJob model has
+    // neither `failedItems` nor `errorMessage`.
+    jobs = [
+      job("aaaaaaaa-1111", "EXPORT_CSV", "FAILED", { failedItems: 3, errorMessage: "phantom message" }),
+    ];
+    total = 1;
+    await renderLoaded();
+
+    const row = rowOf("EXPORT_CSV");
+    expect(within(row).queryByText("3 failed")).not.toBeInTheDocument();
+    expect(within(row).queryByText("phantom message")).not.toBeInTheDocument();
+    expect(within(row).getByText("—")).toBeInTheDocument();
   });
 
   it("no jobs is the empty state", async () => {

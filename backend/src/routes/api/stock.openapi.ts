@@ -32,6 +32,7 @@ import {
   stockTransferResponse,
 } from "@callibrator/contracts/stock";
 import { defineRouteDocs } from "../../docs/openapi/operation";
+import { STOCK_OPNAME_STATUSES, STOCK_TRANSFER_STATUSES } from "@callibrator/contracts/states";
 
 const idOf = (what: string, example: string): z.ZodGUID => z.guid().meta({ description: `The ${what}'s id`, example });
 
@@ -53,12 +54,12 @@ const adjustmentHistoryQuery = z.object({
 const transferHistoryQuery = z.object({
   fromWarehouseId: z.guid().optional(),
   toWarehouseId: z.guid().optional(),
-  status: z.enum(["pending", "in_transit", "completed", "cancelled"]).optional(),
+  status: z.enum(STOCK_TRANSFER_STATUSES).optional(),
   ...paging,
 });
 const opnameHistoryQuery = z.object({
   warehouseId: z.guid().optional(),
-  status: z.enum(["draft", "in_progress", "completed"]).optional(),
+  status: z.enum(STOCK_OPNAME_STATUSES).optional(),
   ...paging,
 });
 

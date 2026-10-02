@@ -79,7 +79,11 @@ const backend = () => {
       );
     }
     if (url === "/api/v1/feature-flags/definitions") return ok(DEFAULT_FLAGS, "Fetch flag definitions successful");
-    if (url === "/api/v1/feature-flags") return ok(tenantState(config?.params?.tenantId ?? ""), "Fetch feature flags successful");
+    if (url === "/api/v1/feature-flags") {
+      // tenantFlagQuerySchema requires tenantId: without it the backend answers 400 (A-353).
+      if (!config?.params?.tenantId) throw httpError(400, "tenantId is required");
+      return ok(tenantState(config.params.tenantId), "Fetch feature flags successful");
+    }
     throw httpError(404, "Not found");
   });
 };
@@ -137,12 +141,17 @@ describe("feature flags — reading", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("with no tenant in the session it asks for one", async () => {
+  it("with no tenant in the session it asks for one and shows the defaults, never asking without a tenant (A-353)", async () => {
     mockAuthState.user = null;
     render(<FeatureFlagsPage />);
 
     expect(await screen.findByText(/Select a tenant to view and override/)).toBeInTheDocument();
-    await waitFor(() => expect(mockedGet).toHaveBeenCalledWith("/api/v1/feature-flags", { params: { tenantId: undefined } }));
+    // The definitions still list, each at its default — no 400 from a tenant-less read.
+    expect(await screen.findByText("enable_mfa")).toBeInTheDocument();
+    expect(within(rowOf("enable_iot")).getByText("Enabled")).toBeInTheDocument();
+    expect(within(rowOf("enable_mfa")).getByText("Disabled")).toBeInTheDocument();
+    expect(screen.queryByText("tenantId is required")).not.toBeInTheDocument();
+    expect(mockedGet).not.toHaveBeenCalledWith("/api/v1/feature-flags", expect.anything());
   });
 
   it("choosing another tenant reads that tenant's flags", async () => {

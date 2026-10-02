@@ -62,9 +62,10 @@ const deliveryRow = (fields = {}) => {
 
 const hookRow = (fields = {}) => ({ id: "w1", tenantId: "t1", url: "https://x.com", secret: "s", isActive: true, ...fields });
 
-// The next claim returns `rows`.
+// The next claim returns `rows`. P9-18: the claim is sent through sql(),
+// which answers the RETURNING rows directly (no `[rows, metadata]`).
 const claims = (...batches) => {
-  batches.forEach((rows) => db.query.mockResolvedValueOnce([rows]));
+  batches.forEach((rows) => db.query.mockResolvedValueOnce(rows));
 };
 
 describe("webhook.service", () => {
@@ -73,7 +74,7 @@ describe("webhook.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     db.query.mockReset();
-    db.query.mockResolvedValue([[]]);
+    db.query.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -385,20 +386,22 @@ describe("webhook.service", () => {
       claims([{ id: "d1", tenantId: "t1" }]);
       const rows = await webhookService._claim();
       expect(rows).toEqual([{ id: "d1", tenantId: "t1" }]);
-      const [sql, { replacements }] = db.query.mock.calls[0];
+      const [sql, { bind }] = db.query.mock.calls[0];
       expect(sql).toMatch(/FOR UPDATE SKIP LOCKED/);
       expect(sql).toMatch(/status IN \('pending', 'failed'\)/);
       expect(sql).toMatch(/next_attempt_at <= now\(\)/);
-      expect(sql).toMatch(/SET next_attempt_at = now\(\) \+ make_interval\(secs => :leaseSeconds\)/);
-      expect(sql).not.toMatch(/tenant_id = :tenantId/);
-      expect(replacements).toMatchObject({ leaseSeconds: 300, limit: 50 });
+      expect(sql).toMatch(/SET next_attempt_at = now\(\) \+ make_interval\(secs => \$1\)/);
+      expect(sql).not.toMatch(/tenant_id = /);
+      // P9-18: $1 lease seconds, $2 limit.
+      expect(bind).toEqual([300, 50]);
     });
 
     it("a claim by id is bound to the tenant and takes one row", async () => {
       await webhookService._claim({ id: "d1", tenantId: "t1", limit: 99 });
-      const [sql, { replacements }] = db.query.mock.calls[0];
-      expect(sql).toMatch(/AND id = :id AND tenant_id = :tenantId/);
-      expect(replacements).toMatchObject({ id: "d1", tenantId: "t1", limit: 1 });
+      const [sql, { bind }] = db.query.mock.calls[0];
+      expect(sql).toMatch(/AND id = \$3 AND tenant_id = \$4/);
+      // P9-18: $1 lease seconds, $2 limit (one row), $3 id, $4 tenant.
+      expect(bind).toEqual([300, 1, "d1", "t1"]);
     });
   });
 
@@ -633,14 +636,14 @@ describe("webhook.service", () => {
 
       const summary = await webhookService.dispatchDue({ limit: 10 });
       expect(summary).toEqual({ claimed: 2, errors: 1 });
-      expect(db.query.mock.calls[0][1].replacements.limit).toBe(10);
+      expect(db.query.mock.calls[0][1].bind[1]).toBe(10);
       expect(ok.update).toHaveBeenCalledWith(expect.objectContaining({ status: "success" }));
       expect(logger.error).toHaveBeenCalledWith("Webhook dispatch error: row read failed");
     });
 
     it("claims the default batch when called with no options", async () => {
       expect(await webhookService.dispatchDue()).toEqual({ claimed: 0, errors: 0 });
-      expect(db.query.mock.calls[0][1].replacements.limit).toBe(50);
+      expect(db.query.mock.calls[0][1].bind[1]).toBe(50);
     });
   });
 

@@ -166,6 +166,42 @@ const animationsDone = (page, ms) =>
     )
     .catch(() => {});
 
+/**
+ * Wait (bounded) until NO finite animation or transition has run for `quietMs`.
+ *
+ * `animationsDone` alone waits only for what is running at the moment it is
+ * called. The dashboard's stat cards, quick actions and health tiles start
+ * their 700 ms entrance transition from a `setTimeout` of up to 1,000 ms after
+ * they mount (`delay` props), so a check made before that timer fires found
+ * nothing to wait for, and axe measured a card mid-fade (dark `/dashboard`,
+ * `#677488` on `#1e293b`, run B of P10-13). The quiet window is longer than
+ * the longest of those delays. The contrast rule itself is unchanged.
+ */
+const animationsQuiet = (page, { quietMs = 1200, limitMs = 10000 } = {}) =>
+  page
+    .evaluate(
+      ({ quiet, limit }) =>
+        new Promise((resolve) => {
+          const started = performance.now();
+          let quietSince = performance.now();
+          const tick = () => {
+            const now = performance.now();
+            const running = document
+              .getAnimations()
+              .some((a) => a.playState === "running" && a.effect && a.effect.getComputedTiming().endTime !== Infinity);
+            if (running) quietSince = now;
+            if (now - quietSince >= quiet || now - started >= limit) {
+              resolve(now - started >= limit ? "limit" : "quiet");
+              return;
+            }
+            setTimeout(tick, 50);
+          };
+          tick();
+        }),
+      { quiet: quietMs, limit: limitMs },
+    )
+    .catch(() => "error");
+
 /** Let the page finish loading and its entrance animations end. */
 async function settle(page) {
   // The dashboard keeps a socket open, so "idle" may never come: bounded.
@@ -194,6 +230,8 @@ async function settle(page) {
     )
     .catch(() => {});
   await animationsDone(page, 5000);
+  // Then until nothing has animated for longer than any delayed entrance (see animationsQuiet).
+  await animationsQuiet(page);
   await new Promise((r) => setTimeout(r, 200));
 }
 
@@ -622,11 +660,26 @@ async function main() {
   let admin = api.authHeader(adminToken);
   // The access token may live only a minute (a JWT_ACCESS_EXPIRED=60s stack);
   // anything after the browser checks signs in again.
+  // A failed re-sign-in is reported as itself: before 2026-10-02 it kept the
+  // expired token silently, and the next call failed as "401: Invalid token"
+  // (run I: the sign-in had timed out while the backend stalled).
   const freshAdmin = async () => {
-    const again = await api.httpPost("/auth/login", { user: OPERATOR, password: OPERATOR_PASSWORD });
-    const token = api.extractToken(again.body);
-    if (again.status === 200 && token) admin = api.authHeader(token);
-    return admin;
+    let last = "";
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const again = await api.httpPost("/auth/login", { user: OPERATOR, password: OPERATOR_PASSWORD });
+        const token = api.extractToken(again.body);
+        if (again.status === 200 && token) {
+          admin = api.authHeader(token);
+          return admin;
+        }
+        last = `status ${again.status}`;
+      } catch (err) {
+        last = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      }
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 5000));
+    }
+    throw new Error(`signing in again as ${OPERATOR} failed 3 times (last: ${last})`);
   };
   const tenantId = signIn.body.data.tenantId;
   const roles = await api.httpGet("/roles?limit=50", admin);

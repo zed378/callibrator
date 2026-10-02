@@ -20,6 +20,7 @@ import type { SqlRunner } from "../utils/sql.util";
 import { logger as loadedLogger } from "../middlewares/activityLog.middleware";
 import { AppError as LoadedAppError } from "../utils/appError.util";
 import type { TenantId } from "../types/ids";
+import type { SeededMenuSlug } from "../constants/seededMenuSlugs";
 
 const db = loadedDb;
 // The Sequelize instance is the runner sql() sends through (as meteredBilling and qms do).
@@ -30,7 +31,7 @@ const AppError = LoadedAppError;
 
 /** One searchable type. */
 interface SearchTypeConfig {
-  menu: string;
+  menu: SeededMenuSlug;
   table: string;
   cols: string[];
   select: string;
@@ -148,7 +149,7 @@ const searchType = async (type: string, tenantId: TenantId, q: string, limit: nu
 
 const search = async (
   tenantId: TenantId,
-  { q, types, limit = 10 }: { q?: string | null; types?: unknown; limit?: unknown } = {},
+  { q, types, limit = 10 }: { q?: string | null | undefined; types?: unknown; limit?: unknown } = {},
 ): Promise<SearchResponse> => {
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: `(q || "")`
   const term = (q || "").trim();

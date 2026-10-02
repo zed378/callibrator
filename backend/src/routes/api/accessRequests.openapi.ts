@@ -24,7 +24,9 @@ export default defineRouteDocs({
         "duplicate, an address over its daily cap (3 per 24 h) and a filled honeypot (`website`) alike, so the " +
         "endpoint says nothing about who has asked before. Only a malformed field answers 400, about its shape. " +
         "`tenantId`, `status`, `decidedBy` and `provisionedTenantId` in the body are ignored (stripped). No email is " +
-        "sent to the requester. Budget: 5 requests an hour per client address (ADR-100 `accessRequest`).",
+        "sent to the requester. Budget: 5 requests an hour per client address (ADR-100 `accessRequest`). " +
+        "Absent until the deployment publishes its privacy notice (`PRIVACY_NOTICE_URL`, Q-42, ADR-113): until " +
+        "then every request answers the standard not-found 404, whatever its body.",
       permission: null,
       audited: true,
       body: submitAccessRequestSchema,

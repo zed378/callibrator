@@ -5,7 +5,7 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/roles.validator.ts,
  * which re-exports these same objects; the frontend derives its request
- * types from them. The contract for C:/Program Files/Git/api/v1/roles and menus (role, menu, assignment and permission bodies).
+ * types from them. The contract for /api/v1/roles and menus (role, menu, assignment and permission bodies).
  */
 import { z } from "zod";
 import { PaginationMeta } from "./envelope";

@@ -12,17 +12,21 @@ import {
 import type { TenantId, UserId } from "../types/ids";
 import type { ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
+import { WORK_ORDER_STATUSES } from "@callibrator/contracts/states";
+
+/**
+ * D-21: a NUMERIC read back from pg (a string) as a number; null AND undefined
+ * are returned as they are. Typed `unknown` in and out: the value getDataValue
+ * holds is the driver's string, whatever the attribute's declared type.
+ */
+const toNumber = (value: unknown): unknown =>
+  value === null || value === undefined ? value : Number(value);
 
 /** The `type` ENUM's values, in the column's order (D-26 holds them against pg_enum). */
 const WORK_ORDER_TYPES = ["Preventative", "Breakdown", "Repair"] as const;
 
 /** The `status` ENUM's values, in the column's order (D-26 holds them against pg_enum). */
-const WORK_ORDER_STATUSES = [
-  "Open",
-  "InProgress",
-  "Completed",
-  "Cancelled",
-] as const;
+// P9-05: WORK_ORDER_STATUSES is the one list in @callibrator/contracts/states.
 
 /** The `priority` ENUM's values, in the column's order (D-26 holds them against pg_enum). */
 const WORK_ORDER_PRIORITIES = ["Low", "Medium", "High", "Critical"] as const;
@@ -43,6 +47,15 @@ interface MaintenanceWorkOrder extends Model<
   vendorId: string | null;
   assignedTo: UserId | null;
   autoScheduled: CreationOptional<boolean>;
+  /** Q-55 (migration 0107): when the work is planned, and when it was done. */
+  scheduledDate: Date | null;
+  completedDate: Date | null;
+  /** Q-55: DECIMAL(14,2) ≥ 0, read as a number by its getter (D-21). `raw: true` / SUM() still return a string. */
+  estimatedCost: number | null;
+  /** Q-55: DECIMAL(14,2) ≥ 0, read as a number by its getter (D-21). */
+  actualCost: number | null;
+  /** Q-55: how the device was returned to service, ≤ 5000 characters (a CHECK, and the contract's bound). */
+  resolutionNotes: string | null;
   createdAt: CreationOptional<Date>;
   updatedAt: CreationOptional<Date>;
   deletedAt: CreationOptional<Date | null>;
@@ -167,6 +180,39 @@ const defineModel: DefineMaintenanceWorkOrder = (sequelize) => {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: false,
+      },
+      // Q-55 (migration 0107, ADR-097 Am. 4): accepted by the API since P9-11 and
+      // dropped until these attributes existed. The bounds are CHECKs in the
+      // migration (sync never creates a CHECK) and the contract's 400s; no index.
+      scheduledDate: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      completedDate: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      estimatedCost: {
+        type: DataTypes.DECIMAL(14, 2),
+        allowNull: true,
+        // D-21: node-postgres returns NUMERIC as a string ("1250.00"); read as a
+        // number, NULL stays NULL. `raw: true` queries and SUM() bypass this.
+        get(this: MaintenanceWorkOrder): unknown {
+          return toNumber(this.getDataValue("estimatedCost"));
+        },
+      },
+      actualCost: {
+        type: DataTypes.DECIMAL(14, 2),
+        allowNull: true,
+        // D-21: node-postgres returns NUMERIC as a string ("1250.00"); read as a
+        // number, NULL stays NULL. `raw: true` queries and SUM() bypass this.
+        get(this: MaintenanceWorkOrder): unknown {
+          return toNumber(this.getDataValue("actualCost"));
+        },
+      },
+      resolutionNotes: {
+        type: DataTypes.TEXT,
+        allowNull: true,
       },
     },
     {

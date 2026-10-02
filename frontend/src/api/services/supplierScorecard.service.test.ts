@@ -33,10 +33,11 @@ describe("supplierScorecardService", () => {
       expect(res).toEqual([{ id: "sc1" }]);
     });
 
-    it("passes undefined params through when none given", async () => {
+    it("sends no query when none given", async () => {
       mockedApi.get.mockResolvedValueOnce(envelope([]));
       const res = await supplierScorecardService.list();
-      expect(mockedApi.get).toHaveBeenCalledWith(BASE, { params: undefined });
+      // The typed client sends a query-less GET with the path alone (the same request).
+      expect(mockedApi.get).toHaveBeenCalledWith(BASE);
       expect(res).toEqual([]);
     });
   });

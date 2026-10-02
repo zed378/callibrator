@@ -126,6 +126,17 @@ describe("tenant lifecycle — reading", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it("A-356: shows no suspension reason or date — the status read never answers them", async () => {
+    current = lifecycle("suspended");
+    render(<TenantLifecyclePage />);
+    await pickTenant();
+
+    expect(await screen.findByText("SUSPENDED")).toBeInTheDocument();
+    expect(screen.getByText("Grace period expires")).toBeInTheDocument();
+    expect(screen.queryByText("Suspension reason")).not.toBeInTheDocument();
+    expect(screen.queryByText("Suspended at")).not.toBeInTheDocument();
+  });
+
   it("shows the loading state while the status is read", async () => {
     render(<TenantLifecyclePage />);
     mockedGet.mockImplementation((url: string) =>
@@ -378,7 +389,7 @@ describe("ADR-102 — lifecycle actions are the super admin's", () => {
     grantPermissions({ "tenant-lifecycle": "read" });
     render(<TenantLifecyclePage />);
     await pickTenant();
-    expect(await screen.findByText("Suspension reason")).toBeInTheDocument();
+    expect(await screen.findByText("Grace period expires")).toBeInTheDocument();
     for (const name of actions) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
@@ -388,7 +399,7 @@ describe("ADR-102 — lifecycle actions are the super admin's", () => {
     clearPermissions();
     render(<TenantLifecyclePage />);
     await pickTenant();
-    expect(await screen.findByText("Suspension reason")).toBeInTheDocument();
+    expect(await screen.findByText("Grace period expires")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Suspend$/ })).not.toBeInTheDocument();
   });
 });

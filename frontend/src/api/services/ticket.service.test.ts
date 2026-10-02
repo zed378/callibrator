@@ -54,7 +54,7 @@ describe("ticketService", () => {
           priority: "high",
           category: "bug",
           assignedTo: "u1",
-          mine: true,
+          mine: "true", // the contract's query value; the same `mine=true` on the wire
           q: "printer",
           page: 3,
           limit: 10,

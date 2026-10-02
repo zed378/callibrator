@@ -46,7 +46,7 @@ export function useTenantBranding() {
           logo: tenant.logoBaseUrl || undefined,
           logoBaseUrl: tenant.logoBaseUrl,
           favicon: tenant.logoBaseUrl || "/favicon.ico",
-          appName: tenant.name || "Hospital Device Callibrator",
+          appName: tenant.name || "Device Calibrator",
           primaryColor: tenant.primaryColor,
         };
 

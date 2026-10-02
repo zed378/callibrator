@@ -25,7 +25,7 @@ interface QueryOptions {
   replacements?: unknown;
 }
 
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0087-tenant-backup-path-and-expiry.ts"), "utf8");
 
 const TenantBackup = defineTenantBackup(

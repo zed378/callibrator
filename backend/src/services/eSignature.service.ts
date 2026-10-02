@@ -1,0 +1,2226 @@
+/**
+ * E-Signature Service (21 CFR Part 11 / eIDAS Compliant)
+ *
+ * Provides digital signature workflow with audit trail, signer routing,
+ * biometric/polygon capture, and cryptographic binding.
+ *
+ * Usage:
+ *   const { createSignatureWorkflow } = require('./services/eSignature.service');
+ *   await createSignatureWorkflow(tenantId, { documentId, signers: [...] });
+ *
+ * P9-20 (ADR-087, Stage C): converted from eSignature.service.js with no
+ * behaviour change. `export =` keeps the exact object `require()` returned (the
+ * same keys, in the same order). No exported method calls a sibling through
+ * `exports`. `crypto`, `promisify`, `logger`, `AppError`, `Transaction`, `db`,
+ * `auditService` and `USER_STATUS` are captured once at load, in the `.js`'s
+ * require order; the environment is read once at load through `config/env`
+ * (ESIGN_ENABLED, SIGNATURE_KEY_SIZE, and the V-17 SIGNATURE_ALGORITHM check),
+ * and `signingKeyWrap.service` is still required AFTER that check, as the `.js`
+ * did. The `.js` also read SIGNATURE_TTL_MS into a constant nothing used: that
+ * read had no effect and is not carried over. The models barrel,
+ * `dynamicAccess.middleware`, `constants`, `emailQueue.service`,
+ * `certificate.service` and `sequelize` (for `Op`) are still required inside the
+ * functions, at call time; FRONTEND_URL / HOST_URL are read at call time.
+ */
+import loadedCrypto from "crypto";
+import { promisify as loadedPromisify } from "util";
+import { logger as loadedLogger } from "../middlewares/activityLog.middleware";
+import { AppError as LoadedAppError } from "../utils/appError.util";
+import { Transaction as LoadedTransaction, type CreationAttributes, type WhereOptions } from "sequelize";
+import { db as loadedDb } from "../config";
+import loadedAuditService from "./audit.service";
+import { USER_STATUS as LOADED_USER_STATUS } from "../constants/appConstants";
+import { env } from "../config/env";
+import type SigningKeyWrap from "./signingKeyWrap.service";
+import type Models from "../models";
+import type DynamicAccessMiddleware from "../middlewares/dynamicAccess.middleware";
+import type * as Constants from "../constants";
+import type EmailQueueService from "./emailQueue.service";
+import type CertificateService from "./certificate.service";
+import type * as SequelizeModule from "sequelize";
+import type { AuditAction } from "../constants/auditActions";
+import type { TenantId, UserId } from "../types/ids";
+import type { ModelInstance } from "../types/models";
+
+const crypto = loadedCrypto;
+const promisify = loadedPromisify;
+const generateKeyPairAsync = promisify(crypto.generateKeyPair);
+const logger = loadedLogger;
+const AppError = LoadedAppError;
+const Transaction = LoadedTransaction;
+const db = loadedDb;
+const auditService = loadedAuditService;
+const USER_STATUS = LOADED_USER_STATUS;
+
+type SqlTransaction = InstanceType<typeof LoadedTransaction>;
+type WorkflowRow = ModelInstance<"SignatureWorkflow">;
+type StepRow = ModelInstance<"SignatureWorkflowStep">;
+type SignatureRow = ModelInstance<"SignatureRecord">;
+type TenantKeyRow = ModelInstance<"TenantKey">;
+type UserRow = ModelInstance<"User">;
+
+/** The models barrel, required at call time as the `.js` did in every function. */
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: required inside each function (see the file header)
+const modelsNow = (): typeof Models => require("../models") as typeof Models;
+/** The constants barrel, required at call time. */
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: required inside the functions that read it
+const constantsNow = (): typeof Constants => require("../constants") as typeof Constants;
+/** The permission gate's module, required at call time (it loads the role services). */
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: required inside the functions that call it
+const dynamicAccessNow = (): typeof DynamicAccessMiddleware => require("../middlewares/dynamicAccess.middleware") as typeof DynamicAccessMiddleware;
+
+/** A caught value's `message`, read exactly as the `.js` read it (a thrown `null` still throws here). */
+const messageOf = (error: unknown): unknown => (error as { message?: unknown }).message;
+/** A caught value's `status` (an AppError's), read exactly as the `.js` read it. */
+const statusOf = (error: unknown): unknown => (error as { status?: unknown }).status;
+
+/**
+ * V-17 — refuse a SIGNATURE_ALGORITHM setting the service does not honour.
+ * Unset, or "RS256" (the only algorithm used), is accepted.
+ *
+ * @param value - process.env.SIGNATURE_ALGORITHM
+ * @throws {Error} for any other value
+ */
+function assertSignatureAlgorithmSetting(value: string | undefined): void {
+  if (value === undefined || value === "" || value === "RS256") {
+    return;
+  }
+  throw new Error(
+    `SIGNATURE_ALGORITHM=${value} is not supported: e-signatures are always RS256 ` +
+      "(RSA PKCS#1 v1.5 with SHA-256), and the setting no longer changes the algorithm (V-17). " +
+      "Remove SIGNATURE_ALGORITHM from the environment.",
+  );
+}
+
+// ==========================================
+// CONFIGURATION
+// ==========================================
+
+const ESIGN_ENABLED = env("ESIGN_ENABLED") !== "false";
+// V-17 (2026-09-30) — the algorithm recorded on a Part 11 signature is the
+// algorithm that produced it. SIGNATURE_ALGORITHM used to be read from the
+// environment, stored on every record and bound into the canonical payload,
+// while signing and verification were hardcoded RSA-SHA256: setting it to
+// RS512 relabelled records without changing a byte of the cryptography. The
+// setting is removed; the label and the digest are one constant pair here.
+// A deployment that still sets a DIFFERENT value is refused at load, loudly,
+// rather than silently ignored — its operator believes it signs with that.
+const SIGNATURE_ALGORITHM = "RS256";
+/** The digest RS256 means: RSASSA-PKCS1-v1_5 (node's default for an RSA key) with SHA-256. */
+const SIGNATURE_DIGEST = "sha256";
+assertSignatureAlgorithmSetting(env("SIGNATURE_ALGORITHM"));
+const SIGNATURE_KEY_SIZE = parseInt(env("SIGNATURE_KEY_SIZE") as string) || 2048;
+// A-65 — signing ALWAYS re-authenticates the signer (21 CFR 11.200(a)).
+// REQUIRE_REAUTHENTICATION used to switch that off, and even when on it
+// checked only that the user was active. It is no longer read: a
+// configuration switch that removes the signature's authentication is the
+// same bypass as a missing check. Certificate approval never had one.
+const REQUIRE_REAUTHENTICATION = true;
+
+// P6-10 / S-08 — signer private keys at rest are a KMS envelope (AES-256-GCM,
+// tenant id as AAD, the master key named by id so it rotates). The old
+// AES-CBC-under-ENCRYPT_KEY form is still read, never written; see
+// services/signingKeyWrap.service.ts and migration 0058.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: loaded after the V-17 check above, as the .js did
+const { wrapPrivateKey, unwrapPrivateKey } = require("./signingKeyWrap.service") as typeof SigningKeyWrap;
+
+// ==========================================
+// SIGNATURE SCHEME
+// ==========================================
+
+/**
+ * Identifier stored on every record produced by the current scheme: an
+ * RSA-SHA256 signature, made with the signing tenant's private key, over the
+ * canonical payload built by canonicalizeSignaturePayload().
+ *
+ * Records written before this scheme existed carry NULL (see LEGACY_*), were
+ * "verified" by recomputing a SHA-256 of a payload containing Date.now(), and
+ * therefore could never verify. They are reported as unverifiable, NOT as
+ * forgeries and NOT as valid.
+ */
+const SIGNATURE_SCHEME_V2 = "esig-v2-rsa-sha256";
+
+const LEGACY_VERIFICATION_REASON =
+  "This signature predates the cryptographic signing fix (ADR-040): it was " +
+  "recorded as a timestamp hash with no key material, so it can neither be " +
+  "cryptographically verified nor shown to be a forgery.";
+
+/**
+ * The exact fields bound by a signature, in the exact order they are
+ * serialized. The order lives here, in one array, so the bytes cannot change
+ * because an object literal was reordered or because a JSON implementation
+ * ordered keys differently.
+ */
+const CANONICAL_FIELDS = [
+  "scheme",
+  "algorithm",
+  "tenantId",
+  "documentId",
+  "workflowId",
+  "workflowStepId",
+  "signerUserId",
+  "signedAt",
+  "authenticationMethod",
+  "reason",
+] as const;
+
+type CanonicalFields = Partial<Record<(typeof CANONICAL_FIELDS)[number], unknown>>;
+
+/**
+ * Serialize the signed payload deterministically.
+ *
+ * Emits a JSON array of [name, value] pairs — an array, so ordering is defined
+ * by CANONICAL_FIELDS rather than by object key-insertion order — with every
+ * value coerced to a string and null/undefined collapsed to "". The same inputs
+ * always produce byte-identical output, on any Node version, in any process.
+ *
+ * @param fields - values keyed by CANONICAL_FIELDS
+ * @returns canonical UTF-8 payload
+ */
+function canonicalizeSignaturePayload(fields: CanonicalFields): string {
+  return JSON.stringify(
+    CANONICAL_FIELDS.map((name) => [
+      name,
+      fields[name] === null || fields[name] === undefined
+        ? ""
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string -- as built: every bound value is a string, a number or a Date's ISO text (ADR-038 rule 3)
+        : String(fields[name]),
+    ]),
+  );
+}
+
+/**
+ * Normalize a signing timestamp to a fixed, millisecond-precision ISO-8601
+ * string. Verification reconstructs it from the STORED signedAt, so it must
+ * render identically whether the driver hands back a Date or a string.
+ *
+ * @param value
+ */
+function canonicalTimestamp(value: Date | string | number): string {
+  const date = value instanceof Date ? value : new Date(value);
+  return date.toISOString();
+}
+
+/**
+ * A-85 — the state explanation for signing a workflow step that is not
+ * pending. Keyed by the step statuses in signatureWorkflowStep.model.ts; an
+ * unknown status still gets the generic sentence rather than a bare 409.
+ *
+ * @param status - the step's current status
+ */
+function explainUnsignableStep(status: string): string {
+  const why: Record<string, string | undefined> = {
+    waiting:
+      "an earlier signer in this workflow has not signed yet; it becomes signable when the previous step is signed",
+    signed: "it has already been signed, and a step is signed once",
+    declined: "it was declined, which ends the step",
+  };
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3)
+  const reason = why[status] || "only a pending step can be signed";
+  return `This signature step is "${status}" and cannot be signed: ${reason}.`;
+}
+
+/**
+ * A-92 — the state explanation for changing a workflow that is closed.
+ * Only the closed statuses are keyed: callers refuse exactly these two.
+ *
+ * @param status - the workflow's current status
+ * @param verb - what was attempted, as a past participle ("edited")
+ */
+function explainClosedWorkflow(status: string, verb: string): string {
+  const why: Record<string, string | undefined> = {
+    completed:
+      "every signer has signed, and the signatures cover the workflow as it was signed",
+    cancelled: "cancellation is final; create a new workflow instead",
+    // A-159 — set by signDocument when a signature is attempted after
+    // expiresAt; like cancellation, final.
+    expired:
+      "its expiry date has passed, and an expired workflow collects no more signatures; " +
+      "create a new workflow for the remaining signers instead",
+  };
+  return `This signature workflow is "${status}" and cannot be ${verb}: ${String(why[status])}.`;
+}
+
+/**
+ * A-168 — the state explanation for editing a workflow whose expiry date has
+ * passed, whether or not a signature attempt has marked it "expired" yet.
+ * Expiry is terminal for signing and for editing: extending `expiresAt` would
+ * re-open signing on a request its signers were told had lapsed.
+ *
+ * @param expiresAt
+ */
+function explainExpiredWorkflowEdit(expiresAt: Date | string | null): string {
+  return (
+    `This signature workflow is "expired" (its expiry date, ${new Date(expiresAt as Date).toISOString()}, has passed) ` +
+    "and cannot be edited: expiry is final, and its expiry date cannot be extended; " +
+    "create a new workflow for the remaining signers instead."
+  );
+}
+
+/**
+ * A-168 / A-169 — whether a workflow is expired: marked "expired", or still
+ * open (pending / in_progress) with its expiry date passed. A workflow that
+ * completed or was cancelled before its expiry date is closed, not expired.
+ *
+ * @param workflow
+ * @param now - ms since the epoch
+ */
+function isExpired(workflow: { status: string; expiresAt?: Date | string | null }, now: number = Date.now()): boolean {
+  if (workflow.status === "expired") {
+    return true;
+  }
+  const open = workflow.status === "pending" || workflow.status === "in_progress";
+  return open && Boolean(workflow.expiresAt) && new Date(workflow.expiresAt as Date).getTime() <= now;
+}
+
+/**
+ * A-130 / A-144 — the state explanation for deleting a workflow that carries
+ * signatures, with the way forward.
+ *
+ * @param status - the workflow's current status
+ * @param count - signatures made against it
+ */
+function explainSignedWorkflowDeletion(status: string, count: number): string {
+  const way =
+    status === "completed" || status === "cancelled"
+      ? "it stays as the record of what was signed"
+      : "cancel it instead (POST /esignature/workflows/:workflowId/cancel), which keeps the signatures";
+  return (
+    `This signature workflow is "${status}" and has ${String(count)} signature${count === 1 ? "" : "s"}, ` +
+    "so it cannot be deleted: a signature stays linked to the record it signs " +
+    `(21 CFR 11.70); ${way}.`
+  );
+}
+
+// ==========================================
+// KEY PAIR MANAGEMENT
+// ==========================================
+
+/** Who acts, and from where (auditActor(req)). */
+interface Actor {
+  userId?: string | null | undefined;
+  ipAddress?: string | null | undefined;
+  /** auditActor(req) reads the header as Node gives it. */
+  userAgent?: string | string[] | null | undefined;
+}
+
+/**
+ * A-278 (ADR-094) — a tenant's signing key is created and deleted with one
+ * audit row in the same transaction. A Part 11 signature is only as good as
+ * the record of which key existed when; neither change was recorded. The row
+ * names the key (its id and keyId), never key material.
+ *
+ * @param transaction
+ * @param actor
+ * @param tenantId
+ * @param action
+ * @param key - the TenantKey row
+ * @param operation
+ */
+const auditKeyPair = (
+  transaction: SqlTransaction,
+  actor: Actor,
+  tenantId: TenantId,
+  action: AuditAction,
+  key: Pick<TenantKeyRow, "id" | "keyId" | "keyType" | "algorithm">,
+  operation: string,
+): Promise<unknown> =>
+  /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3): an empty value is recorded as null */
+  auditService.logAction(
+    {
+      tenantId,
+      userId: actor.userId || null,
+      action,
+      resourceType: "TenantKey",
+      resourceId: key.id,
+      changes: { operation, keyId: key.keyId, keyType: key.keyType, algorithm: key.algorithm },
+      ipAddress: actor.ipAddress || null,
+      userAgent: actor.userAgent || null,
+    },
+    { transaction },
+  );
+/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
+
+/**
+ * Generate RSA key pair for digital signatures
+ * @param tenantId - Tenant ID
+ */
+const generateKeyPair = async (
+  tenantId: TenantId,
+  actor: Actor = {},
+): Promise<{ id: string; keyId: string; publicKey: string; privateKey: string }> => {
+  if (!ESIGN_ENABLED) {
+    throw new AppError(400, "E-signature is disabled");
+  }
+
+  try {
+    const { privateKey, publicKey } = await generateKeyPairAsync("rsa", {
+      modulusLength: SIGNATURE_KEY_SIZE,
+      publicKeyEncoding: {
+        type: "spki",
+        format: "pem",
+      },
+      privateKeyEncoding: {
+        type: "pkcs8",
+        format: "pem",
+      },
+    });
+
+    const keyId = `key-${String(Date.now())}-${crypto.randomBytes(4).toString("hex")}`;
+
+    // Store key pair in database (private key encrypted)
+    const { TenantKey } = modelsNow();
+    const created = await db.transaction(async (transaction) => {
+      const row = await TenantKey.create(
+        {
+          tenantId,
+          keyId,
+          keyType: "esignature",
+          algorithm: SIGNATURE_ALGORITHM,
+          publicKey,
+          // A PEM in, an envelope out: wrapPrivateKey answers null only for no key.
+          privateKey: wrapPrivateKey(tenantId, privateKey) as string,
+          createdAt: new Date(),
+        },
+        { transaction },
+      );
+      await auditKeyPair(transaction, actor, tenantId, "CREATE", row, "ESIGNATURE_KEY_CREATE");
+      return row;
+    });
+
+    logger.info("E-signature key pair generated", {
+      tenantId,
+      keyId,
+      algorithm: SIGNATURE_ALGORITHM,
+    });
+
+    // P6-02: `id` is the row id DELETE /key-pairs/:keyPairId takes, and the
+    // `id` the frontend's KeyPair reads. Without it the caller could not
+    // delete the key it had just created without listing first.
+    return { id: created.id, keyId, publicKey, privateKey: "[REDACTED]" };
+  } catch (err) {
+    if (statusOf(err)) {throw err;}
+    logger.error("Key pair generation failed", {
+      tenantId,
+      error: messageOf(err),
+    });
+    throw new AppError(500, "Failed to generate key pair");
+  }
+};
+
+/**
+ * Load the tenant's current e-signature signing key and return its decrypted
+ * PEM. The private key is excluded by the model's default scope, so this reads
+ * through `.unscoped()`.
+ *
+ * @param tenantId
+ * @throws {AppError} 409 when the tenant has no key pair provisioned — signing
+ *   is not a server fault, it is an unmet precondition the caller can fix by
+ *   generating a key pair.
+ */
+async function loadSigningKey(tenantId: TenantId): Promise<{ keyId: string; privateKeyPem: string }> {
+  const { TenantKey } = modelsNow();
+
+  const key = await TenantKey.unscoped().findOne({
+    where: { tenantId, keyType: "esignature" },
+    order: [["createdAt", "DESC"]],
+  });
+
+  if (!key) {
+    throw new AppError(
+      409,
+      "No e-signature key pair is provisioned for this tenant. Generate one " +
+        "(POST /api/v1/esignature/keys) before signing.",
+    );
+  }
+
+  let privateKeyPem;
+  try {
+    privateKeyPem = unwrapPrivateKey(tenantId, key.privateKey);
+  } catch (err) {
+    logger.error("Signing key could not be decrypted", {
+      tenantId,
+      keyId: key.keyId,
+      error: messageOf(err),
+    });
+    throw new AppError(
+      500,
+      "The tenant signing key could not be decrypted (wrong KMS_MASTER_KEY, or ENCRYPT_KEY for a key " +
+        "stored before migration 0058?)",
+    );
+  }
+
+  return { keyId: key.keyId, privateKeyPem };
+}
+
+/**
+ * Load the key a signature was made with, for verification.
+ *
+ * `paranoid: false` is deliberate and load-bearing: TenantKey is paranoid, and
+ * deleting a key must not retroactively turn every signature it ever made into
+ * an unverifiable record. Only the public key is needed, so the default scope
+ * (which excludes the private key) is left in place.
+ *
+ * @param tenantId
+ * @param keyId
+ */
+async function loadVerificationKey(tenantId: TenantId, keyId: string | null): Promise<TenantKeyRow | null> {
+  const { TenantKey } = modelsNow();
+
+  const where: Record<string, unknown> = { tenantId, keyId };
+  return TenantKey.findOne({
+    where: where as WhereOptions,
+    paranoid: false,
+  });
+}
+
+/** A key pair as the list shows it: public metadata only. */
+interface KeyPairSummary {
+  id: string;
+  keyId: string;
+  keyType: string;
+  algorithm: string;
+  publicKey: string;
+  createdAt: Date;
+}
+
+/**
+ * List a tenant's key pairs. The private key is excluded by the model's default
+ * scope, so only public metadata is returned.
+ * @param tenantId
+ */
+const getKeyPairs = async (tenantId: TenantId): Promise<KeyPairSummary[]> => {
+  try {
+    const { TenantKey } = modelsNow();
+    const keys = await TenantKey.findAll({
+      where: { tenantId },
+      order: [["createdAt", "DESC"]],
+    });
+    return keys.map((k) => ({
+      id: k.id,
+      keyId: k.keyId,
+      keyType: k.keyType,
+      algorithm: k.algorithm,
+      publicKey: k.publicKey,
+      createdAt: k.createdAt,
+    }));
+  } catch (err) {
+    logger.error("Failed to list key pairs", { tenantId, error: messageOf(err) });
+    throw new AppError(500, "Failed to list key pairs");
+  }
+};
+
+/**
+ * Soft-delete a tenant's key pair.
+ * @param keyPairId
+ * @param tenantId
+ */
+const deleteKeyPair = async (keyPairId: string, tenantId: TenantId, actor: Actor = {}): Promise<{ success: true }> => {
+  try {
+    const { TenantKey } = modelsNow();
+    const key = await TenantKey.findOne({
+      where: { id: keyPairId, tenantId },
+    });
+    if (!key) {
+      throw new AppError(404, "Key pair not found");
+    }
+    await db.transaction(async (transaction) => {
+      await key.destroy({ transaction }); // paranoid soft delete
+      await auditKeyPair(transaction, actor, tenantId, "DELETE", key, "ESIGNATURE_KEY_DELETE");
+    });
+    logger.info("E-signature key pair deleted", { tenantId, keyPairId });
+    return { success: true };
+  } catch (err) {
+    if (statusOf(err)) {throw err;}
+    logger.error("Failed to delete key pair", {
+      keyPairId,
+      error: messageOf(err),
+    });
+    throw new AppError(500, "Failed to delete key pair");
+  }
+};
+
+// ==========================================
+// SIGNATURE WORKFLOW
+// ==========================================
+
+/**
+ * A-86 (ADR-051) — the explanation for a signer named by email alone.
+ */
+const EXTERNAL_SIGNER_REFUSAL =
+  "Signers must be users of this organisation: an email-only (external) signer " +
+  "has no way to authenticate, so the workflow could never complete. To have an " +
+  "external party sign, invite them as a user with e-signature permission.";
+
+/** A-129 — a signer the tenant does not have: missing, deleted or another tenant's, alike. */
+const SIGNER_NOT_FOUND = "Signer not found";
+
+/** The printed name a signature manifests (21 CFR 11.50(a)(1)), from the user row. */
+const displayName = (user: { firstName?: string | null; lastName?: string | null; username?: string | null; email?: string | null }): string =>
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty name falls back (ADR-038 rule 3)
+  [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.username || (user.email as string);
+
+/** A signer as createSignatureWorkflow resolved it. */
+interface ResolvedSigner {
+  userId: string;
+  email: string;
+  name: string;
+}
+
+/**
+ * A-129 (ADR-051 Q-19, F-10) — resolve every named signer to a user of the
+ * tenant who may sign, BEFORE anything is written.
+ *
+ *  - A signer with no `userId` is refused (400, A-86).
+ *  - A `userId` that is not a user of this tenant — missing, soft-deleted or
+ *    another tenant's — is 404, one message for all three (the A-75
+ *    convention: a distinguishable answer is a cross-tenant existence oracle).
+ *    The tenant predicate is explicit, not left to the hooks.
+ *  - A user of the tenant who is inactive, or who does not hold
+ *    `esignature:write`, is 400 naming the signer: the workflow could never
+ *    complete (the /sign gate would refuse them), so it is not created.
+ *
+ * The name and email written onto the step come from the user row; any value
+ * the body carried is ignored (F-10).
+ *
+ * @param tenantId
+ * @param signers - as validated
+ * @param transaction
+ */
+const resolveSigners = async (
+  tenantId: TenantId,
+  signers: ({ userId?: string | null } | null | undefined)[],
+  transaction: SqlTransaction,
+): Promise<ResolvedSigner[]> => {
+  const { User, Role } = modelsNow();
+  const { principalHasMenuPermission } = dynamicAccessNow();
+  const { MENU_SLUGS } = constantsNow();
+
+  const resolved: ResolvedSigner[] = [];
+  for (let i = 0; i < signers.length; i++) {
+    const signer = signers[i];
+    // eslint-disable-next-line @typescript-eslint/prefer-optional-chain -- as built: the .js's `&&` (ADR-038 rule 3)
+    const userId = signer && signer.userId;
+    if (!userId) {
+      throw new AppError(400, `Signer ${String(i + 1)}: ${EXTERNAL_SIGNER_REFUSAL}`);
+    }
+
+    const user = await User.findOne({ where: { id: userId, tenantId }, transaction });
+    if (!user) {
+      throw new AppError(404, SIGNER_NOT_FOUND);
+    }
+
+    const name = displayName(user);
+    if (!user.isActive || user.status !== USER_STATUS.ACTIVE) {
+      throw new AppError(
+        400,
+        `Signer ${String(i + 1)} (${name}) is not an active user, so they could not sign. ` +
+          "Choose an active user, or reactivate the account first.",
+      );
+    }
+
+    const role = user.roleId
+      ? await Role.findByPk(user.roleId, { attributes: ["id", "name"], transaction })
+      : null;
+    const maySign = await principalHasMenuPermission(
+      { id: user.id, role: role ? { id: role.id, name: role.name } : null },
+      MENU_SLUGS.ESIGNATURE,
+      "write",
+    );
+    if (!maySign) {
+      throw new AppError(
+        400,
+        `Signer ${String(i + 1)} (${name}) does not hold the e-signature signing permission, so ` +
+          "they could not sign. Grant it to their role or to them, or choose another signer.",
+      );
+    }
+
+    resolved.push({ userId: user.id, email: user.email, name });
+  }
+  return resolved;
+};
+
+/** A workflow as createSignatureWorkflow takes it (validated by the route). */
+interface WorkflowInput {
+  documentId?: string | undefined;
+  signers?: ({ userId?: string | null } | null | undefined)[] | undefined;
+  subject?: string | null | undefined;
+  message?: string | null | undefined;
+  expiresAt?: Date | string | null | undefined;
+}
+
+/**
+ * Create a signature workflow.
+ *
+ * A-129 / A-130 (ADR-051 Q-19, A-86; F-10). Every signer is a user of the
+ * tenant who may sign (resolveSigners). The workflow, its steps and the audit
+ * row commit together or not at all; the first signer is notified only after
+ * the commit.
+ *
+ * @param tenantId - Tenant ID
+ * @param data - Workflow data; `signers` in signing order
+ * @param actor - auditActor(req)
+ * @throws {AppError} 400 for an email-only, inactive or unauthorised signer;
+ *   404 for a signer who is not a user of this tenant
+ */
+const createSignatureWorkflow = async (
+  tenantId: TenantId,
+  data: WorkflowInput,
+  actor: Actor = {},
+): Promise<{ workflowId: string; signers: { userId: string; email: string; name: string; status: string }[] }> => {
+  if (!ESIGN_ENABLED) {
+    throw new AppError(400, "E-signature is disabled");
+  }
+
+  const { documentId, signers, subject, message, expiresAt } = data;
+
+  if (!documentId || !signers || signers.length === 0) {
+    throw new AppError(400, "documentId and signers are required");
+  }
+
+  try {
+    const { SignatureWorkflow, SignatureWorkflowStep } = modelsNow();
+
+    const { workflow, steps, resolved } = await db.transaction(async (transaction) => {
+      const named = await resolveSigners(tenantId, signers, transaction);
+
+      /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3): empty values take the defaults */
+      const values: Record<string, unknown> = {
+        tenantId,
+        documentId,
+        subject: subject || "Please sign this document",
+        message: message || "",
+        status: "pending",
+        expiresAt: expiresAt || new Date(Date.now() + 7 * 86400000),
+        signatureAlgorithm: SIGNATURE_ALGORITHM,
+        // A-170 — the requester is the authenticated actor, never a body
+        // field; the completion email goes to them.
+        requestedBy: actor.userId,
+      };
+      /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
+      const created = await SignatureWorkflow.create(
+        values as CreationAttributes<WorkflowRow>,
+        { transaction },
+      );
+
+      const createdSteps: StepRow[] = [];
+      for (let i = 0; i < named.length; i++) {
+        const signer = named[i] as ResolvedSigner;
+        const stepValues: Record<string, unknown> = {
+          // tenantId is required for isolation AND is read back by
+          // signDocument (step.tenantId) when it writes the
+          // SignatureRecord/AuditLog rows.
+          tenantId,
+          workflowId: created.id,
+          stepNumber: i + 1,
+          signerId: signer.userId,
+          signerEmail: signer.email,
+          signerName: signer.name,
+          status: i === 0 ? "pending" : "waiting",
+          signedAt: null,
+        };
+        createdSteps.push(
+          await SignatureWorkflowStep.create(
+            stepValues as CreationAttributes<StepRow>,
+            { transaction },
+          ),
+        );
+      }
+
+      await auditWorkflowChange(transaction, tenantId, actor, "CREATE", created.id, {
+        after: {
+          documentId,
+          subject: created.subject,
+          status: created.status,
+          signers: named.map((s, i) => ({ stepNumber: i + 1, userId: s.userId })),
+        },
+      });
+
+      return { workflow: created, steps: createdSteps, resolved: named };
+    });
+
+    await sendSignatureRequest((resolved[0] as ResolvedSigner).email, workflow, steps[0] as StepRow);
+
+    logger.info("Signature workflow created", {
+      tenantId,
+      workflowId: workflow.id,
+      signerCount: resolved.length,
+    });
+
+    return {
+      workflowId: workflow.id,
+      signers: resolved.map((s, i) => ({
+        userId: s.userId,
+        email: s.email,
+        name: s.name,
+        status: (steps[i] as StepRow).status,
+      })),
+    };
+  } catch (err) {
+    if (statusOf(err)) {throw err;}
+    logger.error("Failed to create signature workflow", {
+      tenantId,
+      error: messageOf(err),
+    });
+    throw new AppError(500, "Failed to create signature workflow");
+  }
+};
+
+/**
+ * A-158 — the signer's way in: the E-Signature page, whose default "To sign"
+ * tab (A-91) lists the steps waiting on the signed-in user. There is no
+ * per-step page to deep-link to.
+ *
+ * The origin is the public web front end: FRONTEND_URL (as the SSO callback
+ * uses it), else HOST_URL — the origin the deployments publish and the one
+ * email.service already builds its emailed links on. The link used to be a
+ * hard-coded https://app.callibrator.io/sign/:id: a domain this product does
+ * not serve and a route the front end never had.
+ *
+ * @returns absolute URL, or null when no origin is configured
+ */
+function signingPageUrl(): string | null {
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty value falls back (ADR-038 rule 3)
+  const origin = (env("FRONTEND_URL") || env("HOST_URL") || "").replace(/\/+$/, "");
+  return origin ? `${origin}/dashboard/esignature` : null;
+}
+
+/** One e-signature email, as queueNotificationEmail takes it. */
+type ESignatureEmail = Parameters<(typeof EmailQueueService)["queueNotificationEmail"]>[0];
+
+/**
+ * A-158 — queue one e-signature email through the real email path
+ * (emailQueue.service#queueNotificationEmail → the email_queue consumer →
+ * email.service#sendNotificationEmail). This used to call
+ * `emailQueueService.queueEmail`, which that module has never exported: every
+ * call threw a TypeError that a catch logged as a warning, so no signing
+ * email was ever sent and nothing said so above warn level.
+ *
+ * Never throws — the workflow or signature it reports on has already
+ * committed, so a mail failure must not turn it into a 500 — but every
+ * failure is logged at ERROR with the workflow, step and signer context.
+ *
+ * @param what - log label ("Signature request", "Workflow completion")
+ * @param context - logged with every outcome (ids only, no address)
+ * @param email - queueNotificationEmail's argument
+ * @returns whether the email was accepted for delivery
+ */
+async function queueESignatureEmail(what: string, context: Record<string, unknown>, email: ESignatureEmail): Promise<boolean> {
+  if (!email.actionUrl) {
+    logger.error(`${what} email has no link: neither FRONTEND_URL nor HOST_URL is set`, context);
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: required at call time
+    const { queueNotificationEmail } = require("./emailQueue.service") as typeof EmailQueueService;
+    const accepted = await queueNotificationEmail(email);
+    if (!accepted) {
+      throw new Error("the email queue did not accept the message");
+    }
+    logger.info(`${what} email queued`, context);
+    return true;
+  } catch (err) {
+    logger.error(`${what} email was not sent`, { ...context, error: messageOf(err) });
+    return false;
+  }
+}
+
+/**
+ * Send the signature request email to the signer of `step`.
+ *
+ * @param email - the signer's address (the step's signerEmail)
+ * @param workflow
+ * @param step
+ * @returns whether the email was accepted for delivery
+ */
+async function sendSignatureRequest(email: string, workflow: WorkflowRow, step: StepRow): Promise<boolean> {
+  const lines = [
+    `You have been asked to sign "${workflow.subject}" (document ${workflow.documentId}), ` +
+      `as signer ${String(step.stepNumber || 1)} of this workflow.`,
+  ];
+  if (workflow.message) {
+    lines.push(workflow.message);
+  }
+  lines.push('Open E-Signature and choose "To sign" to review and sign it.');
+  if (workflow.expiresAt) {
+    lines.push(`This request expires at ${new Date(workflow.expiresAt).toISOString()}.`);
+  }
+  /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3): empty values fall back */
+  return queueESignatureEmail(
+    "Signature request",
+    {
+      tenantId: workflow.tenantId,
+      workflowId: workflow.id,
+      stepId: step.id,
+      signerId: step.signerId || null,
+    },
+    {
+      email,
+      firstName: step.signerName || "",
+      title: `Signature request: ${workflow.subject}`,
+      message: lines.join("\n\n"),
+      actionUrl: signingPageUrl(),
+    },
+  );
+  /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
+}
+
+// ==========================================
+// SIGNATURE EXECUTION
+// ==========================================
+
+/** What a signer sends to sign a step (the controller adds ipAddress / userAgent). */
+interface SignatureData {
+  polygon?: unknown;
+  biometricData?: unknown;
+  authenticationMethod?: string | null | undefined;
+  authPayload?: unknown;
+  reason?: unknown;
+  ipAddress?: string | null | undefined;
+  userAgent?: string | null | undefined;
+}
+
+/** The signature certificate signDocument returns. */
+interface SignatureCertificate {
+  signatureId: string;
+  workflowId: string;
+  documentId: string;
+  signerId: string;
+  signedAt: string;
+  signatureHash: string;
+  signatureValue: string | null;
+  signingKeyId: string | null;
+  signatureScheme: string | null;
+  algorithm: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  verificationUrl: string;
+}
+
+/** The signing transaction's outcome. */
+type SignOutcome =
+  | { expired: true; workflow: WorkflowRow }
+  | { expired?: undefined; workflow: WorkflowRow; signature: SignatureRow; allSigned: boolean; nextStep: StepRow | null | undefined };
+
+/**
+ * Sign a document.
+ *
+ * Produces an RSA-SHA256 signature, made with the tenant's private key, over a
+ * canonical payload binding the document, workflow step, signer, tenant, the
+ * signing timestamp as stored, the authentication method and the signature's
+ * meaning. Requires a provisioned tenant key pair (409 without one).
+ *
+ * @param stepId - Workflow step ID
+ * @param userId - User ID
+ * @param signatureData - Signature data; `reason` is the meaning of the signature (21 CFR 11.50)
+ */
+const signDocument = async (
+  stepId: string,
+  userId: UserId,
+  signatureData: SignatureData,
+): Promise<{ signatureId: string; certificate: SignatureCertificate }> => {
+  const { polygon, biometricData, authenticationMethod, authPayload } = signatureData;
+
+  // A-129 (ADR-051 Q-19) — the meaning of the signature is part of what is
+  // signed (21 CFR 11.50(a)(3)), so a signature without one is refused before
+  // anything is looked up. It used to be optional and stored as NULL.
+  const reason =
+    typeof signatureData.reason === "string" ? signatureData.reason.trim() : "";
+  if (!reason) {
+    throw new AppError(
+      400,
+      "The meaning of the signature is required (for example \"Reviewed and approved\"): " +
+        "it is recorded with, and bound into, the signature (21 CFR 11.50).",
+    );
+  }
+
+  try {
+    const {
+      SignatureWorkflowStep,
+      SignatureWorkflow,
+      SignatureRecord,
+    } = modelsNow();
+
+    // A-184 — every check that decides whether this signature may be made
+    // runs INSIDE the signing transaction, on rows locked FOR UPDATE: the
+    // step's status, the workflow's status and its expiry. They used to be
+    // read before the transaction with no lock, so a cancellation (or a
+    // second signature of the same step) committing between the read and the
+    // signature was signed over — the e-signature form of A-167.
+    //
+    // Lock order: the workflow, then the step. Every workflow mutation
+    // (cancel, update, delete — findWorkflowForMutation) locks the workflow
+    // first, so signing cannot deadlock against them, and two signatures in
+    // one workflow serialise on it.
+    const outcome = await db.transaction(async (transaction): Promise<SignOutcome> => {
+      const found = await SignatureWorkflowStep.findByPk(stepId, { transaction });
+      if (!found) {
+        throw new AppError(404, "Signature step not found");
+      }
+
+      // A-65 — only the step's own signer may sign it. The step is already
+      // tenant-scoped (another tenant's step is the 404 above), so this is a
+      // permission failure inside the caller's tenant: 403. It is checked
+      // before the step's state, so a non-signer learns nothing about it. A
+      // step with no internal signer (signerId null) cannot be signed by any
+      // user. (The signer of a step never changes, so the unlocked read
+      // decides this.)
+      if (!found.signerId || found.signerId !== userId) {
+        throw new AppError(403, "Only the assigned signer can sign this step");
+      }
+
+      // A-85: a step in any other state is a state conflict (409),
+      // explained — not a malformed request. A-159: this IS the turn check: a
+      // later signer's step is "waiting" until the previous one is signed.
+      // Refused here early; decided below, under the lock.
+      if (found.status !== "pending") {
+        throw new AppError(409, explainUnsignableStep(found.status));
+      }
+
+      const workflow = await SignatureWorkflow.findByPk(found.workflowId, {
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      // Re-read under the workflow's lock, and lock the step itself: a
+      // signature of this step committed since the read above is seen here.
+      const step = (await SignatureWorkflowStep.findByPk(stepId, {
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      })) as StepRow;
+      if (step.status !== "pending") {
+        throw new AppError(409, explainUnsignableStep(step.status));
+      }
+
+      if (!workflow) {
+        throw new AppError(404, "Workflow not found");
+      }
+      // A-130 — a cancelled workflow keeps its pending step as it was, so the
+      // step's own status does not stop a signature. Cancellation is final.
+      if (workflow.status === "cancelled" || workflow.status === "expired") {
+        throw new AppError(409, explainClosedWorkflow(workflow.status, "signed"));
+      }
+      // A-159 — expiry. With no scheduler, the first signature attempted
+      // after expiresAt records the expiry (with its audit row) — here, in
+      // this transaction, under the lock — and is then refused (409) once
+      // that record has committed.
+      if (workflow.expiresAt && new Date(workflow.expiresAt).getTime() <= Date.now()) {
+        await expireWorkflow(workflow, userId, signatureData, transaction);
+        return { expired: true, workflow };
+      }
+
+      // A-65 — re-authenticate the signer with their own password or MFA
+      // code, exactly as certificate approval does (the same function),
+      // BEFORE anything is signed or persisted, and after every state check:
+      // a refused signature consumes no one-time MFA code.
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty method is a password (ADR-038 rule 3)
+      const method = authenticationMethod || "password";
+      const user = await modelsNow().User.findByPk(userId, { transaction });
+      // User.status is UPPERCASE — the model default and USER_STATUS are
+      // "ACTIVE". This compared against "active", which no stored row
+      // carries, so every real signer was refused here with a 401. Signing a
+      // Part 11 record needs an account that is active on both flags, the
+      // rule the SSO sign-in applies (sso.service.js).
+      if (!user || !user.isActive || user.status !== USER_STATUS.ACTIVE) {
+        throw new AppError(401, "Re-authentication required");
+      }
+      // A-126: a wrong credential writes SIGNATURE_AUTH_FAILED about this
+      // step, in its own transaction (it survives this one's rollback).
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: required at call time (certificate.service loads models first)
+      await (require("./certificate.service") as typeof CertificateService).verifySignerCredentials(userId, method, authPayload, {
+        tenantId: step.tenantId,
+        resourceType: "SignatureWorkflowStep",
+        resourceId: step.id,
+        operation: "sign",
+        ipAddress: signatureData.ipAddress,
+        userAgent: signatureData.userAgent,
+      });
+
+      // Everything the signature binds is fixed HERE, before anything is
+      // signed, and the same values are what gets persisted. signedAt in
+      // particular is computed once: verification reconstructs the payload
+      // from the stored column, so a second `new Date()` would make every
+      // signature unverifiable (that was the original defect, with Date.now()
+      // inside the payload).
+      const signedAt = new Date();
+
+      const { keyId, privateKeyPem } = await loadSigningKey(step.tenantId);
+
+      const canonicalPayload = canonicalizeSignaturePayload({
+        scheme: SIGNATURE_SCHEME_V2,
+        algorithm: SIGNATURE_ALGORITHM,
+        tenantId: step.tenantId,
+        documentId: workflow.documentId,
+        workflowId: workflow.id,
+        workflowStepId: step.id,
+        signerUserId: userId,
+        signedAt: canonicalTimestamp(signedAt),
+        authenticationMethod: method,
+        reason,
+      });
+
+      const payloadBuffer = Buffer.from(canonicalPayload, "utf8");
+      const signatureValue = crypto
+        .sign(SIGNATURE_DIGEST, payloadBuffer, privateKeyPem)
+        .toString("base64");
+      // Kept for the NOT NULL column and for human comparison: the digest of
+      // the bytes that were actually signed, not a hash of a timestamp.
+      const signatureHash = crypto
+        .createHash("sha256")
+        .update(payloadBuffer)
+        .digest("hex");
+
+      // A-41 — the signature, the step and workflow transitions and the
+      // audit row commit together or not at all. Notifications go out only
+      // after the commit.
+      /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3): an empty capture is recorded as null */
+      const recordValues: Record<string, unknown> = {
+        workflowId: workflow.id,
+        workflowStepId: step.id,
+        userId,
+        tenantId: step.tenantId,
+        signatureHash,
+        signatureValue,
+        signingKeyId: keyId,
+        signatureScheme: SIGNATURE_SCHEME_V2,
+        signatureReason: reason,
+        signatureAlgorithm: SIGNATURE_ALGORITHM,
+        polygon: polygon || null,
+        biometricData: biometricData || null,
+        authenticationMethod: method,
+        signedAt,
+        ipAddress: signatureData.ipAddress || null,
+        userAgent: signatureData.userAgent || null,
+        status: "signed",
+      };
+      /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
+      const created = await SignatureRecord.create(
+        recordValues as CreationAttributes<SignatureRow>,
+        { transaction },
+      );
+
+      await step.update({ status: "signed", signedAt: created.signedAt }, { transaction });
+
+      // Check if all signers have signed
+      const allSteps = await SignatureWorkflowStep.findAll({
+        where: { workflowId: workflow.id },
+        transaction,
+      });
+      const everyoneSigned = allSteps.every((s) => s.status === "signed");
+      const next = everyoneSigned ? null : allSteps.find((s) => s.status === "waiting");
+
+      if (everyoneSigned) {
+        await workflow.update({ status: "completed" }, { transaction });
+      } else {
+        if (next) {
+          await next.update({ status: "pending" }, { transaction });
+        }
+        // A-159 — the first signature of a multi-signer workflow moves it
+        // from "pending" to "in_progress"; nothing used to, so a half-signed
+        // workflow read as untouched.
+        if (workflow.status === "pending") {
+          await workflow.update({ status: "in_progress" }, { transaction });
+        }
+      }
+
+      // A signature is a decision: APPROVE, with the operation named
+      // (audit_logs.action has no SIGN member).
+      /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3): an empty capture is recorded as null */
+      await auditService.logAction(
+        {
+          tenantId: step.tenantId,
+          userId,
+          action: "APPROVE",
+          resourceType: "SignatureWorkflow",
+          resourceId: workflow.id,
+          changes: {
+            operation: "SIGN",
+            before: { stepId, status: "pending" },
+            after: {
+              stepId,
+              status: "signed",
+              signatureId: created.id,
+              signatureHash,
+              signingKeyId: keyId,
+              signatureScheme: SIGNATURE_SCHEME_V2,
+              signedAt: created.signedAt,
+              reason,
+              workflowStatus: everyoneSigned ? "completed" : workflow.status,
+            },
+          },
+          ipAddress: signatureData.ipAddress || null,
+          userAgent: signatureData.userAgent || null,
+        },
+        { transaction },
+      );
+      /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
+
+      return { workflow, signature: created, allSigned: everyoneSigned, nextStep: next };
+    });
+
+    const { workflow } = outcome;
+    if (outcome.expired) {
+      // The expiry and its audit row have committed; the signature is refused.
+      logger.info("Signature workflow expired", {
+        tenantId: workflow.tenantId,
+        workflowId: workflow.id,
+      });
+      throw new AppError(409, explainClosedWorkflow("expired", "signed"));
+    }
+    const { signature, allSigned, nextStep } = outcome;
+
+    if (allSigned) {
+      await completeWorkflow(workflow);
+    } else if (nextStep) {
+      // Notify next signer
+      await sendSignatureRequest(nextStep.signerEmail, workflow, nextStep);
+    }
+
+    logger.info("Document signed", {
+      workflowId: workflow.id,
+      signatureId: signature.id,
+      userId,
+    });
+
+    return {
+      signatureId: signature.id,
+      certificate: generateSignatureCertificate(signature, workflow),
+    };
+  } catch (err) {
+    if (statusOf(err)) {throw err;}
+    logger.error("Signature failed", {
+      stepId,
+      userId,
+      error: messageOf(err),
+    });
+    throw new AppError(500, "Failed to sign document");
+  }
+};
+
+/**
+ * Generate signature certificate
+ */
+function generateSignatureCertificate(signature: SignatureRow, workflow: WorkflowRow): SignatureCertificate {
+  return {
+    signatureId: signature.id,
+    workflowId: workflow.id,
+    documentId: workflow.documentId,
+    signerId: signature.userId,
+    signedAt: signature.signedAt.toISOString(),
+    signatureHash: signature.signatureHash,
+    signatureValue: signature.signatureValue,
+    signingKeyId: signature.signingKeyId,
+    signatureScheme: signature.signatureScheme,
+    algorithm: signature.signatureAlgorithm,
+    ipAddress: signature.ipAddress,
+    userAgent: signature.userAgent,
+    verificationUrl: `/api/v1/esignature/verify/${signature.id}`,
+  };
+}
+
+/**
+ * A-159 — record that a workflow has expired: status "expired" and its audit
+ * row. Called by signDocument, inside the signing transaction and under the
+ * workflow's lock (A-184), when a signature is attempted after expiresAt;
+ * signDocument commits the expiry and then refuses the signature (409).
+ *
+ * The audit row names the signer whose attempt found the expiry — the
+ * request that made the write — and says so in `changes.detectedBy`; there is
+ * no expiry job to name as a system actor.
+ *
+ * @param workflow - the SignatureWorkflow instance (locked)
+ * @param userId - the signer who attempted to sign
+ * @param signatureData - for ipAddress / userAgent
+ * @param transaction - the signing transaction
+ */
+async function expireWorkflow(workflow: WorkflowRow, userId: UserId, signatureData: SignatureData, transaction: SqlTransaction): Promise<void> {
+  const previousStatus = workflow.status;
+  await workflow.update({ status: "expired" }, { transaction });
+  /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3): an empty capture is recorded as null */
+  await auditService.logAction(
+    {
+      tenantId: workflow.tenantId,
+      userId,
+      action: "UPDATE",
+      resourceType: "SignatureWorkflow",
+      resourceId: workflow.id,
+      changes: {
+        operation: "EXPIRE",
+        before: { status: previousStatus },
+        after: { status: "expired" },
+        expiresAt: new Date(workflow.expiresAt as Date).toISOString(),
+        detectedBy: "signature attempt after expiresAt",
+      },
+      ipAddress: signatureData.ipAddress || null,
+      userAgent: signatureData.userAgent || null,
+    },
+    { transaction },
+  );
+  /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
+}
+
+/**
+ * Tell the requester and every signer that the workflow is complete.
+ *
+ * A-158 — this used to look for the "document owner" with
+ * `User.findOne({ where: { role: "TENANT_ADMIN" } })`: users carry `roleId`,
+ * there is no `role` column and no TENANT_ADMIN role, so the query failed on
+ * every completion (and, had it run, would have mailed an arbitrary admin).
+ *
+ * A-170 — the workflow now records its requester (`requestedBy`, set at
+ * creation from the actor). The requester is emailed first, then each signer;
+ * every address once. A workflow from before migration 0039 whose requester
+ * could not be backfilled has none, and only its signers are told.
+ *
+ * Never throws: the workflow has already committed as completed.
+ *
+ * @param workflow - the completed SignatureWorkflow
+ */
+async function completeWorkflow(workflow: WorkflowRow): Promise<void> {
+  const context = { tenantId: workflow.tenantId, workflowId: workflow.id };
+  const email = {
+    title: `Document signed: ${workflow.subject}`,
+    message:
+      `Every signer has signed "${workflow.subject}" (document ${workflow.documentId}). ` +
+      "The signature workflow is complete.",
+    actionUrl: signingPageUrl(),
+  };
+  const notified = new Set<string>();
+
+  if (workflow.requestedBy) {
+    const requester = await findRequester(workflow, context);
+    if (requester) {
+      notified.add(requester.email);
+      await queueESignatureEmail(
+        "Workflow completion",
+        { ...context, requesterId: requester.id },
+        { ...email, email: requester.email, firstName: requester.firstName || "" },
+      );
+    }
+  }
+
+  let steps;
+  try {
+    const { SignatureWorkflowStep } = modelsNow();
+    steps = await SignatureWorkflowStep.findAll({
+      where: { workflowId: workflow.id },
+      order: [["stepNumber", "ASC"]],
+    });
+  } catch (err) {
+    logger.error("Workflow completion email was not sent: the signers could not be read", {
+      ...context,
+      error: messageOf(err),
+    });
+    return;
+  }
+
+  for (const step of steps) {
+    if (!step.signerEmail || notified.has(step.signerEmail)) {
+      continue;
+    }
+    notified.add(step.signerEmail);
+    /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3): empty values fall back */
+    await queueESignatureEmail(
+      "Workflow completion",
+      { ...context, stepId: step.id, signerId: step.signerId || null },
+      { ...email, email: step.signerEmail, firstName: step.signerName || "" },
+    );
+    /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
+  }
+}
+
+/**
+ * A-170 — the workflow's requester, for the completion email, read in the
+ * workflow's own tenant. A requester who cannot be read, or has no email
+ * address, is logged at ERROR (ids only) and skipped; the signers are still
+ * told.
+ *
+ * @param workflow
+ * @param context - log context
+ * @returns the requester, with an email address
+ */
+async function findRequester(workflow: WorkflowRow, context: Record<string, unknown>): Promise<UserRow | null> {
+  const logContext = { ...context, requesterId: workflow.requestedBy };
+  try {
+    const { User } = modelsNow();
+    const where: Record<string, unknown> = { id: workflow.requestedBy, tenantId: workflow.tenantId };
+    const requester = await User.findOne({
+      where: where as WhereOptions,
+      attributes: ["id", "email", "firstName"],
+    });
+    // eslint-disable-next-line @typescript-eslint/prefer-optional-chain -- as built: the .js's `||` (ADR-038 rule 3)
+    if (!requester || !requester.email) {
+      logger.error(
+        "Workflow completion email was not sent to the requester: no email address for them",
+        logContext,
+      );
+      return null;
+    }
+    return requester;
+  } catch (err) {
+    logger.error("Workflow completion email was not sent to the requester: they could not be read", {
+      ...logContext,
+      error: messageOf(err),
+    });
+    return null;
+  }
+}
+
+// ==========================================
+// VERIFICATION
+// ==========================================
+
+/** The shared, non-cryptographic part of a verification result. */
+type VerificationDetails = Record<string, unknown>;
+
+/**
+ * The shared, non-cryptographic part of a verification result.
+ */
+function buildVerificationDetails(signature: SignatureRow, workflow: WorkflowRow | null): VerificationDetails {
+  /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3): an empty value reads as null */
+  return {
+    signatureId: signature.id,
+    workflowId: signature.workflowId,
+    documentId: workflow ? workflow.documentId : null,
+    signerId: signature.userId,
+    signedAt: signature.signedAt,
+    algorithm: signature.signatureAlgorithm,
+    scheme: signature.signatureScheme || null,
+    signingKeyId: signature.signingKeyId || null,
+    reason: signature.signatureReason || null,
+    ipAddress: signature.ipAddress,
+    userAgent: signature.userAgent,
+    authenticationMethod: signature.authenticationMethod,
+    polygon: signature.polygon,
+    biometricData: signature.biometricData,
+  };
+  /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
+}
+
+/** A verification verdict. */
+interface Verification {
+  valid: boolean;
+  verificationStatus: string;
+  reason: unknown;
+  details?: VerificationDetails;
+}
+
+/**
+ * Verify a signature.
+ *
+ * Reconstructs the canonical payload from the STORED fields (document, signer,
+ * tenant, step, signing timestamp, authentication method, meaning) and checks
+ * the stored RSA-SHA256 signature against the tenant public key it was made
+ * with. Nothing is recomputed from the current clock, so a genuine signature
+ * verifies for as long as the key is readable.
+ *
+ * `verificationStatus` is the field to branch on; `valid` stays a strict
+ * boolean and is true ONLY for a cryptographically verified signature:
+ *   valid | invalid | revoked | not_found | workflow_missing |
+ *   unverifiable_legacy | unverifiable_key_missing | error
+ *
+ * @param signatureId - Signature ID
+ */
+const verifySignature = async (signatureId: string): Promise<Verification> => {
+  try {
+    const { SignatureRecord, SignatureWorkflow } = modelsNow();
+
+    const signature = await SignatureRecord.findByPk(signatureId);
+    if (!signature) {
+      return {
+        valid: false,
+        verificationStatus: "not_found",
+        reason: "Signature not found",
+      };
+    }
+
+    // paranoid: false — a soft-deleted workflow must not erase the evidence of
+    // the signatures made against it.
+    const workflow = await SignatureWorkflow.findByPk(signature.workflowId, {
+      paranoid: false,
+    });
+
+    const details = buildVerificationDetails(signature, workflow);
+
+    // Verify signature hasn't been revoked
+    if (signature.status === "revoked") {
+      return {
+        valid: false,
+        verificationStatus: "revoked",
+        reason: "Signature has been revoked",
+        details,
+      };
+    }
+
+    // Records written before ADR-040 carry no signature value and no scheme.
+    // They are neither valid nor forged — they are unverifiable, and they say so.
+    if (
+      signature.signatureScheme !== SIGNATURE_SCHEME_V2 ||
+      !signature.signatureValue
+    ) {
+      return {
+        valid: false,
+        verificationStatus: "unverifiable_legacy",
+        reason: LEGACY_VERIFICATION_REASON,
+        details,
+      };
+    }
+
+    if (!workflow) {
+      return {
+        valid: false,
+        verificationStatus: "workflow_missing",
+        reason:
+          "The signed workflow no longer exists, so the signed document " +
+          "identity cannot be reconstructed.",
+        details,
+      };
+    }
+
+    const key = await loadVerificationKey(
+      signature.tenantId,
+      signature.signingKeyId,
+    );
+    if (!key) {
+      return {
+        valid: false,
+        verificationStatus: "unverifiable_key_missing",
+        reason: `Signing key ${String(signature.signingKeyId)} is no longer present, so this signature cannot be verified.`,
+        details,
+      };
+    }
+
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3)
+    details["signingKeyDeletedAt"] = key.deletedAt || null;
+
+    const canonicalPayload = canonicalizeSignaturePayload({
+      scheme: SIGNATURE_SCHEME_V2,
+      algorithm: signature.signatureAlgorithm,
+      tenantId: signature.tenantId,
+      documentId: workflow.documentId,
+      workflowId: signature.workflowId,
+      workflowStepId: signature.workflowStepId,
+      signerUserId: signature.userId,
+      signedAt: canonicalTimestamp(signature.signedAt),
+      authenticationMethod: signature.authenticationMethod,
+      reason: signature.signatureReason,
+    });
+
+    // V-17: every v2 record was signed with SIGNATURE_DIGEST — the label on
+    // the record has only ever been RS256 or a relabel of it.
+    const valid = crypto.verify(
+      SIGNATURE_DIGEST,
+      Buffer.from(canonicalPayload, "utf8"),
+      key.publicKey,
+      Buffer.from(signature.signatureValue, "base64"),
+    );
+
+    return {
+      valid,
+      verificationStatus: valid ? "valid" : "invalid",
+      reason: valid
+        ? `Signature verified against tenant key ${key.keyId}.`
+        : "Signature does not match the record: the document, signer, tenant, step, signing time, authentication method or meaning has changed since it was signed.",
+      details,
+    };
+  } catch (err) {
+    logger.error("Signature verification failed", {
+      signatureId,
+      error: messageOf(err),
+    });
+    return { valid: false, verificationStatus: "error", reason: messageOf(err) };
+  }
+};
+
+// ==========================================
+// WORKFLOW MANAGEMENT
+// ==========================================
+
+/**
+ * One workflow, for workflow management (qms), with its steps in order.
+ *
+ * A-105. The tenant is taken explicitly, as getSignerWorkflow does, and not
+ * only through the global hooks. A workflow in another tenant, a deleted one
+ * and a missing one are the same 404. A database failure is NOT caught: it
+ * used to be logged and answered as `null`, which the controller turned into
+ * a 404 — an outage reported as "this workflow does not exist". It now
+ * propagates to the global handler as a 500.
+ *
+ * The step order is a top-level `order` naming the association. An `order`
+ * inside an include entry is ignored by Sequelize, so the steps came back in
+ * whatever order the database chose.
+ *
+ * @param workflowId
+ * @param tenantId - the caller's tenant (from req.user)
+ * @returns the workflow with its `steps` ordered by stepNumber
+ * @throws {AppError} 404 when there is no such workflow in the tenant
+ */
+const getWorkflow = async (workflowId: string, tenantId: TenantId): Promise<WorkflowRow> => {
+  const { SignatureWorkflow, SignatureWorkflowStep } = modelsNow();
+
+  const workflow = await SignatureWorkflow.findOne({
+    where: { id: workflowId, tenantId },
+    include: [
+      {
+        model: SignatureWorkflowStep,
+        as: "steps",
+        where: { tenantId },
+        // A workflow whose steps cannot be joined is still a workflow; an
+        // INNER JOIN would make it a 404 (CLAUDE.md, the first trap).
+        required: false,
+      },
+    ],
+    order: [[{ model: SignatureWorkflowStep, as: "steps" }, "stepNumber", "ASC"]],
+  });
+
+  if (!workflow) {
+    throw new AppError(404, "Workflow not found");
+  }
+  return workflow;
+};
+
+/**
+ * List a tenant's signature workflows, optionally filtered by status.
+ * @param tenantId
+ * @param filters - `status`
+ */
+const getWorkflows = async (tenantId: TenantId, filters: { status?: string | null | undefined } = {}): Promise<WorkflowRow[]> => {
+  try {
+    const { SignatureWorkflow } = modelsNow();
+    const where: Record<string, unknown> = { tenantId };
+    if (filters.status) {
+      where["status"] = filters.status;
+    }
+    return await SignatureWorkflow.findAll({
+      where: where as WhereOptions,
+      order: [["createdAt", "DESC"]],
+    });
+  } catch (err) {
+    logger.error("Failed to list workflows", {
+      tenantId,
+      error: messageOf(err),
+    });
+    throw new AppError(500, "Failed to list workflows");
+  }
+};
+
+// ==========================================
+// SIGNER VIEW (A-91)
+// ==========================================
+//
+// GET /workflows and GET /workflows/:id are workflow MANAGEMENT and stay on
+// `qms`. A signer is whoever a workflow names — commonly a TECHNICIAN with no
+// `qms` menu — so without these a named signer could not open the workflow
+// they alone can sign (A-65), and the workflow could never complete.
+//
+// What a signer sees is deliberately narrower than the management view:
+//  - only workflows in which a step names them (`signerId`);
+//  - the fields needed to decide and sign — never another signer's recorded
+//    IP address or user agent (Part 11 capture, not the signer's business).
+//
+// Tenant: every query carries the caller's tenantId explicitly as well as
+// through the global hooks, so a signer id from another tenant matches nothing.
+
+const SIGNER_WORKFLOW_ATTRIBUTES = [
+  "id",
+  "documentId",
+  "subject",
+  "message",
+  "status",
+  "expiresAt",
+  "createdAt",
+  "updatedAt",
+];
+const SIGNER_STEP_ATTRIBUTES = [
+  "id",
+  "workflowId",
+  "stepNumber",
+  "signerId",
+  "signerName",
+  "signerEmail",
+  "status",
+  "signedAt",
+];
+const SIGNER_STEP_STATUSES = ["waiting", "pending", "signed", "declined"];
+
+type StepModel = (typeof Models)["SignatureWorkflowStep"];
+
+/**
+ * The steps of a workflow, as the signer view includes them. `required:
+ * false` — an INNER JOIN here would drop a workflow whose steps it could not
+ * join (CLAUDE.md, the first trap).
+ */
+const signerStepsInclude = (
+  SignatureWorkflowStep: StepModel,
+  tenantId: TenantId,
+): { model: StepModel; as: string; attributes: string[]; where: { tenantId: TenantId }; required: false } => ({
+  model: SignatureWorkflowStep,
+  as: "steps",
+  attributes: SIGNER_STEP_ATTRIBUTES,
+  where: { tenantId },
+  required: false,
+});
+
+/**
+ * List the workflows in which `userId` is a named signer.
+ *
+ * @param tenantId - the caller's tenant (from req.user)
+ * @param userId - the caller (from req.user)
+ * @param filters - `stepStatus`: only workflows where the caller's own step
+ *   has this status; "pending" is "waiting for my signature"
+ * @returns workflows, newest first, each with its `steps` ordered by
+ *   stepNumber and a derived `expired` flag; an expired workflow the caller
+ *   has not signed or declined in is left out (A-169)
+ * @throws {AppError} 400 on an unknown stepStatus
+ */
+const getSignerWorkflows = async (
+  tenantId: TenantId,
+  userId: UserId,
+  filters: { stepStatus?: string | undefined },
+): Promise<WorkflowRow[]> => {
+  const { stepStatus } = filters;
+  if (stepStatus !== undefined && !SIGNER_STEP_STATUSES.includes(stepStatus)) {
+    throw new AppError(
+      400,
+      `stepStatus must be one of: ${SIGNER_STEP_STATUSES.join(", ")}`,
+    );
+  }
+
+  const { SignatureWorkflow, SignatureWorkflowStep } = modelsNow();
+
+  const stepWhere: Record<string, unknown> = { tenantId, signerId: userId };
+  if (stepStatus) {
+    stepWhere["status"] = stepStatus;
+  }
+  const mySteps = await SignatureWorkflowStep.findAll({
+    where: stepWhere as WhereOptions,
+    attributes: ["workflowId"],
+  });
+  const workflowIds = [...new Set(mySteps.map((step) => step.workflowId))];
+  if (workflowIds.length === 0) {
+    return [];
+  }
+
+  const workflows = await SignatureWorkflow.findAll({
+    where: { id: workflowIds, tenantId },
+    attributes: SIGNER_WORKFLOW_ATTRIBUTES,
+    include: [signerStepsInclude(SignatureWorkflowStep, tenantId)],
+    order: [
+      ["createdAt", "DESC"],
+      [{ model: SignatureWorkflowStep, as: "steps" }, "stepNumber", "ASC"],
+    ],
+  });
+
+  // A-169 — an expired workflow is not something to sign. It is left out
+  // of the list unless the caller has already acted in it (signed or
+  // declined), which keeps it as their record; asked for "pending" or
+  // "waiting" steps, it is always left out. What remains carries `expired`,
+  // so a workflow past its expiry date that no signature attempt has marked
+  // yet reads as expired. Nothing is written on this read.
+  const now = Date.now();
+  const actionable = stepStatus === "pending" || stepStatus === "waiting";
+  return workflows
+    .filter((workflow) => {
+      if (!isExpired(workflow, now)) {
+        return true;
+      }
+      if (actionable) {
+        return false;
+      }
+      // The steps include is required: false, so `steps` is always an array.
+      return (workflow.steps as StepRow[]).some(
+        (step) => step.signerId === userId && (step.status === "signed" || step.status === "declined"),
+      );
+    })
+    .map((workflow) => flagExpiry(workflow, now));
+};
+
+/**
+ * A-169 — set the derived `expired` field on a workflow the signer view
+ * returns. On a model instance it is set as a data value, so it is part of
+ * the JSON the route sends (a plain property would not be).
+ *
+ * @param workflow - a SignatureWorkflow instance (or a plain row)
+ * @param now - ms since the epoch
+ * @returns the same workflow
+ */
+function flagExpiry(workflow: WorkflowRow, now: number): WorkflowRow {
+  const expired = isExpired(workflow, now);
+  const target = workflow as WorkflowRow & { setDataValue?: unknown; expired?: boolean };
+  if (typeof target.setDataValue === "function") {
+    // `expired` is not a declared attribute: set as a data value, it is sent with the row's JSON.
+    (workflow.setDataValue as (key: string, value: unknown) => void)("expired", expired);
+  } else {
+    target.expired = expired;
+  }
+  return workflow;
+}
+
+/**
+ * One workflow, for a caller who is named in it as a signer.
+ *
+ * A workflow in another tenant, a deleted one, and one that does not name the
+ * caller are all the same 404: a 403 for "exists but you are not a signer"
+ * would let any user in the tenant probe which workflow ids exist, and the
+ * management route (qms) is the way to read a workflow one is not named in.
+ *
+ * @param workflowId
+ * @param tenantId - the caller's tenant (from req.user)
+ * @param userId - the caller (from req.user)
+ * @returns the workflow with its ordered `steps`
+ * @throws {AppError} 404 when the caller is not a signer of it
+ */
+const getSignerWorkflow = async (workflowId: string, tenantId: TenantId, userId: UserId): Promise<WorkflowRow> => {
+  const { SignatureWorkflow, SignatureWorkflowStep } = modelsNow();
+
+  const workflow = await SignatureWorkflow.findOne({
+    where: { id: workflowId, tenantId },
+    attributes: SIGNER_WORKFLOW_ATTRIBUTES,
+    include: [signerStepsInclude(SignatureWorkflowStep, tenantId)],
+    order: [[{ model: SignatureWorkflowStep, as: "steps" }, "stepNumber", "ASC"]],
+  });
+
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/prefer-optional-chain -- as built (ADR-038 rule 3)
+  const steps = (workflow && workflow.steps) || [];
+  if (!steps.some((step) => step.signerId === userId)) {
+    throw new AppError(404, "Workflow not found");
+  }
+  // A-169 — the one workflow says whether it has expired, as the list does.
+  return flagExpiry(workflow as WorkflowRow, Date.now());
+};
+
+/**
+ * The audit row for a workflow-management mutation, written inside the
+ * mutation's transaction (A-104). `auditService.logAction` re-throws inside a
+ * transaction, so a failed audit insert rolls the mutation back with it.
+ *
+ * @param transaction
+ * @param tenantId - the workflow's tenant
+ * @param actor
+ * @param action - one of AUDIT_ACTIONS
+ * @param workflowId
+ * @param changes
+ */
+const auditWorkflowChange = (
+  transaction: SqlTransaction,
+  tenantId: TenantId,
+  actor: Actor,
+  action: AuditAction,
+  workflowId: string,
+  changes: Record<string, unknown>,
+): Promise<unknown> =>
+  /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3): an empty value is recorded as null */
+  auditService.logAction(
+    {
+      tenantId,
+      userId: actor.userId || null,
+      action,
+      resourceType: "SignatureWorkflow",
+      resourceId: workflowId,
+      changes,
+      ipAddress: actor.ipAddress || null,
+      userAgent: actor.userAgent || null,
+    },
+    { transaction },
+  );
+/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
+
+/**
+ * Load a workflow for a management mutation, inside that mutation's
+ * transaction and locked (FOR UPDATE) against a concurrent one. 404 when it is
+ * not in the tenant.
+ */
+const findWorkflowForMutation = async (workflowId: string, tenantId: TenantId, transaction: SqlTransaction): Promise<WorkflowRow> => {
+  const { SignatureWorkflow } = modelsNow();
+  const workflow = await SignatureWorkflow.findOne({
+    where: { id: workflowId, tenantId },
+    transaction,
+    lock: true,
+  });
+  if (!workflow) {
+    throw new AppError(404, "Workflow not found");
+  }
+  return workflow;
+};
+
+/**
+ * Update a workflow's editable metadata (subject/message/expiry). A completed,
+ * cancelled or expired (A-168) workflow is immutable.
+ *
+ * A-104 — the update and its audit row commit together, or neither does. A
+ * body that changes none of the editable fields writes nothing, audit row
+ * included.
+ *
+ * @param workflowId
+ * @param tenantId
+ * @param updates
+ * @param actor - auditActor(req)
+ * @returns the updated workflow
+ */
+const updateWorkflow = async (
+  workflowId: string,
+  tenantId: TenantId,
+  updates: Record<string, unknown> = {},
+  actor: Actor = {},
+): Promise<WorkflowRow> => {
+  try {
+    return await db.transaction(async (transaction) => {
+      const workflow = await findWorkflowForMutation(workflowId, tenantId, transaction);
+      // A-92 — editing a closed workflow is a state conflict (409), explained;
+      // the same body is accepted while the workflow is open.
+      if (workflow.status === "completed" || workflow.status === "cancelled") {
+        throw new AppError(409, explainClosedWorkflow(workflow.status, "edited"));
+      }
+      // A-168 (decided) — an expired workflow is not edited either, not even
+      // to extend `expiresAt`: a new workflow is the way to re-request. Read
+      // under the lock, so an edit cannot race the expiry being recorded.
+      if (isExpired(workflow)) {
+        throw new AppError(409, explainExpiredWorkflowEdit(workflow.expiresAt));
+      }
+      // Only a safe subset of fields is mutable — the client cannot force a status
+      // (e.g. "completed") or re-point the document.
+      const allowed = ["subject", "message", "expiresAt"];
+      const patch: Record<string, unknown> = {};
+      const before: Record<string, unknown> = {};
+      for (const field of allowed) {
+        if (updates[field] !== undefined) {
+          patch[field] = updates[field];
+          before[field] = (workflow as unknown as Record<string, unknown>)[field];
+        }
+      }
+      if (Object.keys(patch).length === 0) {
+        return workflow;
+      }
+      await workflow.update(patch as Parameters<WorkflowRow["update"]>[0], { transaction });
+      await auditWorkflowChange(transaction, tenantId, actor, "UPDATE", workflowId, {
+        before,
+        after: patch,
+      });
+      return workflow;
+    });
+  } catch (err) {
+    if (statusOf(err)) {throw err;}
+    logger.error("Failed to update workflow", {
+      workflowId,
+      error: messageOf(err),
+    });
+    throw new AppError(500, "Failed to update workflow");
+  }
+};
+
+/**
+ * Soft-delete a workflow.
+ *
+ * A-104 — the soft delete and its audit row commit together, or neither does.
+ *
+ * @param workflowId
+ * @param tenantId
+ * @param actor - auditActor(req)
+ */
+const deleteWorkflow = async (workflowId: string, tenantId: TenantId, actor: Actor = {}): Promise<{ success: true }> => {
+  const { SignatureRecord } = modelsNow();
+  try {
+    await db.transaction(async (transaction) => {
+      const workflow = await findWorkflowForMutation(workflowId, tenantId, transaction);
+      // A-130 / A-144 (ADR-051 A-107) — a workflow with ANY signature is a
+      // signed record (21 CFR 11.70: signatures stay linked to the record they
+      // sign). A-113 refused only `completed`, so an in_progress workflow with
+      // some steps signed could be deleted, hiding those signatures from every
+      // list. Counted with paranoid: false — a revoked or soft-deleted
+      // signature is still a signature that was made.
+      const signatures = await SignatureRecord.count({
+        where: { workflowId, tenantId },
+        paranoid: false,
+        transaction,
+      });
+      if (signatures > 0) {
+        throw new AppError(409, explainSignedWorkflowDeletion(workflow.status, signatures));
+      }
+      // A completed workflow has signatures; this stays for one whose rows
+      // were removed outside the application.
+      if (workflow.status === "completed") {
+        throw new AppError(409, explainClosedWorkflow(workflow.status, "deleted"));
+      }
+      await workflow.destroy({ transaction }); // paranoid soft delete
+      await auditWorkflowChange(transaction, tenantId, actor, "DELETE", workflowId, {
+        before: { status: workflow.status, documentId: workflow.documentId },
+      });
+    });
+    logger.info("Signature workflow deleted", { tenantId, workflowId });
+    return { success: true };
+  } catch (err) {
+    if (statusOf(err)) {throw err;}
+    logger.error("Failed to delete workflow", {
+      workflowId,
+      error: messageOf(err),
+    });
+    throw new AppError(500, "Failed to delete workflow");
+  }
+};
+
+/**
+ * A-129 (F-9) — what a caller without workflow management (`qms` read) is
+ * never shown in the signature history: the Part 11 capture of where and how a
+ * signature was made. They see only their own signatures in any case.
+ */
+const HISTORY_REDACTED_ATTRIBUTES = ["biometricData", "ipAddress", "userAgent"];
+
+/** The history filters, as the controller passes them (from the query string). */
+interface HistoryFilters {
+  userId?: string | null | undefined;
+  startDate?: string | null | undefined;
+  endDate?: string | null | undefined;
+  page?: number | string | null | undefined;
+  limit?: number | string | null | undefined;
+}
+
+/**
+ * Signature history / audit trail, optionally filtered by signed-at range.
+ *
+ * A-129 (ADR-051 Q-19, F-9). `/history` was gated on `esignature:read`, which
+ * every signing role holds, and returned every signature in the tenant with
+ * its IP address, user agent and biometric capture, filtered by whatever
+ * `userId` the caller passed.
+ *  - `canManage` (the caller holds `qms` read): the tenant's history, the
+ *    `userId` filter honoured, every column.
+ *  - otherwise: the caller's own signatures only — `filters.userId` is
+ *    ignored, not honoured — without biometricData, ipAddress or userAgent.
+ *
+ * @param tenantId
+ * @param filters - userId (honoured only when canManage), startDate, endDate;
+ *   D-24: page (1-based, default 1) and limit (default DEFAULT_LIMIT, capped at MAX_LIMIT)
+ * @param scope - from the controller
+ */
+const getSignatureHistory = async (
+  tenantId: TenantId,
+  filters: HistoryFilters = {},
+  scope: { callerId?: string | null; canManage?: boolean } = {},
+): Promise<{ rows: SignatureRow[]; meta: { total: number; page: number; limit: number; totalPages: number } }> => {
+  try {
+    const { SignatureRecord } = modelsNow();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: required at call time
+    const { Op } = require("sequelize") as typeof SequelizeModule;
+    const { DEFAULT_LIMIT, MAX_LIMIT } = constantsNow();
+    // D-24 (ADR-070): one page, not every signature the tenant ever made. The
+    // id breaks ties between signatures made in the same millisecond, so a
+    // row never appears on two pages or on none.
+    const limit = Math.min(Number(filters.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+    const page = Math.max(Number(filters.page) || 1, 1);
+    const where: Record<string, unknown> = { tenantId };
+    const options: Record<string, unknown> = {
+      order: [["signedAt", "DESC"], ["id", "ASC"]],
+      limit,
+      offset: (page - 1) * limit,
+    };
+    if (scope.canManage) {
+      if (filters.userId) {
+        where["userId"] = filters.userId;
+      }
+    } else {
+      // Deny by default: no caller id, no rows.
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty id is none (ADR-038 rule 3)
+      where["userId"] = scope.callerId || null;
+      options["attributes"] = { exclude: HISTORY_REDACTED_ATTRIBUTES };
+    }
+    if (filters.startDate || filters.endDate) {
+      const signedAt: Record<symbol, unknown> = {};
+      where["signedAt"] = signedAt;
+      if (filters.startDate) {
+        signedAt[Op.gte] = new Date(filters.startDate);
+      }
+      if (filters.endDate) {
+        signedAt[Op.lte] = new Date(filters.endDate);
+      }
+    }
+    const { count, rows } = await SignatureRecord.findAndCountAll({ where: where as WhereOptions, ...options });
+    return {
+      rows,
+      meta: { total: count, page, limit, totalPages: Math.ceil(count / limit) },
+    };
+  } catch (err) {
+    logger.error("Failed to get signature history", {
+      tenantId,
+      error: messageOf(err),
+    });
+    throw new AppError(500, "Failed to get signature history");
+  }
+};
+
+/**
+ * A-129 — the users a workflow may name as signers: active users of the
+ * tenant who hold `esignature:write`, exactly the rule createSignatureWorkflow
+ * enforces. For the workflow-creation picker, so a creator chooses from users
+ * instead of typing an email (A-86). Only id, name and email are returned.
+ *
+ * @param tenantId - the caller's tenant (from req.user)
+ * @returns the eligible signers, by name
+ */
+/** The roles a signer list names (a plain id list is Sequelize's IN). */
+const roleWhere = (roleIds: unknown[]): WhereOptions => {
+  const where: Record<string, unknown> = { id: roleIds };
+  return where;
+};
+
+const getEligibleSigners = async (tenantId: TenantId): Promise<{ id: string; name: string; email: string }[]> => {
+  const { User, Role } = modelsNow();
+  const { principalHasMenuPermission } = dynamicAccessNow();
+  const { MENU_SLUGS } = constantsNow();
+
+  const users = await User.findAll({
+    where: { tenantId, isActive: true, status: USER_STATUS.ACTIVE },
+    attributes: ["id", "username", "email", "firstName", "lastName", "roleId"],
+  });
+  const roleIds = [...new Set(users.map((u) => u.roleId).filter(Boolean))];
+  const roles = roleIds.length
+    ? await Role.findAll({ where: roleWhere(roleIds), attributes: ["id", "name"] })
+    : [];
+  const roleById = new Map(roles.map((r) => [r.id, { id: r.id, name: r.name }]));
+
+  const eligible: { id: string; name: string; email: string }[] = [];
+  for (const user of users) {
+    const maySign = await principalHasMenuPermission(
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3)
+      { id: user.id, role: roleById.get(user.roleId as string) || null },
+      MENU_SLUGS.ESIGNATURE,
+      "write",
+    );
+    if (maySign) {
+      eligible.push({ id: user.id, name: displayName(user), email: user.email });
+    }
+  }
+  return eligible.sort((a, b) => a.name.localeCompare(b.name));
+};
+
+/**
+ * Cancel a signature workflow.
+ *
+ * A-104 — the cancellation and its audit row (`UPDATE`, operation `CANCEL`;
+ * the audit ENUM has no CANCEL) commit together, or neither does.
+ *
+ * @param workflowId
+ * @param userId - the caller
+ * @param tenantId
+ * @param actor - auditActor(req); the audit row's user is always `userId`
+ * @param reason - why it was cancelled; recorded in the audit row
+ * @throws {AppError} 404 when the workflow is not in the tenant; 409 when it
+ *   is completed or already cancelled. An expired workflow may be cancelled
+ *   (A-168).
+ */
+const cancelWorkflow = async (
+  workflowId: string,
+  userId: UserId,
+  tenantId: TenantId,
+  actor: Actor = {},
+  reason?: string | null,
+): Promise<{ success: true }> => {
+  try {
+    await db.transaction(async (transaction) => {
+      const workflow = await findWorkflowForMutation(workflowId, tenantId, transaction);
+
+      // A-92 — a state conflict (409), explained, not a malformed request.
+      // A-130 — cancelling a cancelled workflow is the same conflict: it used
+      // to succeed again and write a second CANCEL audit row.
+      if (workflow.status === "completed" || workflow.status === "cancelled") {
+        throw new AppError(409, explainClosedWorkflow(workflow.status, "cancelled"));
+      }
+
+      // A-168 (decided) — an expired workflow MAY be cancelled: that is how
+      // it is closed, with this audit row, when no signature attempt has
+      // marked it expired. The row says it had expired.
+      const expired = isExpired(workflow);
+      const previousStatus = workflow.status;
+      await workflow.update({ status: "cancelled" }, { transaction });
+      await auditWorkflowChange(
+        transaction,
+        tenantId,
+        { ...actor, userId },
+        "UPDATE",
+        workflowId,
+        {
+          operation: "CANCEL",
+          before: {
+            status: previousStatus,
+            ...(expired ? { expired: true, expiresAt: new Date(workflow.expiresAt as Date).toISOString() } : {}),
+          },
+          after: { status: "cancelled", ...(reason ? { reason } : {}) },
+        },
+      );
+    });
+
+    logger.info("Workflow cancelled", {
+      workflowId,
+      cancelledBy: userId,
+    });
+
+    return { success: true };
+  } catch (err) {
+    if (statusOf(err)) {throw err;}
+    logger.error("Failed to cancel workflow", {
+      workflowId,
+      error: messageOf(err),
+    });
+    throw new AppError(500, "Failed to cancel workflow");
+  }
+};
+
+// A-107 (ADR-051; ADR-055) — there is no signature revocation. An
+// unrouted `revokeSignature` lived here: no re-authentication, no state check
+// (a revoked signature could be revoked again) and its read outside the
+// transaction. Revoking a Part 11 signature is a signature act of its own and
+// needs its own design (who may revoke, re-authentication, what the record
+// and its verification show); verifySignature still reports a `revoked`
+// row as `revoked` for any such row written in the past.
+
+// ==========================================
+// UTILITIES
+// ==========================================
+
+/**
+ * Get service status
+ */
+const getStatus = (): { enabled: boolean; algorithm: string; keySize: number; reauthenticationRequired: boolean } => {
+  return {
+    enabled: ESIGN_ENABLED,
+    algorithm: SIGNATURE_ALGORITHM,
+    keySize: SIGNATURE_KEY_SIZE,
+    reauthenticationRequired: REQUIRE_REAUTHENTICATION,
+  };
+};
+
+/**
+ * Export constants
+ */
+const SIGNATURE_STATUS = {
+  PENDING: "pending",
+  SIGNED: "signed",
+  REVOKED: "revoked",
+  EXPIRED: "expired",
+};
+
+const WORKFLOW_STATUS = {
+  PENDING: "pending",
+  IN_PROGRESS: "in_progress",
+  COMPLETED: "completed",
+  CANCELLED: "cancelled",
+  EXPIRED: "expired",
+};
+
+export = {
+  generateKeyPair,
+  getKeyPairs,
+  deleteKeyPair,
+  createSignatureWorkflow,
+  signDocument,
+  verifySignature,
+  getWorkflow,
+  getWorkflows,
+  getSignerWorkflows,
+  getSignerWorkflow,
+  updateWorkflow,
+  deleteWorkflow,
+  getSignatureHistory,
+  getEligibleSigners,
+  cancelWorkflow,
+  assertSignatureAlgorithmSetting,
+  getStatus,
+  SIGNATURE_STATUS,
+  WORKFLOW_STATUS,
+};

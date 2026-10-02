@@ -518,8 +518,21 @@ async function main() {
       const doc = await api.httpGet(`/certificates/${certId}/document`, admin);
       if (doc.status !== 200) throw new Error(`GET /certificates/:id/document answered ${doc.status}`);
       await page2.goto(`${FRONTEND_URL}/dashboard/calibration`, { waitUntil: "domcontentloaded" });
-      await clickButton(page2, "Compliance Certificates");
-      await page2.waitForFunction((n) => document.body.innerText.includes(n), { timeout: STEP_TIMEOUT }, certificateNumber);
+      // The tab is in the server-rendered HTML, so it can be clicked before the
+      // page hydrates, and that click does nothing: run L (2026-10-02, record
+      // 2026-10-02-a346-a348-live-pair-kl) waited 30 s on "Calibration Records"
+      // with every request answered. Retried until the certificate shows.
+      const tabDeadline = Date.now() + STEP_TIMEOUT;
+      for (;;) {
+        await clickButton(page2, "Compliance Certificates");
+        const shown = await page2
+          .waitForFunction((n) => document.body.innerText.includes(n), { timeout: 3000 }, certificateNumber)
+          .then(() => true, () => false);
+        if (shown) break;
+        if (Date.now() > tabDeadline) {
+          throw new Error(`certificate ${certificateNumber} not shown on the Compliance Certificates tab`);
+        }
+      }
       const download = await capturePdfDownload(page2, `Download PDF of certificate ${certificateNumber}`);
       return assertCertificatePdf(download, certificateNumber, doc.body.data.integrity.hash);
     });

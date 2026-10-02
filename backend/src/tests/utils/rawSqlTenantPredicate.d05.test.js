@@ -44,7 +44,7 @@ const CROSS_TENANT = {
   // configured master key. It runs before any request, across every tenant by
   // design, and reads only key ids and counts (plus one v1 sample, decrypted
   // with its own tenant id / AAD and discarded) — never a value it returns.
-  "utils/kmsVerify.util.js#${table}":
+  "utils/kmsVerify.util.ts#${table}":
     "boot-time KMS key check over every tenant's envelopes (ADR-078); reads key ids and counts only",
   // P9-18: the operator's key rotation (npm run keys:rotate, S-08/P6-10). It
   // pages every row of each envelope table across ALL tenants on purpose; each
@@ -139,6 +139,41 @@ const statements = () => {
 /** A tenant predicate BOUND as a parameter (the helper's rule). */
 const BOUND_TENANT = /(?:tenant_id|"tenantId")\s*=\s*\$\d+/;
 
+/** Split a list on its top-level commas (a value may be `now()` or `gen_random_uuid()`). */
+const topLevel = (list) => {
+  const parts = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of list) {
+    if (ch === "(") {depth += 1;}
+    if (ch === ")") {depth -= 1;}
+    if (ch === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current.trim());
+  return parts;
+};
+
+/**
+ * P9-18: an INSERT has no predicate; its tenant is the VALUE it writes. A
+ * helper INSERT passes when its column list names `tenant_id` and the value in
+ * that position is a bound `$n` (optionally cast), never a literal or an
+ * interpolation.
+ */
+const insertBindsTenant = (sql) => {
+  const m = /^\s*INSERT\s+INTO\s+"?[a-z_][a-z0-9_]*"?\s*\(([^)]*)\)\s*VALUES\s*\(([\s\S]*)\)\s*(?:RETURNING[\s\S]*)?$/i.exec(sql);
+  if (!m) {
+    return false;
+  }
+  const columns = topLevel(m[1]).map((col) => col.replace(/"/g, "").toLowerCase());
+  const index = columns.findIndex((col) => col === "tenant_id" || col === "tenantid");
+  return index >= 0 && /^\$\d+(?:::\w+)?$/.test(topLevel(m[2])[index] || "");
+};
+
 /** Offending statements (shared by the real scan and the bite checks). */
 const offendersOf = (list, scoped) => {
   const offenders = [];
@@ -149,7 +184,7 @@ const offendersOf = (list, scoped) => {
     if (!dynamic && touched.length === 0) {
       continue;
     }
-    const ok = kind === "helper" ? BOUND_TENANT.test(sql) : /tenant_id|"tenantId"/.test(sql);
+    const ok = kind === "helper" ? BOUND_TENANT.test(sql) || insertBindsTenant(sql) : /tenant_id|"tenantId"/.test(sql);
     if (ok) {
       continue;
     }
@@ -169,7 +204,7 @@ describe("D-05 — raw SQL naming a tenant-scoped table carries a tenant predica
     expect(scoped.has("kanban_projects")).toBe(true);
     expect(scoped.has("audit_logs")).toBe(true);
     expect(scoped.has("roles")).toBe(false);
-    expect(all.some((s) => s.file === "services/kanban.service.js")).toBe(true);
+    expect(all.some((s) => s.file === "services/kanban.service.ts")).toBe(true);
   });
 
   it("every statement can be read (a literal, or a const it names)", () => {
@@ -200,6 +235,26 @@ describe("D-05 — raw SQL naming a tenant-scoped table carries a tenant predica
     expect(found.map((s) => s.kind)).toEqual(["helper", "helper", "helper", "helper"]);
     // interpolated (not bound) and missing predicates are flagged; the bound one and the global table are not
     expect(offendersOf(found, scoped)).toEqual(["synthetic.ts: usage_alerts", "synthetic.ts: kanban_projects"]);
+  });
+
+  it("P9-18: a helper INSERT passes only when it BINDS the tenant column's value", () => {
+    const source = [
+      "await sql(db, `INSERT INTO document_chunks (id, tenant_id, content) VALUES (gen_random_uuid(), $1, $2)`, [t, c]);",
+      "await sql(db, `INSERT INTO document_chunks (id, tenant_id, content) VALUES (gen_random_uuid(), '${t}', $1)`, [c]);",
+      "await sql(db, `INSERT INTO document_chunks (id, content) VALUES (gen_random_uuid(), $1)`, [c]);",
+      "await sql(db, `INSERT INTO document_chunks (id, tenant_id, content) VALUES (gen_random_uuid(), $1::uuid, now())`, [t]);",
+      // An INSERT ... SELECT is not an INSERT ... VALUES: the rule does not
+      // apply, and its SELECT must bind its own tenant predicate.
+      "await sql(db, `INSERT INTO document_chunks (id, tenant_id, content) SELECT gen_random_uuid(), $1, content FROM document_chunks WHERE source_id = $2`, [t, s]);",
+      "await sql(db, `INSERT INTO document_chunks (id, tenant_id, content) SELECT gen_random_uuid(), tenant_id, content FROM document_chunks WHERE tenant_id = $1 AND source_id = $2`, [t, s]);",
+    ].join("\n");
+    const found = statementsIn(source, "synthetic-insert.ts");
+    expect(offendersOf(found, scoped)).toEqual([
+      "synthetic-insert.ts: document_chunks",
+      "synthetic-insert.ts: document_chunks",
+      // the INSERT ... SELECT names the table twice (INTO and FROM)
+      "synthetic-insert.ts: document_chunks, document_chunks",
+    ]);
   });
 
   it("the tripwire fires on the D-05 shape (the pre-fix card_seq statement)", () => {

@@ -67,7 +67,7 @@ const SYSTEM_ACTORS = Object.freeze({
   /**
    * P6-07 — the break-glass reset of a platform operator's second factor
    * (auth.service#breakGlassResetOperatorMfa, run only from the
-   * scripts/breakGlassMfaReset.js CLI by someone with database access). The
+   * scripts/breakGlassMfaReset.ts CLI by someone with database access). The
    * person is named in `changes.requestedBy`; they are not a principal here.
    */
   BREAK_GLASS: "system:break-glass",
@@ -100,7 +100,7 @@ const SYSTEM_ACTORS = Object.freeze({
    */
   SCIM_PROVISIONING: "system:scim",
   /**
-   * D-22 (ADR-083) — services/attachmentFileSweep.service.js: the files of
+   * D-22 (ADR-083) — services/attachmentFileSweep.service.ts: the files of
    * attachments soft-deleted longer than the retention window.
    */
   ATTACHMENT_FILE_SWEEP: "system:attachment-file-sweep",

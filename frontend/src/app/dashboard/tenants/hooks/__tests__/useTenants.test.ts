@@ -8,6 +8,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 
 const tenantService = { getVisible: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() };
 jest.mock("@/api/services/tenant.service", () => ({ tenantService }));
+const tenantLifecycleService = { suspend: jest.fn(), resume: jest.fn() };
+jest.mock("@/api/services/tenantLifecycle.service", () => ({ tenantLifecycleService }));
 
 import { useTenants, initialCreateForm } from "../useTenants";
 import { useTenantStore } from "@/stores/tenantStore";
@@ -17,7 +19,7 @@ import { grantPermissions, grantSuperAdmin } from "@/tests/support/permissions";
 
 const ev = { preventDefault: jest.fn() } as unknown as React.FormEvent;
 const rsA = {
-  id: "t1", name: "RS A", code: "RSA", status: "ACTIVE", description: "Hospital A", primaryColor: "#112233",
+  id: "t1", name: "RS A", code: "RSA", status: "active", description: "Hospital A", primaryColor: "#112233",
   limitSeats: 50, email: "a@rs.id", phone: "021", address: "Jl. A", city: "Jakarta", state: "DKI", zipCode: "10110",
   country: "ID", website: "https://rsa.id", logoBaseUrl: "/api/v1/tenants/t1/logo",
 } as unknown as Tenant;
@@ -122,7 +124,7 @@ describe("useTenants", () => {
     act(() => result.current.handleEdit(rsA));
     expect(result.current.showEditModal).toBe(true);
     expect(result.current.editForm).toEqual({
-      name: "RS A", code: "RSA", description: "Hospital A", primaryColor: "#112233", status: "ACTIVE",
+      name: "RS A", code: "RSA", description: "Hospital A", primaryColor: "#112233", status: "active",
       email: "a@rs.id", phone: "021", address: "Jl. A", city: "Jakarta", state: "DKI", zipCode: "10110",
       country: "ID", website: "https://rsa.id",
     });
@@ -132,7 +134,7 @@ describe("useTenants", () => {
 
   it("a tenant whose logo the backend will not serve gets no preview and form defaults", async () => {
     const { result } = await setup();
-    act(() => result.current.handleEdit({ id: "t3", name: "Bare", code: "BR", status: "INACTIVE", logoBaseUrl: null } as unknown as Tenant));
+    act(() => result.current.handleEdit({ id: "t3", name: "Bare", code: "BR", status: "suspended", logoBaseUrl: null } as unknown as Tenant));
     expect(result.current.editLogoPreview).toBe("");
     expect(result.current.editLogoKeep).toBe(false);
     expect(result.current.editForm).toMatchObject({ description: "", primaryColor: "#4f46e5", website: "" });
@@ -147,13 +149,15 @@ describe("useTenants", () => {
     expect(tenantService.update).not.toHaveBeenCalled();
 
     act(() => result.current.handleEdit(rsA));
-    act(() => result.current.setEditForm((f) => ({ ...f, status: "SUSPENDED", website: "" })));
+    act(() => result.current.setEditForm((f) => ({ ...f, status: "suspended", website: "" })));
     await act(async () => result.current.handleUpdate(ev));
     // A-303: an emptied profile field is sent as "" (it clears); no maxUsers is sent.
     expect(tenantService.update).toHaveBeenCalledWith(expect.objectContaining({
-      tenantId: "t1", name: "RS A", code: "RSA", status: "SUSPENDED", website: "", city: "Jakarta", file: undefined,
+      tenantId: "t1", name: "RS A", code: "RSA", website: "", city: "Jakarta", file: undefined,
     }));
     expect(tenantService.update.mock.calls[0][0]).not.toHaveProperty("maxUsers");
+    // A-326 / ADR-112: an edit never carries a status, whatever the form holds.
+    expect(tenantService.update.mock.calls[0][0]).not.toHaveProperty("status");
     expect(result.current.showEditModal).toBe(false);
     expect(result.current.editingTenant).toBeNull();
     expect(result.current.editLogoPreview).toBe("");
@@ -183,6 +187,37 @@ describe("useTenants", () => {
     tenantService.delete.mockResolvedValueOnce(undefined);
     await act(async () => result.current.handleDelete("t1"));
     expect(tenantService.delete).toHaveBeenLastCalledWith("t1");
+  });
+
+  it("A-326 / ADR-112: suspend and resume go through the lifecycle service, then the modal shows the new status", async () => {
+    const { result } = await setup();
+    await act(async () => result.current.handleLifecycle("suspend", "Contract ended"));
+    expect(tenantLifecycleService.suspend).not.toHaveBeenCalled(); // no tenant being edited
+
+    act(() => result.current.handleEdit(rsA));
+    tenantLifecycleService.suspend.mockResolvedValueOnce({ tenantId: "t1", status: "suspended" });
+    await act(async () => result.current.handleLifecycle("suspend", "Contract ended"));
+    expect(tenantLifecycleService.suspend).toHaveBeenCalledWith("t1", "Contract ended");
+    expect(result.current.editingTenant?.status).toBe("suspended");
+    expect(result.current.editForm.status).toBe("suspended");
+    expect(tenantService.update).not.toHaveBeenCalled();
+
+    tenantLifecycleService.resume.mockResolvedValueOnce(undefined);
+    await act(async () => result.current.handleLifecycle("resume"));
+    expect(tenantLifecycleService.resume).toHaveBeenCalledWith("t1");
+    expect(result.current.editingTenant?.status).toBe("active");
+  });
+
+  it("a refused lifecycle action keeps the modal open with the reason", async () => {
+    const { result } = await setup();
+    act(() => result.current.handleEdit(rsA));
+    tenantLifecycleService.suspend.mockRejectedValueOnce(httpError(409, "The default tenant cannot be suspended"));
+    await act(async () => result.current.handleLifecycle("suspend", "x"));
+    expect(result.current.formError).toBe("The default tenant cannot be suspended");
+    expect(result.current.showEditModal).toBe(true);
+    tenantLifecycleService.resume.mockRejectedValueOnce(null);
+    await act(async () => result.current.handleLifecycle("resume"));
+    expect(result.current.formError).toBe("Failed to resume tenant");
   });
 
   it("the SSO panel opens for the chosen tenant", async () => {

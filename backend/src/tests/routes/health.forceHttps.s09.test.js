@@ -83,8 +83,9 @@ describe("forceHttps (S-09, ADR-081)", () => {
   });
 
   it("index.js mounts this middleware under FORCE_HTTPS, not an inline copy", () => {
-    const src = fs.readFileSync(path.join(__dirname, "../../../index.js"), "utf8");
-    expect(src).toMatch(/require\("\.\/src\/routes\/internal\/health\.route"\)\.forceHttps/);
+    const src = fs.readFileSync(path.join(__dirname, "../../../index.ts"), "utf8");
+    // P9-21: index.ts types the require (`as typeof ...`); the mount is the same.
+    expect(src).toMatch(/require\("\.\/src\/routes\/internal\/health\.route"\)(?: as typeof \w+\))?\.forceHttps/);
     expect(src).not.toMatch(/req\.get\("X-Forwarded-Proto"\) !== "https"/);
   });
 });

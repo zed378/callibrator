@@ -24,6 +24,16 @@ const row = (overrides: Partial<AuditLog>): AuditLog => ({
   resourceType: "CalibrationDevice",
   resourceId: "dev-1",
   createdAt: "2026-09-24T10:00:00.000Z",
+  // The rest of a real row (audit.openapi.ts AuditLogEntry).
+  userId: null,
+  actorType: "user",
+  actorName: null,
+  changes: null,
+  ipAddress: null,
+  userAgent: null,
+  impersonatorId: null,
+  user: null,
+  impersonator: null,
   ...overrides,
 });
 

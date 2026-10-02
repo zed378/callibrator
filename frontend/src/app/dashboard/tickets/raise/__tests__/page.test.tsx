@@ -61,7 +61,7 @@ describe("Raise a Ticket — list", () => {
     const { container } = render(<RaiseTicketPage />);
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(await screen.findByText("Printer offline")).toBeInTheDocument();
-    expect(get).toHaveBeenCalledWith("/api/v1/tickets", { params: { mine: true, page: 1, limit: 25 } });
+    expect(get).toHaveBeenCalledWith("/api/v1/tickets", { params: { mine: "true", page: 1, limit: 25 } });
     expect(screen.getByText(/2 raised\./)).toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: /Autoclave calibration overdue/ }));
@@ -93,7 +93,7 @@ describe("Raise a Ticket — list", () => {
     });
     await waitFor(() =>
       expect(get).toHaveBeenLastCalledWith("/api/v1/tickets", {
-        params: { status: "resolved", mine: true, page: 1, limit: 25 },
+        params: { status: "resolved", mine: "true", page: 1, limit: 25 },
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: "All priorities" }));
@@ -103,7 +103,7 @@ describe("Raise a Ticket — list", () => {
     fireEvent.change(screen.getByPlaceholderText("Search subject or key (e.g. TKT-12)…"), { target: { value: " TKT-7 " } });
     await waitFor(() =>
       expect(get).toHaveBeenLastCalledWith("/api/v1/tickets", {
-        params: { status: "resolved", priority: "urgent", mine: true, q: "TKT-7", page: 1, limit: 25 },
+        params: { status: "resolved", priority: "urgent", mine: "true", q: "TKT-7", page: 1, limit: 25 },
       }),
     );
   });

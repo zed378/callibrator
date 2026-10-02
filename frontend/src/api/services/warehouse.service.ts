@@ -1,34 +1,23 @@
-import { api } from "../client";
+// src/api/services/warehouse.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client. Every call is typed by
+// `paths` (generated from backend/src/routes/api/warehouse.openapi.ts); the
+// warehouse and location types (@/types) are the contract's schemas, and the
+// request bodies are the contract's, which replaced the interim `z.input` types
+// (ADR-097 Am. 1). The exported names are unchanged.
+import { typedApi, unwrap, type JsonBody, type Op } from "../typed";
 import { Warehouse, StorageLocation, PaginatedResponse } from "@/types";
-import type {
-  CreateLocationInput,
-  CreateWarehouseInput,
-  UpdateLocationInput,
-  UpdateWarehouseInput,
-} from "@callibrator/contracts/warehouse";
 
-// P9-22 (ADR-097): request bodies are the backend validator's own schemas
-// (@callibrator/contracts/warehouse). The hand-written `Omit<Warehouse, …>`
-// shapes they replace offered `tenantId` (never read from a body) and a
-// "suspended" status the API refuses.
-export type WarehouseCreateInput = CreateWarehouseInput;
-export type WarehouseUpdateInput = UpdateWarehouseInput;
-export type LocationCreateInput = CreateLocationInput;
-export type LocationUpdateInput = UpdateLocationInput;
+type ById = "/api/v1/warehouses/{warehouseId}";
+type LocationById = "/api/v1/warehouses/locations/{locationId}";
 
-// Backend response structure for warehouses
-interface BackendWarehousesResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: Warehouse[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
+export type WarehouseCreateInput = JsonBody<Op<"/api/v1/warehouses", "post">>;
+export type WarehouseUpdateInput = JsonBody<Op<ById, "patch">>;
+export type LocationCreateInput = JsonBody<Op<"/api/v1/warehouses/locations", "post">>;
+export type LocationUpdateInput = JsonBody<Op<LocationById, "patch">>;
+
+const warehouse = (warehouseId: string) => ({ params: { path: { warehouseId } } });
+const location = (locationId: string) => ({ params: { path: { locationId } } });
 
 export const warehouseService = {
   getAll: async (
@@ -36,12 +25,9 @@ export const warehouseService = {
     limit = 25,
     search?: string
   ): Promise<PaginatedResponse<Warehouse>> => {
-    const response = await api.get<BackendWarehousesResponse>(
-      "/api/v1/warehouses",
-      {
-        params: { page, limit, find: search },
-      }
-    );
+    const response = await typedApi
+      .GET("/api/v1/warehouses", { params: { query: { page, limit, find: search } } })
+      .then(unwrap);
 
     return {
       success: response.success,
@@ -51,71 +37,41 @@ export const warehouseService = {
     };
   },
 
-  getById: async (warehouseId: string): Promise<Warehouse> => {
-    const response = await api.get<{ success: boolean; data: Warehouse }>(
-      `/api/v1/warehouses/${warehouseId}`
-    );
-    return response.data;
-  },
+  getById: async (warehouseId: string): Promise<Warehouse> =>
+    (await typedApi.GET("/api/v1/warehouses/{warehouseId}", warehouse(warehouseId)).then(unwrap)).data,
 
-  create: async (
-    data: WarehouseCreateInput
-  ): Promise<Warehouse> => {
-    const response = await api.post<{ success: boolean; data: Warehouse }>(
-      "/api/v1/warehouses",
-      data
-    );
-    return response.data;
-  },
+  create: async (data: WarehouseCreateInput): Promise<Warehouse> =>
+    (await typedApi.POST("/api/v1/warehouses", { body: data }).then(unwrap)).data,
 
-  update: async (
-    warehouseId: string,
-    data: WarehouseUpdateInput
-  ): Promise<Warehouse> => {
-    const response = await api.patch<{ success: boolean; data: Warehouse }>(
-      `/api/v1/warehouses/${warehouseId}`,
-      data
-    );
-    return response.data;
-  },
+  update: async (warehouseId: string, data: WarehouseUpdateInput): Promise<Warehouse> =>
+    (
+      await typedApi
+        .PATCH("/api/v1/warehouses/{warehouseId}", { ...warehouse(warehouseId), body: data })
+        .then(unwrap)
+    ).data,
 
   delete: async (warehouseId: string): Promise<void> => {
-    await api.delete(`/api/v1/warehouses/${warehouseId}`);
+    await typedApi.DELETE("/api/v1/warehouses/{warehouseId}", warehouse(warehouseId));
   },
 
   // ==========================================
   // STORAGE LOCATIONS
   // ==========================================
 
-  getLocations: async (warehouseId: string): Promise<StorageLocation[]> => {
-    const response = await api.get<{ success: boolean; data: StorageLocation[] }>(
-      `/api/v1/warehouses/${warehouseId}/locations`
-    );
-    return response.data;
-  },
+  getLocations: async (warehouseId: string): Promise<StorageLocation[]> =>
+    (await typedApi.GET("/api/v1/warehouses/{warehouseId}/locations", warehouse(warehouseId)).then(unwrap)).data,
 
-  createLocation: async (
-    data: LocationCreateInput
-  ): Promise<StorageLocation> => {
-    const response = await api.post<{ success: boolean; data: StorageLocation }>(
-      "/api/v1/warehouses/locations",
-      data
-    );
-    return response.data;
-  },
+  createLocation: async (data: LocationCreateInput): Promise<StorageLocation> =>
+    (await typedApi.POST("/api/v1/warehouses/locations", { body: data }).then(unwrap)).data,
 
-  updateLocation: async (
-    locationId: string,
-    data: LocationUpdateInput
-  ): Promise<StorageLocation> => {
-    const response = await api.patch<{ success: boolean; data: StorageLocation }>(
-      `/api/v1/warehouses/locations/${locationId}`,
-      data
-    );
-    return response.data;
-  },
+  updateLocation: async (locationId: string, data: LocationUpdateInput): Promise<StorageLocation> =>
+    (
+      await typedApi
+        .PATCH("/api/v1/warehouses/locations/{locationId}", { ...location(locationId), body: data })
+        .then(unwrap)
+    ).data,
 
   deleteLocation: async (locationId: string): Promise<void> => {
-    await api.delete(`/api/v1/warehouses/locations/${locationId}`);
+    await typedApi.DELETE("/api/v1/warehouses/locations/{locationId}", location(locationId));
   },
 };

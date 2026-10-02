@@ -61,7 +61,7 @@ describe("AZ-02 — retrieval is filtered to the gate's source types", () => {
     // rows out of answers — but a new type written by THIS script without the
     // list changing would index SOPs the query can no longer see.
     const src = fs.readFileSync(
-      path.join(__dirname, "..", "..", "scripts", "backfillEmbeddings.js"),
+      path.join(__dirname, "..", "..", "scripts", "backfillEmbeddings.ts"),
       "utf8",
     );
     const types = [...src.matchAll(/sourceType:\s*"([^"]+)"/g)].map((m) => m[1]);

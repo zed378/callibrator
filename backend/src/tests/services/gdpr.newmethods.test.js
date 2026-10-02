@@ -248,19 +248,8 @@ describe("gdpr.service new methods", () => {
       expect(entries()[3].entry.changes).toMatchObject({ hasDetails: false });
     });
 
-    it("privacy preferences record which keys were set, never their values", async () => {
-      await gdpr.updatePrivacyPreferences("t1", "u1", { marketingEmails: false, profiling: true }, principal);
-      const [{ entry, options }] = entries();
-      expect(options).toEqual({ transaction: mockTx });
-      expect(entry).toMatchObject({
-        resourceType: "User",
-        resourceId: "u1",
-        changes: { operation: "GDPR_PRIVACY_PREFERENCES", keys: ["marketingEmails", "profiling"] },
-      });
-      expect(JSON.stringify(entry.changes)).not.toMatch(/true|false/);
-      await gdpr.updatePrivacyPreferences("t1", "u1", null);
-      expect(entries()[1].entry.changes.keys).toEqual([]);
-    });
+    // A-333: the privacy-preferences pair was removed (it audited a write
+    // to an attribute User does not have).
 
     it("a failed audit write fails the request (it cannot be granted unrecorded)", async () => {
       auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));

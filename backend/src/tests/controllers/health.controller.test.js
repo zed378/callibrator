@@ -1,5 +1,5 @@
 /**
- * Tests for health.controller.js (A-06 / A-15).
+ * Tests for health.controller.ts (A-06 / A-15).
  *
  * The disclosure assertions are written against the RESPONSE BODY, not against
  * the implementation: whatever the handler is built from, a public probe must

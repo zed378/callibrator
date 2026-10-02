@@ -63,7 +63,68 @@ const qualifyVendor = z.object({
   nextAuditDate: isoDate().nullable().optional(),
 });
 
+// ── Response ──────────────────────────────────────────────────────────────
+
+const VENDOR_APPROVAL_STATUSES = ["APPROVED", "PENDING", "REJECTED", "CONDITIONAL"] as const;
+
+const timestamp = z.iso.datetime();
+
+/**
+ * A vendor as the API answers it (`Vendor.toJSON()`): the response schema of
+ * every vendor route (P9-20/21, ADR-097 Am. 5; moved here from
+ * backend/src/routes/api/vendor.openapi.ts, unchanged).
+ */
+const vendorResponse = z
+  .object({
+    id: z.guid(),
+    tenantId: z.guid(),
+    name: z.string(),
+    type: z.enum(VENDOR_TYPES),
+    contactPerson: z.string().nullable(),
+    email: z.string().nullable(),
+    phone: z.string().nullable(),
+    address: z.string().nullable(),
+    /** Q-52: stored since migration 0106 (was accepted and dropped). */
+    notes: z.string().nullable(),
+    rating: z.number().nullable(),
+    approvalStatus: z.enum(VENDOR_APPROVAL_STATUSES),
+    scorecard: z.number().int().nullable(),
+    lastAuditDate: timestamp.nullable(),
+    nextAuditDate: timestamp.nullable(),
+    status: z.enum(VENDOR_STATUSES),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: timestamp.nullable(),
+  })
+  .meta({
+    id: "Vendor",
+    description: "An approved-supplier record (ISO 13485 supplier file).",
+    example: {
+      id: "5f0c2a8e-7c1d-4b6a-9e2f-3d4c5b6a7e81",
+      tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
+      name: "Example Calibration Lab",
+      type: "CalibrationLab",
+      contactPerson: "Quality Desk",
+      email: "quality@lab.example",
+      phone: "+00 000 0000",
+      address: "1 Example Street",
+      notes: "Accredited scope covers temperature and pressure.",
+      rating: 4.5,
+      approvalStatus: "APPROVED",
+      scorecard: 92,
+      lastAuditDate: "2026-03-01T00:00:00.000Z",
+      nextAuditDate: "2027-03-01T00:00:00.000Z",
+      status: "Active",
+      createdAt: "2026-01-15T08:30:00.000Z",
+      updatedAt: "2026-03-01T09:00:00.000Z",
+      deletedAt: null,
+    },
+  });
+
 export { VENDOR_NOTES_MAX, VENDOR_TYPES, VENDOR_STATUSES, createVendor, updateVendor, qualifyVendor };
+export { VENDOR_APPROVAL_STATUSES, vendorResponse };
+/** A vendor as the API answers it. */
+export type VendorResponse = z.output<typeof vendorResponse>;
 
 /** A vendor's type, as the API stores it. */
 export type VendorType = (typeof VENDOR_TYPES)[number];

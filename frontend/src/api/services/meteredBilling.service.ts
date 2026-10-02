@@ -1,10 +1,10 @@
-import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type QueryOf, type components } from "../typed";
 
 /**
  * Metered billing — usage snapshots, invoices, plan limits and alerts.
  *
  * The tenant comes from the caller's JWT.
- * Backend: src/routes/api/meteredBilling.route.js (mounted /api/v1/metered-billing)
+ * Backend: src/routes/api/meteredBilling.route.ts (mounted /api/v1/metered-billing)
  *   GET    /usage                 current snapshot
  *   GET    /history               ?page&limit&startDate&endDate
  *   POST   /estimate              { metrics, quantity, period }
@@ -22,119 +22,64 @@ import { api } from "../client";
  *  - /alerts returns a plain ARRAY
  *  - /history is a paginated list: invoices in `data`, pagination in the
  *    top-level `meta` (F-13, ADR-074 — it used to nest { rows, meta } in data)
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+ * contract's (backend/src/routes/api/meteredBilling.openapi.ts). The exported
+ * names are unchanged.
  */
 
-const BASE = "/api/v1/metered-billing";
+type MB = "/api/v1/metered-billing";
+type Schemas = components["schemas"];
 
 // ---------- Types ----------
 
+type EstimateBody = JsonBody<Op<`${MB}/estimate`, "post">>;
+
 /** Accepted by POST /estimate. */
-export type EstimatePeriod = "hourly" | "daily" | "monthly" | "yearly";
+export type EstimatePeriod = NonNullable<EstimateBody["period"]>;
 
 /** Accepted by GET /analytics. */
-export type AnalyticsPeriod = "7d" | "30d" | "90d" | "1y";
+export type AnalyticsPeriod = NonNullable<QueryOf<Op<`${MB}/analytics`, "get">>["period"]>;
 
-export type AlertComparison = "gte" | "lte" | "eq" | "gt" | "lt";
-export type NotificationChannel = "email" | "webhook";
+/** POST /alerts — only metricName and threshold are required (server defaults: "gte", ["email"], enabled). */
+export type CreateAlertInput = JsonBody<Op<`${MB}/alerts`, "post">>;
+export type AlertComparison = NonNullable<CreateAlertInput["comparison"]>;
+export type NotificationChannel = NonNullable<CreateAlertInput["notificationChannels"]>[number];
 
-/** metricName -> units, for REQUEST bodies (estimate/track usage). */
+/** metricName -> units, for REQUEST bodies (estimate). */
 export type UsageMetrics = Record<string, number>;
 
-/** Per-metric usage breakdown for one period (in the GET /usage RESPONSE). */
-export interface UsageMetric {
-  total: number;
-  current: number;
-  history: { period: string; count: number }[];
-}
+/** GET /usage — a point-in-time snapshot, not a paginated list. */
+export type UsageSnapshot = Schemas["TenantUsage"];
 
 /**
  * metricName -> its usage breakdown. `getUsage` returns each metric as an
  * object (total/current/history), NOT a bare number.
  */
-export type UsageBreakdown = Record<string, UsageMetric>;
+export type UsageBreakdown = UsageSnapshot["metrics"];
 
-/** GET /usage — a point-in-time snapshot, not a paginated list. */
-export interface UsageSnapshot {
-  tenantId: string;
-  metrics: UsageBreakdown;
-  generatedAt: string;
-}
+/** Per-metric usage breakdown for one period (in the GET /usage RESPONSE). */
+export type UsageMetric = UsageBreakdown[string];
 
-export interface Invoice {
-  id: string;
-  tenantId?: string;
-  amount?: number;
-  currency?: string;
-  status?: string;
-  periodStart?: string;
-  periodEnd?: string;
-  createdAt?: string;
-}
+/**
+ * A row of GET /history: an Invoice row (amountDue / amountPaid, currency, a
+ * capitalised status, createdAt) — no `amount` and no billing period.
+ */
+export type Invoice = Schemas["InvoiceRow"];
 
-export interface PageMeta {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+export type PageMeta = Schemas["PaginationMeta"];
 
-/** GET /plan — a single object describing the tenant's plan. */
-export interface PlanDetails {
-  plan: string;
-  billingCycle?: string;
-  limits: Record<string, number>;
-  /** Rate card: metricName -> price per unit over the included limit. */
-  overagePricing: Record<string, number>;
-}
+/** GET /plan — a single object describing the tenant's plan (a null limit is unlimited). */
+export type PlanDetails = Schemas["PlanDetails"];
 
-export interface CostEstimate {
-  [key: string]: unknown;
-}
+export type CostEstimate = Schemas["CostEstimate"];
 
-export interface UsageAlert {
-  id: string;
-  tenantId?: string;
-  metricName: string;
-  threshold: number;
-  comparison: AlertComparison;
-  notificationChannels: NotificationChannel[];
-  isEnabled: boolean;
-  description?: string;
-  createdAt?: string;
-}
+export type UsageAlert = Schemas["UsageAlert"];
 
-/** POST /alerts — only metricName and threshold are required. */
-export interface CreateAlertInput {
-  metricName: string;
-  threshold: number;
-  /** Server default: "gte". */
-  comparison?: AlertComparison;
-  /** Server default: ["email"]. */
-  notificationChannels?: NotificationChannel[];
-  /** Server default: true. */
-  isEnabled?: boolean;
-  description?: string;
-}
+/** GET /history filters; `endDate` must be after `startDate` (the validator rejects otherwise). */
+export type HistoryParams = QueryOf<Op<`${MB}/history`, "get">>;
 
-export interface HistoryParams {
-  page?: number;
-  limit?: number;
-  startDate?: string;
-  /** Must be after startDate — the validator rejects otherwise. */
-  endDate?: string;
-}
-
-export interface AnalyticsResult {
-  [key: string]: unknown;
-}
-
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+export type AnalyticsResult = DataOf<Op<`${MB}/analytics`, "get">>;
 
 // ---------- Service ----------
 
@@ -143,12 +88,8 @@ export const meteredBillingService = {
    * GET /usage — current usage snapshot for the tenant.
    * Returns an object, not a list; takes no paging params.
    */
-  getUsage: async (): Promise<UsageSnapshot> => {
-    const response = await api.get<BackendResponse<UsageSnapshot>>(
-      `${BASE}/usage`,
-    );
-    return response.data;
-  },
+  getUsage: async (): Promise<UsageSnapshot> =>
+    (await typedApi.GET("/api/v1/metered-billing/usage").then(unwrap)).data,
 
   /**
    * GET /history — past invoices. The house envelope (F-13, ADR-074): the
@@ -158,14 +99,15 @@ export const meteredBillingService = {
   getUsageHistory: async (
     params: HistoryParams = {},
   ): Promise<{ rows: Invoice[]; meta: PageMeta }> => {
-    const response = await api.get<
-      BackendResponse<Invoice[] | null> & { meta?: PageMeta }
-    >(`${BASE}/history`, { params });
+    const response = await typedApi
+      .GET("/api/v1/metered-billing/history", { params: { query: params } })
+      .then(unwrap);
+    // Defensive, as built: a body without rows or `meta` still renders.
     const rows = response.data ?? [];
     return {
       rows,
       meta:
-        response.meta ?? {
+        (response.meta as PageMeta | undefined) ?? {
           total: rows.length,
           page: params.page ?? 1,
           limit: params.limit ?? 20,
@@ -183,45 +125,28 @@ export const meteredBillingService = {
     metrics: UsageMetrics,
     quantity: number,
     period: EstimatePeriod = "monthly",
-  ): Promise<CostEstimate> => {
-    const response = await api.post<BackendResponse<CostEstimate>>(
-      `${BASE}/estimate`,
-      { metrics, quantity, period },
-    );
-    return response.data;
-  },
+  ): Promise<CostEstimate> =>
+    (await typedApi.POST("/api/v1/metered-billing/estimate", { body: { metrics, quantity, period } }).then(unwrap))
+      .data,
 
   /** GET /plan — a single plan object (not an array of plans). */
-  getPlan: async (): Promise<PlanDetails> => {
-    const response = await api.get<BackendResponse<PlanDetails>>(
-      `${BASE}/plan`,
-    );
-    return response.data;
-  },
+  getPlan: async (): Promise<PlanDetails> =>
+    (await typedApi.GET("/api/v1/metered-billing/plan").then(unwrap)).data,
 
   /** GET /alerts — plain array; the backend does not filter or paginate. */
-  getAlerts: async (): Promise<UsageAlert[]> => {
-    const response = await api.get<BackendResponse<UsageAlert[]>>(
-      `${BASE}/alerts`,
-    );
-    return response.data ?? [];
-  },
+  getAlerts: async (): Promise<UsageAlert[]> =>
+    (await typedApi.GET("/api/v1/metered-billing/alerts").then(unwrap)).data ?? [],
 
   /** POST /alerts — returns 201. */
-  createAlert: async (input: CreateAlertInput): Promise<UsageAlert> => {
-    const response = await api.post<BackendResponse<UsageAlert>>(
-      `${BASE}/alerts`,
-      input,
-    );
-    return response.data;
-  },
+  createAlert: async (input: CreateAlertInput): Promise<UsageAlert> =>
+    (await typedApi.POST("/api/v1/metered-billing/alerts", { body: input }).then(unwrap)).data,
 
   /**
    * DELETE /alerts/:alertId — alerts are deleted, not acknowledged.
    * (There is no acknowledge route.)
    */
   deleteAlert: async (alertId: string): Promise<void> => {
-    await api.delete<BackendResponse<null>>(`${BASE}/alerts/${alertId}`);
+    await typedApi.DELETE("/api/v1/metered-billing/alerts/{alertId}", { params: { path: { alertId } } });
   },
 
   /**
@@ -232,13 +157,12 @@ export const meteredBillingService = {
   getAnalytics: async (
     period: AnalyticsPeriod = "30d",
     metrics?: string[],
-  ): Promise<AnalyticsResult> => {
-    const response = await api.get<BackendResponse<AnalyticsResult>>(
-      `${BASE}/analytics`,
-      { params: metrics ? { period, metrics } : { period } },
-    );
-    return response.data;
-  },
+  ): Promise<AnalyticsResult> =>
+    (
+      await typedApi
+        .GET("/api/v1/metered-billing/analytics", { params: { query: metrics ? { period, metrics } : { period } } })
+        .then(unwrap)
+    ).data,
 };
 
 export default meteredBillingService;

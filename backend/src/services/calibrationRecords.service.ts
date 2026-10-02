@@ -114,13 +114,13 @@ interface Outcome<T> {
 /** The list query as the controller passes it (validated; a JavaScript caller may pass anything). */
 interface RecordListQuery {
   tenantId: TenantId;
-  page?: number | string;
-  limit?: number | string;
-  deviceId?: string | null;
-  isCompliant?: boolean | null;
-  from?: string | Date | null;
-  to?: string | Date | null;
-  includeSuperseded?: boolean;
+  page?: number | string | undefined;
+  limit?: number | string | undefined;
+  deviceId?: string | null | undefined;
+  isCompliant?: boolean | null | undefined;
+  from?: string | Date | null | undefined;
+  to?: string | Date | null | undefined;
+  includeSuperseded?: boolean | undefined;
 }
 
 interface RecordListData {

@@ -1,101 +1,35 @@
 // src/api/services/billing.service.ts
-import { api } from "../client";
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/billing.openapi.ts →
+// @callibrator/contracts/billing). The exported names are unchanged.
+import { typedApi, unwrap, type JsonBody, type Op, type components } from "../typed";
 
-export type SubscriptionStatus = "Active" | "PastDue" | "Canceled" | "Unpaid";
-export type BillingCycle = "Monthly" | "Annually";
-export type InvoiceStatus =
-  | "Draft"
-  | "Open"
-  | "Paid"
-  | "Uncollectible"
-  | "Void";
+export type Subscription = components["schemas"]["Subscription"];
+export type Invoice = components["schemas"]["Invoice"];
 
-export interface Subscription {
-  id: string;
-  tenantId: string;
-  planId: string;
-  status: SubscriptionStatus;
-  billingCycle: BillingCycle;
-  currentPeriodStart: string;
-  currentPeriodEnd: string;
-  stripeCustomerId?: string | null;
-  stripeSubscriptionId?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+export type SubscriptionStatus = Subscription["status"];
+export type BillingCycle = Subscription["billingCycle"];
+export type InvoiceStatus = Invoice["status"];
 
-export interface Invoice {
-  id: string;
-  tenantId: string;
-  subscriptionId: string;
-  amountDue: string | number;
-  amountPaid: string | number;
-  currency: string;
-  status: InvoiceStatus;
-  invoiceUrl?: string | null;
-  stripeInvoiceId?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  subscription?: {
-    id: string;
-    planId: string;
-  };
-}
+/** The override body (A-225: `reason` is required by the API when `status` changes). */
+export type SubscriptionUpdateInput = JsonBody<Op<"/api/v1/billing/subscription", "patch">>;
 
-export interface SubscriptionUpdateInput {
-  planId?: string;
-  billingCycle?: BillingCycle;
-  status?: SubscriptionStatus;
-  /** A-225: required by the API when `status` changes (a manual override). */
-  reason?: string;
-}
-
-export interface ListMeta {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
-// Backend response envelopes
-interface BackendSubscriptionResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: Subscription;
-}
-
-interface BackendInvoicesListResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: Invoice[] | null;
-  meta?: ListMeta;
-}
+/** F-19: `meta` of a paged list — a top-level sibling of `data` (house envelope). */
+export type ListMeta = components["schemas"]["PaginationMeta"];
 
 export const billingService = {
   /**
    * Get the current tenant's subscription (auto-created if none exists)
    */
-  getSubscription: async (): Promise<Subscription> => {
-    const response = await api.get<BackendSubscriptionResponse>(
-      "/api/v1/billing/subscription",
-    );
-    return response.data;
-  },
+  getSubscription: async (): Promise<Subscription> =>
+    (await typedApi.GET("/api/v1/billing/subscription").then(unwrap)).data,
 
   /**
    * Update the current tenant's subscription
    */
-  updateSubscription: async (
-    input: SubscriptionUpdateInput,
-  ): Promise<Subscription> => {
-    const response = await api.patch<BackendSubscriptionResponse>(
-      "/api/v1/billing/subscription",
-      input,
-    );
-    return response.data;
-  },
+  updateSubscription: async (input: SubscriptionUpdateInput): Promise<Subscription> =>
+    (await typedApi.PATCH("/api/v1/billing/subscription", { body: input }).then(unwrap)).data,
 
   /**
    * Get invoices for the current tenant (paginated)
@@ -105,16 +39,16 @@ export const billingService = {
     limit = 10,
     status?: InvoiceStatus,
   ): Promise<{ data: Invoice[]; meta: ListMeta }> => {
-    const response = await api.get<BackendInvoicesListResponse>(
-      "/api/v1/billing/invoices",
-      {
-        params: { page, limit, status: status || undefined },
-      },
-    );
+    const response = await typedApi
+      .GET("/api/v1/billing/invoices", {
+        params: { query: { page, limit, status: status || undefined } },
+      })
+      .then(unwrap);
+    // Defensive, as built: a body without a row array or `meta` still renders.
     const rows = Array.isArray(response.data) ? response.data : [];
     return {
       data: rows,
-      meta: response.meta ?? {
+      meta: (response.meta as ListMeta | undefined) ?? {
         total: rows.length,
         page,
         limit,

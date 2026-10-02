@@ -19,6 +19,13 @@ const {
   API_BASE,
 } = require("./setup");
 
+// P10-13: a deliberately FAILED sign-in counts against the production login
+// throttle per client address (5 failures in 15 minutes, A-185), so these come
+// from their own address (the backend trusts one hop, A-16; the suite is that
+// hop). From the shared address, two runs inside 15 minutes tripped it, and
+// every later sign-in of the run answered 429.
+const FAILED_SIGN_IN_CLIENT = () => ({ "X-Forwarded-For": `198.18.${Math.floor(Math.random() * 250) + 1}.${Math.floor(Math.random() * 250) + 1}` });
+
 // A-185: failed sign-ins are throttled per identifier and address (five per
 // fifteen minutes, an unknown identifier exactly like a real one). A fixed
 // address here would be paused by a second run inside that window; each run
@@ -66,7 +73,7 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
     const { status, body } = await httpPost("/auth/login", {
       email: UNKNOWN_EMAIL,
       password: "wrong",
-    });
+    }, FAILED_SIGN_IN_CLIENT());
     expect(status).toBe(401);
     expect(body).toHaveProperty("status");
     expect(body).toHaveProperty("message");
@@ -93,7 +100,7 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
       workEmail: `xss-${Date.now()}@example.com`,
       whatsapp: "081234567890",
       consent: true,
-      consentVersion: "2026-09-29",
+      consentVersion: "2026-10-01",
       locale: "en",
     }, {
       // Its own client address: the production intake budget is 5 an hour per
@@ -121,11 +128,10 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
   // ─── 5. RESPONSE TIMES ─────────────────────────────────────
 
   test("POST /auth/login — responds within 5 seconds", async () => {
-    const start = Date.now();
     const { status, elapsed } = await httpPost("/auth/login", {
       email: UNKNOWN_EMAIL,
       password: "wrong",
-    });
+    }, FAILED_SIGN_IN_CLIENT());
 
     expect(status).toBe(401);
     expect(elapsed).toBeLessThan(5000);
@@ -187,7 +193,7 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
     const { headers } = await httpPost("/auth/login", {
       email: UNKNOWN_EMAIL,
       password: "wrong",
-    });
+    }, FAILED_SIGN_IN_CLIENT());
 
     // express-rate-limit adds these headers
     const hasRateLimit =

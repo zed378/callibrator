@@ -1,41 +1,23 @@
+// src/api/services/device.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client. Every call is typed by
+// `paths` (generated from backend/src/routes/api/calibrationDevices.openapi.ts);
+// the device and the request bodies are the contract's, which replaced the
+// interim `z.input` types (ADR-097 Am. 1). The names are unchanged. The CSV
+// import stays on `api` (multipart).
 import { api } from "../client";
+import { typedApi, unwrap, type JsonBody, type Op, type components } from "../typed";
 import { PaginatedResponse } from "@/types";
-import type {
-  CreateCalibrationDeviceInput,
-  DeviceStatus,
-  UpdateCalibrationDeviceInput,
-} from "@callibrator/contracts/calibrationDevices";
 
-export interface Device {
-  id: string;
-  tenantId?: string;
-  name: string;
-  serialNumber?: string;
-  manufacturer?: string;
-  model?: string;
-  category?: string;
-  status: DeviceStatus;
-  locationId?: string;
-  warehouse?: {
-    id: string;
-    name: string;
-    code: string;
-  };
-  installationDate?: string;
-  nextCalibrationDate?: string;
-  calibrationIntervalDays?: number;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+type S = components["schemas"];
+type ById = "/api/v1/calibration-devices/{calibrationDeviceId}";
 
-// P9-22 (ADR-097): the request bodies are the backend validator's own
-// schemas (@callibrator/contracts), not a hand-written copy. `z.input` is what
-// the API accepts, so a field it would reject, or one it silently drops, is a
-// compile error here.
-export type DeviceCreateInput = CreateCalibrationDeviceInput;
+export type Device = S["CalibrationDevice"];
+export type DeviceStatus = NonNullable<Device["status"]>;
 
-export type DeviceUpdateInput = UpdateCalibrationDeviceInput & {
+export type DeviceCreateInput = JsonBody<Op<"/api/v1/calibration-devices", "post">>;
+
+export type DeviceUpdateInput = JsonBody<Op<ById, "put">> & {
   id: string;
 };
 
@@ -58,35 +40,21 @@ export interface DeviceFormState {
   remarks?: string;
 }
 
-export interface BulkImportResult {
-  successCount: number;
-  failedCount: number;
-  totalCount: number;
-  errors: Array<{ row: number; errors: string }>;
+/**
+ * The CSV import's report. A-358: a rejected row's `errors` is a message OR a
+ * list of field errors; the devices page renders it as text, which throws on
+ * the list. Kept as built.
+ */
+export type BulkImportResult = S["CalibrationDeviceImportReport"];
+
+/** The older nested answer the list still accepts (`data.rows`, `data.meta`). */
+interface NestedPage {
+  rows: Device[];
+  count: number;
+  meta: { total: number; page: number; limit: number; totalPages: number };
 }
 
-interface BackendDevicesResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: {
-    rows: Device[];
-    count: number;
-    meta: {
-      total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
-    };
-  };
-}
-
-interface BackendDeviceResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: Device;
-}
+const device = (calibrationDeviceId: string) => ({ params: { path: { calibrationDeviceId } } });
 
 export const deviceService = {
   getAll: async (
@@ -96,27 +64,23 @@ export const deviceService = {
     status?: string,
     category?: string,
   ): Promise<PaginatedResponse<Device>> => {
-    const response = await api.get<BackendDevicesResponse>(
-      "/api/v1/calibration-devices",
-      {
-        params: { page, limit, find, status, category },
-      },
-    );
+    const response = await typedApi
+      .GET("/api/v1/calibration-devices", {
+        // The page's filter select offers only the DeviceStatus values.
+        params: { query: { page, limit, find, status: status as DeviceStatus | undefined, category } },
+      })
+      .then(unwrap);
 
     // Defensive: guard against a plain-array `data` or missing `meta`
     // so the UI never crashes reading `meta.total`.
-    const payload = response?.data as
-      | BackendDevicesResponse["data"]
-      | Device[]
-      | null
-      | undefined;
+    const payload = response?.data as NestedPage | Device[] | null | undefined;
     const rows: Device[] = Array.isArray(payload)
       ? payload
       : (payload?.rows ?? []);
     // House style puts pagination in a TOP-LEVEL `meta` (sibling of `data`),
     // not `data.meta` — read that first so `total`/`totalPages` are not lost.
     const meta =
-      (response as { meta?: BackendDevicesResponse["data"]["meta"] })?.meta ??
+      (response as { meta?: NestedPage["meta"] })?.meta ??
       (payload && !Array.isArray(payload) ? payload.meta : undefined);
     const total = meta?.total ?? rows.length;
     const lim = meta?.limit ?? limit;
@@ -134,32 +98,21 @@ export const deviceService = {
     };
   },
 
-  getById: async (id: string): Promise<Device> => {
-    const response = await api.get<BackendDeviceResponse>(
-      `/api/v1/calibration-devices/${id}`,
-    );
-    return response.data;
-  },
+  getById: async (id: string): Promise<Device> =>
+    (await typedApi.GET("/api/v1/calibration-devices/{calibrationDeviceId}", device(id)).then(unwrap)).data,
 
-  create: async (data: DeviceCreateInput): Promise<Device> => {
-    const response = await api.post<BackendDeviceResponse>(
-      "/api/v1/calibration-devices",
-      data,
-    );
-    return response.data;
-  },
+  create: async (data: DeviceCreateInput): Promise<Device> =>
+    (await typedApi.POST("/api/v1/calibration-devices", { body: data }).then(unwrap)).data,
 
   update: async (data: DeviceUpdateInput): Promise<Device> => {
     const { id, ...rest } = data;
-    const response = await api.put<BackendDeviceResponse>(
-      `/api/v1/calibration-devices/${id}`,
-      rest,
-    );
-    return response.data;
+    return (
+      await typedApi.PUT("/api/v1/calibration-devices/{calibrationDeviceId}", { ...device(id), body: rest }).then(unwrap)
+    ).data;
   },
 
   delete: async (id: string): Promise<void> => {
-    await api.delete(`/api/v1/calibration-devices/${id}`);
+    await typedApi.DELETE("/api/v1/calibration-devices/{calibrationDeviceId}", device(id));
   },
 
   /**
@@ -171,12 +124,7 @@ export const deviceService = {
   bulkImport: async (file: File): Promise<BulkImportResult> => {
     const formData = new FormData();
     formData.append("file", file);
-    const response = await api.post<{
-      success: boolean;
-      status: number;
-      message: string;
-      data: BulkImportResult;
-    }>("/api/v1/calibration-devices/bulk-import", formData);
+    const response = await api.post<{ data: BulkImportResult }>("/api/v1/calibration-devices/bulk-import", formData);
     return response.data;
   },
 };

@@ -26,7 +26,8 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 
 jest.mock("../../utils/jwt.util", () => ({
-  verifyPurposeToken: jest.fn(() => ({ id: "user-1" })),
+  // A-345: a socket token names its session (`sid`); since P6-12 one without it is refused.
+  verifyPurposeToken: jest.fn(() => ({ id: "user-1", sid: "session-1" })),
 }));
 
 jest.mock("../../services/session.service", () => ({

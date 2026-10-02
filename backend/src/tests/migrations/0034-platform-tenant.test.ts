@@ -20,7 +20,7 @@ type Context = Parameters<typeof migration.up>[0]["context"];
 const ctx = (context: object): Context => context as Context;
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0034-platform-tenant.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 /** A tenants row as the fake stores it. */
 type Row = Record<string, unknown>;

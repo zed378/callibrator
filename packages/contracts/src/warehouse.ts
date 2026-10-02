@@ -7,7 +7,7 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/warehouse.validator.ts,
  * which re-exports these same objects; the frontend derives its request
- * types from them. The contract for C:/Program Files/Git/api/v1/warehouses (list query, id params, warehouse and storage-location create/update bodies).
+ * types from them. The contract for /api/v1/warehouses (list query, id params, warehouse and storage-location create/update bodies).
  */
 import { z } from "zod";
 import { booleanish, caseless, nullableText, numeric, optionalText, uuid } from "./fields";

@@ -50,18 +50,20 @@ module.exports = {
   // src/tests/e2e/liveContract.smoke.test.js, which loads every module index.js
   // mounts and calls every route on a running server.
   collectCoverageFrom: [
-    "src/config/**/*.js",
+    // config/ is all TypeScript since 2026-10-01 (P9-21); a .js pattern here would
+    // match nothing (coverageScope.p614).
     "src/config/**/*.ts",
     // constants/ is all TypeScript since 2026-09-29 (ADR-087 Amendment 5); a .js
     // pattern here would match nothing (coverageScope.p614).
     "src/constants/**/*.ts",
-    "src/controllers/**/*.js",
+    // controllers/ and routes/ are all TypeScript since 2026-10-02 (P9-21 sweep); a .js
+    // pattern would match nothing (coverageScope.p614).
     "src/controllers/**/*.ts",
-    "src/middlewares/**/*.js",
+    // middlewares/ is all TypeScript since 2026-10-01 (P9-19, ADR-087 Amendment 27).
     "src/middlewares/**/*.ts",
-    "src/routes/**/*.js",
     "src/routes/**/*.ts",
-    "src/services/**/*.js",
+    // services/ is all TypeScript since 2026-10-02 (attachment and maintenance, the last two);
+    // a .js pattern would match nothing (coverageScope.p614).
     "src/services/**/*.ts",
     "src/utils/**/*.js",
     "src/utils/**/*.ts",

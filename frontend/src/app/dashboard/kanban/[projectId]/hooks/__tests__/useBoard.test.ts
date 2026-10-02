@@ -74,7 +74,8 @@ const setup = async () => {
 describe("useBoard — load and access", () => {
   it("loads the board once, with no sprint param, and joins the board room by the raw project id", async () => {
     const { result } = await setup();
-    expect(get).toHaveBeenCalledWith(BOARD_URL, { params: undefined });
+    // No sprint: the one-argument call (the same request, P9-25 item 11).
+    expect(get).toHaveBeenCalledWith(BOARD_URL);
     expect(fakeSocket.emit).toHaveBeenCalledWith("kanban:join", "proj-1", expect.any(Function));
     expect(result.current.viewSprintId).toBe("backlog");
   });
@@ -303,10 +304,14 @@ describe("useBoard — card actions", () => {
     });
     // Before the server answers, the card is already in the new column.
     expect(result.current.board?.cards.find((c) => c.id === "c1")?.columnId).toBe("col-doing");
-    expect(patch).toHaveBeenCalledWith("/api/v1/kanban/projects/proj-1/cards/c1/move", {
-      columnId: "col-doing",
-      position: 0,
-    });
+    // P9-25 item 11: the typed client builds the request before it is sent, so
+    // the PATCH goes out a few microtasks later — still before the server answers.
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith("/api/v1/kanban/projects/proj-1/cards/c1/move", {
+        columnId: "col-doing",
+        position: 0,
+      }),
+    );
     await act(async () => {
       release(ok(kCard("c1", { columnId: "col-doing", position: 0 })));
       await pending;

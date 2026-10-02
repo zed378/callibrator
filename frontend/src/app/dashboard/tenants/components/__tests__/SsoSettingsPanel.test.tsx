@@ -36,7 +36,7 @@ const httpError = (status: number, message: string) =>
     config: { headers: new AxiosHeaders() },
   });
 
-const tenant = { id: "t-1", name: "RS Harapan", code: "RSH", status: "ACTIVE", limitSeats: 50, createdAt: "", updatedAt: "" } as Tenant;
+const tenant = { id: "t-1", name: "RS Harapan", code: "RSH", status: "active", limitSeats: 50, createdAt: "", updatedAt: "" } as Tenant;
 
 const stored = {
   sso_enabled: "true",

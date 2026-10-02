@@ -3,7 +3,7 @@
  *
  * Tests the MeteredBilling route registrations and middleware chain.
  */
-const meteredbillingRoutes = require("../../routes/api/meteredBilling.route.js");
+const meteredbillingRoutes = require("../../routes/api/meteredBilling.route");
 
 describe("MeteredBilling Routes", () => {
   it("should export an Express router", () => {

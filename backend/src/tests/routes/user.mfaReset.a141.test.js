@@ -94,9 +94,6 @@ jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(),
   getUploadUrl: jest.fn(),
 }));
-jest.mock("../../middlewares/auditLog.middleware", () => ({
-  recordAudit: () => (req, res, next) => next(),
-}));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../services/session.service", () => ({
   revokeOtherSessions: jest.fn(),

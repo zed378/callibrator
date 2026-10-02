@@ -9,14 +9,13 @@
  * Kept in its own module (like platformTenant.ts) so a test that mocks the
  * constants barrel cannot empty it.
  */
-export const TENANT_STATUS = Object.freeze({
-  ACTIVE: "active",
-  SUSPENDED: "suspended",
-  DELETED: "deleted",
-} as const);
+import { TENANT_LIFECYCLE_STATE, type TenantLifecycleStatus } from "@callibrator/contracts/states";
+
+/** P9-05: the same frozen object as the one list in @callibrator/contracts/states. */
+export const TENANT_STATUS = TENANT_LIFECYCLE_STATE;
 
 /** One `tenants.status` value. */
-export type TenantStatus = (typeof TENANT_STATUS)[keyof typeof TENANT_STATUS];
+export type TenantStatus = TenantLifecycleStatus;
 
 /**
  * @param status - a tenant's status, in whatever case it arrives

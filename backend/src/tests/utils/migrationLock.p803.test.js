@@ -194,8 +194,9 @@ describe("P8-03 runSchemaSetup", () => {
   });
 
   test("P8-03: backend/index.js runs the schema step through runSchemaSetup, not a bare sync", () => {
-    const source = fs.readFileSync(path.join(__dirname, "../../../index.js"), "utf8");
-    expect(source).toMatch(/await runSchemaSetup\(\{ sequelize: db, migrator, logger \}\)/);
+    const source = fs.readFileSync(path.join(__dirname, "../../../index.ts"), "utf8");
+    // P9-21: index.ts passes `db` with a type assertion for runSchemaSetup's parameter; the call is the same.
+    expect(source).toMatch(/await runSchemaSetup\(\{ sequelize: db(?: as unknown as [^,]+)?, migrator, logger \}\)/);
     expect(source).not.toMatch(/await db\.sync\(\)/);
     expect(source).not.toMatch(/await migrator\.up\(\)/);
   });

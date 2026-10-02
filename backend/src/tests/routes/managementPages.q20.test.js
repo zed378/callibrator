@@ -38,7 +38,7 @@ const { Role, RoleMenuPermission } = require("../../models");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { ROLE_NAMES, ROLE_MENU_ASSIGNMENTS } = require("../../constants");
 
-const SEED = fs.readFileSync(path.join(__dirname, "..", "..", "utils", "seedMenuGroups.util.js"), "utf8");
+const SEED = fs.readFileSync(path.join(__dirname, "..", "..", "utils", "seedMenuGroups.util.ts"), "utf8");
 const MENU_DATA = SEED.slice(SEED.indexOf("const menuData = ["), SEED.indexOf("];", SEED.indexOf("const menuData = [")));
 const MENUS = [...MENU_DATA.matchAll(/\{[^{}]*?slug:\s*"([^"]+)"[^{}]*?\}/g)].map((m) => ({
   slug: m[1],

@@ -11,10 +11,10 @@
  * (it does) and streaming it (sendStoredFile answers with the path it would
  * serve).
  *
- * @two-tenant api/attachments.route.js GET /:id
- * @two-tenant api/attachments.route.js GET /:id/download
- * @two-tenant api/attachments.route.js POST /:id/signed-url
- * @two-tenant api/attachments.route.js DELETE /:id
+ * @two-tenant api/attachments.route.ts GET /:id
+ * @two-tenant api/attachments.route.ts GET /:id/download
+ * @two-tenant api/attachments.route.ts POST /:id/signed-url
+ * @two-tenant api/attachments.route.ts DELETE /:id
  */
 import fs from "node:fs";
 import type * as MemoryDbModule from "../fixtures/memoryDb";

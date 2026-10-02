@@ -182,7 +182,13 @@ interface Findings {
 const messageOf = (err: unknown): unknown => (err as { message?: unknown }).message;
 
 const ROUTES_DIR = path.join(__dirname, "..", "routes");
-const SEED_FILE = path.join(__dirname, "seedMenuGroups.util.js");
+// P9-21: the seed is `seedMenuGroups.util.ts` in src/ (run through tsx) and the
+// compiled `seedMenuGroups.util.js` in dist/ — whichever this tree has (tsc keeps
+// `const menuData = [` and the comments, so both parse the same).
+const SEED_FILE = path.join(
+  __dirname,
+  fs.existsSync(path.join(__dirname, "seedMenuGroups.util.ts")) ? "seedMenuGroups.util.ts" : "seedMenuGroups.util.js",
+);
 
 // ---------------------------------------------------------------------------
 // Source text helpers. None of these require anything from src/routes.
@@ -353,8 +359,10 @@ function resolveNames(expression: string, source: string, depth: number): string
     return names;
   }
 
+  // As written (`MENU_SLUGS.QMS`), or as TypeScript emits an imported binding
+  // into dist/ (`constants_1.MENU_SLUGS.QMS`, P9-21).
   // eslint-disable-next-line @typescript-eslint/prefer-regexp-exec -- as built
-  const menuSlug = text.match(/^MENU_SLUGS\.([A-Za-z0-9_]+)$/);
+  const menuSlug = text.match(/^(?:[A-Za-z_$][A-Za-z0-9_$]*_\d+\.)?MENU_SLUGS\.([A-Za-z0-9_]+)$/);
   if (menuSlug) {
     const key = menuSlug[1] as string;
     const value = MENU_SLUGS[key];
@@ -544,7 +552,7 @@ function seededMenuSlugs(source = fs.readFileSync(SEED_FILE, "utf8")): Set<strin
  * A gate is FATAL when it can never be satisfied by any seeded menu group:
  * with the default OR semantics that means no name matches; with
  * `requireAll: true` it means any name fails to match. A dead alias inside a
- * still-satisfiable OR gate is a WARNING — `audit.route.js` deliberately lists
+ * still-satisfiable OR gate is a WARNING — `audit.route.ts` deliberately lists
  * `"AuditLogs"` alongside the real name and slug, and refusing to boot over
  * that would make this guard cry wolf on its first day.
  *

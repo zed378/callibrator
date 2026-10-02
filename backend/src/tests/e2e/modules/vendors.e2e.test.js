@@ -19,7 +19,6 @@
 const {
   httpGet,
   httpPost,
-  httpPut,
   httpDelete,
   authHeader,
   extractToken,

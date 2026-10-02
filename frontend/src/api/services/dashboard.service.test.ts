@@ -29,9 +29,8 @@ describe("dashboardService", () => {
 
       const res = await dashboardService.getMetrics();
 
-      expect(mockedApi.get).toHaveBeenCalledWith("/api/v1/dashboard/metrics", {
-        params: undefined,
-      });
+      // P9-25 item 11: no query is the one-argument call (the same request).
+      expect(mockedApi.get).toHaveBeenCalledWith("/api/v1/dashboard/metrics");
       expect(res).toEqual({ scope: "tenant" });
     });
 

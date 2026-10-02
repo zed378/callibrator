@@ -107,6 +107,15 @@ class JwksCache<V> {
 
 const jwksCache = new JwksCache<JwksDocument>();
 
+/**
+ * A-341 — the bound on refetching a JWKS for an id_token whose `kid` the cached
+ * set does not hold (an IdP key rotation): at most ONE refetch per JWKS URL per
+ * window. A stream of bogus kids therefore costs the IdP one request a minute,
+ * never one per sign-in attempt. Concurrent callers share the in-flight fetch.
+ */
+const KID_REFETCH_WINDOW_MS = 60_000;
+const kidRefetch = new Map<string, { at: number; pending: Promise<JwksDocument> | null }>();
+
 // ==========================================
 // JWKS FETCHER
 // ==========================================
@@ -117,15 +126,17 @@ const jwksCache = new JwksCache<JwksDocument>();
  * @param jwksUri - the discovered `jwks_uri`, when there is one
  * @returns JWKS document
  */
-async function fetchJwks(issuer: string, jwksUri?: string | null): Promise<JwksDocument> {
-  // A-188: the IdP's published `jwks_uri` when discovery found one (Entra ID
-  // keeps its keys at …/discovery/v2.0/keys); otherwise the path this client
-  // always derived from the issuer.
+/** The JWKS URL: the discovered `jwks_uri`, or the path derived from the issuer. */
+const jwksUrlOf = (issuer: string, jwksUri?: string | null): string =>
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: "" falls back too
-  const jwksUrl = jwksUri || `${issuer.replace(/\/$/, "")}/.well-known/jwks.json`;
+  jwksUri || `${issuer.replace(/\/$/, "")}/.well-known/jwks.json`;
 
-  // Check cache first
-  const cached = jwksCache.get(jwksUrl);
+async function fetchJwks(issuer: string, jwksUri?: string | null, { force = false }: { force?: boolean } = {}): Promise<JwksDocument> {
+  // A-188: the discovered `jwks_uri` when there is one, else the issuer-derived path.
+  const jwksUrl = jwksUrlOf(issuer, jwksUri);
+
+  // Check cache first (A-341: a forced refetch skips it)
+  const cached = force ? null : jwksCache.get(jwksUrl);
   if (cached) {
     logger.debug("JWKS cache hit", { issuer });
     return cached;
@@ -201,6 +212,42 @@ function findJwkByKeyId(jwks: JwksDocument, kid: string | undefined): Jwk {
 }
 
 /**
+ * A-341 — the JWK for `kid`, refetching the JWKS ONCE when the cached set does
+ * not hold it (a key rotation), bounded by KID_REFETCH_WINDOW_MS per JWKS URL.
+ * The refetch goes through fetchJwks, so through the SSRF-pinned transport.
+ * Refused (401, the same answer as before) when the refetch is not allowed or
+ * does not hold the kid either.
+ */
+async function jwkForKid(issuer: string, jwksUri: string | null | undefined, kid: string | undefined): Promise<Jwk> {
+  const jwks = await fetchJwks(issuer, jwksUri);
+  if (!kid || jwks.keys.some((key) => key.kid === kid)) {
+    return findJwkByKeyId(jwks, kid);
+  }
+  const url = jwksUrlOf(issuer, jwksUri);
+  const state = kidRefetch.get(url);
+  let refreshed: JwksDocument;
+  if (state?.pending) {
+    refreshed = await state.pending;
+  } else if (state && Date.now() - state.at < KID_REFETCH_WINDOW_MS) {
+    logger.warn("OIDC id_token kid not in the JWKS; refetch already spent in this window", { issuer, kid });
+    return findJwkByKeyId(jwks, kid);
+  } else {
+    // A failed refetch (the IdP unreachable) does not change the answer: the
+    // cached set, then the same 401 for a kid it does not hold.
+    const pending = fetchJwks(issuer, jwksUri, { force: true }).catch((caught: unknown) => {
+      logger.warn("OIDC JWKS refetch for an unknown kid failed", { issuer, kid, error: (caught as ErrorLike).message });
+      return jwks;
+    });
+    const entry: { at: number; pending: Promise<JwksDocument> | null } = { at: Date.now(), pending };
+    kidRefetch.set(url, entry);
+    refreshed = await pending;
+    entry.pending = null;
+    logger.info("OIDC JWKS refetched for an unknown kid", { issuer, kid });
+  }
+  return findJwkByKeyId(refreshed, kid);
+}
+
+/**
  * Verify OIDC id_token signature using JWKS
  * @param idToken - The JWT id_token from OIDC callback
  * @param issuer - OIDC issuer URL
@@ -251,11 +298,8 @@ const verifyIdToken = async (
       );
     }
 
-    // Fetch JWKS
-    const jwks = await fetchJwks(issuer, jwksUri);
-
-    // Find matching key
-    const jwk = findJwkByKeyId(jwks, kid);
+    // Fetch the JWKS and find the key (A-341: one bounded refetch on an unknown kid)
+    const jwk = await jwkForKid(issuer, jwksUri, kid);
 
     // Convert JWK to PEM with Node's own crypto. This replaced the jwk-to-pem
     // package, whose elliptic dependency carries an unfixed advisory
@@ -600,6 +644,7 @@ const getJwksInfo = async (
 const clearCache = (): void => {
   jwksCache.clear();
   discoveryCache.clear();
+  kidRefetch.clear();
   logger.info("JWKS cache cleared");
 };
 

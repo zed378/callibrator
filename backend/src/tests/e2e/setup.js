@@ -114,7 +114,7 @@ async function httpGet(path, headers = {}) {
 //
 // A database whose super admin already has MFA the state file does not know
 // cannot be signed into: set E2E_SUPERADMIN_TOTP_SECRET, or reset the
-// operator's MFA with src/scripts/breakGlassMfaReset.js.
+// operator's MFA with src/scripts/breakGlassMfaReset.ts.
 // ============================================================
 
 const nodeCrypto = require("crypto");
@@ -237,7 +237,7 @@ async function completeMfaSignIn(credentials, first) {
     if (!secret) {
       throw new Error(
         `E2E: ${identifier} has MFA but no secret is known — set E2E_SUPERADMIN_TOTP_SECRET, ` +
-          "or reset the operator's MFA with src/scripts/breakGlassMfaReset.js",
+          "or reset the operator's MFA with src/scripts/breakGlassMfaReset.ts",
       );
     }
     const mfa = await rawPost("/auth/mfa/login", {

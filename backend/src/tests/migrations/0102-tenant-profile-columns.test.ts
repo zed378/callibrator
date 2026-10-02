@@ -26,7 +26,7 @@ interface Attribute {
 }
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0102-tenant-profile-columns.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 /** The REAL Tenant model on an unconnected PostgreSQL-dialect Sequelize. */
 const Tenant = defineTenant(new Sequelize({ dialect: "postgres", logging: false }), DataTypes);

@@ -1,10 +1,10 @@
-import { api } from "../client";
+import { typedApi, unwrap, type JsonBody, type Op, type QueryOf, type components } from "../typed";
 
 /**
  * QMS — Non-Conformances (NC) and Corrective/Preventive Actions (CAPA).
  *
  * The tenant/reporter come from the caller's JWT.
- * Backend: src/routes/api/qms.route.js (mounted /api/v1/qms)
+ * Backend: src/routes/api/qms.route.ts (mounted /api/v1/qms)
  *   POST   /nc          (denies API keys)
  *   GET    /nc          ?page&limit&status
  *   PATCH  /nc/:id      (denies API keys)
@@ -18,91 +18,64 @@ import { api } from "../client";
  * Every route is gated on the `qms` menu (A-66): reads need `read`, mutations
  * `write`. A caller without it gets 403.
  *
- * List endpoints use the house envelope (backend qms.controller.js): the rows
+ * List endpoints use the house envelope (backend qms.controller.ts): the rows
  * ARE `data` (an array), and pagination is a top-level `meta` sibling —
  * `{ data: [...], meta: { total, page, limit, totalPages } }`. Not `data.rows`,
  * not `data.nonConformances`, not `data.meta`.
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+ * contract's (backend/src/routes/api/qms.openapi.ts). The exported names are
+ * unchanged.
  */
 
-const BASE = "/api/v1/qms";
+type Q = "/api/v1/qms";
+type Schemas = components["schemas"];
 
 // ---------- Types ----------
 
 /**
- * The backend ENUMs, verbatim (models/nonConformance.model.js,
- * models/capa.model.js; enforced by validators/qms.validator.js). Anything
- * else is a 400. These used to list IN_PROGRESS/CANCELLED for NCs and
+ * A non-conformance. A list read also carries its reporter and device
+ * (NonConformanceListItem); a write's answer is the bare row.
+ */
+export type NonConformance = Schemas["NonConformance"] &
+  Partial<Pick<Schemas["NonConformanceListItem"], "reporter" | "device">>;
+
+/**
+ * A CAPA. A list read also carries its NC and assignee (CapaListItem); a
+ * write's answer is the bare row.
+ */
+export type Capa = Schemas["Capa"] & Partial<Pick<Schemas["CapaListItem"], "nonConformance" | "assignee">>;
+
+export type NcStatus = NonConformance["status"];
+export type NcSeverity = NonConformance["severity"];
+export type CapaStatus = Capa["status"];
+
+export type NcReporter = NonNullable<Schemas["NonConformanceListItem"]["reporter"]>;
+export type NcDevice = NonNullable<Schemas["NonConformanceListItem"]["device"]>;
+
+/**
+ * The backend ENUMs, verbatim (models/nonConformance.model.ts,
+ * models/capa.model.ts; enforced by the qms validators). Anything else is a
+ * 400. These used to list IN_PROGRESS/CANCELLED for NCs and
  * COMPLETED/APPROVED/CANCELLED for CAPAs — none of which the backend accepts.
+ * Each list is checked against the contract's enum (`satisfies`).
  */
 export const NC_STATUSES = [
   "OPEN",
   "UNDER_INVESTIGATION",
   "CAPA_REQUIRED",
   "CLOSED",
-] as const;
-export type NcStatus = (typeof NC_STATUSES)[number];
-export const NC_SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
-export type NcSeverity = (typeof NC_SEVERITIES)[number];
+] as const satisfies readonly NcStatus[];
+export const NC_SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const satisfies readonly NcSeverity[];
 export const CAPA_STATUSES = [
   "DRAFT",
   "OPEN",
   "IN_PROGRESS",
   "VERIFICATION",
   "CLOSED",
-] as const;
-export type CapaStatus = (typeof CAPA_STATUSES)[number];
+] as const satisfies readonly CapaStatus[];
 
-export interface NcReporter {
-  id: string;
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-}
-
-export interface NcDevice {
-  id: string;
-  name?: string;
-  serialNumber?: string;
-}
-
-export interface NonConformance {
-  id: string;
-  /** Server-generated, e.g. "NC-00001". */
-  ncNumber: string;
-  title: string;
-  description?: string;
-  severity: NcSeverity;
-  status: NcStatus;
-  rootCause?: string | null;
-  deviceId?: string | null;
-  dateIdentified?: string;
-  reportedBy?: string;
-  reporter?: NcReporter;
-  device?: NcDevice;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface Capa {
-  id: string;
-  /** Server-generated, e.g. "CAPA-00001". */
-  capaNumber: string;
-  ncId: string;
-  title: string;
-  actionPlan?: string;
-  status: CapaStatus;
-  assignedTo?: string | null;
-  dueDate?: string | null;
-  completedDate?: string | null;
-  approvedBy?: string | null;
-  verificationNotes?: string | null;
-  nonConformance?: { id: string; ncNumber: string; title: string };
-  assignee?: NcReporter;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-/** Shape the backend actually returns for both list endpoints. */
+/** Shape the service returns for both list endpoints. */
 export interface QmsPage<T> {
   rows: T[];
   total: number;
@@ -111,47 +84,17 @@ export interface QmsPage<T> {
   totalPages: number;
 }
 
-export interface NcCreateInput {
-  title: string;
-  /** Required (A-89): NOT NULL, and the backend validator refuses it empty (A-74). */
-  description: string;
-  /** Server defaults to "MEDIUM". */
-  severity?: NcSeverity;
-  deviceId?: string;
-  /** Server defaults to now. */
-  dateIdentified?: string;
-}
+/** `description` is required (A-89): NOT NULL, and the validator refuses it empty (A-74). */
+export type NcCreateInput = JsonBody<Op<`${Q}/nc`, "post">>;
 
 /** Only these fields are applied by the backend. */
-export interface NcUpdateInput {
-  title?: string;
-  description?: string;
-  status?: NcStatus;
-  severity?: NcSeverity;
-  rootCause?: string;
-}
+export type NcUpdateInput = JsonBody<Op<`${Q}/nc/{id}`, "patch">>;
 
-export interface CapaCreateInput {
-  /** Required — the backend 404s if the NC does not exist. */
-  ncId: string;
-  title: string;
-  /** Required (A-89): NOT NULL, and the backend validator refuses it empty (A-74). */
-  actionPlan: string;
-  assignedTo?: string;
-  dueDate?: string;
-}
+/** `ncId` is required (404 if the NC does not exist); `actionPlan` too (A-89). */
+export type CapaCreateInput = JsonBody<Op<`${Q}/capa`, "post">>;
 
 /** Only these fields are applied by the backend. */
-export interface CapaUpdateInput {
-  title?: string;
-  actionPlan?: string;
-  status?: CapaStatus;
-  assignedTo?: string;
-  dueDate?: string;
-  completedDate?: string;
-  approvedBy?: string;
-  verificationNotes?: string;
-}
+export type CapaUpdateInput = JsonBody<Op<`${Q}/capa/{id}`, "patch">>;
 
 export interface ListParams {
   page?: number;
@@ -159,28 +102,12 @@ export interface ListParams {
   status?: string;
 }
 
-interface PageMeta {
-  total?: number;
-  page?: number;
-  limit?: number;
-  totalPages?: number;
-}
-
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-  /** Lists only — a SIBLING of `data`, never inside it. */
-  meta?: PageMeta;
-}
-
 /** Normalize the house list envelope into a uniform page. */
 const toPage = <T,>(
-  response: BackendResponse<T[]> | undefined,
+  response: { data?: T[] | null; meta?: Partial<Schemas["PaginationMeta"]> | null } | undefined,
   params: ListParams,
 ): QmsPage<T> => {
+  // Defensive, as built: a body without rows or `meta` still renders.
   const rows = Array.isArray(response?.data) ? response.data : [];
   const meta = response?.meta ?? {};
   return {
@@ -192,6 +119,8 @@ const toPage = <T,>(
   };
 };
 
+const byId = (id: string) => ({ params: { path: { id } } });
+
 // ---------- Service ----------
 
 export const qmsService = {
@@ -201,35 +130,25 @@ export const qmsService = {
   listNonConformances: async (
     params: ListParams = {},
   ): Promise<QmsPage<NonConformance>> => {
-    const response = await api.get<BackendResponse<NonConformance[]>>(
-      `${BASE}/nc`,
-      { params },
-    );
+    const response = await typedApi
+      // The page's status filter offers only the contract's statuses.
+      .GET("/api/v1/qms/nc", { params: { query: params as QueryOf<Op<`${Q}/nc`, "get">> } })
+      .then(unwrap);
     return toPage(response, params);
   },
 
   /** POST /qms/nc — ncNumber and status are assigned server-side. */
   createNonConformance: async (
     input: NcCreateInput,
-  ): Promise<NonConformance> => {
-    const response = await api.post<BackendResponse<NonConformance>>(
-      `${BASE}/nc`,
-      input,
-    );
-    return response.data;
-  },
+  ): Promise<NonConformance> =>
+    (await typedApi.POST("/api/v1/qms/nc", { body: input }).then(unwrap)).data,
 
   /** PATCH /qms/nc/:id */
   updateNonConformance: async (
     id: string,
     input: NcUpdateInput,
-  ): Promise<NonConformance> => {
-    const response = await api.patch<BackendResponse<NonConformance>>(
-      `${BASE}/nc/${id}`,
-      input,
-    );
-    return response.data;
-  },
+  ): Promise<NonConformance> =>
+    (await typedApi.PATCH("/api/v1/qms/nc/{id}", { ...byId(id), body: input }).then(unwrap)).data,
 
   /** Convenience: status-only PATCH (there is no dedicated /status route). */
   updateNcStatus: (id: string, status: NcStatus): Promise<NonConformance> =>
@@ -246,29 +165,19 @@ export const qmsService = {
 
   /** GET /qms/capa */
   listCapas: async (params: ListParams = {}): Promise<QmsPage<Capa>> => {
-    const response = await api.get<BackendResponse<Capa[]>>(`${BASE}/capa`, {
-      params,
-    });
+    const response = await typedApi
+      .GET("/api/v1/qms/capa", { params: { query: params as QueryOf<Op<`${Q}/capa`, "get">> } })
+      .then(unwrap);
     return toPage(response, params);
   },
 
   /** POST /qms/capa — requires ncId; capaNumber/status are server-side. */
-  createCapa: async (input: CapaCreateInput): Promise<Capa> => {
-    const response = await api.post<BackendResponse<Capa>>(
-      `${BASE}/capa`,
-      input,
-    );
-    return response.data;
-  },
+  createCapa: async (input: CapaCreateInput): Promise<Capa> =>
+    (await typedApi.POST("/api/v1/qms/capa", { body: input }).then(unwrap)).data,
 
   /** PATCH /qms/capa/:id */
-  updateCapa: async (id: string, input: CapaUpdateInput): Promise<Capa> => {
-    const response = await api.patch<BackendResponse<Capa>>(
-      `${BASE}/capa/${id}`,
-      input,
-    );
-    return response.data;
-  },
+  updateCapa: async (id: string, input: CapaUpdateInput): Promise<Capa> =>
+    (await typedApi.PATCH("/api/v1/qms/capa/{id}", { ...byId(id), body: input }).then(unwrap)).data,
 
   /** Convenience: status-only PATCH. */
   updateCapaStatus: (id: string, status: CapaStatus): Promise<Capa> =>

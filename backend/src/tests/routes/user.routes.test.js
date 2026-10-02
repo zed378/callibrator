@@ -5,8 +5,9 @@
  */
 const EventEmitter = require("events");
 
-// auditLog.middleware stays UNMOCKED and what it writes through is stubbed, so
-// a recordAudit layer on any user route would show up as a logAction call.
+// audit.service is stubbed, so any audit write on a user route shows up as a
+// logAction call. (The after-response recordAudit middleware was removed
+// 2026-10-01.)
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue(undefined),
 }));

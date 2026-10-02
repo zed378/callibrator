@@ -21,17 +21,12 @@ import {
 import type { TenantId, UserId } from "../types/ids";
 import type { ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
+import { CERTIFICATE_STATE, CERTIFICATE_STATUSES } from "@callibrator/contracts/states";
 import { newVerificationToken } from "../utils/certificateVerificationToken";
 import { jsonShape, type CertificateSignedSnapshot } from "../utils/jsonShape.util";
 
-// Certificate status constants
-const STATUS = {
-  DRAFT: "draft",
-  PENDING_APPROVAL: "pending_approval",
-  APPROVED: "approved",
-  SIGNED: "signed",
-  REVOKED: "revoked",
-} as const;
+// Certificate status constants (P9-05: the one list is @callibrator/contracts/states).
+const STATUS = CERTIFICATE_STATE;
 
 // Certificate type constants
 const CERTIFICATE_TYPES = {
@@ -178,13 +173,7 @@ const defineModel: DefineCertificate = (db, DataTypes) => {
         defaultValue: "calibration",
       },
       status: {
-        type: DataTypes.ENUM(
-          "draft",
-          "pending_approval",
-          "approved",
-          "signed",
-          "revoked",
-        ),
+        type: DataTypes.ENUM(...CERTIFICATE_STATUSES),
         defaultValue: "draft",
       },
       // Signatures

@@ -30,7 +30,7 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0089-calibration-device-retired-terminal.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const fakeQueryInterface = ({
   tableExists = true,

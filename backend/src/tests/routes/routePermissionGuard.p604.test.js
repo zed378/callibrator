@@ -56,7 +56,7 @@ const {
 
 const SRC = path.join(__dirname, "..", "..");
 const ROUTES_DIR = path.join(SRC, "routes");
-const INDEX_FILE = path.join(SRC, "..", "index.js");
+const INDEX_FILE = path.join(SRC, "..", "index.ts");
 const API_DOCS_FILE = path.join(SRC, "docs", "apiDocs.ts"); // P9-25 (ADR-103): was docs/swagger.js
 
 // ---------------------------------------------------------------------------
@@ -352,7 +352,7 @@ beforeAll(() => {
     problems,
     routerCount,
     appRoutes: {
-      "index.js": appRoutesIn(fs.readFileSync(INDEX_FILE, "utf8")),
+      "index.ts": appRoutesIn(fs.readFileSync(INDEX_FILE, "utf8")),
       "docs/apiDocs.ts": appRoutesIn(fs.readFileSync(API_DOCS_FILE, "utf8")),
     },
   };
@@ -369,7 +369,7 @@ describe("P6-04 — every route carries a permission gate or a reviewed exemptio
       expect(tree.routerCount[label]).toBeGreaterThan(0);
     }
     expect(tree.routes.length).toBeGreaterThan(350);
-    expect(tree.appRoutes["index.js"].length).toBeGreaterThan(0);
+    expect(tree.appRoutes["index.ts"].length).toBeGreaterThan(0);
     expect(tree.problems).toEqual([]);
   });
 
@@ -427,9 +427,9 @@ describe("P6-04 — every route carries a permission gate or a reviewed exemptio
 
   it("publicRoutes() — the list P9-21's public() marker reads — is exactly the public entries", () => {
     const listed = publicRoutes();
-    expect(listed).toContain("api/auth.route.js POST /login");
-    expect(listed).toContain("index.js GET /");
-    expect(listed).not.toContain("api/auth.route.js POST /logout");
+    expect(listed).toContain("api/auth.route.ts POST /login");
+    expect(listed).toContain("index.ts GET /");
+    expect(listed).not.toContain("api/auth.route.ts POST /logout");
     const count = Object.values(ROUTE_GATE_EXEMPTIONS)
       .flatMap((r) => Object.values(r))
       .filter((e) => e.kind === EXEMPTION_KINDS.PUBLIC).length;

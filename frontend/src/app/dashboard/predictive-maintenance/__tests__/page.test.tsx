@@ -1,11 +1,11 @@
 /** @jest-environment jsdom */
 /**
  * Predictive maintenance page against the backend contract
- * (backend/src/routes/api/predictiveMaintenance.route.js, mounted
- * /api/v1/predictive-maintenance; controllers/predictiveMaintenance.controller.js):
+ * (backend/src/routes/api/predictiveMaintenance.route.ts, mounted
+ * /api/v1/predictive-maintenance; controllers/predictiveMaintenance.controller.ts):
  *  - GET  /recommendations → device rows in `data` ({ id, name, serialNumber,
  *    calibrationIntervalDays, recommendedCalibrationInterval, recommendationReason });
- *  - POST /analyze/:deviceId → data { status: analyzed|skipped|unchanged, … }
+ *  - POST /analyze/:deviceId → data { status: recommended|skipped|unchanged, reason, newInterval? }
  *    (404 for a device without IoT, 400 with no baseline interval);
  *  - POST /recommendations/:deviceId/approve.
  *  - the device picker reads GET /api/v1/calibration-devices.
@@ -189,11 +189,13 @@ describe("predictive maintenance — analysis", () => {
 
   it.each([
     [
-      { status: "analyzed", recommendedCalibrationInterval: 120, recommendationReason: "Anomaly rate 20%" },
+      // A-350: the real answer (predictiveMaintenance.service#analyzeDevice) is
+      // { status: "recommended", newInterval, reason } — the toast shows `reason`.
+      { status: "recommended", newInterval: 120, reason: "Anomaly rate 20%" },
       { type: "success", title: "Recommendation generated", description: "Anomaly rate 20%" },
     ],
     [
-      { status: "skipped" },
+      { status: "skipped", reason: "Not enough IoT readings in the last 30 days." },
       {
         type: "info",
         title: "Not enough data",
@@ -201,7 +203,7 @@ describe("predictive maintenance — analysis", () => {
       },
     ],
     [
-      { status: "unchanged" },
+      { status: "unchanged", reason: "Current calibration interval is optimal based on recent readings." },
       { type: "info", title: "Interval already optimal", description: "No change to the calibration interval is recommended." },
     ],
   ])("an analysis answering %o is reported", async (answer, expected) => {

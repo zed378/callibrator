@@ -24,7 +24,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 
 export default function PredictiveMaintenancePage() {
   // ADR-102: analysing and approving are gated on `calibration` write
-  // (predictiveMaintenance.route.js).
+  // (predictiveMaintenance.route.ts).
   const { canWrite } = usePermissions();
   const mayWrite = canWrite("calibration");
   const addToast = useToastStore((s) => s.addToast);
@@ -90,7 +90,10 @@ export default function PredictiveMaintenancePage() {
         addToast({
           type: "success",
           title: "Recommendation generated",
-          description: result.recommendationReason ?? undefined,
+          // A-350: the analysis answers its explanation as `reason`
+          // (predictiveMaintenance.service#analyzeDevice); `recommendationReason`
+          // is the device column the recommendations list reads, never this answer.
+          description: result.reason,
         });
       }
       await load();

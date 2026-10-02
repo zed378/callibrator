@@ -1,5 +1,5 @@
 import React from "react";
-import { PaginatedResponse, Warehouse } from "@/types";
+import { PaginatedResponse, Warehouse, WarehouseStatus } from "@/types";
 import { Card, CardContent, Table, Pagination, Badge, Button, TableSkeleton } from "@/components/ui";
 import { Warehouse as WarehouseIcon, MapPin, Edit, Trash2, Eye } from "lucide-react";
 
@@ -27,11 +27,13 @@ export const WarehouseTable: React.FC<WarehouseTableProps> = ({
   openEditWarehouse,
   confirmDeleteWarehouse,
 }) => {
-  const getStatusBadge = (status: "active" | "suspended" | "inactive") => {
-    const variants = {
-      active: "success" as const,
-      suspended: "danger" as const,
-      inactive: "default" as const,
+  // A-355: the API's statuses only; the column is nullable, and a null row
+  // reads "—" rather than throwing on `null.toUpperCase()`.
+  const getStatusBadge = (status: WarehouseStatus | null) => {
+    if (!status) return <span className="text-muted-foreground">—</span>;
+    const variants: Record<WarehouseStatus, "success" | "default"> = {
+      active: "success",
+      inactive: "default",
     };
     return <Badge variant={variants[status]}>{status.toUpperCase()}</Badge>;
   };
@@ -67,7 +69,8 @@ export const WarehouseTable: React.FC<WarehouseTableProps> = ({
     {
       key: "status",
       header: "Status",
-      render: (val: unknown) => getStatusBadge(val as "active" | "suspended" | "inactive"),
+      render: (_: unknown, row: Record<string, unknown>) =>
+        getStatusBadge((row as unknown as Warehouse).status),
     },
     {
       key: "actions",

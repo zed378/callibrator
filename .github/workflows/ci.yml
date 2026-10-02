@@ -7,10 +7,13 @@
 # ratchet below, until P9-02a).
 #
 # Not yet here, deliberately (see docs/DEVOPS/01-CI-CD.md § What CI does not
-# run yet): the live E2E suite (needs a seeded, running stack and has never
-# passed in one uninterrupted run — P6-02), the browser suite, image build and
-# push (P7-01 "images pushed only from a green run" — a later workflow), and the
-# route-gate check, which runs INSIDE the backend unit suite (routePermissionGuard.p604.test.js).
+# run yet): the live E2E suite and the smoke and P10 browser suites (they need
+# Mailpit-read secrets and production request budgets a shared runner address
+# exhausts — P10-13's record), image push (P7-01 "images pushed only from a
+# green run" — a later workflow), and the route-gate check, which runs INSIDE
+# the backend unit suite (routePermissionGuard.p604.test.js). The browser
+# ACCESSIBILITY suite does run (job `browser-a11y`, M-14), on a disposable
+# stack built from the commit (deploy/compose/docker-compose.e2e.yml).
 #
 # Action and tool versions are pinned: actions by commit SHA (tag in the
 # comment), CLI tools by version with a sha256 checksum.
@@ -364,7 +367,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
-          node --import tsx index.js > boot.log 2>&1 &
+          node --import tsx index.ts > boot.log 2>&1 &
           echo $! > backend.pid
           for i in $(seq 1 90); do
             if curl -fsS http://localhost:3000/health >/dev/null 2>&1; then
@@ -390,7 +393,7 @@ jobs:
         run: |
           set -euo pipefail
           kill "$(cat backend.pid)"; sleep 2
-          node --import tsx index.js > boot2.log 2>&1 &
+          node --import tsx index.ts > boot2.log 2>&1 &
           echo $! > backend.pid
           for i in $(seq 1 60); do
             curl -fsS http://localhost:3000/health >/dev/null 2>&1 && { echo "healthy again after ${i}s"; exit 0; }
@@ -474,3 +477,104 @@ jobs:
             | python3 -c 'import json,sys; d=json.load(sys.stdin)
           bad=[(n,p.get("published")) for n,s in d["services"].items() if n!="nginx" for p in s.get("ports",[]) if p.get("host_ip") not in ("127.0.0.1",)]
           print("dev ports bound to 0.0.0.0 (excluding nginx):", bad or "none"); sys.exit(1 if bad else 0)'
+          # P10-13 / M-14: the disposable E2E stack's overlay is valid and drops what it says.
+          ../../scripts/ci/e2e-env.sh "$RUNNER_TEMP/e2e-config.env" http://localhost:27131
+          E2E_ENV_FILE="$RUNNER_TEMP/e2e-config.env" docker compose --env-file "$RUNNER_TEMP/e2e-config.env" \
+            -f docker-compose.yml -f docker-compose.e2e.yml config -q
+          E2E_ENV_FILE="$RUNNER_TEMP/e2e-config.env" docker compose --env-file "$RUNNER_TEMP/e2e-config.env" \
+            -f docker-compose.yml -f docker-compose.e2e.yml config --services | sort | tr '\n' ' ' | tee /dev/stderr \
+            | grep -qx 'backend frontend mailpit postgres rabbitmq redis volume-init '
+          echo "compose e2e: ok (no clamav, no nginx)"
+
+  # --------------------------------------------------------------------------
+  # M-14 (P10-13): the browser accessibility suite (automate/a11y.browser.js —
+  # axe WCAG 2.1 AA on the public and the daily dashboard pages in both themes,
+  # the create-dialog focus contract, 200% zoom reflow, reduced motion, the
+  # tenant brand colour) against a DISPOSABLE production-mode stack: the
+  # recipe the live E2E ran on (deploy/compose/docker-compose.e2e.yml), built
+  # from this commit. Heavy (two image builds), so it runs on main, on manual
+  # dispatch, and on pull requests that touch what it measures (frontend/,
+  # automate/, deploy/compose/, packages/contracts/); on any other pull request
+  # it reports a skip and passes, saying so.
+  browser-a11y:
+    name: browser a11y (axe · dialogs · reflow · motion) on a disposable stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      COMPOSE_PROJECT: e2e-ci
+      FRONTEND_URL: http://localhost:27131
+      BASE_URL: http://127.0.0.1:27130
+      E2E_MAILPIT_URL: http://127.0.0.1:27132
+      CHROME_PATH: /usr/bin/google-chrome
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # `runner.temp` is not available in a job-level `env`: the paths are set here.
+      - name: Paths outside the checkout (the env file holds secrets)
+        run: |
+          { echo "E2E_ENV_FILE=$RUNNER_TEMP/e2e.env"; echo "A11Y_ARTIFACTS=$RUNNER_TEMP/a11y"; } >> "$GITHUB_ENV"
+      - name: Scope (pull requests touching frontend/, automate/, deploy/compose/, packages/contracts/)
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if git diff --name-only "origin/$BASE_REF...HEAD" | grep -Eq '^(frontend|automate|deploy/compose|packages/contracts)/'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::browser-a11y skipped: this pull request touches nothing it measures"
+          fi
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: npm ci (puppeteer-core, axe-core, the E2E harness)
+        if: steps.scope.outputs.run == 'true'
+        run: npm ci --include=dev
+      - name: The stack's env file (random secrets, outside the checkout)
+        if: steps.scope.outputs.run == 'true'
+        run: scripts/ci/e2e-env.sh "$E2E_ENV_FILE" "$FRONTEND_URL"
+      - name: Build and start the stack (production mode), wait until healthy
+        if: steps.scope.outputs.run == 'true'
+        working-directory: deploy/compose
+        run: |
+          set -euo pipefail
+          timeout 3000 docker compose -p "$COMPOSE_PROJECT" --env-file "$E2E_ENV_FILE" \
+            -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait --wait-timeout 600
+      - name: Seed, and the operator's one-time password (read inside the container, masked)
+        if: steps.scope.outputs.run == 'true'
+        working-directory: deploy/compose
+        run: |
+          set -euo pipefail
+          curl -fsS "$BASE_URL/api/v1/migration/seeding" > /dev/null
+          bootstrap="$(docker compose -p "$COMPOSE_PROJECT" --env-file "$E2E_ENV_FILE" \
+            -f docker-compose.yml -f docker-compose.e2e.yml exec -T backend cat /app/.bootstrap/superadmin-password)"
+          echo "::add-mask::$bootstrap"
+          operator="Ci$(openssl rand -hex 12)Aa1"
+          echo "::add-mask::$operator"
+          { echo "E2E_BOOTSTRAP_PASSWORD=$bootstrap"; echo "E2E_OPERATOR_PASSWORD=$operator"; } >> "$GITHUB_ENV"
+      - name: Browser a11y suite
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$A11Y_ARTIFACTS"
+          timeout 1800 node automate/a11y.browser.js
+      - name: Stack logs on failure
+        if: failure() && steps.scope.outputs.run == 'true'
+        working-directory: deploy/compose
+        run: |
+          docker compose -p "$COMPOSE_PROJECT" --env-file "$E2E_ENV_FILE" \
+            -f docker-compose.yml -f docker-compose.e2e.yml logs --no-color --tail 300 backend frontend || true
+          ls -la "$A11Y_ARTIFACTS" || true
+      - name: Tear down (containers, volumes and the stack's images)
+        if: always() && steps.scope.outputs.run == 'true'
+        working-directory: deploy/compose
+        run: |
+          docker compose -p "$COMPOSE_PROJECT" --env-file "$E2E_ENV_FILE" \
+            -f docker-compose.yml -f docker-compose.e2e.yml down -v --rmi all || true

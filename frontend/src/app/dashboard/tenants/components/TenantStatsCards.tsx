@@ -29,8 +29,9 @@ export const TenantStatsCards: React.FC<StatsCardsProps> = ({
   data,
 }) => {
   const tenants = Array.isArray(data) ? data : [];
-  const active = tenants.filter((t) => t.status === "ACTIVE").length;
-  const suspended = tenants.filter((t) => t.status === "SUSPENDED").length;
+  // A-361: the API's lower-case lifecycle values (TenantLifecycleStatus).
+  const active = tenants.filter((t) => t.status === "active").length;
+  const suspended = tenants.filter((t) => t.status === "suspended").length;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

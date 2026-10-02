@@ -53,19 +53,22 @@ jest.mock("../../models", () => ({
 jest.mock("../../config", () => ({
   db: {
     transaction: jest.fn((cb) => cb({})),
-    // The claim, with the contract webhook.service#claim relies on.
-    query: jest.fn(async (sql, { replacements }) => {
+    // The claim, with the contract webhook.service#claim relies on. P9-18: it
+    // is sent through sql() — $1 lease seconds, $2 limit, and for one
+    // delivery $3 id and $4 tenant — and answers the RETURNING rows directly.
+    query: jest.fn(async (sql, { bind }) => {
+      const [leaseSeconds, limit, id, tenantId] = bind;
       const now = Date.now();
       const due = [...mockStore.deliveries.values()]
         .filter((d) => ["pending", "failed"].includes(d.status))
         .filter((d) => d.nextAttemptAt && d.nextAttemptAt.getTime() <= now)
-        .filter((d) => !sql.includes("AND id = :id") || (d.id === replacements.id && d.tenantId === replacements.tenantId))
+        .filter((d) => !sql.includes("AND id = $3") || (d.id === id && d.tenantId === tenantId))
         .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt)
-        .slice(0, replacements.limit);
+        .slice(0, limit);
       due.forEach((d) => {
-        d.nextAttemptAt = new Date(now + replacements.leaseSeconds * 1000);
+        d.nextAttemptAt = new Date(now + leaseSeconds * 1000);
       });
-      return [due.map((d) => ({ id: d.id, tenantId: d.tenantId }))];
+      return due.map((d) => ({ id: d.id, tenantId: d.tenantId }));
     }),
   },
 }));

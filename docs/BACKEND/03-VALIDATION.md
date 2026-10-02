@@ -1,6 +1,6 @@
 # 03 — Validation
 
-> **Language status (as-built 2026-09-29).** Everything this document describes **as the validation layer** is TypeScript: `validators/` (all of it) and `middlewares/validation.middleware.ts` (P9-11). The **routes and controllers that mount and call it are still JavaScript** until Stage C/D (P9-12…P9-21), which is why the `.js`-route source guard below exists. Behaviour described here is **as-built** unless marked *target*. The migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md); the rules for `.ts` code are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). **ADR-093** (the P9-11 record, cited throughout the code) was not yet in `MEMORY/DECISIONS.md` when this banner was written (2026-09-29); the P9-11 spec is [`MEMORY/specs/P9-11-validation-error-contract.md`](../../MEMORY/specs/P9-11-validation-error-contract.md).
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; the toolchain is ADR-087), compiled to CommonJS and run from one `dist/` tree. The only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18); `noSourceJs.p924.guard` fails on any other. The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The rules are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Behaviour described here is **as-built** unless marked *target*. The validation layer is ADR-093 (Zod; Joi removed); its spec is [`MEMORY/specs/P9-11-validation-error-contract.md`](../../MEMORY/specs/P9-11-validation-error-contract.md).
 
 **Zod** (ADR-093, P9-11 — Joi was removed on 2026-09-29). 39 validator modules in `backend/src/validators/` (`*.validator.ts`), with the shared field schemas in `fields.ts` and the one input helper in `input.ts`, applied by `validate(schema)` from `middlewares/validation.middleware.ts`. These modules are TypeScript: `z.infer<typeof schema>` is the request type.
 
@@ -86,7 +86,7 @@ Without it a malformed UUID reaches PostgreSQL and raises a type error — a 500
 
 ## Global Sanitisation
 
-`globalSanitizer.middleware.js` runs before every route, sanitising `req.body`, `req.query` and `req.params`.
+`globalSanitizer.middleware.ts` runs before every route, sanitising `req.body`, `req.query` and `req.params`.
 
 It **does not** touch `req.rawBody`, which is why the Stripe webhook signature still verifies ([`../API/11-BILLING-FINANCE-API.md`](../API/11-BILLING-FINANCE-API.md)).
 

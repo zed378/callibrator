@@ -108,7 +108,8 @@ const SessionRow: React.FC<SessionRowProps> = ({
                 <div className="text-right flex-shrink-0">
                   <p className="text-xs text-muted-foreground">Last Active</p>
                   <p className="text-sm font-medium text-foreground">
-                  {getTimeAgo(session.lastActivityAt)}
+                  {/* lastActivityAt is nullable; a null reads as the epoch, as built. */}
+                  {getTimeAgo(session.lastActivityAt as string)}
                 </p>
               </div>
             </div>

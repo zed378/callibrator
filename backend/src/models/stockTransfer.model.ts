@@ -19,14 +19,10 @@ import {
 import type { TenantId, UserId } from "../types/ids";
 import type { ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
+import { STOCK_TRANSFER_STATUSES } from "@callibrator/contracts/states";
 
 /** The `status` ENUM's values, in the column's order (D-26 holds them against pg_enum). */
-const STOCK_TRANSFER_STATUSES = [
-  "pending",
-  "in_transit",
-  "completed",
-  "cancelled",
-] as const;
+// P9-05: STOCK_TRANSFER_STATUSES is the one list in @callibrator/contracts/states.
 
 /** A StockTransfer row (attributes, included associations, instance methods). Types only: emits nothing. */
 interface StockTransfer extends Model<

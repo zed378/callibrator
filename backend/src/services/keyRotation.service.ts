@@ -99,14 +99,12 @@ const TARGETS: readonly RewrapTargetSpec[] = Object.freeze([
     table: "users",
     column: "mfa_secret",
     legacy: mfaService.LEGACY_PLAINTEXT_SEED,
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- as built: mfa.service's secretAad is an arrow function (no `this`), passed detached
     aad: mfaService.secretAad,
   }),
   Object.freeze({
     table: "users",
     column: "mfa_pending_secret",
     legacy: mfaService.LEGACY_PLAINTEXT_SEED,
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- as built: mfa.service's secretAad is an arrow function (no `this`), passed detached
     aad: mfaService.secretAad,
   }),
 ]);

@@ -199,7 +199,8 @@ export const NotificationBell: React.FC = () => {
                   }`}
                 >
                   <span className="mt-0.5 w-8 h-8 rounded-lg bg-muted/60 flex items-center justify-center shrink-0 text-muted-foreground">
-                    {TYPE_ICONS[notification.type] ?? (
+                    {/* The column is the model's NOTIFICATION_TYPES enum; the contract publishes a string. */}
+                    {TYPE_ICONS[notification.type as NotificationType] ?? (
                       <Settings className="w-4 h-4" />
                     )}
                   </span>

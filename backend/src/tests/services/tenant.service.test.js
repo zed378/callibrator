@@ -183,7 +183,7 @@ describe("tenant Service", () => {
         meta: { total: 1 },
       });
 
-      const result = await tenantService.fetchTenants({ page: 1, limit: 10 });
+      await tenantService.fetchTenants({ page: 1, limit: 10 });
 
       expect(get).toHaveBeenCalled();
     });
@@ -235,7 +235,7 @@ describe("tenant Service", () => {
         data: { id: "t-1", name: "Acme" },
       });
 
-      const result = await tenantService.fetchSpecificTenant("t-1");
+      await tenantService.fetchSpecificTenant("t-1");
 
       expect(get).toHaveBeenCalled();
     });
@@ -261,7 +261,7 @@ describe("tenant Service", () => {
       };
       mockFindByPk.mockResolvedValue(mockTenant);
 
-      const result = await tenantService.getTenantByIdForMiddleware("t-1");
+      await tenantService.getTenantByIdForMiddleware("t-1");
 
       expect(mockFindByPk).toHaveBeenCalledWith("t-1", {
         attributes: expect.any(Array),
@@ -281,7 +281,7 @@ describe("tenant Service", () => {
       };
       mockFindOne.mockResolvedValue(mockTenant);
 
-      const result = await tenantService.getTenantByCodeForMiddleware("ACM");
+      await tenantService.getTenantByCodeForMiddleware("ACM");
 
       expect(mockFindOne).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -305,7 +305,7 @@ describe("tenant Service", () => {
       mockFindOne.mockResolvedValue(mockTenant);
       get.mockResolvedValue(null);
 
-      const result = await tenantService.getPublicBranding("t-1");
+      await tenantService.getPublicBranding("t-1");
 
       expect(mockFindOne).toHaveBeenCalled();
     });
@@ -315,7 +315,7 @@ describe("tenant Service", () => {
         data: { id: "t-1", primaryColor: "#000000" },
       });
 
-      const result = await tenantService.getPublicBranding("t-1");
+      await tenantService.getPublicBranding("t-1");
 
       expect(get).toHaveBeenCalled();
     });
@@ -528,7 +528,7 @@ describe("tenant Service", () => {
       mockFindByPk.mockResolvedValue(mockTenant);
       mockCount.mockResolvedValue(25);
 
-      const result = await tenantService.getTenantUserCount("t-1");
+      await tenantService.getTenantUserCount("t-1");
 
       expect(mockFindByPk).toHaveBeenCalledWith("t-1");
       expect(mockCount).toHaveBeenCalled();

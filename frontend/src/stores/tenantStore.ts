@@ -62,7 +62,7 @@ interface TenantState {
     code?: string;
     description?: string;
     primaryColor?: string;
-    status?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
+    status?: Tenant["status"];
     file?: File;
     email?: string;
     phone?: string;

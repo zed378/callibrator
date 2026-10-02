@@ -1,40 +1,29 @@
+// src/api/services/tenant.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the request and answer
+// types are the contract's (backend/src/routes/api/tenant.openapi.ts). The
+// exported names are unchanged. The create, edit and logo upload stay on `api`
+// (multipart).
 import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type Op, type components } from "../typed";
 import { Tenant, PaginatedResponse, TenantSettings, TenantSettingsResponse } from "@/types";
 
-// Backend response structure for tenants list
-// Actual format: { success, status, message, data: Tenant[], meta: {...} }
-interface BackendTenantsResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: Tenant[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
+/** A tenant row as the API answers it (the model's lowercase status). */
+export type ApiTenant = components["schemas"]["Tenant"];
+
+/**
+ * A tenant row as the app's Tenant. Both type `status` as the model's
+ * lower-case lifecycle enum (A-361: the app used to type it in upper case,
+ * which the API never sends). The cast covers the app type's optional
+ * profile joins (`settings`, `users`), which the row does not name.
+ */
+const asTenant = (row: ApiTenant): Tenant => row as unknown as Tenant;
 
 /** Non-sensitive tenant branding returned by the public (no-auth) endpoint. */
-export interface PublicTenantBranding {
-  id: string;
-  name: string;
-  code: string;
-  primaryColor: string | null;
-  logoBaseUrl: string | null;
-}
+export type PublicTenantBranding = DataOf<Op<"/api/v1/tenants/public", "get">>;
 
-/** Payload of POST /api/v1/tenants/user-count. */
-export interface TenantUserCount {
-  tenantId: string;
-  userCount: number;
-  /** The seat limit; null = unlimited. */
-  limitSeats: number | null;
-  /** limitSeats − userCount, floored at 0; null = unlimited. */
-  remainingSlots: number | null;
-  unlimited: boolean;
-}
+/** Payload of POST /api/v1/tenants/user-count (a null seat limit is unlimited). */
+export type TenantUserCount = DataOf<Op<"/api/v1/tenants/user-count", "post">>;
 
 export const tenantService = {
   getAll: async (
@@ -42,18 +31,15 @@ export const tenantService = {
     limit = 25,
     search?: string,
   ): Promise<PaginatedResponse<Tenant>> => {
-    const response = await api.get<BackendTenantsResponse>(
-      "/api/v1/tenants/all",
-      {
-        params: { page, limit, find: search },
-      },
-    );
+    const response = await typedApi
+      .GET("/api/v1/tenants/all", { params: { query: { page, limit, find: search } } })
+      .then(unwrap);
 
     // Transform backend response to PaginatedResponse format
     return {
       success: response.success,
       message: response.message,
-      data: response.data,
+      data: response.data.map(asTenant),
       meta: response.meta,
     };
   },
@@ -85,25 +71,16 @@ export const tenantService = {
     };
   },
 
-  getById: async (tenantId: string): Promise<Tenant> => {
-    const response = await api.post<{ success: boolean; data: Tenant }>(
-      "/api/v1/tenants/detail",
-      { tenantId },
-    );
-    return response.data;
-  },
+  getById: async (tenantId: string): Promise<Tenant> =>
+    asTenant((await typedApi.POST("/api/v1/tenants/detail", { body: { tenantId } }).then(unwrap)).data),
 
   /**
    * Public (no-auth) branding for the deploy-configured tenant. The proxy
    * injects the X-Tenant-ID header from NEXT_PUBLIC_TENANT_ID, so no id is
    * passed here. Returns only non-sensitive branding fields.
    */
-  getPublicBranding: async (): Promise<PublicTenantBranding> => {
-    const response = await api.get<{ success: boolean; data: PublicTenantBranding }>(
-      "/api/v1/tenants/public",
-    );
-    return response.data;
-  },
+  getPublicBranding: async (): Promise<PublicTenantBranding> =>
+    (await typedApi.GET("/api/v1/tenants/public").then(unwrap)).data,
 
   create: async (data: {
     name: string;
@@ -141,11 +118,11 @@ export const tenantService = {
 
     // Do not set Content-Type — the client interceptor lets the browser add
     // the multipart boundary automatically.
-    const response = await api.post<{ success: boolean; data: Tenant }>(
+    const response = await api.post<{ success: boolean; data: ApiTenant }>(
       "/api/v1/tenants/create",
       formData,
     );
-    return response.data;
+    return asTenant(response.data);
   },
 
   update: async (data: {
@@ -154,7 +131,8 @@ export const tenantService = {
     code?: string;
     description?: string;
     primaryColor?: string;
-    status?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
+    /** The tenants page never sends it: the status moves through the lifecycle actions (A-326 / ADR-112). */
+    status?: Tenant["status"];
     file?: File;
     email?: string;
     phone?: string;
@@ -182,30 +160,32 @@ export const tenantService = {
       if (value !== undefined) formData.append(field, value);
     }
 
-    const response = await api.patch<{ success: boolean; data: Tenant }>(
+    const response = await api.patch<{ success: boolean; data: ApiTenant }>(
       "/api/v1/tenants/edit",
       formData,
     );
-    return response.data;
+    return asTenant(response.data);
   },
 
   delete: async (tenantId: string): Promise<void> => {
-    await api.delete("/api/v1/tenants/delete", { params: { tenantId } });
+    await typedApi.DELETE("/api/v1/tenants/delete", { params: { query: { tenantId } } });
   },
 
   getSettings: async (tenantId: string): Promise<TenantSettingsResponse> => {
-    const response = await api.post<{
-      success: boolean;
-      data: TenantSettingsResponse;
-    }>("/api/v1/tenants/settings", { tenantId });
-    return response.data;
+    const { tenant, settings } = (await typedApi.POST("/api/v1/tenants/settings", { body: { tenantId } }).then(unwrap))
+      .data;
+    // The settings are an open map (TenantSettings names the SSO keys the page reads).
+    return { tenant: asTenant(tenant), settings: settings as TenantSettings };
   },
 
   updateSettings: async (
     tenantId: string,
     settings: TenantSettings,
   ): Promise<void> => {
-    await api.patch("/api/v1/tenants/settings", { tenantId, settings });
+    // The nested `settings` object is unwrapped by the API (tenant.service#settingEntries).
+    await typedApi.PATCH("/api/v1/tenants/settings", {
+      body: { tenantId, settings: settings as Record<string, string | number | boolean | null> },
+    });
   },
 
   /**
@@ -215,15 +195,8 @@ export const tenantService = {
    * `data`. This previously read a top-level `count`, which does not exist at
    * any level, so it always resolved to undefined.
    */
-  getUserCount: async (tenantId: string): Promise<TenantUserCount> => {
-    const response = await api.post<{
-      success: boolean;
-      status: number;
-      message: string;
-      data: TenantUserCount;
-    }>("/api/v1/tenants/user-count", { tenantId });
-    return response.data;
-  },
+  getUserCount: async (tenantId: string): Promise<TenantUserCount> =>
+    (await typedApi.POST("/api/v1/tenants/user-count", { body: { tenantId } }).then(unwrap)).data,
 
   uploadLogo: async (tenantId: string, file: File): Promise<void> => {
     const formData = new FormData();
@@ -232,7 +205,7 @@ export const tenantService = {
   },
 
   deleteLogo: async (tenantId: string): Promise<void> => {
-    await api.delete(`/api/v1/tenants/${tenantId}/logo`);
+    await typedApi.DELETE("/api/v1/tenants/{tenantId}/logo", { params: { path: { tenantId } } });
   },
 
   // NOTE: backup creation lives in tenantBackup.service.ts (`create`).

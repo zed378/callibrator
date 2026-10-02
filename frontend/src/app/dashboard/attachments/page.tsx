@@ -22,7 +22,7 @@ const FILTER_OPTIONS = [
 
 export default function AttachmentsPage() {
   // ADR-102: deleting a file is gated on `equipment` write
-  // (attachments.route.js DELETE /:id); uploading and downloading on
+  // (attachments.route.ts DELETE /:id); uploading and downloading on
   // `equipment` read, which every role that reaches this page holds.
   const { canWrite } = usePermissions();
   const mayDelete = canWrite("equipment");

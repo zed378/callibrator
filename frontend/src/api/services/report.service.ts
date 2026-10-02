@@ -1,133 +1,45 @@
 // src/api/services/report.service.ts
+//
+// P9-25 (ADR-103 item 11): the JSON reads are on the GENERATED client and every
+// type is the contract's (backend/src/routes/api/reports.openapi.ts); the names
+// are unchanged. The CSV exports stay on `api` (text, not the envelope).
 import { api } from "../client";
+import { typedApi, unwrap, type components } from "../typed";
 
 // ---------- Types ----------
 
-export interface ComplianceSummary {
-  total: number;
-  compliant: number;
-  nonCompliant: number;
-  unknown: number;
-  complianceRate: number;
-}
+type S = components["schemas"];
 
-export interface ReportSummary {
-  devices: {
-    byStatus: Record<string, number>;
-    overdue: number;
-  };
-  certificates: {
-    byStatus: Record<string, number>;
-  };
-  workOrders: {
-    byStatus: Record<string, number>;
-  };
-  compliance: ComplianceSummary;
-  inventory: {
-    totalItems: number;
-    totalQuantity: number;
-    lowStockCount: number;
-  };
-}
-
-export interface ComplianceReport {
-  summary: ComplianceSummary;
-}
-
-export interface CalibrationWorkload {
-  workOrders: {
-    byStatus: Record<string, number>;
-    byType: Record<string, number>;
-    byPriority: Record<string, number>;
-  };
-  upcomingDue: {
-    in30Days: number;
-    in60Days: number;
-    in90Days: number;
-  };
-}
-
-export interface OverdueDeviceRow {
-  id: string;
-  name: string;
-  serialNumber: string;
-  category: string;
-  nextCalibrationDate: string;
-  daysOverdue: number;
-}
-
-export interface OverdueDevicesReport {
-  total: number;
-  rows: OverdueDeviceRow[];
-}
-
-export interface InventoryReportRow {
-  itemName: string;
-  sku: string;
-  quantity: number;
-  minQuantity: number;
-  lowStock: boolean;
-}
-
-export interface InventoryReport {
-  summary: {
-    totalItems: number;
-    totalQuantity: number;
-    lowStockCount: number;
-  };
-  lowStock: InventoryReportRow[];
-  rows: InventoryReportRow[];
-}
-
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+export type ReportSummary = S["SummaryReport"];
+export type ComplianceReport = S["ComplianceReport"];
+export type ComplianceSummary = ComplianceReport["summary"];
+export type CalibrationWorkload = S["CalibrationWorkloadReport"];
+export type OverdueDevicesReport = S["OverdueDevicesReport"];
+export type OverdueDeviceRow = OverdueDevicesReport["rows"][number];
+export type InventoryReport = S["InventoryStockReport"];
+export type InventoryReportRow = InventoryReport["rows"][number];
 
 // ---------- Service ----------
 
 export const reportService = {
-  getSummary: async (): Promise<ReportSummary> => {
-    const response = await api.get<BackendResponse<ReportSummary>>(
-      "/api/v1/reports/summary",
-    );
-    return response.data;
-  },
+  getSummary: async (): Promise<ReportSummary> =>
+    (await typedApi.GET("/api/v1/reports/summary").then(unwrap)).data,
 
-  getCompliance: async (
-    from?: string,
-    to?: string,
-  ): Promise<ComplianceReport> => {
-    const response = await api.get<BackendResponse<ComplianceReport>>(
-      "/api/v1/reports/compliance",
-      { params: { from: from || undefined, to: to || undefined } },
-    );
-    return response.data;
-  },
+  getCompliance: async (from?: string, to?: string): Promise<ComplianceReport> =>
+    (
+      await typedApi
+        .GET("/api/v1/reports/compliance", { params: { query: { from: from || undefined, to: to || undefined } } })
+        .then(unwrap)
+    ).data,
 
-  getCalibrationWorkload: async (): Promise<CalibrationWorkload> => {
-    const response = await api.get<BackendResponse<CalibrationWorkload>>(
-      "/api/v1/reports/calibration-workload",
-    );
-    return response.data;
-  },
+  getCalibrationWorkload: async (): Promise<CalibrationWorkload> =>
+    (await typedApi.GET("/api/v1/reports/calibration-workload").then(unwrap)).data,
 
-  getOverdueDevices: async (): Promise<OverdueDevicesReport> => {
-    const response = await api.get<BackendResponse<OverdueDevicesReport>>(
-      "/api/v1/reports/overdue-devices",
-    );
-    return response.data;
-  },
+  getOverdueDevices: async (): Promise<OverdueDevicesReport> =>
+    (await typedApi.GET("/api/v1/reports/overdue-devices").then(unwrap)).data,
 
-  getInventory: async (): Promise<InventoryReport> => {
-    const response = await api.get<BackendResponse<InventoryReport>>(
-      "/api/v1/reports/inventory",
-    );
-    return response.data;
-  },
+  getInventory: async (): Promise<InventoryReport> =>
+    (await typedApi.GET("/api/v1/reports/inventory").then(unwrap)).data,
 
   // ---------- CSV exports ----------
 

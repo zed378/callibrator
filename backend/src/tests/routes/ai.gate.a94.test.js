@@ -1,7 +1,7 @@
 /**
  * A-94 — the AI routes had no permission gate (P6-04).
  *
- * `ai.route.js` mounted `auth` and nothing else, so every authenticated
+ * `ai.route.ts` mounted `auth` and nothing else, so every authenticated
  * principal — any role, any API key — could run certificate OCR on the
  * tenant's AI budget (`POST /ai/ocr`) and query the tenant's RAG knowledge base
  * (`POST /ai/query`), whatever their menu grants.

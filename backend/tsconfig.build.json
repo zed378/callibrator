@@ -16,6 +16,6 @@
     "types": ["node"],
     "noEmit": false
   },
-  "include": ["src/**/*.ts"],
+  "include": ["index.ts", "src/**/*.ts"],
   "exclude": ["node_modules", "dist", "coverage", "src/tests/**", "__tests__/**", "src/**/*.test.ts"]
 }

@@ -34,7 +34,7 @@ describe("A-107 — no signature revocation without a design", () => {
 
   it("no e-signature route revokes a signature", () => {
     const source = fs.readFileSync(
-      path.join(__dirname, "../../routes/api/eSignature.route.js"),
+      path.join(__dirname, "../../routes/api/eSignature.route.ts"),
       "utf8",
     );
     const routeLines = source.split("\n").filter((line) => /router\.(get|post|put|patch|delete)\(/.test(line));
@@ -48,7 +48,7 @@ describe("A-107 — no signature revocation without a design", () => {
 
   it("cancelling a workflow IS routed, gated and guarded (the other unrouted handler, A-130)", () => {
     const source = fs.readFileSync(
-      path.join(__dirname, "../../routes/api/eSignature.route.js"),
+      path.join(__dirname, "../../routes/api/eSignature.route.ts"),
       "utf8",
     );
     const cancel = source.slice(source.indexOf('"/workflows/:workflowId/cancel"') - 40);

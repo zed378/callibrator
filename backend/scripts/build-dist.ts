@@ -148,7 +148,18 @@ function main(): void {
     );
   }
 
-  for (const file of [path.join(BACKEND, "index.js"), ...walked.copied]) {
+  // P9-21: the entry point is index.ts (compiled by tsconfig.build.json into dist/index.js);
+  // an index.js beside it would be the doubled module refused above, so refuse it here too.
+  const entryJs = path.join(BACKEND, "index.js");
+  const entryTs = path.join(BACKEND, "index.ts");
+  if (fs.existsSync(entryJs) && fs.existsSync(entryTs)) {
+    fail("a module exists as both .js and .ts — delete the .js half of each:\n  index.ts");
+  }
+  if (fs.existsSync(entryTs)) {
+    walked.typescript.push(entryTs);
+  }
+
+  for (const file of [...(fs.existsSync(entryJs) ? [entryJs] : []), ...walked.copied]) {
     const target = path.join(DIST, path.relative(BACKEND, file));
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(file, target);

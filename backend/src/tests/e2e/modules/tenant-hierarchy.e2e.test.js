@@ -71,7 +71,7 @@ describe("E2E Tenant Hierarchy (HTTP)", () => {
     expect(status).toBe(400);
   });
 
-  test("POST /tenant-hierarchy/:parentId/children -> 400 on missing name (self-validated)", async () => {
+  test("POST /tenant-hierarchy/:tenantId/children -> 400 on missing name (self-validated)", async () => {
     if (!tenantId) {return;}
     const { status } = await httpPost(
       `/tenant-hierarchy/${tenantId}/children`,

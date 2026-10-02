@@ -1,71 +1,15 @@
+// P9-25 (ADR-103 item 11): on the GENERATED client; the result types are the
+// contract's own (backend/src/routes/api/search.openapi.ts).
 // src/api/services/search.service.ts
-import { api } from "../client";
+import { typedApi, unwrap, type components } from "../typed";
 
-export type SearchResultType = "device" | "stock" | "certificate";
+export type SearchResponse = components["schemas"]["SearchResults"];
+export type SearchResult = SearchResponse["results"][number];
+export type SearchResultType = SearchResult["type"];
+export type DeviceSearchResult = Extract<SearchResult, { type: "device" }>;
+export type StockSearchResult = Extract<SearchResult, { type: "stock" }>;
+export type CertificateSearchResult = Extract<SearchResult, { type: "certificate" }>;
 
-export interface DeviceSearchResult {
-  type: "device";
-  id: string;
-  name: string;
-  serialNumber?: string;
-  manufacturer?: string;
-  model?: string;
-  category?: string;
-  rank: number;
-}
-
-export interface StockSearchResult {
-  type: "stock";
-  id: string;
-  itemName: string;
-  sku?: string;
-  serialNumber?: string;
-  quantity: number;
-  rank: number;
-}
-
-export interface CertificateSearchResult {
-  type: "certificate";
-  id: string;
-  certificateNumber: string;
-  status: string;
-  standard?: string;
-  deviceId: string;
-  rank: number;
-}
-
-export type SearchResult =
-  | DeviceSearchResult
-  | StockSearchResult
-  | CertificateSearchResult;
-
-export interface SearchResponse {
-  query: string;
-  total: number;
-  results: SearchResult[];
-  byType: {
-    device?: DeviceSearchResult[];
-    stock?: StockSearchResult[];
-    certificate?: CertificateSearchResult[];
-  };
-}
-
-// Backend response envelope
-interface BackendSearchResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: SearchResponse;
-}
-
-/**
- * The text GlobalSearch shows when a search request fails (A-56).
- *
- * The backend answers a search whose statement failed with a 500 rather than
- * an empty list, so a broken search can no longer read as "no results". In
- * production the body carries the generic message and a `requestId`; the
- * reference is shown so a user can quote it to support.
- */
 export const searchErrorMessage = (err: unknown): string => {
   const detail =
     err instanceof Error && err.message ? err.message : "Unknown error";
@@ -87,13 +31,17 @@ export const searchService = {
     types?: SearchResultType[],
     limit?: number,
   ): Promise<SearchResponse> => {
-    const response = await api.get<BackendSearchResponse>("/api/v1/search", {
-      params: {
-        q,
-        types: types && types.length > 0 ? types.join(",") : undefined,
-        limit: limit || undefined,
-      },
-    });
+    const response = await typedApi
+      .GET("/api/v1/search", {
+        params: {
+          query: {
+            q,
+            types: types && types.length > 0 ? types.join(",") : undefined,
+            limit: limit || undefined,
+          },
+        },
+      })
+      .then(unwrap);
     return response.data;
   },
 };

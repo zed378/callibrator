@@ -7,18 +7,15 @@ import {
   CalibrationCorrectionInput,
   Certificate,
   CertificateCreateInput,
+  type CertificateStats as CertificateStatsSchema,
   CertificateUpdateInput,
   RevokeCertificateInput,
   SignCertificateInput,
 } from '@/api/services/calibration.service';
 import { PaginatedResponse } from '@/types';
 
-export interface CertificateStats {
-  totalCertificates: number;
-  byStatus: Record<string, number>;
-  byType: Record<string, number>;
-  latestCertificate?: Certificate;
-}
+/** GET /certificates/stats (P9-25: the contract's own schema). */
+export type CertificateStats = CertificateStatsSchema;
 
 /** One list's own read state (F-19). */
 export interface ListReadState {
@@ -186,8 +183,9 @@ export const useCalibrationStore = create<CalibrationState>()((set) => {
           page,
           limit,
           deviceId,
-          status,
-          type,
+          // The filter selects offer only the contract's values (CalibrationFilters).
+          status as Certificate['status'][] | undefined,
+          type as Certificate['type'][] | undefined,
           certificateNumber,
           from,
           to

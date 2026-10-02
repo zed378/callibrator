@@ -71,7 +71,8 @@ const fakeDb = (tables) => ({
       const v1 = rows.filter((x) => typeof x.value === "string" && x.value.startsWith("v1:"));
       return [{ n: v1.length, id: v1.length ? v1.map((x) => x.id).sort()[0] : null }];
     }
-    const hit = rows.find((x) => x.id === opts.replacements.id);
+    // P9-21: the sample is read with a bound $1 (sql()); `replacements` before it.
+    const hit = rows.find((x) => x.id === (opts.bind ? opts.bind[0] : opts.replacements.id));
     return [{ id: hit.id, tenant_id: hit.tenant_id, value: hit.value }];
   }),
 });
@@ -171,6 +172,21 @@ describe("P7-05 — the boot refuses a database whose KMS master key is missing"
         process.env.KMS_VERIFY = saved;
       }
     }
+  });
+
+  it("P9-21: every statement goes through sql() — the v1 sample binds its id as $1, never `replacements`", async () => {
+    const { verify } = load({ KMS_MASTER_KEY: KEY_A });
+    const db = fakeDb({ webhooks: [{ id: "7", tenant_id: TENANT, value: legacyV1(KEY_A, TENANT, "whsec") }] });
+    await verify.verifyKmsKeys(db);
+    const calls = db.query.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [, opts] of calls) {
+      expect(opts).not.toHaveProperty("replacements");
+      expect(opts.type).toBe("SELECT");
+    }
+    const sample = calls.find(([text]) => text.includes("AS value FROM webhooks"));
+    expect(sample[0]).toContain("WHERE id::text = $1");
+    expect(sample[1].bind).toEqual(["7"]);
   });
 
   it("checks every column keys:rotate re-wraps, soft-deleted rows included (no deleted_at predicate)", async () => {

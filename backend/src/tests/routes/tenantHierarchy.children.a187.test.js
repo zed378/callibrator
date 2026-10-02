@@ -1,5 +1,6 @@
 /**
- * A-187 — POST /tenant-hierarchy/:parentId/children, through the real chain:
+ * A-187 — POST /tenant-hierarchy/:tenantId/children (the parent; `:parentId` until
+ * P9-18), through the real chain:
  * tenantHierarchy.route (real `superAdminOnly`, `denyApiKey`, `validateUuid`)
  * → controller → service, over the two-tenant fixture. Only `auth` (to set the
  * principal), the models and the audit insert are doubled.
@@ -114,7 +115,7 @@ afterAll(() => {
   delete process.env.HIERARCHY_ENABLED;
 });
 
-describe("A-187 — POST /:parentId/children across two tenants", () => {
+describe("A-187 — POST /:tenantId/children across two tenants", () => {
   it("a tenant admin of A gets the same answer for B's id, a missing id and its own — and nothing is created", async () => {
     currentUser = fx.principal(fx.tenantA, ROLE_NAMES.HEALTCARE_ADMIN);
 

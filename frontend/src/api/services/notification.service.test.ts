@@ -57,7 +57,7 @@ describe("notificationService", () => {
       mockedApi.get.mockResolvedValueOnce(listEnvelope([]));
       await notificationService.getAll(2, 5, false, "SYSTEM");
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
-        params: { page: 2, limit: 5, isRead: false, type: "SYSTEM" },
+        params: { page: 2, limit: 5, isRead: "false", type: "SYSTEM" },
       });
     });
 

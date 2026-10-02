@@ -19,6 +19,7 @@ import redis from "./redis.service";
 import { tenantFlagsProblem as loadedTenantFlagsProblem } from "../validators/admin.validator";
 import type { TenantId } from "../types/ids";
 import type { ModelInstance } from "../types/models";
+import { TENANT_LIFECYCLE_STATUSES } from "@callibrator/contracts/states";
 
 const { Tenants } = models;
 const AppError = LoadedAppError;
@@ -157,7 +158,7 @@ const auditPlatformActionOnTenant = async (
 // UPDATE TENANT STATUS
 // ==========================================
 
-const VALID_STATUSES: readonly string[] = Object.freeze(["active", "suspended", "deleted"]);
+const VALID_STATUSES: readonly string[] = TENANT_LIFECYCLE_STATUSES; // P9-05: the one (frozen) list
 
 /**
  * Set a tenant's status (super admin). Audited under PLATFORM and under the

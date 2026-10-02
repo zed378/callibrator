@@ -17,7 +17,7 @@ const path = require("path");
 
 const migration = require("../../migrations/0044-iot-device-token-hash");
 
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 const sha256 = (raw) => crypto.createHash("sha256").update(raw, "utf8").digest("hex");
 
 const TX = { id: "tx-0044" };

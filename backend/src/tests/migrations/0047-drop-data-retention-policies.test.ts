@@ -32,7 +32,7 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0047-drop-data-retention-policies.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 const MODELS_DIR = path.join(__dirname, "../../models");
 
 const TENANT = "7b0e8f7e-6a54-4a7c-9d6b-3d1f0f6b8a11";

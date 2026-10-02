@@ -5,7 +5,7 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/calibrationRecords.validator.ts,
  * which re-exports these same objects; the frontend derives its request
- * types from them. The contract for C:/Program Files/Git/api/v1/calibration-records (list query, id params, create and update bodies).
+ * types from them. The contract for /api/v1/calibration-records (list query, id params, create and update bodies).
  */
 import { z } from "zod";
 import { booleanish, dateLike, jsonObject, numeric, optionalText, uuid } from "./fields";

@@ -205,8 +205,11 @@ describe("A-66 — QMS route wiring", () => {
   });
 
   it("the A-58 boot assertion's source scan finds a resolvable gate on every QMS route", () => {
-    const file = path.join(__dirname, "..", "..", "routes", "api", "qms.route.js");
-    const gates = parseGates(fs.readFileSync(file, "utf8"), "src/routes/api/qms.route.js");
+    // P9-21: the route module is .js until it converts and .ts after; read the one that exists.
+    const [file] = [".ts", ".js"]
+      .map((ext) => path.join(__dirname, "..", "..", "routes", "api", `qms.route${ext}`))
+      .filter((candidate) => fs.existsSync(candidate));
+    const gates = parseGates(fs.readFileSync(file, "utf8"), path.relative(path.join(__dirname, "..", "..", ".."), file));
 
     expect(gates).toHaveLength(MUTATIONS.length + READS.length);
     expect(gates.every((g) => Array.isArray(g.names) && g.names.includes("qms"))).toBe(true);

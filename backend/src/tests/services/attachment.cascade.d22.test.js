@@ -158,8 +158,10 @@ describe("D-22 — softDeleteForResource", () => {
 });
 
 describe("D-22 — listOrphans", () => {
+  // P9-18: the statements run through utils/sql.util (`type: "SELECT"`, bound
+  // `$1…$3`), which resolves with the rows themselves.
   const answer = (total, rows) => {
-    db.query.mockImplementation(async (sql) => (/count\(\*\)/.test(sql) ? [[{ total }]] : [rows]));
+    db.query.mockImplementation(async (sql) => (/count\(\*\)/.test(sql) ? [{ total }] : rows));
   };
 
   it("reports the caller's tenant's orphans in the envelope shape, sizes as numbers", async () => {
@@ -172,10 +174,12 @@ describe("D-22 — listOrphans", () => {
       meta: { total: 3, page: 2, limit: 2, totalPages: 2 },
     });
     for (const [, options] of db.query.mock.calls) {
-      expect(options.replacements.tenantId).toBe(TENANT);
+      expect(options.type).toBe("SELECT");
+      expect(options.bind[0]).toBe(TENANT);
+      expect(options).not.toHaveProperty("replacements");
     }
-    const rowsCall = db.query.mock.calls.find(([sql]) => /LIMIT :limit/.test(sql));
-    expect(rowsCall[1].replacements).toEqual({ tenantId: TENANT, limit: 2, offset: 2 });
+    const rowsCall = db.query.mock.calls.find(([sql]) => /LIMIT \$2 OFFSET \$3/.test(sql));
+    expect(rowsCall[1].bind).toEqual([TENANT, 2, 2]);
   });
 
   it("defaults and caps the page size, and never pages below 1", async () => {
@@ -199,7 +203,7 @@ describe("D-22 — listOrphans", () => {
 
     const sqls = db.query.mock.calls.map(([sql]) => sql);
     for (const sql of sqls) {
-      expect(sql).toMatch(/a\.tenant_id = :tenantId/);
+      expect(sql).toMatch(/a\.tenant_id = \$1/);
       expect(sql).toMatch(/a\.is_deleted = false/);
       expect(sql).toMatch(/a\.deleted_at IS NULL/);
       expect(sql).toMatch(/a\.resource_id IS NOT NULL/);

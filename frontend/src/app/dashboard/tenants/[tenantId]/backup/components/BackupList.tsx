@@ -1,5 +1,5 @@
 import React from "react";
-import { TenantBackup } from "@/api/services/tenantBackup.service";
+import { backupLabel, type TenantBackup, type TenantBackupStatus } from "@/api/services/tenantBackup.service";
 import { Card, CardContent, Badge, Button } from "@/components/ui";
 import {
   FileArchive,
@@ -30,36 +30,39 @@ export const BackupList: React.FC<BackupListProps> = ({
   handleRestoreBackup,
   handleDeleteBackup,
 }) => {
-  const getStatusBadge = (status: string) => {
+  // A-362: keyed by the API's lower-case status (TenantBackup.STATUS). It was
+  // keyed COMPLETED / FAILED / ..., which no row carries, so every badge fell
+  // to the fallback.
+  const getStatusBadge = (status: TenantBackupStatus) => {
     const statusConfig: Record<
-      string,
+      TenantBackupStatus,
       {
         variant: "success" | "danger" | "warning" | "default";
         icon: React.ReactNode;
       }
     > = {
-      COMPLETED: {
+      completed: {
         variant: "success",
         icon: <CheckCircle className="h-3 w-3" />,
       },
-      FAILED: {
+      failed: {
         variant: "danger",
         icon: <XCircle className="h-3 w-3" />,
       },
-      IN_PROGRESS: {
+      in_progress: {
         variant: "warning",
         icon: <Loader2 className="h-3 w-3 animate-spin" />,
       },
-      PENDING: {
+      pending: {
         variant: "default",
         icon: <Clock className="h-3 w-3" />,
       },
-      DELETING: {
-        variant: "warning",
-        icon: <Loader2 className="h-3 w-3 animate-spin" />,
+      deleted: {
+        variant: "default",
+        icon: <Trash2 className="h-3 w-3" />,
       },
     };
-    const config = statusConfig[status] || statusConfig.PENDING;
+    const config = statusConfig[status];
     return (
       <Badge variant={config.variant} size="sm">
         {config.icon}
@@ -68,7 +71,9 @@ export const BackupList: React.FC<BackupListProps> = ({
     );
   };
 
-  const getBackupTypeBadge = (type: string) => {
+  // The create stores the type as sent ("FULL"); the scheduled job stores
+  // the model's "full". Matched in either case; a NULL type reads as FULL.
+  const getBackupTypeBadge = (type: string | null) => {
     const colors: Record<string, string> = {
       FULL: "bg-info/10 text-info",
       PARTIAL:
@@ -76,11 +81,12 @@ export const BackupList: React.FC<BackupListProps> = ({
       USER_ONLY:
         "bg-success/10 text-success",
     };
+    const key = (type ?? "FULL").toUpperCase();
     return (
       <span
-        className={`px-2 py-1 rounded-full text-xs font-medium ${colors[type] || colors.FULL}`}
+        className={`px-2 py-1 rounded-full text-xs font-medium ${colors[key] ?? colors.FULL}`}
       >
-        {type}
+        {key}
       </span>
     );
   };
@@ -98,7 +104,7 @@ export const BackupList: React.FC<BackupListProps> = ({
                 <div className="flex-1">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h3 className="font-bold text-foreground text-lg">
-                      {backup.name}
+                      {backupLabel(backup)}
                     </h3>
                     {getStatusBadge(backup.status)}
                     {getBackupTypeBadge(backup.backupType)}
@@ -117,23 +123,24 @@ export const BackupList: React.FC<BackupListProps> = ({
                     <span>
                       Created: {new Date(backup.createdAt).toLocaleString()}
                     </span>
-                    {backup.completedAt && (
+                    {backup.restoredAt && (
                       <span>
-                        Completed: {new Date(backup.completedAt).toLocaleString()}
+                        Restored: {new Date(backup.restoredAt).toLocaleString()}
                       </span>
                     )}
                     {backup.fileSize && <span>Size: {backup.fileSize}</span>}
                   </div>
-                  {backup.error && (
+                  {backup.errorMessage && (
                     <div className="mt-2 text-sm text-destructive flex items-center gap-1">
                       <AlertTriangle className="h-4 w-4" />
-                      <span>{backup.error}</span>
+                      <span>{backup.errorMessage}</span>
                     </div>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {backup.status === "COMPLETED" && (
+                {/* A-362: only a completed backup has an archive to download or restore. */}
+                {backup.status === "completed" && (
                   <>
                     <Button
                       variant="ghost"
@@ -150,7 +157,7 @@ export const BackupList: React.FC<BackupListProps> = ({
                       leftIcon={<RotateCcw className="h-4 w-4" />}
                       onClick={() => handleRestoreBackup(backup.id)}
                       disabled={actionLoading !== null}
-                      aria-label={`Restore backup ${backup.name}`}
+                      aria-label={`Restore backup ${backupLabel(backup)}`}
                     >
                       Restore
                     </Button>
@@ -167,7 +174,7 @@ export const BackupList: React.FC<BackupListProps> = ({
                     )
                   }
                   onClick={() => handleDeleteBackup(backup.id)}
-                  aria-label={`Delete backup ${backup.name}`}
+                  aria-label={`Delete backup ${backupLabel(backup)}`}
                   disabled={
                     actionLoading !== null &&
                     actionLoading !== backup.id

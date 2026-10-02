@@ -24,8 +24,6 @@ jest.mock("../../models", () => ({
 jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb) => cb("tx")) } }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 
-/** A tenant row as the webhook reads it, whose save() records nothing. */
-const tenantRow = (values) => ({ id: "t1", status: "active", suspensionReason: null, suspendedBy: null, save: jest.fn(), ...values });
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));

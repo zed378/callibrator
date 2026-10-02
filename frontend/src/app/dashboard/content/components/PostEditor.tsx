@@ -349,7 +349,7 @@ export default function PostEditor({ initial }: { initial?: Post }) {
                 label="Author name"
                 value={form.authorName}
                 onChange={(e) => set("authorName", e.target.value)}
-                placeholder="HDC Team"
+                placeholder="Device Calibrator Team"
               />
               <Input
                 label="Author role"

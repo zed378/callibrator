@@ -1,9 +1,9 @@
 // src/app/dashboard/tenants/components/EditTenantModal.tsx
 "use client";
 
-import React, { useId } from "react";
+import React, { useId, useState } from "react";
 import type { Tenant } from "@/types";
-import { Button, Input, Select, Textarea, Alert } from "@/components/ui";
+import { Button, Input, Textarea, Alert } from "@/components/ui";
 import { X } from "lucide-react";
 import TenantAddressFields from "./TenantAddressFields";
 import LogoPreview from "./LogoPreview";
@@ -41,19 +41,23 @@ interface EditTenantModalProps {
   setLogoKeep: React.Dispatch<React.SetStateAction<boolean>>;
   onSubmit: (e: React.FormEvent) => void;
   /**
-   * Status belongs to the platform: the backend refuses a change to it from
-   * anyone but a super admin (A-63). false shows it read-only instead of
-   * letting the save fail with a 403. A-303: the seat limit is not an edit
-   * field at all (a plan value the platform sets; the backend ignores it).
+   * Whether the caller is the platform operator (super admin). Only then are
+   * the lifecycle actions offered (A-63: nobody else may change a tenant's
+   * status). A-303: the seat limit is not an edit field at all.
    */
   platformFieldsEditable?: boolean;
+  /**
+   * A-326 / ADR-112: the status is never edited; it moves only through the
+   * tenant lifecycle (POST /tenants/:id/suspend and /resume), which records
+   * the reason, the actor and the audit rows. The modal shows the status
+   * read-only and, to the super admin, offers these two actions.
+   */
+  onLifecycle?: (action: "suspend" | "resume", reason?: string) => void | Promise<void>;
 }
 
-const statusOptions = [
-  { value: "ACTIVE", label: "Active" },
-  { value: "INACTIVE", label: "Inactive" },
-  { value: "SUSPENDED", label: "Suspended" },
-];
+/** The tenant's status as a label: the API answers the lower-case ENUM. */
+const statusLabel = (status: string): string =>
+  status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : "Unknown";
 
 export const EditTenantModal: React.FC<EditTenantModalProps> = ({
   isOpen,
@@ -71,12 +75,19 @@ export const EditTenantModal: React.FC<EditTenantModalProps> = ({
   logoKeep,
   setLogoKeep,
   onSubmit,
+  onLifecycle,
 }) => {
   // F-12: a modal dialog — named by its title, focus moved in and
   // trapped, Escape closes, focus returns to the opener (useModalA11y).
   const panelRef = useModalA11y(Boolean(isOpen && tenant), onClose);
   const titleId = useId();
+  const statusId = useId();
+  const reasonId = useId();
+  const [suspendReason, setSuspendReason] = useState("");
   if (!isOpen || !tenant) return null;
+
+  const isSuspended = (tenant.status || "").toLowerCase() === "suspended";
+  const canChangeStatus = platformFieldsEditable && onLifecycle !== undefined;
 
   const update = (field: string, value: string) =>
     onChange((f) => ({ ...f, [field]: value }));
@@ -172,14 +183,49 @@ export const EditTenantModal: React.FC<EditTenantModalProps> = ({
                 )}
               </div>
               <div className="space-y-4">
-                <Select
-                  value={form.status}
-                  onChange={(val) => update("status", val)}
-                  options={statusOptions}
-                  placeholder="Select status"
-                  className="w-full"
-                  disabled={!platformFieldsEditable}
-                />
+                <div className="space-y-2">
+                  <span id={statusId} className="block text-sm font-medium text-foreground">
+                    Status
+                  </span>
+                  <p aria-labelledby={statusId} className="text-sm text-foreground" data-testid="tenant-status">
+                    {statusLabel(tenant.status)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    The status is not edited here. It changes through the tenant
+                    lifecycle: suspend (with a reason) or resume.
+                  </p>
+                  {canChangeStatus &&
+                    (isSuspended ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={isSubmitting}
+                        onClick={() => void onLifecycle("resume")}>
+                        Resume tenant
+                      </Button>
+                    ) : (
+                      <div className="space-y-2">
+                        <label htmlFor={reasonId} className="block text-sm text-foreground">
+                          Reason for suspension
+                        </label>
+                        <Input
+                          id={reasonId}
+                          value={suspendReason}
+                          onChange={(e) => setSuspendReason(e.target.value)}
+                          placeholder="e.g. Contract ended"
+                        />
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          disabled={isSubmitting || suspendReason.trim() === ""}
+                          onClick={() => void onLifecycle("suspend", suspendReason.trim())}>
+                          Suspend tenant
+                        </Button>
+                      </div>
+                    ))}
+                </div>
                 <Input
                   label="Email"
                   type="email"

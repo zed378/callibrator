@@ -12,8 +12,11 @@ import fs from "fs";
 import path from "path";
 import { iconMap, smallIconMap } from "../menuHelpers";
 
+// The seed is TypeScript since P9-21 (seedMenuGroups.util.ts); read whichever
+// extension exists, so this keeps reading the data across the conversion.
+const SEED_BASE = path.join(__dirname, "../../../../../backend/src/utils/seedMenuGroups.util");
 const SEED = fs.readFileSync(
-  path.join(__dirname, "../../../../../backend/src/utils/seedMenuGroups.util.js"),
+  fs.existsSync(`${SEED_BASE}.ts`) ? `${SEED_BASE}.ts` : `${SEED_BASE}.js`,
   "utf8",
 );
 

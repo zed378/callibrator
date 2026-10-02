@@ -12,7 +12,10 @@ import {
 } from "@/components/ui";
 import { quotaService, Quota } from "@/api/services/quota.service";
 
-const capitalize = (value: string) =>
+// A-349: the contract publishes a subscription's `plan` and `status` nullable
+// (tenants.plan/status have defaults but allow NULL), so both helpers take a
+// null and show "-" for it rather than being handed a cast string.
+const capitalize = (value: string | null | undefined) =>
   value ? value.charAt(0).toUpperCase() + value.slice(1) : "-";
 
 const prettifyFeature = (feature: string) =>
@@ -80,7 +83,7 @@ const UsageMeter: React.FC<UsageMeterProps> = ({
 };
 
 const getPlanBadgeVariant = (
-  plan: string,
+  plan: string | null,
 ): "default" | "primary" | "success" | "info" => {
   switch (plan) {
     case "enterprise":

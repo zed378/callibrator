@@ -54,4 +54,28 @@ It also asserts that the pkg step reads the copied cache, and that the stage run
 
 ## Full build
 
-RESULT_PLACEHOLDER
+A full image built from a frozen snapshot of the tree, with the new Dockerfile.
+
+**Attempts:**
+1. Failed: `npm ci` timed out against the npm registry (ETIMEDOUT). That is host network flakiness, not this change; the pkg-base stage itself completed.
+2. Failed at `openapi:check`: the snapshot had caught the P9-22 helper's roles move mid-flight (`components.schemas.Role` was defined twice). The live tree was green minutes later.
+3. **Succeeded, exit 0.**
+
+**What attempt 3 shows:**
+- `pkg-base` came from cache (`#9 CACHED`), so the binary was not downloaded again even though the source had changed.
+- The pkg step (`PKG_CACHE_PATH=/tmp/pkg-cache npx --no-install pkg …`) printed no "Network error", "Not found in remote cache" or "Building base binary": it used the pre-fetched file.
+- `build:dist` compiled inside the image, and pkg produced the binary.
+
+**Cleanup:** the image `p9-a325-full:check` was deleted, along with the stage images built for the checksum and unreachable-URL tests (which never produced an image). No container was created.
+
+## Found and parked (not mine)
+
+`src/controllers/maintenance.controller.ts` sat beside its `.js`. It was the P9-22 helper's P9-20 swap, interrupted when the agents were paused, and it had no identity evidence in the helper's record. `build:dist` refused the pair.
+- **Parked, not finished:** the `.ts` was moved byte for byte (checked with `cmp`) to the scratchpad, at `p9/parked/maintenance.controller.ts`, so the as-built `.js` stays live. The helper can restore it together with its evidence when it resumes.
+
+**The tree after parking:**
+- typecheck: 0 errors;
+- `build:dist`: 153 JavaScript files copied, 400 TypeScript files compiled, plus 49 contracts files;
+- `load:check`: OK in dist mode and src mode, 538 modules plus 103 in boot order;
+- the ts-ratchet floor auto-lowered from 857 to 852 by other lanes' deletions (`backend/.ts-ratchet.json` needs committing);
+- the A-325 to A-332 suites with the tenant, hierarchy and maintenance suites: 35 suites, 423 tests passed.

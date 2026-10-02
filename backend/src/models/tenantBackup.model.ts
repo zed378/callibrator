@@ -96,6 +96,10 @@ interface TenantBackup extends Model<
 > {
   id: CreationOptional<string>;
   tenantId: TenantId;
+  /** A-363: the operator's label (required by the create route; NULL on rows written before migration 0108). */
+  name: string | null;
+  /** A-363: the operator's optional description. */
+  description: string | null;
   backupPath: string | null;
   /** BIGINT: node-postgres returns it as a string. */
   size: string | number | null;
@@ -169,6 +173,18 @@ const defineModel: DefineTenantBackup = (db, DataTypes) => {
         allowNull: false,
         references: { model: "tenants", key: "id" },
         onDelete: "RESTRICT",
+      },
+      // A-363 (migration 0108): what the operator named the backup. The create
+      // route requires `name` and accepts `description`; neither was an
+      // attribute, so Sequelize dropped both on insert and the backup page
+      // listed blank names. Nullable: rows written before 0108 have neither.
+      name: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      description: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
       },
       // Backup details
       // LEGACY: no longer written (S-32). updateStatus used to copy filePath
@@ -285,7 +301,7 @@ const defineModel: DefineTenantBackup = (db, DataTypes) => {
     /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built: an empty value also falls back */
     return TenantBackup.create({
       tenantId: data.tenantId,
-      // @ts-expect-error -- `name` and `description` are not TenantBackup attributes: Sequelize drops them on insert, as it always did
+      // A-363: stored (they were dropped on insert before migration 0108).
       name: data.name || null,
       description: data.description || null,
       backupType: data.backupType || BACKUP_TYPES.FULL,

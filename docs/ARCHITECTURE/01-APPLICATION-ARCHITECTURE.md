@@ -84,7 +84,7 @@ Turbo drives the task graph:
 }
 ```
 
-`typecheck` runs meaningfully only in `frontend/`. The backend has no TypeScript to check (ADR-030).
+`typecheck` runs in both workspaces with TypeScript 7 (`npm run typecheck` in each; ADR-087). **As-built 2026-10-02:** the backend's source is TypeScript but for five pending files (held by `noSourceJs.p924.guard`), strict under ADR-038 (which superseded ADR-030); its `.js` tests are read with `allowJs` until P9-26 converts them (ADR-109 §5).
 
 ## How the Two Applications Talk
 

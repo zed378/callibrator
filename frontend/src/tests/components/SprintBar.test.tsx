@@ -13,12 +13,15 @@ const board = (over: Partial<KanbanBoard> = {}): KanbanBoard =>
     cards: [],
     labels: [],
     sprints: [
+      // A board's sprint as kanban.service#getBoard serializes it: no cardCount (A-352).
       {
         id: "s1",
         name: "Sprint 1",
+        goal: null,
         status: "active",
+        startDate: null,
+        endDate: null,
         position: 0,
-        cardCount: 3,
       },
     ],
     members: [],
@@ -80,6 +83,19 @@ describe("SprintBar", () => {
     fireEvent.click(screen.getByText("Manage sprints"));
     fireEvent.click(screen.getByText("Complete"));
     expect(onSetStatus).toHaveBeenCalledWith("s1", "completed");
+  });
+
+  it("A-352: a sprint chip shows no card count, even if a stray one rides along", () => {
+    // Only GET .../sprints (listSprints) adds cardCount; a count on the board
+    // would come from nowhere, so the chip must not print one.
+    const withStray = board({
+      sprints: [
+        { id: "s1", name: "Sprint 1", goal: null, status: "active", startDate: null, endDate: null, position: 0, cardCount: 3 } as KanbanBoard["sprints"][number],
+      ],
+    });
+    render(<SprintBar {...baseProps} board={withStray} />);
+    expect(screen.getByRole("button", { name: "Sprint 1" })).toBeInTheDocument();
+    expect(screen.queryByText("(3)")).not.toBeInTheDocument();
   });
 
   it("hides owner-only controls for non-owners", () => {

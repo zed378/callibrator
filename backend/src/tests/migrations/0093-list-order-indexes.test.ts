@@ -21,7 +21,7 @@ const migration = require("../../migrations/0093-list-order-indexes") as {
 };
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0093-list-order-indexes.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const EXPECTED = [
   'CREATE INDEX CONCURRENTLY "calibration_records_tenant_id_calibration_date" ON calibration_records (tenant_id, calibration_date DESC)',

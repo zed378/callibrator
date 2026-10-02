@@ -1,5 +1,5 @@
 /**
- * Tests for ai.service.js
+ * Tests for ai.service.ts
  *
  * Covers: getAiConfig, processCertificateOcr, generateEmbedding, queryDocuments
  */

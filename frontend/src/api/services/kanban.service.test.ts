@@ -51,12 +51,11 @@ describe("kanbanService", () => {
       });
     });
 
-    it("passes undefined params when sprintId omitted", async () => {
+    it("sends no query when sprintId is omitted", async () => {
       mockedApi.get.mockResolvedValueOnce(envelope({ id: "p1" }));
       await kanbanService.getBoard("p1");
-      expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/projects/p1`, {
-        params: undefined,
-      });
+      // The one-argument call: the same request (P9-25 item 11).
+      expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/projects/p1`);
     });
   });
 

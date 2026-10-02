@@ -17,6 +17,10 @@ export const BANNED_TERMS: readonly BannedTerm[] = [
   { pattern: /\bHIPAA\b/i, why: "US health-privacy law; the product holds no patient data and no HIPAA assessment exists (00-PROJECT-OVERVIEW § Non-Goals, research 04 C13)" },
   { pattern: /\bSOC\s*-?\s*2\b/i, why: "no SOC 2 report exists; naming it implies an audit that never happened (research 04 C16)" },
   { pattern: /\bSNARS\b/i, why: "working decision Q-39: the accreditation standard is never named; SNARS is superseded and implies packaged evidence the code does not produce" },
+  {
+    pattern: /\bPermenkes\b|\bKepmenkes\b|\bPeraturan Menteri\b|\bUU\s*(?:No\.?\s*)?\d+|\bUndang-Undang\s+(?:No(?:mor)?\.?\s*)?\d+|\bNomor\s+\d+\s+Tahun\s+\d{4}\b|\bPP\s+(?:No\.?\s*)?\d+/i,
+    why: "working decision Q-40 (doc 20 §14): the copy cites no regulation or decree number (Permenkes 54/2015, once quoted, is no longer in force); the legal review confirms",
+  },
   { pattern: /\bKARS\b/i, why: "the accreditation body is not named on public copy (Q-39); the old page used it as a badge" },
   { pattern: /\bcertified\b/i, why: "the product holds no certification; it supports compliance (doc 20 §1 goal 2). The disclaimer's 'not itself certified' uses 'certified' — see ALLOWED_PHRASES" },
   { pattern: /\bbersertifikat\b/i, why: "Indonesian 'certified' — same reason; the disclaimer's 'tidak bersertifikat' is allowed" },

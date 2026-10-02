@@ -28,7 +28,7 @@ describe("jwt utility", () => {
     jest.clearAllMocks();
     jest.spyOn(crypto, "randomBytes").mockReturnValue(Buffer.from("a".repeat(64), "hex"));
     jest.spyOn(crypto, "randomUUID").mockReturnValue("test-uuid");
-    jest.spyOn(crypto, "generateKeyPairSync").mockImplementation((type, options) => {
+    jest.spyOn(crypto, "generateKeyPairSync").mockImplementation((type, _options) => {
       if (type === "ec") {
         return {
           publicKey: "mock-ec-public-key",

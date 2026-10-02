@@ -2,10 +2,7 @@
  * Tests for GDPR Service
  */
 
-const EventEmitter = require("events");
-
-let mockArchiverInstance;
-let mockWriteStreamInstance;
+require("events");
 
 jest.mock("fs", () => {
   const originalFs = jest.requireActual("fs");
@@ -27,7 +24,6 @@ jest.mock("fs", () => {
         }),
         triggerClose: true,
       };
-      mockWriteStreamInstance = ws;
       return ws;
     }),
     existsSync: jest.fn(),
@@ -56,7 +52,6 @@ jest.mock("archiver", () => {
       triggerEnd: true,
       triggerError: false,
     };
-    mockArchiverInstance = arch;
     return arch;
   });
   return { ZipArchive };
@@ -455,63 +450,9 @@ describe("gdprService", () => {
     });
   });
 
-  describe("updatePrivacyPreferences", () => {
-    it("should update privacy preferences", async () => {
-      const result = await gdprService.updatePrivacyPreferences(
-        "tenant-1",
-        "user-1",
-        {
-          darkMode: true,
-        },
-      );
-
-      expect(result).toHaveProperty("success", true);
-    });
-
-    it("should throw error on DB update failure", async () => {
-      User.update.mockRejectedValueOnce(new Error("DB error"));
-      await expect(
-        gdprService.updatePrivacyPreferences("tenant-1", "user-1", {
-          darkMode: true,
-        }),
-      ).rejects.toThrow("Failed to update preferences");
-    });
-  });
-
-  describe("getPrivacyPreferences", () => {
-    it("should return privacy preferences successfully", async () => {
-      const result = await gdprService.getPrivacyPreferences(
-        "tenant-1",
-        "user-1",
-      );
-      expect(result).toEqual({ marketing: false });
-    });
-
-    it("should return an empty object when the user has no preferences set", async () => {
-      User.findByPk.mockResolvedValueOnce({ id: "user-1", privacyPreferences: null });
-
-      const result = await gdprService.getPrivacyPreferences("tenant-1", "user-1");
-
-      expect(result).toEqual({});
-    });
-
-    it("should return an empty object when the user does not exist", async () => {
-      User.findByPk.mockResolvedValueOnce(null);
-
-      const result = await gdprService.getPrivacyPreferences("tenant-1", "user-1");
-
-      expect(result).toEqual({});
-    });
-
-    it("should return empty object on error", async () => {
-      User.findByPk.mockRejectedValue(new Error("db error"));
-      const result = await gdprService.getPrivacyPreferences(
-        "tenant-1",
-        "user-1",
-      );
-      expect(result).toEqual({});
-    });
-  });
+  // A-333: updatePrivacyPreferences / getPrivacyPreferences were removed (they
+  // wrote and read an attribute User does not have); see
+  // gdpr.privacyPreferences.a333.test.ts.
 
   describe("createDsar", () => {
     it("should create a DSAR", async () => {

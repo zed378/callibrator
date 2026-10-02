@@ -5,7 +5,7 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/webauthnCredential.validator.ts,
  * which re-exports these same objects by name. The contract for
- * C:/Program Files/Git/api/v1/webauthn/credentials (list, rename and revoke a passkey).
+ * /api/v1/webauthn/credentials (list, rename and revoke a passkey).
  */
 import { z } from "zod";
 import { uuid } from "./fields";

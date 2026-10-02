@@ -82,7 +82,8 @@ describe("Kanban board analytics", () => {
     const { container } = render(<KanbanDashboardPage />);
     expect(screen.getByText("Loading metrics…")).toBeInTheDocument();
     expect(await screen.findByText("4 of 10 cards done · 3 columns · 1 sprints")).toBeInTheDocument();
-    expect(get).toHaveBeenCalledWith(`${P}/metrics`, { params: undefined });
+    // No sprint: the one-argument call (the same request, P9-25 item 11).
+    expect(get).toHaveBeenCalledWith(`${P}/metrics`);
     expect(screen.getByText("across the board", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("WIP!")).toBeInTheDocument();
     expect(screen.getByText("Ana Owner")).toBeInTheDocument();

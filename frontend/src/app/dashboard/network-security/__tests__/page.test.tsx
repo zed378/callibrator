@@ -504,6 +504,25 @@ describe("network security — dry-run evaluation", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it("A-357: a geofence with no location given (distanceKm null) fails closed and is explained, not thrown", async () => {
+    // checkGeofence computes NaN without coordinates; JSON writes it as null.
+    mockedPost.mockResolvedValue(
+      ok({
+        allowed: false,
+        ip: { allowed: true, reason: "no_restrictions" },
+        geofence: { allowed: false, distanceKm: null, radiusKm: 25 },
+        requiresStepUp: true,
+      }),
+    );
+    await renderLoaded();
+
+    fireEvent.change(screen.getByLabelText(/IP address/), { target: { value: "192.0.2.9" } });
+    fireEvent.click(screen.getByRole("button", { name: "Evaluate" }));
+
+    expect(await screen.findByText("Blocked")).toBeInTheDocument();
+    expect(screen.getByText("Fail — no location given, limit 25 km")).toBeInTheDocument();
+  });
+
   it("an allowed sign-in with no restrictions shows the reasons", async () => {
     mockedPost.mockResolvedValue(
       ok({

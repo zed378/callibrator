@@ -151,7 +151,8 @@ describe("maintenance page — list states", () => {
     const second = screen.getByText("Broken hose").closest("tr") as HTMLElement;
     expect(within(second).getByText("Unknown device")).toBeInTheDocument();
     expect(within(second).getByText("Open")).toBeInTheDocument();
-    expect(within(second).getAllByText("-")).toHaveLength(2);
+    // Vendor, assignee, and (Q-55) schedule and cost: none set.
+    expect(within(second).getAllByText("-")).toHaveLength(4);
     expect(await axeViolations(container)).toEqual([]);
   });
 
@@ -318,6 +319,12 @@ describe("maintenance page — create, edit, delete", () => {
         priority: "Critical",
         status: "Completed",
         vendorId: "v-1",
+        // Q-55: blank on the form, so sent as null (an edit clears what is blank).
+        scheduledDate: null,
+        estimatedCost: null,
+        completedDate: null,
+        actualCost: null,
+        resolutionNotes: null,
       }),
     );
     await waitFor(() => expect(toasts()[0]).toMatchObject({ type: "success", title: "Work order updated" }));
@@ -376,5 +383,69 @@ describe("maintenance page — create, edit, delete", () => {
     fireEvent.click(screen.getByRole("button", { name: /New Work Order/ }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Device/ }));
     expect(screen.getByText("No options available")).toBeInTheDocument();
+  });
+});
+
+// Q-55 (migration 0107): the schedule, costs and resolution are stored, so the screen shows and edits them.
+describe("maintenance page — schedule, costs and resolution (Q-55)", () => {
+  it("the list shows the planned and done dates and the estimated and actual cost", async () => {
+    orders = [
+      order({ scheduledDate: "2026-11-02T00:00:00.000Z", completedDate: "2026-11-03T10:00:00.000Z", estimatedCost: "1250.50", actualCost: "980.00" }),
+    ];
+    await renderPage();
+    const row = screen.getByText("Quarterly PM").closest("tr") as HTMLElement;
+    expect(within(row).getByText("Planned 2026-11-02")).toBeInTheDocument();
+    expect(within(row).getByText("Done 2026-11-03")).toBeInTheDocument();
+    expect(within(row).getByText(/^Est\. 1,?250\.50$/)).toBeInTheDocument();
+    expect(within(row).getByText(/^Actual 980\.00$/)).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Schedule" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Cost" })).toBeInTheDocument();
+  });
+
+  it("create offers the scheduled date and estimate (not the outcome) and sends them", async () => {
+    post.mockResolvedValue(envelope(order({ id: "wo-3" })));
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /New Work Order/ }));
+    const dialog = screen.getByRole("dialog", { name: "New Work Order" });
+    expect(within(dialog).queryByLabelText("Completed date")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Resolution notes")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Device/ }));
+    fireEvent.click(await within(dialog).findByRole("option", { name: "Monitor" }));
+    fireEvent.change(within(dialog).getByLabelText(/Title/), { target: { value: "Annual PM" } });
+    fireEvent.change(within(dialog).getByLabelText("Scheduled date"), { target: { value: "2026-11-02" } });
+    fireEvent.change(within(dialog).getByLabelText("Estimated cost"), { target: { value: "1250.5" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create Work Order" }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/maintenance", expect.objectContaining({ scheduledDate: "2026-11-02", estimatedCost: "1250.5" })),
+    );
+  });
+
+  it("edit pre-fills the five fields, bounds the completed date by the schedule, and sends the outcome", async () => {
+    orders = [order({ scheduledDate: "2026-11-02T00:00:00.000Z", estimatedCost: "1250.50", resolutionNotes: null })];
+    patch.mockResolvedValue(envelope(order()));
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Quarterly PM" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit Work Order" });
+    expect(within(dialog).getByLabelText("Scheduled date")).toHaveValue("2026-11-02");
+    expect(within(dialog).getByLabelText("Estimated cost")).toHaveValue(1250.5);
+    expect(within(dialog).getByLabelText("Completed date")).toHaveAttribute("min", "2026-11-02");
+    expect(within(dialog).getByLabelText("Resolution notes")).toHaveAttribute("maxLength", "5000");
+    expect(await axeViolations(dialog)).toEqual([]);
+
+    fireEvent.change(within(dialog).getByLabelText("Completed date"), { target: { value: "2026-11-03" } });
+    fireEvent.change(within(dialog).getByLabelText("Actual cost"), { target: { value: "980" } });
+    fireEvent.change(within(dialog).getByLabelText("Resolution notes"), { target: { value: " Battery replaced. " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith(
+        "/api/v1/maintenance/wo-1",
+        expect.objectContaining({
+          scheduledDate: "2026-11-02", estimatedCost: "1250.50", completedDate: "2026-11-03", actualCost: "980",
+          resolutionNotes: "Battery replaced.",
+        }),
+      ),
+    );
   });
 });

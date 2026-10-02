@@ -5,14 +5,15 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/certificate.validator.ts,
  * which re-exports these same objects; the frontend derives its request
- * types from them. The contract for C:/Program Files/Git/api/v1/certificates (list query, id params, create, update, approve, sign and revoke bodies).
+ * types from them. The contract for /api/v1/certificates (list query, id params, create, update, approve, sign and revoke bodies).
  */
 import { z } from "zod";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "./pagination";
 import { dateLike, isoDateText, nullableText, numeric, uuid } from "./fields";
+import { CERTIFICATE_STATUSES } from "./states";
 
-/** Certificate status enum. */
-const CERTIFICATE_STATUS = ["draft", "pending_approval", "approved", "signed", "revoked"] as const;
+/** Certificate status enum (P9-05: the one list is `states.ts`). */
+const CERTIFICATE_STATUS = CERTIFICATE_STATUSES;
 
 /** Certificate type enum. */
 const CERTIFICATE_TYPES = ["calibration", "maintenance", "verification"] as const;

@@ -1,4 +1,4 @@
-import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type components } from "../typed";
 
 /**
  * SCIM 2.0 provisioning (RFC 7644).
@@ -6,7 +6,7 @@ import { api } from "../client";
  * The tenant is taken from the caller's JWT, so no tenantId is sent.
  * SCIM Users map onto platform users; SCIM Groups map onto roles.
  *
- * Backend: src/routes/api/scim.route.js (mounted /api/v1/scim/v2)
+ * Backend: src/routes/api/scim.route.ts (mounted /api/v1/scim/v2)
  *   GET    /Users            ?startIndex&count&filter
  *   GET    /Users/:id
  *   POST   /Users
@@ -19,63 +19,26 @@ import { api } from "../client";
  *   PUT    /Groups/:id
  *   PATCH  /Groups/:id
  *   DELETE /Groups/:id
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+ * contract's (backend/src/routes/api/scim.openapi.ts). The exported names are
+ * unchanged.
  */
 
-const BASE = "/api/v1/scim/v2";
+type V2 = "/api/v1/scim/v2";
 
 // ---------- Types ----------
 
-export interface ScimMeta {
-  resourceType: "User" | "Group";
-  created?: string;
-  lastModified?: string;
-}
+export type ScimUser = components["schemas"]["ScimUser"];
+export type ScimGroup = components["schemas"]["ScimGroup"];
+export type ScimMeta = ScimUser["meta"];
 
-export interface ScimUser {
-  schemas: string[];
-  id: string;
-  userName: string;
-  name?: { givenName?: string; familyName?: string };
-  emails?: { value: string; type?: string; primary?: boolean }[];
-  active: boolean;
-  meta?: ScimMeta;
-}
+/** SCIM ListResponse envelope (RFC 7644 §3.4.2), as the two lists answer it in `data`. */
+export type ScimListResponse<T> = Omit<DataOf<Op<`${V2}/Users`, "get">>, "Resources"> & { Resources: T[] };
 
-export interface ScimGroup {
-  schemas: string[];
-  id: string;
-  displayName: string;
-  members?: { value: string; display?: string }[];
-  meta?: ScimMeta;
-}
-
-/** SCIM ListResponse envelope (RFC 7644 §3.4.2). */
-export interface ScimListResponse<T> {
-  schemas: string[];
-  totalResults: number;
-  startIndex: number;
-  itemsPerPage: number;
-  Resources: T[];
-}
-
-export interface ScimUserInput {
-  userName: string;
-  name?: { givenName?: string; familyName?: string };
-  emails?: { value: string; type?: string; primary?: boolean }[];
-  active?: boolean;
-  roleId?: string;
-}
-
-export interface ScimGroupInput {
-  displayName: string;
-  members?: { value: string; display?: string }[];
-}
-
-export interface ScimPatchOperation {
-  op: "add" | "remove" | "replace";
-  path?: string;
-  value?: Record<string, unknown> | unknown[] | string;
-}
+export type ScimUserInput = JsonBody<Op<`${V2}/Users`, "post">>;
+export type ScimGroupInput = JsonBody<Op<`${V2}/Groups`, "post">>;
+export type ScimPatchOperation = JsonBody<Op<`${V2}/Users/{id}`, "patch">>["Operations"][number];
 
 export interface ScimListParams {
   /** 1-based, per SCIM. */
@@ -85,13 +48,18 @@ export interface ScimListParams {
   filter?: string;
 }
 
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+/**
+ * The list query as published: the backend reads `startIndex` / `count` raw
+ * from the query string, so they are strings (a number puts the same text on
+ * the wire). A key the caller left out stays out.
+ */
+const listQuery = ({ startIndex, count, ...rest }: ScimListParams) => ({
+  ...rest,
+  ...(startIndex !== undefined && { startIndex: String(startIndex) }),
+  ...(count !== undefined && { count: String(count) }),
+});
+
+const byId = (id: string) => ({ params: { path: { id } } });
 
 const emptyList = <T,>(): ScimListResponse<T> => ({
   schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
@@ -121,54 +89,39 @@ export const scimService = {
   getUsers: async (
     params: ScimListParams = {},
   ): Promise<ScimListResponse<ScimUser>> => {
-    const response = await api.get<BackendResponse<ScimListResponse<ScimUser>>>(
-      `${BASE}/Users`,
-      { params },
-    );
+    const response = await typedApi
+      .GET("/api/v1/scim/v2/Users", { params: { query: listQuery(params) } })
+      .then(unwrap);
+    // Defensive, as built: a body without `data` reads as an empty list.
     return response.data ?? emptyList<ScimUser>();
   },
 
   /** GET /Users/:id */
-  getUserById: async (id: string): Promise<ScimUser> => {
-    const response = await api.get<BackendResponse<ScimUser>>(
-      `${BASE}/Users/${id}`,
-    );
-    return response.data;
-  },
+  getUserById: async (id: string): Promise<ScimUser> =>
+    (await typedApi.GET("/api/v1/scim/v2/Users/{id}", byId(id)).then(unwrap)).data,
 
   /** POST /Users — returns 201. */
-  createUser: async (input: ScimUserInput): Promise<ScimUser> => {
-    const response = await api.post<BackendResponse<ScimUser>>(
-      `${BASE}/Users`,
-      input,
-    );
-    return response.data;
-  },
+  createUser: async (input: ScimUserInput): Promise<ScimUser> =>
+    (await typedApi.POST("/api/v1/scim/v2/Users", { body: input }).then(unwrap)).data,
 
   /** PUT /Users/:id — full replace. */
-  updateUser: async (id: string, input: ScimUserInput): Promise<ScimUser> => {
-    const response = await api.put<BackendResponse<ScimUser>>(
-      `${BASE}/Users/${id}`,
-      input,
-    );
-    return response.data;
-  },
+  updateUser: async (id: string, input: ScimUserInput): Promise<ScimUser> =>
+    (await typedApi.PUT("/api/v1/scim/v2/Users/{id}", { ...byId(id), body: input }).then(unwrap)).data,
 
   /** PATCH /Users/:id — partial update via SCIM operations. */
   patchUser: async (
     id: string,
     operations: ScimPatchOperation[],
-  ): Promise<ScimUser> => {
-    const response = await api.patch<BackendResponse<ScimUser>>(
-      `${BASE}/Users/${id}`,
-      { Operations: operations },
-    );
-    return response.data;
-  },
+  ): Promise<ScimUser> =>
+    (
+      await typedApi
+        .PATCH("/api/v1/scim/v2/Users/{id}", { ...byId(id), body: { Operations: operations } })
+        .then(unwrap)
+    ).data,
 
   /** DELETE /Users/:id — returns 204. */
   deleteUser: async (id: string): Promise<void> => {
-    await api.delete<BackendResponse<null>>(`${BASE}/Users/${id}`);
+    await typedApi.DELETE("/api/v1/scim/v2/Users/{id}", byId(id));
   },
 
   /** Convenience: deactivate a user without a full replace. */
@@ -187,56 +140,41 @@ export const scimService = {
   getGroups: async (
     params: ScimListParams = {},
   ): Promise<ScimListResponse<ScimGroup>> => {
-    const response = await api.get<
-      BackendResponse<ScimListResponse<ScimGroup>>
-    >(`${BASE}/Groups`, { params });
+    const response = await typedApi
+      .GET("/api/v1/scim/v2/Groups", { params: { query: listQuery(params) } })
+      .then(unwrap);
     return response.data ?? emptyList<ScimGroup>();
   },
 
   /** GET /Groups/:id */
-  getGroupById: async (id: string): Promise<ScimGroup> => {
-    const response = await api.get<BackendResponse<ScimGroup>>(
-      `${BASE}/Groups/${id}`,
-    );
-    return response.data;
-  },
+  getGroupById: async (id: string): Promise<ScimGroup> =>
+    (await typedApi.GET("/api/v1/scim/v2/Groups/{id}", byId(id)).then(unwrap)).data,
 
   /** POST /Groups — returns 201. */
-  createGroup: async (input: ScimGroupInput): Promise<ScimGroup> => {
-    const response = await api.post<BackendResponse<ScimGroup>>(
-      `${BASE}/Groups`,
-      input,
-    );
-    return response.data;
-  },
+  createGroup: async (input: ScimGroupInput): Promise<ScimGroup> =>
+    (await typedApi.POST("/api/v1/scim/v2/Groups", { body: input }).then(unwrap)).data,
 
   /** PUT /Groups/:id — full replace. */
   updateGroup: async (
     id: string,
     input: ScimGroupInput,
-  ): Promise<ScimGroup> => {
-    const response = await api.put<BackendResponse<ScimGroup>>(
-      `${BASE}/Groups/${id}`,
-      input,
-    );
-    return response.data;
-  },
+  ): Promise<ScimGroup> =>
+    (await typedApi.PUT("/api/v1/scim/v2/Groups/{id}", { ...byId(id), body: input }).then(unwrap)).data,
 
   /** PATCH /Groups/:id — partial update via SCIM operations. */
   patchGroup: async (
     id: string,
     operations: ScimPatchOperation[],
-  ): Promise<ScimGroup> => {
-    const response = await api.patch<BackendResponse<ScimGroup>>(
-      `${BASE}/Groups/${id}`,
-      { Operations: operations },
-    );
-    return response.data;
-  },
+  ): Promise<ScimGroup> =>
+    (
+      await typedApi
+        .PATCH("/api/v1/scim/v2/Groups/{id}", { ...byId(id), body: { Operations: operations } })
+        .then(unwrap)
+    ).data,
 
   /** DELETE /Groups/:id — returns 204. */
   deleteGroup: async (id: string): Promise<void> => {
-    await api.delete<BackendResponse<null>>(`${BASE}/Groups/${id}`);
+    await typedApi.DELETE("/api/v1/scim/v2/Groups/{id}", byId(id));
   },
 };
 

@@ -37,7 +37,7 @@ const setup = async () => {
 describe("useRoles", () => {
   it("loads a page of roles and derives the header counts from the real envelope", async () => {
     const { result } = await setup();
-    expect(api.get).toHaveBeenCalledWith("/api/v1/roles", { params: { page: 1, limit: 10, search: "" } });
+    expect(api.get).toHaveBeenCalledWith("/api/v1/roles", { params: { page: "1", limit: "10", search: "" } });
     expect(result.current.totalRoles).toBe(12);
     expect(result.current.activeRoles).toBe(1);
     expect(result.current.inactiveRoles).toBe(1);
@@ -49,7 +49,7 @@ describe("useRoles", () => {
     act(() => result.current.setCurrentPage(2));
     act(() => result.current.setPageSize(25));
     await waitFor(() =>
-      expect(api.get).toHaveBeenLastCalledWith("/api/v1/roles", { params: { page: 2, limit: 25, search: "tech" } }),
+      expect(api.get).toHaveBeenLastCalledWith("/api/v1/roles", { params: { page: "2", limit: "25", search: "tech" } }),
     );
   });
 

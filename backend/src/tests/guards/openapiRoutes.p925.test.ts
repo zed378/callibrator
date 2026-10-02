@@ -42,7 +42,7 @@ type Json = Record<string, unknown>;
 
 const SRC = path.join(__dirname, "..", "..");
 const ROUTES_DIR = path.join(SRC, "routes");
-const INDEX_FILE = path.join(SRC, "..", "index.js");
+const INDEX_FILE = path.join(SRC, "..", "index.ts");
 const API_DOCS_FILE = path.join(SRC, "docs", "apiDocs.ts");
 const UNDOCUMENTED_FILE = path.join(__dirname, "openapiRoutes.undocumented.json");
 
@@ -219,6 +219,11 @@ const declaredGate = (permission: unknown): Json | null => {
   if (p["gate"] === "rbac") {
     return { gate: "rbac", roles: p["roles"] };
   }
+  // P9-21: "authenticated" declares that the chain carries NO gate factory, only `auth`
+  // (security confirms the authentication). Declared on a gated chain, it mismatches.
+  if (p["gate"] === "authenticated") {
+    return null;
+  }
   return { gate: p["gate"] };
 };
 
@@ -343,7 +348,8 @@ describe("P9-25 — the published contract covers every mounted route and cannot
     const limiter = /const defaultLimiter = rateLimit\(\{([\s\S]*?)\n\}\);/.exec(index)?.[1] ?? "";
     expect(limiter).toContain("windowMs: WINDOW.FIFTEEN_MIN");
     expect(DEFAULT_RATE_LIMIT.windowSeconds).toBe(15 * 60);
-    expect(limiter).toContain(`Number(process.env.${DEFAULT_RATE_LIMIT.overriddenBy})`);
+    // P9-21: index.ts reads the environment through config/env (`env(name)` is `process.env[name]`).
+    expect(limiter).toContain(`Number(env("${DEFAULT_RATE_LIMIT.overriddenBy}"))`);
     expect(limiter).toContain(`"production" ? ${String(DEFAULT_RATE_LIMIT.limitProduction)} : ${String(DEFAULT_RATE_LIMIT.limitOtherwise)}`);
     expect(limiter).toContain("standardHeaders: true");
     expect(index).toContain("app.use(defaultLimiter)");
@@ -377,6 +383,19 @@ describe("P9-25 — the published contract covers every mounted route and cannot
     it("reports a route with no operation, and a code-first operation with no route", () => {
       expect(checkDocument([route], { paths: {} }).undocumented).toEqual(["GET /api/v1/x"]);
       expect(checkDocument([], { paths: { "/api/v1/x": { get: op({}) } } }).problems[0]).toMatch(/no mounted route serves it/);
+    });
+
+    it("P9-21: passes an `authenticated` declaration on an auth-only chain, refuses it on a gated one", () => {
+      const own: ServedRoute = { file: "api/x.route", method: "get", path: "/api/v1/x", chain: [authModule.auth] };
+      const declared = op({ "x-permission": { gate: "authenticated", note: "the caller's own" } });
+      expect(checkDocument([own], { paths: { "/api/v1/x": { get: declared } } }).problems).toEqual([]);
+      expect(checkDocument([route], { paths: { "/api/v1/x": { get: declared } } }).problems[0]).toMatch(/x-permission publishes null/);
+    });
+
+    it("P9-21: refuses an `authenticated` declaration on a public chain (security says authenticated)", () => {
+      const open: ServedRoute = { file: "api/x.route", method: "get", path: "/api/v1/x", chain: [] };
+      const declared = op({ "x-permission": { gate: "authenticated", note: "x" } });
+      expect(checkDocument([open], { paths: { "/api/v1/x": { get: declared } } }).problems.join()).toMatch(/security says authenticated/);
     });
 
     it("does not second-guess a JSDoc operation's gate (it publishes none)", () => {

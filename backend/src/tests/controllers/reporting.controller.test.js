@@ -8,7 +8,7 @@ jest.mock("../../services/reporting.service", () => ({
   getCalibrationWorkload: jest.fn(),
   getOverdueDevices: jest.fn(),
   getInventory: jest.fn(),
-  toCsv: jest.fn((headers, rows) => {
+  toCsv: jest.fn((_headers, _rows) => {
     return "header1,header2\nval1,val2";
   }),
 }));

@@ -8,7 +8,7 @@
  *    code, name, status, depth }] };
  *  - GET  /cross-tenant-roles?userId → data { assignments: [{ tenantId,
  *    tenantName, tenantCode, role: { id, name, level } }] } (super admin);
- *  - POST /:parentId/children { name, code?, plan } → 201; 409 on a state conflict;
+ *  - POST /:tenantId/children (the parent) { name, code?, plan } → 201; 409 on a state conflict;
  *  - PUT  /:tenantId/parent { newParentId } · DELETE /:tenantId/parent (409 when
  *    already a root).
  */

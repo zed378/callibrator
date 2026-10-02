@@ -1,5 +1,5 @@
 /**
- * Tests for audit.controller.js
+ * Tests for audit.controller.ts
  */
 
 jest.mock("../../services/audit.service", () => ({

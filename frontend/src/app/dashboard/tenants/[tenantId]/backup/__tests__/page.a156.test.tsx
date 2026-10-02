@@ -50,7 +50,7 @@ const BACKUP = {
   tenantId: "t1",
   name: "nightly",
   backupType: "FULL",
-  status: "COMPLETED",
+  status: "completed",
   createdAt: "2026-09-20T00:00:00.000Z",
   updatedAt: "2026-09-20T00:00:00.000Z",
 };

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { stockService } from "@/api/services/stock.service";
+import { stockService, type StockCreateInput, type StockUpdateInput } from "@/api/services/stock.service";
 import { Stock, StockTransfer, StockAdjustment, StockOpname, PaginatedResponse } from "@/types";
 
 interface StockState {
@@ -33,8 +33,9 @@ interface StockState {
     locationId?: string;
   }) => Promise<void>;
   fetchStockById: (id: string) => Promise<void>;
-  createStock: (data: Omit<Stock, "id" | "createdAt" | "updatedAt">) => Promise<Stock>;
-  updateStock: (id: string, data: Partial<Omit<Stock, "id" | "warehouseId" | "locationId" | "createdAt" | "updatedAt">>) => Promise<Stock>;
+  // P9-25: the service's contract inputs (the hand-written Omit<Stock> shapes they replace offered row fields the API strips).
+  createStock: (data: StockCreateInput) => Promise<Stock>;
+  updateStock: (id: string, data: StockUpdateInput) => Promise<Stock>;
   deleteStock: (id: string) => Promise<void>;
 
   createAdjustment: (data: {

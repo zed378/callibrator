@@ -4,7 +4,7 @@
  * One row per tenant holding a monotonic counter that drives ticket keys
  * (TKT-1, TKT-2, ...). Kept in its own table (rather than on the tenant row) so
  * the number can be claimed with a single atomic upsert and never recycled.
- * See ticket.service.js `nextTicketNumber`.
+ * See ticket.service.ts `nextTicketNumber`.
  */
 // P9-10 (ADR-087 Amendments 7–8): converted from ticketCounter.model.js with no behaviour
 // change — definition equality against the JavaScript original (ADR-092 check (b)).

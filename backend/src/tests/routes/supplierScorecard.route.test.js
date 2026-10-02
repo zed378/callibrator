@@ -3,7 +3,7 @@
  *
  * Tests the SupplierScorecard route registrations and middleware chain.
  */
-const supplierscorecardRoutes = require("../../routes/api/supplierScorecard.route.js");
+const supplierscorecardRoutes = require("../../routes/api/supplierScorecard.route");
 
 describe("SupplierScorecard Routes", () => {
   it("should export an Express router", () => {

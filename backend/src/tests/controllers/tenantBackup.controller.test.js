@@ -53,7 +53,7 @@ jest.mock("fs", () => ({
 const fs = require("fs");
 const tenantBackupController = require("../../controllers/tenantBackup.controller");
 const tenantBackupService = require("../../services/tenantBackup.service");
-const { TenantBackup, Users, Tenants } = require("../../models");
+const { TenantBackup } = require("../../models");
 // P6-02: the controller hands the services the models BARREL. It used to pass
 // `req.models`, which no middleware sets, and these tests built a request WITH
 // `models: {}` — so they passed while every live backup failed on

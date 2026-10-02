@@ -3,7 +3,7 @@
  *
  * Tests the Webhooks route registrations and middleware chain.
  */
-const webhooksRoutes = require("../../routes/api/webhooks.route.js");
+const webhooksRoutes = require("../../routes/api/webhooks.route");
 
 describe("Webhooks Routes", () => {
   it("should export an Express router", () => {

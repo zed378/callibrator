@@ -1,9 +1,10 @@
 import { api } from "../client";
+import { typedApi, unwrap, type JsonBody, type Op, type QueryOf, type components } from "../typed";
 
 /**
  * Asset finance — purchase cost and depreciation per calibration device.
  *
- * Backend: src/routes/api/finance.route.js (mounted /api/v1/finance)
+ * Backend: src/routes/api/finance.route.ts (mounted /api/v1/finance)
  *   GET    /                            ?page&limit&deviceId&method
  *   POST   /
  *   GET    /reports/depreciation        ?asOf&format=csv
@@ -17,113 +18,41 @@ import { api } from "../client";
  * exists nowhere in the backend.
  *
  * GET / sends `data` = rows array with `meta` as a TOP-LEVEL sibling.
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+ * contract's (backend/src/routes/api/finance.openapi.ts). The exported names
+ * are unchanged. The CSV export stays on `api` (text).
  */
 
 const BASE = "/api/v1/finance";
+type F = "/api/v1/finance";
+type Schemas = components["schemas"];
 
 // ---------- Types ----------
 
-export type DepreciationMethod = "straight_line" | "declining_balance";
+export type PageMeta = Schemas["PaginationMeta"];
 
-export interface PageMeta {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
-export interface FinanceRecord {
-  id: string;
-  tenantId?: string;
-  deviceId: string;
-  purchasePrice: number;
-  purchaseDate: string;
-  /** Residual value at end of life. Server defaults to 0. */
-  salvageValue: number;
-  usefulLifeYears: number;
-  /** Server defaults to "straight_line". */
-  depreciationMethod: DepreciationMethod;
-  vendorId?: string | null;
-  invoiceNumber?: string | null;
-  notes?: string | null;
-  device?: { id: string; name?: string; serialNumber?: string };
-  vendor?: { id: string; name?: string };
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-/** One row of the depreciation report. */
-export interface DepreciationRow {
-  id: string;
-  deviceId: string;
-  deviceName?: string;
-  serialNumber?: string;
-  purchaseDate: string;
-  purchasePrice: number;
-  salvageValue: number;
-  usefulLifeYears: number;
-  method: DepreciationMethod;
-  ageYears?: number;
-  annualDepreciation?: number;
-  accumulatedDepreciation: number;
-  bookValue: number;
-  fullyDepreciated: boolean;
-}
-
-export interface DepreciationTotals {
-  totalPurchase: number;
-  totalAccumulatedDepreciation: number;
-  totalBookValue: number;
-  fullyDepreciatedCount: number;
-}
+/**
+ * A finance record with its computed depreciation; a list or single read also
+ * carries its device and vendor (AssetFinanceWithRefs), a write's answer not.
+ */
+export type FinanceRecord = Schemas["AssetFinance"] & Partial<Pick<Schemas["AssetFinanceWithRefs"], "device" | "vendor">>;
+export type DepreciationMethod = FinanceRecord["depreciationMethod"];
 
 /** GET /reports/depreciation — the `csv` field is stripped from JSON responses. */
-export interface DepreciationReport {
-  asOf: string;
-  totals: DepreciationTotals;
-  count: number;
-  rows: DepreciationRow[];
-}
+export type DepreciationReport = Schemas["DepreciationReport"];
+/** One row of the depreciation report (keyed by `financeId`). */
+export type DepreciationRow = DepreciationReport["rows"][number];
+export type DepreciationTotals = DepreciationReport["totals"];
 
-export interface FinanceCreateInput {
-  deviceId: string;
-  purchasePrice: number;
-  /** ISO date. */
-  purchaseDate: string;
-  /** Server defaults to 0. */
-  salvageValue?: number;
-  /** 1–50. */
-  usefulLifeYears: number;
-  /** Server defaults to "straight_line". */
-  depreciationMethod?: DepreciationMethod;
-  vendorId?: string | null;
-  invoiceNumber?: string | null;
-  notes?: string | null;
-}
+export type FinanceCreateInput = JsonBody<Op<F, "post">>;
 
 /** PATCH accepts a partial — deviceId is fixed at creation. */
-export type FinanceUpdateInput = Partial<Omit<FinanceCreateInput, "deviceId">>;
+export type FinanceUpdateInput = JsonBody<Op<`${F}/{financeId}`, "patch">>;
 
-export interface FinanceListFilters {
-  deviceId?: string;
-  method?: DepreciationMethod;
-}
+export type FinanceListFilters = Pick<QueryOf<Op<F, "get">>, "deviceId" | "method">;
 
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
-
-interface BackendListResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T[];
-  meta?: PageMeta;
-}
+const byId = (financeId: string) => ({ params: { path: { financeId } } });
 
 // ---------- Service ----------
 
@@ -136,15 +65,16 @@ export const financeService = {
     limit = 20,
     filters: FinanceListFilters = {},
   ): Promise<{ data: FinanceRecord[]; meta: PageMeta }> => {
-    const response = await api.get<BackendListResponse<FinanceRecord>>(BASE, {
-      params: { page, limit, ...filters },
-    });
+    const response = await typedApi
+      .GET("/api/v1/finance", { params: { query: { page, limit, ...filters } } })
+      .then(unwrap);
 
+    // Defensive, as built: a body without rows or `meta` still renders.
     const rows = response.data ?? [];
     return {
       data: rows,
       meta:
-        response.meta ?? {
+        (response.meta as PageMeta | undefined) ?? {
           total: rows.length,
           page,
           limit,
@@ -154,50 +84,35 @@ export const financeService = {
   },
 
   /** GET /:financeId */
-  getById: async (financeId: string): Promise<FinanceRecord> => {
-    const response = await api.get<BackendResponse<FinanceRecord>>(
-      `${BASE}/${financeId}`,
-    );
-    return response.data;
-  },
+  getById: async (financeId: string): Promise<FinanceRecord> =>
+    (await typedApi.GET("/api/v1/finance/{financeId}", byId(financeId)).then(unwrap)).data,
 
   /** POST / */
-  create: async (input: FinanceCreateInput): Promise<FinanceRecord> => {
-    const response = await api.post<BackendResponse<FinanceRecord>>(
-      BASE,
-      input,
-    );
-    return response.data;
-  },
+  create: async (input: FinanceCreateInput): Promise<FinanceRecord> =>
+    (await typedApi.POST("/api/v1/finance", { body: input }).then(unwrap)).data,
 
   /** PATCH /:financeId — there is no PUT route. */
   update: async (
     financeId: string,
     input: FinanceUpdateInput,
-  ): Promise<FinanceRecord> => {
-    const response = await api.patch<BackendResponse<FinanceRecord>>(
-      `${BASE}/${financeId}`,
-      input,
-    );
-    return response.data;
-  },
+  ): Promise<FinanceRecord> =>
+    (await typedApi.PATCH("/api/v1/finance/{financeId}", { ...byId(financeId), body: input }).then(unwrap)).data,
 
   /** DELETE /:financeId */
   delete: async (financeId: string): Promise<void> => {
-    await api.delete<BackendResponse<null>>(`${BASE}/${financeId}`);
+    await typedApi.DELETE("/api/v1/finance/{financeId}", byId(financeId));
   },
 
   /**
    * GET /reports/depreciation — book values as at `asOf` (default: now).
    * `asOf` is the only filter the backend reads.
    */
-  getDepreciationReport: async (asOf?: string): Promise<DepreciationReport> => {
-    const response = await api.get<BackendResponse<DepreciationReport>>(
-      `${BASE}/reports/depreciation`,
-      { params: asOf ? { asOf } : {} },
-    );
-    return response.data;
-  },
+  getDepreciationReport: async (asOf?: string): Promise<DepreciationReport> =>
+    (
+      await typedApi
+        .GET("/api/v1/finance/reports/depreciation", { params: { query: asOf ? { asOf } : {} } })
+        .then(unwrap)
+    ).data,
 
   /** The same report as raw CSV (?format=csv) — not an envelope. */
   exportDepreciationCsv: async (asOf?: string): Promise<string> =>

@@ -35,6 +35,16 @@ describe("apiFetch — a built Request, sent through api", () => {
     expect(mocked.delete).toHaveBeenCalledWith("/api/v1/x", { params: { a: 1 } });
   });
 
+  it("DELETE with a body sends it as axios `data` (with any query as params)", async () => {
+    mocked.delete.mockResolvedValue({ deleted: 1 });
+    await apiFetch(at("/api/v1/x", { method: "DELETE", body: '{"ids":["n1"]}' }));
+    expect(mocked.delete).toHaveBeenLastCalledWith("/api/v1/x", { data: { ids: ["n1"] } });
+    const request = at("/api/v1/x?a=1", { method: "DELETE", body: '{"ids":[]}' });
+    keepQuery.onRequest?.({ request, params: { query: { a: 1 } } } as never);
+    await apiFetch(request);
+    expect(mocked.delete).toHaveBeenLastCalledWith("/api/v1/x", { params: { a: 1 }, data: { ids: [] } });
+  });
+
   it("POST, PUT, PATCH: the parsed body; an empty body is undefined", async () => {
     mocked.post.mockResolvedValue({ id: "v1" });
     mocked.put.mockResolvedValue({});
@@ -45,7 +55,8 @@ describe("apiFetch — a built Request, sent through api", () => {
     await apiFetch(at("/api/v1/x", { method: "PUT", body: '{"c":3}' }));
     expect(mocked.put).toHaveBeenCalledWith("/api/v1/x", { c: 3 });
     await apiFetch(at("/api/v1/x", { method: "PATCH" }));
-    expect(mocked.patch).toHaveBeenCalledWith("/api/v1/x", undefined);
+    // P9-25 item 11: a body-less write is the one-argument call a hand-written service made.
+    expect(mocked.patch).toHaveBeenCalledWith("/api/v1/x");
   });
 
   it("an undefined answer is JSON null; another method is refused", async () => {
@@ -57,6 +68,15 @@ describe("apiFetch — a built Request, sent through api", () => {
   it("a rejection from api (refresh failed, 4xx, 5xx — already normalised) propagates as it is", async () => {
     mocked.get.mockRejectedValueOnce(new Error("Forbidden: Insufficient permissions"));
     await expect(typedApi.GET("/api/v1/vendors")).rejects.toThrow("Forbidden: Insufficient permissions");
+  });
+
+  it("a falsy rejection reaches the caller as an empty object (no Error, no message), not a TypeError", async () => {
+    mocked.patch.mockRejectedValueOnce(undefined);
+    const caught: unknown = await apiFetch(at("/api/v1/x", { method: "PATCH", body: "{}" })).catch((e: unknown) => e);
+    expect(caught).toEqual({});
+    expect(caught).not.toBeInstanceOf(Error);
+    mocked.get.mockRejectedValueOnce(null);
+    await expect(typedApi.GET("/api/v1/vendors")).rejects.toEqual({});
   });
 });
 

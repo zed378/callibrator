@@ -224,3 +224,21 @@ The coordinator assigned it; the P9-22 helper found it and carried the controlle
 **Checks.**
 - `npm run typecheck`: clean on the whole backend at the last run.
 - `npx eslint`: 0 errors on every touched file, including `routeClient.ts`, where an unnecessary `as unknown as` was removed.
+
+
+## Amendment 5 (2026-10-01) — budgets are fixed windows; locks end on schedule (ADR-100 Amendment 5)
+
+Found by the P10-13 live E2E. I did it myself: the agent cap was 2, so there were no sub-agents.
+
+| Change | Tests, and fail-before |
+|---|---|
+| `storeIncrFixed` (`INCR_FIXED_SCRIPT` on Redis with `KEEPTTL`, and the memory fallback) used by `requestBudget.middleware.ts` and `endpointRateLimiter`; Retry-After from the stored `expiresAt`; `storeTtl` removed; the memory store ends a window at `expiresAt` and keeps last-written order | **Memory path:** `backend/src/tests/middlewares/requestBudget.fixedWindow.am5.test.ts` (5 tests, fake timers). The budget and `endpointRateLimiter` each take N admitted, then M refused requests spread over the window. Every Retry-After names the same instant; one second before it, the request is refused; at it, admitted. **4 of 5 failed** with the old sliding behaviour substituted. The login-throttle test passed before as well: it pins behaviour that was already correct. **Real Redis:** `backend/src/tests/services/rateLimiter.fixedWindow.am5.live.test.ts` (`REDIS_LIVE_TEST=1`) on a named disposable `redis:7-alpine`, `am5-redis`, removed by name. Results: 3 of 3 pass, and the existing `rateLimiter.redis.live` passes with it (10 of 10). With the old behaviour substituted, **2 of 3 failed**: the expiry moved, and Retry-After reset to the full window. The third test is the control showing the failure counter still slides |
+| `checkAuthLockout` reports the counter's expiry (`lockEnd`) for the user lock and the IP lock | The same am5 suite: the lock ends when reported, and repeated checks do not move it; the IP lock no longer reports "now + 5 minutes" each time. `rateLimiter.redis.path.test.js` pins the stored expiry and the fallback for an entry written before expiries were stored. `rateLimiter.service.coverage.test.js` › "should preserve firstAttempt…" now expects the real end (last failure + window); it had pinned the old, wrong instant |
+| The Redis-path quota tests rewritten for the script's new answer (the entry after the increment, with its expiry) | `rateLimiter.redis.path.test.js` › endpoint quotas (5 tests, including an EVAL failure counting in memory in a fixed window) |
+
+**Checks.**
+- Limiter suites: 219 passed, 10 skipped (the live ones without their flag).
+- `requestBudget.middleware.ts` is at 100% coverage.
+- `npm run typecheck` is clean. `rateLimiter.redis.service.d.ts` now types `endpointRateLimiter` and `storeIncrFixed`, and drops `storeTtl`.
+- `npx eslint` reports 0 errors on the touched files.
+- `docs/DEVELOPER/03-RATE-LIMITS-AND-ERROR-CODES.md` is amended, citing this amendment.

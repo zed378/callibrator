@@ -8,18 +8,18 @@ What things are called, as they are called today. Where the codebase is inconsis
 
 | Layer | Pattern | Example |
 |---|---|---|
-| route | `<module>.route.js` | `calibrationDevices.route.js` |
-| controller | `<module>.controller.js` | `certificate.controller.js` |
-| service | `<module>.service.js` | `meteredBilling.service.js` |
-| model | `<entity>.model.js` | `stockTransfer.model.js` |
-| validator | `<module>.validator.js` | `stock.validator.js` |
-| middleware | `<concern>.middleware.js` | `tenantContext.middleware.js` |
-| util | `<concern>.util.js` | `storagePath.util.js` |
+| route | `<module>.route.js` | `calibrationDevices.route.ts` |
+| controller | `<module>.controller.js` | `certificate.controller.ts` |
+| service | `<module>.service.js` | `meteredBilling.service.ts` |
+| model | `<entity>.model.js` | `stockTransfer.model.ts` |
+| validator | `<module>.validator.js` | `stock.validator.ts` |
+| middleware | `<concern>.middleware.js` | `tenantContext.middleware.ts` |
+| util | `<concern>.util.js` | `storagePath.util.ts` |
 | test | `<file>.test.js`, or `<file>.<angle>.test.js` for additional suites | `tenant.service.coverage.test.js` |
 
 camelCase before the layer suffix. Under TypeScript the extension becomes `.ts` and nothing else changes.
 
-**Singular or plural is not consistent** — `calibrationDevices.route.js` beside `certificate.controller.js`. Match the existing module when adding a file to it; do not rename files to fix it (it churns every import for no behavioural gain).
+**Singular or plural is not consistent** — `calibrationDevices.route.ts` beside `certificate.controller.ts`. Match the existing module when adding a file to it; do not rename files to fix it (it churns every import for no behavioural gain).
 
 ## URLs
 

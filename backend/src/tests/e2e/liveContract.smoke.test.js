@@ -158,7 +158,7 @@ function dumpRoutes(outFile) {
     Object.assign(originalUuid(...names), { __uuid: names.flat() });
 
   // index.js is the source of truth for the mounts.
-  const indexSrc = fs.readFileSync(path.join(BACKEND_ROOT, "index.js"), "utf8");
+  const indexSrc = fs.readFileSync(path.join(BACKEND_ROOT, "index.ts"), "utf8");
   const modules = {};
   for (const m of indexSrc.matchAll(/const (\w+) = require\("(\.\/src\/routes\/[^"]+)"\)/g)) {
     modules[m[1]] = { file: m[2] };
@@ -804,6 +804,9 @@ async function runLiveContract() {
 
   // ---- path params -------------------------------------------------------
   const paramValue = (route, name, concretePrefix, phase) => {
+    // P9-18: POST /tenant-hierarchy/:tenantId/children names the PARENT (`:parentId`
+    // until then, which took tenant B); it keeps tenant B.
+    if (name === "tenantId" && route.method === "POST" && /\/tenant-hierarchy\/:tenantId\/children$/.test(route.path)) {return state.tenantB;}
     if (name === "tenantId" || (name === "id" && /\/admin\/tenants\/:id/.test(route.path))) {
       return TENANT_C_ROUTE.test(route.path) ? state.tenantC : state.tenantA;
     }

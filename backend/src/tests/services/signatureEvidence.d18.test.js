@@ -102,7 +102,7 @@ describe("D-18 — no hard delete of signature evidence", () => {
 
   it("scans the files that use the signature models (eSignature.service among them)", () => {
     const files = filesTouchingSignatures().map(([f]) => path.relative(SRC, f));
-    expect(files).toContain(path.join("services", "eSignature.service.js"));
+    expect(files).toContain(path.join("services", "eSignature.service.ts"));
   });
 
   it("no force: true destroy and no bulk destroy of SignatureWorkflow / SignatureWorkflowStep / SignatureRecord", () => {

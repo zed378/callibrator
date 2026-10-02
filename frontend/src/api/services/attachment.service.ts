@@ -1,34 +1,23 @@
 // src/api/services/attachment.service.ts
+//
+// P9-25 (ADR-103 item 11): the JSON calls are on the GENERATED client and the
+// types are the contract's (backend/src/routes/api/attachments.openapi.ts); the
+// names are unchanged. The multipart upload and the byte downloads stay on `api`.
 import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type Op, type QueryOf, type components } from "../typed";
 import { PaginatedResponse } from "@/types";
 
-export interface Attachment {
-  id: string;
-  tenantId: string;
-  resourceType: string;
-  resourceId?: string | null;
-  originalName: string;
-  mimeType?: string | null;
-  size: number;
-  checksum?: string | null;
-  uploadedBy?: string | null;
-  /**
-   * The GATED, host-relative download route `/api/v1/attachments/<id>/download`
-   * (S-01, ADR-042 step 4) — never an `/uploads/...` path. It works for a
-   * signed-in member of the attachment's tenant (same-origin, through the API
-   * proxy), inline for images and PDF, and stops working when the attachment
-   * is deleted. For someone without a session, mint a signed URL.
-   */
-  url?: string;
-  createdAt: string;
-}
+/**
+ * An attachment. `url` is the GATED, host-relative download route
+ * `/api/v1/attachments/<id>/download` (S-01, ADR-042 step 4) — never an
+ * `/uploads/...` path. It works for a signed-in member of the attachment's
+ * tenant (same-origin, through the API proxy), inline for images and PDF, and
+ * stops working when the attachment is deleted. For someone without a session,
+ * mint a signed URL.
+ */
+export type Attachment = components["schemas"]["Attachment"];
 
-export interface SignedUrl {
-  url: string;
-  token: string;
-  expiresAt: string;
-  expiresInSec: number;
-}
+export type SignedUrl = DataOf<Op<"/api/v1/attachments/{id}/signed-url", "post">>;
 
 export interface AttachmentUploadInput {
   file: File;
@@ -36,27 +25,7 @@ export interface AttachmentUploadInput {
   resourceId?: string;
 }
 
-// Backend envelope: LIST endpoints put the array in `data` and `meta` at the
-// top level; single-object endpoints put the object in `data`.
-interface BackendAttachmentsResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: Attachment[] | null;
-  meta?: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-interface BackendAttachmentResponse<T = Attachment> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+const byId = (id: string) => ({ params: { path: { id } } });
 
 export interface AttachmentFilters {
   resourceType?: string;
@@ -69,14 +38,11 @@ export const attachmentService = {
     limit = 10,
     filters: AttachmentFilters = {},
   ): Promise<PaginatedResponse<Attachment>> => {
-    const params: Record<string, string | number> = { page, limit };
+    const params: QueryOf<Op<"/api/v1/attachments", "get">> = { page, limit };
     if (filters.resourceType) params.resourceType = filters.resourceType;
     if (filters.resourceId) params.resourceId = filters.resourceId;
 
-    const response = await api.get<BackendAttachmentsResponse>(
-      "/api/v1/attachments",
-      { params },
-    );
+    const response = await typedApi.GET("/api/v1/attachments", { params: { query: params } }).then(unwrap);
 
     const rows: Attachment[] = Array.isArray(response?.data)
       ? response.data
@@ -105,19 +71,13 @@ export const attachmentService = {
     if (input.resourceType) formData.append("resourceType", input.resourceType);
     if (input.resourceId) formData.append("resourceId", input.resourceId);
 
-    const response = await api.post<BackendAttachmentResponse>(
-      "/api/v1/attachments",
-      formData,
-    );
+    const response = await api.post<{ data: Attachment }>("/api/v1/attachments", formData);
     return response.data;
   },
 
   /** GET /api/v1/attachments/:id — fetch a single attachment's metadata. */
   getById: async (id: string): Promise<Attachment> => {
-    const response = await api.get<BackendAttachmentResponse>(
-      `/api/v1/attachments/${id}`,
-    );
-    return response.data;
+    return (await typedApi.GET("/api/v1/attachments/{id}", byId(id)).then(unwrap)).data;
   },
 
   /**
@@ -148,19 +108,16 @@ export const attachmentService = {
     id: string,
     expiresInSec?: number,
   ): Promise<SignedUrl> => {
-    const response = await api.post<BackendAttachmentResponse<SignedUrl>>(
-      `/api/v1/attachments/${id}/signed-url`,
-      expiresInSec ? { expiresInSec } : {},
-    );
-    return response.data;
+    return (
+      await typedApi
+        .POST("/api/v1/attachments/{id}/signed-url", { ...byId(id), body: expiresInSec ? { expiresInSec } : {} })
+        .then(unwrap)
+    ).data;
   },
 
   /** Soft-delete an attachment. */
   remove: async (id: string): Promise<{ id: string }> => {
-    const response = await api.delete<BackendAttachmentResponse<{ id: string }>>(
-      `/api/v1/attachments/${id}`,
-    );
-    return response.data;
+    return (await typedApi.DELETE("/api/v1/attachments/{id}", byId(id)).then(unwrap)).data;
   },
 };
 

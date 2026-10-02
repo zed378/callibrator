@@ -10,6 +10,7 @@ import { useTenantBackups } from "./hooks/useTenantBackups";
 import BackupCreateModal from "./components/BackupCreateModal";
 import BackupList from "./components/BackupList";
 import RestoreOutcomePanel from "./components/RestoreOutcomePanel";
+import { backupLabel } from "@/api/services/tenantBackup.service";
 
 function TenantBackupContent() {
   const params = useParams();
@@ -91,7 +92,8 @@ function TenantBackupContent() {
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Completed</p>
               <p className="text-2xl font-bold text-success mt-1">
-                {backups.filter((b) => b.status === "COMPLETED").length}
+                {/* A-362: the API's lower-case status. */}
+                {backups.filter((b) => b.status === "completed").length}
               </p>
             </CardContent>
           </Card>
@@ -99,7 +101,7 @@ function TenantBackupContent() {
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Failed</p>
               <p className="text-2xl font-bold text-destructive mt-1">
-                {backups.filter((b) => b.status === "FAILED").length}
+                {backups.filter((b) => b.status === "failed").length}
               </p>
             </CardContent>
           </Card>
@@ -107,7 +109,7 @@ function TenantBackupContent() {
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">In Progress</p>
               <p className="text-2xl font-bold text-warning mt-1">
-                {backups.filter((b) => b.status === "IN_PROGRESS").length}
+                {backups.filter((b) => b.status === "in_progress").length}
               </p>
             </CardContent>
           </Card>
@@ -204,7 +206,7 @@ function TenantBackupContent() {
           data and cannot be undone, so the backup's name must be typed. */}
       <ConfirmDialog
         isOpen={pendingAction?.kind === "restore"}
-        title={`Restore backup "${pendingAction?.backup.name ?? ""}"?`}
+        title={`Restore backup "${pendingAction ? backupLabel(pendingAction.backup) : ""}"?`}
         description={
           <>
             This replaces the current data of tenant {tenantLabel} with the
@@ -215,14 +217,17 @@ function TenantBackupContent() {
           </>
         }
         confirmLabel="Restore backup"
-        confirmPhrase={pendingAction?.kind === "restore" ? pendingAction.backup.name : undefined}
+        // A-363: a backup taken before names were stored (NULL) is confirmed by its id.
+        confirmPhrase={
+          pendingAction?.kind === "restore" ? (pendingAction.backup.name?.trim() || pendingAction.backup.id) : undefined
+        }
         isLoading={actionLoading !== null}
         onConfirm={() => void confirmPendingAction()}
         onCancel={cancelPendingAction}
       />
       <ConfirmDialog
         isOpen={pendingAction?.kind === "delete"}
-        title={`Delete backup "${pendingAction?.backup.name ?? ""}"?`}
+        title={`Delete backup "${pendingAction ? backupLabel(pendingAction.backup) : ""}"?`}
         description="The archive is removed permanently and can no longer be downloaded or restored."
         confirmLabel="Delete backup"
         isLoading={actionLoading !== null}

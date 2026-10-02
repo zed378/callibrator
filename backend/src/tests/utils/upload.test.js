@@ -6,7 +6,7 @@
  * HTTP request, and so we can directly invoke the storage/destination
  * and fileFilter functions to cover those code paths.
  */
-const { v4: uuidv4 } = require("uuid");
+require("uuid");
 const { AppError } = require("../../utils/appError.util");
 
 jest.mock("uuid", () => ({ v4: () => "test-uuid-1234" }));

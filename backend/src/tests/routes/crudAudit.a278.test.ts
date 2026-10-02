@@ -230,7 +230,8 @@ describe("A-278 — risks, scorecards and asset finance, written by a user", () 
     expect(
       (
         await call(risks, "PUT", `/${RISK_A}`, {
-          body: { status: "Mitigated" },
+          // A-335: status is one of RISK_STATUSES (the model's upper-case vocabulary).
+          body: { status: "MITIGATED" },
         })
       ).status,
     ).toBe(200);
@@ -239,7 +240,7 @@ describe("A-278 — risks, scorecards and asset finance, written by a user", () 
       action: "UPDATE",
       changes: containing({
         before: { status: "Open" },
-        after: { status: "Mitigated" },
+        after: { status: "MITIGATED" },
       }),
     });
   });

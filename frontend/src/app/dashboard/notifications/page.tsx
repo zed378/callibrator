@@ -73,7 +73,8 @@ function NotificationRow({
   isSelected: boolean;
   onToggleSelect: (id: string) => void;
 }) {
-  const config = TYPE_CONFIG[notification.type] ?? TYPE_CONFIG.SYSTEM;
+  // The column is the model's NOTIFICATION_TYPES enum; the contract publishes a string.
+  const config = TYPE_CONFIG[notification.type as NotificationType] ?? TYPE_CONFIG.SYSTEM;
 
   return (
     <div

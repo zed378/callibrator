@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 /**
- * Reports, against the backend contract (reporting.controller.js):
+ * Reports, against the backend contract (reporting.controller.ts):
  *  - GET /api/v1/reports/{summary,compliance,calibration-workload,overdue-devices,inventory}
  *    → `data`: the report object (JSON);
  *  - the same with `?format=csv` → the CSV text itself (Content-Type text/csv).

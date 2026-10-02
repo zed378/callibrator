@@ -38,7 +38,7 @@ const scim = require("../../services/scim.service");
 const { Users, Role } = require("../../models");
 const { hashPassword } = require("../../utils/password.util");
 const { ROLE_IDS } = require("../../constants");
-const auditService = require("../../services/audit.service");
+require("../../services/audit.service");
 
 const TX = { transaction: "tx" };
 

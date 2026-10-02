@@ -187,7 +187,7 @@ const createBroker = ({ ttlScale = 0 } = {}) => {
       this.settle(msg);
     }
 
-    nack(msg, allUpTo = false, requeue = true) {
+    nack(msg, _allUpTo = false, requeue = true) {
       this.guard();
       const entry = this.settle(msg);
       if (!entry) {

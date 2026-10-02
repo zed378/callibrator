@@ -1,115 +1,62 @@
+// src/api/services/user.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the request and answer
+// types are the contract's (backend/src/routes/api/user.openapi.ts →
+// @callibrator/contracts/user), which replaced the interim `z.input` types
+// (ADR-097 Am. 1). The exported names are unchanged. The avatar upload stays
+// on `api` (multipart).
 import { api } from "../client";
-import type {
-  CreateUserInput,
-  UpdateProfileInput,
-  UpdateRoleInput,
-  UpdateUserInput,
-  UsernameCheckInput,
-} from "@callibrator/contracts/user";
-
-// P9-22 (ADR-097): the request bodies are the backend validator's own schemas
-// (@callibrator/contracts/user), not hand-written copies.
-export type UserCreateInput = CreateUserInput;
-export type UserUpdateInput = UpdateUserInput;
-/** PATCH /users/:userId/profile — `userId` goes in the path, the rest in the body. */
-export type UserProfileInput = UpdateProfileInput;
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type QueryOf, type components } from "../typed";
 import { User, PaginatedResponse } from "@/types";
 
-// Backend response structure for users list (actual API response)
-interface BackendUserItem {
-  id: string;
-  tenantId: string | null;
-  username: string;
-  firstName: string;
-  lastName: string;
-  first_name?: string;
-  last_name?: string;
-  email: string;
-  picture: string;
-  roleId?: string;
-  tenantRoleId?: string | null;
-  isEmailVerified: boolean;
-  isBanned?: boolean;
-  status?: string;
-  lastLoginAt: string;
-  createdAt: string;
-  role?: {
-    id: string;
-    name: string;
-    description: string;
-    nameToShow: string;
-    isActive?: boolean;
-    status?: string;
-  };
-  pictureUrl?: string;
-  avatarUrl?: string;
-  // A-162: the list carries these (safeUserAttributes excludes only secrets),
-  // so the users page can offer "Reset MFA" only where there is MFA.
-  mfaEnabled?: boolean;
-  mustChangePassword?: boolean;
-  // A-262: so the page offers "Remove passkey" only where there is one.
-  webauthnEnabled?: boolean;
-}
+export type UserCreateInput = JsonBody<Op<"/api/v1/users/create", "post">>;
+export type UserUpdateInput = JsonBody<Op<"/api/v1/users/edit", "patch">>;
+/** PATCH /users/:userId/profile — `userId` goes in the path, the rest in the body. */
+export type UserProfileInput = JsonBody<Op<"/api/v1/users/{userId}/profile", "patch">> & { userId: string };
+
+/** A user as the API answers one (without credentials or second-factor secrets). */
+export type ApiUser = components["schemas"]["User"];
 
 /** A-162: POST /users/:userId/mfa/reset → data. */
-export interface MfaResetResult {
-  id: string;
-  mfaEnabled: false;
-  sessionsRevoked: number;
-}
+export type MfaResetResult = DataOf<Op<"/api/v1/users/{userId}/mfa/reset", "post">>;
 
 /** A-262: DELETE /users/:userId/webauthn → data. */
-export interface PasskeyResetResult {
-  id: string;
-  webauthnEnabled: false;
-  sessionsRevoked: number;
-}
+export type PasskeyResetResult = DataOf<Op<"/api/v1/users/{userId}/webauthn", "delete">>;
 
 /** A-162: POST /users/:userId/password/reset → data. The password is shown once. */
-export interface PasswordResetResult {
-  id: string;
-  temporaryPassword: string;
-  mustChangePassword: true;
-  sessionsRevoked: number;
-}
+export type PasswordResetResult = DataOf<Op<"/api/v1/users/{userId}/password/reset", "post">>;
 
-// Actual backend response: { success, status, message, data: User[], meta: {...} }
-interface BackendUsersListResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: BackendUserItem[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
+type ListQuery = QueryOf<Op<"/api/v1/users/all", "get">>;
 
-// Transform backend user item to our User type
-const transformUser = (item: BackendUserItem): User => ({
+/** A string field of the open user row (the legacy aliases and getters). */
+const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+
+// Transform the API's user row to the app's User type
+const transformUser = (item: ApiUser): User => ({
   id: item.id,
   username: item.username,
-  firstName: item.firstName || item.first_name || "",
-  lastName: item.lastName || item.last_name || "",
-  first_name: item.first_name || item.firstName,
-  last_name: item.last_name || item.lastName,
+  firstName: item.firstName || text(item.first_name) || "",
+  lastName: item.lastName || text(item.last_name) || "",
+  // As built: the alias, else the name (a null name stays null at run time).
+  first_name: (text(item.first_name) || item.firstName) as string | undefined,
+  last_name: (text(item.last_name) || item.lastName) as string | undefined,
   email: item.email,
   tenantId: item.tenantId,
+  // As built: `isBanned` is no column (the fallback is for a row with no status).
   status: (item.status as User["status"]) || (item.isBanned
     ? "SUSPENDED"
     : item.isEmailVerified
       ? "ACTIVE"
       : "PENDING"),
-  picture: item.picture || item.pictureUrl || item.avatarUrl,
+  // As built: the getter's URL, else the stored name (null without an avatar).
+  picture: (text(item.picture) || text(item.pictureUrl) || item.avatarUrl) as string | undefined,
   role: item.role
     ? {
         id: item.role.id,
         name: item.role.name,
-        description: item.role.description,
+        description: item.role.description as string | null,
         nameToShow: item.role.nameToShow || item.role.name,
-        isActive: item.role.isActive ?? (item.role.status !== "deleted"),
+        isActive: (item.role.isActive as boolean | undefined) ?? (item.role.status !== "deleted"),
       }
     : undefined,
   createdAt: item.createdAt,
@@ -119,6 +66,15 @@ const transformUser = (item: BackendUserItem): User => ({
   webauthnEnabled: item.webauthnEnabled === true,
 });
 
+/**
+ * A single-user answer, as the app's User. As built: the row is handed on
+ * unchanged (only the list is transformed); its nullable names are read by
+ * the callers as strings.
+ */
+const asUser = (row: ApiUser): User => row as unknown as User;
+
+const byUser = (userId: string) => ({ params: { path: { userId } } });
+
 export const userService = {
   /**
    * A-141 / A-162: a tenant administrator clears another user's MFA. The
@@ -126,12 +82,8 @@ export const userService = {
    * and enrol again. 404 for a user outside the caller's tenant, 400 for the
    * caller, 403 for a higher role, 409 when the user has no MFA.
    */
-  resetMfa: async (userId: string): Promise<MfaResetResult> => {
-    const response = await api.post<{ success: boolean; data: MfaResetResult }>(
-      `/api/v1/users/${encodeURIComponent(userId)}/mfa/reset`,
-    );
-    return response.data;
-  },
+  resetMfa: async (userId: string): Promise<MfaResetResult> =>
+    (await typedApi.POST("/api/v1/users/{userId}/mfa/reset", byUser(userId)).then(unwrap)).data,
 
   /**
    * A-262: a tenant administrator removes another user's passkey. The backend
@@ -139,24 +91,16 @@ export const userService = {
    * user outside the caller's tenant, 400 for the caller, 403 for a higher
    * role, 409 when the user has no passkey.
    */
-  resetPasskey: async (userId: string): Promise<PasskeyResetResult> => {
-    const response = await api.delete<{ success: boolean; data: PasskeyResetResult }>(
-      `/api/v1/users/${encodeURIComponent(userId)}/webauthn`,
-    );
-    return response.data;
-  },
+  resetPasskey: async (userId: string): Promise<PasskeyResetResult> =>
+    (await typedApi.DELETE("/api/v1/users/{userId}/webauthn", byUser(userId)).then(unwrap)).data,
 
   /**
    * A-162: a tenant administrator replaces another user's password with a
    * temporary one, returned ONCE — show it, never store it. The user must
    * change it at their next sign-in; every session of theirs is signed out.
    */
-  resetPassword: async (userId: string): Promise<PasswordResetResult> => {
-    const response = await api.post<{ success: boolean; data: PasswordResetResult }>(
-      `/api/v1/users/${encodeURIComponent(userId)}/password/reset`,
-    );
-    return response.data;
-  },
+  resetPassword: async (userId: string): Promise<PasswordResetResult> =>
+    (await typedApi.POST("/api/v1/users/{userId}/password/reset", byUser(userId)).then(unwrap)).data,
 
   getAll: async (
     page = 1,
@@ -165,12 +109,8 @@ export const userService = {
     tenantId?: string,
     roleFilter?: string,
   ): Promise<PaginatedResponse<User>> => {
-    const response = await api.get<BackendUsersListResponse>(
-      "/api/v1/users/all",
-      {
-        params: { page, limit, find: search, tenantId, roleFilter },
-      },
-    );
+    const query: ListQuery = { page, limit, find: search, tenantId, roleFilter };
+    const response = await typedApi.GET("/api/v1/users/all", { params: { query } }).then(unwrap);
 
     // Transform backend users to our User type
     const users = response.data.map(transformUser);
@@ -183,29 +123,14 @@ export const userService = {
     };
   },
 
-  getById: async (userId: string): Promise<User> => {
-    const response = await api.post<{ success: boolean; data: User }>(
-      "/api/v1/users/detail",
-      { userId },
-    );
-    return response.data;
-  },
+  getById: async (userId: string): Promise<User> =>
+    asUser((await typedApi.POST("/api/v1/users/detail", { body: { userId } }).then(unwrap)).data),
 
-  create: async (data: UserCreateInput): Promise<User> => {
-    const response = await api.post<{ success: boolean; data: User }>(
-      "/api/v1/users/create",
-      data,
-    );
-    return response.data;
-  },
+  create: async (data: UserCreateInput): Promise<User> =>
+    asUser((await typedApi.POST("/api/v1/users/create", { body: data }).then(unwrap)).data),
 
-  update: async (data: UserUpdateInput): Promise<User> => {
-    const response = await api.patch<{ success: boolean; data: User }>(
-      "/api/v1/users/edit",
-      data,
-    );
-    return response.data;
-  },
+  update: async (data: UserUpdateInput): Promise<User> =>
+    asUser((await typedApi.PATCH("/api/v1/users/edit", { body: data }).then(unwrap)).data),
 
   // A-63: the caller's own profile goes to PATCH /users/:userId/profile — the
   // backend's self bypass trusts only the path, never a body `userId`, so
@@ -213,27 +138,24 @@ export const userService = {
   updateProfile: async ({
     userId,
     ...fields
-  }: UserProfileInput): Promise<User> => {
-    const response = await api.patch<{ success: boolean; data: User }>(
-      `/api/v1/users/${encodeURIComponent(userId)}/profile`,
-      fields,
-    );
-    return response.data;
-  },
+  }: UserProfileInput): Promise<User> =>
+    asUser(
+      (await typedApi.PATCH("/api/v1/users/{userId}/profile", { ...byUser(userId), body: fields }).then(unwrap))
+        .data,
+    ),
 
   changePassword: async (data: {
     currentPassword: string;
     newPassword: string;
   }): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post<{
-      success: boolean;
-      status: number;
-      message: string;
-      data: unknown;
-    }>("/api/v1/auth/just-update-password", {
-      currentPassword: data.currentPassword,
-      newPassword: data.newPassword,
-    });
+    const response = await typedApi
+      .POST("/api/v1/auth/just-update-password", {
+        body: {
+          currentPassword: data.currentPassword,
+          newPassword: data.newPassword,
+        },
+      })
+      .then(unwrap);
     return {
       success: response.success,
       message: response.message || "Password changed successfully",
@@ -241,21 +163,17 @@ export const userService = {
   },
 
   updateRole: async (userId: string, roleId: string): Promise<void> => {
-    const body: UpdateRoleInput = { userId, roleId };
-    await api.post("/api/v1/users/role-update", body);
+    await typedApi.POST("/api/v1/users/role-update", { body: { userId, roleId } });
   },
 
   delete: async (userId: string): Promise<void> => {
-    await api.delete(`/api/v1/users/delete`, { params: { userId } });
+    await typedApi.DELETE("/api/v1/users/delete", { params: { query: { userId } } });
   },
 
   checkUsername: async (username: string): Promise<{ available: boolean }> => {
-    const response = await api.post<{
-      success: boolean;
-      status: number;
-      message: string;
-      data: { username: string; available: boolean };
-    }>("/api/v1/users/username-check", { username } satisfies UsernameCheckInput);
+    const response = await typedApi
+      .POST("/api/v1/users/username-check", { body: { username } })
+      .then(unwrap);
     const available = response.data?.available ?? false;
     return { available };
   },
@@ -268,7 +186,7 @@ export const userService = {
   },
 
   deleteAvatar: async (userId: string): Promise<void> => {
-    await api.delete(`/api/v1/users/${userId}/avatar`);
+    await typedApi.DELETE("/api/v1/users/{userId}/avatar", byUser(userId));
   },
 
   verifyCurrentPassword: async (
@@ -278,14 +196,9 @@ export const userService = {
       // The endpoint answers 200 with `{ data: { valid } }` whether or not the
       // password matched — `success` is always true, so the result MUST be read
       // from `data.valid` (reading `success` reported every password as valid).
-      const response = await api.post<{
-        success: boolean;
-        status: number;
-        message: string;
-        data: { valid: boolean };
-      }>("/api/v1/auth/pass-is-valid", {
-        password,
-      });
+      const response = await typedApi
+        .POST("/api/v1/auth/pass-is-valid", { body: { password } })
+        .then(unwrap);
       return { valid: response.data?.valid === true };
     } catch {
       throw new Error("Invalid password");

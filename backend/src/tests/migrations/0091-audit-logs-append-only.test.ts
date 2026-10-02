@@ -21,7 +21,7 @@ const processEnv = environment();
 
 const read = (relative: string): string => fs.readFileSync(path.join(__dirname, relative), "utf8");
 const SOURCE = read("../../migrations/0091-audit-logs-append-only.ts");
-const MANIFEST = read("../../config/migrator.js");
+const MANIFEST = read("../../config/migrator.ts");
 const MASKING_SERVICE = read("../../services/dataRetention.service.ts");
 
 interface FakeOptions {

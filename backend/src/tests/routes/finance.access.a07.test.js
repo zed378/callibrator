@@ -84,7 +84,7 @@ const router = require("../../routes/api/finance.route");
 // ---- the real seed's menu tree ----------------------------------------------
 // Each `{ … slug: "…" … }` literal in `menuData`, with its name and parentSlug.
 const SEED = fs.readFileSync(
-  path.join(__dirname, "..", "..", "utils", "seedMenuGroups.util.js"),
+  path.join(__dirname, "..", "..", "utils", "seedMenuGroups.util.ts"),
   "utf8",
 );
 const MENU_DATA = SEED.slice(SEED.indexOf("const menuData = ["), SEED.indexOf("];", SEED.indexOf("const menuData = [")));

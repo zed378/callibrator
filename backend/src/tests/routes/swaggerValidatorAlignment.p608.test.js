@@ -41,7 +41,7 @@ const { components } = require("../../docs/components");
 
 const SRC = path.join(__dirname, "..", "..");
 const ROUTES_DIR = path.join(SRC, "routes");
-const INDEX_FILE = path.join(SRC, "..", "index.js");
+const INDEX_FILE = path.join(SRC, "..", "index.ts");
 
 const SCHEMA_TAG = Symbol.for("callibrator.p608.schema");
 const realValidate = validationMiddleware.validate;
@@ -284,7 +284,8 @@ describe("P6-08 — swagger request bodies agree with the request validators", (
     expect(raw.split(String.fromCharCode(13)).join("")).toBe(serialise(generatedSpec)); // CRLF-agnostic
     const committed = JSON.parse(raw);
     const gdprPaths = Object.keys(generatedSpec.paths).filter((p) => p.startsWith("/api/v1/gdpr"));
-    expect(gdprPaths.length).toBe(8);
+    // 9 since A-360 (ADR-114): GET /exports/{exportId}/download.
+    expect(gdprPaths.length).toBe(9);
     for (const p of gdprPaths) {
       expect([p, committed.paths[p]]).toEqual([p, generatedSpec.paths[p]]);
     }

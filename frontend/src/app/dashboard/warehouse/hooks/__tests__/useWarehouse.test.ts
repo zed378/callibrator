@@ -107,9 +107,9 @@ describe("useWarehouse", () => {
     const { result } = await setup();
     act(() => result.current.openEditWarehouse({ ...main, address: undefined, description: undefined } as unknown as Warehouse));
     expect(result.current.warehouseForm).toEqual({ name: "Main", code: "WH-1", address: "", description: "", status: "active" });
-    act(() => result.current.setWarehouseForm((f) => ({ ...f, status: "suspended" })));
+    act(() => result.current.setWarehouseForm((f) => ({ ...f, status: "inactive" })));
     await act(async () => result.current.handleWarehouseSubmit(ev));
-    expect(warehouseService.update).toHaveBeenCalledWith("w1", expect.objectContaining({ status: "suspended" }));
+    expect(warehouseService.update).toHaveBeenCalledWith("w1", expect.objectContaining({ status: "inactive" }));
     expect(result.current.isWarehouseModalOpen).toBe(false);
     await waitFor(() => expect(result.current.isLoading).toBe(false));
   });

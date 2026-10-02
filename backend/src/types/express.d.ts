@@ -46,8 +46,8 @@ declare global {
       apiKeyAuthorized?: boolean;
       /** Set by utils/upload.util: the target folder and the allow-lists multer's fileFilter reads. */
       uploadFolder?: string;
-      allowedMimes?: string[] | undefined;
-      allowedExtensions?: string[] | undefined;
+      allowedMimes?: readonly string[] | undefined;
+      allowedExtensions?: readonly string[] | undefined;
       /** Set by utils/upload.util's storage: the generated file name. */
       uploadFilename?: string;
       /**

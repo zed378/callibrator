@@ -3,7 +3,7 @@
  *
  * Tests the Oidc route registrations and middleware chain.
  */
-const oidcRoutes = require("../../routes/api/oidc.route.js");
+const oidcRoutes = require("../../routes/api/oidc.route");
 
 describe("Oidc Routes", () => {
   it("should export an Express router", () => {

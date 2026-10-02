@@ -32,7 +32,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   },
 }));
 
-const { Op } = require("sequelize");
+require("sequelize");
 const predictiveMaintenanceService = require("../../services/predictiveMaintenance.service");
 
 describe("predictiveMaintenance.service", () => {
@@ -127,7 +127,7 @@ describe("predictiveMaintenance.service", () => {
         IotReading,
         Notification,
       } = require("../../models");
-      const { logger } = require("../../middlewares/activityLog.middleware");
+      require("../../middlewares/activityLog.middleware");
 
       CalibrationDevice.findOne.mockResolvedValue({
         id: "device-1",
@@ -158,7 +158,7 @@ describe("predictiveMaintenance.service", () => {
         IotReading,
         Notification,
       } = require("../../models");
-      const { logger } = require("../../middlewares/activityLog.middleware");
+      require("../../middlewares/activityLog.middleware");
 
       CalibrationDevice.findOne.mockResolvedValue({
         id: "device-1",
@@ -213,7 +213,6 @@ describe("predictiveMaintenance.service", () => {
       const {
         CalibrationDevice,
         IotReading,
-        Notification,
       } = require("../../models");
 
       CalibrationDevice.findOne.mockResolvedValue({

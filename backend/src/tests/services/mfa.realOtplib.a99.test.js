@@ -150,7 +150,8 @@ describe("A-99: the real otplib, not a mock", () => {
     const secret = mfaService.createSecret();
     const uri = mfaService.buildOtpauthUri("ada@hospital.example.com", secret);
     expect(uri).toBe(
-      `otpauth://totp/Callibrator:ada%40hospital.example.com?secret=${secret}&issuer=Callibrator`,
+      // Q-43: the issuer an authenticator app shows is the product name.
+      `otpauth://totp/Device%20Calibrator:ada%40hospital.example.com?secret=${secret}&issuer=Device%20Calibrator`,
     );
   });
 

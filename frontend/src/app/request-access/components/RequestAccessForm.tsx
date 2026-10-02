@@ -17,8 +17,12 @@ import { useI18n } from "@/i18n/MessagesProvider";
 import { minutesFrom, readApiFailure } from "@/i18n/apiErrors";
 import type { MessageKey } from "@/i18n";
 
-/** The consent text shown is versioned; the version is stored with the request. */
-export const CONSENT_VERSION = "2026-09-29";
+/**
+ * The consent text shown is versioned; the version is stored with the request.
+ * 2026-10-01 (Q-42, ADR-113): the consent names the published privacy notice
+ * and links to it; the form is shown only once that notice exists.
+ */
+export const CONSENT_VERSION = "2026-10-01";
 
 const FACILITIES = ["hospital", "clinic", "calibration_lab", "other"] as const;
 const BANDS = ["lt_100", "100_499", "500_1999", "gte_2000", "unknown"] as const;
@@ -127,7 +131,7 @@ const serverFields = (body: unknown): Field[] => {
   return ORDER.filter((f) => names.includes(f));
 };
 
-export function RequestAccessForm() {
+export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: string }) {
   const { t, locale } = useI18n();
   const [values, setValues] = useState<Values>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<Field, FieldError>>>({});
@@ -425,7 +429,12 @@ export function RequestAccessForm() {
               className="pub-check"
             />
             <label htmlFor="ra-consent" className="text-[0.9375rem] text-pub-muted">
-              {t("access.consent")}
+              {t("access.consent.before")}
+              <a href={privacyNoticeUrl} className="pub-link" target="_blank" rel="noopener noreferrer">
+                {t("access.consent.notice")}
+                <span className="sr-only"> ({t("access.newTab")})</span>
+              </a>
+              {t("access.consent.after")}
             </label>
           </div>
           {errors.consent ? (

@@ -11,7 +11,7 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/qms.validator.ts,
  * which re-exports these same objects; the frontend derives its request
- * types from them. The contract for C:/Program Files/Git/api/v1/qms (non-conformance and CAPA create/update bodies).
+ * types from them. The contract for /api/v1/qms (non-conformance and CAPA create/update bodies).
  */
 import { z } from "zod";
 import { CAPA_STATUSES, NC_SEVERITIES, NC_STATUSES } from "./qmsValues";
@@ -73,6 +73,77 @@ const updateCapaSchema = z
   .refine(atLeastOneKey, NOTHING_TO_UPDATE);
 
 export { createNCSchema, updateNCSchema, createCapaSchema, updateCapaSchema };
+
+// ==========================================
+// RESPONSES (P9-20/21, ADR-103: what the API answers, published code-first)
+// ==========================================
+// The rows qms.service returns. The lists carry their associations' selected
+// attributes (LEFT joins: null when absent); a row created or updated carries none.
+
+const timestamp = z.iso.datetime();
+const rowId = z.guid();
+const personRef = z.object({ id: rowId, firstName: z.string(), lastName: z.string(), email: z.string() }).nullable();
+
+const ncFields = {
+  id: rowId,
+  tenantId: rowId,
+  ncNumber: z.string().meta({ description: "Per-tenant number, e.g. NC-00012 (A-73)" }),
+  title: z.string(),
+  description: z.string(),
+  status: z.enum(NC_STATUSES),
+  severity: z.enum(NC_SEVERITIES),
+  reportedBy: rowId,
+  deviceId: rowId.nullable(),
+  dateIdentified: timestamp,
+  rootCause: z.string().nullable(),
+  createdAt: timestamp,
+  updatedAt: timestamp,
+  deletedAt: timestamp.nullable(),
+};
+
+/** A non-conformance as raised or updated. */
+const nonConformanceResponse = z.object(ncFields).meta({ id: "NonConformance", description: "A recorded non-conformance (ISO 13485 §8.3)." });
+
+/** A non-conformance as listed: with its reporter and device. */
+const nonConformanceListItem = z
+  .object({
+    ...ncFields,
+    reporter: personRef,
+    device: z.object({ id: rowId, name: z.string(), serialNumber: z.string().nullable() }).nullable(),
+  })
+  .meta({ id: "NonConformanceListItem" });
+
+const capaFields = {
+  id: rowId,
+  tenantId: rowId,
+  capaNumber: z.string().meta({ description: "Per-tenant number, e.g. CAPA-00004 (A-73)" }),
+  ncId: rowId,
+  title: z.string(),
+  actionPlan: z.string(),
+  status: z.enum(CAPA_STATUSES),
+  assignedTo: rowId.nullable(),
+  dueDate: timestamp.nullable(),
+  completedDate: timestamp.nullable(),
+  approvedBy: rowId.nullable().meta({ description: "The caller who approved it (A-62), never a body value" }),
+  verificationNotes: z.string().nullable(),
+  createdAt: timestamp,
+  updatedAt: timestamp,
+  deletedAt: timestamp.nullable(),
+};
+
+/** A CAPA as raised or updated. */
+const capaResponse = z.object(capaFields).meta({ id: "Capa", description: "A corrective and preventive action on a non-conformance." });
+
+/** A CAPA as listed: with its non-conformance `{ id, ncNumber, title }` and its assignee. */
+const capaListItem = z
+  .object({
+    ...capaFields,
+    nonConformance: z.object({ id: rowId, ncNumber: z.string(), title: z.string() }).nullable(),
+    assignee: personRef,
+  })
+  .meta({ id: "CapaListItem" });
+
+export { nonConformanceResponse, nonConformanceListItem, capaResponse, capaListItem };
 
 // The client-side (input) and handler-side (output) types of each schema.
 export type CreateNCInput = z.input<typeof createNCSchema>;

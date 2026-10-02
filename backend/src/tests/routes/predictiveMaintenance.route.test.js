@@ -3,7 +3,7 @@
  *
  * Tests the PredictiveMaintenance route registrations and middleware chain.
  */
-const predictivemaintenanceRoutes = require("../../routes/api/predictiveMaintenance.route.js");
+const predictivemaintenanceRoutes = require("../../routes/api/predictiveMaintenance.route");
 
 describe("PredictiveMaintenance Routes", () => {
   it("should export an Express router", () => {

@@ -22,32 +22,32 @@
  * and asserts its tenant predicate. The socket is not started, so
  * emitToBoard emits nothing (config/socket: `io && ...`).
  *
- * @two-tenant api/kanban.route.js GET /projects/:projectId
- * @two-tenant api/kanban.route.js PATCH /projects/:projectId
- * @two-tenant api/kanban.route.js DELETE /projects/:projectId
- * @two-tenant api/kanban.route.js POST /projects/:projectId/members
- * @two-tenant api/kanban.route.js PATCH /projects/:projectId/members/:memberId
- * @two-tenant api/kanban.route.js DELETE /projects/:projectId/members/:memberId
- * @two-tenant api/kanban.route.js GET /projects/:projectId/sprints
- * @two-tenant api/kanban.route.js POST /projects/:projectId/sprints
- * @two-tenant api/kanban.route.js POST /projects/:projectId/sprints/migrate
- * @two-tenant api/kanban.route.js PATCH /projects/:projectId/sprints/:sprintId
- * @two-tenant api/kanban.route.js DELETE /projects/:projectId/sprints/:sprintId
- * @two-tenant api/kanban.route.js GET /projects/:projectId/metrics
- * @two-tenant api/kanban.route.js POST /projects/:projectId/columns
- * @two-tenant api/kanban.route.js POST /projects/:projectId/columns/reorder
- * @two-tenant api/kanban.route.js PATCH /projects/:projectId/columns/:columnId
- * @two-tenant api/kanban.route.js DELETE /projects/:projectId/columns/:columnId
- * @two-tenant api/kanban.route.js POST /projects/:projectId/cards
- * @two-tenant api/kanban.route.js PATCH /projects/:projectId/cards/:cardId/move
- * @two-tenant api/kanban.route.js POST /projects/:projectId/cards/:cardId/relations
- * @two-tenant api/kanban.route.js DELETE /projects/:projectId/cards/:cardId/relations/:relationId
- * @two-tenant api/kanban.route.js GET /projects/:projectId/cards/:cardId
- * @two-tenant api/kanban.route.js PATCH /projects/:projectId/cards/:cardId
- * @two-tenant api/kanban.route.js DELETE /projects/:projectId/cards/:cardId
- * @two-tenant api/kanban.route.js POST /projects/:projectId/labels
- * @two-tenant api/kanban.route.js PATCH /projects/:projectId/labels/:labelId
- * @two-tenant api/kanban.route.js DELETE /projects/:projectId/labels/:labelId
+ * @two-tenant api/kanban.route.ts GET /projects/:projectId
+ * @two-tenant api/kanban.route.ts PATCH /projects/:projectId
+ * @two-tenant api/kanban.route.ts DELETE /projects/:projectId
+ * @two-tenant api/kanban.route.ts POST /projects/:projectId/members
+ * @two-tenant api/kanban.route.ts PATCH /projects/:projectId/members/:memberId
+ * @two-tenant api/kanban.route.ts DELETE /projects/:projectId/members/:memberId
+ * @two-tenant api/kanban.route.ts GET /projects/:projectId/sprints
+ * @two-tenant api/kanban.route.ts POST /projects/:projectId/sprints
+ * @two-tenant api/kanban.route.ts POST /projects/:projectId/sprints/migrate
+ * @two-tenant api/kanban.route.ts PATCH /projects/:projectId/sprints/:sprintId
+ * @two-tenant api/kanban.route.ts DELETE /projects/:projectId/sprints/:sprintId
+ * @two-tenant api/kanban.route.ts GET /projects/:projectId/metrics
+ * @two-tenant api/kanban.route.ts POST /projects/:projectId/columns
+ * @two-tenant api/kanban.route.ts POST /projects/:projectId/columns/reorder
+ * @two-tenant api/kanban.route.ts PATCH /projects/:projectId/columns/:columnId
+ * @two-tenant api/kanban.route.ts DELETE /projects/:projectId/columns/:columnId
+ * @two-tenant api/kanban.route.ts POST /projects/:projectId/cards
+ * @two-tenant api/kanban.route.ts PATCH /projects/:projectId/cards/:cardId/move
+ * @two-tenant api/kanban.route.ts POST /projects/:projectId/cards/:cardId/relations
+ * @two-tenant api/kanban.route.ts DELETE /projects/:projectId/cards/:cardId/relations/:relationId
+ * @two-tenant api/kanban.route.ts GET /projects/:projectId/cards/:cardId
+ * @two-tenant api/kanban.route.ts PATCH /projects/:projectId/cards/:cardId
+ * @two-tenant api/kanban.route.ts DELETE /projects/:projectId/cards/:cardId
+ * @two-tenant api/kanban.route.ts POST /projects/:projectId/labels
+ * @two-tenant api/kanban.route.ts PATCH /projects/:projectId/labels/:labelId
+ * @two-tenant api/kanban.route.ts DELETE /projects/:projectId/labels/:labelId
  */
 import type * as MemoryDbModule from "../fixtures/memoryDb";
 import type * as RouteClient from "../fixtures/routeClient";
@@ -141,9 +141,10 @@ beforeEach(() => {
   seedBoard(B, fx.tenantB.id, ownerB, colleagueB);
   // createCard claims the next card number in raw SQL: it must name the tenant.
   mdb.onQuery((sql, options) => {
-    expect(sql).toContain("tenant_id = :tenantId");
-    expect(options.replacements).toEqual({ projectId: A.project, tenantId: tenantIdA });
-    return [[{ card_seq: 3 }], 1];
+    // P9-18: sent through sql() — the tenant is bound as $2.
+    expect(sql).toContain("tenant_id = $2");
+    expect(options.bind).toEqual([A.project, tenantIdA]);
+    return [{ card_seq: 3 }];
   });
 });
 

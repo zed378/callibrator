@@ -29,7 +29,7 @@ jest.mock("morgan", () => {
 });
 
 jest.mock("moment-timezone", () => {
-  const m = (time) => ({ tz: () => ({ format: () => "2026-01-01" }) });
+  const m = (_time) => ({ tz: () => ({ format: () => "2026-01-01" }) });
   return m;
 });
 

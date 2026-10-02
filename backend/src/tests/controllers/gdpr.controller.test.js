@@ -58,6 +58,8 @@ describe("gdprController", () => {
       expect(gdprService.exportUserData).toHaveBeenCalledWith(
         "tenant-123",
         "user-123",
+        // A-364: the request's actor, for the export's audit row.
+        expect.objectContaining({ userId: "user-123" }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -190,6 +192,8 @@ describe("gdprController", () => {
       expect(gdprService.exportUserData).toHaveBeenCalledWith(
         "tenant-123",
         "user-123",
+        // A-364: the request's actor, for the export's audit row.
+        expect.objectContaining({ userId: "user-123" }),
       );
     });
 

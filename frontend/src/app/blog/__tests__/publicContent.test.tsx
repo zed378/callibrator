@@ -2,7 +2,7 @@
 /**
  * The public Blog & News pages (async Server Components) and their data
  * layer, lib/content.api.ts, against the backend's public content endpoints
- * (content.controller.js):
+ * (content.controller.ts):
  *  - GET /api/v1/content/posts/public?limit=100&type=&category= → rows in `data`
  *  - GET /api/v1/content/posts/public/:slug → `data: post`; 404 "Post not found"
  *  - GET /api/v1/content/categories/public → rows in `data`
@@ -22,8 +22,7 @@
  * Fail-before (axe heading-order): /news jumped from its h1 to the month
  * h3s; it now has a visually hidden h2, as /blog does.
  */
-import React from "react";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { axeViolations } from "@/tests/a11y/axe";
 
 jest.mock("next/cache", () => ({ cacheLife: jest.fn(), cacheTag: jest.fn() }));
@@ -46,39 +45,14 @@ import BlogDetailPage, { generateMetadata as blogMetadata } from "../[slug]/page
 import NewsPage from "../../news/page";
 import NewsDetailPage, { generateMetadata as newsMetadata } from "../../news/[slug]/page";
 import { formatDate, getPublishedPosts } from "@/lib/content.api";
+import { renderServer, resolveServer } from "@/tests/support/serverTree";
 import { API_BASE_URL } from "@/constants";
 
 // Whole-page renders with axe: allow for a loaded machine (as calibration/devices page tests do).
 jest.setTimeout(20000);
 
-type Props = Record<string, unknown> & { children?: React.ReactNode };
-
-/**
- * Resolve the async Server Components in a page's element tree, as the Next
- * server does, so the result can be rendered by the client renderer.
- */
-async function resolveServer(node: React.ReactNode | Promise<React.ReactNode>): Promise<React.ReactNode> {
-  // P10-13: the pages themselves are async now (they read the locale first).
-  if (node instanceof Promise) return resolveServer(await node);
-  if (Array.isArray(node)) return Promise.all(node.map(resolveServer));
-  if (!React.isValidElement(node)) return node;
-  const el = node as React.ReactElement<Props>;
-  if (typeof el.type === "function" && el.type.constructor.name === "AsyncFunction") {
-    const out = await (el.type as (p: Props) => Promise<React.ReactNode>)(el.props);
-    return resolveServer(out);
-  }
-  if (el.props && "children" in el.props) {
-    const children = await resolveServer(el.props.children);
-    // Passed as separate arguments, so a resolved list keeps static-children semantics.
-    return React.cloneElement(el, undefined, ...(Array.isArray(children) ? children : [children]));
-  }
-  return el;
-}
-
-const renderPage = async (page: React.ReactNode | Promise<React.ReactNode>) => {
-  const tree = await resolveServer(page);
-  return render(<>{tree}</>);
-};
+// The async-Server-Component resolver lives in tests/support/serverTree (shared with the landing test).
+const renderPage = renderServer;
 
 const post = (over: Record<string, unknown> = {}) => ({
   id: "p1",

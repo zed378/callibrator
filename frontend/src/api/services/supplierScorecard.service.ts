@@ -1,50 +1,37 @@
-import { api } from "../client";
-import type { ListMeta, ListPage } from "./risk.service";
+// src/api/services/supplierScorecard.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/supplierScorecard.openapi.ts →
+// @callibrator/contracts/supplierScorecard). The exported names are unchanged.
+import { typedApi, unwrap, type JsonBody, type Op, type components } from "../typed";
+import type { ListPage } from "./risk.service";
+
+type S = "/api/v1/supplier-scorecard";
+type CreateBody = JsonBody<Op<S, "post">>;
+type UpdateBody = JsonBody<Op<`${S}/{id}`, "put">>;
 
 // ---------- Types ----------
 
-export type SupplierScorecardStatus = "APPROVED" | "PROBATION" | "DISQUALIFIED";
+export type SupplierScorecardStatus = NonNullable<CreateBody["status"]>;
 
-export interface SupplierScorecard {
-  id: string;
-  tenantId: string;
-  vendorId: string;
-  evaluationDate: string;
-  /** 0-100 */
-  qualityScore: number;
-  deliveryScore: number;
-  serviceScore: number;
-  /** Virtual: round((quality + delivery + service) / 3) */
-  overallScore: number;
-  status: string;
-  comments?: string;
-  evaluatedBy?: string;
-  nextEvaluationDate?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+/**
+ * A scorecard. `overallScore` is virtual: round((quality + delivery +
+ * service) / 3). A list or single read also carries its vendor and evaluator
+ * (SupplierScorecardWithRefs); a write's answer is the row.
+ */
+export type SupplierScorecard = components["schemas"]["SupplierScorecard"];
 
-export interface SupplierScorecardCreateInput {
-  vendorId: string;
-  evaluationDate: string;
-  qualityScore?: number;
-  deliveryScore?: number;
-  serviceScore?: number;
+/**
+ * The create body, with `status` as the page's select gives it (a string;
+ * the select offers only the contract's statuses, A-336).
+ */
+export type SupplierScorecardCreateInput = Omit<CreateBody, "status"> & {
   status?: SupplierScorecardStatus | string;
-  comments?: string;
-  nextEvaluationDate?: string;
-}
+};
 
 export type SupplierScorecardUpdateInput = Partial<SupplierScorecardCreateInput>;
 
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-  meta?: Partial<ListMeta>;
-}
+const byId = (id: string) => ({ params: { path: { id } } });
 
 // ---------- Service ----------
 
@@ -55,13 +42,8 @@ export const supplierScorecardService = {
   list: async (params?: {
     vendorId?: string;
     status?: string;
-  }): Promise<SupplierScorecard[]> => {
-    const response = await api.get<BackendResponse<SupplierScorecard[]>>(
-      "/api/v1/supplier-scorecard",
-      { params },
-    );
-    return response.data;
-  },
+  }): Promise<SupplierScorecard[]> =>
+    (await typedApi.GET("/api/v1/supplier-scorecard", { params: { query: params } }).then(unwrap)).data,
 
   /**
    * One page of scorecards with the backend's `meta` (F-19). The backend's
@@ -74,20 +56,19 @@ export const supplierScorecardService = {
     page: number;
     limit: number;
   }): Promise<ListPage<SupplierScorecard>> => {
-    const response = await api.get<BackendResponse<SupplierScorecard[]>>(
-      "/api/v1/supplier-scorecard",
-      { params },
-    );
+    const response = await typedApi.GET("/api/v1/supplier-scorecard", { params: { query: params } }).then(unwrap);
+    // Defensive, as built: a body without rows or `meta` still renders.
     const rows = Array.isArray(response.data) ? response.data : [];
-    const total = response.meta?.total ?? rows.length;
-    const limit = response.meta?.limit ?? params.limit;
+    const meta = response.meta as Partial<components["schemas"]["PaginationMeta"]> | undefined;
+    const total = meta?.total ?? rows.length;
+    const limit = meta?.limit ?? params.limit;
     return {
       rows,
       meta: {
         total,
-        page: response.meta?.page ?? params.page,
+        page: meta?.page ?? params.page,
         limit,
-        totalPages: response.meta?.totalPages ?? Math.max(1, Math.ceil(total / limit)),
+        totalPages: meta?.totalPages ?? Math.max(1, Math.ceil(total / limit)),
       },
     };
   },
@@ -95,25 +76,17 @@ export const supplierScorecardService = {
   /**
    * Get a single scorecard. GET /api/v1/supplier-scorecard/:id
    */
-  getById: async (id: string): Promise<SupplierScorecard> => {
-    const response = await api.get<BackendResponse<SupplierScorecard>>(
-      `/api/v1/supplier-scorecard/${id}`,
-    );
-    return response.data;
-  },
+  getById: async (id: string): Promise<SupplierScorecard> =>
+    (await typedApi.GET("/api/v1/supplier-scorecard/{id}", byId(id)).then(unwrap)).data,
 
   /**
    * Create a scorecard. POST /api/v1/supplier-scorecard
    */
   create: async (
     data: SupplierScorecardCreateInput,
-  ): Promise<SupplierScorecard> => {
-    const response = await api.post<BackendResponse<SupplierScorecard>>(
-      "/api/v1/supplier-scorecard",
-      data,
-    );
-    return response.data;
-  },
+  ): Promise<SupplierScorecard> =>
+    // The status is the page's select value (see SupplierScorecardCreateInput).
+    (await typedApi.POST("/api/v1/supplier-scorecard", { body: data as CreateBody }).then(unwrap)).data,
 
   /**
    * Update a scorecard. PUT /api/v1/supplier-scorecard/:id
@@ -121,19 +94,15 @@ export const supplierScorecardService = {
   update: async (
     id: string,
     data: SupplierScorecardUpdateInput,
-  ): Promise<SupplierScorecard> => {
-    const response = await api.put<BackendResponse<SupplierScorecard>>(
-      `/api/v1/supplier-scorecard/${id}`,
-      data,
-    );
-    return response.data;
-  },
+  ): Promise<SupplierScorecard> =>
+    (await typedApi.PUT("/api/v1/supplier-scorecard/{id}", { ...byId(id), body: data as UpdateBody }).then(unwrap))
+      .data,
 
   /**
    * Delete a scorecard. DELETE /api/v1/supplier-scorecard/:id
    */
   delete: async (id: string): Promise<void> => {
-    await api.delete(`/api/v1/supplier-scorecard/${id}`);
+    await typedApi.DELETE("/api/v1/supplier-scorecard/{id}", byId(id));
   },
 };
 

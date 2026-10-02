@@ -43,7 +43,7 @@ const statusVariant = (
 const fmt = (v?: string) => (v ? new Date(v).toLocaleString() : "—");
 
 export default function BatchJobsPage() {
-  // ADR-102: queuing a job is gated on `batch-jobs` write (batchJobs.route.js).
+  // ADR-102: queuing a job is gated on `batch-jobs` write (batchJobs.route.ts).
   const { canWrite } = usePermissions();
   const mayWrite = canWrite("batch-jobs");
   const addToast = useToastStore((s) => s.addToast);
@@ -162,11 +162,6 @@ export default function BatchJobsPage() {
                 style={{ width: `${Math.min(100, pct)}%` }}
               />
             </div>
-            {job.failedItems ? (
-              <p className="mt-1 text-xs text-destructive">
-                {job.failedItems} failed
-              </p>
-            ) : null}
           </div>
         );
       },
@@ -197,12 +192,11 @@ export default function BatchJobsPage() {
             </Button>
           );
         }
-        // A BatchJob row names its failure `errorDetails`
-        // (batchJob.model.ts); `errorMessage` is kept as a fallback. Read
-        // only as errorMessage, a failed job never showed why.
-        const errorText =
-          (typeof r.errorDetails === "string" ? r.errorDetails : null) ??
-          job.errorMessage;
+        // A-354: a BatchJob row names its failure `errorDetails`
+        // (batchJob.model.ts) and carries no `errorMessage` or `failedItems`
+        // (the model has neither), so the page reads only `errorDetails` and
+        // shows no failed-item count.
+        const errorText = job.errorDetails;
         if (errorText) {
           return (
             <span className="text-xs text-destructive" title={errorText}>

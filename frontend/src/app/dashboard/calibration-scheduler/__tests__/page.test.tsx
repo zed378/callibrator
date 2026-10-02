@@ -126,7 +126,7 @@ describe("Calibration scheduler page", () => {
     await screen.findByText("Infusion Pump A");
 
     fireEvent.click(screen.getByLabelText("All tenants"));
-    await waitFor(() => expect(lastDueParams()).toEqual({ leadDays: 30, allTenants: true }));
+    await waitFor(() => expect(lastDueParams()).toEqual({ leadDays: 30, allTenants: "true" }));
 
     mockedPost.mockResolvedValue(ok(summary, "Calibration scan completed"));
     fireEvent.click(screen.getByRole("button", { name: /Run Scheduler/ }));

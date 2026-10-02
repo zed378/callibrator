@@ -145,7 +145,7 @@ describe("notification.service", () => {
       const created = mockNotification({ id: "n-new", userId: "u-1" });
       Notification.create.mockResolvedValueOnce(created);
 
-      const result = await emitNotification({
+      await emitNotification({
         title: "Test",
         message: "Hello",
         userId: "u-1",

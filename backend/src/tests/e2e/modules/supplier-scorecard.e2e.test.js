@@ -2,7 +2,7 @@
  * E2E Tests: Supplier Scorecard module (LIVE HTTP)
  *
  * Mount: /api/v1/supplier-scorecard  (see index.js)
- * Route file: src/routes/api/supplierScorecard.route.js
+ * Route file: src/routes/api/supplierScorecard.route.ts
  *
  * Covered routes:
  *   POST   /supplier-scorecard          (denyApiKey)
@@ -13,6 +13,11 @@
  *
  * A parent Vendor is created first (scorecard FKs vendorId) and cleaned up at
  * the end. getScorecards returns rows in `data` (array) + `meta` sibling.
+ *
+ * A-347 (2026-10-02): `status` is the A-336 contract's vocabulary
+ * (`APPROVED` / `PROBATION` / `DISQUALIFIED`, as the frontend sends); the
+ * title-case `Approved` this spec sent is a 400, asserted below. A-346: a
+ * malformed `:id` is a 400 (`validateUuid`), never the 500 it was.
  */
 const {
   httpGet,
@@ -75,7 +80,7 @@ describe("E2E Supplier Scorecard (HTTP)", () => {
         qualityScore: 90,
         deliveryScore: 85,
         serviceScore: 80,
-        status: "Approved",
+        status: "APPROVED",
         comments: "e2e evaluation",
       },
       auth,
@@ -83,6 +88,15 @@ describe("E2E Supplier Scorecard (HTTP)", () => {
     expect(status).toBe(201);
     expect(body.data).toHaveProperty("id");
     ids.scorecard = body.data.id;
+  });
+
+  test("POST /supplier-scorecard — 400 on a status outside the contract (A-347)", async () => {
+    const { status } = await httpPost(
+      "/supplier-scorecard",
+      { vendorId: ids.vendor, evaluationDate: "2026-07-01", status: "Approved" },
+      auth,
+    );
+    expect(status).toBe(400);
   });
 
   test("POST /supplier-scorecard — 404 on unknown vendorId", async () => {
@@ -122,6 +136,18 @@ describe("E2E Supplier Scorecard (HTTP)", () => {
     );
     expect(status).toBe(404);
   });
+
+  test.each(["get", "put", "delete"])(
+    "%s /supplier-scorecard/null — 400 malformed id, never 500 (A-346)",
+    async (method) => {
+      const send = { get: httpGet, put: httpPut, delete: httpDelete }[method];
+      const { status } =
+        method === "put"
+          ? await send("/supplier-scorecard/null", { comments: "x" }, auth)
+          : await send("/supplier-scorecard/null", auth);
+      expect(status).toBe(400);
+    },
+  );
 
   test("GET /supplier-scorecard — 401 without token", async () => {
     const { status } = await httpGet("/supplier-scorecard");

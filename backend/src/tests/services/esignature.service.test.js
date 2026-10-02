@@ -10,11 +10,6 @@ jest.mock("../../config", () => {
 });
 
 const {
-  generateKeyPair,
-  signDocument,
-  verifySignature,
-  getWorkflow,
-  cancelWorkflow,
   getStatus,
   SIGNATURE_STATUS,
   WORKFLOW_STATUS,

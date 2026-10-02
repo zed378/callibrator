@@ -1,5 +1,5 @@
 /**
- * Tests for dashboard.controller.js
+ * Tests for dashboard.controller.ts
  */
 
 jest.mock("../../services/dashboard.service", () => ({

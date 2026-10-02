@@ -103,9 +103,11 @@ beforeEach(() => {
   // The two counters are raw SQL; each names its tenant.
   mdb.onQuery((sql) => {
     if (sql.includes("ticket_counters")) {
-      return [[{ seq: 2 }], 1];
+      // P9-18: the counter is sent through sql(), which answers the rows directly.
+      return [{ seq: 2 }];
     }
-    return [[{ card_seq: 2 }], 1];
+    // P9-18: the card_seq bump is sent through sql(), which answers the rows directly.
+    return [{ card_seq: 2 }];
   });
 });
 

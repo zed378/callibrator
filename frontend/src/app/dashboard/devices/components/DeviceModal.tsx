@@ -7,7 +7,7 @@ import {
   Textarea,
   Button,
 } from "@/components/ui";
-import { Device, DeviceFormState } from "@/api/services/device.service";
+import { DeviceFormState, DeviceStatus } from "@/api/services/device.service";
 import type { Warehouse } from "@/types";
 
 interface DeviceModalProps {
@@ -122,7 +122,7 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
             </label>
             <Select id="devices-components-devicemodal-f7"
               value={form.status || "active"}
-              onChange={(value) => setForm({ ...form, status: value as Device["status"] })}
+              onChange={(value) => setForm({ ...form, status: value as DeviceStatus })}
               options={[
                 { value: "active", label: "Active" },
                 { value: "inactive", label: "Inactive" },

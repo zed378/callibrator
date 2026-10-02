@@ -45,7 +45,6 @@ const { success, error } = require("../../utils/response.util");
 
 const TENANT_ID = "550e8400-e29b-41d4-a716-446655440000";
 const USER_ID = "550e8400-e29b-41d4-a716-446655440001";
-const ROLE_ID = "550e8400-e29b-41d4-a716-446655440002";
 
 describe("tenantHierarchy Controller", () => {
   let req, res, next;
@@ -196,7 +195,7 @@ describe("tenantHierarchy Controller", () => {
     // the route once passed a schema's own `.validate` as express middleware,
     // which threw on every request. These cases pin the validated behaviour.
     it("should add a child tenant under a parent, applying schema defaults", async () => {
-      req.params = { parentId: TENANT_ID };
+      req.params = { tenantId: TENANT_ID };
       req.body = { name: "New Branch" };
       tenantHierarchyService.createSubOrganization.mockResolvedValue({
         tenantId: "child-2",
@@ -222,7 +221,7 @@ describe("tenantHierarchy Controller", () => {
     });
 
     it("should strip unknown fields before hitting the service", async () => {
-      req.params = { parentId: TENANT_ID };
+      req.params = { tenantId: TENANT_ID };
       req.body = { name: "New Branch", plan: "business", hacker: "ignored" };
       tenantHierarchyService.createSubOrganization.mockResolvedValue({
         tenantId: "child-3",
@@ -238,7 +237,7 @@ describe("tenantHierarchy Controller", () => {
     });
 
     it("should reject a body with no name", async () => {
-      req.params = { parentId: TENANT_ID };
+      req.params = { tenantId: TENANT_ID };
       req.body = {};
 
       await tenantHierarchyController.addChildTenant(req, res, next);
@@ -250,7 +249,7 @@ describe("tenantHierarchy Controller", () => {
     });
 
     it("should reject an invalid plan", async () => {
-      req.params = { parentId: TENANT_ID };
+      req.params = { tenantId: TENANT_ID };
       req.body = { name: "New Branch", plan: "not-a-plan" };
 
       await tenantHierarchyController.addChildTenant(req, res, next);
@@ -271,7 +270,7 @@ describe("tenantHierarchy Controller", () => {
       const { checkInput } = require("../../validators/input");
       checkInput.mockReturnValueOnce({ ok: false, errors: [] });
 
-      req.params = { parentId: TENANT_ID };
+      req.params = { tenantId: TENANT_ID };
       req.body = { name: "New Branch" };
 
       await tenantHierarchyController.addChildTenant(req, res, next);

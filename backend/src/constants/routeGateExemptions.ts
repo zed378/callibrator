@@ -76,17 +76,17 @@ const OWN_WEBAUTHN = "the caller's own passkeys (req.user.id); WebAuthn ceremony
 
 const KANBAN: RouteGateExemption = {
   kind: SERVICE,
-  check: "services/kanban.service.js#assertAccess",
+  check: "services/kanban.service.ts#assertAccess",
   reason: "project membership plus a minimum level, checked by kanban.service#assertAccess (viewer/editor/owner) on every call",
 };
 const KANBAN_CREATE: RouteGateExemption = {
   kind: SERVICE,
-  check: "services/kanban.service.js#createProject",
+  check: "services/kanban.service.ts#createProject",
   reason: "creating a project makes the caller its owner; every later act on it goes through kanban.service#assertAccess",
 };
 const TICKETS: RouteGateExemption = {
   kind: SERVICE,
-  check: "services/ticket.service.js#loadTicket",
+  check: "services/ticket.service.ts#loadTicket",
   reason: "ticket.service scopes every read to the raiser or a responder (tenantScope / isResponder / assertCanManage via loadTicket)",
 };
 const SCIM: RouteGateExemption = {
@@ -96,11 +96,11 @@ const SCIM: RouteGateExemption = {
 };
 
 const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> = {
-  "api/session.route.js": {
+  "api/session.route.ts": {
     "GET /mine": { kind: SELF, reason: "Q-08 (ADR-084): lists the caller's own sessions only — ownSessions.service filters on req.user.id" },
     "POST /mine/:id/revoke": { kind: SELF, reason: "Q-08 (ADR-084): revokes one of the caller's own sessions — another user's is 404 (ownSessions.service)" },
   },
-  "api/auth.route.js": {
+  "api/auth.route.ts": {
     "POST /register": { kind: PUBLIC, reason: LOGIN_SURFACE },
     "POST /login": { kind: PUBLIC, reason: LOGIN_SURFACE },
     "POST /mfa/login": { kind: PUBLIC, reason: `${LOGIN_SURFACE}; requires the MFA challenge token from /login` },
@@ -139,31 +139,31 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     },
     "POST /impersonate/exit": { kind: SELF, reason: "ends the caller's own impersonation session (logout of that session)" },
   },
-  "api/attachments.route.js": {
+  "api/attachments.route.ts": {
     "GET /:id/signed": { kind: PUBLIC, reason: "signed attachment URL — the HMAC signature and expiry are the capability (owned by the storage/attachments work)" },
   },
-  "api/storage.route.js": {
+  "api/storage.route.ts": {
     "GET /object": { kind: PUBLIC, reason: "signed file download — the HMAC-signed path is the capability (owned by the storage/attachments work)" },
   },
-  "api/billing.route.js": {
+  "api/billing.route.ts": {
     "POST /webhook": { kind: PUBLIC, reason: "Stripe is the caller; Stripe signature verified over the raw body" },
   },
-  "api/certificates.route.js": {
+  "api/certificates.route.ts": {
     "GET /verify/:certificateNumber": { kind: PUBLIC, reason: "QR code on a printed certificate, scanned by anyone; the number alone yields the minimal verdict, the certificate's verification token (carried by the QR) the full one (A-293)" },
     "GET /verify/:certificateNumber/document": { kind: PUBLIC, reason: "the signed-PDF link from the public verification page; a signed, expiring token is the capability (as for /storage/object)" },
   },
-  "api/content.route.js": {
+  "api/content.route.ts": {
     "GET /posts/public": { kind: PUBLIC, reason: "the public site; published rows only, read-only" },
     "GET /posts/public/:slug": { kind: PUBLIC, reason: "the public site; published rows only, read-only" },
     "GET /categories/public": { kind: PUBLIC, reason: "the public site; read-only" },
   },
-  "api/iot.route.js": {
+  "api/iot.route.ts": {
     "POST /ingest": { kind: PUBLIC, reason: "devices have no session; the per-device X-IoT-Token is the credential (A-29, A-45)" },
   },
-  "api/tenant.route.js": {
+  "api/tenant.route.ts": {
     "GET /public": { kind: PUBLIC, reason: "login-page branding for an active tenant id the caller already holds: id, name, code, colour, logo only" },
   },
-  "api/oidc.route.js": {
+  "api/oidc.route.ts": {
     "GET /.well-known/openid-configuration": { kind: PUBLIC, reason: "OIDC discovery — public by specification" },
     "GET /.well-known/jwks.json": { kind: PUBLIC, reason: "OIDC signing keys (public halves) — public by specification" },
     "GET /authorize": { kind: PUBLIC, reason: "OIDC authorization endpoint; validates client_id and redirect_uri, then hands the browser to the login/consent flow" },
@@ -172,8 +172,12 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "GET /authorize/request/:requestId": { kind: SELF, reason: "the caller's own pending consent request" },
     "POST /authorize/decision": { kind: SELF, reason: "the caller's own consent decision" },
   },
-  "api/gdpr.route.js": {
+  "api/gdpr.route.ts": {
     "POST /export": { kind: SELF, reason: OWN_GDPR },
+    "GET /exports/:exportId/download": {
+      kind: SELF,
+      reason: `${OWN_GDPR}; the export's manifest must name the caller and their tenant, else 404 (gdpr.service#getExportDownload, A-360)`,
+    },
     "POST /erasure": { kind: SELF, reason: OWN_GDPR },
     "GET /erasure/:requestId": { kind: SELF, reason: `${OWN_GDPR}; another member's request is 404 unless the caller holds gdpr read (A-252)` },
     "PUT /consent": { kind: SELF, reason: OWN_GDPR },
@@ -182,7 +186,7 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "PUT /rectify": { kind: SELF, reason: OWN_GDPR },
     "POST /restrict": { kind: SELF, reason: OWN_GDPR },
   },
-  "api/notifications.route.js": {
+  "api/notifications.route.ts": {
     "GET /": { kind: SELF, reason: OWN_NOTIFICATION },
     "PATCH /:notificationId/read": { kind: SELF, reason: OWN_NOTIFICATION },
     "PATCH /read-all": { kind: SELF, reason: OWN_NOTIFICATION },
@@ -225,7 +229,7 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
       reason: "P10-15: the single-use, time-limited invitation token is the capability; one 400 for any bad link",
     },
   },
-  "api/webauthn.route.js": {
+  "api/webauthn.route.ts": {
     "GET /status": { kind: SELF, reason: OWN_WEBAUTHN },
     "POST /registration-options": { kind: SELF, reason: OWN_WEBAUTHN },
     "POST /verify-registration": { kind: SELF, reason: OWN_WEBAUTHN },
@@ -237,26 +241,26 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "PATCH /credentials/:id": { kind: SELF, reason: OWN_WEBAUTHN },
     "DELETE /credentials/:id": { kind: SELF, reason: OWN_WEBAUTHN },
   },
-  "api/sop.route.js": {
+  "api/sop.route.ts": {
     "POST /:id/acknowledge": {
       kind: SELF,
       reason: "the caller attests their OWN training on an SOP (ISO 13485 §6.2); the roles that must acknowledge hold no sop menu (A-28)",
     },
   },
-  "api/tenantHierarchy.route.js": {
+  "api/tenantHierarchy.route.ts": {
     "GET /tree": { kind: SELF, reason: "the caller's own tenant's tree (req.user.tenantId only)" },
     "GET /:tenantId/children": { kind: INLINE, gate: "ownTenantGuard", reason: "own tenant or SUPERADMIN, else 404 (A-01)" },
     "GET /:tenantId/descendants": { kind: INLINE, gate: "ownTenantGuard", reason: "own tenant or SUPERADMIN, else 404 (A-01)" },
     "GET /:tenantId/ancestors": { kind: INLINE, gate: "ownTenantGuard", reason: "own tenant or SUPERADMIN, else 404 (A-01)" },
     "GET /:tenantId/parent": { kind: INLINE, gate: "ownTenantGuard", reason: "own tenant or SUPERADMIN, else 404 (A-01)" },
   },
-  "api/menuGroups.route.js": {
+  "api/menuGroups.route.ts": {
     "POST /filter": { kind: INLINE, gate: "ownRoleOnly", reason: "the caller's own role's menu only, or SUPERADMIN (AZ-01 G-06)" },
     "POST /get-assignments": { kind: INLINE, gate: "ownRoleOnly", reason: "the caller's own role's menu only, or SUPERADMIN (AZ-01 G-06)" },
     "GET /menu-groups": { kind: INLINE, gate: "ownRoleOnly", reason: "the sidebar: the caller's own role's menu only, or SUPERADMIN (AZ-01 G-06)" },
     "GET /my-permissions": { kind: SELF, reason: "ADR-102: the caller's own effective menu permissions (menuGroup.service#getMyPermissions reads req.user only)" },
   },
-  "api/scim.route.js": {
+  "api/scim.route.ts": {
     "GET /Users": SCIM,
     "GET /Users/:id": SCIM,
     "POST /Users": SCIM,
@@ -270,8 +274,8 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "PATCH /Groups/:id": SCIM,
     "DELETE /Groups/:id": SCIM,
   },
-  "api/kanban.route.js": {
-    "GET /projects": { kind: SERVICE, check: "services/kanban.service.js#listProjects", reason: "lists only the projects the caller is a member of" },
+  "api/kanban.route.ts": {
+    "GET /projects": { kind: SERVICE, check: "services/kanban.service.ts#listProjects", reason: "lists only the projects the caller is a member of" },
     "POST /projects": KANBAN_CREATE,
     "GET /projects/:projectId": KANBAN,
     "PATCH /projects/:projectId": KANBAN,
@@ -300,31 +304,31 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "POST /projects/:projectId/cards/:cardId/relations": KANBAN,
     "DELETE /projects/:projectId/cards/:cardId/relations/:relationId": KANBAN,
   },
-  "api/tickets.route.js": {
-    "GET /": { kind: SERVICE, check: "services/ticket.service.js#tenantScope", reason: "a raiser sees their own tickets; a responder role (RESPONDER_ROLES) the queue — ticket.service#listTickets" },
+  "api/tickets.route.ts": {
+    "GET /": { kind: SERVICE, check: "services/ticket.service.ts#tenantScope", reason: "a raiser sees their own tickets; a responder role (RESPONDER_ROLES) the queue — ticket.service#listTickets" },
     "POST /": { kind: SELF, reason: "raises a ticket as the caller (every role raises: tickets-raise)" },
-    "GET /metrics": { kind: SERVICE, check: "services/ticket.service.js#isResponder", reason: "scoped by ticket.service#getMetrics to what the caller may see" },
+    "GET /metrics": { kind: SERVICE, check: "services/ticket.service.ts#isResponder", reason: "scoped by ticket.service#getMetrics to what the caller may see" },
     "GET /:ticketId": TICKETS,
-    "PATCH /:ticketId": { kind: SERVICE, check: "services/ticket.service.js#assertCanManage", reason: "ticket.service#updateTicket: raiser or responder, via assertCanManage" },
-    "DELETE /:ticketId": { kind: SERVICE, check: "services/ticket.service.js#assertCanManage", reason: "ticket.service#deleteTicket via assertCanManage" },
-    "POST /:ticketId/assign": { kind: SERVICE, check: "services/ticket.service.js#isResponder", reason: "responders only — ticket.service#assignTicket" },
+    "PATCH /:ticketId": { kind: SERVICE, check: "services/ticket.service.ts#assertCanManage", reason: "ticket.service#updateTicket: raiser or responder, via assertCanManage" },
+    "DELETE /:ticketId": { kind: SERVICE, check: "services/ticket.service.ts#assertCanManage", reason: "ticket.service#deleteTicket via assertCanManage" },
+    "POST /:ticketId/assign": { kind: SERVICE, check: "services/ticket.service.ts#isResponder", reason: "responders only — ticket.service#assignTicket" },
     "POST /:ticketId/comments": TICKETS,
   },
-  // A-304 (ADR-100): api/dashboard.route.js GET /metrics is gated on `home`
+  // A-304 (ADR-100): api/dashboard.route.ts GET /metrics is gated on `home`
   // read (every role holds it) and is no longer exempt.
-  "internal/health.route.js": {
+  "internal/health.route.ts": {
     "GET /live": { kind: PUBLIC, reason: "liveness probe; dependency-free, discloses nothing (A-06/A-15)" },
     "GET /ready": { kind: PUBLIC, reason: "readiness probe; aggregate verdict only (A-06/A-15)" },
     "GET /health": { kind: PUBLIC, reason: "compose/Helm health check; aggregate verdict only (A-06/A-15)" },
     "GET /metrics": { kind: INLINE, gate: "metricsAuth", reason: "Prometheus scrape of job metrics; the scraper has no session — bearer METRICS_TOKEN checked by metricsAuth" },
   },
-  "internal/migration.route.js": {
+  "internal/migration.route.ts": {
     "GET /up": { kind: INLINE, gate: "superAdminOrBootstrap", reason: "SUPERADMIN, or ALLOW_SEEDING=true during bootstrap" },
     "GET /seeding": { kind: INLINE, gate: "superAdminOrBootstrap", reason: "SUPERADMIN, or ALLOW_SEEDING=true during bootstrap — seeding an empty database has no user to authenticate" },
     "GET /seed-demo": { kind: INLINE, gate: "superAdminOrBootstrap", reason: "SUPERADMIN, or ALLOW_SEEDING=true; also requires SEED_DEMO=true" },
   },
   // Registered directly on the app, outside src/routes. Read from source text.
-  "index.js": {
+  "index.ts": {
     "GET /": { kind: PUBLIC, reason: "root liveness banner: a fixed string" },
   },
   // P9-25 (ADR-103): docs/swagger.js became docs/apiDocs.ts. The contract and its

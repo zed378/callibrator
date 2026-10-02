@@ -36,10 +36,24 @@ export const keepQuery: Middleware = {
 
 /** Send one built Request through `api`, and give its answer back as a JSON `Response`. */
 export const apiFetch = async (request: Request): Promise<Response> => {
+  try {
+    return await send(request);
+  } catch (error: unknown) {
+    // openapi-fetch takes a FALSY rejection for "no error" and goes on to read
+    // a Response that is not there (a TypeError about `headers`). A falsy
+    // rejection is passed on as an empty object instead: like the falsy value,
+    // it is no Error and carries no message or response, so a caller's
+    // fallback ("Failed to update role") reads it as it read the value.
+    throw error || {};
+  }
+};
+
+/** The transport proper: one `api` call per built Request. */
+const send = async (request: Request): Promise<Response> => {
   const path = new URL(request.url).pathname;
   const query = queries.get(request);
   const config = query === undefined ? undefined : { params: query };
-  const text = request.method === "GET" || request.method === "DELETE" ? "" : await request.text();
+  const text = request.method === "GET" ? "" : await request.text();
   const body: unknown = text === "" ? undefined : JSON.parse(text);
 
   let data: unknown;
@@ -47,17 +61,25 @@ export const apiFetch = async (request: Request): Promise<Response> => {
     case "GET":
       data = config === undefined ? await api.get(path) : await api.get(path, config);
       break;
+    // A DELETE with a body sends it as axios's `data`, as a hand-written service
+    // did (`api.delete(path, { data })`, the notifications' bulk delete).
     case "DELETE":
-      data = config === undefined ? await api.delete(path) : await api.delete(path, config);
+      if (body !== undefined) {
+        data = await api.delete(path, { ...config, data: body });
+      } else {
+        data = config === undefined ? await api.delete(path) : await api.delete(path, config);
+      }
       break;
+    // A body-less write is sent as `api.post(path)`, exactly as a hand-written
+    // service sent it (the same request; the same call the tests mock).
     case "POST":
-      data = await api.post(path, body);
+      data = body === undefined ? await api.post(path) : await api.post(path, body);
       break;
     case "PUT":
-      data = await api.put(path, body);
+      data = body === undefined ? await api.put(path) : await api.put(path, body);
       break;
     case "PATCH":
-      data = await api.patch(path, body);
+      data = body === undefined ? await api.patch(path) : await api.patch(path, body);
       break;
     default:
       throw new Error(`Unsupported method ${request.method}`);
@@ -93,3 +115,35 @@ export const unwrap = <T>(result: { data?: T; error?: unknown }): T => {
   }
   return result.data;
 };
+
+// ---------------------------------------------------------------------------
+// P9-25 (ADR-103 item 11): types read off `paths`, for the services on this
+// client. A service's request and response types are these, never a
+// hand-written copy (ADR-097 Am. 1: the generated contract is canonical).
+// ---------------------------------------------------------------------------
+
+/** Every method an OpenAPI path item can carry. */
+type Method = "get" | "post" | "put" | "patch" | "delete";
+
+/** The operation at `P` / `M`. */
+export type Op<P extends keyof paths, M extends Method> = NonNullable<paths[P][M]>;
+
+/** The JSON request body an operation publishes. */
+export type JsonBody<O> = O extends { requestBody?: { content: { "application/json": infer B } } } ? B : never;
+
+/** The query an operation publishes. */
+export type QueryOf<O> = O extends { parameters: { query?: infer Q } } ? NonNullable<Q> : never;
+
+/** The JSON answer of an operation's success status (200, 201 or 202). */
+export type Answer<O> = O extends { responses: infer R }
+  ? R extends { 200: { content: { "application/json": infer A } } }
+    ? A
+    : R extends { 201: { content: { "application/json": infer A } } }
+      ? A
+      : R extends { 202: { content: { "application/json": infer A } } }
+        ? A
+        : never
+  : never;
+
+/** The `data` of an operation's success envelope. */
+export type DataOf<O> = Answer<O> extends { data: infer D } ? D : never;

@@ -170,7 +170,7 @@ describe("tenantLifecycleScheduler middleware", () => {
   });
 
   it("index.js starts it beside the other cron jobs, and no longer uses a setInterval", () => {
-    const source = fs.readFileSync(path.join(__dirname, "../../../index.js"), "utf8");
+    const source = fs.readFileSync(path.join(__dirname, "../../../index.ts"), "utf8");
 
     expect(source).toMatch(/initRetentionScheduler\(\);\s*(\/\/.*\s*)*initTenantLifecycleScheduler\(\);/);
     expect(source).not.toMatch(/processExpiredGracePeriods/);
