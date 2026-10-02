@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /**
  * A-165 — the audit page's "Platform" scope, against the backend contract
- * (audit.controller.js readableTenantId, A-125):
+ * (audit.controller.ts readableTenantId, A-125):
  *  - GET /api/v1/audit?scope=platform reads the PLATFORM tenant's trail, and
  *    is answered to a super admin only (anyone else: 403);
  *  - no `scope` reads the caller's own tenant;

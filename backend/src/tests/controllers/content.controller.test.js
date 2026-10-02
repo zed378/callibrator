@@ -1,5 +1,5 @@
 /**
- * Tests for content.controller.js
+ * Tests for content.controller.ts
  */
 
 jest.mock("../../services/content.service", () => ({

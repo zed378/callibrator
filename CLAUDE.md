@@ -12,7 +12,7 @@ It instructed agents to write strict TypeScript with no `any` — for a backend 
 
 That is recorded as PR-4 in [`docs/PLAN/18-RISK-REGISTER.md`](docs/PLAN/18-RISK-REGISTER.md), and it is the single most important thing to know about this project's history: **an instruction document that disagrees with the code produces confidently wrong work, and the confidence is the dangerous part.**
 
-Everything below is grounded in the code as of 2026-09-10. If you find a claim here that the code contradicts, **the code wins** — and correcting this file is part of the fix.
+Everything below is grounded in the code or a dated record as of 2026-10-02. If you find a claim here that the code contradicts, **the code wins** — and correcting this file is part of the fix.
 
 ## What This Is
 
@@ -20,13 +20,13 @@ Everything below is grounded in the code as of 2026-09-10. If you find a claim h
 
 | | |
 |---|---|
-| Backend | **Dual-Backend Target Architecture (ADR-089)** — Express/Sequelize existing backend (`backend/src/` — **JavaScript/CommonJS today; migrating to strict TypeScript** under ADR-038, `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`). Future Go backend engine (`backend-go/`) planned for **Phase 999** (strictly after Phase 9 & Upstream PHP Feature Adoption) |
+| Backend | **Dual-Backend Target Architecture (ADR-089)** — Express/Sequelize existing backend (`backend/`, entry `backend/index.ts`) in **strict TypeScript, compiled to CommonJS** (ADR-038; toolchain ADR-087). The one source `.js` file left is the dead `src/utils/checkMenu.util.js`, whose deletion awaits the owner (A-18). The 694 `.js` files in the test trees are legacy, converted opportunistically (P9-26). Future Go backend engine (`backend-go/`) planned for **Phase 999** (strictly after Phase 9 & Upstream PHP Feature Adoption) |
 | Database | **PostgreSQL 18 + pgvector, only** (ADR-039 for the engine, **ADR-041** for the version) — MySQL support was removed. The repository targets 18; the running deployment is still **17.11** until [`TASKS/RUNBOOK-POSTGRES-18-UPGRADE.md`](TASKS/RUNBOOK-POSTGRES-18-UPGRADE.md) is carried out — a data directory written by 17 will not start under 18 |
-| Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand · **Multi-Frontend & Shared Component Architecture** (root-level `shared/` area) |
+| Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand · **Multi-Frontend & Shared Component Architecture** as the *target* — the root-level `shared/` area does not exist yet (2026-10-02) |
 | Realtime | Socket.IO, both ends (ADR-031) |
 | Infra | Redis · RabbitMQ · MQTT client (external broker, optional) · ClamAV · pgvector |
-| Scale | **53** route modules (+2 internal) · **71** models · **674** backend test files · **467** backend source files (counted 2026-09-27: `routes/api/*.route.js`; `models/*.model.js`, not `models/index.js`; `*.test.js`/`*.test.ts` under `backend/src/tests`; every non-test `.js`/`.ts` under `backend/src`, migrations and scripts included — 0 of them `.ts` then; since 2026-09-29, 125 modules are `.ts` (all constants, 30 of 36 utils including `tenantScope`, `jobContext` and `upload`, the `activityLog`/`tenantContext` middlewares, `validators/iot.validator`, `config/env`, all 71 models and the barrel `models/index.ts` — P9-10 DONE, ADR-087 Amendments 6–11 — so `require("../models")` is typed and `db` from it is a compile error), backend source runs through `tsx` or the built `dist/`, never plain `node src/…`, and **a new backend `.js` file — test files included — fails `npm run ratchet`** (in `make verify`, CI and the pre-push hook). The previous row said 71 / 359 / 375 on 2026-09-23; counts are dated snapshots, re-count before quoting) |
-| Compliance | ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS · SNARS |
+| Scale | **55** route modules (+3 internal) · **73** models · **950** backend test files · **603** backend source files (counted 2026-10-02: `routes/api/*.route.ts`, and `routes/internal/*.route.ts` for the internal three; `models/*.model.ts`, not `models/index.ts`; `*.test.js`/`*.test.ts` under `backend/src/tests` — 679 `.js`, 271 `.ts` — with 3 more legacy `.js` tests in `backend/__tests__`; every non-test `.js`/`.ts` under `backend/src`, `.d.ts` excluded, migrations and scripts included — 1 of them `.js`, `utils/checkMenu.util.js`). Backend source runs through `tsx` or the built `dist/`, never plain `node src/…`, and **a new backend `.js` file — test files included — fails `npm run ratchet`** (in `make verify`, CI and the pre-push hook). The previous row said 53 / 71 / 674 / 467 on 2026-09-27; counts are dated snapshots, re-count before quoting |
+| Compliance | ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS · SNARS. SNARS stays a compliance target in these documents until its ADR, but **public copy never names it** (Q-39, ADR-098 §8, a working decision awaiting the owner's confirmation: "supports hospital accreditation readiness (Ministry of Health standards)") |
 
 ## Before You Start
 
@@ -58,7 +58,7 @@ cross-tenant reference reads as `null` on a LEFT include and drops the row on an
 
 **Never** read `tenantId` from a request body. It is stamped from the context.
 
-**Raw SQL bypasses the hooks entirely.** Every `sequelize.query` carries the predicate explicitly, and every new one is a review item.
+**Raw SQL bypasses the hooks entirely.** It goes through `sql()` (`utils/sql.util.ts`, P9-07) with the tenant predicate **bound** (`tenant_id = $n`); a direct `.query(` in source is a lint error, `rawSqlTenantPredicate.d05` checks every statement naming a tenant-scoped table, and every new statement is a review item.
 
 ### Cross-tenant returns 404, never 403
 
@@ -70,7 +70,7 @@ A 403 says "this exists and you may not have it" — which turns id enumeration 
 router.post("/", auth, dynamicAccess("equipment", "write"), validate(schema), ctrl.create);
 ```
 
-**Nothing in the build enforces this.** A route without one works for everyone with a token. It is the single most likely authorization defect in the codebase, and the guard is P6-04.
+**The build enforces it** (P6-04, DONE 2026-09-25): `routePermissionGuard.p604` fails on a route with neither a gate nor a reviewed exemption in `constants/routeGateExemptions.ts`. A route without one would work for everyone with a token — the single most likely authorization defect in a codebase like this, which is why the guard exists.
 
 ### Every mutation writes an audit row, inside the transaction
 
@@ -103,7 +103,7 @@ Every one of these has caused a production defect here. They are structural, not
 | An include of a model with a **`defaultScope`** (`User`, `CalibrationDevice`) | an **INNER JOIN even with no `where`** — rows whose reference is null or deleted vanish (A-75) |
 | An INNER include (explicit, or implicit via `defaultScope`) of a row authored by the **super admin** inside a tenant | since ADR-048 the parent row **disappears** for tenant users — the referenced user is in another tenant (A-90, Q-17) |
 | **`schema.validate`** passed to Express | **500 on every request** to that route |
-| A path parameter the validator never sees | **400 on every request** — merge `{ ...req.params, ...req.body }` |
+| A path parameter the validator never sees | **400 on every request** — name the source: `validate(schema, { from: ["params", "body"] })` |
 | **`db`** destructured from the models barrel | it exports `sequelize`; you get `undefined`, then a throw |
 | **`is_deleted`** written in code | silently does nothing — the attribute is `isDeleted` |
 | **`tenantId`** on the `sessions` model | `column "tenantId" does not exist` — it uses snake_case |
@@ -111,6 +111,8 @@ Every one of these has caused a production defect here. They are structural, not
 | A migration with a blanket **`try/catch`** | **recorded as applied while doing nothing** |
 | A **global** uniqueness constraint | a cross-tenant existence oracle |
 | Suspending the **default tenant** in a test | 403s every later request; recovery is a direct database update |
+| A model **index on a column that a later migration adds** | the **upgrade boot fails**: `db.sync()` builds a model's missing indexes before the migrator adds the column (ADR-100 Am. 3; `modelIndexColumns.am3.guard`, `upgradeBoot.am3.live`). The index belongs to the migration |
+| An **`export interface`** (or any named export) beside **`export =`** | typecheck and jest pass, then the module **throws at load** under tsx (`<file>_module is not defined`). `export =` stands alone (ADR-087 Am. 15; lint `EXPORT_EQUALS_ALONE`, `npm run load:check`) |
 
 The first one is the most repeated defect shape in this codebase. It has hit certificates and risks. `maintenance_work_orders` was long listed here as latent; it is not — every include there carries `required: false`, pinned by `maintenance.includes.a190.test.js` (A-227, 2026-09-25).
 
@@ -123,6 +125,8 @@ The first one is the most repeated defect shape in this codebase. It has hit cer
 **Rows in `data`. Pagination in a top-level `meta`, a sibling of `data`.** Never `data.rows`, never `data.items`, never `data.meta`.
 
 Violating it renders an empty list with **no error**. Three screens did exactly that for weeks.
+
+This is the rule for **list** endpoints. A single report document — `GET /api/v1/reports/overdue-devices` and `/inventory` — is one object in `data` that may hold arrays of its own (`data.rows`); it has no paging to put in `meta` (A-343, closed as designed 2026-10-02).
 
 ## Status Codes That Carry Meaning
 
@@ -176,8 +180,8 @@ Three rules that catch a worthless test:
 
 Two claims currently live in this repository, and both are stated carefully on purpose:
 
-- The Helm charts **install, upgrade and serve on ONE local kind cluster** (P7-06, ADR-106, 2026-09-30): a single node, kindnet, local-path volumes, ingress-nginx and throwaway datastores, with the backend image built from `ce74932`. That is **not a production cluster**: no managed CNI, real StorageClass, second node, cert-manager or external secrets was involved, and the prod/staging values files were only rendered. They are **not known to deploy to production**. With the shipped `FORCE_HTTPS: "true"`, browser sign-in through the frontend fails (A-310, open).
-- The E2E suite **passed in one uninterrupted run, twice in a row, on 2026-09-28** (P6-02, ADR-077) — on a local compose stack, by hand. **CI does not run it** (A-19), so a later change can break it unnoticed.
+- The Helm charts **install, upgrade and serve on ONE local kind cluster** (P7-06, ADR-106, 2026-09-30): a single node, kindnet, local-path volumes, ingress-nginx and throwaway datastores, with the backend image built from `ce74932`. That is **not a production cluster**: no managed CNI, real StorageClass, second node, cert-manager or external secrets was involved, and the prod/staging values files were only rendered. They are **not known to deploy to production**. With the shipped `FORCE_HTTPS: "true"`, browser sign-in through the frontend failed there (A-310); the fix is **in code** since 2026-09-30 (`frontend/src/lib/backendHeaders.ts`, tested by `backendHeaders.a310.test.ts`) and has **not been re-run on a cluster**.
+- The E2E suite **passed in one uninterrupted run, twice back to back, on 2026-10-02 on the final Phase 9–10 tree** (runs Q and R, `MEMORY/records/2026-10-02-closing-gates-qr.md`): 433 tests passed, 0 failed (5 skipped), with smoke 7/7, accessibility 80/80, responsive 45/45 and Phase 10 browser 12/12, in production mode on a disposable compose stack, by hand, 0 × 5xx. Earlier pairs: G/H 2026-10-01, and the first on 2026-09-28 (P6-02, ADR-077). **CI does not run it** (A-19), so a later change can break it unnoticed.
 
 Do not round these up. `TASKS/BACKLOG.md` § Unverified Claims lists all six of them.
 
@@ -204,7 +208,7 @@ make help          # every target
 make dev           # local stack
 make verify        # lint · ts-ratchet · typecheck · test · build · load-check — by hand; CI runs the same stages
 cd backend && npm run load:check [-- --src]  # every module loads: dist/ under node, src/ under tsx (ADR-087 Am. 15)
-make test-e2e      # 53 live specs, running server required (not in verify, not in CI)
+make test-e2e      # 57 live spec files, running server required (not in verify, not in CI)
 make migrate       # then: make migrate-verify — the log is not evidence
 make hooks         # opt in to the pre-push hook (gitleaks, lint ratchet, typecheck, ts-ratchet)
 
@@ -214,7 +218,7 @@ cd backend && npm run ratchet            # fails on any new .js file, tests incl
 cd backend && npx eslint <file>          # on every file you change — the gate lints src/ only
 ```
 
-`make` is not installed on every workstation; each target is one or two commands in the `Makefile`, runnable directly. **Backend source runs through `tsx`** (`npm start` = `node --import tsx index.js`, `npm run dev`, the `migrate*` scripts): plain `node` on backend source fails with `MODULE_NOT_FOUND` at the first `.ts` module (ADR-087). Full command table: [`docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md`](docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md).
+`make` is not installed on every workstation; each target is one or two commands in the `Makefile`, runnable directly. **Backend source runs through `tsx`** (`npm start` = `node --import tsx index.ts`, `npm run dev`, the `migrate*` scripts; the release build compiles `index.ts` to `dist/index.js`): plain `node` on backend source fails with `MODULE_NOT_FOUND` at the first `.ts` module (ADR-087). Full command table: [`docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md`](docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md).
 
 **Run backend tests through the npm scripts** (`npm test`, `npm run test:coverage`), not bare
 `npx jest`. Since A-99 the scripts pass `--experimental-vm-modules`, because the real `otplib` 13
@@ -237,9 +241,9 @@ Match the surrounding code. Both workspaces have standards documents:
 
 Also [`docs/ENGINEERING/09-TESTING-CONVENTIONS.md`](docs/ENGINEERING/09-TESTING-CONVENTIONS.md), [`10-TOOLING-LINT-FORMAT.md`](docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md) and the PR checklist [`14-CODE-REVIEW-CHECKLIST.md`](docs/ENGINEERING/14-CODE-REVIEW-CHECKLIST.md).
 
-**The backend is mixed JavaScript and TypeScript, CommonJS, today** (ADR-087): `constants/`, `models/` (and the barrel), `validators/`, most of `utils/`, `config/env.ts` and three middlewares are `.ts`; controllers, services, routes and most middlewares are still `.js`.
+**The backend source is TypeScript, compiled to CommonJS** (ADR-038, ADR-087), checked strict by TypeScript 7. The one source `.js` file left is the dead `utils/checkMenu.util.js` (A-18); `noSourceJs.p924.guard` fails on any other. **The 694 `.js` files in the test trees are legacy** (P9-26): convert one only when you already edit it for another reason or its module's change needs it, and never change an assertion while doing so — same case names, same count.
 
-**New backend code is TypeScript — tests included — held to [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md)**: `strict` plus the ADR-038 flags, no `any`, reasons on every `@ts-expect-error` and `eslint-disable`. `npm run ratchet` fails on a new `.js` file. Do not half-convert an existing `.js` file while editing it; conversion is module by module under Phase 9, **leaf-first**, and never changes behaviour — it is proved by an identity check, not asserted (04 § Converting a Module). Until a file is converted, JSDoc on its exports is the only type information it has.
+**All new backend code is TypeScript — tests included — held to [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md)**: `strict` plus the ADR-038 flags, no `any`, reasons on every `@ts-expect-error` and `eslint-disable`. `npm run ratchet` fails on a new `.js` file. A conversion never changes behaviour — it is proved by an identity check, not asserted (04 § Converting a Module).
 
 The as-built conventions a new `.ts` file follows (each is a lint error, a guard or a compile error, not a preference):
 
@@ -248,23 +252,27 @@ The as-built conventions a new `.ts` file follows (each is a lint error, a guard
 - **Configuration through `config/env.ts`** (`env`, `envOr`, `isProduction`); `process.env` outside `src/config/` is a lint error.
 - **Shared types in `src/types/`**; a brand assertion (`as TenantId`) only in `src/types/ids.ts`; `skipTenantScope` is typed there too (`sequelize.d.ts`).
 - **Models** follow `initModel` with `export =` (04 § Models); the barrel is typed.
+- **Module shape:** `export =` of one object, in the key order its callers see, or named exports — never a named export beside `export =` (ADR-087 Am. 15, 28). A load whose position matters stays a literal `require`, typed through `import type` (Am. 28).
+- **Routes** `export = router` and import an ES-module controller's handlers by name, not `import * as` (its interop helper adds branches jest counts and no test takes); a route's contract is its `*.openapi.ts` module (ADR-103) — a `@swagger` JSDoc block is refused by the OpenAPI build.
 - **Logging** through the winston `logger`; `console.*` only in the six CLIs of `src/scripts/`.
 - **Tests:** a new `:id` route gets `twoTenantSuite` + `memoryDb` and an `@two-tenant` marker; a grant or trigger test on PostgreSQL runs as `callibrator_app`.
 
-**Do not describe a backend module as TypeScript in a document until that module is converted.** Backend documents state TypeScript as the *target* and label current behaviour *as-built* — writing the target as fact is PR-4, the failure this file opens with.
+**State as fact only what the code does.** Backend documents describe the as-built TypeScript (the P9-24 sweep, 2026-10-02); anything not built yet is labelled *target*. Writing a target as fact is PR-4, the failure this file opens with.
 
 Frontend (ADR-071, ADR-090): pages render per request under a nonce CSP — no inline `<script>`, no `<style>` element without the nonce, no third-party image origin; one `<main>` and one `<h1>` per page; icon-only controls named after their object; colours from the theme tokens. Do not disable React Compiler lint rules to make a build pass. The rule is usually right about the component.
 
 ## What Is Currently Failing
 
-Stated here because an agent reading a green board and finding a red gate wastes an afternoon. On 2026-09-28 the three gates this section used to list red are green; what is still open is below. (This section was "Two Things Currently Failing" — both items and the later lint row have since passed; ADR-088 records the refresh.)
+Stated here because an agent reading a green board and finding a red gate wastes an afternoon. Refreshed 2026-10-02 from runs and records named in each row. (This section was "Two Things Currently Failing"; ADR-088 records the first refresh.)
 
 | | |
 |---|---|
-| Backend unit coverage gate (100%) | **passing** — 683 suites passed (24 skipped), 12,890 tests, 100% statements / branches / functions / lines, Node 26.10.0, `npm run test:coverage -- --ci`, 2026-09-28 (`MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`). Run it on the Node major pinned in the root `.nvmrc` (26, A-257/ADR-076): a global setup refuses any other major. **Models are outside the 100% figure** (ADR-085, ADR-092) — measured separately at 93.5% statements, 65.58% branches. Quote a count only from a run on a quiet tree |
-| Backend lint | **0 errors**, ratchet baseline **0** (ADR-092, P9-02a), 2026-09-28 — so every change must lint clean: run `npx eslint <file>` in `backend/`. Warnings are not zero (263 `no-unused-vars`, 19 `no-console` open under P9-02a) |
-| Live E2E in one uninterrupted run | **achieved 2026-09-28, twice** (P6-02, ADR-077; again at the P9-00 baseline `35ebd76`, ADR-092): 53 of 53 specs, 392 tests, on a disposable compose stack. **Not in CI**, and never run against the reference deployment |
-| Still open | CI has **never run on GitHub** (P7-01); the Helm charts are proven on one kind cluster only, not on a production cluster (ADR-106), and sign-in under `FORCE_HTTPS=true` fails (A-310); `make verify` includes `typecheck`, which the TypeScript ratchet governs (ADR-087) — check `TASKS/PROGRESS.md` for its current state before assuming it is green |
+| Backend unit coverage gate (100%) | **100% statements / branches / functions / lines** on 2026-10-02 (`npm run test:coverage -- --ci`, Node 26.10.0, **a quiet tree**, the closing gates for Phases 9–10): **869 suites passed, 36 skipped, 0 failed; 14,859 tests passed, 231 skipped**, in 329 s ([record](MEMORY/records/2026-10-02-closing-gates-qr.md)). The two validator contract tests that timed out earlier under load passed here. Run it on the Node major pinned in the root `.nvmrc` (26, A-257/ADR-076): a global setup refuses any other major. **Models are outside the 100% figure** (ADR-085, ADR-092) — measured separately at 93.5% statements, 65.58% branches on 2026-09-28. Quote a count only from a run on a quiet tree |
+| Backend lint | **0 errors, 0 warnings**, ratchet baseline **0** (ADR-092; P9-02a, ADR-087 Am. 30 raised `no-unused-vars`, `no-console` and `prefer-arrow-callback` to errors), re-run 2026-10-02 on the closing tree (`node scripts/ci/eslint-ratchet.js`: "0 error(s), 0 warning(s); baseline 0"; `npm run lint` exit 0). Every change must lint clean: run `npx eslint <file>` in `backend/` |
+| Typecheck, build, load | 2026-10-02, closing tree: `npm run typecheck` 0 errors (backend, frontend, `packages/contracts`, `automate`); `npm run ratchet` 695 `.js`, at the floor; `npm run build` (incl. `pkg`) and `npm run build:dist` OK (604 TypeScript files); `load:check` OK in both modes (595 modules, 105 in boot order); `openapi:check` current, `openapi:lint` no new error; `next build` OK, bundle budget 10/10 within; frontend jest 292/292 suites at 93.84 / 84.58 / 89.65 / 94.52 (gate 90/81/86/91). **`openapi:breaking` against `origin/main` fails: 857 errors**, the Phase 9 contract (record § oasdiff) |
+| Live E2E in one uninterrupted run | **achieved again 2026-10-02 on the final Phase 9–10 tree, twice back to back** (P10-13 runs Q and R): 56 of 57 spec files (1 skipped), **433 passed, 0 failed** each, plus smoke 7/7, accessibility 80/80, responsive 45/45 and Phase 10 browser 12/12, 0 × 5xx, in production mode on a disposable compose stack (`MEMORY/records/2026-10-02-closing-gates-qr.md`). Earlier: runs G and H, 2026-10-01 (428 tests, `MEMORY/records/2026-09-30-p10-13-e2e.md`). First achieved 2026-09-28 (P6-02, ADR-077). **Not in CI**, and never run against the reference deployment |
+| CI on GitHub | **has run, never green** (P7-01, `MEMORY/records/2026-09-30-p7-01-ci-gitleaks.md`). Latest run, on `fb55605` (run 36810619325, 2026-10-01): **gitleaks, API contract, npm audit, actionlint and deploy config passed**; frontend, boot on PG 18, backend lint, backend coverage and module load failed — that commit captured half-finished `.js`→`.ts` swaps (a `maintenance.controller` pair) and a duplicate mock key, both fixed in the working tree. A fully green run awaits the next push |
+| Helm | proven on **one local kind cluster**, not a production cluster (P7-06, ADR-106); A-310 is fixed in code but not re-run on a cluster (§ Distinguish "Renders" From "Works") |
 
 ## If You Are Unsure
 

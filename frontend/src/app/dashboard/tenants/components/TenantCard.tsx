@@ -19,13 +19,16 @@ interface TenantCardProps {
   onDelete?: (id: string) => void;
 }
 
-const getStatusVariant = (status: string): "success" | "danger" | "default" | "warning" => {
+/**
+ * A-361: the badge colour of the API's lower-case lifecycle value. It used to
+ * switch on ACTIVE / INACTIVE / SUSPENDED, which no answer carries, so every
+ * badge fell to the default. There is no "inactive" tenant status.
+ */
+const getStatusVariant = (status: Tenant["status"]): "success" | "danger" | "default" => {
   switch (status) {
-    case "ACTIVE":
+    case "active":
       return "success";
-    case "INACTIVE":
-      return "warning";
-    case "SUSPENDED":
+    case "suspended":
       return "danger";
     default:
       return "default";

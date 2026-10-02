@@ -41,7 +41,7 @@ const {
 
 describe("supplierScorecard.service", () => {
   const { SupplierScorecard, Vendor, User } = require("../../models");
-  const { AppError } = require("../../utils/appError.util");
+  require("../../utils/appError.util");
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -180,7 +180,7 @@ describe("supplierScorecard.service", () => {
       const mock = {
         id: "s1",
         score: 80,
-        update: jest.fn(function (data) {
+        update: jest.fn((data) => {
           Object.assign(mock, data);
           return Promise.resolve(mock);
         }),

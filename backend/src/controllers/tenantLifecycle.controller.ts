@@ -14,6 +14,7 @@ import { auditActor as loadedAuditActor } from "../utils/auditActor.util";
 import {
   tenantIdSchema as loadedTenantIdSchema,
   suspendTenantSchema as loadedSuspendTenantSchema,
+  offboardTenantSchema as loadedOffboardTenantSchema,
 } from "../validators/tenantLifecycle.validator";
 import { validateInput as loadedValidate } from "../validators/input";
 // A-273: the path names the resource — path params win, a differing body id is 400.
@@ -27,6 +28,7 @@ const success = loadedSuccess;
 const auditActor = loadedAuditActor;
 const tenantIdSchema = loadedTenantIdSchema;
 const suspendTenantSchema = loadedSuspendTenantSchema;
+const offboardTenantSchema = loadedOffboardTenantSchema;
 const validate = loadedValidate;
 const withPathParams = loadedWithPathParams;
 const withoutRedactedSettings = loadedWithoutRedactedSettings;
@@ -100,7 +102,10 @@ const enterGracePeriod = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const offboardTenant = asyncHandler(async (req: Request, res: Response) => {
-  const validated = validate(req.params, tenantIdSchema);
+  // A-338: the body's `force` is read (the path tenant wins, A-273). It used to
+  // validate the path alone, which stripped `force`: a forced re-offboard
+  // (module reference §11) was unreachable.
+  const validated = validate(withPathParams(paramsOf(req), req.body as Record<string, unknown> | undefined), offboardTenantSchema);
   // The operator is the audit row's actor (W-04); without one it would be
   // recorded as the scheduler. Not auditActor's tenantId: the row belongs to
   // the tenant being offboarded, not to the operator's home tenant.
@@ -108,7 +113,7 @@ const offboardTenant = asyncHandler(async (req: Request, res: Response) => {
   const result = await tenantLifecycleService.offboardTenant(
     toTenantId(validated.tenantId),
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: `force || false`
-    (validated as { force?: unknown }).force || false,
+    validated.force || false,
     { userId, ipAddress, userAgent },
   );
 

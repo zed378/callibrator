@@ -30,14 +30,14 @@ Callibrator/
 
 ```
 backend/
-├── index.js                  composition root: middleware order, 56 router mounts, health, schedulers
+├── index.ts                  composition root: middleware order, 56 router mounts, health, schedulers
 ├── src/
-│   ├── config/               index.js (DB, PostgreSQL only), socket.js, migrator.js
+│   ├── config/               index.ts (DB, PostgreSQL only), socket.ts, migrator.ts
 │   ├── constants/            role levels, menu slugs, rate limits, app constants
 │   ├── controllers/          56 — HTTP in, HTTP out
 │   ├── middlewares/          21 — auth, tenant context, gates, validation, errors, logging, schedulers
 │   ├── migrations/           18 Umzug migrations; names frozen once applied
-│   ├── models/               72 models + index.js (associations, scoping hooks)
+│   ├── models/               72 models + index.ts (associations, scoping hooks)
 │   ├── routes/api/           53 route modules
 │   ├── routes/internal/      migration/seeding (bootstrap-gated)
 │   ├── scripts/              migrate, migrateStorage, seedDemo, backfillEmbeddings
@@ -45,7 +45,7 @@ backend/
 │   ├── templates/            email and certificate HTML — shipped next to the binary
 │   ├── utils/                20 — envelope, AppError, wrappers, tenant scope, SSRF, paths
 │   ├── validators/           37 Joi schemas (→ Zod, P9-11)
-│   ├── workers/              batchJob.worker.js
+│   ├── workers/              batchJob.worker.ts
 │   ├── types/                (target, P9-05) express.d.ts, ids.ts, state unions
 │   └── tests/                340 test files; e2e/ runs against a live server
 ├── public/                   static files at /public — shipped in the image since 2026-09-11
@@ -63,7 +63,7 @@ backend/
 
 ### Composition order is behaviour
 
-`index.js` wires security headers → HPP → CORS → rate limit → body parsing (with the Stripe raw-body hook) → 30 s timeout → request id → access and activity logging → static → sanitiser → swagger → routers → health → not-found → error handler. Four of those orderings are load-bearing; see [`../BACKEND/04-MIDDLEWARE-PIPELINE.md`](../BACKEND/04-MIDDLEWARE-PIPELINE.md).
+`index.ts` wires security headers → HPP → CORS → rate limit → body parsing (with the Stripe raw-body hook) → 30 s timeout → request id → access and activity logging → static → sanitiser → swagger → routers → health → not-found → error handler. Four of those orderings are load-bearing; see [`../BACKEND/04-MIDDLEWARE-PIPELINE.md`](../BACKEND/04-MIDDLEWARE-PIPELINE.md).
 
 ## Frontend
 

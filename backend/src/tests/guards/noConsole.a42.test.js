@@ -30,12 +30,12 @@ const SRC = path.join(BACKEND, "src");
  * exempt from the marker comment because it is not to be edited, only removed.
  */
 const ALLOWED = {
-  "src/scripts/backfillEmbeddings.js": { reason: "CLI: `node src/scripts/backfillEmbeddings.js`" },
-  "src/scripts/breakGlassMfaReset.js": { reason: "CLI: break-glass MFA reset, run by an operator" },
-  "src/scripts/migrateStorage.js": { reason: "CLI: `npm run migrate:storage` progress report" },
-  "src/scripts/rotateKeys.js": { reason: "CLI: `npm run keys:rotate` report" },
-  "src/scripts/seedDemo.js": { reason: "CLI: `node src/scripts/seedDemo.js` summary" },
-  "src/scripts/verifySchema.js": { reason: "CLI: `npm run migrate:verify` report" },
+  "src/scripts/backfillEmbeddings.ts": { reason: "CLI: `tsx src/scripts/backfillEmbeddings.ts`" },
+  "src/scripts/breakGlassMfaReset.ts": { reason: "CLI: break-glass MFA reset, run by an operator" },
+  "src/scripts/migrateStorage.ts": { reason: "CLI: `npm run migrate:storage` progress report" },
+  "src/scripts/rotateKeys.ts": { reason: "CLI: `npm run keys:rotate` report" },
+  "src/scripts/seedDemo.ts": { reason: "CLI: `tsx src/scripts/seedDemo.ts` summary" },
+  "src/scripts/verifySchema.ts": { reason: "CLI: `npm run migrate:verify` report" },
   "src/utils/checkMenu.util.js": {
     reason:
       "debug dump with no caller (A-18); deletion was not permitted in the A-42 change and is left to the owner",
@@ -88,7 +88,7 @@ const walk = (dir, out = []) => {
 const rel = (file) => path.relative(BACKEND, file).split(path.sep).join("/");
 
 const scanned = () =>
-  [...walk(SRC), path.join(BACKEND, "index.js")].map((file) => ({
+  [...walk(SRC), path.join(BACKEND, "index.ts")].map((file) => ({
     file: rel(file),
     source: fs.readFileSync(file, "utf8"),
   }));

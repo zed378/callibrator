@@ -128,7 +128,8 @@ const session = (n, user, overrides = {}) => {
     device: null,
     auth_method: null,
     impersonator_id: null,
-    created_at: new Date(2026, 8, n),
+    // A-339: a built row carries the ATTRIBUTE `createdAt` (column created_at).
+    createdAt: new Date(2026, 8, n),
     last_activity_at: null,
     expired_at: FUTURE,
     is_revoked: false,

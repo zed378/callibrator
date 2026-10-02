@@ -138,14 +138,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center justify-between px-6 py-5 border-b border-border">
           <Link href="/dashboard" className="flex items-center gap-3">
             <BrandIcon className="w-10 h-10 shrink-0 text-[#001250] dark:text-white" />
-            <div>
-              <h1 className="text-lg font-bold text-foreground tracking-tight">
-                HDC
-              </h1>
-              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">
-                Callibrator
-              </p>
-            </div>
+            {/* Q-43 (ADR-098 §8.1): the product is "Device Calibrator"; "Callibrator" is the codename only.
+                Not a heading: each page has ONE <h1>, in its <main> (ADR-090). */}
+            <p className="text-lg font-bold text-foreground tracking-tight leading-tight">
+              Device Calibrator
+            </p>
           </Link>
           <button
             onClick={onClose}

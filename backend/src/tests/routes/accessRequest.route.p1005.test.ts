@@ -110,6 +110,48 @@ const admin = (method: string, url: string, body?: unknown, query?: Record<strin
 
 const stored = (): MemoryDbModule.Row[] => mdb.rows("AccessRequest");
 
+// Q-42 (ADR-113): the intake exists only once the privacy notice is published.
+const NOTICE = "https://example.test/privacy-notice";
+beforeEach(() => {
+  penv["PRIVACY_NOTICE_URL"] = NOTICE;
+});
+afterAll(() => {
+  delete penv["PRIVACY_NOTICE_URL"];
+});
+
+// ============================================================================
+describe("Q-42 — no privacy notice, no intake: POST /access-requests is absent", () => {
+  it.each([
+    ["unset", undefined],
+    ["blank", "  "],
+    ["not an http(s) URL", "javascript:alert(1)"],
+    ["a relative path", "/privacy"],
+  ])("PRIVACY_NOTICE_URL %s: 404 'Route not found', the same body as any absent route, nothing stored, nothing mailed", async (_label, value) => {
+    if (value === undefined) {
+      delete penv["PRIVACY_NOTICE_URL"];
+    } else {
+      penv["PRIVACY_NOTICE_URL"] = value;
+    }
+    as(null);
+    const res = await submit();
+    const absent = await call(publicRouter, "POST", "/no-such-route", { body: {} });
+    const invalid = await submit({ website: "bot" });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual(absent.body);
+    // One answer for every body: an invalid one is not a 400 that would show the route is there.
+    expect(invalid.status).toBe(404);
+    expect(invalid.body).toEqual(res.body);
+    expect(stored()).toHaveLength(0);
+    expect(emailQueue.queueNotificationEmail).not.toHaveBeenCalled();
+  });
+
+  it("set, the same request is the neutral 202 and is stored", async () => {
+    const res = await submit();
+    expect(res.status).toBe(202);
+    expect(stored()).toHaveLength(1);
+  });
+});
+
 // ============================================================================
 describe("P10-05 — POST /access-requests (public)", () => {
   it("works with NO token and answers the neutral 202", async () => {

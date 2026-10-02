@@ -1,16 +1,16 @@
-import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op } from "../typed";
 
 /**
  * Tenant hierarchy (parent tenant -> child business units).
  *
- * Backend: src/routes/api/tenantHierarchy.route.js (mounted /api/v1/tenant-hierarchy)
+ * Backend: src/routes/api/tenantHierarchy.route.ts (mounted /api/v1/tenant-hierarchy)
  *   GET    /tree                     (scoped to the caller's tenant)
  *   GET    /:tenantId/parent
  *   GET    /:tenantId/children
  *   GET    /:tenantId/descendants
  *   GET    /:tenantId/ancestors
  *   GET    /cross-tenant-roles       ?userId
- *   POST   /:parentId/children
+ *   POST   /:tenantId/children   (the parent)
  *   PUT    /:tenantId/parent
  *   DELETE /:tenantId/parent
  *
@@ -20,53 +20,38 @@ import { api } from "../client";
  *
  * Cross-tenant roles are READ-ONLY over HTTP — there is no create or revoke
  * route.
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+ * contract's (backend/src/routes/api/tenantHierarchy.openapi.ts). The
+ * exported names are unchanged. The hand-written `TenantNode` (id, type,
+ * parentId, level, …) and cross-tenant assignment (roleName, source/target
+ * tenant, …) described no answer and are gone.
  */
 
 // ---------- Types ----------
 
-export type HierarchyNodeType = "tenant" | "sub-tenant" | "affiliated";
+type H = "/api/v1/tenant-hierarchy";
+type ById = `${H}/{tenantId}`;
 
-export interface TenantNode {
-  id: string;
-  name: string;
-  code: string;
-  type: HierarchyNodeType;
-  parentId?: string;
-  level: number;
-  children?: TenantNode[];
-  metadata?: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
+/**
+ * A tenant in the hierarchy as the parent / children / ancestors reads and the
+ * tree's children answer it: a flat summary.
+ */
+export type TenantNode = NonNullable<DataOf<Op<`${ById}/parent`, "get">>["parent"]>;
 
-/** A direct child as returned inside the tree (a flat summary, not a TenantNode). */
-export interface TenantTreeChild {
-  tenantId: string;
-  code: string;
-  name: string;
-  status: string;
-  depth: number;
-}
+/** A direct child as returned inside the tree. */
+export type TenantTreeChild = TenantNode;
+
+type TreeAnswer = DataOf<Op<`${H}/tree`, "get">>;
+type PlacedTree = Extract<TreeAnswer, { depth: number }>;
 
 /**
  * GET /tree — the caller's own position in the hierarchy plus its direct
- * children. Verified against the live endpoint: there is no `root` wrapper and
- * no `totalNodes`. When the tenant has no hierarchy row at all, the backend
- * returns only `{ isRoot: true, children: [] }`.
+ * children. There is no `root` wrapper and no `totalNodes`. When the tenant
+ * has no hierarchy row at all, the backend returns only
+ * `{ isRoot: true, children: [] }` — so every other field is optional here.
  */
-export interface TenantTree {
-  isRoot: boolean;
-  depth?: number;
-  path?: string;
-  tenant?: {
-    id: string;
-    name: string;
-    code: string;
-    status: string;
-    plan?: string;
-  };
-  children: TenantTreeChild[];
-}
+export type TenantTree = Pick<PlacedTree, "isRoot" | "children"> & Partial<Omit<PlacedTree, "isRoot" | "children">>;
 
 export interface TenantChildrenResult {
   children: TenantNode[];
@@ -75,7 +60,8 @@ export interface TenantChildrenResult {
 }
 
 export interface TenantDescendantsResult {
-  descendants: TenantNode[];
+  /** The descendants' tenant ids. */
+  descendants: DataOf<Op<`${ById}/descendants`, "get">>["descendants"];
   /** Derived client-side. */
   total: number;
 }
@@ -86,25 +72,14 @@ export interface TenantAncestorsResult {
   total: number;
 }
 
-export interface CrossTenantRoleAssignment {
-  id: string;
-  roleId: string;
-  roleName: string;
-  sourceTenantId: string;
-  targetTenantId: string;
-  userId: string;
-  assignedBy: string;
-  assignedAt: string;
-  expiresAt?: string;
-}
+/** One of a user's roles in another tenant: `{ tenantId, tenantName, tenantCode, role }`. */
+export type CrossTenantRoleAssignment = DataOf<Op<`${H}/cross-tenant-roles`, "get">>["assignments"][number];
 
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+type AddChildBody = JsonBody<Op<`${ById}/children`, "post">>;
+/** The child's body; `plan` is the page's select value (it offers only the contract's plans). */
+export type AddChildInput = Omit<AddChildBody, "plan"> & { plan?: string };
+
+const tenant = (tenantId: string) => ({ params: { path: { tenantId } } });
 
 // ---------- Service ----------
 
@@ -113,46 +88,38 @@ export const tenantHierarchyService = {
    * GET /tree — the backend scopes this to the caller's own tenant and
    * ignores any tenantId/maxDepth params, so none are sent.
    */
-  getTree: async (): Promise<TenantTree> => {
-    const response = await api.get<BackendResponse<TenantTree>>(
-      "/api/v1/tenant-hierarchy/tree",
-    );
-    return response.data;
-  },
+  getTree: async (): Promise<TenantTree> =>
+    // The two answers read as one shape (the empty one has only isRoot / children).
+    (await typedApi.GET("/api/v1/tenant-hierarchy/tree").then(unwrap)).data as TenantTree,
 
   /** GET /:tenantId/parent — payload is data.parent (null for a root). */
   getParent: async (tenantId: string): Promise<TenantNode | null> => {
-    const response = await api.get<
-      BackendResponse<{ parent: TenantNode | null }>
-    >(`/api/v1/tenant-hierarchy/${tenantId}/parent`);
+    const response = await typedApi.GET("/api/v1/tenant-hierarchy/{tenantId}/parent", tenant(tenantId)).then(unwrap);
+    // Defensive, as built: a body without `data` reads as no parent.
     return response.data?.parent ?? null;
   },
 
   /** GET /:tenantId/children — payload is data.children; not paginated. */
   getChildren: async (tenantId: string): Promise<TenantChildrenResult> => {
-    const response = await api.get<BackendResponse<{ children: TenantNode[] }>>(
-      `/api/v1/tenant-hierarchy/${tenantId}/children`,
-    );
+    const response = await typedApi.GET("/api/v1/tenant-hierarchy/{tenantId}/children", tenant(tenantId)).then(unwrap);
     const children = response.data?.children ?? [];
     return { children, total: children.length };
   },
 
-  /** GET /:tenantId/descendants — payload is data.descendants. */
+  /** GET /:tenantId/descendants — payload is data.descendants (tenant ids). */
   getDescendants: async (
     tenantId: string,
   ): Promise<TenantDescendantsResult> => {
-    const response = await api.get<
-      BackendResponse<{ descendants: TenantNode[] }>
-    >(`/api/v1/tenant-hierarchy/${tenantId}/descendants`);
+    const response = await typedApi
+      .GET("/api/v1/tenant-hierarchy/{tenantId}/descendants", tenant(tenantId))
+      .then(unwrap);
     const descendants = response.data?.descendants ?? [];
     return { descendants, total: descendants.length };
   },
 
   /** GET /:tenantId/ancestors — payload is data.ancestors. */
   getAncestors: async (tenantId: string): Promise<TenantAncestorsResult> => {
-    const response = await api.get<BackendResponse<{ ancestors: TenantNode[] }>>(
-      `/api/v1/tenant-hierarchy/${tenantId}/ancestors`,
-    );
+    const response = await typedApi.GET("/api/v1/tenant-hierarchy/{tenantId}/ancestors", tenant(tenantId)).then(unwrap);
     const ancestors = response.data?.ancestors ?? [];
     return { ancestors, total: ancestors.length };
   },
@@ -166,37 +133,26 @@ export const tenantHierarchyService = {
   getCrossTenantRoles: async (
     userId?: string,
   ): Promise<CrossTenantRoleAssignment[]> => {
-    const response = await api.get<
-      BackendResponse<{ assignments: CrossTenantRoleAssignment[] }>
-    >("/api/v1/tenant-hierarchy/cross-tenant-roles", {
-      params: userId ? { userId } : {},
-    });
+    const response = await typedApi
+      .GET("/api/v1/tenant-hierarchy/cross-tenant-roles", { params: { query: userId ? { userId } : {} } })
+      .then(unwrap);
     return response.data?.assignments ?? [];
   },
 
   /**
    * Create a child (sub-organization) tenant under a parent.
-   * POST /api/v1/tenant-hierarchy/:parentId/children
+   * POST /api/v1/tenant-hierarchy/:tenantId/children (the parent)
    */
   addChild: async (
     parentId: string,
-    data: {
-      name: string;
-      code?: string;
-      plan?: string;
-      settings?: Record<string, unknown>;
-    },
-  ): Promise<{ tenantId: string; code: string; path: string; depth: number }> => {
-    const response = await api.post<
-      BackendResponse<{
-        tenantId: string;
-        code: string;
-        path: string;
-        depth: number;
-      }>
-    >(`/api/v1/tenant-hierarchy/${parentId}/children`, data);
-    return response.data;
-  },
+    data: AddChildInput,
+  ): Promise<DataOf<Op<`${ById}/children`, "post">>> =>
+    (
+      await typedApi
+        // The plan comes from the page's select of the contract's plans.
+        .POST("/api/v1/tenant-hierarchy/{tenantId}/children", { ...tenant(parentId), body: data as AddChildBody })
+        .then(unwrap)
+    ).data,
 
   /**
    * Re-parent a tenant. PUT /api/v1/tenant-hierarchy/:tenantId/parent
@@ -204,12 +160,12 @@ export const tenantHierarchyService = {
   updateParent: async (
     tenantId: string,
     newParentId: string,
-  ): Promise<{ tenantId: string; newParentId: string }> => {
-    const response = await api.put<
-      BackendResponse<{ tenantId: string; newParentId: string }>
-    >(`/api/v1/tenant-hierarchy/${tenantId}/parent`, { newParentId });
-    return response.data;
-  },
+  ): Promise<DataOf<Op<`${ById}/parent`, "put">>> =>
+    (
+      await typedApi
+        .PUT("/api/v1/tenant-hierarchy/{tenantId}/parent", { ...tenant(tenantId), body: { newParentId } })
+        .then(unwrap)
+    ).data,
 
   /**
    * Detach a tenant from its parent (make it a root).
@@ -217,12 +173,8 @@ export const tenantHierarchyService = {
    */
   removeParent: async (
     tenantId: string,
-  ): Promise<{ tenantId: string; status: string }> => {
-    const response = await api.delete<
-      BackendResponse<{ tenantId: string; status: string }>
-    >(`/api/v1/tenant-hierarchy/${tenantId}/parent`);
-    return response.data;
-  },
+  ): Promise<DataOf<Op<`${ById}/parent`, "delete">>> =>
+    (await typedApi.DELETE("/api/v1/tenant-hierarchy/{tenantId}/parent", tenant(tenantId)).then(unwrap)).data,
 };
 
 export default tenantHierarchyService;

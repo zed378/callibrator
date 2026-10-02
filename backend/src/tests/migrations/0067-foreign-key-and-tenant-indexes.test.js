@@ -37,7 +37,7 @@ const migration = require("../../migrations/0067-foreign-key-and-tenant-indexes"
 const { scanMigrations, scanMigrationSource } = require("../fixtures/migrationScan");
 
 const { INDEXES, isCovered } = migration;
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const sequelize = models.sequelize;
 const allModels = [...new Set(Object.values(sequelize.models))];

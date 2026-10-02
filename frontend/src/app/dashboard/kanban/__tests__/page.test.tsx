@@ -35,7 +35,6 @@ const post = api.post as jest.Mock;
 const project = (id: string, over: Partial<KanbanProjectSummary> = {}): KanbanProjectSummary => ({
   id,
   name: `Board ${id}`,
-  code: null,
   description: null,
   color: "#4f46e5",
   createdBy: "u-1",
@@ -75,12 +74,12 @@ const pick = async (trigger: HTMLElement, option: string) => {
 describe("Kanban boards list", () => {
   it("lists the boards the caller can see and opens one", async () => {
     projects = [
-      project("p1", { name: "Calibration rollout", code: "CAL", description: "Ward 3", cardCount: 4, myAccess: "editor" }),
+      // The real answer: GET /kanban/projects carries no `code` (A-351).
+      project("p1", { name: "Calibration rollout", description: "Ward 3", cardCount: 4, myAccess: "editor" }),
       project("p2", { name: "Audit prep", myAccess: null }),
     ];
     const { container } = render(<KanbanProjectsPage />);
     expect(await screen.findByRole("heading", { name: "Calibration rollout" })).toBeInTheDocument();
-    expect(screen.getByText("CAL")).toBeInTheDocument();
     expect(screen.getByText("4 cards")).toBeInTheDocument();
     expect(screen.getByText("editor")).toBeInTheDocument();
     expect(screen.queryByText("No boards yet")).not.toBeInTheDocument();
@@ -88,6 +87,15 @@ describe("Kanban boards list", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Calibration rollout/ }));
     expect(mockPush).toHaveBeenCalledWith("/dashboard/kanban/p1");
+  });
+
+  it("A-351: a board row shows no code badge (GET /kanban/projects answers no code)", async () => {
+    // A stray `code` riding on a row must not resurrect the badge: the list
+    // contract (KanbanProjectSummary) carries none, so the page renders none.
+    projects = [{ ...project("p1", { name: "Calibration rollout" }), code: "MGT" } as KanbanProjectSummary];
+    render(<KanbanProjectsPage />);
+    expect(await screen.findByRole("heading", { name: "Calibration rollout" })).toBeInTheDocument();
+    expect(screen.queryByText("MGT")).not.toBeInTheDocument();
   });
 
   it("with no boards, says so and offers to create the first", async () => {

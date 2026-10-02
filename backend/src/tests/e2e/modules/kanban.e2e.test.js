@@ -74,7 +74,7 @@ describe("E2E Kanban (HTTP)", () => {
   });
 
   test("POST /kanban/projects/:id/labels -> 201", async () => {
-    const { status, body } = await httpPost(
+    const { status } = await httpPost(
       "/kanban/projects/" + projectId + "/labels",
       { name: "bug", color: "#f00" },
       authHeader(token),

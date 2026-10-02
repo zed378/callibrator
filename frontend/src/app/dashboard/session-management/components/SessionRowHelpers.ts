@@ -1,24 +1,8 @@
 // src/app/dashboard/session-management/components/SessionRowHelpers.ts
-export interface Session {
-  id: string;
-  userId: string;
-  username: string;
-  email: string;
-  device: string;
-  browser: string;
-  ipAddress: string;
-  userAgent: string;
-  os: string;
-  role: string;
-  tenantName?: string | null;
-  createdAt: string;
-  lastActivityAt: string;
-  expiredAt: string;
-  status: string;
-  isRevoked?: boolean;
-  revokedReason?: string | null;
-  isCurrentSession?: boolean;
-}
+import type { Session as ApiSession } from "@/api/services/session.service";
+
+/** A row: the contract's AdminSession (P9-25; it replaced a hand-written copy). */
+export type Session = ApiSession & { isCurrentSession?: boolean };
 
 export const isSessionExpired = (expiredAt: string): boolean =>
   new Date(expiredAt) < new Date();

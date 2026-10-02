@@ -15,7 +15,7 @@ These cannot be waived by anyone, for any deadline.
 | **S1** | No cross-tenant read or write is possible on any endpoint | `backend/src/utils/tenantScope.util.js` — global Sequelize hooks |
 | **S2** | An authenticated principal with no resolvable tenant sees **nothing**, not everything | the `deny` branch resolving to `NO_TENANT_UUID` |
 | **S3** | Non-existent, soft-deleted and not-yours are indistinguishable — all **404** | route handlers; a 403 for "not yours" is an existence oracle |
-| **S4** | Every mutation writes an audit row inside the same transaction | `auditLog.middleware.js`, `audit_logs` |
+| **S4** | Every mutation writes an audit row inside the same transaction | `audit.service#logAction` with the mutation's transaction, `audit_logs` (the after-response `auditLog.middleware.js` was removed 2026-10-01, ADR-087 Am. 27) |
 | **S5** | `audit_logs` has no delete path | the **absence** of one; ideally a database `REVOKE` |
 | **S6** | No secret in the repository, in a log, or in an error response | secret scanning, log redaction, `errorHandlers.middleware.js` |
 

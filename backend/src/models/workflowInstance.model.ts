@@ -12,14 +12,10 @@ import {
 import type { TenantId } from "../types/ids";
 import type { ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
+import { WORKFLOW_INSTANCE_STATUSES } from "@callibrator/contracts/states";
 
 /** The `status` ENUM's values, in the column's order (D-26 holds them against pg_enum). */
-const WORKFLOW_INSTANCE_STATUSES = [
-  "PENDING",
-  "APPROVED",
-  "REJECTED",
-  "CANCELLED",
-] as const;
+// P9-05: WORKFLOW_INSTANCE_STATUSES is the one list in @callibrator/contracts/states.
 
 /** A WorkflowInstance row (attributes, included associations, instance methods). Types only: emits nothing. */
 interface WorkflowInstance extends Model<

@@ -36,10 +36,10 @@ const rel = (file: string): string => path.relative(SRC, file).split(path.sep).j
 const read = (file: string): string => fs.readFileSync(file, "utf8");
 
 /** The reviewed writers of `apiKeyAuthorized = true`. */
-const AUTHORIZERS = ["middlewares/dynamicAccess.middleware.js", "routes/api/scim.route.js"];
+const AUTHORIZERS = ["middlewares/dynamicAccess.middleware.ts", "routes/api/scim.route.ts"];
 
 /** Controllers not wrapped by controllerWrapper, each reviewed (controllerWrapper.util.ts comment). */
-const UNWRAPPED_CONTROLLERS = ["health.controller.js", "predictiveMaintenance.controller.js"];
+const UNWRAPPED_CONTROLLERS = ["health.controller.ts", "predictiveMaintenance.controller.ts"];
 
 describe("V-05 — API-key authorization", () => {
   it("exactly the reviewed gates set apiKeyAuthorized = true", () => {
@@ -51,17 +51,17 @@ describe("V-05 — API-key authorization", () => {
   });
 
   it("auth.middleware exports no allowApiKey", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the middleware is JavaScript (CommonJS)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the middleware is CommonJS (export =)
     const auth = require("../../middlewares/auth.middleware") as Record<string, unknown>;
     expect(auth["allowApiKey"]).toBeUndefined();
   });
 
   it("every middleware auth.middleware exports has a call site outside the tests", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the middleware is JavaScript (CommonJS)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the middleware is CommonJS (export =)
     const auth = require("../../middlewares/auth.middleware") as Record<string, unknown>;
     const middlewares = Object.keys(auth).filter((name) => typeof auth[name] === "function");
-    const others = [...sourceFiles(SRC), path.join(BACKEND, "index.js")]
-      .filter((file) => !file.endsWith(path.join("middlewares", "auth.middleware.js")))
+    const others = [...sourceFiles(SRC), path.join(BACKEND, "index.ts")]
+      .filter((file) => !file.endsWith(path.join("middlewares", "auth.middleware.ts")))
       .map(read);
     const unused = middlewares.filter((name) => !others.some((text) => new RegExp(String.raw`\b${name}\b`).test(text)));
     expect(middlewares.length).toBeGreaterThan(0);

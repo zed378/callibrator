@@ -18,7 +18,7 @@ jest.mock("../../utils/storagePath.util", () => (...parts) =>
 const migration = require("../../migrations/0056-uploads-public-class");
 const { logger } = require("../../middlewares/activityLog.middleware");
 
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 const at = (...p) => path.join(mockRoot, ...p);
 const write = (rel, content) => {
   fs.mkdirSync(path.dirname(at(rel)), { recursive: true });

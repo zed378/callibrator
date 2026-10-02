@@ -17,6 +17,13 @@ global:
   corsOrigin: ""
   imagePullSecrets: []
 
+  # Q-42 (ADR-113): the published privacy notice (an absolute https URL). Under
+  # `global` because BOTH workloads read it, at runtime: the backend keeps
+  # POST /api/v1/access-requests absent (404) while it is empty, and the
+  # frontend shows "not open yet" on /request-access instead of the form and
+  # omits the footer's privacy link. Empty until the owner publishes the notice.
+  privacyNoticeUrl: ""
+
   # Every object in the release is named <base>-<component>, where <base> is
   # "<release>-callibrator", or just "<release>" when the release name already
   # contains "callibrator" — the SAME rule in the umbrella and both subcharts

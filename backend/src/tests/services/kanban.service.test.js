@@ -1,5 +1,5 @@
 /**
- * Tests for kanban.service.js
+ * Tests for kanban.service.ts
  */
 
 // ================================================================
@@ -158,7 +158,8 @@ const ALL_MODELS = [
 beforeEach(() => {
   jest.resetAllMocks();
   sequelize.transaction.mockImplementation(async (cb) => cb("txn"));
-  sequelize.query.mockResolvedValue([[{ card_seq: 1 }]]);
+  // P9-18: the bump is sent through sql(), which answers the rows directly.
+  sequelize.query.mockResolvedValue([{ card_seq: 1 }]);
   for (const m of ALL_MODELS) {
     m.findAll.mockResolvedValue([]);
     m.count.mockResolvedValue(0);
@@ -709,7 +710,7 @@ describe("createCard", () => {
 
   it("D-05: the card_seq bump carries the project's tenant, and a statement that updates no row is a 404, not a card", async () => {
     KanbanColumn.findOne.mockResolvedValueOnce({ id: "col1" });
-    sequelize.query.mockResolvedValueOnce([[]]); // a foreign projectId matches nothing
+    sequelize.query.mockResolvedValueOnce([]); // a foreign projectId matches nothing
 
     await expectReject(
       svc.createCard(superAdmin, PID, { columnId: "col1", title: "T" }),
@@ -717,8 +718,9 @@ describe("createCard", () => {
     );
 
     const [sql, options] = sequelize.query.mock.calls[0];
-    expect(sql).toMatch(/WHERE id = :projectId AND tenant_id = :tenantId RETURNING card_seq/);
-    expect(options.replacements).toEqual({ projectId: PID, tenantId: TID });
+    // P9-18: bound — $1 the project, $2 its tenant.
+    expect(sql).toMatch(/WHERE id = \$1 AND tenant_id = \$2 RETURNING card_seq/);
+    expect(options.bind).toEqual([PID, TID]);
     expect(KanbanCard.create).not.toHaveBeenCalled();
   });
 

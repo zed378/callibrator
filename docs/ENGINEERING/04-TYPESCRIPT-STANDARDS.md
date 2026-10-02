@@ -2,7 +2,7 @@
 
 The compiler and lint settings for backend code, and the patterns that make them pay for themselves. Decided in ADR-038.
 
-> **Target standard.** The backend is **JavaScript** until Phase 9 closes — as-built on 2026-09-29, 125 modules are TypeScript (all 16 `constants/`, 30 of the 36 `utils/` including `tenantScope`, `jobContext`, `migrationLock`, `response` and `upload`, `middlewares/activityLog` and `tenantContext`, `validators/iot.validator`, `config/env` — the one place converted code reads `process.env`, P9-06 part 1 — all 71 models and the models barrel `models/index.ts` with the `initModel` helper — P9-10 DONE; ADR-087 Amendments 6–11 — and the first P9-11 files, `middlewares/validation.middleware` and `validators/input`); everything else is JavaScript. The ratchet (`npm run ratchet`) refuses any new `.js` file, tests included. Every rule here applies to **new** backend files (the ratchet makes new `.js` impossible from P9-04) and to every file as it is converted. The frontend already uses TypeScript under its own, looser `tsconfig`; tightening it to this standard is not yet scheduled.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087), compiled to CommonJS; the only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18). `noSourceJs.p924.guard` fails on any other source `.js`. The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). Every rule here applies to all backend source and every new file. The frontend uses TypeScript under its own, looser `tsconfig`; tightening it to this standard is not yet scheduled.
 
 ---
 
@@ -195,7 +195,7 @@ declare global {
 }
 ```
 
-Each field is typed **as the JavaScript that sets it actually leaves it** — optional where the middleware that sets it has not necessarily run — and a field is added by the first converted module that reads or writes it (no speculative types). `AuthenticatedPrincipal` holds only the members converted code reads. *Target:* handlers that run after `auth` use a helper that narrows `user` to non-optional, rather than `req.user!`; it does not exist yet (the controllers are still JavaScript).
+Each field is typed **as the middleware that sets it actually leaves it** — optional where the middleware that sets it has not necessarily run — and a field is added by the first converted module that reads or writes it (no speculative types). `AuthenticatedPrincipal` holds only the members converted code reads. *Target:* handlers that run after `auth` use a helper that narrows `user` to non-optional, rather than `req.user!`; it does not exist yet (the controllers are still JavaScript).
 
 ### Models
 
@@ -260,12 +260,12 @@ The declared type is the documentation JSDoc used to be. Inferred return types o
 
 ### Module shape and CommonJS interop
 
-The output is CommonJS and most callers are still JavaScript, so the module's **run-time shape** is part of its contract (ADR-087 Amendments 1, 3, 5):
+The output is CommonJS, and the legacy `.js` tests (and, during Phase 9, the unconverted callers) `require` it, so the module's **run-time shape** is part of its contract (ADR-087 Amendments 1, 3, 5, 28):
 
 | Situation | As built |
 |---|---|
 | a module whose `.js` did `module.exports = fn` (models, `storagePath`, `appPath`) | `export =`, so `require()` still returns the function itself. An `export =` module carries **no** named `export` beside it (see § Models) — not even a type; enforced since ADR-087 Amendment 15 by the lint rule `EXPORT_EQUALS_ALONE` and by `npm run load:check` (every module must load, `dist/` under node and `src/` under tsx) |
-| a module that exported an object of functions | named `export`s, in the **original key order** (an `export { … }` list at the end when declarations cannot follow it) |
+| a module that exported an object of functions | named `export`s, in the **original key order** (an `export { … }` list at the end when declarations cannot follow it) — **or `export =` of one object in the `.js` key order where a caller observes the object** (its keys, their order or descriptors): tsx emits named exports as alphabetical getters with `__esModule` (ADR-087 Am. 28; `config/index`, `config/socket`, the services) |
 | a CommonJS library (`crypto`, `bcryptjs`, `config`) | **named imports**, which compile to a property read at call time, so `jest.spyOn(crypto, …)` and `jest.mock(…)` still reach it |
 | a Node builtin used as a whole (`fs`, `dns`, `path`) | a **default** import, never `import * as` — the namespace form goes through an interop copy, so a `jest.spyOn(dns.promises, …)` would not reach the module, and Babel counts the interop helper's branches against the file's coverage |
 | the `.js` called its own export late (`exports.x(...)`) | a **named self-import**, so a replacement of the export still reaches the caller |

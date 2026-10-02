@@ -69,7 +69,7 @@ const auditSupplierScorecard = (
 const pick = (row: object, keys: string[]): Record<string, unknown> =>
   Object.fromEntries(keys.map((k) => [k, (row as Record<string, unknown>)[k] ?? null]));
 
-/** A scorecard as the controller passes it (validated; a JavaScript caller may pass anything). */
+/** A scorecard as the controller passes it (validated by the contract's schema since A-336). */
 type ScorecardInput = Record<string, unknown> & { vendorId?: unknown };
 
 const createScorecard = async (tenantId: TenantId, data: ScorecardInput, userId: UserId, actor: AuditActorInput = { userId }): Promise<ScorecardRow> => {
@@ -147,6 +147,13 @@ const getScorecardById = async (tenantId: TenantId, id: string): Promise<Scoreca
 
 const updateScorecard = async (tenantId: TenantId, id: string, data: ScorecardInput, actor: AuditActorInput = {}): Promise<ScorecardRow> => {
   const scorecard = await service.getScorecardById(tenantId, id);
+  // A-336 (2026-10-01): a changed vendor must be the caller's tenant's, as on
+  // create. Another tenant's and a missing vendor are ONE 404 (the predicate
+  // is explicit: a super admin's context skips the tenant hooks).
+  if (data.vendorId !== undefined) {
+    const vendor = await Vendor.findOne({ where: { id: data.vendorId as string, tenantId }, attributes: ["id"] });
+    if (!vendor) {throw new AppError(404, "Vendor not found");}
+  }
   const fields = Object.keys(data);
   const before = pick(scorecard, fields);
   await db.transaction(async (transaction) => {

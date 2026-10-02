@@ -37,7 +37,7 @@ jest.mock("../../utils/appError.util", () => {
 });
 
 const adminService = require("../../services/admin.service");
-const { Tenants, Users, Role } = require("../../models");
+const { Tenants } = require("../../models");
 const { AppError } = require("../../utils/appError.util");
 
 describe("adminService", () => {
@@ -271,7 +271,7 @@ describe("adminService", () => {
 
       Tenants.findByPk.mockResolvedValueOnce(mockTenant);
 
-      const result = await adminService.updateTenantFlags(tenantId, flags);
+      await adminService.updateTenantFlags(tenantId, flags);
 
       expect(mockTenant.settings).toEqual({
         featureB: false,
@@ -293,7 +293,7 @@ describe("adminService", () => {
 
       Tenants.findByPk.mockResolvedValueOnce(mockTenant);
 
-      const result = await adminService.updateTenantFlags(tenantId, flags);
+      await adminService.updateTenantFlags(tenantId, flags);
 
       expect(mockTenant.settings).toEqual({ featureA: true });
       expect(mockTenant.changed).toHaveBeenCalledWith("settings", true);

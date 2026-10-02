@@ -258,7 +258,7 @@ Found while writing this and **not** in A-29 or A-17. Each is evidence for the a
 | 2 | `readingTolerance` is as unprovisionable as the token, so **anomaly detection is structurally dead** | absent from both schemas in `calibrationDevices.validator.js` (lines 29, 46), which strip unknown keys (line 70); read at `iot.service.js:132` |
 | 3 | one bad MQTT message can shut the server down | `iot.service.js:70` calls `ingestReading` unawaited and uncaught → unhandled rejection → the `unhandledRejection` handler in `index.js` calls `shutdown` |
 | 4 | the anomaly log line inlines the whole payload — **fixed 2026-09-24 (A-46)**: it now logs the metric names and the findings | `iot.service.js:156` — `{ payload, anomalyDetails }` written to `log/activity/combined/`, against the "no full bodies" rule in [`../ENGINEERING/12-LOGGING-CONVENTIONS.md`](../ENGINEERING/12-LOGGING-CONVENTIONS.md) |
-| 5 | ingest writes no `audit_logs` row | no `recordAudit` on `iot.route.js`; nothing in `ingestHttp` or `ingestReading` |
+| 5 | ingest writes no `audit_logs` row | no after-response `recordAudit` on the iot route (that middleware no longer exists, 2026-10-01); nothing in `ingestHttp` or `ingestReading` |
 | 6 | the demo seeder references an out-of-scope identifier | `migration.service.js:1327` — `devices.find((d) => d.iotEnabled) \|\| device`, where `device` is not bound in that scope; short-circuit hides it while the seed definitions include an IoT device |
 
 ## Related

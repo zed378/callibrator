@@ -1,64 +1,38 @@
-import { api } from "../client";
-import type {
-  Role,
-  BulkAssignmentResult,
-  BulkRevokeResult,
-  MenuGroup,
-} from "@/types";
+// src/api/services/menuGroupRole.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/menuGroups.openapi.ts →
+// @callibrator/contracts/menuGroup). The exported names are unchanged.
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type components } from "../typed";
+import type { Role, BulkAssignmentResult, BulkRevokeResult, MenuGroup } from "@/types";
 
-interface AssignMenuGroupPayload {
-  menuGroupId: string;
-  roleId: string;
-  notes?: string;
-}
+type M = "/api/v1/menu-groups";
 
-interface RevokeMenuGroupPayload {
-  menuGroupId: string;
-  roleId: string;
-}
+/**
+ * A menu entry as every tree read and the create/update answer it: `label`,
+ * `path` (from the slug) and `items` (its children, recursively).
+ */
+export type MenuEntry = components["schemas"]["MenuGroupNode"];
 
-interface AssignMenuItemPayload {
-  menuItemId: string;
-  roleId: string;
-  notes?: string;
-}
+/**
+ * The tree as the app's MenuGroup view. As built: the view types `icon` as a
+ * string; the API sends null for a group without one, which the sidebar's
+ * icon lookup already falls back from.
+ */
+const asMenuGroups = (entries: MenuEntry[]): MenuGroup[] => entries as unknown as MenuGroup[];
 
-interface RevokeMenuItemPayload {
-  menuItemId: string;
-  roleId: string;
-}
+export type MenuGroupCreateInput = JsonBody<Op<`${M}/create`, "post">>;
+export type MenuGroupUpdateInput = JsonBody<Op<`${M}/update`, "post">>;
 
-interface BulkAssignMenuGroupsPayload {
-  roleId: string;
-  menuGroupIds: string[];
-  notes?: string;
-}
+type AssignMenuGroupPayload = JsonBody<Op<`${M}/assign`, "post">>;
+type RevokeMenuGroupPayload = JsonBody<Op<`${M}/revoke`, "post">>;
+type AssignMenuItemPayload = JsonBody<Op<`${M}/assign-item`, "post">>;
+type RevokeMenuItemPayload = JsonBody<Op<`${M}/revoke-item`, "post">>;
+type BulkAssignMenuGroupsPayload = JsonBody<Op<`${M}/bulk-assign`, "post">>;
+type BulkRevokeMenuGroupsPayload = JsonBody<Op<`${M}/bulk-revoke`, "post">>;
 
-interface BulkRevokeMenuGroupsPayload {
-  roleId: string;
-  menuGroupIds: string[];
-}
-
-// Backend response wrappers
-interface BackendListResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
-
-export interface MenuGroupCreateInput {
-  name: string;
-  slug?: string;
-  icon?: string;
-  parentId?: string | null;
-  sortOrder?: number;
-  isActive?: boolean;
-}
-
-export interface MenuGroupUpdateInput extends Partial<MenuGroupCreateInput> {
-  id: string;
-}
+/** What an assignment answers: the role's permission row on the menu group. */
+export type RoleMenuGrant = DataOf<Op<`${M}/assign`, "post">>;
 
 /**
  * ADR-102 — the caller's EFFECTIVE menu permissions, as the API gate computes
@@ -66,10 +40,7 @@ export interface MenuGroupUpdateInput extends Partial<MenuGroupCreateInput> {
  * `permissions` holds only the slugs the caller has; `superAdmin` passes every
  * menu gate.
  */
-export interface EffectivePermissions {
-  superAdmin: boolean;
-  permissions: Record<string, "read" | "write">;
-}
+export type EffectivePermissions = DataOf<Op<`${M}/my-permissions`, "get">>;
 
 class MenuGroupRoleService {
   /**
@@ -77,34 +48,25 @@ class MenuGroupRoleService {
    * Backend route: GET /api/v1/menu-groups/menu-groups/admin
    */
   async getAdminMenuGroups(): Promise<MenuGroup[]> {
-    const response = await api.get<BackendListResponse<MenuGroup[]>>(
-      "/api/v1/menu-groups/menu-groups/admin",
-    );
-    return response?.data || [];
+    const response = await typedApi.GET("/api/v1/menu-groups/menu-groups/admin").then(unwrap);
+    // Defensive, as built: a body without rows reads as none.
+    return asMenuGroups(response?.data || []);
   }
 
   /**
    * Create a menu group (SUPERADMIN only).
    * Backend route: POST /api/v1/menu-groups/create
    */
-  async createMenuGroup(payload: MenuGroupCreateInput): Promise<MenuGroup> {
-    const response = await api.post<BackendListResponse<MenuGroup>>(
-      "/api/v1/menu-groups/create",
-      payload,
-    );
-    return response.data;
+  async createMenuGroup(payload: MenuGroupCreateInput): Promise<MenuEntry> {
+    return (await typedApi.POST("/api/v1/menu-groups/create", { body: payload }).then(unwrap)).data;
   }
 
   /**
    * Update a menu group (SUPERADMIN only).
    * Backend route: POST /api/v1/menu-groups/update
    */
-  async updateMenuGroup(payload: MenuGroupUpdateInput): Promise<MenuGroup> {
-    const response = await api.post<BackendListResponse<MenuGroup>>(
-      "/api/v1/menu-groups/update",
-      payload,
-    );
-    return response.data;
+  async updateMenuGroup(payload: MenuGroupUpdateInput): Promise<MenuEntry> {
+    return (await typedApi.POST("/api/v1/menu-groups/update", { body: payload }).then(unwrap)).data;
   }
 
   /**
@@ -112,9 +74,7 @@ class MenuGroupRoleService {
    * Backend route: POST /api/v1/menu-groups/delete
    */
   async deleteMenuGroup(menuGroupId: string): Promise<void> {
-    await api.post<BackendListResponse<null>>("/api/v1/menu-groups/delete", {
-      menuGroupId,
-    });
+    await typedApi.POST("/api/v1/menu-groups/delete", { body: { menuGroupId } });
   }
 
   /**
@@ -122,11 +82,10 @@ class MenuGroupRoleService {
    * Backend route: GET /api/v1/menu-groups/menu-groups?roleId={roleId}
    */
   async getAvailableMenuGroups(roleId: string): Promise<MenuGroup[]> {
-    const response = await api.get<BackendListResponse<MenuGroup[]>>(
-      "/api/v1/menu-groups/menu-groups",
-      { params: { roleId } },
-    );
-    return response?.data || [];
+    const response = await typedApi
+      .GET("/api/v1/menu-groups/menu-groups", { params: { query: { roleId } } })
+      .then(unwrap);
+    return asMenuGroups(response?.data || []);
   }
 
   /**
@@ -134,9 +93,7 @@ class MenuGroupRoleService {
    * Backend route: GET /api/v1/menu-groups/roles
    */
   async getAvailableRoles(): Promise<Role[]> {
-    const response = await api.get<BackendListResponse<Role[]>>(
-      "/api/v1/menu-groups/roles",
-    );
+    const response = await typedApi.GET("/api/v1/menu-groups/roles").then(unwrap);
     return response?.data || [];
   }
 
@@ -145,9 +102,8 @@ class MenuGroupRoleService {
    * Backend route: GET /api/v1/menu-groups/my-permissions
    */
   async getMyPermissions(): Promise<EffectivePermissions> {
-    const response = await api.get<BackendListResponse<EffectivePermissions>>(
-      "/api/v1/menu-groups/my-permissions",
-    );
+    const response = await typedApi.GET("/api/v1/menu-groups/my-permissions").then(unwrap);
+    // Defensive, as built: a body without `data` grants nothing.
     return {
       superAdmin: response?.data?.superAdmin === true,
       permissions: response?.data?.permissions ?? {},
@@ -159,11 +115,10 @@ class MenuGroupRoleService {
    * Backend route: POST /api/v1/menu-groups/get-assignments
    */
   async getPersonalizedMenu(roleId: string): Promise<MenuGroup[]> {
-    const response = await api.post<BackendListResponse<MenuGroup[]>>(
-      "/api/v1/menu-groups/get-assignments",
-      { roleId },
-    );
-    return response?.data || [];
+    const response = await typedApi
+      .POST("/api/v1/menu-groups/get-assignments", { body: { roleId } })
+      .then(unwrap);
+    return asMenuGroups(response?.data || []);
   }
 
   /**
@@ -174,65 +129,35 @@ class MenuGroupRoleService {
     roleId?: string;
     tenantId?: string;
   }): Promise<MenuGroup[]> {
-    const response = await api.post<BackendListResponse<MenuGroup[]>>(
-      "/api/v1/menu-groups/filter",
-      filters,
-    );
-    return response?.data || [];
+    // As built: `tenantId` rides along; the filter body reads only `roleId`.
+    const body = filters;
+    const response = await typedApi.POST("/api/v1/menu-groups/filter", { body }).then(unwrap);
+    return asMenuGroups(response?.data || []);
   }
 
-  async assignMenuGroupToRole(payload: AssignMenuGroupPayload): Promise<Role> {
-    const response = await api.post<BackendListResponse<Role>>(
-      "/api/v1/menu-groups/assign",
-      payload,
-    );
-    return response.data;
+  async assignMenuGroupToRole(payload: AssignMenuGroupPayload): Promise<RoleMenuGrant> {
+    return (await typedApi.POST("/api/v1/menu-groups/assign", { body: payload }).then(unwrap)).data;
   }
 
-  async revokeMenuGroupFromRole(
-    payload: RevokeMenuGroupPayload,
-  ): Promise<Role> {
-    const response = await api.post<BackendListResponse<Role>>(
-      "/api/v1/menu-groups/revoke",
-      payload,
-    );
-    return response.data;
+  /** The answer carries no data (the published envelope has none). */
+  async revokeMenuGroupFromRole(payload: RevokeMenuGroupPayload): Promise<void> {
+    await typedApi.POST("/api/v1/menu-groups/revoke", { body: payload });
   }
 
-  async assignMenuItemToRole(payload: AssignMenuItemPayload): Promise<Role> {
-    const response = await api.post<BackendListResponse<Role>>(
-      "/api/v1/menu-groups/assign-item",
-      payload,
-    );
-    return response.data;
+  async assignMenuItemToRole(payload: AssignMenuItemPayload): Promise<RoleMenuGrant> {
+    return (await typedApi.POST("/api/v1/menu-groups/assign-item", { body: payload }).then(unwrap)).data;
   }
 
-  async revokeMenuItemFromRole(payload: RevokeMenuItemPayload): Promise<Role> {
-    const response = await api.post<BackendListResponse<Role>>(
-      "/api/v1/menu-groups/revoke-item",
-      payload,
-    );
-    return response.data;
+  async revokeMenuItemFromRole(payload: RevokeMenuItemPayload): Promise<void> {
+    await typedApi.POST("/api/v1/menu-groups/revoke-item", { body: payload });
   }
 
-  async bulkAssignMenuGroups(
-    payload: BulkAssignMenuGroupsPayload,
-  ): Promise<BulkAssignmentResult> {
-    const response = await api.post<BackendListResponse<BulkAssignmentResult>>(
-      "/api/v1/menu-groups/bulk-assign",
-      payload,
-    );
-    return response.data;
+  async bulkAssignMenuGroups(payload: BulkAssignMenuGroupsPayload): Promise<BulkAssignmentResult> {
+    return (await typedApi.POST("/api/v1/menu-groups/bulk-assign", { body: payload }).then(unwrap)).data;
   }
 
-  async bulkRevokeMenuGroups(
-    payload: BulkRevokeMenuGroupsPayload,
-  ): Promise<BulkRevokeResult> {
-    const response = await api.post<BackendListResponse<BulkRevokeResult>>(
-      "/api/v1/menu-groups/bulk-revoke",
-      payload,
-    );
-    return response.data;
+  async bulkRevokeMenuGroups(payload: BulkRevokeMenuGroupsPayload): Promise<BulkRevokeResult> {
+    return (await typedApi.POST("/api/v1/menu-groups/bulk-revoke", { body: payload }).then(unwrap)).data;
   }
 }
 

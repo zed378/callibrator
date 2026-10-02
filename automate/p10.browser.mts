@@ -29,12 +29,20 @@
  *
  * Environment: FRONTEND_URL, BASE_URL, E2E_MAILPIT_URL, E2E_OPERATOR,
  * E2E_OPERATOR_PASSWORD (+ E2E_BOOTSTRAP_PASSWORD on a fresh stack),
- * CHROME_PATH, HEADFUL=1, P10_ARTIFACTS=<dir> (failure screenshots).
+ * CHROME_PATH, HEADFUL=1, P10_ARTIFACTS=<dir> (failure screenshots), and for
+ * the in-browser SSO check P10_MOCK_IDP_HOST (the host name the backend
+ * reaches this machine by, e.g. host.docker.internal) + P10_MOCK_IDP_PORT
+ * (default 27139). That check needs a NON-production backend whose
+ * SSRF_DEV_ALLOW_HOSTS names the host: a production backend refuses a
+ * private or http identity provider (it is reported as skipped without it).
  *
  * Exit status 0 only when every check passed. Not part of `make verify`.
  */
 import { createRequire } from "node:module";
-import { randomBytes } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, sign as cryptoSign } from "node:crypto";
+import type { KeyObject } from "node:crypto";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -48,7 +56,24 @@ const FRONTEND_URL = (process.env["FRONTEND_URL"] ?? "http://localhost:3001").re
 process.env["BASE_URL"] = process.env["BASE_URL"] ?? "http://localhost:3000";
 const BACKEND_ORIGIN = new URL(process.env["BASE_URL"]).origin;
 const MAILPIT = (process.env["E2E_MAILPIT_URL"] ?? "").replace(/\/$/, "");
+/**
+ * The in-browser SSO check's mock OIDC identity provider (an HTTP server in
+ * THIS process). P10_MOCK_IDP_HOST is the host name the BACKEND reaches this
+ * machine by (`host.docker.internal` for a compose stack); unset, the check is
+ * skipped by name. The backend reaches a non-public IdP only when it is NOT in
+ * production and the host is on SSRF_DEV_ALLOW_HOSTS (utils/ssrf.util.ts): in
+ * production a private or http IdP is refused, correctly.
+ */
+const MOCK_IDP_HOST = process.env["P10_MOCK_IDP_HOST"] ?? "";
+const MOCK_IDP_PORT = Number(process.env["P10_MOCK_IDP_PORT"] ?? "27139");
+const MOCK_IDP_ORIGIN = `http://localhost:${String(MOCK_IDP_PORT)}`;
 const STEP_TIMEOUT = 30000;
+/**
+ * Q-42 (ADR-113): the intake opens only with a published privacy notice. The
+ * stack sets PRIVACY_NOTICE_URL on BOTH services (scripts/ci/e2e-env.sh and
+ * deploy/compose/docker-compose.e2e.yml); this is the value it set.
+ */
+const PRIVACY_NOTICE_URL = process.env["E2E_PRIVACY_NOTICE_URL"] ?? "https://example.com/privacy-notice";
 const ARTIFACTS = process.env["P10_ARTIFACTS"] ?? os.tmpdir();
 
 /** The E2E harness (JavaScript), as this file uses it. */
@@ -98,8 +123,8 @@ interface Reply {
 }
 
 /** One backend call (JSON), never throwing on a status. */
-const call = async (method: string, route: string, body?: unknown, token?: string): Promise<Reply> => {
-  const headers: Record<string, string> = { "Content-Type": "application/json", "User-Agent": "Callibrator-E2E-P10-Browser/1.0" };
+const call = async (method: string, route: string, body?: unknown, token?: string, extra: Record<string, string> = {}): Promise<Reply> => {
+  const headers: Record<string, string> = { "Content-Type": "application/json", "User-Agent": "Callibrator-E2E-P10-Browser/1.0", ...extra };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const init: RequestInit = { method, headers, signal: AbortSignal.timeout(20000) };
   if (body !== undefined) init.body = JSON.stringify(body);
@@ -198,7 +223,8 @@ const instrument = async (page: Page): Promise<void> => {
     const url = req.url();
     if (!/^https?:/.test(url)) return;
     const origin = new URL(url).origin;
-    if (origin !== new URL(FRONTEND_URL).origin && origin !== BACKEND_ORIGIN) {
+    // The mock IdP is local (this process), and only the SSO check navigates to it.
+    if (origin !== new URL(FRONTEND_URL).origin && origin !== BACKEND_ORIGIN && !(MOCK_IDP_HOST !== "" && origin === MOCK_IDP_ORIGIN)) {
       log.thirdParty.push(`${req.method()} ${url} (on ${page.url()})`);
     }
   });
@@ -241,13 +267,29 @@ const axe = async (page: Page, label: string): Promise<string> => {
   return `${label}: axe 0`;
 };
 
-/** Exactly one <main> and one visible <h1> (AC-2). */
+/**
+ * Exactly one <main> and one visible <h1> (AC-2).
+ *
+ * Polled, not sampled once: the landing streams its content behind a
+ * Suspense skeleton that has no <h1>, and React reveals a streamed boundary
+ * a moment after `domcontentloaded`. Run M (2026-10-02, record
+ * 2026-10-02-a346-a348-live-pair-kl) read "1 <main>, 0 visible <h1>" 340 ms
+ * in, on a page whose screenshot shows the heading. The verdict is the same
+ * check, given until the step timeout to hold.
+ */
 const landmarks = async (page: Page): Promise<void> => {
-  const { mains, h1s } = await page.evaluate(() => ({
-    mains: document.querySelectorAll("main").length,
-    h1s: [...document.querySelectorAll("h1")].filter((h) => h.getBoundingClientRect().height > 0).length,
-  }));
-  if (mains !== 1 || h1s !== 1) throw new Error(`${page.url()}: ${String(mains)} <main>, ${String(h1s)} visible <h1>`);
+  const read = () =>
+    page.evaluate(() => ({
+      mains: document.querySelectorAll("main").length,
+      h1s: [...document.querySelectorAll("h1")].filter((h) => h.getBoundingClientRect().height > 0).length,
+    }));
+  const deadline = Date.now() + STEP_TIMEOUT;
+  let seen = await read();
+  while ((seen.mains !== 1 || seen.h1s !== 1) && Date.now() < deadline) {
+    await sleep(250);
+    seen = await read();
+  }
+  if (seen.mains !== 1 || seen.h1s !== 1) throw new Error(`${page.url()}: ${String(seen.mains)} <main>, ${String(seen.h1s)} visible <h1>`);
 };
 
 const go = async (page: Page, route: string): Promise<void> => {
@@ -437,6 +479,147 @@ const issueSignedCertificate = async (token: string, tenantId: string): Promise<
   return { number: str(dataOf(cert)["certificateNumber"]), verifyPath: qr.search === "" ? "" : `${qr.pathname}${qr.search}`, serial };
 };
 
+// ---------------------------------------------------------------- the mock OIDC identity provider
+
+interface MockIdp {
+  /** The issuer and the base the backend uses (discovery, token, JWKS): http://<MOCK_IDP_HOST>:<port>. */
+  issuer: string;
+  clientId: string;
+  clientSecret: string;
+  /** The redirect URIs the client was registered with (the IdP refuses any other). */
+  redirectUris: Set<string>;
+  /** The person who signs in at the IdP (auto-consent: the check is the relying party, not the IdP's UI). */
+  subject: { email: string; givenName: string; familyName: string };
+  /** What the IdP saw, for the assertions. */
+  seen: { authorize: number; token: number; jwks: number; discovery: number; pkceVerified: boolean };
+  close: () => Promise<void>;
+}
+
+const b64url = (buf: Buffer): string => buf.toString("base64url");
+
+/**
+ * A minimal OpenID Provider: discovery, an authorization endpoint that signs
+ * the configured subject in at once (code flow, PKCE S256 required, the
+ * registered redirect URI only), a token endpoint (client secret + PKCE
+ * checked), and a JWKS. The id_token is RS256 with `iss`, `aud`, `nonce`,
+ * `exp`, `iat`, `sub` and `email`. The AUTHORIZATION endpoint is published on
+ * localhost (the browser goes there); discovery, token and JWKS on
+ * MOCK_IDP_HOST (the backend's server-side calls).
+ */
+const startMockIdp = async (): Promise<MockIdp> => {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const kid = `p10-${stamp}`;
+  const jwk = { ...(publicKey.export({ format: "jwk" }) as Record<string, string>), kid, use: "sig", alg: "RS256" };
+  const idp: MockIdp = {
+    // A path per run: the backend caches discovery and the JWKS by URL (6 h) and does not refetch on
+    // an unknown `kid` (A-341), so a second run's new signing key would be refused under the same URL.
+    issuer: `http://${MOCK_IDP_HOST}:${String(MOCK_IDP_PORT)}/${stamp}`,
+    clientId: `p10-client-${stamp}`,
+    clientSecret: randomBytes(24).toString("hex"),
+    redirectUris: new Set<string>(),
+    subject: { email: "", givenName: "Sso", familyName: "Browser" },
+    seen: { authorize: 0, token: 0, jwks: 0, discovery: 0, pkceVerified: false },
+    close: async () => undefined,
+  };
+  const codes = new Map<string, { redirectUri: string; nonce: string; challenge: string; clientId: string }>();
+  const signJwt = (payload: Record<string, unknown>, key: KeyObject): string => {
+    const head = b64url(Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT", kid })));
+    const body = b64url(Buffer.from(JSON.stringify(payload)));
+    return `${head}.${body}.${b64url(cryptoSign("sha256", Buffer.from(`${head}.${body}`), key))}`;
+  };
+  const json = (res: http.ServerResponse, status: number, value: unknown): void => {
+    res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(value));
+  };
+  const server = http.createServer((req, res) => {
+    const raw = new URL(req.url ?? "/", "http://idp.invalid");
+    // Everything lives under /<stamp> (the issuer's path); anything else is not this run's IdP.
+    if (!raw.pathname.startsWith(`/${stamp}/`)) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    const url = new URL(raw.pathname.slice(stamp.length + 1) + raw.search, "http://idp.invalid");
+    if (req.method === "GET" && url.pathname === "/.well-known/openid-configuration") {
+      idp.seen.discovery++;
+      json(res, 200, {
+        issuer: idp.issuer,
+        authorization_endpoint: `${MOCK_IDP_ORIGIN}/${stamp}/authorize`,
+        token_endpoint: `${idp.issuer}/token`,
+        jwks_uri: `${idp.issuer}/jwks`,
+        response_types_supported: ["code"],
+        subject_types_supported: ["public"],
+        id_token_signing_alg_values_supported: ["RS256"],
+        code_challenge_methods_supported: ["S256"],
+      });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/jwks") {
+      idp.seen.jwks++;
+      json(res, 200, { keys: [jwk] });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/authorize") {
+      idp.seen.authorize++;
+      const p = url.searchParams;
+      const redirectUri = p.get("redirect_uri") ?? "";
+      if (p.get("client_id") !== idp.clientId || !idp.redirectUris.has(redirectUri) || p.get("response_type") !== "code" ||
+        p.get("code_challenge_method") !== "S256" || !p.get("code_challenge") || !p.get("state") || !p.get("nonce")) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("invalid authorization request");
+        return;
+      }
+      const code = randomBytes(24).toString("base64url");
+      codes.set(code, { redirectUri, nonce: p.get("nonce") ?? "", challenge: p.get("code_challenge") ?? "", clientId: idp.clientId });
+      const back = new URL(redirectUri);
+      back.searchParams.set("code", code);
+      back.searchParams.set("state", p.get("state") ?? "");
+      res.writeHead(302, { Location: back.toString() });
+      res.end();
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/token") {
+      idp.seen.token++;
+      let raw = "";
+      req.on("data", (chunk: Buffer) => { raw += chunk.toString("utf8"); });
+      req.on("end", () => {
+        const f = new URLSearchParams(raw);
+        const grant = codes.get(f.get("code") ?? "");
+        codes.delete(f.get("code") ?? "");
+        const verifier = f.get("code_verifier") ?? "";
+        const pkceOk = grant !== undefined && b64url(createHash("sha256").update(verifier).digest()) === grant.challenge;
+        if (!grant || f.get("grant_type") !== "authorization_code" || f.get("client_id") !== idp.clientId ||
+          f.get("client_secret") !== idp.clientSecret || f.get("redirect_uri") !== grant.redirectUri || !pkceOk) {
+          json(res, 400, { error: "invalid_grant" });
+          return;
+        }
+        idp.seen.pkceVerified = true;
+        const now = Math.floor(Date.now() / 1000);
+        const idToken = signJwt(
+          {
+            iss: idp.issuer, aud: idp.clientId, sub: `sub-${stamp}`, email: idp.subject.email,
+            given_name: idp.subject.givenName, family_name: idp.subject.familyName,
+            nonce: grant.nonce, iat: now, exp: now + 300, auth_time: now,
+          },
+          privateKey,
+        );
+        json(res, 200, { access_token: randomBytes(16).toString("hex"), token_type: "Bearer", expires_in: 300, id_token: idToken });
+      });
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  // Every interface: the backend container reaches this machine through the Docker host gateway.
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(MOCK_IDP_PORT, "0.0.0.0", () => resolve());
+  });
+  console.log(`  mock OIDC IdP on :${String((server.address() as AddressInfo).port)} (issuer ${idp.issuer}, authorize ${MOCK_IDP_ORIGIN})`);
+  idp.close = () => new Promise<void>((resolve) => server.close(() => resolve()));
+  return idp;
+};
+
 // ---------------------------------------------------------------- run
 
 const main = async (): Promise<void> => {
@@ -470,6 +653,11 @@ const main = async (): Promise<void> => {
       const idTitle = t(ID, "landing.hero.title");
       if ((await p1.evaluate(() => document.documentElement.lang)) !== "id") throw new Error("the landing is not lang=id by default");
       await textIncludes(p1, idTitle);
+      // Q-42: the footer links to the published notice, by its Indonesian name.
+      const footerPrivacy = await p1.$$eval(`footer a[href="${PRIVACY_NOTICE_URL}"]`, (links) => links.map((a) => (a.textContent ?? "").trim()));
+      if (!footerPrivacy.includes(t(ID, "pub.footer.privacy"))) {
+        throw new Error(`the footer has no "${t(ID, "pub.footer.privacy")}" link to ${PRIVACY_NOTICE_URL} — does the stack set PRIVACY_NOTICE_URL (Q-42)?`);
+      }
       const axeId = await axe(p1, "/ (id)");
       await Promise.all([p1.waitForNavigation({ timeout: STEP_TIMEOUT }).catch(() => undefined), clickVisible(p1, 'button[lang="en"]')]);
       await p1.waitForFunction(() => document.documentElement.lang === "en", { timeout: STEP_TIMEOUT });
@@ -486,7 +674,13 @@ const main = async (): Promise<void> => {
       await go(p1, "/request-access");
       await landmarks(p1);
       const axeEmpty = await axe(p1, "/request-access (empty)");
-      await p1.waitForSelector("#ra-consent", { timeout: STEP_TIMEOUT });
+      if (!(await p1.$("#ra-consent"))) {
+        throw new Error("/request-access shows no form — the stack must set PRIVACY_NOTICE_URL on the frontend (Q-42, ADR-113)");
+      }
+      // Q-42: the consent names the notice and links to it.
+      if (!(await p1.$(`label[for="ra-consent"] a[href="${PRIVACY_NOTICE_URL}"][target="_blank"]`))) {
+        throw new Error(`the consent does not link to ${PRIVACY_NOTICE_URL}`);
+      }
       for (let attempt = 0; attempt < 5 && !(await p1.$('[role="alert"]')); attempt++) {
         await p1.click('form:has(#ra-consent) button[type="submit"]');
         await sleep(800);
@@ -656,7 +850,11 @@ const main = async (): Promise<void> => {
       await p3.click('form:has(#first-new-password) button[type="submit"]');
       const where = await onDashboard(p3);
       // The one-time password is spent: it no longer signs in.
-      const spent = await call("POST", "/auth/login", { user: email, password: once });
+      // From its own client address (the backend trusts one hop): a deliberate failure must not
+      // spend the shared address's login throttle (5 failures in 15 min, A-185).
+      const spent = await call("POST", "/auth/login", { user: email, password: once }, undefined, {
+        "X-Forwarded-For": `198.18.${String(randomBytes(1)[0] ?? 1)}.${String((randomBytes(1)[0] ?? 0) % 250 + 1)}`,
+      });
       if (spent.status !== 401) throw new Error(`the spent one-time password answered ${String(spent.status)}`);
       return `${axeFirst}; ${where}`;
     });
@@ -707,6 +905,89 @@ const main = async (): Promise<void> => {
       return `${axeValid}; ${axeMissing}`;
     });
     await c5.close();
+
+    // ---- identifier-first SSO through a real redirect (OIDC, the mock IdP in this process)
+    const ssoName = "sso: identifier-first, a claimed domain → the IdP (OIDC, code + PKCE) → back signed in on /dashboard; the callback is single-use";
+    if (MOCK_IDP_HOST === "") {
+      console.log(`  SKIP  ${ssoName} — P10_MOCK_IDP_HOST is not set (a non-production stack whose SSRF_DEV_ALLOW_HOSTS names that host)`);
+    } else {
+      const idp = await startMockIdp();
+      const c6 = await browser.createBrowserContext();
+      const p6 = await newPage(c6);
+      try {
+        await check(ssoName, async () => {
+          const code = `P10BRSSO${stamp}`.toUpperCase().slice(0, 40);
+          const domain = `sso-br-${stamp}.example.com`;
+          const created = await call("POST", "/tenants/create", { name: `SSO Browser ${stamp}`, code, email: `it@${domain}` }, operator);
+          if (created.status !== 201) throw new Error(`tenant create ${String(created.status)}: ${str(obj(created.body)["message"])}`);
+          const tenantId = str(dataOf(created)["id"]);
+          const redirectUri = `${FRONTEND_URL}/api/v1/auth/sso/oidc/callback/${code}`;
+          idp.redirectUris.add(redirectUri);
+          const settings = await call(
+            "PATCH",
+            "/tenants/settings",
+            {
+              tenantId,
+              settings: {
+                sso_enabled: "true",
+                oidc_client_id: idp.clientId,
+                oidc_client_secret: idp.clientSecret,
+                oidc_authority: idp.issuer,
+                oidc_redirect_uri: redirectUri,
+              },
+            },
+            operator,
+          );
+          if (settings.status !== 200) throw new Error(`SSO settings ${String(settings.status)}: ${str(obj(settings.body)["message"])}`);
+          const claim = await call("PUT", `/admin/tenants/${tenantId}/sso-domains`, { domains: [domain] }, operator);
+          if (claim.status !== 200) throw new Error(`domain claim ${String(claim.status)}: ${str(obj(claim.body)["message"])}`);
+          // The person exists only at the IdP: the first sign-in provisions them just in time (USER role,
+          // audited SSO_JIT_PROVISION). (An administrator-created account would land on the forced
+          // password change first — A-123 — which is not what this check is about.)
+          idp.subject.email = `sso-person-${stamp}@${domain}`;
+
+          let callbackUrl = "";
+          p6.on("request", (r) => {
+            if (r.url().includes(`/sso/oidc/callback/${code}?`)) callbackUrl = r.url();
+          });
+          await go(p6, "/login");
+          await p6.waitForSelector("#username", { timeout: STEP_TIMEOUT });
+          await typeExactly(p6, "#username", idp.subject.email);
+          // Retried until hydrated; the discovery answer sends the browser to the IdP.
+          for (let attempt = 0; attempt < 5 && idp.seen.authorize === 0; attempt++) {
+            await p6.click('form:has(#username) button[type="submit"]').catch(() => undefined);
+            await sleep(2500);
+          }
+          const where = await onDashboard(p6);
+          if (where !== "/dashboard") throw new Error(`the SSO sign-in landed on ${where}, not the dashboard`);
+          if (idp.seen.authorize < 1 || idp.seen.token < 1 || !idp.seen.pkceVerified) {
+            throw new Error(`the IdP saw authorize ${String(idp.seen.authorize)}, token ${String(idp.seen.token)}, PKCE ${String(idp.seen.pkceVerified)}`);
+          }
+          const who = await p6.evaluate(async () => {
+            const r = await fetch("/api/v1/auth/verify", { method: "POST" });
+            return { status: r.status, body: (await r.json().catch(() => null)) as { data?: { email?: string; tenantId?: string } } | null };
+          });
+          if (who.status !== 200 || who.body?.data?.email !== idp.subject.email || who.body.data.tenantId !== tenantId) {
+            throw new Error(`/auth/verify in the browser answered ${String(who.status)} for ${String(who.body?.data?.email)}`);
+          }
+          // The callback (IdP code + state) is single-use: replayed in a fresh context it is refused to /login.
+          if (callbackUrl === "") throw new Error("the browser never reached the OIDC callback");
+          const c7 = await browser.createBrowserContext();
+          try {
+            const p7 = await newPage(c7);
+            await p7.goto(callbackUrl, { waitUntil: "domcontentloaded", timeout: STEP_TIMEOUT });
+            await p7.waitForFunction(() => location.pathname === "/login" && location.search.includes("error="), { timeout: STEP_TIMEOUT });
+          } finally {
+            await c7.close();
+            currentPage = p6;
+          }
+          return `${where} as ${idp.subject.email} (provisioned just in time); IdP: discovery ${String(idp.seen.discovery)}, authorize ${String(idp.seen.authorize)}, token ${String(idp.seen.token)} (PKCE verified), jwks ${String(idp.seen.jwks)}; replayed callback → /login?error`;
+        });
+      } finally {
+        await c6.close();
+        await idp.close();
+      }
+    }
 
     // ---- CSP and third parties across the whole run
     await check("CSP: every frontend document carried a nonce policy; 0 violations, 0 page errors, 0 third-party requests", async () => {

@@ -49,7 +49,6 @@ jest.mock("../../services/audit.service", () => ({ logAction: mockLogAction }));
 const ACTOR = { userId: "super-1", tenantId: "t-home", ipAddress: null, userAgent: null };
 
 const logger = mockLogger;
-const AppError = MockAppError;
 
 // Load the service with the given env + mocked models.
 const loadService = (env, models) => {

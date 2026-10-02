@@ -117,7 +117,7 @@ describe("Q-38 — the geofence", () => {
 });
 
 describe("Q-38 — who may write", () => {
-  const ROUTE = fs.readFileSync(path.join(__dirname, "../../routes/api/networkSecurity.route.js"), "utf8");
+  const ROUTE = fs.readFileSync(path.join(__dirname, "../../routes/api/networkSecurity.route.ts"), "utf8");
 
   it("the home-tenant PUTs are gated by network-security write, not superAdminOnly", () => {
     // denyApiKey first: a key may not change where a tenant signs in from.

@@ -16,7 +16,7 @@ const createSubOrganization = z.object({
   name: z.string().min(2).max(255),
 });
 
-/** Validate add child tenant (POST /:parentId/children; checked in the controller). */
+/** Validate add child tenant (POST /:tenantId/children, the parent; checked in the controller). */
 const addChild = z.object({
   name: z.string().min(2).max(255),
   code: z.string().min(1).max(50).optional(),

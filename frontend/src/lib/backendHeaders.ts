@@ -8,7 +8,7 @@
  * With the backend's `FORCE_HTTPS=true` (the Helm default and the compose
  * prod/staging overlays) every request that is neither `req.secure` nor marked
  * `X-Forwarded-Proto: https` is answered with a 301 to `https://<Host>/…`
- * (backend routes/internal/health.route.js#forceHttps). The internal hop
+ * (backend routes/internal/health.route.ts#forceHttps). The internal hop
  * Next → backend is plain HTTP, and the dedicated auth routes (login, refresh,
  * sso-session, logout, logout-all) sent no `X-Forwarded-Proto`: the backend
  * redirected sign-in to `https://backend:3000`, the fetch failed, and the

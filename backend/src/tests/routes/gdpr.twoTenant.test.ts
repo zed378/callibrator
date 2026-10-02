@@ -12,7 +12,7 @@
  * principalHasMenuPermission (role matrix granted) on the REAL models and
  * tenant hooks (fixtures/memoryDb).
  *
- * @two-tenant api/gdpr.route.js GET /erasure/:requestId
+ * @two-tenant api/gdpr.route.ts GET /erasure/:requestId
  */
 import type * as MemoryDbModule from "../fixtures/memoryDb";
 import type * as RouteClient from "../fixtures/routeClient";

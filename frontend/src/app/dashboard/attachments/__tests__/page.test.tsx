@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 /**
- * Files & Documents, against the backend contract (attachment.controller.js):
+ * Files & Documents, against the backend contract (attachment.controller.ts):
  *  - GET    /api/v1/attachments                → rows in `data`, top-level `meta`
  *  - POST   /api/v1/attachments (multipart)    → 201 `data: attachment`
  *  - POST   /api/v1/attachments/:id/signed-url → `data: { url, token, expiresAt, expiresInSec }`
@@ -222,7 +222,7 @@ describe("Attachments page", () => {
 });
 
 /**
- * ADR-102 — deleting a file needs `equipment` write (attachments.route.js);
+ * ADR-102 — deleting a file needs `equipment` write (attachments.route.ts);
  * uploading and downloading need `equipment` read. ENGINEERING MANAGER holds
  * `equipment` read: it keeps Upload and Download, loses Delete.
  * Fail-before: Delete rendered for every role.

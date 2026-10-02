@@ -1,10 +1,10 @@
-import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type components } from "../typed";
 
 /**
  * OIDC Provider — this platform acting as an identity provider.
  *
  * The tenant is taken from the caller's JWT, so no tenantId is sent.
- * Backend: src/routes/api/oidc.route.js (mounted /api/v1/oidc)
+ * Backend: src/routes/api/oidc.route.ts (mounted /api/v1/oidc)
  *   GET    /.well-known/openid-configuration   (public)
  *   GET    /.well-known/jwks.json              (public)
  *   POST   /clients                            (super admin)
@@ -14,73 +14,32 @@ import { api } from "../client";
  */
 
 // ---------- Types ----------
+// P9-25 (ADR-103 item 11): from the contract (backend/src/routes/api/oidc.openapi.ts);
+// the names are unchanged.
 
-export interface OidcDiscovery {
-  issuer: string;
-  authorization_endpoint: string;
-  token_endpoint: string;
-  userinfo_endpoint: string;
-  jwks_uri: string;
-  scopes_supported: string[];
-  response_types_supported: string[];
-  subject_types_supported: string[];
-  id_token_signing_alg_values_supported: string[];
-}
+type O = "/api/v1/oidc";
 
-export interface JwksKey {
-  kty: string;
-  use: string;
-  kid: string;
-  alg: string;
-  n: string;
-  e: string;
-}
-
-export interface Jwks {
-  keys: JwksKey[];
-}
+export type OidcDiscovery = Body<Op<`${O}/.well-known/openid-configuration`, "get">>;
+export type Jwks = Body<Op<`${O}/.well-known/jwks.json`, "get">>;
+export type JwksKey = Jwks["keys"][number];
 
 /** A registered client, as returned by GET /clients — never includes the secret. */
-export interface OidcClient {
-  clientId: string;
-  name: string;
-  redirectUris: string[];
-  scopes: string[];
-  grantTypes: string[];
-  createdAt?: string;
-}
+export type OidcClient = components["schemas"]["OidcClient"];
 
-export interface RegisterClientInput {
-  name: string;
-  redirectUris: string[];
-  /** Server defaults to ["openid","profile","email"]. */
-  scopes?: string[];
-  /** Server defaults to ["authorization_code"]. */
-  grantTypes?: string[];
-}
+/** The server defaults `scopes` to ["openid","profile","email"] and `grantTypes` to ["authorization_code"]. */
+export type RegisterClientInput = JsonBody<Op<`${O}/clients`, "post">>;
 
 /**
- * Registration/rotation response — `clientSecret` is returned in plaintext
- * exactly once and only ever stored hashed. It cannot be retrieved later.
+ * Registration response — `clientSecret` is returned in plaintext exactly once
+ * and only ever stored hashed. It cannot be retrieved later.
  */
-export interface OidcClientWithSecret extends OidcClient {
-  clientSecret: string;
-}
+export type OidcClientWithSecret = DataOf<Op<`${O}/clients`, "post">>;
 
 /** The staged authorization request the consent screen renders. */
-export interface OidcAuthRequest {
-  clientName: string;
-  scope: string[];
-  redirectUri: string;
-}
+export type OidcAuthRequest = DataOf<Op<`${O}/authorize/request/{requestId}`, "get">>;
 
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+/** A well-known document: its body, not the envelope. */
+type Body<Operation> = Operation extends { responses: { 200: { content: { "application/json": infer B } } } } ? B : never;
 
 // ---------- Service ----------
 
@@ -91,24 +50,21 @@ export const oidcService = {
   // reading `.data` off them gave undefined, so the Endpoints card never
   // rendered. An enveloped body is still read for compatibility.
   getDiscovery: async (): Promise<OidcDiscovery> => {
-    const response = await api.get<OidcDiscovery | BackendResponse<OidcDiscovery>>(
-      "/api/v1/oidc/.well-known/openid-configuration",
-    );
+    const response: OidcDiscovery | { data: OidcDiscovery } = await typedApi
+      .GET("/api/v1/oidc/.well-known/openid-configuration")
+      .then(unwrap);
     return "issuer" in response ? response : response.data;
   },
 
   /** GET /api/v1/oidc/.well-known/jwks.json */
   getJwks: async (): Promise<Jwks> => {
-    const response = await api.get<Jwks | BackendResponse<Jwks>>(
-      "/api/v1/oidc/.well-known/jwks.json",
-    );
+    const response: Jwks | { data: Jwks } = await typedApi.GET("/api/v1/oidc/.well-known/jwks.json").then(unwrap);
     return "keys" in response ? response : response.data;
   },
 
   /** GET /api/v1/oidc/clients */
   getClients: async (): Promise<OidcClient[]> => {
-    const response =
-      await api.get<BackendResponse<OidcClient[]>>("/api/v1/oidc/clients");
+    const response = await typedApi.GET("/api/v1/oidc/clients").then(unwrap);
     return response.data ?? [];
   },
 
@@ -119,11 +75,7 @@ export const oidcService = {
   registerClient: async (
     input: RegisterClientInput,
   ): Promise<OidcClientWithSecret> => {
-    const response = await api.post<BackendResponse<OidcClientWithSecret>>(
-      "/api/v1/oidc/clients",
-      input,
-    );
-    return response.data;
+    return (await typedApi.POST("/api/v1/oidc/clients", { body: input }).then(unwrap)).data;
   },
 
   /**
@@ -132,20 +84,16 @@ export const oidcService = {
    */
   rotateSecret: async (
     clientId: string,
-  ): Promise<{ clientId: string; clientSecret: string }> => {
-    const response = await api.post<
-      BackendResponse<{ clientId: string; clientSecret: string }>
-    >(`/api/v1/oidc/clients/${clientId}/rotate-secret`);
-    return response.data;
-  },
+  ): Promise<DataOf<Op<`${O}/clients/{clientId}/rotate-secret`, "post">>> =>
+    (
+      await typedApi
+        .POST("/api/v1/oidc/clients/{clientId}/rotate-secret", { params: { path: { clientId } } })
+        .then(unwrap)
+    ).data,
 
   /** DELETE /api/v1/oidc/clients/:clientId — super admin only. */
-  deleteClient: async (clientId: string): Promise<{ deleted: boolean }> => {
-    const response = await api.delete<BackendResponse<{ deleted: boolean }>>(
-      `/api/v1/oidc/clients/${clientId}`,
-    );
-    return response.data;
-  },
+  deleteClient: async (clientId: string): Promise<DataOf<Op<`${O}/clients/{clientId}`, "delete">>> =>
+    (await typedApi.DELETE("/api/v1/oidc/clients/{clientId}", { params: { path: { clientId } } }).then(unwrap)).data,
 
   // ---------- Consent (runtime authorization) ----------
 
@@ -155,10 +103,12 @@ export const oidcService = {
    * Throws (404) when the request has expired or is unknown.
    */
   getAuthRequest: async (requestId: string): Promise<OidcAuthRequest> => {
-    const response = await api.get<BackendResponse<OidcAuthRequest>>(
-      `/api/v1/oidc/authorize/request/${encodeURIComponent(requestId)}`,
-    );
-    return response.data;
+    // openapi-fetch encodes the path value, as `encodeURIComponent` did.
+    return (
+      await typedApi
+        .GET("/api/v1/oidc/authorize/request/{requestId}", { params: { path: { requestId } } })
+        .then(unwrap)
+    ).data;
   },
 
   /**
@@ -169,13 +119,9 @@ export const oidcService = {
   submitDecision: async (
     requestId: string,
     approve: boolean,
-  ): Promise<{ redirectTo: string }> => {
-    const response = await api.post<BackendResponse<{ redirectTo: string }>>(
-      "/api/v1/oidc/authorize/decision",
-      { request: requestId, approve },
-    );
-    return response.data;
-  },
+  ): Promise<DataOf<Op<`${O}/authorize/decision`, "post">>> =>
+    (await typedApi.POST("/api/v1/oidc/authorize/decision", { body: { request: requestId, approve } }).then(unwrap))
+      .data,
 };
 
 export default oidcService;

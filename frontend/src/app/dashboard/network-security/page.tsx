@@ -62,7 +62,15 @@ export default function NetworkSecurityPage() {
   const [testIp, setTestIp] = useState("");
   const [testLat, setTestLat] = useState("");
   const [testLng, setTestLng] = useState("");
-  const [evaluation, setEvaluation] = useState<LoginEvaluation | null>(null);
+  // Each check read flat: either variant, a field it lacks reading undefined.
+  // A-357: `distanceKm` is null when a geofence is set and the dry run names
+  // no location (checkGeofence computes NaN, fails closed, and JSON writes it
+  // as null) — it is read as nullable and never handed to `.toFixed`.
+  type EvaluationView = Omit<LoginEvaluation, "ip" | "geofence"> & {
+    ip?: { allowed: boolean; reason?: string };
+    geofence?: { allowed: boolean; reason?: string; distanceKm?: number | null; radiusKm?: number };
+  };
+  const [evaluation, setEvaluation] = useState<EvaluationView | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -277,7 +285,7 @@ export default function NetworkSecurityPage() {
         testLat ? Number(testLat) : undefined,
         testLng ? Number(testLng) : undefined,
       );
-      setEvaluation(res);
+      setEvaluation(res as EvaluationView);
     } catch (err) {
       addToast({
         type: "error",
@@ -556,9 +564,11 @@ export default function NetworkSecurityPage() {
                       {evaluation.geofence?.allowed ? "Pass" : "Fail"}
                       {evaluation.geofence?.reason
                         ? ` (${evaluation.geofence.reason})`
-                        : evaluation.geofence?.distanceKm !== undefined
+                        : typeof evaluation.geofence?.distanceKm === "number"
                           ? ` — ${evaluation.geofence.distanceKm.toFixed(1)} km from anchor, limit ${evaluation.geofence.radiusKm} km`
-                          : ""}
+                          : evaluation.geofence?.radiusKm !== undefined
+                            ? ` — no location given, limit ${evaluation.geofence.radiusKm} km`
+                            : ""}
                     </p>
                   </div>
                 </div>

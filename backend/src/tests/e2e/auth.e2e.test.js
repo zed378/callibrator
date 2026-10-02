@@ -109,7 +109,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
   }
 
   test("POST /auth/register — returns valid response structure", async () => {
-    const { status, body } = await httpPost("/auth/register", TEST_USER);
+    const { body } = await httpPost("/auth/register", TEST_USER);
 
     // User may already exist (409) or validation may fail (400) from env
     // Just verify response structure is correct
@@ -187,7 +187,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
   });
 
   test("POST /auth/register — 400 on short username", async () => {
-    const { status, body } = await httpPost("/auth/register", {
+    const { status } = await httpPost("/auth/register", {
       firstName: "Bad",
       lastName: "Username",
       username: "ab", // 2 chars, min is 3
@@ -203,7 +203,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
   });
 
   test("POST /auth/register — 400 on special chars in username", async () => {
-    const { status, body } = await httpPost("/auth/register", {
+    const { status } = await httpPost("/auth/register", {
       firstName: "Bad",
       lastName: "Username",
       username: "user@name", // non-alphanumeric
@@ -242,7 +242,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
   });
 
   test("GET /auth/activation — 400 with empty token", async () => {
-    const { status, body } = await httpGet("/auth/activation?token=");
+    const { status } = await httpGet("/auth/activation?token=");
     expect(status).toBe(400);
   });
 
@@ -257,14 +257,16 @@ describe("E2E Authentication Flow (HTTP)", () => {
     const { status, body } = await httpPost("/auth/login", {
       email: `wrong-password-${Date.now()}@e2e.example.com`,
       password: "WrongPassword99",
-    });
+      // P10-13: its own client address — a deliberate failure must not spend the
+      // shared address's production login throttle (5 failures in 15 min, A-185).
+    }, { "X-Forwarded-For": `198.18.${Math.floor(Math.random() * 250) + 1}.${Math.floor(Math.random() * 250) + 1}` });
 
     expect(status).toBe(401);
     expect(body.message).toContain("Invalid");
   });
 
   test("POST /auth/login — 400 on missing email", async () => {
-    const { status, body } = await httpPost("/auth/login", {
+    const { status } = await httpPost("/auth/login", {
       password: TEST_USER.password,
     });
 
@@ -272,7 +274,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
   });
 
   test("POST /auth/login — 400 on missing password", async () => {
-    const { status, body } = await httpPost("/auth/login", {
+    const { status } = await httpPost("/auth/login", {
       email: TEST_USER.email,
     });
 
@@ -280,7 +282,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
   });
 
   test("POST /auth/login — 400 on empty body", async () => {
-    const { status, body } = await httpPost("/auth/login", {});
+    const { status } = await httpPost("/auth/login", {});
     expect(status).toBe(400);
   });
 
@@ -292,7 +294,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
   // ─── 4. SESSION VERIFY ─────────────────────────────────────
 
   test("POST /auth/verify — 401 without token", async () => {
-    const { status, body } = await httpPost("/auth/verify", {});
+    const { status } = await httpPost("/auth/verify", {});
     expect(status).toBe(401);
   });
 
@@ -308,12 +310,12 @@ describe("E2E Authentication Flow (HTTP)", () => {
   // ─── 5. REFRESH TOKEN ──────────────────────────────────────
 
   test("POST /auth/refresh — 400 without refreshToken", async () => {
-    const { status, body } = await httpPost("/auth/refresh", {});
+    const { status } = await httpPost("/auth/refresh", {});
     expect(status).toBe(400);
   });
 
   test("POST /auth/refresh — 401 with invalid token", async () => {
-    const { status, body } = await httpPost("/auth/refresh", {
+    const { status } = await httpPost("/auth/refresh", {
       refreshToken: "invalid_refresh_token_12345",
     });
     expect(status).toBe(401);
@@ -397,7 +399,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
   };
 
   test("POST /auth/send-otp — 400 without email", async () => {
-    const { status, body } = await httpPost("/auth/send-otp", {}, OTP_CLIENT);
+    const { status } = await httpPost("/auth/send-otp", {}, OTP_CLIENT);
     expect(status).toBe(400);
   });
 

@@ -56,10 +56,13 @@ describe("P9-21 — the route-gate scan reads converted routes", () => {
   it("reads the call as TypeScript emits it: (0, x.dynamicAccess)(...)", () => {
     const emitted =
       'router.get("/", auth_middleware_1.auth, (0, dynamicAccess_middleware_1.dynamicAccess)("warehouse", "read"), h);\n' +
-      'router.post("/", (0, dynamicAccess_middleware_1.dynamicAccess)(["vendors", "warehouse"], "write", { requireAll: true }), h);\n';
+      'router.post("/", (0, dynamicAccess_middleware_1.dynamicAccess)(["vendors", "warehouse"], "write", { requireAll: true }), h);\n' +
+      // An imported constant, as emitted (qms.route.ts: `dynamicAccess(MENU_SLUGS.QMS, "read")`).
+      'router.get("/nc", (0, dynamicAccess_middleware_1.dynamicAccess)(constants_1.MENU_SLUGS.QMS, "read"), h);\n';
     expect(shapeOf(parseGates(emitted, "x.route.js"))).toEqual([
       '["warehouse"] requireAll=false',
       '["vendors","warehouse"] requireAll=true',
+      '["qms"] requireAll=false',
     ]);
   });
 

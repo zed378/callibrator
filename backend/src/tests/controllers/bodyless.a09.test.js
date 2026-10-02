@@ -104,7 +104,7 @@ const webhookService = require("../../services/webhook.service");
 const authService = require("../../services/auth.service");
 const tenantService = require("../../services/tenant.service");
 const eSignatureService = require("../../services/eSignature.service");
-const { Tenant } = require("../../models");
+require("../../models");
 
 const TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
 const USER_ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -195,7 +195,7 @@ describe("A-09 — handlers that own their own 400", () => {
 
   it("tenantHierarchy.addChildTenant answers 400 — an absent body is no longer waved through", async () => {
     const result = await callBodyless(tenantHierarchyController.addChildTenant, {
-      params: { parentId: TENANT_ID },
+      params: { tenantId: TENANT_ID },
     });
 
     expect(result.status).toBe(400);

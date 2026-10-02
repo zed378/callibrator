@@ -97,4 +97,41 @@ describe("useMaintenance", () => {
     await act(async () => result.current.confirmDelete());
     expect(result.current.isDeleteConfirmOpen).toBe(false);
   });
+  // Q-55: the schedule, costs and resolution are sent (they are stored since migration 0107).
+  it("Q-55: create sends the scheduled date and estimated cost, and leaves blanks out", async () => {
+    const { result } = await setup();
+    act(() => result.current.openCreateModal());
+    maintenanceService.create.mockResolvedValue({ id: "w1" });
+    act(() => result.current.setForm((f) => ({ ...f, deviceId: "d1", title: "PM", scheduledDate: "2026-11-02", estimatedCost: " 1250.50 " })));
+    await act(async () => result.current.handleFormSubmit(ev));
+    expect(maintenanceService.create).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduledDate: "2026-11-02", estimatedCost: "1250.50" }),
+    );
+    const sent = maintenanceService.create.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sent).not.toHaveProperty("completedDate");
+    expect(sent).not.toHaveProperty("resolutionNotes");
+  });
+
+  it("Q-55: edit pre-fills the five fields and sends them back, a blank one as null (which clears it)", async () => {
+    const { result } = await setup();
+    act(() =>
+      result.current.openEditModal({
+        id: "w1", deviceId: "d1", title: "T", type: "Corrective", priority: "Low", status: "Open", vendorId: "v1",
+        scheduledDate: "2026-11-02T00:00:00.000Z", completedDate: null, estimatedCost: "1250.50", actualCost: null,
+        resolutionNotes: "Old notes",
+      } as never),
+    );
+    expect(result.current.form).toMatchObject({
+      scheduledDate: "2026-11-02", completedDate: "", estimatedCost: "1250.50", actualCost: "", resolutionNotes: "Old notes",
+    });
+    maintenanceService.update.mockResolvedValue({});
+    act(() => result.current.setForm((f) => ({ ...f, completedDate: "2026-11-03", actualCost: "980", resolutionNotes: " " })));
+    await act(async () => result.current.handleFormSubmit(ev));
+    expect(maintenanceService.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: "w1", scheduledDate: "2026-11-02", estimatedCost: "1250.50", completedDate: "2026-11-03", actualCost: "980",
+        resolutionNotes: null,
+      }),
+    );
+  });
 });

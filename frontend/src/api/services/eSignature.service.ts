@@ -1,13 +1,12 @@
-import { api } from "../client";
+import { typedApi, unwrap, type JsonBody, type Op, type QueryOf, type components } from "../typed";
 import type { PaginatedResponse } from "@/types";
 
 /**
  * E-Signature (21 CFR Part 11).
  *
  * The tenant/user come from the caller's JWT.
- * Backend: src/routes/api/eSignature.route.js — mounted at /api/v1/esignature
- * (NOT /e-signature; the route file's swagger comments say otherwise and are
- * stale).
+ * Backend: src/routes/api/eSignature.route.ts — mounted at /api/v1/esignature
+ * (NOT /e-signature).
  *   GET    /key-pairs
  *   POST   /key-pairs                (denies API keys)
  *   DELETE /key-pairs/:keyPairId
@@ -23,190 +22,91 @@ import type { PaginatedResponse } from "@/types";
  *   POST   /sign                     (denies API keys; `reason` required)
  *   POST   /verify
  *   GET    /history                  ?userId&startDate&endDate&page&limit (D-24: paginated)
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+ * contract's (backend/src/routes/api/eSignature.openapi.ts). The exported
+ * names are unchanged.
  */
 
-const BASE = "/api/v1/esignature";
+type B = "/api/v1/esignature";
+type Schemas = components["schemas"];
 
 // ---------- Types ----------
 
-export type KeyPairAlgorithm = "RSA" | "ECDSA" | "Ed25519";
-export type KeySize = 2048 | 3072 | 4096;
-export type AuthenticationMethod = "password" | "mfa" | "webauthn" | "totp";
+export type CreateKeyPairInput = JsonBody<Op<`${B}/key-pairs`, "post">>;
+export type KeyPairAlgorithm = NonNullable<CreateKeyPairInput["algorithm"]>;
+export type KeySize = NonNullable<CreateKeyPairInput["keySize"]>;
 
-export interface KeyPair {
-  id: string;
-  label?: string;
-  algorithm?: KeyPairAlgorithm;
-  keySize?: KeySize;
-  publicKey?: string;
-  createdAt?: string;
-  expiresAt?: string | null;
-}
+/** A tenant signing key as GET /key-pairs lists it (the public half only). */
+export type KeyPair = Schemas["ESignatureKeyPair"];
+/** What POST /key-pairs answers: the private half is never sent. */
+export type GeneratedKeyPair = Schemas["ESignatureGeneratedKeyPair"];
 
 /**
- * A signer as POST /workflows takes it (A-129, ADR-051 Q-19, A-86): a user of
+ * POST /workflows body (A-129, ADR-051 Q-19, A-86): each signer is a user of
  * the tenant, by id. The backend reads the name and email from the user
  * record and ignores any in the body; an email-only signer is refused (400).
  */
-export interface Signer {
-  userId: string;
-}
+export type CreateWorkflowInput = JsonBody<Op<`${B}/workflows`, "post">>;
+export type Signer = CreateWorkflowInput["signers"][number];
+export type UpdateWorkflowInput = JsonBody<Op<`${B}/workflows/{workflowId}`, "put">>;
 
 /**
  * One row of GET /signers — an active user of the tenant holding
  * `esignature` write, i.e. a user POST /workflows will accept as a signer.
  */
-export interface EligibleSigner {
-  id: string;
-  name: string;
-  email: string;
-}
+export type EligibleSigner = Schemas["EligibleSigner"];
+
+/** What POST /workflows returns in `data`: `{ workflowId, signers }`. */
+export type CreatedWorkflow = Schemas["SignatureWorkflowCreated"];
+
+export type SignatureWorkflow = Schemas["SignatureWorkflow"];
 
 /**
- * What POST /workflows returns in `data`:
- * eSignature.service#createSignatureWorkflow's `{ workflowId, signers }`.
- */
-export interface CreatedWorkflow {
-  workflowId: string;
-  signers: Array<{ userId: string; email: string; name: string; status: string }>;
-}
-
-export interface SignatureWorkflow {
-  id: string;
-  documentId: string;
-  subject?: string;
-  message?: string;
-  status?: string;
-  signers?: Signer[];
-  steps?: SignatureStep[];
-  expiresAt?: string | null;
-  createdAt?: string;
-}
-
-/**
- * One signer's slot, as backend/src/models/signatureWorkflowStep.model.js
- * returns it inside GET /workflows/:id → data.steps. The signer is
+ * One signer's slot inside GET /workflows/:id → data.steps. The signer is
  * `signerId` (there is no `userId` on a step). Only that user can sign the
  * step — anyone else gets 403 (A-65).
  */
-export interface SignatureStep {
-  id: string;
-  workflowId?: string;
-  stepNumber?: number;
-  signerId?: string | null;
-  signerEmail?: string;
-  signerName?: string;
-  status?: string;
-  signedAt?: string | null;
-}
+export type SignatureStep = Schemas["SignatureWorkflowStep"];
 
 /**
  * A row of GET /history. `ipAddress`, `userAgent` and `biometricData` are
  * present only for a caller holding `qms` read; everyone else gets their own
  * signatures without them (A-129, F-9).
  */
-export interface SignatureRecord {
-  id: string;
-  workflowId?: string;
-  workflowStepId?: string;
-  userId?: string;
-  signedAt?: string;
-  signatureReason?: string | null;
-  status?: string;
-  authenticationMethod?: AuthenticationMethod;
-  ipAddress?: string | null;
-  userAgent?: string | null;
-}
+export type SignatureRecord = Schemas["SignatureRecord"];
+export type AuthenticationMethod = SignatureRecord["authenticationMethod"];
 
-export interface VerifyResult {
-  valid: boolean;
-  signatureId?: string;
-  signedAt?: string;
-  reason?: string;
-}
-
-export interface CreateKeyPairInput {
-  /** Server defaults: RSA / 2048. */
-  algorithm?: KeyPairAlgorithm;
-  keySize?: KeySize;
-  label?: string;
-}
-
-export interface CreateWorkflowInput {
-  documentId: string;
-  signers: Signer[];
-  subject: string;
-  message?: string;
-  expiresAt?: string;
-}
-
-/** The methods the backend can re-verify at the moment of signing (A-65). */
-export type SigningAuthMethod = "password" | "mfa";
+/** POST /verify: `valid` is true ONLY for a verified signature; `verificationStatus` says why not. */
+export type VerifyResult = Schemas["SignatureVerification"];
 
 /**
  * POST /sign body. Signing re-authenticates the signer: `authPayload` is their
  * password or current MFA code, matching `authenticationMethod`. There is no
  * ipAddress / userAgent — the backend records the connection's own, and
- * ignores any in the body (A-65).
+ * ignores any in the body (A-65). `reason` is the meaning of the signature
+ * (21 CFR 11.50), required (A-129).
  */
-export interface SignDocumentInput {
-  /** The workflow step being signed. */
-  stepId: string;
-  /** Server defaults to "password". */
-  authenticationMethod?: SigningAuthMethod;
-  /** The signer's password or MFA code. Never stored. */
-  authPayload: string;
-  /** The meaning of the signature (21 CFR 11.50), max 255. Required (A-129). */
-  reason: string;
-  polygon?: Record<string, unknown> | null;
-  biometricData?: string | null;
-}
+export type SignDocumentInput = JsonBody<Op<`${B}/sign`, "post">>;
+
+/** The methods the backend can re-verify at the moment of signing (A-65). */
+export type SigningAuthMethod = NonNullable<SignDocumentInput["authenticationMethod"]>;
 
 /**
- * What POST /sign returns in `data`: eSignature.service#signDocument's
- * `{ signatureId, certificate }`, the certificate being
- * generateSignatureCertificate()'s summary of the signature.
+ * What POST /sign returns in `data`: `{ signatureId, certificate }`, the
+ * certificate summarising the signature.
  */
-export interface SignDocumentResult {
-  signatureId: string;
-  certificate: {
-    signatureId: string;
-    workflowId: string;
-    documentId: string;
-    signerId: string;
-    signedAt: string;
-    signatureHash: string;
-    signatureValue: string;
-    signingKeyId: string;
-    signatureScheme: string;
-    algorithm: string;
-    ipAddress: string | null;
-    userAgent: string | null;
-    verificationUrl: string;
-  };
-}
+export type SignDocumentResult = Schemas["SignatureResult"];
 
-export interface SignatureHistoryParams {
-  userId?: string;
-  startDate?: string;
-  endDate?: string;
-  /** D-24 (ADR-070): 1-based page; the backend defaults to 1. */
-  page?: number;
-  /** D-24 (ADR-070): page size; the backend defaults to 25 and caps at 200. */
-  limit?: number;
-}
+/** GET /history filters (D-24, ADR-070: 1-based page, default 25, capped at 200). */
+export type SignatureHistoryParams = QueryOf<Op<`${B}/history`, "get">>;
 
 /** The caller's own step status, for GET /my-workflows?stepStatus=. */
-export type SignerStepStatus = "waiting" | "pending" | "signed" | "declined";
+export type SignerStepStatus = NonNullable<QueryOf<Op<`${B}/my-workflows`, "get">>["stepStatus"]>;
 
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-  meta?: { total: number; page?: number; limit?: number; totalPages?: number };
-}
+type WorkflowStatus = NonNullable<QueryOf<Op<`${B}/workflows`, "get">>["status"]>;
+
+const workflow = (workflowId: string) => ({ params: { path: { workflowId } } });
 
 // ---------- Service ----------
 
@@ -215,49 +115,37 @@ export const eSignatureService = {
    * GET /key-pairs — rows are `data` itself, the count in a top-level
    * `meta.total` (A-113; the backend used to wrap them as data.keyPairs).
    */
-  getKeyPairs: async (): Promise<KeyPair[]> => {
-    const response = await api.get<BackendResponse<KeyPair[]>>(
-      `${BASE}/key-pairs`,
-    );
-    return response.data ?? [];
-  },
+  getKeyPairs: async (): Promise<KeyPair[]> =>
+    // Defensive, as built: a body without rows reads as none.
+    (await typedApi.GET("/api/v1/esignature/key-pairs").then(unwrap)).data ?? [],
 
   /**
    * POST /key-pairs — the server generates the pair; never send a public key.
    * Rejected for API-key auth (denyApiKey).
    */
-  createKeyPair: async (input: CreateKeyPairInput = {}): Promise<KeyPair> => {
-    const response = await api.post<BackendResponse<KeyPair>>(
-      `${BASE}/key-pairs`,
-      input,
-    );
-    return response.data;
-  },
+  createKeyPair: async (input: CreateKeyPairInput = {}): Promise<GeneratedKeyPair> =>
+    (await typedApi.POST("/api/v1/esignature/key-pairs", { body: input }).then(unwrap)).data,
 
   /** DELETE /key-pairs/:keyPairId */
   deleteKeyPair: async (keyPairId: string): Promise<void> => {
-    await api.delete<BackendResponse<null>>(`${BASE}/key-pairs/${keyPairId}`);
+    await typedApi.DELETE("/api/v1/esignature/key-pairs/{keyPairId}", { params: { path: { keyPairId } } });
   },
 
   /**
    * GET /workflows — rows are `data` itself, the count in a top-level
    * `meta.total` (A-106; the backend used to wrap them as data.workflows).
    */
-  getWorkflows: async (status?: string): Promise<SignatureWorkflow[]> => {
-    const response = await api.get<BackendResponse<SignatureWorkflow[]>>(
-      `${BASE}/workflows`,
-      { params: status ? { status } : {} },
-    );
-    return response.data ?? [];
-  },
+  getWorkflows: async (status?: string): Promise<SignatureWorkflow[]> =>
+    (
+      await typedApi
+        // The page's filter select offers only the contract's statuses.
+        .GET("/api/v1/esignature/workflows", { params: { query: status ? { status: status as WorkflowStatus } : {} } })
+        .then(unwrap)
+    ).data ?? [],
 
   /** GET /workflows/:workflowId */
-  getWorkflow: async (workflowId: string): Promise<SignatureWorkflow> => {
-    const response = await api.get<BackendResponse<SignatureWorkflow>>(
-      `${BASE}/workflows/${workflowId}`,
-    );
-    return response.data;
-  },
+  getWorkflow: async (workflowId: string): Promise<SignatureWorkflow> =>
+    (await typedApi.GET("/api/v1/esignature/workflows/{workflowId}", workflow(workflowId)).then(unwrap)).data,
 
   /**
    * GET /my-workflows — A-91, the signer view. The workflows in which a step
@@ -268,46 +156,34 @@ export const eSignatureService = {
    */
   getMyWorkflows: async (
     stepStatus?: SignerStepStatus,
-  ): Promise<SignatureWorkflow[]> => {
-    const response = await api.get<BackendResponse<SignatureWorkflow[]>>(
-      `${BASE}/my-workflows`,
-      { params: stepStatus ? { stepStatus } : {} },
-    );
-    return response.data ?? [];
-  },
+  ): Promise<SignatureWorkflow[]> =>
+    (
+      await typedApi
+        .GET("/api/v1/esignature/my-workflows", { params: { query: stepStatus ? { stepStatus } : {} } })
+        .then(unwrap)
+    ).data ?? [],
 
   /**
    * GET /my-workflows/:workflowId — one workflow naming the caller as a
    * signer. 404 when it does not name them (or is another tenant's).
    */
-  getMyWorkflow: async (workflowId: string): Promise<SignatureWorkflow> => {
-    const response = await api.get<BackendResponse<SignatureWorkflow>>(
-      `${BASE}/my-workflows/${workflowId}`,
-    );
-    return response.data;
-  },
+  getMyWorkflow: async (workflowId: string): Promise<SignatureWorkflow> =>
+    (await typedApi.GET("/api/v1/esignature/my-workflows/{workflowId}", workflow(workflowId)).then(unwrap)).data,
 
   /**
    * POST /workflows — signers and subject are required server-side. Each
    * signer is `{ userId }` (A-129): 400 for an email-only, inactive or
    * unauthorised signer; 404 for one who is not a user of this tenant.
    */
-  createWorkflow: async (input: CreateWorkflowInput): Promise<CreatedWorkflow> => {
-    const response = await api.post<BackendResponse<CreatedWorkflow>>(
-      `${BASE}/workflows`,
-      input,
-    );
-    return response.data;
-  },
+  createWorkflow: async (input: CreateWorkflowInput): Promise<CreatedWorkflow> =>
+    (await typedApi.POST("/api/v1/esignature/workflows", { body: input }).then(unwrap)).data,
 
   /**
    * GET /signers — the users a workflow may name (A-129). Rows are `data`
    * itself, the count in a top-level `meta.total`.
    */
-  getEligibleSigners: async (): Promise<EligibleSigner[]> => {
-    const response = await api.get<BackendResponse<EligibleSigner[]>>(`${BASE}/signers`);
-    return response.data ?? [];
-  },
+  getEligibleSigners: async (): Promise<EligibleSigner[]> =>
+    (await typedApi.GET("/api/v1/esignature/signers").then(unwrap)).data ?? [],
 
   /**
    * POST /workflows/:workflowId/cancel (A-130) — the way to withdraw a
@@ -315,30 +191,29 @@ export const eSignatureService = {
    * completed or already cancelled.
    */
   cancelWorkflow: async (workflowId: string, reason?: string): Promise<void> => {
-    await api.post<BackendResponse<null>>(
-      `${BASE}/workflows/${workflowId}/cancel`,
-      reason ? { reason } : {},
-    );
+    await typedApi.POST("/api/v1/esignature/workflows/{workflowId}/cancel", {
+      ...workflow(workflowId),
+      body: reason ? { reason } : {},
+    });
   },
 
   /** PUT /workflows/:workflowId */
   updateWorkflow: async (
     workflowId: string,
-    input: Partial<CreateWorkflowInput>,
-  ): Promise<SignatureWorkflow> => {
-    const response = await api.put<BackendResponse<SignatureWorkflow>>(
-      `${BASE}/workflows/${workflowId}`,
-      input,
-    );
-    return response.data;
-  },
+    input: UpdateWorkflowInput,
+  ): Promise<SignatureWorkflow> =>
+    (
+      await typedApi
+        .PUT("/api/v1/esignature/workflows/{workflowId}", { ...workflow(workflowId), body: input })
+        .then(unwrap)
+    ).data,
 
   /**
    * DELETE /workflows/:workflowId — 409 with an explanation once the workflow
    * has any signature (A-130, A-144); cancel it instead.
    */
   deleteWorkflow: async (workflowId: string): Promise<void> => {
-    await api.delete<BackendResponse<null>>(`${BASE}/workflows/${workflowId}`);
+    await typedApi.DELETE("/api/v1/esignature/workflows/{workflowId}", workflow(workflowId));
   },
 
   /**
@@ -347,22 +222,12 @@ export const eSignatureService = {
    * route has no path param). Rejected for API-key auth (denyApiKey).
    * 401 — wrong credential; 403 — not this step's signer; 404 — no such step.
    */
-  signDocument: async (input: SignDocumentInput): Promise<SignDocumentResult> => {
-    const response = await api.post<BackendResponse<SignDocumentResult>>(
-      `${BASE}/sign`,
-      input,
-    );
-    return response.data;
-  },
+  signDocument: async (input: SignDocumentInput): Promise<SignDocumentResult> =>
+    (await typedApi.POST("/api/v1/esignature/sign", { body: input }).then(unwrap)).data,
 
   /** POST /verify — signatureId in the body. */
-  verifySignature: async (signatureId: string): Promise<VerifyResult> => {
-    const response = await api.post<BackendResponse<VerifyResult>>(
-      `${BASE}/verify`,
-      { signatureId },
-    );
-    return response.data;
-  },
+  verifySignature: async (signatureId: string): Promise<VerifyResult> =>
+    (await typedApi.POST("/api/v1/esignature/verify", { body: { signatureId } }).then(unwrap)).data,
 
   /**
    * GET /history — ONE PAGE of the history (D-24, ADR-070): rows are `data`
@@ -374,12 +239,10 @@ export const eSignatureService = {
   getSignatureHistory: async (
     params: SignatureHistoryParams = {},
   ): Promise<PaginatedResponse<SignatureRecord>> => {
-    const response = await api.get<BackendResponse<SignatureRecord[]>>(
-      `${BASE}/history`,
-      { params },
-    );
+    const response = await typedApi.GET("/api/v1/esignature/history", { params: { query: params } }).then(unwrap);
+    // Defensive, as built: a body without rows or `meta` still renders.
     const rows = Array.isArray(response?.data) ? response.data : [];
-    const meta = response?.meta;
+    const meta = response?.meta as Schemas["PaginationMeta"] | undefined;
     const total = meta?.total ?? rows.length;
     const limit = meta?.limit ?? params.limit ?? 25;
     return {

@@ -2,7 +2,7 @@
 
 The numbered standard. Each rule is short; the linked document has the reasoning and the examples. Cite a rule by number in review (`CS-4.2`).
 
-> **Target standard (ADR-038).** Rules marked **[TS]** apply to TypeScript files — every new backend file and every file converted under Phase 9. All other rules apply to the backend as it is today, JavaScript included.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087), compiled to CommonJS; the only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18). The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). Rules marked **[TS]** apply to every backend source file and every new test; the rest apply to the legacy `.js` tests as well.
 
 ---
 
@@ -15,7 +15,7 @@ The numbered standard. Each rule is short; the linked document has the reasoning
 
 ## 2. Naming
 
-- **CS-2.1** Files are `<name>.<layer>.<ext>` — `calibrationDevices.route.js`, `certificate.service.js`. → [03](./03-NAMING-CONVENTIONS.md)
+- **CS-2.1** Files are `<name>.<layer>.<ext>` — `calibrationDevices.route.ts`, `certificate.service.ts`. → [03](./03-NAMING-CONVENTIONS.md)
 - **CS-2.2** URL paths are kebab-case plural nouns: `/api/v1/calibration-devices`.
 - **CS-2.3** Model attributes camelCase, columns snake_case — **except `sessions`**, whose attributes are snake_case.
 - **CS-2.4** Webhook events are `<aggregate>.<past_tense_event>`: `device.overdue`, `certificate.signed`.

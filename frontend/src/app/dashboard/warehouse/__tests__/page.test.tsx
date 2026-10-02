@@ -85,7 +85,7 @@ beforeEach(() => {
   grant(WRITE);
   warehouses = list([
     wh("wh-1", { name: "Central Depot", code: "CD", address: "Block B" }),
-    wh("wh-2", { name: "Old Annex", code: "OA", status: "suspended" }),
+    wh("wh-2", { name: "Old Annex", code: "OA", status: "inactive" }),
   ]);
   locations = one([loc("l1", { name: "Fridge", code: "F1", description: "2-8 °C" }), loc("l2", { name: "Old shelf", isActive: false })]);
   get.mockImplementation(async (url: string) => {
@@ -108,8 +108,15 @@ describe("Warehouse page — list", () => {
     expect(await screen.findByText("Central Depot")).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith("/api/v1/warehouses", { params: { page: 1, limit: 10, find: "" } });
     expect(screen.getByText("Block B")).toBeInTheDocument();
-    expect(screen.getByText("SUSPENDED")).toBeInTheDocument();
+    expect(screen.getByText("INACTIVE")).toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("A-355: a row with a NULL status (nullable column) reads '—' instead of crashing", async () => {
+    warehouses = list([wh("wh-9", { name: "Legacy Depot", code: "LD", status: null })]);
+    await renderPage();
+    const row = (await screen.findByText("Legacy Depot")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("—")).toBeInTheDocument();
   });
 
   it("while loading, shows a skeleton — not 'No Depots Configured'", async () => {
@@ -196,6 +203,15 @@ describe("Warehouse page — warehouse writes", () => {
     });
     expect(screen.queryByRole("dialog", { name: "Add New Warehouse" })).not.toBeInTheDocument();
     expect(get).toHaveBeenCalledWith("/api/v1/warehouses", expect.anything());
+  });
+
+  it("A-355: the status select offers only what the API accepts (active, inactive — never suspended)", async () => {
+    await renderPage();
+    fireEvent.click((await screen.findAllByRole("button", { name: "Edit" }))[0]);
+    const dialog = await screen.findByRole("dialog", { name: "Edit Warehouse" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Operational Status/ }));
+    const options = await within(dialog).findAllByRole("option");
+    expect(options.map((o) => o.textContent?.trim())).toEqual(["Active", "Inactive"]);
   });
 
   it("Edit PATCHes the warehouse, including a status change", async () => {

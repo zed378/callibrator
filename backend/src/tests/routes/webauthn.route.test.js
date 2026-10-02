@@ -3,7 +3,7 @@
  *
  * Tests the Webauthn route registrations and middleware chain.
  */
-const webauthnRoutes = require("../../routes/api/webauthn.route.js");
+const webauthnRoutes = require("../../routes/api/webauthn.route");
 
 describe("Webauthn Routes", () => {
   it("should export an Express router", () => {

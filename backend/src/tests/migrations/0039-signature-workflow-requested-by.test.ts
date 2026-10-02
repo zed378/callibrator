@@ -34,7 +34,7 @@ interface Attribute {
 }
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0039-signature-workflow-requested-by.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 /** The REAL SignatureWorkflow model on an unconnected PostgreSQL-dialect Sequelize. */
 const SignatureWorkflow = defineSignatureWorkflow(

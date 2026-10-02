@@ -7,7 +7,7 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/user.validator.ts,
  * which re-exports these same objects; the frontend derives its request
- * types from them. The contract for C:/Program Files/Git/api/v1/users (list query, id params, create, update, profile and password bodies).
+ * types from them. The contract for /api/v1/users (list query, id params, create, update, profile and password bodies).
  */
 import { z } from "zod";
 import { caseless, email as emailAddress, nullableText, numeric, uuid } from "./fields";

@@ -42,8 +42,16 @@ jest.mock("../../config", () => {
     }
     return options.plain ? null : [];
   };
+  // A-364: the export's audit row is written in a managed transaction. No
+  // connection to begin one on: a double that runs the callback, as
+  // sequelize.transaction(cb) does (gdpr.subject.a151.a154.test.js).
+  db.transaction = async (cb) => cb({ id: "tx", afterCommit: () => {} });
   return { db };
 });
+// A-364: the export's audit row. What it records is pinned by
+// gdpr.exportAudit.a364.test.ts; here it only has to succeed, as the
+// other export suites mock it (gdpr.subject.a151.a154.test.js).
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn(async () => ({})) }));
 // archiver 8 is ESM with named classes; the service does `new ZipArchive(...)` (P6-02).
 jest.mock("archiver", () => ({ ZipArchive: function MockZipArchive() {
   const handlers = {};

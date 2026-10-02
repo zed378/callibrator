@@ -31,7 +31,7 @@ interface Attribute {
 }
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0088-attachment-file-purged-at.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 /** The REAL Attachment model on an unconnected PostgreSQL-dialect Sequelize. */
 const Attachment = defineAttachment(

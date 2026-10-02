@@ -1,9 +1,10 @@
 import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type QueryOf, type components } from "../typed";
 
 /**
  * Tenant backups.
  *
- * Backend: src/routes/api/tenantBackup.route.js (mounted /api/v1/tenants)
+ * Backend: src/routes/api/tenantBackup.route.ts (mounted /api/v1/tenants)
  *   POST   /:tenantId/backups
  *   GET    /:tenantId/backups              ?page&limit&status
  *   GET    /:tenantId/backups/stats
@@ -14,105 +15,62 @@ import { api } from "../client";
  *
  * The list endpoint sends `data` = rows array with `meta` as a TOP-LEVEL
  * sibling — there is no data.rows / data.meta.
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+ * contract's (backend/src/routes/api/tenantBackup.openapi.ts). The exported
+ * names are unchanged. The zip download stays on `api` (blob).
  */
 
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+type TB = "/api/v1/tenants/{tenantId}/backups";
 
-interface BackendListResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T[];
-  meta?: PageMeta;
-}
+export type PageMeta = components["schemas"]["PaginationMeta"];
 
-export interface PageMeta {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+/** A backup row as the API answers it (the model's lower-case status). */
+export type ApiTenantBackup = components["schemas"]["TenantBackup"];
 
-export interface TenantBackup {
-  id: string;
-  tenantId: string;
-  name: string;
-  description?: string;
-  backupType: "FULL" | "PARTIAL" | "USER_ONLY";
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "DELETING";
-  fileSize?: number;
-  filePath?: string;
-  retentionDays?: number;
-  tag?: string;
-  error?: string;
-  startedAt?: string;
-  completedAt?: string;
-  expiresAt?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+/** The named fields of an open (`additionalProperties`) schema: `Omit` over its index signature keeps nothing. */
+type Known<T> = { [K in keyof T as string extends K ? never : K]: T[K] };
 
-/** Field names as the backend actually reports them. */
-export interface BackupStats {
-  totalBackups: number;
-  completedBackups: number;
-  failedBackups: number;
-  /** Bytes, summed across completed backups. */
-  totalSize: number;
+/**
+ * A backup as the API answers it, and as the backup page reads it.
+ *  - A-362: `status` is the model's lower-case ENUM (`pending`, `in_progress`,
+ *    `completed`, `failed`, `deleted`). The page compared upper-case values,
+ *    which no row carries, so it never offered Download or Restore.
+ *  - A-363: `name` and `description` are stored since migration 0108; a
+ *    backup taken before it has neither (NULL). A failure's text is
+ *    `errorMessage`; there is no `completedAt` or `error` (the row's last
+ *    change is `updatedAt`).
+ */
+export type TenantBackup = Known<ApiTenantBackup>;
+
+/** A backup's lifecycle value, as the API answers it. */
+export type TenantBackupStatus = TenantBackup["status"];
+
+/** What a backup is called on the page: its name, or a stand-in for one taken before names were stored (A-363). */
+export const backupLabel = (backup: Pick<TenantBackup, "name">): string => {
+  const name = backup.name?.trim();
+  return name ? name : "Untitled backup";
+};
+
+const asBackup = (row: ApiTenantBackup): TenantBackup => row;
+
+/** Field names as the backend actually reports them (`totalSize` in bytes, completed backups). */
+export type BackupStats = Omit<DataOf<Op<`${TB}/stats`, "get">>, "latestBackup"> & {
   latestBackup?: TenantBackup | null;
-  hasValidBackups?: boolean;
-}
+};
 
-export interface BackupCreateInput {
-  /** Required — the backend 400s without it. */
-  name: string;
-  description?: string;
-  backupType?: "FULL" | "PARTIAL" | "USER_ONLY";
-  retentionDays?: number;
-  tag?: string;
-}
+/** `name` is required by the API (and stored since migration 0108, A-363). */
+export type BackupCreateInput = JsonBody<Op<TB, "post">>;
 
 /**
- * Why an archived account was not restored (backend `NOT_RESTORED_REASONS`,
- * tenantBackup.service.js). A restore never creates an account (ADR-051 Q-09).
- *  - `absent`: no such account in the tenant; it may be re-invited through the
- *    ordinary user-create path.
- *  - `erased`: the person was erased under GDPR; they must NOT be re-invited.
+ * `data` of POST /:backupId/restore: the per-account outcome, including
+ * `notRestored` — the archived accounts a restore never re-creates (ADR-051
+ * Q-09, A-156). `absent`: no such account in the tenant (it may be
+ * re-invited); `erased`: erased under GDPR (it must NOT be re-invited).
  */
-export type NotRestoredReason = "absent" | "erased";
-
-export interface NotRestoredEntry {
-  /** Index of the account in the backup archive. */
-  entry: number;
-  username: string;
-  reason: NotRestoredReason;
-}
-
-/**
- * `data` of POST /:backupId/restore, as `restoreBackup` in
- * backend/src/services/tenantBackup.service.js returns it. The restore
- * response has no `meta`.
- */
-export interface RestoreOutcome {
-  tenantId: string;
-  recordsProcessed: number;
-  /** Matched accounts whose profile was updated from the backup. */
-  updated: number;
-  /** Matched accounts left untouched (merge mode). */
-  unchanged: number;
-  /** Matched accounts that are deleted in the tenant and were not revived. */
-  skippedDeleted: number;
-  /** Live accounts not in the archive, left alone. */
-  retained: number;
-  notRestored: NotRestoredEntry[];
-  restoredAt: string;
-}
+export type RestoreOutcome = DataOf<Op<`${TB}/{backupId}/restore`, "post">>;
+export type NotRestoredEntry = RestoreOutcome["notRestored"][number];
+export type NotRestoredReason = NotRestoredEntry["reason"];
 
 export interface RestoreResult {
   success: boolean;
@@ -121,17 +79,18 @@ export interface RestoreResult {
   outcome: RestoreOutcome | null;
 }
 
+const backup = (tenantId: string, backupId: string) => ({ params: { path: { tenantId, backupId } } });
+
 export const tenantBackupService = {
   /** POST /:tenantId/backups — `name` is required. */
   create: async (
     tenantId: string,
     data: BackupCreateInput,
   ): Promise<TenantBackup> => {
-    const response = await api.post<BackendResponse<TenantBackup>>(
-      `/api/v1/tenants/${tenantId}/backups`,
-      data,
-    );
-    return response.data;
+    const response = await typedApi
+      .POST("/api/v1/tenants/{tenantId}/backups", { params: { path: { tenantId } }, body: data })
+      .then(unwrap);
+    return asBackup(response.data);
   },
 
   /** GET /:tenantId/backups — rows in `data`, pagination in top-level `meta`. */
@@ -141,15 +100,22 @@ export const tenantBackupService = {
     limit = 20,
     status?: string,
   ): Promise<{ data: TenantBackup[]; meta: PageMeta }> => {
-    const response = await api.get<BackendListResponse<TenantBackup>>(
-      `/api/v1/tenants/${tenantId}/backups`,
-      { params: { page, limit, status } },
-    );
-    const rows = response.data ?? [];
+    const response = await typedApi
+      .GET("/api/v1/tenants/{tenantId}/backups", {
+        params: {
+          path: { tenantId },
+          // As built: page/limit as numbers (the same text on the wire as the
+          // published strings), the status filter as the page gives it.
+          query: { page, limit, status } as unknown as QueryOf<Op<TB, "get">>,
+        },
+      })
+      .then(unwrap);
+    // Defensive, as built: a body without rows or `meta` still renders.
+    const rows = (response.data ?? []).map(asBackup);
     return {
       data: rows,
       meta:
-        response.meta ?? {
+        (response.meta as PageMeta | undefined) ?? {
           total: rows.length,
           page,
           limit,
@@ -163,10 +129,10 @@ export const tenantBackupService = {
     tenantId: string,
     backupId: string,
   ): Promise<TenantBackup> => {
-    const response = await api.get<BackendResponse<TenantBackup>>(
-      `/api/v1/tenants/${tenantId}/backups/${backupId}`,
-    );
-    return response.data;
+    const response = await typedApi
+      .GET("/api/v1/tenants/{tenantId}/backups/{backupId}", backup(tenantId, backupId))
+      .then(unwrap);
+    return asBackup(response.data);
   },
 
   /**
@@ -214,10 +180,13 @@ export const tenantBackupService = {
     backupId: string,
     options?: { overwriteExisting?: boolean },
   ): Promise<RestoreResult> => {
-    const response = await api.post<BackendResponse<RestoreOutcome | null>>(
-      `/api/v1/tenants/${tenantId}/backups/${backupId}/restore`,
-      { mergeData: options?.overwriteExisting === false },
-    );
+    const response = await typedApi
+      .POST("/api/v1/tenants/{tenantId}/backups/{backupId}/restore", {
+        ...backup(tenantId, backupId),
+        body: { mergeData: options?.overwriteExisting === false },
+      })
+      .then(unwrap);
+    // Defensive, as built: a body without `data` (or without notRestored) still reads.
     const outcome = response.data ?? null;
     return {
       success: response.success,
@@ -230,9 +199,7 @@ export const tenantBackupService = {
 
   /** DELETE /:tenantId/backups/:backupId */
   delete: async (tenantId: string, backupId: string): Promise<void> => {
-    await api.delete<BackendResponse<null>>(
-      `/api/v1/tenants/${tenantId}/backups/${backupId}`,
-    );
+    await typedApi.DELETE("/api/v1/tenants/{tenantId}/backups/{backupId}", backup(tenantId, backupId));
   },
 
   /**
@@ -240,10 +207,10 @@ export const tenantBackupService = {
    * Registered before /:backupId, so "stats" is not treated as an id.
    */
   getStats: async (tenantId: string): Promise<BackupStats> => {
-    const response = await api.get<BackendResponse<BackupStats>>(
-      `/api/v1/tenants/${tenantId}/backups/stats`,
-    );
-    return response.data;
+    const { latestBackup, ...stats } = (
+      await typedApi.GET("/api/v1/tenants/{tenantId}/backups/stats", { params: { path: { tenantId } } }).then(unwrap)
+    ).data;
+    return { ...stats, latestBackup: latestBackup ? asBackup(latestBackup) : latestBackup };
   },
 };
 

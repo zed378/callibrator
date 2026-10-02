@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useWarehouseStore } from "@/stores/warehouseStore";
 import { useAuthStore } from "@/stores/authStore";
-import { Warehouse, StorageLocation } from "@/types";
+import { Warehouse, StorageLocation, WarehouseStatus } from "@/types";
 import { usePermissions } from "@/hooks/usePermissions";
 
 export function useWarehouse() {
@@ -56,7 +56,7 @@ export function useWarehouse() {
     code: "",
     address: "",
     description: "",
-    status: "active" as "active" | "suspended" | "inactive",
+    status: "active" as WarehouseStatus | null,
   });
 
   const [locationForm, setLocationForm] = useState({
@@ -101,6 +101,7 @@ export function useWarehouse() {
       code: warehouse.code,
       address: warehouse.address || "",
       description: warehouse.description || "",
+      // The column is nullable but defaults to "active"; a null is carried as is.
       status: warehouse.status,
     });
     setWarehouseModalType("edit");
@@ -183,7 +184,8 @@ export function useWarehouse() {
       name: loc.name,
       code: loc.code,
       description: loc.description || "",
-      isActive: loc.isActive,
+      // The column is nullable but defaults to true; a null is carried as is.
+      isActive: loc.isActive as boolean,
     });
     setLocationFormType("edit");
   };

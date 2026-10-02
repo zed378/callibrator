@@ -1,13 +1,17 @@
-import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type components } from "../typed";
 
 /**
  * P10-07 — the super admin's access-request queue, against
- * backend/src/routes/api/admin.route.js (`/api/v1/admin/access-requests`,
+ * backend/src/routes/api/admin.route.ts (`/api/v1/admin/access-requests`,
  * super admin only) and backend/src/services/accessRequest.service.ts.
  * Rows are in `data`; pagination and per-status counts in a TOP-LEVEL `meta`.
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; every type is the contract's
+ * (backend/src/routes/api/admin.openapi.ts). The exported names are unchanged.
  */
 
-export type AccessRequestStatus = "pending" | "approved" | "rejected" | "spam" | "expired";
+export type AccessRequestRow = components["schemas"]["AccessRequestQueueRow"];
+export type AccessRequestStatus = AccessRequestRow["status"];
 
 export const ACCESS_REQUEST_STATUSES: readonly AccessRequestStatus[] = [
   "pending",
@@ -17,91 +21,53 @@ export const ACCESS_REQUEST_STATUSES: readonly AccessRequestStatus[] = [
   "expired",
 ];
 
-export interface AccessRequestRow {
-  id: string;
-  organisationName: string;
-  facilityType: "hospital" | "clinic" | "calibration_lab" | "other";
-  city: string;
-  deviceCountBand: "lt_100" | "100_499" | "500_1999" | "gte_2000" | "unknown";
-  contactName: string;
-  contactRole: string | null;
-  workEmail: string;
-  whatsapp: string;
-  needs: string | null;
-  locale: "id" | "en";
-  status: AccessRequestStatus;
-  createdAt: string;
-  decidedAt: string | null;
-  provisionedTenantId: string | null;
-  duplicateCount: number;
-}
+type ById = "/api/v1/admin/access-requests/{id}";
 
-export interface AccessRequestDetail extends AccessRequestRow {
-  decisionNote: string | null;
-  decidedBy: { id: string; name: string | null } | null;
-  provisionedTenant: { id: string; code: string; name: string } | null;
-  adminUserId: string | null;
-  invitation: {
-    sentAt: string | null;
-    expiresAt: string | null;
-    acceptedAt: string | null;
-    resendable: boolean;
-  };
-  duplicates: { id: string; organisationName: string; status: AccessRequestStatus; createdAt: string }[];
-}
+export type AccessRequestDetail = DataOf<Op<ById, "get">>;
 
 export interface AccessRequestPage {
   rows: AccessRequestRow[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    counts: Record<AccessRequestStatus, number>;
-  };
+  meta: Answer["meta"];
 }
+type Answer = Awaited<ReturnType<typeof listAnswer>>;
 
-export interface ApproveInput {
-  tenantCode: string;
-  tenantName?: string;
-  adminFirstName?: string;
-  adminLastName?: string;
-}
+export type ApproveInput = JsonBody<Op<`${ById}/approve`, "post">>;
+export type ApproveResult = DataOf<Op<`${ById}/approve`, "post">>;
 
-interface Envelope<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+const byId = (id: string) => ({ params: { path: { id } } });
 
-const BASE = "/api/v1/admin/access-requests";
+const listAnswer = (status: AccessRequestStatus, page: number, limit: number) =>
+  typedApi.GET("/api/v1/admin/access-requests", { params: { query: { status, page, limit } } }).then(unwrap);
 
 export const accessRequestService = {
   list: async (status: AccessRequestStatus, page = 1, limit = 20): Promise<AccessRequestPage> => {
-    const res = await api.get<Envelope<AccessRequestRow[]> & { meta: AccessRequestPage["meta"] }>(BASE, {
-      params: { status, page, limit },
-    });
+    const res = await listAnswer(status, page, limit);
     return { rows: res.data ?? [], meta: res.meta };
   },
 
   get: async (id: string): Promise<AccessRequestDetail> =>
-    (await api.get<Envelope<AccessRequestDetail>>(`${BASE}/${id}`)).data,
+    (await typedApi.GET("/api/v1/admin/access-requests/{id}", byId(id)).then(unwrap)).data,
 
-  approve: async (
-    id: string,
-    input: ApproveInput,
-  ): Promise<{ invitationSent: boolean; tenant: { id: string; code: string; name: string } }> =>
-    (await api.post<Envelope<{ invitationSent: boolean; tenant: { id: string; code: string; name: string } }>>(
-      `${BASE}/${id}/approve`,
-      input,
-    )).data,
+  approve: async (id: string, input: ApproveInput): Promise<ApproveResult> =>
+    (await typedApi.POST("/api/v1/admin/access-requests/{id}/approve", { ...byId(id), body: input }).then(unwrap)).data,
 
   reject: async (id: string, reason: string, spam: boolean): Promise<AccessRequestRow> =>
-    (await api.post<Envelope<AccessRequestRow>>(`${BASE}/${id}/reject`, { reason, spam })).data,
+    (
+      await typedApi
+        .POST("/api/v1/admin/access-requests/{id}/reject", { ...byId(id), body: { reason, spam } })
+        .then(unwrap)
+    ).data,
 
-  resendInvitation: async (id: string): Promise<{ invitationSent: boolean; expiresAt: string }> =>
-    (await api.post<Envelope<{ invitationSent: boolean; expiresAt: string }>>(`${BASE}/${id}/resend-invitation`, {}))
-      .data,
+  resendInvitation: async (id: string): Promise<DataOf<Op<`${ById}/resend-invitation`, "post">>> =>
+    (
+      await typedApi
+        .POST("/api/v1/admin/access-requests/{id}/resend-invitation", {
+          ...byId(id),
+          // As built: an empty JSON object, though the contract reads no body.
+          body: {} as never,
+        })
+        .then(unwrap)
+    ).data,
 };
 
 /** A tenant code suggested from an organisation name: upper-case letters and digits, at most 12. */

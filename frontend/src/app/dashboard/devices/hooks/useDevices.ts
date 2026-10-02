@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/authStore";
 import {
   Device,
   DeviceFormState,
+  DeviceStatus,
   BulkImportResult,
   deviceService,
 } from "@/api/services/device.service";
@@ -124,7 +125,8 @@ export function useDevices() {
       manufacturer: device.manufacturer || "",
       model: device.model || "",
       category: device.category || "",
-      status: device.status,
+      // The column is nullable (it defaults to "active"); a null is carried as is.
+      status: device.status as DeviceStatus | undefined,
       locationId: device.locationId || "",
       installationDate: device.installationDate ? device.installationDate.substring(0, 10) : "",
       nextCalibrationDate: device.nextCalibrationDate ? device.nextCalibrationDate.substring(0, 10) : "",

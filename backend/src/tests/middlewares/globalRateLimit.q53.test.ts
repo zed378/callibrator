@@ -20,7 +20,7 @@ import express from "express";
 import { rateLimit } from "express-rate-limit";
 import { globalLimitBody, GLOBAL_LIMIT_MESSAGE } from "../../middlewares/globalRateLimit.middleware";
 
-const INDEX = path.resolve(__dirname, "../../../index.js");
+const INDEX = path.resolve(__dirname, "../../../index.ts");
 
 let server: Server;
 let base: string;

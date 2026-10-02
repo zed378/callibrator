@@ -1,10 +1,10 @@
-import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type components } from "../typed";
 
 /**
  * WebAuthn (passkeys / security keys).
  *
  * The user and tenant are taken from the caller's JWT — no ids are sent.
- * Backend: src/routes/api/webauthn.route.js (mounted /api/v1/webauthn)
+ * Backend: src/routes/api/webauthn.route.ts (mounted /api/v1/webauthn)
  *   GET  /status
  *   POST /registration-options
  *   POST /verify-registration
@@ -18,6 +18,12 @@ import { api } from "../client";
  * The backend speaks base64url for every binary field, while the browser's
  * credentials API speaks ArrayBuffer — this module owns that translation so
  * callers can pass the raw PublicKeyCredential straight through.
+ *
+ * P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+ * contract's (backend/src/routes/api/webauthn.openapi.ts). The ceremony
+ * options are published as open objects (the WebAuthn library defines them),
+ * so `RegistrationOptions` / `LoginOptions` keep the standard JSON shapes the
+ * browser ceremony reads.
  */
 
 // ---------- Types ----------
@@ -48,42 +54,25 @@ export interface LoginOptions {
   timeout?: number;
 }
 
-export interface WebauthnResult {
-  success: boolean;
-}
+type W = "/api/v1/webauthn";
 
-export interface WebauthnStatus {
-  enabled: boolean;
-  /** How many passkeys the account holds (ADR-108 Amendment 1). */
-  count?: number;
-  /** Authenticator signature counter — rises on each successful assertion. */
-  signCount: number;
-  lastUpdatedAt: string | null;
-}
+/** POST /verify-login, /disable: `{ success: true }`. */
+export type WebauthnResult = DataOf<Op<`${W}/verify-login`, "post">>;
+
+/** POST /verify-registration: `{ success: true, credential }` (the new passkey). */
+export type RegistrationResult = DataOf<Op<`${W}/verify-registration`, "post">>;
+
+/** GET /status — `count` passkeys (ADR-108 Am. 1); `signCount` rises on each successful assertion. */
+export type WebauthnStatus = DataOf<Op<`${W}/status`, "get">>;
 
 /** One of the caller's passkeys (never its credential id or key). */
-export interface Passkey {
-  id: string;
-  name: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-  transports: string[] | null;
-}
+export type Passkey = components["schemas"]["Passkey"];
 
 /** The A-213 re-authentication a removal needs. */
-export interface Reauth {
-  currentPassword: string;
-  code?: string;
-  recoveryCode?: string;
-}
+export type Reauth = NonNullable<JsonBody<Op<`${W}/credentials/{id}`, "delete">>>;
 
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+type VerifyLoginBody = JsonBody<Op<`${W}/verify-login`, "post">>;
+type VerifyRegistrationBody = JsonBody<Op<`${W}/verify-registration`, "post">>;
 
 // ---------- base64url helpers ----------
 
@@ -145,96 +134,66 @@ function serializeCredential(credential: PublicKeyCredential) {
 
 export const webauthnService = {
   /** GET /api/v1/webauthn/status — whether the current user has a passkey. */
-  getStatus: async (): Promise<WebauthnStatus> => {
-    const response = await api.get<BackendResponse<WebauthnStatus>>(
-      "/api/v1/webauthn/status",
-    );
-    return response.data;
-  },
+  getStatus: async (): Promise<WebauthnStatus> =>
+    (await typedApi.GET("/api/v1/webauthn/status").then(unwrap)).data,
 
   /** POST /api/v1/webauthn/registration-options */
-  getRegistrationOptions: async (): Promise<RegistrationOptions> => {
-    const response = await api.post<BackendResponse<RegistrationOptions>>(
-      "/api/v1/webauthn/registration-options",
-    );
-    return response.data;
-  },
+  getRegistrationOptions: async (): Promise<RegistrationOptions> =>
+    // The contract publishes the options as an open object; this is their standard JSON shape.
+    (await typedApi.POST("/api/v1/webauthn/registration-options").then(unwrap)).data as unknown as RegistrationOptions,
 
   /** POST /api/v1/webauthn/verify-registration */
   verifyRegistration: async (
     credential: PublicKeyCredential,
     name?: string,
-  ): Promise<WebauthnResult> => {
-    const response = await api.post<BackendResponse<WebauthnResult>>(
-      "/api/v1/webauthn/verify-registration",
-      { ...serializeCredential(credential), ...(name && name.trim() ? { name: name.trim() } : {}) },
-    );
-    return response.data;
+  ): Promise<RegistrationResult> => {
+    // The serialized credential is the WebAuthn *ResponseJSON shape the body publishes.
+    const body = {
+      ...serializeCredential(credential),
+      ...(name && name.trim() ? { name: name.trim() } : {}),
+    } as VerifyRegistrationBody;
+    return (await typedApi.POST("/api/v1/webauthn/verify-registration", { body }).then(unwrap)).data;
   },
 
   /** POST /api/v1/webauthn/login-options */
-  getLoginOptions: async (): Promise<LoginOptions> => {
-    const response = await api.post<BackendResponse<LoginOptions>>(
-      "/api/v1/webauthn/login-options",
-    );
-    return response.data;
-  },
+  getLoginOptions: async (): Promise<LoginOptions> =>
+    (await typedApi.POST("/api/v1/webauthn/login-options").then(unwrap)).data as unknown as LoginOptions,
 
   /** POST /api/v1/webauthn/verify-login */
   verifyLogin: async (
     credential: PublicKeyCredential,
-  ): Promise<WebauthnResult> => {
-    const response = await api.post<BackendResponse<WebauthnResult>>(
-      "/api/v1/webauthn/verify-login",
-      serializeCredential(credential),
-    );
-    return response.data;
-  },
+  ): Promise<WebauthnResult> =>
+    (
+      await typedApi
+        .POST("/api/v1/webauthn/verify-login", { body: serializeCredential(credential) as VerifyLoginBody })
+        .then(unwrap)
+    ).data,
 
   /**
    * POST /api/v1/webauthn/disable — removes the enrolled credential.
    * A-213: needs the current password and, on an MFA account, a current
    * code (or a recovery code); the backend answers 400 without them.
    */
-  disable: async (reauth: {
-    currentPassword: string;
-    code?: string;
-    recoveryCode?: string;
-  }): Promise<WebauthnResult> => {
-    const response = await api.post<BackendResponse<WebauthnResult>>(
-      "/api/v1/webauthn/disable",
-      reauth,
-    );
-    return response.data;
-  },
+  disable: async (reauth: Reauth): Promise<WebauthnResult> =>
+    (await typedApi.POST("/api/v1/webauthn/disable", { body: reauth }).then(unwrap)).data,
 
   /** GET /api/v1/webauthn/credentials — the caller's passkeys, oldest first. */
-  listPasskeys: async (): Promise<Passkey[]> => {
-    const response = await api.get<BackendResponse<Passkey[]>>("/api/v1/webauthn/credentials");
-    return response.data ?? [];
-  },
+  listPasskeys: async (): Promise<Passkey[]> =>
+    (await typedApi.GET("/api/v1/webauthn/credentials").then(unwrap)).data ?? [],
 
   /** PATCH /api/v1/webauthn/credentials/:id — rename one. */
-  renamePasskey: async (id: string, name: string): Promise<Passkey> => {
-    const response = await api.patch<BackendResponse<Passkey>>(
-      `/api/v1/webauthn/credentials/${encodeURIComponent(id)}`,
-      { name },
-    );
-    return response.data;
-  },
+  renamePasskey: async (id: string, name: string): Promise<Passkey> =>
+    (await typedApi.PATCH("/api/v1/webauthn/credentials/{id}", { params: { path: { id } }, body: { name } }).then(unwrap))
+      .data,
 
   /**
    * DELETE /api/v1/webauthn/credentials/:id — remove one. Needs the current
    * password (and a code with MFA): that proof is also what stops the last
-   * passkey leaving the account with no way in.
+   * passkey leaving the account with no way in. The proof is the DELETE's body.
    */
-  revokePasskey: async (id: string, reauth: Reauth): Promise<{ success: boolean; remaining: number }> => {
-    const response = await api.delete<BackendResponse<{ success: boolean; remaining: number }>>(
-      `/api/v1/webauthn/credentials/${encodeURIComponent(id)}`,
-      { data: reauth },
-    );
-    return response.data;
-  },
+  revokePasskey: async (id: string, reauth: Reauth): Promise<DataOf<Op<`${W}/credentials/{id}`, "delete">>> =>
+    (await typedApi.DELETE("/api/v1/webauthn/credentials/{id}", { params: { path: { id } }, body: reauth }).then(unwrap))
+      .data,
 
   /** True when this browser can do WebAuthn at all. */
   isSupported: (): boolean =>

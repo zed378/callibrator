@@ -12,30 +12,51 @@ Compliance targets: ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS
 
 A hospital that cannot prove a defibrillator was calibrated within its interval has, for audit purposes, an uncalibrated defibrillator. **The evidence is the compliance.**
 
-Callibrator makes that evidence a by-product of doing the work: every device has an interval, every calibration produces an append-only record naming who performed it, every certificate is signed and **publicly verifiable without a login**, and every mutation is audit-logged.
+Callibrator makes that evidence a by-product of doing the work: every device has an interval, every calibration produces an append-only record naming who performed it (a database trigger and the application role's missing `UPDATE`/`DELETE` grant, P6-03), every certificate is signed and **publicly verifiable without a login**, and every mutation is audit-logged.
 
 ## Quick Start
 
 ```bash
 make env          # create deploy/compose/.env
-make secrets      # generate the four REQUIRED secrets
+make secrets      # generate the required secrets (paste them into deploy/compose/.env)
 make dev          # bring the stack up
 make help         # every target
 ```
 
-Requires Docker with the compose plugin, Node 20+, pnpm, and `make`.
+Requires Docker with the compose plugin, **Node 26** (pinned by the root `.nvmrc`), npm (the root `package-lock.json` is the lockfile, ADR-044), and optionally `make` — every target is one or two commands in the `Makefile`, runnable directly.
 
-The application **exits** without `CERT_SIGNING_SECRET`, `ENCRYPT_KEY` and `ATTACHMENT_URL_SECRET`. That is deliberate — starting without them produces certificates that cannot be verified, and the failure would appear days later in front of an auditor.
+The backend **refuses to start** without its required secrets — among them `CERT_SIGNING_SECRET`, `ENCRYPT_KEY`, `ATTACHMENT_URL_SECRET`, and in production `KMS_MASTER_KEY`. That is deliberate: starting without them produces certificates that cannot be verified, and the failure would appear days later in front of an auditor.
+
+### First sign-in
+
+There is no default password (ADR-099). On first boot the backend gives the platform super admin a **one-time password**, written only to a file inside the container; the log says where, never the value:
+
+```bash
+docker exec <backend-container> cat /app/.bootstrap/superadmin-password
+```
+
+Its first use asks for a new password before anything else. Details and recovery (`./backend rotate-bootstrap-password`): [`deploy/README.md`](deploy/README.md).
+
+### Configuration worth knowing
+
+| Variable | Effect |
+|---|---|
+| `PRIVACY_NOTICE_URL` | the published privacy notice. **Unset, the public access-request form and `POST /api/v1/access-requests` do not exist** (404), in every environment (ADR-113) |
+| `NEXT_PUBLIC_CONTACT_WHATSAPP`, `NEXT_PUBLIC_CONTACT_EMAIL` | the public pages' contact buttons, read at **build** time; empty hides the button |
+| `SELF_REGISTRATION_ENABLED` | whether `POST /api/v1/auth/register` exists; unset means **off in production**, on elsewhere (P10-12). Request access is the way in |
+| `STRIPE_SECRET_KEY`, `BILLING_ENABLED` | in production with billing enabled, a missing key **stops the boot** (ADR-111); `BILLING_ENABLED=false` for a deployment that does not bill through Stripe |
+| `SWAGGER_ENABLED` | the API reference: on outside production, off in production unless `true` |
 
 ## Layout
 
 ```
-docs/          135 as-built documents across 10 categories
+docs/          193 as-built documents (docs/ARCHIVE/ excluded)
 MEMORY/        decisions, change records, specs, templates
 TASKS/         the execution board
 deploy/        compose stacks and Helm charts
-backend/       Express · JavaScript → TypeScript (ADR-038, in progress)
+backend/       Express · TypeScript (strict), compiled to CommonJS
 frontend/      Next.js 16 · React 19 · TypeScript
+packages/      @callibrator/contracts — request schemas shared by both
 Makefile       development, gates, deployment
 ```
 
@@ -43,27 +64,32 @@ Makefile       development, gates, deployment
 
 | | |
 |---|---|
-| Backend | Express — **JavaScript today, migrating to strict TypeScript** (ADR-038) |
-| ORM | Sequelize |
-| Database | PostgreSQL 18 + pgvector, only (ADR-039) |
+| Runtime | **Node 26** (root `.nvmrc`) |
+| Backend | Express 5 — **TypeScript, strict**, compiled to CommonJS (ADR-038, ADR-087); checked by TypeScript 7 (`@typescript/native`); run through `tsx` in development |
+| Validation | **Zod** (ADR-093), shared with the frontend through `@callibrator/contracts` |
+| ORM | Sequelize 6, with global tenant-scoping hooks |
+| Database | PostgreSQL 18 + pgvector, only (ADR-039, ADR-041) |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |
 | Realtime | Socket.IO both ends (ADR-031) |
 | Infrastructure | Redis · RabbitMQ · MQTT client (external broker) · ClamAV · pgvector |
-| Distribution | both halves compile to **standalone binaries** — no runtime in the production images |
+| Distribution | the **backend image is a `pkg` binary**; the **frontend image is Next standalone on Node** (S-29). A compiled frontend binary (`next-bun-compile`, `NEXT_COMPILE=true`) is opt-in and not built in the image |
 
 ## Scale
 
+Counted 2026-10-02 with the method `CLAUDE.md` states. Counts are dated snapshots; re-count before quoting.
+
 | | |
 |---|---|
-| Backend modules | 33 |
-| Mounted route modules | 53 |
-| Models | 72 |
-| Services / controllers / validators | 76 / 56 / 37 |
-| Backend test files | 342 |
-| Live E2E specs | 53 |
-| Frontend API services (each with a contract test) | 51 |
-| Dashboard surfaces | ~60 |
-| ADRs | 37 |
+| Route modules | 55 (+3 internal) |
+| Models | 73 |
+| Migrations | 79 |
+| Services / controllers / validators | 91 / 64 / 44 |
+| Backend test files | 950 under `backend/src/tests` (271 TypeScript, 679 legacy JavaScript) + 3 in `backend/__tests__` |
+| Live E2E spec files | 57 |
+| API operations (`openapi.json`, all code-first) | 479 |
+| Frontend API services (52 with a test file) | 54 |
+| Dashboard pages | 60 |
+| ADRs | 112 (highest number 113) |
 
 ## Where to Start Reading
 
@@ -84,41 +110,66 @@ Makefile       development, gates, deployment
 | | | |
 |---|---|---|
 | [`PLAN/`](docs/PLAN/00-PROJECT-OVERVIEW.md) | 19 | product, business rules, roles, compliance, risks |
-| [`ARCHITECTURE/`](docs/ARCHITECTURE/00-SYSTEM-ARCHITECTURE.md) | 10 | system design |
-| [`API/`](docs/API/00-API-STANDARDS.md) | 14 | the contract across 53 route modules |
-| [`DATABASE/`](docs/DATABASE/00-DATA-MODEL.md) | 14 | 72 models by domain |
-| [`SECURITY/`](docs/SECURITY/00-SECURITY-REQUIREMENTS.md) | 13 | threat model through incident response |
-| [`UI-UX/`](docs/UI-UX/00-DESIGN-DIRECTION.md) | 20 | experience design and the design system |
-| [`FRONTEND/`](docs/FRONTEND/00-FRONTEND-STANDARDS.md) | 12 | frontend architecture |
-| [`BACKEND/`](docs/BACKEND/00-BACKEND-STANDARDS.md) | 12 | backend architecture and the 33-module reference |
+| [`ARCHITECTURE/`](docs/ARCHITECTURE/00-SYSTEM-ARCHITECTURE.md) | 13 | system design |
+| [`API/`](docs/API/00-API-STANDARDS.md) | 15 | the contract |
+| [`DATABASE/`](docs/DATABASE/00-DATA-MODEL.md) | 14 | the models by domain |
+| [`SECURITY/`](docs/SECURITY/00-SECURITY-REQUIREMENTS.md) | 15 | threat model through incident response |
+| [`UI-UX/`](docs/UI-UX/00-DESIGN-DIRECTION.md) | 21 | experience design and the design system |
+| [`FRONTEND/`](docs/FRONTEND/00-FRONTEND-STANDARDS.md) | 14 | frontend architecture |
+| [`BACKEND/`](docs/BACKEND/00-BACKEND-STANDARDS.md) | 13 | backend architecture and the module reference |
 | [`DEVOPS/`](docs/DEVOPS/00-ENVIRONMENTS.md) | 12 | environments, deployment, observability |
 | [`TESTING/`](docs/TESTING/00-TEST-STRATEGY.md) | 8 | the strategy and every suite enforcing it |
+| [`ENGINEERING/`](docs/ENGINEERING/README.md) | 17 | coding standards, TypeScript rules, layer templates, tooling |
+
+(Top-level documents per category, counted 2026-10-02.)
+
+### The API reference
+
+The contract is generated **code-first** from the Zod schemas the routes enforce (ADR-103): `backend/openapi.json`, 479 operations, regenerated by `npm run openapi:generate` and checked by `openapi:check`, Spectral (`openapi:lint`) and a breaking-change check. It is served by **Scalar, self-hosted and behind sign-in** — a signed-in tenant admin or the platform super admin opens `<frontend>/api/v1/docs`; an API key never gets in. Off in production unless `SWAGGER_ENABLED=true`.
 
 ## Commands
 
 ```bash
 make dev              # local stack, hot reload
-make verify           # lint · typecheck · test · build
-make test-e2e         # 53 live specs against a running server
+make verify           # lint · ts-ratchet · typecheck · test · build · load-check
+make test-e2e         # 57 live spec files against a running server (not in verify, not in CI)
 make migrate          # then: make migrate-verify — the log is not evidence
 make deploy ENV=prod TAG=<sha>
+
+cd backend
+npm start             # node --import tsx index.ts (the release build compiles it to dist/index.js)
+npm run typecheck     # TypeScript 7 — never bare `npx tsc` (ADR-076)
+npm run ratchet       # refuses any new .js file, tests included (ADR-087)
+npm run load:check    # every module loads: dist/ under node; add `-- --src` for src/ under tsx
+npm test              # through the npm script, not bare `npx jest` (A-99)
 ```
 
 `make verify` does **not** cover the live or browser suites. A green `verify` is not a green release.
 
 ## Current State, Stated Honestly
 
-Phases 0–5 are shipped. Two gates are failing, and a status page that hides them is not a status page.
+Phases 0–5 are shipped; Phase 9 (the TypeScript migration) has converted every backend source module but one. A status page that hides a red gate is not a status page.
 
 | | |
 |---|---|
-| Backend unit coverage gate (100%) | 🟢 **passing** (2026-09-11) — 289 suites, 5735 tests |
-| Live E2E in one uninterrupted run | 🔴 **never achieved** — verified fix by fix — [P6-02](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
-| `calibration_records` append-only | 🟡 a **convention**, not a database constraint — [P6-03](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
-| Helm charts | 🟡 **render**; no cluster has been reachable |
-| CI pipeline | ⚪ deferred — no hook exists either; `make verify` is manual |
+| Backend unit coverage gate (100%) | 🟢 **100%** statements / branches / functions / lines on 2026-10-02, quiet tree: 869 suites passed, 36 skipped, 0 failed (14,859 tests) — [closing gates](MEMORY/records/2026-10-02-closing-gates-qr.md) |
+| Typecheck · lint · build · load | 🟢 0 type errors, 0 lint errors and 0 warnings, `build` / `build:dist` / `next build` / bundle budget and `load:check` OK — 2026-10-02, closing tree. 🔴 `openapi:breaking` against `main` reports 857 breaking changes: the Phase 9 code-first contract replacing the JSDoc one — needs a recorded decision before a PR (record) |
+| Live E2E in one uninterrupted run | 🟢 **achieved twice back to back on 2026-10-02 on the final Phase 9–10 tree** (P10-13 runs Q and R: 433 tests passed, 0 failed, smoke 7/7, a11y 80/80, responsive 45/45, Phase 10 browser 12/12, 0 × 5xx), by hand — 🟡 **not run by CI** |
+| `calibration_records` append-only | 🟢 a **database constraint**: trigger + the application role's REVOKE (P6-03, ADR-062) |
+| CI pipeline | 🟡 **has run on GitHub, never green**: on `ce74932` 7 of 8 jobs passed; the secret scan's false positives are fixed in the working tree and it is clean locally — a green run awaits a push (P7-01) |
+| Helm charts | 🟡 **install, upgrade and serve on one local kind cluster** (ADR-106) — not a production cluster. A-310 (sign-in under `FORCE_HTTPS=true`) is fixed in code, not re-run on a cluster |
+| TypeScript migration | 🟡 every source module is TypeScript except the dead `utils/checkMenu.util.js` (its deletion awaits the owner, A-18); 694 legacy `.js` files in the test trees are converted opportunistically (P9-26) |
 
 Full board: [`TASKS/PROGRESS.md`](TASKS/PROGRESS.md). Everything unverified is listed in [`TASKS/BACKLOG.md`](TASKS/BACKLOG.md) § Unverified Claims.
+
+## Roadmap
+
+| | |
+|---|---|
+| **Phase 10** — landing, sign-in, request access, verification | 🟡 in progress ([`TASKS/PHASE-10-LANDING-AUTH-REVAMP.md`](TASKS/PHASE-10-LANDING-AUTH-REVAMP.md), ADR-098) |
+| **Phase 11** — admin dashboard revamp | ⏸ on hold until the owner instructs ([`TASKS/PHASE-11-DASHBOARD-REVAMP.md`](TASKS/PHASE-11-DASHBOARD-REVAMP.md)) |
+| **Upstream PHP feature adoption** | ⏳ after Phase 9; must finish before Phase 999 |
+| **Phase 999** — Go backend engine, dual backend | ⏳ planned, nothing built ([`TASKS/PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md`](TASKS/PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md), ADR-089) |
 
 ## The Rules That Matter Most
 
@@ -126,7 +177,7 @@ Full board: [`TASKS/PROGRESS.md`](TASKS/PROGRESS.md). Everything unverified is l
 
 **Cross-tenant returns 404, never 403.** A 403 confirms the resource exists.
 
-**Every route needs a permission gate** — and nothing in the build enforces that yet.
+**Every route needs a permission gate** — and the build enforces it (`routePermissionGuard.p604`, P6-04).
 
 **Name the test.** An assertion that a test passed is not evidence. "IDOR tested, all good" with no test named is worse than silence, because it stops anyone looking again.
 
@@ -138,12 +189,12 @@ One task, one branch, one PR. `main` stays deployable.
 feat/P6-04-route-permission-guard
 ```
 
-**Nothing is `DONE` without its record in `MEMORY/records/`.** Conventions: [`TASKS/00-TASK-CONVENTIONS.md`](TASKS/00-TASK-CONVENTIONS.md).
+**Nothing is `DONE` without its record in `MEMORY/records/`.** New code — tests included — is TypeScript. Conventions: [`TASKS/00-TASK-CONVENTIONS.md`](TASKS/00-TASK-CONVENTIONS.md).
 
 ## A Note on This Repository's History
 
-The previous `CLAUDE.md` instructed engineers and agents to write **strict TypeScript with no `any`** — for a backend that is JavaScript. The task board listed foundation work as TODO that had shipped months earlier.
+The previous `CLAUDE.md` instructed engineers and agents to write **strict TypeScript with no `any`** — for a backend that was JavaScript. The task board listed foundation work as TODO that had shipped months earlier.
 
 An instruction document that disagrees with the code produces confidently wrong work, **and the confidence is the dangerous part**.
 
-That is recorded as PR-4, and it is why `docs/` is now as-built, why Part II of `DECISIONS.md` exists, and why every document here names the file it derives from.
+That is recorded as PR-4, and it is why `docs/` is as-built, why Part II of `DECISIONS.md` exists, and why every document here names the file it derives from. The backend has since been migrated to TypeScript (ADR-038, Phase 9) — and the documents said so only after the code did.

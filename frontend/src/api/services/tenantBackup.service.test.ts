@@ -40,9 +40,9 @@ describe("tenantBackupService", () => {
     it("passes page/limit/status params and returns rows + top-level meta", async () => {
       const meta = { total: 1, page: 2, limit: 10, totalPages: 1 };
       mockedApi.get.mockResolvedValueOnce(envelope([{ id: "b1" }], meta));
-      const res = await tenantBackupService.getAll(TID, 2, 10, "COMPLETED");
+      const res = await tenantBackupService.getAll(TID, 2, 10, "completed");
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
-        params: { page: 2, limit: 10, status: "COMPLETED" },
+        params: { page: 2, limit: 10, status: "completed" },
       });
       expect(res.data).toHaveLength(1);
       expect(res.meta).toEqual(meta);

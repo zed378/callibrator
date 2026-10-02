@@ -15,7 +15,7 @@ jest.mock("../../utils/response.util", () => ({
   success: jest.fn((res, data, meta, message, status) => {
     res.status(status || 200).json({ success: true, data, message });
   }),
-  error: jest.fn((res, message, statusCode, details) => {
+  error: jest.fn((res, message, statusCode, _details) => {
     res.status(statusCode).json({
       success: false,
       status: statusCode,

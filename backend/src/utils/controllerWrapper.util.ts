@@ -129,8 +129,8 @@ const sendCaughtError = (
 // authenticated principal, so a key scoped to `warehouse:read` could reach any
 // such handler. There is no Express hook that runs after the middleware chain
 // but before the controller, so the check lives here: every controller but two
-// is wrapped — health.controller.js (public probes, no API-key path) and
-// predictiveMaintenance.controller.js (every route carries dynamicAccess, so a
+// is wrapped — health.controller.ts (public probes, no API-key path) and
+// predictiveMaintenance.controller.ts (every route carries dynamicAccess, so a
 // key is authorized by scope) — and a key that arrives without a gate having
 // authorized it is refused. V-05: the unwrapped list is enumerated by
 // tests/guards/apiKeyAuthorizedWriters.v05.guard.test.ts, not by this prose.

@@ -1,6 +1,6 @@
 # 09 — Backend Testing
 
-> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; the toolchain is ADR-087), compiled to CommonJS and run from one `dist/` tree. The only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18); `noSourceJs.p924.guard` fails on any other. The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The rules are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Behaviour described here is **as-built** unless marked *target*.
 
 Jest 30. 342 test files under `backend/src/tests/`, plus 51 live E2E specs.
 
@@ -35,12 +35,12 @@ figure only from a named run on a quiet tree.
 
 | Excluded | Why |
 |---|---|
-| `src/config/` | wiring (Sequelize, Redis, Socket.IO, the migrator). `config/socket.js` holds the socket authentication gate and is kept at 100% by `tests/config/socket.test.js` — under an explicit `--collectCoverageFrom` run, **not** by the gate |
+| `src/config/` | wiring (Sequelize, Redis, Socket.IO, the migrator). `config/socket.ts` holds the socket authentication gate and is kept at 100% by `tests/config/socket.test.js` — under an explicit `--collectCoverageFrom` run, **not** by the gate |
 | `src/constants/` | data, no branches |
 | `src/docs/` | the legacy JSDoc components and tags, and since P9-25 (ADR-103) the OpenAPI builder helpers (`docs/openapi/`) and the reference's mount (`apiDocs.ts`) — tested through `tests/guards/openapiRoutes.p925`, `tests/routes/apiDocs.p925` and `swaggerValidatorAlignment.p608` |
 | `src/models/` | the **71 models** — their hooks and validators are exercised by the service and live suites, and are not measured |
 | `src/scripts/` | operator CLIs |
-| `backend/index.js` | the boot sequence. Covered by a real boot, not by a unit test: CI `boot-and-migrate` and `src/tests/e2e/liveContract.smoke.test.js` |
+| `backend/index.ts` | the boot sequence. Covered by a real boot, not by a unit test: CI `boot-and-migrate` and `src/tests/e2e/liveContract.smoke.test.js` |
 
 Pinned by `src/tests/guards/coverageScope.p614.test.js`: every collected pattern matches a real file
 (the phantom `src/app.js` entry is gone), and the excluded layers are exactly these.
@@ -196,7 +196,7 @@ A test nobody has ever seen fail is a test nobody knows is connected.
 
 ## Demo Data
 
-`GET /api/v1/migration/seed-demo`, gated on `SEED_DEMO=true`. Also `src/scripts/seedDemo.js`.
+`GET /api/v1/migration/seed-demo`, gated on `SEED_DEMO=true`. Also `src/scripts/seedDemo.ts`.
 
 ~80 rows across every business module, idempotent on re-run, with a teardown removing what it created. Seeds through models directly, not over HTTP.
 

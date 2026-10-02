@@ -24,13 +24,14 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 ## Backend Engineer
 
-**Owns:** `backend/` — 53 route modules, 71 models (counts as of 2026-09-29; re-count before quoting).
+**Owns:** `backend/` — 55 route modules (+3 internal), 73 models, 79 migrations (counted 2026-10-02 by `CLAUDE.md`'s method; re-count before quoting).
 
 **Knows before touching anything:**
 
 - The target architecture is **Dual-Backend (ADR-089)**: existing TypeScript backend (`backend/src/`) + future Go backend engine (`backend-go/` in Phase 999). TypeScript backend is retained and supported. Go implementation is strictly assigned to Phase 999 (after Phase 9 & Upstream PHP adoption).
-- The existing backend is **mixed JavaScript and TypeScript, CommonJS, migrating to strict TypeScript** (ADR-038, ADR-087): `constants/`, `models/`, `validators/`, most `utils/` and `config/env.ts` are `.ts`; controllers, services and routes are still `.js`. New files — **tests included** — are TypeScript under `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` (`npm run ratchet` refuses a new `.js`); do not half-convert a `.js` file you are editing — conversion happens module by module, leaf-first, in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`, and never changes behaviour.
-- Backend source runs through **tsx**; plain `node` on it fails with `MODULE_NOT_FOUND`. Type-check with `npm run typecheck` (TypeScript 7), never `npx tsc`.
+- The existing backend's source is **TypeScript, strict, compiled to CommonJS** (ADR-038, ADR-087); the entry is `backend/index.ts`. The one source `.js` file left is the dead `utils/checkMenu.util.js`, whose deletion awaits the owner (A-18); `noSourceJs.p924.guard` fails on any other. The **694 `.js` files in the test trees are legacy** (P9-26). New files — **tests included** — are TypeScript under `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` (`npm run ratchet` refuses a new `.js`). A legacy `.js` test is converted only when you already edit it, and a conversion never changes an assertion or a behaviour.
+- Backend source runs through **tsx** (`npm start` is `node --import tsx index.ts`); plain `node` on it fails with `MODULE_NOT_FOUND`. Type-check with `npm run typecheck` (TypeScript 7), never `npx tsc`. `npm run load:check` proves every module loads.
+- A module is `export =` of one object or named exports — **never a named export (not even an `interface`) beside `export =`**: it passes typecheck and jest, then throws at load under tsx (ADR-087 Am. 15).
 - Raw SQL in `.ts` goes through **`sql()`** (`utils/sql.util.ts`) with the tenant predicate **bound**; configuration through `config/env.ts`, never `process.env`.
 - The models barrel exports **`sequelize`**, not `db`.
 - An optional include needs **`required: false`** — the most repeated defect shape here.
@@ -48,11 +49,12 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 ## Frontend Engineer
 
-**Owns:** `frontend/` — ~60 dashboard surfaces, 51 API services.
+**Owns:** `frontend/` — 60 dashboard pages (`app/dashboard/**/page.tsx`), 54 API services (`api/services/*.service.ts`, 52 with a test file), counted 2026-10-02.
 
 **Knows before touching anything:**
 
-- **Rows are in `data`; pagination is in a top-level `meta`.** Violating it renders an empty list with **no error**.
+- **Rows are in `data`; pagination is in a top-level `meta`** — on list endpoints. Violating it renders an empty list with **no error**. A single report document (`/reports/overdue-devices`, `/reports/inventory`) is one object in `data` that may hold arrays (A-343).
+- Types for the API come from `backend/openapi.json` (`npm run api:types`, checked by `api:types:check`).
 - Every list has **three** states — loading, empty, **failed**. `EmptyState` and `ErrorState` are separate components.
 - Authorization is **not** a frontend concern. The sidebar renders from the server-resolved menu tree; an unauthorised surface is **absent**, not hidden.
 - **`NEXT_PUBLIC_*` is inlined at build time.** A different API URL is a different image.
@@ -70,11 +72,13 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 ## Database Engineer
 
-**Owns:** the schema, 18 migrations, indexes.
+**Owns:** the schema, 79 migrations (`backend/src/migrations/NNNN-*.ts`, counted 2026-10-02), indexes.
 
 **Knows before touching anything:**
 
-- The platform runs on **PostgreSQL only** (ADR-039). PostgreSQL features — `JSONB`, `tsvector`, generated columns, recursive CTEs, `CREATE EXTENSION` — are allowed, but raw SQL still carries its tenant predicate explicitly, as a **bound** parameter (`bind`, never `replacements` for `$n`).
+- The platform runs on **PostgreSQL only** (ADR-039). PostgreSQL features — `JSONB`, `tsvector`, generated columns, recursive CTEs, `CREATE EXTENSION` — are allowed, but raw SQL still carries its tenant predicate explicitly, as a **bound** parameter, through `sql()` (`utils/sql.util.ts`; `replacements` is refused).
+- **A migration's manifest name is frozen** — `<file>.js` whatever the file's extension (P9-23, `manifestNames.p923`); renaming one re-runs it on every existing database.
+- **A model never indexes a column that a later migration adds**: `db.sync()` builds the index before the migrator adds the column, and the upgrade boot fails (ADR-100 Am. 3, `modelIndexColumns.am3.guard`).
 - **The Umzug context IS the QueryInterface.**
 - **A blanket `try/catch` marks a migration applied while doing nothing.**
 - Expand-and-contract for anything breaking. A rename in place breaks every running instance mid-deploy.
@@ -90,15 +94,15 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 **Owns:** the controls, and the honesty about which are mechanisms and which are conventions.
 
-**The current gaps, all documented and all open:**
+**The gaps this list used to name, and where they stand** (`TASKS/PROGRESS.md`, 2026-10-02):
 
 | Gap | |
 |---|---|
-| `calibration_records` append-only is a **convention**, not a constraint | PR-2 → P6-03 |
-| MFA not enforced, including for `SUPERADMIN` — which has no second gate behind it | PR-3 → P6-07 |
-| No build guard fails a route missing a permission gate | → P6-04 |
-| `serialNumber` is globally unique — a weak cross-tenant oracle | → P6-06 |
-| Neither `CERT_SIGNING_SECRET` nor `ENCRYPT_KEY` is rotatable | → P6-10 |
+| `calibration_records` append-only was a convention | **DONE** 2026-09-25 (P6-03, ADR-062): a trigger plus the application role's `REVOKE UPDATE, DELETE`, tested as `callibrator_app` on PostgreSQL 18.6 |
+| MFA not enforced, including for `SUPERADMIN` | **DONE** 2026-09-25 (P6-07, ADR-059): mandatory at role level 10, an enrolment-only session, an audited break-glass |
+| No build guard failed a route missing a permission gate | **DONE** 2026-09-25 (P6-04): `routePermissionGuard.p604` + `readGates.p604` |
+| `serialNumber` globally unique — a weak cross-tenant oracle | **DONE** 2026-09-28 (P6-06): unique per tenant (ADR-049, ADR-078) |
+| Neither `CERT_SIGNING_SECRET` nor `ENCRYPT_KEY` rotatable | **PARTIAL** (P6-10, ADR-062): built and rehearsed on seeded and drill data; a rehearsal on a **copy of production** is still owed (ADR-109 §1) |
 
 **Rules for testing a control:**
 
@@ -116,7 +120,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 **Knows before touching anything:**
 
-- Both applications compile to **binaries**. Runtime assets — `swagger.json`, `src/templates`, `docs/` — must be copied explicitly, or the API starts fine and fails on the first PDF or email.
+- The **backend image is a binary** (`pkg`, `backend/Dockerfile`). Runtime assets — `openapi.json`, the Scalar bundle, `src/templates`, `docs/` — must be copied explicitly, or the API starts fine and fails on the first PDF, email or API-reference page. The **frontend image is Next standalone on Node** (`frontend/Dockerfile`, S-29); its compiled binary (`next-bun-compile`, `NEXT_COMPILE=true`) is opt-in and kept for PRD N7, not built in the image.
 - **Puppeteer needs a system Chromium**, and it fails at **first use, not startup**.
 - **No certificate is issued automatically** — `ACME_*` and `TLS_AUTO_PROVISION` are not read (A-256, ADR-081); only `CUSTOM_DOMAINS_ENABLED` is.
 - **`/socket.io/*` needs upgrade headers**, or Socket.IO silently falls back to long-polling.
@@ -124,7 +128,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 - **Schedulers run once per replica.**
 - `.dockerignore` is read from the **build context root**, not from beside the Dockerfile.
 
-**Honest state:** the Helm charts **render**; no cluster has been reachable. The Makefile is **statically checked**; `make` was not available to run it.
+**Honest state:** the Helm charts **install, upgrade and serve on one local kind cluster** (P7-06, ADR-106, 2026-09-30) — not a production cluster; the prod/staging values were only rendered. A-310 (sign-in under `FORCE_HTTPS=true`) is fixed in code and not re-run on a cluster. CI has run on GitHub but never fully green: on `fb55605` gitleaks and four other jobs passed, and the five that failed broke on half-finished `.js`→`.ts` swaps fixed in the working tree; a green run awaits the next push (P7-01). `make` is not installed on every workstation; each target is one or two commands runnable directly.
 
 **Reads:** [`deploy/README.md`](deploy/README.md) · [`docs/DEVOPS/`](docs/DEVOPS/00-ENVIRONMENTS.md)
 
@@ -132,7 +136,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 ## QA Engineer
 
-**Owns:** 342 backend test files, 53 live E2E specs, 51 contract tests, and the five-check browser smoke `automate/smoke.browser.js` (ADR-077; the 71-test Playwright claim is withdrawn, U-07).
+**Owns:** 950 backend test files under `backend/src/tests` (679 legacy `.js`, 271 `.ts`) and 3 in `backend/__tests__`, 57 live E2E spec files, 52 frontend service test files (counted 2026-10-02), and the browser suites in `automate/` — the smoke (`smoke.browser.js`, 7 checks), accessibility (`a11y.browser.js`) and Phase 10 (`p10.browser.mts`) scripts (ADR-077; the 71-test Playwright claim is withdrawn, U-07).
 
 **The founding lesson:** **3,863 tests passed while 13 endpoints were broken.** Services had been written against endpoints that did not exist, with tests mocking the fabrication.
 
@@ -143,7 +147,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 - **Never suspend the default tenant.** It suspends the super-admin living in it and 403s every later request; recovery is a direct database update.
 - **Watch the rate limiter.** Repeated runs exhaust even the non-production budget and produce failures unrelated to the code.
 
-**Currently failing:** the E2E suite has **never passed in one uninterrupted run**. The backend coverage gate **passes** (2026-09-11: 289 suites, 5735 tests, 100%).
+**Current state:** the E2E suite **passed in one uninterrupted run, twice back to back, on 2026-10-01** (P10-13 runs G and H: 428 tests, smoke 7/7, a11y 80/80, P10 12/12) — by hand; **CI does not run it** (A-19). The backend coverage gate measured **100% on all four measures** on 2026-10-02 (858 suites passed; 2 validator contract tests timed out under a busy machine and pass alone).
 
 **Never** makes a suite green by deleting the failing test. Two expected-failure markers are retained deliberately.
 
@@ -153,11 +157,11 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 ## Documentation Writer
 
-**Owns:** `docs/` — 135 as-built documents.
+**Owns:** `docs/` — 193 as-built documents, `docs/ARCHIVE/` excluded (counted 2026-10-02).
 
 **The rule that governs everything here:** **ground every claim in code, and name the file.** A sentence that cannot be traced is a guess, and guesses in reference material get copied into implementations.
 
-That is not a stylistic preference. `CLAUDE.md` once told agents to write TypeScript for a JavaScript backend, and it was believed.
+That is not a stylistic preference. `CLAUDE.md` once told agents to write TypeScript for a JavaScript backend, and it was believed. (The backend has since been migrated to TypeScript, under ADR-038 — the documents changed only after the code did.)
 
 **Also:**
 

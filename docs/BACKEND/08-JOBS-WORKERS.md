@@ -1,6 +1,6 @@
 # 08 — Jobs, Workers and Schedulers
 
-> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; the toolchain is ADR-087), compiled to CommonJS and run from one `dist/` tree. The only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18); `noSourceJs.p924.guard` fails on any other. The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The rules are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Behaviour described here is **as-built** unless marked *target*.
 
 RabbitMQ (`RABBITMQ_URL`). Worker: `backend/src/workers/`. Architecture: [`../ARCHITECTURE/07-QUEUE-WORKER-ARCHITECTURE.md`](../ARCHITECTURE/07-QUEUE-WORKER-ARCHITECTURE.md).
 
@@ -136,7 +136,7 @@ Per-message, around the specific operation — never around the loop.
 
 ## MQTT Is Separate
 
-IoT telemetry is not on RabbitMQ. **The backend is an MQTT *client*, not a broker.** When both `MQTT_HOST` and `MQTT_PORT` are set, `src/services/iot.service.js` connects to an **external** broker and subscribes to `device/#`; with either unset it logs `IoT MQTT Broker not configured` and MQTT ingest is off. `aedes` and `aedes-server-factory` sit in `package.json` and are referenced by no code — earlier documentation described an embedded broker that was never built.
+IoT telemetry is not on RabbitMQ. **The backend is an MQTT *client*, not a broker.** When both `MQTT_HOST` and `MQTT_PORT` are set, `src/services/iot.service.ts` connects to an **external** broker and subscribes to `device/#`; with either unset it logs `IoT MQTT Broker not configured` and MQTT ingest is off. `aedes` and `aedes-server-factory` sit in `package.json` and are referenced by no code — earlier documentation described an embedded broker that was never built.
 
 A dropped reading is a gap in a trend rather than lost evidence, so an MQTT disconnect is acceptable for telemetry. It would not be acceptable on the calibration path.
 

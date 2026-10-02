@@ -474,9 +474,7 @@ describe("dynamicAccess middleware", () => {
 
   describe("normalizePermission", () => {
     it("should normalize read to read", () => {
-      const {
-        normalizePermission,
-      } = require("../../middlewares/dynamicAccess.middleware");
+      require("../../middlewares/dynamicAccess.middleware");
       // normalizePermission is not exported, but we can test via hasDynamicPermission
     });
 

@@ -1,6 +1,7 @@
 // Application constants
 
-export const APP_NAME = "Hospital Device Callibrator";
+// Q-43 (ADR-098 §8.1): the product name on every user-visible surface.
+export const APP_NAME = "Device Calibrator";
 export const APP_VERSION = "1.0.0";
 
 // API Configuration

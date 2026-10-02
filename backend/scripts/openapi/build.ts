@@ -2,13 +2,15 @@
  * P9-25 (ADR-103) — assemble the published OpenAPI 3.1 document.
  *
  *   published = code-first operations (every src/routes/**\/*.openapi.ts, via zod-openapi)
- *             ∪ the @swagger JSDoc of the routes not yet moved (swagger-jsdoc)
+ *             + the shared components and tags (src/docs/components.ts, src/docs/tags.ts)
  *
- * The code-first half is generated from the Zod schemas `validate()` enforces
- * (src/docs/openapi/operation.ts). The JSDoc half is what `swagger:generate`
- * produced before P9-25, normalised from OpenAPI 3.0 to 3.1. An operation
- * documented in BOTH halves is refused: a route moves to `.openapi.ts` and its
- * JSDoc block is deleted in the same change (the owner's per-module migration).
+ * Every operation is generated from the Zod schemas `validate()` enforces
+ * (src/docs/openapi/operation.ts). The JSDoc half (swagger-jsdoc) is gone since
+ * 2026-10-02 (P9-24): every route had moved to `.openapi.ts`, and the JSDoc half
+ * contributed no path and no component. A route source that still carries an
+ * `@swagger` / `@openapi` JSDoc tag is refused, so a contract written that way
+ * cannot be dropped silently. The shared components are written in OpenAPI 3.0
+ * style and are normalised to 3.1 here.
  *
  * Nothing here loads a router, a model or the environment: generation is a
  * pure function of the source tree, so it runs the same in CI, in the image
@@ -17,7 +19,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import swaggerJsdoc from "swagger-jsdoc";
 import { createDocument, type ZodOpenApiPathsObject } from "zod-openapi";
 import { toPathItems, type RouteDocs } from "../../src/docs/openapi/operation";
 import legacyComponents from "../../src/docs/components";
@@ -31,8 +32,6 @@ export const OPENAPI_FILE = path.join(BACKEND, "openapi.json");
 
 type Json = Record<string, unknown>;
 type Methods = Record<string, Json>;
-
-const HTTP_METHODS = new Set(["get", "put", "post", "delete", "options", "head", "patch", "trace"]);
 
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -48,7 +47,7 @@ const listFiles = (dir: string, wanted: (name: string) => boolean): string[] =>
     })
     .sort();
 
-/** Route sources swagger-jsdoc reads: route modules, never the .openapi.ts or declaration files. */
+/** Route modules: never the .openapi.ts or declaration files. */
 export const routeSources = (dir: string = ROUTES): string[] =>
   listFiles(dir, (n) => /\.(js|ts)$/.test(n) && !n.endsWith(".d.ts") && !n.endsWith(".openapi.ts"));
 
@@ -73,7 +72,7 @@ export const loadRouteDocs = (dir: string = ROUTES): RouteDocs[] =>
   });
 
 /**
- * OpenAPI 3.0 → 3.1 for the JSDoc half, in place: `nullable: true` becomes a
+ * OpenAPI 3.0 → 3.1 for the shared components, in place: `nullable: true` becomes a
  * `"null"` type (3.1 dropped `nullable`); a boolean `exclusiveMinimum` /
  * `exclusiveMaximum` becomes the numeric form.
  */
@@ -121,19 +120,23 @@ export const normaliseLegacy = (node: unknown): void => {
   }
 };
 
-/** The JSDoc half: paths and components, as swagger-jsdoc reads them. */
-export const legacySpec = (files: string[] = routeSources()): { paths: Record<string, Methods>; components: Json } => {
-  const spec = swaggerJsdoc({
-    definition: { openapi: "3.0.0", info: { title: "legacy", version: "0" } },
-    apis: files,
-    // A block with broken YAML is DROPPED silently by default: its route vanishes from the contract.
-    failOnErrors: true,
-  }) as Json;
-  const paths = (isObject(spec["paths"]) ? spec["paths"] : {}) as Record<string, Methods>;
-  const components = isObject(spec["components"]) ? spec["components"] : {};
-  normaliseLegacy(paths);
-  normaliseLegacy(components);
-  return { paths, components };
+/** A JSDoc contract tag at the start of a comment line (what swagger-jsdoc read). */
+const JSDOC_CONTRACT_TAG = /^\s*\*\s*@(swagger|openapi)\b/m;
+
+/**
+ * Refuses a route source that still documents its contract in JSDoc: nothing
+ * reads it any more, so it would be dropped from the contract silently.
+ * @param files - the route modules
+ * @throws Error naming each offending file
+ */
+export const assertNoJsdocContract = (files: string[] = routeSources()): void => {
+  const offenders = files.filter((file) => JSDOC_CONTRACT_TAG.test(fs.readFileSync(file, "utf8")));
+  if (offenders.length > 0) {
+    throw new Error(
+      "an @swagger/@openapi JSDoc block is no longer read — document the route in its .openapi.ts module instead:\n  " +
+        offenders.map((file) => path.relative(BACKEND, file)).join("\n  "),
+    );
+  }
 };
 
 const mergeSection = (into: Json, from: Json, where: string): void => {
@@ -150,14 +153,13 @@ const sortKeys = <T extends Json>(object: T): T =>
 
 interface BuildInput {
   readonly docs?: readonly RouteDocs[];
-  readonly legacy?: { paths: Record<string, Methods>; components: Json };
   readonly version?: string;
 }
 
 /** The published document. */
 export const buildDocument = (input: BuildInput = {}): Json => {
+  assertNoJsdocContract();
   const docs = input.docs ?? loadRouteDocs();
-  const legacy = input.legacy ?? legacySpec();
   const legacyCopy = JSON.parse(JSON.stringify(legacyComponents.components)) as Json;
   normaliseLegacy(legacyCopy);
 
@@ -192,10 +194,12 @@ export const buildDocument = (input: BuildInput = {}): Json => {
           "exactly like an id that does not exist. **403** means a permission failure inside your own tenant; " +
           "**409** explains a state that does not allow the action.\n\n" +
           "**Extensions.** `x-permission` is the gate the route's middleware chain carries (checked against " +
-          "the mounted router by a test); `x-audited` says whether a success writes an audit row; " +
+          "the mounted router by a test); `gate: authenticated` means a token and no gate (the caller's own " +
+          "resources, or a check inside the handler: `note` says which); `x-audited` says whether a success writes an audit row; " +
           "`x-rate-limit` states the limiter.\n\n" +
-          "Generated by `npm run openapi:generate` from the Zod request schemas (`*.openapi.ts`) and the " +
-          "remaining route JSDoc (ADR-103). Do not edit `openapi.json` by hand.",
+          "Generated by `npm run openapi:generate`, code-first: every operation comes from its route's " +
+          "`*.openapi.ts` module and the Zod schemas `validate()` enforces, with the shared components and " +
+          "tags of `src/docs/` (ADR-103). Do not edit `openapi.json` by hand.",
       },
       servers: [{ url: "/", description: "This deployment" }],
       security: [{ bearerAuth: [] }],
@@ -205,20 +209,9 @@ export const buildDocument = (input: BuildInput = {}): Json => {
   ) as unknown as Json;
 
   const paths = (generated["paths"] ?? {}) as Record<string, Methods>;
-  for (const [key, methods] of Object.entries(legacy.paths)) {
-    const target = (paths[key] ??= {});
-    for (const [method, operation] of Object.entries(methods)) {
-      if (HTTP_METHODS.has(method) && method in target) {
-        throw new Error(
-          `${method.toUpperCase()} ${key} is documented twice: by a .openapi.ts module AND a @swagger JSDoc block — delete the JSDoc`,
-        );
-      }
-      target[method] = operation;
-    }
-  }
 
   const components = (generated["components"] ?? {}) as Record<string, Json>;
-  for (const source of [legacyCopy, legacy.components]) {
+  for (const source of [legacyCopy]) {
     for (const [section, entries] of Object.entries(source)) {
       if (isObject(entries)) {
         components[section] ??= {};

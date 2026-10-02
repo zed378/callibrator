@@ -62,13 +62,14 @@ describe("tenantHierarchyService", () => {
   describe("getParent", () => {
     it("unwraps data.parent", async () => {
       mockedApi.get.mockResolvedValueOnce(
-        envelope({ parent: { id: "parent-1", name: "HQ" } }),
+        // The parent as the API answers it: a flat summary keyed by tenantId.
+        envelope({ parent: { tenantId: "parent-1", code: "HQ", name: "HQ", status: "active", depth: 0 } }),
       );
 
       const res = await tenantHierarchyService.getParent(TENANT);
 
       expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/${TENANT}/parent`);
-      expect(res?.id).toBe("parent-1");
+      expect(res?.tenantId).toBe("parent-1");
     });
 
     it("returns null for a root tenant", async () => {

@@ -22,7 +22,9 @@ import { Plus, Search, Pencil, Trash2 } from "lucide-react";
 import {
   riskService,
   type Risk,
+  type RiskCategory,
   type RiskCreateInput,
+  type RiskStatus,
 } from "@/api/services/risk.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -135,10 +137,11 @@ export default function RiskPage() {
     setForm({
       title: risk.title,
       description: risk.description ?? "",
-      category: risk.category,
+      // The columns are free strings (risk.model); the API writes only these values.
+      category: risk.category as RiskCategory,
       severity: risk.severity,
       likelihood: risk.likelihood,
-      status: risk.status,
+      status: risk.status as RiskStatus,
       mitigationPlan: risk.mitigationPlan ?? "",
       dueDate: risk.dueDate ? risk.dueDate.slice(0, 10) : "",
     });
@@ -377,14 +380,14 @@ export default function RiskPage() {
               <FormField label="Category">
                 <Select
                   value={String(form.category ?? "OPERATIONAL")}
-                  onChange={(v) => setForm({ ...form, category: v })}
+                  onChange={(v) => setForm({ ...form, category: v as RiskCategory })}
                   options={CATEGORY_OPTIONS}
                 />
               </FormField>
               <FormField label="Status">
                 <Select
                   value={String(form.status ?? "OPEN")}
-                  onChange={(v) => setForm({ ...form, status: v })}
+                  onChange={(v) => setForm({ ...form, status: v as RiskStatus })}
                   options={STATUS_OPTIONS}
                 />
               </FormField>

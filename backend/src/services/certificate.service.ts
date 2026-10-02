@@ -91,8 +91,8 @@ interface AuthOptions {
   authMethod?: unknown;
   authPayload?: unknown;
   meaning?: unknown;
-  ipAddress?: string | null;
-  userAgent?: string | null;
+  ipAddress?: string | null | undefined;
+  userAgent?: string | null | undefined;
 }
 
 /** What a signature is for, on the SIGNATURE_AUTH_FAILED row (A-126). */
@@ -537,16 +537,16 @@ const logSignature = async (
 /** The list query as the controller passes it (validated; a JavaScript caller may pass anything). */
 interface CertificateListQuery {
   tenantId: TenantId;
-  page?: number | string;
-  limit?: number | string;
-  deviceId?: string | null;
+  page?: number | string | undefined;
+  limit?: number | string | undefined;
+  deviceId?: string | null | undefined;
   status?: unknown;
   type?: unknown;
-  certificateNumber?: string | null;
-  from?: string | Date | null;
-  to?: string | Date | null;
-  sortBy?: string;
-  sortOrder?: string;
+  certificateNumber?: string | null | undefined;
+  from?: string | Date | null | undefined;
+  to?: string | Date | null | undefined;
+  sortBy?: string | undefined;
+  sortOrder?: string | undefined;
 }
 
 interface CertificateListData {

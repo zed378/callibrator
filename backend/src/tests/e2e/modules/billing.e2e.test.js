@@ -9,7 +9,7 @@
  * Envelope: { success, status, message, data } with pagination `meta` as a
  * TOP-LEVEL sibling of `data` on list endpoints.
  */
-const { httpGet, httpPost, httpPut, extractToken, authHeader } = require("../setup");
+const { httpGet, httpPost, extractToken, authHeader } = require("../setup");
 // P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
 const { OPERATOR_PASSWORD } = require("../setup");
 

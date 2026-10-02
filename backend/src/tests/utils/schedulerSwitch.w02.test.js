@@ -32,7 +32,7 @@ const REPO = path.join(BACKEND, "..");
 
 /** Replica-safe schedulers, each with the reason it may run everywhere. */
 const EXEMPT = {
-  "middlewares/webhookDeliveryScheduler.middleware.js":
+  "middlewares/webhookDeliveryScheduler.middleware.ts":
     "claims deliveries with FOR UPDATE SKIP LOCKED (ADR-054); the chart runs it on API pods",
 };
 const EXEMPT_VARIABLES = ["WEBHOOK_DISPATCH_SCHEDULER"];

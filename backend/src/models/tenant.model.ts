@@ -23,6 +23,7 @@ import { PLATFORM_TENANT_ID } from "../constants/platformTenant";
 import type { TenantId, UserId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
+import { TENANT_LIFECYCLE_STATUSES } from "@callibrator/contracts/states";
 
 // D-27 (ADR-070): every JSON column declares its shape, validated on write.
 
@@ -46,7 +47,8 @@ const TENANT_PLANS = [
 ] as const;
 
 /** The `status` ENUM's values, in the column's order (D-26 holds them against pg_enum). */
-const TENANT_STATUSES = ["active", "suspended", "deleted"] as const;
+// P9-05: the one list is TENANT_LIFECYCLE_STATUSES in @callibrator/contracts/states.
+const TENANT_STATUSES = TENANT_LIFECYCLE_STATUSES;
 
 /** The `billingCycle` ENUM's values, in the column's order (D-26 holds them against pg_enum). */
 const TENANT_BILLING_CYCLES = ["monthly", "yearly"] as const;

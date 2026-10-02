@@ -185,10 +185,10 @@ const REVIEWED = Object.freeze({
   // P10-04: the super admin's SSO email-domain claims — one settings key.
   "loginDiscovery.service.ts::claimantOf::TenantSettings": [1, CLOSED],
   "loginDiscovery.service.ts::setSsoEmailDomains::TenantSettings": [1, CLOSED],
-  "ai.service.js::getAiConfig::TenantSettings": [1, KEYS],
-  "attachment.service.js::restoreForResource::Attachment.unscoped()": [1, IDS],
-  "attachment.service.js::restoreForResource::AuditLog": [2, PARENT],
-  "attachment.service.js::softDeleteForResource::Attachment": [1, PARENT],
+  "ai.service.ts::getAiConfig::TenantSettings": [1, KEYS],
+  "attachment.service.ts::restoreForResource::Attachment.unscoped()": [1, IDS],
+  "attachment.service.ts::restoreForResource::AuditLog": [2, PARENT],
+  "attachment.service.ts::softDeleteForResource::Attachment": [1, PARENT],
   "auth.service.ts::getAuthUserWithTenant::TenantSettings": [1, KEYS],
   "auth.service.ts::passwordManagedBy::TenantSettings": [1, KEYS],
   // P10-16 (ADR-099): the live super admins not already one-time, once per boot — a handful of
@@ -201,61 +201,61 @@ const REVIEWED = Object.freeze({
   "content.service.ts::listCategories::Category": [1, CLOSED], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
   "customDomains.service.ts::domainNotificationRecipients::User": [1, CLOSED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
   "customDomains.service.ts::getTenantDomains::CustomDomain": [1, CLOSED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "dashboard.service.js::countByStatus::Model": [1, GROUPED],
-  "dashboard.service.js::getDashboardMetrics::CalibrationDevice": [1, GROUPED],
-  "dashboard.service.js::getDashboardMetrics::Tenant": [1, OPEN],
-  "dashboard.service.js::getDashboardMetrics::User": [1, GROUPED],
-  "dashboard.service.js::monthlyTrend::Model": [1, GROUPED],
+  "dashboard.service.ts::countByStatus::Model": [1, GROUPED],
+  "dashboard.service.ts::getDashboardMetrics::CalibrationDevice": [1, GROUPED],
+  "dashboard.service.ts::getDashboardMetrics::Tenant": [1, OPEN],
+  "dashboard.service.ts::getDashboardMetrics::User": [1, GROUPED],
+  "dashboard.service.ts::monthlyTrend::Model": [1, GROUPED],
   "dataRetention.service.ts::maskPII::User": [1, IDS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
   "dataRetention.service.ts::readRetentionPolicy::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "eSignature.service.js::completeWorkflow::SignatureWorkflowStep": [1, PARENT],
-  "eSignature.service.js::getEligibleSigners::Role": [1, IDS],
-  "eSignature.service.js::getEligibleSigners::User": [1, OPEN],
-  "eSignature.service.js::getKeyPairs::TenantKey": [1, CLOSED],
-  "eSignature.service.js::getSignerWorkflows::SignatureWorkflow": [1, IDS],
-  "eSignature.service.js::getSignerWorkflows::SignatureWorkflowStep": [1, OPEN],
-  "eSignature.service.js::getWorkflows::SignatureWorkflow": [1, OPEN],
-  "eSignature.service.js::signDocument::SignatureWorkflowStep": [1, PARENT],
+  "eSignature.service.ts::completeWorkflow::SignatureWorkflowStep": [1, PARENT],
+  "eSignature.service.ts::getEligibleSigners::Role": [1, IDS],
+  "eSignature.service.ts::getEligibleSigners::User": [1, OPEN],
+  "eSignature.service.ts::getKeyPairs::TenantKey": [1, CLOSED],
+  "eSignature.service.ts::getSignerWorkflows::SignatureWorkflow": [1, IDS],
+  "eSignature.service.ts::getSignerWorkflows::SignatureWorkflowStep": [1, OPEN],
+  "eSignature.service.ts::getWorkflows::SignatureWorkflow": [1, OPEN],
+  "eSignature.service.ts::signDocument::SignatureWorkflowStep": [1, PARENT],
   "featureFlag.service.ts::getTenantFlags::TenantSettings": [1, KEYS], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
   "finance.service.ts::getDepreciationReport::AssetFinance": [1, OPEN], // P9-17: the file is TypeScript (re-keyed, ADR-087)
   "gdpr.service.ts::getConsentHistory::ConsentRecord": [1, PARENT],
-  "kanban.service.js::getMetrics::KanbanCard": [1, PARENT],
-  "kanban.service.js::getMetrics::KanbanColumn": [1, PARENT],
-  "kanban.service.js::getMetrics::KanbanLabel": [1, PARENT],
-  "kanban.service.js::getMetrics::KanbanSprint": [1, PARENT],
-  "kanban.service.js::getProject::KanbanCard": [1, PARENT],
-  "kanban.service.js::getProject::KanbanColumn": [1, PARENT],
-  "kanban.service.js::getProject::KanbanLabel": [1, PARENT],
-  "kanban.service.js::getProject::KanbanProjectMember": [1, PARENT],
-  "kanban.service.js::getProject::KanbanSprint": [1, PARENT],
-  "kanban.service.js::listProjects::KanbanProject": [2, OPEN],
-  "kanban.service.js::listProjects::KanbanProjectMember": [1, PARENT],
-  "kanban.service.js::listSprints::KanbanSprint": [1, PARENT],
-  "kanban.service.js::loadRelations::KanbanCardRelation": [1, PARENT],
-  "kanban.service.js::migrateCards::KanbanColumn": [1, PARENT],
-  "kanban.service.js::renumber::KanbanCard": [1, PARENT],
-  "kanban.service.js::reorderColumns::KanbanColumn": [2, PARENT],
-  "kanban.service.js::resolveAccess::KanbanProjectMember": [1, PARENT],
-  "maintenance.service.js::createAutoScheduledWorkOrders::CalibrationDevice": [1, IDS],
-  "maintenance.service.js::createAutoScheduledWorkOrders::MaintenanceWorkOrder": [1, IDS],
-  "menuGroup.service.js::bulkAssign::MenuGroup": [1, IDS],
-  "menuGroup.service.js::deleteMenuGroup::MenuGroup": [1, PARENT],
-  "menuGroup.service.js::fetchActiveParentGroups::MenuGroup": [1, CLOSED],
-  "menuGroup.service.js::getAvailableRoles::Role": [1, CLOSED],
-  "menuGroup.service.js::getMyPermissions::MenuGroup": [1, CLOSED], // ADR-102: the active menu slugs (the seeded tree)
-  "menuGroup.service.js::listMenuGroups::RoleMenuPermission": [1, CLOSED],
+  "kanban.service.ts::getMetrics::KanbanCard": [1, PARENT],
+  "kanban.service.ts::getMetrics::KanbanColumn": [1, PARENT],
+  "kanban.service.ts::getMetrics::KanbanLabel": [1, PARENT],
+  "kanban.service.ts::getMetrics::KanbanSprint": [1, PARENT],
+  "kanban.service.ts::getProject::KanbanCard": [1, PARENT],
+  "kanban.service.ts::getProject::KanbanColumn": [1, PARENT],
+  "kanban.service.ts::getProject::KanbanLabel": [1, PARENT],
+  "kanban.service.ts::getProject::KanbanProjectMember": [1, PARENT],
+  "kanban.service.ts::getProject::KanbanSprint": [1, PARENT],
+  "kanban.service.ts::listProjects::KanbanProject": [2, OPEN],
+  "kanban.service.ts::listProjects::KanbanProjectMember": [1, PARENT],
+  "kanban.service.ts::listSprints::KanbanSprint": [1, PARENT],
+  "kanban.service.ts::loadRelations::KanbanCardRelation": [1, PARENT],
+  "kanban.service.ts::migrateCards::KanbanColumn": [1, PARENT],
+  "kanban.service.ts::renumber::KanbanCard": [1, PARENT],
+  "kanban.service.ts::reorderColumns::KanbanColumn": [2, PARENT],
+  "kanban.service.ts::resolveAccess::KanbanProjectMember": [1, PARENT],
+  "maintenance.service.ts::createAutoScheduledWorkOrders::CalibrationDevice": [1, IDS],
+  "maintenance.service.ts::createAutoScheduledWorkOrders::MaintenanceWorkOrder": [1, IDS],
+  "menuGroup.service.ts::bulkAssign::MenuGroup": [1, IDS],
+  "menuGroup.service.ts::deleteMenuGroup::MenuGroup": [1, PARENT],
+  "menuGroup.service.ts::fetchActiveParentGroups::MenuGroup": [1, CLOSED],
+  "menuGroup.service.ts::getAvailableRoles::Role": [1, CLOSED],
+  "menuGroup.service.ts::getMyPermissions::MenuGroup": [1, CLOSED], // ADR-102: the active menu slugs (the seeded tree)
+  "menuGroup.service.ts::listMenuGroups::RoleMenuPermission": [1, CLOSED],
   "meteredBilling.service.ts::enforceQuotas::PlanQuota": [1, CLOSED], // P9-17: the file is TypeScript (re-keyed, ADR-087)
   "meteredBilling.service.ts::getPlatformAnalytics::UsageMetric": [1, GROUPED], // P9-17: the file is TypeScript (re-keyed, ADR-087)
   "meteredBilling.service.ts::getUsageAlerts::UsageAlert": [1, CLOSED], // P9-17: the file is TypeScript (re-keyed, ADR-087)
-  "migration.service.js::seedApplicationRoles::Roles": [1, SCRIPT],
-  "migration.service.js::seedDefaultRoles::Roles": [1, SCRIPT],
-  "migration.service.js::unseedDemoData::CalibrationDevice": [1, SCRIPT],
-  "migration.service.js::unseedDemoData::KanbanProject": [1, SCRIPT],
-  "migration.service.js::unseedDemoData::Post": [1, SCRIPT],
-  "migration.service.js::unseedDemoData::Ticket": [1, SCRIPT],
-  "migration.service.js::unseedDemoData::Vendor": [1, SCRIPT],
-  "migration.service.js::unseedDemoData::Warehouse": [1, SCRIPT],
-  "migration.service.js::unseedDemoData::Workflow": [1, SCRIPT],
+  "migration.service.ts::seedApplicationRoles::Roles": [1, SCRIPT],
+  "migration.service.ts::seedDefaultRoles::Roles": [1, SCRIPT],
+  "migration.service.ts::unseedDemoData::CalibrationDevice": [1, SCRIPT],
+  "migration.service.ts::unseedDemoData::KanbanProject": [1, SCRIPT],
+  "migration.service.ts::unseedDemoData::Post": [1, SCRIPT],
+  "migration.service.ts::unseedDemoData::Ticket": [1, SCRIPT],
+  "migration.service.ts::unseedDemoData::Vendor": [1, SCRIPT],
+  "migration.service.ts::unseedDemoData::Warehouse": [1, SCRIPT],
+  "migration.service.ts::unseedDemoData::Workflow": [1, SCRIPT],
   "notification.service.ts::deleteAllNotifications::Notification": [1, OPEN],
   "notification.service.ts::deleteManyNotifications::Notification": [1, IDS],
   "notification.service.ts::markAllAsRead::Notification": [1, OPEN],
@@ -272,7 +272,7 @@ const REVIEWED = Object.freeze({
   "stock.service.ts::exportInventoryCsv::Stock": [1, OPEN], // P9-15: the file is TypeScript (re-keyed, ADR-087)
   "stock.service.ts::getInventoryReport::Stock": [1, OPEN], // P9-15: the file is TypeScript (re-keyed, ADR-087)
   "storage/config.service.ts::getTenantConfig::TenantSettings": [1, KEYS], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
-  "storageMigration.service.js::migrateAll::Attachment": [1, SCRIPT],
+  "storageMigration.service.ts::migrateAll::Attachment": [1, SCRIPT],
   "tenant.service.ts::fetchTenants::Users": [1, GROUPED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
   "tenant.service.ts::getTenantSettings::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
   "tenant.service.ts::updateTenantSettings::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
@@ -287,14 +287,14 @@ const REVIEWED = Object.freeze({
   "tenantLifecycle.service.ts::exportTenantData::Subscription": [1, PARENT], // P9-13: the file is TypeScript (re-keyed, ADR-087)
   "tenantLifecycle.service.ts::exportTenantData::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
   "tenantLifecycle.service.ts::exportTenantData::User": [1, OPEN], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "ticket.service.js::getMetrics::Ticket": [1, OPEN],
+  "ticket.service.ts::getMetrics::Ticket": [1, OPEN],
   "user.service.ts::fetchUsers::Users": [1, GROUPED],
   "userPermission.service.ts::getUserOverrideMatrix::UserMenuPermission": [1, CLOSED],
   "userPermission.service.ts::getUserPermissions::MenuGroup": [1, CLOSED],
   "userPermission.service.ts::getUserPermissions::RoleMenuPermission": [1, CLOSED],
   "userPermission.service.ts::getUserPermissions::UserMenuPermission": [1, CLOSED],
   "warehouse.service.ts::fetchLocations::StorageLocation": [1, PARENT], // P9-15: the file is TypeScript (re-keyed, ADR-087)
-  "webhook.service.js::emitEvent::Webhook": [1, CLOSED],
+  "webhook.service.ts::emitEvent::Webhook": [1, CLOSED],
   "webhookDeliveryPurge.service.ts::purgeFinishedDeliveries::Tenant": [1, OPEN], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
   "workflow.service.ts::getPendingTasks::WorkflowInstance": [1, OPEN], // P9-16: the file is TypeScript (re-keyed, ADR-087)
   "workflow.service.ts::getWorkflows::Workflow": [1, CLOSED], // P9-16: the file is TypeScript (re-keyed, ADR-087)
@@ -338,7 +338,7 @@ describe("D-24 (ADR-083) — the scanner", () => {
   it("finds the services' own unbounded reads — it is not silently scanning nothing", () => {
     const found = scanServices();
     expect(Object.keys(found).length).toBeGreaterThan(50);
-    expect(found["dashboard.service.js::monthlyTrend::Model"]).toBe(1);
+    expect(found["dashboard.service.ts::monthlyTrend::Model"]).toBe(1);
   });
 });
 
@@ -374,8 +374,8 @@ describe("D-24 (ADR-083) — every unbounded findAll in src/services is reviewed
       ["gdpr.service.ts", "pagesOf", "Model"], // the DSAR export (ADR-070)
       ["sop.service.ts", "assignTraining", "User"], // the SOP fan-out (ADR-070); P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
       ["dataRetention.service.ts", "maskAuditTrail", "AuditLog"], // ADR-083; P9-13: the file is TypeScript (re-keyed, ADR-087)
-      ["attachmentFileSweep.service.js", "sweepBatch", "Attachment.unscoped()"], // ADR-083
-      ["kanban.service.js", "deleteProject", "KanbanCard"], // ADR-083
+      ["attachmentFileSweep.service.ts", "sweepBatch", "Attachment.unscoped()"], // ADR-083
+      ["kanban.service.ts", "deleteProject", "KanbanCard"], // ADR-083
     ];
     for (const [file, fn, receiver] of paged) {
       const source = fs.readFileSync(path.join(SERVICES, file), "utf8");

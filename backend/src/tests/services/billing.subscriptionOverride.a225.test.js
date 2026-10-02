@@ -51,7 +51,7 @@ const subscription = (fields) => {
     return row;
   };
   row.toJSON = () => {
-    const { update, toJSON, ...plain } = row;
+    const { update: _update, toJSON: _toJSON, ...plain } = row;
     return plain;
   };
   return row;

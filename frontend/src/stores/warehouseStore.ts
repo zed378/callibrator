@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import { warehouseService } from "@/api/services/warehouse.service";
+import {
+  warehouseService,
+  type LocationCreateInput,
+  type LocationUpdateInput,
+  type WarehouseCreateInput,
+  type WarehouseUpdateInput,
+} from "@/api/services/warehouse.service";
 import { Warehouse, StorageLocation, PaginatedResponse } from "@/types";
 
 interface WarehouseState {
@@ -12,12 +18,12 @@ interface WarehouseState {
   // Actions
   fetchWarehouses: (page?: number, limit?: number, search?: string) => Promise<void>;
   fetchWarehouseById: (id: string) => Promise<void>;
-  createWarehouse: (data: Omit<Warehouse, "id" | "locations" | "createdAt" | "updatedAt">) => Promise<Warehouse>;
-  updateWarehouse: (id: string, data: Partial<Omit<Warehouse, "id" | "locations" | "createdAt" | "updatedAt">>) => Promise<Warehouse>;
+  createWarehouse: (data: WarehouseCreateInput) => Promise<Warehouse>;
+  updateWarehouse: (id: string, data: WarehouseUpdateInput) => Promise<Warehouse>;
   deleteWarehouse: (id: string) => Promise<void>;
   fetchLocations: (warehouseId: string) => Promise<void>;
-  createLocation: (data: Omit<StorageLocation, "id" | "createdAt" | "updatedAt">) => Promise<StorageLocation>;
-  updateLocation: (id: string, data: Partial<Omit<StorageLocation, "id" | "warehouseId" | "createdAt" | "updatedAt">>) => Promise<StorageLocation>;
+  createLocation: (data: LocationCreateInput) => Promise<StorageLocation>;
+  updateLocation: (id: string, data: LocationUpdateInput) => Promise<StorageLocation>;
   deleteLocation: (id: string, warehouseId: string) => Promise<void>;
   setError: (error: string | null) => void;
 }

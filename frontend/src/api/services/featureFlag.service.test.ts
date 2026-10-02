@@ -47,14 +47,6 @@ describe("featureFlagService", () => {
 
       await expect(featureFlagService.getTenantFlags("t1")).resolves.toEqual({ enable_mfa: false, enable_iot: true });
     });
-
-    it("passes undefined tenantId through untouched", async () => {
-      mockedApi.get.mockResolvedValueOnce(envelope({}));
-      await featureFlagService.getTenantFlags();
-      expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
-        params: { tenantId: undefined },
-      });
-    });
   });
 
   describe("getDefinitions", () => {

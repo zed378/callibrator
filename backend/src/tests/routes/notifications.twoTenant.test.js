@@ -12,8 +12,8 @@
  * REAL router, validateUuid, controller and notification service on the REAL
  * models and tenant hooks (fixtures/memoryDb).
  *
- * @two-tenant api/notifications.route.js PATCH /:notificationId/read
- * @two-tenant api/notifications.route.js DELETE /:notificationId
+ * @two-tenant api/notifications.route.ts PATCH /:notificationId/read
+ * @two-tenant api/notifications.route.ts DELETE /:notificationId
  */
 
 jest.mock("../../config", () => ({ db: require("../fixtures/memoryDb").memoryDb().sequelize }));

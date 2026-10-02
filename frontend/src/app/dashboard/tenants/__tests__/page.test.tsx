@@ -64,7 +64,7 @@ const tenant = (patch: Record<string, unknown> = {}) => ({
   code: "RSH",
   description: "General hospital",
   primaryColor: "#4f46e5",
-  status: "ACTIVE",
+  status: "active",
   limitSeats: 50,
   email: "it@rsh.test",
   phone: "+62 1",
@@ -120,7 +120,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  tenantRows = [tenant(), tenant({ id: "t-2", name: "RS Sehat", code: "RSS", status: "SUSPENDED", description: undefined })];
+  tenantRows = [tenant(), tenant({ id: "t-2", name: "RS Sehat", code: "RSS", status: "suspended", description: undefined })];
   useTenantStore.setState({ tenants: null, isLoading: false, error: null, listTenantId: null, settings: null, currentTenant: null });
   as("SUPERADMIN", null);
   backend();
@@ -138,10 +138,19 @@ describe("tenants page — list states and scope", () => {
 
     expect(listCalls()).toHaveLength(1);
     expect(screen.getByText("RS Sehat")).toBeInTheDocument();
-    expect(screen.getByText("SUSPENDED")).toBeInTheDocument();
+    expect(screen.getByText("suspended")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Create Tenant/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete RS Sehat" })).toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("A-361: counts and colours tenants by the API's lower-case status (active / suspended)", async () => {
+    await renderPage();
+
+    const stat = (label: string) => screen.getByText(label, { selector: "p" }).nextElementSibling?.textContent;
+    expect([stat("Total Tenants"), stat("Active"), stat("Suspended")]).toEqual(["2", "1", "1"]);
+    expect(screen.getByText("active").className).toContain("text-success");
+    expect(screen.getByText("suspended").className).toContain("text-destructive");
   });
 
   it("a tenant admin reads only their own tenant, and gets no create or delete control", async () => {
@@ -305,8 +314,10 @@ describe("tenants page — edit", () => {
     fireEvent.change(within(dialog).getByLabelText("Description"), { target: { value: "Renamed" } });
     fireEvent.change(within(dialog).getByLabelText("Email"), { target: { value: "new@rsh.test" } });
     fireEvent.change(within(dialog).getByLabelText("Website"), { target: { value: "" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Active" }));
-    fireEvent.click(within(dialog).getByRole("option", { name: "Inactive" }));
+    // A-326 / ADR-112: no status select; the status is shown, and changes only
+    // through the lifecycle actions.
+    expect(within(dialog).getByTestId("tenant-status")).toHaveTextContent("Active");
+    expect(within(dialog).queryByRole("option", { name: "Inactive" })).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Update Tenant" }));
 
     await waitFor(() => expect(patch).toHaveBeenCalledWith("/api/v1/tenants/edit", expect.any(FormData)));
@@ -315,25 +326,26 @@ describe("tenants page — edit", () => {
       name: "RS Harapan Baru",
       code: "RSH",
       description: "Renamed",
-      status: "INACTIVE",
       email: "new@rsh.test",
       // A-303: the stored profile is sent back, and an emptied field is sent as "" (it clears).
       city: "Bandung",
       website: "",
     });
-    // A-303: the seat limit is not an edit field.
+    // A-303: the seat limit is not an edit field. A-326: neither is the status.
     expect(formEntries(patch.mock.calls[0][1])).not.toHaveProperty("maxUsers");
+    expect(formEntries(patch.mock.calls[0][1])).not.toHaveProperty("status");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("a tenant admin sees status read-only (the platform owns it, A-63); the seat limit is not on the form (A-303)", async () => {
+  it("a tenant admin sees status read-only with no lifecycle action (A-63, A-326); the seat limit is not on the form (A-303)", async () => {
     as("HEALTHCARE ADMIN", "t-1");
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit RS Harapan" }));
     const dialog = screen.getByRole("dialog", { name: "Edit Tenant" });
 
-    expect(within(dialog).getByRole("button", { name: "Active" })).toBeDisabled();
+    expect(within(dialog).getByTestId("tenant-status")).toHaveTextContent("Active");
+    expect(within(dialog).queryByRole("button", { name: /Suspend tenant|Resume tenant/ })).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText("Max Users")).not.toBeInTheDocument();
   });
 

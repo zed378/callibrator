@@ -11,7 +11,6 @@ jest.mock("sequelize", () => ({
     or: Symbol("or"),
     like: Symbol("like"),
     iLike: Symbol("iLike"), // A-330: the search matches with ILIKE
-    iLike: Symbol("iLike"),
   },
 }));
 
@@ -279,7 +278,7 @@ describe("vendor.service", () => {
 
       Vendors.findOne.mockResolvedValueOnce(vendor);
 
-      const result = await qualifyVendor({
+      await qualifyVendor({
         tenantId: "t-1",
         id: "v-q",
         approvalStatus: "approved",

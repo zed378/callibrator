@@ -1,83 +1,31 @@
+// src/api/services/stock.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/stock.openapi.ts →
+// @callibrator/contracts/stock), which replaced the interim `z.input` types
+// (ADR-097 Am. 1). The exported names are unchanged. The CSV export stays on
+// `api` (text).
 import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type QueryOf } from "../typed";
 import { Stock, StockTransfer, StockAdjustment, StockOpname, PaginatedResponse } from "@/types";
-import type {
-  CreateAdjustmentInput,
-  CreateOpnameInput,
-  CreateStockInput,
-  CreateTransferInput,
-  UpdateOpnameStatusInput,
-  UpdateStockInput,
-  UpdateTransferStatusInput,
-} from "@callibrator/contracts/stock";
 
-// P9-22 (ADR-097): the request bodies are the backend validator's own schemas
-// (@callibrator/contracts/stock). The hand-written `Omit<Stock, …>` shapes they
-// replace let a caller send any Stock field (tenantId, ids); the schema strips
-// everything it does not declare.
-export type StockCreateInput = CreateStockInput;
-export type StockUpdateInput = UpdateStockInput;
-export type StockTransferStatus = UpdateTransferStatusInput["status"];
-export type StockOpnameStatus = UpdateOpnameStatusInput["status"];
+type S = "/api/v1/stocks";
 
-// Backend response structures
-interface BackendStocksResponse {
-  success: boolean;
-  data: Stock[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-interface BackendTransfersResponse {
-  success: boolean;
-  data: StockTransfer[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-interface BackendAdjustmentsResponse {
-  success: boolean;
-  data: StockAdjustment[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-interface BackendOpnamesResponse {
-  success: boolean;
-  data: StockOpname[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
+export type StockCreateInput = JsonBody<Op<S, "post">>;
+export type StockUpdateInput = JsonBody<Op<`${S}/{stockId}`, "patch">>;
+export type StockTransferStatus = JsonBody<Op<`${S}/transfer/{transferId}`, "patch">>["status"];
+export type StockOpnameStatus = JsonBody<Op<`${S}/opname/{opnameId}`, "patch">>["status"];
+export type CreateAdjustmentInput = JsonBody<Op<`${S}/adjustment`, "post">>;
+export type CreateTransferInput = JsonBody<Op<`${S}/transfer`, "post">>;
+export type CreateOpnameInput = JsonBody<Op<`${S}/opname`, "post">>;
+export type InventoryReportSummary = DataOf<Op<`${S}/reports/summary`, "get">>;
 
 export const stockService = {
   // ==========================================
   // STOCK CRUD
   // ==========================================
-  getAll: async (params: {
-    page?: number;
-    limit?: number;
-    find?: string;
-    warehouseId?: string;
-    locationId?: string;
-  }): Promise<PaginatedResponse<Stock>> => {
-    const response = await api.get<BackendStocksResponse>("/api/v1/stocks", {
-      params,
-    });
+  getAll: async (params: QueryOf<Op<S, "get">>): Promise<PaginatedResponse<Stock>> => {
+    const response = await typedApi.GET("/api/v1/stocks", { params: { query: params } }).then(unwrap);
     return {
       success: response.success,
       data: response.data,
@@ -85,59 +33,32 @@ export const stockService = {
     };
   },
 
-  getById: async (stockId: string): Promise<Stock> => {
-    const response = await api.get<{ success: boolean; data: Stock }>(
-      `/api/v1/stocks/${stockId}`
-    );
-    return response.data;
-  },
+  getById: async (stockId: string): Promise<Stock> =>
+    (await typedApi.GET("/api/v1/stocks/{stockId}", { params: { path: { stockId } } }).then(unwrap)).data,
 
-  create: async (
-    data: StockCreateInput
-  ): Promise<Stock> => {
-    const response = await api.post<{ success: boolean; data: Stock }>(
-      "/api/v1/stocks",
-      data
-    );
-    return response.data;
-  },
+  create: async (data: StockCreateInput): Promise<Stock> =>
+    (await typedApi.POST("/api/v1/stocks", { body: data }).then(unwrap)).data,
 
-  update: async (
-    stockId: string,
-    data: StockUpdateInput
-  ): Promise<Stock> => {
-    const response = await api.patch<{ success: boolean; data: Stock }>(
-      `/api/v1/stocks/${stockId}`,
-      data
-    );
-    return response.data;
-  },
+  update: async (stockId: string, data: StockUpdateInput): Promise<Stock> =>
+    (await typedApi.PATCH("/api/v1/stocks/{stockId}", { params: { path: { stockId } }, body: data }).then(unwrap))
+      .data,
 
   delete: async (stockId: string): Promise<void> => {
-    await api.delete(`/api/v1/stocks/${stockId}`);
+    await typedApi.DELETE("/api/v1/stocks/{stockId}", { params: { path: { stockId } } });
   },
 
   // ==========================================
   // ADJUSTMENTS
   // ==========================================
-  createAdjustment: async (data: CreateAdjustmentInput): Promise<StockAdjustment> => {
-    const response = await api.post<{ success: boolean; data: StockAdjustment }>(
-      "/api/v1/stocks/adjustment",
-      data
-    );
-    return response.data;
-  },
+  createAdjustment: async (data: CreateAdjustmentInput): Promise<StockAdjustment> =>
+    (await typedApi.POST("/api/v1/stocks/adjustment", { body: data }).then(unwrap)).data,
 
-  getAdjustments: async (params: {
-    page?: number;
-    limit?: number;
-    warehouseId?: string;
-    type?: "addition" | "subtraction" | "write_off";
-  }): Promise<PaginatedResponse<StockAdjustment>> => {
-    const response = await api.get<BackendAdjustmentsResponse>(
-      "/api/v1/stocks/adjustment/history",
-      { params }
-    );
+  getAdjustments: async (
+    params: QueryOf<Op<`${S}/adjustment/history`, "get">>,
+  ): Promise<PaginatedResponse<StockAdjustment>> => {
+    const response = await typedApi
+      .GET("/api/v1/stocks/adjustment/history", { params: { query: params } })
+      .then(unwrap);
     return {
       success: response.success,
       data: response.data,
@@ -148,36 +69,25 @@ export const stockService = {
   // ==========================================
   // TRANSFERS
   // ==========================================
-  createTransfer: async (data: CreateTransferInput): Promise<StockTransfer> => {
-    const response = await api.post<{ success: boolean; data: StockTransfer }>(
-      "/api/v1/stocks/transfer",
-      data
-    );
-    return response.data;
-  },
+  createTransfer: async (data: CreateTransferInput): Promise<StockTransfer> =>
+    (await typedApi.POST("/api/v1/stocks/transfer", { body: data }).then(unwrap)).data,
 
   updateTransferStatus: async (
     transferId: string,
-    status: StockTransferStatus
-  ): Promise<StockTransfer> => {
-    const response = await api.patch<{ success: boolean; data: StockTransfer }>(
-      `/api/v1/stocks/transfer/${transferId}`,
-      { status }
-    );
-    return response.data;
-  },
+    status: StockTransferStatus,
+  ): Promise<StockTransfer> =>
+    (
+      await typedApi
+        .PATCH("/api/v1/stocks/transfer/{transferId}", { params: { path: { transferId } }, body: { status } })
+        .then(unwrap)
+    ).data,
 
-  getTransfers: async (params: {
-    page?: number;
-    limit?: number;
-    fromWarehouseId?: string;
-    toWarehouseId?: string;
-    status?: "pending" | "in_transit" | "completed" | "cancelled";
-  }): Promise<PaginatedResponse<StockTransfer>> => {
-    const response = await api.get<BackendTransfersResponse>(
-      "/api/v1/stocks/transfer/history",
-      { params }
-    );
+  getTransfers: async (
+    params: QueryOf<Op<`${S}/transfer/history`, "get">>,
+  ): Promise<PaginatedResponse<StockTransfer>> => {
+    const response = await typedApi
+      .GET("/api/v1/stocks/transfer/history", { params: { query: params } })
+      .then(unwrap);
     return {
       success: response.success,
       data: response.data,
@@ -188,35 +98,25 @@ export const stockService = {
   // ==========================================
   // OPNAME
   // ==========================================
-  createOpname: async (data: CreateOpnameInput): Promise<StockOpname> => {
-    const response = await api.post<{ success: boolean; data: StockOpname }>(
-      "/api/v1/stocks/opname",
-      data
-    );
-    return response.data;
-  },
+  createOpname: async (data: CreateOpnameInput): Promise<StockOpname> =>
+    (await typedApi.POST("/api/v1/stocks/opname", { body: data }).then(unwrap)).data,
 
   updateOpnameStatus: async (
     opnameId: string,
-    status: StockOpnameStatus
-  ): Promise<StockOpname> => {
-    const response = await api.patch<{ success: boolean; data: StockOpname }>(
-      `/api/v1/stocks/opname/${opnameId}`,
-      { status }
-    );
-    return response.data;
-  },
+    status: StockOpnameStatus,
+  ): Promise<StockOpname> =>
+    (
+      await typedApi
+        .PATCH("/api/v1/stocks/opname/{opnameId}", { params: { path: { opnameId } }, body: { status } })
+        .then(unwrap)
+    ).data,
 
-  getOpnames: async (params: {
-    page?: number;
-    limit?: number;
-    warehouseId?: string;
-    status?: "draft" | "in_progress" | "completed";
-  }): Promise<PaginatedResponse<StockOpname>> => {
-    const response = await api.get<BackendOpnamesResponse>(
-      "/api/v1/stocks/opname/history",
-      { params }
-    );
+  getOpnames: async (
+    params: QueryOf<Op<`${S}/opname/history`, "get">>,
+  ): Promise<PaginatedResponse<StockOpname>> => {
+    const response = await typedApi
+      .GET("/api/v1/stocks/opname/history", { params: { query: params } })
+      .then(unwrap);
     return {
       success: response.success,
       data: response.data,
@@ -224,35 +124,8 @@ export const stockService = {
     };
   },
 
-  getInventoryReportSummary: async (): Promise<{
-    totalItems: number;
-    totalUnits: number;
-    lowStockCount: number;
-    warehouseDistribution: Array<{
-      id: string;
-      name: string;
-      code: string;
-      itemCount: number;
-      unitCount: number;
-    }>;
-  }> => {
-    const response = await api.get<{
-      success: boolean;
-      data: {
-        totalItems: number;
-        totalUnits: number;
-        lowStockCount: number;
-        warehouseDistribution: Array<{
-          id: string;
-          name: string;
-          code: string;
-          itemCount: number;
-          unitCount: number;
-        }>;
-      };
-    }>("/api/v1/stocks/reports/summary");
-    return response.data;
-  },
+  getInventoryReportSummary: async (): Promise<InventoryReportSummary> =>
+    (await typedApi.GET("/api/v1/stocks/reports/summary").then(unwrap)).data,
 
   exportInventoryCsv: async (): Promise<string> => {
     return api.get<string>("/api/v1/stocks/reports/export", {
@@ -260,4 +133,3 @@ export const stockService = {
     });
   },
 };
-

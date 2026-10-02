@@ -59,7 +59,7 @@ Create, update, delete, login, approve and export all write an `audit_logs` row 
 
 `audit_logs` is the one significant table with **no** `paranoid` flag and no delete path — the absence is the rule.
 
-**Enforcement point of record:** `backend/src/middlewares/auditLog.middleware.js`.
+**Enforcement point of record:** `backend/src/services/audit.service.ts#logAction`, called with the mutation's transaction (A-41). The earlier point of record, `backend/src/middlewares/auditLog.middleware.js`, wrote after the response and outside the transaction; no route mounted it, and it was removed on 2026-10-01 (ADR-087 Am. 27, round 3).
 
 ## BR-7 — Calibration records are append-only
 

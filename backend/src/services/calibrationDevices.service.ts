@@ -234,11 +234,11 @@ const isSerialUniqueViolation = (error: unknown): boolean => {
 /** The list query as the controller passes it (validated; a JavaScript caller may pass anything). */
 interface DeviceListQuery {
   tenantId: TenantId;
-  find?: string;
-  page?: number | string;
-  limit?: number | string;
-  status?: string;
-  category?: string;
+  find?: string | null | undefined;
+  page?: number | string | undefined;
+  limit?: number | string | undefined;
+  status?: string | null | undefined;
+  category?: string | null | undefined;
 }
 
 interface DeviceListData {

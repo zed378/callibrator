@@ -23,7 +23,7 @@ import defineStockTransfer from "../../models/stockTransfer.model";
 
 type Context = Parameters<typeof migration.up>[0]["context"];
 
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 interface TableState {
   exists: boolean;

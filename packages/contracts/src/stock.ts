@@ -5,10 +5,11 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/stock.validator.ts,
  * which re-exports these same objects; the frontend derives its request
- * types from them. The contract for C:/Program Files/Git/api/v1/stocks (list query, id params, stock, adjustment, opname and transfer bodies).
+ * types from them. The contract for /api/v1/stocks (list query, id params, stock, adjustment, opname and transfer bodies).
  */
 import { z } from "zod";
 import { isoDate, nullableText, numeric, optionalText, uuid } from "./fields";
+import { STOCK_OPNAME_STATUSES, STOCK_TRANSFER_STATUSES } from "./states";
 
 // ==========================================
 // GET STOCKS QUERY
@@ -70,7 +71,7 @@ const createTransferSchema = z.object({
 });
 
 const updateTransferStatusSchema = z.object({
-  status: z.enum(["pending", "in_transit", "completed", "cancelled"]),
+  status: z.enum(STOCK_TRANSFER_STATUSES),
 });
 
 // ==========================================
@@ -97,7 +98,7 @@ const createOpnameSchema = z.object({
 });
 
 const updateOpnameStatusSchema = z.object({
-  status: z.enum(["draft", "in_progress", "completed"]),
+  status: z.enum(STOCK_OPNAME_STATUSES),
 });
 
 export {
@@ -122,8 +123,9 @@ export {
 const timestamp = z.iso.datetime();
 const id = z.guid();
 const ADJUSTMENT_TYPES = ["addition", "subtraction", "write_off"] as const;
-const TRANSFER_STATUSES = ["pending", "in_transit", "completed", "cancelled"] as const;
-const OPNAME_STATUSES = ["draft", "in_progress", "completed"] as const;
+// P9-05: the one list of each is `states.ts`.
+const TRANSFER_STATUSES = STOCK_TRANSFER_STATUSES;
+const OPNAME_STATUSES = STOCK_OPNAME_STATUSES;
 
 /** `{ id, name, code }` of an included warehouse or storage location. */
 const placeRef = z.object({ id, name: z.string(), code: z.string() }).nullable();
@@ -224,9 +226,13 @@ const transferFields = {
 /** A transfer as requested or updated. */
 const stockTransferResponse = z.object(transferFields).meta({ id: "StockTransfer", description: "Stock moving between two of the tenant's warehouses." });
 
-/** A transfer in the history: with both warehouses, the requester and the approver. */
+/**
+ * A transfer in the history: with both warehouses, the requester and the
+ * approver, and the API key that requested it (Q-51; P9-25 item 11 — the
+ * history joins it as the adjustments' does, stock.service#fetchTransfers).
+ */
 const stockTransferListItem = z
-  .object({ ...transferFields, fromWarehouse: placeRef, toWarehouse: placeRef, requester: userRef, approver: userRef })
+  .object({ ...transferFields, fromWarehouse: placeRef, toWarehouse: placeRef, requester: userRef, approver: userRef, apiKey: apiKeyRef })
   .meta({ id: "StockTransferListItem" });
 
 const opnameFields = {

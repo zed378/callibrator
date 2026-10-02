@@ -1,6 +1,6 @@
 # 11 — Configuration
 
-> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; the toolchain is ADR-087), compiled to CommonJS and run from one `dist/` tree. The only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18); `noSourceJs.p924.guard` fails on any other. The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The rules are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Behaviour described here is **as-built** unless marked *target*.
 
 Every environment variable the backend reads. Source of truth: `backend/.env.example`, which documents shapes with no values.
 
@@ -18,13 +18,13 @@ KMS_MASTER_KEY           wraps tenant storage credentials (64-char hex)
 ```
 
 **`KMS_MASTER_KEY` was missing from this document until a deployment found it.**
-`src/services/kms.service.js` throws at module load in production:
+`src/services/kms.service.ts` throws at module load in production:
 
 > KMS_MASTER_KEY must be set in production (64-char hex / 32-byte key).
 > Refusing to start with the insecure development master key.
 
 The failure is easy to misread: the container crash-loops and `docker logs` shows
-**nothing**, because **in production the application writes nothing to stdout at all**: `activityLog.middleware.js` adds winston's Console transport only when `NODE_ENV !== "production"`, and winston's `exceptionHandlers` catch the throw and write it to `log/activity/exception/<date>.log`. That is true of **every** production
+**nothing**, because **in production the application writes nothing to stdout at all**: `activityLog.middleware.ts` adds winston's Console transport only when `NODE_ENV !== "production"`, and winston's `exceptionHandlers` catch the throw and write it to `log/activity/exception/<date>.log`. That is true of **every** production
 failure, not just this one — see [`../OBSERVABILITY/01-LOGGING.md`](../OBSERVABILITY/01-LOGGING.md).
 Anyone debugging a silent exit should read that file before anything else.
 
@@ -86,8 +86,9 @@ The rate-limit branch keys on `NODE_ENV` rather than an opt-in flag specifically
 | `JWT_ACCESS_EXPIRED` | e.g. `15m` |
 | `JWT_REFRESH_SECRET` | **must differ from the access secret** |
 | `JWT_REFRESH_EXPIRED` | e.g. `7d` |
+| `JWT_ALGORITHM` | optional, default `HS256`; one of the nine algorithms `utils/jwt.util` pins (A-31) |
 
-If the two secrets are equal, an access token can be presented as a refresh token. The config should reject that rather than trusting whoever wrote the `.env`.
+If the two secrets are equal, an access token can be presented as a refresh token, so the boot refuses it (A-31; listed by the boot check below).
 
 ## Infrastructure
 
@@ -124,7 +125,7 @@ Templates live in `src/templates` and are read from disk **next to the binary**.
 
 ### Email branding depends on `HOST_URL` and `MAIL_FROM`
 
-The templates render three values from `brandContext()` in `email.service.js`:
+The templates render three values from `brandContext()` in `email.service.ts`:
 
 | Placeholder | From |
 |---|---|
@@ -146,7 +147,7 @@ The logo is served from the **public web origin**, not the backend's `/public` m
 |---|---|
 | `CERT_SIGNING_SECRET` | **required**, effectively **not rotatable** |
 | `CERT_VERIFY_BASE_URL` | the QR encodes `<this>/<certificateNumber>` |
-| `PUBLIC_BASE_URL` | the public origin of links the backend hands out — the verify API URL (when `CERT_VERIFY_BASE_URL` is unset) and attachment signed URLs. Falls back to `HOST_URL`. **In production one of the two is required**: with neither, those requests fail with a 500 naming the setting rather than build a link from the request (A-189, ADR-056, `utils/publicBaseUrl.util.js`). Outside production the request's origin is used, as forwarded by the Next proxy (`X-Forwarded-Host`/`-Proto`) and read through the one-hop `trust proxy` (ADR-050) |
+| `PUBLIC_BASE_URL` | the public origin of links the backend hands out — the verify API URL (when `CERT_VERIFY_BASE_URL` is unset) and attachment signed URLs. Falls back to `HOST_URL`. **In production one of the two is required**: with neither, those requests fail with a 500 naming the setting rather than build a link from the request (A-189, ADR-056, `utils/publicBaseUrl.util.ts`). Outside production the request's origin is used, as forwarded by the Next proxy (`X-Forwarded-Host`/`-Proto`) and read through the one-hop `trust proxy` (ADR-050) |
 | ~~`PUPPETEER_EXECUTABLE_PATH`~~ | removed (ADR-095): certificate PDFs are rendered by the frontend |
 
 ## Optional Subsystems
@@ -248,6 +249,24 @@ Only a **cross-field** rule comparing the key's environment marker against `NODE
 | `SUPER_ADMIN_ROLE_ID` | overrides the seeded default |
 | `SEED_DEMO` | **must never be true in production** |
 | `PGADMIN_EMAIL`, `PGADMIN_PASSWORD` | compose, development only |
+
+## Validated at boot (P9-06 part 2, ADR-087 Amendment 30)
+
+`src/config/env.ts#validateEnvironment` runs first thing in `index.ts`, right after dotenv, and **refuses the boot naming every failing variable at once**, on stderr (winston is not loaded yet, so it shows in `docker logs`). It enforces exactly the rules the modules below already enforced one at a time, as each loaded; a configuration that booted before still boots (`tests/config/environmentSchema.p906.test.ts` holds each verdict equal to the module's own check):
+
+| Variable | Rule | Where it was enforced |
+|---|---|---|
+| `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`, `DB_PORT` | set, not blank; `DB_PORT` 1–65535 | `config/index.ts` |
+| `DB_DIALECT` | unset, empty or `postgres` (ADR-039) | `config/index.ts` |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | set, and different | `utils/jwt.util.ts` (A-31) |
+| `JWT_ALGORITHM` | unset or one of the pinned nine | `utils/jwt.util.ts` |
+| `CERT_SIGNING_SECRET` | set | `services/certificateDocument.service.ts` |
+| `KMS_MASTER_KEY` | **production:** set; anywhere, if set: 64 hex / 32 bytes | `services/kms.service.ts` |
+| `KMS_MASTER_KEY_PREVIOUS` | each listed key 64 hex / 32 bytes | `services/kms.service.ts` |
+| `ACCESS_REQUEST_IP_PEPPER` | **production:** set, not blank | `config/publicAccess.ts` (P10-05) |
+| `STRIPE_SECRET_KEY` | **production with billing enabled:** set, not blank. Billing is enabled by `BILLING_ENABLED=true`, disabled by `false`, otherwise exactly when `STRIPE_WEBHOOK_SECRET` is set | `config/billing.ts` (ADR-111) |
+
+Deliberately **not** in the check (each would refuse a configuration that boots today): `ENCRYPT_KEY` (only migration 0058 reads it), `HOST_URL` / `PUBLIC_BASE_URL` (a request-time 500 naming the setting, A-189), `PRIVACY_NOTICE_URL` (optional), `FORCE_HTTPS`.
 
 ## Rules
 

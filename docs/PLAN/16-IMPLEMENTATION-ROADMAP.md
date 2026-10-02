@@ -25,7 +25,7 @@ Each of these is an ADR in [`../../MEMORY/DECISIONS.md`](../../MEMORY/DECISIONS.
 
 | Planned | Actual | ADR |
 |---|---|---|
-| TypeScript backend, strict mode | **JavaScript, CommonJS** | ADR-030 |
+| TypeScript backend, strict mode | **JavaScript, CommonJS** — then migrated back to strict TypeScript (Phase 9; source all `.ts` but five pending files on 2026-10-02) | ADR-030, **superseded by ADR-038** (toolchain ADR-087) |
 | PostgreSQL only | PostgreSQL **or** MySQL, then back to **PostgreSQL only** | ADR-029, ADR-039 |
 | Row Level Security for tenant isolation | ORM-layer scoping, deny-by-default | ADR-029 |
 | Kubernetes-first deployment | Docker Compose first, Helm charts available | ADR-032 |

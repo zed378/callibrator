@@ -1,0 +1,847 @@
+// src/services/webhook.service.ts
+//
+// Outbound webhooks. Tenants register subscriptions (url + subscribed events);
+// domain code calls emitAfterCommit(transaction, tenantId, event, payload) (or
+// emitEvent directly when there is no transaction) and every matching active
+// webhook receives an HMAC-signed POST.
+//
+// DURABLE DELIVERY (A-10, ADR-054). `webhook_deliveries` is the outbox: one
+// row per webhook per event, carrying the attempt count, `next_attempt_at`
+// and the outcome. Nothing about a pending retry lives only in memory:
+//
+//   emit      -> row (pending, next_attempt_at = now) + an immediate attempt
+//   attempt   -> claim the row (UPDATE ... FOR UPDATE SKIP LOCKED, pushing
+//                next_attempt_at forward by a LEASE), POST, record the result
+//   failure   -> failed, next_attempt_at = now + backoff(attempt)
+//   attempt N -> exhausted (the dead letter), next_attempt_at = NULL
+//   restart   -> the dispatcher (middlewares/webhookDeliveryScheduler) claims
+//                every due row; a row whose sender died mid-attempt comes due
+//                again when its lease expires. Delivery is at-least-once, and
+//                receivers deduplicate on X-Webhook-Delivery.
+//
+// SKIP LOCKED makes two replicas claim disjoint rows, and the lease keeps a
+// claimed row invisible to every other claimer while its POST is in flight.
+//
+// P9-18 (ADR-087, Stage C): converted from webhook.service.js with no
+// behaviour change, under the four isolation gates (its claim moved to sql()
+// first, as its own change). `export =` keeps the object `require()` returned
+// (the same eighteen keys, in the same order); it replaces the interim
+// webhook.service.d.ts and keeps its `emitEvent` / `emitAfterCommit` types as
+// the floor. Everything the `.js` destructured is captured at load;
+// `auditService` is read at call time. The tuning variables are still read
+// once at load, now through config/env.
+
+import crypto from "crypto";
+import { Op as LoadedOp, fn as loadedFn } from "sequelize";
+import type { Transaction } from "sequelize";
+// `db` from config, NOT from the models barrel (CLAUDE.md, traps).
+import { db as loadedDb } from "../config";
+import models from "../models";
+import auditService from "./audit.service";
+import kms from "./kms.service";
+import { AppError as LoadedAppError } from "../utils/appError.util";
+import { DEFAULT_LIMIT as LOADED_DEFAULT_LIMIT, MAX_LIMIT as LOADED_MAX_LIMIT } from "../constants";
+import { logger as loadedLogger } from "../middlewares/activityLog.middleware";
+import {
+  assertSafeUrl as loadedAssertSafeUrl,
+  assertResolvedHostIsPublic as loadedAssertResolvedHostIsPublic,
+  pinnedFetch as loadedPinnedFetch,
+} from "../utils/ssrf.util";
+import { WEBHOOK_TEST_EVENT as LOADED_WEBHOOK_TEST_EVENT } from "../constants/webhookEvents";
+import {
+  runForTenant as loadedRunForTenant,
+  runAsSystem as loadedRunAsSystem,
+  SYSTEM_TASKS as LOADED_SYSTEM_TASKS,
+} from "../utils/jobContext.util";
+// P9-18: the claim goes through the bind-only helper (P9-07): `$1…$n` bind
+// values, never replacements; a single-delivery claim BINDS its tenant (D-05).
+import { sql as loadedSql } from "../utils/sql.util";
+import type { SqlRunner } from "../utils/sql.util";
+import { env } from "../config/env";
+import type { ModelInstance } from "../types/models";
+import type { TenantId, UserId } from "../types/ids";
+
+const Op = LoadedOp;
+const fn = loadedFn;
+const db = loadedDb;
+const dbRunner = db as unknown as SqlRunner;
+const { Webhook, WebhookDelivery } = models;
+const { encryptData, decryptData } = kms;
+const AppError = LoadedAppError;
+const DEFAULT_LIMIT = LOADED_DEFAULT_LIMIT;
+const MAX_LIMIT = LOADED_MAX_LIMIT;
+const logger = loadedLogger;
+const assertSafeUrl = loadedAssertSafeUrl;
+const assertResolvedHostIsPublic = loadedAssertResolvedHostIsPublic;
+const pinnedFetch = loadedPinnedFetch;
+const WEBHOOK_TEST_EVENT = LOADED_WEBHOOK_TEST_EVENT;
+const runForTenant = loadedRunForTenant;
+const runAsSystem = loadedRunAsSystem;
+const SYSTEM_TASKS = LOADED_SYSTEM_TASKS;
+const sql = loadedSql;
+
+type WebhookRow = ModelInstance<"Webhook">;
+type DeliveryRow = ModelInstance<"WebhookDelivery">;
+
+/** Who acts, and from where (auditActor / auditPrincipal of the request). */
+interface WebhookActor {
+  userId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
+/** A webhook as an API response carries it (never a secret, except where noted). */
+type PublicWebhook = ReturnType<typeof publicWebhook>;
+
+/** One row a claim returns. */
+interface Claimed {
+  id: string;
+  tenantId: TenantId;
+}
+
+/** The outcome of one POST. */
+interface AttemptResult {
+  ok: boolean;
+  status: number | null;
+  error?: string;
+}
+
+/** A list page, in the envelope's `rows` + `meta` shape. */
+interface Page<T> {
+  rows: T[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
+}
+
+// As built: an unset, empty, zero or non-numeric value falls back to the default.
+const MAX_ATTEMPTS = Number(env("WEBHOOK_MAX_ATTEMPTS")) || 12;
+const TIMEOUT_MS = Number(env("WEBHOOK_TIMEOUT_MS")) || 8000;
+// Backoff after attempt n is min(BASE × 2^(n-1), CAP): at the defaults 1, 2,
+// 4, 8, 16, 32, 64, 128, 256, 360, 360 minutes — 11 waits, ~20.5 h from the
+// first attempt to the dead letter.
+const BACKOFF_BASE_MS = Number(env("WEBHOOK_BACKOFF_BASE_MS")) || 60 * 1000;
+const BACKOFF_CAP_MS = Number(env("WEBHOOK_BACKOFF_CAP_MS")) || 6 * 60 * 60 * 1000;
+// How long a claimed row stays invisible to other claimers. Must comfortably
+// exceed TIMEOUT_MS (plus DNS + the result write): a lease that expires while
+// the POST is still in flight lets a second replica send it again.
+const LEASE_MS = Number(env("WEBHOOK_LEASE_MS")) || 5 * 60 * 1000;
+const BATCH_SIZE = Number(env("WEBHOOK_DISPATCH_BATCH")) || 50;
+
+/** A positive integer from the environment, or the default (W-17). */
+const positiveInt = (raw: unknown, fallback: number): number => {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+};
+// W-17 — the most first attempts emitEvent keeps in flight at once, across
+// the whole process. Past it the row is left due, and the dispatcher sends it
+// on its next pass: the cap never loses a delivery, it only defers one.
+const EMIT_CONCURRENCY = positiveInt(env("WEBHOOK_EMIT_CONCURRENCY"), 10);
+let emitInFlight = 0;
+
+/** @param attempt - 1-based number of the attempt that just failed */
+const backoffMs = (attempt: number): number => Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), BACKOFF_CAP_MS);
+
+/**
+ * The signature receivers verify (docs/WEBHOOK/03-WEBHOOK-SECURITY.md):
+ * hex HMAC-SHA256 over `${timestamp}.${body}` — the timestamp is signed, so a
+ * captured delivery cannot be replayed with a fresh one.
+ *
+ * @param secret
+ * @param timestamp - unix seconds, as sent in X-Webhook-Timestamp
+ * @param body - the exact bytes sent
+ */
+const sign = (secret: string, timestamp: string | number, body: string): string =>
+  crypto.createHmac("sha256", secret).update(`${String(timestamp)}.${body}`).digest("hex");
+
+// ------------------------------------------------------------------
+// THE SIGNING SECRET (A-51)
+// ------------------------------------------------------------------
+// Generated here and nowhere else — never accepted from a caller. 32 random
+// bytes as 64 lowercase hex characters; the HMAC key is that hex STRING's
+// UTF-8 bytes, exactly as before (docs/WEBHOOK/03-WEBHOOK-SECURITY.md).
+const generateSecret = (): string => crypto.randomBytes(32).toString("hex");
+
+// At rest the column holds a kms.service envelope (`v1:...`), with the tenant
+// id as additional authenticated data — the same treatment as the tenant
+// secrets in tenantSettings.model.js. The plaintext exists only in the
+// response that issues it and, transiently, in the signing call below.
+// A fresh secret is never empty, so the envelope is never null.
+const sealSecret = (tenantId: string, plaintext: string): string => encryptData(tenantId, plaintext) as string;
+
+// decryptData returns a value that is not a `v1:` envelope unchanged, so a row
+// written before migration 0022 still signs with its plaintext secret.
+const secretForSigning = (webhook: WebhookRow): string => decryptData(webhook.tenantId, webhook.secret);
+
+// The audit row for a webhook change, written inside the change's transaction
+// (CLAUDE.md) through audit.service#logAction — the single write path for
+// audit_logs, which names the actor (A-124) and re-throws inside a transaction,
+// so the change rolls back with a failed row. `changes` never carries a secret
+// — old, new or previous — only that it changed and why (P6-13 pins this).
+//
+// P6-13 found: this used to call AuditLog.create directly, which sets no
+// `actorType`. That column has been NOT NULL since migration 0033 (A-124), so
+// every rotation and every url change failed with a 500 and rolled back — behind
+// unit tests that mocked AuditLog.create.
+/** One audit entry, as logAction takes it (the actor is the request's user, or none). */
+const auditEntry = (entry: Record<string, unknown>): Parameters<typeof auditService.logAction>[0] =>
+  entry as unknown as Parameters<typeof auditService.logAction>[0];
+
+const auditWebhook = (
+  webhook: WebhookRow,
+  actor: WebhookActor,
+  action: string,
+  changes: Record<string, unknown>,
+  transaction: Transaction,
+): Promise<unknown> =>
+  auditService.logAction(
+    auditEntry({
+      tenantId: webhook.tenantId,
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty id reads as none
+      userId: actor.userId || null,
+      action,
+      resourceType: "Webhook",
+      resourceId: webhook.id,
+      changes,
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty value reads as none
+      ipAddress: actor.ipAddress || null,
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty value reads as none
+      userAgent: actor.userAgent || null,
+    }),
+    { transaction },
+  );
+
+const auditSecretRotation = (
+  webhook: WebhookRow,
+  actor: WebhookActor,
+  reason: string,
+  extra: Record<string, unknown>,
+  transaction: Transaction,
+): Promise<unknown> =>
+  auditWebhook(webhook, actor, "UPDATE", { secretRotated: true, reason, ...extra }, transaction);
+
+// P6-13 (ADR-085): the end of a rotation's overlap window, while it is open.
+const overlapEndsAt = (w: WebhookRow): Date | null =>
+  w.previousSecret && w.previousSecretExpiresAt && new Date(w.previousSecretExpiresAt) > new Date()
+    ? new Date(w.previousSecretExpiresAt)
+    : null;
+
+// The fields an API response may carry. The secret is returned only by the
+// three calls that issue one (create, rotate, a url change); the previous
+// secret never.
+const publicWebhook = (w: WebhookRow): {
+  id: string;
+  tenantId: TenantId;
+  url: string;
+  events: unknown;
+  description: string | null;
+  isActive: boolean;
+  createdBy: UserId | null;
+  createdAt: Date;
+  previousSecretExpiresAt: Date | null;
+} => ({
+  id: w.id,
+  tenantId: w.tenantId,
+  url: w.url,
+  events: w.events,
+  description: w.description,
+  isActive: w.isActive,
+  createdBy: w.createdBy,
+  createdAt: w.createdAt,
+  // P6-13: when the replaced secret stops signing, or null.
+  previousSecretExpiresAt: overlapEndsAt(w),
+});
+
+// The auditable, secret-free fields — the before/after of an audit row.
+const auditedFields = (w: WebhookRow): Record<string, unknown> => ({
+  url: w.url,
+  events: w.events,
+  description: w.description,
+  isActive: w.isActive,
+});
+
+// ------------------------------------------------------------------
+// CRUD
+// ------------------------------------------------------------------
+// A-51: there is no `secret` parameter. Until 2026-09-24 one was honoured, and
+// the controller spread the request body into it — `{"secret":"a"}` created a
+// webhook whose signatures anyone could forge.
+const createWebhook = async (
+  tenantId: TenantId,
+  {
+    url,
+    events,
+    description,
+    isActive,
+    createdBy,
+  }: { url?: string; events?: unknown; description?: string | null; isActive?: boolean; createdBy?: UserId | null },
+  actor: WebhookActor = {},
+): Promise<PublicWebhook & { secret: string }> => {
+  if (!url) {
+    throw new AppError(400, "url is required");
+  }
+  // SSRF: reject internal/loopback/link-local/metadata targets at registration.
+  assertSafeUrl(url);
+  if (!Array.isArray(events) || events.length === 0) {
+    throw new AppError(400, "events must be a non-empty array");
+  }
+  const secret = generateSecret();
+  const webhook = await db.transaction(async (transaction) => {
+    const created = await Webhook.create(
+      {
+        tenantId,
+        url,
+        // Checked above: a non-empty array, stored as given.
+        events: events as WebhookRow["events"],
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty description reads as none
+        description: description || null,
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built
+        isActive: isActive !== undefined ? isActive : true,
+        secret: sealSecret(tenantId, secret),
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty id reads as none
+        createdBy: createdBy || null,
+      },
+      { transaction },
+    );
+    await auditWebhook(
+      created,
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty id reads as none
+      { userId: createdBy || null, ...actor },
+      "CREATE",
+      { after: auditedFields(created) },
+      transaction,
+    );
+    return created;
+  });
+  // Return the plaintext secret exactly once, at creation time.
+  return { ...publicWebhook(webhook), secret };
+};
+
+const listWebhooks = async (
+  tenantId: TenantId,
+  { page = 1, limit = DEFAULT_LIMIT }: { page?: number | string; limit?: number | string } = {},
+): Promise<Page<PublicWebhook>> => {
+  const safeLimit = Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT);
+  const { count, rows } = await Webhook.findAndCountAll({
+    where: { tenantId },
+    limit: safeLimit,
+    offset: (Number(page) - 1) * safeLimit,
+    order: [["createdAt", "DESC"]],
+  });
+  return {
+    rows: rows.map(publicWebhook),
+    meta: {
+      total: count,
+      page: Number(page),
+      limit: safeLimit,
+      totalPages: Math.ceil(count / safeLimit),
+    },
+  };
+};
+
+const loadOwned = async (tenantId: TenantId, id: string): Promise<WebhookRow> => {
+  const webhook = await Webhook.findOne({ where: { id, tenantId } });
+  if (!webhook) {
+    throw new AppError(404, "Webhook not found");
+  }
+  return webhook;
+};
+
+const getWebhook = async (tenantId: TenantId, id: string): Promise<PublicWebhook> => publicWebhook(await loadOwned(tenantId, id));
+
+// A url change ROTATES the secret, in the same transaction, and the new secret
+// is returned once in this response. Keeping it would sign the new host with a
+// key the old host already holds; refusing the change unless a rotation came
+// with it would add a second step that can be forgotten, for no benefit — the
+// new receiver has to be configured with a secret either way.
+const updateWebhook = async (
+  tenantId: TenantId,
+  id: string,
+  data: Record<string, unknown>,
+  actor: WebhookActor = {},
+): Promise<PublicWebhook | (PublicWebhook & { secret: string })> => {
+  const webhook = await loadOwned(tenantId, id);
+  const patch: { url?: string; events?: unknown; description?: unknown; isActive?: unknown } = {};
+  for (const k of ["url", "events", "description", "isActive"] as const) {
+    if (data[k] !== undefined) {
+      // As built: the caller's value is taken as given (the validator shaped it).
+      (patch as Record<string, unknown>)[k] = data[k];
+    }
+  }
+  // SSRF: re-validate the target if the URL is being changed.
+  if (patch.url !== undefined) {
+    assertSafeUrl(patch.url);
+  }
+  if (patch.events && (!Array.isArray(patch.events) || patch.events.length === 0)) {
+    throw new AppError(400, "events must be a non-empty array");
+  }
+  const urlChanged = patch.url !== undefined && patch.url !== webhook.url;
+  if (!urlChanged) {
+    const before = auditedFields(webhook);
+    await db.transaction(async (transaction) => {
+      await webhook.update(patch as Record<string, unknown>, { transaction });
+      await auditWebhook(webhook, actor, "UPDATE", { before, after: auditedFields(webhook) }, transaction);
+    });
+    return publicWebhook(webhook);
+  }
+
+  const previousUrl = webhook.url;
+  const secret = generateSecret();
+  await db.transaction(async (transaction) => {
+    // P6-13: a url change ends any rotation overlap — the new host must not be
+    // signed with a key the old host holds, under either header.
+    const rotated: Record<string, unknown> = {
+      ...patch,
+      secret: sealSecret(tenantId, secret),
+      previousSecret: null,
+      previousSecretExpiresAt: null,
+    };
+    await webhook.update(rotated, { transaction });
+    await auditSecretRotation(
+      webhook,
+      actor,
+      "url_changed",
+      { before: { url: previousUrl }, after: { url: patch.url } },
+      transaction,
+    );
+  });
+  return { ...publicWebhook(webhook), secret };
+};
+
+// Issue a new secret, returned once (P6-13, ADR-085). The replaced secret
+// keeps signing for `overlapHours` — every delivery in that window also
+// carries X-Webhook-Signature-Previous under it — so a receiver that accepts
+// either header switches without a coordinated cut-over. `overlapHours: 0`
+// ends the old secret at once (a suspected leak). Rotating again inside a
+// window replaces the previous secret: only one old key is ever live.
+const rotateSecret = async (
+  tenantId: TenantId,
+  id: string,
+  actor: WebhookActor = {},
+  { overlapHours = 24 }: { overlapHours?: unknown } = {},
+): Promise<PublicWebhook & { secret: string }> => {
+  const webhook = await loadOwned(tenantId, id);
+  const secret = generateSecret();
+  const hours = Number(overlapHours) > 0 ? Number(overlapHours) : 0;
+  const expiresAt = hours > 0 ? new Date(Date.now() + hours * 60 * 60 * 1000) : null;
+  await db.transaction(async (transaction) => {
+    await webhook.update(
+      {
+        secret: sealSecret(tenantId, secret),
+        // The envelope as stored: the previous secret is never plaintext either.
+        previousSecret: expiresAt ? webhook.secret : null,
+        previousSecretExpiresAt: expiresAt,
+      },
+      { transaction },
+    );
+    await auditSecretRotation(
+      webhook,
+      actor,
+      "rotated",
+      { overlapHours: hours, previousSecretExpiresAt: expiresAt },
+      transaction,
+    );
+  });
+  return { ...publicWebhook(webhook), secret };
+};
+
+const deleteWebhook = async (tenantId: TenantId, id: string, actor: WebhookActor = {}): Promise<{ id: string }> => {
+  const webhook = await loadOwned(tenantId, id);
+  await db.transaction(async (transaction) => {
+    await webhook.softDelete({ transaction });
+    await auditWebhook(webhook, actor, "DELETE", { before: auditedFields(webhook) }, transaction);
+  });
+  return { id };
+};
+
+const listDeliveries = async (
+  tenantId: TenantId,
+  id: string,
+  { page = 1, limit = DEFAULT_LIMIT }: { page?: number | string; limit?: number | string } = {},
+): Promise<Page<DeliveryRow>> => {
+  await loadOwned(tenantId, id); // ensures the webhook belongs to the tenant
+  const safeLimit = Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT);
+  const { count, rows } = await WebhookDelivery.findAndCountAll({
+    where: { tenantId, webhookId: id },
+    limit: safeLimit,
+    offset: (Number(page) - 1) * safeLimit,
+    order: [["createdAt", "DESC"]],
+  });
+  return {
+    rows,
+    meta: {
+      total: count,
+      page: Number(page),
+      limit: safeLimit,
+      totalPages: Math.ceil(count / safeLimit),
+    },
+  };
+};
+
+// ------------------------------------------------------------------
+// DELIVERY
+// ------------------------------------------------------------------
+
+// One POST. The body is identical on every attempt (the delivery id is the
+// receiver's deduplication key); the timestamp — and so the signature — is
+// fresh on every attempt, so a receiver can refuse a stale one.
+const attemptDelivery = async (webhook: WebhookRow, delivery: DeliveryRow): Promise<AttemptResult> => {
+  const bodyObj = {
+    id: delivery.id,
+    event: delivery.event,
+    createdAt: delivery.createdAt,
+    data: delivery.payload,
+  };
+  const body = JSON.stringify(bodyObj);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = sign(secretForSigning(webhook), timestamp, body);
+  // P6-13: inside a rotation's overlap window, the same bytes signed under the
+  // replaced secret too. Absent outside it — a receiver reads its absence as
+  // "the old secret no longer signs".
+  const previousSignature = overlapEndsAt(webhook)
+    // In an overlap window the previous secret is set.
+    ? sign(decryptData(webhook.tenantId, webhook.previousSecret as string), timestamp, body)
+    : null;
+
+  // SSRF backstop: resolve the host and block internal addresses immediately
+  // before dispatch (defends against a hostname that resolves internally, or
+  // DNS records changed after registration).
+  await assertResolvedHostIsPublic(webhook.url);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => { controller.abort(); }, TIMEOUT_MS);
+  try {
+    // A-307: `pinnedFetch`, not `fetch`. The check above resolves the host;
+    // `fetch` would resolve it AGAIN to connect, and a rebinding DNS server
+    // can answer public to the first and 127.0.0.1 / 169.254.169.254 to the
+    // second. pinnedFetch connects through ssrf.util's pinned lookup, so the
+    // address dialled is one that passed. Same request, same result shape.
+    const res = await pinnedFetch(webhook.url, {
+      method: "POST",
+      timeoutMs: TIMEOUT_MS,
+      // `redirect: "manual"` is the point of this call, not a detail. Node's
+      // fetch follows redirects by default, and assertResolvedHostIsPublic
+      // above validates only the REGISTERED url — so a host that passes both
+      // SSRF layers could answer `302 Location: http://169.254.169.254/...`
+      // and this process would fetch it from inside the deployment. A 3xx is
+      // treated as a delivery failure below; a receiver that wants to move
+      // must be re-registered at its new url.
+      redirect: "manual",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Event": delivery.event,
+        "X-Webhook-Id": webhook.id,
+        "X-Webhook-Delivery": delivery.id,
+        "X-Webhook-Timestamp": String(timestamp),
+        "X-Webhook-Signature": `v1=${signature}`,
+        ...(previousSignature ? { "X-Webhook-Signature-Previous": `v1=${previousSignature}` } : {}),
+      },
+      body,
+      signal: controller.signal,
+    });
+    if (res.status >= 300 && res.status < 400) {
+      return {
+        ok: false,
+        status: res.status,
+        error: `Redirect (${String(res.status)}) not followed: re-register the webhook at its new url`,
+      };
+    }
+    return { ok: res.ok, status: res.status };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/**
+ * Claim due deliveries: rows with status pending|failed whose next_attempt_at
+ * has passed. The claim pushes next_attempt_at forward by LEASE_MS, so no
+ * other claimer — another replica, or this process's next tick — sees the row
+ * again until the attempt has recorded its result or the lease has expired
+ * (the sender died mid-attempt; the row is simply due again).
+ *
+ * `FOR UPDATE SKIP LOCKED`: two replicas claiming at the same instant lock
+ * disjoint rows instead of one waiting for, and then re-claiming, the other's.
+ *
+ * RAW SQL — the tenant hooks do not apply. With `id`, the claim carries
+ * `tenant_id = $4` explicitly, bound (the request-path first attempt). Without
+ * it, the claim is deliberately cross-tenant: it is the system dispatcher,
+ * which runs outside any request (like the calibration scan) and serves every
+ * tenant's queue. Each claimed row returns its own tenant_id, and every read
+ * after the claim is scoped by it — see deliverClaimed.
+ *
+ * @param opts
+ */
+const claim = async (
+  { id = null, tenantId = null, limit = BATCH_SIZE }: { id?: string | null; tenantId?: string | null; limit?: number } = {},
+): Promise<Claimed[]> => {
+  const one = id !== null;
+  // `type: "SELECT"` (the helper's) answers the RETURNING rows directly.
+  return sql<Claimed>(
+    dbRunner,
+    `UPDATE webhook_deliveries
+        SET next_attempt_at = now() + make_interval(secs => $1),
+            updated_at = now()
+      WHERE id IN (
+        SELECT id FROM webhook_deliveries
+         WHERE status IN ('pending', 'failed')
+           AND next_attempt_at <= now()${one ? "\n           AND id = $3 AND tenant_id = $4" : ""}
+         ORDER BY next_attempt_at
+         LIMIT $2
+         FOR UPDATE SKIP LOCKED
+      )
+      RETURNING id, tenant_id AS "tenantId"`,
+    one ? [LEASE_MS / 1000, 1, id, tenantId] : [LEASE_MS / 1000, limit],
+  );
+};
+
+/**
+ * Make one attempt on a row this process has claimed, and record the outcome:
+ * success; failed with the next attempt scheduled; or exhausted — the dead
+ * letter — after MAX_ATTEMPTS (a `webhook.test` delivery gets one attempt: its
+ * caller is waiting for the answer, not for a retry tomorrow).
+ *
+ * A webhook deleted since the event, or deactivated, dead-letters the row
+ * rather than posting to an endpoint its owner has switched off. A test
+ * delivery to an inactive webhook is still sent — testing a receiver before
+ * activating it is the point of the button.
+ *
+ * @param claimed
+ * @returns the delivery row, or null if it has gone
+ */
+const deliverClaimed = async ({ id, tenantId }: Claimed): Promise<DeliveryRow | null> => {
+  const delivery = await WebhookDelivery.findOne({ where: { id, tenantId } });
+  if (!delivery) {
+    return null;
+  }
+  const isTest = delivery.event === WEBHOOK_TEST_EVENT;
+  const webhook = await Webhook.findOne({ where: { id: delivery.webhookId, tenantId } });
+  if (!webhook || (!webhook.isActive && !isTest)) {
+    await delivery.update({
+      status: "exhausted",
+      nextAttemptAt: null,
+      lastError: webhook ? "webhook deactivated" : "webhook deleted",
+    });
+    return delivery;
+  }
+
+  const attempt = delivery.attempts + 1;
+  let result: AttemptResult;
+  try {
+    result = await attemptDelivery(webhook, delivery);
+  } catch (err) {
+    result = { ok: false, status: null, error: (err as Error).name === "AbortError" ? "timeout" : (err as Error).message };
+  }
+
+  if (result.ok) {
+    await delivery.update({
+      status: "success",
+      attempts: attempt,
+      responseStatus: result.status,
+      deliveredAt: new Date(),
+      lastError: null,
+      nextAttemptAt: null,
+    });
+    return delivery;
+  }
+
+  const exhausted = attempt >= (isTest ? 1 : MAX_ATTEMPTS);
+  await delivery.update({
+    status: exhausted ? "exhausted" : "failed",
+    attempts: attempt,
+    responseStatus: result.status,
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty error also falls back
+    lastError: result.error || `HTTP ${String(result.status)}`,
+    nextAttemptAt: exhausted ? null : new Date(Date.now() + backoffMs(attempt)),
+  });
+  if (exhausted) {
+    logger.warn(`Webhook delivery exhausted after ${String(attempt)} attempt(s): ${delivery.id}`);
+  }
+  return delivery;
+};
+
+/**
+ * Attempt one specific delivery now, if it is due and nobody else holds it.
+ * @returns the delivery row, or null if not claimed
+ */
+const dispatchDelivery = async (id: string, tenantId: string): Promise<DeliveryRow | null> => {
+  const [claimed] = await claim({ id, tenantId });
+  return claimed ? deliverInTenant(claimed) : null;
+};
+
+/**
+ * W-12: every read and write of one delivery runs confined to the tenant the
+ * claim returned for it, so the isolation hooks hold even where a `where`
+ * forgets the tenant — not only the explicit predicates in deliverClaimed.
+ */
+const deliverInTenant = (claimed: Claimed): Promise<DeliveryRow | null> => runForTenant(claimed.tenantId, () => deliverClaimed(claimed));
+
+/**
+ * The dispatcher's tick: claim up to `limit` due deliveries across every
+ * tenant and attempt them concurrently. One delivery's failure never stops
+ * another's. Called by middlewares/webhookDeliveryScheduler.middleware.js —
+ * at boot (which is what makes a restart resume) and on its schedule.
+ *
+ * @param opts
+ */
+const dispatchDue = async ({ limit = BATCH_SIZE }: { limit?: number } = {}): Promise<{ claimed: number; errors: number }> => {
+  // W-12: the claim spans tenants and says so; each delivery then runs in its
+  // own tenant. W-17: at most `limit` rows per pass, so at most `limit` POSTs
+  // in flight from one pass (WEBHOOK_DISPATCH_BATCH, 50).
+  const claimed = await runAsSystem(SYSTEM_TASKS.WEBHOOK_DISPATCH, () => claim({ limit }));
+  const results = await Promise.allSettled(claimed.map(deliverInTenant));
+  const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+  rejected.forEach((r) => { logger.error(`Webhook dispatch error: ${(r.reason as Error).message}`); });
+  return { claimed: claimed.length, errors: rejected.length };
+};
+
+// ------------------------------------------------------------------
+// EMIT EVENT — fan a domain event out to subscribed webhooks
+// ------------------------------------------------------------------
+// Best-effort towards its caller: it never throws. Each matching webhook gets
+// a durable row first; the first attempt then runs off the caller's path. If
+// that attempt never happens (the process dies), the row is already due and
+// the dispatcher sends it.
+//
+// The first attempts are capped (WEBHOOK_EMIT_CONCURRENCY, 10, per process).
+// A row past the cap gets no immediate attempt and is counted in `deferred`;
+// it is already due, so the dispatcher's next pass sends it.
+const emitEvent = async (
+  tenantId: string,
+  event: string,
+  payload: Record<string, unknown> = {},
+): Promise<{ matched: number; deferred?: number; error?: string }> => {
+  try {
+    const webhooks = await Webhook.findAll({
+      where: {
+        tenantId,
+        isActive: true,
+        [Op.or]: [{ events: { [Op.contains]: [event] } }, { events: { [Op.contains]: ["*"] } }],
+      },
+    });
+    if (!webhooks.length) {
+      return { matched: 0 };
+    }
+    const deliveries: DeliveryRow[] = [];
+    for (const webhook of webhooks) {
+      deliveries.push(
+        await WebhookDelivery.create({
+          tenantId: tenantId as TenantId,
+          webhookId: webhook.id,
+          event,
+          payload: payload as DeliveryRow["payload"],
+          status: "pending",
+          // The database's clock, not this process's: the claim compares
+          // against now(), and a skewed app clock must not delay the first try.
+          nextAttemptAt: fn("now") as unknown as Date,
+        }),
+      );
+    }
+    // W-17: at most EMIT_CONCURRENCY first attempts in flight per process. A
+    // scan that emits for 500 devices used to start 500 detached chains.
+    let deferred = 0;
+    for (const delivery of deliveries) {
+      if (emitInFlight >= EMIT_CONCURRENCY) {
+        deferred++;
+        continue;
+      }
+      emitInFlight++;
+      // Not awaited, as built: the first attempt runs off the caller's path.
+      void dispatchDelivery(delivery.id, tenantId)
+        .catch((e: unknown) => { logger.error(`Webhook delivery error: ${(e as Error).message}`); })
+        .finally(() => {
+          emitInFlight--;
+        });
+    }
+    return deferred ? { matched: webhooks.length, deferred } : { matched: webhooks.length };
+  } catch (err) {
+    logger.error(`emitEvent failed for "${event}": ${(err as Error).message}`);
+    return { matched: 0, error: (err as Error).message };
+  }
+};
+
+/**
+ * Announce a domain event once — and only if — `transaction` commits (A-11).
+ *
+ * Call it inside the transaction, next to the audit row; the emit itself runs
+ * from `transaction.afterCommit`, so a rolled-back action never fires a
+ * webhook. With no transaction (an autocommitted write that has already
+ * happened) it emits now. It never throws and never delays the caller.
+ *
+ * @param transaction - a Sequelize transaction, or null
+ * @param tenantId - the tenant the changed record belongs to
+ * @param event - a name from constants/webhookEvents.js
+ * @param payload - identifiers and statuses only; this leaves the tenant
+ */
+const emitAfterCommit = (
+  transaction: Transaction | null | undefined,
+  tenantId: string,
+  event: string,
+  payload: Record<string, unknown>,
+): void => {
+  if (!transaction) {
+    // Not awaited, as built: emitEvent never throws.
+    void emitEvent(tenantId, event, payload);
+    return;
+  }
+  if (typeof transaction.afterCommit !== "function") {
+    // Not a Sequelize transaction — only a unit-test double reaches here, as
+    // every real Transaction (managed or unmanaged) has afterCommit. There is
+    // no commit to wait for, and emitting now could announce a change that is
+    // then rolled back, so nothing is emitted. Deliberately silent: the
+    // doubles in other suites mock the logger partially, and this must never
+    // throw into the mutation that called it.
+    return;
+  }
+  // As built: the emit's promise is returned to afterCommit (Sequelize awaits
+  // each hook; emitEvent never rejects). Its result value is unused.
+  transaction.afterCommit(() => emitEvent(tenantId, event, payload) as Promise<unknown> as Promise<void>);
+};
+
+// Send a synthetic test event to a single webhook: one attempt, synchronously,
+// and its result. It bypasses subscription matching.
+const testWebhook = async (
+  tenantId: TenantId,
+  id: string,
+): Promise<{ deliveryId: string; status: string; responseStatus: number | null; attempts: number; lastError: string | null }> => {
+  const webhook = await loadOwned(tenantId, id);
+  const delivery = await WebhookDelivery.create({
+    tenantId,
+    webhookId: webhook.id,
+    event: WEBHOOK_TEST_EVENT,
+    payload: { message: "This is a test webhook delivery", at: new Date().toISOString() },
+    status: "pending",
+    nextAttemptAt: fn("now") as unknown as Date,
+  });
+  await dispatchDelivery(delivery.id, tenantId).catch((e: unknown) => {
+    logger.error(`Webhook test delivery error: ${(e as Error).message}`);
+  });
+  // As built: the row just created is read back (a missing one throws).
+  const fresh = (await WebhookDelivery.findOne({ where: { id: delivery.id, tenantId } })) as DeliveryRow;
+  return {
+    deliveryId: fresh.id,
+    status: fresh.status,
+    responseStatus: fresh.responseStatus,
+    attempts: fresh.attempts,
+    lastError: fresh.lastError,
+  };
+};
+
+export = {
+  createWebhook,
+  listWebhooks,
+  getWebhook,
+  updateWebhook,
+  rotateSecret,
+  deleteWebhook,
+  listDeliveries,
+  dispatchDue,
+  emitEvent,
+  emitAfterCommit,
+  testWebhook,
+  // Exported for tests.
+  _sign: sign,
+  _backoffMs: backoffMs,
+  _claim: claim,
+  _dispatchDelivery: dispatchDelivery,
+  _config: Object.freeze({ MAX_ATTEMPTS, BACKOFF_BASE_MS, BACKOFF_CAP_MS, LEASE_MS, BATCH_SIZE, EMIT_CONCURRENCY }),
+  _emitInFlight: (): number => emitInFlight,
+  _positiveInt: positiveInt,
+};

@@ -1,79 +1,38 @@
-import { api } from "../client";
-import { Role, PaginatedResponse } from "@/types";
-import type {
-  AssignPermissionInput,
-  AssignRoleInput,
-  CreateRoleInput,
-  UpdateRoleInput,
-} from "@callibrator/contracts/roles";
-
-// Menu group entity as returned by the roles menus endpoints
-export interface RoleMenu {
-  id: string;
-  name: string;
-  slug?: string;
-  icon?: string | null;
-  parentId?: string | null;
-  sortOrder?: number;
-  isActive?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-// P9-22 (ADR-097): the menu bodies have no declared contract (`createMenuSchema`
-// is an open object, kept so by P9-11), so this one stays hand-written. The
-// role, assignment and permission bodies below are the contract's own types.
-export interface RoleMenuCreateInput {
-  name: string;
-  slug?: string;
-  icon?: string;
-  parentId?: string | null;
-  sortOrder?: number;
-  isActive?: boolean;
-}
-
-export interface RoleMenuPermission {
-  id?: string;
-  roleId: string;
-  menuGroupId: string;
-  permissionType?: "read" | "write";
-}
-
-// Backend REST contract (roles.controller.js, F-19 / ADR-105):
-//   GET    /api/v1/roles            -> { success, data: Role[], meta: { total, page, limit, totalPages } }
-//   GET    /api/v1/roles/:id        -> { success, data: Role }
-//   POST   /api/v1/roles            -> { success, data: Role }   (body: { name, nameToShow?, description?, roleLevel? 1–8, status? })
-//   PATCH  /api/v1/roles/:id        -> { success, data: Role }   (body: { name?, nameToShow?, description?, roleLevel? 1–8, status? })
-// A role row carries `status` ("active" | "inactive"), never `isActive`; the
-// service derives `isActive` from it (F-19: every role showed Inactive, and an
-// edit re-activated an inactive one).
-//   DELETE /api/v1/roles/:id        -> { success, ... }
+// src/api/services/role.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/roles.openapi.ts →
+// @callibrator/contracts/roles), which replaced the interim `z.input` types
+// (ADR-097 Am. 1). The exported names are unchanged.
+//
+// roles.controller answers its OWN shape, `{ success, data }` (plus a
+// top-level `meta` on the two lists) — no `status`, no `message`. A role row
+// carries `status` ("active" | "inactive"), never `isActive`; the service
+// derives `isActive` from it (F-19: every role showed Inactive, and an edit
+// re-activated an inactive one).
 // NOTE: paths are NOT trailing-slashed — `/api/v1/roles/` 308-redirects on the Next proxy.
-interface ListMeta {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages?: number;
-}
+import { typedApi, unwrap, type JsonBody, type Op, type components } from "../typed";
+import { Role, PaginatedResponse } from "@/types";
 
-interface BackendRolesListResponse {
-  success: boolean;
-  message?: string;
-  data: Role[];
-  meta?: ListMeta;
-}
+type CreateRoleBody = JsonBody<Op<"/api/v1/roles", "post">>;
+type UpdateRoleBody = JsonBody<Op<"/api/v1/roles/{id}", "patch">>;
+
+/** A role read by id also carries its menu permissions (RoleDetail). */
+export type RoleDetail = components["schemas"]["RoleDetail"] & { isActive?: boolean };
+
+/** A menu group as the roles menus endpoints answer it. */
+export type RoleMenu = components["schemas"]["MenuGroupRow"];
+
+export type RoleMenuPermission = components["schemas"]["RoleMenuPermissionRow"];
 
 /** The row as the backend sends it, with `isActive` read from `status`. */
-const toRole = (row: Role): Role => ({
+const toRole = <R extends Role>(row: R): R => ({
   ...row,
+  // Defensive, as built: a row without `status` keeps its own `isActive`.
   isActive: row.status !== undefined ? row.status === "active" : row.isActive,
 });
 
-interface BackendRoleResponse {
-  success: boolean;
-  message?: string;
-  data: Role;
-}
+const byId = (id: string) => ({ params: { path: { id } } });
 
 export const roleService = {
   getAll: async (
@@ -81,9 +40,12 @@ export const roleService = {
     limit = 50,
     search?: string,
   ): Promise<PaginatedResponse<Role>> => {
-    const response = await api.get<BackendRolesListResponse>("/api/v1/roles", {
-      params: { page, limit, search },
-    });
+    const response = await typedApi
+      .GET("/api/v1/roles", {
+        // The list reads `page` / `limit` raw from the query string (published as strings).
+        params: { query: { page: String(page), limit: String(limit), search } },
+      })
+      .then(unwrap);
 
     const total = response.meta?.total ?? response.data.length;
     const lim = response.meta?.limit ?? limit;
@@ -91,7 +53,8 @@ export const roleService = {
 
     return {
       success: response.success,
-      message: response.message ?? "",
+      // roles.controller sends no `message` on a list.
+      message: "",
       data: response.data.map(toRole),
       meta: {
         total,
@@ -102,12 +65,8 @@ export const roleService = {
     };
   },
 
-  getById: async (roleId: string): Promise<Role> => {
-    const response = await api.get<BackendRoleResponse>(
-      `/api/v1/roles/${roleId}`,
-    );
-    return toRole(response.data);
-  },
+  getById: async (roleId: string): Promise<RoleDetail> =>
+    toRole((await typedApi.GET("/api/v1/roles/{id}", byId(roleId)).then(unwrap)).data),
 
   create: async (data: {
     name: string;
@@ -117,7 +76,7 @@ export const roleService = {
     roleLevel?: number;
   }): Promise<Role> => {
     // F-19 (ADR-105): the API stores every field the dialog offers.
-    const body: CreateRoleInput = {
+    const body: CreateRoleBody = {
       name: data.name,
       description: data.description,
     };
@@ -126,8 +85,7 @@ export const roleService = {
     if (data.isActive !== undefined) {
       body.status = data.isActive ? "active" : "inactive";
     }
-    const response = await api.post<BackendRoleResponse>("/api/v1/roles", body);
-    return toRole(response.data);
+    return toRole((await typedApi.POST("/api/v1/roles", { body }).then(unwrap)).data);
   },
 
   update: async (data: {
@@ -137,10 +95,10 @@ export const roleService = {
     nameToShow?: string;
     isActive?: boolean;
     roleLevel?: number;
-    status?: UpdateRoleInput["status"];
+    status?: UpdateRoleBody["status"];
   }): Promise<Role> => {
     // Backend updateRole reads { name, nameToShow, description, roleLevel, status }.
-    const body: UpdateRoleInput = {};
+    const body: UpdateRoleBody = {};
     if (data.name !== undefined) body.name = data.name;
     if (data.nameToShow !== undefined) body.nameToShow = data.nameToShow;
     if (data.description !== undefined) body.description = data.description;
@@ -151,15 +109,11 @@ export const roleService = {
       body.status = data.isActive ? "active" : "inactive";
     }
 
-    const response = await api.patch<BackendRoleResponse>(
-      `/api/v1/roles/${data.id}`,
-      body,
-    );
-    return toRole(response.data);
+    return toRole((await typedApi.PATCH("/api/v1/roles/{id}", { ...byId(data.id), body }).then(unwrap)).data);
   },
 
   delete: async (id: string): Promise<void> => {
-    await api.delete(`/api/v1/roles/${id}`);
+    await typedApi.DELETE("/api/v1/roles/{id}", byId(id));
   },
 
   // ------------------------------------------------------------------
@@ -170,13 +124,12 @@ export const roleService = {
     page = 1,
     limit = 20,
     search?: string,
-  ): Promise<PaginatedResponse<RoleMenu>> => {
-    const response = await api.get<{
-      success: boolean;
-      message?: string;
-      data: RoleMenu[];
-      meta?: ListMeta;
-    }>("/api/v1/roles/menus", { params: { page, limit, search } });
+  ): Promise<PaginatedResponse<components["schemas"]["MenuGroupWithChildren"]>> => {
+    const response = await typedApi
+      .GET("/api/v1/roles/menus", {
+        params: { query: { page: String(page), limit: String(limit), search } },
+      })
+      .then(unwrap);
 
     const total = response.meta?.total ?? response.data.length;
     const lim = response.meta?.limit ?? limit;
@@ -184,7 +137,7 @@ export const roleService = {
 
     return {
       success: response.success,
-      message: response.message ?? "",
+      message: "",
       data: response.data,
       meta: {
         total,
@@ -195,34 +148,16 @@ export const roleService = {
     };
   },
 
-  getMenuById: async (menuId: string): Promise<RoleMenu> => {
-    const response = await api.get<{ success: boolean; data: RoleMenu }>(
-      `/api/v1/roles/menus/${menuId}`,
-    );
-    return response.data;
-  },
+  getMenuById: async (menuId: string): Promise<components["schemas"]["MenuGroupWithChildren"]> =>
+    (await typedApi.GET("/api/v1/roles/menus/{id}", byId(menuId)).then(unwrap)).data,
 
-  createMenu: async (data: RoleMenuCreateInput): Promise<RoleMenu> => {
-    const response = await api.post<{ success: boolean; data: RoleMenu }>(
-      "/api/v1/roles/menus",
-      data,
-    );
-    return response.data;
-  },
-
-  updateMenu: async (
-    menuId: string,
-    data: Partial<RoleMenuCreateInput>,
-  ): Promise<RoleMenu> => {
-    const response = await api.patch<{ success: boolean; data: RoleMenu }>(
-      `/api/v1/roles/menus/${menuId}`,
-      data,
-    );
-    return response.data;
-  },
+  // A-359 (2026-10-02): `createMenu` / `updateMenu` were removed. They sent
+  // camelCase `parentId` / `sortOrder` / `isActive`, which the API drops (it
+  // reads `parent_id` / `sort_order` / `is_active`), and nothing called them:
+  // menu groups are created and edited through `menuGroupRole.service`.
 
   deleteMenu: async (menuId: string): Promise<void> => {
-    await api.delete(`/api/v1/roles/menus/${menuId}`);
+    await typedApi.DELETE("/api/v1/roles/menus/{id}", byId(menuId));
   },
 
   // ------------------------------------------------------------------
@@ -233,20 +168,23 @@ export const roleService = {
     roleId: string,
     menuGroupId: string,
     permissionType: "read" | "write" = "read",
-  ): Promise<RoleMenuPermission> => {
-    const response = await api.post<{
-      success: boolean;
-      message?: string;
-      data: RoleMenuPermission;
-    }>(`/api/v1/roles/${roleId}/permissions`, { menuGroupId, permissionType } satisfies AssignPermissionInput);
-    return response.data;
-  },
+  ): Promise<RoleMenuPermission> =>
+    (
+      await typedApi
+        .POST("/api/v1/roles/{roleId}/permissions", {
+          params: { path: { roleId } },
+          body: { menuGroupId, permissionType },
+        })
+        .then(unwrap)
+    ).data,
 
   removePermission: async (
     roleId: string,
     menuGroupId: string,
   ): Promise<void> => {
-    await api.delete(`/api/v1/roles/${roleId}/permissions/${menuGroupId}`);
+    await typedApi.DELETE("/api/v1/roles/{roleId}/permissions/{menuGroupId}", {
+      params: { path: { roleId, menuGroupId } },
+    });
   },
 
   // ------------------------------------------------------------------
@@ -254,10 +192,10 @@ export const roleService = {
   // ------------------------------------------------------------------
 
   assignRoleToUser: async (userId: string, roleId: string): Promise<void> => {
-    await api.post("/api/v1/roles/assign", { userId, roleId } satisfies AssignRoleInput);
+    await typedApi.POST("/api/v1/roles/assign", { body: { userId, roleId } });
   },
 
   removeRoleFromUser: async (userId: string): Promise<void> => {
-    await api.delete(`/api/v1/roles/assign/${userId}`);
+    await typedApi.DELETE("/api/v1/roles/assign/{userId}", { params: { path: { userId } } });
   },
 };

@@ -34,7 +34,7 @@ type Context = Parameters<typeof migration.up>[0]["context"];
 const ctx = (qi: object): Context => qi as Context;
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0062-audit-log-indexes.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const fakeQueryInterface = (
   catalog: Record<string, boolean> = { audit_logs_pkey: true },

@@ -29,7 +29,7 @@
  *   1. RUNTIME. `dynamicAccess` is replaced by a recorder and EVERY module under
  *      `src/routes` is required, so every gate that is actually constructed is
  *      seen with its real, evaluated argument — including computed ones
- *      (`search.route.js` passes `SEARCH_MENUS`), which the static scanner can
+ *      (`search.route.ts` passes `SEARCH_MENUS`), which the static scanner can
  *      only report as unverified. A gate spelled in a shape no parser expects is
  *      still recorded, because recording does not parse anything.
  *   2. STATIC. The boot check's own source scanner (`collectRouteGates`), which
@@ -156,7 +156,7 @@ describe("A-07 — dynamicAccess resources are seeded menu slugs", () => {
 
   it("the computed gate (search) resolves at runtime to seeded slugs", () => {
     const computed = collectRouteGates().filter((gate) => gate.names === null);
-    expect(computed.map((gate) => path.basename(gate.file))).toEqual(["search.route.js"]);
+    expect(computed.map((gate) => path.basename(gate.file))).toEqual(["search.route.ts"]);
 
     const { SEARCH_MENUS } = require("../../services/search.service");
     expect(SEARCH_MENUS.length).toBeGreaterThan(0);

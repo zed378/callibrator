@@ -133,7 +133,7 @@ const makeTenant = (overrides = {}) => ({
   update: jest.fn().mockResolvedValue(undefined),
   destroy: jest.fn().mockResolvedValue(undefined),
   toJSON() {
-    const { update, destroy, toJSON, ...rest } = this;
+    const { update: _update, destroy: _destroy, toJSON: _toJSON, ...rest } = this;
     return { ...rest };
   },
   ...overrides,

@@ -245,17 +245,11 @@ export default function TenantLifecyclePage() {
                 )}
               </div>
 
+              {/* A-356: GET /tenants/:tenantId/status answers status,
+                  lifecycleStatus and the grace-period and offboarding dates
+                  only (tenantLifecycle.service#getTenantLifecycleStatus); a
+                  suspension reason or date is not in it, so none is shown. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Suspension reason</p>
-                  <p className="font-medium">
-                    {status?.suspensionReason ?? "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Suspended at</p>
-                  <p className="font-medium">{fmt(status?.suspendedAt)}</p>
-                </div>
                 <div>
                   <p className="text-muted-foreground">Grace period expires</p>
                   <p className="font-medium">

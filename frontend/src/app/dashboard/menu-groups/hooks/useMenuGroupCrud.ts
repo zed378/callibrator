@@ -45,7 +45,7 @@ export function useMenuGroupCrud({
   onMutated,
 }: UseMenuGroupCrudOptions) {
   // A-301 (ADR-102): create / edit / delete are `rbac(["SUPERADMIN"])` on the
-  // API (menuGroups.route.js). Read the platform super-admin flag from the
+  // API (menuGroups.route.ts). Read the platform super-admin flag from the
   // effective permissions (GET /menu-groups/my-permissions), not the role name.
   const { superAdmin: isSuperAdmin } = usePermissions();
 

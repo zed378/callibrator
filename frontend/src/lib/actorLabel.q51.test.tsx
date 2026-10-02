@@ -26,12 +26,22 @@ describe("actorLabel", () => {
   });
 });
 
+// A whole row as the contract publishes it (P9-25: the type is the contract's).
 const adjustment = (over: Partial<StockAdjustment>): StockAdjustment => ({
   id: over.id ?? "a",
+  tenantId: "t1",
   warehouseId: "w1",
+  locationId: null,
   type: "addition",
   quantity: 1,
+  reason: "count",
+  stockId: null,
+  quantityBefore: null,
+  quantityAfter: null,
   adjustedBy: null,
+  apiKeyId: null,
+  createdAt: "2026-10-01T00:00:00.000Z",
+  updatedAt: "2026-10-01T00:00:00.000Z",
   ...over,
 });
 

@@ -1,4 +1,4 @@
-const storageRoutes = require("../../routes/api/storage.route.js");
+const storageRoutes = require("../../routes/api/storage.route");
 
 describe("Storage Routes", () => {
   it("exports an Express router", () => {

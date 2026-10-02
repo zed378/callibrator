@@ -108,7 +108,7 @@ const defineModel: DefineWebhook = (db, DataTypes) => {
       // widened the column and encrypted the rows that predate it.
       //
       // No defaultValue, on purpose: the old default generated a PLAINTEXT
-      // secret the caller never saw. The only writer is webhook.service.js,
+      // secret the caller never saw. The only writer is webhook.service.ts,
       // which generates, seals and returns it once; a create that bypasses the
       // service now fails allowNull rather than storing an unencrypted key.
       secret: {

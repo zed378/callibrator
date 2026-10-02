@@ -4,6 +4,7 @@ import { useTenantStore } from "@/stores/tenantStore";
 import { useAuthStore } from "@/stores/authStore";
 import { Tenant } from "@/types";
 import { usePermissions } from "@/hooks/usePermissions";
+import { tenantLifecycleService } from "@/api/services/tenantLifecycle.service";
 
 export const initialCreateForm = {
   name: "",
@@ -189,7 +190,8 @@ export function useTenants() {
         name: editForm.name,
         code: editForm.code,
         primaryColor: editForm.primaryColor || undefined,
-        status: editForm.status as "ACTIVE" | "INACTIVE" | "SUSPENDED",
+        // A-326 / ADR-112: an edit never changes the status, so it is not sent;
+        // a suspension or a resumption goes through handleLifecycle below.
         file: editLogoFile || undefined,
         email: editForm.email || undefined,
         // A-303: the profile is stored now, so an emptied field is SENT (as
@@ -212,6 +214,36 @@ export function useTenants() {
     } catch (err: unknown) {
       setFormError(
         err instanceof Error ? err.message : "Failed to update tenant",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  /**
+   * A-326 / ADR-112: the tenant's status moves only through the lifecycle
+   * endpoints (POST /tenants/:id/suspend, /resume), which record the reason,
+   * the actor and the audit rows. The edit modal offers these actions to the
+   * super admin instead of a status select. On success the modal shows the new
+   * status and the list is refreshed; a refusal (e.g. the default tenant
+   * cannot be suspended) is shown in the modal.
+   */
+  const handleLifecycle = async (action: "suspend" | "resume", reason = "") => {
+    if (!editingTenant) return;
+    setFormError("");
+    setIsSubmitting(true);
+    try {
+      const result =
+        action === "suspend"
+          ? await tenantLifecycleService.suspend(editingTenant.id, reason)
+          : await tenantLifecycleService.resume(editingTenant.id);
+      const status = (result?.status ?? (action === "suspend" ? "suspended" : "active")) as Tenant["status"];
+      setEditingTenant({ ...editingTenant, status });
+      setEditForm((f) => ({ ...f, status }));
+      await refetchTenants();
+    } catch (err: unknown) {
+      setFormError(
+        err instanceof Error ? err.message : `Failed to ${action} tenant`,
       );
     } finally {
       setIsSubmitting(false);
@@ -268,6 +300,7 @@ export function useTenants() {
     handleCreate,
     handleEdit,
     handleUpdate,
+    handleLifecycle,
     handleSsoClick,
   };
 }

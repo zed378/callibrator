@@ -228,6 +228,26 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
       expect(lockout.reason).toBe("Account temporarily locked");
     });
 
+    // ADR-100 Amendment 5: the lock ends when its counter expires.
+    it("reports the counter's own expiry as the lock's end", async () => {
+      const expiresAt = Date.now() + 42000;
+      mockClient.get.mockResolvedValue(JSON.stringify({ count: 5, firstAttempt: Date.now() - 600000, expiresAt }));
+
+      const lockout = await rl.checkAuthLockout({ userId: "u-12", endpoint: "login" });
+
+      expect(lockout.lockoutUntil.getTime()).toBe(expiresAt);
+    });
+
+    it("an entry written before expiries were stored falls back to now + the lockout", async () => {
+      const now = Date.now();
+      jest.spyOn(Date, "now").mockReturnValue(now);
+      mockClient.get.mockResolvedValue(JSON.stringify({ count: 5, firstAttempt: now - 1000 }));
+
+      const lockout = await rl.checkAuthLockout({ userId: "u-13", endpoint: "login" });
+
+      expect(lockout.lockoutUntil.getTime()).toBe(now + 15 * 60 * 1000);
+    });
+
     it("reports no lockout when Redis holds no entry", async () => {
       mockClient.get.mockResolvedValue(null);
 
@@ -341,7 +361,7 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
   // ============================================================
   describe("endpoint quotas", () => {
     it("counts API requests in Redis and blocks once the shared count passes the limit", async () => {
-      mockClient.eval.mockResolvedValue(JSON.stringify({ count: 10, firstAttempt: Date.now() }));
+      mockClient.eval.mockResolvedValue(JSON.stringify({ count: 11, firstAttempt: Date.now(), expiresAt: Date.now() + 60000 }));
       const middleware = rl.endpointRateLimiter("tenantCreate", { maxRequests: 10 });
       const req = { ip: "203.0.113.7", headers: {}, user: null };
       const res = makeRes();
@@ -360,20 +380,24 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
       );
     });
 
-    it("takes retryAfter from the key's real TTL in Redis", async () => {
-      mockClient.eval.mockResolvedValue(JSON.stringify({ count: 10, firstAttempt: Date.now() }));
-      mockClient.pttl.mockResolvedValue(9500);
+    // ADR-100 Amendment 5: the quota is a FIXED window. The script returns the
+    // entry AFTER the increment, with the expiry it was opened with, and the
+    // limiter reports that expiry — no PTTL round trip, and no refused request
+    // moves it.
+    it("takes retryAfter from the window's fixed expiry, as the script returned it", async () => {
+      const now = Date.now();
+      mockClient.eval.mockResolvedValue(JSON.stringify({ count: 11, firstAttempt: now - 50000, expiresAt: now + 9500 }));
       const middleware = rl.endpointRateLimiter("tenantCreate", { maxRequests: 10 });
       const res = makeRes();
 
       await middleware({ ip: "203.0.113.8", headers: {}, user: null }, res, jest.fn());
 
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ retryAfter: 10 }));
+      expect(mockClient.pttl).not.toHaveBeenCalled();
     });
 
-    it("falls back to the configured window when Redis reports no TTL for the key", async () => {
-      mockClient.eval.mockResolvedValue(JSON.stringify({ count: 10, firstAttempt: Date.now() }));
-      mockClient.pttl.mockResolvedValue(-1);
+    it("an answer with no expiry falls back to the configured window", async () => {
+      mockClient.eval.mockResolvedValue(JSON.stringify({ count: 11, firstAttempt: Date.now() }));
       const middleware = rl.endpointRateLimiter("tenantCreate", { maxRequests: 10 });
       const res = makeRes();
 
@@ -382,22 +406,22 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ retryAfter: 60 }));
     });
 
-    it("falls back to the configured window when PTTL itself fails", async () => {
-      mockClient.eval.mockResolvedValue(JSON.stringify({ count: 10, firstAttempt: Date.now() }));
-      mockClient.pttl.mockRejectedValue(new Error("connection lost"));
-      const middleware = rl.endpointRateLimiter("tenantCreate", { maxRequests: 10 });
-      const res = makeRes();
+    it("an EVAL failure counts in memory, in a fixed window too", async () => {
+      mockClient.eval.mockRejectedValue(new Error("connection lost"));
+      const middleware = rl.endpointRateLimiter("tenantCreate", { maxRequests: 1 });
+      const first = makeRes();
+      const next = jest.fn();
+      await middleware({ ip: "203.0.113.10", headers: {}, user: null }, first, next);
+      const second = makeRes();
+      await middleware({ ip: "203.0.113.10", headers: {}, user: null }, second, next);
 
-      await middleware({ ip: "203.0.113.10", headers: {}, user: null }, res, jest.fn());
-
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Redis PTTL failed"),
-      );
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ retryAfter: 60 }));
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("fixed-window INCR failed"));
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(second.status).toHaveBeenCalledWith(429);
     });
 
     it("sets the X-RateLimit headers from the count Redis returned", async () => {
-      mockClient.eval.mockResolvedValue(JSON.stringify({ count: 2, firstAttempt: Date.now() }));
+      mockClient.eval.mockResolvedValue(JSON.stringify({ count: 3, firstAttempt: Date.now(), expiresAt: Date.now() + 60000 }));
       const middleware = rl.endpointRateLimiter("tenantCreate", { maxRequests: 10 });
       const res = makeRes();
       const next = jest.fn();

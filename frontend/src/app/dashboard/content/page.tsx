@@ -43,7 +43,7 @@ const statusVariant = (s: PostStatus): "success" | "warning" | "default" =>
 
 export default function ContentPage() {
   // ADR-102: posts and categories are written on `content` write
-  // (content.route.js create/update/delete all normalise to write).
+  // (content.route.ts create/update/delete all normalise to write).
   const { canWrite } = usePermissions();
   const mayWrite = canWrite("content");
   const router = useRouter();

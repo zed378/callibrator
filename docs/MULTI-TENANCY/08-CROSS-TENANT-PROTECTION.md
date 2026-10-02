@@ -157,7 +157,7 @@ The gates now (line numbers re-read 2026-09-28, ADR-088; the living table is [`.
 |---|---|---|
 | `GET /tree` | `auth` — the controller reads `req.user.tenantId`, never a path id (`tenantHierarchy.controller.js:30`) | `103` |
 | `GET /:tenantId/children`, `/parent`, `/descendants`, `/ancestors` | `ownTenantOnly(...)` — a cross-tenant id is **404**, not 403 | `146`, `193`, `241`, `282` |
-| `POST /:parentId/children` | `[auth, denyApiKey, superAdminOnly]` | `357` |
+| `POST /:tenantId/children` | `[auth, denyApiKey, superAdminOnly]` | `357` |
 | `PUT /:tenantId/parent`, `DELETE /:tenantId/parent` | `[auth, denyApiKey, superAdminOnly]` | `409`, `451` |
 | `GET /cross-tenant-roles` | `[auth, denyApiKey, superAdminOnly]` — it reads role assignments for an arbitrary user id | `499` |
 

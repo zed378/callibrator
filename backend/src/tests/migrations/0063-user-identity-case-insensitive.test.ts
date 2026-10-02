@@ -37,7 +37,7 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0063-user-identity-case-insensitive.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const fakeQueryInterface = ({
   tables = ["users"],

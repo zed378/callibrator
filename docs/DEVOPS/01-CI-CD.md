@@ -37,13 +37,14 @@ Pinning: actions by commit SHA (tag in a comment); gitleaks, actionlint and kube
 
 | Not in CI | Why | Owner |
 |---|---|---|
-| backend typecheck | there is no backend `tsconfig.json`/`typecheck` script | P9-01a |
-| plain `eslint` on the backend | ~1,100 errors; the ratchet stands in until they are fixed | P9-02a |
-| format (`prettier --check`) | two conflicting Prettier configs govern `backend/` | P9-02 |
-| live E2E (53 specs) | needs a seeded running stack and rate-limit headroom; **never passed in one uninterrupted run** | P6-02 |
-| browser suite | `automate/smoke.browser.js` — five-check browser smoke (puppeteer-core); needs a running stack and Chrome, so not in CI yet | ADR-077 |
-| image build + push | "images pushed only from a green run" — a separate, later workflow that needs registry credentials | P7-01 remainder |
+| plain `eslint` on the backend | the ratchet (`scripts/ci/eslint-ratchet.js`, baseline **0** since ADR-092) is the gate | P9-02a |
+| format (`prettier --check`) | not wired as a CI stage | P9-02 |
+| live E2E (57 specs) | needs a seeded running stack, Mailpit-read secrets and production request budgets a shared runner address exhausts; passed in one uninterrupted run, twice, by hand (P10-13, runs G and H) | P6-02 / A-19 |
+| browser smoke and P10 browser suite | `automate/smoke.browser.js`, `automate/p10.browser.mts`: same reasons as the live E2E (mail, budgets) | ADR-077 / P10-13 |
+| image push | "images pushed only from a green run" — a separate, later workflow that needs registry credentials | P7-01 remainder |
 | IDOR enforcement script | still does not exist; the two-tenant tests run inside `backend-test` | — |
+
+CI runs the backend typecheck (job `backend-lint`) and, **since 2026-10-01, the browser accessibility suite** (`automate/a11y.browser.js`, job `browser-a11y`, M-14): axe WCAG 2.1 AA on the public and daily dashboard pages in both themes, the dialog focus contract, 200% reflow, reduced motion and the brand colour, against a disposable production-mode stack built from the commit with `deploy/compose/docker-compose.e2e.yml` (the recipe the live E2E ran on; env from `scripts/ci/e2e-env.sh`). It runs on `main`, on manual dispatch and on pull requests touching `frontend/`, `automate/`, `deploy/compose/` or `packages/contracts/`; other pull requests report a skip. Record: `MEMORY/records/2026-10-01-p10-13-sso-a11y-ci.md`.
 
 ### Reproducible install (A-21)
 

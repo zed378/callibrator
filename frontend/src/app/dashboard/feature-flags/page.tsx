@@ -68,9 +68,12 @@ export default function FeatureFlagsPage() {
     setIsLoading(true);
     setError(null);
     try {
+      // A-353: GET /feature-flags requires `tenantId` (tenantFlagQuerySchema)
+      // and answers 400 without it. With no tenant chosen, read only the
+      // definitions: every row shows its default until a tenant is picked.
       const [defs, effective] = await Promise.all([
         featureFlagService.getDefinitions(),
-        featureFlagService.getTenantFlags(tenantId || undefined),
+        tenantId ? featureFlagService.getTenantFlags(tenantId) : Promise.resolve({}),
       ]);
       setDefinitions(Array.isArray(defs) ? defs : []);
       setFlags(effective ?? {});

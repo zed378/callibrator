@@ -331,7 +331,7 @@ Parallel signing path: generic signature workflows — `/dashboard/esignature` t
 | 2 | Logo | same | `POST /tenants/:tenantId/logo` |
 | 3 | Settings: SSO (`SsoConfigTab`/`SsoSpTab`/`SsoXmlTab`), MFA policy (`MfaPolicyPanel`) | tenant card → settings | `POST|PATCH /tenants/settings` |
 | 4 | Feature flags | `/dashboard/feature-flags` | `POST /feature-flags/:tenantId/initialize`, `/:tenantId/:flagKey` |
-| 5 | Place in hierarchy (optional) | `/dashboard/tenant-hierarchy` | `POST /tenant-hierarchy/:parentId/children` |
+| 5 | Place in hierarchy (optional) | `/dashboard/tenant-hierarchy` | `POST /tenant-hierarchy/:tenantId/children` |
 | 6 | Create first tenant admin (pick role + tenant) | `/dashboard/users` | `POST /users` |
 | 7 | Admin first sign-in → forced change password (A-123) → MFA if policy | `/dashboard/change-password`, `/dashboard/mfa` | `/auth/just-update-password`, `/auth/mfa/setup|verify` |
 | 8 | Verify as the tenant | impersonate | `POST /auth/impersonate`, `/auth/impersonate/exit` |

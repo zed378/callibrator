@@ -218,7 +218,7 @@ export async function renderCertificatePdf(doc: CertificateDocument): Promise<Ar
   pdf.setProperties({
     title: `Certificate ${pdfText(doc.certificateNumber)}`,
     subject: `${pdfText(doc.type)} certificate`,
-    creator: "Callibrator",
+    creator: "Device Calibrator",
     keywords: `${doc.integrity.scheme} ${doc.integrity.hash}`,
   });
   const W = pdf.internal.pageSize.getWidth();

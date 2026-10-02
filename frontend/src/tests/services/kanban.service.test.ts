@@ -43,9 +43,8 @@ describe("kanbanService", () => {
     it("getBoard without sprintId omits params", async () => {
       get.mockResolvedValue(env({ id: P }));
       await kanbanService.getBoard(P);
-      expect(get).toHaveBeenCalledWith(`/api/v1/kanban/projects/${P}`, {
-        params: undefined,
-      });
+      // The typed client's query-less GET: the path alone (the same request; P9-25).
+      expect(get).toHaveBeenCalledWith(`/api/v1/kanban/projects/${P}`);
     });
 
     it("getBoard with sprintId passes it as a param", async () => {
@@ -77,10 +76,8 @@ describe("kanbanService", () => {
     it("omits params when no sprint scope", async () => {
       get.mockResolvedValue(env({ summary: { total: 3 } }));
       const res = await kanbanService.getMetrics(P);
-      expect(get).toHaveBeenCalledWith(
-        `/api/v1/kanban/projects/${P}/metrics`,
-        { params: undefined },
-      );
+      // The typed client's query-less GET: the path alone (the same request; P9-25).
+      expect(get).toHaveBeenCalledWith(`/api/v1/kanban/projects/${P}/metrics`);
       expect(res.summary.total).toBe(3);
     });
 

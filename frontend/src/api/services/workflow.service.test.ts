@@ -68,7 +68,7 @@ describe("workflowService", () => {
       await workflowService.create(input);
 
       expect(mockedApi.post).toHaveBeenCalledWith(BASE, input);
-      // The old service sent `type` + `order`/`assigneeType`, which Joi rejects.
+      // The old service sent `type` + `order`/`assigneeType`, which the backend's request validator rejects.
       const body = mockedApi.post.mock.calls[0][1] as {
         steps: Record<string, unknown>[];
       };

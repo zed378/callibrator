@@ -101,14 +101,15 @@ export default function GdprPage() {
   const exportData = async () => {
     setBusy("export");
     try {
-      const data = await gdprService.exportData();
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: "application/json",
-      });
+      // A-360: POST /export answers where the archive is, not the data. The
+      // archive (a ZIP of JSON files) is fetched and saved; the answer itself
+      // used to be saved as "my-data-export.json".
+      const { exportId } = await gdprService.exportData();
+      const blob = await gdprService.downloadExport(exportId);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "my-data-export.json";
+      a.download = `${exportId}.zip`;
       a.click();
       URL.revokeObjectURL(url);
       addToast({ type: "success", title: "Export downloaded" });

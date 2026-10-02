@@ -4,11 +4,13 @@
  *
  * Two facts the card asks to be stated, pinned so they stay true:
  *
- *  1. No route mounts `recordAudit` (auditLog.middleware.js). It writes on
+ *  1. No route mounts an after-response `recordAudit` / `withAudit`. The
+ *     middleware that offered them (auditLog.middleware) wrote on
  *     `res.on("finish")`, after the commit and outside any transaction. Its
  *     last three callers (user create/update/delete) moved into
- *     user.service.js under A-77; a new caller would bring back the two
- *     failures A-41 exists to prevent.
+ *     user.service.js under A-77, and the module itself was removed on
+ *     2026-10-01 (ADR-087 Am. 27, round 3). A reintroduced one would bring back
+ *     the two failures A-41 exists to prevent.
  *  2. Every `logAction(` call in services and controllers passes a
  *     `transaction`, except the ones listed below with a reason. A new call
  *     without one fails here and has to argue its way onto the list.
@@ -115,7 +117,7 @@ describe("P6-11 — audit rows inside the transaction", () => {
 
   it("no route mounts the after-response recordAudit middleware", () => {
     const users = listJs(path.join(SRC, "routes"))
-      .concat([path.join(SRC, "..", "index.js")])
+      .concat([path.join(SRC, "..", "index.ts")])
       .filter((f) => /recordAudit|withAudit/.test(fs.readFileSync(f, "utf8")))
       .map(rel);
     expect(users).toEqual([]);

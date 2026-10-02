@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /**
  * The CMS list (Blog & News) against GET /api/v1/content/posts
- * (content.controller.js: rows in `data`, `meta` top-level {total, page,
+ * (content.controller.ts: rows in `data`, `meta` top-level {total, page,
  * limit, totalPages}) and DELETE /api/v1/content/posts/:id. The real content
  * service runs; `@/api/client`'s transport is mocked.
  *

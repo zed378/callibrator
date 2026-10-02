@@ -31,7 +31,7 @@ Implementation: `backend/index.js:206–254` (the global limiter) · `backend/sr
 | `ssoStart` | `POST /auth/sso/login`, `/sso/oidc/login` (one shared budget) | 60 / 15 min per address |
 | `certificateVerify` / `certificateVerifyToken` | `GET /certificates/verify/:n` (and `/document`) | 60 minimal answers / 300 requests per 15 min per address (A-293) |
 
-Outside production each is multiplied by `RATE_LIMIT_NON_PRODUCTION_FACTOR` (default 100). The budgets sit in front of the failure throttles below, which are unchanged. `../API/00-API-STANDARDS.md`, `../SECURITY/08-API-SECURITY.md` and `../ARCHITECTURE/06-CACHING-ARCHITECTURE.md` still list the two old limiters; trust this section over those tables until they are corrected.
+Outside production each is multiplied by `RATE_LIMIT_NON_PRODUCTION_FACTOR` (default 100). **Each budget is a FIXED window (ADR-100 Amendment 5):** it opens at the first request and closes at a stored `expiresAt` that no request — admitted or refused — moves, so `Retry-After` is exactly when the next request is admitted again. (The failure throttles below still slide: a failure extends the pause, but a paused attempt is refused before it is counted, so the pause ends when reported.) The budgets sit in front of the failure throttles below, which are unchanged. `../API/00-API-STANDARDS.md`, `../SECURITY/08-API-SECURITY.md` and `../ARCHITECTURE/06-CACHING-ARCHITECTURE.md` still list the two old limiters; trust this section over those tables until they are corrected.
 
 ---
 

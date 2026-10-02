@@ -8,6 +8,112 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-02 — Closing verification for Phases 9–10: every gate green, the live pair green on the final tree ([record](./records/2026-10-02-closing-gates-qr.md))
+- Verified: on a quiet tree, backend coverage 100 % (869 suites, 0 failed), lint 0/0, typecheck, builds, load checks, contracts 100 %, frontend coverage gate, `next build` and the bundle budget all pass; gitleaks finds no secret.
+- Verified: the full live suite and every browser suite passed in two runs back to back (Q and R) on a production-mode build of the final tree, with no server error. Migration `0108` applies on a fresh database and on an upgraded one.
+- **Decided (ADR-115):** the published API description changes in ways the breaking-change check reports (857 items against `main`). Almost all are the description catching up with validation the server already enforced; the 11 "removed" paths are `/e-signature/*`, a prefix the server never served (it is `/esignature`). This is accepted as a one-time reset when the code-first contract reaches `main`. From then on the check keeps its full force.
+
+### 2026-10-02 — Live acceptance green twice on the current tree; three live-run defects fixed ([record](./records/2026-10-02-a346-a348-live-pair-kl.md))
+- Fixed: a malformed supplier-scorecard id answers 400 "Invalid id: must be a valid UUID" instead of 500 (A-346).
+- Fixed: testing a tenant's S3 storage settings gives up after 5 seconds and reports the failure, instead of waiting as long as the network does (A-348).
+- Fixed (tests): the live supplier-scorecard and storage tests match the contract and no longer reach the internet (A-347, A-348); two browser-suite timing races are retried.
+- Verified: the full live suite and every browser suite passed in two runs back to back on a production-mode build of the current tree (runs O and P). The backend freeze seen earlier recurred once, and the evidence places it in the Docker host, not the backend (record).
+
+### 2026-10-02 — Every data export is recorded in the audit trail ([record](./records/2026-10-02-gdpr-export-audit.md), A-364)
+- Fixed: requesting "Export my data" now writes an audit entry (who, when, which export, its size and expiry — never the data itself). Only the download was recorded before. If the entry cannot be written, the export is discarded and the request fails rather than leaving an unrecorded copy of your data on the server.
+- Changed (internal): the audit-coverage build check now treats writing or deleting a file as a change that needs an audit entry, not only database writes.
+
+### 2026-10-02 — Your data export can be downloaded; backups keep their names ([record](./records/2026-10-02-a359-a363.md), A-359 … A-363, ADR-114)
+- Fixed: "Export my data" on the privacy page now downloads the export itself — a ZIP of your profile, the records that name you, your consent and requests, and your audit trail. It used to save a small file describing the export instead. Only you can download your export, until it expires; each download is recorded in the audit trail.
+- Fixed: the tenant-backup page offers Download and Restore for finished backups again, and its Completed / Failed / In progress counts and status colours are right.
+- Fixed: a backup keeps the name and description it was created with (they were silently discarded). Backups taken before this change show "Untitled backup" and are confirmed by their id when restored.
+- Fixed: the tenants page's Active and Suspended counts and status colours are right.
+- Removed (internal): two unused frontend menu methods that sent fields the server ignores.
+- **Operational:** run migration `0108-tenant-backup-name-description` on upgrade (`npm run migrate`; two nullable columns, no rewrite).
+
+### 2026-10-02 — Every frontend service on the generated API client ([record](./records/2026-09-30-p9-stage-c-leaf-services.md) § P9-25 item 11, ADR-103)
+- Changed (internal): all 54 frontend API services now type their calls from the published API contract (`openapi-fetch` over the existing axios client). A path, parameter or body the server does not publish is a compile error. Requests on the wire are unchanged, and tests pin them.
+- Fixed (documentation): the published contract now matches what the server sends for users, sign-in, MFA set-up, stock transfers, blog posts, e-signature history, GDPR consent and processing, the menu tree, tenant settings, backup restore and the workflow inbox.
+- Found (fixed the same day, see above): the GDPR data export cannot be downloaded (A-360). The tenant-backup page never offers Download or Restore (A-362). The tenants page's Active and Suspended counts always read 0 (A-361). Backup names are never stored (A-363). Two unused menu methods send fields the server ignores (A-359).
+
+### 2026-10-02 — Ten screens fixed to show what the server actually sends ([record](./records/2026-10-02-a349-a358-frontend-drift.md), A-349 … A-358)
+- Fixed: the devices page no longer crashes after a CSV import with an invalid row. Each rejected row lists its field errors.
+- Fixed: the network-security dry run no longer crashes when a geofence is set and no location is entered; it explains that no location was given.
+- Fixed: the feature-flags page no longer fails with an error before a tenant is chosen; it lists every flag at its default.
+- Fixed: the warehouse form offers only the statuses the server accepts (Active, Inactive), and a warehouse with no status no longer breaks the list.
+- Fixed: the predictive-maintenance toast now shows the recommendation's reason.
+- Removed: details the server never sends, which only ever showed blank: a board's code on the boards list, card counts on sprint tabs, a job's failed-item count, and a tenant's suspension reason and date on the lifecycle page.
+
+### 2026-10-02 — A broken configuration is reported in full at startup ([record](./records/2026-10-02-p9-06-env-schema.md), ADR-087 Am. 30)
+- Changed (operations): when required settings are missing or wrong, the backend now stops once and lists every problem together on its console output, instead of reporting one per restart (and, in production, only in a log file).
+- No new requirements: a configuration that started before still starts. The configuration guide and `.env.example` list four settings they were missing.
+- Internal: status values for certificates, stock, work orders, CAPA, tenants, webhooks and workflows are defined once and shared (P9-05); the backend lint is at zero warnings, with the remaining rules raised to errors (P9-02a).
+
+### 2026-10-02 — Live acceptance re-run on the current tree; seven Phase 10 cards ready to close ([record](./records/2026-10-02-p10-live-pair-ij.md))
+- Verified: request access, the super-admin queue, forgot/reset password, invitations, passkeys, the registration flag and the first-administrator password work end to end on a production-mode build of the current tree, including the newly converted TypeScript entry point.
+- Found: a malformed supplier-scorecard id answers 500 instead of 400 (A-346); two live tests are stale or depend on reaching AWS (A-347, A-348); the backend froze for up to 69 s twice during the run (cause open).
+
+### 2026-10-02 — Attachments, maintenance, menus and seeding moved to TypeScript; two dead code paths removed ([record](./records/2026-10-01-p9-19-middlewares-core-services.md), ADR-087 Am. 29)
+- Changed (internal): the attachment, maintenance work-order, menu-group and seeding services are TypeScript; behaviour is unchanged, proved module by module and, for attachments and seeding, on a live database.
+- Removed (internal): an after-response audit middleware no route used, and two unused session-revocation helpers that could not have worked (A-340). Audit rows are written inside each change's transaction, as before.
+- Verified: deleting an attachment removes its file only after the change is saved; demo data with calibration records is never removed; the platform tenant is seeded once.
+
+### 2026-10-02 — The backend entry point, its configuration and its maintenance commands are TypeScript ([record](./records/2026-10-01-p9-21-non-route-files.md), ADR-087 Am. 28)
+- Changed (internal): the server entry point (`backend/index.ts`), the database, migration and realtime configuration, the operator CLIs (`npm run migrate*`, `keys:rotate`, `migrate:storage`, break-glass MFA reset, demo seed, embeddings backfill) and the documentation generators are TypeScript. Commands, output and exit codes are unchanged.
+- Changed (**operational**): `npm start` / `npm run dev` run `index.ts`; the release build still produces `dist/index.js`, so images and binaries start as before.
+- Removed: `backend/scripts/rotate-default-credentials.js`, which could never run (A-344); `npm run bootstrap:rotate` does that job.
+- Fixed (tests): the live realtime fan-out test across replicas runs green again (A-345).
+
+### 2026-10-01 — Request access stays closed until a privacy notice is published; SSO survives an identity-provider key rotation; the product is "Device Calibrator" in the dashboard too ([record](./records/2026-10-01-p10-a341-q43-privacy-ac4.md), ADR-113)
+- Changed (**operational**): the public access-request form and `POST /api/v1/access-requests` exist only while `PRIVACY_NOTICE_URL` names the published privacy notice. Unset (every deployment today, the VM included), `/request-access` says requests are not open yet and offers the contact channels, the endpoint answers 404, and the footer has no privacy link. Set it in `.env` (Compose) or `global.privacyNoticeUrl` (Helm) once the notice is published; no rebuild needed.
+- Fixed: an OIDC identity provider that rotates its signing key no longer breaks that tenant's single sign-on for up to six hours (A-341): an unknown key id refetches the key set once, at most once a minute.
+- Changed: the dashboard sidebar, the authenticator-app label for new MFA enrolments, the passkey prompt, PDF metadata and the GDPR export now say "Device Calibrator" (Q-43).
+- Added: screenshots of every public page from 320 to 1920 px and at 200 % zoom and 200 % text size (`docs/UI-UX/research/screens/ac4-*`) — none scrolls sideways or clips or overlaps text — and a browser check that keeps it so (`automate/responsive.browser.js`, part of `make test-browser`).
+
+### 2026-10-01 — Sign-in, permission and audit code moved to TypeScript; three audit behaviours now tested ([record](./records/2026-10-01-p9-19-middlewares-core-services.md), ADR-087 Am. 27)
+- Changed (internal): authentication, permission checks, attribute-based access, quota enforcement, the scheduled jobs, the batch-job worker, and the Redis, e-mail queue, MFA, rate-limiter and audit services are TypeScript. Behaviour is unchanged: proved module by module, and live on PostgreSQL 18 for authentication and the audit trail.
+- Verified: when an audit row cannot be written, an account lock is still applied; audit lists keep entries made by the system or by deleted users. Both are now covered by tests.
+- Found, not yet fixed: two unused token-revocation helpers in the rate limiter would not work if called (A-340).
+
+### 2026-10-01 — Single sign-on tested end to end in a browser; the accessibility suite gets a CI job ([record](./records/2026-10-01-p10-13-sso-a11y-ci.md), P10-13, M-14)
+- Verified: signing in with a work email whose domain uses single sign-on (OIDC) now has a browser test that follows the real redirect to the identity provider and back to the dashboard.
+- Internal: the accessibility browser suite waits for the dashboard's entrance animations, removing an intermittent false failure, and has a CI job against a disposable stack (not yet run on GitHub).
+- Found, not yet fixed: if an organisation's identity provider changes its signing key, single sign-on can fail for up to six hours (A-341).
+- Open before release: the privacy notice (the request-access consent already refers to it), the legal review, the contact details and the legal entity.
+
+### 2026-10-01 — Risk, supplier-scorecard and asset-finance writes are validated and tenant-checked ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097 Am. 6)
+- Security: a risk or scorecard request can no longer set server-owned fields (id, organisation, author, timestamps); they are ignored (A-335, A-336).
+- Security: a scorecard update or an asset finance record can no longer name another organisation's vendor; it answers 404, as for a vendor that does not exist (A-336, A-337).
+- Changed: risk severity and likelihood must be 1–5, scores 0–100, and category and status must be one of the listed values (400 otherwise). A new risk always starts OPEN.
+
+### 2026-10-01 — Six more API modules on TypeScript with a code-first contract ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097 Am. 5)
+- Changed (internal): the vendor, risk, supplier-scorecard, finance, billing and metered-billing routes and handlers are TypeScript, and each publishes its responses from shared schemas. The API answers exactly as before.
+- Fixed (docs): the API reference no longer says vendor notes are discarded (they are stored), and it shows the metered-billing estimate as a read, as it always was.
+- Found: the risk register and supplier scorecards accept unvalidated bodies, and a scorecard update or a finance record can name another organisation's vendor (A-335, A-336, A-337, open).
+
+### 2026-10-01 — Exported costs are numbers; the landing's tests follow its server-rendered form ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097 Am. 4 addendum)
+- Fixed: a GDPR data export wrote work-order costs as text ("1250.50"). They are now numbers, as the API returns them.
+- Tests: the landing page tests render the page's new streamed form, a prerender shell with the language-dependent content behind a loading skeleton. The frontend test and coverage gate is green again.
+
+### 2026-10-01 — Work orders keep their schedule, costs and resolution notes ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097 Am. 4, Q-55)
+- Fixed: a work order's scheduled date, completed date, estimated cost, actual cost and resolution notes were accepted and silently discarded. They are now stored (migration 0107) and returned.
+- Added: the work-order dialog has these fields: the schedule and estimate on create, and the outcome on edit. The list shows Schedule and Cost columns.
+- Validation: a cost must be between 0 and 999,999,999,999.99; notes are at most 5,000 characters; a completed date cannot be before the scheduled date (400).
+- Audit: the audit trail records the dates and costs, and the notes' length (not their text, A-190).
+
+### 2026-10-01 — Phase 10 live E2E: request access → approve → invitation, reset, verify and passkeys proven in a browser; the whole suite green twice in production mode ([record](./records/2026-09-30-p10-13-e2e.md), P10-13)
+- Tests: three TypeScript live specs (request access and the queue, public sign-in surface, verification and passkey refusals; 30 tests) and a TypeScript browser suite `automate/p10.browser.mts` (12 checks; two passkeys registered, used and one revoked on Chrome's WebAuthn virtual authenticator). `make test-browser` runs it; `make typecheck` checks it.
+- Verified live (production mode): the first super admin's one-time password (value only inside the container), concurrent approvals create one tenant, the invitation works once, the reset code works once, register is absent, verification by number is minimal and budgeted.
+- Fixed (tests only): the E2E harness's MFA state is per stack; network-security writes go to a disposable tenant; stale specs moved to the as-built contracts (A-281, A-293, P10-12, Q-49); deliberate failures use their own client address so back-to-back production runs do not trip the budgets.
+- Found: the request budgets are sliding windows refreshed by every request, refused ones included (ADR-100) — reported, not changed.
+
+### 2026-10-01 — Five API modules on TypeScript with a code-first contract; tenant status only through suspend/resume ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097 Am. 3, ADR-112)
+- Changed (internal): the warehouse, stock, roles, maintenance and QMS routes and handlers are TypeScript. Each request and answer is published from the same schemas the API enforces. The API answers exactly as before.
+- Fixed (docs): the API reference now matches these modules: the warehouse fields it listed (city, province, capacity) never existed, and two roles routes were documented under a path nobody serves.
+- Fixed: the startup permission check skipped converted route files; it now checks all 173 gates again.
+- Changed: the tenant edit dialog no longer offers a status. A super admin suspends (with a reason) or resumes a tenant from the dialog instead (ADR-112).
+- Security: `POST /roles/assign` returned the whole user record, credential hashes included (A-331, fixed).
+
 ### 2026-10-01 — Shared contracts: every request schema but two ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097 Am. 2)
 - Changed (internal): the request schemas of 40 of the 42 validator modules now live in `@callibrator/contracts`. The API accepts and refuses exactly what it did before. The network-security and tenant-flag schemas stay in the backend: one uses a server-only IP parser, the other the server's secret-setting policy.
 - Fixed (docs): the API reference now documents `nameToShow` and `roleLevel` on `PATCH /roles/{id}`, which the API has accepted since F-19.
@@ -15,6 +121,13 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ### 2026-10-01 — Shared contracts: nine more domains, one response envelope ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097 Am. 1)
 - Changed (internal): the request schemas for warehouses, stock, maintenance, calibration records, users, roles, certificates, QMS and tenants now live in `@callibrator/contracts`, alongside vendors and devices. The API accepts and refuses exactly what it did before.
 - Changed (internal): the response envelope has one definition, shared by the backend's types, the published API document (`openapi.json` unchanged byte for byte) and the frontend. Page sizes, QMS status lists and the tenant-logo name rule are defined there too.
+
+### 2026-10-01 — Tenancy and identity controllers and routes are TypeScript; their API reference is generated from code ([record](./records/2026-10-01-p9-20-21-tenancy-identity.md), P9-20/P9-21)
+- Internal: the tenant, lifecycle, hierarchy, backup, custom-domain, feature-flag, network-security, data-retention, admin, sign-in, user, permission, session, passkey, OIDC, SCIM and API-key controllers and routes are TypeScript. Every route, permission gate and middleware is the same as before.
+- Changed (docs): those routes' API reference is now generated from code and checked against the routes' real permission gates; signed-in routes that act on the caller's own account say so.
+- Fixed: the session list and detail now show when each session started; they showed nothing, and a meaningless "N/A" location (A-334).
+- Fixed: "My sessions" now shows when each session started (A-339).
+- Fixed: a platform operator can re-offboard an already offboarded tenant with `force`, as documented; it restarts the retention period, is audited, and only the super admin may do it (A-338).
 
 ### 2026-09-30 — The tenancy services are TypeScript; three tenant-edit defects found ([record](./records/2026-09-30-p9-13-tenancy.md), P9-13)
 - Internal: the network-security, tenant-hierarchy, custom-domain, data-retention, tenant-lifecycle, tenant and tenant-logo services are now TypeScript. Nothing a user sees changes. Each was checked against its JavaScript version on the same inputs, and the three that decide who sees which tenant were also checked on a live PostgreSQL 18 database with two tenants.
@@ -66,6 +179,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 - Added: GDPR consent grants and withdrawals, privacy-preference changes, data-subject and processing-restriction requests, SCIM group changes, new SOP documents, storage-setting changes, self-registration, SSO just-in-time accounts and a tenant's first (auto-created) subscription are now in the audit trail. Rows record what happened, never the personal data, free-text reasons or credentials.
 - Changed: saving storage settings writes the configuration, the encrypted credentials and the audit row in one transaction.
 - Verified: on PostgreSQL 18, as the application role, the row commits with its change and a forced rollback leaves neither.
+
+### 2026-10-01 — Rate limits recover on schedule ([record](./records/2026-09-29-security-followups.md) § Amendment 5, ADR-100 Amendment 5)
+- Fixed: request limits on the public sign-in, registration, password-reset, single sign-on and certificate-verification endpoints, and the per-endpoint API quotas, now reset at a fixed time. Before, every refused request restarted the wait, so a client that kept retrying — or a hospital behind one shared address — could stay blocked indefinitely. `Retry-After` now says exactly when the next request will be accepted.
+- Fixed: a temporary account or address lock now reports when it really ends, and ends then.
 
 ### 2026-10-01 — No response carries a password hash or other credential (A-331) ([record](./records/2026-09-29-security-followups.md) § Amendment 4, ADR-100 Amendment 4)
 - Security (high): `POST /roles/assign` returned the target user's password hash, MFA secrets, recovery codes, OTP and WebAuthn data. It now returns only the user's id, username, email, name, tenant, role, status and active flag.
@@ -274,6 +391,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ### 2026-09-29 — The code conventions describe the code as it is ([record](./records/2026-09-29-code-conventions-update.md))
 - Changed (docs): the backend, TypeScript, testing, tooling, review-checklist and frontend standards, and the Commands/Code Style parts of `CLAUDE.md` and `AGENTS.md`, now state the as-built rules — mixed JavaScript/TypeScript run through tsx, Zod validation through `validate()`, raw SQL through `sql()` with a bound tenant predicate, configuration through `config/env.ts`, two-tenant tests on the real hooks, the page CSP and the accessibility rules — and correct statements that said there was no route guard, no CI, no hook and no committed lockfile.
 - Found: most live PostgreSQL suites do not run as the application role (A-283); the backend lint gate covers `src/` only (A-284).
+
+### 2026-10-01 — The backend image builds without a fragile download, and from the tree you name ([record](./records/2026-10-01-a325-a332-image-build-robustness.md), A-325, A-332)
+- Fixed: the Node binary the backend image is packaged around is downloaded once, with retries, checked against a pinned checksum, and reused; a failed or tampered download stops the build with a clear message instead of an opaque failure (A-325).
+- Fixed: the compose files declare where an image is built from in one place (`BUILD_CONTEXT`), so a development overlay can no longer silently build from a different copy of the code (A-332).
 
 ### 2026-09-30 — Editing a tenant works again; a head organisation sees its sub-organisations ([record](./records/2026-09-30-a326-a329-tenant-edit-hierarchy.md), A-326 … A-329, ADR-112)
 - Fixed: saving a tenant's details no longer fails with a server error. The status is changed only by suspending or resuming the tenant, and the edit says so when asked to change it (A-326).

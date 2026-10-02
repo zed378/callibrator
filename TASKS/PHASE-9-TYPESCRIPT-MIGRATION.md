@@ -348,7 +348,7 @@ its own `{ ignores: [...] }` entry.
 
 | | |
 |---|---|
-| **Status** | **STARTED 2026-09-28** (ADR-092 item 3) — **0 errors** (1,050 before; baseline 950 → 0); the `no-unused-vars` / `no-console` triage is open |
+| **Status** | **DONE except the separate formatting commit (2026-10-02, ADR-087 Am. 30)** — 0 errors, **0 warnings**; `no-unused-vars`, `no-console`, `prefer-arrow-callback` at `error`; record `MEMORY/records/2026-10-02-p9-02a-lint-triage.md` |
 | **Depends on** | — (independent of the compiler; do it in parallel with P9-01) |
 | **Spec refs** | [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-34 · `docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md` |
 | **Spec required** | no |
@@ -381,11 +381,11 @@ discards. Those two are read, not swept.
 
 **Definition of Done**
 - [x] the Prettier-owned rules resolved by a **single** formatting commit, after P9-02 settles which Prettier config governs `backend/` — sweeping to the wrong config means doing it twice — fixed by ESLint's fixers for the nine error-level rules only, 127 files, each AST-identical to `HEAD` (one hand `prefer-const`); **not yet committed: it must be committed alone** (file list in `MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`)
-- [ ] the 298 `no-unused-vars` triaged by hand: each is a deletion or a `_`-prefix with a reason, never a rule downgrade
-- [ ] the 24 `no-console` sites cross-checked against A-42; runtime sites move to the winston logger, script sites are exempted explicitly
+- [x] the 298 `no-unused-vars` triaged by hand: each is a deletion or a `_`-prefix with a reason, never a rule downgrade — **2026-10-02:** the last 126 (all in tests), by shape; the full suite (860 suites) proves them
+- [x] the 24 `no-console` sites cross-checked against A-42; runtime sites move to the winston logger, script sites are exempted explicitly — **2026-10-02:** no runtime site; a reasoned allow-list (scripts/, the e2e harness, the dead checkMenu.util)
 - [x] the 12 unused `eslint-disable` directives removed — each one is a claim about a problem that no longer exists
 - [x] `npm run lint` exits 0 in `backend/`, and the exit code is recorded in the change record — exit 0, 0 errors, 287 warnings (2026-09-28)
-- [ ] `no-unused-vars` raised from `warn` to `error` once the count is zero, so it cannot silently return
+- [x] `no-unused-vars` raised from `warn` to `error` once the count is zero, so it cannot silently return — **2026-10-02**, with `no-console` and `prefer-arrow-callback`
 
 **Abuse cases**
 - The formatting sweep is mixed into a conversion PR, and neither can be reviewed
@@ -506,7 +506,7 @@ permanent blind spot.
 
 | | |
 |---|---|
-| **Status** | **STARTED** — `backend/src/types/` holds `node-process.d.ts`, `express.d.ts` (`requestId`, `user`, `tenantId`, `apiKeyAuthorized`, the upload fields; `isApiKey` on the principal), `ids.ts` (`TenantId`) and **`apiResponse.ts` (`ApiResponse<T>`)** — each added with the converted module that reads it (ADR-087 Amendments 2, 5). Open: `toTenantId` and the other brands, `tenant`/`validated` on `Request`, the state-machine unions |
+| **Status** | **STARTED** — **2026-10-02: the state unions DONE** (`@callibrator/contracts/states`, spec `MEMORY/specs/P9-05-shared-types.md`, record `MEMORY/records/2026-10-02-p9-05-state-unions.md`, ADR-087 Am. 30). `backend/src/types/` holds `node-process.d.ts`, `express.d.ts` (`requestId`, `user`, `tenantId`, `apiKeyAuthorized`, the upload fields; `isApiKey` on the principal), `ids.ts` (`TenantId`) and **`apiResponse.ts` (`ApiResponse<T>`)** — each added with the converted module that reads it (ADR-087 Amendments 2, 5). Open: `toTenantId` and the other brands, `tenant`/`validated` on `Request`, the state-machine unions |
 | **Depends on** | P9-03 |
 | **Spec refs** | `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` §§ branded ids, state machines |
 | **Spec required** | **yes** — `MEMORY/specs/P9-05-shared-types.md` |
@@ -517,7 +517,7 @@ permanent blind spot.
 **Definition of Done**
 - [ ] `src/types/express.d.ts` augments `Request` with `user`, `tenantId`, `tenant`, `requestId`, `validated` — no `as AuthedRequest` casts anywhere
 - [ ] branded `TenantId`, `UserId`, `DeviceId`, `CertificateId` (and the rest of the aggregate roots) with a single validating constructor each
-- [ ] every state machine is a string-literal union exported once: certificate, stock transfer, opname, CAPA, work order, tenant status, webhook delivery
+- [x] every state machine is a string-literal union exported once: certificate, stock transfer, opname, CAPA, work order, tenant status, webhook delivery — **2026-10-02:** `@callibrator/contracts/states` (+ workflow instance); `stateUnions.p905.guard` holds every model ENUM, schema and object to it
 - [ ] `NO_TENANT_UUID` is a `TenantId`, typed as the deny sentinel
 
 **Abuse cases**
@@ -573,7 +573,7 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | IN PROGRESS — **part 1 done 2026-09-29** (ADR-087 Amendment 6): `src/config/env.ts` holds the accessors (`env`, `envOr`, `environment`, `isProduction`), each reproducing the expression it replaced and reading at call time; every converted module reads through them, and the `no-restricted-properties` directives written in Stage B are gone (0 left outside `src/config/`). **Part 2 open:** the Zod schema and fail-listing-every-problem boot — a behaviour change (a boot that starts today could refuse), so it is its own change |
+| **Status** | IN PROGRESS — **part 1 done 2026-09-29** (ADR-087 Amendment 6): `src/config/env.ts` holds the accessors (`env`, `envOr`, `environment`, `isProduction`), each reproducing the expression it replaced and reading at call time; every converted module reads through them, and the `no-restricted-properties` directives written in Stage B are gone (0 left outside `src/config/`). **Part 2 done 2026-10-02** (ADR-087 Am. 30, record `MEMORY/records/2026-10-02-p9-06-env-schema.md`): `environmentSchema` + `validateEnvironment`, called by `index.ts` after dotenv — exactly the refusals the modules already made, listed together; proved verdict-identical over 158 configurations and boot-identical on PG18 |
 | **Depends on** | P9-05 |
 | **Spec refs** | `docs/BACKEND/11-CONFIGURATION.md` · ADR-039 |
 | **Spec required** | no |
@@ -582,9 +582,9 @@ context, filed under the wrong directory.
 **Why:** `KMS_MASTER_KEY` crash-looped a deployment because no list named it; `docs/BACKEND/11` rule 3 already demands "exit naming **every** missing variable at once, not one per restart". A Zod schema over the environment is that rule made mechanical.
 
 **Definition of Done**
-- [ ] `src/config/env.ts`: one Zod schema for every variable in `.env.example`; startup fails listing **all** failures at once
+- [ ] `src/config/env.ts`: one Zod schema for every variable in `.env.example`; startup fails listing **all** failures at once — **2026-10-02: the schema covers every variable the boot REQUIRES (17) and fails listing all at once; the optional rest of `.env.example` is not yet in it**
 - [ ] cross-field rules from `docs/BACKEND/11` (JWT secrets differ; Stripe key environment matches `NODE_ENV`; production ACME directory) are refinements in that schema
-- [ ] `DB_DIALECT`: optional, `postgres` only (ADR-039)
+- [x] `DB_DIALECT`: optional, `postgres` only (ADR-039) — in the schema, 2026-10-02
 - [ ] no `process.env` read outside `src/config/` (enforced by P9-02) — **true of every converted `.ts` module since 2026-09-29** (part 1); the unconverted `.js` still read it directly and move as they convert
 - [ ] `.env.example` and `docs/BACKEND/11` generated from, or checked against, the schema — they cannot drift
 
@@ -820,12 +820,56 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 > **P9-20 / P9-21 lane assignment (2026-09-30, the Phase 9 lead, on the coordinator's instruction that no module sits unowned).** For each module: the controller and route go to `.ts`, the `@swagger` JSDoc moves into `routes/api/<m>.openapi.ts` in the same change (P9-25, ADR-103 item 12), and gates are converted as-is. The P9-21 permission-gate/`public()` helper is not built. The evidence is working-copy identity, a mounted-route-table identity (method, path, middleware names in order), a sampled controller harness, an atomic swap, and `load:check` in both modes. The four gates apply to the isolation-critical modules.
 >
+> **P9-20 / P9-21 tenancy + identity CONVERTED (2026-10-01, P9-20/21 helper; record `MEMORY/records/2026-10-01-p9-20-21-tenancy-identity.md`; the ADR-087 amendment text is in the record, for the lead to place).**
+> - **Controllers (19):** tenant, tenantLifecycle, tenantHierarchy, tenantBackup, customDomains, featureFlag, networkSecurity, dataRetention, admin, auth, user, userPermission, session, ownSessions, webauthn, oidcProvider, sso, scim, apiKey.
+> - **Routes (17), each with its `.openapi.ts`:** tenant, tenantLifecycle, tenantHierarchy, tenantBackup, customDomains, featureFlags, networkSecurity, dataRetention, admin, auth, user, userPermissions, session, webauthn, oidc, scim, apiKeys.
+> - **Evidence:** route-table and module-text identity 17/17; four gates on the nine isolation-critical routes (17/17 plants, 303 suites, live HTTP on PG18 57/57); A-334 fixed; A-338, A-339 found.
+>
 > | Lane | Modules |
 > |---|---|
-> | P9-22 helper (`ae031334c6dbf7c15`) | warehouse, stock, roles, maintenance, qms (+ response schemas in `@callibrator/contracts`) |
+> | P9-22 helper (`ae031334c6dbf7c15`) | warehouse, stock, roles, maintenance, qms (+ response schemas in `@callibrator/contracts`); **2026-10-01, released by the services helper on the coordinator's instruction:** vendor, risk, supplierScorecard, finance, billing, meteredBilling (controllers and routes; their services stay as they are) |
 > | P9-13 helper (`a7df5efb63840929a`) | tenancy: tenant, tenantLifecycle, tenantHierarchy, tenantBackup, customDomains, featureFlag(s), networkSecurity, dataRetention, admin · identity: auth, user, userPermission(s), session, ownSessions, webauthn, oidcProvider (oidc), sso, scim, apiKey(s) |
 > | Leaf helper (`a202e99c71160573c`) | platform: notification(s), webhook(s), search, ai, storage, attachment(s), batchJob(s), gdpr, audit, content, kanban, ticket(s), dashboard, reporting (reports), health, migration, menuGroup(s), iot, predictiveMaintenance (after its service) |
-> | Services helper (`acdeaeffc1ddaed5d`) | the P9-14 services first (calibrationDevices, calibrationRecords, calibrationScheduler, certificate, certificatePdf, eSignature, maintenance, predictiveMaintenance), then the controllers and routes for calibrationDevices (+ reinstate), calibrationRecords, calibrationScheduler, certificate(s), certificatePdf, eSignature, billing, meteredBilling, finance, quota, risk, sop, supplierScorecard, vendor, workflow(s) |
+> | Services helper (`acdeaeffc1ddaed5d`) | the P9-14 services first (calibrationDevices, calibrationRecords, calibrationScheduler, certificate, certificatePdf, eSignature, maintenance, predictiveMaintenance), then the controllers and routes for calibrationDevices (+ reinstate), calibrationRecords, calibrationScheduler, certificate(s), certificatePdf, eSignature, quota, sop, workflow(s) (billing, meteredBilling, finance, risk, supplierScorecard and vendor moved to the P9-22 helper on 2026-10-01) |
+>
+> **Census 2026-10-01 (P9-22 helper, on the coordinator's instruction): every controller and route still `.js` has an owner.** Nothing is left unassigned, so the P9-22 helper takes none.
+> - **Services helper:** `eSignature`, `quota`, `sop` and `workflow`, controller and route each.
+> - **P9-13 helper (11 routes, no controllers left):** `admin`, `auth`, `networkSecurity`, `oidc`, `scim`, `session`, `tenant`, `tenantBackup`, `tenantHierarchy`, `user`, `webauthn`.
+> - **Leaf helper (19 modules):**
+>   - Controller and route: `ai`, `attachment`(s), `audit`, `batchJob`(s), `content`, `dashboard`, `gdpr`, `iot`, `kanban`, `menuGroup`(s), `notification`(s), `predictiveMaintenance`, `reporting`/`reports`, `search`, `storage`, `ticket`(s), `webhook`(s).
+>   - Under `routes/internal/`: `health` and `migration`.
+> - **The whole list (23 controllers, 34 routes):** each one above, and no others.
+>
+> **Claimed 2026-10-01 by the P9-22 helper (`ae031334c6dbf7c15`), assigned by the coordinator, in this order:**
+> 1. **P9-19:** the 13 unblocked middlewares.
+>    - `abac`, `auth`, `dynamicAccess`, `enforceQuota`, `bodyDefault`.
+>    - The schedulers: `attachmentFileSweepScheduler`, `backup`, `calibrationScheduler`, `quarantineSweepScheduler`, `retentionScheduler`, `sessionCleanup`, `tenantLifecycleScheduler`, `webhookDeliveryPurgeScheduler`.
+>    - `auth`, `dynamicAccess` and `abac` under the four gates.
+>    - The DoD items A-07 (the slug union) and `bodyDefault`'s object type.
+> 2. `src/workers/batchJob.worker.js`.
+> 3. The P9-12 lead's five services, released: `redis`, `audit` (four gates, live as `callibrator_app`), `mfa`, `rateLimiter.redis` (the ADR-100 Am. 5 file as baseline) and `emailQueue`.
+> 4. Then `auditLog.middleware` (after `audit.service`) and `webhookDeliveryScheduler.middleware` (after the leaf helper's `webhook.service`, if it agrees).
+>
+> **All four DONE 2026-10-01** (ADR-087 Am. 27, record `MEMORY/records/2026-10-01-p9-19-middlewares-core-services.md`); the claims are released.
+
+> **Claimed 2026-10-01 (round 3) by the P9-22 helper (`ae031334c6dbf7c15`), assigned by the coordinator:**
+> 1. **A-340:** remove `rateLimiter.redis.service#revokeTokenByHash` / `revokeAllUserTokens` (dead), as its own change.
+> 2. **`auditLog.middleware`:** dead in production; removed with its tests.
+> 3. **The last four `.js` services:** `attachment` and `migration` (four gates each), `menuGroup`, `maintenance` (if the services helper is not holding it).
+>    Their controllers and routes are in the leaf helper's census (`menuGroup`, `migration`, `attachment`) and stay there.
+>
+> **All three DONE 2026-10-02** (ADR-087 Am. 29; record `MEMORY/records/2026-10-01-p9-19-middlewares-core-services.md` § Round 3): `src/services/` holds no `.js`; claims released.
+
+> **Round 4 DONE 2026-10-02** (ADR-087 Am. 30; records `2026-10-02-p9-02a-lint-triage.md`, `-p9-05-state-unions.md`, `-p9-06-env-schema.md`): claims released.
+> **Claimed 2026-10-02 (round 4) by the P9-22 helper (`ae031334c6dbf7c15`), assigned by the coordinator:** **P9-02a** (the `no-unused-vars` / `no-console` warnings to 0 or a reasoned allow-list; dead code removed only where tests prove it unused), **P9-05** (the state-machine unions from one source, `switch-exhaustiveness-check`; `MEMORY/specs/P9-05-shared-types.md`), **P9-06 part 2** (the Zod environment schema, fail-listing boot, production-only requirements; boot identity on a valid env).
+
+> **Claimed 2026-10-01 by the services helper (`acdeaeffc1ddaed5d`), assigned by the coordinator: P9-21's non-route files, in this order.**
+> 1. **utils:** `kmsVerify`, `seedMenuGroups`, `session`. `checkMenu.util.js` is left alone: its deletion awaits the owner (A-18).
+> 2. **`src/scripts`** (7 CLIs): `backfillEmbeddings`, `breakGlassMfaReset`, `migrate`, `migrateStorage`, `rotateKeys`, `seedDemo`, `verifySchema` — CLI behaviour, exit codes and output identical, proved by running each with its documented arguments (against a disposable PostgreSQL 18 where it needs one).
+> 3. **`backend/scripts/*.js`** (8): the doc/HTML generators and `rotate-default-credentials`. *(2026-10-01: the 7 generators converted; `rotate-default-credentials.js` never loaded and was deleted — A-344.)*
+> 4. **`src/config`:** `index`, `migrate`, then `migrator` (the frozen manifest names exact; `manifestNames.p923` green); `socket` only after the leaf helper converts `kanban.service`, minding A-52/A-53.
+> 5. **`backend/index.js`** last, with boot identity: `load:check` boot order, a live boot to readiness, and the same mounted route table.
+> Not touched: middlewares and the core services (`redis`, `audit`, `mfa`, `rateLimiter`, `emailQueue`) — the P9-22 helper's. Plants in a scratch copy only (ADR-087 Am. 25 rule 6).
 
 > **P9-12 CONVERTED (2026-09-30, ADR-087 Amendments 13–14).**
 > - **Every module on the card is `.ts`:** jwt.util and the session, webauthn, userPermission, roles, user, auth, apiKey, sso, scim and oidcProvider services, plus oidcJwks.
@@ -846,8 +890,8 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 > - **P9-14 (part):** `iotDevice`, `iot`.
 > - **P9-16 (part):** `sop`.
 > - **P9-17 (part):** `quota`.
-> - **P9-18 (part):** `storage/signing`, `storage/keys`, `storage/config.service`, `quarantineSweep`, `email`, `reporting` (the card's "report"), `content` (then A-297 as its own change), `contentMedia`, `alert`, `notificationChannels`, `webhookDeliveryPurge`, `jobMonitor`, and in the P9-18 round `kms`, `signingKeyWrap`, `keyRotation` (four gates; its SQL moved to `sql()` first as its own change), `scheduledBackup`, `clamAv`, `virusScan`, `health`, `search` (its SQL moved to `sql()`/bind first, as its own change with a fail-before test), `storage/local.driver` (four gates), `rabbitmq` (released by the lead), `batchJob`, `notification` (with `config/socket.d.ts`; the interim `notification.service.d.ts` retired).
-> - **Not converted, with the reason:** `s3.driver`, `storage/index` (A-176 SSRF agent editing); `redis`, `audit`, `mfa`, `rateLimiter.redis`, `emailQueue` (P9-12 lead's `.d.ts` dependencies — ask first); every file another agent had modified.
+> - **P9-18 (part):** `storage/signing`, `storage/keys`, `storage/config.service`, `quarantineSweep`, `email`, `reporting` (the card's "report"), `content` (then A-297 as its own change), `contentMedia`, `alert`, `notificationChannels`, `webhookDeliveryPurge`, `jobMonitor`, and in the P9-18 round `kms`, `signingKeyWrap`, `keyRotation` (four gates; its SQL moved to `sql()` first as its own change), `scheduledBackup`, `clamAv`, `virusScan`, `health`, `search` (its SQL moved to `sql()`/bind first, as its own change with a fail-before test), `storage/local.driver` (four gates), `rabbitmq` (released by the lead), `batchJob`, `notification` (with `config/socket.d.ts`; the interim `notification.service.d.ts` retired), `gdpr` (four gates; A-333 fixed by removal), `storage/s3.driver` (gates a to c; d blocked because no MinIO image was available), `storage/index`, `storageSettings`, `storageMigration`, `attachmentFileSweep` (four gates), `predictiveMaintenance`, `dashboard`, `ai` (SQL move first; four gates), `webhook` (claim SQL move first; four gates), `ticket` (counter SQL move first; four gates), `kanban` (card_seq SQL move first; four gates; three access guards pinned by a new test). P9-18 controllers and routes with code-first `.openapi.ts`: ai, attachments, audit, batchJobs, content, dashboard, gdpr, iot, kanban, menuGroups, notifications, predictiveMaintenance, reports, search, storage, tickets, webhooks, and internal health and migration (controller harness, mounted route table and module text identical, each bitten; live 47/47 over HTTP on PostgreSQL 18 with two tenants; `openapi.json` now 448/448 code-first; A-342 and A-343 recorded).
+> - **Not converted, with the reason:** `redis`, `audit`, `mfa`, `rateLimiter.redis`, `emailQueue` (P9-12 lead's `.d.ts` dependencies — ask first); every file another agent had modified.
 > - **Next:** `predictiveMaintenance` and `tenantUpload` once their other agent is done.
 
 > **NEEDS EDIT (2026-09-23) — the services layer moved under this table.**
@@ -876,7 +920,7 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 | | |
 |---|---|
-| **Status** | **IN PROGRESS (2026-09-29)** — 10 of the 25 in scope are `.ts` (record `MEMORY/records/2026-09-29-p9-19-middlewares-round1.md`) · **Depends on** Stage C, P9-05a · **Size** M |
+| **Status** | **CONVERTED (2026-10-01)** — all 25 in scope are `.ts`; `src/middlewares/` holds no `.js` (round 1: `MEMORY/records/2026-09-29-p9-19-middlewares-round1.md`; round 2: `MEMORY/records/2026-10-01-p9-19-middlewares-core-services.md`, ADR-087 Am. 27). DONE waits on the full gate on a quiet tree · **Depends on** Stage C, P9-05a · **Size** M |
 
 > **Round 1 (2026-09-29, P9-19 helper):** the directory now holds 28 middlewares: 3 were already
 > `.ts` (`activityLog`, `tenantContext` under P9-05a; `validation` under P9-11), which leaves
@@ -899,13 +943,18 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 >   - `bodyDefault` carries another agent's uncommitted change.
 >   - `auditLog` waits for A-41, as the card below says.
 >
+> **Round 2 (2026-10-01, P9-22 helper, ADR-087 Am. 27):** the other 15 converted once their services were TypeScript: `auth`,
+> `dynamicAccess` and `abac` under the four gates (live HTTP 17/17 on PG18), `enforceQuota`, `bodyDefault`,
+> `auditLog` (A-41 is DONE) and the nine schedulers, `webhookDeliveryScheduler` last, with the leaf helper's
+> agreement. Identity 0 different in every module, every module at 100%. Record: `MEMORY/records/2026-10-01-p9-19-middlewares-core-services.md`.
+>
 > **What changed (2026-09-23):** the directory still holds 21 files, but not the same 21.
 > `sessionSecurity.middleware.js` was **deleted** and `bodyDefault.middleware.js` **added**; and
 > P9-05a takes `tenantContext` and `activityLog` out of this card into Stage A, because everything
 > in Stages B and C imports them. **19 files remain here.**
 
 **Definition of Done**
-- [ ] **25** files typed against the P9-05 `Request` augmentation. The count was 19; round 1 above explains why it is now 25. **10 of 25 done** (round 1). The augmentation gained `impersonatorId` and `role.roleLevel` / `role_level` for `denyPlatformAuthoring` and `rbac`, added by the P9-12 lead on request
+- [x] **25** files typed against the P9-05 `Request` augmentation. The count was 19; round 1 above explains why it is now 25. **25 of 25 done** (10 in round 1, 15 in round 2). The augmentation gained `impersonatorId` and `role.roleLevel` / `role_level` for `denyPlatformAuthoring` and `rbac`, added by the P9-12 lead on request
 - [x] Security-critical middlewares converted under the four `tenantContext` gates, evidence in the round-1 record:
   - (a) the watching suites bite on the `.ts`;
   - (b) identity checks over request shapes and roles;
@@ -913,15 +962,15 @@ One card per domain. Each follows the same Definition of Done, stated once here:
   - (d) a live stack.
   - The gates found that no test pinned rbac's "lowest listed level" rule. `tests/middlewares/rbac.lowestBar.p919.test.ts` now does, and it bites on a planted `Math.max`
 - [x] `sessionSecurity.middleware.js` is not in scope: **deleted 2026-09-23** under AUDIT task A-12 as dead code (imported by nothing; its SQL targeted a nonexistent `"Sessions"` table). Nothing to convert
-- [ ] `bodyDefault.middleware.js` (**new 2026-09-23**, A-09) converted with it. It exists because Express 5 leaves `req.body` **undefined** where Express 4 gave `{}`. Under `@types/express` 5 that is `unknown`, so the middleware's guarantee — *every downstream handler sees an object* — is the thing the type system should be told, not a runtime fact the types contradict. Typing it as `Request["body"]` narrowing is the point of the file
-- [ ] `dynamicAccess` resource names typed as the menu-slug union, so `dynamicAccess("AuditLogs", …)` — a slug that does not exist — is a compile error (see AUDIT A-07, still open and still **unverified**: its first checkbox is the verification, and this card cannot type the union until someone has enumerated it)
-- [ ] `auditLog.middleware.js` is **not** converted before A-41 is decided (P6-11). Its `res.on("finish")` registration is the defect; typing it first preserves the shape the fix removes
+- [x] `bodyDefault.middleware.js` (**new 2026-09-23**, A-09) converted with it — **done 2026-10-01:** an assertion signature, `asserts req is DefaultedBodyRequest` (body never `undefined`), pinned at compile time by `bodyDefault.type.p919.test.ts`. It exists because Express 5 leaves `req.body` **undefined** where Express 4 gave `{}`. Under `@types/express` 5 that is `unknown`, so the middleware's guarantee — *every downstream handler sees an object* — is the thing the type system should be told, not a runtime fact the types contradict. Typing it as `Request["body"]` narrowing is the point of the file
+- [x] **Done 2026-10-01:** `menuGroup: SeededMenuSlug | readonly SeededMenuSlug[]` (`constants/seededMenuSlugs.ts`, the 63 seeded slugs, pinned equal to the seed by `seededMenuSlugs.p919.test.ts`). `dynamicAccess` resource names typed as the menu-slug union, so `dynamicAccess("AuditLogs", …)` — a slug that does not exist — is a compile error (see AUDIT A-07, still open and still **unverified**: its first checkbox is the verification, and this card cannot type the union until someone has enumerated it)
+- [x] **Converted 2026-10-01**, after A-41 was DONE and after `audit.service`. It has no production caller (only tests load it); deleting it is not decided here. `auditLog.middleware.js` is **not** converted before A-41 is decided (P6-11). Its `res.on("finish")` registration is the defect; typing it first preserves the shape the fix removes
 
 ### P9-20 — `controllers/`
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)** · **Depends on** P9-19 · **Size** L |
+| **Status** | **IN PROGRESS (2026-10-01)** — warehouse, stock, roles, maintenance and qms controllers converted (P9-22 helper, ADR-097 Am. 3; identity per module); other lanes convert the rest · **Depends on** P9-19 · **Size** L |
 
 > **What changed:** **57** controllers, not 56 — `health.controller.js` is new (A-15).
 
@@ -934,7 +983,7 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)** · **Depends on** P9-20 · **Size** M |
+| **Status** | **IN PROGRESS (2026-10-01)** — warehouse, stock, roles, maintenance and qms routes converted, each with its code-first `.openapi.ts` (ADR-097 Am. 3); vendor, risk, supplierScorecard, finance, billing and meteredBilling likewise (ADR-097 Am. 5); the A-58 gate scan reads `.ts` routes and the dist emit; the route helper (permission gate or `public()`) is NOT built yet · **Depends on** P9-20 · **Size** M |
 
 > **What changed, and one of these is a wrong file path:**
 > **(a)** **55** route files, not 54 — and they are not flat. `routes/api/` holds 53,
@@ -987,7 +1036,7 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 **Definition of Done**
 - [x] a `packages/contracts` workspace (the `packages/*` glob finally matches something) exporting request ~~and response~~ schemas — **request schemas for the first slice; response schemas are the next step** (below)
-- [ ] backend validators import from it; frontend `api/services/*` infer types from it — **40 of 42 validator modules** (all but `networkSecurity` and `admin`, which stay backend-only on purpose: ADR-097 Am. 2) plus `fields`, and the envelope and three constant sets are canonical here (ADR-097 Am. 1). **Frontend (the coordinator ruled 2026-10-01, ADR-097 Am. 1 → ADR-103 item 11):** a service's canonical request types are the generated OpenAPI `paths` types once its route is code-first. `z.input` is the interim form (8 services), and no new service is converted to it
+- [ ] backend validators import from it; frontend `api/services/*` infer types from it — **40 of 42 validator modules** (all but `networkSecurity` and `admin`, which stay backend-only on purpose: ADR-097 Am. 2) plus `fields`, and the envelope and three constant sets are canonical here (ADR-097 Am. 1). **Frontend (the coordinator ruled 2026-10-01, ADR-097 Am. 1 → ADR-103 item 11):** a service's canonical request types are the generated OpenAPI `paths` types once its route is code-first. `z.input` was the interim form (8 services); since 2026-10-02 none is left — every service is on the generated types (P9-25 item 11)
 - [ ] hand-written duplicates in `frontend/src/types` deleted as each service moves — the slice's duplicates lived in the service files (`VendorCreateInput`, `VendorUpdateInput`, `VendorQualifyInput`, `DeviceCreateInput`, `DeviceUpdateInput`, the status/type unions) and are replaced; `frontend/src/types/index.ts` held none of them
 
 **Plan for the remaining domains** (one PR per domain or small group, in this order: the frontend services that already exist first, then the rest)
@@ -1037,13 +1086,13 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 **Definition of Done**
 - [ ] ~~ratchet at zero; `allowJs: false`; the ratchet script and baseline removed~~ *(superseded by ADR-109 §5)*
-- [ ] **no non-test `.js` file** under `backend/` in the ratchet's counted set (`index.js`, `src/**` outside `src/tests/`, `scripts/**`); the ratchet list holds test files only
-- [ ] `allowJs: false` for **source**: `tsconfig.build.json` already has it (ADR-087 item 3); the base `tsconfig.json` keeps `allowJs` **only** so `typecheck` can resolve `.js` tests importing `.ts` source — the reason is written beside the flag, and a guard fails if a non-test `.js` file appears
-- [ ] the ratchet script and baseline **kept** (they are what makes P9-26 shrink-only), not removed
-- [ ] unused dependencies removed: `joi`, `aedes`, `aedes-server-factory`, `nodemon`, the Bun build path (A-18)
-- [ ] the target-vs-current banner removed from every backend document, each checked against the code as it is removed
+- [ ] *(2026-10-02: one left — `utils/checkMenu.util.js`, dead, its deletion awaiting the owner's OK (A-18); `noSourceJs.p924.guard` pins it)* **no non-test `.js` file** under `backend/` in the ratchet's counted set (`index.js`, `src/**` outside `src/tests/`, `scripts/**`); the ratchet list holds test files only
+- [x] *(2026-10-02, P9-21 helper: the reason is written beside the flag in `backend/tsconfig.json`; `noSourceJs.p924.guard.test.ts` fails on a non-test `.js` outside its PENDING list, now only `utils/checkMenu.util.js`)* `allowJs: false` for **source**: `tsconfig.build.json` already has it (ADR-087 item 3); the base `tsconfig.json` keeps `allowJs` **only** so `typecheck` can resolve `.js` tests importing `.ts` source — the reason is written beside the flag, and a guard fails if a non-test `.js` file appears
+- [x] *(kept: `npm run ratchet` holds 695 `.js` files — the 694 legacy test-tree files and `checkMenu.util.js` — shrink-only)* the ratchet script and baseline **kept** (they are what makes P9-26 shrink-only), not removed
+- [x] unused dependencies removed: `joi`, `aedes`, `aedes-server-factory`, `nodemon`, the Bun build path (A-18) *(2026-10-02, P9-21 helper: none is declared, locked or installed; `build:bun` already gone; the stray `backend/bun.lock` deleted; `npm audit` 0. The frontend's opt-in `next-bun-compile` binary is a product path (PRD N7), not unused, and is **kept by decision** (main session, 2026-10-02). Record `2026-10-01-p9-21-non-route-files.md`)*
+- [x] *(2026-10-02, P9-21 helper: `docs/BACKEND/00`–`11`, `ARCHITECTURE/03`, `ENGINEERING` README, 00, 01, 04, 05 (its as-built notes rewritten to the TypeScript/Zod code, and the route/validator/SQL templates corrected to what mounts), `00-TASK-CONVENTIONS` § Build. Each banner now states the as-built TypeScript, the one remaining source `.js`, and the 694 legacy `.js` test-tree files (P9-26). In the same documents, 230 `.js` file references were renamed to the `.ts` module that exists (tests, migration names, `dist/index.js`, `checkMenu.util.js` left). `CLAUDE.md`, `AGENTS.md` and the root README are the main session's, at close)* the target-vs-current banner removed from every backend document, each checked against the code as it is removed
 - [ ] `CLAUDE.md`, `AGENTS.md`, `docs/ENGINEERING/00-CODING-CONTEXT.md` state TypeScript as **fact**
-- [ ] the four places that still describe the backend as untypeable are corrected — **they cite ADR-030, which ADR-038 superseded**: the root `tsconfig.json` comment, the `Makefile: typecheck` target comment, `00-TASK-CONVENTIONS.md` § Build, and `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`'s target banner. Three of the four are corrected earlier, under P9-01 and P9-01a; this is the sweep that confirms none was missed
+- [x] *(2026-10-02: the four named places cite no ADR-030; five more live documents corrected — see the P9-21 record)* the four places that still describe the backend as untypeable are corrected — **they cite ADR-030, which ADR-038 superseded**: the root `tsconfig.json` comment, the `Makefile: typecheck` target comment, `00-TASK-CONVENTIONS.md` § Build, and `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`'s target banner. Three of the four are corrected earlier, under P9-01 and P9-01a; this is the sweep that confirms none was missed
 - [ ] `CLAUDE.md`'s counts are re-derived rather than copied: it says **53 route modules** and **342 test files**; the tree on 2026-09-23 has **55** route files and **366** test files
 - [ ] ADR-038 gets a completion note; `MEMORY/records/P9-24.md` written
 
@@ -1089,7 +1138,7 @@ of the plan.
 **Definition of Done — the card (open)**
 - [ ] every route module moved to `*.openapi.ts` as P9-20/P9-21 convert it; JSDoc, `docs/components.js`, `docs/tags.js` and `swagger-jsdoc` removed with the last one
 - [ ] `openapiRoutes.undocumented.json`, P6-08's `KNOWN_DRIFT` and `openapi.spectral-baseline.json` are empty
-- [ ] frontend `api/services/*` on `typedApi`, module by module, each with tests
+- [x] frontend `api/services/*` on `typedApi`, module by module, each with tests — **all 54 services, 2026-10-02** (item 11): 53 send their JSON calls through `typedApi` with the contract's types; `health` takes its types from `paths` and stays on `api` for `validateStatus`. What stays on `api`, by design: multipart uploads, blob/text downloads, and the Next-owned auth routes (`login`, `logout`, `logout-all`, `refresh`, `passkey/verify`), whose answer is the Next route's. No service imports a `z.input` type any more (the 8 interim ones moved). Contract fixes doc-only; real mismatches A-349…A-363. Record: `MEMORY/records/2026-09-30-p9-stage-c-leaf-services.md` § P9-25 item 11
 - [ ] oasdiff has run in CI against a `main` that has an `openapi.json` (P7-01)
 - [ ] a live check of `/api/v1/docs` through the frontend proxy as a signed-in tenant admin, in a browser
 

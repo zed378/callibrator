@@ -2,7 +2,7 @@
  * Tests for KMS (Key Management Service)
  */
 
-const crypto = require("crypto");
+require("crypto");
 
 // Mock crypto before importing the service
 let encryptCallCount = 0;
@@ -59,7 +59,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 
 const kmsService = require("../../services/kms.service");
-const { AppError } = require("../../utils/appError.util");
+require("../../utils/appError.util");
 
 describe("kmsService", () => {
   beforeEach(() => {
@@ -187,12 +187,11 @@ describe("kmsService", () => {
 
     it("should throw AppError when DEK decryption fails", () => {
       // Make createDecipheriv throw during DEK decryption (first call)
-      const originalCreateDecipheriv = require("crypto").createDecipheriv;
       let throwOnFirstCall = true;
 
       jest
         .spyOn(require("crypto"), "createDecipheriv")
-        .mockImplementation(function (...args) {
+        .mockImplementation((..._args) => {
           if (throwOnFirstCall) {
             throwOnFirstCall = false;
             const err = new Error("Invalid key");

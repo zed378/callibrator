@@ -47,13 +47,12 @@ jest.mock("../../utils/response.util", () => ({
 }));
 
 const authController = require("../../controllers/auth.controller");
-const { authMiddleware } = require("../../middlewares/auth.middleware");
+require("../../middlewares/auth.middleware");
 const authService = require("../../services/auth.service");
 const {
   success,
   error,
   login,
-  badRequest,
 } = require("../../utils/response.util");
 
 describe("authController", () => {

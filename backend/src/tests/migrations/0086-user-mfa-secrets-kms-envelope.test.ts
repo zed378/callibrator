@@ -71,7 +71,7 @@ const namedValues = (s: string, options: QueryOptions): Replacements => {
   return { id: b[0] as string };
 };
 
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0086-user-mfa-secrets-kms-envelope.ts"), "utf8");
 
 const SEED = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";

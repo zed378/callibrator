@@ -1,59 +1,30 @@
-import { api } from "../client";
+// src/api/services/risk.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/risk.openapi.ts). The names are unchanged.
+import { typedApi, unwrap, type JsonBody, type Op, type components } from "../typed";
 
 // ---------- Types ----------
 
-export type RiskStatus = "OPEN" | "MITIGATED" | "CLOSED" | "ACCEPTED";
+type ById = "/api/v1/risk/{id}";
+type UpdateBody = JsonBody<Op<ById, "put">>;
+type CreateBody = JsonBody<Op<"/api/v1/risk", "post">>;
 
-export type RiskCategory =
-  | "OPERATIONAL"
-  | "FINANCIAL"
-  | "COMPLIANCE"
-  | "STRATEGIC"
-  | "SAFETY";
+export type RiskStatus = NonNullable<UpdateBody["status"]>;
+export type RiskCategory = NonNullable<CreateBody["category"]>;
 
-export interface Risk {
-  id: string;
-  tenantId: string;
-  title: string;
-  description?: string;
-  category: string;
-  /** 1-5 */
-  severity: number;
-  /** 1-5 */
-  likelihood: number;
-  /** Virtual: severity * likelihood */
-  rpn: number;
-  status: string;
-  mitigationPlan?: string;
-  identifiedBy?: string;
-  assignedTo?: string;
-  dueDate?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+/** A risk row; a list or single read also carries its people (RiskWithPeople). */
+export type Risk = components["schemas"]["Risk"];
+export type RiskWithPeople = components["schemas"]["RiskWithPeople"];
 
-export interface RiskCreateInput {
-  title: string;
-  description?: string;
-  category?: RiskCategory | string;
-  severity?: number;
-  likelihood?: number;
-  status?: RiskStatus | string;
-  mitigationPlan?: string;
-  assignedTo?: string;
-  dueDate?: string;
-}
+/**
+ * What the risk form sends on either write: the update body (the create fields
+ * and `status`). On create, `status` is server-owned (a risk starts OPEN) and
+ * the validator drops it — the form sends it as built.
+ */
+export type RiskCreateInput = UpdateBody & { title: string };
 
-export type RiskUpdateInput = Partial<RiskCreateInput>;
-
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-  meta?: Partial<ListMeta>;
-}
+export type RiskUpdateInput = UpdateBody;
 
 /** F-19: `meta` of a paged list — a top-level sibling of `data` (house envelope). */
 export interface ListMeta {
@@ -72,21 +43,19 @@ export interface ListPage<T> {
 
 // ---------- Service ----------
 
+const byId = (id: string) => ({ params: { path: { id } } });
+
 export const riskService = {
   /**
    * List risks for the current tenant. GET /api/v1/risk
    */
   list: async (params?: {
-    status?: RiskStatus | string;
-    category?: RiskCategory | string;
+    status?: string;
+    category?: string;
     page?: number;
     limit?: number;
-  }): Promise<Risk[]> => {
-    const response = await api.get<BackendResponse<Risk[]>>("/api/v1/risk", {
-      params,
-    });
-    return response.data;
-  },
+  }): Promise<RiskWithPeople[]> =>
+    (await typedApi.GET("/api/v1/risk", { params: { query: params } }).then(unwrap)).data,
 
   /**
    * One page of risks with the backend's `meta` (F-19). The backend's default
@@ -94,14 +63,12 @@ export const riskService = {
    * first 10.
    */
   listPage: async (params: {
-    status?: RiskStatus | string;
-    category?: RiskCategory | string;
+    status?: string;
+    category?: string;
     page: number;
     limit: number;
-  }): Promise<ListPage<Risk>> => {
-    const response = await api.get<BackendResponse<Risk[]>>("/api/v1/risk", {
-      params,
-    });
+  }): Promise<ListPage<RiskWithPeople>> => {
+    const response = await typedApi.GET("/api/v1/risk", { params: { query: params } }).then(unwrap);
     const rows = Array.isArray(response.data) ? response.data : [];
     const total = response.meta?.total ?? rows.length;
     const limit = response.meta?.limit ?? params.limit;
@@ -119,40 +86,27 @@ export const riskService = {
   /**
    * Get a single risk. GET /api/v1/risk/:id
    */
-  getById: async (id: string): Promise<Risk> => {
-    const response = await api.get<BackendResponse<Risk>>(
-      `/api/v1/risk/${id}`,
-    );
-    return response.data;
-  },
+  getById: async (id: string): Promise<RiskWithPeople> =>
+    (await typedApi.GET("/api/v1/risk/{id}", byId(id)).then(unwrap)).data,
 
   /**
    * Create a risk. POST /api/v1/risk
    */
-  create: async (data: RiskCreateInput): Promise<Risk> => {
-    const response = await api.post<BackendResponse<Risk>>(
-      "/api/v1/risk",
-      data,
-    );
-    return response.data;
-  },
+  create: async (data: RiskCreateInput): Promise<Risk> =>
+    // As built: `status` rides along (see RiskCreateInput); the create body does not read it.
+    (await typedApi.POST("/api/v1/risk", { body: data as CreateBody }).then(unwrap)).data,
 
   /**
    * Update a risk. PUT /api/v1/risk/:id
    */
-  update: async (id: string, data: RiskUpdateInput): Promise<Risk> => {
-    const response = await api.put<BackendResponse<Risk>>(
-      `/api/v1/risk/${id}`,
-      data,
-    );
-    return response.data;
-  },
+  update: async (id: string, data: RiskUpdateInput): Promise<Risk> =>
+    (await typedApi.PUT("/api/v1/risk/{id}", { ...byId(id), body: data }).then(unwrap)).data,
 
   /**
    * Delete a risk. DELETE /api/v1/risk/:id
    */
   delete: async (id: string): Promise<void> => {
-    await api.delete(`/api/v1/risk/${id}`);
+    await typedApi.DELETE("/api/v1/risk/{id}", byId(id));
   },
 };
 

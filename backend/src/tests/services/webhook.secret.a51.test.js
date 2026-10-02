@@ -69,7 +69,7 @@ const deliverOnce = async (webhook) => {
   Webhook.findOne.mockResolvedValue({ isActive: true, ...webhook });
   WebhookDelivery.create.mockResolvedValue(delivery);
   WebhookDelivery.findOne.mockResolvedValue(delivery);
-  db.query.mockResolvedValueOnce([[{ id: "d1", tenantId: TENANT }]]); // the claim
+  db.query.mockResolvedValueOnce([{ id: "d1", tenantId: TENANT }]); // the claim (P9-18: sql() answers the rows directly)
   global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 });
   await webhookService.emitEvent(TENANT, "test", {});
   for (let i = 0; i < 5 && !global.fetch.mock.calls.length; i++) {

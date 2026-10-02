@@ -129,7 +129,7 @@ The audit row is written in the **same transaction** as the action it describes.
 
 An audit row that survives a rolled-back action records something that did not happen. An action that commits without its audit row is unattributable. The transaction is what makes both impossible.
 
-This means `auditLog.middleware.js` and the service transaction have to cooperate — the middleware cannot open its own connection and write independently.
+This means the audit write belongs to the service transaction — `services/audit.service.ts#logAction`, called with the mutation's transaction; nothing opens its own connection and writes independently (ADR-087 Am. 27, round 3: the after-response `auditLog.middleware` was removed on 2026-10-01; no route had mounted it).
 
 **As built (2026-09-24, A-41):** this holds for the **25 mutations** listed in
 [`MEMORY/specs/A-41-audit-inside-transaction.md`](../../MEMORY/specs/A-41-audit-inside-transaction.md):
@@ -140,7 +140,7 @@ and a failed audit write rolls the change back.
 **As built (2026-09-28, P6-11, ADR-085):** the set has since grown to 38 files; the current list is the
 addendum to that spec. Every service call passes the transaction, except two with a stated reason, and
 **no route mounts `auditLog.middleware.js` any more** — it has no caller, and nothing
-compliance-bearing depends on it. Pinned by `src/tests/guards/auditInTransaction.p611.test.js`.
+compliance-bearing depends on it. **Removed 2026-10-01** (ADR-087 Am. 27, round 3); the guard still fails a route that mounts an after-response `recordAudit`/`withAudit`. Pinned by `src/tests/guards/auditInTransaction.p611.test.js`.
 Mutations in the services the addendum lists as not covered write **no** audit row at all.
 
 ## Query Surface

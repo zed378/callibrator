@@ -1,4 +1,5 @@
 import { scimService, emailFilter, activeFilter } from "./scim.service";
+import axios from "axios";
 import { api } from "../client";
 
 jest.mock("../client", () => ({
@@ -39,6 +40,14 @@ describe("filter helpers", () => {
   });
 });
 
+describe("the list query on the wire", () => {
+  it("String() startIndex/count build the same URL as the numbers did (the published query is strings)", () => {
+    // The real axios serializer (the client sets no paramsSerializer).
+    const uri = (params: Record<string, unknown>) => axios.getUri({ url: "/api/v1/scim/v2/Users", params });
+    expect(uri({ startIndex: "26", count: "25", filter: undefined })).toBe(uri({ startIndex: 26, count: 25, filter: undefined }));
+  });
+});
+
 describe("scimService", () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -49,7 +58,7 @@ describe("scimService", () => {
       );
       const res = await scimService.getUsers({ startIndex: 1, count: 25 });
       expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/Users`, {
-        params: { startIndex: 1, count: 25 },
+        params: { startIndex: "1", count: "25" },
       });
       expect(res.Resources).toHaveLength(1);
     });
@@ -132,7 +141,7 @@ describe("scimService", () => {
       );
       const res = await scimService.getGroups({ count: 10 });
       expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/Groups`, {
-        params: { count: 10 },
+        params: { count: "10" },
       });
       expect(res.Resources[0].displayName).toBe("Engineers");
     });

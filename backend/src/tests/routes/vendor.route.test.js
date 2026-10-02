@@ -3,7 +3,7 @@
  *
  * Tests the Vendor route registrations and middleware chain.
  */
-const vendorRoutes = require("../../routes/api/vendor.route.js");
+const vendorRoutes = require("../../routes/api/vendor.route");
 
 describe("Vendor Routes", () => {
   it("should export an Express router", () => {

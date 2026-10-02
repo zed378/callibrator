@@ -65,7 +65,8 @@ beforeEach(() => {
   // only raw statement on this path, answered here deliberately.
   mdb.onQuery((sql) => {
     if (sql.includes("ticket_counters")) {
-      return [[{ seq: 2 }], 1];
+      // P9-18: the counter is sent through sql(), which answers the rows directly.
+      return [{ seq: 2 }];
     }
     throw new Error(`unexpected raw SQL: ${sql}`);
   });

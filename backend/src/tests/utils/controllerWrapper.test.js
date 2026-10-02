@@ -2,7 +2,7 @@ const { asyncHandler, asyncHandlerWithMapping } = require("../../utils/controlle
 
 describe("asyncHandler", () => {
   it("should catch async errors and pass to express error handler", async () => {
-    const mockFn = asyncHandler(async (req, res) => {
+    const mockFn = asyncHandler(async (_req, _res) => {
       throw new Error("Test error");
     });
 
@@ -22,7 +22,7 @@ describe("asyncHandler", () => {
   });
 
   it("should pass successful response to next normally", async () => {
-    const mockFn = asyncHandler(async (req, res) => {
+    const mockFn = asyncHandler(async (_req, _res) => {
       return { success: true };
     });
 
@@ -36,7 +36,7 @@ describe("asyncHandler", () => {
   });
 
   it("should handle sync errors", async () => {
-    const mockFn = asyncHandler(async (req, res) => {
+    const mockFn = asyncHandler(async (_req, _res) => {
       throw new Error("Sync error");
     });
 
@@ -55,7 +55,7 @@ describe("asyncHandler", () => {
   });
 
   it("should handle successful async operations", async () => {
-    const mockFn = asyncHandler(async (req, res) => {
+    const mockFn = asyncHandler(async (_req, _res) => {
       return { data: "test" };
     });
 
@@ -180,7 +180,7 @@ describe("asyncHandlerWithMapping", () => {
   });
 
   it("should handle error with missing message and stack, and catch response errors when next is not a function", async () => {
-    const mockFn = asyncHandler(async (req, res) => {
+    const mockFn = asyncHandler(async (_req, _res) => {
       const err = new Error();
       delete err.message;
       delete err.stack;

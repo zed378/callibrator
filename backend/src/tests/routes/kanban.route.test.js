@@ -3,7 +3,7 @@
  *
  * Tests the Kanban route registrations and middleware chain.
  */
-const kanbanRoutes = require("../../routes/api/kanban.route.js");
+const kanbanRoutes = require("../../routes/api/kanban.route");
 
 describe("Kanban Routes", () => {
   it("should export an Express router", () => {

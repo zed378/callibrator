@@ -1,0 +1,126 @@
+# Callibrator — the disposable stack the live E2E and the browser suites run on
+#
+#   docker compose -p <name> --env-file <e2e.env> \
+#     -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
+#   ... run the suites ...
+#   docker compose -p <name> --env-file <e2e.env> \
+#     -f docker-compose.yml -f docker-compose.e2e.yml down -v
+#
+# The recipe P10-13 ran by hand (MEMORY/records/2026-09-30-p10-13-e2e.md),
+# committed so CI runs the same stack (.github/workflows/ci.yml, job
+# `browser-a11y`). What it changes from the base file:
+#   - one env file, named by E2E_ENV_FILE (never deploy/compose/.env, which is a
+#     deployment's): `--env-file` gives the interpolated values, and every
+#     service that read `.env` reads this file instead;
+#   - NAMED volumes, so `down -v` removes every byte (the base bind-mounts
+#     ./volumes);
+#   - no ClamAV and no nginx (profile `off`): uploads unscanned
+#     (VIRUS_SCAN_PROVIDER=none), the suites talk to the services directly;
+#   - Mailpit as the SMTP sink: the invitation link and the reset code exist
+#     only in an email (MAIL_HOST=mailpit, MAIL_PORT=1025 in the env file);
+#   - every port on 127.0.0.1;
+#   - `host.docker.internal` resolves inside the backend on Linux too (the
+#     in-browser SSO check's mock IdP runs on the host; it is reachable only
+#     when E2E_NODE_ENV is not production and SSRF_DEV_ALLOW_HOSTS names it —
+#     a production backend refuses a private or http identity provider).
+#
+# Production mode by default (E2E_NODE_ENV=production): the stack the release
+# runs. The frontend's NEXT_PUBLIC_* values are BUILD arguments.
+
+x-e2e-env-file: &e2e-env-file
+  env_file: !override
+    - ${E2E_ENV_FILE:?set E2E_ENV_FILE to the stack's env file}
+
+services:
+  volume-init:
+    volumes: !override
+      - uploads:/v/uploads
+      - backup:/v/backup
+      - log:/v/log
+      - storage:/v/storage
+      - wellknown:/v/well-known
+
+  backend:
+    <<: *e2e-env-file
+    environment:
+      NODE_ENV: ${E2E_NODE_ENV:-production}
+      VIRUS_SCAN_PROVIDER: none
+      SSRF_DEV_ALLOW_HOSTS: ${SSRF_DEV_ALLOW_HOSTS:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:${E2E_BACKEND_PORT:-27130}:3000"
+    volumes: !override
+      - uploads:/app/uploads
+      - backup:/app/backup
+      - log:/app/log
+      - storage:/app/storage
+      - wellknown:/app/.well-known
+    depends_on: !override
+      volume-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    healthcheck:
+      interval: 10s
+      retries: 12
+      start_period: 60s
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:${E2E_BACKEND_PORT:-27130}
+        NEXT_PUBLIC_SITE_URL: http://localhost:${E2E_FRONTEND_PORT:-27131}
+    environment:
+      NODE_ENV: ${E2E_NODE_ENV:-production}
+      # Q-42 (ADR-113): the intake opens only with a published notice; the
+      # backend gets the same value from scripts/ci/e2e-env.sh.
+      PRIVACY_NOTICE_URL: ${E2E_PRIVACY_NOTICE_URL:-https://example.com/privacy-notice}
+    ports:
+      - "127.0.0.1:${E2E_FRONTEND_PORT:-27131}:3000"
+
+  postgres:
+    <<: *e2e-env-file
+    volumes: !override
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    volumes: !override
+      - redisdata:/data
+
+  rabbitmq:
+    volumes: !override
+      - rmqdata:/var/lib/rabbitmq
+
+  clamav:
+    profiles: [off]
+
+  nginx:
+    profiles: [off]
+
+  mailpit:
+    # P7-07: digest-pinned (v1.27, 2026-10-01).
+    image: axllent/mailpit:v1.27@sha256:e22dce5b36f93c77082e204a3942fb6b283b7896e057458400a4c88344c3df68
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+      MP_MAX_MESSAGES: "5000"
+    ports:
+      - "127.0.0.1:${E2E_MAILPIT_PORT:-27132}:8025"
+
+volumes:
+  uploads: {}
+  backup: {}
+  log: {}
+  storage: {}
+  wellknown: {}
+  pgdata: {}
+  redisdata: {}
+  rmqdata: {}

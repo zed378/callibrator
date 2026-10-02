@@ -293,7 +293,7 @@ class IotService {
   }
 
   async ingestInTenant(tenantId: TenantId, deviceId: string, payload: ReadingPayload): Promise<IngestResult> {
-    // See iot.controller.js: `.unscoped()` drops the soft-delete predicate, so
+    // See iot.controller.ts: `.unscoped()` drops the soft-delete predicate, so
     // it is carried explicitly. A decommissioned device must not ingest.
     const device = await CalibrationDevice.unscoped().findOne({
       where: { id: deviceId, tenantId, iotEnabled: true, isDeleted: false },

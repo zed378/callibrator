@@ -362,7 +362,7 @@ describe("userPermission.service", () => {
     });
 
     it("should throw error when user not found", async () => {
-      const { User, MenuGroup } = require("../../models");
+      const { User } = require("../../models");
       User.findByPk.mockResolvedValue(null);
 
       await expect(
@@ -462,7 +462,7 @@ describe("userPermission.service", () => {
 
       await setUserPermission("user-1", "menu-1", "read");
 
-      const { del, cacheKeys } = require("../../services/redis.service");
+      const { del } = require("../../services/redis.service");
       expect(del).toHaveBeenCalledWith("user:perms:user-1");
     });
   });
@@ -503,7 +503,7 @@ describe("userPermission.service", () => {
       const { get, set } = require("../../services/redis.service");
       get.mockResolvedValueOnce(null);
 
-      const { UserMenuPermission, MenuGroup } = require("../../models");
+      const { UserMenuPermission } = require("../../models");
       UserMenuPermission.findAll.mockResolvedValue([
         {
           menu: { name: "dashboard" },

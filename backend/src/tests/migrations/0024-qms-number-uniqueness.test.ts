@@ -37,7 +37,7 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0024-qms-number-uniqueness.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 // P9-16: the service is TypeScript (re-keyed, ADR-087).
 const SERVICE = fs.readFileSync(path.join(__dirname, "../../services/qms.service.ts"), "utf8");
 

@@ -186,10 +186,12 @@ beforeEach(() => {
   // ticket counter. Both name their tenant (asserted by their own suites).
   mdb.onQuery((sql) => {
     if (sql.includes("card_seq")) {
-      return [[{ card_seq: 3 }], 1];
+      // P9-18: sent through sql(), which answers the rows directly.
+      return [{ card_seq: 3 }];
     }
     if (sql.includes("ticket_counters")) {
-      return [[{ seq: 2 }], 1];
+      // P9-18: the counter is sent through sql(), which answers the rows directly.
+      return [{ seq: 2 }];
     }
     throw new Error(`unexpected raw SQL: ${sql}`);
   });

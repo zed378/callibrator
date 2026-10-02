@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /**
  * The post editor (new and edit) against the content API
- * (content.controller.js / content.service.js):
+ * (content.controller.ts / content.service.js):
  *  - GET  /api/v1/content/categories        → rows in `data`
  *  - GET  /api/v1/content/slug-check        → `data: { slug, available, suggestion }`
  *  - POST /api/v1/content/media             → `data: { url, fileName, mimeType, size }`

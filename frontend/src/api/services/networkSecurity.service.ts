@@ -1,4 +1,4 @@
-import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op } from "../typed";
 
 /**
  * Network Security — tenant IP allowlisting and geofencing.
@@ -13,54 +13,28 @@ import { api } from "../client";
  */
 
 // ---------- Types ----------
+// P9-25 (ADR-103 item 11): from the contract
+// (backend/src/routes/api/networkSecurity.openapi.ts); the names are unchanged.
 
-export interface Geofence {
-  latitude: number;
-  longitude: number;
-  /** Defaults to 50 km server-side when omitted on write. */
-  radiusKm: number;
-}
+type NS = "/api/v1/network-security";
+type Geo = `${NS}/geofence`;
+type Evaluate = `${NS}/evaluate-login`;
 
-export interface IpAllowlistCheck {
-  allowed: boolean;
-  /** "no_restrictions" when the allowlist is empty. */
-  reason?: string;
-  ip?: string;
-  allowlist?: string[];
-}
+/** Defaults to 50 km server-side when `radiusKm` is omitted on write. */
+export type Geofence = NonNullable<DataOf<Op<Geo, "get">>["geofence"]>;
 
-export interface GeofenceCheck {
-  allowed: boolean;
-  /** "no_geofence" when no geofence is configured. */
-  reason?: string;
-  distanceKm?: number;
-  radiusKm?: number;
-}
-
-export interface LoginEvaluation {
-  allowed: boolean;
-  ip: IpAllowlistCheck;
-  geofence: GeofenceCheck;
-  /** True when either check failed — the caller should force step-up auth. */
-  requiresStepUp: boolean;
-}
-
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+export type LoginEvaluation = DataOf<Op<Evaluate, "post">>;
+/** `reason: "no_restrictions"` when the allowlist is empty. */
+export type IpAllowlistCheck = LoginEvaluation["ip"];
+/** `reason: "no_geofence"` when no geofence is configured. */
+export type GeofenceCheck = LoginEvaluation["geofence"];
 
 // ---------- Service ----------
 
 export const networkSecurityService = {
   /** GET /api/v1/network-security/ip-allowlist — [] means unrestricted. */
   getIpAllowlist: async (): Promise<string[]> => {
-    const response = await api.get<BackendResponse<{ allowlist: string[] }>>(
-      "/api/v1/network-security/ip-allowlist",
-    );
+    const response = await typedApi.GET("/api/v1/network-security/ip-allowlist").then(unwrap);
     return response.data.allowlist ?? [];
   },
 
@@ -68,20 +42,12 @@ export const networkSecurityService = {
    * PUT /api/v1/network-security/ip-allowlist — super admin only.
    * Replaces the whole list. An empty array removes all IP restrictions.
    */
-  setIpAllowlist: async (
-    cidrs: string[],
-  ): Promise<{ tenantId: string; allowlist: string[] }> => {
-    const response = await api.put<
-      BackendResponse<{ tenantId: string; allowlist: string[] }>
-    >("/api/v1/network-security/ip-allowlist", { cidrs });
-    return response.data;
-  },
+  setIpAllowlist: async (cidrs: string[]): Promise<DataOf<Op<`${NS}/ip-allowlist`, "put">>> =>
+    (await typedApi.PUT("/api/v1/network-security/ip-allowlist", { body: { cidrs } }).then(unwrap)).data,
 
   /** GET /api/v1/network-security/geofence — null when not configured. */
   getGeofence: async (): Promise<Geofence | null> => {
-    const response = await api.get<
-      BackendResponse<{ geofence: Geofence | null }>
-    >("/api/v1/network-security/geofence");
+    const response = await typedApi.GET("/api/v1/network-security/geofence").then(unwrap);
     return response.data.geofence ?? null;
   },
 
@@ -96,34 +62,23 @@ export const networkSecurityService = {
     longitude: number,
     radiusKm?: number,
     currentLocation?: { latitude: number; longitude: number },
-  ): Promise<{ tenantId: string; geofence: Geofence }> => {
-    const body: Record<string, number | { latitude: number; longitude: number }> = { latitude, longitude };
+  ): Promise<DataOf<Op<Geo, "put">>> => {
+    const body: JsonBody<Op<Geo, "put">> = { latitude, longitude };
     // Omit rather than send undefined: the server applies its 50km default.
     if (radiusKm !== undefined) body.radiusKm = radiusKm;
     if (currentLocation !== undefined) body.currentLocation = currentLocation;
-    const response = await api.put<
-      BackendResponse<{ tenantId: string; geofence: Geofence }>
-    >("/api/v1/network-security/geofence", body);
-    return response.data;
+    return (await typedApi.PUT("/api/v1/network-security/geofence", { body }).then(unwrap)).data;
   },
 
   /**
    * POST /api/v1/network-security/evaluate-login
    * Dry-run both checks for a candidate IP/location.
    */
-  evaluateLogin: async (
-    ip: string,
-    latitude?: number,
-    longitude?: number,
-  ): Promise<LoginEvaluation> => {
-    const body: Record<string, string | number> = { ip };
+  evaluateLogin: async (ip: string, latitude?: number, longitude?: number): Promise<LoginEvaluation> => {
+    const body: JsonBody<Op<Evaluate, "post">> = { ip };
     if (latitude !== undefined) body.latitude = latitude;
     if (longitude !== undefined) body.longitude = longitude;
-    const response = await api.post<BackendResponse<LoginEvaluation>>(
-      "/api/v1/network-security/evaluate-login",
-      body,
-    );
-    return response.data;
+    return (await typedApi.POST("/api/v1/network-security/evaluate-login", { body }).then(unwrap)).data;
   },
 };
 

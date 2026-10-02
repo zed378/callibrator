@@ -61,7 +61,7 @@ export const MENU_PAGE_GATES: Readonly<Record<string, readonly PageGate[]>> = Ob
   tenants: [menu("management")],
   // roles.route.js — GET /roles: rbac(["SUPERADMIN"])
   roles: [SUPER_ADMIN_ONLY],
-  // menuGroups.route.js — GET /menu-groups/menu-groups/admin: rbac(["SUPERADMIN"])
+  // menuGroups.route.ts — GET /menu-groups/menu-groups/admin: rbac(["SUPERADMIN"])
   "menu-groups": [SUPER_ADMIN_ONLY],
   // roles.route.js — the role × menu matrix: rbac(["SUPERADMIN"])
   permissions: [SUPER_ADMIN_ONLY],
@@ -71,15 +71,15 @@ export const MENU_PAGE_GATES: Readonly<Record<string, readonly PageGate[]>> = Ob
   sessions: [SUPER_ADMIN_ONLY],
   // apiKeys.route.js — adminOnly: rbac([ROLE_NAMES.TENANT_ADMIN])
   "api-keys": [TENANT_ADMIN_LEVEL],
-  // webhooks.route.js — webhookAdmin: rbac([ROLE_NAMES.TENANT_ADMIN])
+  // webhooks.route.ts — webhookAdmin: rbac([ROLE_NAMES.TENANT_ADMIN])
   webhooks: [TENANT_ADMIN_LEVEL],
-  // storage.route.js — storageAdmin: rbac([ROLE_NAMES.TENANT_ADMIN])
+  // storage.route.ts — storageAdmin: rbac([ROLE_NAMES.TENANT_ADMIN])
   storage: [TENANT_ADMIN_LEVEL],
-  // attachments.route.js — GET /attachments: dynamicAccess(MENU_SLUGS.EQUIPMENT, "read")
+  // attachments.route.ts — GET /attachments: dynamicAccess(MENU_SLUGS.EQUIPMENT, "read")
   attachments: [menu("equipment")],
   // calibrationScheduler.route.js — GET /calibration-scheduler/due: dynamicAccess("maintenance", "read")
   "calibration-scheduler": [menu("maintenance")],
-  // predictiveMaintenance.route.js — GET /recommendations: dynamicAccess("calibration", "read")
+  // predictiveMaintenance.route.ts — GET /recommendations: dynamicAccess("calibration", "read")
   "predictive-maintenance": [menu("calibration")],
   // scim.route.js — requireApiKeyOrAdmin: a SCIM-scoped API key or the super
   // admin, for reads too; a tenant role holding `scim` read got 403.
@@ -88,7 +88,7 @@ export const MENU_PAGE_GATES: Readonly<Record<string, readonly PageGate[]>> = Ob
   stock: [menu("warehouse")],
   // admin.route.js — the access-request queue (P10-07): router.use(rbac(["SUPER_ADMIN", "SUPERADMIN"]))
   "access-requests": [SUPER_ADMIN_ONLY],
-  // ticket.service.js — the super admin may not raise a ticket (BR-13)
+  // ticket.service.ts — the super admin may not raise a ticket (BR-13)
   "tickets-raise": [{ kind: "notSuperAdmin" }],
 });
 

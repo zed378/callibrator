@@ -68,6 +68,10 @@ spec:
             # (callibrator.baseName, S-27); 3000 is its default port.
             - name: BACKEND_INTERNAL_URL
               value: "http://{{ include "callibrator.baseName" . }}-backend:3000"
+            # Q-42 (ADR-113): read per request on the server, not inlined.
+            # Empty: /request-access says "not open yet", no privacy link.
+            - name: PRIVACY_NOTICE_URL
+              value: {{ (.Values.global).privacyNoticeUrl | default "" | quote }}
 
           # Both probes hit / — this server has no database dependency.
           #

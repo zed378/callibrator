@@ -6,7 +6,7 @@
  * Content is NOT tenant-scoped. success() puts rows in `data`; list
  * pagination `meta` is a TOP-LEVEL sibling of data.
  */
-const { httpGet, httpPost, httpPut, httpDelete, authHeader } = require("../setup");
+const { httpGet, httpPost, httpDelete, authHeader } = require("../setup");
 // P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
 const { OPERATOR_PASSWORD } = require("../setup");
 

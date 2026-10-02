@@ -26,7 +26,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 
 const TYPES: DomainType[] = ["subdomain", "custom", "vanity"];
 
-// Mirrors the backend's Joi hostname check closely enough to fail fast.
+// Mirrors the backend's hostname check (the Zod schema in packages/contracts/src/customDomains.ts) closely enough to fail fast.
 const HOSTNAME_RE = /^(?=.{1,253}$)([a-z0-9](-?[a-z0-9])*)(\.[a-z0-9](-?[a-z0-9])*)+$/i;
 
 // The backend's statuses are pending_verification | active |

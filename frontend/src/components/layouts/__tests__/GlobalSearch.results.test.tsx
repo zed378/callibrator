@@ -53,8 +53,11 @@ const input = () => screen.getByLabelText("Global search");
 
 const type = async (value: string) => {
   fireEvent.change(input(), { target: { value } });
+  // P9-25 item 11: the search goes through the typed client, whose transport
+  // awaits the built Request and Response; the async advance lets those
+  // promises settle between timers, so the answer lands before the assertions.
   await act(async () => {
-    jest.advanceTimersByTime(350);
+    await jest.advanceTimersByTimeAsync(350);
   });
 };
 

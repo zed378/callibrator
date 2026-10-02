@@ -37,7 +37,11 @@ export default function SprintBar({
   const [manage, setManage] = useState(false);
   const current = board.sprints.find((s) => s.id === viewSprintId);
 
-  const chip = (id: string, label: string, count?: number) => (
+  // A-352: a chip shows no card count. A board's sprints carry none
+  // (kanban.service#getBoard serializes the sprint row; only GET .../sprints,
+  // listSprints, adds `cardCount`), and the board holds one sprint's cards at a
+  // time, so no count can be derived here either.
+  const chip = (id: string, label: string) => (
     <button
       key={id}
       onClick={() => onSelect(id)}
@@ -48,9 +52,6 @@ export default function SprintBar({
       }`}
     >
       {label}
-      {count != null && (
-        <span className="ml-1 opacity-70">({count})</span>
-      )}
     </button>
   );
 
@@ -60,7 +61,7 @@ export default function SprintBar({
         {board.sprints
           .slice()
           .sort((a, b) => a.position - b.position)
-          .map((s) => chip(s.id, s.name, s.cardCount))}
+          .map((s) => chip(s.id, s.name))}
         {chip("backlog", "Backlog")}
         {chip("all", "All cards")}
 

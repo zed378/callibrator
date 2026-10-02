@@ -2,7 +2,7 @@
 
 import React from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
-import { Button, Card, CardContent, Alert, Badge } from "@/components/ui";
+import { Button, Card, CardContent, Alert } from "@/components/ui";
 import { Plus, KanbanSquare, Users } from "lucide-react";
 import { useKanbanProjects } from "./hooks/useKanbanProjects";
 import CreateProjectModal from "./components/CreateProjectModal";
@@ -70,11 +70,6 @@ export default function KanbanProjectsPage() {
                           <h2 className="font-semibold text-foreground truncate">
                             {p.name}
                           </h2>
-                          {p.code && (
-                            <Badge variant="secondary" size="sm">
-                              {p.code}
-                            </Badge>
-                          )}
                         </div>
                         {p.description && (
                           <p className="text-sm text-muted-foreground mt-1 line-clamp-2">

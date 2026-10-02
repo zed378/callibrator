@@ -110,7 +110,7 @@ describe("session utility", () => {
 
       Sessions.findOne.mockResolvedValue(mockSession);
 
-      const result = await findSession({
+      await findSession({
         token: "test-token",
         userId: "user-123",
       });

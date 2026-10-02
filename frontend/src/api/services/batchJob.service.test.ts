@@ -25,19 +25,14 @@ describe("batchJobService", () => {
   beforeEach(() => jest.clearAllMocks());
 
   describe("getAll", () => {
-    it("reads rows from data.jobs and pagination from the flat payload", async () => {
-      mockedApi.get.mockResolvedValueOnce(
-        envelope({
-          total: 2,
-          page: 1,
-          limit: 10,
-          totalPages: 1,
-          jobs: [
-            { id: "j1", type: "EXPORT_CSV", status: "PENDING" },
-            { id: "j2", type: "EXPORT_CSV", status: "COMPLETED" },
-          ],
-        }),
-      );
+    it("reads rows from data and pagination from the top-level meta (A-342)", async () => {
+      mockedApi.get.mockResolvedValueOnce({
+        ...envelope([
+          { id: "j1", type: "EXPORT_CSV", status: "PENDING" },
+          { id: "j2", type: "EXPORT_CSV", status: "COMPLETED" },
+        ]),
+        meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
+      });
 
       const res = await batchJobService.getAll({ page: 1, limit: 10 });
 

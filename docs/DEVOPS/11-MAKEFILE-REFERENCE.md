@@ -84,7 +84,7 @@ A demo seeder running against real data is a data-integrity incident. The guard 
 | Target | Does |
 |---|---|
 | `make lint` | both workspaces |
-| `make typecheck` | **frontend only** — the backend is JavaScript (ADR-030) |
+| `make typecheck` | both workspaces, TypeScript 7 (`npm run typecheck` in each; P9-01a, ADR-087). The backend is TypeScript (ADR-038 superseded ADR-030) |
 | `make test` | unit and integration |
 | `make test-e2e` | 51 live specs against a **running** server |
 | `make test-browser` | the five-check browser smoke, `automate/smoke.browser.js`, against a running stack (ADR-077) |

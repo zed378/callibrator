@@ -30,6 +30,7 @@ export const en: Messages = {
   "pub.footer.news": "News",
   "pub.footer.signin": "Sign in",
   "pub.footer.request": "Request access",
+  "pub.footer.privacy": "Privacy Notice",
   "pub.footer.copyright": "© {year} Device Calibrator",
 
   "landing.meta.title": "Device Calibrator — Medical device calibration, on record and documented",
@@ -242,8 +243,14 @@ export const en: Messages = {
   "access.whatsappHelp": "For example: 0812 3456 7890 or +62 812 3456 7890.",
   "access.needs": "What you need",
   "access.needsHelp": "Up to 2,000 characters.",
-  "access.consent":
-    "I agree that the data in this form may be used to contact me about this access request and kept as described in the Privacy Notice.",
+  "access.consent.before":
+    "I agree that the data in this form may be used to contact me about this access request and kept as described in the ",
+  "access.consent.notice": "Privacy Notice",
+  "access.consent.after": ".",
+  "access.newTab": "opens in a new tab",
+  "access.closed.title": "Requests are not open yet",
+  "access.closed.lead": "Public access requests are not open yet. To talk to us now, use one of the channels below.",
+  "access.closed.leadNoChannels": "Public access requests are not open yet. Please check back later.",
   "access.honeypot": "Leave this empty",
   "access.submit": "Send request",
   "access.busy": "Sending…",

@@ -430,6 +430,8 @@ async function createBackup({
             resourceId: backup.id,
             changes: {
               operation: "BACKUP",
+              // A-363: the label the operator gave it (stored since migration 0108).
+              name: name ?? null,
               backupType,
               fileName: filenameStr,
               fileSize: zipBuffer.length,

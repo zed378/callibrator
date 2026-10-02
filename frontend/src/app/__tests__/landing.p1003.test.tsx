@@ -11,17 +11,24 @@
  *  - the certificate-number field is absent while P10-14 is not DONE;
  *  - FAQ is native <details>; no marquee, no pricing, no trial;
  *  - the public page graph imports no animation library (GSAP, ScrollTrigger,
- *    SplitText, Lenis, Motion) — checked on the sources.
+ *    SplitText, Lenis, Motion) — checked on the sources;
+ *  - since fb55605 the page is a prerenderable SHELL (no cookie read) with the
+ *    locale-aware body in a <Suspense> boundary; its fallback is an aria-hidden
+ *    skeleton with no heading and no <main>, so the first flush adds no second
+ *    landmark. The body is rendered as the server streams it once resolved
+ *    (tests/support/serverTree: the client renderer refuses an async component).
  */
 import fs from "node:fs";
 import path from "node:path";
 import { render, screen, within } from "@testing-library/react";
+import { findSuspense, renderServer } from "@/tests/support/serverTree";
 import { axeViolations } from "@/tests/a11y/axe";
 
 let mockLocale: string | undefined;
-jest.mock("next/headers", () => ({
-  cookies: async () => ({ get: (n: string) => (n === "locale" && mockLocale ? { value: mockLocale } : undefined) }),
+const mockCookies = jest.fn(async () => ({
+  get: (n: string) => (n === "locale" && mockLocale ? { value: mockLocale } : undefined),
 }));
+jest.mock("next/headers", () => ({ cookies: () => mockCookies() }));
 jest.mock("@/i18n/actions", () => ({ setLocale: jest.fn() }));
 // next/font/local is a build-time transform; Jest only needs the class names.
 jest.mock("@/app/fonts/public", () => ({
@@ -37,12 +44,13 @@ import { en } from "@/i18n/messages/en";
 const env = process.env as Record<string, string | undefined>;
 
 beforeEach(() => {
+  mockCookies.mockClear();
   mockLocale = undefined;
   delete env.NEXT_PUBLIC_CONTACT_WHATSAPP;
   delete env.NEXT_PUBLIC_CONTACT_EMAIL;
 });
 
-const renderHome = async () => render(await Home());
+const renderHome = async () => renderServer(Home());
 
 describe("P10-03: landing", () => {
   it("one <main>, one visible <h1>, Indonesian by default, axe-clean", async () => {
@@ -94,6 +102,24 @@ describe("P10-03: landing", () => {
     for (const gone of ["Start free trial", "Pricing", "HIPAA", "SOC 2", "SNARS", "12,000", "randomuser"]) {
       expect([gone, text.includes(gone)]).toEqual([gone, false]);
     }
+  });
+
+  it("the page shell reads no cookie (prerenderable); the locale is read inside its Suspense boundary", async () => {
+    const shell = Home();
+    expect(shell).not.toBeInstanceOf(Promise);
+    expect(mockCookies).not.toHaveBeenCalled();
+    expect(findSuspense(shell)).not.toBeNull();
+    await renderServer(shell);
+    expect(mockCookies).toHaveBeenCalled();
+  });
+
+  it("the Suspense fallback is an aria-hidden skeleton: no heading, no <main>, no text", () => {
+    const suspense = findSuspense(Home());
+    const { container } = render(<>{suspense?.props.fallback}</>);
+    const skeleton = container.firstElementChild as HTMLElement;
+    expect(skeleton).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector("main, h1, h2, a, button")).toBeNull();
+    expect(container.textContent).toBe("");
   });
 
   it("no animation library is imported by the public page graph", () => {

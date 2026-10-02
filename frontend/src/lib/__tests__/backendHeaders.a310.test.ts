@@ -6,7 +6,7 @@
  * that does not say the original request was HTTPS is answered 301 to
  * https://<backend>:3000, which the fetch cannot follow, so sign-in 500'd.
  *
- * The backend mock below behaves like forceHttps (health.route.js): it 301s
+ * The backend mock below behaves like forceHttps (health.route.ts): it 301s
  * any request without `X-Forwarded-Proto: https`. Fail-before (recorded):
  * login, refresh, sso-session, logout and logout-all sent no such header and
  * this suite failed on each; now every one forwards the scheme nginx wrote.

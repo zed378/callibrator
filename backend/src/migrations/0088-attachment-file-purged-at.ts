@@ -11,7 +11,7 @@
  * WHAT THIS DOES
  *
  * One nullable TIMESTAMPTZ, no default, no backfill, no index. The daily
- * deleted-file sweep (services/attachmentFileSweep.service.js) sets it when it
+ * deleted-file sweep (services/attachmentFileSweep.service.ts) sets it when it
  * has removed a deleted row's bytes — or confirmed they were already gone —
  * and selects only rows where it is NULL, so a row is swept once. NULL on every
  * existing row is correct: none has been swept. No index: the sweep's read is

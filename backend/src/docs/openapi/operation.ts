@@ -25,13 +25,24 @@ export type Method = "get" | "post" | "put" | "patch" | "delete";
 export type Permission =
   | {
       readonly kind: "dynamicAccess";
-      /** The menu/resource slug: `dynamicAccess("vendors", ...)`. */
-      readonly resource: string;
+      /**
+       * The menu/resource slug: `dynamicAccess("vendors", ...)`. P9-21: or the list
+       * of slugs a gate accepts ANY of (`dynamicAccess(["certificate", "warehouse"], "write")`).
+       */
+      readonly resource: string | readonly string[];
       /** The action: read, create, update, delete, write. */
       readonly action: string;
     }
   | { readonly kind: "rbac"; readonly roles: readonly string[] }
-  | { readonly kind: "superAdminOnly" };
+  | { readonly kind: "superAdminOnly" }
+  /**
+   * P9-21: a route that authenticates (`auth`) and carries NO gate factory —
+   * the caller's own resources (`/auth/me`, own sessions, own passkeys), or a
+   * check made inside the handler (SCIM's API-key scope). `reason` says which;
+   * it is published as `x-permission.note`. The guard holds it to the chain:
+   * declaring it on a route that carries a gate is a mismatch.
+   */
+  | { readonly kind: "authenticated"; readonly reason: string };
 
 /** What the successful answer carries in `data`. */
 export type Success =
@@ -45,7 +56,11 @@ export type Success =
   // P9-21: a handler that answers its own JSON shape, NOT the house envelope (roles.controller answers
   // `{ success, data }` with no status or message). Documented as it is; converging on the envelope is a
   // behaviour change for its own card, never for a conversion.
-  | { readonly status: 200 | 201; readonly description: string; readonly body: z.ZodType };
+  | { readonly status: 200 | 201; readonly description: string; readonly body: z.ZodType }
+  // P9-21: a 204 — no body. (scim.controller's deletes call `res.status(204).json(...)`; Express drops a 204's body.)
+  | { readonly status: 204; readonly description: string; readonly noContent: true }
+  // P9-21: a redirect (the OIDC authorization endpoint): no body; `Location` says where.
+  | { readonly status: 302; readonly description: string; readonly redirect: true };
 
 /** An error status whose body this operation answers in its OWN shape (see `Success.body`). */
 export interface ErrorBody {
@@ -72,6 +87,11 @@ export interface DocumentedOperation {
   readonly query?: z.ZodObject;
   /** The request body: the same schema `validate()` enforces on this route. */
   readonly body?: z.ZodType;
+  /**
+   * P9-20: the body's media type, when it is not JSON — a file upload through
+   * `upload()` (multer) is `multipart/form-data`. Absent: `application/json`.
+   */
+  readonly bodyMediaType?: "multipart/form-data";
   readonly success: Success;
   /**
    * A 409 this operation can answer, and the state that causes it. Stated,
@@ -99,6 +119,15 @@ export interface RouteDocs {
   /** Whether rows are tenant-owned (adds the cross-tenant 404 note to `:param` operations). */
   readonly tenantScoped: boolean;
   readonly operations: readonly DocumentedOperation[];
+  /**
+   * P9-18: further mounts of the SAME router (index.ts mounts it again: the
+   * menu-group router at `/api/v1/menu-group-roles`, the OIDC provider at the
+   * issuer-root `/oidc`). Every operation is published at each, as the same
+   * contract: same handlers, same chain (the P9-25 guard checks each mounted
+   * path against its chain). An OpenAPI operationId is unique, so the copy's
+   * takes `operationIdSuffix`, and `x-alias-of` names the primary path.
+   */
+  readonly alsoMountedAt?: readonly { readonly mount: string; readonly operationIdSuffix: string }[];
 }
 
 /** Identity, typed: the default export of every `*.openapi.ts`. */
@@ -131,6 +160,15 @@ export const toOpenApiPath = (mount: string, path: string): string =>
 export const pathParams = (path: string): string[] => [...path.matchAll(/:([A-Za-z0-9_]+)/g)].map((m) => m[1] ?? "");
 
 const successResponse = (success: Success) => {
+  if ("noContent" in success) {
+    return { description: success.description };
+  }
+  if ("redirect" in success) {
+    return {
+      description: success.description,
+      headers: { Location: { description: "Where the browser goes next", schema: { type: "string" as const } } },
+    };
+  }
   if ("body" in success) {
     return { description: success.description, content: { "application/json": { schema: success.body } } };
   }
@@ -150,10 +188,14 @@ const permissionExtension = (permission: Permission | null): Record<string, unkn
     return null;
   }
   if (permission.kind === "dynamicAccess") {
-    return { gate: "dynamicAccess", resource: permission.resource, action: permission.action, superAdmin: "bypasses" };
+    const resource = typeof permission.resource === "string" ? permission.resource : [...permission.resource];
+    return { gate: "dynamicAccess", resource, action: permission.action, superAdmin: "bypasses" };
   }
   if (permission.kind === "rbac") {
     return { gate: "rbac", roles: [...permission.roles], higherRoles: "allowed", superAdmin: "bypasses" };
+  }
+  if (permission.kind === "authenticated") {
+    return { gate: "authenticated", note: permission.reason };
   }
   return { gate: "superAdminOnly" };
 };
@@ -227,7 +269,7 @@ export const toOperation = (docs: RouteDocs, op: DocumentedOperation): ZodOpenAp
     };
   }
   if (op.body !== undefined) {
-    operation.requestBody = { required: true, content: { "application/json": { schema: op.body } } };
+    operation.requestBody = { required: true, content: { [op.bodyMediaType ?? "application/json"]: { schema: op.body } } };
   }
   return operation;
 };
@@ -235,13 +277,21 @@ export const toOperation = (docs: RouteDocs, op: DocumentedOperation): ZodOpenAp
 /** Every operation of a route module, keyed by OpenAPI path then method. */
 export const toPathItems = (docs: RouteDocs): ZodOpenApiPathsObject => {
   const paths: ZodOpenApiPathsObject = {};
-  for (const op of docs.operations) {
-    const key = toOpenApiPath(docs.mount, op.path);
-    const item = (paths[key] ??= {});
-    if (item[op.method] !== undefined) {
-      throw new Error(`${docs.router}: ${op.method.toUpperCase()} ${key} is documented twice`);
+  const mounts = [{ mount: docs.mount, operationIdSuffix: "" }, ...(docs.alsoMountedAt ?? [])];
+  for (const { mount, operationIdSuffix } of mounts) {
+    for (const op of docs.operations) {
+      const key = toOpenApiPath(mount, op.path);
+      const item = (paths[key] ??= {});
+      if (item[op.method] !== undefined) {
+        throw new Error(`${docs.router}: ${op.method.toUpperCase()} ${key} is documented twice`);
+      }
+      const operation = toOperation(docs, op);
+      if (operationIdSuffix !== "") {
+        operation.operationId = `${op.operationId}${operationIdSuffix}`;
+        operation["x-alias-of"] = toOpenApiPath(docs.mount, op.path);
+      }
+      item[op.method] = operation;
     }
-    item[op.method] = toOperation(docs, op);
   }
   return paths;
 };

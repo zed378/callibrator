@@ -31,7 +31,7 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0025-esignature-menu-grants.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 interface Write {
   sql: string;

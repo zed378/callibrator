@@ -17,7 +17,7 @@ const { migrator } = (() => {
   // test does not open a database connection.
   const fs = require("fs");
   const path = require("path");
-  return { migrator: fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8") };
+  return { migrator: fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8") };
 })();
 const kms = require("../../services/kms.service");
 

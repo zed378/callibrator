@@ -61,7 +61,7 @@ const importsParser = (text: string): string | null => {
 
 describe("A-296 guard: multipart parsing lives in utils/upload.util only", () => {
   it("no source file but upload.util.ts (nor index.js) loads a multipart parser", () => {
-    const files = [...sourceFiles(SRC), path.join(BACKEND, "index.js")];
+    const files = [...sourceFiles(SRC), path.join(BACKEND, "index.ts")];
     expect(files.length).toBeGreaterThan(100);
     const offenders = files
       .filter((f) => f !== UPLOAD_UTIL)

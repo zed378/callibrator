@@ -43,11 +43,10 @@ jest.mock("../../utils/appError.util", () => {
 // so every body below is one the API accepts.
 
 const { db } = require("../../config");
-const { Users, Roles } = require("../../models");
+const { Users } = require("../../models");
 const { hashPassword, comparePassword } = require("../../utils/password.util");
 const {
   generateAccessToken,
-  verifyAccessToken,
   verifyPurposeToken,
   generateRefreshToken,
   generateOpaqueRefreshToken,
@@ -65,18 +64,12 @@ const {
   queueOtpEmail,
 } = require("../../services/emailQueue.service");
 const {
-  acquireLock,
-  releaseLock,
-  get,
-  set,
   del,
   cacheKeys,
 } = require("../../services/redis.service");
-const { logger } = require("../../middlewares/activityLog.middleware");
+require("../../middlewares/activityLog.middleware");
 const {
   PASSWORD_MIN_LENGTH,
-  ROLE_IDS,
-  DEFAULT_SESSION_EXPIRY_HOURS,
 } = require("../../constants");
 
 const {
@@ -92,9 +85,6 @@ const {
   logoutSession,
   logoutAllUserSessions,
   refreshUserToken,
-  loginMfa,
-  setupMfa,
-  verifyMfaSetup,
   impersonateUser,
 } = require("../../services/auth.service");
 

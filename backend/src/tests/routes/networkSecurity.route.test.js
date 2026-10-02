@@ -3,7 +3,7 @@
  *
  * Tests the NetworkSecurity route registrations and middleware chain.
  */
-const networksecurityRoutes = require("../../routes/api/networkSecurity.route.js");
+const networksecurityRoutes = require("../../routes/api/networkSecurity.route");
 
 describe("NetworkSecurity Routes", () => {
   it("should export an Express router", () => {

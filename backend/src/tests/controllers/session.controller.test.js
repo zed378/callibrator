@@ -3,7 +3,7 @@
  */
 
 const { Op } = require("sequelize");
-const { AppError } = require("../../utils/appError.util");
+require("../../utils/appError.util");
 
 // Mock models
 const mockSessions = {
@@ -47,7 +47,7 @@ jest.mock("../../utils/response.util", () => ({
 }));
 
 jest.mock("../../utils/controllerWrapper.util", () => ({
-  asyncHandlerWithMapping: (fn, errorMap) => {
+  asyncHandlerWithMapping: (fn, _errorMap) => {
     return async (req, res, next) => {
       try {
         return await fn(req, res, next);
@@ -964,11 +964,12 @@ describe("Session Controller", () => {
         // No stored device and no user-agent: detectDevice's own default.
         // (This asserted "Unknown" while detectDevice was dead code.)
         device: "Desktop",
-        location: "N/A",
         role: "User",
         tenantName: null,
         status: "active",
       });
+      // A-334: there is no location column; the constant "N/A" is no longer invented.
+      expect(s).not.toHaveProperty("location");
     });
 
     it("substitutes placeholders on getSessionById too", async () => {

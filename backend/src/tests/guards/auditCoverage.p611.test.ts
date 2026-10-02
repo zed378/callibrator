@@ -23,11 +23,19 @@
  * 3. From each entry point the same-file functions it calls are followed,
  *    transitively. The entry point MUTATES when any of that source writes
  *    (a model create/update/destroy/save/upsert/…, or raw INSERT/UPDATE/
- *    DELETE); it is AUDITED when any of it calls `logAction(` or one of the
- *    cross-file audit helpers named in AUDIT_CALL.
+ *    DELETE), or — since A-364 — writes or removes a FILE (FILE_WRITE); it is
+ *    AUDITED when any of it calls `logAction(` or one of the cross-file audit
+ *    helpers named in AUDIT_CALL.
  * 4. A mutating, unaudited entry point fails unless it is listed below, keyed
  *    `services/<file without extension>#<name>` (so a .js → .ts conversion
  *    keeps its entry) with the reason it is right, or the gap it is.
+ *
+ * A-364 (2026-10-02): `gdpr.service#exportUserData` wrote the export (a
+ * manifest and a ZIP of the subject's personal data) and NO audit row, while
+ * the contract published `POST /gdpr/export` as `audited: true`. This guard
+ * passed it: a mutation was a DATABASE write, and the export writes only
+ * files. A file write is now a mutation too (FILE_WRITE); the synthetic case
+ * at the bottom fails on the old definition.
  *
  * LIMITS (stated, not hidden): this reads source, so it proves an audit call is
  * REACHABLE from the entry point, not that every branch makes it — each
@@ -45,6 +53,19 @@ const SERVICES = path.join(SRC, "services");
 /** A write to the database, as source text. `.update(` on a hash/cipher is not one. */
 const MUTATION =
   /\.(?:create|bulkCreate|destroy|upsert|findOrCreate|softDelete|restore|increment|decrement|save)\(|\b(?!createHash\b|hash\b|hmac\b|cipher\b|decipher\b|sign\b|verify\b)\w+\.update\(|\b(?:INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+"?[a-z_]+"?\s+SET)\b/i;
+
+/**
+ * A-364 — a write to the FILESYSTEM, as source text: creating, replacing,
+ * moving or removing a file (`fs.promises.writeFile(`, `fs.rmSync(`, …). A
+ * read (`readFile`, `stat`, `readdir`) and `mkdir` alone are not one. A write
+ * through a helper in another file (upload.util#deleteUpload, a storage
+ * driver) is not followed, as for the database.
+ */
+const FILE_WRITE =
+  /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile|copyFileSync|rename|renameSync|unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync)\(/;
+
+/** A database or a file write (A-364). */
+const mutates = (body: string): boolean => MUTATION.test(body) || FILE_WRITE.test(body);
 
 /**
  * An audit write: logAction, or a cross-file helper that writes one for the
@@ -65,7 +86,11 @@ const functionsOf = (source: string): Map<string, string> => {
       /^exports\.(\w+)\s*=/.exec(text) ??
       /^(?:export\s+)?(?:const|let)\s+(\w+)\s*=/.exec(text) ??
       /^(?:export\s+)?(?:async\s+)?function\s*\*?\s*(\w+)/.exec(text) ??
-      /^ {2}(?:(?:public|private|protected|static|readonly|override)\s+)*(?:async\s+)?(\w+)\s*\([^)]*\)\s*(?::[^{]*)?\{\s*$/.exec(text) ??
+      // P9-18 (2026-10-01): the return type may itself contain `{` — e.g.
+      // `Promise<{ message: string }>`. `(?::[^{]*)?` stopped at that brace, so
+      // the method was not seen and its body (a mutation included) was
+      // attributed to the method above it.
+      /^ {2}(?:(?:public|private|protected|static|readonly|override)\s+)*(?:async\s+)?(\w+)\s*\([^)]*\)\s*(?::.*)?\{\s*$/.exec(text) ??
       // 2026-09-30 (the services helper's report): a method whose parameters
       // continue on the next line, as the converted .ts classes write them.
       /^ {2}(?:(?:public|private|protected|static|readonly|override)\s+)*(?:async\s+)?(\w+)\s*\($/.exec(text);
@@ -146,7 +171,7 @@ const unauditedMutations = (source: string): string[] => {
   const functions = functionsOf(source);
   return entryPointsOf(source, functions).filter((name) => {
     const body = reachableSource(name, functions);
-    return MUTATION.test(body) && !AUDIT_CALL.test(body);
+    return mutates(body) && !AUDIT_CALL.test(body);
   });
 };
 
@@ -155,7 +180,7 @@ const auditedMutations = (source: string): string[] => {
   const functions = functionsOf(source);
   return entryPointsOf(source, functions).filter((name) => {
     const body = reachableSource(name, functions);
-    return MUTATION.test(body) && AUDIT_CALL.test(body);
+    return mutates(body) && AUDIT_CALL.test(body);
   });
 };
 
@@ -184,6 +209,8 @@ const SEEDER =
   "a seeder/unseeder run by the migration CLI and schema setup, not by a principal";
 const NOTIFICATION =
   "a notification is a derived message (W-04 writes it beside the caller's own audit row), and read/hide is the user's own inbox state; one audit row per read would fill the append-only audit_logs (0091) with noise";
+const FILE_INFRA =
+  "writes only files that hold no user's data and that no principal asked for (A-364 made file writes mutations; reviewed then)";
 const WEBHOOK =
   "a webhook delivery row is an outbox entry derived from an event its own caller already audited";
 /*
@@ -221,8 +248,6 @@ const ALLOWED: Readonly<Record<string, string>> = Object.freeze({
   "services/clamAv.service#scanFiles": INFRA,
   "services/clamAv.service#ping": INFRA,
   "services/rateLimiter.redis.service#resetAuthFailures": INFRA,
-  "services/rateLimiter.redis.service#revokeTokenByHash": INFRA,
-  "services/rateLimiter.redis.service#revokeAllUserTokens": INFRA,
   "services/rateLimiter.redis.service#noteAuthSuccess": INFRA,
   "services/session.service#createSession": INFRA,
   "services/session.service#validateSession": INFRA,
@@ -234,6 +259,11 @@ const ALLOWED: Readonly<Record<string, string>> = Object.freeze({
   "services/session.service#revokeSessionById": INFRA,
   "services/storageMigration.service#migrateAttachment": `${INFRA}: the operator's storage-migration tool moves file bytes`,
   "services/tenantBackup.service#cleanupExpiredBackups": `${INFRA}: the retention sweep of expired backup files`,
+  // --- file writers, reviewed when A-364 made a file write a mutation ---
+  "services/jobMonitor.service#runMonitored": `${FILE_INFRA}: the job monitor's own state file (temp file + rename)`,
+  "services/jobMonitor.service#checkOverdue": `${FILE_INFRA}: the job monitor's own state file (temp file + rename)`,
+  "services/jobMonitor.service#watchdogTick": `${FILE_INFRA}: the job monitor's own state file (temp file + rename)`,
+  "services/quarantineSweep.service#sweepQuarantine": `${FILE_INFRA}: abandoned, never-scanned uploads left in the quarantine by a dead process (S-33); they were never published, and no row names them`,
   "services/migration.service#seedDefaultRoles": SEEDER,
   "services/migration.service#seedApplicationRoles": SEEDER,
   "services/migration.service#seedAllRoles": SEEDER,
@@ -309,7 +339,50 @@ describe("P6-11 — a workflow instance is recorded by the write that starts it"
   });
 });
 
+describe("A-364 — the GDPR export is a mutation, and it is audited", () => {
+  it("gdpr.service#exportUserData is a mutating entry point that reaches an audit write", () => {
+    const source = fs.readFileSync(path.join(SERVICES, "gdpr.service.ts"), "utf8");
+    expect(auditedMutations(source)).toContain("exportUserData");
+    expect(unauditedMutations(source)).not.toContain("exportUserData");
+  });
+});
+
 describe("the check itself, on synthetic sources", () => {
+  it("A-364: an entry point that writes only FILES is a mutation, and is flagged without an audit write", () => {
+    const src = [
+      "const writeArchive = async (dir) => {",
+      "  await fs.promises.writeFile(path.join(dir, \"manifest.json\"), \"{}\");",
+      "};",
+      "const exportData = async (dir) => {",
+      "  await fs.promises.mkdir(dir, { recursive: true });",
+      "  await writeArchive(dir);",
+      "  return fs.promises.readFile(dir);",
+      "};",
+      "const removeExport = async (file) => fs.promises.rm(file, { force: true });",
+      "const readExport = async (file) => fs.promises.readFile(file);",
+      "const service = {",
+      "  exportData,",
+      "  removeExport,",
+      "  readExport,",
+      "};",
+      "export = service;",
+    ].join("\n");
+    // Before A-364 a mutation was a database write only: this returned [].
+    expect(unauditedMutations(src)).toEqual(["exportData", "removeExport"]);
+  });
+
+  it("A-364: a file-writing entry point that reaches logAction( is audited", () => {
+    const src = [
+      "const exportData = async (dir) => {",
+      "  await fs.promises.writeFile(dir, \"{}\");",
+      "  await db.transaction(async (transaction) => auditService.logAction({}, { transaction }));",
+      "};",
+      "export = { exportData };",
+    ].join("\n");
+    expect(unauditedMutations(src)).toEqual([]);
+    expect(auditedMutations(src)).toEqual(["exportData"]);
+  });
+
   it("reads a `.ts` class instance (`export = x` of `const x = new X()`) with a multi-line method head", () => {
     const src = [
       "class X {",
@@ -327,6 +400,24 @@ describe("the check itself, on synthetic sources", () => {
       "export = service;",
     ].join("\n");
     expect(unauditedMutations(src)).toEqual(["put", "helper"]);
+  });
+
+  it("P9-18: a method whose return type contains `{` is its own method, not part of the one above", () => {
+    const src = [
+      "class X {",
+      "  async audited(id: string): Promise<void> {",
+      "    await auditService.logAction({ id });",
+      "  }",
+      "  async remove(id: string): Promise<{ message: string }> {",
+      "    await Thing.destroy({ where: { id } });",
+      "    return { message: \"ok\" };",
+      "  }",
+      "}",
+      "export = new X();",
+    ].join("\n");
+    // Before the fix, `remove` was not seen: its destroy was read as part of
+    // `audited`, which writes an audit row, so the unaudited write passed.
+    expect(unauditedMutations(src)).toEqual(["remove"]);
   });
 
   it("reads `export = new X()`", () => {

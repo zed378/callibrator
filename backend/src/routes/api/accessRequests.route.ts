@@ -20,6 +20,7 @@ import { validate } from "../../middlewares/validation.middleware";
 import { submitAccessRequestSchema } from "../../validators/accessRequest.validator";
 import { submit } from "../../controllers/accessRequest.controller";
 import { assertPublicAccessConfig } from "../../config/publicAccess";
+import { accessRequestIntakeGate } from "../../middlewares/accessRequestIntake.middleware";
 
 // Production refuses to boot without ACCESS_REQUEST_IP_PEPPER: index.js loads
 // this module at start.
@@ -27,6 +28,7 @@ assertPublicAccessConfig();
 
 const router = Router();
 
-router.post("/", requestBudget("accessRequest"), validate(submitAccessRequestSchema), submit);
+// Q-42 (ADR-113): absent (404) until the privacy notice is published.
+router.post("/", accessRequestIntakeGate, requestBudget("accessRequest"), validate(submitAccessRequestSchema), submit);
 
 export = router;

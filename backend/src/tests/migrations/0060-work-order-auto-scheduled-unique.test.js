@@ -16,7 +16,7 @@ const fs = require("fs");
 const path = require("path");
 const migration = require("../../migrations/0060-work-order-auto-scheduled-unique");
 
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 const TX = { id: "tx" };
 
 const fakeQueryInterface = ({ columns = ["id", "device_id", "status", "deleted_at"] } = {}) => {

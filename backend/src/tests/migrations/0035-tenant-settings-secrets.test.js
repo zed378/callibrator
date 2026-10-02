@@ -115,7 +115,7 @@ const seedSettings = () => [
 
 describe("migration 0035-tenant-settings-secrets", () => {
   it("is registered in migrator.js with the .js suffix", () => {
-    const manifest = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+    const manifest = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
     expect(manifest).toContain(
       '["0035-tenant-settings-secrets.js", require("../migrations/0035-tenant-settings-secrets")]',
     );

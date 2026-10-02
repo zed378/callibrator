@@ -64,8 +64,9 @@ let usersTotal: number | undefined;
 let groups: ReturnType<typeof scimGroup>[];
 
 const backend = () => {
-  mockedGet.mockImplementation(async (url: string, { params }: { params: { startIndex: number } }) => {
-    if (url === "/api/v1/scim/v2/Users") return ok(listResponse(users, usersTotal ?? users.length, params.startIndex), "SCIM users fetched");
+  mockedGet.mockImplementation(async (url: string, { params }: { params: { startIndex: string } }) => {
+    // The query carries strings (P9-25: the published query); the backend answers Number(startIndex).
+    if (url === "/api/v1/scim/v2/Users") return ok(listResponse(users, usersTotal ?? users.length, Number(params.startIndex)), "SCIM users fetched");
     if (url === "/api/v1/scim/v2/Groups") return ok(listResponse(groups), "SCIM groups fetched");
     throw httpError(404, "Not found");
   });
@@ -101,7 +102,7 @@ describe("SCIM page — users", () => {
     const { container } = await renderLoaded();
 
     expect(mockedGet).toHaveBeenCalledWith("/api/v1/scim/v2/Users", {
-      params: { startIndex: 1, count: 25, filter: undefined },
+      params: { startIndex: "1", count: "25", filter: undefined },
     });
     const [, siti, budi] = screen.getAllByRole("row");
     expect(within(siti).getByText("Active")).toBeInTheDocument();
@@ -139,11 +140,11 @@ describe("SCIM page — users", () => {
     fireEvent.change(screen.getByLabelText("Find by email"), { target: { value: "  siti@h.example " } });
     await clickAndSettle(screen.getByRole("button", { name: "Search" }));
     await waitFor(() =>
-      expect(lastParams()).toEqual({ startIndex: 1, count: 25, filter: 'email eq "siti@h.example"' }),
+      expect(lastParams()).toEqual({ startIndex: "1", count: "25", filter: 'email eq "siti@h.example"' }),
     );
 
     await clickAndSettle(screen.getByRole("button", { name: "Clear" }));
-    await waitFor(() => expect(lastParams()).toEqual({ startIndex: 1, count: 25, filter: undefined }));
+    await waitFor(() => expect(lastParams()).toEqual({ startIndex: "1", count: "25", filter: undefined }));
     expect(screen.getByLabelText("Find by email")).toHaveValue("");
   });
 
@@ -165,12 +166,12 @@ describe("SCIM page — users", () => {
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
 
     await clickAndSettle(screen.getByRole("button", { name: "Next" }));
-    await waitFor(() => expect(lastParams().startIndex).toBe(26));
+    await waitFor(() => expect(lastParams().startIndex).toBe("26"));
     expect(await screen.findByText("Showing 26–30 of 30")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 
     await clickAndSettle(screen.getByRole("button", { name: "Previous" }));
-    await waitFor(() => expect(lastParams().startIndex).toBe(1));
+    await waitFor(() => expect(lastParams().startIndex).toBe("1"));
   });
 
   it("deactivates an active user with a SCIM replace on `active`", async () => {
@@ -255,7 +256,7 @@ describe("SCIM page — groups", () => {
     const { container } = await renderLoaded();
     await openGroups();
 
-    expect(mockedGet).toHaveBeenLastCalledWith("/api/v1/scim/v2/Groups", { params: { startIndex: 1, count: 25 } });
+    expect(mockedGet).toHaveBeenLastCalledWith("/api/v1/scim/v2/Groups", { params: { startIndex: "1", count: "25" } });
     expect(within(screen.getAllByRole("row")[1]).getByText("3")).toBeInTheDocument();
     expect(screen.queryByLabelText("Find by email")).not.toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);

@@ -1,109 +1,36 @@
 // src/api/services/webhook.service.ts
-import { api } from "../client";
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the contract's
+// (backend/src/routes/api/webhooks.openapi.ts). The exported names are unchanged.
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type components } from "../typed";
 import { PaginatedResponse } from "@/types";
 
-export interface Webhook {
-  id: string;
-  tenantId: string;
-  url: string;
-  events: string[];
-  description?: string | null;
-  isActive: boolean;
-  createdBy?: string | null;
-  createdAt: string;
-}
-
-/**
- * A webhook carrying its plaintext signing secret. The backend generates the
- * secret itself (A-51) and returns it exactly once: in the create response, in
- * `POST /webhooks/:id/rotate-secret`, and in a PATCH that changes the url.
- * It is never readable again — list and get omit it.
- */
-export interface WebhookWithSecret extends Webhook {
-  secret: string;
-}
-
-/** Returned only once, on creation — includes the raw signing secret. */
+export type Webhook = components["schemas"]["Webhook"];
+export type WebhookWithSecret = components["schemas"]["WebhookWithSecret"];
 export type CreatedWebhook = WebhookWithSecret;
-
 /**
- * A PATCH response. `secret` is present only when the url changed — the
- * backend rotates the secret so the new host is never signed with a key the
- * old host holds.
+ * When the url changes the answer carries a new one-time `secret`; otherwise
+ * none (the contract's `WebhookWithSecret | Webhook`, read as one shape).
  */
-export interface UpdatedWebhook extends Webhook {
-  secret?: string;
-}
-
-export type WebhookDeliveryStatus =
-  | "pending"
-  | "success"
-  | "failed"
-  | "exhausted";
-
-export interface WebhookDelivery {
-  id: string;
-  tenantId: string;
-  webhookId: string;
-  event: string;
-  payload: Record<string, unknown>;
-  status: WebhookDeliveryStatus;
-  attempts: number;
-  responseStatus?: number | null;
-  lastError?: string | null;
-  deliveredAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+export type UpdatedWebhook = Webhook & Partial<Pick<WebhookWithSecret, "secret">>;
+export type WebhookDelivery = components["schemas"]["WebhookDelivery"];
+export type WebhookDeliveryStatus = WebhookDelivery["status"];
 
 // There is deliberately no `secret` field on either input: the backend
-// generates it, and a caller-supplied one is stripped by the request schema.
-export interface WebhookCreateInput {
-  url: string;
-  events: string[];
-  description?: string;
-  isActive?: boolean;
-}
+// generates it, and a caller-supplied one is refused (P6-13).
+export type WebhookCreateInput = JsonBody<Op<"/api/v1/webhooks", "post">>;
+export type WebhookUpdateInput = JsonBody<Op<"/api/v1/webhooks/{id}", "patch">>;
+export type WebhookTestResult = DataOf<Op<"/api/v1/webhooks/{id}/test", "post">>;
 
-export interface WebhookUpdateInput {
-  url?: string;
-  events?: string[];
-  description?: string;
-  isActive?: boolean;
-}
-
-export interface WebhookTestResult {
-  deliveryId: string;
-  status: string;
-  responseStatus?: number | null;
-  attempts: number;
-  lastError?: string | null;
-}
-
-// Backend envelope: for LIST endpoints `data` is the array itself and
-// `meta` sits at the TOP level of the envelope.
-interface BackendListResponse<T> {
+/** A list answer: rows in `data`, pagination in the top-level `meta`. */
+interface ListAnswer<T> {
   success: boolean;
-  status: number;
   message: string;
   data: T[] | null;
-  meta?: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
+  meta?: { total: number; page: number; limit: number; totalPages: number };
 }
 
 function toPaginated<T>(
-  response: BackendListResponse<T>,
+  response: ListAnswer<T>,
   page: number,
   limit: number,
 ): PaginatedResponse<T> {
@@ -126,88 +53,60 @@ function toPaginated<T>(
   };
 }
 
+const byId = (id: string) => ({ params: { path: { id } } });
+
 export const webhookService = {
   getAll: async (page = 1, limit = 20): Promise<PaginatedResponse<Webhook>> => {
-    const response = await api.get<BackendListResponse<Webhook>>(
-      "/api/v1/webhooks",
-      { params: { page, limit } },
-    );
+    const response = await typedApi.GET("/api/v1/webhooks", { params: { query: { page, limit } } }).then(unwrap);
     return toPaginated(response, page, limit);
   },
 
-  getById: async (id: string): Promise<Webhook> => {
-    const response = await api.get<BackendResponse<Webhook>>(
-      `/api/v1/webhooks/${id}`,
-    );
-    return response.data;
-  },
+  getById: async (id: string): Promise<Webhook> =>
+    (await typedApi.GET("/api/v1/webhooks/{id}", byId(id)).then(unwrap)).data,
 
   /**
    * Create a webhook. The returned `secret` (used to verify the
    * X-Webhook-Signature HMAC-SHA256 header) is shown ONLY ONCE.
    */
-  create: async (data: WebhookCreateInput): Promise<CreatedWebhook> => {
-    const response = await api.post<BackendResponse<CreatedWebhook>>(
-      "/api/v1/webhooks",
-      data,
-    );
-    return response.data;
-  },
+  create: async (data: WebhookCreateInput): Promise<CreatedWebhook> =>
+    (await typedApi.POST("/api/v1/webhooks", { body: data }).then(unwrap)).data,
 
   /**
    * Update a webhook. When the url changes the response carries a new
    * one-time `secret`; otherwise it has none.
    */
-  update: async (
-    id: string,
-    data: WebhookUpdateInput,
-  ): Promise<UpdatedWebhook> => {
-    const response = await api.patch<BackendResponse<UpdatedWebhook>>(
-      `/api/v1/webhooks/${id}`,
-      data,
-    );
-    return response.data;
-  },
+  update: async (id: string, data: WebhookUpdateInput): Promise<UpdatedWebhook> =>
+    (await typedApi.PATCH("/api/v1/webhooks/{id}", { ...byId(id), body: data }).then(unwrap)).data,
 
   /**
-   * Issue a new signing secret. The old one stops working immediately — there
-   * is no overlap window — and the new one is returned only in this response.
+   * Issue a new signing secret, returned only in this response. The old one
+   * keeps signing for the overlap window (the backend's default, 24 hours,
+   * since P6-13; this body names none).
    */
-  rotateSecret: async (id: string): Promise<WebhookWithSecret> => {
-    const response = await api.post<BackendResponse<WebhookWithSecret>>(
-      `/api/v1/webhooks/${id}/rotate-secret`,
-      {},
-    );
-    return response.data;
-  },
+  rotateSecret: async (id: string): Promise<WebhookWithSecret> =>
+    (await typedApi.POST("/api/v1/webhooks/{id}/rotate-secret", { ...byId(id), body: {} }).then(unwrap)).data,
 
-  delete: async (id: string): Promise<{ id: string }> => {
-    const response = await api.delete<BackendResponse<{ id: string }>>(
-      `/api/v1/webhooks/${id}`,
-    );
-    return response.data;
-  },
+  delete: async (id: string): Promise<{ id: string }> =>
+    (await typedApi.DELETE("/api/v1/webhooks/{id}", byId(id)).then(unwrap)).data,
 
-  getDeliveries: async (
-    id: string,
-    page = 1,
-    limit = 20,
-  ): Promise<PaginatedResponse<WebhookDelivery>> => {
-    const response = await api.get<BackendListResponse<WebhookDelivery>>(
-      `/api/v1/webhooks/${id}/deliveries`,
-      { params: { page, limit } },
-    );
+  getDeliveries: async (id: string, page = 1, limit = 20): Promise<PaginatedResponse<WebhookDelivery>> => {
+    const response = await typedApi
+      .GET("/api/v1/webhooks/{id}/deliveries", { params: { path: { id }, query: { page, limit } } })
+      .then(unwrap);
     return toPaginated(response, page, limit);
   },
 
   /** Send a test event to the webhook endpoint. */
-  test: async (id: string): Promise<WebhookTestResult> => {
-    const response = await api.post<BackendResponse<WebhookTestResult>>(
-      `/api/v1/webhooks/${id}/test`,
-      {},
-    );
-    return response.data;
-  },
+  test: async (id: string): Promise<WebhookTestResult> =>
+    (
+      await typedApi
+        .POST("/api/v1/webhooks/{id}/test", {
+          ...byId(id),
+          // As built: an empty JSON object, though the contract reads no body.
+          body: {} as never,
+        })
+        .then(unwrap)
+    ).data,
 };
 
 export default webhookService;

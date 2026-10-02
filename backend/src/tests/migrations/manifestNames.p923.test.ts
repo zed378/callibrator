@@ -32,7 +32,7 @@ jest.mock("../../config/index", () => {
 });
 
 const MIGRATIONS_DIR = path.join(__dirname, "../../migrations");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 /** The 63 names recorded in `schema_migrations` by the JavaScript migrations, in order. */
 const FROZEN: readonly string[] = [

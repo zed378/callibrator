@@ -3,7 +3,7 @@
  *
  * Tests the Search route registrations and middleware chain.
  */
-const searchRoutes = require("../../routes/api/search.route.js");
+const searchRoutes = require("../../routes/api/search.route");
 
 describe("Search Routes", () => {
   it("should export an Express router", () => {

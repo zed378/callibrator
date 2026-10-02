@@ -27,7 +27,7 @@
  *
  * TypeScript since 2026-09-29 (P9-09, ADR-087 Amendment 6), with no behaviour
  * change. ADR-086 had kept it JavaScript because the live test spawned
- * src/scripts/migrate.js with plain `node`; that child now starts with
+ * src/scripts/migrate.ts (formerly .js) with plain `node`; that child now starts with
  * `--import tsx` (ADR-087 Amendment 4), and the live suite ran against
  * PostgreSQL 18 for this conversion.
  */

@@ -12,7 +12,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 const m0057 = require("../../migrations/0057-calibration-records-append-only");
 const m0058 = require("../../migrations/0058-tenant-keys-kms-envelope");
 const m0059 = require("../../migrations/0059-stock-adjustment-reason-and-item");

@@ -140,15 +140,15 @@ describe("roles page — list states", () => {
     await renderPage();
 
     fireEvent.change(screen.getByPlaceholderText("Search roles..."), { target: { value: "tech" } });
-    await waitFor(() => expect(listCalls().at(-1)?.[1]).toEqual({ params: { page: 1, limit: 10, search: "tech" } }));
+    await waitFor(() => expect(listCalls().at(-1)?.[1]).toEqual({ params: { page: "1", limit: "10", search: "tech" } }));
     await screen.findByText("TECHNICIAN");
 
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    await waitFor(() => expect(listCalls().at(-1)?.[1]).toEqual({ params: expect.objectContaining({ page: 2 }) }));
+    await waitFor(() => expect(listCalls().at(-1)?.[1]).toEqual({ params: expect.objectContaining({ page: "2" }) }));
     await screen.findByText("TECHNICIAN");
 
     fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "25" } });
-    await waitFor(() => expect(listCalls().at(-1)?.[1]).toEqual({ params: expect.objectContaining({ page: 1, limit: 25 }) }));
+    await waitFor(() => expect(listCalls().at(-1)?.[1]).toEqual({ params: expect.objectContaining({ page: "1", limit: "25" }) }));
   });
 });
 

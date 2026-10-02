@@ -3,7 +3,7 @@
  *
  * Tests the ticket route registrations and middleware chain.
  */
-const ticketRoutes = require("../../routes/api/tickets.route.js");
+const ticketRoutes = require("../../routes/api/tickets.route");
 
 describe("Ticket Routes", () => {
   it("should export an Express router", () => {

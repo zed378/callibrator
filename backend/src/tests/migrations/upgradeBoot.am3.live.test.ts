@@ -121,9 +121,10 @@ interface StepResult {
   error: { message: string; sql: string | null } | null;
 }
 
-/** The manifest names a tree's config/migrator.js lists, in order. */
+/** The manifest names a tree's config/migrator lists, in order (migrator.ts since P9-21; migrator.js in an older tree). */
 const manifest = (backendDir: string): string[] => {
-  const text = fs.readFileSync(path.join(backendDir, "src/config/migrator.js"), "utf8");
+  const ts = path.join(backendDir, "src/config/migrator.ts");
+  const text = fs.readFileSync(fs.existsSync(ts) ? ts : path.join(backendDir, "src/config/migrator.js"), "utf8");
   return [...text.matchAll(/\["(\d{4}-[\w.-]+\.js)",\s*require\(/g)].map((m) => m[1] ?? "");
 };
 

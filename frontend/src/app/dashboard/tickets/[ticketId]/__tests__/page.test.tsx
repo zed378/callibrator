@@ -1,6 +1,6 @@
 /**
  * Ticket detail, through the REAL ticket and user services — `@/api/client`
- * mocked with backend envelopes (backend/src/controllers/ticket.controller.js).
+ * mocked with backend envelopes (backend/src/controllers/ticket.controller.ts).
  * Two points of view (ticketPov): a requester, and a responder (tenant admin
  * or the cross-tenant super admin) who can assign, post internal notes and
  * sees the tenant.

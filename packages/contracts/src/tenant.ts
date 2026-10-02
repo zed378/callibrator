@@ -7,7 +7,7 @@
  *
  * P9-22 (ADR-097): moved here from backend/src/validators/tenant.validator.ts,
  * which re-exports these same objects; the frontend derives its request
- * types from them. The contract for C:/Program Files/Git/api/v1/tenants (list query, id params, create, update, settings and domain bodies).
+ * types from them. The contract for /api/v1/tenants (list query, id params, create, update, settings and domain bodies).
  */
 import { z } from "zod";
 // P7-08 / ADR-071 (amendment): a logo is an uploaded file name, never a URL.

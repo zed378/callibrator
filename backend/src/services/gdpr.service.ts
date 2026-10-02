@@ -108,7 +108,7 @@ const auditGdpr = (
   tenantId: TenantId,
   userId: UserId,
   actor: AuditActorInput | null,
-  action: "CREATE" | "UPDATE",
+  action: "CREATE" | "UPDATE" | "EXPORT",
   resourceType: string,
   resourceId: string | null,
   changes: Record<string, unknown>,
@@ -148,15 +148,28 @@ const CONSENT_REQUIRED = env("CONSENT_REQUIRED") === "true";
 
 /**
  * Export all user data for GDPR Article 15 (Right of Access)
+ *
+ * A-364 (2026-10-02): the export is recorded. It writes FILES (the manifest,
+ * then the ZIP), not rows, so there is no mutation transaction to join; the
+ * audit row is the export's only database write. It is written the way the
+ * other audited file actions here are (contentMedia's upload, the A-360
+ * download): the file work first, then ONE `EXPORT` row (`DataExport`,
+ * `GDPR_EXPORT_CREATE`, the export id, size and expiry — never the data) in
+ * `db.transaction`, BEFORE the export id is handed out. If that row cannot be
+ * written, the catch below deletes the ZIP and its manifest and the request is
+ * a 500: no row, no export. An export that fails earlier writes no row (it
+ * does not exist).
+ *
  * @param tenantId - Tenant ID
  * @param userId - User ID
- * @param _options - Export options (accepted, unused, as built)
+ * @param actor - auditPrincipal(req), or null for the subject (A-364). This
+ *   position held an `_options` object that was accepted and never read; no
+ *   caller passed it.
  */
 const exportUserData = async (
   tenantId: TenantId,
   userId: UserId,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- as built: accepted and unused
-  _options: Record<string, unknown> = {},
+  actor: AuditActorInput | null = null,
 ): Promise<{ exportId: string; downloadUrl: string; expiresAt: string; fileSize: number }> => {
   if (!isGdprEnabled()) {
     throw new AppError(400, "Data export is disabled");
@@ -208,6 +221,17 @@ const exportUserData = async (
     // the retention sweep deletes it. There is no in-process timer.
     await fs.promises.rm(exportDir, { recursive: true, force: true });
 
+    const fileSize = await getFileSize(zipPath);
+
+    // A-364: the export's record, before its id is handed out (see above).
+    await db.transaction(async (transaction) => {
+      await auditGdpr(transaction, tenantId, userId, actor, "EXPORT", "DataExport", exportId, {
+        operation: "GDPR_EXPORT_CREATE",
+        fileSize,
+        expiresAt: expiresAt.toISOString(),
+      });
+    });
+
     logger.info("User data export completed", {
       tenantId,
       userId,
@@ -216,9 +240,10 @@ const exportUserData = async (
 
     return {
       exportId,
+      // A-360: served by GET /gdpr/exports/:exportId/download (getExportDownload).
       downloadUrl: `/api/v1/gdpr/exports/${exportId}/download`,
       expiresAt: expiresAt.toISOString(),
-      fileSize: await getFileSize(zipPath),
+      fileSize,
     };
   } catch (err) {
     logger.error("Data export failed", {
@@ -339,6 +364,36 @@ const EXPORT_PAGE_SIZE = 500;
 /** A model (or an unscoped one) as pagesOf reads it: raw rows, a page at a time. */
 interface PageSource {
   findAll(options: Record<string, unknown>): Promise<unknown[]>;
+  /** The model's attributes (absent on a test double): read for its DECIMAL columns. */
+  getAttributes?(): Record<string, { type?: unknown }>;
+}
+
+/**
+ * D-21 / Q-55 — a `raw: true` read bypasses the model's DECIMAL getters, so a
+ * NUMERIC (a work order's `estimatedCost`) would reach the export as the pg
+ * driver's string ("1250.00") while the API answers it as a number. Every
+ * DECIMAL attribute of the model is read back as a number; NULL stays NULL.
+ *
+ * @param Model - the model the rows were read from
+ * @returns a per-row transform (the identity when the model has no DECIMAL)
+ */
+function decimalsAsNumbers(Model: PageSource): (row: RawRow) => RawRow {
+  const decimals = Object.entries(Model.getAttributes?.() ?? {})
+    .filter(([, attribute]) => (attribute.type as { key?: string } | undefined)?.key === "DECIMAL")
+    .map(([name]) => name);
+  if (decimals.length === 0) {
+    return (row) => row;
+  }
+  return (row) => {
+    const converted: RawRow = { ...row };
+    for (const name of decimals) {
+      const value = converted[name];
+      if (value !== null && value !== undefined) {
+        converted[name] = Number(value);
+      }
+    }
+    return converted;
+  };
 }
 
 /**
@@ -430,16 +485,20 @@ async function exportSubjectRecords(exportDir: string, tenantId: TenantId, userI
   await fs.promises.writeFile(
     path.join(exportDir, "subject_records.json"),
     jsonObject(
-      SUBJECT_RECORDS.map(({ model, columns }): [string, () => AsyncGenerator<string>] => [
-        model,
-        () =>
-          jsonArray(
-            pagesOf((models as unknown as Record<string, PageSource>)[model] as PageSource, {
-              tenantId,
-              [Op.or]: columns.map((column) => ({ [column]: userId })),
-            }),
-          ),
-      ]),
+      SUBJECT_RECORDS.map(({ model, columns }): [string, () => AsyncGenerator<string>] => {
+        const Model = (models as unknown as Record<string, PageSource>)[model] as PageSource;
+        return [
+          model,
+          () =>
+            jsonArray(
+              pagesOf(Model, {
+                tenantId,
+                [Op.or]: columns.map((column) => ({ [column]: userId })),
+              }),
+              decimalsAsNumbers(Model),
+            ),
+        ];
+      }),
     ),
   );
 }
@@ -710,6 +769,122 @@ const purgeExpiredExports = async (
 
   return result;
 };
+
+/** An export id as generateExportId makes it; nothing else names a file. */
+const EXPORT_ID = /^export-\d+-[0-9a-f]{8}$/;
+
+/** What an export's manifest records (exportUserData writes it first, W-15). */
+interface ExportManifest {
+  exportId?: unknown;
+  tenantId?: unknown;
+  userId?: unknown;
+  createdAt?: unknown;
+  expiresAt?: unknown;
+}
+
+/**
+ * A-360 (ADR-114) — the data subject downloads their OWN export archive
+ * (GDPR Art. 15(3) / Art. 20: a copy, in a machine-readable format).
+ *
+ * `POST /gdpr/export` answered a `downloadUrl` that no route served, and the
+ * privacy page saved that answer — four fields of metadata — as the export.
+ * The archive is on disk with its manifest (owner, tenant, expiry: W-15); this
+ * resolves an export id to that archive for the caller, or refuses.
+ *
+ * Every refusal is the SAME 404, "Export not found": an id that is malformed,
+ * unknown, another subject's, another tenant's, expired (the sweep may not have
+ * run yet) or whose archive is gone. A 403 for "someone else's" would confirm
+ * that the id exists. The id is checked against EXPORT_ID before any path is
+ * built from it, so it can never name a file outside the exports directory.
+ *
+ * A download is a disclosure of personal data: one EXPORT audit row
+ * (`DataExport`, `GDPR_EXPORT_DOWNLOAD`) is written in a transaction BEFORE the
+ * file is handed over. If that row cannot be written, nothing is served.
+ *
+ * @param tenantId - the caller's tenant
+ * @param userId - the caller (the data subject)
+ * @param exportId - from the path
+ * @param actor - auditPrincipal(req), or null for the subject
+ * @param opts.now - the clock (tests)
+ * @returns the archive's path, the file name to save it as, and its size
+ */
+const getExportDownload = async (
+  tenantId: TenantId,
+  userId: UserId,
+  exportId: string,
+  actor: AuditActorInput | null = null,
+  { now = new Date() }: { now?: Date } = {},
+): Promise<{ filePath: string; filename: string; fileSize: number }> => {
+  const found = await locateExport(tenantId, userId, exportId, now);
+  // ONE throw site: a development error body carries the stack, and a refusal
+  // thrown from different lines would tell "not yours" from "never existed".
+  if (!found) {
+    throw new AppError(404, "Export not found");
+  }
+
+  await db.transaction(async (transaction) => {
+    await auditGdpr(transaction, tenantId, userId, actor, "EXPORT", "DataExport", exportId, {
+      operation: "GDPR_EXPORT_DOWNLOAD",
+      fileSize: found.fileSize,
+      expiresAt: found.expiresAt,
+    });
+  });
+
+  return { filePath: found.filePath, filename: `${exportId}.zip`, fileSize: found.fileSize };
+};
+
+/**
+ * A-360 — the caller's live export archive, or null for every reason it is
+ * not theirs to have (see getExportDownload). A failure that is not "absent"
+ * (a permission error, a full disk) propagates.
+ */
+async function locateExport(
+  tenantId: TenantId,
+  userId: UserId,
+  exportId: unknown,
+  now: Date,
+): Promise<{ filePath: string; fileSize: number; expiresAt: string } | null> {
+  // The shape first: the id comes from the path, and is never joined to a
+  // path before it matches. A principal with no tenant or id owns nothing.
+  if (!tenantId || !userId || typeof exportId !== "string" || !EXPORT_ID.test(exportId)) {
+    return null;
+  }
+
+  let manifest: ExportManifest | null;
+  try {
+    manifest = JSON.parse(
+      await fs.promises.readFile(storagePath("exports", `${exportId}.json`), "utf8"),
+    ) as ExportManifest | null;
+  } catch (err) {
+    // No manifest (never existed, swept, or written before W-15 with no
+    // recorded owner) or an unreadable one: there is no owner to match.
+    if ((err as NodeJS.ErrnoException).code === "ENOENT" || err instanceof SyntaxError) {
+      return null;
+    }
+    throw err;
+  }
+  if (
+    manifest === null ||
+    typeof manifest !== "object" ||
+    manifest.tenantId !== tenantId ||
+    manifest.userId !== userId ||
+    typeof manifest.expiresAt !== "string" ||
+    // An expiry that does not parse (NaN) is treated as expired, as the sweep does.
+    !(now.getTime() < Date.parse(manifest.expiresAt))
+  ) {
+    return null;
+  }
+
+  const filePath = storagePath("exports", `${exportId}.zip`);
+  try {
+    return { filePath, fileSize: (await fs.promises.stat(filePath)).size, expiresAt: manifest.expiresAt };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw err;
+  }
+}
 
 /**
  * Get file size
@@ -1178,7 +1353,8 @@ const updateConsent = async (
 // eslint-disable-next-line @typescript-eslint/require-await -- as built: async, so it answers a promise
 const getProcessingActivities = async (tenantId: TenantId, userId: UserId): Promise<Record<string, unknown>> => {
   return {
-    controller: "Hospital Device Calibration Platform",
+    // Q-43: the product name until the owner supplies the legal entity (doc 20 §14).
+    controller: "Device Calibrator",
     tenantId,
     subjectId: userId,
     generatedAt: new Date().toISOString(),
@@ -1510,68 +1686,13 @@ const restrictProcessing = async (
 // ==========================================
 // PRIVACY PREFERENCES
 // ==========================================
-
-/**
- * Update user privacy preferences
- */
-const updatePrivacyPreferences = async (
-  tenantId: TenantId,
-  userId: UserId,
-  preferences: unknown,
-  actor: AuditActorInput | null = null,
-): Promise<{ success: true }> => {
-  try {
-    const { User } = modelsBarrel();
-
-    await db.transaction(async (transaction) => {
-      // As built: `privacyPreferences` is not a User attribute (A-333), so
-      // Sequelize drops it and this update writes nothing.
-      const preferenceValues: Record<string, unknown> = { privacyPreferences: preferences };
-      await User.update(
-        preferenceValues,
-        { where: { id: userId, tenantId }, transaction },
-      );
-      // Which preferences were set, never their values.
-      await auditGdpr(transaction, tenantId, userId, actor, "UPDATE", "User", userId, {
-        operation: "GDPR_PRIVACY_PREFERENCES",
-        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: any falsy value reads as none
-        keys: Object.keys((preferences as object | null | undefined) || {}).sort(),
-      });
-    });
-
-    logger.info("Privacy preferences updated", { tenantId, userId });
-    return { success: true };
-  } catch (err) {
-    logger.error("Failed to update privacy preferences", {
-      tenantId,
-      userId,
-      error: messageOf(err),
-    });
-    throw new AppError(500, "Failed to update preferences");
-  }
-};
-
-/**
- * Get user privacy preferences
- */
-const getPrivacyPreferences = async (tenantId: TenantId, userId: UserId): Promise<unknown> => {
-  try {
-    const { User } = modelsBarrel();
-
-    const user = await User.findByPk(userId);
-    // As built: `privacyPreferences` is not a User attribute (A-333), so this is always `{}`.
-    const stored = user as unknown as { privacyPreferences?: unknown } | null;
-    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: any falsy value reads as none
-    return stored?.privacyPreferences || {};
-  } catch (err) {
-    logger.error("Failed to get privacy preferences", {
-      tenantId,
-      userId,
-      error: messageOf(err),
-    });
-    return {};
-  }
-};
+//
+// A-333 (2026-10-01): `updatePrivacyPreferences` / `getPrivacyPreferences`
+// were removed. They wrote and read `privacyPreferences` on User, which has no
+// such attribute or column: the write was dropped, the read was always `{}`,
+// and an audit row recorded a change that never happened. Nothing called
+// them. A subject's per-purpose choices are the consent records above, which
+// keep the grant/withdrawal history GDPR Art. 7(1) asks for.
 
 // ==========================================
 // DATA RETENTION
@@ -1676,6 +1797,7 @@ const getStatus = (): { enabled: boolean; exportRetentionHours: number; consentR
 
 const service = {
   exportUserData,
+  getExportDownload,
   purgeExpiredExports,
   eraseUserData,
   recordConsent,
@@ -1685,8 +1807,6 @@ const service = {
   getProcessingActivities,
   rectifyData,
   restrictProcessing,
-  updatePrivacyPreferences,
-  getPrivacyPreferences,
   createDsar,
   getDsarStatus,
   getStatus,

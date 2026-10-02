@@ -20,7 +20,7 @@ type Context = Parameters<typeof migration.up>[0]["context"];
 const ctx = (qi: object): Context => qi as Context;
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0103-certificate-signed-snapshot.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const Certificate = defineCertificate(new Sequelize({ dialect: "postgres", logging: false }), DataTypes);
 const attribute = (Certificate.getAttributes() as Record<string, { field: string; type: { key: string }; allowNull?: boolean }>)["signedSnapshot"];

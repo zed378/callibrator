@@ -59,7 +59,7 @@ A scheduled-job failure, a missed run or a stuck batch job is logged at `error` 
 
 Tests: `tests/middlewares/activityLog.test.js` and `tests/middlewares/activityLog.redaction.a228.test.js` (A-228 adds e-mail addresses and `*Link` keys; its expectations are written out literally, not derived from the redactor's own patterns — CLAUDE.md § Evidence).
 
-`auditAction`, the helper that logged whole request and response bodies, **was deleted** (A-43); `withAudit` logs actor, ip and user agent only.
+`auditAction`, the helper that logged whole request and response bodies, **was deleted** (A-43); `withAudit` logged actor, ip and user agent only, and was removed with `auditLog.middleware` on 2026-10-01 (ADR-087 Am. 27).
 
 ## What Does Not Go Through The Logger
 
@@ -114,4 +114,4 @@ cat deploy/compose/volumes/log/jobs/*.json
 
 It is a database table, not a log. It has no rotation, no retention and no delete path, and losing a row is a compliance incident rather than an inconvenience. [`../DATABASE/10-AUDIT-LOGS.md`](../DATABASE/10-AUDIT-LOGS.md).
 
-One as-built caveat belongs here because it concerns durability: `auditLog.middleware.js#recordAudit` still writes its row on `res.on("finish")`, **after** the response and outside any transaction — its own JSDoc says it must never be what attribution rests on. The compliance-critical mutations write their row inside their transaction in the service (A-41); a failed `recordAudit` insert is logged at `error` (A-42).
+One as-built caveat used to belong here: `auditLog.middleware.js#recordAudit` wrote its row on `res.on("finish")`, **after** the response and outside any transaction. No route mounted it, and it was **removed on 2026-10-01** (ADR-087 Am. 27, round 3). The compliance-critical mutations write their row inside their transaction in the service (A-41); a failed `recordAudit` insert is logged at `error` (A-42).

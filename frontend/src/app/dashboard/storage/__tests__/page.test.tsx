@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /**
  * Storage (bring-your-own bucket), against the backend contract
- * (storage.controller.js / storageSettings.service.js):
+ * (storage.controller.ts / storageSettings.service.js):
  *  - GET    /api/v1/storage/settings       → `data`: the safe view (never a secret)
  *  - GET    /api/v1/storage/usage          → `data: { bytes, objects, megabytes, provider }`
  *  - PUT    /api/v1/storage/settings       → probes first; 422 "Storage connection test failed: …"

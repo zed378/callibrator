@@ -54,7 +54,8 @@ type CredentialRow = ModelInstance<"WebauthnCredential">;
 
 type UserRow = ModelInstance<"User">;
 
-const RP_NAME = "Callibrator";
+// Q-43 (ADR-098 §8.1): the name the browser's passkey prompt shows (the RP ID, not this, binds the credential).
+const RP_NAME = "Device Calibrator";
 const RP_ID = envOr("WEBAUTHN_RP_ID", "localhost");
 // The origin the browser reports in clientDataJSON. Must match exactly.
 const ORIGIN = envOr(

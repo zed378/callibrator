@@ -119,14 +119,14 @@ Two defects fixed here that generalise:
 | GET | `/:tenantId/parent` | parent |
 | GET | `/:tenantId/descendants` | all descendants |
 | GET | `/:tenantId/ancestors` | all ancestors |
-| POST | `/:parentId/children` | add a child |
+| POST | `/:tenantId/children` | add a child |
 | PUT | `/:tenantId/parent` | reparent |
 | DELETE | `/:tenantId/parent` | detach |
 | GET | `/cross-tenant-roles` | roles spanning tenants |
 
 Backed by `tenant_hierarchies` with a materialised `path` and `depth`, so ancestor and descendant queries are a prefix match rather than recursion — chosen when the platform had to run on MySQL. *(Chosen while MySQL was a target. PostgreSQL-only (ADR-039) now permits recursive CTEs; the materialised path stands until a decision changes it.)*
 
-**`POST /:parentId/children`** (SUPERADMIN, no API key; A-187). Body `{ name, code? }`. The child's `code` defaults to `<PARENT>_<nnn>`, its `subdomain` is derived from the code (as for `POST /tenants`), its `email` is the parent's, and its plan is the parent's. The tenant, its `tenant_hierarchies` row and one PLATFORM audit row (`CREATE_SUB_ORGANIZATION`) commit together. Answers: **201**; **400** malformed id or body; **404** parent does not exist; **409** parent not `active`, parent has no `code`, the depth limit (`HIERARCHY_MAX_DEPTH`, default 5) is reached, or the code/subdomain is taken — all checked before anything is written. Until A-187 every call failed on the real models (NOT NULL `subdomain`/`email`) with a 500.
+**`POST /:tenantId/children`** (SUPERADMIN, no API key; A-187). Body `{ name, code? }`. The child's `code` defaults to `<PARENT>_<nnn>`, its `subdomain` is derived from the code (as for `POST /tenants`), its `email` is the parent's, and its plan is the parent's. The tenant, its `tenant_hierarchies` row and one PLATFORM audit row (`CREATE_SUB_ORGANIZATION`) commit together. Answers: **201**; **400** malformed id or body; **404** parent does not exist; **409** parent not `active`, parent has no `code`, the depth limit (`HIERARCHY_MAX_DEPTH`, default 5) is reached, or the code/subdomain is taken — all checked before anything is written. Until A-187 every call failed on the real models (NOT NULL `subdomain`/`email`) with a 500.
 
 **`PUT /:tenantId/parent`** `{ newParentId }` and **`DELETE /:tenantId/parent`** (SUPERADMIN, no API key; A-224,
 ADR-065). One transaction: the tenant row locked, its `tenant_hierarchies` row (created if missing) and **every

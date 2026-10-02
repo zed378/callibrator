@@ -1,5 +1,6 @@
 // src/app/dashboard/warehouse/components/WarehouseModal.tsx
 import React from "react";
+import type { WarehouseStatus } from "@/types";
 import {
   Alert,
   Dialog,
@@ -20,7 +21,7 @@ interface WarehouseModalProps {
     code: string;
     address: string;
     description: string;
-    status: "active" | "suspended" | "inactive";
+    status: WarehouseStatus | null;
   };
   setForm: React.Dispatch<
     React.SetStateAction<{
@@ -28,13 +29,22 @@ interface WarehouseModalProps {
       code: string;
       address: string;
       description: string;
-      status: "active" | "suspended" | "inactive";
+      status: WarehouseStatus | null;
     }>
   >;
   onSubmit: (e: React.FormEvent) => void;
   /** F-19: a refused save, shown inside the dialog (a page alert sits behind it). */
   error?: string | null;
 }
+
+// A-355: only the statuses the API accepts (WAREHOUSE_STATUSES, warehouse
+// model and validator agree). "Suspended" was offered and every save with it
+// was refused with a 400. Typed by WarehouseStatus, so a value the contract
+// does not publish fails the typecheck.
+const STATUS_OPTIONS: { value: WarehouseStatus; label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+];
 
 export const WarehouseModal: React.FC<WarehouseModalProps> = ({
   isOpen,
@@ -107,18 +117,16 @@ export const WarehouseModal: React.FC<WarehouseModalProps> = ({
         <FormField label="Operational Status">
           <Select
             disabled={!hasWriteAccess}
-            value={form.status}
+            value={form.status ?? ""}
+            placeholder="Not set"
             onChange={(val) =>
               setForm({
                 ...form,
-                status: val as "active" | "suspended" | "inactive",
+                status:
+                  STATUS_OPTIONS.find((o) => o.value === val)?.value ?? null,
               })
             }
-            options={[
-              { value: "active", label: "Active" },
-              { value: "suspended", label: "Suspended" },
-              { value: "inactive", label: "Inactive" },
-            ]}
+            options={STATUS_OPTIONS}
           />
         </FormField>
         {hasWriteAccess && (

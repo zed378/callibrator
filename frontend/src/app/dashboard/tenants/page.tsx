@@ -63,6 +63,7 @@ export default function TenantsPage() {
     handleCreate,
     handleEdit,
     handleUpdate,
+    handleLifecycle,
     handleSsoClick,
   } = useTenants();
   // A-160: the tenant whose "MFA required" policy is open, if any.
@@ -186,6 +187,7 @@ export default function TenantsPage() {
         error={formError}
         isSubmitting={isSubmitting}
         platformFieldsEditable={canManagePlatform}
+        onLifecycle={handleLifecycle}
         logoFile={editLogoFile}
         setLogoFile={setEditLogoFile}
         logoPreview={editLogoPreview}

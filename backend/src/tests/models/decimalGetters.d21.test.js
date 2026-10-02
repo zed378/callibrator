@@ -11,7 +11,7 @@
  * this exercises the same path as a SELECT. The live PostgreSQL proof is in
  * tests/services/dataLayer.dbB.live.test.js.
  *
- * The list of DECIMAL attributes is DISCOVERED from the models, so a fifth
+ * The list of DECIMAL attributes is DISCOVERED from the models, so a new
  * DECIMAL column without a getter fails here.
  */
 
@@ -30,12 +30,15 @@ const decimals = allModels.flatMap((model) =>
 );
 
 describe("D-21 — every DECIMAL attribute reads as a number", () => {
-  it("found the four reviewed DECIMAL columns (a discovery that finds none tests nothing)", () => {
+  it("found the six reviewed DECIMAL columns (a discovery that finds none tests nothing)", () => {
     expect(decimals.map(([m, a]) => `${m}.${a}`).sort()).toEqual([
       "AssetFinance.purchasePrice",
       "AssetFinance.salvageValue",
       "Invoice.amountDue",
       "Invoice.amountPaid",
+      // Q-55 (migration 0107, 2026-10-01).
+      "MaintenanceWorkOrder.actualCost",
+      "MaintenanceWorkOrder.estimatedCost",
     ]);
   });
 

@@ -12,11 +12,11 @@
  * REAL router, validateUuid, validate, controller, ticket service and
  * notification service on the REAL models and tenant hooks (fixtures/memoryDb).
  *
- * @two-tenant api/tickets.route.js GET /:ticketId
- * @two-tenant api/tickets.route.js PATCH /:ticketId
- * @two-tenant api/tickets.route.js DELETE /:ticketId
- * @two-tenant api/tickets.route.js POST /:ticketId/assign
- * @two-tenant api/tickets.route.js POST /:ticketId/comments
+ * @two-tenant api/tickets.route.ts GET /:ticketId
+ * @two-tenant api/tickets.route.ts PATCH /:ticketId
+ * @two-tenant api/tickets.route.ts DELETE /:ticketId
+ * @two-tenant api/tickets.route.ts POST /:ticketId/assign
+ * @two-tenant api/tickets.route.ts POST /:ticketId/comments
  */
 import type * as MemoryDbModule from "../fixtures/memoryDb";
 import type * as RouteClient from "../fixtures/routeClient";

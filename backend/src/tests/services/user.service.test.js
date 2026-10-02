@@ -125,10 +125,10 @@ jest.mock("../../constants", () => ({
 // ================================================================
 const { db } = require("../../config");
 const { Users, Roles } = require("../../models");
-const { logger } = require("../../middlewares/activityLog.middleware");
+require("../../middlewares/activityLog.middleware");
 const { hashPassword } = require("../../utils/password.util");
 const { deleteUpload } = require("../../utils/upload.util");
-const { DEFAULT_LIMIT } = require("../../constants");
+require("../../constants");
 
 const {
   fetchUsers,
@@ -451,19 +451,6 @@ describe("user.service", () => {
   // editUser
   // --------------------------------------------------------------
   describe("editUser", () => {
-    const makeEditableUser = (overrides = {}) => ({
-      get: () => ({
-        id: U1,
-        username: "old",
-        email: "old@test.com",
-        firstName: "Old",
-        lastName: "Name",
-        status: "ACTIVE",
-        ...overrides,
-      }),
-      update: jest.fn().mockResolvedValue({}),
-    });
-
     it("should update user successfully", async () => {
       const mockUser = {
         get: () => ({

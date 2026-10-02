@@ -194,6 +194,10 @@ services:
       # /api/ location and loops. The frontend has no env_file, so a value in
       # .env reaches it only through this line.
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:3000}
+      # Q-42 (ADR-113): server-only, read per request. The SAME value the
+      # backend reads from .env: empty keeps /request-access "not open yet"
+      # (and the backend's intake a 404) and the footer without a privacy link.
+      PRIVACY_NOTICE_URL: ${PRIVACY_NOTICE_URL:-}
     depends_on:
       backend:
         condition: service_healthy

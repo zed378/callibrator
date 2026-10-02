@@ -269,7 +269,7 @@ describe("API keys page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
     await waitFor(() =>
-      expect(mockedGet).toHaveBeenLastCalledWith("/api/v1/api-keys", { params: { page: 2, limit: 10 } }),
+      expect(mockedGet).toHaveBeenLastCalledWith("/api/v1/api-keys", { params: { page: "2", limit: "10" } }),
     );
   });
 });

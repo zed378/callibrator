@@ -193,7 +193,8 @@ export const AuditTable: React.FC<AuditTableProps> = ({
             </thead>
             <tbody className="divide-y divide-border">
               {logs.map((log) => {
-                const badge = ACTION_BADGES[log.action] ?? {
+                // The column is the model's AUDIT_LOG_ACTIONS enum; the contract publishes a string.
+                const badge = ACTION_BADGES[log.action as AuditAction] ?? {
                   variant: "default" as const,
                   label: log.action,
                 };

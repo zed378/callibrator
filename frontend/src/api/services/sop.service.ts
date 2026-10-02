@@ -1,10 +1,10 @@
-import { api } from "../client";
+import { typedApi, unwrap, type JsonBody, type Op, type components } from "../typed";
 
 /**
  * SOP — controlled documents and their training acknowledgments.
  *
  * The tenant/author come from the caller's JWT.
- * Backend: src/routes/api/sop.route.js (mounted /api/v1/sop)
+ * Backend: src/routes/api/sop.route.ts (mounted /api/v1/sop)
  *   POST  /                 create a document
  *   GET   /                 ?page&limit&status
  *   PATCH /:id/publish      publish + fan out training tasks
@@ -19,45 +19,18 @@ import { api } from "../client";
  * acknowledgment id). There is no way to list them over HTTP today.
  */
 
-const BASE = "/api/v1/sop";
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/sop.openapi.ts). The names are unchanged.
 
 // ---------- Types ----------
 
+export type SopDocument = components["schemas"]["SopDocument"];
+export type TrainingAcknowledgment = components["schemas"]["SopTrainingAcknowledgment"];
+
 /** Backend persists uppercase — the full ENUM of models/sopDocument.model.ts. */
-export type SopStatus = "DRAFT" | "UNDER_REVIEW" | "PUBLISHED" | "ARCHIVED";
-export type TrainingStatus = "PENDING" | "COMPLETED";
-
-export interface SopAuthor {
-  id: string;
-  firstName?: string;
-  lastName?: string;
-}
-
-export interface SopDocument {
-  id: string;
-  /** Server-generated, e.g. "SOP-0001". */
-  documentNumber: string;
-  title: string;
-  /** Server defaults to "1.0". */
-  version: string;
-  contentUrl?: string | null;
-  /** Server defaults to true. */
-  requiresTraining: boolean;
-  status: SopStatus;
-  publishedDate?: string | null;
-  authorId?: string;
-  author?: SopAuthor;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface TrainingAcknowledgment {
-  id: string;
-  documentId: string;
-  userId: string;
-  status: TrainingStatus;
-  acknowledgedAt?: string | null;
-}
+export type SopStatus = SopDocument["status"];
+export type TrainingStatus = TrainingAcknowledgment["status"];
+export type SopAuthor = NonNullable<SopDocument["author"]>;
 
 /** Shape the backend actually returns for GET /sop. */
 export interface SopPage {
@@ -69,29 +42,16 @@ export interface SopPage {
 }
 
 /** Only these fields are read by the backend; everything else is ignored. */
-export interface SopCreateInput {
-  title: string;
-  /** Defaults to "1.0" server-side. */
-  version?: string;
-  contentUrl?: string;
-  /** Defaults to true server-side. */
-  requiresTraining?: boolean;
-}
+export type SopCreateInput = JsonBody<Op<"/api/v1/sop", "post">>;
 
 export interface SopListParams {
   page?: number;
   limit?: number;
+  /** The page's filter select offers only the SopStatus values. */
   status?: SopStatus | string;
 }
 
-// Backend response envelope
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
-
+/** The older flat answer the list still accepts (`data.documents`). */
 interface RawSopList {
   total: number;
   page: number;
@@ -99,6 +59,8 @@ interface RawSopList {
   totalPages: number;
   documents: SopDocument[];
 }
+
+const byId = (id: string) => ({ params: { path: { id } } });
 
 // ---------- Service ----------
 
@@ -109,12 +71,9 @@ export const sopService = {
     // in `data`, pagination in a top-level `meta` (c131729). Reading only the
     // older flat `data.documents` shape, every list came back empty. Both are
     // read; the envelope wins.
-    const response = await api.get<
-      BackendResponse<RawSopList | SopDocument[] | null> & {
-        meta?: Partial<Omit<RawSopList, "documents">>;
-      }
-    >(BASE, { params });
-    const data = response.data;
+    const query = { ...params, status: params.status as SopStatus | undefined };
+    const response = await typedApi.GET("/api/v1/sop", { params: { query } }).then(unwrap);
+    const data: RawSopList | SopDocument[] | null = response.data;
     const raw: Partial<RawSopList> = Array.isArray(data)
       ? { documents: data, ...response.meta }
       : (data ?? {});
@@ -131,8 +90,7 @@ export const sopService = {
    * POST /sop — documentNumber and status ("DRAFT") are assigned server-side.
    */
   createDocument: async (input: SopCreateInput): Promise<SopDocument> => {
-    const response = await api.post<BackendResponse<SopDocument>>(BASE, input);
-    return response.data;
+    return (await typedApi.POST("/api/v1/sop", { body: input }).then(unwrap)).data;
   },
 
   /**
@@ -141,10 +99,7 @@ export const sopService = {
    * in the tenant. This is the only way training gets assigned.
    */
   publishDocument: async (documentId: string): Promise<SopDocument> => {
-    const response = await api.patch<BackendResponse<SopDocument>>(
-      `${BASE}/${documentId}/publish`,
-    );
-    return response.data;
+    return (await typedApi.PATCH("/api/v1/sop/{id}/publish", byId(documentId)).then(unwrap)).data;
   },
 
   /**
@@ -154,10 +109,7 @@ export const sopService = {
   acknowledgeTraining: async (
     documentId: string,
   ): Promise<TrainingAcknowledgment> => {
-    const response = await api.post<BackendResponse<TrainingAcknowledgment>>(
-      `${BASE}/${documentId}/acknowledge`,
-    );
-    return response.data;
+    return (await typedApi.POST("/api/v1/sop/{id}/acknowledge", byId(documentId)).then(unwrap)).data;
   },
 };
 

@@ -44,7 +44,7 @@ const fakeContext = (answers: (sql: string, bind: unknown[]) => unknown[] = () =
   return { context: context as never, calls, created, sequelize };
 };
 
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 describe("the three are registered in the static manifest under .js names (P9-23)", () => {
   it.each([

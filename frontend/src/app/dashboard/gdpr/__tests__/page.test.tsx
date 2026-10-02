@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /**
  * The GDPR data-subject page against the backend contract
- * (backend/src/routes/api/gdpr.route.js, controllers/gdpr.controller.js,
+ * (backend/src/routes/api/gdpr.route.ts, controllers/gdpr.controller.ts,
  * services/gdpr.service.js):
  *  - GET  /api/v1/gdpr/consent/history → ConsentRecord rows in `data`
  *    ({ purpose, status: "granted" | "withdrawn", ipAddress, consentedAt, … });
@@ -399,8 +399,27 @@ describe("GDPR page — restriction (Art. 18) and export (Art. 20)", () => {
     });
     afterEach(() => click.mockRestore());
 
-    it("downloads the export as my-data-export.json", async () => {
-      mockedPost.mockResolvedValue(ok({ user: { id: "u-1" }, consents: [] }, "Data export initiated"));
+    const EXPORT_ID = "export-1790000000000-0a1b2c3d";
+    /** POST /export as gdpr.service#exportUserData answers it: where the archive is. */
+    const exported = ok(
+      {
+        exportId: EXPORT_ID,
+        downloadUrl: `/api/v1/gdpr/exports/${EXPORT_ID}/download`,
+        expiresAt: "2026-10-09T00:00:00.000Z",
+        fileSize: 2048,
+      },
+      "Data export initiated",
+    );
+
+    it("A-360: saves the ARCHIVE the export wrote (fetched as a blob), not the export's metadata", async () => {
+      const archive = new Blob(["PK"], { type: "application/zip" });
+      mockedPost.mockResolvedValue(exported);
+      mockedGet.mockImplementation(async (url: string) => {
+        if (url === `/api/v1/gdpr/exports/${EXPORT_ID}/download`) return archive;
+        if (url === "/api/v1/gdpr/consent/history") return ok(history, "Consent history retrieved");
+        if (url === "/api/v1/gdpr/processing") return ok(processing, "Processing activities retrieved");
+        throw httpError(404, "Not found");
+      });
       await renderLoaded();
 
       await act(async () => {
@@ -408,11 +427,26 @@ describe("GDPR page — restriction (Art. 18) and export (Art. 20)", () => {
       });
 
       expect(mockedPost).toHaveBeenCalledWith("/api/v1/gdpr/export");
-      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      expect(mockedGet).toHaveBeenCalledWith(`/api/v1/gdpr/exports/${EXPORT_ID}/download`, { responseType: "blob" });
+      expect(createObjectURL).toHaveBeenCalledWith(archive);
       const anchor = click.mock.instances[0] as unknown as HTMLAnchorElement;
-      expect(anchor.download).toBe("my-data-export.json");
+      expect(anchor.download).toBe(`${EXPORT_ID}.zip`);
       expect(revokeObjectURL).toHaveBeenCalledWith("blob:export");
       expect(toasts()).toContainEqual({ type: "success", title: "Export downloaded", description: undefined });
+    });
+
+    it("A-360: an archive that cannot be fetched is a failed export, and nothing is saved", async () => {
+      mockedPost.mockResolvedValue(exported);
+      // The backend fixture answers 404 for any other GET, the download included.
+      await renderLoaded();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Export my data/ }));
+      });
+
+      expect(click).not.toHaveBeenCalled();
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(toasts()).toContainEqual({ type: "error", title: "Export failed", description: "Not found" });
     });
 
     it("a failed export says so and downloads nothing", async () => {

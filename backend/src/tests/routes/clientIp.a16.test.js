@@ -81,7 +81,7 @@ describe("A-16: the backend's client address", () => {
 
   it("trusts exactly one hop, and index.js applies it", () => {
     expect(TRUST_PROXY_HOPS).toBe(1);
-    const index = fs.readFileSync(path.join(__dirname, "../../../index.js"), "utf8");
+    const index = fs.readFileSync(path.join(__dirname, "../../../index.ts"), "utf8");
     expect(index).toContain('app.set("trust proxy", TRUST_PROXY_HOPS);');
     expect(index.match(/app\.set\("trust proxy"/g)).toHaveLength(1);
   });

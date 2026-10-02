@@ -40,9 +40,9 @@ const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0038-ai-assistant-menu.ts"),
   "utf8",
 );
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
-const SEED = fs.readFileSync(path.join(__dirname, "../../utils/seedMenuGroups.util.js"), "utf8");
-const AI_ROUTE = fs.readFileSync(path.join(__dirname, "../../routes/api/ai.route.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
+const SEED = fs.readFileSync(path.join(__dirname, "../../utils/seedMenuGroups.util.ts"), "utf8");
+const AI_ROUTE = fs.readFileSync(path.join(__dirname, "../../routes/api/ai.route.ts"), "utf8");
 
 interface Write {
   sql: string;

@@ -1,5 +1,5 @@
 /**
- * Tests for iot.controller.js — ingestHttp
+ * Tests for iot.controller.ts — ingestHttp
  *
  * iot.controller does NOT use asyncHandler. It uses its own try/catch
  * and calls next(err) on failure, so the `next` mock is the error
@@ -26,7 +26,7 @@ jest.mock("../../models", () => {
   };
 });
 
-const { CalibrationDevice, _mocks } = require("../../models");
+const { _mocks } = require("../../models");
 const iotService = require("../../services/iot.service");
 const iotController = require("../../controllers/iot.controller");
 const { success } = require("../../utils/response.util");

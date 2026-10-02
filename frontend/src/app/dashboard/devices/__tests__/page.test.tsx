@@ -433,6 +433,36 @@ describe("devices page — CSV import", () => {
     expect(screen.queryByText(/CSV import finished/)).not.toBeInTheDocument();
   });
 
+  it("A-358: a row rejected with field errors lists them as text instead of crashing", async () => {
+    // calibrationDevices.service#bulkImportCalibrationDevices: a duplicate or a
+    // validation failure answers a list of { field, message }; an empty CSV a string.
+    post.mockResolvedValue({
+      success: true,
+      status: 200,
+      message: "ok",
+      data: {
+        successCount: 0,
+        failedCount: 2,
+        totalCount: 2,
+        errors: [
+          { row: 2, errors: [{ field: "serialNumber", message: "Duplicate serial number: SN-1" }] },
+          {
+            row: 3,
+            errors: [
+              { field: "name", message: "Required" },
+              { field: "status", message: "Invalid option" },
+            ],
+          },
+        ],
+      },
+    });
+    const { container } = await renderPage();
+    importFile(container);
+
+    expect(await screen.findByText("Row 2: serialNumber: Duplicate serial number: SN-1")).toBeInTheDocument();
+    expect(screen.getByText("Row 3: name: Required; status: Invalid option")).toBeInTheDocument();
+  });
+
   it("a clean import reports success with no error list", async () => {
     post.mockResolvedValue({
       success: true,

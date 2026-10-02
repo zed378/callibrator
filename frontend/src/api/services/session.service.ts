@@ -1,52 +1,19 @@
-import { api } from "../client";
+// P9-25 (ADR-103 item 11): on the GENERATED client; the types are the
+// contract's (backend/src/routes/api/sessions.openapi.ts). The names are unchanged.
+import { typedApi, unwrap, type Answer, type DataOf, type Op, type QueryOf, type components } from "../typed";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface Session {
-  id: string;
-  userId: string;
-  username: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  ipAddress: string;
-  userAgent: string;
-  device: string;
-  browser: string;
-  os: string;
-  location: string;
-  role: string;
-  tenantId: string | null;
-  tenantName: string | null;
-  isRevoked: boolean;
-  isActive: boolean;
-  expiredAt: string;
-  revokedAt: string | null;
-  revokedReason: string | null;
-  lastActivityAt: string;
-  createdAt: string;
-  status: "active" | "expired" | "revoked";
-}
+/** A session as the platform operator sees it (A-334: there is no `location`). */
+export type Session = components["schemas"]["AdminSession"];
 
-export interface SessionMeta {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+type List = Op<"/api/v1/sessions", "get">;
 
 /**
- * The wire shape of GET /api/v1/sessions — the standard envelope: rows in
- * `data`, pagination in a TOP-LEVEL `meta` (A-111). The backend used to send
- * `data: { sessions, meta }`; nothing reads that shape any more.
+ * GET /api/v1/sessions answers the standard envelope: rows in `data`,
+ * pagination in a TOP-LEVEL `meta` (A-111).
  */
-interface SessionsEnvelope {
-  success: boolean;
-  status: number;
-  message: string;
-  data: Session[] | null;
-  meta?: SessionMeta;
-}
+export type SessionMeta = Answer<List>["meta"];
 
 /** What `getAll` resolves to: the rows and their pagination. */
 export interface SessionsResult {
@@ -54,20 +21,13 @@ export interface SessionsResult {
   meta: SessionMeta;
 }
 
-export interface SessionStats {
-  total: number;
-  active: number;
-  expired: number;
-  revoked: number;
-}
+export type SessionStats = DataOf<Op<"/api/v1/sessions/stats", "get">>;
 
 export interface RevokeSessionPayload {
   reason?: string;
 }
 
-export interface RevokeAllResult {
-  revokedCount: number;
-}
+export type RevokeAllResult = DataOf<Op<"/api/v1/sessions/user/{userId}/revoke-all", "post">>;
 
 // ─── API Service ─────────────────────────────────────────────────────────────
 
@@ -87,15 +47,14 @@ export const sessionService = {
     status?: "active" | "expired" | "revoked",
     userId?: string,
   ): Promise<SessionsResult> => {
-    const params: Record<string, string | number> = { page, limit };
+    // The contract publishes page/limit as the strings the controller parses.
+    const params: QueryOf<List> = { page: String(page), limit: String(limit) };
 
     if (search) params.search = search;
     if (status) params.status = status;
     if (userId) params.userId = userId;
 
-    const response = await api.get<SessionsEnvelope>("/api/v1/sessions", {
-      params,
-    });
+    const response = await typedApi.GET("/api/v1/sessions", { params: { query: params } }).then(unwrap);
 
     const sessions = response.data ?? [];
     const meta: SessionMeta = response.meta ?? {
@@ -112,10 +71,7 @@ export const sessionService = {
    * @param id - Session UUID
    */
   getById: async (id: string): Promise<Session> => {
-    const response = await api.get<{ success: boolean; data: Session }>(
-      `/api/v1/sessions/${id}`,
-    );
-    return response.data;
+    return (await typedApi.GET("/api/v1/sessions/{id}", { params: { path: { id } } }).then(unwrap)).data;
   },
 
   /**
@@ -123,14 +79,10 @@ export const sessionService = {
    * @param userId - Filter by user ID (optional)
    */
   getStats: async (userId?: string): Promise<SessionStats> => {
-    const params: Record<string, string> = {};
+    const params: QueryOf<Op<"/api/v1/sessions/stats", "get">> = {};
     if (userId) params.userId = userId;
 
-    const response = await api.get<{ success: boolean; data: SessionStats }>(
-      "/api/v1/sessions/stats",
-      { params },
-    );
-    return response.data;
+    return (await typedApi.GET("/api/v1/sessions/stats", { params: { query: params } }).then(unwrap)).data;
   },
 
   /**
@@ -142,11 +94,7 @@ export const sessionService = {
     id: string,
     reason = "MANUAL_REVOKE",
   ): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post<{
-      success: boolean;
-      message: string;
-    }>(`/api/v1/sessions/${id}/revoke`, { reason });
-    return response;
+    return typedApi.POST("/api/v1/sessions/{id}/revoke", { params: { path: { id } }, body: { reason } }).then(unwrap);
   },
 
   /**
@@ -158,12 +106,11 @@ export const sessionService = {
     userId: string,
     reason = "ADMIN_REVOKE_ALL",
   ): Promise<RevokeAllResult> => {
-    const response = await api.post<{
-      success: boolean;
-      data: RevokeAllResult;
-      message: string;
-    }>(`/api/v1/sessions/user/${userId}/revoke-all`, { reason });
-    return response.data;
+    return (
+      await typedApi
+        .POST("/api/v1/sessions/user/{userId}/revoke-all", { params: { path: { userId } }, body: { reason } })
+        .then(unwrap)
+    ).data;
   },
 
   /**
@@ -173,11 +120,7 @@ export const sessionService = {
   delete: async (
     id: string,
   ): Promise<{ success: boolean; message: string }> => {
-    const response = await api.delete<{
-      success: boolean;
-      message: string;
-    }>(`/api/v1/sessions/${id}`);
-    return response;
+    return typedApi.DELETE("/api/v1/sessions/{id}", { params: { path: { id } } }).then(unwrap);
   },
 };
 

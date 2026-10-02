@@ -58,7 +58,7 @@ interface ServiceResult<T> {
 }
 
 /** A validated create/update body (finance.validator); a JavaScript caller may pass anything. */
-type FinanceInput = Record<string, unknown> & { deviceId?: unknown };
+type FinanceInput = Record<string, unknown> & { deviceId?: unknown; vendorId?: unknown };
 
 /**
  * A-278 (ADR-094) — a asset-finance change commits with one audit row in its
@@ -185,6 +185,24 @@ const includeRelations: Includeable[] = [
 /** A row as the API shows it: its JSON plus the computed figures. */
 type FinanceView = Record<string, unknown> & { depreciation: Depreciation };
 
+/**
+ * A-337 (2026-10-01) — a record's vendor is a vendor of the record's tenant.
+ * Missing, soft-deleted and another tenant's are ONE 404 (never 403: the id
+ * must not tell a caller that it exists elsewhere); the predicate is explicit
+ * because a super admin's context skips the tenant hooks. An absent or null
+ * `vendorId` names no vendor and is not checked.
+ *
+ * @param tenantId - the caller's tenant
+ * @param vendorId - the body's vendorId, if any
+ */
+const assertVendor = async (tenantId: TenantId, vendorId: unknown): Promise<void> => {
+  if (vendorId === undefined || vendorId === null) {return;}
+  const vendor = await Vendor.findOne({ where: { id: vendorId as string, tenantId }, attributes: ["id"] });
+  if (!vendor) {
+    throw new AppError(404, "Vendor not found");
+  }
+};
+
 // ------------------------------------------------------------------
 // LIST
 // ------------------------------------------------------------------
@@ -279,6 +297,7 @@ const createAssetFinance = async (tenantId: TenantId, data: FinanceInput, actor:
   if (!device) {
     throw new AppError(404, "Calibration device not found");
   }
+  await assertVendor(tenantId, data.vendorId);
 
   const existing = await AssetFinance.findOne({
     where: { deviceId: data.deviceId as string },
@@ -346,6 +365,7 @@ const updateAssetFinance = async (
   if (!record) {
     throw new AppError(404, "Asset finance record not found");
   }
+  await assertVendor(tenantId, data.vendorId);
   const fields = Object.keys(data);
   const before = pick(record, fields);
   await db.transaction(async (transaction) => {

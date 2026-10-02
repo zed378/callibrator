@@ -92,7 +92,7 @@ describe("Ticket Response desk", () => {
       fireEvent.click(screen.getByRole("checkbox", { name: "Only tickets assigned to me" }));
     });
     await waitFor(() =>
-      expect(get).toHaveBeenLastCalledWith("/api/v1/tickets", { params: { mine: true, page: 1, limit: 25 } }),
+      expect(get).toHaveBeenCalledWith("/api/v1/tickets", { params: { mine: "true", page: 1, limit: 25 } }),
     );
   });
 

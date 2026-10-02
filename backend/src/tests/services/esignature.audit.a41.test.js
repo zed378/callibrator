@@ -17,9 +17,6 @@ const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
 
 const mockRef = { ledger: null, keyPair: null, steps: null, signature: null };
 
-const mockWrite = (table) => async (values, options) =>
-  mockRef.ledger.write(table, values, options);
-
 jest.mock("../../models", () => ({
   TenantKey: {
     unscoped: () => ({ findOne: async () => mockRef.keyPair }),

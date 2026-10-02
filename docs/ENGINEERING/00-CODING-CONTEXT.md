@@ -2,7 +2,7 @@
 
 The one file to read at the start of every session before writing backend or frontend code. Everything here is a summary; follow the link when the summary is not enough.
 
-> **Target standard: TypeScript, strict (ADR-038).** The backend is **still JavaScript/CommonJS** — 370 `.js` source files on 2026-09-21 — and its migration is [`../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). TypeScript in this category is the standard for **new and converted** code. Where a section describes the code as it is today, it says **as-built**. The frontend is already TypeScript.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087), compiled to CommonJS; the only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18). The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The frontend is TypeScript as well. Where a section describes behaviour, it is **as-built** unless marked *target*.
 
 ---
 
@@ -19,17 +19,17 @@ The two things that must never break:
 
 | Concern | As-built | Target |
 |---|---|---|
-| Backend language | JavaScript, CommonJS | **TypeScript, strict**, emitted as CommonJS (ADR-038) |
+| Backend language | **TypeScript, strict**, emitted as CommonJS (ADR-038, ADR-087), checked by TypeScript 7; the one source `.js` left is `utils/checkMenu.util.js` (A-18); 694 legacy `.js` test-tree files (P9-26) | same, with the legacy tests converted (P9-26) |
 | HTTP | Express 5 | same |
 | Database | **PostgreSQL 18 + pgvector, only** (ADR-039) | same |
-| ORM | Sequelize 6, global tenant-scoping hooks (ADR-029) | same, typed with `InferAttributes` |
-| Validation | Joi | **Zod** — the schema is the type |
-| Tests | Jest 30, 100% coverage gate | Jest 30 + `@swc/jest`, gate unchanged |
+| ORM | Sequelize 6, global tenant-scoping hooks (ADR-029); all 73 models typed with `InferAttributes` (`initModel`, P9-10) | same |
+| Validation | **Zod** — the schema is the type (`validate(schema, { from })`, P9-11); Joi removed (ADR-093) | same |
+| Tests | Jest 30, 100% coverage gate; `.ts` transformed by Babel 8 (`backend/jest.transform.js` — not `@swc/jest`, whose getters `jest.spyOn` cannot replace; ADR-087) | same |
 | Cache / state | Redis (`ioredis`) | same |
 | Queue | RabbitMQ (`amqplib`) | same; webhook delivery moves onto it (A-10) |
 | Realtime | Socket.IO, both ends (ADR-031) | same |
 | IoT | HTTP ingest + optional MQTT **client** of an external broker | same |
-| Build | `pkg` single binary | `tsc` → `pkg` |
+| Build | `npm run build:dist` (TypeScript 7 compiles the source into `dist/`) → `pkg` single binary | same |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand | same |
 
 Anything not in this table is an ADR-worthy choice. Write it into `MEMORY/DECISIONS.md` **before** adding the dependency.
@@ -41,7 +41,7 @@ backend/src/
   routes/api/       one file per module; the ONLY place a URL is defined
   controllers/      HTTP in, HTTP out — no business logic
   services/         business logic, transactions, audit writes
-  models/           Sequelize models (+ index.js: associations, scoping hooks)
+  models/           Sequelize models (+ index.ts: associations, scoping hooks)
   validators/       request schemas            (Joi today → Zod)
   middlewares/      auth, tenant context, permission gates, errors, logging
   utils/            pure helpers; response envelope; AppError
@@ -75,7 +75,7 @@ route ──▶ middleware chain ──▶ controller ──▶ service ──�
 
 1. **Tenant isolation is automatic — do not fight it.** The ORM hooks add the tenant predicate; a principal with no tenant matches `NO_TENANT_UUID` and sees **nothing**. Never read `tenantId` from a request body. **Raw SQL bypasses the hooks** — it carries `tenant_id = $n`, bound. Models without a `tenantId` attribute (such as `Tenant` itself) are **not** scoped: loading one by a path id needs an explicit ownership check — that omission is audit finding A-01.
 2. **Cross-tenant is 404, never 403.** Not-found, soft-deleted and not-yours must be indistinguishable.
-3. **Every route has a permission gate** — `dynamicAccess(slug, action)` or `rbac([...])`, plus `denyApiKey` where a service account must not reach. Nothing in the build enforces it yet (P6-04); 31 route files currently have neither gate (A-03).
+3. **Every route has a permission gate** — `dynamicAccess(slug, action)` or `rbac([...])`, plus `denyApiKey` where a service account must not reach. The build enforces it (P6-04, DONE 2026-09-25): `routePermissionGuard.p604` fails on a route with neither a gate nor a reviewed exemption.
 4. **Every mutation writes its audit row inside the same transaction.**
 5. **Every new `:id` route gets a two-tenant test asserting 404.**
 
@@ -102,7 +102,7 @@ Rows in `data`; pagination in a **top-level** `meta`. Never `data.rows`, never `
 | a `catch` that returns a default | the outage is hidden and reported as a real answer |
 | a new role without a `ROLE_LEVELS` entry | fails every privileged gate, silently |
 
-Every one of these is a compile error or a lint error under the target standard. That is the argument for ADR-038.
+Several of these are now refused mechanically by the TypeScript backend (ADR-038): `db` from the models barrel, `tenantId` on `sessions` and `is_deleted` are compile errors against the typed models; `replacements` is refused by `sql()`, and a direct `.query(` is a lint error; `validate(schema)` is the only way a schema reaches a router (schemaAsMiddleware.p911); `bodyDefault` fills an absent body; and a role without a `ROLE_LEVELS` entry refuses the boot (authorization wiring). The optional include, the path parameter a validator is not given, and the `catch` that returns a default are still caught only by tests and review.
 
 ## 8. Read Next
 

@@ -10,7 +10,7 @@
  * with exactly that key; rotation is:
  *
  *   1. set the new key as current and the old one as previous — both decrypt;
- *   2. re-wrap every stored value under the current key (scripts/rotateKeys.js);
+ *   2. re-wrap every stored value under the current key (scripts/rotateKeys.ts);
  *   3. remove the previous key once the re-wrap reports nothing left under it.
  *
  * The runbook is docs/SECURITY/13-KEY-ROTATION.md.

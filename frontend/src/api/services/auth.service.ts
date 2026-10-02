@@ -1,4 +1,23 @@
+// src/api/services/auth.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client; the request and answer
+// types are the contract's (backend/src/routes/api/auth.openapi.ts,
+// authPublic.openapi.ts, accessRequests.openapi.ts). The exported names are
+// unchanged.
+//
+// Two kinds of call stay on `api`, each for a reason the contract cannot
+// express:
+//  - the routes the NEXT server answers itself, writing the httpOnly session
+//    cookies (app/api/v1/auth/{login,logout,logout-all,refresh,passkey/verify}):
+//    their answer is the Next route's, not the backend's (the tokens are
+//    taken out of the body);
+//  - the SAML metadata (XML text).
+// A sign-in answered through the generic proxy (POST /auth/mfa/login,
+// /auth/impersonate) is typed by the contract on the way out; the proxy takes
+// `token` / `refreshToken` out of its answer (A-71), so the body is handed on
+// as the app's BackendLoginResponse.
 import { api } from "../client";
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op } from "../typed";
 import {
   LoginCredentials,
   AuthResponse,
@@ -9,26 +28,19 @@ import {
 } from "@/types";
 import type { AssertionJSON, RequestOptionsJSON } from "@/lib/passkey";
 
-/** P10-04 (doc 20 §7.2): what the identifier-first step does next. */
-export type DiscoverResult = { next: "password" } | { next: "sso"; redirectUrl: string };
+type A = "/api/v1/auth";
 
-/** P10-06 (spec P10-05 § API): the request-access submission. */
-export interface AccessRequestInput {
-  organisationName: string;
-  facilityType: "hospital" | "clinic" | "calibration_lab" | "other";
-  city: string;
-  deviceCountBand: "lt_100" | "100_499" | "500_1999" | "gte_2000" | "unknown";
-  contactName: string;
-  contactRole?: string;
-  workEmail: string;
-  whatsapp: string;
-  needs?: string;
-  consent: true;
-  consentVersion: string;
-  locale: "id" | "en";
-  /** The honeypot; a person never fills it. */
-  website: string;
-}
+/** P10-04 (doc 20 §7.2): what the identifier-first step does next. */
+export type DiscoverResult = DataOf<Op<`${A}/login/discover`, "post">>;
+
+/** P10-06 (spec P10-05 § API): the request-access submission (`website` is the honeypot; a person never fills it). */
+export type AccessRequestInput = JsonBody<Op<"/api/v1/access-requests", "post">>;
+
+/** POST /auth/mfa/setup: the pending secret, its QR code, and whether it replaces a live one (A-114). */
+export type MfaSetupResult = DataOf<Op<`${A}/mfa/setup`, "post">>;
+
+/** A sign-in answered through the proxy, as the browser receives it (A-71: no tokens). */
+const asLogin = (body: unknown): BackendLoginResponse => body as BackendLoginResponse;
 
 interface VerifyResponse {
   success: boolean;
@@ -38,6 +50,7 @@ interface VerifyResponse {
 }
 
 export const authService = {
+  /** POST /api/v1/auth/login — the NEXT route (writes the session cookies). */
   login: async (
     credentials: LoginCredentials,
   ): Promise<BackendLoginResponse> => {
@@ -47,63 +60,42 @@ export const authService = {
     );
   },
 
-  ssoLogin: async (tenantCode: string): Promise<{ redirectUrl: string }> => {
-    const response = await api.post<{ success: boolean; data: { redirectUrl: string } }>(
-      "/api/v1/auth/sso/login",
-      { tenantCode }
-    );
-    return response.data;
-  },
+  ssoLogin: async (tenantCode: string): Promise<{ redirectUrl: string }> =>
+    (await typedApi.POST("/api/v1/auth/sso/login", { body: { tenantCode } }).then(unwrap)).data,
 
   /**
    * POST /api/v1/auth/sso/oidc/login — start an OIDC (OpenID Connect) SSO login
    * for a tenant. Mirrors ssoLogin (SAML) and returns the IdP redirect URL.
    */
-  oidcSsoLogin: async (tenantCode: string): Promise<{ redirectUrl: string }> => {
-    const response = await api.post<{
-      success: boolean;
-      data: { redirectUrl: string };
-    }>("/api/v1/auth/sso/oidc/login", { tenantCode });
-    return response.data;
-  },
+  oidcSsoLogin: async (tenantCode: string): Promise<{ redirectUrl: string }> =>
+    (await typedApi.POST("/api/v1/auth/sso/oidc/login", { body: { tenantCode } }).then(unwrap)).data,
 
-  /**
-   * GET /api/v1/auth/sso/metadata[/:tenantCode] — this app's SAML Service
-   * Provider metadata XML, for configuring the tenant's IdP. Returns raw XML.
-   */
   /**
    * POST /api/v1/auth/login/discover — P10-04. Decided by the email's DOMAIN
    * only (never the account), so the answer reveals nothing about whether an
    * account exists. A username always gets `password`.
    */
-  discoverLogin: async (identifier: string): Promise<DiscoverResult> => {
-    const response = await api.post<{ success: boolean; data: DiscoverResult }>(
-      "/api/v1/auth/login/discover",
-      { identifier },
-    );
-    return response.data;
-  },
+  discoverLogin: async (identifier: string): Promise<DiscoverResult> =>
+    (await typedApi.POST("/api/v1/auth/login/discover", { body: { identifier } }).then(unwrap)).data,
 
   /**
    * POST /api/v1/auth/sso/start — P10-04 / A-292. The server picks the
    * tenant's protocol (SAML or OIDC); the user never chooses it. Every refusal
    * (unknown code, SSO off, misconfigured) is one generic answer.
    */
-  ssoStart: async (orgCode: string): Promise<{ redirectUrl: string }> => {
-    const response = await api.post<{ success: boolean; data: { redirectUrl: string } }>(
-      "/api/v1/auth/sso/start",
-      { orgCode },
-    );
-    return response.data;
-  },
+  ssoStart: async (orgCode: string): Promise<{ redirectUrl: string }> =>
+    (await typedApi.POST("/api/v1/auth/sso/start", { body: { orgCode } }).then(unwrap)).data,
 
   /** POST /api/v1/auth/passkey/options — P10-10. No identifier: a discoverable credential. */
   passkeyOptions: async (): Promise<{ ceremonyId: string; options: RequestOptionsJSON }> => {
-    const response = await api.post<{ success: boolean; data: { ceremonyId: string; options: RequestOptionsJSON } }>(
-      "/api/v1/auth/passkey/options",
-      {},
-    );
-    return response.data;
+    const { ceremonyId, options } = (
+      await typedApi
+        // As built: posts `{}`; the contract reads no body.
+        .POST("/api/v1/auth/passkey/options", { body: {} as never })
+        .then(unwrap)
+    ).data;
+    // The options are published as an open object (the WebAuthn library defines them).
+    return { ceremonyId, options: options as unknown as RequestOptionsJSON };
   },
 
   /**
@@ -124,14 +116,18 @@ export const authService = {
 
   /** POST /api/v1/access-requests — P10-05/06. Always the same neutral 202. */
   requestAccess: async (input: AccessRequestInput): Promise<void> => {
-    await api.post("/api/v1/access-requests", input);
+    await typedApi.POST("/api/v1/access-requests", { body: input });
   },
 
   /** POST /api/v1/auth/invitation/accept — P10-15. One generic 400 for any bad token. */
   acceptInvitation: async (token: string, password: string): Promise<void> => {
-    await api.post("/api/v1/auth/invitation/accept", { token, password });
+    await typedApi.POST("/api/v1/auth/invitation/accept", { body: { token, password } });
   },
 
+  /**
+   * GET /api/v1/auth/sso/metadata[/:tenantCode] — this app's SAML Service
+   * Provider metadata XML, for configuring the tenant's IdP. Returns raw XML.
+   */
   getSsoMetadata: async (tenantCode?: string): Promise<string> => {
     const path = tenantCode
       ? `/api/v1/auth/sso/metadata/${encodeURIComponent(tenantCode)}`
@@ -139,21 +135,29 @@ export const authService = {
     return api.get<string>(path, { responseType: "text" });
   },
 
-  register: async (data: RegisterCredentials): Promise<AuthResponse> => {
-    return api.post<AuthResponse>("/api/v1/auth/register", data);
-  },
+  register: async (data: RegisterCredentials): Promise<AuthResponse> =>
+    // As built: the whole body (the API answers `data: null`; no caller reads it).
+    (await typedApi
+      .POST("/api/v1/auth/register", { body: data as JsonBody<Op<`${A}/register`, "post">> })
+      .then(unwrap)) as unknown as AuthResponse,
 
+  /** POST /api/v1/auth/logout — the NEXT route (clears the session cookies). */
   logout: async (sessionId?: string): Promise<void> => {
     await api.post("/api/v1/auth/logout", { sessionId });
   },
 
+  /** POST /api/v1/auth/logout-all — the NEXT route. */
   logoutAll: async (): Promise<void> => {
     await api.post("/api/v1/auth/logout-all");
   },
 
   // Verify token and get fresh user data from backend
   verifyAndFetchUser: async (): Promise<User> => {
-    const response = await api.post<VerifyResponse>("/api/v1/auth/verify", {});
+    // As built: posts `{}`; the contract reads no body. The answer is read
+    // defensively (a nested envelope, or the body itself), as built.
+    const response = (await typedApi
+      .POST("/api/v1/auth/verify", { body: {} as never })
+      .then(unwrap)) as unknown as VerifyResponse;
     let userData: User;
 
     const data = response.data;
@@ -171,7 +175,7 @@ export const authService = {
 
   verifyToken: async (): Promise<boolean> => {
     try {
-      await api.post("/api/v1/auth/verify", {});
+      await typedApi.POST("/api/v1/auth/verify", { body: {} as never });
       return true;
     } catch {
       return false;
@@ -179,7 +183,7 @@ export const authService = {
   },
 
   sendOtp: async (email: string): Promise<void> => {
-    await api.post("/api/v1/auth/send-otp", { email });
+    await typedApi.POST("/api/v1/auth/send-otp", { body: { email } });
   },
 
   resetPassword: async (
@@ -187,16 +191,18 @@ export const authService = {
     otp: string,
     password: string,
   ): Promise<void> => {
-    await api.post("/api/v1/auth/reset-password", { email, otp, password });
+    await typedApi.POST("/api/v1/auth/reset-password", { body: { email, otp, password } });
   },
 
   updatePassword: async (
     currentPassword: string,
     newPassword: string,
   ): Promise<void> => {
-    await api.post("/api/v1/auth/just-update-password", {
-      currentPassword,
-      newPassword,
+    await typedApi.POST("/api/v1/auth/just-update-password", {
+      body: {
+        currentPassword,
+        newPassword,
+      },
     });
   },
 
@@ -204,20 +210,15 @@ export const authService = {
    * POST /api/v1/auth/pass-is-valid — confirm the current user's password.
    *
    * The backend enveloping is `{ success, status, message, data: { valid } }`
-   * (auth.service.js passIsValid), so the flag lives at `data.valid`.
+   * (auth.service#passIsValid), so the flag lives at `data.valid`.
    */
   verifyPassword: async (password: string): Promise<boolean> => {
-    const response = await api.post<{
-      success: boolean;
-      status: number;
-      message: string;
-      data: { valid: boolean };
-    }>("/api/v1/auth/pass-is-valid", { password });
+    const response = await typedApi.POST("/api/v1/auth/pass-is-valid", { body: { password } }).then(unwrap);
     return response.data?.valid === true;
   },
 
   activateAccount: async (token: string): Promise<void> => {
-    await api.get("/api/v1/auth/activation", { params: { token } });
+    await typedApi.GET("/api/v1/auth/activation", { params: { query: { token } } });
   },
 
   // ----------------------------------------------------------------
@@ -237,13 +238,8 @@ export const authService = {
   mfaSetup: async (reauth?: {
     currentPassword: string;
     code: string;
-  }): Promise<{ secret: string; qrCodeUrl: string; rotation?: boolean }> => {
-    const response = await api.post<{
-      success: boolean;
-      data: { secret: string; qrCodeUrl: string; rotation?: boolean };
-    }>("/api/v1/auth/mfa/setup", reauth ?? {});
-    return response.data;
-  },
+  }): Promise<MfaSetupResult> =>
+    (await typedApi.POST("/api/v1/auth/mfa/setup", { body: reauth ?? {} }).then(unwrap)).data,
 
   /**
    * POST /api/v1/auth/mfa/verify — confirm the enrollment code and enable MFA.
@@ -254,10 +250,8 @@ export const authService = {
    * user has been signed out.
    */
   mfaVerify: async (code: string): Promise<{ recoveryCodes: string[] }> => {
-    const response = await api.post<{
-      success: boolean;
-      data?: { recoveryCodes?: string[] } | null;
-    }>("/api/v1/auth/mfa/verify", { code });
+    const response = await typedApi.POST("/api/v1/auth/mfa/verify", { body: { code } }).then(unwrap);
+    // Defensive, as built: an answer without codes gives none.
     return { recoveryCodes: response?.data?.recoveryCodes ?? [] };
   },
 
@@ -271,7 +265,7 @@ export const authService = {
     code?: string;
     recoveryCode?: string;
   }): Promise<void> => {
-    await api.post("/api/v1/auth/mfa/disable", reauth);
+    await typedApi.POST("/api/v1/auth/mfa/disable", { body: reauth });
   },
 
   /**
@@ -289,10 +283,13 @@ export const authService = {
     location?: SignInLocation,
   ): Promise<BackendLoginResponse> => {
     const body = useRecoveryCode ? { token, recoveryCode: code } : { token, code };
-    return api.post<BackendLoginResponse>(
-      "/api/v1/auth/mfa/login",
-      // A-288: only when the password step was asked for it.
-      location ? { ...body, location } : body,
+    return asLogin(
+      await typedApi
+        .POST("/api/v1/auth/mfa/login", {
+          // A-288: only when the password step was asked for it.
+          body: location ? { ...body, location } : body,
+        })
+        .then(unwrap),
     );
   },
 
@@ -303,7 +300,7 @@ export const authService = {
    * No session is issued: sign in with the new password afterwards.
    */
   completeFirstSignIn: async (token: string, newPassword: string): Promise<void> => {
-    await api.post("/api/v1/auth/first-sign-in/password", { token, newPassword });
+    await typedApi.POST("/api/v1/auth/first-sign-in/password", { body: { token, newPassword } });
   },
 
   // ----------------------------------------------------------------
@@ -318,12 +315,17 @@ export const authService = {
   impersonate: async (
     tenantId: string,
     userId: string,
-  ): Promise<BackendLoginResponse> => {
-    return api.post<BackendLoginResponse>("/api/v1/auth/impersonate", {
-      tenantId,
-      userId,
-    });
-  },
+  ): Promise<BackendLoginResponse> =>
+    asLogin(
+      await typedApi
+        .POST("/api/v1/auth/impersonate", {
+          body: {
+            tenantId,
+            userId,
+          },
+        })
+        .then(unwrap),
+    ),
 
   /**
    * POST /api/v1/auth/impersonate/exit — end impersonation. The backend maps
@@ -331,7 +333,8 @@ export const authService = {
    * must sign back in as themselves.
    */
   exitImpersonation: async (): Promise<void> => {
-    await api.post("/api/v1/auth/impersonate/exit", {});
+    // As built: posts `{}`; the contract reads no body.
+    await typedApi.POST("/api/v1/auth/impersonate/exit", { body: {} as never });
   },
 
   /**

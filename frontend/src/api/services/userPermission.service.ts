@@ -1,4 +1,9 @@
-import { api } from "../client";
+// src/api/services/userPermission.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client. Every call and every type is
+// read off `paths` (generated from backend/src/routes/api/userPermissions.openapi.ts);
+// the exported names are unchanged, so no caller changed.
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op } from "../typed";
 
 // Backend routes (SUPERADMIN only):
 //   GET    /api/v1/user-permissions/:userId
@@ -9,72 +14,17 @@ import { api } from "../client";
 // ("read"/"write") replaces the role permission for that menu, and "none"
 // explicitly denies it. Removing the override restores role inheritance.
 
-export type UserPermissionType = "read" | "write" | "none";
+type ById = "/api/v1/user-permissions/{userId}";
 
-export interface PermissionMenu {
-  id: string;
-  name: string;
-  slug?: string;
-  icon?: string | null;
-  parentId?: string | null;
-}
-
-export interface EffectivePermission {
-  menuGroupId: string;
-  menu: PermissionMenu | null;
-  /** Resolved access: "read" | "write" | null (no access) */
-  permissionType: "read" | "write" | null;
-  /** Where the resolved access comes from */
-  source: "role" | "custom" | null;
-  /** The raw role permission for this menu (before overrides) */
-  rolePermission: "read" | "write" | null;
-  /** The raw override, if any ("none" = explicit deny) */
-  override: UserPermissionType | null;
-}
-
-export interface UserPermissionsData {
-  user: {
-    id: string;
-    username: string;
-    firstName?: string;
-    lastName?: string;
-    email: string;
-    tenantId?: string | null;
-    role: {
-      id: string;
-      name: string;
-      nameToShow?: string;
-    } | null;
-  };
-  rolePermissions: Array<{
-    menuGroupId: string;
-    menu: PermissionMenu | null;
-    permissionType: "read" | "write";
-  }>;
-  overrides: Array<{
-    menuGroupId: string;
-    menu: PermissionMenu | null;
-    permissionType: UserPermissionType;
-    notes?: string | null;
-  }>;
-  effective: EffectivePermission[];
-}
-
-interface BackendResponse<T> {
-  success: boolean;
-  status: number;
-  message: string;
-  data: T;
-}
+export type UserPermissionType = JsonBody<Op<ById, "post">>["permissionType"];
+export type UserPermissionsData = DataOf<Op<ById, "get">>;
+export type EffectivePermission = UserPermissionsData["effective"][number];
+export type PermissionMenu = NonNullable<EffectivePermission["menu"]>;
 
 export const userPermissionService = {
   /** Full permission picture for one user (role + custom + effective). */
-  getUserPermissions: async (userId: string): Promise<UserPermissionsData> => {
-    const response = await api.get<BackendResponse<UserPermissionsData>>(
-      `/api/v1/user-permissions/${userId}`,
-    );
-    return response.data;
-  },
+  getUserPermissions: async (userId: string): Promise<UserPermissionsData> =>
+    (await typedApi.GET("/api/v1/user-permissions/{userId}", { params: { path: { userId } } }).then(unwrap)).data,
 
   /** Upsert a custom override ("read" | "write" | "none"). */
   setUserPermission: async (
@@ -83,18 +33,16 @@ export const userPermissionService = {
     permissionType: UserPermissionType,
     notes?: string,
   ): Promise<void> => {
-    await api.post(`/api/v1/user-permissions/${userId}`, {
-      menuGroupId,
-      permissionType,
-      notes,
+    await typedApi.POST("/api/v1/user-permissions/{userId}", {
+      params: { path: { userId } },
+      body: { menuGroupId, permissionType, notes },
     });
   },
 
   /** Remove an override — user falls back to role inheritance. */
-  removeUserPermission: async (
-    userId: string,
-    menuGroupId: string,
-  ): Promise<void> => {
-    await api.delete(`/api/v1/user-permissions/${userId}/${menuGroupId}`);
+  removeUserPermission: async (userId: string, menuGroupId: string): Promise<void> => {
+    await typedApi.DELETE("/api/v1/user-permissions/{userId}/{menuGroupId}", {
+      params: { path: { userId, menuGroupId } },
+    });
   },
 };

@@ -1,5 +1,5 @@
 /**
- * Tests for routes/internal/health.route.js (A-06 / A-15).
+ * Tests for routes/internal/health.route.ts (A-06 / A-15).
  *
  * Driven over real HTTP against a real Express app rather than by inspecting
  * the router stack: what matters is what an anonymous caller can actually read

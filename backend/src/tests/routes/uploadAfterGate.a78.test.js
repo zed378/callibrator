@@ -101,15 +101,15 @@ const uploadsAfterGate = () => {
 
 // key -> how tenant ownership holds although the gate cannot read the body.
 const REVIEWED = {
-  "ai.route.js POST /ocr": "no checkTenant; tenant from req.user.tenantId (A-94)",
-  "attachments.route.js POST /": "no checkTenant; tenant from req.user.tenantId",
-  "calibrationDevices.route.js POST /bulk-import": "no checkTenant; tenant from the principal",
+  "ai.route.ts POST /ocr": "no checkTenant; tenant from req.user.tenantId (A-94)",
+  "attachments.route.ts POST /": "no checkTenant; tenant from req.user.tenantId",
+  "calibrationDevices.route.ts POST /bulk-import": "no checkTenant; tenant from the principal",
   // ADR-042 step 3 (S-01): CMS images are platform content (posts carry no
   // tenant), written to the PUBLIC class; the actor is audited.
-  "content.route.js POST /media": "no checkTenant; platform-global content, audited (contentMedia.service)",
-  "tenant.route.js PATCH /edit": "service: tenantService.updateTenant (A-63)",
-  "tenant.route.js POST /:tenantId/logo": "path param, visible to the gate",
-  "user.route.js POST /:userId/avatar": "path param, visible to the gate",
+  "content.route.ts POST /media": "no checkTenant; platform-global content, audited (contentMedia.service)",
+  "tenant.route.ts PATCH /edit": "service: tenantService.updateTenant (A-63)",
+  "tenant.route.ts POST /:tenantId/logo": "path param, visible to the gate",
+  "user.route.ts POST /:userId/avatar": "path param, visible to the gate",
 };
 
 describe("A-78 — every upload-after-gate route is enumerated and reviewed", () => {
@@ -138,7 +138,7 @@ describe("A-78 — every upload-after-gate route is enumerated and reviewed", ()
     const blind = found.filter(
       (r) => r.checkTenant && !/:(tenantId|userId)\b/.test(r.key),
     );
-    expect(blind.map((r) => r.key)).toEqual(["tenant.route.js PATCH /edit"]);
-    expect(found.map((r) => r.key)).not.toContain("tenant.route.js POST /create");
+    expect(blind.map((r) => r.key)).toEqual(["tenant.route.ts PATCH /edit"]);
+    expect(found.map((r) => r.key)).not.toContain("tenant.route.ts POST /create");
   });
 });

@@ -2,7 +2,7 @@
  * Tests for fileValidation utility
  */
 const fs = require("fs");
-const path = require("path");
+require("path");
 const {
   validateFileMagicBytes,
   isDangerousExtension,
@@ -381,7 +381,7 @@ describe("fileValidation", () => {
 
     it("should call the original handler", () => {
       let called = false;
-      const wrapped = createSanitizedErrorHandler((err, req, res, next) => {
+      const wrapped = createSanitizedErrorHandler((_err, _req, _res, _next) => {
         called = true;
       });
       const mockErr = new Error("test");
@@ -394,7 +394,7 @@ describe("fileValidation", () => {
 
     it("should not modify response when headers already sent", () => {
       let called = false;
-      const wrapped = createSanitizedErrorHandler((err, req, res, next) => {
+      const wrapped = createSanitizedErrorHandler((_err, _req, _res, _next) => {
         called = true;
       });
       const mockErr = new Error("test");
@@ -409,7 +409,7 @@ describe("fileValidation", () => {
         headersSent: false,
         json: originalJsonMock,
       };
-      const wrapped = createSanitizedErrorHandler((err, req, res, next) => {
+      const wrapped = createSanitizedErrorHandler((err, req, res, _next) => {
         setImmediate(() => {
           res.json({ success: false, message: "original message" });
         });
@@ -435,7 +435,7 @@ describe("fileValidation", () => {
         headersSent: false,
         json: originalJsonMock,
       };
-      const wrapped = createSanitizedErrorHandler((err, req, res, next) => {
+      const wrapped = createSanitizedErrorHandler((err, req, res, _next) => {
         setImmediate(() => {
           res.json(null);
           res.json("string response");
@@ -457,7 +457,7 @@ describe("fileValidation", () => {
       };
       const origEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "production";
-      const wrapped = createSanitizedErrorHandler((err, req, res, next) => {
+      const wrapped = createSanitizedErrorHandler((err, req, res, _next) => {
         setImmediate(() => {
           res.json({ success: false, message: "original message" });
         });

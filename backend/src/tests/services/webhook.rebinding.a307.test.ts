@@ -103,7 +103,7 @@ const row = (): DeliveryRow => {
 /** Dispatch one delivery to `url` through the real service. */
 const deliver = async (url: string): Promise<DeliveryRow> => {
   const delivery = row();
-  db.query.mockResolvedValueOnce([[{ id: "d1", tenantId: "t1" }]]); // the claim
+  db.query.mockResolvedValueOnce([{ id: "d1", tenantId: "t1" }]); // the claim (P9-18: sql() answers the rows directly)
   WebhookDelivery.findOne.mockResolvedValue(delivery);
   Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1", url, secret: "s", isActive: true });
   await webhookService._dispatchDelivery("d1", "t1");

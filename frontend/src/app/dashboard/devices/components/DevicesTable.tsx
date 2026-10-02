@@ -1,5 +1,5 @@
 import React from "react";
-import { Device } from "@/api/services/device.service";
+import { Device, DeviceStatus } from "@/api/services/device.service";
 import { PaginatedResponse } from "@/types";
 import { Card, CardContent, TableSkeleton, Table, Badge, Button, Pagination } from "@/components/ui";
 import { ClipboardList, Calendar, Edit, Trash2, Radio } from "lucide-react";
@@ -40,7 +40,8 @@ export const DevicesTable: React.FC<DevicesTableProps> = ({
       maintenance: { variant: "warning" as const, label: "Maintenance" },
       retired: { variant: "danger" as const, label: "Retired" },
     };
-    const current = maps[status] || { variant: "secondary" as const, label: status };
+    // A null status (the column is nullable) reads no entry and falls back, as before.
+    const current = maps[status as DeviceStatus] || { variant: "secondary" as const, label: status };
     return <Badge variant={current.variant}>{current.label}</Badge>;
   };
 

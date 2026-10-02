@@ -3,7 +3,7 @@
  *
  * Tests the Risk route registrations and middleware chain.
  */
-const riskRoutes = require("../../routes/api/risk.route.js");
+const riskRoutes = require("../../routes/api/risk.route");
 
 describe("Risk Routes", () => {
   it("should export an Express router", () => {

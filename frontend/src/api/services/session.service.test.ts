@@ -35,7 +35,7 @@ describe("sessionService", () => {
       const res = await sessionService.getAll();
 
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
-        params: { page: 1, limit: 20 },
+        params: { page: "1", limit: "20" },
       });
       expect(res).toEqual({ sessions: [{ id: "s1" }], meta });
     });
@@ -69,8 +69,8 @@ describe("sessionService", () => {
 
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
         params: {
-          page: 2,
-          limit: 50,
+          page: "2",
+          limit: "50",
           search: "10.0.0.1",
           status: "active",
           userId: "u1",
@@ -124,7 +124,8 @@ describe("sessionService", () => {
       expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/s1/revoke`, {
         reason: "MANUAL_REVOKE",
       });
-      expect(res).toBe(payload);
+      // The typed transport hands back the parsed body: equal, not the same object.
+      expect(res).toEqual(payload);
     });
 
     it("forwards a custom reason", async () => {
@@ -162,7 +163,8 @@ describe("sessionService", () => {
       const res = await sessionService.delete("s1");
 
       expect(mockedApi.delete).toHaveBeenCalledWith(`${BASE}/s1`);
-      expect(res).toBe(payload);
+      // The typed transport hands back the parsed body: equal, not the same object.
+      expect(res).toEqual(payload);
     });
   });
 });

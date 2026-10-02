@@ -1,453 +1,249 @@
-import { api } from "../client";
+// src/api/services/kanban.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client. Every call and every type is
+// read off `paths` (src/api/generated/schema.d.ts, generated from
+// backend/src/routes/api/kanban.openapi.ts); the exported names are unchanged,
+// so no caller changed.
+import { typedApi, unwrap, type DataOf, type JsonBody, type Op, type components } from "../typed";
 
 // ------------------------------------------------------------------
-// Types
+// Types — from the contract
 // ------------------------------------------------------------------
 
-export type AccessLevel = "owner" | "editor" | "viewer";
-export type Priority = "low" | "medium" | "high" | "urgent";
-export type SprintStatus = "planned" | "active" | "completed";
-export type RelationType =
-  | "relates_to"
-  | "duplicates"
-  | "blocks"
-  | "blocked_by"
-  | "parent_of"
-  | "child_of";
+type S = components["schemas"];
+export type KanbanColumn = S["KanbanColumn"];
+export type KanbanLabel = S["KanbanLabel"];
+/** A sprint as a board carries it. Only `listSprints` adds a `cardCount` (S["KanbanSprintList"]). */
+export type KanbanSprint = S["KanbanSprint"];
+export type CardRelation = S["KanbanCardRelation"];
+export type KanbanCard = S["KanbanCard"];
+export type KanbanMember = S["KanbanProjectMember"];
+export type KanbanProjectSummary = S["KanbanProjectSummary"];
+export type KanbanBoard = S["KanbanBoard"];
+export type KanbanMetrics = S["KanbanMetrics"];
+export type AccessLevel = KanbanMember["accessLevel"];
+export type Priority = NonNullable<KanbanCard["priority"]>;
+export type SprintStatus = KanbanSprint["status"];
+export type RelationType = CardRelation["type"];
+export type UserBrief = KanbanCard["assignees"][number];
 
-export interface UserBrief {
-  id: string;
-  firstName?: string | null;
-  lastName?: string | null;
-  email: string;
-}
-
-export interface KanbanLabel {
-  id: string;
-  name: string;
-  color?: string | null;
-}
-
-export interface KanbanColumn {
-  id: string;
-  name: string;
-  position: number;
-  wipLimit?: number | null;
-  isDone: boolean;
-}
-
-export interface CardRelation {
-  id: string;
-  type: RelationType;
-  card: {
-    id: string;
-    cardKey?: string | null;
-    title: string;
-    columnId: string;
-  } | null;
-}
-
-export interface KanbanCard {
-  id: string;
-  projectId: string;
-  columnId: string;
-  sprintId?: string | null;
-  number?: number | null;
-  cardKey?: string | null;
-  title: string;
-  description?: string | null;
-  position: number;
-  priority?: Priority | null;
-  dueDate?: string | null;
-  createdBy?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  assignees: UserBrief[];
-  labels: KanbanLabel[];
-  relations?: CardRelation[];
-}
-
-export interface KanbanSprint {
-  id: string;
-  name: string;
-  goal?: string | null;
-  status: SprintStatus;
-  startDate?: string | null;
-  endDate?: string | null;
-  position: number;
-  cardCount?: number;
-}
-
-export interface KanbanMember {
-  id: string;
-  accessLevel: AccessLevel;
-  user: UserBrief | null;
-  role: { id: string; name: string } | null;
-}
-
-export interface KanbanProjectSummary {
-  id: string;
-  name: string;
-  code?: string | null;
-  description?: string | null;
-  color?: string | null;
-  createdBy?: string | null;
-  createdAt: string;
-  cardCount: number;
-  myAccess: AccessLevel | null;
-}
-
-export interface KanbanBoard {
-  id: string;
-  name: string;
-  code?: string | null;
-  description?: string | null;
-  color?: string | null;
-  createdBy?: string | null;
-  myAccess: AccessLevel;
-  activeSprintId: string | null;
-  columns: KanbanColumn[];
-  cards: KanbanCard[];
-  labels: KanbanLabel[];
-  sprints: KanbanSprint[];
-  members: KanbanMember[];
-}
-
-export interface KanbanMetrics {
-  view: string;
-  summary: {
-    total: number;
-    done: number;
-    inProgress: number;
-    completionRate: number;
-    overdue: number;
-    unassigned: number;
-    columns: number;
-    sprints: number;
-  };
-  byColumn: {
-    columnId: string;
-    name: string;
-    isDone: boolean;
-    wipLimit: number | null;
-    count: number;
-    overWip: boolean;
-  }[];
-  byPriority: { priority: string; count: number }[];
-  byAssignee: { userId: string; name: string; count: number }[];
-  byLabel: {
-    labelId: string;
-    name: string;
-    color?: string | null;
-    count: number;
-  }[];
-  bySprint: {
-    sprintId: string | null;
-    name: string;
-    status: string | null;
-    count: number;
-  }[];
-}
-
-export interface MemberInput {
-  userId?: string;
-  roleId?: string;
-  accessLevel?: AccessLevel;
-}
-
-export interface CreateProjectInput {
-  name: string;
-  code?: string | null;
-  description?: string | null;
-  color?: string | null;
-  members?: MemberInput[];
-}
-
-export interface CreateCardInput {
-  columnId: string;
-  sprintId?: string | null;
-  title: string;
-  description?: string | null;
-  priority?: Priority | null;
-  dueDate?: string | null;
-  assigneeIds?: string[];
-  labelIds?: string[];
-}
-
-export interface UpdateCardInput {
-  title?: string;
-  description?: string | null;
-  priority?: Priority | null;
-  dueDate?: string | null;
-  sprintId?: string | null;
-  assigneeIds?: string[];
-  labelIds?: string[];
-}
-
-type Env<T> = { success: boolean; message?: string; data: T };
-
-const unwrap = <T,>(r: Env<T>): T => r.data;
+type P = "/api/v1/kanban/projects/{projectId}";
+export type CreateProjectInput = JsonBody<Op<"/api/v1/kanban/projects", "post">>;
+export type MemberInput = JsonBody<Op<`${P}/members`, "post">>;
+export type CreateCardInput = JsonBody<Op<`${P}/cards`, "post">>;
+export type UpdateCardInput = JsonBody<Op<`${P}/cards/{cardId}`, "patch">>;
 
 // ------------------------------------------------------------------
 // Service
 // ------------------------------------------------------------------
 
-const base = "/api/v1/kanban";
+const project = (projectId: string) => ({ params: { path: { projectId } } });
 
 export const kanbanService = {
   // ---- Projects ----
   listProjects: async (): Promise<KanbanProjectSummary[]> =>
-    unwrap(await api.get<Env<KanbanProjectSummary[]>>(`${base}/projects`)),
+    (await typedApi.GET("/api/v1/kanban/projects").then(unwrap)).data,
 
   createProject: async (data: CreateProjectInput): Promise<KanbanBoard> =>
-    unwrap(await api.post<Env<KanbanBoard>>(`${base}/projects`, data)),
+    (await typedApi.POST("/api/v1/kanban/projects", { body: data }).then(unwrap)).data,
 
-  getBoard: async (
-    projectId: string,
-    sprintId?: string,
-  ): Promise<KanbanBoard> =>
-    unwrap(
-      await api.get<Env<KanbanBoard>>(`${base}/projects/${projectId}`, {
-        params: sprintId ? { sprintId } : undefined,
-      }),
-    ),
+  getBoard: async (projectId: string, sprintId?: string): Promise<KanbanBoard> =>
+    (
+      await typedApi
+        .GET("/api/v1/kanban/projects/{projectId}", {
+          params: { path: { projectId }, ...(sprintId ? { query: { sprintId } } : {}) },
+        })
+        .then(unwrap)
+    ).data,
 
-  getMetrics: async (
-    projectId: string,
-    sprintId?: string,
-  ): Promise<KanbanMetrics> =>
-    unwrap(
-      await api.get<Env<KanbanMetrics>>(
-        `${base}/projects/${projectId}/metrics`,
-        { params: sprintId ? { sprintId } : undefined },
-      ),
-    ),
+  getMetrics: async (projectId: string, sprintId?: string): Promise<KanbanMetrics> =>
+    (
+      await typedApi
+        .GET("/api/v1/kanban/projects/{projectId}/metrics", {
+          params: { path: { projectId }, ...(sprintId ? { query: { sprintId } } : {}) },
+        })
+        .then(unwrap)
+    ).data,
 
-  updateProject: async (
-    projectId: string,
-    data: Partial<CreateProjectInput> & { archived?: boolean },
-  ): Promise<KanbanBoard> =>
-    unwrap(
-      await api.patch<Env<KanbanBoard>>(`${base}/projects/${projectId}`, data),
-    ),
+  updateProject: async (projectId: string, data: JsonBody<Op<P, "patch">>): Promise<KanbanBoard> =>
+    (await typedApi.PATCH("/api/v1/kanban/projects/{projectId}", { ...project(projectId), body: data }).then(unwrap)).data,
 
   deleteProject: async (projectId: string): Promise<void> => {
-    await api.delete(`${base}/projects/${projectId}`);
+    await typedApi.DELETE("/api/v1/kanban/projects/{projectId}", project(projectId));
   },
 
   // ---- Members ----
-  addMember: async (projectId: string, data: MemberInput) =>
-    unwrap(
-      await api.post<Env<{ memberId: string; members: KanbanMember[] }>>(
-        `${base}/projects/${projectId}/members`,
-        data,
-      ),
-    ),
+  addMember: async (projectId: string, data: MemberInput): Promise<DataOf<Op<`${P}/members`, "post">>> =>
+    (await typedApi.POST("/api/v1/kanban/projects/{projectId}/members", { ...project(projectId), body: data }).then(unwrap)).data,
 
-  updateMember: async (
-    projectId: string,
-    memberId: string,
-    accessLevel: AccessLevel,
-  ): Promise<KanbanMember[]> =>
-    unwrap(
-      await api.patch<Env<KanbanMember[]>>(
-        `${base}/projects/${projectId}/members/${memberId}`,
-        { accessLevel },
-      ),
-    ),
+  updateMember: async (projectId: string, memberId: string, accessLevel: AccessLevel): Promise<KanbanMember[]> =>
+    (
+      await typedApi
+        .PATCH("/api/v1/kanban/projects/{projectId}/members/{memberId}", {
+          params: { path: { projectId, memberId } },
+          body: { accessLevel },
+        })
+        .then(unwrap)
+    ).data,
 
   removeMember: async (projectId: string, memberId: string): Promise<void> => {
-    await api.delete(`${base}/projects/${projectId}/members/${memberId}`);
+    await typedApi.DELETE("/api/v1/kanban/projects/{projectId}/members/{memberId}", {
+      params: { path: { projectId, memberId } },
+    });
   },
 
   // ---- Sprints ----
-  listSprints: async (
-    projectId: string,
-  ): Promise<{ sprints: KanbanSprint[]; backlogCount: number }> =>
-    unwrap(
-      await api.get<Env<{ sprints: KanbanSprint[]; backlogCount: number }>>(
-        `${base}/projects/${projectId}/sprints`,
-      ),
-    ),
+  listSprints: async (projectId: string): Promise<S["KanbanSprintList"]> =>
+    (await typedApi.GET("/api/v1/kanban/projects/{projectId}/sprints", project(projectId)).then(unwrap)).data,
 
-  createSprint: async (
-    projectId: string,
-    data: { name: string; goal?: string; status?: SprintStatus },
-  ): Promise<KanbanSprint> =>
-    unwrap(
-      await api.post<Env<KanbanSprint>>(
-        `${base}/projects/${projectId}/sprints`,
-        data,
-      ),
-    ),
+  createSprint: async (projectId: string, data: JsonBody<Op<`${P}/sprints`, "post">>): Promise<KanbanSprint> =>
+    (await typedApi.POST("/api/v1/kanban/projects/{projectId}/sprints", { ...project(projectId), body: data }).then(unwrap)).data,
 
   updateSprint: async (
     projectId: string,
     sprintId: string,
-    data: Partial<{ name: string; goal: string; status: SprintStatus }>,
+    data: JsonBody<Op<`${P}/sprints/{sprintId}`, "patch">>,
   ): Promise<KanbanSprint> =>
-    unwrap(
-      await api.patch<Env<KanbanSprint>>(
-        `${base}/projects/${projectId}/sprints/${sprintId}`,
-        data,
-      ),
-    ),
+    (
+      await typedApi
+        .PATCH("/api/v1/kanban/projects/{projectId}/sprints/{sprintId}", {
+          params: { path: { projectId, sprintId } },
+          body: data,
+        })
+        .then(unwrap)
+    ).data,
 
   deleteSprint: async (projectId: string, sprintId: string): Promise<void> => {
-    await api.delete(`${base}/projects/${projectId}/sprints/${sprintId}`);
+    await typedApi.DELETE("/api/v1/kanban/projects/{projectId}/sprints/{sprintId}", {
+      params: { path: { projectId, sprintId } },
+    });
   },
 
   migrateCards: async (
     projectId: string,
-    data: {
-      cardIds?: string[];
-      allNotDone?: boolean;
-      fromSprintId?: string | null;
-      targetSprintId: string | null;
-    },
-  ): Promise<{ migrated: number; targetSprintId: string | null }> =>
-    unwrap(
-      await api.post<
-        Env<{ migrated: number; targetSprintId: string | null }>
-      >(`${base}/projects/${projectId}/sprints/migrate`, data),
-    ),
+    data: JsonBody<Op<`${P}/sprints/migrate`, "post">>,
+  ): Promise<DataOf<Op<`${P}/sprints/migrate`, "post">>> =>
+    (await typedApi.POST("/api/v1/kanban/projects/{projectId}/sprints/migrate", { ...project(projectId), body: data }).then(unwrap))
+      .data,
 
   // ---- Columns ----
-  createColumn: async (
-    projectId: string,
-    data: { name: string; wipLimit?: number | null },
-  ): Promise<KanbanColumn> =>
-    unwrap(
-      await api.post<Env<KanbanColumn>>(
-        `${base}/projects/${projectId}/columns`,
-        data,
-      ),
-    ),
+  createColumn: async (projectId: string, data: JsonBody<Op<`${P}/columns`, "post">>): Promise<KanbanColumn> =>
+    (await typedApi.POST("/api/v1/kanban/projects/{projectId}/columns", { ...project(projectId), body: data }).then(unwrap)).data,
 
   updateColumn: async (
     projectId: string,
     columnId: string,
-    data: { name?: string; wipLimit?: number | null },
+    data: JsonBody<Op<`${P}/columns/{columnId}`, "patch">>,
   ): Promise<KanbanColumn> =>
-    unwrap(
-      await api.patch<Env<KanbanColumn>>(
-        `${base}/projects/${projectId}/columns/${columnId}`,
-        data,
-      ),
-    ),
+    (
+      await typedApi
+        .PATCH("/api/v1/kanban/projects/{projectId}/columns/{columnId}", {
+          params: { path: { projectId, columnId } },
+          body: data,
+        })
+        .then(unwrap)
+    ).data,
 
   deleteColumn: async (projectId: string, columnId: string): Promise<void> => {
-    await api.delete(`${base}/projects/${projectId}/columns/${columnId}`);
+    await typedApi.DELETE("/api/v1/kanban/projects/{projectId}/columns/{columnId}", {
+      params: { path: { projectId, columnId } },
+    });
   },
 
-  reorderColumns: async (
-    projectId: string,
-    order: string[],
-  ): Promise<KanbanColumn[]> =>
-    unwrap(
-      await api.post<Env<KanbanColumn[]>>(
-        `${base}/projects/${projectId}/columns/reorder`,
-        { order },
-      ),
-    ),
+  reorderColumns: async (projectId: string, order: string[]): Promise<KanbanColumn[]> =>
+    (
+      await typedApi
+        .POST("/api/v1/kanban/projects/{projectId}/columns/reorder", { ...project(projectId), body: { order } })
+        .then(unwrap)
+    ).data,
 
   // ---- Cards ----
   getCard: async (projectId: string, cardId: string): Promise<KanbanCard> =>
-    unwrap(
-      await api.get<Env<KanbanCard>>(
-        `${base}/projects/${projectId}/cards/${cardId}`,
-      ),
-    ),
+    (
+      await typedApi
+        .GET("/api/v1/kanban/projects/{projectId}/cards/{cardId}", { params: { path: { projectId, cardId } } })
+        .then(unwrap)
+    ).data,
 
-  createCard: async (
-    projectId: string,
-    data: CreateCardInput,
-  ): Promise<KanbanCard> =>
-    unwrap(
-      await api.post<Env<KanbanCard>>(
-        `${base}/projects/${projectId}/cards`,
-        data,
-      ),
-    ),
+  createCard: async (projectId: string, data: CreateCardInput): Promise<KanbanCard> =>
+    (await typedApi.POST("/api/v1/kanban/projects/{projectId}/cards", { ...project(projectId), body: data }).then(unwrap)).data,
 
-  updateCard: async (
-    projectId: string,
-    cardId: string,
-    data: UpdateCardInput,
-  ): Promise<KanbanCard> =>
-    unwrap(
-      await api.patch<Env<KanbanCard>>(
-        `${base}/projects/${projectId}/cards/${cardId}`,
-        data,
-      ),
-    ),
+  updateCard: async (projectId: string, cardId: string, data: UpdateCardInput): Promise<KanbanCard> =>
+    (
+      await typedApi
+        .PATCH("/api/v1/kanban/projects/{projectId}/cards/{cardId}", {
+          params: { path: { projectId, cardId } },
+          body: data,
+        })
+        .then(unwrap)
+    ).data,
 
   moveCard: async (
     projectId: string,
     cardId: string,
-    data: { columnId: string; position: number },
+    data: JsonBody<Op<`${P}/cards/{cardId}/move`, "patch">>,
   ): Promise<KanbanCard> =>
-    unwrap(
-      await api.patch<Env<KanbanCard>>(
-        `${base}/projects/${projectId}/cards/${cardId}/move`,
-        data,
-      ),
-    ),
+    (
+      await typedApi
+        .PATCH("/api/v1/kanban/projects/{projectId}/cards/{cardId}/move", {
+          params: { path: { projectId, cardId } },
+          body: data,
+        })
+        .then(unwrap)
+    ).data,
 
   deleteCard: async (projectId: string, cardId: string): Promise<void> => {
-    await api.delete(`${base}/projects/${projectId}/cards/${cardId}`);
+    await typedApi.DELETE("/api/v1/kanban/projects/{projectId}/cards/{cardId}", {
+      params: { path: { projectId, cardId } },
+    });
   },
 
   // ---- Card relations ----
   addRelation: async (
     projectId: string,
     cardId: string,
-    data: { targetCardId: string; type: RelationType },
+    data: JsonBody<Op<`${P}/cards/{cardId}/relations`, "post">>,
   ): Promise<CardRelation[]> =>
-    unwrap(
-      await api.post<Env<CardRelation[]>>(
-        `${base}/projects/${projectId}/cards/${cardId}/relations`,
-        data,
-      ),
-    ),
+    (
+      await typedApi
+        .POST("/api/v1/kanban/projects/{projectId}/cards/{cardId}/relations", {
+          params: { path: { projectId, cardId } },
+          body: data,
+        })
+        .then(unwrap)
+    ).data,
 
-  removeRelation: async (
-    projectId: string,
-    cardId: string,
-    relationId: string,
-  ): Promise<CardRelation[]> =>
-    unwrap(
-      await api.delete<Env<CardRelation[]>>(
-        `${base}/projects/${projectId}/cards/${cardId}/relations/${relationId}`,
-      ),
-    ),
+  removeRelation: async (projectId: string, cardId: string, relationId: string): Promise<CardRelation[]> =>
+    (
+      await typedApi
+        .DELETE("/api/v1/kanban/projects/{projectId}/cards/{cardId}/relations/{relationId}", {
+          params: { path: { projectId, cardId, relationId } },
+        })
+        .then(unwrap)
+    ).data,
 
   // ---- Labels ----
-  createLabel: async (
-    projectId: string,
-    data: { name: string; color?: string | null },
-  ): Promise<KanbanLabel> =>
-    unwrap(
-      await api.post<Env<KanbanLabel>>(
-        `${base}/projects/${projectId}/labels`,
-        data,
-      ),
-    ),
+  createLabel: async (projectId: string, data: JsonBody<Op<`${P}/labels`, "post">>): Promise<KanbanLabel> =>
+    (await typedApi.POST("/api/v1/kanban/projects/{projectId}/labels", { ...project(projectId), body: data }).then(unwrap)).data,
 
   updateLabel: async (
     projectId: string,
     labelId: string,
-    data: { name?: string; color?: string | null },
+    data: JsonBody<Op<`${P}/labels/{labelId}`, "patch">>,
   ): Promise<KanbanLabel> =>
-    unwrap(
-      await api.patch<Env<KanbanLabel>>(
-        `${base}/projects/${projectId}/labels/${labelId}`,
-        data,
-      ),
-    ),
+    (
+      await typedApi
+        .PATCH("/api/v1/kanban/projects/{projectId}/labels/{labelId}", {
+          params: { path: { projectId, labelId } },
+          body: data,
+        })
+        .then(unwrap)
+    ).data,
 
   deleteLabel: async (projectId: string, labelId: string): Promise<void> => {
-    await api.delete(`${base}/projects/${projectId}/labels/${labelId}`);
+    await typedApi.DELETE("/api/v1/kanban/projects/{projectId}/labels/{labelId}", {
+      params: { path: { projectId, labelId } },
+    });
   },
 };
 

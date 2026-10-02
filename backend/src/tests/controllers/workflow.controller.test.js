@@ -13,7 +13,7 @@ jest.mock("../../services/workflow.service", () => ({
 // response.util.js does not have — which is exactly why the controller's
 // broken import went unnoticed while every route 500'd in production.
 jest.mock("../../utils/response.util", () => ({
-  success: jest.fn((res, data = null, meta = null, message = "success", statusCode = 200) => {
+  success: jest.fn((res, data = null, _meta = null, message = "success", statusCode = 200) => {
     res.status(statusCode).json({ success: true, status: statusCode, message, data });
   }),
   error: jest.fn(),

@@ -37,12 +37,8 @@ const { Sessions } = models;
 const db = loadedDb;
 const PLATFORM_TENANT_ID = LOADED_PLATFORM_TENANT_ID;
 
-/**
- * A listed session row. `created_at` is requested by its column name (as
- * built); the model's attribute is `createdAt`, so the typed row does not
- * declare `created_at` and this view reads it as whatever the query returned.
- */
-type SessionRow = ModelInstance<"Session"> & { created_at?: unknown };
+/** A listed session row. */
+type SessionRow = ModelInstance<"Session">;
 
 /** One session, as the caller sees it. */
 interface SessionView {
@@ -53,7 +49,7 @@ interface SessionView {
   device: string | null;
   signInMethod: string;
   impersonated: boolean;
-  createdAt: unknown;
+  createdAt: Date;
   lastActivityAt: Date | null;
   expiresAt: Date;
 }
@@ -89,7 +85,11 @@ const LIST_ATTRIBUTES = [
   "device",
   "auth_method",
   "impersonator_id",
-  "created_at",
+  // A-339: the ATTRIBUTE, `createdAt` (column created_at). Selected as
+  // "created_at" the row carried it only in dataValues: an instance has no
+  // accessor for a non-attribute, so `row.created_at` was undefined and the
+  // list never answered a creation time.
+  "createdAt",
   "last_activity_at",
   "expired_at",
 ];
@@ -122,7 +122,7 @@ const toView = (row: SessionRow, currentSessionId: string | null | undefined): S
   // A platform operator's support session in this account (A-146). Shown so
   // the holder knows it exists; the operator's identity is not disclosed.
   impersonated: Boolean(row.impersonator_id),
-  createdAt: row.created_at,
+  createdAt: row.createdAt,
   lastActivityAt: row.last_activity_at || null,
   expiresAt: row.expired_at,
 });

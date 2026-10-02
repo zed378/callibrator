@@ -21,7 +21,7 @@ const { ROLE_MENU_ASSIGNMENTS, MENU_SLUGS } = jest.requireActual<typeof RoleCons
   "../../constants/roleConstants",
 );
 const SOURCE = fs.readFileSync(path.join(__dirname, "../../migrations/0098-network-security-tenant-admin-write.ts"), "utf8");
-const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
+const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 interface Write {
   sql: string;

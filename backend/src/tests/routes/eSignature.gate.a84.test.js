@@ -159,8 +159,8 @@ beforeEach(() => {
 
 describe("A-84 — the signing routes are gated on `esignature`", () => {
   it("every gate in eSignature.route.js resolves to a seeded menu group (the A-58 boot check)", () => {
-    const file = path.join(__dirname, "../../routes/api/eSignature.route.js");
-    const gates = parseGates(fs.readFileSync(file, "utf8"), "eSignature.route.js");
+    const file = path.join(__dirname, "../../routes/api/eSignature.route.ts");
+    const gates = parseGates(fs.readFileSync(file, "utf8"), "eSignature.route.ts");
     const { errors, warnings } = checkRouteGates(gates, seededMenuVocabulary());
 
     expect(errors).toEqual([]);

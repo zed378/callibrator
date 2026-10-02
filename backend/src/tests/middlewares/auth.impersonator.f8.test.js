@@ -18,15 +18,15 @@
  *    passes nothing else — like certificate, e-signature, attachment and tenant
  *    services. It is attributed through the request context, with no change
  *    to the service;
- *  - a caller that passes auditActor(req) whole carries it explicitly;
- *  - recordAudit, the best-effort after-response middleware.
+ *  - a caller that passes auditActor(req) whole carries it explicitly.
+ *  (The best-effort after-response `recordAudit` middleware was removed
+ *  2026-10-01: no route mounted it.)
  *
  * What is real: auth.middleware, auditActor.util, audit.service, roles.service,
- * auditLog.middleware#recordAudit, and the AuditLog model's schema (through the
+ * and the AuditLog model's schema (through the
  * auditLedger fixture). What is faked: JWT verification, the session check, the
  * user loader, the tenant context, and the database (the ledger).
  */
-const { EventEmitter } = require("events");
 const { Sequelize, DataTypes } = require("sequelize");
 const { createLedger } = require("../fixtures/auditLedger");
 const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
@@ -97,7 +97,6 @@ const { auth, optionalAuth } = require("../../middlewares/auth.middleware");
 const { auditActor, currentImpersonatorId } = require("../../utils/auditActor.util");
 const auditService = require("../../services/audit.service");
 const RolesService = require("../../services/roles.service");
-const { recordAudit } = require("../../middlewares/auditLog.middleware");
 
 const HOSPITAL_USER = "11111111-1111-4111-8111-111111111111";
 const SUPER_ADMIN = "99999999-9999-4999-8999-999999999999";
@@ -135,8 +134,6 @@ const newRequest = (extra = {}) => ({
   ip: "10.0.0.7",
   ...extra,
 });
-
-const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 /**
  * No impersonator on the row. logAction leaves the attribute out rather than
@@ -204,27 +201,6 @@ describe("F-8: a change made while impersonating names the impersonator", () => 
       userId: HOSPITAL_USER,
       impersonatorId: SUPER_ADMIN,
     });
-  });
-
-  it("the best-effort recordAudit middleware records the impersonator too", async () => {
-    tokenFor({ impersonatorId: SUPER_ADMIN });
-    const req = newRequest({ params: { id: "dev-1" } });
-    const res = Object.assign(new EventEmitter(), { statusCode: 200 });
-
-    await throughAuth(req, async (r) => {
-      recordAudit("UPDATE", "CalibrationDevice")(r, res, () => {});
-    });
-    res.emit("finish");
-    await flush();
-
-    expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        userId: HOSPITAL_USER,
-        impersonatorId: SUPER_ADMIN,
-        resourceType: "CalibrationDevice",
-        resourceId: "dev-1",
-      }),
-    ]);
   });
 
   it("a normal request records no impersonator", async () => {

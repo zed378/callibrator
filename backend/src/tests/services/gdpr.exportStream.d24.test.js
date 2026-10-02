@@ -68,7 +68,9 @@ jest.mock("archiver", () => ({ ZipArchive: function MockZipArchive() {
   return archive;
 } }));
 
-jest.mock("../../config", () => ({ db: {} }));
+// A-364: the export writes its audit row in a managed transaction; no
+// connection here, so the double runs the callback as sequelize.transaction(cb) does.
+jest.mock("../../config", () => ({ db: { transaction: async (cb) => cb({ id: "tx" }) } }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },

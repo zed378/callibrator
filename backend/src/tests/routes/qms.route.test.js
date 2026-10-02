@@ -3,7 +3,7 @@
  *
  * Tests the Qms route registrations and middleware chain.
  */
-const qmsRoutes = require("../../routes/api/qms.route.js");
+const qmsRoutes = require("../../routes/api/qms.route");
 
 describe("Qms Routes", () => {
   it("should export an Express router", () => {

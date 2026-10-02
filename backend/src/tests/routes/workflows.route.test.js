@@ -3,7 +3,7 @@
  *
  * Tests the Workflows route registrations and middleware chain.
  */
-const workflowsRoutes = require("../../routes/api/workflows.route.js");
+const workflowsRoutes = require("../../routes/api/workflows.route");
 
 describe("Workflows Routes", () => {
   it("should export an Express router", () => {

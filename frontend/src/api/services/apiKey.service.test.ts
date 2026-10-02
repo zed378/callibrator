@@ -39,7 +39,7 @@ describe("apiKeyService", () => {
       const res = await apiKeyService.getAll();
 
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
-        params: { page: 1, limit: 20 },
+        params: { page: "1", limit: "20" },
       });
       expect(res.data).toHaveLength(2);
       expect(res.meta).toEqual({
@@ -54,7 +54,7 @@ describe("apiKeyService", () => {
       mockedApi.get.mockResolvedValueOnce(envelope([]));
       await apiKeyService.getAll(3, 50);
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
-        params: { page: 3, limit: 50 },
+        params: { page: "3", limit: "50" },
       });
     });
 

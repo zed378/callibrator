@@ -1,20 +1,20 @@
-// Common types for Hospital Device Callibrator
+// Common types for Device Calibrator
+import type { components } from "@/api/generated/schema";
+import type { TenantLifecycleStatus } from "@callibrator/contracts/states";
 // Simplified RBAC with permission (read/write) model
 
-export interface Role {
-  id: string;
-  name: string;
-  description?: string;
-  nameToShow?: string;
-  isActive?: boolean;
-  /** What the backend sends ("active" | "inactive"); `isActive` is derived from it. */
-  status?: string;
-  /** A system role's level is fixed (409 on a change, ADR-105). */
-  isSystem?: boolean;
-  roleLevel?: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
+/**
+ * P9-25 (ADR-103 item 11): a role row is the contract's (roles.openapi.ts,
+ * RoleRow); `isActive` is derived from `status` by role.service (F-19).
+ */
+export type Role = components["schemas"]["RoleRow"] & { isActive?: boolean };
+
+/**
+ * The role a user row carries: the list's projection (`id`, `name`,
+ * `nameToShow`, `description`) and the session's role, so every other role
+ * field is optional.
+ */
+export type UserRole = Pick<Role, "id" | "name"> & Partial<Omit<Role, "id" | "name">>;
 
 export interface User {
   id: string;
@@ -29,7 +29,7 @@ export interface User {
   status?: "ACTIVE" | "INACTIVE" | "SUSPENDED" | "PENDING";
   picture?: string;
   avatarUrl?: string;
-  role?: Role;
+  role?: UserRole;
   createdAt?: string;
   updatedAt?: string;
   // A-141: from /auth/verify and the MFA sign-in step. A count, never a code.
@@ -116,7 +116,13 @@ export interface Tenant {
   logo?: string;
   logoBaseUrl?: string;
   primaryColor?: string;
-  status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
+  /**
+   * A-361: the model's lower-case lifecycle ENUM, as the API answers it
+   * (`tenants.status`; @callibrator/contracts/states). It was typed in upper
+   * case, which no answer ever carries, so the tenants page's counts and badges
+   * never matched.
+   */
+  status: TenantLifecycleStatus;
   /** The seat limit (platform-set). null or negative = unlimited. `maxUsers` never existed on the backend. */
   limitSeats?: number | null;
   email?: string;
@@ -245,118 +251,30 @@ export interface Calibration {
 // Warehouse & Inventory Types (Phase 2)
 // ==========================================
 
-export interface Warehouse {
-  id: string;
-  tenantId?: string;
-  name: string;
-  code: string;
-  address?: string | null;
-  description?: string | null;
-  status: "active" | "suspended" | "inactive";
+/**
+ * P9-25 (ADR-103 item 11): the contract's own schemas
+ * (backend/src/routes/api/warehouse.openapi.ts), replacing the hand-written
+ * copies. A warehouse is "active" or "inactive" (WAREHOUSE_STATUSES; A-355: the
+ * form offered "suspended", which the API refuses); a list row carries no
+ * `locations`.
+ */
+export type Warehouse = components["schemas"]["Warehouse"] & {
   locations?: StorageLocation[];
-  createdAt?: string;
-  updatedAt?: string;
-}
+};
 
-export interface StorageLocation {
-  id: string;
-  tenantId?: string;
-  warehouseId: string;
-  name: string;
-  code: string;
-  description?: string | null;
-  isActive: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
+/** A warehouse status the API accepts. The column is nullable (default "active"). */
+export type WarehouseStatus = NonNullable<Warehouse["status"]>;
 
-export interface Stock {
-  id: string;
-  tenantId?: string;
-  warehouseId: string;
-  locationId?: string | null;
-  itemName: string;
-  sku?: string | null;
-  serialNumber?: string | null;
-  quantity: number;
-  minQuantity: number;
-  description?: string | null;
-  warehouse?: { id: string; name: string; code: string };
-  location?: { id: string; name: string; code: string } | null;
-  createdAt?: string;
-  updatedAt?: string;
-}
+export type StorageLocation = components["schemas"]["StorageLocation"];
 
-export interface StockTransfer {
-  id: string;
-  tenantId?: string;
-  fromWarehouseId: string;
-  toWarehouseId: string;
-  status: "pending" | "in_transit" | "completed" | "cancelled";
-  requestedBy: string | null;
-  approvedBy?: string | null;
-  itemName: string;
-  quantity: number;
-  transferDate?: string | null;
-  notes?: string | null;
-  fromWarehouse?: { id: string; name: string; code: string };
-  toWarehouse?: { id: string; name: string; code: string };
-  requester?: {
-    id: string;
-    username: string;
-    firstName: string;
-    lastName: string;
-  };
-  approver?: {
-    id: string;
-    username: string;
-    firstName: string;
-    lastName: string;
-  } | null;
-  /** Q-51 (ADR-100 Am. 2): the API key that wrote the row, when no user did. */
-  apiKey?: { id: string; name: string; keyPrefix?: string | null } | null;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface StockAdjustment {
-  id: string;
-  tenantId?: string;
-  warehouseId: string;
-  locationId?: string | null;
-  type: "addition" | "subtraction" | "write_off";
-  quantity: number;
-  reason?: string | null;
-  adjustedBy: string | null;
-  warehouse?: { id: string; name: string; code: string };
-  adjuster?: {
-    id: string;
-    username: string;
-    firstName: string;
-    lastName: string;
-  } | null;
-  /** Q-51 (ADR-100 Am. 2): the API key that wrote the row, when no user did. */
-  apiKey?: { id: string; name: string; keyPrefix?: string | null } | null;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface StockOpname {
-  id: string;
-  tenantId?: string;
-  warehouseId: string;
-  status: "draft" | "in_progress" | "completed";
-  scheduledAt: string;
-  completedAt?: string | null;
-  performedBy: string;
-  notes?: string | null;
-  warehouse?: { id: string; name: string; code: string };
-  performer?: {
-    id: string;
-    username: string;
-    firstName: string;
-    lastName: string;
-  };
-  createdAt?: string;
-  updatedAt?: string;
-}
+// P9-25 (ADR-103 item 11): the stock rows are the contract's
+// (@callibrator/contracts/stock). A list or single read carries the joins
+// (the `*ListItem` / `StockDetail` schemas); a write's answer is the bare row.
+type StockSchemas = components["schemas"];
+export type Stock = StockSchemas["Stock"] & Partial<Pick<StockSchemas["StockDetail"], "warehouse" | "location">>;
+export type StockTransfer = StockSchemas["StockTransfer"] &
+  Partial<Pick<StockSchemas["StockTransferListItem"], "fromWarehouse" | "toWarehouse" | "requester" | "approver" | "apiKey">>;
+export type StockAdjustment = StockSchemas["StockAdjustment"] &
+  Partial<Pick<StockSchemas["StockAdjustmentListItem"], "warehouse" | "adjuster" | "apiKey">>;
+export type StockOpname = StockSchemas["StockOpname"] &
+  Partial<Pick<StockSchemas["StockOpnameListItem"], "warehouse" | "performer">>;

@@ -1,6 +1,6 @@
 # 03 — Backend Architecture
 
-> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; the toolchain is ADR-087), compiled to CommonJS and run from one `dist/` tree. The only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18); `noSourceJs.p924.guard` fails on any other. The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The rules are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Behaviour described here is **as-built** unless marked *target*.
 
 Coding standards are in [`../BACKEND/00-BACKEND-STANDARDS.md`](../BACKEND/00-BACKEND-STANDARDS.md). The per-module deep reference is [`../BACKEND/10-MODULE-REFERENCE.md`](../BACKEND/10-MODULE-REFERENCE.md). This document is the structure.
 
@@ -8,13 +8,13 @@ Coding standards are in [`../BACKEND/00-BACKEND-STANDARDS.md`](../BACKEND/00-BAC
 
 ## What It Is
 
-An Express modular monolith, **as-built in JavaScript (CommonJS)** and migrating to strict TypeScript (ADR-038, superseding ADR-030). `"type": "commonjs"`, entry `index.js`, Node 26 (pinned by the root `.nvmrc`, ADR-076).
+An Express modular monolith in strict TypeScript compiled to CommonJS (ADR-038, superseding ADR-030; toolchain ADR-087). **As-built 2026-10-02:** every source module is `.ts` but five pending files (`noSourceJs.p924.guard`); `"type": "commonjs"`, entry `index.ts` (built to `dist/index.js`), Node 26 (pinned by the root `.nvmrc`, ADR-076).
 
 Anyone acting on an instruction to "remove the `any` types" or "enable strict mode" in `backend/` is working from a stale premise. There are no types to remove.
 
 ## Composition Root
 
-`backend/index.js` is where everything is assembled, in this order:
+`backend/index.ts` is where everything is assembled, in this order:
 
 ```
 1.  security      compression, HTTPS redirect, helmet, hpp, CORS
@@ -36,14 +36,14 @@ The order is behaviour, not style. Four consequences worth stating:
 - The raw-body hook fires **only** for `/api/v1/billing/webhook`. Moving that mount without moving the prefix silently breaks Stripe signature verification.
 - `globalSanitizer` rewrites `req.body`, `req.query`, `req.params` — and not `req.rawBody`, which is why the webhook still works.
 - Static `/uploads` sits **before** the sanitizer and before routing, so upload serving does not pay for either.
-- The public probes live in `backend/src/routes/internal/health.route.js` (A-06, A-15). `/live` is dependency-free liveness (`OK`). `/ready` (`READY`/`NOT READY`) and `/health` (`{"status":"ok"}`/`{"status":"unavailable"}`) return one aggregate verdict over PostgreSQL, Redis and RabbitMQ and **503** when any is down — readiness probes, not liveness pings — and disclose nothing else. The per-dependency breakdown is `GET /api/v1/health` (plus `/jobs` and `/metrics`, P7-02), mounted in step 10 behind `auth` + `denyApiKey` + `superAdminOnly` (`/metrics`: bearer `METRICS_TOKEN`). The three public paths are exempt from the step-1 HTTPS redirect (S-09, ADR-081). *(Corrected, ADR-088: this line said `/health` called only `db.authenticate()`.)*
+- The public probes live in `backend/src/routes/internal/health.route.ts` (A-06, A-15). `/live` is dependency-free liveness (`OK`). `/ready` (`READY`/`NOT READY`) and `/health` (`{"status":"ok"}`/`{"status":"unavailable"}`) return one aggregate verdict over PostgreSQL, Redis and RabbitMQ and **503** when any is down — readiness probes, not liveness pings — and disclose nothing else. The per-dependency breakdown is `GET /api/v1/health` (plus `/jobs` and `/metrics`, P7-02), mounted in step 10 behind `auth` + `denyApiKey` + `superAdminOnly` (`/metrics`: bearer `METRICS_TOKEN`). The three public paths are exempt from the step-1 HTTPS redirect (S-09, ADR-081). *(Corrected, ADR-088: this line said `/health` called only `db.authenticate()`.)*
 
 ## Directory Responsibilities
 
 | Directory | Count | Responsibility |
 |---|---|---|
 | `routes/api/` | 53 | mount path and middleware composition only |
-| `routes/internal/` | 1 | `migration.route.js` — schema operations over HTTP |
+| `routes/internal/` | 1 | `migration.route.ts` — schema operations over HTTP |
 | `validators/` | 37 | Joi schemas |
 | `controllers/` | 56 | request in, envelope out |
 | `services/` | 76 | business logic and transactions |
@@ -88,10 +88,10 @@ The order is behaviour, not style. Four consequences worth stating:
 The single most important mechanism in the backend. Full treatment: [`../BACKEND/05-TENANT-SCOPING.md`](../BACKEND/05-TENANT-SCOPING.md) and [`../SECURITY/05-MULTI-TENANCY-SECURITY.md`](../SECURITY/05-MULTI-TENANCY-SECURITY.md).
 
 ```
-AsyncLocalStorage (tenantContext.middleware.js)
+AsyncLocalStorage (tenantContext.middleware.ts)
         │  { tenantId, isSuperAdmin, isSystemTask }
         ▼
-global Sequelize hooks (tenantScope.util.js, installed by models/index.js)
+global Sequelize hooks (tenantScope.util.ts, installed by models/index.ts)
         │
         ├─ beforeFind / beforeBulkUpdate / beforeBulkDestroy → inject WHERE
         └─ beforeCreate / beforeUpdate                        → stamp tenantId
@@ -114,7 +114,7 @@ Resolution:
 
 ## Error Handling
 
-`AppError(status, message)` from `utils/appError.util.js`, mapped centrally by `errorHandlers.middleware.js` to:
+`AppError(status, message)` from `utils/appError.util.ts`, mapped centrally by `errorHandlers.middleware.ts` to:
 
 ```json
 { "success": false, "status": 400, "message": "...", "data": null }
@@ -126,7 +126,7 @@ The rule that matters: **the error mapper forwards recognised error types only.*
 
 ## Response Envelope
 
-`utils/response.util.js` exports `success`, `error`, `paginated`, `notFound`, `badRequest`, `unauthorized`, `forbidden`, `login`, `paginate`.
+`utils/response.util.ts` exports `success`, `error`, `paginated`, `notFound`, `badRequest`, `unauthorized`, `forbidden`, `login`, `paginate`.
 
 ```json
 { "success": true, "status": 200, "message": "...", "data": [], "meta": { "total": 0, "page": 1, "limit": 20, "totalPages": 0 } }
@@ -138,7 +138,7 @@ The rule that matters: **the error mapper forwards recognised error types only.*
 
 ## Models and the Barrel
 
-`models/index.js` constructs Sequelize, loads all 72 models, wires associations, and installs the tenant hooks. It exports **`sequelize`**, not `db`.
+`models/index.ts` constructs Sequelize, loads all 72 models, wires associations, and installs the tenant hooks. It exports **`sequelize`**, not `db`.
 
 A service writing `const { db } = require("../models")` gets `undefined` and then throws on `db.sequelize.transaction()`. That was a real defect across three workflow functions.
 
@@ -179,4 +179,4 @@ Two things run inside the Express process rather than beside it:
 | **Socket.IO** | same server, same port |
 | **MQTT** | a **client** to an external broker, optional, for IoT telemetry ingest |
 
-**The backend is an MQTT *client*, not a broker.** When both `MQTT_HOST` and `MQTT_PORT` are set, `src/services/iot.service.js` connects to an **external** broker and subscribes to `$share/<MQTT_SHARED_GROUP>/device/#` — a shared subscription, so each message reaches one replica, with at most `MQTT_INGEST_CONCURRENCY` ingests in flight per process (ADR-079, W-14; `MQTT_SHARED_GROUP=none` for a broker without shared subscriptions, then with one replica only); with either unset it logs `IoT MQTT Broker not configured` and MQTT ingest is off. `aedes` and `aedes-server-factory` sit in `package.json` and are referenced by no code — earlier documentation described an embedded broker that was never built.
+**The backend is an MQTT *client*, not a broker.** When both `MQTT_HOST` and `MQTT_PORT` are set, `src/services/iot.service.ts` connects to an **external** broker and subscribes to `$share/<MQTT_SHARED_GROUP>/device/#` — a shared subscription, so each message reaches one replica, with at most `MQTT_INGEST_CONCURRENCY` ingests in flight per process (ADR-079, W-14; `MQTT_SHARED_GROUP=none` for a broker without shared subscriptions, then with one replica only); with either unset it logs `IoT MQTT Broker not configured` and MQTT ingest is off. `aedes` and `aedes-server-factory` sit in `package.json` and are referenced by no code — earlier documentation described an embedded broker that was never built.

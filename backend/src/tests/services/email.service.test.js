@@ -1,7 +1,7 @@
-const nodemailer = require("nodemailer");
-const mustache = require("mustache");
-const fs = require("fs");
-const path = require("path");
+require("nodemailer");
+require("mustache");
+require("fs");
+require("path");
 
 jest.mock("nodemailer", () => ({
   createTransport: jest.fn().mockReturnValue({

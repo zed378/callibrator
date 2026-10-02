@@ -173,7 +173,7 @@ export const accessRequestBody = (workEmail: string, organisationName: string): 
   whatsapp: "0812-3456-7890",
   needs: "Jadwal kalibrasi dan sertifikat (P10-13 live E2E)",
   consent: true,
-  consentVersion: "2026-09-29",
+  consentVersion: "2026-10-01",
   locale: "en",
   website: "",
 });

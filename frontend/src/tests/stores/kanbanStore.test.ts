@@ -103,7 +103,7 @@ describe("kanbanStore", () => {
     });
 
     it("falls back to 'backlog' when activeSprintId is null", async () => {
-      getBoard.mockResolvedValue(board({ activeSprintId: null }));
+      getBoard.mockResolvedValue(board({ activeSprintId: null as unknown as string /* never answered (always a sprint id, "backlog" or "all"); pins the store's fallback */ }));
       await useKanbanStore.getState().fetchBoard("p1");
       expect(useKanbanStore.getState().viewSprintId).toBe("backlog");
     });
@@ -173,7 +173,7 @@ describe("kanbanStore", () => {
     });
 
     it("keeps every card when activeSprintId is null", () => {
-      useKanbanStore.setState({ board: board({ activeSprintId: null }) });
+      useKanbanStore.setState({ board: board({ activeSprintId: null as unknown as string /* never answered (always a sprint id, "backlog" or "all"); pins the store's fallback */ }) });
       useKanbanStore.getState().upsertCard(card({ sprintId: "anything" }));
       expect(useKanbanStore.getState().board?.cards).toHaveLength(1);
     });

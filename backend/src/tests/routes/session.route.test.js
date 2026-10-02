@@ -3,7 +3,7 @@
  *
  * Tests the Session route registrations and middleware chain.
  */
-const sessionRoutes = require("../../routes/api/session.route.js");
+const sessionRoutes = require("../../routes/api/session.route");
 
 describe("Session Routes", () => {
   it("should export an Express router", () => {

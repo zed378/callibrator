@@ -1,89 +1,25 @@
-import { api } from "../client";
+// src/api/services/dashboard.service.ts
+//
+// P9-25 (ADR-103 item 11): on the GENERATED client. The calls and the types are
+// read off `paths` (src/api/generated/schema.d.ts, `npm run api:types`, from
+// backend/src/routes/api/dashboard.openapi.ts); the exported names are unchanged, so
+// no caller changed.
+import { typedApi, unwrap, type components } from "../typed";
 
 // Backend route: GET /api/v1/dashboard/metrics
 // Non-superadmins always get their own tenant's metrics.
 // SUPERADMIN gets global metrics (+ tenantBreakdown) and may pass
 // tenantId to inspect a single tenant.
 
-export interface TrendPoint {
-  month: string; // "2026-02"
-  count: number;
-}
-
-export interface TenantBreakdownRow {
-  id: string;
-  name: string;
-  code?: string;
-  status?: string;
-  users: number;
-  devices: number;
-}
-
-export interface DashboardMetrics {
-  scope: "tenant" | "global";
-  generatedAt: string;
-  tenant?: {
-    id: string;
-    name: string;
-    code?: string;
-    status?: string;
-  } | null;
-  users: {
-    total: number;
-    verified: number;
-  };
-  devices: {
-    total: number;
-    byStatus: Record<string, number>;
-    dueSoon: number;
-    overdue: number;
-  };
-  calibrations: {
-    total: number;
-    compliant: number;
-    complianceRate: number | null; // percentage, e.g. 97.5
-    last30Days: number;
-  };
-  certificates: {
-    total: number;
-    byStatus: Record<string, number>;
-  };
-  inventory: {
-    stockItems: number;
-    totalQuantity: number;
-    lowStockItems: number;
-    warehouses: number;
-    pendingTransfers: number;
-    openOpnames: number;
-  };
-  maintenance: {
-    openWorkOrders: number;
-  };
-  trends: {
-    calibrations: TrendPoint[];
-    certificates: TrendPoint[];
-  };
-  // Global scope only
-  tenants?: {
-    total: number;
-    active: number;
-  };
-  tenantBreakdown?: TenantBreakdownRow[];
-}
-
-interface BackendMetricsResponse {
-  success: boolean;
-  status: number;
-  message: string;
-  data: DashboardMetrics;
-}
+export type DashboardMetrics = components["schemas"]["DashboardMetrics"];
+export type TrendPoint = DashboardMetrics["trends"]["calibrations"][number];
+export type TenantBreakdownRow = NonNullable<DashboardMetrics["tenantBreakdown"]>[number];
 
 export const dashboardService = {
   getMetrics: async (tenantId?: string): Promise<DashboardMetrics> => {
-    const response = await api.get<BackendMetricsResponse>(
-      "/api/v1/dashboard/metrics",
-      { params: tenantId ? { tenantId } : undefined },
-    );
+    const response = await typedApi
+      .GET("/api/v1/dashboard/metrics", tenantId ? { params: { query: { tenantId } } } : {})
+      .then(unwrap);
     return response.data;
   },
 };

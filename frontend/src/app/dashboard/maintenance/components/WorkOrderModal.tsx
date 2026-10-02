@@ -153,6 +153,77 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
           />
         </div>
 
+        {/* Q-55 (migration 0107): the schedule and the estimate, on create and edit. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="maintenance-components-workordermodal-f8" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+              Scheduled date
+            </label>
+            <Input id="maintenance-components-workordermodal-f8"
+              type="date"
+              value={form.scheduledDate}
+              onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
+            />
+          </div>
+          <div>
+            <label htmlFor="maintenance-components-workordermodal-f9" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+              Estimated cost
+            </label>
+            <Input id="maintenance-components-workordermodal-f9"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="0.01"
+              value={form.estimatedCost}
+              onChange={(e) => setForm({ ...form, estimatedCost: e.target.value })}
+            />
+          </div>
+        </div>
+
+        {/* Q-55: the outcome — only once the work order exists (the API takes these on an edit). */}
+        {modalType === "edit" && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="maintenance-components-workordermodal-f10" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                  Completed date
+                </label>
+                <Input id="maintenance-components-workordermodal-f10"
+                  type="date"
+                  value={form.completedDate}
+                  min={form.scheduledDate || undefined}
+                  onChange={(e) => setForm({ ...form, completedDate: e.target.value })}
+                />
+              </div>
+              <div>
+                <label htmlFor="maintenance-components-workordermodal-f11" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                  Actual cost
+                </label>
+                <Input id="maintenance-components-workordermodal-f11"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  value={form.actualCost}
+                  onChange={(e) => setForm({ ...form, actualCost: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="maintenance-components-workordermodal-f12" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                Resolution notes
+              </label>
+              <Textarea id="maintenance-components-workordermodal-f12"
+                value={form.resolutionNotes}
+                onChange={(e) => setForm({ ...form, resolutionNotes: e.target.value })}
+                placeholder="How the device was returned to service..."
+                maxLength={5000}
+                rows={3}
+              />
+            </div>
+          </>
+        )}
+
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel

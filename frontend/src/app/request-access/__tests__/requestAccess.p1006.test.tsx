@@ -38,10 +38,14 @@ const refusal = (status: number, body: Record<string, unknown> = {}) =>
     data: { success: false, status, message: "Backend English", ...body },
   });
 
+const NOTICE = "https://example.test/privacy-notice";
+/** The consent label now carries the notice link (Q-42), so it is matched by its opening words. */
+const CONSENT = new RegExp(`^${en["access.consent.before"].slice(0, 30)}`);
+
 const renderForm = () =>
   render(
     <MessagesProvider locale="en" messages={en}>
-      <RequestAccessForm />
+      <RequestAccessForm privacyNoticeUrl={NOTICE} />
     </MessagesProvider>,
   );
 
@@ -53,7 +57,7 @@ const fillValid = () => {
   fireEvent.change(screen.getByLabelText(en["access.contactName"]), { target: { value: "Dewi Lestari" } });
   fireEvent.change(screen.getByLabelText(new RegExp(en["access.workEmail"])), { target: { value: "dewi@rs-contoh.test" } });
   fireEvent.change(screen.getByLabelText(en["access.whatsapp"]), { target: { value: "0812 3456 7890" } });
-  fireEvent.click(screen.getByLabelText(en["access.consent"]));
+  fireEvent.click(screen.getByLabelText(CONSENT));
 };
 
 beforeEach(() => jest.clearAllMocks());
@@ -68,7 +72,7 @@ describe("P10-06: request access", () => {
     expect(screen.getByLabelText(/Job title/)).toHaveAttribute("autocomplete", "organization-title");
     expect(screen.getByLabelText(en["access.workEmail"])).toHaveAttribute("autocomplete", "email");
     expect(screen.getByLabelText(en["access.whatsapp"])).toHaveAttribute("autocomplete", "tel");
-    expect(screen.getByLabelText(en["access.consent"])).not.toBeChecked();
+    expect(screen.getByLabelText(CONSENT)).not.toBeChecked();
 
     const honeypot = container.querySelector<HTMLInputElement>('input[name="website"]');
     expect(honeypot).toHaveAttribute("tabindex", "-1");

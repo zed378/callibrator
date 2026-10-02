@@ -1,5 +1,5 @@
 /**
- * Tests for ticket.controller.js
+ * Tests for ticket.controller.ts
  */
 
 jest.mock("../../services/ticket.service", () => ({

@@ -52,9 +52,11 @@ const modules = (dir: string): string[] =>
     return loadable && !skipped(rel) ? [full] : [];
   });
 
-/** What index.js requires from ./src, in its order (the boot order). */
+/** What the entry point requires from ./src, in its order (the boot order). index.ts since P9-21:
+ * it keeps index.js's literal `require("./src/...")` calls, in index.js's order, so this reads either. */
 const bootOrder = (): string[] => {
-  const index = fs.readFileSync(path.join(ROOT, "index.js"), "utf8");
+  const entry = fs.existsSync(path.join(ROOT, "index.ts")) ? "index.ts" : "index.js";
+  const index = fs.readFileSync(path.join(ROOT, entry), "utf8");
   return [...index.matchAll(/require\(\s*["'](\.\/src\/[^"']+)["']\s*\)/g)].map((m) => path.join(ROOT, m[1] as string));
 };
 
@@ -129,7 +131,7 @@ if (!fs.existsSync(path.join(ROOT, "src"))) {
   process.exit(1);
 }
 
-const failures = [...run("every module", modules(path.join(ROOT, "src"))), ...run("boot order (index.js)", bootOrder())];
+const failures = [...run("every module", modules(path.join(ROOT, "src"))), ...run("boot order (index.ts)", bootOrder())];
 if (failures.length > 0) {
   process.stderr.write(`load-check: ${String(failures.length)} module(s) throw at load (${useSrc ? "src via tsx" : "dist via node"}):\n`);
   for (const f of failures) {

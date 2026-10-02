@@ -33,8 +33,9 @@ type UploadedFile = Express.Multer.File;
 /** Options for `upload`. */
 export interface UploadOptions {
   folder?: string;
-  allowedMimes?: string[];
-  allowedExtensions?: string[];
+  // P9-21: readonly — tenant.route passes the frozen PUBLIC_IMAGE_* lists (type-only).
+  allowedMimes?: readonly string[];
+  allowedExtensions?: readonly string[];
   maxFileSize?: number;
   validateMagicBytes?: boolean;
   holdInQuarantine?: boolean;
