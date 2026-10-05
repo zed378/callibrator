@@ -1,6 +1,6 @@
 # Runbook — Moving the Deployment to PostgreSQL 18
 
-**Decision:** [ADR-041](../MEMORY/DECISIONS.md) · **Status:** not started — **superseded for this deployment by the owner decision below** (wipe, not migrate) · **Target:** the VM at
+**Decision:** [ADR-041](../MEMORY/DECISIONS.md) · **Status:** **done for the reference VM, 2026-10-02**, by the owner decision below (wipe, not migrate): the closing deploy started fresh PG 18 volumes, and the VM runs 18.6 ([record](../MEMORY/records/2026-10-02-closing-deploy-vm.md)). Paths A and B below remain the procedure for any other deployment still on 17 · **Target:** the VM at
 `10.1.200.13`, `/home/infra/callibrator`
 
 ---

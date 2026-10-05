@@ -63,7 +63,7 @@ hidden document. The files that do exist are as-built and name their source.
 |---|---|
 | Backend Architecture | **Dual-Backend Target Architecture (ADR-089)** — TypeScript backend (`backend/src/`) existing reference implementation; future Go backend engine (`backend-go/`) planned for Phase 999 |
 | Backend Runtime | Express.js + Sequelize — **JavaScript/CommonJS today, strict TypeScript is the target for Phase 9** (ADR-038; plan in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`) |
-| Database | PostgreSQL 18 + pgvector, only (ADR-039 for the engine, ADR-041 for the version — the deployment still runs 17.11 until the upgrade runbook is carried out). The engine-agnostic premise of ADR-029 was dropped; its tenant-isolation mechanism stands |
+| Database | PostgreSQL 18 + pgvector, only (ADR-039 for the engine, ADR-041 for the version — the reference deployment runs 18.6 since the closing deploy of 2026-10-02, which wiped it per the owner's decision). The engine-agnostic premise of ADR-029 was dropped; its tenant-isolation mechanism stands |
 | Frontend Architecture | **Multi-Frontend & Shared Component Architecture** — Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Zustand · Root-level `shared/` area |
 | Realtime | Socket.IO both ends (see ADR-031) |
 | Infrastructure | Redis · RabbitMQ · MQTT (client, external broker) · ClamAV · pgvector |

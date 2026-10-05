@@ -1225,6 +1225,8 @@ later.
 **Status:** Accepted — **the repository targets 18; the deployment still runs 17.11.** That
 distinction is the point, and it is stated in every document this ADR touches.
 
+**Status update 2026-10-02:** the reference deployment runs **PostgreSQL 18.6** (`pgvector/pgvector:pg18`). The closing deploy of Phases 9–10 wiped the stack and its volumes (the owner's wipe decision, `RUNBOOK-POSTGRES-18-UPGRADE.md` § Owner Decision), so no dump and restore was needed. Checked with `select version()` on 2026-10-05 ([record](./records/2026-10-02-closing-deploy-vm.md)).
+
 ---
 
 ## ADR-042: File Serving — One Public Class, Everything Else Behind a Capability

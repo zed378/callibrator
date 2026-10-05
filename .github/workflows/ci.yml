@@ -184,7 +184,7 @@ jobs:
         run: |
           set -euo pipefail
           cp backend/.env.example backend/.env
-          for k in CERT_SIGNING_SECRET ENCRYPT_KEY ATTACHMENT_URL_SECRET KMS_MASTER_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET; do
+          for k in CERT_SIGNING_SECRET ENCRYPT_KEY ATTACHMENT_URL_SECRET KMS_MASTER_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET ACCESS_REQUEST_IP_PEPPER; do
             v="$(openssl rand -hex 32)"
             echo "::add-mask::$v"
             echo "$k=$v" >> "$GITHUB_ENV"
@@ -350,7 +350,7 @@ jobs:
       - name: Random application secrets
         run: |
           set -euo pipefail
-          for k in CERT_SIGNING_SECRET ENCRYPT_KEY ATTACHMENT_URL_SECRET KMS_MASTER_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET; do
+          for k in CERT_SIGNING_SECRET ENCRYPT_KEY ATTACHMENT_URL_SECRET KMS_MASTER_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET ACCESS_REQUEST_IP_PEPPER; do
             v="$(openssl rand -hex 32)"
             echo "::add-mask::$v"
             echo "$k=$v" >> "$GITHUB_ENV"

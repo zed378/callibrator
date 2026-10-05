@@ -8,6 +8,17 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-02 — CI's first run on `1100658`: three causes reproduced on Linux and fixed ([record](./records/2026-10-02-ci-first-push-fixes.md))
+- Fixed (CI): the boot job now gets the `ACCESS_REQUEST_IP_PEPPER` production requires; `scripts/ci/e2e-env.sh` is executable (the deploy-config and browser a11y jobs stopped at exit 126).
+- Fixed: `backend/.env.example` no longer sets `SUPER_ADMIN_ROLE_ID=uuid-here`, a placeholder that replaced the seeded super-admin role id for anyone who copied it; a guard keeps it out.
+- Fixed (tests): three suites passed only on the workstation — one opened a real database transaction, one depended on the template above, one wrote real files into `backend/exports`. On a clean Linux clone the coverage gate is 100 %, 870 suites, 0 failed.
+
+### 2026-10-02 — Phases 9–10 deployed to the reference VM; it now runs PostgreSQL 18.6 ([record](./records/2026-10-02-closing-deploy-vm.md))
+- Deployed: `1100658` at https://kalibrasi.zedth.my.id. The stack and its volumes were wiped first, as the owner directs, and the 32 other projects' containers were untouched.
+- Changed: the VM is on PostgreSQL 18.6 (ADR-041 status). The VM's configuration gained the `ACCESS_REQUEST_IP_PEPPER` production now requires, generated on the VM and never shown.
+- Verified live: the one-time super-admin password is only inside the container, 0600 and in no log, environment or volume (U-08 steps 1–4). The owner's first sign-in is still owed.
+- Fixed (procedure): `deploy/README.md` no longer loses the one-time password when seeding is switched off; the password is issued with the rotation CLI.
+
 ### 2026-10-02 — Closing verification for Phases 9–10: every gate green, the live pair green on the final tree ([record](./records/2026-10-02-closing-gates-qr.md))
 - Verified: on a quiet tree, backend coverage 100 % (869 suites, 0 failed), lint 0/0, typecheck, builds, load checks, contracts 100 %, frontend coverage gate, `next build` and the bundle budget all pass; gitleaks finds no secret.
 - Verified: the full live suite and every browser suite passed in two runs back to back (Q and R) on a production-mode build of the final tree, with no server error. Migration `0108` applies on a fresh database and on an upgraded one.
