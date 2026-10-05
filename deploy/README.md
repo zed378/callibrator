@@ -310,14 +310,17 @@ docker exec "$B" ./backend rotate-bootstrap-password; echo "exit $?"
 #    expect: "Rotation refused: --user, --requested-by and --ticket are all required", exit 1
 
 # 3. Get a one-time password:
-#    - fresh database: ALLOW_SEEDING=true → restart → curl -s "$BASE/api/v1/migration/seeding" | jq '.data.users'
-#      (expect bootstrapPasswordFile: "/app/.bootstrap/superadmin-password", no password) → ALLOW_SEEDING off → restart;
+#    - fresh database: ALLOW_SEEDING=true → recreate backend → curl -s "$BASE/api/v1/migration/seeding" | jq '.data.users'
+#      (expect bootstrapPasswordFile: "/app/.bootstrap/superadmin-password", no password) → ALLOW_SEEDING off → recreate backend.
+#      Changing .env means RECREATING the container, and /app/.bootstrap is deliberately not a volume: the
+#      recreate DISCARDS the file the seed wrote (found on the closing deploy, 2026-10-02). So after the
+#      seeding toggle, always issue the password with the rotation CLI below — that is the one you hand over;
 #    - existing database still on 123123: the first boot of this version rotated it — see step 4;
 #    - otherwise (test account or a drill):
 docker exec "$B" ./backend rotate-bootstrap-password --user sys@mail.com --requested-by "<name>" --ticket <ref>
 
 # 4. The pointer is logged; the file is 0600 app; the value is in NO log, env or volume.
-docker logs "$B" 2>&1 | grep "One-time password for sys@mail.com written to"
+docker logs "$B" 2>&1 | grep "One-time password for s\*\*\*@mail.com written to"   # the address is masked in logs; the CLI's own output also names the file
 docker exec "$B" stat -c '%a %U' /app/.bootstrap/superadmin-password     # expect: 600 app
 P=$(docker exec "$B" cat /app/.bootstrap/superadmin-password)            # not echoed
 docker logs "$B" 2>&1 | grep -cF -- "$P"                                  # expect: 0

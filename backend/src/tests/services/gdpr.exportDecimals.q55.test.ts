@@ -79,6 +79,7 @@ import type * as GdprService from "../../services/gdpr.service";
 const gdprService = jest.requireActual<typeof GdprService>("../../services/gdpr.service");
 
 let outDir = "";
+let createWriteStream: jest.SpiedFunction<typeof FsModule.createWriteStream>;
 
 beforeEach(async () => {
   mockTables.clear();
@@ -90,7 +91,13 @@ beforeEach(async () => {
   const stat: Partial<fs.Stats> = { size: 1 };
   jest.spyOn(fs.promises, "stat").mockResolvedValue(stat as fs.Stats);
   jest.spyOn(fs.promises, "rm").mockResolvedValue(undefined);
-  jest.spyOn(fs, "createWriteStream").mockReturnValue({ on: () => undefined } as unknown as fs.WriteStream);
+  // On the REAL module object, as the service's `import fs from "fs"` reads it:
+  // `import * as fs` here is a namespace COPY, so a spy on it left the real
+  // createWriteStream in place. It wrote an empty ZIP into backend/exports, and
+  // on a fresh checkout (CI, no backend/exports) failed with ENOENT (2026-10-02).
+  createWriteStream = jest
+    .spyOn(realFs, "createWriteStream")
+    .mockReturnValue({ on: () => undefined } as unknown as FsModule.WriteStream);
   jest.spyOn(global, "setTimeout").mockImplementation((() => 0) as unknown as typeof setTimeout);
 });
 
@@ -108,6 +115,8 @@ describe("Q-55 — the DSAR export carries DECIMAL columns as numbers", () => {
     mockTables.set("Notification", [{ id: "n-1", userId: "subject", title: "10.00" }]);
 
     await gdprService.exportUserData("tenant-1" as never, "subject" as never);
+    // The ZIP went to the double, not to a real file under backend/exports.
+    expect(createWriteStream).toHaveBeenCalledTimes(1);
 
     const written = JSON.parse(await realFs.promises.readFile(path.join(outDir, "subject_records.json"), "utf8")) as Record<
       string,

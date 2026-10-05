@@ -160,14 +160,12 @@ at all. See A-24, A-36, A-30.
 **Decision:** [ADR-041](../MEMORY/DECISIONS.md) · **Runbook:** [`RUNBOOK-POSTGRES-18-UPGRADE.md`](./RUNBOOK-POSTGRES-18-UPGRADE.md)
 
 The compose pins and all eighteen documents now say **PostgreSQL 18** (`pgvector/pgvector:pg18`).
-The VM still runs **17.11**, and that is deliberate: a data directory written by 17 will not start
-under 18, so `docker compose pull && up -d` on the VM would crash-loop the database. The move is a
-dump, a fresh volume and a restore, with the old volume kept as the rollback.
+**The VM runs 18.6 since the closing deploy of 2026-10-02.** That deploy wiped the stack and its volumes, as the owner decided, and started on fresh PG 18 volumes ([record](../MEMORY/records/2026-10-02-closing-deploy-vm.md)). A data directory written by 17 still will not start under 18, so any other deployment on 17 needs the runbook's dump and restore.
 
 | | |
 |---|---|
 | Repository | ✅ on 18 |
-| Deployment | 🔴 **17.11** — not started |
+| Deployment | ✅ **18.6** since 2026-10-02 (wiped and redeployed fresh; `select version()` checked 2026-10-05) |
 | Application changes needed | none; access is through Sequelize 6 and the only extension is `pgvector` |
 | Evidence it works on 18 | **Local, not deployed.** The E2E suite passed in one run, twice, on PostgreSQL 18 on 2026-09-28 (P6-02, ADR-077), and the live suites run on 18.6. A CI run on GitHub is unverified (P7-01). On the VM, the upgrade is superseded by the **wipe** decision (`RUNBOOK-POSTGRES-18-UPGRADE.md` § Owner Decision) and happens at the closing deploy |
 
@@ -379,7 +377,7 @@ Re-stated **2026-09-30**. Each row cites the dated record it rests on. A row wit
 | `make verify` end to end | ⚪ **never recorded on one machine** | F-03, U-03 |
 | Pre-push hook | 🟡 exists, **opt-in** (`make hooks`; gitleaks, lint ratchet, typecheck, ts-ratchet) | ADR-066, ADR-076 |
 | Helm charts | 🟡 **deploy on one kind cluster**; not on a production cluster | P7-06, ADR-106; U-01 |
-| Reference deployment (VM) | 🟡 PostgreSQL 17.11 until the closing deploy (wipe) | `RUNBOOK-POSTGRES-18-UPGRADE.md` |
+| Reference deployment (VM) | ✅ PostgreSQL 18.6 since the closing deploy of 2026-10-02 (wipe) | [record](../MEMORY/records/2026-10-02-closing-deploy-vm.md) |
 
 ---
 

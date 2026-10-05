@@ -12,7 +12,8 @@
  * Mocked: the logger (to read it), Redis (absent: the singleton claim is then
  * not enforced, which is the documented fallback), node-cron's `schedule` (to
  * fire the job now instead of at 02:00), the models, and the retention
- * service's database work (its summary is the input under test).
+ * service's database work (its summary is the input under test) — the
+ * access-request retention step included: no test here may need a database.
  */
 const fs = require("fs");
 const http = require("http");
@@ -25,6 +26,13 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 jest.mock("../../services/redis.service", () => ({ getRedisConnection: jest.fn(() => null) }));
 jest.mock("../../models", () => ({ BatchJob: { findAll: jest.fn(async () => []) } }));
 jest.mock("../../services/dataRetention.service", () => ({ runRetentionSweep: jest.fn() }));
+// P10-05 added the access-request step to the scheduled sweep; it is database
+// work too. Unmocked, it opened a REAL transaction: green on a workstation with
+// a local PostgreSQL behind backend/.env, a refused connection in CI (no
+// database), which made every sweep here a failure (2026-10-02, first push).
+jest.mock("../../services/accessRequest.service", () => ({
+  runAccessRequestRetention: jest.fn(async () => ({ expired: 0, purged: 0 })),
+}));
 jest.mock("node-cron", () => ({
   schedule: jest.fn(),
   validate: jest.requireActual("node-cron").validate,

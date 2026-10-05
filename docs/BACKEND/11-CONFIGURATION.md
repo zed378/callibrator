@@ -246,7 +246,7 @@ Only a **cross-field** rule comparing the key's environment marker against `NODE
 
 | Variable | Notes |
 |---|---|
-| `SUPER_ADMIN_ROLE_ID` | overrides the seeded default |
+| `SUPER_ADMIN_ROLE_ID` | overrides the seeded default (`9be20605-…754b`, `ROLE_IDS.SUPER_ADMIN`). Leave it unset: the role seed always writes the default id, so any other value breaks the id half of the super-admin checks. `.env.example` carried the non-UUID placeholder `uuid-here` until 2026-10-02 (`MEMORY/records/2026-10-02-ci-first-push-fixes.md`); `envExampleRoleId.ci.test.ts` keeps it out |
 | `SEED_DEMO` | **must never be true in production** |
 | `PGADMIN_EMAIL`, `PGADMIN_PASSWORD` | compose, development only |
 
