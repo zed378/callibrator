@@ -280,7 +280,7 @@ const getNCs = async (tenantId: TenantId, page = 1, limit = 10, status?: string 
       tenantInclude(User, "reporter", ["id", "firstName", "lastName", "email"], tenantId),
       tenantInclude(CalibrationDevice, "device", ["id", "name", "serialNumber"], tenantId),
     ],
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
   });
 
   return {
@@ -412,7 +412,7 @@ const getCapas = async (tenantId: TenantId, page = 1, limit = 10, status?: strin
       tenantInclude(NonConformance, "nonConformance", ["id", "ncNumber", "title"], tenantId),
       tenantInclude(User, "assignee", ["id", "firstName", "lastName", "email"], tenantId),
     ],
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
   });
 
   return {

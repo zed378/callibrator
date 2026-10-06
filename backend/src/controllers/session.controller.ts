@@ -189,7 +189,7 @@ const getAllSessions = asyncHandlerWithMapping(async (req: Request, res: Respons
     ],
     limit: parseInt(String(limit)),
     offset: parseInt(String(offset)),
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
     raw: true,
     nest: true,
   });

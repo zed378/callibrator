@@ -165,7 +165,7 @@ describe("sop.service", () => {
             required: false, // A-90: LEFT JOIN — see includes.a90.test.js
           },
         ],
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
       });
       expect(result.total).toBe(1);
       expect(result.documents).toHaveLength(1);

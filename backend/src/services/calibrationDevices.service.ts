@@ -280,7 +280,7 @@ const fetchCalibrationDevices = async ({
 
     const { rows, count } = await CalibrationDevice.findAndCountAll({
       where: whereClause as WhereOptions,
-      order: [["name", "ASC"]],
+      order: [["name", "ASC"], ["id", "ASC"]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
       include: [
@@ -337,7 +337,7 @@ const fetchSpecificCalibrationDevice = async (
         {
           association: "calibrationRecords",
           separate: true, // avoid a limit-in-join that can drop the parent row
-          order: [["calibrationDate", "DESC"]],
+          order: [["calibrationDate", "DESC"], ["id", "DESC"]],
           limit: 10,
           attributes: { exclude: ["results"] },
         },

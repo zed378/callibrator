@@ -114,7 +114,7 @@ const getScorecards = async (tenantId: TenantId, query: ScorecardQuery): Promise
     where: where as WhereOptions,
     limit: parseInt(limit as string),
     offset: parseInt(offset as unknown as string),
-    order: [["evaluationDate", "DESC"]],
+    order: [["evaluationDate", "DESC"], ["id", "DESC"]],
     include: [
       { model: Vendor, as: "vendor", attributes: ["id", "name"] },
       // LEFT JOIN (A-90): without it User's defaultScope makes this INNER, and

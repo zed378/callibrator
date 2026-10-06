@@ -185,7 +185,7 @@ const fetchCalibrationRecords = async ({
       CalibrationRecord.count({ where: countWhere }),
       CalibrationRecord.findAll({
         where: pageWhere,
-        order: [["calibrationDate", "DESC"]],
+        order: [["calibrationDate", "DESC"], ["id", "DESC"]],
         limit: Number(limit),
         offset: (Number(page) - 1) * Number(limit),
         subQuery: true,

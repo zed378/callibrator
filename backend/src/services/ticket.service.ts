@@ -342,7 +342,7 @@ const listTickets = async (
   const { count, rows } = await Ticket.findAndCountAll({
     where: where as WhereOptions<TicketRow>,
     include: partyInclude(),
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
     limit,
     offset,
     distinct: true,

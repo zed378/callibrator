@@ -461,7 +461,7 @@ const fetchAuditLogs = async ({
         where: whereClause as WhereOptions,
         limit: safeLimit,
         offset,
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
         // required:false — userId is nullable (SET NULL on user delete) and User
         // carries a scope that would otherwise INNER JOIN and hide those logs.
         include: [

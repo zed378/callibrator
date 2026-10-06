@@ -158,7 +158,7 @@ const fetchWorkOrders = async ({
       where: whereClause as WhereOptions,
       limit: safeLimit,
       offset,
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"], ["id", "DESC"]],
       // required:false on every include — these are optional relations
       // (vendorId/assignedTo are nullable, and User/Vendor carry scopes that
       // Sequelize would otherwise promote to an INNER JOIN, hiding work orders

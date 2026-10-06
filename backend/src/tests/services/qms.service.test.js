@@ -234,7 +234,7 @@ describe("qms.service", () => {
               where: { tenantId: "tenant-1" },
             },
           ],
-          order: [["createdAt", "DESC"]],
+          order: [["createdAt", "DESC"], ["id", "DESC"]],
         });
         expect(result.total).toBe(1);
         expect(result.nonConformances).toHaveLength(1);
@@ -412,7 +412,7 @@ describe("qms.service", () => {
               where: { tenantId: "tenant-1" },
             },
           ],
-          order: [["createdAt", "DESC"]],
+          order: [["createdAt", "DESC"], ["id", "DESC"]],
         });
         expect(result.total).toBe(1);
         expect(result.capas).toHaveLength(1);

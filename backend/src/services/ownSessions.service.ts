@@ -142,7 +142,7 @@ const listOwnSessions = async (
     where: liveWhere(userId),
     // As built: listed by column name (see SessionRow).
     attributes: LIST_ATTRIBUTES as (keyof ModelInstance<"Session">)[],
-    order: [["created_at", "DESC"]],
+    order: [["created_at", "DESC"], ["id", "DESC"]],
     limit: OWN_SESSIONS_LIMIT,
     skipTenantScope: true,
   });

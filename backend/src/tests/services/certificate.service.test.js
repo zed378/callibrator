@@ -182,7 +182,7 @@ describe("certificate.service", () => {
             certificateNumber: expect.any(Object),
             issuedAt: expect.any(Object),
           }),
-          order: [["certificateNumber", "ASC"]],
+          order: [["certificateNumber", "ASC"], ["id", "ASC"]],
           limit: 10,
           offset: 10,
         }),
@@ -241,7 +241,7 @@ describe("certificate.service", () => {
       });
 
       expect(Certificate.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ order: [["createdAt", "DESC"]] }),
+        expect.objectContaining({ order: [["createdAt", "DESC"], ["id", "DESC"]] }),
       );
     });
 

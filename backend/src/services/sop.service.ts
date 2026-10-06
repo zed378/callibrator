@@ -168,7 +168,7 @@ const getDocuments = async (
       // admin authoring inside it), vanished from the list.
       { model: User, as: "author", attributes: ["id", "firstName", "lastName"], required: false },
     ],
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
   });
 
   return {

@@ -148,7 +148,7 @@ const fetchWarehouses = async ({ tenantId, find, page = 1, limit = DEFAULT_LIMIT
 
     const { rows, count } = await Warehouse.findAndCountAll({
       where: whereClause as WhereOptions,
-      order: [["name", "ASC"]],
+      order: [["name", "ASC"], ["id", "ASC"]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
     });

@@ -413,7 +413,7 @@ const defineModel: DefineTenantBackup = (db, DataTypes) => {
 
     return TenantBackup.findAndCountAll({
       where,
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"], ["id", "DESC"]],
       // String(): parseInt converts its argument with ToString, so this is the same parse.
       limit: parseInt(String(limit), 10),
       offset: parseInt(String(offset), 10),
@@ -434,7 +434,7 @@ const defineModel: DefineTenantBackup = (db, DataTypes) => {
   ): Promise<TenantBackup | null> => {
     return TenantBackup.findOne({
       where: { tenantId, status: STATUS.COMPLETED },
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"], ["id", "DESC"]],
       limit: 1,
     });
   };

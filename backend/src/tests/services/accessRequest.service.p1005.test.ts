@@ -292,10 +292,46 @@ describe("P10-05 — the intake", () => {
 
 // ============================================================================
 describe("P10-07 — the queue", () => {
+  /**
+   * Only `Date` is faked: the clock stands still until the test moves it, so
+   * `createdAt` is chosen by the test, never by how fast the machine is. CI run
+   * 37401999535 created two of these rows in the same millisecond, and the
+   * order the test asserted was then the tie's, not the service's.
+   */
+  const freezeClock = (): ((ms: number) => void) => {
+    const t0 = Date.now();
+    jest.useFakeTimers({
+      now: t0,
+      doNotFake: [
+        "hrtime",
+        "nextTick",
+        "performance",
+        "queueMicrotask",
+        "setImmediate",
+        "clearImmediate",
+        "setInterval",
+        "clearInterval",
+        "setTimeout",
+        "clearTimeout",
+      ],
+    });
+    return (ms: number): void => {
+      jest.setSystemTime(t0 + ms);
+    };
+  };
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it("lists one status, newest first, with per-status counts and each row's duplicate count", async () => {
+    const at = freezeClock();
     const first = await submitted();
+    at(1_000);
     await submitted({ organisationName: "Klinik B", workEmail: "b@klinik.test" });
+    at(2_000);
     await submitted({ organisationName: "RSUD again" }); // same address as the first
+    jest.useRealTimers();
     await svc.rejectAccessRequest(first, { id: first, reason: "Tidak lengkap", spam: false }, ACTOR);
 
     const pending = await svc.listAccessRequests({ status: "pending", page: 1, limit: 20 });
@@ -306,6 +342,28 @@ describe("P10-07 — the queue", () => {
     expect(pending.meta.counts).toEqual({ pending: 2, approved: 0, rejected: 1, spam: 0, expired: 0 });
     // Never the hashes.
     expect(JSON.stringify(pending.rows)).not.toContain("sourceIpHash");
+  });
+
+  it("rows created in the same millisecond keep one order — the id breaks the tie, so no page repeats or drops a row", async () => {
+    freezeClock();
+    const ids = [
+      await submitted({ workEmail: "t1@rs.test" }),
+      await submitted({ workEmail: "t2@rs.test" }),
+      await submitted({ workEmail: "t3@rs.test" }),
+    ];
+    jest.useRealTimers();
+    // The tie is real: one createdAt for all three.
+    expect(new Set(requests().map((r) => new Date(r["createdAt"] as Date).getTime())).size).toBe(1);
+
+    const newestFirst = [...ids].sort().reverse();
+    const all = await svc.listAccessRequests({ status: "pending", page: 1, limit: 20 });
+    expect(all.rows.map((r) => r.id)).toEqual(newestFirst);
+    const paged: string[] = [];
+    for (let page = 1; page <= 3; page += 1) {
+      const one = await svc.listAccessRequests({ status: "pending", page, limit: 1 });
+      paged.push(...one.rows.map((r) => r.id));
+    }
+    expect(paged).toEqual(newestFirst);
   });
 
   it("pages", async () => {

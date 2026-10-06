@@ -213,7 +213,7 @@ describe("billing.service", () => {
           where: { tenantId: "t-1" },
           limit: 10,
           offset: 0,
-          order: [["createdAt", "DESC"]],
+          order: [["createdAt", "DESC"], ["id", "DESC"]],
         }),
       );
     });

@@ -405,6 +405,10 @@ const getUsers = async (
     where: where as WhereOptions<InferAttributes<UserRow>>,
     offset,
     limit,
+    // A page of an unordered result is whatever the planner returns: the same
+    // user could appear on two pages and another on none. Oldest first, as
+    // /Groups lists, with the id breaking ties.
+    order: [["createdAt", "ASC"], ["id", "ASC"]],
     include: [
       {
         model: Role,
@@ -1151,7 +1155,7 @@ const getGroups = async (
     where: where as WhereOptions<InferAttributes<GroupRow>>,
     offset,
     limit,
-    order: [["createdAt", "ASC"]],
+    order: [["createdAt", "ASC"], ["id", "ASC"]],
   });
 
   const groups = await Promise.all(rows.map((group) => formatScimGroup(tenantId, group)));

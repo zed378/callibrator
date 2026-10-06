@@ -553,7 +553,7 @@ const fetchUsers = async ({
     const data = await Users.findAndCountAll({
       attributes: safeUserAttributes,
       where: whereClause as WhereOptions<InferAttributes<UserRow>>,
-      order: [["firstName", "ASC"]],
+      order: [["firstName", "ASC"], ["id", "ASC"]],
       limit: safeLimit,
       offset: offset,
       include: [

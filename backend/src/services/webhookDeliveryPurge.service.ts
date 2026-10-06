@@ -93,7 +93,7 @@ const purgeTenant = async (tenantId: TenantId, cutoff: Date, days: number, batch
       const rows = await WebhookDelivery.findAll({
         where: { tenantId, status: FINISHED_STATUSES, updatedAt: { [Op.lt]: cutoff } },
         attributes: ["id", "status"],
-        order: [["updatedAt", "ASC"]],
+        order: [["updatedAt", "ASC"], ["id", "ASC"]],
         limit: Math.min(batch, budget - deleted),
         transaction,
       });

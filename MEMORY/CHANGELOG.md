@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-06 — CI's third run on `4584df3`: every page order ends in the id; `source-map-js` 1.2.2 ([record](./records/2026-10-06-ci-third-run.md))
+- **Fixed:** 42 paginated queries ordered by a column that can tie (`createdAt`, `name`, a sortable column…). Tied rows had no defined order, so paging could show a row twice and skip another. Each order now ends in `id`, in the primary sort's direction; the primary sort is unchanged. SCIM `GET /Users` had no order at all and now lists oldest first, as `/Groups` does. This was found when the access-request queue test failed in CI: two requests were created in the same millisecond.
+- **Added:** the guard `pageOrderTiebreaker.ci3.guard.test.ts`. It fails the build on a page query whose order does not end in `id`, or that pages without an order. It found 42 such queries at `HEAD`, including two that the hand audit missed.
+- **Changed:** the queue test now freezes `Date` and sets each `createdAt` itself. A new case proves that three rows from the same millisecond list and page in id order, each exactly once (fail-before: the first two swap).
+- **Security:** `source-map-js` 1.2.1 → 1.2.2 (GHSA-68fv-2mgg-jv7q, HIGH, production). This is a lockfile-only change of one entry. The production audit is at 0 high. Four moderate advisories remain, all one `sprintf-js` chain under `umzug`'s CLI. They have no fix short of a major downgrade and are reachable only from the operator's command line.
+
 ### 2026-10-05 — Closing verification of the work since `dded70c`: every gate green, live pair S/T green, 0109–0110 proved on an upgrade boot, `db-backup` verified ([record](./records/2026-10-05-closing-gates-st.md))
 - **Verified, no source change:** backend coverage 100/100/100/100 (890 suites, 15,054 tests, 0 failed); lint 0/0; typecheck 0 in four projects; frontend jest 297 suites at 93.94/84.77/89.63/94.6; `next build`, bundle budget 10/10; npm audit gates; gitleaks; compose, Helm (with the backup CronJob) and actionlint.
 - **Live:** runs S and T back to back on a fresh production-mode stack: E2E 433/0, smoke 7/7, a11y 80/80, responsive 45/45, P10 12/12; 0 × 5xx.

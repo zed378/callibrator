@@ -210,7 +210,7 @@ const fetchStocks = async ({ tenantId, warehouseId, locationId, find, page = 1, 
         { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"], required: false },
         { model: StorageLocation, as: "location", attributes: ["id", "name", "code"] },
       ],
-      order: [["itemName", "ASC"]],
+      order: [["itemName", "ASC"], ["id", "ASC"]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
     });
@@ -628,7 +628,7 @@ const fetchAdjustments = async ({ tenantId, warehouseId, type, page = 1, limit =
         { model: User, as: "adjuster", attributes: ["id", "username", "firstName", "lastName"], required: false },
         apiKeyActorInclude(),
       ],
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"], ["id", "DESC"]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
     });
@@ -958,7 +958,7 @@ const fetchTransfers = async ({ tenantId, fromWarehouseId, toWarehouseId, status
         { model: User, as: "approver", attributes: ["id", "username", "firstName", "lastName"], required: false },
         apiKeyActorInclude(),
       ],
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"], ["id", "DESC"]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
     });
@@ -1140,7 +1140,7 @@ const fetchOpnames = async ({ tenantId, warehouseId, status, page = 1, limit = D
         { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"], required: false },
         { model: User, as: "performer", attributes: ["id", "username", "firstName", "lastName"], required: false },
       ],
-      order: [["scheduledAt", "DESC"]],
+      order: [["scheduledAt", "DESC"], ["id", "DESC"]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
     });

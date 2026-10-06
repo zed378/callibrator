@@ -99,7 +99,7 @@ describe("riskService", () => {
         where: { tenantId, status: "open", category: "security" },
         limit: 10,
         offset: 0,
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
         include: [
           {
             model: User,
@@ -153,7 +153,7 @@ describe("riskService", () => {
         where: { tenantId },
         limit: 20,
         offset: 20,
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
         include: [
           {
             model: User,
