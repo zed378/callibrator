@@ -6,9 +6,11 @@
 replicaCount: 1
 
 image:
-  repository: callibrator/backend
+  repository: zed378/calibration-be
   # Required. The umbrella chart refuses to render without it.
   tag: ""
+  # Optional sha256:<64 hex>; rendered as repository:tag@digest (ADR-123).
+  digest: ""
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

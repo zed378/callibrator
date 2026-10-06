@@ -41,10 +41,13 @@ Layered files in `deploy/compose/`:
 
 | File | Adds |
 |---|---|
-| `docker-compose.yml` | the base stack |
-| `docker-compose.dev.yml` | pgadmin, MinIO, exposed ports, relaxed limits |
+| `docker-compose.yml` | the base stack; names the **pulled** images `zed378/calibration-{be,fe,backup}` (Docker Hub, ADR-123) and builds nothing |
+| `docker-compose.build.yml` | the only file that builds, from source, as `callibrator/*:local` — beneath dev and the E2E stack (ADR-123) |
+| `docker-compose.dev.yml` | pgadmin, MinIO, exposed ports, relaxed limits (with the build overlay) |
 | `docker-compose.staging.yml` | staging images and resource caps |
 | `docker-compose.prod.yml` | production images, restart policies, no exposed database ports |
+| `docker-compose.vm.yml` | the single-host VM: pulled images, plain HTTP on 19080, the 19xxx port block |
+| `docker-compose.e2e.yml` | the disposable E2E / browser stack (with the build overlay) |
 
 ### Startup ordering
 

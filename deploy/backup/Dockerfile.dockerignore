@@ -1,0 +1,8 @@
+# The backup verifier's build context is the repository root, and its
+# Dockerfile COPYs exactly one file from it (the rest comes FROM the backend
+# image and the pinned pgvector image). An allow-list, like backend/ and
+# frontend/: without it every build sent the whole tree to the daemon —
+# node_modules, and any .env lying in it (ADR-123). BuildKit reads this file
+# because it sits beside the Dockerfile with the Dockerfile's name.
+*
+!deploy/backup/backup-verify.sh

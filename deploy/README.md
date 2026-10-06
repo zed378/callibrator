@@ -5,11 +5,12 @@ Deployment artefacts. Operational procedure lives in [`../docs/DEVOPS/`](../docs
 ```
 deploy/
 ├── compose/                     the primary deployment path
-│   ├── docker-compose.yml       base — NOT deployable alone
-│   ├── docker-compose.dev.yml   ports, pgadmin, MinIO, relaxed settings
+│   ├── docker-compose.yml       base — NOT deployable alone; names the PULLED images (ADR-123)
+│   ├── docker-compose.build.yml the ONLY file that builds (dev, E2E): callibrator/*:local
+│   ├── docker-compose.dev.yml   ports, pgadmin, MinIO, relaxed settings (stack the build overlay)
 │   ├── docker-compose.staging.yml
 │   ├── docker-compose.prod.yml  no published database ports, pinned tags
-│   ├── docker-compose.vm.yml    single host, plain HTTP, images built locally
+│   ├── docker-compose.vm.yml    single host, plain HTTP, images PULLED from Docker Hub
 │   ├── .env.example
 │   └── nginx/
 │       ├── default.conf         TLS
@@ -41,6 +42,12 @@ make dev          # bring the local stack up
 
 The base compose file is **not deployable on its own** — it has no port publishing and no environment-specific settings. Always combine it with an overlay. `make up ENV=dev|staging|prod|vm` does that for you.
 
+**Pull or build** (ADR-123). The base file names the published images on Docker Hub (`zed378/calibration-be`, `zed378/calibration-fe`, `zed378/calibration-backup`) and declares no build. The vm, staging and prod overlays pull.
+
+- `docker-compose.build.yml` is the only file that builds, from `${BUILD_CONTEXT:-../..}`. It tags `callibrator/<name>:${BUILD_TAG:-local}`, so a local build never takes a registry name. `make up ENV=dev` and the E2E stack put it beneath their overlay.
+- Releases are built and pushed by `scripts/release/push-images.ps1` (see [Single-Host VM Deployments](#single-host-vm-deployments)).
+- `IMAGE_TAG` defaults to `latest`. Pin it to the release's short commit, and optionally set `BACKEND_DIGEST` / `FRONTEND_DIGEST` / `BACKUP_DIGEST`, for a deployment you can name and roll back.
+
 **Staging and production, by the book** (run end to end for the first time on 2026-09-28, ADR-081):
 
 ```bash
@@ -49,7 +56,8 @@ make secrets                               # paste EVERY line it prints into .en
 # set CORS_ORIGIN, HOST_URL, CERT_VERIFY_BASE_URL, FRONTEND_URL, MAIL_* for the real host
 mkdir -p deploy/compose/volumes/certs      # TLS for nginx — no step creates these:
 cp fullchain.pem privkey.pem deploy/compose/volumes/certs/
-make images TAG=<sha>                      # or pull images promoted from CI
+# images are PULLED (zed378/calibration-*, pushed by scripts/release/push-images.ps1).
+# The frontend serves ONE URL: for this host's, push your own and set FRONTEND_IMAGE.
 make preflight ENV=prod TAG=<sha>
 make up ENV=prod TAG=<sha>
 ```
@@ -205,6 +213,8 @@ Every service: `no-new-privileges`, `cap_drop: [ALL]` plus only the capabilities
 
 Rolling back means deploying the **previously built image for that environment** — a rebuild is not a rollback.
 
+**The published `zed378/calibration-fe` belongs to the reference deployment** (`https://kalibrasi.zedth.my.id`, ADR-123). Every other environment builds its own frontend and pushes it to its own repository with `scripts/release/push-images.ps1 -PublicUrl <url> -FrontendRepository <yours>`; the script refuses to push another URL into the reference repository. Name it in `FRONTEND_IMAGE` or `frontend.image.repository`. A runtime-configured frontend, one image for every URL, is the recorded way out (ADR-123, alternatives).
+
 One value is deliberately **not** inlined: `BACKEND_INTERNAL_URL` has no `NEXT_PUBLIC_` prefix and is read at **runtime**, because the server-side Next.js proxy and the browser need different addresses for the same backend. Pointing the server-side hop at the public origin makes it re-enter the proxy that called it and loop.
 
 `PRIVACY_NOTICE_URL` is the other runtime value, and **both** workloads read it (Q-42, ADR-113). It is the absolute `https://` URL of the published privacy notice the request-access consent refers to. A form collecting personal data does not open before its notice exists, so while it is empty (or not an http(s) URL):
@@ -235,17 +245,49 @@ ENV HOSTNAME=0.0.0.0
 
 ## Single-Host VM Deployments
 
-`docker-compose.vm.yml` builds the images locally (no registry) and serves plain HTTP on a high port (no domain, no certificate):
+**The VM pulls; it never builds** (ADR-123, 2026-10-06). The images are published on Docker Hub (public) by `scripts/release/push-images.ps1`, and `docker-compose.vm.yml` declares no `build:`, so the checkout on the VM supplies only the compose files, `nginx/vm-http.conf` and `.env`. nginx serves plain HTTP on a high port; TLS is terminated in front of it (the reference VM: a Cloudflare Tunnel to `localhost:19080`).
 
-```bash
-make up ENV=vm
-# or, without the Makefile:
-docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d --build
-```
+| Image | Repository | Note |
+|---|---|---|
+| backend | `zed378/calibration-be` | generic, configured at runtime |
+| frontend | `zed378/calibration-fe` | **built for `https://kalibrasi.zedth.my.id` only**: `NEXT_PUBLIC_*` are inlined at build |
+| backup verifier | `zed378/calibration-backup` | generic; FROM the backend of the same tag |
+
+**A VM served at any other URL needs its own frontend image.** Push one with `push-images.ps1 -PublicUrl <url> -FrontendRepository <namespace>/<name>` and set `FRONTEND_IMAGE` in `.env`, or build on that host with `docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.vm.yml up -d --build` and `NEXT_PUBLIC_*` set in `.env`.
+
+### The deploy, step by step
+
+0. **Release**, on a workstation, from PowerShell or cmd (Docker Desktop's credential store is not visible from Git Bash), after `docker login`: commit and push, then `pwsh -File scripts/release/push-images.ps1`. It refuses a dirty tree, builds be → fe → backup, scans every image, pushes `<short commit>` and `latest`, and prints the digests. `-DryRun` builds and scans without pushing; `-ScanTag <tag>` re-scans images already pulled.
+1. **On the VM, update the checkout.** It now supplies only the compose files and the nginx config: `git fetch && git reset --hard origin/main`. Never upload over tracked files: the closing deploy of 2026-10-02 found about 280 files owned by another uid, which `git reset` could not overwrite.
+2. **Check `.env`** by variable name, never printing a value. An `.env` made before 2026-10-06 says `BACKEND_IMAGE=callibrator/backend` and `FRONTEND_IMAGE=callibrator/frontend`. Those names exist on no registry, so `pull` fails: change them to the `zed378/…` names, or delete the lines. **Pin the release.** This is recommended; the default is `latest`:
+   ```bash
+   IMAGE_TAG=3e91413                      # the short commit push-images.ps1 printed
+   # optional, the strongest pin: what runs cannot change even if the tag is re-pushed
+   BACKEND_DIGEST=sha256:…
+   FRONTEND_DIGEST=sha256:…
+   BACKUP_DIGEST=sha256:…
+   ```
+3. **Pull, then start.** Nothing is built:
+   ```bash
+   cd deploy/compose
+   docker compose -p callibrator -f docker-compose.yml -f docker-compose.vm.yml pull
+   docker compose -p callibrator -f docker-compose.yml -f docker-compose.vm.yml up -d
+   # or, from the repository root: make deploy-vm   (uses .env's IMAGE_TAG; TAG=<sha> overrides)
+   ```
+   A failed `pull` changes nothing that is running, so stop there. Building on the host used to fail half-way and leave the old images running (2026-10-02).
+4. **Verify.** `docker compose … ps` shows every service healthy; `curl -fsS http://127.0.0.1:19080/` answers, locally and through the public domain; `GET /api/v1/migration/seeding` answers **401**; and `docker inspect -f '{{.Config.Image}} {{.Image}}' callibrator-backend-1` names the tag and digest you meant.
+5. **Roll back** by setting `IMAGE_TAG` (and the digests) to the previous release and repeating step 3. That is why step 2 pins. Migrations do not roll back ([`08-ROLLBACK.md`](../docs/DEVOPS/08-ROLLBACK.md)).
+
+**Wiping the VM stays the owner's decision**, and touches project `callibrator` only:
+
+1. Back up `.env`.
+2. `docker compose -p callibrator -f docker-compose.yml -f docker-compose.vm.yml down -v --remove-orphans`.
+3. Empty `deploy/compose/volumes/*` through an `alpine` container (the files belong to container uids).
+4. Steps 3 and 4 above, then [First Boot](#first-boot): seed, then issue the one-time password **with the rotation CLI** (§ Closing deploy, step 3). The recreate after the seeding toggle discards the file the seed wrote.
 
 It publishes a **19xxx** block rather than the defaults, because the reference host already ran nine other compose projects and 3000, 5432 and 8080 were taken. Only `19080` (nginx) is bound to `0.0.0.0`.
 
-Bind-mounted volumes must be **chowned before the first start**. The backend image runs as UID 997; directories created by Docker belong to root, and the container exits with `EACCES: permission denied, mkdir '/app/log/activity/'`:
+The bind-mounted volumes are chowned by the `volume-init` service on every `up`. The backend runs as UID 997; a directory Docker creates belongs to root, and without the chown the backend exits with `EACCES: permission denied, mkdir '/app/log/activity/'`. By hand, if it is ever needed:
 
 ```bash
 docker run --rm -v "$PWD/volumes:/v" alpine:3.22   sh -c "chown -R 997:997 /v/log /v/uploads /v/backup"
@@ -297,7 +339,7 @@ docker exec <backend-container> cat /app/.bootstrap/superadmin-password
 
 ### Closing deploy: the one-time password, verified live (BACKLOG U-08)
 
-P10-16 is tested in-process only. Run this once on the closing deploy and paste each command's output into the P10-16 record. `DC` is the compose invocation of the stack (on the VM, `docker compose -f deploy/compose/docker-compose.vm.yml`). `BASE` is the public URL.
+P10-16 is tested in-process only. Run this once on the closing deploy and paste each command's output into the P10-16 record. `DC` is the compose invocation of the stack (on the VM, from `deploy/compose`: `docker compose -p callibrator -f docker-compose.yml -f docker-compose.vm.yml`). `BASE` is the public URL.
 
 ```bash
 B=$($DC ps -q backend)
@@ -386,7 +428,7 @@ docker compose … exec db-backup tail -n 5 /backups/restore-verify.history.json
 | `backup.restore-verify.missed` | backend watchdog | no outcome for `RESTORE_VERIFY_MAX_AGE_HOURS` (26) | `docker compose ps db-backup`; is `BACKUP_AT` disabled? |
 | `backup.restore-verify.unreadable` | either | the outcome file is not JSON | inspect `./volumes/pgdump/last-restore-verify.json` |
 
-- **Production:** the prod overlay runs the promoted image `callibrator/backup-verify:${IMAGE_TAG}`; build and push it with the backend: `docker build -f deploy/backup/Dockerfile --build-context backend-image=docker-image://callibrator/backend:<tag> -t callibrator/backup-verify:<tag> .`
+- **Production and the VM:** the overlays run the published image `zed378/calibration-backup:${IMAGE_TAG}` (ADR-123). `scripts/release/push-images.ps1` builds it FROM the backend of the same tag and pushes it with that backend. By hand: `docker build -f deploy/backup/Dockerfile --build-context backend-image=docker-image://zed378/calibration-be:<tag> -t zed378/calibration-backup:<tag> .`
 - **The dumps are on this host** (`./volumes/pgdump`, 0600 to uid 999). Copy them, with their `*.manifest.json`, off the host.
 - **Secrets:** the service gets `DB_PASS` and the alert/mail settings only — never `KMS_MASTER_KEY`, the JWT keys or `CERT_SIGNING_SECRET` (verified: 0 occurrences in its environment, logs and outcome files).
 - **Kubernetes:** the backend cannot read the CronJob's claim. Alert on `kube_job_status_failed{job_name=~".*-backup-verify-.*"}` and on `kube_cronjob_status_last_successful_time` older than 26 h.

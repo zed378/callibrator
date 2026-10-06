@@ -42,7 +42,7 @@ spec:
           # NEXT_PUBLIC_* values are INLINED AT BUILD TIME. A different API
           # URL, or a tenant-pinned build (NEXT_PUBLIC_TENANT_ID), is a
           # DIFFERENT IMAGE — the tag is the only lever this chart has.
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}{{ with .Values.image.digest }}@{{ . }}{{ end }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http

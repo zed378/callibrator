@@ -1,7 +1,11 @@
 # Callibrator — development overlay
 #
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.dev.yml up
 #   make up ENV=dev
+#
+# BUILDS FROM THE WORKING TREE: always stack docker-compose.build.yml beneath
+# this file (ADR-123). The base file alone pulls the published images, and the
+# published frontend is built for the reference deployment's URL, not localhost.
 #
 # Publishes every port, adds pgadmin and MinIO, and relaxes the settings that
 # make development painful. NOTHING HERE IS SAFE FOR PRODUCTION.
@@ -14,9 +18,9 @@
 
 services:
   backend:
-    # A-332: no `build:` here. The build context and Dockerfile are declared
-    # ONCE, in docker-compose.yml (BUILD_CONTEXT), so an overlay can never
-    # silently re-point a build at a different tree.
+    # A-332: no build context here. The build context and Dockerfile are
+    # declared ONCE, in docker-compose.build.yml (BUILD_CONTEXT), so an overlay
+    # can never silently re-point a build at a different tree.
     environment:
       NODE_ENV: development
       # No broker needed locally — jobs run in-process.
@@ -42,8 +46,8 @@ services:
 
   frontend:
     build:
-      # A-332: context and dockerfile come from docker-compose.yml (BUILD_CONTEXT);
-      # this overlay adds only its build args.
+      # A-332: context and dockerfile come from docker-compose.build.yml
+      # (BUILD_CONTEXT); this overlay adds only its build args.
       args:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-3000}
     ports:

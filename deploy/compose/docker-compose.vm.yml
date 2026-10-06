@@ -1,11 +1,28 @@
-# Callibrator — single-host VM overlay (plain HTTP, images built locally).
+# Callibrator — single-host VM overlay (plain HTTP, images PULLED from Docker Hub).
 #
-#   docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.vm.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d
+#
+# NOTHING IS BUILT ON THE VM (ADR-123). The application images are published on
+# Docker Hub (zed378/calibration-be|fe|backup) by scripts/release/push-images.ps1
+# and pulled here; this overlay declares no `build:`, and a guard keeps it so
+# (composeBuildContext.a332.guard.test.ts). The checkout on the VM supplies only
+# the compose files, nginx/vm-http.conf and .env.
+#
+#   IMAGE_TAG   empty/unset = `latest` (the owner's default). Pin it in .env to
+#               the release's short commit (IMAGE_TAG=3e91413) for a deployment
+#               you can name and roll back: `latest` moves on every release.
+#
+# THE FRONTEND IMAGE IS BUILT FOR ONE URL. zed378/calibration-fe inlines
+# https://kalibrasi.zedth.my.id (NEXT_PUBLIC_* are build-time). A VM served at
+# another URL needs its own frontend image — push one with
+# scripts/release/push-images.ps1 -PublicUrl <url> -Repository <yours> and set
+# FRONTEND_IMAGE, or build on that host with docker-compose.build.yml.
 #
 # Differs from the prod overlay in two ways, both deliberate:
-#   - images are BUILT here rather than pulled, because there is no registry
-#   - nginx serves plain HTTP on a high port, because there is no public
-#     domain and therefore no certificate
+#   - IMAGE_TAG may be left at `latest` (prod requires a pinned tag)
+#   - nginx serves plain HTTP on a high port; TLS is terminated in front of it
+#     (the reference VM: a Cloudflare Tunnel to localhost:19080)
 #
 # PORT ALLOCATION — the 19xxx block, chosen because this host already runs nine
 # other compose projects. 3000, 5432 and 8080 are all taken; the defaults in
@@ -24,9 +41,8 @@
 
 services:
   backend:
-    # A-332: no `build:` here. The build context and Dockerfile are declared
-    # ONCE, in docker-compose.yml (BUILD_CONTEXT), so an overlay can never
-    # silently re-point a build at a different tree.
+    # ADR-123: no `build:` here — the VM pulls. (A-332: only
+    # docker-compose.build.yml may declare a build context or Dockerfile.)
     environment:
       NODE_ENV: production
       # No TLS at this layer — nginx terminates plain HTTP, so forcing an
@@ -77,21 +93,9 @@ services:
       # the backend directly; the browser keeps using the public URL for
       # Socket.IO. See frontend/src/constants/index.ts.
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:3000}
-    build:
-      # A-332: context and dockerfile come from docker-compose.yml (BUILD_CONTEXT);
-      # this overlay adds only its build args.
-      args:
-        # INLINED AT BUILD TIME. This one value is used BOTH server-side (the
-        # Next.js proxy at /api/v1/[...path] forwards to it) and client-side
-        # (Socket.IO connects to it directly), so it must be reachable from the
-        # browser AND from inside the frontend container. The host IP satisfies
-        # both; an internal service name would break the browser.
-        NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_URL}
-        NEXT_PUBLIC_SITE_URL: ${PUBLIC_URL}
-        NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
-        # P10-03 (Q-41): empty hides the channel on the landing.
-        NEXT_PUBLIC_CONTACT_WHATSAPP: ${NEXT_PUBLIC_CONTACT_WHATSAPP:-}
-        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+    # ADR-123: no `build:`. The browser-facing URL (NEXT_PUBLIC_API_BASE_URL,
+    # used by the Next proxy AND by Socket.IO in the browser) is INSIDE the
+    # pulled image; it must equal this deployment's public URL (PUBLIC_URL).
     restart: unless-stopped
     deploy:
       resources:
@@ -163,7 +167,7 @@ services:
 #
 # Pinning an existing deployment's network needs the network recreated:
 #   docker compose -f docker-compose.yml -f docker-compose.vm.yml down
-#   docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d
 # (the data is in bind-mounted ./volumes and survives). If `up` fails with
 # "Pool overlaps with other one on this address space", another network on the
 # host already holds the range: pick a free /24 and change it here AND in

@@ -114,8 +114,8 @@ The live E2E suite and the browser suite are **not** in it. A green `verify` is 
 
 | Target | Does |
 |---|---|
-| `make images TAG=<sha>` | builds both |
-| `make push TAG=<sha>` | pushes — **refuses `:latest`** |
+| `make images TAG=<sha>` | builds all three (be → fe → backup FROM be), tagged with the Docker Hub names `zed378/calibration-*` (ADR-123); no scan, no push |
+| `make push TAG=<sha>` | pushes the three — **refuses `:latest`**. A release goes through `scripts/release/push-images.ps1` instead: clean tree, secret scan, `<sha>` + `latest`, digests printed |
 
 `make images` reminds you that **`NEXT_PUBLIC_*` values are inlined at build time**: a different API URL, or a tenant-pinned build, is a different image. It takes `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_TENANT_ID` as build args for this reason.
 
@@ -124,6 +124,7 @@ The live E2E suite and the browser suite are **not** in it. A green `verify` is 
 | Target | Does |
 |---|---|
 | `make deploy ENV=… TAG=…` | preflight → pull → up → wait healthy → postdeploy checklist |
+| `make deploy-vm [TAG=…]` | the single-host VM: `pull` then `up -d`, **never builds** (ADR-123). Without `TAG=` it uses `.env`'s `IMAGE_TAG` (its last line), else `latest` |
 | `make deploy-staging TAG=…` | |
 | `make deploy-prod TAG=…` | |
 | `make rollback TAG=<previous>` | with a warning, and a confirmation |

@@ -3,8 +3,8 @@ Callibrator {{ .Chart.AppVersion }} deployed as {{ .Release.Name }}.
 
   URL          https://{{ .Values.ingress.host }}
   Verify page  https://{{ .Values.ingress.host }}/verify/<certificateNumber>   (public, no login)
-  Backend      {{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}   x{{ .Values.backend.replicaCount }}
-  Frontend     {{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}   x{{ .Values.frontend.replicaCount }}
+  Backend      {{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}{{ with .Values.backend.image.digest }}@{{ . }}{{ end }}   x{{ .Values.backend.replicaCount }}
+  Frontend     {{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}{{ with .Values.frontend.image.digest }}@{{ . }}{{ end }}   x{{ .Values.frontend.replicaCount }}
   Schedulers   {{ if .Values.backend.cron.enabled }}ENABLED on this release{{ else }}disabled{{ end }}
   Storage      {{ .Values.backend.storage.driver }}
 

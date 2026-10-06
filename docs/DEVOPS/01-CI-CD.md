@@ -41,10 +41,10 @@ Pinning: actions by commit SHA (tag in a comment); gitleaks, actionlint and kube
 | format (`prettier --check`) | not wired as a CI stage | P9-02 |
 | live E2E (57 specs) | needs a seeded running stack, Mailpit-read secrets and production request budgets a shared runner address exhausts; passed in one uninterrupted run, twice, by hand (P10-13, runs G and H) | P6-02 / A-19 |
 | browser smoke and P10 browser suite | `automate/smoke.browser.js`, `automate/p10.browser.mts`: same reasons as the live E2E (mail, budgets) | ADR-077 / P10-13 |
-| image push | "images pushed only from a green run" — a separate, later workflow that needs registry credentials | P7-01 remainder |
+| image push | CI holds no registry credentials. Since 2026-10-06 the images are pushed by hand to Docker Hub with `scripts/release/push-images.ps1` (clean tree, secret scan, `<sha>` + `latest`; ADR-123). "Images pushed only from a green run" is still a later workflow | P7-01 remainder / P7-09 |
 | IDOR enforcement script | still does not exist; the two-tenant tests run inside `backend-test` | — |
 
-CI runs the backend typecheck (job `backend-lint`) and, **since 2026-10-01, the browser accessibility suite** (`automate/a11y.browser.js`, job `browser-a11y`, M-14): axe WCAG 2.1 AA on the public and daily dashboard pages in both themes, the dialog focus contract, 200% reflow, reduced motion and the brand colour, against a disposable production-mode stack built from the commit with `deploy/compose/docker-compose.e2e.yml` (the recipe the live E2E ran on; env from `scripts/ci/e2e-env.sh`). It runs on `main`, on manual dispatch and on pull requests touching `frontend/`, `automate/`, `deploy/compose/` or `packages/contracts/`; other pull requests report a skip. Record: `MEMORY/records/2026-10-01-p10-13-sso-a11y-ci.md`.
+CI runs the backend typecheck (job `backend-lint`) and, **since 2026-10-01, the browser accessibility suite** (`automate/a11y.browser.js`, job `browser-a11y`, M-14): axe WCAG 2.1 AA on the public and daily dashboard pages in both themes, the dialog focus contract, 200% reflow, reduced motion and the brand colour, against a disposable production-mode stack built from the commit with `deploy/compose/docker-compose.build.yml` beneath `docker-compose.e2e.yml` (the recipe the live E2E ran on; env from `scripts/ci/e2e-env.sh`). It runs on `main`, on manual dispatch and on pull requests touching `frontend/`, `automate/`, `deploy/compose/` or `packages/contracts/`; other pull requests report a skip. Record: `MEMORY/records/2026-10-01-p10-13-sso-a11y-ci.md`.
 
 ### Reproducible install (A-21)
 
@@ -86,7 +86,7 @@ It is opt-in on purpose: a hook forced on every clone is the first thing people 
 | Secret scan | gitleaks | CI (history) · hook (pushed range) · `make secret-scan` |
 | IDOR enforcement | every new `:id` route has a two-tenant test | review only — no script |
 | Route-gate check | `routePermissionGuard.p604.test.js` | CI (inside the unit suite) |
-| Docker build | both images | manual |
+| Docker build | all three images: backend and frontend in `browser-a11y` (the E2E stack, `docker-compose.build.yml`), the backup verifier FROM that backend in the same job (ADR-123); no push | CI (`main`, dispatch, PRs touching `frontend/`, `automate/`, `deploy/compose/`, `deploy/backup/`, `packages/contracts/`) · `push-images.ps1` for a release |
 | Migrations | boot on PG18 = apply + schema verification (P6-05) | CI |
 | E2E | 53 live specs | manual — never green in one run |
 | Browser | puppeteer-core smoke (`make test-browser`) | **no** — needs a running stack (ADR-077) |
@@ -131,11 +131,21 @@ Caching keys on `.env` files, so a configuration change correctly invalidates.
 
 ## Images
 
-Two, tagged by commit SHA and by semantic version.
+Three, published on Docker Hub as public repositories since 2026-10-06 (ADR-123): `zed378/calibration-be`, `zed378/calibration-fe` and `zed378/calibration-backup`. Each release is tagged with the **short commit** (7 characters) **and `latest`**. The default deployment tag is `latest`, the owner's choice; pin `IMAGE_TAG=<short commit>` (and optionally the per-image `*_DIGEST`) for a deployment that can be named and rolled back.
 
-**The same image is promoted through environments** — an image rebuilt for production is an image nobody tested.
+**Released by `scripts/release/push-images.ps1`**, from PowerShell or cmd, because Docker Desktop's credential store is not visible from Git Bash. The script:
 
-The frontend is the exception by design: `NEXT_PUBLIC_*` values are inlined at build time, so a different API URL or a tenant-pinned build **requires** a different image.
+- refuses a dirty tree;
+- builds backend → frontend → backup (FROM that backend);
+- secret-scans every image (file names, environment, `docker history`) before anything is pushed;
+- pushes `<sha>` and `latest`;
+- prints the digests in compose and Helm form.
+
+`-DryRun` builds and scans only. `-ScanTag <tag>` re-scans existing images.
+
+**The same image is promoted through environments** — an image rebuilt for production is an image nobody tested. Deployments **pull**: the base compose file and the vm, staging and prod overlays declare no build, and only `deploy/compose/docker-compose.build.yml` builds (dev, E2E).
+
+The frontend is the exception by design: `NEXT_PUBLIC_*` values are inlined at build time, so a different API URL or a tenant-pinned build **requires** a different image. **`zed378/calibration-fe` is built for the reference deployment (`https://kalibrasi.zedth.my.id`) and serves no other URL.** Another deployment pushes its own frontend to its own repository (`-PublicUrl <url> -FrontendRepository <yours>`); the script refuses to put another URL into the reference repository.
 
 ## Migrations in the Pipeline
 
@@ -170,7 +180,8 @@ The jobs run in parallel; the order below is the order to read a red run in, and
 4. npm audit
 5. boot on PG18: migrations + schema verification
 6. helm render + schema + guards · compose config
-7. [later] build images · E2E against a fresh stack · browser suite · push images from a green run
+7. build the three images (no push) · browser a11y suite on a disposable stack (`browser-a11y`)
+8. [later] live E2E against a fresh stack · push images from a green run (today: by hand, `push-images.ps1`, ADR-123)
 ```
 
 Steps 1 and the route-gate check are the ones a local hook can be bypassed around, and they guard the unwaivable security requirements ([`../SECURITY/00-SECURITY-REQUIREMENTS.md`](../SECURITY/00-SECURITY-REQUIREMENTS.md)).

@@ -111,6 +111,8 @@ Rolling back means deploying the previously built image **for that environment**
 
 Keep previous images. A rebuild is not a rollback.
 
+Since ADR-123 the previous images are **kept on Docker Hub** under their short-commit tags (`zed378/calibration-be:<sha>`, and the same for `-fe` and `-backup`). A compose rollback sets `IMAGE_TAG=<previous sha>` (and the `*_DIGEST` values, if pinned) and runs `pull` + `up -d`. `latest` names nothing you can return to.
+
 ## After Rollback
 
 - [ ] `/health` returns 200 `{"status":"ok"}` (PostgreSQL, Redis and RabbitMQ all reachable; per-dependency detail at the super-admin `GET /api/v1/health` — ADR-088)

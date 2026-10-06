@@ -1,0 +1,73 @@
+# Callibrator — BUILD overlay: build the application images from source
+#
+# The base file PULLS the published images (ADR-123). Add this overlay, second,
+# when the images must come from a source tree instead:
+#
+#   development   docker compose -f docker-compose.yml -f docker-compose.build.yml \
+#                   -f docker-compose.dev.yml up -d          (`make up ENV=dev` does this)
+#   E2E / CI      docker compose -p <name> --env-file <e2e.env> -f docker-compose.yml \
+#                   -f docker-compose.build.yml -f docker-compose.e2e.yml up -d --build --wait
+#   a frontend for another public URL, on a host that may build:
+#                 NEXT_PUBLIC_API_BASE_URL=https://you.example NEXT_PUBLIC_SITE_URL=https://you.example \
+#                   docker compose -f docker-compose.yml -f docker-compose.build.yml \
+#                   -f docker-compose.vm.yml up -d --build
+#
+# The dev and e2e overlays add frontend build ARGS only, so they need this file
+# beneath them. The vm, staging and prod overlays never build.
+#
+# A-332: this is the ONLY compose file that declares a build context or a
+# Dockerfile (backend/src/tests/guards/composeBuildContext.a332.guard.test.ts).
+# BUILD_CONTEXT points every image at another tree (a release checkout, a frozen
+# snapshot) in one place; `docker compose config` shows the context a build will
+# really use — check it before claiming which tree an image came from.
+#
+# LOCAL NAMES, ON PURPOSE. A local build is tagged callibrator/<name>:<BUILD_TAG>
+# (default `local`), never with the Docker Hub repository, so that:
+#   - it cannot shadow the pulled zed378/* image of the same tag on this host;
+#   - `docker push` of a release cannot pick up a dev build by accident
+#     (releases come from scripts/release/push-images.ps1, from a clean tree);
+#   - `down --rmi all` on a disposable stack removes only what it built.
+# pull_policy: build — these services are built, never pulled, so
+# `docker compose pull` skips them and `up` rebuilds from the tree (cached).
+
+services:
+  backend:
+    image: callibrator/backend:${BUILD_TAG:-local}
+    pull_policy: build
+    build:
+      # Context is the REPOSITORY ROOT so the build can `npm ci` against the
+      # committed root package-lock.json (ADR-044, S-13). See backend/Dockerfile.
+      context: ${BUILD_CONTEXT:-../..}
+      dockerfile: backend/Dockerfile
+
+  frontend:
+    image: callibrator/frontend:${BUILD_TAG:-local}
+    pull_policy: build
+    build:
+      # Repository root, for the same reason (ADR-044, S-29). See
+      # frontend/Dockerfile and frontend/Dockerfile.dockerignore.
+      context: ${BUILD_CONTEXT:-../..}
+      dockerfile: frontend/Dockerfile
+      args:
+        # NEXT_PUBLIC_* values are INLINED AT BUILD TIME. Setting them in the
+        # container environment does nothing — a different API URL, or a
+        # tenant-pinned build, requires a different image. The dev and e2e
+        # overlays override the URLs for their own ports.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+        NEXT_PUBLIC_API_VERSION: ${NEXT_PUBLIC_API_VERSION:-v1}
+        NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
+        # P10-03 (Q-41): empty hides the channel on the landing.
+        NEXT_PUBLIC_CONTACT_WHATSAPP: ${NEXT_PUBLIC_CONTACT_WHATSAPP:-}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+
+  db-backup:
+    image: callibrator/backup-verify:${BUILD_TAG:-local}
+    pull_policy: build
+    build:
+      context: ${BUILD_CONTEXT:-../..}
+      dockerfile: deploy/backup/Dockerfile
+      additional_contexts:
+        # The backend binary inside must be the release's own (verify-schema,
+        # backup-alert): the backend image built just above, from the same tree.
+        backend-image: service:backend

@@ -30,21 +30,29 @@ HELM_DIR    := deploy/helm/callibrator
 RELEASE    ?= callibrator
 NAMESPACE  ?= callibrator
 
-BACKEND_IMAGE  ?= callibrator/backend
-FRONTEND_IMAGE ?= callibrator/frontend
+# ADR-123: the published repositories on Docker Hub (public). Compose and Helm
+# default to the same names. The frontend image is deployment-specific
+# (NEXT_PUBLIC_* are inlined at build): see scripts/release/push-images.ps1.
+BACKEND_IMAGE  ?= zed378/calibration-be
+FRONTEND_IMAGE ?= zed378/calibration-fe
+BACKUP_IMAGE   ?= zed378/calibration-backup
 
 # Overlay selection. The base compose file is not deployable on its own — it
 # has no port publishing and no environment-specific settings.
+# The base file PULLS the published images (ADR-123); dev stacks the build
+# overlay beneath its own, so it builds from the working tree.
 COMPOSE_FILES := -f $(COMPOSE_DIR)/docker-compose.yml
 ifeq ($(ENV),dev)
+COMPOSE_FILES += -f $(COMPOSE_DIR)/docker-compose.build.yml
 COMPOSE_FILES += -f $(COMPOSE_DIR)/docker-compose.dev.yml
 else ifeq ($(ENV),staging)
 COMPOSE_FILES += -f $(COMPOSE_DIR)/docker-compose.staging.yml
 else ifeq ($(ENV),prod)
 COMPOSE_FILES += -f $(COMPOSE_DIR)/docker-compose.prod.yml
 else ifeq ($(ENV),vm)
-# Single host: images are BUILT here (no registry) and nginx serves plain HTTP
-# on a high port (no domain, no certificate). Ports live in the 19xxx block.
+# Single host: images are PULLED from Docker Hub, never built here (ADR-123),
+# and nginx serves plain HTTP on a high port. Ports live in the 19xxx block.
+# Deploy with `make deploy-vm` (pull + up -d); TAG=<short commit> to pin.
 COMPOSE_FILES += -f $(COMPOSE_DIR)/docker-compose.vm.yml
 else
 $(error ENV must be one of: dev, staging, prod, vm  (got "$(ENV)"))
@@ -383,21 +391,25 @@ verify: lint ts-ratchet openapi typecheck test build bundle-budget load-check ##
 # =============================================================================
 
 .PHONY: images
-images: ## Build both images (TAG=<sha>)
-	@echo -e "$(C_DIM)Both images build from the REPOSITORY ROOT, so npm ci can read the committed$(C_OFF)"
-	@echo -e "$(C_DIM)root package-lock.json (ADR-044, ADR-046; S-13, S-29).$(C_OFF)"
+images: ## Build the three images, no push (TAG=<sha>). A release: scripts/release/push-images.ps1
+	@echo -e "$(C_DIM)All three build from the REPOSITORY ROOT, so npm ci can read the committed$(C_OFF)"
+	@echo -e "$(C_DIM)root package-lock.json (ADR-044, ADR-046; S-13, S-29). Order: be, fe, backup (FROM be).$(C_OFF)"
 	docker build -t $(BACKEND_IMAGE):$(TAG)  -f backend/Dockerfile  .
 	@echo -e "$(C_DIM)Frontend: NEXT_PUBLIC_* values are INLINED AT BUILD TIME — a different API URL$(C_OFF)"
 	@echo -e "$(C_DIM)or a tenant-pinned build is a DIFFERENT IMAGE.$(C_OFF)"
 	docker build -t $(FRONTEND_IMAGE):$(TAG) -f frontend/Dockerfile . \
 		--build-arg NEXT_PUBLIC_API_BASE_URL="$(NEXT_PUBLIC_API_BASE_URL)" \
+		--build-arg NEXT_PUBLIC_SITE_URL="$(NEXT_PUBLIC_SITE_URL)" \
 		--build-arg NEXT_PUBLIC_TENANT_ID="$(NEXT_PUBLIC_TENANT_ID)"
+	docker build -t $(BACKUP_IMAGE):$(TAG) -f deploy/backup/Dockerfile . \
+		--build-context backend-image=docker-image://$(BACKEND_IMAGE):$(TAG)
 
 .PHONY: push
-push: ## Push both images (TAG=<sha>)
+push: ## Push the three images (TAG=<sha>). Prefer scripts/release/push-images.ps1 (clean tree, secret scan, latest + sha)
 	@[ "$(TAG)" != "latest" ] || { echo -e "$(C_ERR)Refusing to push :latest — pin a tag.$(C_OFF)"; exit 1; }
 	docker push $(BACKEND_IMAGE):$(TAG)
 	docker push $(FRONTEND_IMAGE):$(TAG)
+	docker push $(BACKUP_IMAGE):$(TAG)
 
 # =============================================================================
 ## Deployment — compose
@@ -409,6 +421,25 @@ deploy: preflight ## Deploy with compose (ENV=staging|prod TAG=<sha>)
 	$(DC) up -d
 	@$(MAKE) --no-print-directory wait-healthy
 	@$(MAKE) --no-print-directory postdeploy
+
+# DC exports IMAGE_TAG=$(TAG), which beats .env. Without TAG= on the command
+# line, deploy-vm uses the pin in .env (its last IMAGE_TAG line), else latest —
+# never silently latest over a pinned .env.
+.PHONY: deploy-vm
+deploy-vm: check-env ## Deploy the single-host VM: pull the published images, then up -d — never builds (ADR-123; TAG=<short commit> to pin)
+	@tag="$(TAG)"
+	if [ "$(origin TAG)" != "command line" ]; then
+		t=$$(grep '^IMAGE_TAG=' $(COMPOSE_DIR)/.env | tail -n 1 | cut -d= -f2- || true)
+		tag="$${t:-latest}"
+	fi
+	@echo -e "$(C_BOLD)Deploying ENV=vm IMAGE_TAG=$$tag$(C_OFF) — pull, then up -d; nothing is built (ADR-123)"
+	$(MAKE) --no-print-directory pull-up ENV=vm TAG="$$tag"
+
+.PHONY: pull-up
+pull-up:
+	$(DC) pull
+	$(DC) up -d
+	@$(MAKE) --no-print-directory wait-healthy
 
 .PHONY: deploy-staging
 deploy-staging: ## Deploy to staging

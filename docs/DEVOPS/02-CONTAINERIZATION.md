@@ -182,13 +182,13 @@ Inlined at **build** time, not read at runtime.
 
 Anything genuinely runtime-configurable must come from the API.
 
-## The Compose Build Context Is Declared Once (A-332)
+## The Compose Build Context Is Declared Once (A-332, ADR-123)
 
-`deploy/compose/docker-compose.yml` is the **only** compose file that declares a build `context` or `dockerfile`. For both images it is `context: ${BUILD_CONTEXT:-../..}`.
+**Deployments pull; one overlay builds** (ADR-123, 2026-10-06). `deploy/compose/docker-compose.yml` names the published images (`zed378/calibration-{be,fe,backup}`, Docker Hub) and declares no build; neither do the vm, staging and prod overlays. `deploy/compose/docker-compose.build.yml` is the **only** compose file that declares a build `context` or `dockerfile`. It does so for all three images, as `context: ${BUILD_CONTEXT:-../..}`, and it tags them `callibrator/<name>:${BUILD_TAG:-local}` with `pull_policy: build`, so a local build never takes a registry name. Development and the E2E stack stack it beneath their overlay: `-f docker-compose.yml -f docker-compose.build.yml -f docker-compose.dev.yml`.
 
-The overlays (`dev`, `vm`, `staging`, `prod`) must not restate it. They used to: `dev` and `vm` each repeated `context: ../..`, and an overlay's value wins. So a build that pointed the base file at another tree, such as a frozen snapshot or a release checkout, was silently pointed back at the live working tree. The P9-12 baseline's first "snapshot" images were really built from the working tree this way.
+Before ADR-123 the base file held the builds and this section said so. The overlays (`dev`, `e2e`, `vm`, `staging`, `prod`) must not restate a context. They used to: `dev` and `vm` each repeated `context: ../..`, and an overlay's value wins. So a build that pointed the base file at another tree, such as a frozen snapshot or a release checkout, was silently pointed back at the live working tree. The P9-12 baseline's first "snapshot" images were really built from the working tree this way.
 
-To build from another tree, set `BUILD_CONTEXT=/path/to/tree` once. `docker compose ... config` shows the context a build will actually use; **check it before claiming which tree an image came from.** `backend/src/tests/guards/composeBuildContext.a332.guard.test.ts` fails when an overlay declares a context or a Dockerfile.
+To build from another tree, set `BUILD_CONTEXT=/path/to/tree` once. `docker compose ... config` shows the context a build will actually use; **check it before claiming which tree an image came from.** `backend/src/tests/guards/composeBuildContext.a332.guard.test.ts` fails when any file but the build overlay declares a context or a Dockerfile. Since ADR-123 it also fails when the base, vm, staging or prod file declares a build, or when the build overlay tags an image with anything but `callibrator/*`.
 
 ## The `.dockerignore` Trap
 
