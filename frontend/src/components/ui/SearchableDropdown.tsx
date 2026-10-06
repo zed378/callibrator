@@ -227,7 +227,7 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
 
       {isOpen && (
         <div
-          className="absolute z-50 left-0 right-0 mt-2 rounded-xl shadow-xl overflow-hidden backdrop-blur-md animate-scale-in origin-top bg-white/95 text-foreground"
+          className="absolute z-50 left-0 right-0 mt-2 rounded-xl shadow-xl overflow-hidden backdrop-blur-md animate-scale-in origin-top bg-popover text-popover-foreground border border-border"
         >
           <div className="relative border-b border-border">
             <Search

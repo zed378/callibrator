@@ -81,7 +81,7 @@ export default function UserPermissionsPage() {
     return (
       <DashboardLayout>
         <div className="max-w-xl mx-auto py-20 text-center">
-          <Shield className="w-12 h-12 mx-auto mb-4 text-muted-foreground/40" />
+          <Shield className="w-12 h-12 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
           <h1 className="text-xl font-semibold text-foreground mb-2">
             User Permissions
           </h1>

@@ -74,7 +74,7 @@ const HealthIndicator: React.FC<{
           {label ?? config.label}
         </span>
       </div>
-      <p className="text-sm font-medium text-foreground/70">
+      <p className="text-sm font-medium text-foreground">
         {name}
       </p>
       {uptime && (

@@ -1,7 +1,8 @@
 import React from "react";
 import { StockOpname } from "@/types";
-import { Table, Badge, Button } from "@/components/ui";
+import { Table, Button } from "@/components/ui";
 import { Play, CheckCircle } from "lucide-react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface OpnamesTableProps {
   data: StockOpname[];
@@ -15,12 +16,7 @@ export const OpnamesTable: React.FC<OpnamesTableProps> = ({
   handleUpdateOpnameStatus,
 }) => {
   const getOpnameStatusBadge = (status: "draft" | "in_progress" | "completed") => {
-    const variants = {
-      draft: "default" as const,
-      in_progress: "warning" as const,
-      completed: "success" as const,
-    };
-    return <Badge variant={variants[status]}>{status.toUpperCase()}</Badge>;
+return <StatusBadge domain="opname" state={status} />;
   };
 
   const columns = [

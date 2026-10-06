@@ -28,6 +28,7 @@ import {
 } from "@/api/services/risk.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toneOf } from "@/lib/statusTone";
 
 const STATUS_OPTIONS = [
   { value: "OPEN", label: "Open" },
@@ -64,18 +65,6 @@ const emptyForm: RiskCreateInput = {
 const rpnVariant = (rpn: number): "success" | "warning" | "danger" =>
   rpn >= 15 ? "danger" : rpn >= 8 ? "warning" : "success";
 
-const statusVariant = (status: string): "default" | "warning" | "success" | "info" => {
-  switch (status) {
-    case "OPEN":
-      return "warning";
-    case "MITIGATED":
-      return "info";
-    case "CLOSED":
-      return "success";
-    default:
-      return "default";
-  }
-};
 
 export default function RiskPage() {
   // ADR-102: risk writes are gated on `risk` write (risk.route.js).
@@ -237,7 +226,7 @@ export default function RiskPage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant={statusVariant(String(value ?? ""))} size="sm">
+        <Badge tone={toneOf("risk", String(value ?? ""))} size="sm">
           {String(value ?? "")}
         </Badge>
       ),

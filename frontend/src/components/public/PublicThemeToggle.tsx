@@ -14,6 +14,7 @@
  * mismatch and no layout shift (the button's box never changes).
  */
 import React, { useSyncExternalStore } from "react";
+import { applyTheme, effectiveDark, subscribeTheme } from "@/lib/theme";
 
 /**
  * The two glyphs, drawn here (lucide `moon` / `sun` paths, ISC) rather than
@@ -45,46 +46,13 @@ const Glyph = ({ dark }: { dark: boolean }) => (
   </svg>
 );
 
-export const THEME_STORAGE_KEY = "hdc-theme-preference";
-const EVENT = "pub-theme-change";
-
-const systemDark = () =>
-  typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-/** The theme the page is showing right now. */
-export const effectiveDark = (): boolean => {
-  const root = document.documentElement;
-  const choice = root.getAttribute("data-theme-choice");
-  if (choice === "dark") return true;
-  if (choice === "light") return false;
-  return systemDark();
-};
-
-/** Apply and remember a choice, exactly as the init script would on the next load. */
-export const applyTheme = (dark: boolean) => {
-  const root = document.documentElement;
-  root.classList.toggle("dark", dark);
-  root.setAttribute("data-theme-choice", dark ? "dark" : "light");
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, dark ? "dark" : "light");
-  } catch {
-    // Storage blocked (private mode): the choice holds for this page only.
-  }
-  window.dispatchEvent(new Event(EVENT));
-};
-
-const subscribe = (onChange: () => void) => {
-  window.addEventListener(EVENT, onChange);
-  const mq = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
-  mq?.addEventListener?.("change", onChange);
-  return () => {
-    window.removeEventListener(EVENT, onChange);
-    mq?.removeEventListener?.("change", onChange);
-  };
-};
+// ADR-122 (P11-02): the mechanism moved to lib/theme.ts, which the dashboard
+// ThemeContext uses too — one write path for both surfaces. Re-exported here
+// for the callers and tests that import it from this module.
+export { THEME_STORAGE_KEY, applyTheme, effectiveDark } from "@/lib/theme";
 
 export function PublicThemeToggle({ label }: { label: string }) {
-  const dark = useSyncExternalStore(subscribe, effectiveDark, () => false);
+  const dark = useSyncExternalStore(subscribeTheme, effectiveDark, () => false);
   return (
     <button
       type="button"

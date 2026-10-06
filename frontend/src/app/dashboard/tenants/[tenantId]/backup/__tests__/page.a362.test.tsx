@@ -103,8 +103,9 @@ describe("A-362: the page compares the API's lower-case backup status", () => {
     await screen.findByText("Before upgrade");
 
     expect([stat("Total Backups"), stat("Completed"), stat("Failed"), stat("In Progress")]).toEqual(["4", "2", "1", "1"]);
-    expect(screen.getByText("failed").closest("span[class*='bg-']")?.className).toContain("text-destructive");
-    expect(screen.getAllByText("completed")[0]?.closest("span[class*='bg-']")?.className).toContain("text-success");
+    // ADR-122 (P11-05): tones from lib/statusTone.ts (shape + icon + colour).
+    expect(screen.getByText("failed").closest("[data-tone]")).toHaveAttribute("data-tone", "alarm");
+    expect(screen.getAllByText("completed")[0]?.closest("[data-tone]")).toHaveAttribute("data-tone", "current");
   });
 });
 

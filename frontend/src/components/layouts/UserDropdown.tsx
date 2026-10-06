@@ -40,11 +40,11 @@ export function UserDropdown({
     <div className="relative z-30">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 cursor-pointer h-12 px-3 rounded-xl transition-all duration-300 bg-white/5 shadow-sm hover:bg-muted"
+        className="flex items-center gap-3 cursor-pointer h-12 px-3 rounded-xl transition-all duration-300 bg-transparent shadow-sm hover:bg-surface-hover"
       >
         <Img {...avatarImageProps(picture)} alt={displayName} width={36} height={36} />
         <div className="hidden lg:block text-left">
-          <p className="text-sm font-medium max-w-37.5 truncate text-foreground/90">
+          <p className="text-sm font-medium max-w-37.5 truncate text-foreground">
             {displayName}
           </p>
           <p className="text-[11px] truncate text-muted-foreground">

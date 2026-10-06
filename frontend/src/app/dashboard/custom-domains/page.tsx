@@ -23,6 +23,7 @@ import {
 } from "@/api/services/customDomain.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toneOf } from "@/lib/statusTone";
 
 const TYPES: DomainType[] = ["subdomain", "custom", "vanity"];
 
@@ -33,12 +34,13 @@ const HOSTNAME_RE = /^(?=.{1,253}$)([a-z0-9](-?[a-z0-9])*)(\.[a-z0-9](-?[a-z0-9]
 // verification_failed | deleting | deleted (customDomain.model.ts). Matching
 // on "verif" coloured a PENDING and a FAILED domain as success, and the live
 // one (`active`) as neutral.
-const statusVariant = (s?: string): "default" | "success" | "warning" | "danger" => {
+/** The domain's state as a registry key (lib/statusTone.ts): the backend's wording varies. */
+const domainState = (s?: string): string => {
   const v = (s || "").toLowerCase();
-  if (v === "active") return "success";
-  if (v.includes("fail")) return "danger";
-  if (v.includes("pend")) return "warning";
-  return "default";
+  if (v === "active") return "active";
+  if (v.includes("fail")) return "failed";
+  if (v.includes("pend")) return "pending";
+  return v;
 };
 
 export default function CustomDomainsPage() {
@@ -211,7 +213,7 @@ export default function CustomDomainsPage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant={statusVariant(value as string)} size="sm">
+        <Badge tone={toneOf("customDomain", domainState(value as string))} size="sm">
           {String(value ?? "pending")}
         </Badge>
       ),

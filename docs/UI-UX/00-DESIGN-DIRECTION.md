@@ -82,7 +82,11 @@ That mix is deliberate, not an unfinished translation. Domain vocabulary follows
 
 ## Theme
 
-Light and dark, both first-class — in the dashboard. The public surfaces are **dark only** by the owner's choice (ADR-098 §3), with their own `--pub-*` tokens; the accessibility cost of that choice is recorded in the ADR. `ThemeInitScript` runs before paint to avoid a flash of the wrong theme.
+Light and dark, both first-class — on every surface (amended by ADR-118 Am. 3 and ADR-122; this paragraph used to say the public surfaces were dark only, ADR-098 §3).
+
+- **One family.** The public surfaces are warm light with a warm dark mode (`--pub-*` tokens, ADR-118). The dashboard follows the same family, tempered for density: warm neutral surfaces, charcoal ink, copper actions; espresso, ivory and light copper in dark (ADR-122, [`08-COLOR-SYSTEM.md`](./08-COLOR-SYSTEM.md) "The Dashboard Palette").
+- **One mechanism and one default.** Until the user chooses, every surface follows the device's `prefers-color-scheme`. A choice is stored once (`hdc-theme-preference`), carries both ways between the landing and the dashboard, and "Use device setting" in the dashboard's user menu clears it. `ThemeInitScript` runs before paint to avoid a flash of the wrong theme.
+- **A toggle on both surfaces**: the public header and auth shell (44 px), and the dashboard top bar beside the notification bell (40 px), both `aria-pressed`.
 
 Dark is not an afterthought here: device and equipment areas of a hospital are often dim, and a screen that is the brightest object in the room is a screen people angle away from.
 

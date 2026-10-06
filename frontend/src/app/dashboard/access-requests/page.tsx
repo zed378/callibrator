@@ -27,6 +27,7 @@ import {
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import { deferEffect } from "@/lib/deferEffect";
+import { toneOf } from "@/lib/statusTone";
 
 const STATUS_LABEL: Record<AccessRequestStatus, string> = {
   pending: "Pending",
@@ -51,8 +52,6 @@ const BAND_LABEL: Record<string, string> = {
   unknown: "Unknown",
 };
 
-const statusVariant = (s: AccessRequestStatus): "success" | "warning" | "danger" | "default" =>
-  s === "approved" ? "success" : s === "pending" ? "warning" : s === "spam" ? "danger" : "default";
 
 const fmt = (value?: string | null) => (value ? new Date(value).toLocaleString() : "—");
 
@@ -168,7 +167,7 @@ export default function AccessRequestsPage() {
     return (
       <DashboardLayout>
         <div className="max-w-xl mx-auto py-20 text-center">
-          <Shield className="w-12 h-12 mx-auto mb-4 text-muted-foreground/40" aria-hidden="true" />
+          <Shield className="w-12 h-12 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
           <h1 className="text-xl font-semibold text-foreground mb-2">Access Requests</h1>
           <p className="text-muted-foreground">Only a platform super admin can work the access-request queue.</p>
         </div>
@@ -282,7 +281,7 @@ export default function AccessRequestsPage() {
                 {!detail && detailError === null && <p className="text-sm text-muted-foreground">Loading…</p>}
                 {detail && (
                   <>
-                    <Badge variant={statusVariant(detail.status)}>{STATUS_LABEL[detail.status]}</Badge>
+                    <Badge tone={toneOf("accessRequest", detail.status)}>{STATUS_LABEL[detail.status]}</Badge>
                     <dl className="grid grid-cols-1 gap-2 text-sm">
                       <div><dt className="text-muted-foreground">Contact</dt><dd>{detail.contactName}{detail.contactRole ? ` — ${detail.contactRole}` : ""}</dd></div>
                       <div><dt className="text-muted-foreground">Work email</dt><dd>{detail.workEmail}</dd></div>

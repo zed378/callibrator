@@ -31,6 +31,7 @@ import {
 } from "@/api/services/qms.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toneOf } from "@/lib/statusTone";
 
 type Tab = "nc" | "capa";
 
@@ -50,25 +51,6 @@ const severityVariant = (s: string): "default" | "info" | "warning" | "danger" =
   }
 };
 
-const statusVariant = (
-  s: string,
-): "default" | "info" | "success" | "warning" | "danger" => {
-  switch (s) {
-    case "OPEN":
-    case "DRAFT":
-      return "warning";
-    case "CAPA_REQUIRED":
-      return "danger";
-    case "UNDER_INVESTIGATION":
-    case "IN_PROGRESS":
-    case "VERIFICATION":
-      return "info";
-    case "CLOSED":
-      return "success";
-    default:
-      return "default";
-  }
-};
 
 const fmt = (v?: string | null) => (v ? new Date(v).toLocaleDateString() : "—");
 
@@ -260,7 +242,7 @@ export default function QmsPage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant={statusVariant(String(value))} size="sm">
+        <Badge tone={toneOf("quality", String(value))} size="sm">
           {String(value ?? "").replace("_", " ")}
         </Badge>
       ),
@@ -353,7 +335,7 @@ export default function QmsPage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant={statusVariant(String(value))} size="sm">
+        <Badge tone={toneOf("quality", String(value))} size="sm">
           {String(value ?? "").replace("_", " ")}
         </Badge>
       ),

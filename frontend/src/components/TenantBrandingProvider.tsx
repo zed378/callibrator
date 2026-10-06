@@ -29,6 +29,10 @@ export function applyBrandColor(color?: string | null) {
     root.style.setProperty(BRAND_PROPERTIES.lightForeground, palette.light.foreground);
     root.style.setProperty(BRAND_PROPERTIES.darkPrimary, palette.dark.primary);
     root.style.setProperty(BRAND_PROPERTIES.darkForeground, palette.dark.foreground);
+    root.style.setProperty(BRAND_PROPERTIES.lightHover, palette.light.hover);
+    root.style.setProperty(BRAND_PROPERTIES.lightPressed, palette.light.pressed);
+    root.style.setProperty(BRAND_PROPERTIES.darkHover, palette.dark.hover);
+    root.style.setProperty(BRAND_PROPERTIES.darkPressed, palette.dark.pressed);
     root.setAttribute(BRAND_ATTRIBUTE, "");
   } else {
     // Revert to the default token values defined in globals.css.

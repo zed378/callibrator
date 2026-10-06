@@ -32,6 +32,7 @@ import {
   type ESignatureFormFields,
 } from "@/app/dashboard/calibration/components/ESignatureFields";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toneOf } from "@/lib/statusTone";
 
 type Tab = "sign" | "keys" | "workflows" | "verify";
 
@@ -62,22 +63,6 @@ const isOpen = (status?: string) => status !== "completed" && status !== "cancel
 
 const fmt = (v?: string | null) => (v ? new Date(v).toLocaleString() : "—");
 
-const statusVariant = (
-  s?: string,
-): "default" | "info" | "success" | "warning" | "danger" => {
-  switch (s) {
-    case "completed":
-      return "success";
-    case "in_progress":
-    case "pending":
-      return "info";
-    case "cancelled":
-    case "expired":
-      return "danger";
-    default:
-      return "default";
-  }
-};
 
 // A-129 / A-86 — a signer is a user of the tenant, chosen from GET /signers;
 // the form holds only their id. The backend reads name and email from the user
@@ -544,7 +529,7 @@ export default function ESignaturePage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant={statusVariant(value as string)} size="sm">
+        <Badge tone={toneOf("esignature", (value as string | undefined) ?? "pending")} size="sm">
           {String(value ?? "pending")}
         </Badge>
       ),
@@ -929,7 +914,7 @@ export default function ESignaturePage() {
           {detail && (
             <div className="p-6 space-y-4">
               <div className="flex items-center gap-2">
-                <Badge variant={statusVariant(detail.status)} size="sm">
+                <Badge tone={toneOf("esignature", detail.status ?? "pending")} size="sm">
                   {detail.status ?? "pending"}
                 </Badge>
                 <span className="text-sm text-muted-foreground">

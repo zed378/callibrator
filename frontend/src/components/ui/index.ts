@@ -6,6 +6,7 @@ export { Textarea } from "./Textarea";
 export { Card, CardHeader, CardContent, CardFooter } from "./Card";
 export { Table, Pagination } from "./Table";
 export { Badge } from "./Badge";
+export { StatusBadge } from "./StatusBadge";
 export { Alert } from "./Alert";
 export { Dialog } from "./Dialog";
 export { ConfirmDialog } from "./ConfirmDialog";

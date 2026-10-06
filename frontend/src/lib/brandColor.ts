@@ -7,8 +7,8 @@
  * is used exactly as the tenant chose it.
  *
  * Why per theme: one colour cannot pass 4.5:1 as text against both the light
- * card (#ffffff) and the dark card (#1e293b) — it would need a relative
- * luminance of at most 0.183 for the first and at least 0.214 for the second.
+ * card (#fffdf9) and the dark card (#23201c) — it would need to be both
+ * darker and lighter than mid-grey at once.
  * So rejecting "bad" colours at save time could only ever reject every colour
  * for one theme or the other; deriving is the only rule that always yields a
  * readable result.
@@ -67,8 +67,9 @@ interface ThemeRule {
 
 /** Mirrors globals.css (checked by brandColor.test.ts). */
 export const THEME_SURFACES: Record<ThemeName, Record<string, string>> = {
-  light: { background: "#f8fafc", card: "#ffffff", muted: "#f1f5f9" },
-  dark: { background: "#0f172a", card: "#1e293b", muted: "#1e293b" },
+  // ADR-122: the warm surfaces (page, card, muted).
+  light: { background: "#faf8f5", card: "#fffdf9", muted: "#f2eee8" },
+  dark: { background: "#191613", card: "#23201c", muted: "#2b2722" },
 };
 
 const RULES: Record<ThemeName, ThemeRule> = {
@@ -146,6 +147,13 @@ export interface ThemedBrand {
   textContrast: number;
   /** The contrast of `foreground` on `primary` (≥ 4.5). */
   fillContrast: number;
+  /**
+   * ADR-122: the hover and pressed fills (`--primary-hover` / `--primary-pressed`),
+   * a further 6 % and 12 % of lightness in the theme's direction, so the
+   * foreground only gains contrast. Falls back to `primary` if it would not.
+   */
+  hover: string;
+  pressed: string;
 }
 
 /** The accessible form of a brand colour in one theme. */
@@ -168,9 +176,18 @@ export const brandForTheme = (brand: Rgb, theme: ThemeName): ThemedBrand => {
   const fg =
     rule.foregrounds.find((f) => contrastRatio(parseHex(f) as Rgb, candidate) >= AA_TEXT) ??
     rule.foregrounds[0];
+  const shade = (delta: number): string => {
+    const [h, s, l] = toHsl(candidate);
+    const next = fromHsl([h, s, Math.min(1, Math.max(0, l + rule.direction * delta))]);
+    return contrastRatio(parseHex(fg) as Rgb, next) >= contrastRatio(parseHex(fg) as Rgb, candidate)
+      ? toHex(next)
+      : primary;
+  };
   return {
     primary,
     foreground: fg,
+    hover: shade(0.06),
+    pressed: shade(0.12),
     adjusted: primary.toLowerCase() !== toHex(brand).toLowerCase(),
     textContrast: worstTextContrast(candidate, theme),
     fillContrast: contrastRatio(parseHex(fg) as Rgb, candidate),
@@ -196,5 +213,9 @@ export const BRAND_PROPERTIES = {
   lightForeground: "--brand-primary-foreground-light",
   darkPrimary: "--brand-primary-dark",
   darkForeground: "--brand-primary-foreground-dark",
+  lightHover: "--brand-primary-hover-light",
+  lightPressed: "--brand-primary-pressed-light",
+  darkHover: "--brand-primary-hover-dark",
+  darkPressed: "--brand-primary-pressed-dark",
 } as const;
 export const BRAND_ATTRIBUTE = "data-tenant-brand";

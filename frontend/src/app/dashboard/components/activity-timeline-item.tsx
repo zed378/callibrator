@@ -25,12 +25,12 @@ const ActivityTimelineItem: React.FC<{
     >
       <div className="relative">
         <div
-          className={`w-10 h-10 ${color} rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300 shadow-none dark:shadow-lg`}
+          className={`w-10 h-10 ${color} rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300`}
         >
-          <span className="text-sm font-bold text-white">{name.charAt(0)}</span>
+          <span className="text-sm font-bold text-primary">{name.charAt(0)}</span>
         </div>
         <div
-          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 bg-success border-white`}
+          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 bg-success border-card`}
         />
       </div>
       <div className="flex-1 min-w-0">

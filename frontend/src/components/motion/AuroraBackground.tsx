@@ -22,7 +22,7 @@ export default function AuroraBackground({
     >
       {/* Drifting aurora blobs */}
       <div className="absolute -top-1/4 left-1/2 h-[65vw] w-[65vw] -translate-x-1/2 rounded-full bg-primary/25 blur-[120px] animate-orb-float-1" />
-      <div className="absolute top-1/4 -right-32 h-[48vw] w-[48vw] rounded-full bg-accent/25 blur-[120px] animate-orb-float-2" />
+      <div className="absolute top-1/4 -right-32 h-[48vw] w-[48vw] rounded-full bg-chart-2/20 blur-[120px] animate-orb-float-2" />
       <div className="absolute -bottom-1/4 -left-32 h-[48vw] w-[48vw] rounded-full bg-info/20 blur-[120px] animate-orb-float-1-reverse" />
       <div className="absolute bottom-0 right-1/4 h-[32vw] w-[32vw] rounded-full bg-success/15 blur-[120px] animate-float" />
 

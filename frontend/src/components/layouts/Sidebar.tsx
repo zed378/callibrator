@@ -36,8 +36,8 @@ const SidebarLeaf: React.FC<{ node: MenuItemType; pathname: string }> = ({
       href={node.path || "#"}
       className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm ${
         active
-          ? "text-primary bg-primary/10"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          ? "text-primary bg-surface-selected font-medium"
+          : "text-muted-foreground hover:text-foreground hover:bg-surface-hover"
       }`}
     >
       <span className="w-4 h-4" />
@@ -65,7 +65,7 @@ const SidebarSubGroup: React.FC<{ node: MenuItemType; pathname: string }> = ({
         className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm ${
           hasActiveChild
             ? "text-primary"
-            : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            : "text-muted-foreground hover:text-foreground hover:bg-surface-hover"
         }`}
       >
         <div className="flex items-center gap-3">
@@ -77,7 +77,7 @@ const SidebarSubGroup: React.FC<{ node: MenuItemType; pathname: string }> = ({
           className={`w-4 h-4 transition-transform duration-200 ${
             isExpanded
               ? "rotate-0 text-muted-foreground"
-              : "-rotate-90 text-muted-foreground/60"
+              : "-rotate-90 text-muted-foreground"
           }`}
         />
       </button>
@@ -123,14 +123,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-scrim backdrop-blur-sm z-40 lg:hidden"
           onClick={onClose}
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 flex flex-col bg-card backdrop-blur-2xl shadow-lg transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 flex flex-col bg-sidebar border-r border-border backdrop-blur-2xl shadow-lg transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
@@ -173,8 +173,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     href={item.path}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
                       isActive
-                        ? "bg-primary/10 text-primary shadow-sm"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        ? "bg-surface-selected text-primary shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-surface-hover"
                     }`}
                   >
                     <span
@@ -193,8 +193,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => onToggleExpand(item.label)}
                       className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
                         isActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                          ? "bg-surface-selected text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-surface-hover"
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -212,7 +212,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           className={`w-4 h-4 transition-transform duration-200 ${
                             isExpanded
                               ? "rotate-0 text-muted-foreground"
-                              : "-rotate-90 text-muted-foreground/60"
+                              : "-rotate-90 text-muted-foreground"
                           }`}
                         />
                       )}

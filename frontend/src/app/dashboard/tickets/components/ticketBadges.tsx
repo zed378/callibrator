@@ -1,44 +1,18 @@
 import React from "react";
+import { StatusBadge as RegistryBadge } from "@/components/ui/StatusBadge";
+import { priorityDot } from "@/lib/priority";
 
-const STATUS_STYLES: Record<string, string> = {
-  open: "bg-info/10 text-info",
-  in_progress: "bg-warning/10 text-warning",
-  resolved: "bg-success/10 text-success",
-  closed: "bg-muted text-muted-foreground",
-};
-const STATUS_LABELS: Record<string, string> = {
-  open: "Open",
-  in_progress: "In progress",
-  resolved: "Resolved",
-  closed: "Closed",
-};
-
-const PRIORITY_STYLES: Record<string, string> = {
-  low: "bg-muted text-muted-foreground",
-  medium: "bg-info/10 text-info",
-  high: "bg-warning/10 text-warning",
-  urgent: "bg-destructive/10 text-destructive",
-};
+// ADR-122 (P11-05): the ticket states' tones and labels live in lib/statusTone.ts;
+// priority is not a status (lib/priority.ts).
 
 export function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-        STATUS_STYLES[status] || "bg-muted text-muted-foreground"
-      }`}
-    >
-      {STATUS_LABELS[status] || status}
-    </span>
-  );
+  return <RegistryBadge domain="ticket" state={status} size="sm" />;
 }
 
 export function PriorityBadge({ priority }: { priority: string }) {
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-        PRIORITY_STYLES[priority] || "bg-muted text-muted-foreground"
-      }`}
-    >
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${priorityDot(priority)}`} />
       {priority}
     </span>
   );

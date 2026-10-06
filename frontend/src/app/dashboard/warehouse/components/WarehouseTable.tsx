@@ -1,7 +1,8 @@
 import React from "react";
 import { PaginatedResponse, Warehouse, WarehouseStatus } from "@/types";
-import { Card, CardContent, Table, Pagination, Badge, Button, TableSkeleton } from "@/components/ui";
+import { Card, CardContent, Table, Pagination, Button, TableSkeleton } from "@/components/ui";
 import { Warehouse as WarehouseIcon, MapPin, Edit, Trash2, Eye } from "lucide-react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface WarehouseTableProps {
   warehouseList: Warehouse[];
@@ -31,11 +32,7 @@ export const WarehouseTable: React.FC<WarehouseTableProps> = ({
   // reads "—" rather than throwing on `null.toUpperCase()`.
   const getStatusBadge = (status: WarehouseStatus | null) => {
     if (!status) return <span className="text-muted-foreground">—</span>;
-    const variants: Record<WarehouseStatus, "success" | "default"> = {
-      active: "success",
-      inactive: "default",
-    };
-    return <Badge variant={variants[status]}>{status.toUpperCase()}</Badge>;
+return <StatusBadge domain="warehouse" state={status} />;
   };
 
   const columns = [

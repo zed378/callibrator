@@ -15,6 +15,7 @@ import {
 } from "@/components/ui";
 import { Wrench, Edit, Trash2 } from "lucide-react";
 import { PaginatedResponse } from "@/types";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface WorkOrdersTableProps {
   workOrders: PaginatedResponse<WorkOrder> | null;
@@ -78,20 +79,7 @@ export const WorkOrdersTable: React.FC<WorkOrdersTableProps> = ({
   };
 
   const getStatusBadge = (status: WorkOrder["status"]) => {
-    const maps: Record<
-      WorkOrder["status"],
-      { variant: "info" | "warning" | "success" | "default"; label: string }
-    > = {
-      Open: { variant: "info", label: "Open" },
-      InProgress: { variant: "warning", label: "In Progress" },
-      Completed: { variant: "success", label: "Completed" },
-      Cancelled: { variant: "default", label: "Cancelled" },
-    };
-    const current = maps[status] || {
-      variant: "default" as const,
-      label: status,
-    };
-    return <Badge variant={current.variant}>{current.label}</Badge>;
+return <StatusBadge domain="workOrder" state={status} />;
   };
 
   // The shared Table uses `table-fixed` + `whitespace-nowrap`, so the title

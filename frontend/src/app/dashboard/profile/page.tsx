@@ -7,6 +7,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { userService } from "@/api/services/user.service";
 import AvatarUpload from "./components/AvatarUpload";
 import ProfileForm from "./components/ProfileForm";
+import AppearanceSettings from "./components/AppearanceSettings";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 
 export default function ProfilePage() {
@@ -127,6 +128,8 @@ export default function ProfilePage() {
             />
           </div>
         </div>
+
+        <AppearanceSettings />
       </div>
     </DashboardLayout>
   );

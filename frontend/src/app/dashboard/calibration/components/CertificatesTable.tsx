@@ -6,6 +6,7 @@ import { useToastStore } from "@/stores/toastStore";
 import { downloadCertificatePdf } from "@/lib/certificatePdf";
 import { PaginatedResponse } from "@/types";
 import { isCertificateAuthor } from "../certificateAuthorship";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 // Table rows arrive as generic records; narrow them back to Certificate.
 const asCert = (row: Record<string, unknown>): Certificate =>
@@ -62,15 +63,7 @@ export const CertificatesTable: React.FC<CertificatesTableProps> = ({
   };
 
   const getCertStatusBadge = (status: Certificate["status"]) => {
-    const maps = {
-      draft: { variant: "secondary" as const, label: "Draft" },
-      pending_approval: { variant: "warning" as const, label: "Pending Approval" },
-      approved: { variant: "info" as const, label: "Approved" },
-      signed: { variant: "success" as const, label: "Signed & Locked" },
-      revoked: { variant: "danger" as const, label: "Revoked" },
-    };
-    const current = maps[status] || { variant: "secondary" as const, label: status };
-    return <Badge variant={current.variant}>{current.label}</Badge>;
+return <StatusBadge domain="certificate" state={status} />;
   };
 
   const certColumns = [

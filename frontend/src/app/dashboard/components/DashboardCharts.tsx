@@ -114,10 +114,10 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
         <div className="p-6 space-y-6">
           <TrendRow
             title="Calibrations Performed"
-            color="var(--primary)"
+            color="var(--chart-1)"
             trend={calibrationTrend}
           />
-          <TrendRow title="Certificates Issued" color="var(--accent)" trend={certificateTrend} />
+          <TrendRow title="Certificates Issued" color="var(--chart-2)" trend={certificateTrend} />
         </div>
       </div>
 
@@ -144,13 +144,13 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
                     name={u.username || u.email}
                     action={u.email || 'User'}
                     time={u.createdAt ? `Joined ${new Date(u.createdAt).toLocaleDateString()}` : ''}
-                    color="bg-primary/20"
+                    color="bg-primary/10"
                     delay={500 + i * 100}
                   />
                 ))
             ) : (
               <div className="py-12 text-center">
-                <Activity className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
+                <Activity className="w-12 h-12 mx-auto mb-3 text-muted-foreground" aria-hidden="true" />
                 <p className="font-medium text-muted-foreground">No users to show</p>
               </div>
             )}

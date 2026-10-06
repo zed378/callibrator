@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 import { KeyRound, Ban } from "lucide-react";
 import { PaginatedResponse } from "@/types";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface ApiKeysTableProps {
   apiKeys: PaginatedResponse<ApiKey> | null;
@@ -54,14 +55,7 @@ export const ApiKeysTable: React.FC<ApiKeysTableProps> = ({
   const [now] = useState(Date.now);
 
   const getStatusBadge = (apiKey: ApiKey) => {
-    const status = apiKeyStatus(apiKey, now);
-    if (status === "active") {
-      return <Badge variant="success">Active</Badge>;
-    }
-    if (status === "expired") {
-      return <Badge variant="danger">Expired</Badge>;
-    }
-    return <Badge variant="danger">Revoked</Badge>;
+    return <StatusBadge domain="apiKey" state={apiKeyStatus(apiKey, now)} />;
   };
 
   const renderScopes = (scopes: string[]) => {

@@ -140,7 +140,7 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
                 name="isCompliant"
                 checked={form.isCompliant === true}
                 onChange={() => setForm({ ...form, isCompliant: true })}
-                className="accent-indigo-500 cursor-pointer"
+                className="accent-success cursor-pointer"
               />
               Compliant / Pass
             </label>
@@ -150,7 +150,7 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
                 name="isCompliant"
                 checked={form.isCompliant === false}
                 onChange={() => setForm({ ...form, isCompliant: false })}
-                className="accent-red-500 cursor-pointer"
+                className="accent-destructive cursor-pointer"
               />
               Non-Compliant / Fail
             </label>

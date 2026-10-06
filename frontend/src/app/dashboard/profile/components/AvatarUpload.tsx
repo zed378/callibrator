@@ -137,13 +137,13 @@ const AvatarUpload: React.FC<{
           alt={user.username || user.firstName || "User"}
           fallback={letter}
           size="lg"
-          className="!rounded-2xl !w-[112px] !h-[112px] !text-4xl border-2 border-white/10 group-hover:border-primary/30 transition-colors"
+          className="!rounded-2xl !w-[112px] !h-[112px] !text-4xl border-2 border-border group-hover:border-primary/30 transition-colors"
         />
-        <div className="absolute inset-0 rounded-2xl bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <div className="absolute inset-0 rounded-2xl bg-scrim flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           {isUploading ? (
-            <Loader2 className="w-5 h-5 text-white animate-spin" />
+            <Loader2 className="w-5 h-5 text-scrim-foreground animate-spin" />
           ) : (
-            <Camera className="w-5 h-5 text-white" />
+            <Camera className="w-5 h-5 text-scrim-foreground" />
           )}
         </div>
       </div>

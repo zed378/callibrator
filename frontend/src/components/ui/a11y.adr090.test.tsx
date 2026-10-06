@@ -70,13 +70,14 @@ const block = (selector: string): Record<string, string> => {
   for (const m of css.matchAll(re)) {
     if (!m[1].includes("--background:")) continue;
     const out: Record<string, string> = {};
-    for (const t of m[1].matchAll(/--([a-z-]+):\s*(#[0-9a-fA-F]{6})/g)) out[t[1]] = t[2];
+    for (const t of m[1].matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})/g)) out[t[1]] = t[2];
     return out;
   }
   throw new Error(`no ${selector} theme block in globals.css`);
 };
 
-const STATUS = ["primary", "destructive", "success", "warning", "info", "accent"] as const;
+// ADR-122: `neutral` (the grey draft / inactive status) joins the rule.
+const STATUS = ["primary", "destructive", "success", "warning", "info", "accent", "neutral"] as const;
 const AA = 4.5;
 
 describe("ADR-090: theme tokens meet WCAG 2.1 AA 1.4.3", () => {
@@ -84,8 +85,8 @@ describe("ADR-090: theme tokens meet WCAG 2.1 AA 1.4.3", () => {
   const dark = block(".dark");
 
   it.each([
-    ["light", light, ["background", "card", "muted"]],
-    ["dark", dark, ["background", "card", "muted"]],
+    ["light", light, ["background", "card", "muted", "surface-hover", "surface-selected", "sidebar"]],
+    ["dark", dark, ["background", "card", "muted", "surface-hover", "surface-selected", "sidebar"]],
   ] as const)("%s: muted-foreground is 4.5:1 on every surface", (_t, tokens, surfaces) => {
     for (const s of surfaces) {
       expect(ratio(hex(tokens["muted-foreground"]), hex(tokens[s]))).toBeGreaterThanOrEqual(AA);
@@ -111,6 +112,117 @@ describe("ADR-090: theme tokens meet WCAG 2.1 AA 1.4.3", () => {
       expect(ratio(c, tint(c, under, 0.1))).toBeGreaterThanOrEqual(AA);
     }
     expect(ratio(hex(dark[`${name}-foreground`]), c)).toBeGreaterThanOrEqual(AA);
+  });
+});
+
+/**
+ * ADR-122 (P11-01): the pairs the warm palette adds (spec P11-00 §7.3 item 5).
+ * Each is read from globals.css, so a value change cannot drift from the
+ * ADR's table. Fail-before (the slate tokens): --input equalled --border and
+ * was 1.23:1 on the light card and 1.41:1 on the dark one (spec D4); there
+ * was no hover/pressed fill, no neutral, no sidebar and no chart series.
+ */
+describe("ADR-122: warm palette pairs (WCAG 1.4.3, 1.4.11)", () => {
+  const themes = [
+    ["light", block(":root")],
+    ["dark", block(".dark")],
+  ] as const;
+  const UI = 3;
+
+  it.each(themes)("%s: control boundaries (--input, --border-strong) are 3:1 on page, card, muted and popover", (_t, tk) => {
+    for (const name of ["input", "border-strong"]) {
+      for (const s of ["background", "card", "muted", "popover"]) {
+        expect(ratio(hex(tk[name]), hex(tk[s]))).toBeGreaterThanOrEqual(UI);
+      }
+    }
+  });
+
+  it.each(themes)("%s: the focus ring (= primary) is 3:1 on page, card, muted, popover, selected and sidebar", (_t, tk) => {
+    expect(css).toMatch(/--ring: var\(--primary\);/);
+    for (const s of ["background", "card", "muted", "popover", "surface-selected", "sidebar"]) {
+      expect(ratio(hex(tk.primary), hex(tk[s]))).toBeGreaterThanOrEqual(UI);
+    }
+  });
+
+  it.each(themes)("%s: primary reads at 4.5:1 as text on the selected item, hover and the sidebar", (_t, tk) => {
+    for (const s of ["surface-selected", "surface-hover", "sidebar"]) {
+      expect(ratio(hex(tk.primary), hex(tk[s]))).toBeGreaterThanOrEqual(AA);
+    }
+  });
+
+  it.each(themes)("%s: text tokens are 4.5:1 on hover, selected, sidebar, popover and secondary", (_t, tk) => {
+    for (const t of ["foreground", "muted-foreground", "popover-foreground", "card-foreground"]) {
+      for (const s of ["surface-hover", "surface-selected", "sidebar", "popover", "secondary", "muted"]) {
+        expect(ratio(hex(tk[t]), hex(tk[s]))).toBeGreaterThanOrEqual(AA);
+      }
+    }
+    expect(ratio(hex(tk["secondary-foreground"]), hex(tk.secondary))).toBeGreaterThanOrEqual(AA);
+  });
+
+  it.each(themes)("%s: the primary, hover and pressed fills carry their text at 4.5:1", (_t, tk) => {
+    for (const fill of ["primary", "primary-hover", "primary-pressed"]) {
+      expect(ratio(hex(tk["primary-foreground"]), hex(tk[fill]))).toBeGreaterThanOrEqual(AA);
+    }
+  });
+
+  it.each(themes)("%s: every chart series is 3:1 on the card and the page", (_t, tk) => {
+    for (const n of [1, 2, 3, 4, 5]) {
+      for (const s of ["background", "card"]) {
+        expect(ratio(hex(tk[`chart-${n}`]), hex(tk[s]))).toBeGreaterThanOrEqual(UI);
+      }
+    }
+  });
+
+  it.each(themes)("%s: a draft (transparent) status badge reads at 4.5:1 on every surface it sits on", (_t, tk) => {
+    for (const s of ["background", "card", "muted", "popover", "surface-hover", "surface-selected"]) {
+      expect(ratio(hex(tk.neutral), hex(tk[s]))).toBeGreaterThanOrEqual(AA);
+    }
+  });
+
+  // Spec D5 — fail-before: the kanban priority hexes were 1.48–3.76:1 on white.
+  it.each(themes)("%s: the priority ramp is 3:1 on card, page and muted, strongest for urgent", (_t, tk) => {
+    const steps = ["urgent", "high", "medium", "low"].map((p) => hex(tk[`priority-${p}`]));
+    for (const s of ["background", "card", "muted"]) {
+      for (const c of [...steps, hex(tk["priority-none"])]) {
+        expect(ratio(c, hex(tk[s]))).toBeGreaterThanOrEqual(UI);
+      }
+      const onCard = steps.map((c) => ratio(c, hex(tk.card)));
+      expect([...onCard].sort((a, b) => b - a)).toEqual(onCard); // monotone: urgent strongest
+    }
+  });
+
+  it("ink on the scrim (photo controls) is 3:1 even over a white photograph, both themes", () => {
+    for (const [sel] of [[":root"], [".dark"]]) {
+      const body = new RegExp(`^${sel.replace(".", "\\.")} \\{([^}]*)\\}`, "m");
+      const blocks = [...css.matchAll(new RegExp(body.source, "gm"))].map((m) => m[1]).find((b) => b.includes("--scrim:"));
+      expect(blocks).toBeDefined();
+      const m = /--scrim:\s*rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\)/.exec(blocks as string);
+      const fg = /--scrim-foreground:\s*(#[0-9a-fA-F]{6})/.exec(blocks as string);
+      expect(m && fg).toBeTruthy();
+      const [r, g, b, a] = (m as RegExpExecArray).slice(1).map(Number);
+      const overWhite = tint([r, g, b] as Rgb, [255, 255, 255], a);
+      expect(ratio(hex((fg as RegExpExecArray)[1]), overWhite)).toBeGreaterThanOrEqual(UI);
+    }
+  });
+
+  it("the five chart series are five distinct colours in each theme", () => {
+    for (const [, tk] of themes) {
+      const series = [1, 2, 3, 4, 5].map((n) => tk[`chart-${n}`].toLowerCase());
+      expect(new Set(series).size).toBe(5);
+    }
+  });
+
+  it("the status aliases point at the five status tokens, in both themes", () => {
+    for (const [alias, token] of [
+      ["current", "success"],
+      ["attention", "warning"],
+      ["alarm", "destructive"],
+      ["draft", "neutral"],
+      ["info", "info"],
+    ]) {
+      expect(css).toContain(`--status-${alias}: var(--${token});`);
+      expect(css).toContain(`--status-${alias}-foreground: var(--${token}-foreground);`);
+    }
   });
 });
 
@@ -169,6 +281,14 @@ describe("Select (ADR-090 sweep)", () => {
 });
 
 describe("Table (ADR-090 sweep)", () => {
+  // P11-07: found by the 360 px sweep (automate/p11.browser.mts) on
+  // /dashboard/calibration — fail-before: the scroll wrapper had no tabindex.
+  it("its sideways-scrolling wrapper is keyboard-reachable even with no control in a cell", async () => {
+    const { container } = render(<Table columns={[{ key: "name", header: "Name" }]} data={[{ name: "Row" }]} />);
+    expect(container.querySelector(".overflow-x-auto")).toHaveAttribute("tabindex", "0");
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
   it("an empty header still names its column", async () => {
     const { container } = render(
       <Table

@@ -28,7 +28,7 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-scrim flex items-center justify-center z-50 p-4">
       <Card className="w-full max-w-lg">
         <div
         ref={panelRef}
@@ -61,7 +61,7 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
                   setForm({ ...form, name: e.target.value })
                 }
                 placeholder="e.g., Pre-migration backup"
-                className="w-full px-3 py-2 border border-border rounded-lg bg-white text-foreground focus:ring-2 focus:ring-info focus:border-transparent"
+                className="w-full px-3 py-2 border border-input rounded-lg bg-card text-foreground focus:ring-2 focus:ring-ring focus:border-transparent"
                 required
               />
             </div>
@@ -79,7 +79,7 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
                 }
                 placeholder="Optional description"
                 rows={3}
-                className="w-full px-3 py-2 border border-border rounded-lg bg-white text-foreground focus:ring-2 focus:ring-info focus:border-transparent"
+                className="w-full px-3 py-2 border border-input rounded-lg bg-card text-foreground focus:ring-2 focus:ring-ring focus:border-transparent"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -98,7 +98,7 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
                         | "USER_ONLY",
                     })
                   }
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-white text-foreground focus:ring-2 focus:ring-info focus:border-transparent"
+                  className="w-full px-3 py-2 border border-input rounded-lg bg-card text-foreground focus:ring-2 focus:ring-ring focus:border-transparent"
                 >
                   <option value="FULL">Full</option>
                   <option value="PARTIAL">Partial</option>
@@ -118,7 +118,7 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
                       retentionDays: e.target.value,
                     })
                   }
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-white text-foreground focus:ring-2 focus:ring-info focus:border-transparent"
+                  className="w-full px-3 py-2 border border-input rounded-lg bg-card text-foreground focus:ring-2 focus:ring-ring focus:border-transparent"
                 />
               </div>
             </div>
@@ -133,7 +133,7 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
                   setForm({ ...form, tag: e.target.value })
                 }
                 placeholder="e.g., pre-migration"
-                className="w-full px-3 py-2 border border-border rounded-lg bg-white text-foreground focus:ring-2 focus:ring-info focus:border-transparent"
+                className="w-full px-3 py-2 border border-input rounded-lg bg-card text-foreground focus:ring-2 focus:ring-ring focus:border-transparent"
               />
             </div>
           </div>

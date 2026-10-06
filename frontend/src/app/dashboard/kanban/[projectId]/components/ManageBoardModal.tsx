@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Dialog, Button, Input } from "@/components/ui";
 import { KanbanBoard } from "@/api/services/kanban.service";
+import { readableOn } from "@/lib/readableOn";
 import {
   Plus,
   Trash2,
@@ -199,8 +200,8 @@ export default function ManageBoardModal({
             {board.labels.map((l) => (
               <span
                 key={l.id}
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-white"
-                style={{ backgroundColor: l.color || "#94a3b8" }}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                style={{ backgroundColor: l.color || "#94a3b8", color: readableOn(l.color || "#94a3b8") }}
               >
                 {l.name}
                 <button

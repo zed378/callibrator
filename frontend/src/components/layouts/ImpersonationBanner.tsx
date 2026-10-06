@@ -30,7 +30,7 @@ export default function ImpersonationBanner() {
   };
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 bg-amber-500/15 px-4 py-2 text-sm text-amber-700 dark:text-amber-300 border-b border-amber-500/30">
+    <div className="flex flex-wrap items-center justify-between gap-2 bg-warning/10 px-4 py-2 text-sm text-warning border-b border-warning/40">
       <span className="flex items-center gap-2">
         <UserCog className="h-4 w-4 shrink-0" />
         Impersonating{" "}
@@ -42,7 +42,7 @@ export default function ImpersonationBanner() {
         type="button"
         onClick={handleExit}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/20 px-2.5 py-1 font-medium hover:bg-amber-500/30 disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 rounded-md border border-warning/40 bg-card px-2.5 py-1 font-medium text-warning hover:bg-surface-hover disabled:opacity-60"
       >
         <LogOut className="h-3.5 w-3.5" />
         {busy ? "Exiting…" : "Exit impersonation"}

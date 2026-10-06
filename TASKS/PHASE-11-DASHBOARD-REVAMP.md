@@ -3,7 +3,7 @@
 > **Owner answers, 2026-10-06** (asked by the coordinating session as multiple-choice; all four recommended options chosen): **Q1 Warm neutral** · **Q2 Copper primary** · **Q3 Warm colour-blind-safe chart set** · **Q4 Follow the device until the user chooses**. P11-01 … P11-07 are unblocked. The Phase 11 ADR is **ADR-122**, because ADR-121 was taken by the `POST /sop` contract decision.
 
 **Status:** ▶ **Palette and theme scope OPENED by the owner (2026-10-05).** The rest stays on hold.
-- **Open:** P11-00 planning is DONE, pending the owner's answers to four questions. P11-01 … P11-07 wait for those answers.
+- **Done:** P11-00 … P11-07 (palette and theme), 2026-10-06 — [record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122.
 - **Still on hold:** density, sidebar regrouping, role homes, list/form patterns, language and typography (P11-08 …). Each is BLOCKED, awaiting owner input.
 - **Planned:** 2026-09-29 as a placeholder; re-planned 2026-10-05.
 - **Spec:** [`../MEMORY/specs/P11-00-dashboard-palette-theme.md`](../MEMORY/specs/P11-00-dashboard-palette-theme.md).
@@ -57,14 +57,14 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 
 | Card | Title | Status |
 |---|---|---|
-| P11-00 | Owner instruction, scope and plan for the palette and theme; audit; owner questions | **DONE (planning) 2026-10-05 — pending owner answers to P11-Q1…Q4** |
-| P11-01 | Token layer: warm dashboard tokens (light + dark), new additive tokens, contrast test pairs, colour guard (ratchet), Phase 11 ADR, amendments to docs 00 and 08 | BLOCKED — awaiting P11-Q1, Q2 (and Q3 for `--chart-*`) |
-| P11-02 | One theme mechanism: a shared write path, one default, toggle parity on the landing and the dashboard, continuity tests | BLOCKED — awaiting P11-Q4 |
-| P11-03 | Shell and primitives recolour: sidebar, top bar, overlays/scrim, `components/ui` (D3, D7, D8) | BLOCKED — depends on P11-01 |
-| P11-04 | Module sweep (5 batches): hard-coded colours to tokens, the `accent` review, D1, D2, D6; the guard reaches zero | BLOCKED — depends on P11-03 |
-| P11-05 | Status-tone registry: one map, shape + icon + label + colour; replaces the 30 local maps | BLOCKED — depends on P11-01 |
-| P11-06 | Charts: `--chart-*` and status tokens in the hand-built charts; kanban priority ramp (D5); direct labels | BLOCKED — depends on P11-01, P11-Q3 |
-| P11-07 | Verification and record: axe light + dark (plus the modal states), screenshots, gates, record | BLOCKED — depends on P11-02 … P11-06 |
+| P11-00 | Owner instruction, scope and plan for the palette and theme; audit; owner questions | **DONE (planning) 2026-10-05; owner answered P11-Q1…Q4 on 2026-10-06 (all recommended)** |
+| P11-01 | Token layer: warm dashboard tokens (light + dark), new additive tokens, contrast test pairs, colour guard (ratchet), Phase 11 ADR, amendments to docs 00 and 08 | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
+| P11-02 | One theme mechanism: a shared write path, one default, toggle parity on the landing and the dashboard, continuity tests | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
+| P11-03 | Shell and primitives recolour: sidebar, top bar, overlays/scrim, `components/ui` (D3, D7, D8) | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
+| P11-04 | Module sweep (5 batches): hard-coded colours to tokens, the `accent` review, D1, D2, D6; the guard reaches zero | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
+| P11-05 | Status-tone registry: one map, shape + icon + label + colour; replaces the 30 local maps | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
+| P11-06 | Charts: `--chart-*` and status tokens in the hand-built charts; kanban priority ramp (D5); direct labels | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
+| P11-07 | Verification and record: axe light + dark (plus the modal states), screenshots, gates, record | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
 | P11-08 | Dashboard language: adopt ID/EN (reuse or migrate Phase 10's dictionaries; the `next-intl` decision) | BLOCKED — **needs owner input** (was placeholder P11-01) |
 | P11-09 | Density tokens (comfortable / compact) and the page floorplans | BLOCKED — **needs owner input** (was P11-02) |
 | P11-10 | Shell structure: domain-grouped collapsible sidebar, page title and breadcrumb, tenant indicator, user menu | BLOCKED — **needs owner input** (was P11-03) |
@@ -81,7 +81,7 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 
 | | |
 |---|---|
-| **Status** | **DONE (planning) 2026-10-05 — pending owner answers to P11-Q1…Q4** |
+| **Status** | **DONE (planning) 2026-10-05; owner answered P11-Q1…Q4 on 2026-10-06 (all recommended)** |
 | **Depends on** | the owner's go-ahead (given 2026-10-05) |
 | **Spec refs** | docs/UI-UX/00-DESIGN-DIRECTION.md · 08-COLOR-SYSTEM.md · 17-ACCESSIBILITY.md · research 01–03 · ADR-090 · ADR-118 Am. 1–3 |
 | **Spec required** | yes — [`MEMORY/specs/P11-00-dashboard-palette-theme.md`](../MEMORY/specs/P11-00-dashboard-palette-theme.md) |
@@ -94,7 +94,7 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 - [x] A token map with light/dark values and computed ratios, a colour-blindness check, and a migration plan with guards (spec §4–§7)
 - [x] The direction questions put as multiple choice, with a recommendation and trade-offs (spec §0)
 - [x] The placeholder cards replaced by a real plan (this file)
-- [ ] The owner's answers to P11-Q1…Q4 recorded (date, verbatim). Then P11-01 writes the ADR
+- [x] The owner's answers to P11-Q1…Q4 recorded (2026-10-06: all four recommended options; this file's header, spec header, ADR-122). P11-01 wrote ADR-122
 - [ ] The research's open questions (03 §7) answered or listed in `TASKS/BACKLOG.md`. **Deferred** to P11-11, which needs them; they do not block the palette
 
 **Abuse cases**
@@ -108,7 +108,7 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 
 | | |
 |---|---|
-| **Status** | BLOCKED — awaiting P11-Q1, P11-Q2 (P11-Q3 for `--chart-*`) |
+| **Status** | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
 | **Depends on** | P11-00 answers |
 | **Spec refs** | spec P11-00 §2, §4, §7.1, §7.3, §8 · docs/UI-UX/08-COLOR-SYSTEM.md · 00-DESIGN-DIRECTION.md · ADR-090 |
 | **Spec required** | no — covered by spec P11-00 |
@@ -145,7 +145,7 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 
 | | |
 |---|---|
-| **Status** | BLOCKED — awaiting P11-Q4 |
+| **Status** | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
 | **Depends on** | P11-00 answers (independent of P11-01) |
 | **Spec refs** | spec P11-00 §3.4, §3.5 (D9–D11), §6 · ADR-118 Am. 3 §1–2 · ADR-098 Am. 2 |
 | **Spec required** | no — covered by spec P11-00 |
@@ -180,7 +180,7 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 
 | | |
 |---|---|
-| **Status** | BLOCKED — depends on P11-01 |
+| **Status** | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
 | **Depends on** | P11-01 |
 | **Spec refs** | spec P11-00 §3.3, §3.5 (D3, D7, D8), §7.1, §7.2 item 1 |
 | **Spec required** | no |
@@ -203,7 +203,7 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 
 | | |
 |---|---|
-| **Status** | BLOCKED — depends on P11-03 |
+| **Status** | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
 | **Depends on** | P11-03 |
 | **Spec refs** | spec P11-00 §3.3, §4.3 (`accent`), §7.1, §7.2 items 2–6, §7.3 |
 | **Spec required** | no |
@@ -233,7 +233,7 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 
 | | |
 |---|---|
-| **Status** | BLOCKED — depends on P11-01 |
+| **Status** | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
 | **Depends on** | P11-01 (the `--status-*` and `--neutral` tokens) |
 | **Spec refs** | spec P11-00 §4.4, §5 · docs/UI-UX/08-COLOR-SYSTEM.md · research 01 §5.3, §7.3 |
 | **Spec required** | no — covered by spec P11-00 |
@@ -257,7 +257,7 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 
 | | |
 |---|---|
-| **Status** | BLOCKED — depends on P11-01, P11-Q3 |
+| **Status** | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
 | **Depends on** | P11-01 |
 | **Spec refs** | spec P11-00 §3.1, §3.5 (D5), §4.3 (`--chart-*`), §4.4 · docs/UI-UX/08-COLOR-SYSTEM.md "Charts" |
 | **Spec required** | no |
@@ -280,7 +280,7 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 
 | | |
 |---|---|
-| **Status** | BLOCKED — depends on P11-02 … P11-06 |
+| **Status** | **DONE 2026-10-06** ([record](../MEMORY/records/2026-10-06-p11-palette-theme.md), ADR-122) |
 | **Depends on** | P11-02, P11-03, P11-04, P11-05, P11-06 |
 | **Spec refs** | spec P11-00 §7.4 · docs/UI-UX/17-ACCESSIBILITY.md · docs/UI-UX/18-UX-ACCEPTANCE-CRITERIA.md |
 | **Spec required** | no |

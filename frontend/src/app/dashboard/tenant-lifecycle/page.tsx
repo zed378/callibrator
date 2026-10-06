@@ -30,21 +30,8 @@ import {
 import { tenantService } from "@/api/services/tenant.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toneOf } from "@/lib/statusTone";
 
-const statusVariant = (
-  status: string,
-): "success" | "warning" | "danger" | "default" => {
-  switch ((status || "").toUpperCase()) {
-    case "ACTIVE":
-      return "success";
-    case "SUSPENDED":
-      return "warning";
-    case "OFFBOARDED":
-      return "danger";
-    default:
-      return "default";
-  }
-};
 
 const fmt = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : "—";
@@ -227,7 +214,7 @@ export default function TenantLifecyclePage() {
                         Loading…
                       </span>
                     ) : (
-                      <Badge variant={statusVariant(current)}>
+                      <Badge tone={toneOf("tenantLifecycle", (current || "").toUpperCase())}>
                         {current || "UNKNOWN"}
                       </Badge>
                     )}

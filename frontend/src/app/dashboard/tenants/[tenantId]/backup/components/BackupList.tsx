@@ -3,15 +3,13 @@ import { backupLabel, type TenantBackup, type TenantBackupStatus } from "@/api/s
 import { Card, CardContent, Badge, Button } from "@/components/ui";
 import {
   FileArchive,
-  CheckCircle,
-  XCircle,
   Loader2,
-  Clock,
   AlertTriangle,
   Download,
   RotateCcw,
   Trash2,
 } from "lucide-react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface BackupListProps {
   backups: TenantBackup[];
@@ -34,41 +32,7 @@ export const BackupList: React.FC<BackupListProps> = ({
   // keyed COMPLETED / FAILED / ..., which no row carries, so every badge fell
   // to the fallback.
   const getStatusBadge = (status: TenantBackupStatus) => {
-    const statusConfig: Record<
-      TenantBackupStatus,
-      {
-        variant: "success" | "danger" | "warning" | "default";
-        icon: React.ReactNode;
-      }
-    > = {
-      completed: {
-        variant: "success",
-        icon: <CheckCircle className="h-3 w-3" />,
-      },
-      failed: {
-        variant: "danger",
-        icon: <XCircle className="h-3 w-3" />,
-      },
-      in_progress: {
-        variant: "warning",
-        icon: <Loader2 className="h-3 w-3 animate-spin" />,
-      },
-      pending: {
-        variant: "default",
-        icon: <Clock className="h-3 w-3" />,
-      },
-      deleted: {
-        variant: "default",
-        icon: <Trash2 className="h-3 w-3" />,
-      },
-    };
-    const config = statusConfig[status];
-    return (
-      <Badge variant={config.variant} size="sm">
-        {config.icon}
-        <span className="ml-1">{status}</span>
-      </Badge>
-    );
+return <StatusBadge domain="backup" state={status} size="sm" />;
   };
 
   // The create stores the type as sent ("FULL"); the scheduled job stores
@@ -98,8 +62,8 @@ export const BackupList: React.FC<BackupListProps> = ({
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-4 flex-1">
-                <div className="w-12 h-12 rounded-lg bg-linear-to-br from-info to-primary flex items-center justify-center flex-shrink-0">
-                  <FileArchive className="h-6 w-6 text-white" />
+                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <FileArchive className="h-6 w-6 text-primary" aria-hidden="true" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-3 flex-wrap">

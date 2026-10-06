@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Session, isSessionExpired, getTimeAgo } from "./SessionRowHelpers";
 import SessionDetails from "./SessionDetails";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface SessionRowProps {
   session: Session;
@@ -40,13 +41,6 @@ const SessionRow: React.FC<SessionRowProps> = ({
     <UserCheck className="w-5 h-5 text-success" />
   );
 
-  const statusBadge = session.isCurrentSession
-    ? "bg-primary/10 text-primary"
-    : isRevoked
-      ? "bg-muted text-foreground0/20"
-      : expired
-        ? "bg-destructive/10 text-destructive"
-        : "";
 
   return (
     <div className="rounded-xl overflow-hidden transition-all shadow-sm hover:shadow-md">
@@ -58,7 +52,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
                 session.isCurrentSession
                   ? "bg-primary/20"
                   : isRevoked
-                    ? "bg-muted0/10"
+                    ? "bg-muted"
                     : expired
                       ? "bg-destructive/10"
                       : "bg-success/10"
@@ -66,7 +60,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
             >
               {statusIcon}
               {session.isCurrentSession && (
-                <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-white animate-pulse" />
+                <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-card animate-pulse" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -75,19 +69,11 @@ const SessionRow: React.FC<SessionRowProps> = ({
                   {session.username}
                 </p>
                 {session.isCurrentSession && (
-                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${statusBadge}`}>
-                    CURRENT
-                  </span>
+                  <StatusBadge domain="session" state="current" size="sm" />
                 )}
-                {isRevoked && (
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-muted text-foreground0/20">
-                    REVOKED
-                  </span>
-                )}
+                {isRevoked && <StatusBadge domain="session" state="revoked" size="sm" />}
                 {expired && !isRevoked && (
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-destructive/10 text-destructive">
-                    EXPIRED
-                  </span>
+                  <StatusBadge domain="session" state="expired" size="sm" />
                 )}
               </div>
               <p className="text-sm text-muted-foreground">{session.email}</p>

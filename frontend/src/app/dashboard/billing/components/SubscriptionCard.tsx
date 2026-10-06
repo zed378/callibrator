@@ -4,7 +4,6 @@ import {
   Card,
   CardHeader,
   CardContent,
-  Badge,
   Alert,
   Select,
   Button,
@@ -13,6 +12,7 @@ import {
 } from "@/components/ui";
 import { Subscription } from "@/api/services/billing.service";
 import { SubscriptionForm } from "../hooks/useBilling";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface SubscriptionCardProps {
   subscription: Subscription | null;
@@ -28,22 +28,9 @@ interface SubscriptionCardProps {
 const capitalize = (value: string) =>
   value ? value.charAt(0).toUpperCase() + value.slice(1) : "-";
 
-const getStatusBadge = (status: Subscription["status"]) => {
-  const maps: Record<
-    Subscription["status"],
-    { variant: "success" | "warning" | "danger"; label: string }
-  > = {
-    Active: { variant: "success", label: "Active" },
-    PastDue: { variant: "warning", label: "Past Due" },
-    Canceled: { variant: "danger", label: "Canceled" },
-    Unpaid: { variant: "danger", label: "Unpaid" },
-  };
-  const current = maps[status] || {
-    variant: "warning" as const,
-    label: status,
-  };
-  return <Badge variant={current.variant}>{current.label}</Badge>;
-};
+const getStatusBadge = (status: Subscription["status"]) => (
+  <StatusBadge domain="subscription" state={status} />
+);
 
 export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
   subscription,

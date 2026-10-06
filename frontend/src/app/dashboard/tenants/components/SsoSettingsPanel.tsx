@@ -51,7 +51,7 @@ export const SsoSettingsPanel: React.FC<SsoSettingsPanelProps> = ({
   if (!tenant) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim backdrop-blur-sm animate-fade-in">
       <div
         ref={panelRef}
         role="dialog"
@@ -66,13 +66,13 @@ export const SsoSettingsPanel: React.FC<SsoSettingsPanelProps> = ({
               <Shield className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 id={titleId} className="text-xl font-bold text-white">SSO SAML Configuration</h2>
+              <h2 id={titleId} className="text-xl font-bold text-foreground">SSO SAML Configuration</h2>
               <p className="text-xs text-muted-foreground">{tenant.name} ({tenant.code})</p>
             </div>
           </div>
           <button aria-label="Close"
             onClick={onClose}
-            className="p-2 text-muted-foreground hover:text-muted-foreground hover:bg-white/5 rounded-xl transition-all duration-200"
+            className="p-2 text-muted-foreground hover:text-foreground hover:bg-surface-hover rounded-xl transition-all duration-200"
           >
             <X className="w-5 h-5" />
           </button>

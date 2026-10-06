@@ -12,6 +12,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { useBoard } from "./hooks/useBoard";
+import { readableOn } from "@/lib/readableOn";
 import BoardColumn from "./components/BoardColumn";
 import CardModal from "./components/CardModal";
 import SprintBar from "./components/SprintBar";
@@ -67,8 +68,8 @@ function KanbanBoardContent() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
               <div className="flex items-center gap-3">
                 <span
-                  className="h-10 w-10 rounded-xl flex items-center justify-center text-white"
-                  style={{ backgroundColor: board.color || "#4f46e5" }}
+                  className="h-10 w-10 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: board.color || "#4f46e5", color: readableOn(board.color || "#4f46e5") }}
                 >
                   <KanbanSquare className="h-5 w-5" />
                 </span>

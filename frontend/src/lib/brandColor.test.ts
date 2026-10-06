@@ -97,6 +97,21 @@ describe("accessibleBrandPalette (ADR-090 amendment)", () => {
     assertThemeRule(p.dark.primary, p.dark.foreground, "dark");
     expect(p.light.textContrast).toBeGreaterThanOrEqual(AA_TEXT);
     expect(p.dark.fillContrast).toBeGreaterThanOrEqual(AA_TEXT);
+    // ADR-122: the hover and pressed fills carry the same text at 4.5:1 too.
+    for (const t of [p.light, p.dark]) {
+      expect(contrastRatio(hex(t.foreground), hex(t.hover))).toBeGreaterThanOrEqual(AA_TEXT);
+      expect(contrastRatio(hex(t.foreground), hex(t.pressed))).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  it("derives hover and pressed shades darker in light and lighter in dark (ADR-122)", () => {
+    const p = accessibleBrandPalette("#1d4ed8")!;
+    const l = (c: string) => hex(c).reduce((a, b) => a + b, 0);
+    expect(l(p.light.hover)).toBeLessThan(l(p.light.primary));
+    expect(l(p.light.pressed)).toBeLessThan(l(p.light.hover));
+    const d = accessibleBrandPalette("#60a5fa")!.dark;
+    expect(l(d.hover)).toBeGreaterThan(l(d.primary));
+    expect(l(d.pressed)).toBeGreaterThan(l(d.hover));
   });
 
   it.each(["#ffff00", "#ef4444", "#7dd3fc", "#1e3a8a", "#a855f7"])(

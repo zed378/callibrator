@@ -35,9 +35,9 @@ export const DashboardQuickActions: React.FC = () => {
         )}
         {superAdmin && (
           <QuickAction
-            icon={<Building2 className="w-6 h-6 text-accent" />}
+            icon={<Building2 className="w-6 h-6 text-chart-2" />}
             label="New Tenant"
-            color="bg-accent/15"
+            color="bg-chart-2/15"
             onClick={() => router.push('/dashboard/tenants')}
             delay={600}
           />

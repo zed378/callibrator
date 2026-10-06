@@ -6,6 +6,7 @@ import { NONCE_HEADER, PATHNAME_HEADER } from "@/lib/securityHeaders";
 import { getLocale } from "@/i18n/server";
 import { htmlLangFor } from "@/i18n/config";
 import { ThemeInitScript } from "@/components/ThemeInitScript";
+import { THEME_INIT_SCRIPT } from "@/lib/themeInitScript";
 
 // Canonical fonts, bundled via next/font (no CDN). Exposed as CSS variables
 // referenced by the `--font-sans` / `--font-mono` theme tokens in globals.css.
@@ -43,13 +44,9 @@ const spaceGrotesk = Space_Grotesk({
   preload: false,
 });
 
-// Pre-hydration theme script: applies the persisted light/dark choice to
-// <html> before first paint so there is no flash (replaces the old
-// render-null-until-initialized hack in ThemeContext).
-// P10-17 (ADR-118 Am. 3): it also marks an explicit choice with
-// `data-theme-choice`, so the public pages can follow `prefers-color-scheme`
-// only when the visitor has not chosen. The dashboard's behaviour is unchanged.
-const themeInitScript = `(function(){try{var d=document.documentElement,t=localStorage.getItem('hdc-theme-preference');if(t==='dark'){d.classList.add('dark');}else{d.classList.remove('dark');}if(t==='dark'||t==='light'){d.setAttribute('data-theme-choice',t);}else{d.removeAttribute('data-theme-choice');}}catch(e){}})();`;
+// Pre-hydration theme script (lib/themeInitScript.ts): applies the stored
+// light/dark choice, or the device setting when there is none (ADR-122,
+// P11-Q4 A), to <html> before first paint, so there is no flash.
 
 export const metadata: Metadata = {
   // Q-43 (ADR-098 §8.1): the public name is "Device Calibrator".
@@ -103,7 +100,7 @@ export default async function RootLayout({
       <head>
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground" suppressHydrationWarning>
-        <ThemeInitScript script={themeInitScript} nonce={nonce} />
+        <ThemeInitScript script={THEME_INIT_SCRIPT} nonce={nonce} />
         {/*
           P10-13 (ADR-098 Amendment 2): no client providers here. The theme,
           tenant branding, session check and toasts are the signed-in app's

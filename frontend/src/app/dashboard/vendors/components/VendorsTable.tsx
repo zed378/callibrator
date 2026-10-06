@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 import { Building2, Edit, Trash2, CheckCircle2, Ban } from "lucide-react";
 import { PaginatedResponse } from "@/types";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface VendorsTableProps {
   vendors: PaginatedResponse<Vendor> | null;
@@ -60,11 +61,8 @@ export const VendorsTable: React.FC<VendorsTableProps> = ({
   };
 
   const getStatusBadge = (status: Vendor["status"]) => {
-    return status === "Active" ? (
-      <Badge variant="success">Active</Badge>
-    ) : (
-      <Badge variant="warning">Inactive</Badge>
-    );
+    // Anything but "Active" showed as Inactive before the registry; it still does.
+    return <StatusBadge domain="vendor" state={status === "Active" ? "Active" : "Inactive"} />;
   };
 
   const columns = [
@@ -146,7 +144,7 @@ export const VendorsTable: React.FC<VendorsTableProps> = ({
                             size="sm"
                             title="Approve vendor"
                             onClick={() => handleQualify(vendor.id, "approved")}
-                            className="text-emerald-600 hover:text-emerald-600 hover:bg-muted"
+                            className="text-success hover:text-success hover:bg-surface-hover"
                           >
                             <CheckCircle2 className="h-4 w-4" />
                           </Button>
@@ -157,7 +155,7 @@ export const VendorsTable: React.FC<VendorsTableProps> = ({
                             size="sm"
                             title="Reject vendor"
                             onClick={() => handleQualify(vendor.id, "rejected")}
-                            className="text-amber-600 hover:text-amber-600 hover:bg-muted"
+                            className="text-warning hover:text-warning hover:bg-surface-hover"
                           >
                             <Ban className="h-4 w-4" />
                           </Button>

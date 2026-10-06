@@ -152,11 +152,15 @@ describe("useUsers", () => {
     expect(result.current.formError).toBe("");
   });
 
-  it("status colours and delete", async () => {
+  // ADR-122 (P11-05): the hook delegates to lib/statusTone.ts. SUSPENDED is
+  // attention, not alarm (alarm is overdue/non-conformant/failed/revoked only),
+  // and PENDING is a draft state (doc 08), so the old success/default/danger/
+  // warning answers became tones.
+  it("status tones and delete", async () => {
     signInAs("SUPERADMIN");
     const { result } = await setup();
     expect(["ACTIVE", "INACTIVE", "SUSPENDED", "PENDING", "?"].map(result.current.getStatusColor)).toEqual([
-      "success", "default", "danger", "warning", "default",
+      "current", "draft", "attention", "draft", "draft",
     ]);
     userService.delete.mockResolvedValue(undefined);
     act(() => result.current.handleDeleteRequest("u2"));

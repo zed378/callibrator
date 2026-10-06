@@ -39,7 +39,7 @@ export const Avatar: React.FC<AvatarProps> = ({
 
   return (
     <div
-      className={`relative rounded-full bg-linear-to-br from-primary to-accent flex items-center justify-center text-primary-foreground font-bold shadow-md shadow-primary/20 ring-2 ring-border ${sizeMap[size]} ${className}`}
+      className={`relative rounded-full bg-linear-to-br from-primary to-primary-hover flex items-center justify-center text-primary-foreground font-bold shadow-md shadow-primary/20 ring-2 ring-border ${sizeMap[size]} ${className}`}
     >
       {src && !hasError ? (
         <Image
@@ -56,7 +56,7 @@ export const Avatar: React.FC<AvatarProps> = ({
           onError={() => setHasError(true)}
         />
       ) : (
-        <span className="text-white">{initials}</span>
+        <span className="text-primary-foreground">{initials}</span>
       )}
     </div>
   );
