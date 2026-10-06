@@ -522,9 +522,48 @@
 [data-surface="public"] .lp-inverted :focus-visible { outline-color: var(--pub-inv-accent); }
 
 /* Verification demo pieces */
+
+/* The layout (P10-17 fix, 2026-10-06). Every width is a definite length, never
+   a percentage of a content-sized track: the phone used to be min(100%, 19rem)
+   inside an `auto` column, so the column took its width from the phone's
+   CONTENT and the verdict's sentence squeezed the certificate after a scan.
+   Stacked until both fit side by side at their minimum widths — the
+   certificate's 20rem (its number on one line, the QR beside the lines, the
+   button on one line) and the phone's 17.5rem — measured on the demo's own
+   width (a container query), not the viewport. */
+[data-surface="public"] .lp-demo-wrap { container-type: inline-size; }
+[data-surface="public"] .lp-demo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-items: center;
+  gap: 2.5rem;
+}
+[data-surface="public"] .lp-demo .lp-cert { width: min(100%, 24rem); }
+[data-surface="public"] .lp-demo-phone { width: min(100%, 17.5rem); }
+@container (min-width: 43rem) {
+  [data-surface="public"] .lp-demo {
+    grid-template-columns: minmax(20rem, 24rem) 17.5rem;
+    justify-content: center;
+    column-gap: clamp(2rem, 6cqi, 3rem);
+  }
+  [data-surface="public"] .lp-demo .lp-cert,
+  [data-surface="public"] .lp-demo-phone { width: 100%; }
+}
+/* Desktop (as designed in P10-17): the certificate centred in the wider column,
+   the phone at 19rem on the right. */
+@container (min-width: 60rem) {
+  [data-surface="public"] .lp-demo {
+    grid-template-columns: minmax(20rem, 1fr) 19rem;
+    column-gap: 3rem;
+  }
+  [data-surface="public"] .lp-demo .lp-cert { width: min(100%, 24rem); }
+}
+/* Breaks only where breakAfterHyphens() put a <wbr>, never mid-token. */
+[data-surface="public"] .lp-cert-number { overflow-wrap: normal; word-break: normal; }
 [data-surface="public"] .lp-phone {
   position: relative;
-  width: min(100%, 19rem);
+  width: 100%;
   aspect-ratio: 9 / 18.5;
   border-radius: 2.5rem;
   border: 1px solid var(--pub-inv-border-strong);

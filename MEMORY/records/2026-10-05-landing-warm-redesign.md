@@ -233,3 +233,58 @@ It was also built on fabricated proof: randomuser faces, "12,000+", invented hos
   - **a11y 80/80**, in both themes, covering axe, dialogs, reflow at 200 %, reduced motion and brand.
   - **responsive 45/45.**
   - Afterwards the stack was removed by name with `docker compose -p p1017warm … down -v`.
+
+## Addendum 2026-10-06 — the verification demo's layout at tablet widths (owner bug report)
+
+**The report.** `/`, EN, dark, 773 × 935 (Chrome responsive mode): in `#verifikasi` the paper certificate was squeezed to ~200 px with the phone over it, the number wrapped mid-token on three lines ("CERT-2026100 / 5-CONTOH-00 / 01"), the sample-data tag was cut by the card's edge, the QR was half hidden behind the phone, "Scan again" wrapped, and the composition was lopsided.
+
+**Cause (measured on a production build of the pre-fix tree).**
+- The demo grid was `md:grid-cols-[minmax(0,1fr)_auto]`, and the phone was `width: min(100%, 19rem)` inside the `auto` column. A percentage inside a content-sized track is cyclic, so the column took its width from the phone's **content**.
+- Idle, that content is short: the phone was 223–258 px wide. After a scan, the verdict's sentence is long: the `auto` column grew to 517 px and the `minmax(0, 1fr)` column, allowed to shrink to 0, left the certificate 160 px at 773. The certificate's content (the QR's fixed 7 rem box, the tag's `nowrap`) then spilled out under the phone, and `break-all` broke the number anywhere.
+- The bug was not only at tablet widths. At every width the phone changed size between idle and verified (223 × 458 → 304 × 625, a layout shift), and at 1024 the certificate shrank to 314 px after a scan. "Scan again" is the verified state's label, which is why the owner saw it.
+
+**Fix.**
+- `landing.css` (`.lp-demo-wrap`, `.lp-demo`, `.lp-demo-phone`, `.lp-cert-number`). Every width is now a definite length.
+  - The certificate is `min(100%, 24rem)` and the phone's figure `min(100%, 17.5rem)`; the phone fills its figure.
+  - The two stack, centred, until **the demo itself** is 43 rem wide (a container query, so a 200 % text zoom stacks it too). From there they sit side by side at their minimum readable widths, `minmax(20rem, 24rem) 17.5rem`, centred.
+  - From 60 rem the desktop composition is kept as designed: the certificate centred in a `minmax(20rem, 1fr)` column and the phone at 19 rem. The phone now holds the size it always showed after a scan, idle too.
+- `QrVerifyDemo.tsx`:
+  - `breakAfterHyphens()` puts a `<wbr>` after each hyphen in the certificate number, on the paper and in the verdict, and `break-all` is gone. UAX #14 allows no break between a hyphen and a digit, so without the `<wbr>` the number could only overflow or break mid-token. The text content is unchanged.
+  - The button is `whitespace-nowrap`; the minimum card width leaves it room.
+- Animation, the live region and reduced-motion behaviour are unchanged; no motion was added. No copy changed. There is no new decision: this is a defect in the P10-17 implementation, inside ADR-118, and doc 20 specifies no grid for the demo, so `docs/` needs no amendment.
+
+**Regression check.** `automate/responsive.browser.js` gains a demo sweep. It runs when the page list includes `/` (it is in `make test-browser`), and `RESPONSIVE_QR_ONLY=1` runs it alone.
+- **Coverage:** ID and EN, light and dark, with reduced motion, plus two passes without it (EN light, ID dark). Each pass runs at 360, 390, 480, 600, 640, 700, 768, 773, 820, 900, 960, 1024, 1100, 1280 and 1536 px, in both the idle and the verified state: **90 rows**.
+- **It fails on:**
+  - the certificate and the phone intersecting;
+  - anything in the certificate extending past it, or the certificate or phone past the viewport;
+  - `elementFromPoint` at the QR's four corners and centre hitting anything but the QR;
+  - a number line, on the paper or in the verdict, that does not end in "-";
+  - the button's or the tag's text on more than one line, or overflowing its box;
+  - the verdict extending past the phone's screen, or an empty live region;
+  - the certificate or the phone changing size between the two states;
+  - without reduced motion, a verdict that appears at once.
+- **`RESPONSIVE_SELFTEST=1`** plants three defects through the CSSOM, because the nonce CSP refuses an injected `<style>`: the phone moved onto the QR, a squeezed `break-all` number, and a 5 rem button. Every row must report all three.
+- **`RESPONSIVE_QR_SHOTS`** writes the before/after crops.
+
+**Evidence** (production `next build` + `next start -p 27391` on the workstation, no backend; Node 26.10.0):
+
+| Check | Result |
+|---|---|
+| Demo sweep on the **pre-fix** build | **0/90 clean**. Layout shift on every row; at 768–960 overlap, the QR covered by `div.lp-phone`, the tag and QR outside the card, the number broken mid-token ("CERT-202 \| 61005-C \| ONTOH-0 \| 001") |
+| Demo sweep on the fixed build | **90/90 clean** |
+| `RESPONSIVE_SELFTEST=1 RESPONSIVE_QR_ONLY=1` | **90/90 rows detected the planted defects** |
+| Full `responsive.browser.js` (pages + demo) | **45/45 page-mode pairs clean** (incl. `/` at 200 % zoom and 200 % text-only zoom), **90/90 demo rows clean** |
+| axe-core, WCAG 2.1 A/AA, `/` (scratch script; axe through `Runtime.evaluate`) | **0 violations in 120/120 runs**: ID/EN × light/dark × the 15 widths × idle/verified, reduced motion |
+| `landingIslands.p1017.test.tsx` | 25 tests, 2 new: the number's `<wbr>` after each hyphen (paper and verdict), the layout classes, no `break-all`, the nowrap button; a value without a hyphen stays whole |
+| Frontend jest with coverage (`npm run test:coverage -- --ci`) | **305 suites, 3,309 tests passed**, 0 failed; **94.01 / 84.94 / 89.62 / 94.68** against the 90 / 81 / 86 / 91 gate; `QrVerifyDemo.tsx` 100 % on all four |
+| `npm run typecheck` (frontend) | 0 errors |
+| `npx eslint` on the changed frontend files | 0 errors, 0 warnings (`automate/*.js` sits outside both ESLint configs, as before) |
+| `node ../node_modules/next/dist/bin/next build` | exit 0 |
+| `node scripts/bundle-budget.mjs` | all 10 routes within the **unchanged** ceilings; `/` brotli 128.5 / 180, **gzip 149.4 / 150** (no change) |
+
+**Screenshots** (verified state, EN, reduced motion; `docs/UI-UX/research/screens/`): `p1017-fix-qr-before-{light,dark}-{768,773,820,1024}.webp` from the pre-fix build and `p1017-fix-qr-after-…` from the fixed one, 16 files. The section is charcoal in both themes by design (ADR-118 Am. 1), so the theme shows in the paper and the page around it.
+
+**Not done:** the live compose stack was not re-run for this change. The demo sweep needs only the frontend and ran against a production build. The VM is untouched.
+
+**Files:** `frontend/src/components/public/landing/QrVerifyDemo.tsx`, `landing.css`, `__tests__/landingIslands.p1017.test.tsx`; `automate/responsive.browser.js`; the `Makefile` (the `test-browser` help text); the 16 screenshots; this addendum, `MEMORY/CHANGELOG.md`, `MEMORY/MEMORY-INDEX.md`.

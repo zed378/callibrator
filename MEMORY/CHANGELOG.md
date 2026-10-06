@@ -8,6 +8,11 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-06 — The landing's verification demo no longer collapses at tablet widths (P10-17 fix, ADR-118, [record](./records/2026-10-05-landing-warm-redesign.md#addendum-2026-10-06--the-verification-demos-layout-at-tablet-widths-owner-bug-report))
+- **Fixed:** after "Scan", the demo certificate in `#verifikasi` was squeezed to ~160 px at tablet widths and pushed under the phone. The QR was half hidden, the certificate number broke mid-token, the sample-data tag was cut off and the button wrapped (owner report, 773 px). The phone's width had come from its own content, so the verdict's sentence widened its column. Every width is now fixed: the two stack until both fit side by side, and desktop keeps its composition. The phone no longer changes size between idle and verified (a layout shift at every width before).
+- **Changed:** the certificate number breaks only after a hyphen (`<wbr>`), never mid-token.
+- **Added:** `automate/responsive.browser.js` checks the demo at 15 widths (360–1536), ID/EN, light/dark, idle and verified, with and without reduced motion: 90 rows. It looks for overlap, a covered QR (`elementFromPoint` at the corners), mid-token breaks, one-line button and tag, and no size change between states. It found 0/90 clean before the fix and 90/90 after; `RESPONSIVE_SELFTEST=1` detects the planted defects on 90/90.
+
 ### 2026-10-06 — The images are published on Docker Hub; deployments pull them, the VM never builds (P7-09, ADR-123, [record](./records/2026-10-06-dockerhub-images.md))
 - **Changed:** compose, the Makefile and Helm default to the public images `zed378/calibration-be`, `zed378/calibration-fe` and `zed378/calibration-backup`. The base compose file and the vm, staging and prod overlays build nothing. The VM deploys with `docker compose … pull` then `up -d` (`make deploy-vm`).
 - **Added:** `deploy/compose/docker-compose.build.yml`, the one overlay that builds from source (dev, E2E). Its images are named `callibrator/*:local`, never a registry name.
