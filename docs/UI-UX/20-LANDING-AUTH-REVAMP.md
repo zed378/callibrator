@@ -4,6 +4,8 @@
 
 **Binding input:** the owner's answers in [`research/00-owner-brief-landing-auth.md`](research/00-owner-brief-landing-auth.md), and the **working decisions set by the coordinating session** on 2026-09-29 for the follow-up questions (product name, accreditation wording, the register endpoint, invitations, passkeys as MFA, request retention, certificate enumeration, contact channels, no pricing and no trial). The coordinating session reported that the owner delegated these to it; that delegation is not recorded first-hand anywhere in the repository, so each is written in ADR-098 §8 and in [`TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) (Q-39 … Q-47) as a **working decision awaiting the owner's confirmation**. Work proceeds on them; the owner can overturn any. Where the research recommends otherwise, the owner's answer stands and the research view is recorded in ADR-098 as the rejected alternative.
 
+**Amended 2026-10-05 — ADR-118 (P10-17, the warm redesign):** the owner replaced the dark-cinematic direction with a **warm, light** public surface (ivory, cream, charcoal, one copper accent, dark teal only as the "verified" marker) and allowed **licensed editorial photographs** captioned as illustrations. §3, §4.1, §4.2, §4.3, §4.5, §6, §11.1 and §12 say what changed; where an older sentence below still says "dark", "near-black" or "teal accent", ADR-118 wins.
+
 **Product name on every public surface: "Device Calibrator"** (working decision, ADR-098 §8.1, awaiting owner confirmation). It matches the logo and `APP_NAME`'s default. "Callibrator" is the repository and codename and never appears in public copy; "HDC" is not used. This document says "Callibrator" only when it means the codebase.
 
 **Evidence used:** [`research/04-competitor-landing-and-auth.md`](research/04-competitor-landing-and-auth.md) (competitors, auth patterns, claim rules, current-page audit), [`research/05-landing-auth-audit.md`](research/05-landing-auth-audit.md) (the as-built code audit: every current string classified with evidence and ID/EN rewrites, the 16 verifiable facts in its §3.14, assets, auth security, the request-access gap), [`research/02-standards-and-benchmarks.md`](research/02-standards-and-benchmarks.md) (WCAG, Part 11, locale formats), and the code files named in each section. Where 05 and 04 differ, 05 wins on **what the code does** (it read every file) and 04 on **market and legal practice**. Copy-deck rows cite 05's row ids (H3, W4, C6 …) where 05 supplied the rewrite.
@@ -52,11 +54,11 @@ The anonymous auditor is the only reader who arrives without being sold to; the 
 
 ## 3. Principles for This Surface
 
-1. **Cinematic, not theatrical.** Dark, large type, slow light. No gradient text, no magnetic buttons, no count-up numbers, no floating chips, no pulsing "live" dots, no marquee (research 04 §2.3).
-2. **The product is the hero image.** Real UI rendered crisply, labelled *Contoh data / Sample data*. Never a stock clinician.
+1. **Warm and human, not theatrical** (ADR-118). Ivory and charcoal, large serif type, people at work, slow light. No gradient text, no magnetic buttons, no pulsing "live" dots, no marquee (research 04 §2.3); a count-up only on a figure inside a mock-up labelled *Contoh data*. *(Was: "Cinematic. Dark …", 2026-09-29.)*
+2. **People and the product, together.** Real UI rendered crisply, labelled *Contoh data / Sample data*, placed in the scene beside a licensed photograph of someone at work. A photograph is captioned *Foto ilustrasi / Illustrative photo*; nobody in it is presented as a customer, our staff or a quote's speaker (ADR-118 §2). *(Was: "Never a stock clinician".)*
 3. **One motif, owned.** A precision scale: graduation ticks, a tolerance band, a needle settling inside it. Drawn in SVG in-house (§12).
 4. **Every claim has a source.** If §11 cannot cite a file or a document for a sentence, the sentence does not ship. P10-11 makes this a test.
-5. **One accent.** Teal `#00DAB4`, the brand's own (08 § The Product's Own Brand). Status colours appear only where they carry a status (the verification verdict, form errors).
+5. **One accent.** Copper `#9A4E22` (ADR-118); a soft gold for decoration only; dark teal `#0E5A52` means "verified" and nothing else. Status colours appear only where they carry a status (the verification verdict, form errors). The brand mark keeps its own teal inside the logo.
 6. **Motion explains or it goes.** Every animation has a static equivalent that is complete, not degraded.
 
 ---
@@ -65,59 +67,96 @@ The anonymous auditor is the only reader who arrives without being sold to; the 
 
 ### 4.1 Scope
 
-The public palette is a **separate token set** applied by a `data-surface="public"` attribute on the public layouts (landing, `/login`, `/request-access`, `/forgot-password`, `/verify/*`, `/activation`). The dashboard tokens in `frontend/src/app/globals.css` (ADR-090) are **not changed**. The public surfaces are **dark only**: they do not follow the `.dark` class or the stored theme preference (owner brief: "dark cinematic"; ADR-098 records the accessibility cost).
+The public palette is a **separate token set** applied by a `data-surface="public"` attribute on the public layouts (landing, `/login`, `/request-access`, `/forgot-password`, `/verify/*`, `/activation`). The dashboard tokens in `frontend/src/app/globals.css` (ADR-090) are **not changed**. The public surfaces are **light by default** since ADR-118 (2026-10-05: ivory, charcoal, copper). Since **Amendment 3** they also have a **warm dark mode**: it follows the app's `.dark` class and stored choice (`hdc-theme-preference`, shared with the dashboard), or `prefers-color-scheme` when nothing is stored. The toggle is in the public header, the mobile menu and the auth shell. One set serves every public page — landing, sign-in, request access, reset, invitation, activation, verification, blog and news — so a visitor never crosses two visual systems; the auth pages changed by tokens only. *(Was: dark only, ADR-098 §3.)*
 
-Tenant colour (`tenants.primaryColor`, `TenantBrandingProvider`) is **not applied** on public surfaces; today it overrides `--primary` on the auth pages, so a tenant colour that fails on near-black would break the sign-in button (05 §5.8). A tenant-pinned login shows the tenant's **logo and name** only. An arbitrary tenant colour cannot be contrast-checked against near-black in advance, and a second accent breaks the one-accent rule.
+Tenant colour (`tenants.primaryColor`, `TenantBrandingProvider`) is **not applied** on public surfaces; today it overrides `--primary` on the auth pages, so a tenant colour that fails on near-black would break the sign-in button (05 §5.8). A tenant-pinned login shows the tenant's **logo and name** only. An arbitrary tenant colour cannot be contrast-checked against the public surface in advance, and a second accent breaks the one-accent rule.
 
 ### 4.2 Colour, with computed contrast
 
-Ratios are WCAG 2.1 relative-luminance ratios, computed 2026-09-29 with the formula in SC 1.4.3 (script kept in the P10-01 record; P10-01 re-runs it as a unit test so the table cannot drift from the CSS).
+**Amended 2026-10-05 by ADR-118 (P10-17): warm and light.** The owner replaced the dark set with ivory, cream and charcoal, one copper accent, a decorative soft gold, and dark teal only as the "verified" marker. The dark values of 2026-09-29 are in git history (`git show 1100658:docs/UI-UX/20-LANDING-AUTH-REVAMP.md`). Ratios are WCAG 2.1 relative-luminance ratios, computed 2026-10-05 from `frontend/src/app/public-surface.css` with the formula in SC 1.4.3; `publicTokens.contrast.p1001.test.ts` recomputes every number below from the CSS, so the table cannot drift.
 
 **Surfaces**
 
 | Token | Hex | Use |
 |---|---|---|
-| `--pub-bg` | `#0A0C0F` | page background (near-black, not pure black: 08 § Dark Theme, halation) |
-| `--pub-surface` | `#12161B` | cards, form panel |
-| `--pub-raised` | `#1A2027` | inputs, popovers, the verdict card |
-| `--pub-glow` | `#092926` at most | the brightest point of any accent glow (`color-mix(in srgb, #00DAB4 14%, #0A0C0F)`); **text may sit on a glow only if it passes against this value** |
+| `--pub-bg` | `#FBF7F0` | page background (ivory) |
+| `--pub-surface` | `#F4ECDF` | alternate bands, panels, the auth form column (cream) |
+| `--pub-raised` | `#FFFDF8` | cards, inputs, the verdict card (paper) |
+| `--pub-glow` | `#F2DFC6` at most | the brightest point of the warm light behind the hero; **text may sit on a glow only if it passes against this value** |
 
 **Foreground, ratio against each surface**
 
 | Token | Hex | on `bg` | on `surface` | on `raised` | on `glow` | Permitted use |
 |---|---|---|---|---|---|---|
-| `--pub-text` | `#EEF2F6` | **17.41** | 16.14 | 14.59 | 13.76 | all text |
-| `--pub-text-muted` | `#A3AEBA` | **8.69** | 8.06 | 7.28 | 6.87 | body copy, secondary text |
-| `--pub-text-subtle` | `#8A95A1` | **6.43** | 5.96 | 5.39 | 5.08 | captions, footnotes, placeholders |
-| `--pub-accent` | `#00DAB4` | **10.90** | 10.11 | 9.13 | 8.61 | links, primary button fill, focus ring, the motif |
-| `--pub-accent-hover` | `#3DE8C9` | 12.67 | 11.75 | 10.61 | — | hover fill |
-| `--pub-accent-pressed` | `#00B899` | — | — | — | — | pressed fill |
-| `--pub-on-accent` | `#0A0C0F` | — | — | — | — | text on the accent: **10.90** on accent, 12.67 on hover, 7.75 on pressed |
-| `--pub-border` | `#2A323C` | 1.51 | 1.40 | 1.27 | — | **decorative dividers only**; never an input or control boundary |
-| `--pub-border-strong` | `#6B7684` | **4.24** | 3.93 | 3.55 | — | input and control boundaries (SC 1.4.11 needs 3:1) |
+| `--pub-text` | `#1F1B17` | **16.02** | 14.59 | 16.83 | 13.15 | all text (charcoal) |
+| `--pub-text-muted` | `#4A423A` | **9.23** | 8.40 | 9.69 | 7.57 | body copy, secondary text |
+| `--pub-text-subtle` | `#685D52` | **6.00** | 5.47 | 6.31 | 4.93 | captions, footnotes, placeholders |
+| `--pub-accent` | `#9A4E22` | **5.64** | 5.14 | 5.92 | 4.63 | links, primary button fill, focus ring, the motif (copper) |
+| `--pub-accent-hover` | `#83411B` | **7.18** | 6.54 | 7.55 | — | hover fill, hover link |
+| `--pub-accent-pressed` | `#6C3616` | — | — | — | — | pressed fill |
+| `--pub-on-accent` | `#FFFDF8` | — | — | — | — | text on the accent: **5.92** on accent, 7.55 on hover, 9.49 on pressed |
+| `--pub-verified` | `#0E5A52` | **7.55** | 6.88 | 7.94 | 6.20 | **"verified" only**: the SAH/VALID verdict, the demo's verified stamp, the workflow's last step |
+| `--pub-gold` | `#C49A5B` | 2.42 | 2.21 | 2.54 | — | **decorative only**: rules, the timeline line, dots, glints; never text, never a fill under text |
+| `--pub-border` | `#E5D9C7` | 1.30 | 1.19 | 1.37 | — | **decorative dividers only**; never an input or control boundary |
+| `--pub-border-strong` | `#8A7B6A` | **3.84** | 3.50 | 4.03 | — | input and control boundaries (SC 1.4.11 needs 3:1) |
 
 **Status, public surfaces only**
 
 | Token | Hex | on `bg` | on `surface` | on `raised` | Use |
 |---|---|---|---|---|---|
-| `--pub-success` | `#4ADE80` | 11.24 | 10.42 | 9.42 | verdict VALID |
-| `--pub-warning` | `#FBBF24` | 11.73 | 10.88 | 9.83 | verdict EXPIRED / NOT YET VALID |
-| `--pub-danger` | `#FB7185` | 7.28 | 6.75 | 6.10 | verdict REVOKED / WITHDRAWN, form errors (5.75 on glow) |
-| `--pub-neutral` | `#CBD5E1` | 13.19 | 12.23 | 11.05 | verdict NOT FOUND |
+| `--pub-success` | `#0E5A52` | 7.55 | 6.88 | 7.94 | verdict VALID — the same dark teal as `--pub-verified` |
+| `--pub-warning` | `#8A5300` | 5.93 | 5.40 | 6.23 | verdict EXPIRED / NOT YET VALID; the workflow's due badge |
+| `--pub-danger` | `#A1282C` | 6.89 | 6.27 | 7.23 | verdict REVOKED / WITHDRAWN, form errors (5.65 on glow) |
+| `--pub-neutral` | `#4B525B` | 7.40 | 6.74 | 7.77 | verdict NOT FOUND |
+
+**Inverted section (ADR-118 Amendment 1): deep warm charcoal, never black.** One section per page at most — the landing's verification demo. `.lp-inverted` (`components/public/landing/landing.css`) maps the `--pub-*` names onto these, and paper inside it (`.lp-paper`: the demo certificate, the phone screen) returns to the light values. Ratios recomputed by `publicTokens.contrast.p1001.test.ts`. (These rows sit outside the Foreground table, so the table's own check does not read them.)
+
+| Inverted token | Hex | on `inv-bg` | on `inv-surface` | Use |
+|---|---|---|---|---|
+| inv `--pub-inv-bg` | `#241E19` | — | — | the section's background |
+| inv `--pub-inv-surface` | `#2F2721` | — | — | panels inside it |
+| inv `--pub-inv-text` | `#F6EFE4` | 14.42 | 12.83 | all text |
+| inv `--pub-inv-text-muted` | `#D2C4B2` | 9.63 | 8.57 | body copy, captions |
+| inv `--pub-inv-accent` | `#E3A47B` | 7.74 | 6.88 | links, primary button fill, focus ring |
+| inv `--pub-inv-accent-hover` | `#EDB892` | 9.31 | 8.28 | hover fill |
+| inv `--pub-inv-verified` | `#7CCFC0` | 9.06 | 8.06 | verified, on dark |
+| inv `--pub-inv-border-strong` | `#9C8C7A` | 5.06 | 4.50 | control boundaries (≥ 3:1) |
+| inv `--pub-inv-border` | `#4A3F35` | 1.61 | 1.43 | decorative dividers only |
+
+Text on the primary button in the inverted section: `--pub-inv-on-accent` `#241E19` — **7.74** on the accent, 9.31 on hover.
+
+**Dark mode (ADR-118 Amendment 3).** The surfaces are espresso `#1A1511`, `#231C17` and `#2D251F`, with glow `#3A2B1F`. They are applied by `.dark` on `<html>`, the app's one theme switch, shared with the dashboard. When the visitor has not chosen, `prefers-color-scheme: dark` applies them instead. Ratios are recomputed by `publicTokens.contrast.p1001.test.ts`.
+
+| Dark token | Hex | on `bg` | on `surface` | on `raised` | on `glow` | Use |
+|---|---|---|---|---|---|---|
+| dark `--pub-dark-text` | `#F6EFE4` | 15.86 | 14.71 | 13.17 | 11.90 | all text (ivory) |
+| dark `--pub-dark-text-muted` | `#D4C7B5` | 10.90 | 10.11 | 9.05 | 8.18 | body copy |
+| dark `--pub-dark-text-subtle` | `#B9A994` | 7.91 | 7.33 | 6.57 | 5.93 | captions |
+| dark `--pub-dark-accent` | `#E3A47B` | 8.51 | 7.89 | 7.06 | 6.38 | links, primary fill, focus ring (lightened copper) |
+| dark `--pub-dark-accent-hover` | `#EDB892` | 10.24 | 9.50 | 8.50 | 7.68 | hover fill |
+| dark `--pub-dark-verified` | `#7CCFC0` | 9.96 | 9.24 | 8.27 | 7.47 | verified / success |
+| dark `--pub-dark-warning` | `#F2B55E` | 9.96 | 9.24 | 8.27 | 7.47 | warning status |
+| dark `--pub-dark-danger` | `#F49393` | 8.14 | 7.55 | 6.76 | 6.11 | danger status, form errors |
+| dark `--pub-dark-neutral` | `#CDD2D9` | 11.92 | 11.05 | 9.90 | 8.94 | neutral status |
+| dark `--pub-dark-border-strong` | `#958572` | 5.07 | 4.70 | 4.21 | 3.80 | control boundaries (≥ 3:1) |
+| dark `--pub-dark-gold` | `#8E7247` | 4.01 | 3.72 | 3.33 | 3.01 | decorative only |
+| dark `--pub-dark-border` | `#3D332A` | 1.47 | 1.36 | 1.22 | 1.10 | decorative dividers only |
+
+Text on the dark primary fill (`--pub-dark-on-accent` `#1A1511`): **8.51** on accent, 10.24 on hover, 12.05 on pressed.
 
 **Forbidden pairings (each fails, measured):**
 
-- White on the accent: **1.80**. The primary button's label is `--pub-on-accent`, never white.
-- The navy mark `#001250` on `--pub-bg`: **1.12**. Public surfaces use `mark-dark.svg` (or `BrandIcon` with `currentColor` white).
-- `--pub-border` as an input boundary: 1.51. Inputs use `--pub-border-strong`.
+- `--pub-gold` as text on ivory: **2.42**; white on the gold: **2.59**. The gold is decoration only.
+- The brand teal `#00DAB4` (the mark's fixed accent, `BrandIcon`) as text on `--pub-bg`: **1.68**. It stays inside the logo, which SC 1.4.3 exempts.
+- `--pub-border` as an input boundary: 1.37 on raised. Inputs use `--pub-border-strong`.
 
-**The accent and "success" are the same luminance** (accent vs `--pub-success`: **1.03**). They differ only in hue (≈169° vs ≈142°). So: the accent never appears inside or beside the verification verdict card, and every status is carried by its **word and icon** (08 § Never Colour Alone). This is the concrete form of 00's rule that the brand accent must not read as a status.
+**The accent and "verified" differ in hue, not much in luminance** (copper vs teal: **1.34**). So the copper accent never appears inside or beside the verification verdict card, and every status is carried by its **word and icon** (08 § Never Colour Alone).
 
 ### 4.3 Typography
 
 | Role | Family | Licence | Weights loaded | Used for |
 |---|---|---|---|---|
-| Display | **Instrument Serif** | SIL OFL 1.1 | Regular 400, Italic 400 | `h1`, section headlines (≥ 32 px), the verification verdict word |
+| Display | **Instrument Serif** | SIL OFL 1.1 | Regular 400, Italic 400 (the Italic shipped since ADR-118, for one emphasised phrase per headline) | `h1`, section headlines (≥ 32 px), the hero's kicker, the verification verdict word |
 | Body / UI | **Plus Jakarta Sans** | SIL OFL 1.1 | 400, 500, 600 | body, buttons, labels, inputs, navigation |
 | Data | **JetBrains Mono** (unchanged) | SIL OFL 1.1 | as today | certificate numbers, serials, codes, OTP field |
 
@@ -146,6 +185,7 @@ Ratios are WCAG 2.1 relative-luminance ratios, computed 2026-09-29 with the form
 | Auth and verification | sign-in: only focus, hover and the step transition (≤ 220 ms). `/verify`: **zero motion** (14, unchanged) |
 | Implementation | CSS transitions and one `IntersectionObserver` (the existing `ScrollReveal`). **No animation library on public pages:** GSAP (+ ScrollTrigger, SplitText), Lenis and Motion are removed from the landing and the auth pages (05 §7.1–7.2: three animation systems, ~305 KiB gzip JS on `/`; Motion on `/login` for a tab indicator). Remove `Marquee`, the `AuroraBackground`/`AnimatedBackground` blur stacks, `MagneticButton`, `TiltCard`, `Counter` and `animate-ping` from public pages |
 | Text is never hidden for an entrance | no text is server-rendered at `opacity: 0` or behind a hydration-dependent entrance. Today the hero `<h1>` starts at opacity 0 and waits for ~305 KiB of JS, which ties LCP to hydration (05 §7.3). Entrances animate a decorative layer, or transition from an already-visible state |
+| **Amended by ADR-118 (P10-17)** | **Now permitted**, all inside `prefers-reduced-motion: no-preference`, transform/opacity only, 200–600 ms: a CSS-only staggered hero entrance at first paint in which the `<h1>` only rises (never from opacity 0); CSS scroll-driven reveals (`animation-timeline: view()`) — text blocks rise without fading, photographs and decorative layers may fade — and parallax on photographs and decorative layers only; a decorative hero layer that follows a fine pointer by ≤ 12 px; a CSS count-up (`@property`) only on figures inside a *Contoh data* mock-up, with the value in the accessible text; a header that tightens on scroll (fill, hairline, shadow, a 6 % brand scale — never its height); fill-transition buttons with a sliding arrow; the workflow panel's per-step micro-animations; the QR demo's scan line; a smooth `<details>` open via `::details-content`. **Still forbidden:** motion on running text beyond the hero's one rise, magnetic buttons, gradient text, marquees, autoplay video, scroll-jacking, smooth-scroll libraries, loops without a pause (the due badge pulses three times), animation libraries on public pages. Styles: `frontend/src/components/public/landing/landing.css` |
 
 ---
 
@@ -191,7 +231,7 @@ Logo (the dark lockup) · anchors *Fitur · Alur kerja · Keamanan · Verifikasi
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Visual:** a high-resolution screenshot (AVIF + WebP, `next/image`, `priority`) of the real calibration record and the signed certificate with its QR, from a seeded demo tenant with invented device data, over the precision-scale motif and one teal light. Watermark caption *Contoh data / Sample data*. **This image is the LCP element**; its budget is in §13.
+- **Visual (ADR-118):** a licensed photograph of a technician measuring a circuit board (`marketing/people/technician-bench.webp`, `next/image`, `priority` — **the LCP element**, budget §13), with the real product screenshot (`hero.webp`) and a small *Contoh data* summary card (two count-up sample figures, the dark-teal *SAH* mark) overlapping it, the precision motif behind, a warm light. Caption *Foto ilustrasi · Tampilan produk: contoh data*. Above the `<h1>`: a greeting that follows the visitor's clock (*Selamat pagi, tim IPSRS dan mutu rumah sakit.*) and a serif kicker (*Saat survei datang, Anda ingin **semuanya sudah siap.***). The sourced eyebrow sits under the CTAs with the sign-in link. *(Was: the screenshot alone over a teal light.)*
 - **Removed from today's hero** (P10-00): the "12,000+ instruments" pill and pulsing dot, `heroStats`, `HeroChips` ("99.2% on schedule", "Audit-ready"), the four randomuser.me faces, the "ISO 17025 · Traceable standards" eyebrow, the "Start free trial → /login" CTA (05 H1–H9). "Every result traceable" goes too: metrological traceability is a property of the laboratory's process, and `calibration_records.standard` is free text with no reference-standard chain behind it (05 H2–H3, `calibrationRecord.model.ts:121`).
 - **CTAs:** primary **WhatsApp** (`https://wa.me/<number>?text=<prefilled, encoded>`), secondary **email** (`mailto:<address>`). Both come from configuration, not code: `NEXT_PUBLIC_CONTACT_WHATSAPP` and `NEXT_PUBLIC_CONTACT_EMAIL` (ADR-098 §8.8). **A channel whose value is empty is hidden, never shown as a placeholder.** The request-access link (*Minta akses untuk rumah sakit Anda →* `/request-access`) is always present, so the hero never ends up with no way forward.
 
@@ -199,9 +239,11 @@ Logo (the dark lockup) · anchors *Fitur · Alur kerja · Keamanan · Verifikasi
 
 One short band, no numbers: overdue devices found during a survey; certificates in binders; "who calibrated this, and against what?" asked with the surveyor in the room. Three short statements, serif, large. No statistics (there are none we can source).
 
+**ADR-118:** the three statements become **scenario cards** ("Skenario · Pagi hari survei" …), staggered on desktop, each with a second line "Dengan Device Calibrator: …" stating what the product does (sourced in §11.1, `landing.moments.*.after`), beside a licensed photograph of paper files. Scenarios, not testimonials: no names, no quotes attributed to anyone.
+
 ### 6.3 Features and the workflow story
 
-A horizontal story of six steps, each a real UI crop plus two lines. On desktop it is a sticky left column of step titles and a right column that swaps the crop as the reader scrolls (CSS `position: sticky` + `IntersectionObserver`; no scroll-jacking). On mobile and under reduced motion it is a plain vertical list.
+A horizontal story of six steps, each a real UI crop plus two lines. On desktop it is a sticky left column of step titles and a right column that swaps the crop as the reader scrolls (CSS `position: sticky` + `IntersectionObserver`; no scroll-jacking). On mobile and under reduced motion it is a plain vertical list. **ADR-118:** a progress rail fills as the reader moves through the steps, the panel shows "Langkah n dari 6", and each step has its own decorative micro-animation in the panel (CSV rows flowing in, the due badge pulsing three times, the needle settling, a certificate rising, a signature drawing itself, a dark-teal "verified" stamp). Below the story, the further capabilities are a **bento** (unequal spans on a six-column grid, icons, a gentle hover lift), not a uniform list.
 
 | # | Step | Shows | Traceable to |
 |---|---|---|---|
@@ -230,7 +272,7 @@ Two columns of text, no logos, no chips, no ISO/KARS/KAN/ILAC marks.
 
 ### 6.5 Public certificate verification
 
-A single field and a button: *Nomor sertifikat* → **Periksa**. Submitting navigates to `/verify/<number>` (a plain `<form method="get">` to a small route that redirects; works without JS). Beside it, a phone mock-up of a real verdict on the demo tenant's certificate. This is the most persuasive thing on the page (14 § Landing) and it is a working tool, not an illustration.
+A single field and a button: *Nomor sertifikat* → **Periksa**. Submitting navigates to `/verify/<number>` (a plain `<form method="get">` to a small route that redirects; works without JS). Beside it, a phone mock-up of a real verdict on the demo tenant's certificate. This is the most persuasive thing on the page (14 § Landing) and it is a working tool, not an illustration. **ADR-118:** below it, an **interactive demo**: a sample certificate with a QR code (it encodes the plain text *CONTOH DATA — Device Calibrator*, not a link) and an auditor's phone; *Pindai kode QR* runs a 1.1 s scan line, then the phone shows the same verdict word and lead as the real `/verify` page for a valid certificate (*SAH* + `verify.validLead`) in dark teal, announced in a polite live region; under reduced motion the verdict appears at once. Everything in it is labelled *Demonstrasi dengan contoh data*.
 
 The field does not autocomplete from history (`autocomplete="off"`), accepts paste, trims whitespace, and does not reveal anything itself: the verdict is `/verify`'s job.
 
@@ -238,7 +280,7 @@ The field does not autocomplete from history (`autocomplete="off"`), accepts pas
 
 ### 6.6 How we work with hospitals
 
-Three steps as text: *Diskusi kebutuhan → Uji coba (pilot) → Penerapan dan pendampingan*. No durations and no promises until the owner states them.
+Three steps as text: *Diskusi kebutuhan → Uji coba (pilot) → Penerapan dan pendampingan*. No durations and no promises until the owner states them. **ADR-118:** a numbered timeline with one sentence per step (`landing.work.step*Text`, §11.1) beside a licensed photograph of two hospital staff talking, captioned as an illustration of no one connected to the product.
 
 ### 6.7 FAQ
 
@@ -252,6 +294,36 @@ A final band repeating the two CTAs, then the footer: **only links that have a d
 
 `TrustSection` (fictional hospital marquee, one of them the name of a real hospital network, and badge chips), `TestimonialsSection`, `PricingSection` (incl. "14-day free trial · No credit card"), `PlatformSection` (a Pexels "graph on laptop" photo presented as the product under an invented `app.hdc.health` URL, 05 P1), the "Audit prep: Days → minutes" card (05 C9), the patient-monitor photo (05 F9), `SecuritySection.tsx` (delete the file, 05 §3.11), the `accreditations`, `testimonials`, `partners`, `pricingTiers`, `heroStats` exports in `frontend/src/data/landing.ts`, the four `avatar-*.jpg` files, and the "Start free trial" link in `frontend/src/app/blog/[slug]/page.tsx`. P10-00 removes the fabricated items **before** any redesign.
 
+### 6.10 The landing as built after ADR-118 Amendment 1 (P10-17, 2026-10-05)
+
+The owner's final brief (`.claude/commands/redesign-landing.md`) asked for a change of composition, not a reskin. In order, with the rhythm *dense → airy → immersive → editorial → interactive → minimal*:
+
+1. **Hero** (dense):
+   - text on ivory, with a time-of-day greeting, the kicker and the unchanged `<h1>`/lead/CTA;
+   - a full-bleed photograph of a technician, revealed by a mask;
+   - one interactive element: the precision gauge's needle follows a fine pointer, and simply settles on touch.
+2. **Story** (airy): the three survey moments as large serif lines with a number and a time label. No cards.
+3. **Human moment** (immersive): a full-bleed photograph of paper files with one sentence over a warm veil.
+4. **Transformation**:
+   - a before/after comparison — the paper files against the real due list (sample data) — operated with a native range input;
+   - the three "Dengan Device Calibrator" statements.
+5. **Product experience**: the six-step sticky story (§6.3). Below 1024 px it is a swipeable scroll-snap strip.
+6. **Personalization**:
+   - an explorable sample certificate (invented hospital, location, device, standard, technician and signer, labelled *Contoh data*);
+   - four numbered markers, each a button, explain where each part comes from (claims sourced in §11.1).
+7. **Verification** (interactive, the inverted section): the QR demo (§6.5) on deep warm charcoal.
+8. **Proof** (minimal), with no testimonials:
+   - it says plainly that there are no customer stories yet and that none will be invented;
+   - it links to what the visitor can check: verification, security controls, how we work;
+   - real stories, with permission, go in `customerStories.ts`, which is empty and renders nothing.
+9. **Compliance and security**: an editorial split with a full-height photograph, standards, controls and the disclaimer.
+10. **Juga tersedia** (`#fitur`): a numbered typographic index. No cards and no icons.
+11. **How we work** (`#cara-kerja`): a timeline and a photograph.
+12. **FAQ**.
+13. **Closing**: a kicker, a very large serif line, the contact buttons.
+
+**Removed in the second pass:** the scenario cards, the bento grid, the hero's dark product-screenshot overlay and its count-up summary card. The CSS count-up permission in §4.5 is unused. **Navigation:** workflow, verification, security, *Masuk*, ID/EN and *Hubungi kami*. `#fitur` and `#faq` stay as anchors on the page. Type on the landing: Instrument Serif plus Plus Jakarta Sans only; JetBrains Mono is not used there.
+
 ---
 
 ## 7. Sign-in (`/login`)
@@ -263,6 +335,18 @@ Cinematic split-screen (owner brief). Left, ≥ 1024 px only: `--pub-bg` panel w
 - **Exactly one `<h1>` at every width**, and it is in the **form**, not the panel: *Masuk ke Device Calibrator* (or *Masuk ke {tenantName}* on a tenant-pinned build). The panel's headline becomes a `<p>`. Today the `<h1>` moves between panel and form by breakpoint (`AuthBrandingPanel.tsx:65`, `login/page.tsx:77`).
 - Top-left: *← Kembali ke beranda*. Top-right: the language form.
 - A tenant-pinned build (`NEXT_PUBLIC_TENANT_ID`, `useAuthBrand`, `GET /tenants/public`) shows the tenant logo above the `<h1>` and its name in it. No tenant colour (§4.1).
+
+**Amended by ADR-118 Amendment 1 (P10-17, 2026-10-05) — presentation only:**
+
+- **The left panel** shows a lazy-loaded editorial photograph behind a warm veil, one serif line, and a small sample certificate whose QR "forms" once on load. There is no dashboard screenshot, and the panel is still `aria-hidden` with no heading.
+- **Below 1024 px** the panel collapses to a 6 px warm band.
+- **Sign-in** greets the visitor by time of day, adds one calm context line, and says "sign in to continue to the page you were on" when a `callbackUrl` is present. Hints appear on blur, steps ease in, and errors rise softly instead of shaking. The OTP field is one large `one-time-code` input.
+- **Request access:**
+  - calm two-section progress that follows focus (all fields stay on the page — the payload is identical, `authPresentation.p1017.test.tsx`);
+  - validation on blur;
+  - a success summary with the three next steps;
+  - a designed closed state.
+- **Not touched:** `useLoginForm.ts`, `auth.service.ts`, the API routes, cookies, redirects or messages.
 
 ### 7.2 Identifier-first flow
 
@@ -435,7 +519,7 @@ Rules: every claim cites a code file or a `docs/` document; where research 05 su
 | `landing.security.isolation` | Data setiap rumah sakit dipisahkan secara default; permintaan ke data tenant lain dijawab "tidak ditemukan". | Each hospital's data is separated by default; a request for another tenant's data answers "not found". | 05 §3.14; `utils/tenantScope.util.ts`; ADR-048; `twoTenantRoutes.guard.test.ts` (201 `:id` routes accounted for) |
 | `landing.security.mfa` | Autentikasi dua faktor dengan aplikasi autentikator. | Two-factor authentication with an authenticator app. | `auth.service.js` (TOTP, A-99) |
 | `landing.security.sso` | Masuk dengan akun rumah sakit melalui SSO (SAML atau OIDC). | Sign in with your hospital account through SSO (SAML or OIDC). | `sso.controller.js` |
-| `landing.security.passkey` | Kunci sandi (passkey) untuk pengguna yang sudah masuk; masuk tanpa kata sandi menyusul. | Passkeys for signed-in users; passwordless sign-in to follow. | `webauthn.route.js`; **rewrite when P10-10 ships** |
+| `landing.security.passkey` | Kunci sandi (passkey), termasuk masuk tanpa kata sandi. | Passkeys, including passwordless sign-in. | `webauthn.route.js`; P10-10 passwordless sign-in DONE (ADR-108; live in the P10 browser suite, *passkey sign-in with Key A/B*). Rewritten 2026-10-05 (P10-17) as §11 asked |
 | `landing.security.throttle` | Pembatasan percobaan masuk untuk menahan penebakan kata sandi. | Sign-in throttling against password guessing. | `constants/rateLimitConstants.ts` (A-185) |
 | `landing.security.auditRows` | Jejak audit append-only: tidak dapat diubah atau dihapus oleh aplikasi. | Append-only audit trail: the application cannot edit or delete it. | 05 C6; `REVOKE UPDATE, DELETE` (DECISIONS, cited by 05 §3.14) and migration `0091-audit-logs-append-only.ts`; **P10-03 confirms both hold on the reference deployment, as the application role, before this string ships** |
 | `landing.verify.title` | Periksa keaslian sertifikat | Check a certificate | — |
@@ -446,6 +530,19 @@ Rules: every claim cites a code file or a `docs/` document; where research 05 su
 | `landing.work.title` | Cara kami bekerja dengan rumah sakit | How we work with hospitals | — |
 | `landing.work.steps` | Diskusi kebutuhan · Uji coba · Penerapan dan pendampingan | Discuss your needs · Pilot · Rollout and support | describes the sales process, not a product claim; no durations promised |
 | `landing.faq.*` | six Q&As, §6.7; each answer reuses a string above | — | as above |
+| **P10-17 (ADR-118), 2026-10-05** | | | |
+| `landing.hero.kicker` | Saat survei datang, Anda ingin | When the survey comes, you want | an invitation, not a claim ("you want"); precedes the unchanged `landing.hero.title` |
+| `landing.flow.lead` | Enam langkah, satu catatan yang utuh — dari alat masuk daftar sampai auditor memindai kode QR. | Six steps, one unbroken record — from a device joining the list to an auditor scanning the QR code. | the six steps above (`landing.flow.*`, each sourced); `certificate.model.ts` (`deviceId`, `calibrationRecordId`) links them into one record |
+| `landing.moments.1.after` | Dengan interval per alat, yang jatuh tempo dan yang terlambat tampil di satu daftar sebelum surveyor datang. | With an interval per device, what is due and what is overdue show on one list before the surveyor arrives. | 05 W4; `calibrationScheduler.service.js` (due and overdue work orders); the due/overdue list (`step-schedule.webp`) |
+| `landing.moments.2.after` | Setiap sertifikat terhubung ke alat dan catatan kalibrasinya, jadi tidak ada lagi yang dicari di map. | Every certificate is linked to its device and its calibration record, so nothing is left to hunt for in binders. | `backend/src/models/certificate.model.ts` (`deviceId`, `calibrationRecordId`, associations lines 495–501) |
+| `landing.moments.3.after` | Catatan kalibrasi menyimpan teknisi, standar acuan, dan ketidakpastian pengukurannya; koreksi dibuat sebagai catatan baru. | Each calibration record holds the technician, the reference standard and the measurement uncertainty; a correction is a new record. | `backend/src/models/calibrationRecord.model.ts` (`performedBy`, `standard`, uncertainty; `supersedesId`, `correctionReason`); migration 0057; ADR-062 |
+| `landing.work.step1Text` | Kami mendengarkan cara tim Anda bekerja hari ini: daftar alat, jadwal, dan dokumen yang biasa diminta saat survei. | We listen to how your team works today: the device list, the schedule, and the documents a survey usually asks for. | describes the sales conversation (`landing.work.steps`); no duration or deliverable promised |
+| `landing.work.step2Text` | Coba dengan sebagian alat dan satu tim, supaya Anda menilai sendiri sebelum memutuskan. | Try it with some of your devices and one team, so you can judge for yourselves before deciding. | describes a pilot (`landing.work.step2`); scope agreed with the hospital, nothing promised |
+| `landing.work.step3Text` | Penerapan bertahap bersama tim Anda, dengan orang yang bisa Anda hubungi saat ada pertanyaan. | A gradual rollout with your team, and a person to contact when questions come up. | describes rollout and support (`landing.work.step3`); "a person to contact" is the configured contact channels (Q-41, doc 20 §14 — someone must answer them before go-live) |
+| `landing.cert.hs.1.text` | Merek, model, lokasi, dan interval kalibrasi diambil dari catatan alat yang sama. | Make, model, location and calibration interval come from the same device record. | `backend/src/models/calibrationDevice.model.ts` (make, model, location, interval); `certificate.model.ts` `deviceId` (P10-17 certificate explorer) |
+| `landing.cert.hs.2.text` | Standar acuan, ketidakpastian pengukuran, dan teknisi tercatat pada catatan kalibrasi yang tidak dapat diubah. | The reference standard, measurement uncertainty and technician are on a calibration record that cannot be edited. | `calibrationRecord.model.ts` (`standard`, uncertainty, `performedBy`); append-only, migration 0057, ADR-062 (P10-17 certificate explorer) |
+| `landing.cert.hs.3.text` | Penandatangan mengautentikasi ulang sebelum menandatangani. | The signer re-authenticates before signing. | `eSignature.service.js` (A-65 re-authentication) (P10-17 certificate explorer) |
+| `landing.cert.hs.4.text` | Siapa pun dapat memindai kodenya dan melihat status sertifikat, tanpa login. | Anyone can scan the code and see the certificate's status, without signing in. | `certificates.route.js:38`; `/verify` page; `frontend/src/lib/certificatePdf.ts` (QR of `verifyUrl`) (P10-17 certificate explorer) |
 | `pub.footer.privacy` | Kebijakan Privasi | Privacy Notice | shown only while `PRIVACY_NOTICE_URL` is set (ADR-113); the notice itself is a go-live prerequisite (§14) |
 
 ### 11.2 Sign-in, request access, reset, verify
@@ -519,11 +616,23 @@ Every asset shipped on a public surface is listed here with its source and licen
 | JetBrains Mono (data) | https://github.com/JetBrains/JetBrainsMono | SIL OFL 1.1 | already bundled |
 | Lucide icons | https://lucide.dev/license | ISC (some MIT from Feather) | already a dependency (`lucide-react`); stroke 1.5 on public surfaces |
 | Brand mark and lockups | `frontend/public/brand/` (08 § The Product's Own Brand) | presumed owned — **no origin or licence record exists** (05 §4) | use the dark variants; record the designer and date; the SVG `<title>` reads "Device Calibrator" until Q-43 |
+| Brand recolour (P10-17, ADR-118 Am. 2) — `frontend/public/brand/` `mark.svg`, `mark-dark.svg`, `lockup-light.svg`, `lockup-dark.svg`, `app-icon.svg`, `logo-email.png`; `frontend/public/favicon.ico`, `apple-touch-icon.png` | the project's own logo above, recoloured 2026-10-05 at the owner's request; shape unchanged | as the row above (the project's own asset) | fills only: charcoal `#1F1B17` + copper `#9A4E22` on light, ivory `#F6EFE4` + light copper `#E3A47B` on dark/the `#241E19` tile; `lockup-mono.svg` unchanged; PNG/ICO regenerated from the SVGs with `sharp`; record `MEMORY/records/2026-10-05-logo-warm-recolour.md` |
 | Precision-scale motif (SVG) | drawn in-house for P10-01 | owned | graduation ticks, tolerance band, needle; tokens only |
 | Grain texture `frontend/public/textures/grain.svg` | generated in-house (`feTurbulence`) | owned | static file, applied as a CSS background (no inline `<style>`) |
-| Hero and workflow screenshots — `frontend/public/marketing/product/`: `hero.webp`, `step-device.webp`, `step-schedule.webp`, `step-calibrate.webp`, `step-certificate.webp`, `step-sign.webp`, `step-verify.webp` | captured 2026-09-30 (P10-03) with puppeteer at 2× from the product's own dashboard (dark theme) and `/verify`, on a disposable local stack seeded by `GET /migration/seed-demo` plus seven invented devices (`CONTOH-*` serials, makers "Contoh Medika", "Alat Sehat", "Nusantara Instrumen"); sidebar and top bar cropped out; WebP q80 via sharp | owned | no real hospital, patient or staff names (demo users only: "Demo Healtcare Admin", "Super System"); captioned "Contoh data / Sample data" wherever shown; re-capture on the release build (§14) |
-| `frontend/public/marketing/CREDITS.md` | this register's human-readable companion | — | lists what P10-00 removed |
-| Photographs | **none planned.** If one is added: Unsplash (https://unsplash.com/license) or Pexels (https://www.pexels.com/license/), no identifiable people or branded equipment, and a model/property release question answered first (research 04 §5.3) | per source | the nine Pexels files in `public/marketing/` are removed with the sections that used them |
+| Workflow screenshots — `frontend/public/marketing/product/`: `step-device.webp`, `step-schedule.webp`, `step-calibrate.webp`, `step-certificate.webp`, `step-sign.webp`, `step-verify.webp` | **re-captured 2026-10-05 (P10-17, QA M4)** with puppeteer at 2× from the product's own dashboard in **light** theme and the warm `/verify` page on a phone (390 px). The source was the disposable `p1017warm` stack: the demo tenant seeded by `seed-demo` (development mode), plus seven invented devices (`CONTOH-*` serials; makers "Contoh Medika", "Alat Sehat", "Nusantara Instrumen"). The browser suite's own test rows were removed from the page before capture, and nothing else was altered. The demo certificate's `valid_until` was moved forward in that throwaway database so the phone shows *SAH*. WebP q80, 1280×800 (sign 760×1127, verify 780×1688). `hero.webp` was deleted: it is no longer used | owned | no real hospital, patient or staff names (demo users only); captioned "Contoh data / Sample data" wherever shown; re-capture on the release build (§14) |
+| `frontend/public/marketing/ASSETS.md` | the readable summary of every public asset's source, creator and licence (P10-17, brief §9) | — | kept in step with this register |
+| `frontend/public/marketing/CREDITS.md` | this register's human-readable companion | — | lists what P10-00 removed and what P10-17 added |
+| `frontend/public/marketing/people/technician-bench.webp` (auth panel; was the landing hero in the first pass) | https://unsplash.com/photos/a-technician-is-working-on-an-electronic-circuit-M64oBzDDjsY — by **Arabian Infotech Qatar** (unsplash.com/@arabaninfotechqatar), published 2025-04-05 | **Unsplash License** (https://unsplash.com/license): free for commercial use, modification permitted, no attribution required; not permitted: selling unaltered copies, compiling a competing image service. Checked `premium: false`, `plus: false` on 2026-10-05 | **What it shows:** a technician in safety glasses measuring a circuit board with a multimeter at a workbench. Cropped 4:5 at 1278×1597 (the source's full height, no upscaling), WebP q66 (109 KB). Captioned *Foto ilustrasi*; not a customer or our staff; no logo or name. P10-17, ADR-118 |
+| `frontend/public/marketing/people/paper-stacks.webp` (moments) | https://unsplash.com/photos/stacks-of-paper-documents-and-file-folders-snNHKZ-mGfE — by **Wesley Tingey** (unsplash.com/@wesleyphotography) | Unsplash License, as above; checked 2026-10-05 | **What it shows:** stacks of paper files and folders in an office; no people. 1400×933, WebP q68 (78 KB). Captioned *Foto ilustrasi* |
+| `frontend/public/marketing/people/records-review.webp` (compliance) | https://unsplash.com/photos/woman-signing-on-white-printer-paper-beside-woman-about-to-touch-the-documents-HJckKnwCXxQ — by **Gabrielle Henderson** (unsplash.com/@gabriellefaithhenderson) | Unsplash License, as above; checked 2026-10-05 | **What it shows:** two people at a grey table going through printed documents, one writing; cropped at the shoulders, no face. 1800×1200 since the second pass (sharper at 1280 px), WebP q66 (83 KB). Captioned *Foto ilustrasi*. (A darker clipboard photo, WNlFy0_apVQ, was tried first and dropped: it read as night on the light page) |
+| `frontend/public/marketing/people/clinician-monitor.webp` (landing hero, the LCP image on desktop) | https://unsplash.com/photos/a-man-in-scrubs-and-a-stethoscope-looking-at-a-monitor-0Fv4M2hSZJU — by **César Badilla Miranda** (unsplash.com/@xbmpro) | Unsplash License, as above; `premium: false`, `plus: false` checked 2026-10-05 | **What it shows:** a clinician in scrubs, mask and cap adjusting a vital-signs monitor; face partly covered; no hospital name or logo. 1600×1067, WebP q70 (46 KB). Captioned *Foto ilustrasi*. Replaced `technician-bench.webp` as the landing hero in the second pass (owner: imagery contextual to medical devices; ADR-118 Am. 3); `technician-bench.webp` stays on the auth panel |
+| `frontend/public/marketing/people/late-paperwork.webp` (the full-bleed "human moment") | https://unsplash.com/photos/a-woman-sitting-at-a-table-with-lots-of-papers-ZH4FUYiaczY — by **Dimitri Karastelev** (unsplash.com/@dkfra19) | Unsplash License, as above; checked 2026-10-05 | **What it shows:** two hands, a pen and a fan of printed papers on a dark table in low light; no face. 2000×1125, WebP q62 (26 KB). Replaced the second use of `paper-stacks.webp` in a row (QA, 2026-10-05) |
+| `frontend/public/marketing/people/device-check.webp` (how we work) | https://unsplash.com/photos/a-person-adjusts-a-medical-monitor-in-a-tiled-room-Scr5C6EGz9I — by **Alexander Mass** (unsplash.com/@alexandermassph) | Unsplash License, as above; checked 2026-10-05 | **What it shows:** a staff member seen from behind (no face) setting a wall-mounted monitor on a ward; the monitor maker's small badge is visible. 1120×1400, WebP q70 (19 KB). Captioned *Foto ilustrasi — orang dan tempat dalam foto ini tidak terkait dengan Device Calibrator* |
+| ~~`hallway-conversation.webp`~~ (Centre for Ageing Better, 7FHjL_TJlA8) | — | — | **removed 2026-10-05 (second pass)**: identifiable faces and a real UK hospital's uniforms — exactly what brief §9 asks to avoid |
+| Instrument Serif Italic `frontend/src/app/fonts/instrument-serif-latin-400-italic.woff2` | @fontsource/instrument-serif 5.3.0 (jsDelivr), from https://github.com/Instrument/instrument-serif | SIL OFL 1.1 | `frontend/public/licenses/OFL-InstrumentSerif.txt` (same family); 22.1 KB; five public font files now 79.5 KB (≤ 90 KB). P10-17 |
+| Warm grain `frontend/public/textures/grain-warm.svg` | generated in-house (`feTurbulence`, a warm-brown noise at 5 %) | owned | replaces `grain.svg` (white noise, invisible on ivory) as the public background texture. P10-17 |
+| **Assets still needed (owner)** | commissioned photographs of a real, consenting Indonesian hospital team: an IPSRS technician calibrating a device; an assessor scanning a certificate's QR with a phone; a quality team preparing for a survey; a short (≤ 10 s, muted, with a pause control) hero clip is optional | owner's own, with model releases | until then the four Unsplash photographs above stand in, captioned as illustrations (ADR-118) |
+| Photographs (rule) | **Since ADR-118:** Unsplash or Pexels only, free for commercial use, self-hosted, captioned as illustrations, registered here with source, author, licence and subject. *(Was "none planned".)* If one is added: Unsplash (https://unsplash.com/license) or Pexels (https://www.pexels.com/license/), no identifiable people or branded equipment, and a model/property release question answered first (research 04 §5.3) | per source | the nine Pexels files in `public/marketing/` are removed with the sections that used them |
 | `avatar-1.jpg` … `avatar-4.jpg` | randomuser.me (`portraits/men/32, women/44, men/76, women/68`) | **no model release for advertising**; real faces attached to invented names and ratings | **deleted in P10-00** |
 | `platform-dashboard.jpg`, `feature-monitoring.jpg` | Pexels | Pexels License | **deleted in P10-00**: the first is presented as the product, the second shows a patient monitor for a product that holds no patient data (05 P1, F9) |
 | the other seven Pexels photos (`step-*.jpg`, `compliance-audit.jpg`, `cta-band.jpg`, `hero-clinician.jpg`) | Pexels | Pexels License | **deleted in P10-03** with the sections that used them |

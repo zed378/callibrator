@@ -89,6 +89,19 @@ export const CLAIM_KEY_PREFIXES: readonly string[] = [
   "landing.faq.a",
   "landing.verify.lead",
   "landing.verify.help",
+  // P10-17 (ADR-118): the warm landing's new statements about the product or
+  // about how the team works with a hospital — each needs its §11 row.
+  "landing.flow.lead",
+  "landing.moments.1.after",
+  "landing.moments.2.after",
+  "landing.moments.3.after",
+  "landing.work.step1Text",
+  "landing.work.step2Text",
+  "landing.work.step3Text",
+  "landing.cert.hs.1.text",
+  "landing.cert.hs.2.text",
+  "landing.cert.hs.3.text",
+  "landing.cert.hs.4.text",
 ];
 
 /** Within the claim prefixes, the keys that are titles or labels, not claims. */
@@ -104,4 +117,6 @@ export const NOT_A_CLAIM: readonly string[] = [
   "landing.flow.certificateTitle",
   "landing.flow.signTitle",
   "landing.flow.verifyTitle",
+  // P10-17: the alt text of an illustrative photograph (doc 20 §12), not a claim.
+  "landing.compliance.photoAlt",
 ];

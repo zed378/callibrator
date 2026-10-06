@@ -70,6 +70,7 @@ describe("A-124 — system actors", () => {
       "system:access-request-intake", // P10-05 (ADR-098 §6): a request received through the public intake
       "system:access-request-retention", // P10-05 (Q-42): pending requests expired, decided ones deleted after 12 months
       "system:usage-quota", // A-322: a free-plan tenant suspended by quota enforcement
+      "system:storage-migration", // P8-01 (ADR-086 Am. 1): a row's bytes moved into storage by the operator's CLI
     ]);
     for (const name of SYSTEM_ACTOR_NAMES) {
       expect(name).toMatch(/^system:[a-z][a-z-]*$/);

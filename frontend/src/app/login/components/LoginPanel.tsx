@@ -8,6 +8,8 @@
 // protocol. Errors: one role="alert" summary the fields point at.
 import React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { TimeGreeting } from "@/components/public/landing/TimeGreeting";
 import { KeyRound } from "@/components/icons/static";
 import { BrandLockup } from "@/components/public/BrandLockup";
 import { useClientValue } from "@/hooks/useClientValue";
@@ -33,23 +35,44 @@ export function LoginPanel() {
 
   const title = hasTenant ? t("auth.login.titleTenant", { tenantName: name }) : t("auth.login.title");
   const message = f.step === "sso" ? f.ssoError : f.error;
+  // P10-17 (presentation only): arriving with a callbackUrl — a protected page
+  // or an ended session sent the user here — gets a calm sentence. The redirect
+  // itself is unchanged (useLoginForm + safeCallback).
+  const continuing = Boolean(useSearchParams()?.get("callbackUrl"));
+  const notice = f.notice ?? (continuing ? t("auth.login.continueNotice") : null);
 
   return (
     <div>
       <div className={hasTenant ? "mb-8" : "mb-8 lg:hidden"}>
         <BrandLockup name={name} logoUrl={logoUrl} />
       </div>
-      <h1 className="pub-display pub-display-m text-pub-text">{title}</h1>
+      {/* P10-17: welcomed back — a greeting on the visitor's own clock, one calm line. */}
+      {f.step === "identifier" ? (
+        <p className="text-[0.9375rem] font-medium text-pub-accent">
+          <TimeGreeting
+            words={{
+              default: t("landing.hero.greeting.default"),
+              morning: t("landing.hero.greeting.morning"),
+              midday: t("landing.hero.greeting.midday"),
+              afternoon: t("landing.hero.greeting.afternoon"),
+              evening: t("landing.hero.greeting.evening"),
+            }}
+          />
+          .
+        </p>
+      ) : null}
+      <h1 className="pub-display pub-display-m mt-2 text-pub-text">{title}</h1>
+      {f.step === "identifier" ? <p className="mt-3 text-pub-muted">{t("auth.login.welcome")}</p> : null}
 
-      {f.notice && !message ? (
-        <p role="status" className="pub-notice mt-6">
-          {f.notice}
+      {notice && !message ? (
+        <p role="status" className="pub-notice auth-alert-in mt-6">
+          {notice}
         </p>
       ) : null}
 
       <div className="mt-8" aria-live="polite">
         {message ? (
-          <div id={ERROR_ID} role="alert" className="pub-alert mb-6">
+          <div id={ERROR_ID} role="alert" className="pub-alert auth-alert-in mb-6">
             <div>
               <p className="font-semibold">{t("auth.login.errorSummary")}</p>
               <p className="mt-0.5 text-pub-muted">{message}</p>
@@ -58,6 +81,8 @@ export function LoginPanel() {
         ) : null}
       </div>
 
+      {/* Each step re-mounts under its own key, so it eases in (reduced motion: at once). */}
+      <div key={f.step} className="auth-step">
       {f.step === "first" ? (
         <FirstPasswordChangeForm
           newPassword={f.newPassword}
@@ -134,10 +159,11 @@ export function LoginPanel() {
           </div>
         </>
       )}
+      </div>
 
       {f.step === "identifier" || f.step === "password" ? (
         <p className="mt-10 text-center text-[0.9375rem] text-pub-muted">
-          <Link href="/request-access" className="pub-link">
+          <Link href="/request-access" className="pub-link inline-flex min-h-11 items-center">
             {t("auth.login.noAccount")}
           </Link>
         </p>

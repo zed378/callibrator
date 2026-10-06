@@ -51,6 +51,23 @@ const ICONS = [
   "RefreshCw",
   "Share2",
   "X",
+  // P10-17 (ADR-118): the warm landing redesign.
+  "BadgeCheck",
+  "Boxes",
+  "Building2",
+  "CalendarClock",
+  "ChartColumn",
+  "ClipboardCheck",
+  "History",
+  "Languages",
+  "PenLine",
+  "ScanLine",
+  "ShieldCheck",
+  "Stamp",
+  "Upload",
+  "Users",
+  "Webhook",
+  "Wrench",
 ];
 
 const barrel = fs.readFileSync(path.join(lucideEsm, "lucide-react.mjs"), "utf8");

@@ -257,7 +257,9 @@ const ALLOWED: Readonly<Record<string, string>> = Object.freeze({
   "services/session.service#rotateRefreshToken": INFRA,
   "services/session.service#cleanupExpiredSessions": INFRA,
   "services/session.service#revokeSessionById": INFRA,
-  "services/storageMigration.service#migrateAttachment": `${INFRA}: the operator's storage-migration tool moves file bytes`,
+  // P8-01 (ADR-086 Amendment 1): storageMigration#migrateAttachment left this
+  // list — its key backfill now writes a system:storage-migration audit row in
+  // the same transaction (as migrateBackups' filePath backfill does).
   "services/tenantBackup.service#cleanupExpiredBackups": `${INFRA}: the retention sweep of expired backup files`,
   // --- file writers, reviewed when A-364 made a file write a mutation ---
   "services/jobMonitor.service#runMonitored": `${FILE_INFRA}: the job monitor's own state file (temp file + rename)`,

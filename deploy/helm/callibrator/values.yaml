@@ -166,6 +166,12 @@ backend:
     appRole: callibrator_app
     # PostgreSQL must have pgvector: migration 0018 runs
     # `CREATE EXTENSION vector` and plain Postgres fails it.
+    # U-06b (ADR-120): migration 0110 runs `CREATE EXTENSION IF NOT EXISTS
+    # btree_gin` (contrib, a trusted extension): the database OWNER can create
+    # it without being a superuser. A `user` that is not the owner and lacks
+    # CREATE on the database fails 0110 with "permission denied to create
+    # extension" and the backend does not start; create it once as the owner
+    # or an administrator: CREATE EXTENSION btree_gin;
 
   redis:
     url: ""
@@ -173,10 +179,12 @@ backend:
   rabbitmq:
     url: ""
 
-  # /app/uploads — attachments and the upload quarantine. NOT only for the
-  # local storage driver: the attachment path writes local disk whatever
-  # STORAGE_DRIVER says. With storage.driver=local a second claim covers the
-  # driver's root, /app/storage (S-18). ON by default, and the chart refuses
+  # /app/uploads — the upload quarantine, and the files written before P8-01
+  # (legacy attachments, certificate PDFs, public images) until
+  # `migrate:storage` copies them. Since P8-01 (ADR-086 Amendment 1) every
+  # stored file goes through STORAGE_DRIVER. With storage.driver=local a
+  # second claim covers the driver's root, /app/storage (S-18) — where every
+  # new file then lives. ON by default, and the chart refuses
   # NODE_ENV=production with it off (guard 8): every upload would be lost on
   # the next rollout. Each claim carries helm.sh/resource-policy: keep.
   persistence:
@@ -191,6 +199,56 @@ backend:
     enabled: true
     size: 50Gi
     storageClass: ""
+
+# ============================================================================
+# BACKUP VERIFICATION (U-05, ADR-116)
+# ============================================================================
+# A CronJob that dumps the external database (pg_dump -Fc, in an exported
+# snapshot) onto its own claim and RESTORES EVERY DUMP into a throwaway
+# PostgreSQL 18 + pgvector inside the pod, then checks it (exact row counts,
+# audit checksum, pgvector, the application's schema check). A failure alerts
+# through ALERT_WEBHOOK_URL / ALERT_EMAIL_TO and fails the Job. OFF by default
+# only because the image must be built and pushed with the release:
+#   docker build -f deploy/backup/Dockerfile \
+#     --build-context backend-image=docker-image://callibrator/backend:<tag> \
+#     -t callibrator/backup-verify:<tag> .
+# A managed database's own snapshots/PITR are a separate layer; this is the one
+# that proves a restore WORKS. Alert on kube_job_status_failed for this CronJob
+# and on kube_cronjob_status_last_successful_time older than ~26 h.
+backupVerify:
+  enabled: false
+  image:
+    repository: callibrator/backup-verify
+    # Empty = backend.image.tag. The binary inside must match the schema it checks.
+    tag: ""
+    pullPolicy: IfNotPresent
+  schedule: "30 2 * * *"
+  # CronJob .spec.timeZone (Kubernetes >= 1.27) and the pod's TZ. Empty = UTC.
+  timeZone: ""
+  startingDeadlineSeconds: 3600
+  # Kill a run that takes longer than this (the Job fails, which alerts).
+  activeDeadlineSeconds: 14400
+  # Dumps kept on the claim; the newest VERIFIED one is kept whatever its age.
+  keep: 14
+  persistence:
+    # Room for `keep` dumps. Keeps on uninstall (helm.sh/resource-policy: keep).
+    size: 100Gi
+    storageClass: ""
+  # The throwaway server's data directory (an emptyDir): room for ONE restored copy.
+  scratchSizeLimit: 50Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  # Egress (with networkPolicy.enabled): the database, the alert webhook, SMTP.
+  egressPorts:
+    - { port: 5432, protocol: TCP }
+    - { port: 443, protocol: TCP }
+    - { port: 587, protocol: TCP }
+    - { port: 465, protocol: TCP }
 
 # ============================================================================
 # NETWORK POLICY (S-18)

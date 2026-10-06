@@ -24,6 +24,10 @@
 
 const mockDb = { statements: [], profileRow: null };
 
+// P8-01 (ADR-086 Amendment 1): an export's archive and manifest are kept in
+// the tenant's storage; the double keeps the real key rules
+// (fixtures/fakeStorage) and holds the bytes in memory.
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../config", () => {
   const { Sequelize } = jest.requireActual("sequelize");
   const db = new Sequelize({ dialect: "postgres", logging: false });
@@ -200,4 +204,11 @@ describe("A-140 — GDPR Article 15 profile export", () => {
   it("the User -> Role association is declared under the alias the export uses", () => {
     expect(models.User.associations.role.target).toBe(models.Role);
   });
+});
+
+// P8-01 (ADR-086 Amendment 1): the scratch ZIP is never written here (its
+// write stream is doubled), so its copy into the tenant's storage is doubled
+// too; what is under test is what goes INTO the archive.
+beforeEach(() => {
+  jest.spyOn(require("../../services/storedFile.service"), "putLocalFile").mockResolvedValue(undefined);
 });

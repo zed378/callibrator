@@ -18,6 +18,9 @@ import type ExpressModule from "express";
 import { env } from "../config/env";
 import { sanitizeParsedBody } from "../middlewares/globalSanitizer.middleware";
 import type * as UuidModule from "uuid" with { "resolution-mode": "import" };
+import type * as StorageModule from "../services/storage";
+import type * as StoredFileModule from "../services/storedFile.service";
+import type * as FileResponseModule from "./fileResponse.util";
 
 // uuid 14 is ESM-only; the CommonJS build loads it with require(esm), as the .js
 // did. The import above is type-only, which the checker allows from CommonJS.
@@ -108,6 +111,49 @@ const PUBLIC_UPLOAD_FOLDERS = Object.freeze({
   CMS: "uploads/public/cms",
 });
 
+/**
+ * P8-01 (ADR-086 Amendment 1) — the storage domain each public-class folder's
+ * files live in. A public image is a PLATFORM object (`global/<domain>/<file>`):
+ * its URL (`/uploads/public/<folder>/<file>`) names no tenant, the class is
+ * public by design, and its files are not tenant evidence. The trade-off — a
+ * tenant's logo and its users' avatars sit in the platform's store, not in a
+ * bring-your-own bucket, and are outside the tenant's storage usage, as they
+ * were before — is recorded in the ADR.
+ */
+const PUBLIC_STORAGE_DOMAINS: Readonly<Record<string, string>> = Object.freeze({
+  [PUBLIC_UPLOAD_FOLDERS.PROFILE]: "avatars",
+  [PUBLIC_UPLOAD_FOLDERS.TENANT]: "branding",
+  [PUBLIC_UPLOAD_FOLDERS.CMS]: "content",
+});
+
+/**
+ * The storage layer, loaded on first use. upload.util is required by routes
+ * and services that load long before the storage layer is needed, and nothing
+ * here should change where in the boot order `services/storage` (and the
+ * models it reads) first loads.
+ */
+const storageModules = (): { storage: typeof StorageModule; storedFile: typeof StoredFileModule } => ({
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- a lazy load (see above)
+  storage: require("../services/storage") as typeof StorageModule,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- a lazy load (see above)
+  storedFile: require("../services/storedFile.service") as typeof StoredFileModule,
+});
+
+/**
+ * The platform storage key of a public-class file, or null when `name` is not
+ * a file of that class (an unknown folder, or a name the key grammar refuses —
+ * which can then never have been stored under a key).
+ */
+const publicStorageKey = (folder: string, name: string): string | null => {
+  const domain = PUBLIC_STORAGE_DOMAINS[folder];
+  if (!domain) {return null;}
+  try {
+    return storageModules().storage.keys.buildKey({ tenantId: null, domain, name });
+  } catch {
+    return null;
+  }
+};
+
 /** The URL the public class is served at (index.js). */
 const PUBLIC_UPLOADS_URL = "/uploads/public";
 
@@ -160,10 +206,59 @@ const publicUploadsGuard = (req: Request, res: Response, next: NextFunction): un
   return next();
 };
 
+/** One day, as PUBLIC_UPLOADS_STATIC_OPTIONS.maxAge — express.static's header for it. */
+const PUBLIC_CACHE_CONTROL = "public, max-age=86400";
+
+/**
+ * P8-01 — serve a public-class file from platform storage, with exactly the
+ * headers and conditional/range semantics express.static gives the same file
+ * on disk (routes/storedFiles.identity.p801 proves the two identical). A file
+ * that is not in storage — one uploaded before the cut-over and not yet
+ * copied by `npm run migrate:storage` — falls through to the static mount
+ * over the legacy directory, unchanged.
+ */
+const publicUploadsFromStorage = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    next();
+    return;
+  }
+  // `/<folder>/<file>` under the mount; anything deeper or shallower is not
+  // a public-class file.
+  const match = /^\/([a-z]+)\/([^/]+)$/.exec(req.path);
+  const key = match ? publicStorageKey(`uploads/public/${match[1] as string}`, decodeURIComponent(match[2] as string)) : null;
+  if (!key) {
+    next();
+    return;
+  }
+  const { storage, storedFile } = storageModules();
+  try {
+    const scoped = await storage.getGlobalStorage();
+    const object = await storedFile.openObject(scoped, key);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- a lazy load, as the storage layer's
+    const { sendStorageObject } = require("./fileResponse.util") as typeof FileResponseModule;
+    await sendStorageObject(req, res, object, {
+      contentType: PUBLIC_IMAGE_TYPES[path.extname(key).toLowerCase()] as string,
+      applyHeaders: (r) => {
+        PUBLIC_UPLOADS_STATIC_OPTIONS.setHeaders(r, key);
+        r.setHeader("Cache-Control", PUBLIC_CACHE_CONTROL);
+      },
+    });
+  } catch (err) {
+    if (storedFile.isMissing(err)) {
+      next();
+      return;
+    }
+    next(err);
+  }
+};
+
 /**
  * Mount the public class — and ONLY the public class — on an app. index.js
  * calls this; the tests call it on their own app so they exercise exactly
  * what production mounts. Nothing else under `/uploads` is served.
+ *
+ * P8-01: platform storage first, the legacy directory second (see
+ * publicUploadsFromStorage).
  *
  * @param {import("express").Application} app
  */
@@ -174,6 +269,7 @@ const mountPublicUploads = (app: AppLike): void => {
   app.use(
     PUBLIC_UPLOADS_URL,
     publicUploadsGuard,
+    publicUploadsFromStorage,
     express.static(storagePath("uploads", "public"), PUBLIC_UPLOADS_STATIC_OPTIONS),
   );
 };
@@ -184,8 +280,30 @@ const discard = (filePath: string): Promise<void> => fs.promises.unlink(filePath
 });
 
 /**
+ * S-17: only a file IN the quarantine may leave it — so nothing that did not
+ * pass the upload checks is ever moved into a reachable place.
+ *
+ * @returns the file's resolved path
+ * @throws {AppError} 500 for a file anywhere else
+ */
+const assertInQuarantine = (filePath: string): string => {
+  const from = path.resolve(filePath);
+  if (path.dirname(from) !== path.resolve(quarantinePath())) {
+    throw new AppError(500, "Refusing to promote a file that is not in quarantine");
+  }
+  return from;
+};
+
+/**
  * Move a quarantined upload into its destination folder, and point the multer
  * file object at its new home.
+ *
+ * P8-01 (ADR-086 Amendment 1): a public-class upload (avatar, tenant logo, CMS
+ * image) goes into PLATFORM STORAGE instead — `global/<domain>/<file>` on the
+ * configured driver — so every replica serves it. `file.path` is then the
+ * storage key, and the quarantine copy is removed once the object exists. Any
+ * other folder (a CSV import, read and removed within its request) is local
+ * scratch and is moved on disk as before.
  *
  * @param {{path: string, filename: string, destination?: string}} file - a multer file
  * @param {string} folder - destination, relative to the storage root
@@ -194,10 +312,14 @@ const discard = (filePath: string): Promise<void> => fs.promises.unlink(filePath
  *   quarantined file may be promoted, so nothing un-vetted is moved
  */
 const promoteFromQuarantine = async (file: UploadedFile, folder: string): Promise<string> => {
-  const qRoot = path.resolve(quarantinePath());
-  const from = path.resolve(file.path);
-  if (path.dirname(from) !== qRoot) {
-    throw new AppError(500, "Refusing to promote a file that is not in quarantine");
+  const from = assertInQuarantine(file.path);
+  const key = publicStorageKey(folder, path.basename(from));
+  if (key) {
+    const { storage, storedFile } = storageModules();
+    await storedFile.putLocalFile(await storage.getGlobalStorage(), key, from, file.mimetype);
+    file.path = key;
+    file.destination = folder;
+    return key;
   }
   const destination = storagePath(folder);
   const to = path.join(destination, path.basename(from));
@@ -515,10 +637,25 @@ const uploadToMemory = (options: { field?: string; maxFileSize: number }): Reque
 
 /**
  * Delete uploaded file
+ *
+ * P8-01: a public-class file is removed from platform storage AND from its
+ * legacy folder — a file uploaded before the cut-over may be in either until
+ * the migration tool has copied it.
+ *
  * @param {string} filename - Name of the file to delete
  * @param {string} folder - Folder path
  */
-const deleteUpload = (filename: string, folder = "uploads"): Promise<void> => {
+const deleteUpload = async (filename: string, folder = "uploads"): Promise<void> => {
+  const key = publicStorageKey(folder, filename);
+  if (key) {
+    const { storage, storedFile } = storageModules();
+    await storedFile.removeObject(await storage.getGlobalStorage(), key);
+  }
+  return deleteLegacyUpload(filename, folder);
+};
+
+/** Remove a file from a folder on this host's disk (the as-built deleteUpload). */
+const deleteLegacyUpload = (filename: string, folder: string): Promise<void> => {
   const filePath = storagePath(folder, filename);
   const resolvedRoot = storagePath(folder);
 
@@ -562,12 +699,16 @@ const getUploadUrl = (filename: string | null | undefined, folder = "uploads"): 
 
 // The same names, in the order the .js assigned them to `exports`.
 export {
+  PUBLIC_STORAGE_DOMAINS,
+  publicStorageKey,
+  publicUploadsFromStorage,
   upload,
   uploadMulti,
   deleteUpload,
   getUploadUrl,
   QUARANTINE_DIRNAME,
   quarantinePath,
+  assertInQuarantine,
   promoteFromQuarantine,
   PUBLIC_UPLOAD_FOLDERS,
   PUBLIC_UPLOADS_URL,

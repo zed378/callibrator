@@ -32,6 +32,9 @@ import path from "path";
 import models from "../models";
 import storagePath from "../utils/storagePath.util";
 import signing from "./storage/signing";
+import storage from "./storage";
+import storedFile from "./storedFile.service";
+import type { StorageObject } from "../utils/fileResponse.util";
 import {
   computeIntegrityHash,
   computeSignature,
@@ -83,11 +86,47 @@ interface Outcome<T> {
   data?: T;
 }
 
+/**
+ * A stored PDF to send: a storage object (P8-01), or a legacy file on this
+ * host's disk. Exactly one of `object` and `absPath` is set.
+ */
 interface StoredPdf {
-  absPath: string;
+  object?: StorageObject;
+  absPath?: string;
   fileName: string;
   fileSize?: unknown;
 }
+
+/**
+ * P8-01 (ADR-086 Amendment 1) — where a certificate's stored PDF is.
+ *
+ * Nothing writes a certificate PDF any more (M-11), so the cut-over is a READ
+ * path: the PDF is looked for in the certificate's tenant's storage first, at
+ * the key the migration tool copies it to — `t/<tenantId>/certificates/<file>`,
+ * derived from `filePath`'s basename, so the signed row itself is never
+ * rewritten — and then at its legacy location on disk, exactly as before. A
+ * `filePath` that is already a storage key is used as it is (in the tenant's
+ * storage, whose guard refuses another tenant's key).
+ *
+ * @returns the object or path, or null when neither holds the file
+ */
+const locatePdf = async (
+  tenantId: string,
+  filePath: string,
+): Promise<{ object: StorageObject } | { absPath: string } | null> => {
+  const scoped = await storage.getTenantStorage(tenantId);
+  const key = storedFile.isStorageKey(filePath)
+    ? filePath
+    : scoped.buildKey({ domain: "certificates", name: path.basename(filePath) });
+  try {
+    return { object: await storedFile.openObject(scoped, key) };
+  } catch (err) {
+    if (!storedFile.isMissing(err)) {throw err;}
+  }
+  if (storedFile.isStorageKey(filePath)) {return null;}
+  const absPath = storagePath("uploads", "certificates", path.basename(filePath));
+  return fs.existsSync(absPath) ? { absPath } : null;
+};
 
 /**
  * The PDF the backend rendered for a certificate before M-11, if it has one.
@@ -102,10 +141,8 @@ const getStoredPdf = async (tenantId: string, certificateId: string): Promise<Ou
   if (!cert) {
     return { success: false, status: 404, message: "Certificate not found" };
   }
-  const absPath = cert.filePath
-    ? storagePath("uploads", "certificates", path.basename(cert.filePath))
-    : null;
-  if (!absPath || !fs.existsSync(absPath)) {
+  const located = cert.filePath ? await locatePdf(tenantId, cert.filePath) : null;
+  if (!located) {
     return {
       success: false,
       status: 404,
@@ -118,7 +155,7 @@ const getStoredPdf = async (tenantId: string, certificateId: string): Promise<Ou
     success: true,
     status: 200,
     data: {
-      absPath,
+      ...located,
       // The on-disk name is random; the saved-as name stays readable.
       fileName: downloadFileName(cert.certificateNumber),
       fileSize: cert.fileSize,
@@ -292,20 +329,21 @@ const getVerifiedDocument = async (certificateNumber: string, token: unknown): P
   }
   const cert = await Certificate.findOne({
     where: { certificateNumber },
-    attributes: ["id", "certificateNumber", "status", "filePath"],
+    // P8-01: the tenant, to open the PDF in the certificate's own storage.
+    attributes: ["id", "tenantId", "certificateNumber", "status", "filePath"],
   });
   // eslint-disable-next-line @typescript-eslint/prefer-optional-chain -- as built: the .js's `!cert || ...` (ADR-038 rule 3)
   if (!cert || cert.status !== "signed" || !cert.filePath) {
     return { success: false, status: 404, message: "Certificate document not found" };
   }
-  const absPath = storagePath("uploads", "certificates", path.basename(cert.filePath));
-  if (!fs.existsSync(absPath)) {
+  const located = await locatePdf(cert.tenantId, cert.filePath);
+  if (!located) {
     return { success: false, status: 410, message: "Certificate document is no longer available" };
   }
   return {
     success: true,
     status: 200,
-    data: { absPath, fileName: downloadFileName(cert.certificateNumber) },
+    data: { ...located, fileName: downloadFileName(cert.certificateNumber) },
   };
 };
 

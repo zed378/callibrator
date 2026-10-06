@@ -1,0 +1,177 @@
+{{- if .Values.backupVerify.enabled }}
+{{- $base := include "callibrator.baseName" . -}}
+{{- $bv := .Values.backupVerify -}}
+{{- $tag := $bv.image.tag | default .Values.backend.image.tag -}}
+# U-05 (ADR-116) — the scheduled infrastructure dump AND its restore
+# verification, the Kubernetes form of the compose `db-backup` service.
+# Each run: `pg_dump -Fc` of the (external) database inside an exported
+# snapshot, onto the <base>-pgdump claim; a restore into a THROWAWAY PostgreSQL
+# 18 + pgvector started inside the pod (an emptyDir, deleted with it); the
+# checks (SHA-256, pg_restore --exit-on-error role-first, pgvector, exact row
+# counts / audit checksum / migrations, the application's own schema check).
+# A failed run raises a critical alert through the application's alert path and
+# FAILS THE JOB (backoffLimit 0) — alert on kube_job_status_failed for this
+# CronJob, and on kube_cronjob_status_last_successful_time going stale: the
+# backend's watchdog cannot read this claim, so a CronJob that stops scheduling
+# is your cluster monitoring's to notice (ADR-116).
+# The pod gets the database password and the alert channels — NOT the
+# application's JWT/KMS/certificate secrets: its schema check runs on throwaway ones.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $base }}-backup-verify
+  labels:
+    {{- include "callibrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup-verify
+spec:
+  schedule: {{ $bv.schedule | quote }}
+  {{- with $bv.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ $bv.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ $bv.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: callibrator-backup-verify
+            app.kubernetes.io/instance: {{ .Release.Name }}
+            app.kubernetes.io/component: backup-verify
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- with .Values.global.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            # The pgvector image's postgres user; initdb refuses to run as root.
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            fsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup-verify
+              image: "{{ $bv.image.repository }}:{{ required "backupVerify.image.tag or backend.image.tag is required" $tag }}"
+              imagePullPolicy: {{ $bv.image.pullPolicy }}
+              args: ["run-once"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              env:
+                - name: DB_HOST
+                  valueFrom: { configMapKeyRef: { name: {{ include "callibrator.configMapName" . }}, key: DB_HOST } }
+                - name: DB_PORT
+                  valueFrom: { configMapKeyRef: { name: {{ include "callibrator.configMapName" . }}, key: DB_PORT } }
+                - name: DB_NAME
+                  valueFrom: { configMapKeyRef: { name: {{ include "callibrator.configMapName" . }}, key: DB_NAME } }
+                - name: DB_USER
+                  valueFrom: { configMapKeyRef: { name: {{ include "callibrator.configMapName" . }}, key: DB_USER } }
+                - name: DB_APP_ROLE
+                  value: {{ .Values.backend.database.appRole | default "none" | quote }}
+                - name: DB_PASS
+                  valueFrom: { secretKeyRef: { name: {{ include "callibrator.secretName" . }}, key: DB_PASS } }
+                {{- if .Values.backend.database.ssl }}
+                - name: PGSSLMODE
+                  value: "require"
+                {{- end }}
+                - name: TZ
+                  value: {{ $bv.timeZone | default "UTC" | quote }}
+                - name: BACKUP_KEEP
+                  value: {{ $bv.keep | quote }}
+                - name: ALERT_WEBHOOK_URL
+                  valueFrom: { secretKeyRef: { name: {{ include "callibrator.secretName" . }}, key: ALERT_WEBHOOK_URL, optional: true } }
+                - name: ALERT_EMAIL_TO
+                  valueFrom: { configMapKeyRef: { name: {{ include "callibrator.configMapName" . }}, key: ALERT_EMAIL_TO, optional: true } }
+                - name: MAIL_HOST
+                  valueFrom: { configMapKeyRef: { name: {{ include "callibrator.configMapName" . }}, key: MAIL_HOST, optional: true } }
+                - name: MAIL_PORT
+                  valueFrom: { configMapKeyRef: { name: {{ include "callibrator.configMapName" . }}, key: MAIL_PORT, optional: true } }
+                - name: MAIL_FROM
+                  valueFrom: { configMapKeyRef: { name: {{ include "callibrator.configMapName" . }}, key: MAIL_FROM, optional: true } }
+                - name: MAIL_USER
+                  valueFrom: { configMapKeyRef: { name: {{ include "callibrator.configMapName" . }}, key: MAIL_USER, optional: true } }
+                - name: MAIL_PASSWORD
+                  valueFrom: { secretKeyRef: { name: {{ include "callibrator.secretName" . }}, key: MAIL_PASSWORD, optional: true } }
+              volumeMounts:
+                - { name: pgdump, mountPath: /backups }
+                - { name: scratch, mountPath: /var/lib/postgresql/scratch }
+                - { name: tmp, mountPath: /tmp }
+                - { name: run, mountPath: /var/run/postgresql }
+              {{- with $bv.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          volumes:
+            - name: pgdump
+              persistentVolumeClaim:
+                claimName: {{ $base }}-pgdump
+            # The throwaway server's data directory: sized for one restored copy.
+            - name: scratch
+              emptyDir:
+                sizeLimit: {{ $bv.scratchSizeLimit | quote }}
+            - name: tmp
+              emptyDir: {}
+            - name: run
+              emptyDir: {}
+---
+# The dumps. Kept on uninstall, like every other claim of this chart: a
+# `helm uninstall` must not take the backups with it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $base }}-pgdump
+  labels:
+    {{- include "callibrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup-verify
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $bv.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $bv.persistence.size | quote }}
+{{- if .Values.networkPolicy.enabled }}
+---
+# The default-deny policy selects this pod too (the instance label). Egress only:
+# DNS, the database, and the alert channels (webhook over HTTPS, SMTP).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $base }}-backup-verify
+  labels:
+    {{- include "callibrator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: callibrator-backup-verify
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - {{- with .Values.networkPolicy.backendEgressTo }}
+      to:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      ports:
+        {{- range $bv.egressPorts }}
+        - port: {{ .port }}
+          protocol: {{ .protocol | default "TCP" }}
+        {{- end }}
+{{- end }}
+{{- end }}

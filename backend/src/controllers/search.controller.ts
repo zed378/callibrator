@@ -49,18 +49,22 @@ const canRead = (req: Request, menuSlug: string): Promise<boolean> =>
     void dynamicAccess(menuSlug as SeededMenuSlug, "read")(req, probe as unknown as Response, ((err?: unknown) => { resolve(!err); }) as NextFunction);
   });
 
+// U-06b (ADR-120): the probes run concurrently (they ran one after another,
+// three Redis round trips in series per search), and all of them, with the
+// route gate, share the request's one load of the permission sources
+// (dynamicAccess.middleware#sourcesByRequest). The answer keeps the order of
+// `candidates`, as before.
 const permittedTypes = async (req: Request, requested: string[] | undefined): Promise<string[]> => {
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: `requested` is a list or undefined
   const candidates = requested || Object.keys(searchService.TYPE_MENUS);
-  const allowed: string[] = [];
-  for (const type of candidates) {
-    const menu = searchService.TYPE_MENUS[type];
-    // An unknown type name has no menu to check; the service drops it too.
-    if (menu && (await canRead(req, menu))) {
-      allowed.push(type);
-    }
-  }
-  return allowed;
+  const decisions = await Promise.all(
+    candidates.map((type) => {
+      const menu = searchService.TYPE_MENUS[type];
+      // An unknown type name has no menu to check; the service drops it too.
+      return menu ? canRead(req, menu) : Promise.resolve(false);
+    }),
+  );
+  return candidates.filter((_type, i) => decisions[i] === true);
 };
 
 // GET /api/v1/search?q=&types=device,stock&limit=

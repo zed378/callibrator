@@ -9,6 +9,9 @@
  * computeIntegrityHash / computeSignature / SIGNATURE_KEY_ID.
  */
 
+// P8-01 (ADR-086 Amendment 1): stored files are looked for in storage first;
+// the double holds none, so every file here is read from its legacy path.
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../config", () => ({
   Sequelize: { useCLS: jest.fn() },
   db: {},
@@ -304,7 +307,8 @@ describe("certificatePdf.service", () => {
 
     it("is a 410 when the stored file is gone, and serves it when present", async () => {
       const token = tokenFor("CERT-200");
-      const row = { id: "c", certificateNumber: "CERT-200", status: "signed", filePath: "certificates/a.pdf" };
+      // P8-01: the query now also selects the tenant, whose storage is read first.
+      const row = { id: "c", tenantId: "t-1", certificateNumber: "CERT-200", status: "signed", filePath: "certificates/a.pdf" };
       Certificate.findOne.mockResolvedValueOnce(row);
       fs.existsSync.mockReturnValueOnce(false);
       expect((await getVerifiedDocument("CERT-200", token)).status).toBe(410);
@@ -666,5 +670,46 @@ describe("certificatePdf.service", () => {
 
       expect(data.disclosure).toBe("minimal");
     });
+  });
+});
+
+// P8-01 (ADR-086 Amendment 1): a stored PDF is looked for in the
+// certificate's tenant's storage first — at the key the migration tool copies
+// it to — and then at its legacy path.
+describe("P8-01 — a certificate PDF in the tenant's storage", () => {
+  const storage = require("../../services/storage");
+  const { getStoredPdf } = require("../../services/certificatePdf.service");
+  const { Certificate } = require("../../models");
+  const put = (key) => storage.__objects.set(key, { body: Buffer.from("%PDF"), contentType: "application/pdf", modifiedAt: new Date() });
+
+  beforeEach(() => storage.__reset());
+
+  it("a migrated PDF (derived key) is the object; the disk is not consulted", async () => {
+    put("t/t-1/certificates/a.pdf");
+    Certificate.findOne.mockResolvedValueOnce({ id: "c", certificateNumber: "N-1", filePath: "certificates/a.pdf" });
+    fs.existsSync.mockClear();
+    const result = await getStoredPdf("t-1", "c");
+    expect(result.data.object.meta.size).toBe(4);
+    expect(result.data).not.toHaveProperty("absPath");
+    expect(fs.existsSync).not.toHaveBeenCalled();
+  });
+
+  it("a filePath that is itself a key is read as it is; gone, it is the 404 (never the disk)", async () => {
+    put("t/t-1/certificates/k.pdf");
+    Certificate.findOne.mockResolvedValueOnce({ id: "c", certificateNumber: "N-1", filePath: "t/t-1/certificates/k.pdf" });
+    expect((await getStoredPdf("t-1", "c")).data.object).toBeDefined();
+    Certificate.findOne.mockResolvedValueOnce({ id: "c", certificateNumber: "N-1", filePath: "t/t-1/certificates/missing.pdf" });
+    fs.existsSync.mockClear();
+    expect((await getStoredPdf("t-1", "c")).status).toBe(404);
+    expect(fs.existsSync).not.toHaveBeenCalled();
+  });
+
+  it("another tenant's key is refused by the storage guard; a storage failure propagates", async () => {
+    Certificate.findOne.mockResolvedValueOnce({ id: "c", certificateNumber: "N-1", filePath: "t/t-2/certificates/k.pdf" });
+    await expect(getStoredPdf("t-1", "c")).rejects.toMatchObject({ status: 403 });
+    const real = storage.getTenantStorage.getMockImplementation();
+    storage.getTenantStorage.mockImplementationOnce(async (t) => ({ ...(await real(t)), stat: jest.fn().mockRejectedValue(new Error("EIO")) }));
+    Certificate.findOne.mockResolvedValueOnce({ id: "c", certificateNumber: "N-1", filePath: "certificates/a.pdf" });
+    await expect(getStoredPdf("t-1", "c")).rejects.toThrow("EIO");
   });
 });

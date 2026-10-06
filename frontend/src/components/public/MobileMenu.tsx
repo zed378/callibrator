@@ -79,7 +79,7 @@ export function MobileMenu({
         ref={panelRef}
         hidden={!open}
         onClick={onPanelClick}
-        className="absolute inset-x-0 top-full border-b border-pub-border bg-pub-bg px-4 pb-6 pt-2 sm:px-6"
+        className="pub-menu-panel absolute inset-x-0 top-full border-b border-pub-border bg-pub-bg px-4 pb-6 pt-2 shadow-[var(--pub-shadow-md)] sm:px-6"
       >
         {children}
       </div>

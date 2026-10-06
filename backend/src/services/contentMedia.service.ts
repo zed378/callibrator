@@ -17,10 +17,13 @@
 // tests' mocks and spies apply); `AppError` and `PUBLIC_UPLOADS_URL` are
 // captured once at load, as the `.js` destructured them.
 
-import fs from "fs";
 import auditService from "./audit.service";
 import { AppError as LoadedAppError } from "../utils/appError.util";
-import { PUBLIC_UPLOADS_URL as LOADED_PUBLIC_UPLOADS_URL } from "../utils/upload.util";
+import {
+  PUBLIC_UPLOADS_URL as LOADED_PUBLIC_UPLOADS_URL,
+  PUBLIC_UPLOAD_FOLDERS,
+  deleteUpload,
+} from "../utils/upload.util";
 import { auditEntryActor, actorChanges } from "../utils/auditPrincipal.util";
 
 const AppError = LoadedAppError;
@@ -91,7 +94,9 @@ const recordMediaUpload = async (file: UploadedFile | null | undefined, actor: M
   });
   /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
   if (!row) {
-    await fs.promises.unlink(file.path).catch(() => {
+    // P8-01: the image is in platform storage (file.path is its key), so it is
+    // removed through deleteUpload — from storage and from the legacy folder.
+    await deleteUpload(file.filename, PUBLIC_UPLOAD_FOLDERS.CMS).catch(() => {
       // as built: a failed removal is ignored; the refusal below is what matters
     });
     throw new AppError(500, "The upload could not be recorded in the audit log, so it was not published");

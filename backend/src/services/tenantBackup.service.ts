@@ -18,6 +18,9 @@ import type { Transaction, WhereOptions } from "sequelize";
 // Simplified tenant backup service - removed deprecated models (TenantSettings, TenantRoles, TenantFeatures, TenantAuditLog, UserPermissions)
 import models from "../models";
 import auditService from "./audit.service";
+import storage from "./storage";
+import storedFile from "./storedFile.service";
+import type { StorageObject } from "../utils/fileResponse.util";
 // Sequelize helpers come from the package directly (not the models barrel) so
 // they are available even when `../models` is mocked in unit tests.
 import Sequelize from "sequelize";
@@ -108,28 +111,64 @@ interface NotRestored {
 const messageOf = (error: unknown): string => (error as Error).message;
 
 /**
- * Backup storage directory
+ * The legacy backup directory. P8-01 (ADR-086 Amendment 1): nothing is written
+ * here any more — a backup is put into its tenant's storage — but a backup
+ * taken before the cut-over still names a file here until
+ * `npm run migrate:storage` copies it, and the scheduled pruner still refuses
+ * to remove a legacy path outside it.
  */
 const BACKUP_DIR = storagePath("backup", "tenant-backups");
 
-/**
- * Ensure backup directory exists
- * Returns true if directory exists or was created successfully
- */
-function ensureBackupDirExists(): boolean {
-  if (!fs.existsSync(BACKUP_DIR)) {
-    try {
-      fs.mkdirSync(BACKUP_DIR, { recursive: true });
-      return true;
-    } catch (error) {
-      if ((error as { code?: unknown }).code !== "EEXIST") {
-        return false;
-      }
-      return true;
-    }
-  }
-  return true;
+// ------------------------------------------------------------------
+// WHERE A BACKUP'S BYTES ARE (P8-01, ADR-086 Amendment 1)
+// ------------------------------------------------------------------
+//
+// `filePath` is a storage key — `t/<tenantId>/backups/<file>` — for a backup
+// taken since the cut-over, read in the backup's OWN tenant's storage (whose
+// guard refuses a key of another tenant's), and an absolute path on this
+// host's disk for one taken before. Each reader below handles both.
+
+/** The row fields the readers use. */
+interface BackupFileRef {
+  tenantId: string;
+  filePath?: string | null;
 }
+
+/** Whether the backup's bytes are there. */
+async function backupFileExists(backup: BackupFileRef): Promise<boolean> {
+  if (!backup.filePath) {return false;}
+  if (storedFile.isStorageKey(backup.filePath)) {
+    return (await storage.getTenantStorage(backup.tenantId)).exists(backup.filePath);
+  }
+  return fs.existsSync(backup.filePath);
+}
+
+/** A stored backup's whole archive (storage keys only). */
+async function readStoredBackup(backup: BackupFileRef & { filePath: string }): Promise<Buffer> {
+  return storedFile.readObject(await storage.getTenantStorage(backup.tenantId), backup.filePath);
+}
+
+/**
+ * Remove the backup's bytes, treating "already gone" as done. Rejects on any
+ * other failure, for the caller to log.
+ */
+async function removeBackupFile(backup: BackupFileRef): Promise<void> {
+  if (!backup.filePath) {return;}
+  if (storedFile.isStorageKey(backup.filePath)) {
+    await storedFile.removeObject(await storage.getTenantStorage(backup.tenantId), backup.filePath);
+    return;
+  }
+  if (fs.existsSync(backup.filePath)) {
+    fs.unlinkSync(backup.filePath);
+  }
+}
+
+/** SHA-256 of bytes in memory — the same digest calculateChecksum takes of a file. */
+const checksumOf = (bytes: Buffer): string => {
+  const hash = crypto.createHash("sha256");
+  hash.update(bytes);
+  return hash.digest("hex");
+};
 
 /**
  * The Sequelize instance transactions run on: the request's, else the barrel's.
@@ -379,16 +418,16 @@ async function createBackup({
     // Generate ZIP
     const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
 
-    // Ensure backup directory exists
-    ensureBackupDirExists();
-
-    // Save to file
+    // P8-01 (ADR-086 Amendment 1): the archive goes into the tenant's storage
+    // (`t/<tenantId>/backups/<file>` on the local, NFS or S3 driver), not a
+    // directory on this host. `filePath` records its key.
     const filenameStr = generateBackupFilename(tenantId, backup.id);
-    const filePath = path.join(BACKUP_DIR, filenameStr);
-    fs.writeFileSync(filePath, zipBuffer);
+    const scoped = await storage.getTenantStorage(tenantId);
+    const filePath = scoped.buildKey({ domain: "backups", name: filenameStr });
+    await scoped.put(filePath, zipBuffer, { contentType: "application/zip" });
 
-    // Calculate checksum
-    const checksum = await calculateChecksum(filePath);
+    // Calculate checksum — of the bytes stored, as it was of the file written.
+    const checksum = checksumOf(zipBuffer);
 
     // Count records (simplified - only users now)
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- as built: `exportData.users?.length || 0`
@@ -493,7 +532,10 @@ async function createBackup({
 /**
  * Download a backup file
  */
-async function downloadBackup(backupId: string, models: ModelsBag): Promise<BackupResult<{ filePath: string; metadata: BackupRow }>> {
+async function downloadBackup(
+  backupId: string,
+  models: ModelsBag,
+): Promise<BackupResult<{ filePath: string; metadata: BackupRow; object?: StorageObject }>> {
   const backup = await TenantBackup.findByPk(backupId, {
     // A-90: LEFT JOINs, as in restoreBackup — a backup whose creator is
     // deleted or outside the tenant, or whose tenant row is soft-deleted, is
@@ -520,17 +562,23 @@ async function downloadBackup(backupId: string, models: ModelsBag): Promise<Back
     throw new AppError(400, "Backup is not ready for download");
   }
 
-  if (!backup.filePath || !fs.existsSync(backup.filePath)) {
+  if (!(await backupFileExists(backup))) {
     throw new AppError(404, "Backup file not found on storage");
   }
+  // backupFileExists is false for a row with no filePath.
+  const filePath = backup.filePath as string;
 
   return {
     success: true,
     status: 200,
     message: "Backup ready for download",
     data: {
-      filePath: backup.filePath,
+      filePath,
       metadata: backup,
+      // P8-01: a stored backup is sent from storage; a legacy one from disk.
+      ...(storedFile.isStorageKey(filePath)
+        ? { object: await storedFile.openObject(await storage.getTenantStorage(backup.tenantId), filePath) }
+        : {}),
     },
   };
 }
@@ -880,16 +928,23 @@ async function restoreBackup({
     throw new ConflictError(restoreRefusal(backupId, backup));
   }
 
-  if (!backup.filePath || !fs.existsSync(backup.filePath)) {
+  if (!(await backupFileExists(backup))) {
     throw new AppError(404, "Backup file not found on storage");
   }
+  // backupFileExists is false for a row with no filePath.
+  const backupPath = backup.filePath as string;
+  // P8-01: a stored archive is read once, here, and both checksummed and
+  // parsed from memory; a legacy one is streamed and read from disk as before.
+  const storedBytes = storedFile.isStorageKey(backupPath)
+    ? await readStoredBackup({ tenantId: backup.tenantId, filePath: backupPath })
+    : null;
 
   // The archive on disk must be the archive that was written. createBackup
   // records its SHA-256; a file that no longer matches has been altered or
   // replaced since, and its contents are not the tenant's backup (D-02).
   const recordedChecksum = backup.metadata?.["checksum"];
   if (recordedChecksum) {
-    const actualChecksum = await calculateChecksum(backup.filePath);
+    const actualChecksum = storedBytes ? checksumOf(storedBytes) : await calculateChecksum(backupPath);
     if (actualChecksum !== recordedChecksum) {
       throw new ConflictError(
         `Backup ${backupId} cannot be restored: its archive no longer matches the checksum recorded when it was taken, ` +
@@ -907,7 +962,7 @@ async function restoreBackup({
   try {
     // Extract and read the ZIP file
     const zip = new JSZip();
-    const zipData = fs.readFileSync(backup.filePath);
+    const zipData = storedBytes ?? fs.readFileSync(backupPath);
     const extracted = await zip.loadAsync(zipData);
 
     // Find the tenant data file
@@ -1177,9 +1232,10 @@ async function deleteBackup(backupId: string, deletedById: UserId | null | undef
     throw new InternalServerError("Failed to delete backup: " + messageOf(error));
   }
 
-  if (backup.filePath && fs.existsSync(backup.filePath)) {
+  if (backup.filePath) {
     try {
-      fs.unlinkSync(backup.filePath);
+      // P8-01: from the tenant's storage, or from disk for a legacy backup.
+      await removeBackupFile(backup);
     } catch (error) {
       logger.error("Tenant backup deleted; its file could not be removed and is left on disk", {
         backupId,
@@ -1268,10 +1324,8 @@ async function cleanupExpiredBackups(tenantId?: TenantId | null, _models?: Model
 
   for (const backup of expiredBackups) {
     try {
-      // Delete physical file
-      if (backup.filePath && fs.existsSync(backup.filePath)) {
-        fs.unlinkSync(backup.filePath);
-      }
+      // Delete physical file (P8-01: the stored object, or the legacy file)
+      await removeBackupFile(backup);
 
       // Soft delete the record
       await backup.destroy();

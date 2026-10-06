@@ -9,7 +9,7 @@ description: >-
 type: application
 
 # Chart version — bump on any chart change.
-version: 0.2.0
+version: 0.3.0
 # The application version this chart targets.
 appVersion: "0.1.0"
 

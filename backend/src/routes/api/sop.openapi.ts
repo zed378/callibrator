@@ -6,10 +6,11 @@
  * (A-145), and the publisher may not be the author (separation of duties).
  * Acknowledging training is deliberately auth-only: it is the caller's OWN
  * training record, and the roles that must acknowledge hold no `sop` menu.
- * No route validates its body with a schema: the service reads the fields it
- * needs. Examples are synthetic.
+ * The create body is validated by `createSopDocument` (W-10, 2026-10-05); the
+ * other routes take no body. Examples are synthetic.
  */
 import { z } from "zod";
+import { createSopDocument } from "../../validators/sop.validator";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 
 const timestamp = z.iso.datetime();
@@ -91,14 +92,7 @@ export default defineRouteDocs({
       summary: "Create an SOP document (draft)",
       permission: { kind: "dynamicAccess", resource: "sop", action: "write" },
       audited: true,
-      body: z
-        .object({
-          title: z.string().meta({ example: "Calibration of infusion pumps" }),
-          version: z.string().nullable().optional().meta({ example: "1.0" }),
-          contentUrl: z.string().nullable().optional(),
-          requiresTraining: z.boolean().nullable().optional(),
-        })
-        .meta({ description: "Read by the service; not validated by a schema on the route." }),
+      body: createSopDocument,
       success: { status: 201, description: "The draft document", data: SopDocument },
     },
     {

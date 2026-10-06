@@ -14,6 +14,9 @@
  * written it — and no row is created.
  */
 
+// P8-01 (ADR-086 Amendment 1): a scanned upload is put into the tenant's
+// storage. The double keeps the real key rules (fixtures/fakeStorage).
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../models", () => {
   const model = () => ({ findOne: jest.fn() });
   return {
@@ -33,6 +36,9 @@ jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb) => cb("
 jest.mock("../../utils/upload.util", () => ({
   // S-17: the service promotes the scanned file out of quarantine.
   promoteFromQuarantine: jest.fn(async (file) => file.path),
+  // P8-01: the attachment path checks the file is in quarantine, then puts it
+  // into storage (promoteFromQuarantine is no longer on it).
+  assertInQuarantine: jest.fn((filePath) => filePath),
   getUploadUrl: (fileName, folder) => `/${folder}/${fileName}`,
 }));
 
@@ -62,6 +68,7 @@ const fs = require("fs");
 const models = require("../../models");
 const virusScan = require("../../services/virusScan.service");
 const attachmentService = require("../../services/attachment.service");
+const storage = require("../../services/storage");
 
 const TENANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const RECORD = "11111111-1111-4111-8111-111111111111";
@@ -75,6 +82,7 @@ const FILE = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  storage.__reset();
   models.Attachment.create.mockImplementation(async (values) => ({
     id: "att-1",
     folder: "uploads/attachments",
@@ -109,7 +117,11 @@ describe("A-97 — a linked resourceId must be a live record of the caller's ten
         attributes: ["id"],
       });
       expect(result).toMatchObject({ resourceType, resourceId: RECORD });
-      expect(fs.promises.unlink).not.toHaveBeenCalled();
+      // P8-01: kept — the upload left the quarantine INTO the tenant's
+      // storage (the quarantine copy is removed only once the object exists).
+      expect(storage.__objects.has(`t/${TENANT}/attachments/f.pdf`)).toBe(true);
+      expect(fs.promises.unlink).toHaveBeenCalledTimes(1);
+      expect(fs.promises.unlink).toHaveBeenCalledWith(FILE.path);
     },
   );
 

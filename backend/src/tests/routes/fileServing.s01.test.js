@@ -24,6 +24,9 @@ const express = require("express");
 
 const mockStorageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "s01-storage-"));
 
+// P8-01 (ADR-086 Amendment 1): stored files are looked for in storage first;
+// the double holds none, so every file here is read from its legacy path.
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../utils/storagePath.util", () => (...parts) =>
   require("path").join(mockStorageRoot, ...parts),
 );

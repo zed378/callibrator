@@ -37,6 +37,11 @@ import type * as Suite from "../fixtures/twoTenantSuite";
 import type { SuiteContext } from "../fixtures/twoTenantSuite";
 import type * as RouteModule from "../../routes/api/certificates.route";
 
+// P8-01 (ADR-086 Amendment 1): the stored PDF is looked for in storage first.
+// The double holds none, so the PDF is found at its legacy path, as before.
+jest.mock("../../services/storage", () =>
+  jest.requireActual<{ createFakeStorage: () => unknown }>("../fixtures/fakeStorage").createFakeStorage(),
+);
 jest.mock("../../config", () => ({
   db: jest.requireActual<typeof MemoryDbModule>("../fixtures/memoryDb").memoryDb().sequelize,
 }));

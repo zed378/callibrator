@@ -8,6 +8,78 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-05 — Closing verification of the work since `dded70c`: every gate green, live pair S/T green, 0109–0110 proved on an upgrade boot, `db-backup` verified ([record](./records/2026-10-05-closing-gates-st.md))
+- **Verified, no source change:** backend coverage 100/100/100/100 (890 suites, 15,054 tests, 0 failed); lint 0/0; typecheck 0 in four projects; frontend jest 297 suites at 93.94/84.77/89.63/94.6; `next build`, bundle budget 10/10; npm audit gates; gitleaks; compose, Helm (with the backup CronJob) and actionlint.
+- **Live:** runs S and T back to back on a fresh production-mode stack: E2E 433/0, smoke 7/7, a11y 80/80, responsive 45/45, P10 12/12; 0 × 5xx.
+- **Migrations:** 0109 and 0110 apply on a fresh boot and on an upgrade boot from `dded70c`'s own image (`btree_gin` created by the owner role); reboots after both are clean.
+- **Backups:** `db-backup` (ADR-116), enabled once on the pair stack, passed its first restore verification (restore 5 s).
+- **Open:** `oasdiff` against `main` reports 3 breaking changes, all `POST /api/v1/sop` (W-10). A pull request needs them recorded; a direct push passes.
+
+### 2026-10-05 — The public pages turn warm, human and interactive: the landing, sign-in and request access redesigned; light and dark modes (P10-17, ADR-118 + Am. 1, 3, [record](./records/2026-10-05-landing-warm-redesign.md))
+- **Changed:** the public palette is now ivory, cream, charcoal and copper, with dark teal only as "verified". A warm dark mode follows the app's theme switch, or the system preference when the visitor has not chosen. The toggle is in the public header, the mobile menu and the sign-in pages.
+- **Changed:** the landing was recomposed:
+  - a full-bleed hero photo, and a gauge needle that follows the pointer;
+  - the survey "moments" as large type, a human moment, and a before/after slider;
+  - the six-step story (swipeable on phones);
+  - an explorable sample certificate with swipeable explanations;
+  - the QR verification demo on a deep-charcoal section;
+  - honest proof (no invented testimonials), a typographic capabilities index, a timeline, the FAQ, and a minimal closing.
+- **Changed:** sign-in, request access, forgot password and the invitation share a new editorial panel. Their changes are presentation only: a greeting, hints on blur, steps that ease in, calm progress, and a request-access success page with honest next steps. The auth logic, messages and payloads are unchanged, which tests prove.
+- **Added:** licensed editorial photographs (Unsplash), each listed in `frontend/public/marketing/ASSETS.md` and doc 20 §12.
+- **Changed:** the landing photographs now show medical-device work: a clinician at a vital-signs monitor, a staff member setting a wall monitor, and late paperwork. The product screenshots were re-captured in light theme. The UK-hospital corridor photograph is gone.
+- **Not met:** Lighthouse mobile medians are `/` Performance 88, LCP 3.6 s and `/login` Performance 89, LCP 3.2 s, against the 2.5 s and 1.8 s targets. Observed LCP is at most 1.5 s. The cause is late page-level CSS and framework JavaScript under Lighthouse's simulation.
+
+### 2026-10-05 — The logo follows the warm palette; emails follow (P10-17, ADR-118 Am. 2, [record](./records/2026-10-05-logo-warm-recolour.md))
+- Changed: the mark, lockups and app icon are charcoal `#1F1B17` + copper `#9A4E22` on light, ivory + light copper `#E3A47B` on dark (copper is 2.74:1 on the warm charcoal). Shape unchanged, byte-for-byte. `favicon.ico`, `apple-touch-icon.png` and `logo-email.png` regenerated. `lockup-mono.svg` unchanged.
+- Changed: `BrandIcon`'s accent follows the theme (`--pub-accent`, else the new `--logo-accent`); the dashboard sidebar's logo uses `text-logo-ink`. Nothing else on the dashboard changes.
+- Changed: activation, OTP, account and notification emails use the warm palette (cream page, paper card, charcoal text, copper accent bar, button and links). Layout and copy unchanged.
+
+### 2026-10-05 — The dashboard is cached for 30 s per tenant and says when its figures were computed; search reads its permissions once and only its tenant's index entries (U-06b, ADR-120, [record](./records/2026-10-05-u06b-search-dashboard.md))
+- Changed: `GET /dashboard/metrics` is served from a 30-second cache per scope (Redis; an in-process fallback when Redis is down; never shared between tenants). `generatedAt` is when the figures were computed, up to 30 s earlier; the dashboard shows "Updated at / Diperbarui pukul HH:MM:SS". p95 at 10 VU: 197–344 → 61–64 ms on the same stack.
+- Changed: one search request loads the caller's permissions once instead of six times (13 → 3 Redis GETs); its type checks run concurrently. Every type is still gated by its own list route's permission (A-04).
+- Added: migration **0110** — `CREATE EXTENSION btree_gin` and a per-tenant GIN index `(tenant_id, search_vector)` on devices, stock and certificates, replacing 0003's. Operators: the database owner can create the extension without superuser; a migration user that is neither the owner nor holds CREATE on the database must have it created once (`deploy/helm/callibrator/values.yaml`).
+- Fixed (before release): migration 0109's `INCLUDE` index made every boot after the one that applied it fail in Sequelize's `showIndex`; it now uses key columns. A development database that applied the old form: drop `calibration_records_tenant_live_date` and recreate it as 0109 now defines it.
+- Not claimed: an end-to-end search gain — search met its budget in every run of both images, and the difference is inside the shared host's noise.
+
+### 2026-10-05 — CI: a dev-only audit advisory is allow-listed with an expiry; a failed backend test run names itself in public annotations (ADR-117, [record](./records/2026-10-05-ci-second-run.md))
+- Changed (CI): `dependency-audit` is two steps. `npm audit --omit=dev --audit-level=high` covers production with no exceptions. `scripts/ci/npm-audit-gate.js` covers the whole tree: a high or critical advisory passes only through an unexpired, reviewed GHSA entry in `scripts/ci/npm-audit-allowlist.json`, and only while it stays out of production. One entry: GHSA-vfj7-8cjw-p6xm (`braces`, no fix exists, lint tooling only), expires 2026-11-05.
+- Added (CI): the backend test step annotates failing tests (jest's `github-actions` reporter). On failure, `scripts/ci/jest-annotate.js` annotates suites that never ran and files below 100%. Both can be read without a token from the check run's annotations.
+- Changed (tests): `backend/jest.config.js` recycles a worker whose heap passes 2 GB. Workers leak about 20 MB per route suite; a full run held 12.3 GiB against a 4 GiB per-process heap limit, and now holds 6.6 GiB. The GitHub failure did not reproduce in two Linux runs, so this is the probable cause, not a proven one.
+
+### 2026-10-05 — Every stored file goes through the storage layer; `bootstrap:rotate` works from a checkout (P8-01, ADR-086 Am. 1, [record](./records/2026-10-05-p8-01-storage-cutover.md))
+- Changed: attachments, certificate PDFs, avatars, tenant logos, CMS images, tenant backups and GDPR exports are now written to, served from (Range, ETag/304, the same headers), signed from and deleted from the configured storage — `local` (default `/app/storage`), NFS or S3. Before, they were always on the host's disk, whatever `STORAGE_DRIVER` said. Files written before this change are still served from their old paths until `npm run migrate:storage` copies them.
+- Changed: `npm run migrate:storage` also copies certificate PDFs, tenant backups and the public images; the two row backfills it makes are audited (`system:storage-migration`). Summary lines per class.
+- Fixed: the `local` storage driver failed every write and answered 500 to every read while its root directory did not exist; a 416 from a backup or export download left the client waiting.
+- Fixed: `npm run bootstrap:rotate` from a source checkout failed with a missing-environment error; it now reads `backend/.env` first.
+- Verified live: two tenants on SeaweedFS through a running backend, 44/44 (`scripts/storage/p801-live-check.sh`). Still blocked on the production bucket/NFS and the ambient IAM credential chain.
+- Operators: keep the uploads volume mounted until `migrate:storage` has run; new files go to the storage volume (or bucket).
+
+### 2026-10-05 — U-06 re-measured: the lists meet p95 < 500 ms at 10 users on an uncontended host; the record list joins only its page (U-06, ADR-119, [record](./records/2026-10-05-u06-list-performance.md))
+- Measured: the P8-07 stack, script and seed on the current tree, production mode. The four lists had a p95 of 156–438 ms at 10 VU in 8 of 9 runs; the misses were runs on a contended host. The ceiling is now the backend's event loop (main thread 99–100%), not PostgreSQL (165–191% of 16 cores). Global search was measured for the first time and does not meet 500 ms (4 of 7 runs). The certificate document does meet its budget.
+- Changed: the calibration-record list counts without joins and joins only the page it returns: page 200 went from 6,592 to 622 buffers. Same rows, order and totals in 8 of 8 identity cases on PostgreSQL 18.
+- Added: migration **0109**, a partial covering index of live calibration records. The list's and the dashboard's record counts become index-only (1,510 → 361 buffers). Run it on upgrade. It is built CONCURRENTLY by the boot's migrator.
+- Changed: Sequelize's transaction namespace is AsyncLocalStorage, and **`cls-hooked` is removed** (`backend/package.json`, `package-lock.json`). The JWT ring caches its KeyObjects; rotation still applies on the next call.
+- Added: `scripts/load/u06-search-document.k6.js`, a load script for global search and the certificate document.
+- Not claimed: an end-to-end p95 gain. The interleaved before/after runs stayed inside the shared host's noise.
+
+### 2026-10-05 — A request body without its fields no longer answers 500 (W-10, [record](./records/2026-10-05-w10-bodyless-requests.md))
+- Verified: all 196 write routes without a body schema were called with an empty body and with an array body. They were called through the real middleware, controllers and models, as a tenant admin and as the super admin. A missing body or a non-JSON body was already treated as empty, and a JSON value that is not an object or an array was already refused with 400 before any route ran.
+- Fixed: `POST /api/v1/sop` answered 500 when the title was missing, the body was empty, or `requiresTraining` was null. It now answers 400 "Validation Error". The body is validated: the title is required (1–255 characters), `version` and `contentUrl` are length-checked, and any other field is ignored.
+- Added: a build check (`bodylessRequests.w10.guard`). It fails when a new write route without a body schema answers 5xx to an empty or array body.
+
+### 2026-10-05 — The S3 storage driver ran against real S3 servers; storage usage works on S3 (U-09, [record](./records/2026-10-05-u09-s3-live.md))
+- Verified live: the real driver against SeaweedFS and Versity S3 Gateway (MinIO images cannot be pulled here). Health check, objects, ranges, a 16 MiB stream, paging, presigned URLs, tenant isolation and the SSRF guard all passed, 15/15 on each server. A running backend's `/api/v1/storage` and `migrate:storage` passed 28/28.
+- Fixed: `GET /api/v1/storage/usage` failed on every tenant with S3 storage: it asked S3 for 9,007,199,254,740,991 keys, which every server refuses. It also counted only the first 1,000 objects. It now pages through all of them.
+- Added: `scripts/storage/s3-live-check.sh`, which starts the servers (and, with `APP_PATH=1`, a backend), runs every check and removes the containers it started.
+- Not proven: MinIO, AWS S3, the IAM credential chain, multipart upload, and attachments on S3 (P8-01).
+
+### 2026-10-05 — Every nightly database dump is restored and checked; a failed or missing backup alerts (U-05, ADR-116, [record](./records/2026-10-05-u05-backup-restore-verification.md))
+- Added: the `db-backup` service (compose) and a Helm CronJob (`backupVerify.enabled`, default off). Every night it takes `pg_dump -Fc` and restores that dump into a throwaway PostgreSQL 18 + pgvector. It then checks the restored copy: checksum, role-first `pg_restore --exit-on-error`, pgvector, exact row counts and audit checksum against the dump's snapshot, and the application's own schema check.
+- Added: alerts `backup.dump.failed`, `backup.restore-verify.failed`, `backup.restore-verify.missed` and `backup.restore-verify.unreadable`, sent through the existing log, webhook and email path. The backend watchdog alerts when no verification is recorded for 26 h.
+- Added: the backend binary's `verify-schema` and `backup-alert` subcommands.
+- Measured: restore-plus-checks 18 s on the proof stack, recorded on every run as `restoreSeconds`.
+- Not done: WAL/PITR and off-host copies of the dumps; both are scoped out with triggers.
+
 ### 2026-10-02 — CI's first run on `1100658`: three causes reproduced on Linux and fixed ([record](./records/2026-10-02-ci-first-push-fixes.md))
 - Fixed (CI): the boot job now gets the `ACCESS_REQUEST_IP_PEPPER` production requires; `scripts/ci/e2e-env.sh` is executable (the deploy-config and browser a11y jobs stopped at exit 126).
 - Fixed: `backend/.env.example` no longer sets `SUPER_ADMIN_ROLE_ID=uuid-here`, a placeholder that replaced the seeded super-admin role id for anyone who copied it; a guard keeps it out.

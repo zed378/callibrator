@@ -160,6 +160,30 @@
   --primary-foreground: var(--brand-primary-foreground-dark);
 }
 
+/*
+ * ADR-118 Amendment 2: the product logo's own colours, from the warm public
+ * palette (public-surface.css). Charcoal body and copper accent on light;
+ * ivory body and the light copper on dark, because copper #9A4E22 is only
+ * 2.7:1 on a dark surface. Logo only: these restyle nothing else on the
+ * dashboard (Phase 11 owns that). BrandIcon reads them; on a public surface
+ * --pub-accent wins, so the mark follows the inverted section too.
+ */
+@theme inline {
+  --color-logo-ink: var(--logo-ink);
+  --color-logo-accent: var(--logo-accent);
+}
+:root {
+  --logo-ink: #1F1B17;
+  --logo-accent: #9A4E22;
+}
+.dark {
+  --logo-ink: #F6EFE4;
+  --logo-accent: #E3A47B;
+}
+.logo-accent {
+  fill: var(--pub-accent, var(--logo-accent));
+}
+
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 80px;

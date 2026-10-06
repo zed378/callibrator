@@ -76,6 +76,8 @@ services:
     cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
     environment:
       APP_UID: "997"
+      # U-05: the db-backup service runs as the pgvector image's postgres user.
+      PGDUMP_UID: "999"
     # storage and well-known since S-40: the local storage driver's root
     # (/app/storage) and the ACME challenge directory (/app/.well-known) were
     # neither created by the image nor on a volume.
@@ -83,9 +85,10 @@ services:
       - sh
       - -c
       - >-
-        mkdir -p /v/uploads /v/backup /v/log /v/storage /v/well-known &&
+        mkdir -p /v/uploads /v/backup /v/log /v/storage /v/well-known /v/pgdump &&
         chown -R "$${APP_UID}:$${APP_UID}" /v/uploads /v/backup /v/log /v/storage /v/well-known &&
-        echo "volume-init: uploads, backup, log, storage and well-known owned by $${APP_UID}"
+        chown "$${PGDUMP_UID}:$${PGDUMP_UID}" /v/pgdump && chmod 0755 /v/pgdump &&
+        echo "volume-init: uploads, backup, log, storage and well-known owned by $${APP_UID}; pgdump by $${PGDUMP_UID}"
     volumes:
       - ./volumes:/v
 
@@ -121,6 +124,9 @@ services:
       # in .env to opt out deliberately.
       DB_APP_ROLE: ${DB_APP_ROLE:-callibrator_app}
       APP_STORAGE_PATH: /app
+      # U-05 (ADR-116): the job watchdog reads db-backup's outcome and alerts
+      # when it fails or goes stale (RESTORE_VERIFY_MAX_AGE_HOURS, default 26).
+      RESTORE_VERIFY_STATUS_FILE: ${RESTORE_VERIFY_STATUS_FILE:-/app/pgdump/last-restore-verify.json}
     volumes:
       - ./volumes/uploads:/app/uploads
       - ./volumes/backup:/app/backup
@@ -130,6 +136,9 @@ services:
       # were lost on every recreate.
       - ./volumes/storage:/app/storage
       - ./volumes/well-known:/app/.well-known
+      # U-05: read-only — the backend reads db-backup's outcome file. The dumps
+      # themselves are 0600 to db-backup's user and unreadable here.
+      - ./volumes/pgdump:/app/pgdump:ro
     # Wait for the datastores to be READY, not merely started. The backend runs
     # db.sync() + migrations against Postgres at boot and connects to Redis and
     # RabbitMQ, so starting early produces a crash loop that looks like a code
@@ -244,6 +253,58 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  # U-05 (ADR-116): the scheduled infrastructure dump AND its restore
+  # verification. Every day at BACKUP_AT (local TZ) it takes `pg_dump -Fc` of
+  # the database inside an exported snapshot, restores it into a THROWAWAY
+  # PostgreSQL 18 + pgvector started inside this container, and checks the copy:
+  # SHA-256, pg_restore --exit-on-error in the documented role-first order,
+  # pgvector present, exact row counts / audit checksum / migrations against the
+  # snapshot, and the application's own schema check (`backend verify-schema`).
+  # The outcome — with the restore time, a measured RTO for the database —
+  # goes to ./volumes/pgdump/last-restore-verify.json; a failure is a critical
+  # alert through the application's alert path (ALERT_WEBHOOK_URL /
+  # ALERT_EMAIL_TO), and the backend's watchdog alerts if the file goes stale.
+  # The dumps are on THIS HOST: copying ./volumes/pgdump off it is the
+  # operator's (docs/DEVOPS/04 § Off-host copy). The real application secrets
+  # never enter this container (the schema check runs on throwaway ones).
+  db-backup:
+    image: ${BACKUP_IMAGE:-callibrator/backup-verify}:${IMAGE_TAG:-latest}
+    build:
+      context: ${BUILD_CONTEXT:-../..}
+      dockerfile: deploy/backup/Dockerfile
+      additional_contexts:
+        # The backend binary inside must be the release's own (verify-schema, backup-alert).
+        backend-image: service:backend
+    restart: unless-stopped
+    init: true
+    <<: *hardened
+    cap_drop: [ALL]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_APP_ROLE: ${DB_APP_ROLE:-callibrator_app}
+      TZ: ${TZ:-Asia/Jakarta}
+      BACKUP_AT: ${BACKUP_AT:-02:30}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+      BACKUP_RUN_ON_START: ${BACKUP_RUN_ON_START:-0}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+    volumes:
+      - ./volumes/pgdump:/backups
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
 
   redis:
     # NOT just a cache. Redis holds rate-limit counters, WebAuthn challenges

@@ -32,6 +32,9 @@ import loadedStoragePath from "../utils/storagePath.util";
 import { deleteUpload as loadedDeleteUpload } from "../utils/upload.util";
 import { db as loadedDb } from "../config";
 import auditService from "./audit.service";
+import storage from "./storage";
+import storedFile from "./storedFile.service";
+import type { StorageObject } from "../utils/fileResponse.util";
 import {
   auditEntryActor as loadedAuditEntryActor,
   actorChanges as loadedActorChanges,
@@ -176,26 +179,34 @@ const exportUserData = async (
   }
 
   const exportId = generateExportId();
+  // P8-01 (ADR-086 Amendment 1): the working directory and the ZIP being built
+  // are SCRATCH on this host, for the length of this request; the archive and
+  // its manifest are kept in the tenant's storage (`t/<tenantId>/exports/`),
+  // where every replica — and the retention sweep — finds them.
   const exportDir = storagePath("exports", exportId);
   const zipPath = storagePath("exports", `${exportId}.zip`);
-  const manifestPath = storagePath("exports", `${exportId}.json`);
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + EXPORT_RETENTION_HOURS * 3600000);
+  let scoped: Awaited<ReturnType<typeof storage.getTenantStorage>> | null = null;
 
   try {
-    // W-15 (ADR-079): the manifest is written FIRST, so every file this export
-    // leaves on disk, even after a crash part-way, has a recorded expiry and
+    scoped = await storage.getTenantStorage(tenantId);
+    // W-15 (ADR-079): the manifest is written FIRST, so every object this
+    // export leaves, even after a crash part-way, has a recorded expiry and
     // owner that the retention sweep (purgeExpiredExports) enforces.
     await fs.promises.mkdir(storagePath("exports"), { recursive: true });
-    await fs.promises.writeFile(
-      manifestPath,
-      JSON.stringify({
-        exportId,
-        tenantId,
-        userId,
-        createdAt: createdAt.toISOString(),
-        expiresAt: expiresAt.toISOString(),
-      }),
+    await scoped.put(
+      exportManifestKey(scoped, exportId),
+      Buffer.from(
+        JSON.stringify({
+          exportId,
+          tenantId,
+          userId,
+          createdAt: createdAt.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+        }),
+      ),
+      { contentType: "application/json" },
     );
 
     // Create export directory
@@ -222,6 +233,9 @@ const exportUserData = async (
     await fs.promises.rm(exportDir, { recursive: true, force: true });
 
     const fileSize = await getFileSize(zipPath);
+    // P8-01: the archive into the tenant's storage; the scratch ZIP is removed
+    // once it is there.
+    await storedFile.putLocalFile(scoped, exportArchiveKey(scoped, exportId), zipPath, "application/zip");
 
     // A-364: the export's record, before its id is handed out (see above).
     await db.transaction(async (transaction) => {
@@ -256,7 +270,11 @@ const exportUserData = async (
     // a half-written ZIP, nor the manifest of an export that does not exist.
     await fs.promises.rm(exportDir, { recursive: true, force: true });
     await fs.promises.rm(zipPath, { force: true });
-    await fs.promises.rm(manifestPath, { force: true });
+    if (scoped) {
+      const kept = scoped;
+      await kept.delete(exportArchiveKey(kept, exportId)).catch(() => undefined);
+      await kept.delete(exportManifestKey(kept, exportId)).catch(() => undefined);
+    }
     // A-151: "no such subject" is a 404 — it was rewritten into a 500.
     if (err instanceof AppError && err.status < 500) {
       throw err;
@@ -665,6 +683,14 @@ async function createZipArchive(exportDir: string, zipPath: string): Promise<str
   });
 }
 
+/** P8-01: an export's archive key in its tenant's storage. */
+const exportArchiveKey = (scoped: { buildKey(input: { domain: string; name: string }): string }, exportId: string): string =>
+  scoped.buildKey({ domain: "exports", name: `${exportId}.zip` });
+
+/** P8-01: an export's manifest key in its tenant's storage. */
+const exportManifestKey = (scoped: { buildKey(input: { domain: string; name: string }): string }, exportId: string): string =>
+  scoped.buildKey({ domain: "exports", name: `${exportId}.json` });
+
 /** An export's files: `<id>.json` (manifest), `<id>.zip`, and the `<id>` working directory. */
 const EXPORT_ENTRY = /^(export-(\d+)-[0-9a-f]+)(\.zip|\.json)?$/;
 
@@ -691,6 +717,130 @@ const EXPORT_ENTRY = /^(export-(\d+)-[0-9a-f]+)(\.zip|\.json)?$/;
 const purgeExpiredExports = async (
   { now = new Date() }: { now?: Date } = {},
 ): Promise<{ deleted: number; errors: number }> => {
+  // P8-01 (ADR-086 Amendment 1): exports kept in tenants' storage, then the
+  // legacy directory (exports written before the cut-over, and any scratch a
+  // crash left behind).
+  const stored = await purgeExpiredStoredExports(now);
+  const legacy = await purgeExpiredLegacyExports(now);
+  return { deleted: stored.deleted + legacy.deleted, errors: stored.errors + legacy.errors };
+};
+
+/** The tenants whose storage the export sweep walks, a page at a time. */
+const TENANT_PAGE = 500;
+
+/**
+ * P8-01 — W-15's sweep over the exports kept in each tenant's storage. The
+ * same rules as the legacy directory's: an export with a manifest goes at its
+ * recorded expiry, with one audit row in its tenant naming the retention job
+ * and the subject, the manifest last (so a failed audit row is retried); an
+ * archive with no manifest goes at the creation time in its id plus
+ * EXPORT_RETENTION_HOURS, logged.
+ */
+const purgeExpiredStoredExports = async (now: Date): Promise<{ deleted: number; errors: number }> => {
+  const result = { deleted: 0, errors: 0 };
+  const { Tenant } = modelsBarrel();
+  let after: string | null = null;
+  for (;;) {
+    const page = (await Tenant.findAll({
+      attributes: ["id"],
+      ...(after ? { where: { id: { [Op.gt]: after } } } : {}),
+      order: [["id", "ASC"]],
+      limit: TENANT_PAGE,
+      paranoid: false,
+    })) as unknown as { id: TenantId }[];
+    for (const { id } of page) {
+      try {
+        const counts = await purgeTenantExports(id, now);
+        result.deleted += counts.deleted;
+        result.errors += counts.errors;
+      } catch (err) {
+        result.errors += 1;
+        logger.error(`GDPR export sweep could not read tenant ${id}'s storage: ${messageOf(err)}`);
+      }
+    }
+    if (page.length < TENANT_PAGE) {break;}
+    after = (page[page.length - 1] as { id: TenantId }).id;
+  }
+  return result;
+};
+
+/** One tenant's stored exports (P8-01). */
+const purgeTenantExports = async (tenantId: TenantId, now: Date): Promise<{ deleted: number; errors: number }> => {
+  const result = { deleted: 0, errors: 0 };
+  const scoped = await storage.getTenantStorage(tenantId);
+  const names: string[] = [];
+  let cursor: string | null | undefined;
+  do {
+    const listed = (await scoped.list("exports", { limit: 1000, ...(cursor ? { cursor } : {}) })) as {
+      keys: string[];
+      cursor?: string | null;
+    };
+    names.push(...listed.keys.map((key) => path.posix.basename(key)));
+    cursor = listed.cursor;
+  } while (cursor);
+
+  const exportsById = new Map<string, { createdMs: number; manifest: boolean }>();
+  for (const name of names) {
+    const match = EXPORT_ENTRY.exec(name);
+    if (match) {
+      const id = match[1] as string;
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as the legacy sweep
+      const entry = exportsById.get(id) || { createdMs: Number(match[2]), manifest: false };
+      entry.manifest = entry.manifest || match[3] === ".json";
+      exportsById.set(id, entry);
+    }
+  }
+
+  for (const [exportId, entry] of exportsById) {
+    const manifestKey = exportManifestKey(scoped, exportId);
+    try {
+      const manifest = entry.manifest
+        ? (JSON.parse((await storedFile.readObject(scoped, manifestKey)).toString("utf8")) as {
+            userId: unknown;
+            createdAt: unknown;
+            expiresAt: string;
+          } | null)
+        : null;
+      const expiresMs = manifest
+        ? Date.parse(manifest.expiresAt)
+        : entry.createdMs + EXPORT_RETENTION_HOURS * 3600000;
+      // A manifest whose expiry does not parse (NaN) is treated as expired.
+      if (now.getTime() < expiresMs) {
+        continue;
+      }
+      await storedFile.removeObject(scoped, exportArchiveKey(scoped, exportId));
+      if (manifest) {
+        await runForTenant(tenantId, () =>
+          auditService.logAction({
+            tenantId,
+            systemActor: SYSTEM_ACTORS.RETENTION_PURGE,
+            action: "DELETE",
+            resourceType: "DataExport",
+            resourceId: exportId,
+            changes: {
+              operation: "GDPR_EXPORT_EXPIRED",
+              actor: SYSTEM_ACTORS.RETENTION_PURGE,
+              subjectUserId: manifest.userId,
+              createdAt: manifest.createdAt,
+              expiresAt: manifest.expiresAt,
+            },
+          }),
+        );
+        await storedFile.removeObject(scoped, manifestKey);
+      } else {
+        logger.info(`GDPR export ${exportId} expired and deleted from storage (no manifest)`);
+      }
+      result.deleted += 1;
+    } catch (err) {
+      result.errors += 1;
+      logger.error(`GDPR export sweep could not delete ${exportId}: ${messageOf(err)}`);
+    }
+  }
+  return result;
+};
+
+/** W-15's sweep over the legacy exports directory on this host. */
+const purgeExpiredLegacyExports = async (now: Date): Promise<{ deleted: number; errors: number }> => {
   const dir = storagePath("exports");
   const result = { deleted: 0, errors: 0 };
   let names: string[];
@@ -814,7 +964,7 @@ const getExportDownload = async (
   exportId: string,
   actor: AuditActorInput | null = null,
   { now = new Date() }: { now?: Date } = {},
-): Promise<{ filePath: string; filename: string; fileSize: number }> => {
+): Promise<{ filePath?: string; object?: StorageObject; filename: string; fileSize: number }> => {
   const found = await locateExport(tenantId, userId, exportId, now);
   // ONE throw site: a development error body carries the stack, and a refusal
   // thrown from different lines would tell "not yours" from "never existed".
@@ -830,7 +980,13 @@ const getExportDownload = async (
     });
   });
 
-  return { filePath: found.filePath, filename: `${exportId}.zip`, fileSize: found.fileSize };
+  // P8-01: an archive in storage is handed back as the object; a legacy one
+  // as its path, exactly as before.
+  return {
+    ...(found.object ? { object: found.object } : { filePath: found.filePath as string }),
+    filename: `${exportId}.zip`,
+    fileSize: found.fileSize,
+  };
 };
 
 /**
@@ -843,11 +999,42 @@ async function locateExport(
   userId: UserId,
   exportId: unknown,
   now: Date,
-): Promise<{ filePath: string; fileSize: number; expiresAt: string } | null> {
+): Promise<{ filePath?: string; object?: StorageObject; fileSize: number; expiresAt: string } | null> {
   // The shape first: the id comes from the path, and is never joined to a
   // path before it matches. A principal with no tenant or id owns nothing.
   if (!tenantId || !userId || typeof exportId !== "string" || !EXPORT_ID.test(exportId)) {
     return null;
+  }
+
+  // P8-01 (ADR-086 Amendment 1): the CALLER's tenant's storage first — an
+  // export of another tenant's is never in it — then the legacy directory.
+  const scoped = await storage.getTenantStorage(tenantId);
+  let stored: ExportManifest | null | undefined;
+  try {
+    stored = JSON.parse(
+      (await storedFile.readObject(scoped, exportManifestKey(scoped, exportId))).toString("utf8"),
+    ) as ExportManifest | null;
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      return null;
+    }
+    if (!storedFile.isMissing(err)) {
+      throw err;
+    }
+  }
+  if (stored !== undefined) {
+    if (!manifestGrants(stored, tenantId, userId, now)) {
+      return null;
+    }
+    try {
+      const object = await storedFile.openObject(scoped, exportArchiveKey(scoped, exportId));
+      return { object, fileSize: object.meta.size as number, expiresAt: (stored as { expiresAt: string }).expiresAt };
+    } catch (err) {
+      if (storedFile.isMissing(err)) {
+        return null;
+      }
+      throw err;
+    }
   }
 
   let manifest: ExportManifest | null;
@@ -863,27 +1050,35 @@ async function locateExport(
     }
     throw err;
   }
-  if (
-    manifest === null ||
-    typeof manifest !== "object" ||
-    manifest.tenantId !== tenantId ||
-    manifest.userId !== userId ||
-    typeof manifest.expiresAt !== "string" ||
-    // An expiry that does not parse (NaN) is treated as expired, as the sweep does.
-    !(now.getTime() < Date.parse(manifest.expiresAt))
-  ) {
+  if (!manifestGrants(manifest, tenantId, userId, now)) {
     return null;
   }
 
   const filePath = storagePath("exports", `${exportId}.zip`);
   try {
-    return { filePath, fileSize: (await fs.promises.stat(filePath)).size, expiresAt: manifest.expiresAt };
+    return { filePath, fileSize: (await fs.promises.stat(filePath)).size, expiresAt: (manifest as { expiresAt: string }).expiresAt };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       return null;
     }
     throw err;
   }
+}
+
+/**
+ * Whether a manifest makes the export the caller's, now: it names their
+ * tenant AND user, and its expiry is a time still ahead (one that does not
+ * parse — NaN — is treated as expired, as the sweep does).
+ */
+function manifestGrants(manifest: ExportManifest | null, tenantId: TenantId, userId: UserId, now: Date): boolean {
+  return !(
+    manifest === null ||
+    typeof manifest !== "object" ||
+    manifest.tenantId !== tenantId ||
+    manifest.userId !== userId ||
+    typeof manifest.expiresAt !== "string" ||
+    !(now.getTime() < Date.parse(manifest.expiresAt))
+  );
 }
 
 /**

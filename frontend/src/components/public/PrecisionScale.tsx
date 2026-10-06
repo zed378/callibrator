@@ -41,7 +41,14 @@ const TICKS: Tick[] = Array.from({ length: (END - START) / 2 + 1 }, (_, i) => {
   return { d: `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)}`, major };
 });
 
-export function PrecisionScale({ className }: { className?: string }) {
+/**
+ * `follow` (P10-17, ADR-118): the landing hero's one interactive element. The
+ * needle is wrapped in a group that turns by `--lp-px` (−1 … 1, written by
+ * HeroPointer from a fine pointer) — up to ±38°, so it swings in and out of
+ * the tolerance band as the cursor crosses the hero. CSS only (landing.css);
+ * on touch, or under reduced motion, the needle simply settles once.
+ */
+export function PrecisionScale({ className, follow = false }: { className?: string; follow?: boolean }) {
   const [nx, ny] = polar(2, R - 44);
   return (
     <svg
@@ -73,8 +80,10 @@ export function PrecisionScale({ className }: { className?: string }) {
         />
       ))}
       {/* Needle: pivots at the arc's centre; settles within the band */}
-      <g className="pub-needle">
-        <line x1={CX} y1={CY} x2={nx} y2={ny} stroke="var(--pub-accent)" strokeWidth="2" strokeLinecap="round" />
+      <g className={follow ? "lp-needle-follow" : undefined}>
+        <g className="pub-needle">
+          <line x1={CX} y1={CY} x2={nx} y2={ny} stroke="var(--pub-accent)" strokeWidth="2" strokeLinecap="round" />
+        </g>
       </g>
       <circle cx={CX} cy={CY} r="7" fill="var(--pub-bg)" stroke="var(--pub-accent)" strokeWidth="2" />
     </svg>

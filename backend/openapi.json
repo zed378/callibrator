@@ -14476,7 +14476,7 @@
           "action": "read",
           "superAdmin": "bypasses"
         },
-        "description": "A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`.",
+        "description": "A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`. The figures are cached for 30 seconds per scope (never shared between tenants); `generatedAt` says when they were computed.",
         "parameters": [
           {
             "in": "query",
@@ -39711,32 +39711,42 @@
                 "properties": {
                   "title": {
                     "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
                     "example": "Calibration of infusion pumps"
                   },
                   "version": {
+                    "description": "Defaults to 1.0 when absent, empty or null",
                     "example": "1.0",
-                    "type": [
-                      "string",
-                      "null"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      {
+                        "type": "null"
+                      }
                     ]
                   },
                   "contentUrl": {
-                    "type": [
-                      "string",
-                      "null"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 255
+                      },
+                      {
+                        "type": "null"
+                      }
                     ]
                   },
                   "requiresTraining": {
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
+                    "description": "Defaults to true: publishing then assigns training to the tenant's users",
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "title"
-                ],
-                "description": "Read by the service; not validated by a schema on the route."
+                ]
               }
             }
           }
@@ -64495,7 +64505,8 @@
           "generatedAt": {
             "type": "string",
             "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "description": "When these figures were computed. U-06b (ADR-120): they are served from a per-tenant cache for up to 30 seconds, so this may be up to 30 s before the response"
           },
           "users": {
             "type": "object",

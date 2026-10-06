@@ -152,6 +152,16 @@ describe("Dashboard page", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it("U-06b: says when the figures were computed (the backend caches them up to 30 s)", async () => {
+    render(<DashboardPage />);
+    await screen.findByText("Team Members");
+    const at = new Date(tenantMetrics.generatedAt);
+    const hhmmss = [at.getHours(), at.getMinutes(), at.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
+    const stamp = screen.getByText(hhmmss);
+    expect(stamp.tagName).toBe("TIME");
+    expect(stamp).toHaveAttribute("dateTime", tenantMetrics.generatedAt);
+  });
+
   it("a failed metrics load shows the error with a retry that reloads", async () => {
     metrics = httpError(500, "Metrics are unavailable");
     render(<DashboardPage />);

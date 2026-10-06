@@ -142,6 +142,9 @@ describe("jwt utility", () => {
   });
 
   describe("verifyAccessToken", () => {
+    /** A secret KeyObject's bytes, as text (U-06). */
+    const keyText = (key) => key.export().toString();
+
     afterEach(() => {
       delete process.env.JWT_ACCESS_SECRET_PREVIOUS;
     });
@@ -150,7 +153,10 @@ describe("jwt utility", () => {
       mockVerify.mockReturnValueOnce({ userId: 123 });
       const result = jwtUtils.verifyAccessToken("valid-token");
       expect(result).toEqual({ userId: 123 });
-      expect(mockVerify).toHaveBeenCalledWith("valid-token", "test-access-secret", { algorithms: ["HS256"] });
+      expect(mockVerify).toHaveBeenCalledWith("valid-token", expect.anything(), { algorithms: ["HS256"] });
+      // U-06 (ADR-119): the secret reaches jsonwebtoken as the KeyObject it would
+      // otherwise build from the string on every call.
+      expect(keyText(mockVerify.mock.calls[0][1])).toBe("test-access-secret");
     });
 
     it("tries the PREVIOUS secret when the current one does not verify (S-26 rotation window)", () => {
@@ -162,7 +168,8 @@ describe("jwt utility", () => {
         .mockReturnValueOnce({ userId: 456 });
       const result = jwtUtils.verifyAccessToken("valid-token");
       expect(result).toEqual({ userId: 456 });
-      expect(mockVerify).toHaveBeenLastCalledWith("valid-token", "test-access-secret-old", { algorithms: ["HS256"] });
+      expect(mockVerify).toHaveBeenLastCalledWith("valid-token", expect.anything(), { algorithms: ["HS256"] });
+      expect(keyText(mockVerify.mock.calls[1][1])).toBe("test-access-secret-old");
     });
 
     it("should throw TokenExpiredError immediately", () => {

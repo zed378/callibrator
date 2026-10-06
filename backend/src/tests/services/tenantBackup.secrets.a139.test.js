@@ -29,6 +29,9 @@
 
 const mockDb = { rows: {}, statements: [] };
 
+// P8-01 (ADR-086 Amendment 1): a backup archive is put into the tenant's
+// storage; the double keeps the real key rules (fixtures/fakeStorage).
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../config", () => {
   const { Sequelize } = jest.requireActual("sequelize");
   const db = new Sequelize({ dialect: "postgres", logging: false });
@@ -176,9 +179,6 @@ const takeBackup = async () => {
   jest.spyOn(models.TenantBackup, "updateStatus").mockResolvedValue(undefined);
   jest.spyOn(models.TenantBackup, "findByPk").mockResolvedValue({ id: BACKUP });
   jest.spyOn(fs, "existsSync").mockReturnValue(true);
-  jest.spyOn(fs, "writeFileSync").mockImplementation((_path, buffer) => {
-    written = buffer;
-  });
   jest
     .spyOn(fs, "createReadStream")
     .mockImplementation(() => Readable.from([Buffer.from("zip")]));
@@ -193,6 +193,10 @@ const takeBackup = async () => {
     }),
   );
   expect(result.status).toBe(201);
+  // P8-01: the archive is in the tenant's storage, not written to disk.
+  const storage = require("../../services/storage");
+  written = [...storage.__objects.values()][0].body;
+  storage.__reset();
 
   const zip = await JSZip.loadAsync(written);
   const texts = {};

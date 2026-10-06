@@ -10,3 +10,4 @@ export { default as DashboardQuickActions } from "./DashboardQuickActions";
 export { default as DashboardSystemHealth } from "./DashboardSystemHealth";
 export { default as DashboardCharts } from "./DashboardCharts";
 export { default as TenantBreakdown } from "./TenantBreakdown";
+export { default as DashboardUpdatedAt } from "./DashboardUpdatedAt";

@@ -2021,7 +2021,7 @@ export interface paths {
         };
         /**
          * The home page's metrics
-         * @description A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`.
+         * @description A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`. The figures are cached for 30 seconds per scope (never shared between tenants); `generatedAt` says when they were computed.
          */
         get: operations["getDashboardMetrics"];
         put?: never;
@@ -9028,7 +9028,10 @@ export interface components {
         DashboardMetrics: {
             /** @enum {string} */
             scope: "tenant" | "global";
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When these figures were computed. U-06b (ADR-120): they are served from a per-tenant cache for up to 30 seconds, so this may be up to 30 s before the response
+             */
             generatedAt: string;
             users: {
                 total: number;
@@ -25807,10 +25810,14 @@ export interface operations {
                 "application/json": {
                     /** @example Calibration of infusion pumps */
                     title: string;
-                    /** @example 1.0 */
+                    /**
+                     * @description Defaults to 1.0 when absent, empty or null
+                     * @example 1.0
+                     */
                     version?: string | null;
                     contentUrl?: string | null;
-                    requiresTraining?: boolean | null;
+                    /** @description Defaults to true: publishing then assigns training to the tenant's users */
+                    requiresTraining?: boolean;
                 };
             };
         };

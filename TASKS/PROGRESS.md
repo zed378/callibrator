@@ -143,6 +143,7 @@ What is open now, from the board and `OPEN-WORK-2026-09-30.md` §1 and §5:
 | **A-284** (A-274 DONE 2026-09-30) | lint covers `src/` only · the unused `includeDeleted` scope removed from 12 models, ApiKey's kept for its callers — [record](../MEMORY/records/2026-09-30-correctness-batch.md) |
 | **A-18** | `utils/checkMenu.util.js` still exists; deleting it needs the owner's permission |
 | ~~**REVIEW V-05, V-08, V-12, V-13, V-14, V-15, V-17**~~ | **DONE 2026-09-30**, each with a named test (V-13 → 403 per ADR-109 §7; V-17 removes `SIGNATURE_ALGORITHM`). Also Q-52 (vendors.notes: migration **0106** verified on PG18 up/down/up, a Notes field in the vendor form, max 2,000) and Q-53 (global 429 envelope) — [record](../MEMORY/records/2026-09-30-correctness-batch.md) |
+| ~~**W-10**~~ DONE 2026-10-05 | bodyless / wrong-shape bodies probed on all 196 unvalidated mutating routes: one 5xx (`POST /sop`, now `validate(createSopDocument)`), guard `bodylessRequests.w10.guard` — [record](../MEMORY/records/2026-10-05-w10-bodyless-requests.md) |
 | **Live checks** | A-310 on kind; A-63 two-tenant; D-08/D-13/D-22 on the deployed database; S-19 containers; migrations 0091–0105 on PostgreSQL 18 as `callibrator_app` |
 
 ### One shape, three times
@@ -181,6 +182,8 @@ The compose pins and all eighteen documents now say **PostgreSQL 18** (`pgvector
 | P7-02 | **Alerting on scheduled-job outcomes** | 🟡 **PARTIAL** 2026-09-25 — in the application: every scheduler monitored, watchdog for missed runs and stuck batch jobs, webhook/email sinks, `/health/jobs`, `/health/metrics` (ADR-066; `jobMonitor.service.p702`, `alert.service.p702`, `health.jobs.p702`, `metricsAuth.p702` — 100% covered; metrics served live). 2026-09-28 (ADR-082): routing tested end to end into a real HTTP receiver (`alertRouting.p702`), retention `incomplete` / quarantine `truncated` alert as warnings, the boot log states the route. Open: the infrastructure backup runs outside the process, and no deployment has a route set | — |
 | P7-03 | Structured log shipping | 🟡 **PARTIAL** 2026-09-25 — JSON on stdout with `requestId` on every request line (`activityLog.requestId.p703`); 2026-09-28 (ADR-082): the pinned Vector shipped a real backend container's stdout to a local Loki 3.5.5 and a file — `requestId` on every request line, 0 secrets, a stray unredacted line redacted by Vector; the `alert` label moved to its own sink; **no deployment ships**; 52 `console.*` sites remain (A-42 sweep) | — |
 | P7-04 | **A full restore drill** | ✅ **DONE** 2026-09-28 (ADR-078) — compose, PG 18: dump + objects + escrowed secrets restored, checklist identical before/after, **RTO 234 s**, RPO = dump age; 7 findings (D-1 PDF rendering in the image — **closed 2026-09-29 by ADR-095: the backend renders no PDF; the frontend renders it from `GET /certificates/:id/document`**; D-2 postgres init; D-3 tenant backup held no users; D-4 role before pg_restore; D-5 secrets first; D-6 wrong KMS key booted; D-7 `migrate:status` hangs) | — |
+| U-05 | **Scheduled restore verification of every infrastructure dump** | ✅ **DONE for the database** 2026-10-05 (ADR-116) — `db-backup` compose service + Helm CronJob (`backupVerify.enabled`, default off) from `deploy/backup/` (pgvector PG 18 image + the backend binary): nightly `pg_dump -Fc` in an exported snapshot, restored into a throwaway PG 18, checked (SHA-256, role-first `pg_restore --exit-on-error`, pgvector, exact counts/audit checksum/migrations, `./backend verify-schema`); failures alert via `alert.service` (`backup-alert` CLI) and the backend watchdog alerts a stale outcome. Live on `callib-u05`: pass 18 s; truncated, corrupt and count-tampered dumps FAILED and alerted (log + email); missed-run alert fired. Tests `backupVerify.u05.test.ts` (17). Helm rendered + kubeconform, **not run on a cluster**; WAL/PITR and off-host copy scoped out ([record](../MEMORY/records/2026-10-05-u05-backup-restore-verification.md)) | — |
+| U-06 | **Performance targets are met** | 🟡 **PARTIAL** 2026-10-05 (ADR-119) — re-measured on the current tree with the P8-07 script and seed: lists p95 156–438 ms at 10 VU in 8 of 9 runs, every miss contended (shared host); ceiling is the Node event loop (main thread 99–100%), not PostgreSQL. Record list: count without joins + deferred-join page (6,592 → 622 buffers); migration 0109 (record counts index-only); cls-hooked → AsyncLocalStorage; JWT KeyObject ring. Tests `recordsList.u06`, `0109-calibration-records-live-index`, `clsNamespace.u06`, `jwt.keyMemo.u06`. **U-06b (ADR-120, 2026-10-05):** dashboard cached 30 s per scope (p95 197–344 → 61–64 ms at 10 VU; 3.4–3.7 ms CPU/request); search: one permission load per request (13 → 3 Redis GETs), migration 0110 per-tenant GIN (btree_gin); search under 500 ms in all 18 runs; 0109's INCLUDE boot crash fixed before release. Tests `dashboardCache.u06b`, `search.permissionLoads.u06b`, `0110-search-tenant-gin`, `indexDefinitionSync.u06b`, `DashboardUpdatedAt` ([record](../MEMORY/records/2026-10-05-u06b-search-dashboard.md)). **Open:** dedicated-host run, a replica measurement, PDF memory (M-11), IoT ingest ([record](../MEMORY/records/2026-10-05-u06-list-performance.md)) | — |
 | P7-05 | Formalise the secret backup procedure | ✅ **DONE** 2026-09-28 (ADR-078) — `docs/SECURITY/14-SECRET-ESCROW.md`; the boot refuses a database whose KMS key is missing (`kmsVerify.util.p705`, 9); secrets restore was part of the drill | P6-10 |
 | P7-06 | Validate the Helm charts against a real cluster | ✅ DONE on kind 2026-09-30 (ADR-106): installs, upgrades, rolls back; seven chart defects fixed; **not proven on a production cluster**; A-310 is fixed in code but not re-run on kind. **The Phase 7 exit counts kind; U-01 (a production cluster) is post-go-live** (ADR-109 §3, working decision). "Wakes somebody" waits for the owner's alert destination and log sink (`BACKLOG.md` § Owner-Supplied Values) | a cluster |
 | P7-07 | Pin the two `:latest` base images | ✅ **DONE** 2026-09-25 — every base image pinned by digest (both Dockerfiles, compose, the Vector overlay; MinIO dev-only by release tag); process in `docs/DEVOPS/02` § Moving a pinned base image; compose digests pulled successfully in a live run (ADR-066) | — |
@@ -219,7 +222,8 @@ The compose pins and all eighteen documents now say **PostgreSQL 18** (`pgvector
 
 | Task | Title | Trigger | Status |
 |---|---|---|---|
-| P8-01 | Object storage off local disk | before replica count > 1 | 🚫 **BLOCKED** 2026-09-28 (ADR-086). A-40 is done; the rest needs a target S3/NFS environment and an ambient credential chain |
+| P8-01 | Object storage off local disk | before replica count > 1 | ✅ **DONE in code** 2026-10-05 (ADR-086 Am. 1): attachments, certificate PDFs, avatars/logos/CMS images, tenant backups and GDPR exports are stored, served (Range/304, identical headers), signed and deleted through the storage layer on local, NFS and S3; legacy files read as fallback; `migrate:storage` copies every class (audited backfills). Live on SeaweedFS with two tenants: `p801-live-check.sh` 44/44; identity `storedFiles.identity.p801.test.ts`. 🚫 **Still BLOCKED only on the production target** (owner/operator): a production bucket/NFS, the ambient IAM credential chain, and the production migration counted at the destination ([record](../MEMORY/records/2026-10-05-p8-01-storage-cutover.md)) |
+| U-09 | **The S3 driver works against an S3 server** | ✅ **DEMONSTRATED** 2026-10-05 on SeaweedFS and Versity S3 Gateway (MinIO unpullable): live driver suite `storage.s3.u09.live.test.ts` 15/15 on each, backend request path `scripts/storage/s3-app-path-check.ts` 28/28 (settings, usage, signed objects, `migrate:storage`); `GET /storage/usage` fixed on S3 (MaxKeys, paging; `storage.usageS3.u09.test.ts`). Not MinIO/AWS, not the IAM chain; P8-01 stays BLOCKED ([record](../MEMORY/records/2026-10-05-u09-s3-live.md)) | — |
 | P8-02 | Socket.IO Redis adapter | same | 🟡 **PARTIAL**. The adapter and cross-replica test are done (A-54), and open-socket revocation is done (ADR-085). Open: the fan-out test after a reconnect, and a live notification through the proxy |
 | P8-03 | Migration advisory lock or init container | same | ✅ **DONE** 2026-09-28 (ADR-086). `db.sync()` + migrations run under a PostgreSQL advisory lock (`utils/migrationLock.util.js`), and `npm run migrate` takes the same lock. Tests: `migrationLock.p803.test.js` (17) and `migrationLock.p803.live.test.js` (4, PostgreSQL 18.6), with fail-before on a HEAD worktree. On two real replicas, one applied 63 migrations and the other waited and applied none |
 | P8-04 | Read replica for reporting | measured impact on operational p95 | ⏳ The trigger fired in part (P8-07). Decided: query-shaped fixes first, a replica only if p95 still fails (ADR-086 §3) |
@@ -323,14 +327,59 @@ Ratchet: **905 names** in `backend/.ts-ratchet.json` on 2026-09-30 (209 non-test
 | P10-14 | Certificate-verification enumeration (tracks the security agent's change) | **IN REVIEW**. A-293 is DONE in the working tree (2026-09-29, ADR-100 §1) but not committed; Q-47 still needs the owner's confirmation |
 | P10-15 | Invitation acceptance | **DONE in working tree 2026-10-02; DONE on commit** (live 2026-10-02: invitation acceptance in `p10-access-requests.e2e` (I and J) and the browser *invitation* check (I); [record](../MEMORY/records/2026-10-02-p10-live-pair-ij.md)). Before: **IN REVIEW 2026-09-30**: `POST /auth/invitation/accept` (single-use, 7-day token); `/invitation` page built 2026-09-30 ([record](%s2026-09-30-P10-15-invitation-page.md)). [record](../MEMORY/records/2026-09-30-p10-backend-access-requests-passkey.md), ADR-108 |
 | P10-16 | First super admin: one-time bootstrap password, file inside the container only (ADR-099) | **DONE in working tree 2026-10-02; DONE on commit** (live 2026-10-02: the seed answered the file path only; `docker logs` 1 pointer line, 0 occurrences of the 24-character value; read with `exec backend cat /app/.bootstrap/superadmin-password`; [record](../MEMORY/records/2026-10-02-p10-live-pair-ij.md)). Before: **DONE in code 2026-09-29**, live check open ([record](../MEMORY/records/2026-09-29-superadmin-bootstrap-otp.md)) |
+| P10-17 | Warm, human-centric redesign of the landing, sign-in and request access; light/dark mode; contextual photographs (the owner's `/redesign-landing` brief and follow-ups; QA pass addressed) | **DONE in working tree 2026-10-05** (ADR-118 + Amendments 1 and 3; [record](../MEMORY/records/2026-10-05-landing-warm-redesign.md)). Frontend typecheck and eslint 0; full jest coverage 93.94/84.78/89.63/94.6; `next build`; bundle budget within the **unchanged** ceilings. axe 0 on the public pages in light and dark. Live on `p1017warm`: P10 browser 12/12, a11y 80/80 (final runs in record §8). **Open:** simulated mobile LCP (`/` 3.6 s, `/login` 3.2 s; observed ≤ 1.5 s; AC-5/6 not met, causes in record §6); commissioned photographs (owner) |
 
 Working decisions Q-39 … Q-47 (ADR-098 §8) were set by the coordinating session and **await the owner's confirmation**; P10-16 is DONE in code; the backend of P10-04/05/07/10/12/15 is built and in review (ADR-108); the public pages are in progress.
 
 ---
 
-## Phase 11 — Admin Dashboard Revamp ⏸
+## Phase 11 — Admin Dashboard Revamp ▶ (palette and theme only)
 
-[`PHASE-11-DASHBOARD-REVAMP.md`](./PHASE-11-DASHBOARD-REVAMP.md). **On hold until the owner instructs.** Placeholder cards, all BLOCKED; inputs in `docs/UI-UX/research/01–03`.
+[`PHASE-11-DASHBOARD-REVAMP.md`](./PHASE-11-DASHBOARD-REVAMP.md). **Opened by the owner on 2026-10-05, for the palette and the theme only.** The instruction: bring the dashboard in line with the warm palette, with a light/dark button on both the landing and the dashboard. Density, sidebar regrouping, role homes, list/form patterns, language and typography (P11-08 … P11-14) stay BLOCKED, awaiting owner input. Inputs are in `docs/UI-UX/research/01–03`.
+
+| Card | Title | Status |
+|---|---|---|
+| P11-00 | Scope, theming audit, token map, migration plan, owner questions | **DONE (planning) 2026-10-05 — pending the owner's answers to P11-Q1…Q4** ([spec](../MEMORY/specs/P11-00-dashboard-palette-theme.md)). No code changed |
+| P11-01 | Token layer + contrast pairs + colour guard (ratchet) + Phase 11 ADR | BLOCKED — Q1, Q2 (Q3) |
+| P11-02 | One theme mechanism; toggle parity on landing and dashboard | BLOCKED — Q4 |
+| P11-03 | Shell and `components/ui` recolour | BLOCKED — P11-01 |
+| P11-04 | Module sweep (5 batches), `accent` review, D1/D2/D6; guard to zero | BLOCKED — P11-03 |
+| P11-05 | Status-tone registry (shape + icon + label + colour) | BLOCKED — P11-01 |
+| P11-06 | Charts (`--chart-*`, kanban priority ramp, D5) | BLOCKED — P11-01, Q3 |
+| P11-07 | Verification and record | BLOCKED — P11-02 … P11-06 |
+
+> 2026-10-05 — **P11-00 planning.**
+>
+> **Audit (spec §3).** The dashboard is already token-driven: 2,643 semantic token classes across the 242 dashboard files and the shared components. So the recolour is mainly a change of token values. Hard-coded colour that remains:
+> - 17 hex literals in 8 files; 12 of them are user-data defaults;
+> - 12 Tailwind palette classes in 3 files;
+> - 6 `dark:` variants;
+> - 48 white/black utilities in 29 files;
+> - 30 files with their own status→colour map.
+>
+> **Defects found, with computed ratios.**
+> - Contrast:
+>   - D1: the backup form inputs are 1.23:1 in dark;
+>   - D2: the SSO dialog heading is 1.04:1 in light;
+>   - D3: the searchable dropdown is 1.12:1 in dark;
+>   - D4: input boundaries are 1.23 / 1.41:1;
+>   - D5: kanban priority colours are 1.48–2.56:1;
+>   - D6: label chips are 2.56:1;
+>   - D7: notification timestamps are 3.6:1;
+>   - D8: the impersonation banner is 4.47:1.
+> - Theme mechanism:
+>   - D9: the dashboard's toggle does not write `data-theme-choice`;
+>   - D10: the defaults differ (dashboard light, public pages follow the system);
+>   - D11: the dashboard toggle is 32 px, English-only, with no `aria-pressed`.
+>
+> **Proposal.**
+> - Warm-neutral surfaces, copper primary, verified-teal success, ochre warning, crimson alarm, slate-blue info.
+> - Every pair is computed in both themes. Colour-blindness simulation shows that status must also be carried by shape and icon (spec §5).
+> - A jest colour guard, shipped as a ratchet in P11-01.
+>
+> **Owner questions P11-Q1…Q4** (warmth, primary colour, charts, default theme) are in spec §0, in English and Indonesian.
+>
+> **Renumbering.** The 2026-09-29 placeholders P11-01…06 are now P11-08…12 and P11-14.
 
 > 2026-09-29 — **UI correctness fixes done ahead of the redesign** (bug fixing, no visual change; ADR-101, ADR-102, A-312…A-317, [record](../MEMORY/records/2026-09-29-ui-correctness-fixes.md)): certificates can be submitted and approved from the UI, and their author cannot approve them (403, migration 0095); the sidebar and the write buttons of devices/calibration/stock/warehouse/maintenance/vendors/billing/Home follow the effective API permission (`GET /menu-groups/my-permissions`, migration 0097 adds Stock and Object Storage); tenant-backup Restore/Delete and e-signature deletes ask first; global search opens the list filtered to the record; kanban cards move by keyboard. Research findings 01 S6/S7, §3.1, §3.3, §4.4–4.6, §5.4 (seven pages) and 03 F1–F3, F5–F9 are closed; the rest stay Phase 11 input.
 

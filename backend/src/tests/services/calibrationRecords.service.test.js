@@ -21,7 +21,9 @@ jest.mock("../../services/audit.service", () => ({
 
 jest.mock("../../models", () => ({
   CalibrationRecord: {
-    findAndCountAll: jest.fn(),
+    // U-06 (ADR-119): the list is a count and a page, no longer one call.
+    count: jest.fn(),
+    findAll: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
     unscoped: jest.fn(),
@@ -76,17 +78,24 @@ describe("calibrationRecords.service", () => {
   });
 
   describe("fetchCalibrationRecords", () => {
+    // U-06 (ADR-119): the service counts and reads the page as two statements;
+    // this answers both, as the one findAndCountAll double answered them.
+    const listResolves = ({ rows, count }) => {
+      CalibrationRecord.count.mockResolvedValueOnce(count);
+      CalibrationRecord.findAll.mockResolvedValueOnce(rows);
+    };
+
     // A-90: the includes are LEFT JOINs (SQL asserted in includes.a90.test.js);
     // a record whose device and performer are gone is listed with both null.
     it("A-90: lists a record whose device and performer are null, asking for LEFT joins", async () => {
       const orphan = { id: "record-1", device: null, performer: null };
-      CalibrationRecord.findAndCountAll.mockResolvedValueOnce({ rows: [orphan], count: 1 });
+      listResolves({ rows: [orphan], count: 1 });
 
       const result = await fetchCalibrationRecords({ tenantId: "tenant-1" });
 
       expect(result.data.rows).toEqual([orphan]);
       expect(result.data.meta.total).toBe(1);
-      const { include } = CalibrationRecord.findAndCountAll.mock.calls[0][0];
+      const { include } = CalibrationRecord.findAll.mock.calls[0][0];
       expect(include.map((i) => [i.association ?? i.as, i.required])).toEqual([
         ["device", false],
         ["performer", false],
@@ -109,10 +118,7 @@ describe("calibrationRecords.service", () => {
     });
 
     it("should fetch records successfully without optional filters", async () => {
-      CalibrationRecord.findAndCountAll.mockResolvedValueOnce({
-        rows: [{ id: "record-1" }],
-        count: 1,
-      });
+      listResolves({ rows: [{ id: "record-1" }], count: 1 });
 
       const result = await fetchCalibrationRecords({ tenantId: "tenant-1" });
 
@@ -122,10 +128,7 @@ describe("calibrationRecords.service", () => {
     });
 
     it("should fetch records with all optional filters (deviceId, isCompliant, from, to)", async () => {
-      CalibrationRecord.findAndCountAll.mockResolvedValueOnce({
-        rows: [{ id: "record-1" }],
-        count: 1,
-      });
+      listResolves({ rows: [{ id: "record-1" }], count: 1 });
 
       const result = await fetchCalibrationRecords({
         tenantId: "tenant-1",
@@ -138,7 +141,7 @@ describe("calibrationRecords.service", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(CalibrationRecord.findAndCountAll).toHaveBeenCalledWith(
+      expect(CalibrationRecord.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             tenantId: "tenant-1",
@@ -154,51 +157,52 @@ describe("calibrationRecords.service", () => {
 
     it("applies only a lower bound when `from` is given without `to`", async () => {
       const { Op } = require("sequelize");
-      CalibrationRecord.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
+      listResolves({ rows: [], count: 0 });
 
       await fetchCalibrationRecords({ tenantId: "tenant-1", from: "2026-01-01" });
 
-      const where = CalibrationRecord.findAndCountAll.mock.calls[0][0].where;
+      const where = CalibrationRecord.findAll.mock.calls[0][0].where;
       expect(where.calibrationDate[Op.gte]).toBe("2026-01-01");
       expect(where.calibrationDate[Op.lte]).toBeUndefined();
     });
 
     it("applies only an upper bound when `to` is given without `from`", async () => {
       const { Op } = require("sequelize");
-      CalibrationRecord.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
+      listResolves({ rows: [], count: 0 });
 
       await fetchCalibrationRecords({ tenantId: "tenant-1", to: "2026-06-30" });
 
-      const where = CalibrationRecord.findAndCountAll.mock.calls[0][0].where;
+      const where = CalibrationRecord.findAll.mock.calls[0][0].where;
       expect(where.calibrationDate[Op.lte]).toBe("2026-06-30");
       expect(where.calibrationDate[Op.gte]).toBeUndefined();
     });
 
     it("omits the calibrationDate filter entirely when neither bound is given", async () => {
-      CalibrationRecord.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
+      listResolves({ rows: [], count: 0 });
 
       await fetchCalibrationRecords({ tenantId: "tenant-1" });
 
-      const where = CalibrationRecord.findAndCountAll.mock.calls[0][0].where;
+      const where = CalibrationRecord.findAll.mock.calls[0][0].where;
       expect(where).not.toHaveProperty("calibrationDate");
     });
 
     it("P6-03: lists only the record in force by default — a superseded record is excluded", async () => {
-      CalibrationRecord.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
+      listResolves({ rows: [], count: 0 });
       await fetchCalibrationRecords({ tenantId: "tenant-1" });
-      const where = CalibrationRecord.findAndCountAll.mock.calls[0][0].where;
+      const where = CalibrationRecord.findAll.mock.calls[0][0].where;
       expect(where).toHaveProperty("supersededById", null);
     });
 
     it("P6-03: includeSuperseded lists the correction history too", async () => {
-      CalibrationRecord.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
+      listResolves({ rows: [], count: 0 });
       await fetchCalibrationRecords({ tenantId: "tenant-1", includeSuperseded: true });
-      const where = CalibrationRecord.findAndCountAll.mock.calls[0][0].where;
+      const where = CalibrationRecord.findAll.mock.calls[0][0].where;
       expect(where).not.toHaveProperty("supersededById");
     });
 
     it("should handle error during fetching", async () => {
-      CalibrationRecord.findAndCountAll.mockRejectedValueOnce(new Error("Db error"));
+      CalibrationRecord.count.mockResolvedValueOnce(0);
+      CalibrationRecord.findAll.mockRejectedValueOnce(new Error("Db error"));
       await expect(
         fetchCalibrationRecords({ tenantId: "tenant-1" }),
       ).rejects.toThrow("Db error");

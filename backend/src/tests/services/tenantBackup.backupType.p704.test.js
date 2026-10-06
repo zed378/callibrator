@@ -14,6 +14,8 @@
  */
 const mockDb = { rows: {}, statements: [] };
 
+// P8-01 (ADR-086 Amendment 1): the archive is put into the tenant's storage.
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../config", () => {
   const { Sequelize } = jest.requireActual("sequelize");
   const db = new Sequelize({ dialect: "postgres", logging: false });
@@ -54,6 +56,7 @@ const JSZip = require("jszip");
 const models = require("../../models");
 const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
 const tenantBackupService = require("../../services/tenantBackup.service");
+const storage = require("../../services/storage");
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const USER = "33333333-3333-4333-8333-333333333333";
@@ -75,14 +78,14 @@ const takeBackup = async (backupType) => {
   jest.spyOn(models.TenantBackup, "updateStatus").mockResolvedValue(undefined);
   jest.spyOn(models.TenantBackup, "findByPk").mockResolvedValue({ id: BACKUP });
   jest.spyOn(fs, "existsSync").mockReturnValue(true);
-  jest.spyOn(fs, "writeFileSync").mockImplementation((_path, buffer) => {
-    written = buffer;
-  });
   jest.spyOn(fs, "createReadStream").mockImplementation(() => Readable.from([Buffer.from("zip")]));
   const result = await asTenant(() =>
     tenantBackupService.createBackup({ tenantId: TENANT, createdById: USER, name: "drill", backupType, models }),
   );
   expect(result.status).toBe(201);
+  // P8-01: the archive is in the tenant's storage, not written to disk.
+  written = [...storage.__objects.values()][0].body;
+  storage.__reset();
   const zip = await JSZip.loadAsync(written);
   const name = Object.keys(zip.files).find((n) => n.startsWith("tenant_data_"));
   return JSON.parse(await zip.files[name].async("string"));

@@ -199,21 +199,22 @@ const sendNotificationEmail = async ({
   const name = escapeHtml(firstName) || "there";
   const cta =
     actionUrl && /^https?:\/\//i.test(actionUrl)
-      ? `<p><a href="${escapeHtml(actionUrl)}" style="color:#001250;font-weight:700">View details</a></p>`
+      ? `<p><a href="${escapeHtml(actionUrl)}" style="color:#9A4E22;font-weight:700">View details</a></p>`
       : "";
   // A-172 — the footer names this deployment's brand (APP_NAME), as the
   // activation and OTP templates do. It hard-coded "Calibration Management
   // System", a name no deployment is configured with.
-  // Brand palette as in src/templates (navy #001250, teal #00DAB4, slate text).
+  // Brand palette as in src/templates (ADR-118 Am. 2): charcoal #1F1B17 text, copper
+  // #9A4E22 accent bar and link (5.9:1 on the paper card), muted #4A423A.
   const brand = brandContext();
-  const html = `<div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:auto;color:#0f172a;border-top:4px solid #00dab4;padding-top:20px">
+  const html = `<div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:auto;color:#1F1B17;background-color:#FFFDF8;border-top:4px solid #9A4E22;padding:20px 24px 4px">
     <img src="${escapeHtml(brand.logoUrl)}" width="192" alt="${escapeHtml(brand.appName)}" style="display:block;border:0;width:192px;height:auto;margin:0 0 20px"/>
-    <h2 style="margin:0 0 12px;color:#001250">${escapeHtml(title)}</h2>
+    <h2 style="margin:0 0 12px;color:#1F1B17">${escapeHtml(title)}</h2>
     <p>Hi ${name},</p>
     <p style="white-space:pre-wrap">${escapeHtml(message)}</p>
     ${cta}
-    <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0"/>
-    <p style="color:#6b7280;font-size:12px">${escapeHtml(brandContext().appName)}</p>
+    <hr style="border:none;border-top:1px solid #E5D9C7;margin:20px 0"/>
+    <p style="color:#4A423A;font-size:12px">${escapeHtml(brandContext().appName)}</p>
   </div>`;
 
   return sendEmail({ to: email, subject: title, html });

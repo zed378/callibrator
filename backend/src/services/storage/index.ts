@@ -57,7 +57,7 @@ interface StorageDriver {
   stat(key: string): Promise<{ size: number | null }>;
   exists(key: string): Promise<boolean>;
   delete(key: string): Promise<unknown>;
-  list(prefix: string | null, options?: { limit?: number; cursor?: string | null }): Promise<{ keys: string[] }>;
+  list(prefix: string | null, options?: { limit?: number; cursor?: string | null }): Promise<{ keys: string[]; cursor?: string | null }>;
   deleteMany(prefix: string | null): Promise<unknown>;
   signedUrl(key: string, options?: Record<string, unknown>): unknown;
   healthCheck(): Promise<{ ok: boolean; error?: string | undefined }>;
@@ -185,10 +185,20 @@ class ScopedStorage {
 
   /** Total bytes this tenant is storing — the input to quota + metering. */
   async usage(domain: string | null = null): Promise<{ bytes: number; objects: number }> {
-    const { keys: objectKeys } = await this.driver.list(
-      keys.scopePrefix(this.tenantId, domain),
-      { limit: Number.MAX_SAFE_INTEGER },
-    );
+    // U-09: every page. S3 returns at most 1000 keys a page with a cursor for
+    // the rest; reading only the first page counted a tenant's first 1000
+    // objects. The local/NFS driver returns everything and no cursor.
+    const prefix = keys.scopePrefix(this.tenantId, domain);
+    const objectKeys: string[] = [];
+    let cursor: string | null | undefined;
+    do {
+      const page = await this.driver.list(prefix, {
+        limit: Number.MAX_SAFE_INTEGER,
+        ...(cursor ? { cursor } : {}),
+      });
+      objectKeys.push(...page.keys);
+      cursor = page.cursor;
+    } while (cursor);
     let bytes = 0;
     for (const key of objectKeys) {
       // A key can disappear mid-enumeration (concurrent delete); it simply

@@ -5161,6 +5161,33 @@ per replica) at this data volume.
 **Status:** Accepted, implemented 2026-09-28 (P8-03). The P8-07 baseline is taken; the card stays PARTIAL for PDF
 memory and MQTT ingest.
 
+### Amendment 1 (2026-10-05) — P8-01: every stored file goes through the storage layer; the card is DONE in code and BLOCKED only on the production target
+
+**Card:** P8-01 · **Record:** [`records/2026-10-05-p8-01-storage-cutover.md`](./records/2026-10-05-p8-01-storage-cutover.md) · **Builds on:** ADR-042 (gated file routes), ADR-057 (A-40), ADR-084 (quota), U-09 (the S3 driver, live) · **Amends:** §2's P8-01 line ("not started … needs a target S3/NFS environment and an ambient-credential chain")
+
+**Context.** §2 recorded P8-01 as blocked on an environment. U-09 (2026-10-05) made an S3 target reproducible locally (SeaweedFS, Versity) and found that the blocker was misdescribed: the card said "a configuration change plus a migration, not new code", but **no request path used the storage layer**. Attachments, the stored certificate PDFs, avatars, tenant logos, CMS images, tenant backups and GDPR exports were all written to and served from the host's disk whatever `STORAGE_DRIVER` said. With two replicas, a file written on one was absent on the other, on every driver.
+
+**Decision.**
+
+1. **Every file the application keeps is written, read, signed and deleted through `services/storage`**, through one bridge (`services/storedFile.service.ts`) and one sender (`utils/fileResponse.util.ts#sendStorageObject`, the `/storage/object` body moved unchanged). Per class: attachments `t/<tenant>/attachments/<file>` with `storage_key`; certificate PDFs `t/<tenant>/certificates/<file>` (read path only — nothing writes one since M-11); tenant backups `t/<tenant>/backups/<file>` in `file_path`; GDPR exports `t/<tenant>/exports/<id>.{json,zip}`; the public image class `global/{avatars,branding,content}/<file>` (`content` is a new domain).
+2. **Order on upload is unchanged and now load-bearing:** link check → virus scan → checksum → put. An object exists only after the scan passed; a refused or failed upload leaves none (a partial put is deleted). Only a file IN the quarantine may be put (`upload.util#assertInQuarantine`, the S-17 guard, now shared).
+3. **The public image class is platform-scoped**, not tenant-scoped. Its URL (`/uploads/public/<folder>/<file>`) names no tenant, it is public by design, and the stored value (a bare file name) is what the frontend appends to a base URL. *Alternatives:* (a) tenant keys with an owner lookup per public request (a database read on an unauthenticated route, and an un-indexed column); (b) tenant keys with the tenant in the URL (a URL format change across the frontend and every stored value). Both rejected for this card. *Bad implication:* a tenant's logo and its users' avatars live in the platform store, not in a bring-your-own bucket, and are outside the tenant's usage (as they were before).
+4. **Files written before the cut-over stay readable** from their legacy paths (a key-less attachment row, a certificate whose derived key is absent, a public file not in storage, a backup whose `file_path` is a host path, an export with a legacy manifest). `npm run migrate:storage` now copies certificates, backups and the public class as well (verified, resumable, non-destructive). Its two row backfills (attachments' `storage_key`, backups' `file_path`) **write one `UPDATE` audit row each, `system:storage-migration`, in the same transaction** — they change where tenant evidence is read from, so an unattributed backfill is a gap, not infrastructure; `storageMigration#migrateAttachment` left the `auditCoverage.p611` allow-list.
+5. **What stays on the host, deliberately:** the upload quarantine (multer, the magic-byte check and ClamAV need a path; it lives within one request), a GDPR export's working directory, a CSV import, logs, job status files, the bootstrap password file, ops outcome files.
+6. **The `local` driver makes a missing root on its first write and reads a missing root as "not found"; the `nfs` driver does neither** — a missing NFS root is an unmounted export, and creating it would put tenant files on local disk under the mount point. The boot also creates `<root>/storage` (`createFolder.middleware`).
+
+**Behaviour on the default local driver.** Identical on the wire, proven by `routes/storedFiles.identity.p801.test.ts`: every file route answers GET, HEAD, a Range, an If-Range miss and a conditional GET with the same status, body and headers from storage as from disk. **One deliberate difference:** an unsatisfiable Range is 416 on both; the storage path's body is empty with `Content-Range: bytes */<size>` (as `/storage/object` always answered), where `res.sendFile` raised an error that the error handler wrote as JSON. Found by the live run and fixed in the shared sender: a 416 now drops a `Content-Length` the caller had announced (the backup and export downloads set one), which had left the client waiting.
+
+**Implications, including the bad ones.**
+- On upgrade, existing files keep working from their legacy paths; new files go to `/app/storage` (local) or the configured backend. **Both volumes must stay mounted** until `migrate:storage` has run and the legacy files are reclaimed. Reclaiming has no tool.
+- **ADR-084's per-attachment quota exemption is still not made.** New uploads of a bring-your-own tenant now live only in its bucket, but nothing records which storage held a row's bytes, so every attachment still counts against the platform limit: over-stated, never under-stated. Making it exact needs a per-row record of the storage it was written to (a migration) — the named follow-up.
+- A rollback of a migrated attachment now changes what users are served, and an attachment uploaded after the cut-over has no legacy file to fall back to (docs/STORAGE/02 § Rollback).
+- `ClamAV` was not in the live run (`VIRUS_SCAN_PROVIDER=none`); the scan-before-reachable order is proven by unit tests (`upload.quarantine.s17`, `attachment.service.coverage` P8-01 cases), not live.
+
+**What remains BLOCKED, and on whom.** Code is done; the card's last three boxes need a production target the owner or the operator provides: (1) `STORAGE_DRIVER=s3` (or `nfs`) on a **production** bucket/export, (2) S3 credentials from the **ambient chain** (an IAM role / Kubernetes service account) — no run here used anything but static keys, (3) `migrate:storage` against the production data with the destination counted. Also unproven: MinIO, AWS S3, R2, Wasabi, TLS to the endpoint, multipart (objects above 5 GiB).
+
+**Status:** Accepted, implemented 2026-10-05. P8-01: **DONE in code** (local, NFS and S3 drivers; live on SeaweedFS); **BLOCKED only on the production target** above.
+
 ---
 
 ## ADR-087: The Backend Runs Mixed JavaScript and TypeScript From One `dist/` Tree; Tests Erase Types With Babel, TypeScript 7 Checks Them; Shared Types Live in `backend/src/types/`
@@ -9306,6 +9333,462 @@ The check guards **consumers** of the published contract. There are none outside
 - **A pull request opened from a branch cut before this commit** fails `api-contract` until it is rebased. A direct push to `main` compares the commit with itself and passes.
 - **An unknown external client written against the old JSDoc contract would break.** We know of none. If one appears, this ADR is the record of when the contract changed.
 - **From here on, a break needs an ADR and a deprecation note** before merging, as the script says. The reset happens once.
+
+---
+
+## ADR-116: Every Infrastructure Dump Is Restored Into a Throwaway PostgreSQL 18 and Checked — a `db-backup` Service (Compose) and a CronJob (Helm), Alerting Through the Application's Own Path; WAL Archiving/PITR Stays Out
+
+**Date:** 2026-10-05 · **Status:** Accepted (U-05, under the owner's stated delegation; the owner may revisit) · **Relates to:** ADR-078 (restore order, escrow), P7-02 (alert routing, job watchdog), P7-04 (the one drill), U-04, M-12 · **Record:** `MEMORY/records/2026-10-05-u05-backup-restore-verification.md`
+
+### Context
+
+U-05 said "backups are good" was **assumed, not known**. What existed on 2026-10-05:
+
+- **Tenant backup** (layer 1, `tenantBackup.service`, `scheduledBackup.service`, migrations 0087/0108): scheduled by `BACKUP_SCHEDULER`, alerted (P7-02). It holds the tenant row and its user accounts only (measured in P7-04) — not a disaster-recovery backup.
+- **Infrastructure dump** (layer 2): `make backup` — one `pg_dump -Fc` run **by hand** on the host into `./backups`. No schedule, no retention, no verification, no alert. `docs/DEVOPS/04` said "a scheduler for it is the operator's".
+- **Restore**: one manual drill (P7-04, 234 s, ADR-078). No scheduled restore test; no `make restore`.
+- **WAL archiving / PITR**: none. RPO = age of the last dump. Helm: the database is external; nothing in the chart backs it up.
+
+### Decision
+
+1. **One image, `callibrator/backup-verify`** (`deploy/backup/Dockerfile`): the **same digest-pinned `pgvector/pgvector:pg18`** as the compose database, plus the **backend's own compiled binary** copied from the backend image of the same release. One script, `deploy/backup/backup-verify.sh`, with `run-once`, `schedule`, `dump`, `verify [file]`.
+2. **The dump** is `pg_dump -Fc` taken inside an **exported snapshot** (`pg_export_snapshot()` + `--snapshot`). The same REPEATABLE READ transaction records the source facts in `<dump>.manifest.json`: exact row counts of key tables, a checksum over the append-only `audit_logs` (`sum(hashtextextended(id|epoch(created_at)))`), the migration count and newest name, the pgvector version, and the dump's SHA-256.
+3. **Every dump is verified** straight after it is taken, in a **throwaway PostgreSQL 18 + pgvector started inside the container** (initdb in a scratch directory, loopback only, deleted afterwards). The checks, fail-closed, in order: SHA-256 matches the manifest; `pg_restore --list` reads; restore in the **documented order** (application role first, `pg_restore --no-owner --exit-on-error`, ADR-078 D-4); `vector` extension present; the restored facts **equal** the snapshot's facts exactly; the **application's own schema check** — `./backend verify-schema`, the boot's `[schema-verify]` — passes on the restored copy. The time from restore start to the last check is recorded as `restoreSeconds`.
+4. **The outcome** goes to `last-restore-verify.json` (+ a JSONL history, + `<dump>.verified.json` on a pass). After every run the script runs `./backend backup-alert <file>`: a failure is a **critical alert through `alert.service`** — the log line of record, `ALERT_WEBHOOK_URL`, `ALERT_EMAIL_TO` — keys `backup.dump.failed`, `backup.restore-verify.failed`, `backup.restore-verify.unreadable`.
+5. **A verifier that stops is not silent.** Compose: the backend mounts the dump directory read-only and its job watchdog (`backupVerify.service#checkRestoreVerification`, every 5 min) alerts `backup.restore-verify.missed` when the outcome is older than `RESTORE_VERIFY_MAX_AGE_HOURS` (26), and re-alerts a failed run once per run. Helm: the CronJob fails its Job (`backoffLimit: 0`) and the cluster's monitoring alerts on `kube_job_status_failed` / `kube_cronjob_status_last_successful_time` — the backend cannot read an RWO claim mounted by another pod.
+6. **Where it runs:** compose service `db-backup` in the base file (on by default, daily at `BACKUP_AT` = 02:30 local, `BACKUP_KEEP` = 14 dumps plus always the newest verified one), built with `additional_contexts: backend-image: service:backend`; the prod overlay pins the promoted image by `IMAGE_TAG`; the e2e overlay turns it off. Helm: `templates/backup-verify-cronjob.yaml` — CronJob + `<base>-pgdump` claim (`resource-policy: keep`) + an egress-only NetworkPolicy; `backupVerify.enabled` defaults to **false** because the image must be built and pushed with the release.
+7. **Secrets:** the verifier gets the database password (PGPASSWORD, never argv) and the alert channels only. The backend binary's load-time checks are satisfied with **throwaway random values** — the schema check never decrypts — so `KMS_MASTER_KEY`, the JWT keys and `CERT_SIGNING_SECRET` never enter the container.
+8. **Scoped out, with triggers:** WAL archiving/PITR (M-12) — trigger: an RPO commitment under 24 h, or the first production tenant whose contract states one; then pgBackRest/WAL-G with its own verification, the same alert path. Off-host copy of the dumps — trigger: the first production deployment (until then the operator copies `./volumes/pgdump`; `docs/DEVOPS/04` § Off-host copy). Object-store and secret-escrow verification — unchanged (ADR-078 checklist).
+
+### Rationale
+
+A restore test is the only thing that turns a dump into a backup; doing it on **every** dump, unattended, is what makes "known" true each night instead of once. Restoring with the same major, the same pgvector, the documented role-first order and the application's own schema check means the test exercises the restore an operator will actually run. The exported snapshot makes the comparison **exact** — a tolerance would have to be wide enough to absorb writes during the dump, and wide enough to hide a lost table's worth of rows. Alerting through `alert.service` reuses the one routed, formatted, tested alert path instead of a second webhook client in shell.
+
+### Alternatives considered
+
+- **Restore into a second `postgres` container started by the verifier** (Docker socket). Rejected: mounting the Docker socket gives the verifier root on the host.
+- **A long-lived scratch database service.** Rejected: a standing second copy of all tenants' data, and state left between runs.
+- **Run the verification inside the backend.** Rejected: the backend image has no `pg_restore` and no PostgreSQL server, and adding them would grow the request-serving image for a nightly job.
+- **Compare the restored schema with the source's `information_schema` instead of running the app's check.** Rejected as the only check: it proves the copy equals the source, not that the application accepts it. Kept implicitly — the exact facts compare.
+- **Row counts within a tolerance.** Rejected in favour of the snapshot (above).
+- **A dedicated restore-verification table in the database.** Rejected: it needs a migration and a model for one JSON file's worth of state, and the outcome must survive the database it describes being lost.
+- **pgBackRest/WAL-G now.** Rejected for this change as too large (repository, retention, archive-command monitoring, a PITR drill); recorded as M-12 with its trigger.
+
+### Implications, including the bad ones
+
+- **The dumps live on the same host as the database** (compose `./volumes/pgdump`). A host loss takes both. Copying them off the host is the operator's until the off-host trigger fires — stated in `docs/DEVOPS/04`, not hidden.
+- **Disk:** up to 14 dumps plus one restored copy during a run. The verifier does not check free space; a full disk fails the run, which alerts.
+- **The verified `restoreSeconds` is the database part of an RTO on the same host**, not a disaster RTO (no provisioning, no object store, no escrow retrieval).
+- **The image depends on the backend image** of the same tag; a release must build and push both. CI does not build it yet.
+- **Helm's missed-run detection depends on the cluster's monitoring**, not on the application.
+- **A source facts read on a very large `audit_logs`** is a full scan inside the dump's transaction; it lengthens the snapshot's lifetime. Acceptable at current scale; revisit with production volume.
+- `BACKUP_VERIFY_TABLES` names tables interpolated into SQL; the script accepts only `^[a-z_][a-z0-9_]*$`.
+
+---
+
+## ADR-117: The Dependency Audit Is Two Gates — the Production Tree With No Exceptions, the Whole Tree Through a Reviewed, Expiring Allow-List Keyed by GHSA Id; a Failed Backend Test Run Explains Itself in Public Annotations
+
+**Date:** 2026-10-05 · **Status:** Accepted (CI second-run agent, under the owner's stated delegation; the owner may revisit) · **Relates to:** P7-01 (CI), ADR-066, ADR-082 (CI form), ADR-076 (Node 26) · **Record:** `MEMORY/records/2026-10-05-ci-second-run.md`
+
+### Context
+
+GitHub run 37268522297 (`dded70c`) failed two jobs.
+
+1. **`npm audit --audit-level=high`** failed on **GHSA-vfj7-8cjw-p6xm** (CVE-2026-93687, published 2026-09-18): `braces` ≤ 3.0.3 overflows the stack on a deeply nested brace pattern. **No patched version exists** (`first_patched_version: null`; 3.0.3 is the latest). It reaches us through `micromatch` → `fast-glob` from two **devDependencies**: `@stoplight/spectral-cli` (backend, `npm run openapi:lint`) and `eslint-config-next` → `@next/eslint-plugin-next` (frontend lint). `npm ls braces --omit=dev` is empty and `npm audit --omit=dev` reports 0. npm's suggested fix (`eslint-config-next@14.2.35`) is a downgrade by two majors that does not remove `fast-glob` from Spectral either.
+2. **`npm run test:coverage`** failed with no readable cause: job logs of this public repository need a token, which neither the agents nor the coordinator have; the only public trace is the check run's annotation "Process completed with exit code 1."
+
+### Decision
+
+1. **The production tree is strict.** `npm audit --omit=dev --audit-level=high`: any high or critical advisory fails, and there is no exception mechanism for it.
+2. **The whole tree goes through `scripts/ci/npm-audit-gate.js`.** It fails on every high or critical advisory unless `scripts/ci/npm-audit-allowlist.json` has an entry for its **GHSA id** that (a) has not expired (`expires`, compared with today in UTC), (b) names the package the advisory is reported against, and (c) the advisory is **absent from the production tree** — the gate re-audits with `--omit=dev` and refuses the entry if it is there. An entry whose advisory is no longer reported prints a `::warning::` to remove it.
+3. **One entry today:** GHSA-vfj7-8cjw-p6xm, `braces`, reviewed 2026-10-05, **expires 2026-11-05**. Justification, in the entry: build-time lint tooling only; its only inputs are this repository's own glob patterns; the worst case is a crashed lint run, not a service outage or data exposure.
+4. **Renewing an entry is a review**, not a date bump: re-check for a patched version or a replacement path, re-check reachability, and record why in a change record.
+5. **The backend test step annotates its own failure.** jest's built-in `github-actions` reporter (jest 30.5.2; active only when `GITHUB_ACTIONS` is set) annotates each failing test; the step also writes `--json` results and a `json-summary` coverage report, and a follow-up step that runs only on failure (`scripts/ci/jest-annotate.js`) emits `::error::` lines for what that reporter cannot see — a suite that never ran (load error, killed worker) and every file below 100% — capped to stay inside GitHub's 10-error-annotations-per-step limit. Annotations are readable without a token at `GET https://api.github.com/repos/zed378/callibrator/check-runs/<job id>/annotations` (the job id from `GET /repos/zed378/callibrator/actions/runs/<run id>/jobs`).
+6. **A jest worker is recycled when its heap passes 2 GB** (`workerIdleMemoryLimit: "2GB"` in `backend/jest.config.js`). Measured on 2026-10-05: a worker keeps ~20 MB of heap per route suite **after a forced GC** (150 → 1,302 MB over 60 route suites, no coverage), a full run held 12.3 GiB across three workers, and Node's heap limit on a 16 GB machine is 4,192 MB; with the limit the same run peaked at 6.6 GiB and no file reported more than 1,967 MB, coverage still 100/100/100/100. The run on GitHub could not be read, so this is the **most probable** cause of its red coverage job, not a proven one — decision 5 makes the next failure name itself.
+
+### Alternatives considered
+
+- **`npm audit --audit-level=critical`, or `continue-on-error`.** Rejected: it would also wave through the next high advisory in a **production** dependency. P7-01 names softening a red gate as the abuse case.
+- **Only `--omit=dev`.** Rejected: the toolchain runs in CI with its secrets and in the image builder; a high advisory there still deserves a decision, which the allow-list forces and dates.
+- **`npm overrides` for `braces`/`micromatch`.** No patched `braces` exists to override to. Replacing `micromatch` with `picomatch` under `fast-glob` is not API-compatible (`fast-glob` calls `micromatch.matcher`, `.scan`, `.makeRe` with micromatch semantics); an untested swap inside two linters is a larger risk than the advisory.
+- **Remove Spectral / `eslint-config-next`.** Rejected: both are live gates (API contract, frontend lint). `eslint-config-next` would still bring `fast-glob` back through Next's own lint plugin.
+- **`audit-ci` / `better-npm-audit`.** Equivalent allow-lists, but a new dependency tree in the one job that audits dependencies; ~90 lines of script, tested by saved reports, do the same.
+- **Annotations through a custom jest reporter in `backend/`.** It would be a new backend `.js` file (refused by `npm run ratchet`) or a `.ts` file jest must load untransformed; reading jest's own `--json` output from a script outside `backend/` avoids both.
+
+### Implications, including the bad ones
+
+- **A known high advisory stays in the dev tree until 2026-11-05.** A developer who runs `npx eslint` on a hostile glob pattern could crash their own lint run; nothing else is exposed.
+- **The expiry makes CI red on 2026-11-05** if nobody reviews the entry — on purpose, and on a day nothing else changed. Whoever sees it should read this ADR, not delete the entry.
+- **The gate trusts npm's own `--omit=dev` classification.** A package that is a devDependency but bundled into a runtime artifact would be missed; today the backend runtime is the `pkg` binary built from `dependencies`, and `next build` bundles only what the app imports. Re-check if either changes.
+- **`--json` with coverage writes the coverage map into the results file** (tens of MB in `$RUNNER_TEMP`). Harmless on the runner; not uploaded.
+- **Annotations are capped** (7 per-suite + 1 summary + 1 coverage). A run with many failing suites still needs the summary annotation's list, or a token for the full log.
+- The `github-actions` reporter is passed on the CI command line only; `npm test` locally is unchanged.
+- **Recycling workers hides the leak; it does not remove it.** What retains each test file's module graph is not identified (not winston's exception handlers: unhandling them changed nothing). A suite that leaks more than ~2 GB in one file would still exhaust a worker. Finding the retainer (heap snapshots across files) is follow-up work.
+- `workerIdleMemoryLimit` also stops jest from choosing in-band for small runs, so a run of a few suites starts a worker process (about a second).
+
+---
+
+## ADR-118: The Public Surfaces Turn Warm and Light — Ivory, Charcoal, Copper, With Dark Teal Only as the "Verified" Marker; Licensed Editorial Photographs Return; the Landing Gains Restrained, CSS-First Motion (supersedes the dark-cinematic direction of ADR-098 §3)
+
+**Date:** 2026-10-05 · **Status:** Accepted, **Amendments 1 and 3** the same day (Amendment 2, the logo, by its own agent) — the palette and photograph answers are the **owner's own** (given 2026-10-05 to the two questions the `/redesign-landing` brief allows); the rest decided by the landing agent under the owner's delegation (best practice, recorded here) · **Card:** P10-17 · **Amends:** ADR-098 §3 (palette, "dark only"), doc 20 §3 principles 1, 2 and 5, §4.1, §4.2, §4.3, §4.5, §6.1–§6.8, §11.1, §12 · **Record:** `MEMORY/records/2026-10-05-landing-warm-redesign.md`
+
+### Context
+
+The owner ran `.claude/commands/redesign-landing.md`: the Phase 10 landing feels "generic, static and cold" — brochure copy, uniform sections, the product as a screenshot with no people around it — and the earlier page felt warmer and more alive. The brief asks for a human-centric, calm, precise page: editorial serif headlines, a limited warm palette (cream/ivory/charcoal, one accent such as soft gold or copper, dark teal allowed as the "verified" marker), people at work, a sticky scroll-driven workflow, an interactive QR verification demo, a bento grid, a warm timeline, a smooth FAQ, and micro-interactions (staggered entrance, subtle parallax, cursor-responsive decoration, scroll reveal, counters, a header that tightens on scroll, fill-transition buttons). It keeps every honesty rule, both languages, WCAG AA, reduced motion and LCP < 2.5 s.
+
+The brief allows two questions. The owner answered both:
+
+1. **Palette:** *warm light, fully* — ivory/cream backgrounds, charcoal text, a copper/soft-gold accent, dark teal only as the "verified" marker.
+2. **Visuals:** *free-licence photographs*, self-hosted (the CSP forbids third-party image origins), each with its source, author, licence and subject recorded.
+
+Both contradict ADR-098 §3 and doc 20 §3–§4, which made the public surfaces dark-only with an electric-teal accent, said "never a stock clinician", and forbade parallax, cursor-following elements and count-up numbers.
+
+### Decision
+
+1. **One warm-light public palette, on every public surface.** `[data-surface="public"]` (`frontend/src/app/public-surface.css`) keeps its token names and changes their values: ivory `--pub-bg #FBF7F0`, cream `--pub-surface #F4ECDF`, paper `--pub-raised #FFFDF8`, charcoal `--pub-text #1F1B17`, copper `--pub-accent #9A4E22` (5.64:1 on ivory; the primary button's label is `--pub-on-accent #FFFDF8`, 5.92:1 on the copper), a decorative soft gold `--pub-gold #C49A5B` (never text: 2.42:1), and dark teal `--pub-verified #0E5A52` (7.55:1), which is also `--pub-success`. Every ratio is in doc 20 §4.2 and recomputed from the CSS by `publicTokens.contrast.p1001.test.ts`. `color-scheme: light`.
+   - **Sign-in, request access, forgot password, invitation, activation, verification, blog and news follow it.** They share the token set. Changing only `/` would show a visitor two visual systems one click apart (landing → "Masuk"). Their markup is unchanged: the restyle is token-only, so the auth flows, their tests and their copy are untouched.
+   - **Dark teal means "verified" and nothing else:** the verdict "SAH / VALID", the verified stamp in the demo, the workflow's last step. The copper accent never appears inside a verdict card (doc 20 §4.2's rule, kept with the new colours).
+   - The brand mark keeps its own teal `#00DAB4` (a logo, decorative, outside SC 1.4.3); it is never text (1.68:1 on ivory — a forbidden pairing the test pins).
+2. **Licensed editorial photographs are allowed again, under rules.** Four Unsplash photographs (Unsplash License: free for commercial use, modification permitted, no attribution required; not permitted: selling unaltered copies, compiling them into a competing image service) are self-hosted as WebP under `frontend/public/marketing/people/`, each registered in doc 20 §12 with its source URL, author, licence and subject.
+   - A photograph is **captioned as an illustration** ("Foto ilustrasi" / "Illustrative photo"). A person in it is **never** presented as a customer, as our staff, or as the speaker of a quote: no names, no testimonials, no hospital names, no logos.
+   - Product screens stay the real product, captioned "Contoh data / Sample data".
+   - Before go-live the owner may replace them with commissioned photographs of real, consenting teams; doc 20 §12 lists the shots wanted.
+3. **Motion: restrained, CSS-first, and still no animation library on `/`.** doc 20 §4.5 is amended.
+   - **Now permitted**, all inside `@media (prefers-reduced-motion: no-preference)`, transform and opacity only, 200–600 ms (scroll-linked ones follow the scroll), natural easing:
+     - a staggered hero entrance that **never hides the `<h1>`** (it rises from an already-visible state; the LCP element is never at opacity 0);
+     - scroll-linked reveals through CSS scroll-driven animations (`animation-timeline: view()` / `scroll()`): text blocks **rise without fading** (a block straddling the fold is never low-contrast, and nothing waits for hydration), photographs and decorative layers may also fade; parallax on **photographs and decorative layers only**; progressive — a browser without them shows the complete static page;
+     - a decorative layer in the hero that follows the pointer by at most 12 px (fine pointers only; one small client island);
+     - count-up numbers **only on figures inside a mock-up labelled "Contoh data"**, in CSS (`@property`), with the real value in the accessible text;
+     - a header that tightens on scroll (background, border, shadow — no height change, so no layout shift);
+     - fill-transition buttons with a sliding arrow, a clear `:active` and `:focus-visible`;
+     - the FAQ's `<details>` opening smoothly where the browser supports `::details-content`.
+   - **Still forbidden:** motion on running text beyond the hero's one-time rise, magnetic buttons, gradient text, marquees, autoplay video, scroll-jacking, smooth-scroll libraries, anything that loops without a pause control (the schedule badge pulses three times, then stops), and any marketing figure (the P10-11 guard is unchanged).
+   - **Interactive pieces are client islands without libraries:** the workflow story (one IntersectionObserver, a progress rail, a micro-animation per step), the QR verification demo (scan → "SAH" verdict; under reduced motion the verdict appears at once), the time-of-day greeting (the server renders a neutral greeting; the client swaps one word, on the same line), and the hero's pointer layer. The landing test keeps its "no animation library in the public page graph" assertion.
+4. **The hero leads with relief, then proof.** A serif kicker (*"Saat survei datang, Anda ingin semuanya sudah siap."*) precedes the unchanged, sourced `<h1>` and lead; the visual is a technician at work (a photograph) with the real product and a sample certificate overlapping it. The problem band becomes three scenario cards ("moments") whose second line states what the product does — each sourced in doc 20 §11. The new claim-bearing keys are added to `copyRules.CLAIM_KEY_PREFIXES`, so the guard demands their sources.
+5. **One display italic.** Instrument Serif Italic (SIL OFL, the same family and licence file) joins the Regular for one emphasised phrase per headline; the five public font files total 79.5 KB, inside doc 20 §4.3's 90 KB.
+
+### Alternatives considered
+
+- **Keep the dark palette and warm it with copper only.** Rejected: the owner answered "warm light, fully".
+- **Warm only the landing; keep auth and verification dark.** Rejected: two public visual systems one click apart, and two token sets to keep contrast-tested. A token-only restyle leaves the auth flows' markup and behaviour identical.
+- **Illustrations instead of photographs.** Rejected by the owner (question 2); commissioned illustration also needs an illustrator the project does not have.
+- **Generated (AI) people.** Rejected: invented faces in a trust-building role are exactly the fabricated proof P10-00 removed.
+- **Re-add GSAP or Motion for the scroll story.** Rejected: ~305 KiB on `/` before (research 05 §7.1). CSS scroll-driven animations and one observer do the same inside the 180 KB budget, and a browser without them shows the complete static page.
+- **A real, scannable QR in the demo that opens `/verify`.** Rejected: there is no public demo certificate, and a QR resolving to "not found" would teach the opposite of the section's point. The demo QR encodes the plain text "CONTOH DATA — Device Calibrator" and is labelled sample data.
+
+### Implications
+
+- **Bad:** stock photographs are less specific than a hospital's own people. The faces are not Indonesian hospital staff, and the hallway photograph shows a UK hospital's uniforms. The captions keep them honest, not specific. The owner should commission real photographs before go-live (doc 20 §12, "assets still needed").
+- **Bad:** Unsplash's licence carries no model release. The photographs are used editorially, captioned as illustrations, attached to no name or quote; a model-release question must be answered before any of them is used in paid advertising.
+- **Bad:** scroll-driven CSS is not in Firefox's default build yet; Firefox shows the static page (complete, not degraded — doc 20 §3 principle 6 kept).
+- On a light page the dark-theme product screenshots read as "a screen in the scene"; they are re-captured on the release build anyway (doc 20 §14).
+- doc 20 §4.2's tables, the contrast test's forbidden pairings and the landing test are rewritten for the new palette in the same change.
+
+### Amendment 1 (2026-10-05, same day): the final brief — composition, an inverted section, and the auth surface
+
+The owner revised `.claude/commands/redesign-landing.md` twice while the first pass was in progress. The final version is "Human warmth × Luxury × Modern Editorial × Dynamic Interaction" plus a new §19, "Login & Register". It forbids a superficial reskin and asks for changes of composition, storytelling and interaction.
+
+**Decided:**
+
+1. **Landing composition** (doc 20 §6.10):
+   - cards and grids give way to editorial forms: moments as large serif lines, a full-bleed human moment, a before/after transformation (native range input), an explorable sample certificate with hotspots (buttons, with a live region), the capabilities as a numbered typographic index, and a minimal proof section;
+   - the hero becomes a full-bleed photograph, and its one interactive element is the precision gauge's needle following a fine pointer;
+   - the scenario cards, the bento, the hero's dark screenshot overlay and the count-up card are **removed**;
+   - below 1024 px the six-step story becomes a swipeable scroll-snap strip.
+2. **An inverted section in the colour system:**
+   - `--pub-inv-*` is deep warm charcoal `#241E19`, never black, with AA ratios in doc 20 §4.2 and the contrast test;
+   - it is used once, for the verification demo;
+   - `.lp-inverted` re-maps the `--pub-*` names inside it, and `.lp-paper` restores the light values for the paper objects inside it.
+3. **Social proof, honestly:**
+   - the landing says that no customer stories are shown yet and none will be invented;
+   - it points to what a visitor can check themselves;
+   - `customerStories.ts` is an empty, typed slot that renders only once a real, permitted story is added.
+4. **Navigation:** the essentials only — workflow, verification, security, *Masuk*, ID/EN and *Hubungi kami*. `#fitur` and `#faq` remain anchors on the page. The blog/news header test now asserts the new links.
+5. **Type on the landing:** one display face (Instrument Serif) and one sans (Plus Jakarta Sans). JetBrains Mono is no longer used on `/`; the SSO organisation code keeps it on `/login`.
+6. **Auth surface** (`/login`, `/request-access`, `/forgot-password`, `/invitation`). The changes are **presentation only**:
+   - the shared panel now shows an editorial photograph, a warm veil, one serif line, and a small sample certificate whose QR forms once on load; there is no dashboard screenshot;
+   - below 1024 px the panel collapses to a thin warm band;
+   - a time-of-day greeting and one context line;
+   - a "continue where you were" notice when a `callbackUrl` is present;
+   - hints on blur;
+   - steps and errors that ease in (no shake);
+   - an OTP field styled for six digits;
+   - request access gets calm two-section progress that follows focus (nothing hidden, payload identical), validation on blur, a success summary with the three honest next steps (no time, price or SLA), and a designed closed (privacy-gate) state.
+   - The passwordless passkey button stays: it exists (P10-10, ADR-108). The brief's "only if it exists" condition is met.
+7. **Assets:** `frontend/public/marketing/ASSETS.md` is the readable source/creator/licence list (brief §9). doc 20 §12 remains the register the P10-11 guard enforces.
+
+**Not changed** (§19's hard rules):
+- `useLoginForm.ts` and every other hook's logic;
+- `auth.service.ts` and the frontend API client;
+- the backend (routes, controllers, services, middleware, validation, rate limits, cookies, CSRF, SSO and 2FA configuration);
+- redirect handling (`safeCallback.ts`);
+- every error message's wording and its non-enumerating behaviour.
+
+**Alternatives considered:**
+- **A request-access stepper that hides step 2 until "Next".** Rejected. It changes how the form is filled and read: a screen reader would meet half a form, and the existing tests and the browser suite address fields directly. The focus-driven progress gives the same calm orientation with no hidden fields.
+- **Six separate OTP boxes with auto-advance.** Rejected. doc 20 §7.3 chose one pasteable `one-time-code` field (password managers and SMS autofill fill one field, and screen readers announce one input). It is styled larger instead.
+- **Auto-submit on the sixth digit.** Rejected, as a behaviour change outside presentation.
+
+**Implications, including the bad ones:**
+- The auth panel reuses the hero photograph (a workbench, not a hospital). It is lazy and never blocks the form, but it is the same image twice until the owner supplies more photographs.
+- The inverted section's paper objects carry literal light-palette hex values in `landing.css` (`.lp-paper`). If the light palette changes, both places must change. The contrast test reads only `public-surface.css`.
+- The honest proof sentence ("no customer stories yet") is a deliberate trade: less persuasive than testimonials, and true.
+
+### ADR-118 Amendment 2 (2026-10-05, same day): the logo's colours follow the warm palette; its shape does not change; the emails follow
+
+The owner asked: *"warna logo sesuaikan dengan palet warna yang digunakan saat ini"* — recolour the logo to the current palette. An earlier owner decision said "keep the logo", so the **geometry is unchanged**: every `rect`, `path` and `polygon` of the original artwork is byte-identical (checked by stripping the fill classes and diffing against the previous files; the rendered email logo has the same pixel count per colour, 9 693 body and 2 664 accent).
+
+**Decided:**
+
+1. **Colour mapping.** The mark's body (old navy `#001250`) becomes charcoal `#1F1B17`; its single accent (old teal `#00DAB4`: three ruler ticks and the lower-right block) becomes copper `#9A4E22`. On a dark surface the body is ivory `#F6EFE4` and the accent is the light copper `#E3A47B` (`--pub-inv-accent`), because copper itself is **2.74:1** on the inverted charcoal `#241E19` and fails WCAG 1.4.11. `--pub-verified` is not used: the mark has no check/verified element.
+2. **Files** (`frontend/public/brand/`): `mark.svg` and `lockup-light.svg` charcoal + copper; `mark-dark.svg` ivory + light copper; `lockup-dark.svg` and `app-icon.svg` on a warm-charcoal tile `#241E19` with the same two-tone mark (the old dark lockup drew the whole mark in teal on navy and the old app icon was white on `#2A2A2A`; both now carry the same accent split as the light mark — a colour assignment, not a shape change). `lockup-mono.svg` stays mono. `logo-email.png` (480×200, shown at 192 px), `favicon.ico` (16/32/48, PNG entries) and `apple-touch-icon.png` (180) are regenerated from the new SVGs with the repository's `sharp`.
+3. **Components.** `BrandIcon` no longer hard-codes the accent: the accent elements carry `.logo-accent`, whose fill is `var(--pub-accent, var(--logo-accent))` — copper on a public surface, the light copper inside `.lp-inverted` (which re-maps `--pub-accent`), and the new `--logo-accent` theme token on the dashboard. `--logo-ink` / `--logo-accent` (globals.css, light and `.dark`) colour **the logo only**; `Sidebar` and `BrandMark` switch from `text-[#001250] dark:text-white` to `text-logo-ink`. Nothing else on the dashboard is restyled (Phase 11 owns that).
+4. **Emails** (`backend/src/templates/{template,otp,account}.html`, `sendNotificationEmail`): presentation only — cream page `#F4ECDF`, paper card `#FFFDF8`, border `#E5D9C7`, charcoal text, muted `#4A423A`, copper accent bar, button (paper text on copper 5.92:1) and links (5.92:1 on the card). Table layout, inline styles, the single `{{{logoUrl}}}` header image with alt, ID-then-EN copy and the VML button are unchanged.
+
+**Measured (WCAG 2.x relative luminance), non-text ≥ 3:1:** charcoal on ivory `#FBF7F0` 16.02; copper on ivory 5.64, on cream 5.14; ivory on inverted charcoal 14.42; light copper on inverted charcoal 7.74; on the dashboard card charcoal 17.11 and copper 6.02 (light), ivory 12.81 and light copper 6.87 (dark `#1e293b`). For comparison the old teal on white was 1.80:1. Pinned by `frontend/src/components/brand/__tests__/BrandIcon.p1017.test.tsx`.
+
+**Alternatives considered:**
+- **Copper `#9A4E22` on dark too, as the single accent everywhere.** Rejected: 2.74:1 on `#241E19` fails 3:1 for a graphical object. The light copper is the palette's own accent-on-dark.
+- **A mono app icon (ivory on charcoal), as the old one was mono.** Rejected: on the warm charcoal tile it would be nearly indistinguishable from the old `#2A2A2A` icon, which would not answer the request. The accent is legible at 16 px (evidence `p1017-logo-favicon-16-after.webp`).
+- **Hard-coded hex in `BrandIcon`.** Rejected: the mark could not follow the inverted section or the dashboard's dark theme without a `dark:` colour variant, which globals.css forbids.
+
+**Implications, including the bad ones:**
+- The logo colours now live in three places: the SVG files, `public-surface.css` (`--pub-accent`, `--pub-inv-accent`) and globals.css (`--logo-*`). A palette change must touch all three; the p1017 test pins the files and the tokens' contrasts.
+- Mail clients that cache images keep showing the old `logo-email.png` until their cache expires; the URL is unchanged.
+- Browsers cache favicons aggressively; the new one may take a hard reload to appear.
+- **Record:** `MEMORY/records/2026-10-05-logo-warm-recolour.md`.
+
+### Amendment 3 (2026-10-05): a warm dark mode on the public surface; the landing's photographs made contextual; the certificate explanations swipe
+
+*(Amendment 2 is the logo recolour, written by the agent that does it.)*
+
+**Context.** The owner asked for three things, after Amendment 1:
+
+- a light/dark mode button on the landing page;
+- landing imagery that reads as medical-device work in a hospital, not generic stock;
+- explanations in the certificate explorer that can be swiped on a phone without tapping the numbered markers.
+
+**Decided:**
+
+1. **One theme mechanism for the whole app.** The public pages reuse the dashboard's:
+   - the `localStorage` key `hdc-theme-preference`;
+   - the `.dark` class on `<html>`, applied before first paint by the root layout's nonce'd `ThemeInitScript`.
+   The init script now also writes `data-theme-choice` when a choice exists. Without a choice, the public pages follow `prefers-color-scheme` (CSS only). The dashboard keeps its "light unless chosen" default and its `ThemeContext` unchanged. A choice made on the landing carries into the dashboard and back.
+2. **Where the toggle lives.** `PublicThemeToggle.tsx` is a 44 × 44 px icon button, `aria-pressed`, named *Mode gelap* / *Dark mode*. It sits in the public header, the mobile menu and the auth shell. It is not used by `ThemeProvider`: the public pages mount no client providers (ADR-098 Amendment 2). `/verify` follows the theme but carries no toggle: its 120 KB AC-7 budget stands at 118.6.
+3. **A warm dark palette.** The `--pub-dark-*` tokens are espresso `#1A1511`, ivory text `#F6EFE4`, copper `#E3A47B` (8.51:1) and verified teal `#7CCFC0`. They are mapped onto the `--pub-*` names by `.dark [data-surface="public"]` and by the system-preference rule. Every text pair is ≥ 4.5:1 and every boundary ≥ 3:1 on all four dark surfaces, recomputed by `publicTokens.contrast.p1001.test.ts`.
+   - Photographs are never inverted, only dimmed by 10 %.
+   - "Paper" objects inside the inverted section (`.lp-paper`) keep the full light value set in both modes.
+4. **Imagery, second pass:**
+   - The landing hero becomes a clinician adjusting a vital-signs monitor (`clinician-monitor.webp`, Unsplash `0Fv4M2hSZJU`).
+   - "How we work" becomes a staff member, seen from behind, setting a wall monitor (`device-check.webp`, `Scr5C6EGz9I`).
+   - The UK-hospital corridor photograph is **removed**: it had identifiable faces and a real hospital's uniforms.
+   - The technician workbench stays, on the auth panel only.
+   - The hero keeps the LCP rules of the first pass (`preload` and `fetchPriority="high"`, no mask or opacity on it, sized `48vw` / `100vw`).
+5. **The certificate explanations become a horizontal scroll-snap track:**
+   - one slide per explanation; on small screens the next slide peeks in;
+   - `overscroll-behavior-x: contain`, with no page overflow;
+   - swiping updates the markers and the dashes;
+   - the dashes are buttons ("Penjelasan 2 dari 4", `aria-current`), and markers and dashes scroll to their slide (instantly under reduced motion);
+   - Arrow Left/Right work on the focused track;
+   - one polite live region announces the change.
+   - The header becomes fully opaque once scrolled, so content no longer shows through it.
+
+**Alternatives considered:**
+- **The dashboard's `ThemeToggle` and `ThemeProvider` on public pages.** Rejected: they pull lucide-react's client runtime and a provider into every public route (ADR-098 Amendment 2's budget work), and the toggle's labels are English-only.
+- **A cookie read by the server to set the theme.** Rejected: the dashboard already uses `localStorage` with a nonce'd pre-paint script. A second store would let the two disagree.
+- **A JS carousel library.** Rejected: CSS scroll-snap gives native momentum at no bundle cost.
+
+**Implications, including the bad ones:**
+- No budget was raised. A first cut put `/request-access` at 148.6 KB brotli, over its 148 KB ceiling: the toggle imported the 44-icon static module. Drawing its two glyphs inline brought the page back to 147.5 / 170.5 KB. `/login` is 153.9 of 155 and `/` 127.9 of 180 (gzip 148.7 of 150).
+- Dark mode doubles the visual surface that needs checking. Screenshots in both modes are part of the P10-17 record; the browser a11y suite already checks public pages in both themes.
+- The hero photograph is cooler (blue scrubs) than the warm palette. Chosen for context over tone; commissioned photographs remain the owner's open item.
+
+---
+
+## ADR-119: The Record List Counts the Records Alone and Joins Only Its Page; Live Records Get a Partial Covering Index; Sequelize's Namespace Is AsyncLocalStorage, Not cls-hooked; the JWT Ring Holds KeyObjects — and U-06's Ceiling Is the Event Loop, Not PostgreSQL
+
+**Date:** 2026-10-05 · **Task:** U-06 (`TASKS/BACKLOG.md`) · **Builds on:** ADR-086 §3 (P8-07), ADR-096 (P8-04) · **Migration:** `0109` · **Record:** [`records/2026-10-05-u06-list-performance.md`](./records/2026-10-05-u06-list-performance.md)
+
+**Context.** U-06 recorded the tenant-scoped lists as missing p95 < 500 ms at 10 concurrent users (576–732 ms), with PostgreSQL's exact counts as the ceiling (P8-07, 2026-09-28). ADR-096 then fixed the dominant cost, the audit list's sequential count, but could not show the end-to-end effect on a noisy host.
+
+The P8-07 stack was rebuilt on the current tree (`callib-u06`, production mode, the same seed, the same k6 script), and the baseline was re-measured:
+- **p95 of 156–438 ms on the four lists at 10 VU in 8 of 9 runs.** The ninth was 591–688 ms, under heavy contention from another lane's CI.
+- **The backend's main thread was at 99–100%** while **PostgreSQL used 165–191% of 16 cores**. The ceiling has moved from the database to the single Node event loop.
+- **Per request, the backend spends** 11.4 ms of CPU on the device list, 25.5 on the record list, 17.3 on the audit list and 43.5 on the dashboard.
+- **Database-side,** the record list's count and the dashboard's three record counts visited the heap for every record (1,510 buffers, 21–44 ms each). A deep record page joined 2,000 rows to keep 10 (6,592 buffers).
+
+### Decision
+
+1. **The record list is a count and a deferred-join page** (`calibrationRecords.service#fetchCalibrationRecords`):
+   - `count({ where })` carries no includes. They are to-one LEFT JOINs, which cannot change the total.
+   - `findAll({ …, subQuery: true })` limits inside a subquery and joins outside it.
+   - `count === 0 → []` is kept.
+   - The tenant hooks are unchanged: the root predicate sits inside the subquery, and every include keeps its ON predicate.
+2. **Migration `0109`:** `calibration_records_tenant_live_date ON calibration_records (tenant_id, calibration_date DESC) INCLUDE (is_compliant, superseded_by_id) WHERE is_deleted = false AND deleted_at IS NULL`. It is built CONCURRENTLY as 0062 and 0093 are, an INVALID index is rebuilt, and no model declares it. Its predicate is the model's live-record predicate, so the list's count and the dashboard's counts are index-only.
+3. **Sequelize's CLS namespace is `utils/clsNamespace.util` (AsyncLocalStorage)**, and `cls-hooked` is removed from the backend:
+   - The namespace keeps cls-hooked's `run`/`bind`/`get`/`set` semantics. The tests pinning them pass over cls-hooked itself.
+   - cls-hooked enabled an `async_hooks` hook with destroy tracking for the whole process, so every promise paid for it.
+   - The tenant context was already AsyncLocalStorage.
+4. **The JWT verification ring holds KeyObjects, memoized on the environment values it was built from.**
+   - Before, `jsonwebtoken` converted the string secret on every verify, first by a `createPublicKey` that throws for an HS secret. The ring also re-hashed each key for its id on every request.
+   - S-26 holds: the ring is still the environment, read on every call. A changed variable rebuilds it on the next call.
+
+### Alternatives considered
+
+| Alternative | Why not (now) |
+|---|---|
+| **Cap or estimate the device and record counts** (ADR-096's audit treatment) | the totals are bounded by inventory (5,000 / 50,000 per tenant), and after 0109 a count is an index-only 8–12 ms. A cap changes `meta.total` for every list client, and nothing measured here needs it. It stays the next step if a tenant's history makes counts measurable again |
+| **Keyset pagination** | the pager, the envelope and every list client page by number with a total. The deferred join takes the deep-page cost from 6,592 to 622 buffers without changing the contract |
+| **Cache the dashboard per tenant for a few seconds** | the dashboard is about 40% of the mix's backend CPU, so this would help most. But it changes freshness on a compliance screen, which is a contract decision. Recorded as open, not made |
+| **Cluster mode / more processes per container** | one process uses one of the container's two CPUs. Several processes per container would duplicate every in-process scheduler. More replicas is the documented scale path (Helm; the Socket.IO Redis adapter), and it is a deployment decision. Not measured here |
+| **Keep cls-hooked** | it is unmaintained (4.2.2, 2018), and its hook is process-wide. AsyncLocalStorage is what Node recommends, and what Sequelize 7 uses |
+| **A `pg_trgm` index for the devices `find` filter** | 14–21 ms on 5,000 rows. It needs a new extension (an operator change), and it is not the ceiling |
+
+### Implications, including the bad ones
+
+- **No end-to-end improvement is claimed.**
+  - Interleaved before/after runs on the shared host stayed inside its noise: after was better in round 1, worse in round 2, and both were contended in round 3.
+  - The service-path microbenchmark favoured AsyncLocalStorage in 4 of 4 pairs, and the whole change in only 2 of 5.
+  - The decision rests on the database evidence (plans, buffers, an identity check of 8 cases on PG 18) and on removing a process-wide cost by mechanism.
+- **U-06 is not closed.** On this host the lists meet p95 < 500 ms at 10 VU when the host is not contended (10 of 12 runs, all misses contended). Global search does not (4 of 7). A dedicated-host run is still owed, and further headroom comes from replicas or the dashboard cache, both decisions above.
+- **The record list now issues `count(*)` and a subquery page.** A future include that is to-many, or required, would change the total, so it must not be added to the count, and the page's `subQuery` would then also apply to it. `recordsList.u06` pins the shape.
+- **0109 adds a third index on `calibration_records`'s tenant/date** (with 0093's and the single-column ones), so writes maintain one more index. The table is append-only (0057), and the index is partial on live rows.
+- **A KeyObject cache lives for the process.** A rotation edits the environment of a new process, or of this one through `process.env`; either is picked up on the next call. A secret is not held longer than before: the module already held `ACCESS_SECRET`.
+- **`cls-hooked`'s removal changes `package-lock.json`**, by 3 packages removed.
+
+### Evidence
+
+- **Tests:**
+  - `recordsList.u06` 4 tests, `0109-calibration-records-live-index` 8, `clsNamespace.u06` 9 and `jwt.keyMemo.u06` 4. Fail-before on `dded70c`: 6 of 17, plus 8 of 8.
+  - Adapted, not weakened: `calibrationRecords.service.test.js` (32 tests) and `jwt.test.js` (two assertions).
+- **Migration 0109 on PostgreSQL 18:**
+  - up/down/up/no-op through the migrator, and `migrate:verify` OK;
+  - applied by the `after` image's own boot on an upgraded database;
+  - plans read as `callibrator_app`.
+
+**Status:** Accepted — implemented 2026-10-05. **Amended by ADR-120:** 0109's INCLUDE columns became key columns (the INCLUDE form crash-looped every boot after the one that applied it, in Sequelize's showIndex).
+
+---
+
+## ADR-120: The Dashboard's Aggregates Are Cached for 30 Seconds Per Scope (Redis, In-Process Fallback, Never Across Tenants); Full-Text Search Indexes Are Per Tenant (btree_gin); One Request Loads Its Permissions Once; Migration 0109 Uses Key Columns, Not INCLUDE
+
+**Date:** 2026-10-05 · **Task:** U-06 (`TASKS/BACKLOG.md`), follow-on to ADR-119 · **Decided by:** the coordinator, under the owner's delegation (the dashboard cache); this lane (the rest) · **Migrations:** `0110`, and a fix to the unreleased `0109` · **Record:** [`records/2026-10-05-u06b-search-dashboard.md`](./records/2026-10-05-u06b-search-dashboard.md)
+
+**Context.**
+- ADR-119 left two U-06 items open. The dashboard took 43.5 ms of backend CPU per call, about 40% of the load mix's CPU on the single event loop. Global search had a p95 of 193–646 ms (under 500 ms in 4 of 7 runs).
+- **The search premise did not hold.** The task expected leading-wildcard `ILIKE` scans or per-type queries run one after another. Neither was true:
+  - search runs PostgreSQL full-text search (`search_vector @@ plainto_tsquery`);
+  - `ILIKE` is only the fallback when that column is missing;
+  - the three per-type statements already ran concurrently, each limited.
+- **What the profile and plans did show** (P8-07 volume, production mode, `callibrator_app`):
+  1. **Twelve permission reads per search request.** One search loaded the caller's permission sources six times: the route gate once per menu it names (3), then the controller once per type probe (3). That is 12 Redis GETs and 12 JSON parses of the whole role matrix. Redis `INFO commandstats` counted 13.0 GETs per search (one is the session). It was about 8% of the backend's CPU under search load (`node --cpu-prof`).
+  2. **Every tenant's matches read per term.** 0003's GIN index holds every tenant's lexemes. For `infusion`, 2,000 index matches and 343 heap blocks were read, then the other tenant's 1,000 rows were filtered out. This work grows with the whole platform, not with the caller's tenant.
+- **A defect found on the way, in ADR-119's unreleased migration 0109.**
+  - Sequelize 6's `showIndex` runs for every model on EVERY boot (`db.sync()`). It parses `pg_get_indexdef()` by splitting the text between the first `(` and the last `)` on commas.
+  - 0109's `INCLUDE (is_compliant, superseded_by_id)` columns are in `indkey`, but they render after `) INCLUDE (`. That gives four keys and three pieces. `attribute.match` then runs on undefined, and the server fails to start ("Failed to start server").
+  - The boot after the one that applied 0109 crash-looped on PostgreSQL 18. The U-06 record never rebooted after applying it, so this was missed.
+
+### Decision
+
+1. **Dashboard cache** (`services/dashboardCache.service.ts`, used by `dashboard.controller`):
+   - **Store.** The service's result is kept for **30 s** (`SETEX`, so all replicas share it). If Redis is not ready, or a command throws, a bounded in-process LRU (500 scopes, the same TTL) keeps it instead. A cache failure never fails the request.
+   - **Key.** `dashboard:metrics:v1:tenant:<own tenant>:<own tenant>` for a tenant principal. `dashboard:metrics:v1:platform:<tenant|global>` for the super admin.
+     - Two tenants never share a key.
+     - The platform's view of a tenant never shares a key with that tenant's own entry.
+     - A target that is not a UUID is not cached.
+     - The role is not in the key: the gate is `home` read, which every role holds, and the figures are the tenant's whatever the role.
+   - **Single flight.** Concurrent misses for one key in one process share one computation.
+   - **Freshness.** The payload keeps `data.generatedAt`, set when the figures are computed; the dashboard is not a list, so nothing goes in `meta`. It now means "computed at", up to 30 s before the response. The contract says so (`dashboard.openapi.ts`).
+   - **The page.** The frontend dashboard shows "Updated at HH:MM:SS" / "Diperbarui pukul HH:MM:SS" (`DashboardUpdatedAt`).
+   - **Staleness bound: 30 seconds.** No write invalidates the cache. The figures come from about 10 models written by dozens of services, so invalidating on every one is not cheap, and a missed one would be a silent bug. The TTL alone bounds the staleness.
+2. **Migration 0110** creates the extension and the per-tenant indexes:
+   - `CREATE EXTENSION IF NOT EXISTS btree_gin`;
+   - `CREATE INDEX CONCURRENTLY <table>_tenant_id_search_vector ON <table> USING gin (tenant_id, search_vector)` on `calibration_devices`, `stocks` and `certificates`;
+   - then it drops 0003's `idx_<table>_search`. A multi-column GIN serves any subset of its columns, so the old index is redundant.
+
+   It follows 0093/0109: an INVALID index is rebuilt, the new index is built before the old one is dropped, there is no try/catch, and no model declares it. `down` restores 0003's indexes, then drops the new ones, and keeps the extension.
+3. **One permission load per request.** `dynamicAccess.middleware` remembers the request's `loadPermissionSources` promise in a `WeakMap` keyed by the request. The entry is used only for the same principal object. Every gate and probe of one request shares the load; the next request loads afresh.
+   - The search controller's type probes run concurrently.
+   - Each type is still decided by `dynamicAccess(<menu>, "read")`, the same gate as its list route (A-04).
+   - `next(err)` is still a denial (A-13).
+4. **0109 uses key columns:** `(tenant_id, calibration_date DESC, is_compliant, superseded_by_id) WHERE is_deleted = false AND deleted_at IS NULL`. The counts stay index-only (Heap Fetches 0). `indexDefinitionSync.u06b` runs the REAL Sequelize parser over each migration index as PostgreSQL 18 renders it, and refuses `INCLUDE (` in any migration. This is a deviation from ADR-119 §2, recorded here; 0109 was never released.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| **`pg_trgm` indexes for search** (the task's first guess) | Search on PostgreSQL never runs `ILIKE`, so the planner would never use such an index. They would cost writes for nothing. The device list's `find` filter does run three `ILIKE`s; that is a different endpoint and stays open (ADR-119) |
+| **Invalidate the dashboard on writes** | The figures come from ten models written by dozens of services and jobs. A missed path would be a silent stale figure; the TTL bound is simple and visible on the page |
+| **A longer TTL (60–300 s)** | More CPU saved, but "due soon / overdue" and the compliance rate are read as current. 30 s was the decision |
+| **The in-process LRU only** | Each replica would compute its own copy, and a deploy would empty it. Redis is already the shared cache (role matrix, sessions) |
+| **Fail the request if the cache is down** | It would turn an optional optimisation into an availability dependency |
+| **Cache the permission sources across requests in process** | They are already cached in Redis for 3600 s. A process-level cache would outlive W-11's deletion on a role change. Per request is the bound that changes nothing observable |
+| **Rank only a bounded candidate set for broad terms** | It changes which rows a broad search returns. Ranking all 5,000 matches costs 4–12 ms in PostgreSQL, which has headroom |
+| **Keep `INCLUDE` and patch Sequelize** | It would patch a dependency every boot depends on. Key columns give the same index-only counts |
+| **Keep 0003's index beside the composite one** | Two GIN indexes to maintain per write, and the composite serves both shapes |
+
+### Implications, including the bad ones
+
+- **The dashboard can be up to 30 s old.** A device retired, or a calibration recorded, shows on the dashboard within 30 s, not at once. The page says when its figures were computed.
+- **The in-process fallback is per replica.** While Redis is down, each replica keeps its own copy, with the same bound.
+- **A cached payload is JSON.** Every dashboard value is a number, string or null, so it round-trips unchanged.
+- **0110 needs `btree_gin` (contrib).** It is a trusted extension, so the database owner can create it without being a superuser; this was checked on PG 18 with a NOSUPERUSER owner. A role that is neither the owner nor holds CREATE on the database fails 0110 with PostgreSQL's `permission denied to create extension "btree_gin"`. The backend then does not start, and the migration is not recorded as applied. `deploy/helm/callibrator/values.yaml` names the one-time operator step.
+- **The planner may still pick the tenant b-tree index.** For a term that matches most of a tenant (`Maker`, `infusion` at 1,000 of 5,000), PostgreSQL chooses the `tenant_id` b-tree plus a filter. That reads the tenant's own rows only. Either way, no plan reads another tenant's matches any more.
+- **No end-to-end search gain is claimed.**
+  - Search-only p95 at 10 VU was 78–90 ms before and 53–182 ms after, across interleaved runs on a host whose load moved between 1% and 375% of other containers' CPU, plus load outside Docker.
+  - The mechanism is measured instead: Redis GETs per search went from 13.0 to 3.0, and selective terms read only the tenant's matches.
+- **Any development database that applied the INCLUDE form of 0109 crash-loops on boot.** Drop `calibration_records_tenant_live_date` by hand; the next boot does not rebuild it, because 0109 is recorded applied, so recreate it with the key-column definition. No released database has it.
+
+### Evidence
+
+- **Tests:**
+  - `dashboardCache.u06b` (16);
+  - `search.permissionLoads.u06b` (6);
+  - `0110-search-tenant-gin` (10);
+  - `indexDefinitionSync.u06b` (4);
+  - frontend `DashboardUpdatedAt.test.tsx` (5), and 1 case in `dashboard/__tests__/page.test.tsx`.
+- **Fail-before** in a worktree of `dded70c` plus U-06's runtime files: 21 of 36 backend tests failed (7 cache, 3 search, 1 guard, and the 10 of 0110, whose module was absent), and the frontend page case failed.
+- **Adapted, not weakened:** `dashboard.controller.test.js` and `dashboardMetrics.gate.a304.test.ts` clear the cache in `beforeEach`; the 0109 test's expected DDL changed.
+- **Live, PG 18:**
+  - 0110 up at boot (0.33 s), down through the migrator, up again at boot (0.35 s), and an up no-op;
+  - `migrate:verify` OK;
+  - a reboot after 0110 (Sequelize's showIndex passes);
+  - plans as `callibrator_app`.
+- **Dashboard, 10 VU** (`p807-baseline.k6.js`, EP=dashboard), uncontended runs:
+  - p95 197–344 ms → 61–64 ms;
+  - backend CPU 11.6–17.4 → 3.4–3.7 ms per request;
+  - 60–88 → 286–316 req/s.
+- **PostgreSQL statements per dashboard request:** 23.1 → 2.05 (`pg_stat_statements`).
+
+**Status:** Accepted — implemented 2026-10-05.
+
+---
+
+## ADR-121: `POST /sop` Validates Its Body — a Recorded Contract Tightening, Not a Deprecation
+
+**Date:** 2026-10-06 · **Status:** Accepted (coordinating session, under the owner's stated delegation) · **Relates to:** W-10 (`MEMORY/records/2026-10-05-w10-bodyless-requests.md`), ADR-115, `MEMORY/records/2026-10-05-closing-gates-st.md`
+
+### Context
+
+W-10 found that `POST /api/v1/sop` answered **500** to a body with no title, because the database refused the insert. It added a `createSopDocument` schema: `title` required, trimmed, 1–255 characters; `requiresTraining` boolean or `"true"`/`"false"`, no longer `null`; unknown fields stripped.
+
+`openapi:breaking` (oasdiff 1.32.1) against `origin/main` reports **3 breaking changes**, all on this operation: the new `minLength` and `maxLength` on `title`, and `requiresTraining` no longer nullable. ADR-115 requires an ADR before any break is merged.
+
+### Decision
+
+Accept the tightening without a deprecation period.
+- Every request the new schema refuses was already a failure before: a missing or empty title was a 500, and a title over 255 characters was a database error.
+- A `null` `requiresTraining` was stored as null in a column the UI treats as a boolean. The SOP page always sends a boolean.
+
+### Alternatives considered
+
+- **Keep `requiresTraining` nullable, mapping null to false.** That publishes a value the field never meaningfully had. Rejected.
+- **Deprecate first.** There is nothing to deprecate: the refused inputs never worked.
+
+### Implications, including the bad ones
+
+- **A pull request from a branch cut before this change** fails `api-contract` until it is rebased. A direct push to `main` passes.
+- **Possible external clients:** a client that sent `requiresTraining: null` now gets a 400 instead of a stored null. No such client is known (ADR-115: the frontend is the only consumer).
 
 ---
 

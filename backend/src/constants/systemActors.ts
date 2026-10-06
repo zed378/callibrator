@@ -145,6 +145,14 @@ const SYSTEM_ACTORS = Object.freeze({
    * "billing:quota"). The metric and the overage are named in `changes`.
    */
   USAGE_QUOTA: "system:usage-quota",
+  /**
+   * P8-01 (ADR-086 Amendment 1) — services/storageMigration.service.ts, run
+   * only from the scripts/migrateStorage.ts CLI by an operator with database
+   * access: a row whose bytes were copied into pluggable storage (verified) now
+   * names their storage key (attachments' `storageKey`, tenant backups'
+   * `filePath`). One UPDATE row per moved row, in the tenant, with the move.
+   */
+  STORAGE_MIGRATION: "system:storage-migration",
 } as const);
 
 /** One system actor's name (`actor_name` of a `system` row). */

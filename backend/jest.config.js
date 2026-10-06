@@ -153,4 +153,13 @@ module.exports = {
   // the build if one is), and the order keeps every existing resolution as it was.
   moduleFileExtensions: ["js", "ts", "json"],
   testTimeout: 10000,
+  // 2026-10-05 (MEMORY/records/2026-10-05-ci-second-run.md): a worker keeps
+  // ~20 MB of heap per route suite it has run, after a forced GC (measured:
+  // 150 → 1,302 MB over 60 route suites in one process, no coverage), and
+  // more with coverage. Over the ~290 files a CI worker runs, that reaches the
+  // 4 GiB V8 heap limit a 16 GB runner gives Node, and a worker that dies takes
+  // its suite with it. jest restarts a worker whose heap is above this after a
+  // file (its finished results and coverage are already reported), so no
+  // worker's heap depends on which files the scheduler happened to give it.
+  workerIdleMemoryLimit: "2GB",
 };

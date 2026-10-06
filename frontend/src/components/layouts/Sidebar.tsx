@@ -137,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Logo */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-border">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <BrandIcon className="w-10 h-10 shrink-0 text-[#001250] dark:text-white" />
+            <BrandIcon className="w-10 h-10 shrink-0 text-logo-ink" />
             {/* Q-43 (ADR-098 §8.1): the product is "Device Calibrator"; "Callibrator" is the codename only.
                 Not a heading: each page has ONE <h1>, in its <main> (ADR-090). */}
             <p className="text-lg font-bold text-foreground tracking-tight leading-tight">

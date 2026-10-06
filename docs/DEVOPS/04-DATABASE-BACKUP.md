@@ -76,9 +76,12 @@ archive_command = 'test ! -f /archive/%f && cp %p /archive/%f'
 ```
 
 WAL archiving is what makes the 1-hour RPO achievable. Nightly dumps alone give a 24-hour RPO.
-**Nothing in this repository configures WAL archiving**: with compose as shipped, the RPO is the age of
-the last dump. `make backup` is the dump; it runs on the host against the compose stack
-(`docker compose exec postgres pg_dump -Fc`), and a scheduler for it is the operator's.
+**Nothing in this repository configures WAL archiving** (M-12, scoped out in ADR-116 with its trigger):
+the RPO is the age of the last dump. **The nightly dump is scheduled since 2026-10-05 (U-05, ADR-116)**:
+the compose service `db-backup` (and the Helm CronJob `<base>-backup-verify`) takes it every day at
+`BACKUP_AT` (02:30 local), keeps `BACKUP_KEEP` (14) plus always the newest verified one, and **restores
+every dump it takes** — § Scheduled Restore Verification below. `make backup` remains the by-hand dump
+into `./backups`; it is not verified.
 
 **The dump does not contain the application role.** `pg_dump` writes the `GRANT … TO
 callibrator_app` statements but not the role (roles are cluster-wide, ADR-062). Restored into a new
@@ -201,16 +204,66 @@ psql -d scratch -c "SELECT count(*) FROM calibration_records;"   # populated?
 
 The middle step is the only one that proves anything.
 
+## Scheduled Restore Verification (U-05, ADR-116)
+
+Every night, **every dump is restored and checked** — unattended — by `deploy/backup/backup-verify.sh`
+in the image `callibrator/backup-verify` (compose service `db-backup`; Helm CronJob
+`<base>-backup-verify`, `backupVerify.enabled`).
+
+| Step | What it proves | Fails when |
+|---|---|---|
+| dump | `pg_dump -Fc` inside an **exported snapshot**; the same transaction writes `<dump>.manifest.json`: exact row counts of `BACKUP_VERIFY_TABLES`, a checksum over `audit_logs`, migrations (count + newest), pgvector version, SHA-256 | the source is unreachable, pg_dump errors |
+| `sha256` | the file is the one the manifest describes | truncation, bit rot |
+| `toc` | `pg_restore --list` reads the archive | a corrupt archive |
+| `scratch` | a **throwaway PostgreSQL 18 + pgvector** starts inside the container (loopback only, deleted afterwards) | — |
+| `restore` | role first, then `pg_restore --no-owner --exit-on-error` — § Restore Order step 4b | any restore error |
+| `pgvector` | `CREATE EXTENSION vector` came back | the extension is missing |
+| `facts` | counts, audit checksum, migrations, pgvector **equal** the snapshot's — exact, no tolerance | a lost or extra row |
+| `schema` | the application's own check (`./backend verify-schema`, the boot's `[schema-verify]`) on the restored copy | the copy would refuse a boot |
+
+**Outcome:** `./volumes/pgdump/last-restore-verify.json` (`ok`, `phase`, `dumpAgeSeconds`,
+`restoreSeconds` — the database part of an RTO — `totalSeconds`, every check), appended to
+`restore-verify.history.jsonl`; a passing dump also gets `<dump>.verified.json`. **A failure is a critical
+alert** through the application's alert path (§ Backup Failures Must Alert). Retention: `BACKUP_KEEP` (14)
+newest dumps, and the newest **verified** dump is never pruned.
+
+**Measured, 2026-10-05** (compose, one desktop host, demo data: 4 tenants / 11 users / 2 devices / 3
+certificates, 80 migrations, 369,261-byte dump, 890 TOC entries): `restoreSeconds` **18 s** (initdb +
+restore 12 s + checks + schema check), whole run 19 s; a re-verification 15 s. Truncated dump → `sha256`
+FAILED; truncated dump with a matching checksum → `toc` FAILED; manifest counts altered → `facts` FAILED
+(`count:tenants source=5 restored=4`). Each raised `backup.restore-verify.failed` by log line and by email
+([record](../../MEMORY/records/2026-10-05-u05-backup-restore-verification.md)).
+
+**By hand:**
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.<env>.yml exec db-backup backup-verify run-once   # dump + verify now
+docker compose … exec db-backup backup-verify verify                       # re-verify the newest dump
+docker compose … exec db-backup backup-verify verify /backups/db-<ts>.dump # a particular one
+docker compose … exec db-backup cat /backups/last-restore-verify.json
+```
+
+**What it does not cover:** the object store (`./volumes/uploads`, `storage`) and the secret escrow —
+still the drill checklist above; a restore on another host; WAL/PITR (none exists, M-12).
+
+## Off-Host Copy
+
+The dumps are written **on the database's own host**. A host loss takes them with it. Until a
+production deployment triggers the off-host mechanism (ADR-116), copy `./volumes/pgdump` off the host
+after the nightly run — any tool that copies files (`rsync`, `rclone` to object storage) — and copy the
+`*.manifest.json` with each dump: `backup-verify verify` needs it.
+
 ## Current Gaps, Stated Plainly
 
 | Gap | Consequence |
 |---|---|
 | One restore drill performed (2026-09-28, compose, small data set — P7-04) | the restore itself took 234 s; the RTO at production volume and on Kubernetes is still unmeasured |
-| No scheduled monthly restore verification | backups are assumed good, not known good |
+| ~~No scheduled restore verification~~ — **every nightly dump is restored and checked since 2026-10-05** (U-05, ADR-116) | closed for the database; the object store and the secret escrow are still verified only by a drill |
+| The nightly dumps are on the database's own host (`./volumes/pgdump`) | a host loss takes the dumps too; copy them off the host (§ Off-Host Copy) |
 | Secret escrow is a procedure ([`../SECURITY/14-SECRET-ESCROW.md`](../SECURITY/14-SECRET-ESCROW.md)), not a mechanism | nothing enforces that the escrow exists; the boot refuses a wrong KMS key (ADR-078) |
 | No WAL archiving configured | RPO = age of the last dump |
 | No offsite replica | host loss means restore, not failover |
-| No `make restore` target | the restore is the manual sequence above |
+| No `make restore` target | the restore is the manual sequence above (the verifier rehearses its database steps every night, into a throwaway server) |
 
 Each is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 
@@ -234,6 +287,8 @@ A backup document listing only its strengths is a marketing document. The first 
 ./volumes/uploads     attachments (always local disk) and the upload quarantine
 ./volumes/storage     the `local` storage driver's objects (S-40)
 ./volumes/backup      tenant backups + last-scheduled-backup.json
+./volumes/pgdump      nightly verified dumps (db-*.dump + .manifest.json + .verified.json),
+                      last-restore-verify.json, restore-verify.history.jsonl (U-05)
 ```
 
 In Kubernetes, `/app/backup` is its own claim (`<base>-backup`, S-18) — before S-18 it had no volume at all.
@@ -244,4 +299,4 @@ In Kubernetes, `/app/backup` is its own claim (`<base>-backup`, S-18) — before
 
 A backup job that fails **silently** every night is worse than one that never ran, because everyone believes it did.
 
-The retention purge did exactly this — failing nightly with `column "tenantId" does not exist` — until someone looked. Scheduled outcomes need alerting, not just logging — **in place since P7-02 for the tenant backup** ([`07-ALERTING.md`](./07-ALERTING.md)). The **infrastructure** backup (host `pg_dump`/WAL) runs outside the application and must alert on its own exit status; nothing in this repository does that for it yet.
+The retention purge did exactly this — failing nightly with `column "tenantId" does not exist` — until someone looked. Scheduled outcomes need alerting, not just logging — **in place since P7-02 for the tenant backup** ([`07-ALERTING.md`](./07-ALERTING.md)), and **since U-05 (ADR-116) for the infrastructure dump and its restore verification**: `backup.dump.failed`, `backup.restore-verify.failed`, `backup.restore-verify.unreadable` from the verifier, `backup.restore-verify.missed` from the backend's watchdog (compose) or the cluster's Job monitoring (Helm).

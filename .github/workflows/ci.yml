@@ -191,9 +191,20 @@ jobs:
           done
       # jest.config.js carries the 100% global threshold: below it, jest exits
       # non-zero. --experimental-vm-modules comes from the npm script (A-99).
+      # ADR-117: the job log needs a token to read, a check run's annotations do not.
+      # jest's github-actions reporter annotates each failing test; --json and the
+      # json-summary coverage report feed the next step, which annotates what that
+      # reporter cannot see (a suite that never ran, a missed coverage threshold).
       - name: npm run test:coverage
         working-directory: backend
-        run: npm run test:coverage -- --ci --forceExit
+        run: >-
+          npm run test:coverage -- --ci --forceExit
+          --reporters=default --reporters=github-actions
+          --json --outputFile="$RUNNER_TEMP/jest-results.json"
+          --coverageReporters=text --coverageReporters=json-summary
+      - name: Failed suites and coverage misses, as annotations
+        if: failure()
+        run: node scripts/ci/jest-annotate.js "$RUNNER_TEMP/jest-results.json" backend/coverage/coverage-summary.json
 
   # --------------------------------------------------------------------------
   # Every backend module LOADS, as production loads it (P9, ADR-087 Amendment 15).
@@ -276,9 +287,16 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-      # Against the committed lockfile, dev dependencies included: the build
-      # toolchain runs in CI and in the image builder.
-      - run: npm audit --audit-level=high
+      # ADR-117. Against the committed lockfile. The production tree is strict: no
+      # high or critical advisory, and no exception mechanism.
+      - name: production dependencies (no exceptions)
+        run: npm audit --omit=dev --audit-level=high
+      # The whole tree, dev dependencies included (the toolchain runs in CI and in
+      # the image builder): high and critical fail unless a reviewed, EXPIRING
+      # entry in scripts/ci/npm-audit-allowlist.json excuses that GHSA id, and only
+      # while the advisory stays out of the production tree.
+      - name: every dependency (dev advisories through the expiring allow-list)
+        run: node scripts/ci/npm-audit-gate.js
 
   # --------------------------------------------------------------------------
   boot-and-migrate:

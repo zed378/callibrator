@@ -13,6 +13,11 @@ const COMMANDS: Readonly<Record<string, () => Command>> = Object.freeze({
   // Loaded only when asked for: the server never loads the CLI.
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy: loaded only for this command
   "rotate-bootstrap-password": () => (require("./rotateBootstrapPassword") as { main: Command }).main,
+  // U-05 (ADR-116): the backup verifier's two steps, run by the same binary as the server.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy: loaded only for this command
+  "verify-schema": () => (require("./verifySchema") as { main: Command }).main,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy: loaded only for this command
+  "backup-alert": () => (require("./backupAlert") as { main: Command }).main,
 });
 
 /** The recognised command in `argv` (process.argv), or null. */

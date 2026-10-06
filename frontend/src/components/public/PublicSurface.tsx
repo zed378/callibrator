@@ -7,11 +7,11 @@
  * Server component: no client JavaScript.
  */
 import React from "react";
-import { publicBodyFont, publicDisplayFont } from "@/app/fonts/public";
+import { publicBodyFont, publicDisplayFont, publicDisplayItalicFont } from "@/app/fonts/public";
 
 export function PublicSurface({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div data-surface="public" className={`${publicDisplayFont.variable} ${publicBodyFont.variable} ${className}`}>
+    <div data-surface="public" className={`${publicDisplayFont.variable} ${publicDisplayItalicFont.variable} ${publicBodyFont.variable} ${className}`}>
       {children}
     </div>
   );

@@ -16,6 +16,10 @@ const os = require("os");
 const path = require("path");
 
 const mockRoot = fs.mkdtempSync(path.join(os.tmpdir(), "w15-exports-"));
+// P8-01 (ADR-086 Amendment 1): an export's archive and manifest are kept in
+// the tenant's storage; the double keeps the real key rules
+// (fixtures/fakeStorage) and holds the bytes in memory.
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../utils/storagePath.util", () => (...parts) => require("path").join(mockRoot, ...parts));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -54,6 +58,10 @@ describe("W-15 — the retention sweep deletes expired GDPR exports", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     fs.rmSync(DIR, { recursive: true, force: true });
+    // P8-01: the sweep also walks every tenant's storage; there are no
+    // tenants here, so this suite is the legacy directory's alone
+    // (services/gdpr.storedExports.p801.test.ts covers the storage pass).
+    jest.spyOn(require("../../models").Tenant, "findAll").mockResolvedValue([]);
   });
   afterAll(() => fs.rmSync(mockRoot, { recursive: true, force: true }));
 

@@ -21,6 +21,7 @@ import type * as RouteClient from "../fixtures/routeClient";
 import type { Principal, TwoTenantWorld } from "../fixtures/routeClient";
 import type * as DashboardRoutes from "../../routes/api/dashboard.route";
 import { ROLE_MENU_ASSIGNMENTS, MENU_SLUGS, PERMISSION_TYPES } from "../../constants/roleConstants";
+import { clearDashboardCache } from "../../services/dashboardCache.service";
 
 jest.mock("../../config", () => ({
   db: jest.requireActual<typeof MemoryDbModule>("../fixtures/memoryDb").memoryDb().sequelize,
@@ -59,6 +60,8 @@ let fx: TwoTenantWorld;
 let user: Principal;
 
 beforeEach(() => {
+  // U-06b (ADR-120): each case observes the service call, so none is answered from the 30 s cache.
+  clearDashboardCache();
   mdb.reset();
   fx = twoTenants();
   user = fx.principal(fx.tenantA, "FACILITY MAINTENANCE");

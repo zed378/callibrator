@@ -81,6 +81,10 @@ beforeEach(() => {
     fx,
   };
   seedTenants(mdb, fx, [ctx.owner, ctx.other, ctx.colleague]);
+  // P8-01: the real storage layer reads the tenant's storage settings (none
+  // here: the platform default, the local driver). Its table exists before
+  // the request, so a READ of it is not mistaken for a write by the probe.
+  mdb.rows("TenantSettings");
   writeExport(EXPORT_A, ctx.owner);
 });
 
@@ -173,8 +177,12 @@ describe("A-360: GET /gdpr/exports/:exportId/download", () => {
 
     const res = await call(router, "GET", downloadUrl.replace("/api/v1/gdpr", ""));
     expect(res.status).toBe(200);
-    const file = (res.body as { download: string }).download;
-    const zip = await JSZip.loadAsync(fs.readFileSync(file));
+    // P8-01 (ADR-086 Amendment 1): the archive is in the tenant's storage — the
+    // REAL storage layer here, on the local driver under the temporary root —
+    // and is streamed from it, so the body is the ZIP's bytes.
+    expect(res.headers["content-disposition"]).toBe(`attachment; filename="${exportId}.zip"`);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    const zip = await JSZip.loadAsync(res.body as Buffer);
     const names = Object.keys(zip.files).filter((n) => !zip.files[n]?.dir);
     expect(names).toContain("user_profile.json");
 

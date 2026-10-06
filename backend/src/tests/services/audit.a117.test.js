@@ -14,6 +14,9 @@
  */
 
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
+// P8-01 (ADR-086 Amendment 1): a scanned upload is put into the tenant's
+// storage; the double keeps the real key rules (fixtures/fakeStorage).
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
@@ -32,6 +35,9 @@ jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(),
   // S-17: the service promotes the scanned file out of quarantine.
   promoteFromQuarantine: jest.fn(async (file) => file.path),
+  // P8-01: the attachment path checks the file is in quarantine, then puts it
+  // into storage (promoteFromQuarantine is no longer on it).
+  assertInQuarantine: jest.fn((filePath) => filePath),
 }));
 
 jest.mock("../../services/virusScan.service", () => ({
@@ -153,6 +159,8 @@ describe("A-117 — createAttachment is audited in its transaction", () => {
     ).rejects.toThrow("audit insert failed");
 
     expect(fs.promises.unlink).toHaveBeenCalledWith(FILE.path);
+    // P8-01: and the object already put into storage is removed with it.
+    expect(require("../../services/storage").__objects.size).toBe(0);
   });
 
   it("a failed audit insert is still the error reported when the file is already gone", async () => {

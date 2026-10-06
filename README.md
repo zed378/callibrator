@@ -152,11 +152,11 @@ Phases 0–5 are shipped; Phase 9 (the TypeScript migration) has converted every
 
 | | |
 |---|---|
-| Backend unit coverage gate (100%) | 🟢 **100%** statements / branches / functions / lines on 2026-10-02, quiet tree: 869 suites passed, 36 skipped, 0 failed (14,859 tests) — [closing gates](MEMORY/records/2026-10-02-closing-gates-qr.md) |
-| Typecheck · lint · build · load | 🟢 0 type errors, 0 lint errors and 0 warnings, `build` / `build:dist` / `next build` / bundle budget and `load:check` OK — 2026-10-02, closing tree. 🔴 `openapi:breaking` against `main` reports 857 breaking changes: the Phase 9 code-first contract replacing the JSDoc one — needs a recorded decision before a PR (record) |
-| Live E2E in one uninterrupted run | 🟢 **achieved twice back to back on 2026-10-02 on the final Phase 9–10 tree** (P10-13 runs Q and R: 433 tests passed, 0 failed, smoke 7/7, a11y 80/80, responsive 45/45, Phase 10 browser 12/12, 0 × 5xx), by hand — 🟡 **not run by CI** |
+| Backend unit coverage gate (100%) | 🟢 **100%** statements / branches / functions / lines on 2026-10-05, closing tree: 890 suites passed, 37 skipped, 0 failed (15,054 tests) — [closing gates](MEMORY/records/2026-10-05-closing-gates-st.md) |
+| Typecheck · lint · build · load | 🟢 0 type errors, 0 lint errors and 0 warnings, `build:dist` / `next build` / bundle budget and `load:check` OK, npm audit gates green — 2026-10-05, closing tree. 🟡 `openapi:breaking` against `main` reports 3 breaking changes, all `POST /api/v1/sop` (W-10's new validation): fine for a direct push to `main`, a pull request needs them recorded first ([record](MEMORY/records/2026-10-05-closing-gates-st.md)) |
+| Live E2E in one uninterrupted run | 🟢 **achieved twice back to back on 2026-10-05 on the tree of the work since `dded70c`** (runs S and T: 433 tests passed, 0 failed, smoke 7/7, a11y 80/80, responsive 45/45, Phase 10 browser 12/12, 0 × 5xx), by hand — 🟡 **not run by CI** |
 | `calibration_records` append-only | 🟢 a **database constraint**: trigger + the application role's REVOKE (P6-03, ADR-062) |
-| CI pipeline | 🟡 **has run on GitHub, never green**: on `ce74932` 7 of 8 jobs passed; the secret scan's false positives are fixed in the working tree and it is clean locally — a green run awaits a push (P7-01) |
+| CI pipeline | 🟡 **has run on GitHub, never fully green**: the second run, on `dded70c`, passed 9 of 11 jobs; the two failures (npm audit, backend coverage) are addressed in the working tree (ADR-117) — a green run awaits a push (P7-01) |
 | Helm charts | 🟡 **install, upgrade and serve on one local kind cluster** (ADR-106) — not a production cluster. A-310 (sign-in under `FORCE_HTTPS=true`) is fixed in code, not re-run on a cluster |
 | TypeScript migration | 🟡 every source module is TypeScript except the dead `utils/checkMenu.util.js` (its deletion awaits the owner, A-18); 694 legacy `.js` files in the test trees are converted opportunistically (P9-26) |
 

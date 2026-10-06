@@ -203,7 +203,7 @@ describe("email.service", () => {
     });
 
     describe("A-172 — the footer is the deployment's brand", () => {
-      const footer = (html) => html.match(/<p style="color:#6b7280;font-size:12px">([^<]*)<\/p>/)[1];
+      const footer = (html) => html.match(/<p style="color:#4A423A;font-size:12px">([^<]*)<\/p>/)[1];
       let saved;
       beforeEach(() => {
         saved = process.env.APP_NAME;

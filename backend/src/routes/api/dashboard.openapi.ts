@@ -21,7 +21,10 @@ const tenantRef = z.object({ id: z.guid(), name: z.string(), code: z.string().nu
 const DashboardMetrics = z
   .object({
     scope: z.enum(["tenant", "global"]),
-    generatedAt: z.iso.datetime(),
+    generatedAt: z.iso.datetime().meta({
+      description:
+        "When these figures were computed. U-06b (ADR-120): they are served from a per-tenant cache for up to 30 seconds, so this may be up to 30 s before the response",
+    }),
     users: z.object({ total: count, verified: count }),
     devices: z.object({ total: count, byStatus, dueSoon: count, overdue: count }),
     calibrations: z.object({
@@ -78,7 +81,7 @@ export default defineRouteDocs({
       operationId: "getDashboardMetrics",
       summary: "The home page's metrics",
       description:
-        "A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`.",
+        "A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`. The figures are cached for 30 seconds per scope (never shared between tenants); `generatedAt` says when they were computed.",
       permission: { kind: "dynamicAccess", resource: "home", action: "read" },
       audited: false,
       query: z.object({

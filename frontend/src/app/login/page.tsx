@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function LoginPage() {
   const { locale, messages, t } = await getServerI18n();
   return (
-    <AuthShell locale={locale} messages={messages} t={t} namespaces={["auth."]}>
+    <AuthShell locale={locale} messages={messages} t={t} namespaces={["auth.", "landing.hero.greeting."]}>
       {/* useSearchParams (callbackUrl, ?error=, ?org=) needs a boundary under Cache Components. */}
       <Suspense fallback={<h1 className="pub-display pub-display-m text-pub-text">{t("auth.login.title")}</h1>}>
         <LoginPanel />

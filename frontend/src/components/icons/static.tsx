@@ -267,3 +267,163 @@ export const X: StaticIcon = (props) => (
     <path d="m6 6 12 12" />
   </Svg>
 );
+
+/** lucide `badge-check` */
+export const BadgeCheck: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" />
+    <path d="m16 9-5.5 5.5L8 12" />
+  </Svg>
+);
+
+/** lucide `boxes` */
+export const Boxes: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z" />
+    <path d="m7 16.5-4.74-2.85" />
+    <path d="m7 16.5 5-3" />
+    <path d="M7 16.5v5.17" />
+    <path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z" />
+    <path d="m17 16.5-5-3" />
+    <path d="m17 16.5 4.74-2.85" />
+    <path d="M17 16.5v5.17" />
+    <path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z" />
+    <path d="M12 8 7.26 5.15" />
+    <path d="m12 8 4.74-2.85" />
+    <path d="M12 13.5V8" />
+  </Svg>
+);
+
+/** lucide `building-complex` */
+export const Building2: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M10 12h4" />
+    <path d="M10 8h4" />
+    <path d="M14 21v-3a2 2 0 0 0-4 0v3" />
+    <path d="M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2" />
+    <path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16" />
+  </Svg>
+);
+
+/** lucide `calendar-clock` */
+export const CalendarClock: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M16 14v2.2l1.6 1" />
+    <path d="M16 2v3" />
+    <path d="M21 7.338V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h2.338" />
+    <path d="M3 9h5.859" />
+    <path d="M8 2v3" />
+    <circle cx="16" cy="16" r="6" />
+  </Svg>
+);
+
+/** lucide `chart-column` */
+export const ChartColumn: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+    <path d="M18 17V9" />
+    <path d="M13 17V5" />
+    <path d="M8 17v-3" />
+  </Svg>
+);
+
+/** lucide `clipboard-check` */
+export const ClipboardCheck: StaticIcon = (props) => (
+  <Svg {...props}>
+    <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <path d="m9 14 2 2 4-4" />
+  </Svg>
+);
+
+/** lucide `rotate-ccw-clock` */
+export const History: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M12 7v5l4 2" />
+  </Svg>
+);
+
+/** lucide `languages` */
+export const Languages: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="m5 8 6 6" />
+    <path d="m4 14 6-6 2-3" />
+    <path d="M2 5h12" />
+    <path d="M7 2h1" />
+    <path d="m22 22-5-10-5 10" />
+    <path d="M14 18h6" />
+  </Svg>
+);
+
+/** lucide `pen-line` */
+export const PenLine: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M13 21h8" />
+    <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+  </Svg>
+);
+
+/** lucide `scan-line` */
+export const ScanLine: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+    <path d="M7 12h10" />
+  </Svg>
+);
+
+/** lucide `shield-check` */
+export const ShieldCheck: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+    <path d="m9 12 2 2 4-4" />
+  </Svg>
+);
+
+/** lucide `stamp` */
+export const Stamp: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M14 13V8.5C14 7 15 7 15 5a3 3 0 0 0-6 0c0 2 1 2 1 3.5V13" />
+    <path d="M20 15.5a2.5 2.5 0 0 0-2.5-2.5h-11A2.5 2.5 0 0 0 4 15.5V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1z" />
+    <path d="M5 22h14" />
+  </Svg>
+);
+
+/** lucide `upload` */
+export const Upload: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M12 3v12" />
+    <path d="m17 8-5-5-5 5" />
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  </Svg>
+);
+
+/** lucide `users` */
+export const Users: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <path d="M16 3.128a4 4 0 0 1 0 7.744" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <circle cx="9" cy="7" r="4" />
+  </Svg>
+);
+
+/** lucide `webhook` */
+export const Webhook: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2" />
+    <path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06" />
+    <path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8" />
+  </Svg>
+);
+
+/** lucide `wrench` */
+export const Wrench: StaticIcon = (props) => (
+  <Svg {...props}>
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />
+  </Svg>
+);

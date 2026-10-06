@@ -125,6 +125,9 @@ export const authMock = (): typeof AuthMiddleware => {
 
 const makeRes = (resolve: (r: RouteResponse) => void): Record<string, unknown> => {
   const headers: Record<string, unknown> = {};
+  // P8-01: what a piped stream wrote (a stored object sent by
+  // fileResponse.util#sendStorageObject); `end()` answers it as the body.
+  const written: Buffer[] = [];
   const res: Record<string, unknown> & { statusCode: number; headersSent: boolean } = {
     statusCode: 200,
     headersSent: false,
@@ -158,6 +161,9 @@ const makeRes = (resolve: (r: RouteResponse) => void): Record<string, unknown> =
       return done(payload);
     },
     end(payload?: unknown) {
+      if ((payload === undefined || payload === null) && written.length > 0) {
+        return done(Buffer.concat(written));
+      }
       return done(payload ?? null);
     },
     setHeader,
@@ -197,9 +203,14 @@ const makeRes = (resolve: (r: RouteResponse) => void): Record<string, unknown> =
     },
     cookie: () => res,
     clearCookie: () => res,
-    write: () => true,
+    write: (chunk: unknown) => {
+      written.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+      return true;
+    },
     on: () => res,
     once: () => res,
+    removeListener: () => res,
+    prependListener: () => res,
     emit: () => true,
   });
   return res;
@@ -249,6 +260,10 @@ export const call = (router: RouterLike, method: string, url: string, opts: Call
       files,
       get: (name: string) => lower[name.toLowerCase()],
       header: (name: string) => lower[name.toLowerCase()],
+      // P8-01: what fileResponse.util#sendStorageObject reads — no validator
+      // and no Range header is sent here, as Express answers for none.
+      fresh: false,
+      range: () => undefined,
       on: () => req,
     };
     const handle = (router as { handle: (q: unknown, s: unknown, done: Next) => void }).handle.bind(router);
