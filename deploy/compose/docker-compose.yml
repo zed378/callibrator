@@ -7,6 +7,29 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # Or use the Makefile, which does that for you: `make up ENV=dev`.
+#
+# IMAGES ARE PULLED, NOT BUILT (ADR-123). The three application images are
+# published on Docker Hub — zed378/calibration-be, zed378/calibration-fe and
+# zed378/calibration-backup — and this file only names them. Building from
+# source is the separate docker-compose.build.yml overlay (dev, E2E, a custom
+# frontend), which is the ONLY compose file that declares a build (A-332).
+#
+#   IMAGE_TAG   default `latest`. For a reproducible deployment pin it to the
+#               release's short commit (IMAGE_TAG=3e91413): `latest` moves on
+#               every release push, so "what is running" stops being answerable
+#               and a rollback has no name. Recommended for anything that holds
+#               real data; the prod and staging overlays require it.
+#   *_IMAGE     the repositories; override for a fork or a private mirror.
+#   *_DIGEST    optional, per image (BACKEND_DIGEST, FRONTEND_DIGEST,
+#               BACKUP_DIGEST = sha256:<hex>): appended as @<digest>, which then
+#               decides what runs even if the tag is later moved. The release
+#               script prints all three after a push.
+#
+# THE FRONTEND IMAGE IS DEPLOYMENT-SPECIFIC. Next.js inlines NEXT_PUBLIC_* at
+# build time, and zed378/calibration-fe is built for the reference deployment
+# (https://kalibrasi.zedth.my.id). Another public URL needs its own frontend
+# image: scripts/release/push-images.ps1 -PublicUrl <url> -Repository <yours>,
+# or the build overlay. The backend and backup images are generic.
 
 name: callibrator
 
@@ -93,16 +116,8 @@ services:
       - ./volumes:/v
 
   backend:
-    image: ${BACKEND_IMAGE:-callibrator/backend}:${IMAGE_TAG:-latest}
-    build:
-      # Context is the REPOSITORY ROOT so the build can `npm ci` against the
-      # committed root package-lock.json (ADR-044, S-13). See backend/Dockerfile.
-      # A-332: declared HERE ONLY. BUILD_CONTEXT points every image at another
-      # tree (a release checkout, a frozen snapshot) in one place; no overlay
-      # restates it, so none can silently point it back at the working tree.
-      # `docker compose config` shows the context a build will really use.
-      context: ${BUILD_CONTEXT:-../..}
-      dockerfile: backend/Dockerfile
+    # Pulled (ADR-123). The build lives in docker-compose.build.yml only.
+    image: ${BACKEND_IMAGE:-zed378/calibration-be}:${IMAGE_TAG:-latest}${BACKEND_DIGEST:+@${BACKEND_DIGEST}}
     restart: unless-stopped
     <<: *hardened
     cap_drop: [ALL]
@@ -167,24 +182,12 @@ services:
       start_period: 40s
 
   frontend:
-    image: ${FRONTEND_IMAGE:-callibrator/frontend}:${IMAGE_TAG:-latest}
-    build:
-      # Context is the REPOSITORY ROOT so the build can `npm ci --workspace
-      # frontend` against the committed root package-lock.json (ADR-044, S-29).
-      # See frontend/Dockerfile and frontend/Dockerfile.dockerignore.
-      # A-332: declared here only; BUILD_CONTEXT, as for the backend.
-      context: ${BUILD_CONTEXT:-../..}
-      dockerfile: frontend/Dockerfile
-      args:
-        # NEXT_PUBLIC_* values are INLINED AT BUILD TIME. Setting them in the
-        # container environment does nothing — a different API URL, or a
-        # tenant-pinned build, requires a different image.
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
-        NEXT_PUBLIC_API_VERSION: ${NEXT_PUBLIC_API_VERSION:-v1}
-        NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
-        # P10-03 (Q-41): empty hides the channel on the landing.
-        NEXT_PUBLIC_CONTACT_WHATSAPP: ${NEXT_PUBLIC_CONTACT_WHATSAPP:-}
-        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+    # Pulled (ADR-123). NEXT_PUBLIC_* are INLINED AT BUILD TIME: setting them in
+    # this container's environment does nothing, and the published image is
+    # built for the reference deployment's URL. A different URL or a
+    # tenant-pinned build is a different image (docker-compose.build.yml, or
+    # scripts/release/push-images.ps1 with your own -Repository).
+    image: ${FRONTEND_IMAGE:-zed378/calibration-fe}:${IMAGE_TAG:-latest}${FRONTEND_DIGEST:+@${FRONTEND_DIGEST}}
     restart: unless-stopped
     <<: *hardened
     cap_drop: [ALL]
@@ -269,13 +272,9 @@ services:
   # operator's (docs/DEVOPS/04 § Off-host copy). The real application secrets
   # never enter this container (the schema check runs on throwaway ones).
   db-backup:
-    image: ${BACKUP_IMAGE:-callibrator/backup-verify}:${IMAGE_TAG:-latest}
-    build:
-      context: ${BUILD_CONTEXT:-../..}
-      dockerfile: deploy/backup/Dockerfile
-      additional_contexts:
-        # The backend binary inside must be the release's own (verify-schema, backup-alert).
-        backend-image: service:backend
+    # Pulled (ADR-123), the SAME tag as the backend: the backend binary inside
+    # must be the release's own (verify-schema, backup-alert).
+    image: ${BACKUP_IMAGE:-zed378/calibration-backup}:${IMAGE_TAG:-latest}${BACKUP_DIGEST:+@${BACKUP_DIGEST}}
     restart: unless-stopped
     init: true
     <<: *hardened

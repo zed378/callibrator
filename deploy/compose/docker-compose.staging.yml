@@ -12,7 +12,7 @@
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:-callibrator/backend}:${IMAGE_TAG:?IMAGE_TAG is required}
+    image: ${BACKEND_IMAGE:-zed378/calibration-be}:${IMAGE_TAG:?IMAGE_TAG is required}${BACKEND_DIGEST:+@${BACKEND_DIGEST}}
     environment:
       NODE_ENV: production
       FORCE_HTTPS: "true"
@@ -46,7 +46,8 @@ services:
           memory: 384M
 
   frontend:
-    image: ${FRONTEND_IMAGE:-callibrator/frontend}:${IMAGE_TAG:?IMAGE_TAG is required}
+    # Deployment-specific: a frontend built for the staging URL (ADR-123).
+    image: ${FRONTEND_IMAGE:-zed378/calibration-fe}:${IMAGE_TAG:?IMAGE_TAG is required}${FRONTEND_DIGEST:+@${FRONTEND_DIGEST}}
     deploy:
       resources:
         limits:

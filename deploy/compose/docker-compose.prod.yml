@@ -4,12 +4,17 @@
 #
 # Database ports are NOT published. Images are pinned by tag — `:latest` in
 # production means nobody can say what is running, and a rollback has nothing
-# to roll back to.
+# to roll back to. Set IMAGE_TAG to the release's short commit (the tag
+# scripts/release/push-images.ps1 pushed); to pin the content as well, set
+# BACKEND_DIGEST / FRONTEND_DIGEST / BACKUP_DIGEST (sha256:..., printed by the
+# script). Images are PULLED from the registry (ADR-123), never built here.
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:-callibrator/backend}:${IMAGE_TAG:?IMAGE_TAG is required in production}
-    # No build section: production runs a promoted image, never a local build.
+    image: ${BACKEND_IMAGE:-zed378/calibration-be}:${IMAGE_TAG:?IMAGE_TAG is required in production}${BACKEND_DIGEST:+@${BACKEND_DIGEST}}
+    # No build: production runs a promoted image, never a local build. The base
+    # file declares none since ADR-123; the reset keeps it so even if someone
+    # stacks docker-compose.build.yml underneath.
     build: !reset null
     environment:
       NODE_ENV: production
@@ -64,12 +69,10 @@ services:
 
   # U-05 (ADR-116): the nightly dump + restore verification, from the promoted
   # image of the SAME tag as the backend (its binary runs the schema check).
-  # Build and push it with the release:
-  #   docker build -f deploy/backup/Dockerfile \
-  #     --build-context backend-image=docker-image://callibrator/backend:<tag> \
-  #     -t callibrator/backup-verify:<tag> .
+  # scripts/release/push-images.ps1 builds and pushes it with the release, FROM
+  # the backend image of the same tag (ADR-123).
   db-backup:
-    image: ${BACKUP_IMAGE:-callibrator/backup-verify}:${IMAGE_TAG:?IMAGE_TAG is required in production}
+    image: ${BACKUP_IMAGE:-zed378/calibration-backup}:${IMAGE_TAG:?IMAGE_TAG is required in production}${BACKUP_DIGEST:+@${BACKUP_DIGEST}}
     build: !reset null
     restart: always
     logging:
@@ -83,7 +86,10 @@ services:
           memory: 2G
 
   frontend:
-    image: ${FRONTEND_IMAGE:-callibrator/frontend}:${IMAGE_TAG:?IMAGE_TAG is required in production}
+    # DEPLOYMENT-SPECIFIC (NEXT_PUBLIC_* are inlined at build): the default
+    # repository is built for the reference deployment's URL. Point
+    # FRONTEND_IMAGE at a frontend built for THIS deployment's URL (ADR-123).
+    image: ${FRONTEND_IMAGE:-zed378/calibration-fe}:${IMAGE_TAG:?IMAGE_TAG is required in production}${FRONTEND_DIGEST:+@${FRONTEND_DIGEST}}
     build: !reset null
     restart: always
     logging:

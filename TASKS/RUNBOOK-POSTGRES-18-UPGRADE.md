@@ -54,8 +54,9 @@ docker ps --format '{{.Names}}' | sort                                 # the oth
 # 3. bind-mounted data — through a throwaway container, because the dirs are container-owned
 docker run --rm -v "$PWD/volumes:/v" alpine sh -c 'rm -rf /v/* && ls -la /v'
 
-# 4. rebuild and start on PostgreSQL 18
-docker compose -p callibrator -f docker-compose.yml -f docker-compose.vm.yml up -d --build
+# 4. pull and start on PostgreSQL 18 (since ADR-123 the VM pulls the published images; it no longer builds)
+docker compose -p callibrator -f docker-compose.yml -f docker-compose.vm.yml pull
+docker compose -p callibrator -f docker-compose.yml -f docker-compose.vm.yml up -d
 docker exec callibrator-postgres-1 postgres --version                  # expect 18.x
 ```
 

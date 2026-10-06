@@ -3,13 +3,16 @@
 replicaCount: 2
 
 image:
-  repository: callibrator/frontend
+  # Deployment-specific: built for one public URL (ADR-123); see the umbrella values.
+  repository: zed378/calibration-fe
   # Required. The umbrella chart refuses to render without it.
   #
   # Remember: NEXT_PUBLIC_* values are inlined at build time. A different API
   # URL, or a tenant-pinned build, is a different image. The tag is the only
   # lever this chart has.
   tag: ""
+  # Optional sha256:<64 hex>; rendered as repository:tag@digest (ADR-123).
+  digest: ""
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

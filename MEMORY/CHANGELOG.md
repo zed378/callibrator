@@ -8,6 +8,14 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-06 — The images are published on Docker Hub; deployments pull them, the VM never builds (P7-09, ADR-123, [record](./records/2026-10-06-dockerhub-images.md))
+- **Changed:** compose, the Makefile and Helm default to the public images `zed378/calibration-be`, `zed378/calibration-fe` and `zed378/calibration-backup`. The base compose file and the vm, staging and prod overlays build nothing. The VM deploys with `docker compose … pull` then `up -d` (`make deploy-vm`).
+- **Added:** `deploy/compose/docker-compose.build.yml`, the one overlay that builds from source (dev, E2E). Its images are named `callibrator/*:local`, never a registry name.
+- **Added:** `scripts/release/push-images.ps1`. It refuses a dirty tree, builds backend → frontend → backup, secret-scans every image before any push, pushes the short commit and `latest`, and prints the digests. `-DryRun` builds and scans only; `-ScanTag` re-scans.
+- **Added:** pinning by tag (`IMAGE_TAG=<short commit>`, recommended) and by digest (`BACKEND_DIGEST`, `FRONTEND_DIGEST`, `BACKUP_DIGEST`; Helm `image.digest`, refused unless `sha256:<64 hex>`).
+- **Changed:** CI also builds the backup verifier image (no push), so all three Dockerfiles are built on `main`. `deploy-config` asserts that no deployment overlay builds.
+- **Note:** the published frontend is built for `https://kalibrasi.zedth.my.id` only. Another URL needs its own frontend image. An `.env` made before today names `callibrator/backend`/`frontend`, which `pull` cannot find: change those two lines.
+
 ### 2026-10-06 — The dashboard turns warm; one light/dark switch for the whole product; status badges carry a shape and an icon (P11-01 … P11-07, ADR-122, [record](./records/2026-10-06-p11-palette-theme.md))
 - **Changed:** the dashboard uses the landing's family of colours: a warm off-white page, paper cards, charcoal text and copper buttons and links; espresso, ivory and a light copper in dark mode. Teal now means "verified / compliant" only. A tenant's own brand colour still replaces copper.
 - **Changed:** until a user chooses, the dashboard follows the device's light/dark setting, as the public pages already did. A choice made on either side carries to the other immediately. "Use device setting" on the profile page forgets the choice. The dashboard's toggle is larger (40 px) and announces whether dark mode is on.

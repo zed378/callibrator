@@ -21,6 +21,13 @@ See docs/DEVOPS/09-KUBERNETES.md.
 {{- if and .Values.frontend.enabled (not .Values.frontend.image.tag) -}}
 {{- fail "\n\nfrontend.image.tag is required.\n\nSee the note on backend.image.tag. Note also that NEXT_PUBLIC_* values are\ninlined at build time, so a different API URL or a tenant-pinned build is a\ndifferent image — this chart cannot configure them at runtime.\n" -}}
 {{- end -}}
+{{- /* ADR-123: an optional digest must be a digest. A typo would otherwise
+       render an image reference the kubelet cannot pull, found at rollout. */ -}}
+{{- range $name, $digest := dict "backend.image.digest" .Values.backend.image.digest "frontend.image.digest" .Values.frontend.image.digest "backupVerify.image.digest" .Values.backupVerify.image.digest -}}
+{{- if and $digest (not (regexMatch "^sha256:[a-f0-9]{64}$" $digest)) -}}
+{{- fail (printf "\n\n%s must be sha256:<64 lowercase hex> (got %q).\n\nIt is appended to the image as repository:tag@digest. Leave it empty to pin\nby tag alone.\n" $name $digest) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/* ---------------------------------------------------------------------- */}}

@@ -19,9 +19,25 @@ Callibrator makes that evidence a by-product of doing the work: every device has
 ```bash
 make env          # create deploy/compose/.env
 make secrets      # generate the required secrets (paste them into deploy/compose/.env)
-make dev          # bring the stack up
+make dev          # bring the stack up (builds from this tree: docker-compose.build.yml)
 make help         # every target
 ```
+
+### Deploying: images are pulled, not built
+
+The application images are published on Docker Hub as public repositories (ADR-123): `zed378/calibration-be`, `zed378/calibration-fe` and `zed378/calibration-backup`, each tagged with the short commit and `latest`. A deployment **pulls** them; nothing is built on the host:
+
+```bash
+cd deploy/compose
+docker compose -f docker-compose.yml -f docker-compose.vm.yml pull
+docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d      # or: make deploy-vm
+```
+
+- **Pin the release** for anything that holds real data. Set `IMAGE_TAG=<short commit>` in `deploy/compose/.env`, and optionally the per-image `*_DIGEST`. `latest` moves on every release.
+- **The frontend image serves one URL.** `NEXT_PUBLIC_*` are inlined at build time, and `zed378/calibration-fe` is built for the reference deployment, `https://kalibrasi.zedth.my.id`. Another URL needs its own frontend image: `scripts/release/push-images.ps1 -PublicUrl <url> -FrontendRepository <yours>`.
+- **Releases** are built, secret-scanned and pushed with `pwsh -File scripts/release/push-images.ps1`, from PowerShell or cmd, on a clean tree.
+
+The full procedure, including the VM's step by step: [`deploy/README.md`](deploy/README.md).
 
 Requires Docker with the compose plugin, **Node 26** (pinned by the root `.nvmrc`), npm (the root `package-lock.json` is the lockfile, ADR-044), and optionally `make` — every target is one or two commands in the `Makefile`, runnable directly.
 
@@ -134,7 +150,9 @@ make dev              # local stack, hot reload
 make verify           # lint · ts-ratchet · typecheck · test · build · load-check
 make test-e2e         # 57 live spec files against a running server (not in verify, not in CI)
 make migrate          # then: make migrate-verify — the log is not evidence
-make deploy ENV=prod TAG=<sha>
+make deploy ENV=prod TAG=<sha>   # pulls; TAG = the release's short commit
+make deploy-vm                   # the single-host VM: pull + up -d, never builds (ADR-123)
+pwsh -File scripts/release/push-images.ps1 [-DryRun]   # build, scan and push the three images (PowerShell/cmd)
 
 cd backend
 npm start             # node --import tsx index.ts (the release build compiles it to dist/index.js)

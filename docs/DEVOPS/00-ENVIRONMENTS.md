@@ -152,6 +152,8 @@ local → test → staging → production
 
 The same **image** moves through, with configuration supplied per environment. An image rebuilt for production is an image nobody tested — except the frontend, where `NEXT_PUBLIC_*` forces a rebuild per environment by design.
 
+The images are published on Docker Hub and **pulled** (ADR-123): `zed378/calibration-be` and `zed378/calibration-backup` are generic. `zed378/calibration-fe` is the reference deployment's frontend (`https://kalibrasi.zedth.my.id`); every other environment pushes its own frontend to its own repository with `scripts/release/push-images.ps1 -PublicUrl <url> -FrontendRepository <yours>`.
+
 Before promoting to production:
 
 - [ ] migrations apply to a clean database **and** to a copy of production data
