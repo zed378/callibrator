@@ -6,7 +6,7 @@
  * change. `export =` keeps the exact object `require()` returned (the same keys,
  * in the same order, and no `__esModule` marker).
  */
-import { createPublicKey, randomBytes, type KeyObject } from "crypto";
+import { createPublicKey, createSecretKey, randomBytes, type KeyObject } from "crypto";
 import { decode, sign, verify, type Algorithm, type JwtHeader, type SignOptions } from "jsonwebtoken";
 import { env, envOr } from "../config/env";
 import { keyIdOf } from "./keyring.util";
@@ -186,25 +186,58 @@ const kidOf = (material: string): string =>
     : keyIdOf(Buffer.from(material));
 
 /**
+ * U-06 (ADR-119): a ring key's material as the KeyObject jsonwebtoken would
+ * make of it on every verify. Given a string, `verify` first tries
+ * createPublicKey — which THROWS for an HS secret — and then createSecretKey,
+ * on every authenticated request. The conversion is the same; it is done once.
+ * @param material - an HS secret or a PEM, or a public KeyObject
+ * @returns the KeyObject verify uses
+ */
+const keyObjectOf = (material: VerificationMaterial): KeyObject => {
+  if (typeof material !== "string") {
+    return material;
+  }
+  return isAsymmetric(JWT_ALGORITHM) ? createPublicKey(material) : createSecretKey(Buffer.from(material));
+};
+
+/** The last ring built, and the environment it was built from (U-06, ADR-119). */
+let ringMemo: { source: string; ring: RingKey[] } | null = null;
+
+/**
  * The keys a token may be verified with, current first.
+ *
+ * The ring is still the ENVIRONMENT, read on every call (S-26): it is rebuilt
+ * whenever any of its variables differs from the last build, and reused
+ * otherwise, so an operator's rotation applies on the next call as before.
+ * What is reused is only the derived values: each key's id (a SHA-256 of the
+ * material) and its KeyObject.
  * @returns the ring, current key first
  */
 const verificationKeys = (): RingKey[] => {
   const privateKey = env("JWT_PRIVATE_KEY");
+  const publicKey = env("JWT_PUBLIC_KEY");
+  const publicKeyPrevious = env("JWT_PUBLIC_KEY_PREVIOUS");
+  const secretPrevious = env("JWT_ACCESS_SECRET_PREVIOUS");
+  const source = JSON.stringify([JWT_ALGORITHM, privateKey, publicKey, publicKeyPrevious, ACCESS_SECRET, secretPrevious]);
+  if (ringMemo?.source === source) {
+    return ringMemo.ring;
+  }
   const materials: (VerificationMaterial | undefined)[] = isAsymmetric(JWT_ALGORITHM)
     ? [
       // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty JWT_PUBLIC_KEY also falls back
-      env("JWT_PUBLIC_KEY") ||
+      publicKey ||
           (privateKey && createPublicKey(privateKey)),
-      env("JWT_PUBLIC_KEY_PREVIOUS"),
+      publicKeyPrevious,
     ]
-    : [ACCESS_SECRET, env("JWT_ACCESS_SECRET_PREVIOUS")];
-  return materials
+    : [ACCESS_SECRET, secretPrevious];
+  const ring = materials
     .filter((key): key is VerificationMaterial => Boolean(key))
     .map((key) => ({
       kid: typeof key === "string" ? kidOf(key) : keyIdOf(key.export({ type: "spki", format: "der" })),
-      key,
+      key: keyObjectOf(key),
     }));
+  ringMemo = { source, ring };
+  return ring;
 };
 
 // ==========================================

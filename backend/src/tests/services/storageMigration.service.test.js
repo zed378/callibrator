@@ -8,6 +8,10 @@
 
 const { Readable } = require("stream");
 
+// P8-01 (ADR-086 Amendment 1): a key backfill commits with its audit row.
+const mockTx = { id: "TX" };
+jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb) => cb(mockTx)) } }));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({ id: "audit-1" }) }));
 jest.mock("../../models", () => ({
   Attachment: { findAll: jest.fn() },
 }));
@@ -84,7 +88,8 @@ describe("migrateAttachment", () => {
       { contentType: "application/pdf" },
     );
     expect(row.storageKey).toBe("t/tenant-1/attachments/abc.pdf");
-    expect(row.save).toHaveBeenCalledWith({ hooks: false });
+    // P8-01: in the transaction its audit row is written in (storageMigration.p801 pins the audit row).
+    expect(row.save).toHaveBeenCalledWith({ hooks: false, transaction: mockTx });
     expect(result).toMatchObject({ status: "migrated", verified: true });
   });
 

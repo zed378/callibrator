@@ -4,6 +4,10 @@
 
 require("events");
 
+// P8-01 (ADR-086 Amendment 1): an export's archive and manifest are kept in
+// the tenant's storage; the double keeps the real key rules
+// (fixtures/fakeStorage) and holds the bytes in memory.
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("fs", () => {
   const originalFs = jest.requireActual("fs");
   return {
@@ -275,8 +279,15 @@ describe("gdprService", () => {
       await jest.runAllTimersAsync();
       const result = await resultPromise;
 
-      const [manifestPath, manifestText] = fs.promises.writeFile.mock.calls[0];
-      expect(manifestPath).toMatch(new RegExp(`${result.exportId}\\.json$`));
+      // P8-01 (ADR-086 Amendment 1): the manifest is the FIRST thing written —
+      // now as an object in the tenant's storage, before any file of the
+      // export's scratch working directory.
+      const storage = require("../../services/storage");
+      const scoped = await storage.getTenantStorage.mock.results[0].value;
+      const [manifestKey, manifestBody] = scoped.put.mock.calls[0];
+      expect(manifestKey).toBe(`t/tenant-1/exports/${result.exportId}.json`);
+      expect(scoped.put.mock.invocationCallOrder[0]).toBeLessThan(fs.promises.writeFile.mock.invocationCallOrder[0]);
+      const manifestText = manifestBody.toString("utf8");
       expect(JSON.parse(manifestText)).toEqual({
         exportId: result.exportId,
         tenantId: "tenant-1",
@@ -295,14 +306,44 @@ describe("gdprService", () => {
 
     it("a failed export removes its manifest and any partial ZIP too", async () => {
       jest.useRealTimers();
+      require("../../services/storage").__reset();
       const { CalibrationRecord } = require("../../models");
       CalibrationRecord.findAll.mockRejectedValueOnce(new Error("table gone"));
 
       await expect(gdprService.exportUserData("tenant-1", "user-1")).rejects.toMatchObject({ status: 500 });
 
+      // P8-01: the manifest (an object in the tenant's storage) is removed,
+      // and the scratch ZIP on this host too.
+      const storage = require("../../services/storage");
+      expect([...storage.__objects.keys()].filter((k) => k.endsWith(".json"))).toEqual([]);
       const removed = fs.promises.rm.mock.calls.map(([file]) => file);
-      expect(removed.some((f) => /\.json$/.test(f))).toBe(true);
       expect(removed.some((f) => /\.zip$/.test(f))).toBe(true);
+    });
+
+    it("P8-01: a failed export whose storage clean-up fails too still reports the export's failure", async () => {
+      jest.useRealTimers();
+      const storage = require("../../services/storage");
+      const real = storage.getTenantStorage.getMockImplementation();
+      storage.getTenantStorage.mockImplementationOnce(async (t) => ({
+        ...(await real(t)),
+        delete: jest.fn().mockRejectedValue(new Error("bucket unreachable")),
+      }));
+      const { CalibrationRecord } = require("../../models");
+      CalibrationRecord.findAll.mockRejectedValueOnce(new Error("table gone"));
+
+      await expect(gdprService.exportUserData("tenant-1", "user-1")).rejects.toMatchObject({ status: 500 });
+    });
+
+    it("P8-01: an export whose tenant storage cannot be resolved fails before writing anything", async () => {
+      jest.useRealTimers();
+      const storage = require("../../services/storage");
+      storage.__reset();
+      storage.getTenantStorage.mockRejectedValueOnce(new Error("storage settings unreadable"));
+      fs.promises.writeFile.mockClear();
+
+      await expect(gdprService.exportUserData("tenant-1", "user-1")).rejects.toMatchObject({ status: 500 });
+      expect(fs.promises.writeFile).not.toHaveBeenCalled();
+      expect(storage.__objects.size).toBe(0);
     });
 
     it("should fallback getFileSize to 0 if stat throws exception", async () => {
@@ -509,4 +550,11 @@ describe("gdprService", () => {
       expect(status).toHaveProperty("consentRequired", false);
     });
   });
+});
+
+// P8-01 (ADR-086 Amendment 1): the scratch ZIP is never written here (its
+// write stream is doubled), so its copy into the tenant's storage is doubled
+// too; what is under test is what goes INTO the archive.
+beforeEach(() => {
+  jest.spyOn(require("../../services/storedFile.service"), "putLocalFile").mockResolvedValue(undefined);
 });

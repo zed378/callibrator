@@ -67,6 +67,13 @@ interface S3DriverConfig {
  */
 const HEALTH_CHECK_TIMEOUT_MS = 5000;
 
+/**
+ * U-09 (2026-10-05): the most keys one ListObjectsV2 page returns on S3 (and
+ * on every S3-compatible server checked live). A larger MaxKeys buys nothing,
+ * and one above 2^31-1 is refused with InvalidArgument.
+ */
+const S3_MAX_KEYS = 1000;
+
 /** An SDK error, read as the `.js` read it. */
 interface SdkError { name?: string; message?: string; status?: number; $metadata?: { httpStatusCode?: number } }
 
@@ -276,7 +283,10 @@ class S3Driver {
       new ListObjectsV2Command({
         Bucket: this.bucket,
         Prefix: trimmed ? this._objectKey(trimmed) : this.prefix,
-        MaxKeys: limit,
+        // U-09: S3 answers at most 1000 keys a page, and refuses a MaxKeys
+        // above 2^31-1 outright (a caller asking for "everything" passed
+        // Number.MAX_SAFE_INTEGER). Larger asks page through the cursor.
+        MaxKeys: Math.min(limit, S3_MAX_KEYS),
         // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty cursor reads as none
         ContinuationToken: cursor || undefined,
       }),

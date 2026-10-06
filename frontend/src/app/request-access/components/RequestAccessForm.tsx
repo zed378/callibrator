@@ -138,10 +138,27 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  // P10-17 (presentation only): which of the two sections the visitor is in.
+  // Both stay on the page and in the one <form>; the payload is unchanged.
+  const [section, setSection] = useState<1 | 2>(1);
+  // The summary lists what the last SUBMIT found (still unresolved); a blur
+  // never adds to it, so the form never jumps under the pointer.
+  const [summaryFields, setSummaryFields] = useState<Field[]>([]);
   const summaryRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLHeadingElement>(null);
 
-  const set = <K extends keyof Values>(key: K, value: Values[K]) => setValues((v) => ({ ...v, [key]: value }));
+  const set = <K extends keyof Values>(key: K, value: Values[K]) => {
+    setValues((v) => ({ ...v, [key]: value }));
+    // P10-17: editing a field clears its own error (inline validation).
+    if (key !== "website") {
+      setErrors((prev) => {
+        if (!prev[key as Field]) return prev;
+        const next = { ...prev };
+        delete next[key as Field];
+        return next;
+      });
+    }
+  };
 
   const errorText = (field: Field) => {
     const e = errors[field];
@@ -153,11 +170,27 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
 
   const focusSummary = () => requestAnimationFrame(() => summaryRef.current?.focus());
 
+  /**
+   * P10-17: inline validation on blur, with the same rules as submit
+   * (validateAccessRequest). Blur only ever ADDS an error, and only for a field
+   * the visitor typed into; an error clears while the field is being edited
+   * (`set`). A blur therefore never removes a line between a mousedown and its
+   * click — the control under the pointer does not move.
+   */
+  const checkOnBlur = (field: Field) => {
+    const value = values[field as keyof Values];
+    const typed = typeof value === "string" ? value.trim().length > 0 : Boolean(value);
+    if (!typed) return;
+    const found = validateAccessRequest(values)[field];
+    if (found) setErrors((prev) => ({ ...prev, [field]: found }));
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
     const found = validateAccessRequest(values);
     setErrors(found);
+    setSummaryFields(ORDER.filter((f) => found[f]));
     if (Object.keys(found).length > 0) {
       focusSummary();
       return;
@@ -188,6 +221,7 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
         const fields = serverFields(failure.body);
         if (fields.length > 0) {
           setErrors(Object.fromEntries(fields.map((f) => [f, { key: "access.error.invalid" as MessageKey }])));
+          setSummaryFields(fields);
         } else {
           // Production 400s carry no field list (response.util): say "check the form".
           setFormError(t("access.error.check"));
@@ -207,12 +241,33 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
 
   if (done) {
     return (
-      <div role="status">
+      <div role="status" className="auth-step">
         <h1 ref={successRef} tabIndex={-1} className="pub-display pub-display-m text-pub-text outline-none">
           {t("access.success.title")}
         </h1>
-        <p className="pub-body-l mt-4 text-pub-muted">{t("access.success.body")}</p>
-        <p className="mt-8">
+        <p className="pub-body-l mt-4 text-pub-muted">
+          {t("access.success.summary", { name: values.contactName.trim(), organisation: values.organisationName.trim() })}{" "}
+          {t("access.success.body")}
+        </p>
+        {/* Honest next steps — the same three as the landing; no time, price or SLA. */}
+        <h2 className="mt-10 text-sm font-semibold uppercase tracking-[0.08em] text-pub-subtle">{t("access.success.nextTitle")}</h2>
+        <ol className="mt-4 space-y-5 border-l border-pub-gold pl-5">
+          {(
+            [
+              ["landing.work.step1", "landing.work.step1Text"],
+              ["landing.work.step2", "landing.work.step2Text"],
+              ["landing.work.step3", "landing.work.step3Text"],
+            ] as const
+          ).map(([title, text], i) => (
+            <li key={title}>
+              <p className="font-semibold text-pub-text">
+                {i + 1}. {t(title)}
+              </p>
+              <p className="mt-1 text-[0.9375rem] text-pub-muted">{t(text)}</p>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-10">
           <Link href="/" className="pub-link">
             {t("access.success.home")}
           </Link>
@@ -221,7 +276,7 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
     );
   }
 
-  const errorFields = ORDER.filter((f) => errors[f]);
+  const errorFields = summaryFields.filter((f) => errors[f]);
 
   const text = (field: Exclude<Field, "facilityType" | "deviceCountBand" | "consent" | "needs">, opts: {
     label: MessageKey;
@@ -249,6 +304,7 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
           aria-required={required}
           value={values[field]}
           onChange={(e) => set(field, e.target.value)}
+          onBlur={() => checkOnBlur(field)}
           aria-invalid={errors[field] ? true : undefined}
           aria-describedby={describedBy(field, helpId)}
           className="pub-input"
@@ -272,9 +328,18 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
       <h1 className="pub-display pub-display-m text-pub-text">{t("access.title")}</h1>
       <p className="mt-3 text-pub-muted">{t("access.lead")}</p>
 
+      {/* Calm progress over the two sections (focus-driven; nothing is hidden). */}
+      <ol className="auth-progress mt-8" aria-label={t("access.step", { n: section, total: 2 })}>
+        {([1, 2] as const).map((n) => (
+          <li key={n} aria-current={section === n ? "step" : undefined} data-done={section > n ? "true" : undefined}>
+            <span className="font-semibold">{n}</span> · {t(n === 1 ? "access.section.institution" : "access.section.contact")}
+          </li>
+        ))}
+      </ol>
+
       <div ref={summaryRef} tabIndex={-1} className="mt-6 outline-none">
         {errorFields.length > 0 || formError ? (
-          <div role="alert" className="pub-alert">
+          <div role="alert" className="pub-alert auth-alert-in">
             <div>
               <p className="font-semibold">{formError ?? t("access.errorSummary")}</p>
               {errorFields.length > 0 ? (
@@ -296,7 +361,7 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
       </div>
 
       <form onSubmit={onSubmit} noValidate className="mt-6 space-y-8">
-        <fieldset className="space-y-5">
+        <fieldset className="space-y-5" onFocus={() => setSection(1)}>
           <legend className="mb-4 text-sm font-semibold uppercase tracking-wide text-pub-subtle">
             {t("access.section.institution")}
           </legend>
@@ -361,7 +426,7 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
           </div>
         </fieldset>
 
-        <fieldset className="space-y-5">
+        <fieldset className="space-y-5" onFocus={() => setSection(2)}>
           <legend className="mb-4 text-sm font-semibold uppercase tracking-wide text-pub-subtle">
             {t("access.section.contact")}
           </legend>
@@ -457,7 +522,7 @@ export function RequestAccessForm({ privacyNoticeUrl }: { privacyNoticeUrl: stri
       </form>
 
       <p className="mt-8 text-center text-[0.9375rem]">
-        <Link href="/login" className="pub-link">
+        <Link href="/login" className="pub-link inline-flex min-h-11 items-center">
           {t("access.haveAccount")}
         </Link>
       </p>

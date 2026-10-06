@@ -16,6 +16,10 @@ const mockConsentUpdate = jest.fn();
 const mockConsentFindAll = jest.fn();
 const mockLogAction = jest.fn();
 
+// P8-01 (ADR-086 Amendment 1): an export's archive and manifest are kept in
+// the tenant's storage; the double keeps the real key rules
+// (fixtures/fakeStorage) and holds the bytes in memory.
+jest.mock("../../services/storage", () => jest.requireActual<{ createFakeStorage: () => unknown }>("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../config", () => ({
   db: { transaction: async (fn: (t: object) => Promise<unknown>) => fn({ tx: 1 }) },
 }));

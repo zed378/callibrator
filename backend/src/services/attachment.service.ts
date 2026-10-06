@@ -1,9 +1,15 @@
 // src/services/attachment.service.ts
 //
-// Tenant-scoped file/document store. Files are written to disk by multer
-// (utils/upload) into uploads/attachments; this service records metadata,
-// computes a checksum, runs the virus-scan hook, and issues signed, expiring
-// download URLs.
+// Tenant-scoped file/document store. multer (utils/upload) writes an upload to
+// the local quarantine; this service checks its link, runs the virus-scan
+// hook, computes a checksum, and only then puts it into the tenant's storage
+// (P8-01: `t/<tenantId>/attachments/<file>` on the local, NFS or S3 driver),
+// records its metadata, and issues signed, expiring download URLs.
+//
+// P8-01 (ADR-086 Amendment 1): a row with a `storageKey` is read, served and
+// deleted through the storage layer. A row without one predates the cut-over
+// and is still on the legacy disk path (`<folder>/<fileName>`); it is served
+// from there exactly as before until `npm run migrate:storage` copies it.
 //
 // ADR-042 step 4 (S-01): uploads/attachments is NOT served statically. An
 // attachment is reached only through GET /attachments/:id/download (auth +
@@ -33,9 +39,12 @@ import type * as ModelsModule from "../models";
 import config from "../config";
 import storagePath from "../utils/storagePath.util";
 import { AppError as LoadedAppError } from "../utils/appError.util";
-import { promoteFromQuarantine as loadedPromoteFromQuarantine } from "../utils/upload.util";
 import { DEFAULT_LIMIT as loadedDefaultLimit, MAX_LIMIT as loadedMaxLimit } from "../constants";
 import virusScan from "./virusScan.service";
+import { assertInQuarantine as loadedAssertInQuarantine } from "../utils/upload.util";
+import storage from "./storage";
+import storedFile from "./storedFile.service";
+import type { StorageObject } from "../utils/fileResponse.util";
 import auditService from "./audit.service";
 import { auditEntryActor as loadedAuditEntryActor, actorChanges as loadedActorChanges } from "../utils/auditPrincipal.util";
 import { logger as loadedLogger } from "../middlewares/activityLog.middleware";
@@ -55,7 +64,7 @@ const sqlWhere = loadedSqlWhere;
 const { Attachment, Certificate } = models;
 const { db } = config;
 const AppError = LoadedAppError;
-const promoteFromQuarantine = loadedPromoteFromQuarantine;
+const assertInQuarantine = loadedAssertInQuarantine;
 const DEFAULT_LIMIT = loadedDefaultLimit;
 const MAX_LIMIT = loadedMaxLimit;
 const auditEntryActor = loadedAuditEntryActor;
@@ -68,9 +77,14 @@ interface AttachmentPage {
   meta: { total: number; page: number; limit: number; totalPages: number };
 }
 
-/** A stored file to send (`fileResponse.util#sendStoredFile`). */
+/**
+ * A stored file to send: a storage object (`fileResponse.util#sendStorageObject`)
+ * or, for a row written before P8-01, a legacy file on this host's disk
+ * (`fileResponse.util#sendStoredFile`). Exactly one of the two is set.
+ */
 interface StoredDownload {
-  absPath: string;
+  object?: StorageObject;
+  absPath?: string;
   fileName: string;
   mimeType: string | null;
 }
@@ -95,6 +109,7 @@ interface AttachmentRow {
   mimeType: string | null;
   size: number | string;
   checksum: string | null;
+  storageKey?: string | null;
   uploadedBy: string | null;
   isDeleted?: boolean;
   createdAt: Date;
@@ -625,9 +640,10 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
   const upload = file as UploadedFile;
 
   // S-17: multer wrote the file to the upload QUARANTINE (the attachments
-  // route holds it there), not to the public uploads tree. It is moved into
-  // uploads/attachments only after the link check and the virus scan pass.
-  let absPath = upload.path;
+  // route holds it there). P8-01: it is put into the tenant's storage only
+  // after the link check and the virus scan pass — an object that failed
+  // either never exists in storage, so it is never reachable.
+  const absPath = upload.path;
 
   // A-97: multer has already written the file. A refused link must not leave
   // it on disk, or in the tenant's storage accounting.
@@ -647,20 +663,33 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
   }
 
   let checksum: string;
+  let scoped: Awaited<ReturnType<typeof storage.getTenantStorage>> | null = null;
+  let storageKey: string | null = null;
   try {
     checksum = await computeChecksum(absPath);
-    // S-17: out of quarantine only now that it has been scanned.
-    absPath = await promoteFromQuarantine(upload as unknown as Parameters<typeof promoteFromQuarantine>[0], ATTACH_FOLDER);
+    // S-17 + P8-01: out of quarantine only now that it has been scanned, and
+    // straight into storage. Only a file IN the quarantine may leave it;
+    // putLocalFile removes the quarantine copy once the object is written.
+    assertInQuarantine(absPath);
+    scoped = await storage.getTenantStorage(tenantId);
+    storageKey = scoped.buildKey({ domain: "attachments", name: upload.filename });
+    await storedFile.putLocalFile(scoped, storageKey, absPath, upload.mimetype);
   } catch (err) {
     await fs.promises.unlink(absPath).catch(() => undefined);
+    // A put that failed part-way must not leave a partial object behind.
+    if (scoped && storageKey) {
+      await scoped.delete(storageKey).catch(() => undefined);
+    }
     throw err;
   }
+  const stored = scoped;
+  const key = storageKey;
 
   // A-117: the row and its CREATE audit row commit together, or neither does
   // — as deleteAttachment (A-28). An upload used to leave no audit row at
   // all: evidence could be added to a certificate unattributably. If the
-  // transaction fails, the file multer wrote is removed too, so a refused
-  // upload leaves nothing on disk or in the tenant's storage accounting.
+  // transaction fails, the stored object is removed too, so a refused upload
+  // leaves nothing in the tenant's storage or its storage accounting.
   let attachment: AttachmentRow;
   try {
     attachment = await db.transaction(async (transaction) => {
@@ -674,6 +703,9 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
           fileName: upload.filename,
           originalName: upload.originalname,
           folder: ATTACH_FOLDER,
+          // P8-01: where the bytes are. `folder` is kept for the legacy reader
+          // and the migration tool; a keyed row is never read from it.
+          storageKey: key,
           mimeType: upload.mimetype,
           size: upload.size,
           checksum,
@@ -713,7 +745,7 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
       return created;
     });
   } catch (err) {
-    await fs.promises.unlink(absPath).catch(() => undefined);
+    await stored.delete(key).catch(() => undefined);
     throw err;
   }
 
@@ -776,15 +808,38 @@ const loadOwned = async (tenantId: string, id: string): Promise<AttachmentRow> =
 
 const getAttachment = async (tenantId: string, id: string): Promise<Record<string, unknown>> => toPublic(await loadOwned(tenantId, id));
 
-// Returns { absPath, fileName, mimeType } for streaming a download.
-const getDownload = async (tenantId: string, id: string): Promise<StoredDownload> => {
-  const attachment = await loadOwned(tenantId, id);
+/**
+ * The bytes of a loaded, live row, ready to send. P8-01: a keyed row is opened
+ * in its OWN tenant's storage (the row's tenant, never the caller's input), so
+ * a key naming another tenant's namespace is refused by the storage guard. A
+ * row without a key is a legacy file on disk, served as before.
+ *
+ * @throws {AppError} 410 when the bytes are gone
+ */
+const openAttachmentFile = async (attachment: AttachmentRow): Promise<StoredDownload> => {
+  const fileName = attachment.originalName;
+  const { mimeType } = attachment;
+  if (attachment.storageKey) {
+    const scoped = await storage.getTenantStorage(attachment.tenantId);
+    try {
+      return { object: await storedFile.openObject(scoped, attachment.storageKey), fileName, mimeType };
+    } catch (err) {
+      if (storedFile.isMissing(err)) {
+        throw new AppError(410, "Attachment file is no longer available");
+      }
+      throw err;
+    }
+  }
   const absPath = resolveAbsPath(attachment);
   if (!fs.existsSync(absPath)) {
     throw new AppError(410, "Attachment file is no longer available");
   }
-  return { absPath, fileName: attachment.originalName, mimeType: attachment.mimeType };
+  return { absPath, fileName, mimeType };
 };
+
+// Returns the object (or legacy path), file name and type for a download.
+const getDownload = async (tenantId: string, id: string): Promise<StoredDownload> =>
+  openAttachmentFile(await loadOwned(tenantId, id));
 
 // ------------------------------------------------------------------
 // DELETE (soft row + unlinked file — removes it from listings, storage-quota
@@ -813,7 +868,12 @@ const getDownload = async (tenantId: string, id: string): Promise<StoredDownload
  */
 const unlinkAttachmentFile = async (attachment: AttachmentRow): Promise<boolean> => {
   try {
-    await fs.promises.rm(resolveAbsPath(attachment), { force: true });
+    if (attachment.storageKey) {
+      // P8-01: the object, in the row's own tenant's storage.
+      await storedFile.removeObject(await storage.getTenantStorage(attachment.tenantId), attachment.storageKey);
+    } else {
+      await fs.promises.rm(resolveAbsPath(attachment), { force: true });
+    }
     return true;
   } catch (err) {
     logger.warn("Deleted attachment's file could not be removed", {
@@ -953,11 +1013,7 @@ const getSignedDownload = async (id: string, token: unknown): Promise<StoredDown
   if (!attachment) {
     throw new AppError(404, "Attachment not found");
   }
-  const absPath = resolveAbsPath(attachment);
-  if (!fs.existsSync(absPath)) {
-    throw new AppError(410, "Attachment file is no longer available");
-  }
-  return { absPath, fileName: attachment.originalName, mimeType: attachment.mimeType };
+  return openAttachmentFile(attachment);
 };
 
 // The exported object, its keys in the JavaScript's order (`exports.x = …`).

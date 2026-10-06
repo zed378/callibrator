@@ -18,7 +18,7 @@ The Helm chart guards one of the four (schedulers). The other three fail **quiet
 
 | | |
 |---|---|
-| **Status** | 🚫 **BLOCKED** (2026-09-28, ADR-086). A-40 is done. What remains needs a **target environment**: an S3 or NFS store and an **ambient credential chain** (IAM role / service account). Neither is reachable here |
+| **Status** | ✅ **DONE in code** (2026-10-05, ADR-086 Amendment 1, [record](../MEMORY/records/2026-10-05-p8-01-storage-cutover.md)) · 🚫 **BLOCKED only on the production target**: a production S3 bucket or NFS export and the **ambient credential chain** (IAM role / service account), which the owner or operator provides. (2026-09-28 it was BLOCKED outright, ADR-086 §2.) |
 | **Trigger** | before `replicaCount > 1` |
 | **Spec refs** | `docs/ARCHITECTURE/05-STORAGE-ARCHITECTURE.md` · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-40 |
 
@@ -31,14 +31,15 @@ The Helm chart guards one of the four (schedulers). The other three fail **quiet
 
 **Why:** `STORAGE_DRIVER=local` and more than one replica are **incompatible**. Replica A writes an attachment, replica B serves the download, and the object is not there.
 
-The abstraction already exists — this is a configuration change plus a migration of existing objects, not new code.
+~~The abstraction already exists — this is a configuration change plus a migration of existing objects, not new code.~~ **Wrong (U-09, 2026-10-05):** no request path used the abstraction; every file was written to and served from the host's disk whatever `STORAGE_DRIVER` said. **Built 2026-10-05 (ADR-086 Am. 1):** every stored file goes through `services/storage` — attachments, certificate PDFs, the public image class, tenant backups, GDPR exports — with files written before the cut-over read from their legacy paths until `migrate:storage` copies them.
 
 **Definition of Done**
 - [x] A-40 closed first: the driver cache is not per process, and a null-checksum copy is **verified**, not reported. DONE 2026-09-25 (ADR-057)
-- [ ] `STORAGE_DRIVER=s3` or `nfs` in the target environment
-- [ ] existing objects migrated with `npm run migrate:storage`, **and the count of objects verified at the destination** rather than read from the tool's own report
-- [ ] S3 credentials from the **ambient chain** (IAM role / service account), not static keys in a Secret
-- [ ] a test: an attachment written by one instance downloads through another
+- [x] **every stored file goes through the storage layer** (the premise the card assumed; ADR-086 Am. 1). Identity on the default `local` driver: `routes/storedFiles.identity.p801.test.ts`
+- [ ] `STORAGE_DRIVER=s3` or `nfs` in the **production** target environment — **owner/operator**. In a reproduced target: SeaweedFS, `scripts/storage/p801-live-check.sh` 44/44 (2026-10-05)
+- [ ] existing objects migrated with `npm run migrate:storage`, **and the count of objects verified at the destination** — done on the reproduced target (the bucket's own listing, `p801-app-path-check.ts`); **owed on production data**. The tool now copies attachments, certificate PDFs, backups and public images (audited backfills)
+- [ ] S3 credentials from the **ambient chain** (IAM role / service account), not static keys in a Secret — **owner/operator**; every run here used static keys
+- [x] a test: an attachment written by one instance downloads through another — on the reproduced target the backend wrote to the bucket and the check read the object back from the bucket with its own client and through the backend after the legacy files were deleted (`p801-app-path-check.ts`); one backend process, so a two-replica run on production stays part of the box above
 - [ ] `STORAGE_S3_PREFIX` understood as a convenience, **not an isolation boundary**
 
 ---
@@ -225,7 +226,7 @@ counts as complete when every card is in one of three recorded states, and none 
 |---|---|---|
 | **DONE** | P8-03 | its record |
 | **Not triggered** | P8-05, P8-06 | the measurement that says the trigger has not fired (ADR-086 §3) |
-| **Blocked, blocker named** | P8-01 (an S3/NFS target and an ambient credential chain), P8-08 (a customer residency requirement) | the blocker, and who can remove it |
+| **Blocked, blocker named** | P8-01 (code DONE 2026-10-05, ADR-086 Am. 1; blocked only on a **production** S3/NFS target and the ambient credential chain), P8-08 (a customer residency requirement) | the blocker, and who can remove it |
 | **Still owed before the stop** | **P8-04 re-measure** — the query-shape fixes (D-30, ADR-096) are in; the p95 must be **measured again**, and a replica is built only if it still fails | the re-measured p95, dated |
 | **Partial, not covered by this decision** | P8-02 (fan-out after a reconnect; a live notification through the proxy), P8-07 (MQTT ingest under load) | their open live checks stay listed; whether they block the stop is **the owner's call** |
 

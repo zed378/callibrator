@@ -37,6 +37,7 @@ jest.mock("@/i18n/actions", () => ({ setLocale: jest.fn() }));
 // next/font/local is a build-time transform; Jest only needs the class names.
 jest.mock("@/app/fonts/public", () => ({
   publicDisplayFont: { variable: "font-pub-display" },
+  publicDisplayItalicFont: { variable: "font-pub-display-italic" },
   publicBodyFont: { variable: "font-pub-sans" },
 }));
 
@@ -345,7 +346,9 @@ describe("P10-13: blog and news on the public surface", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(container.querySelector("[data-surface='public']")).not.toBeNull();
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
-    expect(within(nav).getByRole("link", { name: "Features" })).toHaveAttribute("href", "/#fitur");
+    // P10-17 (ADR-118): the menu keeps the essentials — workflow, verification, security.
+    expect(within(nav).getByRole("link", { name: "Workflow" })).toHaveAttribute("href", "/#alur-kerja");
+    expect(within(nav).getByRole("link", { name: "Verification" })).toHaveAttribute("href", "/#verifikasi");
     // The old gradient "Sign in" band is gone; the way forward is request access.
     expect(screen.getByRole("link", { name: /Request access for your hospital/ })).toHaveAttribute("href", "/request-access");
   });

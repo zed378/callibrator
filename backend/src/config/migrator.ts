@@ -173,6 +173,10 @@ const migrationModules: [string, MigrationModule][] = [
   ["0107-work-order-schedule-cost.js", require("../migrations/0107-work-order-schedule-cost")],
   // A-363: tenant_backups.name / .description — required/accepted by the API, now stored.
   ["0108-tenant-backup-name-description.js", require("../migrations/0108-tenant-backup-name-description")],
+  // U-06 (ADR-119): a partial covering index of the live calibration records — the record counts become index-only.
+  ["0109-calibration-records-live-index.js", require("../migrations/0109-calibration-records-live-index")],
+  // U-06b (ADR-120): the full-text search GIN indexes are per tenant (btree_gin), replacing 0003's.
+  ["0110-search-tenant-gin.js", require("../migrations/0110-search-tenant-gin")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

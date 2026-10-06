@@ -16,13 +16,14 @@ import { asyncHandler as loadedAsyncHandler } from "../utils/controllerWrapper.u
 import { success as loadedSuccess } from "../utils/response.util";
 // A-189: the configured public origin, never the proxy-facing Host header.
 import { baseUrlOf as loadedBaseUrlOf } from "../utils/publicBaseUrl.util";
-import { sendStoredFile as loadedSendStoredFile } from "../utils/fileResponse.util";
+import { sendStoredFile as loadedSendStoredFile, sendStorageObject as loadedSendStorageObject } from "../utils/fileResponse.util";
 import { auditPrincipal as loadedAuditPrincipal } from "../utils/auditPrincipal.util";
 
 const asyncHandler = loadedAsyncHandler;
 const success = loadedSuccess;
 const baseUrlOf = loadedBaseUrlOf;
 const sendStoredFile = loadedSendStoredFile;
+const sendStorageObject = loadedSendStorageObject;
 const auditPrincipal = loadedAuditPrincipal;
 
 /** The principal `auth` set (read without a guard, as before). */
@@ -82,17 +83,32 @@ const getOne = asyncHandler(async (req: Request, res: Response) => {
   success(res, data, null, "Attachment retrieved", 200);
 });
 
+/** What the service answers for a download: a storage object, or a legacy path. */
+type AttachmentDownload = Awaited<ReturnType<typeof attachmentService.getDownload>>;
+
+/**
+ * Put an attachment on the wire. P8-01 (ADR-086 Amendment 1): a stored object
+ * goes through sendStorageObject — the same 304/206/416/HEAD semantics and
+ * headers sendFile gave a file on disk (routes/storedFiles.identity.p801 proves
+ * the two identical) — and a row written before the cut-over is still sent
+ * from its legacy file by sendStoredFile.
+ */
+const sendAttachment = async (req: Request, res: Response, file: AttachmentDownload): Promise<void> => {
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty type is sent as a download
+  const opts = { contentType: file.mimeType || "application/octet-stream", fileName: file.fileName };
+  if (file.object) {
+    await sendStorageObject(req, res, file.object, opts);
+    return;
+  }
+  await sendStoredFile(res, file.absPath as string, opts);
+};
+
 // GET /api/v1/attachments/:id/download
 // ADR-042 step 4/5: this is now THE url an attachment response carries, so it
 // must do what the static mount did — ETag/304, Range/206, and inline for
 // images and PDF (anything else stays a download) — see fileResponse.util.
 const download = asyncHandler(async (req: Request, res: Response) => {
-  const { absPath, fileName, mimeType } = await attachmentService.getDownload(
-    tenantOf(req),
-    req.params["id"] as string,
-  );
-  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty type is sent as a download
-  await sendStoredFile(res, absPath, { contentType: mimeType || "application/octet-stream", fileName });
+  await sendAttachment(req, res, await attachmentService.getDownload(tenantOf(req), req.params["id"] as string));
 });
 
 // POST /api/v1/attachments/:id/signed-url
@@ -106,12 +122,11 @@ const createSignedUrl = asyncHandler(async (req: Request, res: Response) => {
 
 // GET /api/v1/attachments/:id/signed?token=... (PUBLIC, token-gated)
 const downloadSigned = asyncHandler(async (req: Request, res: Response) => {
-  const { absPath, fileName, mimeType } = await attachmentService.getSignedDownload(
-    req.params["id"] as string,
-    req.query["token"],
+  await sendAttachment(
+    req,
+    res,
+    await attachmentService.getSignedDownload(req.params["id"] as string, req.query["token"]),
   );
-  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty type is sent as a download
-  await sendStoredFile(res, absPath, { contentType: mimeType || "application/octet-stream", fileName });
 });
 
 // DELETE /api/v1/attachments/:id

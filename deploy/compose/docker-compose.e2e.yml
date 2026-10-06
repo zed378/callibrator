@@ -46,6 +46,8 @@ services:
       NODE_ENV: ${E2E_NODE_ENV:-production}
       VIRUS_SCAN_PROVIDER: none
       SSRF_DEV_ALLOW_HOSTS: ${SSRF_DEV_ALLOW_HOSTS:-}
+      # U-05: no db-backup on a disposable stack, so nothing to watch.
+      RESTORE_VERIFY_STATUS_FILE: ""
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -102,6 +104,11 @@ services:
     profiles: [off]
 
   nginx:
+    profiles: [off]
+
+  # U-05: the nightly dump + restore verification has nothing to protect on a
+  # stack that lives for one run.
+  db-backup:
     profiles: [off]
 
   mailpit:

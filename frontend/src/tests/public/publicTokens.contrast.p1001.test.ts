@@ -7,8 +7,9 @@
  *  2. Every hex and every ratio in doc 20 §4.2's Foreground and Status tables
  *     equals what the CSS computes (±0.01) — so the table cannot drift from the
  *     code in either direction.
- *  3. The forbidden pairings the doc names really do fail (white on the accent,
- *     the navy mark on the background, --pub-border as an input boundary).
+ *  3. The forbidden pairings the doc names really do fail (P10-17, ADR-118's
+ *     warm palette: the decorative gold as text, white on the gold, the brand
+ *     mark's teal as text on ivory, --pub-border as an input boundary).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -48,6 +49,7 @@ describe("P10-01: public palette contrast, computed from public-surface.css", ()
     ["--pub-text-subtle", [...SURFACES, "--pub-glow"]],
     ["--pub-accent", [...SURFACES, "--pub-glow"]],
     ["--pub-accent-hover", SURFACES],
+    ["--pub-verified", [...SURFACES, "--pub-glow"]],
     ["--pub-success", SURFACES],
     ["--pub-warning", SURFACES],
     ["--pub-danger", [...SURFACES, "--pub-glow"]],
@@ -70,9 +72,63 @@ describe("P10-01: public palette contrast, computed from public-surface.css", ()
   });
 
   it("the forbidden pairings really fail, so they stay forbidden", () => {
-    expect(ratio("#FFFFFF", tok("--pub-accent"))).toBeLessThan(3);
-    expect(ratio("#001250", tok("--pub-bg"))).toBeLessThan(3);
+    for (const bg of SURFACES) expect([bg, ratio(tok("--pub-gold"), tok(bg)) < 3]).toEqual([bg, true]);
+    expect(ratio("#FFFFFF", tok("--pub-gold"))).toBeLessThan(3);
+    expect(ratio("#00DAB4", tok("--pub-bg"))).toBeLessThan(3);
     expect(ratio(tok("--pub-border"), tok("--pub-raised"))).toBeLessThan(3);
+  });
+
+  it("dark mode (ADR-118 Am. 3): every text token is AA and every boundary 3:1 on every dark surface", () => {
+    const surfaces = ["--pub-dark-bg", "--pub-dark-surface", "--pub-dark-raised", "--pub-dark-glow"];
+    const text = [
+      "--pub-dark-text",
+      "--pub-dark-text-muted",
+      "--pub-dark-text-subtle",
+      "--pub-dark-accent",
+      "--pub-dark-accent-hover",
+      "--pub-dark-verified",
+      "--pub-dark-warning",
+      "--pub-dark-danger",
+      "--pub-dark-neutral",
+    ];
+    for (const bg of surfaces) {
+      for (const fg of text) expect([fg, bg, ratio(tok(fg), tok(bg)) >= 4.5]).toEqual([fg, bg, true]);
+      expect([bg, ratio(tok("--pub-dark-border-strong"), tok(bg)) >= 3]).toEqual([bg, true]);
+      expect([bg, ratio(tok("--pub-dark-accent"), tok(bg)) >= 3]).toEqual([bg, true]); // the focus ring
+      expect([bg, ratio(tok("--pub-dark-border"), tok(bg)) < 3]).toEqual([bg, true]); // decorative only
+    }
+    for (const fill of ["--pub-dark-accent", "--pub-dark-accent-hover", "--pub-dark-accent-pressed"]) {
+      expect([fill, ratio(tok("--pub-dark-on-accent"), tok(fill)) >= 4.5]).toEqual([fill, true]);
+    }
+  });
+
+  it("dark mode maps every --pub-* colour token, in both the .dark and the system-preference rule", () => {
+    const blocks = [...css.matchAll(/(\.dark \[data-surface="public"\]|html:not\(\[data-theme-choice\]\) \[data-surface="public"\]) \{([^}]*)\}/g)];
+    expect(blocks.length).toBeGreaterThanOrEqual(2);
+    const names = ["bg", "surface", "raised", "glow", "text", "text-muted", "text-subtle", "accent", "accent-hover", "accent-pressed", "on-accent", "border", "border-strong", "gold", "verified", "warning", "danger", "neutral"];
+    for (const [, sel, body] of blocks) {
+      for (const n of names) expect([sel, n, body.includes(`--pub-${n}: var(--pub-dark-${n})`)]).toEqual([sel, n, true]);
+    }
+  });
+
+  it("the inverted section (deep warm charcoal, ADR-118) is AA on both of its surfaces", () => {
+    for (const bg of ["--pub-inv-bg", "--pub-inv-surface", "--pub-inv-dark-bg"]) {
+      for (const fg of ["--pub-inv-text", "--pub-inv-text-muted", "--pub-inv-accent", "--pub-inv-accent-hover", "--pub-inv-verified"]) {
+        expect([fg, bg, ratio(tok(fg), tok(bg)) >= 4.5]).toEqual([fg, bg, true]);
+      }
+      expect([bg, ratio(tok("--pub-inv-border-strong"), tok(bg)) >= 3]).toEqual([bg, true]);
+      expect([bg, ratio(tok("--pub-inv-border"), tok(bg)) < 3]).toEqual([bg, true]);
+    }
+    for (const fill of ["--pub-inv-accent", "--pub-inv-accent-hover"]) {
+      expect([fill, ratio(tok("--pub-inv-on-accent"), tok(fill)) >= 4.5]).toEqual([fill, true]);
+    }
+    // Never pure black: the inverted background keeps a warm hue.
+    expect(tok("--pub-inv-bg")).not.toBe("#000000");
+  });
+
+  it("dark teal is the 'verified' marker and the success status — one colour, one meaning (ADR-118 §1)", () => {
+    expect(tok("--pub-verified")).toBe(tok("--pub-success"));
+    expect(tok("--pub-verified")).not.toBe(tok("--pub-accent"));
   });
 
   it("inputs use --pub-border-strong, never --pub-border, as their boundary", () => {

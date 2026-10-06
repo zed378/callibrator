@@ -24,6 +24,15 @@
  * backend) is the authority. Refuses a tenant user (403): theirs is an
  * administrator's reset.
  */
+// FIRST, as every CLI here does (migrateStorage, migrate, …): backend/.env is
+// read before any module that reads the environment at load. `../config`
+// requires the JWT secrets as it loads, so from a source checkout
+// (`npm run bootstrap:rotate`) the script failed with "JWT_ACCESS_SECRET …
+// required" when this load came last, inside the entry-point block below
+// (U-09 side finding, 2026-10-05). In the image the variables come from the
+// container's environment, and dotenv never overrides one already set, so the
+// in-container path (`./backend rotate-bootstrap-password`) is unchanged.
+import "../utils/env.util";
 import { db } from "../config";
 import { rotateOneTimePassword } from "../services/bootstrapCredential.service";
 
@@ -71,8 +80,6 @@ const main = async (args: readonly string[]): Promise<number> => {
 export { main, readFlag };
 
 if (require.main === module) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports -- loads backend/.env first, as every CLI here does
-  require("../utils/env.util");
   void main(process.argv.slice(2)).then((code) => {
     process.exitCode = code;
   });

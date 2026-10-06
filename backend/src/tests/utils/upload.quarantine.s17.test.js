@@ -20,6 +20,9 @@ const http = require("http");
 const express = require("express");
 
 const mockStorageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "s17-storage-"));
+// P8-01: the local storage driver's root, which the boot creates
+// (createFolder.middleware) and the driver requires to exist.
+fs.mkdirSync(path.join(mockStorageRoot, "storage"));
 
 jest.mock("../../utils/storagePath.util", () => (...parts) =>
   require("path").join(mockStorageRoot, ...parts),
@@ -30,9 +33,13 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 
 // attachment.service collaborators — the database is not what is under test.
+// P8-01: TenantSettings answers "no tenant configuration", so the storage
+// layer resolves the platform default — the REAL local driver, rooted at
+// <storage root>/storage — and every object below is a real file there.
 jest.mock("../../models", () => ({
   Attachment: { create: jest.fn() },
   Certificate: { findOne: jest.fn() },
+  TenantSettings: { findAll: jest.fn(async () => []) },
 }));
 jest.mock("../../config", () => ({
   db: { transaction: jest.fn(async (cb) => cb("TX")) },
@@ -167,8 +174,11 @@ describe("S-17 — the quarantine and the static mount", () => {
     const { status, body } = await post("/direct", "a.png", "image/png", PNG);
 
     expect(status).toBe(200);
-    expect(body.path).toBe(path.join(storagePath("uploads/public/profile"), body.filename));
-    expect(listFiles("uploads", "public", "profile")).toContain(body.filename);
+    // P8-01: a public-class file goes into PLATFORM storage (global/avatars),
+    // not the legacy folder; file.path is its storage key.
+    expect(body.path).toBe(`global/avatars/${body.filename}`);
+    expect(listFiles("storage", "global", "avatars")).toContain(body.filename);
+    expect(listFiles("uploads", "public", "profile")).not.toContain(body.filename);
     expect(listFiles("uploads", QUARANTINE_DIRNAME)).toEqual([]);
     // The public class IS served — with its pinned type.
     const served = await fetch(`${base}/uploads/public/profile/${body.filename}`);
@@ -213,7 +223,9 @@ describe("S-17 — attachment.service scans the file IN quarantine, then promote
       size: Buffer.byteLength(content),
     };
   };
-  const finalPath = (name) => storagePath("uploads", "attachments", name);
+  // P8-01: a clean attachment's final place is the tenant's storage — on the
+  // local driver, <root>/storage/t/<tenant>/attachments/<file>.
+  const finalPath = (name) => storagePath("storage", "t", "t-1", "attachments", name);
 
   beforeEach(() => {
     Attachment.create.mockImplementation(async (row) => ({ id: "att-1", ...row }));

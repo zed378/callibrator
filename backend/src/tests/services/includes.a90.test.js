@@ -31,6 +31,9 @@
 
 const mockSql = { statements: [] };
 
+// P8-01 (ADR-086 Amendment 1): a backup archive is put into the tenant's
+// storage; the double keeps the real key rules (fixtures/fakeStorage).
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../config", () => {
   const { Sequelize } = jest.requireActual("sequelize");
   const db = new Sequelize({ dialect: "postgres", logging: false });

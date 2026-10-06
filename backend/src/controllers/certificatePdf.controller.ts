@@ -15,7 +15,8 @@ import * as certificateDocumentService from "../services/certificateDocument.ser
 import { asyncHandler as loadedAsyncHandler } from "../utils/controllerWrapper.util";
 import { success as loadedSuccess } from "../utils/response.util";
 import { AppError as LoadedAppError } from "../utils/appError.util";
-import { sendStoredFile as loadedSendStoredFile } from "../utils/fileResponse.util";
+import { sendStoredFile as loadedSendStoredFile, sendStorageObject } from "../utils/fileResponse.util";
+import type { StorageObject } from "../utils/fileResponse.util";
 import { certificateIdSchema as loadedIdSchema } from "../validators/certificate.validator";
 import { validateInput } from "../validators/input";
 // A-189: the configured public origin, never the proxy-facing Host header.
@@ -66,9 +67,24 @@ const downloadPdf = asyncHandler(async (req: Request, res: Response) => {
   if (!result.success) {
     throw new AppError((result as Failure).status, (result as Failure).message);
   }
-  const { absPath, fileName } = result.data as { absPath: string; fileName: string };
+  const { object, absPath, fileName } = result.data as { object?: StorageObject; absPath?: string; fileName: string };
+  if (object) {
+    // P8-01: the same headers res.download gives a file on disk — a saved-as
+    // download (Content-Disposition from `res.attachment`, the type from the
+    // .pdf name) and send's default Cache-Control — with the same 304/206
+    // semantics (routes/storedFiles.identity.p801 proves them identical).
+    await sendStorageObject(req, res, object, {
+      contentType: "application/pdf",
+      fileName,
+      applyHeaders: (r) => {
+        r.attachment(fileName);
+        r.setHeader("Cache-Control", "public, max-age=0");
+      },
+    });
+    return undefined;
+  }
   // eslint-disable-next-line @typescript-eslint/no-confusing-void-expression -- as built: the .js returned res.download(...)
-  return res.download(absPath, fileName);
+  return res.download(absPath as string, fileName);
 });
 
 // A-293 (ADR-100): every answer that is NOT the full verdict — a bare number, a
@@ -142,12 +158,14 @@ const verifyDocument = asyncHandler(async (req: Request, res: Response) => {
   if (!result.success) {
     throw new AppError((result as Failure).status, (result as Failure).message);
   }
-  const { absPath, fileName } = result.data as { absPath: string; fileName: string };
-  await sendStoredFile(res, absPath, {
-    contentType: "application/pdf",
-    fileName,
-    frameAncestors: documentFrameAncestors(),
-  });
+  const { object, absPath, fileName } = result.data as { object?: StorageObject; absPath?: string; fileName: string };
+  const opts = { contentType: "application/pdf", fileName, frameAncestors: documentFrameAncestors() };
+  if (object) {
+    // P8-01: a PDF in storage, with the headers and semantics sendFile gave.
+    await sendStorageObject(req, res, object, opts);
+    return;
+  }
+  await sendStoredFile(res, absPath as string, opts);
 });
 
 export = {

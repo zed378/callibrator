@@ -10,6 +10,9 @@
  * guard untestable (it can never fail against a naive string concat).
  */
 
+// P8-01 (ADR-086 Amendment 1): a scanned upload is put into the tenant's
+// storage. The double keeps the real key rules (fixtures/fakeStorage).
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../models", () => ({
   Attachment: {
     findAndCountAll: jest.fn(),
@@ -28,6 +31,9 @@ jest.mock("../../config", () => ({
 jest.mock("../../utils/upload.util", () => ({
   // S-17: the service promotes the scanned file out of quarantine.
   promoteFromQuarantine: jest.fn(async (file) => file.path),
+  // P8-01: the attachment path checks the file is in quarantine, then puts it
+  // into storage (promoteFromQuarantine is no longer on it).
+  assertInQuarantine: jest.fn((filePath) => filePath),
   getUploadUrl: jest.fn((fileName, folder) => `/${folder}/${fileName}`),
 }));
 
@@ -59,6 +65,8 @@ const { DEFAULT_LIMIT } = require("../../constants");
 // A readable-ish stub that emits the given chunks then "end".
 const streamOf = (chunks) => {
   const emitter = new EventEmitter();
+  // P8-01: storedFile.putLocalFile destroys the stream of a failed put.
+  emitter.destroy = jest.fn();
   setImmediate(() => {
     for (const c of chunks) {
       emitter.emit("data", Buffer.from(c));
@@ -238,19 +246,23 @@ describe("attachment.service (coverage)", () => {
       });
     });
 
-    // S-17: a file that cannot leave quarantine is removed, and the upload
-    // fails with the promotion's error — even when the removal itself fails.
-    it("rejects with the promotion error when the file cannot leave quarantine", async () => {
-      const { promoteFromQuarantine } = require("../../utils/upload.util");
+    // S-17 + P8-01: a file that cannot leave quarantine — now: whose object
+    // cannot be written to the tenant's storage — is removed, any partial
+    // object is deleted, and the upload fails with the storage's error, even
+    // when the removal itself fails. (It was the promotion's EXDEV before the
+    // cut-over: promoteFromQuarantine is no longer on this path.)
+    it("rejects with the storage error when the scanned file cannot be put into storage", async () => {
+      const storage = require("../../services/storage");
+      storage.__reset();
       virusScan.scanFile.mockResolvedValue({ clean: true });
-      fs.createReadStream.mockReturnValue(streamOf(["abc"]));
-      promoteFromQuarantine.mockRejectedValueOnce(new Error("EXDEV"));
+      storage.__failNext.put = new Error("ENOSPC");
       fs.promises.unlink.mockRejectedValue(new Error("EPERM"));
 
       await expect(
         attachmentService.createAttachment("t-1", { path: "/q/f", filename: "f" }),
-      ).rejects.toThrow("EXDEV");
+      ).rejects.toThrow("ENOSPC");
       expect(fs.promises.unlink).toHaveBeenCalledWith("/q/f");
+      expect(storage.__objects.size).toBe(0);
       expect(Attachment.create).not.toHaveBeenCalled();
     });
   });
@@ -658,5 +670,82 @@ describe("attachment.service (coverage)", () => {
         attachmentService.getSignedDownload("a-1", token),
       ).rejects.toMatchObject({ status: 400, message: "Invalid attachment path" });
     });
+  });
+});
+
+// P8-01 (ADR-086 Amendment 1): the paths of a row with a storageKey, and the
+// clean-up of a stored object when the upload fails after it was written.
+describe("P8-01 — attachments in the tenant's storage", () => {
+  const storage = require("../../services/storage");
+  const { db } = require("../../config");
+  const KEY = "t/t-1/attachments/f.pdf";
+  const keyed = (over = {}) => ({
+    id: "a-1", tenantId: "t-1", fileName: "f.pdf", originalName: "F.pdf", mimeType: "application/pdf",
+    folder: "uploads/attachments", storageKey: KEY, save: jest.fn(async () => undefined), ...over,
+  });
+
+  beforeEach(() => {
+    storage.__reset();
+    virusScan.scanFile.mockResolvedValue({ clean: true });
+    fs.createReadStream.mockImplementation(() => streamOf(["hello"]));
+  });
+
+  it("an upload whose row cannot be committed leaves no object in storage", async () => {
+    db.transaction.mockRejectedValueOnce(new Error("insert failed"));
+    await expect(
+      attachmentService.createAttachment("t-1", { path: "/q/f.pdf", filename: "f.pdf", originalname: "F.pdf", mimetype: "application/pdf", size: 5 }, { uploadedBy: "u" }),
+    ).rejects.toThrow("insert failed");
+    expect(storage.__objects.size).toBe(0);
+  });
+
+  it("an upload whose object cannot be removed after a failure still reports the failure", async () => {
+    db.transaction.mockRejectedValueOnce(new Error("insert failed"));
+    storage.__failNext.delete = new Error("bucket unreachable");
+    await expect(
+      attachmentService.createAttachment("t-1", { path: "/q/f.pdf", filename: "f.pdf", originalname: "F.pdf", mimetype: "application/pdf", size: 5 }, { uploadedBy: "u" }),
+    ).rejects.toThrow("insert failed");
+  });
+
+  it("a put that fails part-way is cleaned up, and a clean-up that fails too is swallowed", async () => {
+    storage.__failNext.put = new Error("connection reset");
+    storage.__failNext.delete = new Error("bucket unreachable");
+    await expect(
+      attachmentService.createAttachment("t-1", { path: "/q/f.pdf", filename: "f.pdf", originalname: "F.pdf", mimetype: "application/pdf", size: 5 }, { uploadedBy: "u" }),
+    ).rejects.toThrow("connection reset");
+  });
+
+  it("a keyed download is the stored object; a missing one is 410; a storage failure propagates", async () => {
+    storage.__objects.set(KEY, { body: Buffer.from("hello"), contentType: "application/pdf", modifiedAt: new Date() });
+    Attachment.findOne.mockResolvedValueOnce(keyed());
+    const ok = await attachmentService.getDownload("t-1", "a-1");
+    expect(ok.object.meta.size).toBe(5);
+    expect(ok).not.toHaveProperty("absPath");
+
+    storage.__reset();
+    Attachment.findOne.mockResolvedValueOnce(keyed());
+    await expect(attachmentService.getDownload("t-1", "a-1")).rejects.toMatchObject({ status: 410 });
+
+    const real = storage.getTenantStorage.getMockImplementation();
+    storage.getTenantStorage.mockImplementationOnce(async (t) => ({ ...(await real(t)), stat: jest.fn().mockRejectedValue(new Error("EIO")) }));
+    Attachment.findOne.mockResolvedValueOnce(keyed());
+    await expect(attachmentService.getDownload("t-1", "a-1")).rejects.toThrow("EIO");
+  });
+
+  it("a keyed row naming another tenant's namespace is refused by the storage guard (403), never read", async () => {
+    Attachment.findOne.mockResolvedValueOnce(keyed({ storageKey: "t/t-2/attachments/f.pdf" }));
+    await expect(attachmentService.getDownload("t-1", "a-1")).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("deleting a keyed row removes its object; a removal that fails is logged and the delete still succeeds", async () => {
+    Certificate.findOne.mockResolvedValue(null);
+    storage.__objects.set(KEY, { body: Buffer.from("hello"), contentType: null, modifiedAt: new Date() });
+    Attachment.findOne.mockResolvedValueOnce(keyed());
+    await attachmentService.deleteAttachment("t-1", "a-1", { userId: "u" });
+    expect(storage.__objects.has(KEY)).toBe(false);
+
+    storage.__failNext.delete = new Error("bucket unreachable");
+    Attachment.findOne.mockResolvedValueOnce(keyed());
+    await expect(attachmentService.deleteAttachment("t-1", "a-1", { userId: "u" })).resolves.toEqual({ id: "a-1" });
+    expect(logger.warn).toHaveBeenCalledWith("Deleted attachment's file could not be removed", expect.objectContaining({ error: "bucket unreachable" }));
   });
 });

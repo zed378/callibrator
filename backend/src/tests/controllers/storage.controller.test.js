@@ -349,3 +349,14 @@ describe("storage.controller — getObject stream failures", () => {
     expect(r.destroy).toHaveBeenCalled();
   });
 });
+
+// P8-01: the validator moved to fileResponse.util#entityTag; the controller
+// keeps `_entityTag` as the same function under its old name.
+describe("storage.controller — _entityTag", () => {
+  it("is fileResponse.util#entityTag", () => {
+    const { entityTag } = require("../../utils/fileResponse.util");
+    const meta = { size: 10, modifiedAt: new Date(0) };
+    expect(controller._entityTag(meta)).toBe(entityTag(meta));
+    expect(controller._entityTag({ etag: "\"abc\"" })).toBe("\"abc\"");
+  });
+});

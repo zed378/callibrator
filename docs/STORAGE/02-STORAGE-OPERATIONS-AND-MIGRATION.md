@@ -1,6 +1,6 @@
 # 02 — Storage Operations and Migration
 
-An operator runbook for the one tool that moves data into pluggable storage: `migrate:storage`, which copies legacy on-disk attachments into the configured backend and records where it put them. It covers what must be true before you run it, how to run it, how it decides a row succeeded, what the checksum does, and what you can and cannot undo.
+An operator runbook for the one tool that moves data into pluggable storage: `migrate:storage`, which copies legacy on-disk files — attachments and, since P8-01 (ADR-086 Amendment 1), certificate PDFs, tenant backups and the public image class — into the configured backend and records where it put them. It covers what must be true before you run it, how to run it, how it decides a row succeeded, what the checksum does, and what you can and cannot undo.
 
 > **Target standard: TypeScript, strict (ADR-038).** As built, every file named here is **JavaScript/CommonJS**: `backend/src/services/storageMigration.service.js`, `backend/src/scripts/migrateStorage.js`, and the storage layer under `backend/src/services/storage/`. Some modules they load are already `.ts` (Phase 9, ADR-087), so the tool must run under `tsx` (§ Invocation).
 
@@ -21,9 +21,22 @@ The layer itself (providers, keys, credentials, signed URLs) is [`04-TENANT-STOR
 
 ## Read This First
 
-**Migrating a row does not change how it is served.** The attachment upload and download path still reads `folder`/`fileName` from local disk. Nothing in the request path reads `attachments.storage_key`. Its only readers are this tool and the deleted-file sweep (`attachmentFileSweep.service.js:123–125`, which also deletes a migrated row's object). The migration prepares for a cutover that has not happened ([`04`](./04-TENANT-STORAGE.md) § Read This First; `TASKS/PHASE-8-SCALE-AND-REACH.md` § P8-01, **BLOCKED** on a target S3/NFS environment).
+**Since P8-01 (2026-10-05, ADR-086 Amendment 1) migrating a file CHANGES WHERE IT IS SERVED FROM.** The request paths read storage first: an attachment row with a `storage_key` is served, signed and deleted from that object; a certificate PDF from `t/<tenant>/certificates/<file>` when that object exists; an avatar, logo or CMS image from `global/<avatars|branding|content>/<file>` when it exists; a backup from the key its `file_path` names. Only when the object is absent is the legacy path read. New files never touch the legacy paths. The legacy file is still left in place by the tool, so until you remove it a failed object read never falls back to a stale copy silently — the object either exists (served) or does not (legacy read).
 
-**The tool has never been recorded running end to end.** The only recorded invocation is `MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`: `npm run migrate:storage -- --dry-run` loaded under `tsx`, printed its header, and then failed because no PostgreSQL was available. Plain `node` failed at `Cannot find module './packaged.util'`. The migration `0056` header states that the reference deployment had zero attachments when it ran. Everything below is read from the code and its unit suite (`backend/src/tests/services/storageMigration.service.test.js`, which mocks the model, the filesystem streams and the storage façade). **A mock proves the client, not the contract.**
+**What the tool copies (P8-01):**
+
+| Class | Source | Key | Row change |
+|---|---|---|---|
+| attachments | `<root>/<folder>/<fileName>` | `t/<tenant>/attachments/<fileName>` | `storage_key` set, **with one `UPDATE` audit row (`system:storage-migration`) in the same transaction** |
+| certificate PDFs | `<root>/uploads/certificates/<basename(file_path)>` | `t/<tenant>/certificates/<file>` | none — the (signed) row is never rewritten; the key is derived from `file_path` |
+| tenant backups | the row's `file_path`, refused outside `<root>/backup/tenant-backups/` | `t/<tenant>/backups/<file>` | `file_path` set to the key, verified against the recorded checksum, **with one audit row** as above |
+| public images | `<root>/uploads/public/{profile,tenant,cms}/*` (images only; `default.svg` and unkeyable names skipped) | `global/{avatars,branding,content}/<file>` | none |
+
+GDPR exports are not copied: they live seven days, and the legacy directory is still read and swept until the last pre-cut-over one expires. Every class is resumable (an object already present with the same bytes is `skipped`; one with OTHER bytes fails and is not overwritten), verified (read back and hashed), and reads rows 500 at a time. `--tenant` limits attachments, certificates and backups to one tenant and skips the public images (they are the platform's).
+
+**P8-01's run** (2026-10-05, `scripts/storage/p801-live-check.sh`, [record](../../MEMORY/records/2026-10-05-p8-01-storage-cutover.md)): through a running backend with `STORAGE_DRIVER=s3` on SeaweedFS, a legacy certificate PDF and a legacy avatar laid on disk were served from there, copied by `migrate:storage` (exit 0) byte-identical into the bucket, served from S3 after the legacy files were deleted, and a re-run copied nothing. The bucket's own listing, not the tool's report, matched what is live.
+
+**The first end-to-end run is recorded** (U-09, 2026-10-05, [`MEMORY/records/2026-10-05-u09-s3-live.md`](../../MEMORY/records/2026-10-05-u09-s3-live.md)): on a throwaway PostgreSQL 18, one attachment uploaded through `POST /attachments` was copied by `migrateStorage.ts --tenant <id>` into that tenant's S3 bucket (SeaweedFS), verified against the source file, read back byte-identical from the bucket, and skipped by a re-run (`migrated=0`); `scripts/storage/s3-live-check.sh` with `APP_PATH=1` repeats it. One row is not a production volume. Before that, the only recorded invocation was `MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`: `npm run migrate:storage -- --dry-run` loaded under `tsx`, printed its header, and then failed because no PostgreSQL was available. Plain `node` failed at `Cannot find module './packaged.util'`. The migration `0056` header states that the reference deployment had zero attachments when it ran. Everything below is read from the code and its unit suite (`backend/src/tests/services/storageMigration.service.test.js`, which mocks the model, the filesystem streams and the storage façade). **A mock proves the client, not the contract.**
 
 ## Preconditions
 
@@ -89,7 +102,7 @@ Then, for each row, in order (`migrateAttachment`, `:73–143`):
 | `missing-source` | `missingSource` | **0** | the row has no file on disk. **This does not fail the run.** Read the count |
 | `failed` | `failed` | **1** | anything thrown: a path outside `uploads/`, a changed source, a copy or read error, a mismatch after the copy, a save error |
 
-The CLI prints one line per row (`<status> <id> -> <key>`) and a final `Done. total=… migrated=… skipped=… missing=… wouldMigrate=… failed=…`. It exits `1` if `failed > 0` or if the run crashed (`migrateStorage.js:56–64`). One failing row never stops the others (`migrateAll`, `:176–184`). `logger.error("Attachment migration failed", { id, error })` records each failure, and a final `logger.info("Storage migration complete", …)` records the counts.
+The CLI prints one line per row (`<status> <id> -> <key>`) and, since P8-01, `Done.` followed by one summary line per class (`attachments`, `certificates`, `backups`, `publicImages`, each `total=… migrated=… skipped=… missing=… wouldMigrate=… failed=…`). It exits `1` if any class has `failed > 0` or if the run crashed (`migrateStorage.js:56–64`). One failing row never stops the others (`migrateAll`, `:176–184`). `logger.error("Attachment migration failed", { id, error })` records each failure, and a final `logger.info("Storage migration complete", …)` records the counts.
 
 **A zero exit is not a clean migration.** Check `missing` too. Those rows stay on `storage_key IS NULL`, and every re-run lists them again.
 
@@ -124,7 +137,7 @@ Read from the code. None of these has been observed in a run.
 **There is none in the tool.** No `--undo`, no script, no endpoint clears `storage_key` or deletes the copied objects. What limits the damage:
 
 - **The legacy file is never touched.** It is not moved, deleted or rewritten. Reclaiming disk is described as "a separate, deliberate step" (`storageMigration.service.js:17–18`), and **no tool for that step exists either.**
-- **Serving does not depend on `storage_key`** (§ Read This First). A wrong or partial migration changes nothing a user sees today.
+- **Serving prefers the object** (P8-01). A partial migration is safe — an unmigrated file is still served from its legacy path — but a WRONG object (one whose bytes differ) would be served. The tool refuses to overwrite an object whose bytes differ from the source, and verifies every copy it makes, for that reason.
 
 An undo, if one is needed, is manual and **unverified**. Nobody has run it:
 
@@ -133,7 +146,7 @@ An undo, if one is needed, is manual and **unverified**. Nobody has run it:
 3. Delete exactly the objects listed in step 1 from the target backend, with the backend's own tooling (an S3 console or CLI, or `rm` under the local/NFS root). `ScopedStorage.deleteMany(domain)` (`services/storage/index.js:122`) would remove a tenant's whole `attachments` domain, **including objects not written by the migration**. No CLI exposes it, and it should not be used for this.
 4. Restore from the backup instead (precondition 6) if the database state is in doubt.
 
-Once the read path is cut over to `storage_key` (not built), this stops being true. At that point a rollback changes what users are served, and this section must be rewritten before the first cut-over run.
+**P8-01 (2026-10-05): the read path IS cut over.** Steps 1–3 above now change what users are served: after step 2 an attachment is served from its legacy file again, which must still exist (the tool never removes it, so it does unless someone reclaimed the disk). Do not reclaim legacy disk until the migrated objects have been read back by users for a while; there is no way back once both copies are gone. Backups migrated by the tool also had `file_path` rewritten — undo is the same pattern on `tenant_backups.file_path`, using the audit rows (`resourceType` `TenantBackup`, `changes.operation` `STORAGE_MIGRATE`, `changes.filePath.before`) as the record of the old paths. **Never clear the `storage_key` of an attachment uploaded after the cut-over:** it has no legacy file, and clearing the key makes it unreachable (410). Step 1's `SELECT` must therefore be limited to the rows the TOOL keyed — those with a `STORAGE_MIGRATE` audit row (`SELECT resource_id FROM audit_logs WHERE resource_type = 'Attachment' AND changes->>'operation' = 'STORAGE_MIGRATE' AND tenant_id = '<uuid>'`). Neither undo has been run.
 
 ## Related
 

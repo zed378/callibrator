@@ -153,7 +153,7 @@ export function ForgotPasswordForm() {
           </button>
         </form>
         <p className="mt-8 text-center text-[0.9375rem]">
-          <Link href="/login" className="pub-link">
+          <Link href="/login" className="pub-link inline-flex min-h-11 items-center">
             {t("reset.backToLogin")}
           </Link>
         </p>
@@ -185,7 +185,7 @@ export function ForgotPasswordForm() {
             required
             value={otp}
             onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            className="pub-input pub-mono text-center text-2xl tracking-[0.5em]"
+            className="pub-input auth-otp"
           />
         </div>
         <div>

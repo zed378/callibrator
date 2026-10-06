@@ -127,3 +127,6 @@ backups/
 # Helm
 deploy/helm/**/charts/*.tgz
 deploy/helm/**/Chart.lock
+
+# GDPR export working files written by tests/local runs (ADR-114 exports live in object storage in production)
+backend/exports/

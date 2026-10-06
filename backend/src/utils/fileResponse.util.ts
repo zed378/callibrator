@@ -27,7 +27,7 @@
 // P9-09 (ADR-087): converted from fileResponse.util.js with no behaviour change.
 
 import { extname } from "path";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import { AppError } from "./appError.util";
 
 /** Types a browser renders passively and which may therefore be `inline`. */
@@ -172,6 +172,130 @@ const sendStoredFile = (res: Response, absPath: string, opts: FileHeaderOptions)
     );
   });
 
+// ------------------------------------------------------------------
+// A STORAGE OBJECT (P8-01, ADR-086 Amendment 1)
+// ------------------------------------------------------------------
+//
+// sendStoredFile above needs a path on THIS host's disk. An object in
+// pluggable storage (the local or NFS driver's root, or an S3 bucket) has no
+// such path, so it is sent from the driver's `stat` and `get(range)` instead.
+// This is the body of storage.controller#getObject (ADR-042 step 5), moved
+// here unchanged so every gated route that serves an object answers the same
+// way: 304 from the validators, one `bytes=` Range as 206, an unsatisfiable
+// one as 416, If-Range honoured, HEAD from the metadata, and the object opened
+// only for the bytes asked for.
+
+/** What a driver's `stat` answers for an object (read as the drivers return it). */
+export interface StorageObjectMeta {
+  key?: unknown;
+  contentType?: string | null;
+  size?: unknown;
+  etag?: unknown;
+  modifiedAt?: string | number | Date | null;
+}
+
+/** A stored object: its metadata, and how to open (a range of) it. */
+export interface StorageObject {
+  meta: StorageObjectMeta;
+  open: (range?: { start: number; end: number } | null) => Promise<unknown>;
+}
+
+/** The object stream a driver's `get` answers. */
+interface ObjectStream {
+  on(event: "error", listener: () => void): unknown;
+  pipe(destination: Response): unknown;
+}
+
+/**
+ * A validator for the object: the driver's own ETag when it has one (S3),
+ * otherwise a weak tag from size + mtime (local/NFS) — the same inputs
+ * express.static and res.sendFile use. Null when there is nothing stable to
+ * derive it from.
+ */
+const entityTag = (meta: StorageObjectMeta): string | null => {
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- as built: the driver's tag, stringified
+  if (meta.etag) {return String(meta.etag);}
+  if (typeof meta.size === "number" && meta.modifiedAt) {
+    const mtime = new Date(meta.modifiedAt).getTime();
+    return `W/"${meta.size.toString(16)}-${mtime.toString(16)}"`;
+  }
+  return null;
+};
+
+/**
+ * Send a storage object with the hardened headers (applyFileHeaders, or the
+ * caller's own `applyHeaders` for the public image class) and the
+ * conditional/range semantics above.
+ */
+const sendStorageObject = async (
+  req: Request,
+  res: Response,
+  object: StorageObject,
+  opts: FileHeaderOptions & { applyHeaders?: ((res: Response) => void) | undefined },
+): Promise<void> => {
+  const { meta, open } = object;
+  if (opts.applyHeaders) {
+    opts.applyHeaders(res);
+  } else {
+    applyFileHeaders(res, opts);
+  }
+
+  const size = typeof meta.size === "number" ? meta.size : null;
+  const etag = entityTag(meta);
+  if (etag) {res.setHeader("ETag", etag);}
+  const lastModified = meta.modifiedAt ? new Date(meta.modifiedAt).toUTCString() : null;
+  if (lastModified) {res.setHeader("Last-Modified", lastModified);}
+
+  if ((etag ?? lastModified) && req.fresh) {
+    res.status(304).end();
+    return;
+  }
+
+  let range: { start: number; end: number } | null = null;
+  if (size !== null) {
+    res.setHeader("Accept-Ranges", "bytes");
+    const ifRange = req.headers["if-range"];
+    const rangeApplies = !ifRange || ifRange === etag || ifRange === lastModified;
+    const parsed = rangeApplies ? req.range(size, { combine: true }) : undefined;
+    if (parsed === -1) {
+      res.setHeader("Content-Range", `bytes */${String(size)}`);
+      // P8-01: a caller may have announced the object's length already (the
+      // backup and export downloads do, as they did for res.download); this
+      // answer has no body, and a stale Content-Length would leave the client
+      // waiting for bytes that never come.
+      res.removeHeader("Content-Length");
+      res.status(416).end();
+      return;
+    }
+    if (Array.isArray(parsed) && (parsed as { type?: unknown }).type === "bytes" && parsed.length === 1) {
+      const [only] = parsed as unknown as [{ start: number; end: number }];
+      range = { start: only.start, end: only.end };
+    }
+  }
+
+  if (range) {
+    res.status(206);
+    res.setHeader("Content-Range", `bytes ${String(range.start)}-${String(range.end)}/${String(size)}`);
+    res.setHeader("Content-Length", range.end - range.start + 1);
+  } else if (size !== null) {
+    res.setHeader("Content-Length", size);
+  }
+
+  if (req.method === "HEAD") {
+    res.end();
+    return;
+  }
+
+  const stream = (await open(range)) as ObjectStream;
+  stream.on("error", () => {
+    // The object vanished mid-stream (concurrent delete). Headers may already
+    // be sent, so we can only abort the connection.
+    if (!res.headersSent) {res.status(410).end();}
+    else {res.destroy();}
+  });
+  stream.pipe(res);
+};
+
 export {
   SAFE_INLINE_TYPES,
   contentTypeFor,
@@ -179,4 +303,6 @@ export {
   dispositionHeader,
   applyFileHeaders,
   sendStoredFile,
+  entityTag,
+  sendStorageObject,
 };

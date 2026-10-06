@@ -46,7 +46,10 @@ const spaceGrotesk = Space_Grotesk({
 // Pre-hydration theme script: applies the persisted light/dark choice to
 // <html> before first paint so there is no flash (replaces the old
 // render-null-until-initialized hack in ThemeContext).
-const themeInitScript = `(function(){try{var t=localStorage.getItem('hdc-theme-preference');if(t==='dark'){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`;
+// P10-17 (ADR-118 Am. 3): it also marks an explicit choice with
+// `data-theme-choice`, so the public pages can follow `prefers-color-scheme`
+// only when the visitor has not chosen. The dashboard's behaviour is unchanged.
+const themeInitScript = `(function(){try{var d=document.documentElement,t=localStorage.getItem('hdc-theme-preference');if(t==='dark'){d.classList.add('dark');}else{d.classList.remove('dark');}if(t==='dark'||t==='light'){d.setAttribute('data-theme-choice',t);}else{d.removeAttribute('data-theme-choice');}}catch(e){}})();`;
 
 export const metadata: Metadata = {
   // Q-43 (ADR-098 §8.1): the public name is "Device Calibrator".

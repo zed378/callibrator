@@ -49,12 +49,25 @@ describe("email templates", () => {
     expect(raw).not.toMatch(/antahberantah|student|\$1000|quests|submission/i);
   });
 
-  // Brand palette from frontend/public/brand/mark.svg: navy #001250, teal #00DAB4.
+  // Brand palette (ADR-118 Amendment 2): the warm light palette of the public
+  // site and of frontend/public/brand/mark.svg — charcoal text, copper accent,
+  // cream page, paper card. The retired navy #001250 / teal #00DAB4 and the
+  // slate neutrals they came with must not return, nor the boilerplate blues.
   it.each(ALL_TEMPLATES)("%s uses the brand palette and nothing off-brand", (name) => {
     const raw = fs.readFileSync(path.join(TEMPLATE_DIR, name), "utf8").toLowerCase();
-    expect(raw).toContain("#001250");
-    expect(raw).toContain("#00dab4");
+    expect(raw).toContain("#1f1b17"); // charcoal text
+    expect(raw).toContain("#9a4e22"); // copper accent
+    expect(raw).toContain("#f4ecdf"); // cream page
+    expect(raw).toContain("#fffdf8"); // paper card
+    expect(raw).not.toMatch(/#001250|#00dab4/);
+    expect(raw).not.toMatch(/#0f172a|#475569|#f1f5f9|#e2e8f0/);
     expect(raw).not.toMatch(/#669ae9|#4f46e5/);
+  });
+
+  // The accent bar is copper: the 4px row directly above the logo.
+  it.each(ALL_TEMPLATES)("%s draws the accent bar in copper", (name) => {
+    const raw = fs.readFileSync(path.join(TEMPLATE_DIR, name), "utf8");
+    expect(raw).toMatch(/height:4px;[^"]*background-color:#9A4E22/);
   });
 
   // The logo is a 480x200 wordmark: once, in the header, at a legible size —

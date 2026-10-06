@@ -15,6 +15,10 @@ import * as path from "path";
 
 const mockRoot = fs.mkdtempSync(path.join(os.tmpdir(), "a360-svc-"));
 const mockTx = { id: "tx-a360" };
+// P8-01 (ADR-086 Amendment 1): an export's archive and manifest are kept in
+// the tenant's storage; the double keeps the real key rules
+// (fixtures/fakeStorage) and holds the bytes in memory.
+jest.mock("../../services/storage", () => jest.requireActual<{ createFakeStorage: () => unknown }>("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../utils/storagePath.util", () =>
   (...parts: string[]): string => jest.requireActual<typeof path>("path").join(mockRoot, ...parts),
 );

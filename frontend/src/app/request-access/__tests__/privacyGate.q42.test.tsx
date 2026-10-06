@@ -27,6 +27,7 @@ jest.mock("@/i18n/actions", () => ({ setLocale: jest.fn() }));
 jest.mock("@/api/client", () => ({ api: { post: jest.fn() } }));
 jest.mock("@/app/fonts/public", () => ({
   publicDisplayFont: { variable: "font-pub-display" },
+  publicDisplayItalicFont: { variable: "font-pub-display-italic" },
   publicBodyFont: { variable: "font-pub-sans" },
 }));
 

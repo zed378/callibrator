@@ -1,0 +1,17 @@
+{
+  "$comment": "ADR-117. Read by scripts/ci/npm-audit-gate.js. An entry excuses ONE advisory, by GHSA id, in DEV dependencies only (the gate fails if the advisory reaches the production tree), until `expires` (the gate fails on that date). Renewing an entry is a review: re-check the advisory for a patched version and the reachability, then move the date and say why in the record.",
+  "advisories": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "severity": "high",
+      "expires": "2026-11-05",
+      "reviewed": "2026-10-05",
+      "via": [
+        "@stoplight/spectral-cli > fast-glob > micromatch > braces (backend devDependency: `npm run openapi:lint`)",
+        "eslint-config-next > @next/eslint-plugin-next > fast-glob > micromatch > braces (frontend devDependency: `npx eslint`)"
+      ],
+      "justification": "Stack-exhaustion DoS (CVE-2026-93687) when braces expands an attacker-supplied, deeply nested pattern. No patched version exists (<= 3.0.3, first_patched_version null). braces is not in the production tree (`npm ls braces --omit=dev` is empty; `npm audit --omit=dev` reports 0): it runs only in lint tooling, in CI and on developer machines, and its only inputs are this repository's own glob patterns. The worst case is a crashed lint run, not a service outage or data exposure."
+    }
+  ]
+}

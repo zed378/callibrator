@@ -62,6 +62,7 @@ import { scheduleSetting as loadedScheduleSetting } from "../utils/schedulerSwit
 import loadedStoragePath from "../utils/storagePath.util";
 import { logger as loadedLogger } from "../middlewares/activityLog.middleware";
 import alertService from "./alert.service";
+import backupVerifyService from "./backupVerify.service";
 import { env } from "../config/env";
 import type RedisService from "./redis.service";
 import type * as SequelizeModule from "sequelize";
@@ -724,6 +725,13 @@ async function watchdogTick(): Promise<void> {
     await checkStuckBatchJobs();
   } catch (err) {
     logger.error(`Job watchdog: batch-job check failed: ${errorOf(err).message}`);
+  }
+  // U-05 (ADR-116): the infrastructure backup's restore verification runs outside this
+  // process; its outcome file is watched here, so a verifier that stopped is not silent.
+  try {
+    await backupVerifyService.checkRestoreVerification();
+  } catch (err) {
+    logger.error(`Job watchdog: backup verification check failed: ${errorOf(err).message}`);
   }
 }
 /* eslint-enable @typescript-eslint/restrict-template-expressions */

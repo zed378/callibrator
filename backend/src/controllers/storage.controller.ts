@@ -15,14 +15,18 @@ import storage from "../services/storage";
 import { asyncHandler as loadedAsyncHandler } from "../utils/controllerWrapper.util";
 import { success as loadedSuccess } from "../utils/response.util";
 import { auditPrincipal as loadedAuditPrincipal } from "../utils/auditPrincipal.util";
-import { contentTypeFor as loadedContentTypeFor, applyFileHeaders as loadedApplyFileHeaders } from "../utils/fileResponse.util";
+import {
+  contentTypeFor as loadedContentTypeFor,
+  entityTag as fileEntityTag,
+  sendStorageObject,
+} from "../utils/fileResponse.util";
+import type { StorageObjectMeta } from "../utils/fileResponse.util";
 import type { TenantId } from "../types/ids";
 
 const asyncHandler = loadedAsyncHandler;
 const success = loadedSuccess;
 const auditPrincipal = loadedAuditPrincipal;
 const contentTypeFor = loadedContentTypeFor;
-const applyFileHeaders = loadedApplyFileHeaders;
 
 /** The principal `auth` set (read without a guard, as before). */
 interface StoragePrincipal {
@@ -32,19 +36,7 @@ interface StoragePrincipal {
 const tenantOf = (req: Request): TenantId => (req.user as StoragePrincipal).tenantId;
 
 /** What a driver's `stat` answers for an object (fields read as the `.js` read them). */
-interface ObjectMeta {
-  key?: unknown;
-  contentType?: string | null;
-  size?: unknown;
-  etag?: unknown;
-  modifiedAt?: string | number | Date | null;
-}
-
-/** The object stream a driver's `get` answers. */
-interface ObjectStream {
-  on(event: "error", listener: () => void): unknown;
-  pipe(destination: Response): unknown;
-}
+type ObjectMeta = StorageObjectMeta;
 
 // GET /api/v1/storage/settings
 const getSettings = asyncHandler(async (req: Request, res: Response) => {
@@ -81,19 +73,11 @@ const getUsage = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * A validator for the object: the driver's own ETag when it has one (S3),
- * otherwise a weak tag from size + mtime (local/NFS) — the same inputs
- * express.static uses. Null when there is nothing stable to derive it from.
+ * A validator for the object (P8-01: moved to fileResponse.util#entityTag, the
+ * one place every object-serving route reads it from; kept here under its old
+ * name for the tests that pin it).
  */
-const entityTag = (meta: ObjectMeta): string | null => {
-  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- as built: the driver's tag, stringified
-  if (meta.etag) {return String(meta.etag);}
-  if (typeof meta.size === "number" && meta.modifiedAt) {
-    const mtime = new Date(meta.modifiedAt).getTime();
-    return `W/"${meta.size.toString(16)}-${mtime.toString(16)}"`;
-  }
-  return null;
-};
+const entityTag = (meta: ObjectMeta): string | null => fileEntityTag(meta);
 
 // GET /api/v1/storage/object?key=...&token=...  (PUBLIC, HMAC-gated)
 // This is where local/NFS signed URLs resolve; S3 URLs never reach the app.
@@ -117,55 +101,9 @@ const getObject = asyncHandler(async (req: Request, res: Response) => {
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/no-base-to-string -- as built: an empty key falls back to the asked one, stringified
   const objectKey = String(meta.key || key);
   const contentType = contentTypeFor(meta.contentType, objectKey);
-  applyFileHeaders(res, { contentType, fileName: path.posix.basename(objectKey) });
-
-  const size = typeof meta.size === "number" ? meta.size : null;
-  const etag = entityTag(meta);
-  if (etag) {res.setHeader("ETag", etag);}
-  const lastModified = meta.modifiedAt ? new Date(meta.modifiedAt).toUTCString() : null;
-  if (lastModified) {res.setHeader("Last-Modified", lastModified);}
-
-  if ((etag || lastModified) && req.fresh) {
-    return res.status(304).end();
-  }
-
-  let range: { start: number; end: number } | null = null;
-  if (size !== null) {
-    res.setHeader("Accept-Ranges", "bytes");
-    const ifRange = req.headers["if-range"];
-    const rangeApplies = !ifRange || ifRange === etag || ifRange === lastModified;
-    const parsed = rangeApplies ? req.range(size, { combine: true }) : undefined;
-    if (parsed === -1) {
-      res.setHeader("Content-Range", `bytes */${String(size)}`);
-      return res.status(416).end();
-    }
-    if (Array.isArray(parsed) && parsed.type === "bytes" && parsed.length === 1) {
-      const [only] = parsed as unknown as [{ start: number; end: number }];
-      range = { start: only.start, end: only.end };
-    }
-  }
-
-  if (range) {
-    res.status(206);
-    res.setHeader("Content-Range", `bytes ${String(range.start)}-${String(range.end)}/${String(size)}`);
-    res.setHeader("Content-Length", range.end - range.start + 1);
-  } else if (size !== null) {
-    res.setHeader("Content-Length", size);
-  }
-
-  if (req.method === "HEAD") {
-    return res.end();
-  }
-
-  const stream = (await open(range)) as ObjectStream;
-  stream.on("error", () => {
-    // The object vanished mid-stream (concurrent delete). Headers may already
-    // be sent, so we can only abort the connection.
-    if (!res.headersSent) {res.status(410).end();}
-    else {res.destroy();}
-  });
-  stream.pipe(res);
-  return undefined;
+  // P8-01: the conditional/range sender is shared with every route that
+  // serves a storage object (fileResponse.util#sendStorageObject).
+  await sendStorageObject(req, res, { meta, open }, { contentType, fileName: path.posix.basename(objectKey) });
 });
 
 const controller = {

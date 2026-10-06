@@ -15,6 +15,7 @@ import {
   DashboardSystemHealth,
   DashboardCharts,
   TenantBreakdown,
+  DashboardUpdatedAt,
 } from "./components";
 import useDashboardMetrics from "./hooks/useDashboardMetrics";
 import { useClientValue } from "@/hooks/useClientValue";
@@ -120,6 +121,9 @@ export default function DashboardPage() {
                   {scopeLabel}. Here&apos;s what&apos;s happening across your
                   devices, calibrations, and inventory.
                 </p>
+                {metrics?.generatedAt && (
+                  <DashboardUpdatedAt generatedAt={metrics.generatedAt} />
+                )}
               </div>
               <RealTimeClock />
             </div>

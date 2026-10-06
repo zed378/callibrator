@@ -9,15 +9,19 @@ import Link from "next/link";
 import { BrandLockup } from "./BrandLockup";
 import { LanguageForm } from "./LanguageForm";
 import { MobileMenu } from "./MobileMenu";
+import { PublicThemeToggle } from "./PublicThemeToggle";
 import type { Locale } from "@/i18n/config";
 import type { MessageKey, Translate } from "@/i18n";
 
+/**
+ * P10-17 (ADR-118, brief §13): only the essentials — the workflow, public
+ * verification and security. `#fitur` and `#faq` still exist on the landing as
+ * anchors; they left the menu, not the page.
+ */
 export const LANDING_ANCHORS: ReadonlyArray<{ id: string; key: MessageKey }> = [
-  { id: "fitur", key: "pub.nav.features" },
   { id: "alur-kerja", key: "pub.nav.workflow" },
-  { id: "keamanan", key: "pub.nav.security" },
   { id: "verifikasi", key: "pub.nav.verify" },
-  { id: "faq", key: "pub.nav.faq" },
+  { id: "keamanan", key: "pub.nav.security" },
 ];
 
 export function PublicHeader({
@@ -36,7 +40,7 @@ export function PublicHeader({
   return (
     <header className="pub-header">
       <div className="relative mx-auto flex h-16 max-w-[1200px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        <Link href="/" aria-label={t("pub.home")} className="rounded-md">
+        <Link href="/" aria-label={t("pub.home")} className="inline-flex min-h-11 items-center rounded-md">
           <BrandLockup />
         </Link>
 
@@ -53,13 +57,15 @@ export function PublicHeader({
         </nav>
 
         <div className="hidden items-center gap-3 lg:flex">
+          <PublicThemeToggle label={t("pub.theme.dark")} />
           <LanguageForm locale={locale} t={t} />
           <Link href="/login" className="pub-btn pub-btn-secondary">
             {t("pub.nav.signin")}
           </Link>
-          <a href={`${anchorBase}#kontak`} className="pub-btn pub-btn-primary">
-            {t("pub.nav.contact")}
-          </a>
+          {/* P10-17: the brief's primary CTA. "Hubungi kami" stays in the closing section (#kontak). */}
+          <Link href="/request-access" className="pub-btn pub-btn-primary">
+            {t("pub.nav.request")}
+          </Link>
         </div>
 
         <MobileMenu openLabel={t("pub.nav.menuOpen")} closeLabel={t("pub.nav.menuClose")}>
@@ -76,11 +82,12 @@ export function PublicHeader({
             <Link href="/login" className="pub-btn pub-btn-secondary">
               {t("pub.nav.signin")}
             </Link>
-            <a href={`${anchorBase}#kontak`} className="pub-btn pub-btn-primary">
-              {t("pub.nav.contact")}
-            </a>
-            <div>
+            <Link href="/request-access" className="pub-btn pub-btn-primary">
+              {t("pub.nav.request")}
+            </Link>
+            <div className="flex items-center gap-3">
               <LanguageForm locale={locale} t={t} />
+              <PublicThemeToggle label={t("pub.theme.dark")} />
             </div>
           </div>
         </MobileMenu>

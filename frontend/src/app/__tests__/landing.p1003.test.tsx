@@ -33,6 +33,7 @@ jest.mock("@/i18n/actions", () => ({ setLocale: jest.fn() }));
 // next/font/local is a build-time transform; Jest only needs the class names.
 jest.mock("@/app/fonts/public", () => ({
   publicDisplayFont: { variable: "font-pub-display" },
+  publicDisplayItalicFont: { variable: "font-pub-display-italic" },
   publicBodyFont: { variable: "font-pub-sans" },
 }));
 
@@ -62,6 +63,22 @@ describe("P10-03: landing", () => {
     expect(h1s[0].className).not.toMatch(/opacity-0|invisible|hidden/);
     expect(container.querySelector("[data-surface='public']")).not.toBeNull();
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("P10-17: the certificate explorer renders as page.tsx calls it — four named slides and dashes, in both languages", async () => {
+    await renderHome();
+    for (let n = 1; n <= 4; n += 1) {
+      const name = id["landing.cert.slide"].replace("{n}", String(n)).replace("{total}", "4");
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+      expect(screen.getByRole("group", { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("group", { name: id["landing.cert.carousel"] })).toBeInTheDocument();
+  });
+
+  it("P10-17: the certificate explorer in English", async () => {
+    mockLocale = "en";
+    await renderHome();
+    expect(screen.getByRole("button", { name: "Explanation 4 of 4" })).toBeInTheDocument();
   });
 
   it("follows the English cookie", async () => {

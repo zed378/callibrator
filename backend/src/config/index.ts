@@ -15,17 +15,20 @@
  */
 import type * as SequelizeModule from "sequelize";
 import type * as ActivityLogModule from "../middlewares/activityLog.middleware";
+import type * as ClsNamespaceModule from "../utils/clsNamespace.util";
 import type * as DbReadyModule from "../utils/dbReady.util";
 import type * as SqlModule from "../utils/sql.util";
 import type { SqlRunner } from "../utils/sql.util";
 
 /* eslint-disable @typescript-eslint/no-require-imports -- as built: the .js load order, which an
-   `import` cannot keep (imports are hoisted above the code between them). cls-hooked is loaded and
-   its namespace created before sequelize is read, and Sequelize.useCLS runs before the logger and
-   dbReady load; each module is destructured at load, as the .js did. cls-hooked ships no types, and
-   Sequelize.useCLS takes any object. sql.util (P9-07, below) is the one module the .js did not load. */
-const cls = require("cls-hooked") as { createNamespace(name: string): object };
-const namespace = cls.createNamespace("callibrator-namespace");
+   `import` cannot keep (imports are hoisted above the code between them). The CLS namespace is
+   created before sequelize is read, and Sequelize.useCLS runs before the logger and dbReady load;
+   each module is destructured at load, as the .js did. Sequelize.useCLS takes any object with
+   `run` and `bind`. sql.util (P9-07, below) is the one module the .js did not load.
+   U-06 (ADR-119): the namespace is AsyncLocalStorage (utils/clsNamespace.util), no longer
+   cls-hooked, whose async_hooks destroy tracking taxed every promise in the process. */
+const { createNamespace } = require("../utils/clsNamespace.util") as typeof ClsNamespaceModule;
+const namespace = createNamespace();
 const { Sequelize } = require("sequelize") as typeof SequelizeModule;
 Sequelize.useCLS(namespace);
 const { logger } = require("../middlewares/activityLog.middleware") as typeof ActivityLogModule;

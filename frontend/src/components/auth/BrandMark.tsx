@@ -33,7 +33,7 @@ export function BrandMark({
   // depend on anything fetched.
   return (
     <BrandIcon
-      className={`${BOX[size]} text-[#001250] dark:text-white`}
+      className={`${BOX[size]} text-logo-ink`}
       title={name}
     />
   );

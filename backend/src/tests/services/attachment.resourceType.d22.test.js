@@ -20,6 +20,9 @@
  * transaction; dataLayer.dbD.live.test.js runs both on PostgreSQL 18.
  */
 
+// P8-01 (ADR-086 Amendment 1): a scanned upload is put into the tenant's
+// storage. The double keeps the real key rules (fixtures/fakeStorage).
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../models", () => ({
   Attachment: { create: jest.fn(), findAll: jest.fn(), update: jest.fn(), findOne: jest.fn() },
   Certificate: { findOne: jest.fn() },
@@ -27,6 +30,9 @@ jest.mock("../../models", () => ({
 jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb) => cb("TX")) } }));
 jest.mock("../../utils/upload.util", () => ({
   promoteFromQuarantine: jest.fn(async (file) => file.path),
+  // P8-01: the attachment path checks the file is in quarantine, then puts it
+  // into storage (promoteFromQuarantine is no longer on it).
+  assertInQuarantine: jest.fn((filePath) => filePath),
 }));
 jest.mock("../../services/virusScan.service", () => ({
   scanFile: jest.fn().mockResolvedValue({ clean: true }),

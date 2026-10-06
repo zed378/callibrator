@@ -66,7 +66,7 @@ export function MfaLoginForm({
             onChange={(e) => setCode(formatRecoveryCodeInput(e.target.value))}
             required
             aria-describedby="mfa-help"
-            className="pub-input pub-mono text-center text-lg tracking-widest"
+            className="pub-input text-center text-lg tracking-widest tabular-nums"
             placeholder="XXXX-XXXX-XXXX-XXXX"
           />
         ) : (
@@ -81,7 +81,7 @@ export function MfaLoginForm({
             onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
             required
             aria-describedby="mfa-help"
-            className="pub-input pub-mono text-center text-2xl tracking-[0.5em]"
+            className="pub-input auth-otp"
           />
         )}
       </div>

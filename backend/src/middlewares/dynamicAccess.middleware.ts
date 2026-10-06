@@ -341,7 +341,7 @@ const dynamicAccess = (
         // API-key principals authorize via their scopes, not the role matrix.
         const result = user.isApiKey
           ? checkApiKeyScope(menuName, permTypes, user.apiKeyScopes, requireAll)
-          : await checkMenuPermission(menuName, permTypes, user, requireAll);
+          : await checkMenuPermission(menuName, permTypes, user, requireAll, req);
 
         results.push(result);
         if (!result.allowed) {
@@ -485,6 +485,25 @@ function checkApiKeyScope(menuName: string, permTypes: readonly string[], scopes
 }
 
 /**
+ * U-06b (ADR-120) — the permission sources one request has loaded, by request.
+ *
+ * `loadPermissionSources` reads the role matrix and the user's overrides (two
+ * Redis GETs and two JSON parses of the whole matrix). It ran once per menu a
+ * gate names, and once per gate: GET /search ran it six times (its route gate
+ * names three menus, then the controller probes each of three types through
+ * this same gate), which was about 8% of the backend's CPU under search load.
+ * Within ONE request the principal and its permissions are fixed (`auth` loads
+ * `req.user` afresh for every request), so the first load is shared by every
+ * gate and probe of that request. Keyed by the request object, so nothing
+ * outlives it: the next request loads again, and a changed grant applies as
+ * before (W-11's cache deletion, then the next request).
+ */
+const sourcesByRequest = new WeakMap<
+  object,
+  { readonly principal: AccessPrincipal; readonly sources: Promise<EffectivePermissionModule.PermissionSources> }
+>();
+
+/**
  * Check permission for a specific menu group using cached matrix.
  *
  * Resolution order:
@@ -498,20 +517,39 @@ function checkApiKeyScope(menuName: string, permTypes: readonly string[], scopes
  * @param requireAll - AND instead of OR
  * @returns the decision
  */
-async function checkMenuPermission(menuName: string, permTypes: readonly string[], user: AccessPrincipal, requireAll: boolean): Promise<MenuResult> {
+async function checkMenuPermission(
+  menuName: string,
+  permTypes: readonly string[],
+  user: AccessPrincipal,
+  requireAll: boolean,
+  req?: Request,
+): Promise<MenuResult> {
   // ADR-102 — the role matrix (1) and the per-user override (2, `none`
   // denies) are read through services/effectivePermission, the ONE function
   // the sidebar and the page write buttons read too. Lazy require to avoid a
   // circular dependency at module load time (as the override lookup was).
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: required per call (a load-time cycle otherwise)
   const effectivePermission = require("../services/effectivePermission.service") as typeof EffectivePermissionModule;
-  const sources = await effectivePermission.loadPermissionSources(user as EffectivePermissionModule.PermissionPrincipal, (err) => {
-    // Overrides are additive hardening — never let a lookup failure block
-    // the request path; fall back to plain role permissions.
-    if (typeof logger !== "undefined") {
-      logger.error(`UserPermission override lookup failed: ${err.message}`);
+  const load = (): Promise<EffectivePermissionModule.PermissionSources> =>
+    effectivePermission.loadPermissionSources(user as EffectivePermissionModule.PermissionPrincipal, (err) => {
+      // Overrides are additive hardening — never let a lookup failure block
+      // the request path; fall back to plain role permissions.
+      if (typeof logger !== "undefined") {
+        logger.error(`UserPermission override lookup failed: ${err.message}`);
+      }
+    });
+  // U-06b: one load per request (sourcesByRequest above); a call with no
+  // request (principalHasMenuPermission) loads as before.
+  // The entry is used only for the same principal object it was loaded for.
+  const memo = req ? sourcesByRequest.get(req) : undefined;
+  let pending = memo?.principal === user ? memo.sources : undefined;
+  if (!pending) {
+    pending = load();
+    if (req) {
+      sourcesByRequest.set(req, { principal: user, sources: pending });
     }
-  });
+  }
+  const sources = await pending;
   const rolePermsForMenu = effectivePermission.permissionsForMenu(sources, menuName);
 
   const typeResults: { permissionType: string; allowed: boolean }[] = [];

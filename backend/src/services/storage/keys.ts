@@ -37,6 +37,9 @@ const DOMAINS: readonly string[] = Object.freeze([
   "exports",
   "branding",
   "temp",
+  // P8-01 (ADR-086 Amendment 1): CMS images, the public class's third folder
+  // (`uploads/public/cms`), kept apart from tenant logos (`branding`).
+  "content",
 ]);
 
 // No slashes, no dots-only segments, no whitespace, no control characters.

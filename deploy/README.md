@@ -181,8 +181,9 @@ All five fail confusingly. See [`../docs/DEVOPS/03-REVERSE-PROXY.md`](../docs/DE
 | `volumes/well-known` | an ACME HTTP-01 challenge in flight (it retries) |
 | `volumes/backup` | tenant backups |
 | `volumes/log` | scheduled-job status (`log/jobs/*.json`, P7-02) and, with `LOG_TO_FILE=true`, log files |
+| `volumes/pgdump` | the nightly verified database dumps and `last-restore-verify.json` (U-05) — **on this host: copy it off** |
 
-`volume-init` creates and chowns every application volume to uid 997 on each `up`.
+`volume-init` creates and chowns every application volume to uid 997 on each `up`, and `pgdump` to uid 999 (the `db-backup` service's postgres user).
 
 ## Redis Authentication (S-09)
 
@@ -355,5 +356,37 @@ curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/v1/migration/seed-demo" -H "
 - [ ] an attachment uploaded before the deploy still downloads
 - [ ] migrations report nothing unexpected, **verified by inspecting columns**
 - [ ] schedulers run on **exactly one** instance
+- [ ] the nightly backup is **verified**, not assumed: `docker compose … exec db-backup cat /backups/last-restore-verify.json` shows `"ok":true` from the last 26 h (§ Backups: Dumped, Restored, Checked — Every Night)
 
 The certificate check is the one that catches a deploy that lost a secret. Without it, a broken configuration looks successful for weeks.
+
+## Backups: Dumped, Restored, Checked — Every Night (U-05, ADR-116)
+
+The `db-backup` service (compose; the CronJob `<base>-backup-verify` in Helm, `backupVerify.enabled`) takes
+`pg_dump -Fc` at `BACKUP_AT` (02:30 local), then **restores that dump into a throwaway PostgreSQL 18 +
+pgvector inside its own container** and checks it: SHA-256, role-first `pg_restore --exit-on-error`,
+pgvector, exact row counts / audit checksum / migrations against the dump's snapshot, and the
+application's own schema check. Procedure and limits: [`docs/DEVOPS/04-DATABASE-BACKUP.md` § Scheduled
+Restore Verification](../docs/DEVOPS/04-DATABASE-BACKUP.md#scheduled-restore-verification-u-05-adr-116).
+
+```bash
+# Is the last backup restorable? (ok, restoreSeconds = the database part of an RTO, every check)
+docker compose -f docker-compose.yml -f docker-compose.<env>.yml exec db-backup cat /backups/last-restore-verify.json
+# Run one now (dump + verify), or re-verify the newest dump
+docker compose … exec db-backup backup-verify run-once
+docker compose … exec db-backup backup-verify verify
+# The history
+docker compose … exec db-backup tail -n 5 /backups/restore-verify.history.jsonl
+```
+
+| Alert (`alert.key`) | From | Means | Do |
+|---|---|---|---|
+| `backup.dump.failed` | db-backup | no dump tonight | read `docker compose logs db-backup`, fix, `backup-verify run-once` |
+| `backup.restore-verify.failed` | db-backup, and the backend watchdog once per run | the dump does not restore or does not match its snapshot — **not a backup** | keep the previous verified dump; read the failed check; fix; rerun |
+| `backup.restore-verify.missed` | backend watchdog | no outcome for `RESTORE_VERIFY_MAX_AGE_HOURS` (26) | `docker compose ps db-backup`; is `BACKUP_AT` disabled? |
+| `backup.restore-verify.unreadable` | either | the outcome file is not JSON | inspect `./volumes/pgdump/last-restore-verify.json` |
+
+- **Production:** the prod overlay runs the promoted image `callibrator/backup-verify:${IMAGE_TAG}`; build and push it with the backend: `docker build -f deploy/backup/Dockerfile --build-context backend-image=docker-image://callibrator/backend:<tag> -t callibrator/backup-verify:<tag> .`
+- **The dumps are on this host** (`./volumes/pgdump`, 0600 to uid 999). Copy them, with their `*.manifest.json`, off the host.
+- **Secrets:** the service gets `DB_PASS` and the alert/mail settings only — never `KMS_MASTER_KEY`, the JWT keys or `CERT_SIGNING_SECRET` (verified: 0 occurrences in its environment, logs and outcome files).
+- **Kubernetes:** the backend cannot read the CronJob's claim. Alert on `kube_job_status_failed{job_name=~".*-backup-verify-.*"}` and on `kube_cronjob_status_last_successful_time` older than 26 h.

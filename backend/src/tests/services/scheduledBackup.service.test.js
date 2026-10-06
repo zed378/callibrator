@@ -11,6 +11,9 @@ const path = require("path");
 const mockRoot = fs.mkdtempSync(path.join(os.tmpdir(), "s03-svc-"));
 const mockBackupDir = path.join(mockRoot, "backup", "tenant-backups");
 
+// P8-01 (ADR-086 Amendment 1): a backup taken since the cut-over is a key in
+// its tenant's storage; the double keeps the real key rules.
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
@@ -301,5 +304,56 @@ describe("pruneExpiredBackups", () => {
 
     expect(out.pruned.map((p) => p.backupId)).toEqual(["g", "s"]);
     expect(out.errors).toEqual([{ tenantId: "A", backupId: "s", stage: "file", error: "EPERM" }]);
+  });
+});
+
+describe("P8-01 — pruning a backup kept in its tenant's storage", () => {
+  const storage = require("../../services/storage");
+  const put = (key) => storage.__objects.set(key, { body: Buffer.from("zip"), contentType: null, modifiedAt: new Date() });
+
+  beforeEach(() => storage.__reset());
+
+  it("prunes a stored backup of the row's own tenant: the row first, then the object", async () => {
+    put("t/A/backups/own.zip");
+    TenantBackup.findAll.mockResolvedValue([row({ id: "o", tenantId: "A", filePath: "t/A/backups/own.zip", createdAt: ago(90) })]);
+
+    const out = await svc.pruneExpiredBackups({ now: NOW, keepMin: 0 });
+
+    expect(out.pruned).toEqual([{ tenantId: "A", backupId: "o" }]);
+    expect(storage.__objects.has("t/A/backups/own.zip")).toBe(false);
+    expect(auditService.logAction.mock.calls[0][0].changes.fileName).toBe("own.zip");
+  });
+
+  it("refuses a key of ANOTHER tenant's, or of another domain, like a path outside the backup directory", async () => {
+    put("t/B/backups/theirs.zip");
+    put("t/A/attachments/evidence.pdf");
+    TenantBackup.findAll.mockResolvedValue([
+      row({ id: "x", tenantId: "A", filePath: "t/B/backups/theirs.zip", createdAt: ago(90) }),
+      row({ id: "y", tenantId: "A", filePath: "t/A/attachments/evidence.pdf", createdAt: ago(91) }),
+    ]);
+
+    const out = await svc.pruneExpiredBackups({ now: NOW, keepMin: 0 });
+
+    expect(out.refused.map((r) => r.backupId)).toEqual(["x", "y"]);
+    expect(out.pruned).toEqual([]);
+    expect(storage.__objects.size).toBe(2);
+  });
+
+  it("an object already gone is fine; a storage failure is reported at the file stage", async () => {
+    put("t/A/backups/stuck.zip");
+    TenantBackup.findAll.mockResolvedValue([
+      row({ id: "g", tenantId: "A", filePath: "t/A/backups/gone.zip", createdAt: ago(90) }),
+      row({ id: "s", tenantId: "A", filePath: "t/A/backups/stuck.zip", createdAt: ago(91) }),
+    ]);
+    storage.__failNext.delete = null;
+    const real = storage.getTenantStorage.getMockImplementation();
+    storage.getTenantStorage
+      .mockImplementationOnce(real)
+      .mockImplementationOnce(async (t) => ({ ...(await real(t)), delete: jest.fn().mockRejectedValue(new Error("bucket unreachable")) }));
+
+    const out = await svc.pruneExpiredBackups({ now: NOW, keepMin: 0 });
+
+    expect(out.pruned.map((p) => p.backupId)).toEqual(["g", "s"]);
+    expect(out.errors).toEqual([{ tenantId: "A", backupId: "s", stage: "file", error: "bucket unreachable" }]);
   });
 });

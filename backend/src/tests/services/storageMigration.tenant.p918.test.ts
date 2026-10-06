@@ -15,6 +15,9 @@ const mockGetTenantStorage = jest.fn();
 const mockFindAll = jest.fn();
 
 jest.mock("../../models", () => ({ Attachment: { findAll: mockFindAll } }));
+// P8-01 (ADR-086 Amendment 1): a key backfill commits with its audit row.
+jest.mock("../../config", () => ({ db: { transaction: jest.fn((cb: (t: object) => unknown) => Promise.resolve(cb({}))) } }));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({ id: "audit-1" }) }));
 jest.mock("../../services/storage", () => ({ getTenantStorage: mockGetTenantStorage }));
 jest.mock("../../utils/storagePath.util", () =>
   jest.fn((...parts: string[]) => ["/srv/root", ...parts].join("/")),

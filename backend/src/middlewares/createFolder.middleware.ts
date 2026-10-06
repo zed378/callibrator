@@ -36,6 +36,13 @@ const folders = [
   path.join(rootDir, "uploads/public/cms"),
   path.join(rootDir, "uploads/attachments"),
   path.join(rootDir, "uploads/certificates"),
+
+  // P8-01 (ADR-086 Amendment 1): the local storage driver's default root
+  // (STORAGE_LOCAL_ROOT unset), where every stored file now lives. The driver
+  // refuses a write under a root that does not exist — it cannot tell a
+  // missing local directory from an unmounted NFS export — so the boot makes
+  // the local one, as it makes the folders above.
+  path.join(rootDir, "storage"),
 ];
 
 // Only create data folders during development

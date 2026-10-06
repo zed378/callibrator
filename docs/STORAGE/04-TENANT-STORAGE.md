@@ -1,6 +1,6 @@
 # 04 — Tenant Storage
 
-Pluggable object storage: `local`, `s3` and `nfs`, a platform default plus a per-tenant override, KMS-encrypted credentials, tenant-scoped keys, signed downloads, and the tool that moves legacy on-disk attachments into it.
+Pluggable object storage: `local`, `s3` and `nfs`, a platform default plus a per-tenant override, KMS-encrypted credentials, tenant-scoped keys, signed downloads, the request paths that store and serve every file through it (P8-01), and the tool that moves legacy on-disk files into it.
 
 > **Target standard: TypeScript, strict (ADR-038).** Every file named here is **JavaScript/CommonJS** today and is described **as built**. Conversion happens module by module under [`../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md) and never changes behaviour.
 
@@ -25,9 +25,21 @@ Implementation:
 
 Two facts decide how much of this document applies to the code you are about to change.
 
-**The attachment request path does not use this module yet.** `backend/src/services/attachment.service.js` still writes and reads files through multer and `storagePath.util.js` at `uploads/attachments/<fileName>`. Nothing outside `storageMigration.service.js` reads or writes `attachment.storageKey`. The only application code that imports `services/storage` is the storage controller and the migration tool. The pluggable layer is built, tested and reachable through `/api/v1/storage`; **the upload and download path has not been cut over to it.** Do not write a document, a task or a code comment that says attachments are served from tenant storage today.
+**Every file the application keeps goes through this module (P8-01, 2026-10-05, ADR-086 Amendment 1, [record](../../MEMORY/records/2026-10-05-p8-01-storage-cutover.md)).** The bridge is `backend/src/services/storedFile.service.ts`; the sender for a stored object is `utils/fileResponse.util.ts#sendStorageObject` (the body of `/storage/object`, shared). As built:
 
-**The legacy path is no longer served statically (S-01, ADR-057 — ADR-042 steps 3–6).** Until 2026-09-24 `backend/index.js` mounted `express.static(storagePath("uploads"))` at `/uploads` with **no authentication**: every attachment and every certificate PDF on that legacy path was an unauthenticated, permanent URL, and deleting an attachment (a soft delete) did not revoke it. As built now:
+| Class | Written to | Read / served | Deleted |
+|---|---|---|---|
+| attachments | after the link check, the virus scan and the checksum — in that order — the quarantine file is put at `t/<tenant>/attachments/<file>` and `storage_key` recorded with the row; nothing is reachable before the scan passes, and a refused or failed upload leaves no object | `/attachments/:id/download` and `/:id/signed` from the ROW's tenant's storage (a key of another tenant's is refused 403 by the guard); a row without a key from its legacy file | explicit delete: the object, after the commit; a cascade keeps it and the D-22 sweep removes it after the retention window (unchanged) |
+| certificate PDFs | nothing writes one (M-11); the migration tool copies legacy ones | `t/<tenant>/certificates/<basename(file_path)>` first, then the legacy file | — |
+| avatars, tenant logos, CMS images (the public class) | `global/avatars`, `global/branding`, `global/content` — **platform** keys: the public URL `/uploads/public/<folder>/<file>` names no tenant (ADR-086 Am. 1 §3) | the public mount: platform storage first, the legacy folder second, same headers | `deleteUpload`: the object and the legacy file |
+| tenant backups | `t/<tenant>/backups/<file>`; `file_path` holds the key | download (res.download-identical headers), restore (read once, checksummed and parsed from memory) | delete, the expiry sweep and the scheduled pruner (own tenant's `backups` keys only) |
+| GDPR exports | manifest first, then the archive, at `t/<tenant>/exports/<id>.{json,zip}`; the working directory and the ZIP being built are scratch | the subject's download, from the CALLER's tenant's storage | the W-15 sweep walks every tenant's `exports` domain (and the legacy directory) |
+
+What stays on the host's disk, deliberately: the upload quarantine (multer writes there; the magic-byte check and ClamAV read it by path; each upload leaves it within its own request), a GDPR export's working directory, a calibration-device CSV import, logs, job status files, the one-time bootstrap password, and ops outcome files. None is served or read by another replica.
+
+A row or path written BEFORE the cut-over is still read from its legacy location (below) until `npm run migrate:storage` copies it ([`02`](./02-STORAGE-OPERATIONS-AND-MIGRATION.md)). The answers are identical either way: `routes/storedFiles.identity.p801.test.ts` sends GET, HEAD, a Range, an If-Range miss and a conditional GET to the same bytes in both places for every route above and requires the same status, body and headers. The one difference is an unsatisfiable Range: both answer 416; the storage path's body is empty with `Content-Range: bytes */<size>`, where `res.sendFile` raised an error the error handler wrote as JSON.
+
+**The legacy path is no longer served statically (S-01, ADR-057 — ADR-042 steps 3–6).** Until 2026-09-24 `backend/index.js` mounted `express.static(storagePath("uploads"))` at `/uploads` with **no authentication**: every attachment and every certificate PDF on that legacy path was an unauthenticated, permanent URL, and deleting an attachment (a soft delete) did not revoke it. The legacy locations, as they are still read for files written before P8-01 (the routes and gates are the same for a stored object):
 
 | Class | On disk | Reached through |
 |---|---|---|
@@ -103,7 +115,7 @@ global/<domain>/<name>           platform-owned
 `domain` is an allowlist, not free text:
 
 ```
-attachments · certificates · avatars · backups · exports · branding · temp
+attachments · certificates · avatars · backups · exports · branding · temp · content (P8-01: CMS images)
 ```
 
 An unknown domain is a 400. The allowlist exists so a caller cannot invent a namespace that escapes quota accounting or the retention policy attached to each domain.
@@ -228,7 +240,7 @@ npm run migrate:storage -- --tenant <id>    # one tenant
 npm run migrate:storage -- --limit 100      # a bounded batch
 ```
 
-It copies a legacy on-disk attachment — `<storage root>/<attachment.folder>/<attachment.fileName>` — into the configured backend at `t/<tenantId>/attachments/<fileName>`, verifies it, and backfills `attachment.storageKey` (column `storage_key`, added nullable by migration `0016-add-attachment-storage-key.js`).
+It copies a legacy on-disk attachment — `<storage root>/<attachment.folder>/<attachment.fileName>` — into the configured backend at `t/<tenantId>/attachments/<fileName>`, verifies it, and backfills `attachment.storageKey` (column `storage_key`, added nullable by migration `0016-add-attachment-storage-key.js`) with a `system:storage-migration` audit row in the same transaction. Since P8-01 it also copies certificate PDFs, tenant backups and the public image class ([`02`](./02-STORAGE-OPERATIONS-AND-MIGRATION.md) § What the tool copies).
 
 | Property | How |
 |---|---|
@@ -276,7 +288,8 @@ It resolves **filesystem** paths, not storage **keys**. It is used by the legacy
 | Calling `getTenantStorage()` with no tenant | 500, not a fallback to global. Use `getGlobalStorage()` |
 | Expecting a settings change to apply across replicas when Redis is down | the generation cannot be shared; other replicas converge within `STORAGE_DRIVER_CACHE_TTL_SEC` (default 60s) |
 | Reading `verifiedAgainst: "source-file"` as proof of the original upload | it proves the copy matches today's file, which had no recorded checksum to compare with |
-| Treating `attachment.storageKey` as the serving path | nothing in the request path reads it yet |
+| Clearing `attachment.storageKey` on a row uploaded after P8-01 | it has no legacy file: the attachment becomes unreachable (410) |
+| A `local` root that does not exist | the `local` driver makes it on the first write and reads it as "not found"; an `nfs` root that does not exist is an unmounted export and stays an error (P8-01) |
 
 ## Tests
 
@@ -291,10 +304,21 @@ Named, because an unnamed claim is not evidence.
 | `backend/src/tests/services/storage.signing.test.js` | HMAC mint/verify, expiry, wrong-length tokens |
 | `backend/src/tests/services/storageSettings.service.test.js` | `getSettings` · `updateSettings` · `clearSettings` · `testConnection` · `getUsage` |
 | `backend/src/tests/services/storageMigration.service.test.js` | `migrateAttachment` · `legacyPath` · `hashStream` · `migrateAll` |
+| `backend/src/tests/services/storageMigration.p801.test.ts` | P8-01: certificate PDFs, backups (audited `file_path` backfill), the public images, `migrateEverything`, on the real local driver |
+| `backend/src/tests/routes/storedFiles.identity.p801.test.ts` | P8-01: every file route answers identically from storage and from disk; upload → download → delete through storage; cross-tenant 404 and a forged key 403 |
+| `backend/src/tests/services/storedFile.p801.test.ts` | P8-01: the bridge, and the `local`/`nfs` root rules |
+| `backend/src/tests/utils/upload.publicStorage.p801.test.ts` · `services/gdpr.storedExports.p801.test.ts` | P8-01: the public class; GDPR exports in tenant storage and the W-15 sweep over it |
 | `backend/src/tests/controllers/storage.controller.test.js` | the six handlers |
 | `backend/src/tests/routes/routeGuards.a02.test.js` | the four settings routes carry `auth`, `denyApiKey` and a `TENANT_ADMIN` gate; `/object` does not |
 
-These are unit suites against mocks. Per `../../CLAUDE.md` § Evidence, **a mock proves the client, not the contract** — the S3 path has been exercised live against MinIO only for the checksum-trailer behaviour noted in `s3.driver.js`, and a full live bring-your-own-bucket run is not recorded anywhere in this repository.
+| `backend/src/tests/services/storage.usageS3.u09.test.ts` | `usage()` pages through the driver's cursor; the S3 driver never sends a `MaxKeys` above 1000 (U-09) |
+| `backend/src/tests/services/storage.s3.u09.live.test.ts` | **opt-in, live** (`S3_LIVE_ENDPOINT`): the real driver against a real S3-compatible server — see below |
+
+The suites above the last one are unit suites against mocks. Per `../../CLAUDE.md` § Evidence, **a mock proves the client, not the contract** — and the mocks here did hide one: `usage()` asked S3 for `MaxKeys` 9007199254740991, which every real server refuses, so `GET /storage/usage` failed on every S3 tenant while `storage.index.test.js` pinned that limit as correct (U-09, fixed 2026-10-05).
+
+**Live evidence (U-09, 2026-10-05, [record](../../MEMORY/records/2026-10-05-u09-s3-live.md)).** `scripts/storage/s3-live-check.sh` starts SeaweedFS and Versity S3 Gateway in uniquely named containers and runs the live suite against each: 15/15 on both — health check (ok, missing bucket, wrong credentials, the A-348 bound), put/get/range/stat/exists/delete, 410/404 mapping, a 16 MiB file stream, list paging, `deleteMany`, the configured prefix, presigned GET (bytes, disposition, tampered signature 403, expiry 403), tenant isolation through `ScopedStorage`, and the SSRF guard with `SSRF_DEV_ALLOW_HOSTS`. With `APP_PATH=1` it also boots the backend under tsx on a throwaway PostgreSQL 18 with `STORAGE_DRIVER=s3` and runs `scripts/storage/s3-app-path-check.ts`: 28/28 over `/api/v1/storage` (settings refusals 400/422, a live-probed save, `/usage` past 1000 objects, `/object` from the tenant's bucket with Range, forged and cross-tenant tokens 403) and `migrate:storage` into the tenant's bucket. **Not proven:** MinIO itself (its images cannot be pulled anonymously any more), AWS S3, R2 or Wasabi, the ambient IAM credential chain, multipart upload (the driver has none — one `PutObject` per object), and — until P8-01 — the request path.
+
+**Live evidence for the request path (P8-01, 2026-10-05, [record](../../MEMORY/records/2026-10-05-p8-01-storage-cutover.md)).** `scripts/storage/p801-live-check.sh` boots the backend with `STORAGE_DRIVER=s3` on SeaweedFS, seeds the two demo tenants, makes an administrator in each, and runs `scripts/storage/p801-app-path-check.ts`: **44/44** — attachments (upload into the bucket, nothing on disk, download 200/206/304, signed link, delete removes the object; tenant B 404 on download, signed-url and delete), avatar and tenant logo (in the bucket, served publicly from S3, removed), a tenant backup (created, downloaded, cross-tenant refused, deleted), a GDPR export (stored, downloaded, cross-tenant 404), and `migrate:storage` of a legacy certificate PDF and avatar (served from S3 after the legacy files were removed; re-run copies nothing; the bucket listing matches what is live). `s3-live-check.sh` with `APP_PATH=1` was re-run after the cut-over: 15/15, 15/15, 27/27.
 
 ## Related
 

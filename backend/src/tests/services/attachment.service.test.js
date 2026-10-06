@@ -5,6 +5,9 @@
  * deleteAttachment, generateSignedUrl, getSignedDownload, _verifySignedToken
  */
 
+// P8-01 (ADR-086 Amendment 1): a scanned upload is put into the tenant's
+// storage. The double keeps the real key rules (fixtures/fakeStorage).
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../models", () => ({
   Attachment: {
     findAndCountAll: jest.fn(),
@@ -51,6 +54,9 @@ jest.mock("../../utils/appError.util", () => {
 jest.mock("../../utils/upload.util", () => ({
   // S-17: the service promotes the scanned file out of quarantine.
   promoteFromQuarantine: jest.fn(async (file) => file.path),
+  // P8-01: the attachment path checks the file is in quarantine, then puts it
+  // into storage (promoteFromQuarantine is no longer on it).
+  assertInQuarantine: jest.fn((filePath) => filePath),
   getUploadUrl: (fileName, folder) => "/uploads/" + folder + "/" + fileName,
 }));
 

@@ -1,6 +1,8 @@
 /**
- * Storage migration CLI — copy legacy on-disk attachments into the configured
- * pluggable-storage backend and backfill their storage keys.
+ * Storage migration CLI — copy legacy on-disk files into the configured
+ * pluggable-storage backend: attachments (backfilling their storage keys) and,
+ * since P8-01 (ADR-086 Amendment 1), certificate PDFs, tenant backups
+ * (backfilling their filePath) and the public image class.
  *
  *   tsx src/scripts/migrateStorage.ts --dry-run           # report only
  *   tsx src/scripts/migrateStorage.ts                     # migrate everything
@@ -23,9 +25,9 @@ import "../utils/env.util";
 import { db } from "../config";
 import storageMigration from "../services/storageMigration.service";
 
-const { migrateAll } = storageMigration;
+const { migrateEverything } = storageMigration;
 
-/** The options the CLI flags set (passed to migrateAll as the `.js` passed them). */
+/** The options the CLI flags set (passed to migrateEverything as the `.js` passed them to migrateAll). */
 interface CliOptions {
   dryRun: boolean;
   tenantId?: string | undefined;
@@ -59,20 +61,27 @@ const run = async (): Promise<void> => {
   );
 
   // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- as built: the .js passed an absent --tenant as `tenantId: undefined` and each row as storageMigration reports it; the options are passed as written, not reshaped (ADR-087 identity)
-  const summary = await migrateAll({
+  const summaries = await migrateEverything({
     ...opts,
     onProgress: (r: Progress) => {
       console.log(`  ${r.status.padEnd(15)} ${r.id}${r.key ? ` -> ${r.key}` : ""}`);
     },
-  } as Parameters<typeof migrateAll>[0]);
+  } as Parameters<typeof migrateEverything>[0]);
 
-  console.log(
-    `\nDone. total=${String(summary.total)} migrated=${String(summary.migrated)} ` +
-      `skipped=${String(summary.skipped)} missing=${String(summary.missingSource)} ` +
-      `wouldMigrate=${String(summary.wouldMigrate)} failed=${String(summary.failed)}`,
-  );
+  // P8-01: one summary line per class; exit 1 when any class had a failure.
+  let failed = 0;
+  console.log("\nDone.");
+  for (const [name, summary] of Object.entries(summaries)) {
+    if (!summary) {continue;}
+    failed += summary.failed;
+    console.log(
+      `${name.padEnd(13)} total=${String(summary.total)} migrated=${String(summary.migrated)} ` +
+        `skipped=${String(summary.skipped)} missing=${String(summary.missingSource)} ` +
+        `wouldMigrate=${String(summary.wouldMigrate)} failed=${String(summary.failed)}`,
+    );
+  }
   await db.close();
-  process.exit(summary.failed > 0 ? 1 : 0);
+  process.exit(failed > 0 ? 1 : 0);
 };
 
 /* istanbul ignore next -- CLI entry point: runs on `node`, never on require */

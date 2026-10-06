@@ -30,7 +30,9 @@
  *  - the newest `BACKUP_KEEP_MIN` completed backups of every tenant are kept
  *    whatever their age, so a tenant is never left with none;
  *  - a file is deleted only when its path resolves INSIDE the backup
- *    directory; a row pointing elsewhere is refused and reported, not followed;
+ *    directory, or (P8-01, ADR-086 Amendment 1) when it is a storage key in
+ *    the row's OWN tenant's `backups` domain; a row pointing elsewhere is
+ *    refused and reported, not followed;
  *  - the row is marked `deleted` and soft-deleted, with its audit row, in one
  *    transaction; the file is unlinked after that commits.
  *
@@ -58,6 +60,8 @@ import { Op, type Transaction, type WhereOptions } from "sequelize";
 import { db as loadedDb } from "../config";
 import { logger as loadedLogger } from "../middlewares/activityLog.middleware";
 import { runForTenant as loadedRunForTenant } from "../utils/jobContext.util";
+import storage from "./storage";
+import storedFile from "./storedFile.service";
 import { SYSTEM_ACTORS as LOADED_SYSTEM_ACTORS } from "../constants/systemActors";
 import auditService from "./audit.service";
 import tenantBackupService from "./tenantBackup.service";
@@ -152,6 +156,15 @@ const isInsideBackupDir = (filePath: string | null | undefined): boolean => {
   }
   return path.resolve(filePath).startsWith(backupDir() + path.sep);
 };
+
+/**
+ * P8-01 (ADR-086 Amendment 1): true only when `filePath` is a storage key in
+ * the row's own tenant's `backups` domain — where createBackup puts a backup
+ * since the cut-over. A key of another tenant's, or of another domain, is
+ * refused like a path outside the backup directory.
+ */
+const isOwnStoredBackup = (filePath: string, tenantId: string): boolean =>
+  storedFile.isStorageKey(filePath) && filePath.startsWith(`t/${tenantId}/backups/`);
 
 /**
  * When a backup row expires: its `expiresAt`, else `createdAt + retentionDays`.
@@ -321,7 +334,7 @@ async function pruneRow(row: BackupRow, keepMin: number, summary: PruneSummary):
   const tenantId = row.tenantId;
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: `||`
   const filePath = row.filePath || row.backupPath || null;
-  if (filePath && !isInsideBackupDir(filePath)) {
+  if (filePath && !isOwnStoredBackup(filePath, tenantId) && !isInsideBackupDir(filePath)) {
     summary.refused.push({ tenantId, backupId: row.id, filePath });
     logger.error("Scheduled backup prune: refusing a path outside the backup directory", {
       tenantId,
@@ -366,7 +379,12 @@ async function pruneRow(row: BackupRow, keepMin: number, summary: PruneSummary):
   // pointing at nothing.
   if (filePath) {
     try {
-      await fs.promises.unlink(filePath);
+      if (storedFile.isStorageKey(filePath)) {
+        // P8-01: the object, in the tenant's storage ("already gone" is done).
+        await storedFile.removeObject(await storage.getTenantStorage(tenantId), filePath);
+      } else {
+        await fs.promises.unlink(filePath);
+      }
     } catch (err) {
       if ((err as { code?: unknown }).code !== "ENOENT") {
         summary.errors.push({ tenantId, backupId: row.id, stage: "file", error: messageOf(err) });

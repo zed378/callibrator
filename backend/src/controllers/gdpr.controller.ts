@@ -14,6 +14,7 @@ import type { Request, Response } from "express";
 import gdprService from "../services/gdpr.service";
 import { auditPrincipal as loadedAuditPrincipal } from "../utils/auditPrincipal.util";
 import { success as loadedSuccess } from "../utils/response.util";
+import { sendStorageObject } from "../utils/fileResponse.util";
 import { asyncHandler as loadedAsyncHandler } from "../utils/controllerWrapper.util";
 import { auditActor as loadedAuditActor } from "../utils/auditActor.util";
 import { AppError as LoadedAppError } from "../utils/appError.util";
@@ -75,7 +76,7 @@ const exportUserData = asyncHandler(async (req: Request, res: Response) => {
 const downloadExport = asyncHandler(async (req: Request, res: Response) => {
   const { exportId } = req.params as { exportId: string };
   const { tenantId, userId } = actor(req);
-  const { filePath, filename, fileSize } = await gdprService.getExportDownload(
+  const { filePath, object, filename, fileSize } = await gdprService.getExportDownload(
     tenantId,
     userId,
     exportId,
@@ -85,8 +86,21 @@ const downloadExport = asyncHandler(async (req: Request, res: Response) => {
   res.setHeader("Content-Length", String(fileSize));
   // Personal data: never kept by a shared cache or the browser's.
   res.setHeader("Cache-Control", "no-store");
+  if (object) {
+    // P8-01 (ADR-086 Amendment 1): an archive in the tenant's storage, sent
+    // with the headers res.download gives a file (the saved-as name; the
+    // no-store above is kept, as send keeps a Cache-Control already set).
+    await sendStorageObject(req, res, object, {
+      contentType: "application/zip",
+      fileName: filename,
+      applyHeaders: (r) => {
+        r.attachment(filename);
+      },
+    });
+    return undefined;
+  }
   // eslint-disable-next-line @typescript-eslint/no-confusing-void-expression -- the handler resolves to what res.download returns, as tenantBackup.controller#downloadBackup does
-  return res.download(filePath, filename);
+  return res.download(filePath as string, filename);
 });
 
 /**

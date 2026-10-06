@@ -108,7 +108,18 @@ class LocalDriver {
       }
     }
 
-    const realRoot = await fsp.realpath(this.root);
+    let realRoot: string;
+    try {
+      realRoot = await fsp.realpath(this.root);
+    } catch (err) {
+      // P8-01 (ADR-086 Amendment 1): a `local` root that does not exist yet
+      // holds nothing — so nothing under it can be a symlink, and a read of
+      // any key in it is "not found" (404/410), not a 500. put() makes the
+      // root before it gets here. An `nfs` root that is missing is an
+      // unmounted export: that stays an error, loudly, on reads and writes.
+      if (this.name === "local" && errnoCode(err) === "ENOENT") {return;}
+      throw err;
+    }
     const rootWithSep = realRoot.endsWith(path.sep)
       ? realRoot
       : realRoot + path.sep;
@@ -130,6 +141,15 @@ class LocalDriver {
 
   async put(key: unknown, body: Buffer | Readable): Promise<{ key: string; size: number; etag: null }> {
     const abs = this._resolve(key);
+    // P8-01 (ADR-086 Amendment 1): the `local` provider's root is a directory
+    // of this host's that the application owns, so a missing one is made on
+    // the first write (a source checkout has no `storage/` until then). The
+    // `nfs` provider's root is NOT made: a missing NFS root is an unmounted
+    // export, and creating it would write the tenant's files to local disk
+    // underneath the mount point, where no other replica can see them.
+    if (this.name === "local") {
+      await fsp.mkdir(this.root, { recursive: true });
+    }
     await this._assertNoSymlinkEscape(path.dirname(abs));
     await fsp.mkdir(path.dirname(abs), { recursive: true });
 

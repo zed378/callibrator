@@ -32,9 +32,10 @@ function RequestAccessClosed({ t }: { t: Translate }) {
   });
   const any = channels.whatsappUrl !== null || channels.emailUrl !== null;
   return (
-    <div>
+    <div className="auth-step">
       <h1 className="pub-display pub-display-m text-pub-text">{t("access.closed.title")}</h1>
       <p className="pub-body-l mt-4 text-pub-muted">{t(any ? "access.closed.lead" : "access.closed.leadNoChannels")}</p>
+      <p className="mt-6 border-l border-pub-gold pl-4 text-[0.9375rem] text-pub-muted">{t("access.closed.next")}</p>
       {any ? (
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           {channels.whatsappUrl ? (
@@ -62,7 +63,14 @@ export default async function RequestAccessPage() {
   const { locale, messages, t } = await getServerI18n();
   const notice = privacyNoticeUrl();
   return (
-    <AuthShell locale={locale} messages={messages} t={t} namespaces={["access."]} wide>
+    <AuthShell
+      locale={locale}
+      messages={messages}
+      t={t}
+      namespaces={["access.", "landing.work."]}
+      wide
+      panelLine={t("access.panel.line")}
+    >
       {notice ? <RequestAccessForm privacyNoticeUrl={notice} /> : <RequestAccessClosed t={t} />}
     </AuthShell>
   );

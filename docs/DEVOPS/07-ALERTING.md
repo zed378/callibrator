@@ -46,7 +46,7 @@ The retention purge failed **every night** with `column "tenantId" does not exis
 | a scheduler ran and **failed** |
 | a tenant backup failed |
 | the calibration sweep did not complete |
-| **an infrastructure backup job failed** |
+| **an infrastructure backup job failed** — `backup.dump.failed`, `backup.restore-verify.failed`, `backup.restore-verify.missed` (U-05, ADR-116) |
 
 If only one thing gets alerting first, make it this category.
 
@@ -229,7 +229,7 @@ Metrics: `callibrator_job_enabled`, `callibrator_job_last_success_timestamp_seco
 
 - **Routing to a channel someone reads** is configuration: until `ALERT_WEBHOOK_URL`/`ALERT_EMAIL_TO` is set or the logs are shipped and matched, the alert is a log line. The template ([`deploy/compose/.env.example`](../../deploy/compose/.env.example)) says so, and since ADR-082 the boot log says so too. **No deployment has a route configured yet** — that is an operator's decision (which channel, who reads it), not code.
 - In Kubernetes the status files are on an `emptyDir` (the log volume): they survive a container restart, not a pod rescheduling — the alerts and metrics are the signal of record there.
-- An **infrastructure** backup (the host `pg_dump`/WAL procedure) runs outside this process and is not monitored by it. Its runner must alert on its own exit code.
+- The **infrastructure** backup runs outside this process, in the `db-backup` service / the Helm CronJob (U-05, ADR-116), and reaches this alert path two ways: the verifier runs the backend binary's `backup-alert` after every run (`backup.dump.failed`, `backup.restore-verify.failed`, `backup.restore-verify.unreadable`, critical), and in compose the job watchdog reads its outcome file (`RESTORE_VERIFY_STATUS_FILE`) and raises `backup.restore-verify.missed` when it is older than `RESTORE_VERIFY_MAX_AGE_HOURS` (26) — and a failed run once more, in case the verifier's own alert never left. **In Kubernetes the watchdog cannot read the CronJob's claim**: alert on `kube_job_status_failed` for `<base>-backup-verify` and on `kube_cronjob_status_last_successful_time` older than ~26 h. WAL archiving does not exist (M-12).
 - Not verified against a live SMTP server or a live Slack workspace; the webhook route is tested end to end against a local HTTP receiver (`alertRouting.p702`). Slack ignoring the extra `alert` field is Slack's documented behaviour for unknown fields, not something tested here.
 
 ## After an Alert Fires

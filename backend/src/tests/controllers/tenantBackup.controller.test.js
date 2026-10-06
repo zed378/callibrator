@@ -400,3 +400,40 @@ describe("tenantBackup Controller", () => {
     });
   });
 });
+
+// P8-01 (ADR-086 Amendment 1): a backup in the tenant's storage is sent from
+// the object, its length from the object when the row records none, with the
+// saved-as name res.download gives (the identity is
+// routes/storedFiles.identity.p801).
+describe("P8-01 — downloading a stored backup", () => {
+  it("sends the stored object with the object's size when the metadata has none", async () => {
+    const piped = [];
+    const object = {
+      meta: { size: 42, modifiedAt: new Date(0) },
+      open: jest.fn(async () => ({ on: jest.fn(), pipe: (dest) => piped.push(dest) })),
+    };
+    tenantBackupService.downloadBackup.mockResolvedValue({
+      data: { filePath: `t/${TENANT_ID}/backups/b.zip`, metadata: { fileSize: 0 }, object },
+    });
+    const headers = {};
+    const res = {
+      setHeader: jest.fn((k, v) => { headers[k.toLowerCase()] = v; }),
+      removeHeader: jest.fn(),
+      attachment: jest.fn((name) => { headers["content-disposition"] = `attachment; filename="${name}"`; }),
+      status: jest.fn().mockReturnThis(),
+      end: jest.fn(),
+      download: jest.fn(),
+      headersSent: false,
+    };
+    const req = { params: { tenantId: TENANT_ID, backupId: BACKUP_ID }, user: { id: USER_ID }, method: "GET", headers: {}, fresh: false, range: () => undefined };
+
+    await tenantBackupController.downloadBackup(req, res, jest.fn());
+
+    expect(res.download).not.toHaveBeenCalled();
+    expect(fs.statSync).not.toHaveBeenCalled();
+    expect(res.attachment).toHaveBeenCalledWith("b.zip");
+    expect(headers["content-length"]).toBe(42);
+    expect(headers["cache-control"]).toBe("public, max-age=0");
+    expect(piped).toEqual([res]);
+  });
+});

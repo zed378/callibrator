@@ -109,14 +109,14 @@ const getStorageUsageMb = async (tenantId: TenantId | null | undefined): Promise
 };
 
 // ADR-084 (Q-06): limitStorageMb bounds the bytes the PLATFORM holds for a
-// tenant. Every upload is still written to platform storage — the request path
-// was never cut over to services/storage (docs/STORAGE/04), and the migration
-// tool copies and leaves the legacy file in place — so every attachment counts,
-// including those of a tenant that has configured its own bucket. Exempting
-// such a tenant today would give it unbounded PLATFORM disk. The exemption
-// becomes true per attachment, not per tenant, once an attachment's bytes live
-// only in the tenant's own storage; that is a change to getStorageUsageMb, made
-// with the cutover.
+// tenant. Every attachment counts, including those of a tenant that has
+// configured its own bucket. P8-01 (ADR-086 Amendment 1) cut the request path
+// over: an attachment uploaded while a tenant's own storage is configured is
+// written ONLY there. The per-attachment exemption ADR-084 decided is still
+// not made — nothing records which storage held a row's bytes when it was
+// written (a tenant can change its configuration after), so the count stays
+// the conservative one: it can over-state a bring-your-own tenant's platform
+// usage, never under-state it. Recorded as the follow-up of ADR-086 Am. 1 §5.
 
 /**
  * Whether the tenant has configured its own storage. Read only to explain a

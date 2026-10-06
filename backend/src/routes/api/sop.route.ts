@@ -13,6 +13,8 @@ import { dynamicAccess } from "../../middlewares/dynamicAccess.middleware";
 import { MENU_SLUGS } from "../../constants";
 import { validateUuid } from "../../middlewares/validateUuid.middleware";
 import { denyPlatformAuthoring } from "../../middlewares/denyPlatformAuthoring.middleware"; // A-145, ADR-051 Q-17
+import { validate } from "../../middlewares/validation.middleware";
+import { createSopDocument } from "../../validators/sop.validator";
 import sopController from "../../controllers/sop.controller";
 
 // `Router` is `express.Router` (the same function).
@@ -54,7 +56,9 @@ const {
 router.use(auth);
 
 // Document Routes
-router.post("/", dynamicAccess(MENU_SLUGS.SOP, "write"), createDocument);
+// W-10 (2026-10-05): the body is validated. Without a schema a missing title
+// (or a bodyless request) reached the model's NOT NULL and answered 500, not 400.
+router.post("/", dynamicAccess(MENU_SLUGS.SOP, "write"), validate(createSopDocument), createDocument);
 router.get("/", dynamicAccess(MENU_SLUGS.SOP, "read"), getDocuments);
 // Releasing a controlled procedure is a human act (21 CFR 11.10(d)), so no
 // API key may perform it, and the publisher may not be the author.

@@ -1,7 +1,9 @@
 /*
  * P10-01 — the public surface (ADR-098 §3, docs/UI-UX/20-LANDING-AUTH-REVAMP.md §4).
+ * P10-17 (ADR-118): warm and light — ivory, charcoal, copper; dark teal only as
+ * the "verified" marker. The owner's answer of 2026-10-05 replaced the dark set.
  *
- * A separate, dark-only token set applied under [data-surface="public"] by the
+ * A separate token set applied under [data-surface="public"] by the
  * public layouts (landing, /login, /request-access, /forgot-password,
  * /invitation, /activation, /verify/*). The dashboard tokens in globals.css
  * (ADR-090) are NOT touched: nothing here redefines --background, --primary,
@@ -28,40 +30,92 @@
   --color-pub-warning: var(--pub-warning);
   --color-pub-danger: var(--pub-danger);
   --color-pub-neutral: var(--pub-neutral);
+  --color-pub-gold: var(--pub-gold);
+  --color-pub-verified: var(--pub-verified);
   --font-pub-display: var(--font-pub-display), Georgia, "Times New Roman", serif;
   --font-pub-sans: var(--font-pub-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 [data-surface="public"] {
-  /* Surfaces */
-  --pub-bg: #0A0C0F;
-  --pub-surface: #12161B;
-  --pub-raised: #1A2027;
-  --pub-glow: #092926;
+  /* Surfaces: ivory, cream, paper */
+  --pub-bg: #FBF7F0;
+  --pub-surface: #F4ECDF;
+  --pub-raised: #FFFDF8;
+  --pub-glow: #F2DFC6;
 
-  /* Foreground */
-  --pub-text: #EEF2F6;
-  --pub-text-muted: #A3AEBA;
-  --pub-text-subtle: #8A95A1;
-  --pub-accent: #00DAB4;
-  --pub-accent-hover: #3DE8C9;
-  --pub-accent-pressed: #00B899;
-  --pub-on-accent: #0A0C0F;
-  --pub-border: #2A323C;
-  --pub-border-strong: #6B7684;
+  /* Foreground: charcoal, one copper accent */
+  --pub-text: #1F1B17;
+  --pub-text-muted: #4A423A;
+  --pub-text-subtle: #685D52;
+  --pub-accent: #9A4E22;
+  --pub-accent-hover: #83411B;
+  --pub-accent-pressed: #6C3616;
+  --pub-on-accent: #FFFDF8;
+  --pub-border: #E5D9C7;
+  --pub-border-strong: #8A7B6A;
+  /* Decorative only (rules, motif, glints) — never text: 2.42:1 on ivory. */
+  --pub-gold: #C49A5B;
+  /* "Verified" and nothing else (ADR-118 §1). */
+  --pub-verified: #0E5A52;
 
   /* Status — only where a status is carried */
-  --pub-success: #4ADE80;
-  --pub-warning: #FBBF24;
-  --pub-danger: #FB7185;
-  --pub-neutral: #CBD5E1;
+  --pub-success: #0E5A52;
+  --pub-warning: #8A5300;
+  --pub-danger: #A1282C;
+  --pub-neutral: #4B525B;
 
-  color-scheme: dark;
+  /* The inverted section (ADR-118 §1): deep warm charcoal, never black. One
+     section per page at most (the landing's verification demo). Scoped by
+     `.lp-inverted`, which maps the --pub-* names onto these. */
+  --pub-inv-bg: #241E19;
+  --pub-inv-surface: #2F2721;
+  --pub-inv-text: #F6EFE4;
+  --pub-inv-text-muted: #D2C4B2;
+  --pub-inv-accent: #E3A47B;
+  --pub-inv-accent-hover: #EDB892;
+  --pub-inv-on-accent: #241E19;
+  --pub-inv-verified: #7CCFC0;
+  --pub-inv-border: #4A3F35;
+  --pub-inv-border-strong: #9C8C7A;
+  /* In dark mode the whole page is dark, so the inverted section LIFTS instead
+     (ADR-118 Am. 3): a warmer espresso band with hairlines, same text tokens. */
+  --pub-inv-dark-bg: #30261F;
+
+  /* The warm DARK palette (ADR-118 Amendment 3): espresso, ivory, a lighter
+     copper. Applied by `.dark` on <html> (the app's one theme switch, set
+     before paint by the nonce'd init script) or, when the visitor has not
+     chosen, by `prefers-color-scheme: dark`. Mapped onto the --pub-* names
+     below; every pair is recomputed by publicTokens.contrast.p1001.test.ts. */
+  --pub-dark-bg: #1A1511;
+  --pub-dark-surface: #231C17;
+  --pub-dark-raised: #2D251F;
+  --pub-dark-glow: #3A2B1F;
+  --pub-dark-text: #F6EFE4;
+  --pub-dark-text-muted: #D4C7B5;
+  --pub-dark-text-subtle: #B9A994;
+  --pub-dark-accent: #E3A47B;
+  --pub-dark-accent-hover: #EDB892;
+  --pub-dark-accent-pressed: #F3CBAE;
+  --pub-dark-on-accent: #1A1511;
+  --pub-dark-border: #3D332A;
+  --pub-dark-border-strong: #958572;
+  --pub-dark-gold: #8E7247;
+  --pub-dark-verified: #7CCFC0;
+  --pub-dark-warning: #F2B55E;
+  --pub-dark-danger: #F49393;
+  --pub-dark-neutral: #CDD2D9;
+
+  /* Layered soft shadows, warm-tinted (no pure black on ivory). */
+  --pub-shadow-sm: 0 1px 2px rgb(60 40 20 / 0.06), 0 2px 6px rgb(60 40 20 / 0.05);
+  --pub-shadow-md: 0 1px 2px rgb(60 40 20 / 0.06), 0 8px 24px -6px rgb(60 40 20 / 0.12);
+  --pub-shadow-lg: 0 2px 4px rgb(60 40 20 / 0.05), 0 24px 60px -18px rgb(60 40 20 / 0.22);
+
+  color-scheme: light;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   background-color: var(--pub-bg);
-  background-image: url("/textures/grain.svg");
+  background-image: url("/textures/grain-warm.svg");
   color: var(--pub-text);
   font-family: var(--font-pub-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 1rem;
@@ -74,7 +128,7 @@
   color: var(--pub-text);
 }
 
-/* The accent ring: 10.9:1 on the background, well over SC 1.4.11's 3:1. */
+/* The accent ring: 5.64:1 on the background, over SC 1.4.11's 3:1. */
 [data-surface="public"] :focus-visible {
   outline: 2px solid var(--pub-accent);
   outline-offset: 3px;
@@ -147,15 +201,34 @@
 }
 [data-surface="public"] .pub-btn:disabled,
 [data-surface="public"] .pub-btn[aria-disabled="true"] { cursor: not-allowed; opacity: 0.6; }
-[data-surface="public"] .pub-btn-primary { background: var(--pub-accent); color: var(--pub-on-accent); }
-[data-surface="public"] .pub-btn-primary:hover:not(:disabled) { background: var(--pub-accent-hover); }
-[data-surface="public"] .pub-btn-primary:active:not(:disabled) { background: var(--pub-accent-pressed); }
+/* P10-17: the fill rises from the bottom on hover (a background-size
+   transition, no layout); an arrow inside slides 3 px; :active presses in. */
+[data-surface="public"] .pub-btn-primary {
+  background-color: var(--pub-accent);
+  background-image: linear-gradient(var(--pub-accent-hover), var(--pub-accent-hover));
+  background-repeat: no-repeat;
+  background-position: bottom;
+  background-size: 100% 0%;
+  color: var(--pub-on-accent);
+  box-shadow: var(--pub-shadow-sm);
+  transition:
+    background-size var(--dur-fast) var(--ease-out-expo),
+    background-color var(--dur-fast) var(--ease-out-expo),
+    box-shadow var(--dur-fast) var(--ease-out-expo),
+    transform var(--dur-fast) var(--ease-out-expo);
+}
+[data-surface="public"] .pub-btn-primary:hover:not(:disabled) { background-size: 100% 100%; box-shadow: var(--pub-shadow-md); }
+[data-surface="public"] .pub-btn-primary:active:not(:disabled) { background-color: var(--pub-accent-pressed); background-image: none; transform: translateY(1px) scale(0.985); }
+[data-surface="public"] .pub-arrow { transition: transform var(--dur-fast) var(--ease-out-expo); }
+[data-surface="public"] a:hover .pub-arrow,
+[data-surface="public"] button:hover .pub-arrow { transform: translateX(3px); }
 [data-surface="public"] .pub-btn-secondary {
   background: transparent;
   color: var(--pub-text);
   border-color: var(--pub-border-strong);
 }
 [data-surface="public"] .pub-btn-secondary:hover:not(:disabled) { background: var(--pub-raised); border-color: var(--pub-text-subtle); }
+[data-surface="public"] .pub-btn-secondary:active:not(:disabled) { transform: translateY(1px) scale(0.985); }
 [data-surface="public"] .pub-btn-ghost { background: transparent; color: var(--pub-text-muted); }
 [data-surface="public"] .pub-btn-ghost:hover:not(:disabled) { color: var(--pub-text); background: var(--pub-surface); }
 [data-surface="public"] .pub-btn-block { width: 100%; }
@@ -221,22 +294,23 @@
 /* ── Cards ────────────────────────────────────────────────────────────── */
 
 [data-surface="public"] .pub-card {
-  background: var(--pub-surface);
+  background: var(--pub-raised);
   border: 1px solid var(--pub-border);
   border-radius: 12px;
+  box-shadow: var(--pub-shadow-sm);
 }
 [data-surface="public"] .pub-hairline { border-color: var(--pub-border); }
 
-/* The hero product frame: a 1 px border and one soft glow capped at --pub-glow. */
+/* A product or photo frame: a hairline and layered warm shadows. */
 [data-surface="public"] .pub-frame {
   border-radius: 20px;
   border: 1px solid var(--pub-border);
-  background: var(--pub-surface);
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.4), 0 40px 120px -40px var(--pub-glow);
+  background: var(--pub-raised);
+  box-shadow: var(--pub-shadow-lg);
   overflow: hidden;
 }
 
-/* One teal light behind the hero. Drifts ≤ 2 % once over 20 s; static under
+/* One warm light behind the hero. Drifts ≤ 2 % once over 20 s; static under
    reduced motion. It never loops, so WCAG 2.2.2 needs no pause control. */
 [data-surface="public"] .pub-light {
   position: absolute;
@@ -272,9 +346,38 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  background: color-mix(in srgb, var(--pub-bg) 88%, transparent);
+  background: color-mix(in srgb, var(--pub-bg) 97%, transparent);
   border-bottom: 1px solid var(--pub-border);
 }
+/* P10-17: the header tightens as the page scrolls — fill, hairline and a soft
+   shadow; the brand scales by 6 %. Never its height (no layout shift). CSS
+   scroll-driven; static where unsupported or under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll()) {
+    [data-surface="public"] .pub-header {
+      background: color-mix(in srgb, var(--pub-bg) 40%, transparent);
+      border-bottom-color: transparent;
+      animation: pub-header-tighten linear both;
+      animation-timeline: scroll(root);
+      animation-range: 0 140px;
+    }
+    [data-surface="public"] .pub-header .pub-brand {
+      transform-origin: left center;
+      animation: pub-brand-tighten linear both;
+      animation-timeline: scroll(root);
+      animation-range: 0 140px;
+    }
+  }
+}
+@keyframes pub-header-tighten {
+  to {
+    /* Opaque once scrolled: nothing shows through under the header. */
+    background: var(--pub-bg);
+    border-bottom-color: var(--pub-border);
+    box-shadow: 0 8px 24px -16px rgb(60 40 20 / 0.28);
+  }
+}
+@keyframes pub-brand-tighten { to { transform: scale(0.94); } }
 
 /* Skip link: visible on focus only. */
 [data-surface="public"] .pub-skip {
@@ -294,6 +397,22 @@
 [data-surface="public"] details.pub-faq > summary { list-style: none; cursor: pointer; }
 [data-surface="public"] details.pub-faq > summary::-webkit-details-marker { display: none; }
 [data-surface="public"] details.pub-faq > summary .pub-faq-icon { transition: transform var(--dur-fast) var(--ease-out-expo); }
+/* P10-17: a smooth open where the browser animates <details> content. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports selector(::details-content) {
+    [data-surface="public"] details.pub-faq { interpolate-size: allow-keywords; }
+    [data-surface="public"] details.pub-faq::details-content {
+      block-size: 0;
+      overflow: clip;
+      opacity: 0;
+      transition:
+        block-size var(--dur-base) var(--ease-out-expo),
+        opacity var(--dur-base) var(--ease-out-expo),
+        content-visibility var(--dur-base) allow-discrete;
+    }
+    [data-surface="public"] details.pub-faq[open]::details-content { block-size: auto; opacity: 1; }
+  }
+}
 [data-surface="public"] details.pub-faq[open] > summary .pub-faq-icon { transform: rotate(45deg); }
 
 /* Section entrance: decorative layers only. Text is never hidden (doc 20 §4.5). */
@@ -347,3 +466,177 @@
 [data-surface="public"] .article-prose pre { background: var(--pub-raised); color: var(--pub-text); }
 [data-surface="public"] .article-prose pre code { background: none; }
 [data-surface="public"] .article-prose hr { border-top-color: var(--pub-border); }
+
+/* ── Mobile menu (P10-17): a soft drop instead of a jump ──────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  [data-surface="public"] .pub-menu-panel {
+    transition:
+      opacity var(--dur-fast) var(--ease-out-expo),
+      transform var(--dur-fast) var(--ease-out-expo),
+      display var(--dur-fast) allow-discrete;
+  }
+  [data-surface="public"] .pub-menu-panel[hidden] { opacity: 0; transform: translateY(-6px); }
+  @starting-style {
+    [data-surface="public"] .pub-menu-panel:not([hidden]) { opacity: 0; transform: translateY(-6px); }
+  }
+}
+
+/* ── Auth surface (P10-17, ADR-118, brief §19): calmer than the landing ── */
+
+[data-surface="public"] .auth-band {
+  height: 6px;
+  background: linear-gradient(90deg, var(--pub-gold), var(--pub-accent));
+}
+[data-surface="public"] .auth-visual { background: var(--pub-surface); }
+[data-surface="public"] .auth-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, rgb(36 30 25 / 0.86) 0%, rgb(36 30 25 / 0.35) 45%, rgb(36 30 25 / 0.05) 70%),
+    linear-gradient(to bottom, rgb(36 30 25 / 0.25), transparent 22%);
+}
+[data-surface="public"] .auth-brand-chip {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pub-raised) 92%, transparent);
+  padding: 0.375rem 0.875rem 0.375rem 0.5rem;
+  box-shadow: var(--pub-shadow-sm);
+}
+[data-surface="public"] .auth-cert {
+  width: 15rem;
+  border-radius: 12px;
+  border: 1px solid var(--pub-border);
+  background: var(--pub-raised);
+  padding: 1rem 1.125rem;
+  box-shadow: var(--pub-shadow-lg);
+  transform: rotate(-2deg);
+}
+[data-surface="public"] .auth-cert-line {
+  display: block;
+  height: 0.4375rem;
+  border-radius: 999px;
+  background: var(--pub-border);
+}
+[data-surface="public"] .auth-line {
+  font-family: var(--font-pub-display), Georgia, "Times New Roman", serif;
+  font-size: clamp(1.75rem, 1.2rem + 1.2vw, 2.5rem);
+  line-height: 1.12;
+  color: var(--pub-inv-text);
+  text-wrap: balance;
+}
+[data-surface="public"] .auth-caption { font-size: 0.8125rem; color: var(--pub-inv-text-muted); }
+
+/* A step or a state changes softly; an error rises a little — never a shake. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-surface="public"] .auth-step { animation: auth-step-in 360ms var(--ease-out-expo) both; }
+  [data-surface="public"] .auth-alert-in { animation: auth-step-in 280ms var(--ease-out-expo) both; }
+  /* The one moment per page: the sample certificate's QR forms once. */
+  [data-surface="public"] .auth-cert { animation: auth-cert-in 700ms var(--ease-out-expo) 200ms both; }
+  [data-surface="public"] .auth-cert-qr { animation: auth-qr-form 1.2s var(--ease-in-out-quart) 500ms both; }
+  [data-surface="public"] .auth-cert-line { transform-origin: left; animation: auth-line-in 600ms var(--ease-out-expo) 700ms both; }
+}
+@keyframes auth-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes auth-cert-in { from { opacity: 0; transform: rotate(-2deg) translateY(16px); } to { opacity: 1; transform: rotate(-2deg); } }
+@keyframes auth-qr-form { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes auth-line-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Calm progress for a long form (request access): sections, not hidden steps. */
+[data-surface="public"] .auth-progress { display: flex; gap: 0.5rem; }
+[data-surface="public"] .auth-progress > li {
+  flex: 1;
+  border-top: 2px solid var(--pub-border);
+  padding-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--pub-text-subtle);
+  transition: border-color var(--dur-fast) var(--ease-out-expo), color var(--dur-fast) var(--ease-out-expo);
+}
+[data-surface="public"] .auth-progress > li[aria-current="step"] { border-top-color: var(--pub-accent); color: var(--pub-text); }
+[data-surface="public"] .auth-progress > li[data-done="true"] { border-top-color: var(--pub-gold); }
+[data-surface="public"] .auth-otp {
+  font-size: 1.75rem;
+  letter-spacing: 0.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  min-height: 3.5rem;
+}
+
+/* ── Dark mode (P10-17, ADR-118 Amendment 3) ──────────────────────────────
+   `.dark` on <html> is the visitor's explicit choice (shared with the
+   dashboard: localStorage `hdc-theme-preference`, applied before paint by the
+   root layout's nonce'd init script, which also marks the choice with
+   `data-theme-choice`). Without a choice, the system preference decides. */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme-choice]) [data-surface="public"] {
+    --pub-bg: var(--pub-dark-bg);
+    --pub-surface: var(--pub-dark-surface);
+    --pub-raised: var(--pub-dark-raised);
+    --pub-glow: var(--pub-dark-glow);
+    --pub-text: var(--pub-dark-text);
+    --pub-text-muted: var(--pub-dark-text-muted);
+    --pub-text-subtle: var(--pub-dark-text-subtle);
+    --pub-accent: var(--pub-dark-accent);
+    --pub-accent-hover: var(--pub-dark-accent-hover);
+    --pub-accent-pressed: var(--pub-dark-accent-pressed);
+    --pub-on-accent: var(--pub-dark-on-accent);
+    --pub-border: var(--pub-dark-border);
+    --pub-border-strong: var(--pub-dark-border-strong);
+    --pub-gold: var(--pub-dark-gold);
+    --pub-verified: var(--pub-dark-verified);
+    --pub-success: var(--pub-dark-verified);
+    --pub-warning: var(--pub-dark-warning);
+    --pub-danger: var(--pub-dark-danger);
+    --pub-neutral: var(--pub-dark-neutral);
+    --pub-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+    --pub-shadow-md: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -6px rgb(0 0 0 / 0.45);
+    --pub-shadow-lg: 0 2px 4px rgb(0 0 0 / 0.3), 0 24px 60px -18px rgb(0 0 0 / 0.6);
+    color-scheme: dark;
+  }
+}
+.dark [data-surface="public"] {
+  --pub-bg: var(--pub-dark-bg);
+  --pub-surface: var(--pub-dark-surface);
+  --pub-raised: var(--pub-dark-raised);
+  --pub-glow: var(--pub-dark-glow);
+  --pub-text: var(--pub-dark-text);
+  --pub-text-muted: var(--pub-dark-text-muted);
+  --pub-text-subtle: var(--pub-dark-text-subtle);
+  --pub-accent: var(--pub-dark-accent);
+  --pub-accent-hover: var(--pub-dark-accent-hover);
+  --pub-accent-pressed: var(--pub-dark-accent-pressed);
+  --pub-on-accent: var(--pub-dark-on-accent);
+  --pub-border: var(--pub-dark-border);
+  --pub-border-strong: var(--pub-dark-border-strong);
+  --pub-gold: var(--pub-dark-gold);
+  --pub-verified: var(--pub-dark-verified);
+  --pub-success: var(--pub-dark-verified);
+  --pub-warning: var(--pub-dark-warning);
+  --pub-danger: var(--pub-dark-danger);
+  --pub-neutral: var(--pub-dark-neutral);
+  --pub-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --pub-shadow-md: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -6px rgb(0 0 0 / 0.45);
+  --pub-shadow-lg: 0 2px 4px rgb(0 0 0 / 0.3), 0 24px 60px -18px rgb(0 0 0 / 0.6);
+  color-scheme: dark;
+}
+/* Photographs are never inverted; in the dark they are only dimmed a touch. */
+.dark [data-surface="public"] .lp-photo img,
+.dark [data-surface="public"] .lp-bleed img,
+.dark [data-surface="public"] .auth-visual img { filter: brightness(0.9) saturate(0.95); }
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme-choice]) [data-surface="public"] .lp-photo img,
+  html:not([data-theme-choice]) [data-surface="public"] .lp-bleed img,
+  html:not([data-theme-choice]) [data-surface="public"] .auth-visual img { filter: brightness(0.9) saturate(0.95); }
+}
+
+/* A square icon button (the theme toggle): a 44 × 44 px target, no text padding. */
+[data-surface="public"] .pub-icon-btn { width: 44px; height: 44px; min-height: 44px; padding: 0; flex-shrink: 0; }
+
+/* The inverted section in dark mode: lifted, not deeper (ADR-118 Am. 3). */
+.dark [data-surface="public"] .lp-inverted {
+  background: var(--pub-inv-dark-bg);
+  border-block: 1px solid var(--pub-inv-border);
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme-choice]) [data-surface="public"] .lp-inverted {
+    background: var(--pub-inv-dark-bg);
+    border-block: 1px solid var(--pub-inv-border);
+  }
+}

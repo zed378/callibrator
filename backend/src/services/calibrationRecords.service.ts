@@ -169,30 +169,48 @@ const fetchCalibrationRecords = async ({
       if (to) {range[Op.lte] = to;}
     }
 
-    const { rows, count } = await CalibrationRecord.findAndCountAll({
-      where: whereClause as WhereOptions,
-      order: [["calibrationDate", "DESC"]],
-      limit: Number(limit),
-      offset: (Number(page) - 1) * Number(limit),
-      include: [
-        // LEFT JOINs (A-90): User and CalibrationDevice have a defaultScope
-        // `where`, so an include without `required: false` is an INNER JOIN
-        // that drops the RECORD when its device is soft-deleted or its
-        // performer is deleted or outside the tenant (the super admin acting
-        // inside a tenant). The relation reads as null instead.
-        {
-          association: "device",
-          attributes: ["id", "name", "serialNumber", "manufacturer", "model"],
-          required: false,
-        },
-        {
-          association: "performer",
-          attributes: ["id", "firstName", "lastName"],
-          required: false,
-        },
-        apiKeyActorInclude(),
-      ],
-    });
+    // U-06 (ADR-119): the count and the page are two statements, as
+    // findAndCountAll issued them, with two differences.
+    //  - The count reads the records alone. Every include below is a to-one
+    //    LEFT JOIN, which can neither add a record nor drop one, so it cannot
+    //    change the total; without them the count is an index-only scan of
+    //    0109's live-records index instead of a heap visit per record.
+    //  - The page is selected first and joined after (`subQuery: true`): the
+    //    LIMIT/OFFSET runs inside a subquery over the records, and only the
+    //    page's rows are joined. Before, page 200 joined 2,000 rows to their
+    //    device and performer and threw 1,990 away (6,592 buffers; 600 after).
+    const countWhere: WhereOptions = { ...whereClause };
+    const pageWhere: WhereOptions = { ...whereClause };
+    const [count, found] = await Promise.all([
+      CalibrationRecord.count({ where: countWhere }),
+      CalibrationRecord.findAll({
+        where: pageWhere,
+        order: [["calibrationDate", "DESC"]],
+        limit: Number(limit),
+        offset: (Number(page) - 1) * Number(limit),
+        subQuery: true,
+        include: [
+          // LEFT JOINs (A-90): User and CalibrationDevice have a defaultScope
+          // `where`, so an include without `required: false` is an INNER JOIN
+          // that drops the RECORD when its device is soft-deleted or its
+          // performer is deleted or outside the tenant (the super admin acting
+          // inside a tenant). The relation reads as null instead.
+          {
+            association: "device",
+            attributes: ["id", "name", "serialNumber", "manufacturer", "model"],
+            required: false,
+          },
+          {
+            association: "performer",
+            attributes: ["id", "firstName", "lastName"],
+            required: false,
+          },
+          apiKeyActorInclude(),
+        ],
+      }),
+    ]);
+    // findAndCountAll's rule, kept: no total, no rows.
+    const rows = count === 0 ? [] : found;
 
     return {
       success: true,

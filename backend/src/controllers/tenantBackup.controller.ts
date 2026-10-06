@@ -18,6 +18,7 @@ import tenantBackupService from "../services/tenantBackup.service";
 // failed on `models.Users` with a 500 (found by the live E2E suite).
 import models from "../models";
 import { success as loadedSuccess } from "../utils/response.util";
+import { sendStorageObject } from "../utils/fileResponse.util";
 import { asyncHandler as loadedAsyncHandler } from "../utils/controllerWrapper.util";
 import type { TenantId, UserId } from "../types/ids";
 
@@ -184,9 +185,10 @@ const downloadBackup = asyncHandler(async (req: Request, res: Response) => {
   // metadata live under `.data`. Reading them off the envelope directly made
   // `result.metadata` undefined and threw on every download.
   const { data } = await downloadBackupService(backupId, models);
-  const { filePath, metadata } = data;
+  const { filePath, metadata, object } = data;
 
-  // There is no `filename` column — derive it from the stored path.
+  // There is no `filename` column — derive it from the stored path (a storage
+  // key's last segment is the same file name).
   const filename = path.basename(filePath);
 
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -194,8 +196,23 @@ const downloadBackup = asyncHandler(async (req: Request, res: Response) => {
   res.setHeader(
     "Content-Length",
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/no-unnecessary-condition -- as built: a 0 or empty size falls back to the file's
-    metadata?.fileSize || fs.statSync(filePath).size,
+    metadata?.fileSize || (object ? object.meta.size as number : fs.statSync(filePath).size),
   );
+
+  if (object) {
+    // P8-01 (ADR-086 Amendment 1): a backup in the tenant's storage, sent with
+    // the headers res.download gives a file — the saved-as name, and send's
+    // default Cache-Control — and the same 304/206 semantics.
+    await sendStorageObject(req, res, object, {
+      contentType: "application/zip",
+      fileName: filename,
+      applyHeaders: (r) => {
+        r.attachment(filename);
+        r.setHeader("Cache-Control", "public, max-age=0");
+      },
+    });
+    return undefined;
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-confusing-void-expression -- as built: the handler resolves to what res.download returns
   return res.download(filePath, filename);

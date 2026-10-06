@@ -18,6 +18,7 @@ jest.mock("../../constants/roleConstants", () => ({
 const dashboardService = require("../../services/dashboard.service");
 const dashboardController = require("../../controllers/dashboard.controller");
 const { success } = require("../../utils/response.util");
+const { clearDashboardCache } = require("../../services/dashboardCache.service");
 
 const VALID_USER_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VALID_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
@@ -27,6 +28,8 @@ describe("dashboardController", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // U-06b (ADR-120): each case observes the service call, so none is answered from the 30 s cache.
+    clearDashboardCache();
     success.mockImplementation((res, data, meta, message, status) => {
       res.status(status || 200).json({ success: true, data, message });
     });

@@ -20,6 +20,11 @@ const mockFs = {
 
 jest.mock("fs", () => mockFs);
 
+// P8-01 (ADR-086 Amendment 1): a new backup is put into its tenant's storage.
+// The double keeps the real key rules (fixtures/fakeStorage); a row whose
+// filePath is a host path is a legacy backup and still goes through `fs`.
+jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
+
 // Mock path module
 jest.mock("path", () => ({
   join: jest.fn((...args) => "/mock/" + args.join("/")),
@@ -556,54 +561,45 @@ describe("Tenant Backup Service", () => {
       }
     });
 
-    describe("backup directory creation", () => {
-      it("should create the backup directory when it does not exist", async () => {
-        mockFs.existsSync.mockReturnValue(false);
+    // P8-01 (ADR-086 Amendment 1): the archive is put into the tenant's
+    // storage; nothing is written to the legacy backup directory. (These
+    // replace the three "backup directory creation" cases, whose directory
+    // the write path no longer uses.)
+    describe("P8-01 — the archive goes into the tenant's storage", () => {
+      const storage = require("../../services/storage");
+
+      beforeEach(() => storage.__reset());
+
+      it("puts the ZIP at t/<tenant>/backups/<file>, records that key as filePath, and writes no file", async () => {
         mockTenantBackup.createBackup.mockResolvedValue({ id: mockBackupId });
         mockTenant.findByPk.mockResolvedValue({ toJSON: () => ({ id: mockTenantId }) });
         mockUsers.findAll.mockResolvedValue([]);
 
-        const result = await createBackup({
-          tenantId: mockTenantId,
-          createdById: mockUserId,
-          models: mockModels,
-        });
-
-        expect(mockFs.mkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true });
-        expect(result.success).toBe(true);
-      });
-
-      it("should tolerate an EEXIST race when creating the directory", async () => {
-        mockFs.existsSync.mockReturnValue(false);
-        mockFs.mkdirSync.mockImplementation(() => {
-          const err = new Error("exists");
-          err.code = "EEXIST";
-          throw err;
-        });
-        mockTenantBackup.createBackup.mockResolvedValue({ id: mockBackupId });
-        mockTenant.findByPk.mockResolvedValue({ toJSON: () => ({ id: mockTenantId }) });
-        mockUsers.findAll.mockResolvedValue([]);
-
-        const result = await createBackup({
-          tenantId: mockTenantId,
-          createdById: mockUserId,
-          models: mockModels,
-        });
+        const result = await createBackup({ tenantId: mockTenantId, createdById: mockUserId, models: mockModels });
 
         expect(result.success).toBe(true);
-        expect(mockFs.writeFileSync).toHaveBeenCalled();
+        const key = `t/${mockTenantId}/backups/tenant_${mockTenantId}_${mockBackupId}_20240101_120000.zip`;
+        expect([...storage.__objects.keys()]).toEqual([key]);
+        expect(storage.__objects.get(key)).toMatchObject({
+          body: Buffer.from("mock-zip-data"),
+          contentType: "application/zip",
+        });
+        expect(mockTenantBackup.updateStatus).toHaveBeenCalledWith(
+          mockBackupId,
+          expect.objectContaining({
+            filePath: key,
+            fileSize: Buffer.from("mock-zip-data").length,
+            metadata: expect.objectContaining({ checksum: "mock-checksum" }),
+          }),
+          mockModels,
+          expect.any(Object),
+        );
+        expect(mockFs.writeFileSync).not.toHaveBeenCalled();
+        expect(mockFs.mkdirSync).not.toHaveBeenCalled();
       });
 
-      it("should surface a non-EEXIST mkdir failure as a wrapped 500", async () => {
-        mockFs.existsSync.mockReturnValue(false);
-        mockFs.mkdirSync.mockImplementation(() => {
-          const err = new Error("permission denied");
-          err.code = "EACCES";
-          throw err;
-        });
-        mockFs.writeFileSync.mockImplementation(() => {
-          throw new Error("ENOENT: no such directory");
-        });
+      it("a storage write that fails is a wrapped 500, and the backup is marked FAILED", async () => {
+        storage.__failNext.put = new Error("bucket unreachable");
         mockTenantBackup.createBackup.mockResolvedValue({ id: mockBackupId });
         mockTenant.findByPk.mockResolvedValue({ toJSON: () => ({ id: mockTenantId }) });
         mockUsers.findAll.mockResolvedValue([]);
@@ -612,8 +608,14 @@ describe("Tenant Backup Service", () => {
           createBackup({ tenantId: mockTenantId, createdById: mockUserId, models: mockModels }),
         ).rejects.toMatchObject({
           status: 500,
-          message: "Failed to create backup: ENOENT: no such directory",
+          message: "Failed to create backup: bucket unreachable",
         });
+        expect(mockTenantBackup.updateStatus).toHaveBeenCalledWith(
+          mockBackupId,
+          expect.objectContaining({ status: "FAILED" }),
+          mockModels,
+        );
+        expect(storage.__objects.size).toBe(0);
       });
     });
   });
@@ -789,6 +791,44 @@ describe("Tenant Backup Service", () => {
       mockFs.existsSync.mockReturnValue(false);
 
       await expect(run()).rejects.toThrow("Backup file not found on storage");
+    });
+
+    // P8-01 (ADR-086 Amendment 1): a backup taken since the cut-over is a
+    // storage key in its tenant's storage. Its archive is read ONCE from
+    // there, checksummed and parsed from memory; nothing is read from disk.
+    describe("P8-01 — a backup in the tenant's storage", () => {
+      const storage = require("../../services/storage");
+      const KEY = `t/${mockTenantId}/backups/tenant_stored.zip`;
+
+      beforeEach(() => storage.__reset());
+
+      it("is restored from the stored bytes (checksum and archive), never from disk", async () => {
+        storage.__objects.set(KEY, { body: Buffer.from("stored zip"), contentType: "application/zip", modifiedAt: new Date() });
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup({ filePath: KEY, metadata: { checksum: "mock-checksum" } }));
+        stubArchive(archive());
+        mockFs.readFileSync.mockClear();
+        mockFs.createReadStream.mockClear();
+
+        const result = await run();
+
+        expect(result.success).toBe(true);
+        const JSZip = require("jszip");
+        const zip = JSZip.mock.results[JSZip.mock.results.length - 1].value;
+        expect(zip.loadAsync).toHaveBeenCalledWith(Buffer.from("stored zip"));
+        expect(mockFs.readFileSync).not.toHaveBeenCalled();
+        expect(mockFs.createReadStream).not.toHaveBeenCalled();
+      });
+
+      it("a stored archive that does not match its recorded checksum is the 409, and nothing is written", async () => {
+        storage.__objects.set(KEY, { body: Buffer.from("stored zip"), contentType: null, modifiedAt: new Date() });
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup({ filePath: KEY, metadata: { checksum: "another-checksum" } }));
+        await expect(run()).rejects.toMatchObject({ status: 409 });
+      });
+
+      it("a stored backup whose object is gone is the 404, as a missing file", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup({ filePath: KEY }));
+        await expect(run()).rejects.toThrow("Backup file not found on storage");
+      });
     });
 
     describe("A-120 (ADR-051 Q-09) - a restore never creates an account", () => {
@@ -1669,6 +1709,57 @@ describe("Tenant Backup Service", () => {
       // is untouched, so the backup is still whole.
       expect(mockFs.unlinkSync).not.toHaveBeenCalled();
       expect(mockAuditLog.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // P8-01 (ADR-086 Amendment 1): download, delete and the expiry sweep of a
+  // backup kept in the tenant's storage.
+  describe("P8-01 — download, delete and expiry of a stored backup", () => {
+    const storage = require("../../services/storage");
+    const KEY = `t/${mockTenantId}/backups/tenant_stored.zip`;
+    const putObject = () =>
+      storage.__objects.set(KEY, { body: Buffer.from("stored zip"), contentType: "application/zip", modifiedAt: new Date() });
+
+    beforeEach(() => storage.__reset());
+
+    it("download answers the stored object, opened in the backup's own tenant's storage", async () => {
+      putObject();
+      mockTenantBackup.findByPk.mockResolvedValue({ id: mockBackupId, tenantId: mockTenantId, status: "COMPLETED", filePath: KEY });
+      const result = await downloadBackup(mockBackupId, mockModels);
+      expect(result.data.filePath).toBe(KEY);
+      expect(result.data.object.meta.size).toBe(Buffer.from("stored zip").length);
+      expect(storage.getTenantStorage).toHaveBeenCalledWith(mockTenantId);
+    });
+
+    it("download of a stored backup whose object is gone is the 404", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue({ id: mockBackupId, tenantId: mockTenantId, status: "COMPLETED", filePath: KEY });
+      await expect(downloadBackup(mockBackupId, mockModels)).rejects.toMatchObject({ status: 404 });
+    });
+
+    it("delete removes the stored object after the commit; nothing is unlinked on disk", async () => {
+      putObject();
+      const backup = {
+        id: mockBackupId,
+        tenantId: mockTenantId,
+        status: "COMPLETED",
+        filePath: KEY,
+        update: jest.fn().mockResolvedValue({}),
+        destroy: jest.fn().mockResolvedValue({}),
+      };
+      mockTenantBackup.findByPk.mockResolvedValue(backup);
+      await deleteBackup(mockBackupId, mockUserId);
+      expect(storage.__objects.has(KEY)).toBe(false);
+      expect(mockFs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    it("the expiry sweep removes a stored backup's object, and soft-deletes the row", async () => {
+      putObject();
+      const backup = { id: mockBackupId, tenantId: mockTenantId, filePath: KEY, destroy: jest.fn().mockResolvedValue({}) };
+      mockTenantBackup.findAll.mockResolvedValue([backup]);
+      const result = await cleanupExpiredBackups();
+      expect(result.data.deletedCount).toBe(1);
+      expect(storage.__objects.has(KEY)).toBe(false);
+      expect(mockFs.unlinkSync).not.toHaveBeenCalled();
     });
   });
 });
