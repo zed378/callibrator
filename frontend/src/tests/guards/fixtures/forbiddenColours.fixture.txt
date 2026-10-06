@@ -1,0 +1,37 @@
+// P11-01 guard fixture: "<expected kind> | <sample>". "ok" samples must not be flagged.
+// Written from the forbidden forms (spec P11-00 §7.3), not from the codebase.
+hex | style={{ color: "#fff" }}
+hex | const brand = "#1d4ed8";
+hex | fill="#00DAB4CC"
+hex | stroke: '#abcd'
+fn | style={{ background: "rgb(0 0 0 / 0.5)" }}
+fn | color: rgba(255, 0, 0, 0.4)
+fn | hsl(210 40% 50%)
+fn | oklch(70% 0.1 30)
+palette | className="bg-amber-500/15 text-amber-700"
+palette | className="border-t-indigo-600"
+palette | className="hover:text-emerald-600"
+palette | className="from-slate-50 to-gray-900"
+palette | className="accent-red-500"
+palette | className="ring-offset-sky-200"
+wb | className="fixed inset-0 bg-black/50"
+wb | className="text-white"
+wb | className="border-2 border-white"
+wb | className="after:bg-white"
+wb | className="via-white/20"
+arbitrary | className="bg-[#123]"
+arbitrary | className="text-[rgb(1,2,3)]"
+arbitrary | className="border-[color:var(--x)]"
+dark | className="dark:text-amber-300"
+dark | className="dark:hover:bg-primary/20"
+dark | className="dark:shadow-black/40"
+faded | className="text-muted-foreground/70"
+faded | className="text-foreground/80"
+faded | className="text-primary-foreground/90"
+ok | className="bg-primary/10 text-primary border-input"
+ok | className="text-muted-foreground bg-muted/50 hover:bg-surface-hover"
+ok | className="bg-neutral text-neutral-foreground bg-status-alarm"
+ok | href="#main-content"
+ok | className="bg-scrim dark:opacity-80"
+ok | className="fill-chart-1 stroke-chart-2"
+ok | const re = /^#[0-9a-fA-F]{6}$/;

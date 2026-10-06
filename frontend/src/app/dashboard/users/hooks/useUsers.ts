@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { User, Role, Tenant } from "@/types";
 import { userService } from "@/api/services/user.service";
 import { menuGroupRoleService } from "@/api/services/menuGroupRole.service";
+import { toneOf, type StatusTone } from "@/lib/statusTone";
 
 export const initialCreateForm = {
   firstName: "",
@@ -305,20 +306,8 @@ export function useUsers() {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "ACTIVE":
-        return "success";
-      case "INACTIVE":
-        return "default";
-      case "SUSPENDED":
-        return "danger";
-      case "PENDING":
-        return "warning";
-      default:
-        return "default";
-    }
-  };
+  // ADR-122 (P11-05): a user's status tone comes from the one registry.
+  const getStatusColor = (status: string): StatusTone => toneOf("user", status);
 
   // Only a super admin may assign the SUPER_ADMIN role, so hide that option
   // from the role dropdown for everyone else (mirrors the backend guard).

@@ -1,8 +1,9 @@
 import React from "react";
-import { Device, DeviceStatus } from "@/api/services/device.service";
+import { Device } from "@/api/services/device.service";
 import { PaginatedResponse } from "@/types";
 import { Card, CardContent, TableSkeleton, Table, Badge, Button, Pagination } from "@/components/ui";
 import { ClipboardList, Calendar, Edit, Trash2, Radio } from "lucide-react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface DevicesTableProps {
   devices: PaginatedResponse<Device> | null;
@@ -34,15 +35,8 @@ export const DevicesTable: React.FC<DevicesTableProps> = ({
   loadFailed = false,
 }) => {
   const getStatusBadge = (status: Device["status"]) => {
-    const maps = {
-      active: { variant: "success" as const, label: "Active" },
-      inactive: { variant: "secondary" as const, label: "Inactive" },
-      maintenance: { variant: "warning" as const, label: "Maintenance" },
-      retired: { variant: "danger" as const, label: "Retired" },
-    };
-    // A null status (the column is nullable) reads no entry and falls back, as before.
-    const current = maps[status as DeviceStatus] || { variant: "secondary" as const, label: status };
-    return <Badge variant={current.variant}>{current.label}</Badge>;
+// A null status (the column is nullable) shows an empty draft badge, as before it fell back.
+    return <StatusBadge domain="device" state={status} />;
   };
 
   const columns = [

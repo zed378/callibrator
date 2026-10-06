@@ -9,7 +9,7 @@ const statConfig = (color: string) => {
     green: "bg-success/10 border-success/30/50",
     red: "bg-destructive/10 border-destructive/30",
     blue: "bg-info/10 border-info/30",
-    purple: "bg-accent/10 border-accent/30/50",
+    purple: "bg-chart-4/10 border-chart-4/30",
   };
   return map[color] || map.blue;
 };
@@ -19,7 +19,7 @@ const iconConfig = (color: string) => {
     green: { iconBg: "bg-success/10", icon: "text-success", text: "text-muted-foreground" },
     red: { iconBg: "bg-destructive/10", icon: "text-destructive", text: "text-muted-foreground" },
     blue: { iconBg: "bg-info/10", icon: "text-info", text: "text-muted-foreground" },
-    purple: { iconBg: "bg-accent/10", icon: "text-accent", text: "text-muted-foreground" },
+    purple: { iconBg: "bg-chart-4/10", icon: "text-chart-4", text: "text-muted-foreground" },
   };
   return map[color] || map.blue;
 };

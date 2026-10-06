@@ -66,15 +66,25 @@ describe("TopBar", () => {
     expect(toggle).toHaveBeenCalledTimes(1);
   });
 
-  it("the theme switch toggles dark mode and remembers it", () => {
+  // ADR-122 (P11-02, spec D11): a two-state switch named "Dark mode" that
+  // reports its state with aria-pressed (it used to rename itself "Switch to
+  // dark/light mode" and had no pressed state), 40 px, beside the bell.
+  it("the theme switch toggles dark mode, reports it pressed, and remembers it", () => {
     localStorage.removeItem("hdc-theme-preference");
     renderAt("/dashboard");
 
-    fireEvent.click(screen.getByRole("button", { name: "Switch to dark mode" }));
+    const toggle = screen.getByRole("button", { name: "Dark mode" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle.className).toMatch(/\bh-10\b/);
+    expect(toggle.className).toMatch(/\bw-10\b/);
+    expect(toggle.innerHTML).not.toMatch(/text-warning/);
+
+    fireEvent.click(toggle);
 
     expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement.getAttribute("data-theme-choice")).toBe("dark");
     expect(localStorage.getItem("hdc-theme-preference")).toBe("dark");
-    expect(screen.getByRole("button", { name: "Switch to light mode" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dark mode" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("with no user the avatar is labelled generically", () => {

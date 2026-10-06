@@ -15,6 +15,8 @@ The verification page is held to a higher standard than the rest, because it is 
 | UI components, graphical objects | 3:1 |
 | Focus indicator | 3:1 against adjacent colours |
 | **Both themes checked** | a pair that passes in light and fails in dark is a failure |
+| **Control boundaries are 3:1** | an input, checkbox or toggle outline uses `--input` / `--border-strong` (≥ 3:1 on page, card and muted), never the decorative `--border` — [ADR-122](../../MEMORY/DECISIONS.md) (it was 1.23:1 until P11-01) |
+| **Status is shape and icon, then colour** | every status badge has a tone with its own shape and icon (`08-COLOR-SYSTEM.md` "Status Tones", ADR-122) |
 | **Tokens pass on their own tints** | a status colour is 4.5:1 as text on its `/10` (and, light, `/15`) tint, and its foreground is 4.5:1 on the solid — [ADR-090](../../MEMORY/DECISIONS.md) |
 
 ### Never colour alone

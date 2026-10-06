@@ -9792,4 +9792,102 @@ Accept the tightening without a deprecation period.
 
 ---
 
+## ADR-122: The Dashboard Follows the Warm Palette; One Theme Default and Write Path; Status Tones Carry Shape and Icon
+
+**Date:** 2026-10-06 · **Status:** Accepted — the four direction answers are the **owner's own** (2026-10-06, all four recommended options, asked as multiple choice by the coordinating session); the mechanics (exact values, the tone grammar, the guard, the toggle's form) are decided by the Phase 11 implementation agent under the owner's delegation and recorded here · **Cards:** P11-01 … P11-07 · **Spec:** `MEMORY/specs/P11-00-dashboard-palette-theme.md` · **Amends:** ADR-090 (token values; the contrast rule is kept and extended), ADR-118 Amendment 3 §1 ("the dashboard keeps its light-unless-chosen default"), doc 00 "Theme", doc 08 (brand, public palette, tokens, status tones), doc 17 (control boundaries) · **Record:** `MEMORY/records/2026-10-06-p11-palette-theme.md`
+
+### Context
+
+The public surfaces turned warm on 2026-10-05 (ADR-118: ivory, charcoal, copper, verified teal) and gained a warm dark mode (Am. 3); the logo followed (Am. 2). The dashboard stayed slate grey with trust-blue `#1d4ed8` and clinical cyan `#155e75` (ADR-090). A user signing in from the warm landing arrived in a different, cold product, whose only warm element was the logo.
+
+The owner asked (2026-10-05) for the dashboard to follow the palette and for a light/dark button on both surfaces. Both buttons existed but disagreed: the dashboard defaulted to light while the public pages followed the system, and a choice made in the dashboard did not write `data-theme-choice`, so a client-side navigation to `/` showed the wrong theme until a reload (spec P11-00 §3.5, D9–D11). The audit also found eight existing accessibility defects (D1–D8): inputs, a heading and a dropdown unreadable in one theme, input boundaries at 1.23:1, kanban chart colours under 3:1, white text on grey label chips, a faded timestamp and an impersonation banner just under 4.5:1.
+
+The owner answered the spec's four questions on 2026-10-06:
+
+| | Answer |
+|---|---|
+| Q1 How warm | **A — warm neutral**: off-white warm page, paper cards, charcoal text |
+| Q2 Primary action | **A — copper** (`#9A4E22` light / `#E3A47B` dark), the landing's CTA colour |
+| Q3 Charts | **A — a warm, colour-blind-checked categorical set**; status charts keep status colours; direct labels |
+| Q4 Theme before a choice | **A — follow the device** until the user chooses; the choice carries both ways; a "use device setting" reset |
+
+### Decision
+
+1. **Token values change; token names do not.** `frontend/src/app/globals.css` `:root` / `.dark` carry the spec §4.2 values. The 2,643 existing semantic-class uses recolour without an edit.
+
+   | Token | Light | Dark |
+   |---|---|---|
+   | `--background` | `#FAF8F5` | `#191613` |
+   | `--card` | `#FFFDF9` | `#23201C` |
+   | `--popover` | `#FFFDF9` | `#2B2722` |
+   | `--muted` / `--secondary` | `#F2EEE8` | `#2B2722` / `#2F2A25` |
+   | `--foreground` | `#1F1B17` | `#EFE9E1` |
+   | `--muted-foreground` | `#5E554C` | `#B8AEA2` |
+   | `--border` (decorative) | `#E4DED5` | `#3A342E` |
+   | `--input` (control boundary) | `#8F8273` | `#7D7266` |
+   | `--primary` / `-foreground` | `#9A4E22` / `#FFFDF9` | `#E3A47B` / `#1A1511` |
+   | `--accent` = `--success` | `#0E5A52` / `#FFFDF9` | `#7CCFC0` / `#10201D` |
+   | `--warning` | `#7A5700` / `#FFFDF9` | `#E2BC5A` / `#1F1A0B` |
+   | `--destructive` | `#A1282C` / `#FFFDF9` | `#F49393` / `#2A0E0E` |
+   | `--info` | `#2F5B8A` / `#FFFDF9` | `#8DB8E8` / `#0D1B2A` |
+
+   Measured (WCAG 2.x, recomputed from the CSS by `a11y.adr090.test.tsx`): every status/primary token as text min ≥ 4.58 light (copper on its `/15` tint over the page, the tightest) and ≥ 5.52 dark; fill text ≥ 5.93 light, ≥ 8.09 dark; `--input` 3.53 / 3.69 / 3.24 on page / card / muted (light), 3.84 / 3.45 / 3.16 (dark) — D4 fixed; focus ring (= primary) ≥ 5.06 light, ≥ 6.31 dark on page, card, muted and selected.
+
+2. **New tokens, additive**, each with a `--color-*` mapping: `surface-hover`, `surface-selected`, `sidebar`, `border-strong` (= `--input`), `neutral` / `-foreground` (the grey "draft / inactive" status, which had no token), the domain aliases `status-current|attention|alarm|draft|info` (consumed only by the status-tone registry), `chart-1…5` (copper, blue, green-teal, plum, ochre — each ≥ 4.67:1 on card and page light, ≥ 7.32 dark), `scrim` (the modal backdrop), and `primary-hover` / `primary-pressed` (fill text 7.55 / 9.50 light, 10.24 / 12.05 dark), which replace `hover:bg-primary/90` (that lightened copper towards the page).
+3. **`--accent` stops being a second brand colour.** It becomes the verified teal (= success). Its uses are reviewed one by one: "certificate / verified / signed" keeps `accent`; every other use moves to `primary`, a `--chart-n`, or neutral. The list is in the record.
+4. **Tenant branding still overrides `--primary`** (ADR-090 amendment, unchanged). `lib/brandColor.ts` `THEME_SURFACES` mirrors the new page/card/muted, and `brandColor.test.ts` fails on drift. A tenant brand never reaches `--status-*` or a badge.
+5. **One theme mechanism, one default, one write path.**
+   - `ThemeContext` writes through `applyTheme` (exported by `PublicThemeToggle.tsx`): `.dark`, `data-theme-choice` and `localStorage` `hdc-theme-preference`, then one event. It subscribes to that event (`useSyncExternalStore`), so a choice on a public island, in another tab (`storage` event) or a system change is reflected.
+   - With no choice stored, **both surfaces follow `prefers-color-scheme`** (Q4-A). The nonce'd init script sets `.dark` from the system preference when nothing is stored, so the dashboard paints the right theme first; it also follows a system change while no choice exists.
+   - `clearThemeChoice()` removes the stored choice and `data-theme-choice` and returns to the device setting. It is offered as "Use device setting" in the top-bar user dropdown (the only user menu the dashboard has; the full user menu is P11-10).
+   - The dashboard `ThemeToggle` stays in the `TopBar` beside the notification bell at every width, becomes 40 × 40 px (the dense chrome's control height; the public toggle stays 44), carries `aria-pressed` and the accessible name "Dark mode" (the dashboard is English until P11-08), and its glyph no longer uses `text-warning` (a status colour is never decoration).
+   - Unchanged: the storage key, `ThemeInitScript`, the nonce, and the rule that public pages mount no client providers (ADR-098 Am. 2).
+6. **Status tones carry shape and icon, not colour alone.** One registry, `lib/statusTone.ts`, maps each domain state to one of five tones; `Badge` renders the tone's shape and icon with the label:
+
+   | Tone | Token | Shape | Icon |
+   |---|---|---|---|
+   | alarm | `--status-alarm` | solid fill | `octagon-alert` |
+   | attention | `--status-attention` | `/10` tint + `/40` border | `triangle-alert` |
+   | current | `--status-current` | `/10` tint, no border | `circle-check` |
+   | draft | `--status-draft` | transparent, dashed border | `circle-dashed` |
+   | info | `--status-info` | `/10` tint | `info` |
+
+   Overdue / non-conformant / failed / revoked are the only alarm. Kanban priority is not a status: it is a copper ramp with labels. Copper never appears in a badge.
+7. **Charts:** categorical series use `--chart-1…5`, status series use `--status-*`, direct labels always, at most five colour series.
+8. **A guard keeps it so.** `frontend/src/tests/guards/dashboardColours.p1101.guard.test.ts` scans `app/dashboard/**`, `components/{layouts,ui,editor,errors,icons,motion}`, `AccessDeniedModal`, `ThemeToggle` and `TenantBrandingProvider` (non-test `.ts`/`.tsx`) for hex literals, `rgb()`/`hsl()`/`oklch()`, Tailwind palette classes, `white`/`black` colour utilities, arbitrary colour values, `dark:` colour variants and faded `text-*foreground/NN`. It shipped in P11-01 as a per-file ratchet seeded with the counts of that day, and ends at **zero outside a reviewed allow-list** (`constants/colourExemptions.ts`: file, literal, reason — user-chosen data colours and the MFA QR's white ground). A fixture with one of each forbidden form proves each pattern fails.
+
+### Alternatives considered
+
+- **Q1-B, full public warmth** (ivory `#FBF7F0` page, cream `#F4ECDF` panels). Copper on its `/15` tint over cream is 4.19:1 and fails AA; the primary would have had to darken to about `#8E471F`, no longer the landing's copper, and the yellow cast muddies status tints in dense tables.
+- **Q1-C, cool slate kept**, only the primary and the logo copper. Cheapest; copper still passes (5.76 on `#f8fafc`). Rejected by the owner: two visual systems one click apart.
+- **Q2-B, dark teal primary.** Teal is the "verified / compliant" marker; every button would read as a status (ΔE 0 to success by construction).
+- **Q2-C, charcoal primary, copper for links and focus.** No status collision (ΔE ≥ 19), but less warm and heavier buttons.
+- **Q3-B, status colours and greys only** — multi-series charts become grey on grey. **Q3-C, unchanged** — leaves the one cold element and three kanban colours under 3:1 (D5).
+- **Q4-B, light until chosen everywhere** — ignores a stated device preference and changes the landing ADR-118 Am. 3 just shipped. **Q4-C, dark dashboard until chosen** — the one surface that disagrees.
+- **A `color-mix()` hover instead of named hover/pressed tokens.** Unverifiable by the contrast test, which reads hex literals; named tokens are pinned.
+- **An ESLint rule instead of a jest guard.** Brittle over template-literal class strings; the jest scan is the gate, an ESLint rule may follow.
+- **A three-state (light / dark / system) toggle in the top bar.** Rejected: the button stays a two-state switch with `aria-pressed`, matching the public one; the "system" state is the reset item in the user dropdown.
+
+### Implications, including the bad ones
+
+- **Copper sits near warning and alarm under red-green colour blindness** (simulated deutan ΔE 7 to attention, 9 to alarm; current~draft deutan 7). No palette with a warm accent and AA text separates these by hue alone, so shape, icon and text carry status (§6). A screen that shows status as colour without a badge is a defect under this ADR.
+- **Every tenant without a brand colour gets copper buttons.** Tenants with a brand keep their colour, derived per theme against the new surfaces.
+- **Copper now lives in three places**: the logo SVGs, `public-surface.css` and `globals.css` (`--primary`, `--logo-accent`, `--chart-1`). A palette change touches all three; the p1017 and adr090 tests pin the tokens.
+- **The first paint for an unchosen visitor on a dark-preference device is now dark on the dashboard** — a behaviour change for every existing user who never pressed the toggle. Their next visit simply follows the device; one press restores light, and is remembered.
+- Screenshots in `docs/` and the landing's product shots show the old slate dashboard until re-captured.
+- `--warning` departs from the public `#8A5300` (hue 36°, too close to copper's 22° next to copper buttons all day) to `#7A5700` / `#E2BC5A` (hue 43°). The two surfaces' warning hues now differ slightly.
+- The colour allow-list is a place where shortcuts hide; growing it to pass the guard is an abuse case (spec §9), and each entry carries its reason.
+
+### As built (P11-01 … P11-07, 2026-10-06) — what the implementation added or decided beyond the spec
+
+- **Two more additive tokens.** `--scrim-foreground` (`#FFFDF9` in both themes): the ink of a control laid on a scrim over a user's photograph (avatar upload, cover-image remove, attachment remove). The scrim is dark in both themes, so a theme token like `--primary-foreground` (dark in dark mode) would vanish there; pinned ≥ 3:1 even over a white photo. `--priority-urgent|high|medium|low|none`: the kanban/ticket priority ramp (copper, urgent strongest; ≥ 3:1 on card, page and muted in both themes, monotone), independent of the tenant brand.
+- **Tenant brand hover/pressed.** `lib/brandColor.ts` also derives `--brand-primary-hover|pressed-{light,dark}` (6 % and 12 % further in the theme's direction, kept only if the foreground gains contrast), so a branded tenant's buttons are not copper on hover.
+- **"Use device setting" lives on the profile page** (an "Appearance" card), as spec §6 item 2 allows: the dashboard has no user menu (`UserDropdown.tsx` exists but nothing renders it), and building one is P11-10.
+- **The tone table's judgement calls** (all pinned in `lib/statusTone.test.ts`): device `retired` draft (was danger); user and tenant `SUSPENDED` attention (was danger); API key `expired` draft, `revoked` alarm; session current info, revoked/expired draft; invoice `Uncollectible` and subscription `Unpaid` alarm (a failed payment); supplier `DISQUALIFIED` and QMS `CAPA_REQUIRED` alarm (non-conformant); access request `spam`/`rejected` draft; e-signature `expired`/`cancelled` draft.
+- **Kanban and ticket priority chips** are neutral chips with a ramp dot (`lib/priority.ts`); text on a user-chosen kanban colour is picked by contrast (`lib/readableOn.ts`, charcoal or paper).
+- **Defects found during the sweep, beyond D1–D11:** the home "Users" panel drew `text-white` initials on a `/20` copper tint (fixed to `text-primary` on `/10`); `SessionRow` used two non-existent classes (`text-foreground0/20`, `bg-muted0/10`), so its revoked badge had no colour (now the registry); `SearchableDropdown` (D3) and `UserDropdown` are not rendered anywhere — fixed anyway, since the guard covers them.
+- **Not changed (out of the dashboard scope):** `app/not-found.tsx`, `app/oauth/consent` and `app/sso-callback` still blend `from-primary to-accent`; they are outside the guard's tree and were left for the owner's later cards.
+
+---
+
 End of ADRs. Update this document as new decisions are made, and record a deviation as an ADR rather than editing a `docs/` document quietly.

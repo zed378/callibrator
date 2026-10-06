@@ -68,7 +68,7 @@ export const EditModal: React.FC<EditModalProps> = ({
   if (!show || !user) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-scrim flex items-center justify-center z-50 p-4">
       <div
         ref={panelRef}
         role="dialog"
@@ -135,10 +135,10 @@ export const EditModal: React.FC<EditModalProps> = ({
                       height={64}
                       className="w-16 h-16 rounded-full object-cover border-2 border-primary/50"
                     />
-                    <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="absolute inset-0 rounded-full bg-scrim opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center justify-center">
                       <button
                         type="button"
-                        className="bg-white rounded-full p-1.5 shadow-lg hover:bg-muted transition-colors"
+                        className="bg-card rounded-full p-1.5 shadow-lg hover:bg-surface-hover transition-colors"
                         onClick={onClearPicture}
                         aria-label="Remove photo"
                       >

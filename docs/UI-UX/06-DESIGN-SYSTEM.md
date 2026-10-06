@@ -81,7 +81,7 @@ One table component enforces that. A screen that invents its own list shape will
 
 ## Status Presentation
 
-Every domain state that appears in the product is a `Badge` with a semantic token:
+Every domain state that appears in the product is a `Badge` with a **tone** from the one registry, `frontend/src/lib/statusTone.ts` (ADR-122): `<StatusBadge domain state />` or `<Badge tone={toneOf(domain, state)}>`. A tone is a shape and an icon as well as a colour — see [`08-COLOR-SYSTEM.md`](./08-COLOR-SYSTEM.md) "Status Tones". A page does not keep its own status→colour map; `Badge variant` is for non-status chips (scopes, counts, tags).
 
 | Domain | States |
 |---|---|

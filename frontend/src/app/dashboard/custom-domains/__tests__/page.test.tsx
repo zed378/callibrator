@@ -118,9 +118,10 @@ describe("custom domains — reading", () => {
   it("colours a live domain as success, a pending one as a warning and a failed one as danger", async () => {
     await renderLoaded();
 
-    expect(within(rowOf("portal.example.com")).getByText("active")).toHaveClass("text-success");
-    expect(within(rowOf("clinic.example.com")).getByText("pending_verification")).toHaveClass("text-warning");
-    expect(within(rowOf("old.example.com")).getByText("verification_failed")).toHaveClass("text-destructive");
+    // ADR-122 (P11-05): tones from lib/statusTone.ts (shape + icon + colour).
+    expect(within(rowOf("portal.example.com")).getByText("active")).toHaveAttribute("data-tone", "current");
+    expect(within(rowOf("clinic.example.com")).getByText("pending_verification")).toHaveAttribute("data-tone", "attention");
+    expect(within(rowOf("old.example.com")).getByText("verification_failed")).toHaveAttribute("data-tone", "alarm");
   });
 
   it("no domains is the empty state", async () => {

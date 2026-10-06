@@ -8,7 +8,6 @@ import {
   Input,
   Card,
   CardContent,
-  Badge,
   Alert,
   Table,
   TableSkeleton,
@@ -16,15 +15,13 @@ import {
 import { CalendarClock, Play, RefreshCw } from "lucide-react";
 import { useScheduler } from "./hooks/useScheduler";
 import { DueDevice } from "@/api/services/calibrationScheduler.service";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 const passthrough = (value: unknown) => value as React.ReactNode;
 
-const getStatusBadge = (device: DueDevice) =>
-  device.overdue ? (
-    <Badge variant="danger">Overdue</Badge>
-  ) : (
-    <Badge variant="warning">Due soon</Badge>
-  );
+const getStatusBadge = (device: DueDevice) => (
+  <StatusBadge domain="calibrationDue" state={device.overdue ? "overdue" : "due_soon"} />
+);
 
 export default function CalibrationSchedulerPage() {
   const {

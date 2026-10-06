@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui";
 import { Button } from "@/components/ui";
 import { HardDrive, Edit2, Trash2, Shield, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toneOf } from "@/lib/statusTone";
 
 interface TenantCardProps {
   tenant: Tenant;
@@ -24,16 +25,6 @@ interface TenantCardProps {
  * switch on ACTIVE / INACTIVE / SUSPENDED, which no answer carries, so every
  * badge fell to the default. There is no "inactive" tenant status.
  */
-const getStatusVariant = (status: Tenant["status"]): "success" | "danger" | "default" => {
-  switch (status) {
-    case "active":
-      return "success";
-    case "suspended":
-      return "danger";
-    default:
-      return "default";
-  }
-};
 
 export const TenantCard: React.FC<TenantCardProps> = ({
   tenant,
@@ -66,7 +57,7 @@ export const TenantCard: React.FC<TenantCardProps> = ({
               </p>
             </div>
           </div>
-          <Badge variant={getStatusVariant(tenant.status)} size="sm">
+          <Badge tone={toneOf("tenant", tenant.status)} size="sm">
             {tenant.status}
           </Badge>
         </div>

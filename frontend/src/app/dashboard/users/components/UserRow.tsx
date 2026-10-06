@@ -13,6 +13,7 @@ import { useToastStore } from "@/stores/toastStore";
 import { useUserStore } from "@/stores/userStore";
 import { CredentialResetActions } from "./CredentialResetActions";
 import { usePermissions } from "@/hooks/usePermissions";
+import type { StatusTone } from "@/lib/statusTone";
 
 
 interface UserRowProps {
@@ -35,11 +36,7 @@ export const UserRow: React.FC<UserRowProps> = ({
   getStatusColor,
 }) => {
   const status = user.status ?? "ACTIVE";
-  const variant = getStatusColor(status) as
-    | "default"
-    | "success"
-    | "warning"
-    | "danger";
+  const tone = getStatusColor(status) as StatusTone;
   const [imgFailed, setImgFailed] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
 
@@ -92,7 +89,7 @@ export const UserRow: React.FC<UserRowProps> = ({
         <div className="flex items-center gap-3">
           {/* shrink-0 keeps the avatar at a fixed size — without it a long
               email in this fixed-width column squeezes the circle to zero. */}
-          <div className="w-10 h-10 shrink-0 rounded-full bg-linear-to-br from-primary to-accent flex items-center justify-center text-primary-foreground font-bold shadow-lg shadow-primary/20 overflow-hidden">
+          <div className="w-10 h-10 shrink-0 rounded-full bg-linear-to-br from-primary to-primary-hover flex items-center justify-center text-primary-foreground font-bold shadow-lg shadow-primary/20 overflow-hidden">
             {!imgFailed ? (
               <Img
                 {...avatarImageProps(user.picture)}
@@ -133,7 +130,7 @@ export const UserRow: React.FC<UserRowProps> = ({
         </div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
-        <Badge variant={variant} size="sm">
+        <Badge tone={tone} size="sm">
           {status}
         </Badge>
       </td>

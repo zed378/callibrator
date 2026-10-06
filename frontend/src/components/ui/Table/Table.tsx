@@ -39,7 +39,10 @@ export const Table: React.FC<TableProps> = ({
   emptyMessage = "No data available",
 }) => {
   return (
-    <div className="overflow-x-auto w-full rounded-2xl bg-card shadow-xs">
+    // P11-07: at 360 px the table scrolls sideways; a keyboard user must be
+    // able to reach and scroll it even when no cell holds a control (axe
+    // scrollable-region-focusable, WCAG 2.1.1 — found by automate/p11.browser.mts).
+    <div tabIndex={0} className="overflow-x-auto w-full rounded-2xl bg-card shadow-xs">
       <table className="w-full table-fixed border-collapse">
         <thead className="bg-muted border-b border-border">
           <tr>
@@ -64,7 +67,7 @@ export const Table: React.FC<TableProps> = ({
             <tr>
               <td colSpan={columns.length} className="px-6 py-16 text-center">
                 <div className="flex flex-col items-center justify-center gap-3">
-                  <div className="w-9 h-9 border-t-4 border-transparent border-t-indigo-600 rounded-full animate-spin"></div>
+                  <div className="w-9 h-9 border-t-4 border-transparent border-t-primary rounded-full animate-spin"></div>
                   <p className="text-sm font-medium text-muted-foreground animate-pulse">
                     Loading data...
                   </p>

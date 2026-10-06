@@ -19,26 +19,11 @@ import { Download, Play, RefreshCw } from "lucide-react";
 import { batchJobService, type BatchJob } from "@/api/services/batchJob.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toneOf } from "@/lib/statusTone";
 
 const PAGE_SIZE = 10;
 const POLL_MS = 5000;
 
-const statusVariant = (
-  s: string,
-): "default" | "info" | "success" | "warning" | "danger" => {
-  switch (s) {
-    case "COMPLETED":
-      return "success";
-    case "PROCESSING":
-      return "info";
-    case "PENDING":
-      return "warning";
-    case "FAILED":
-      return "danger";
-    default:
-      return "default";
-  }
-};
 
 const fmt = (v?: string) => (v ? new Date(v).toLocaleString() : "—");
 
@@ -133,7 +118,7 @@ export default function BatchJobsPage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant={statusVariant(String(value))} size="sm">
+        <Badge tone={toneOf("job", String(value))} size="sm">
           {String(value ?? "")}
         </Badge>
       ),

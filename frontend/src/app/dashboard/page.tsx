@@ -88,7 +88,7 @@ export default function DashboardPage() {
         {/* Hero Section */}
         <div className="relative">
           <div className="rounded-3xl p-8 border overflow-hidden border-border bg-card shadow-sm">
-            <div className="absolute top-0 right-0 w-80 h-80 bg-linear-to-br from-primary/10 to-accent/10 rounded-full blur-3xl hidden dark:block" />
+            <div className="absolute top-0 right-0 w-80 h-80 bg-linear-to-br from-primary/10 to-primary/5 rounded-full blur-3xl hidden dark:block" />
             <div className="absolute bottom-0 left-1/2 w-60 h-60 bg-linear-to-tr from-info/10 to-info/10 rounded-full blur-3xl hidden dark:block" />
             <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
               <div>

@@ -25,6 +25,7 @@ import {
 import type { PaginatedResponse } from "@/types";
 import CategoriesDialog from "./components/CategoriesDialog";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toneOf } from "@/lib/statusTone";
 
 const TYPE_FILTER = [
   { value: "", label: "All types" },
@@ -38,8 +39,6 @@ const STATUS_FILTER = [
   { value: "ARCHIVED", label: "Archived" },
 ];
 
-const statusVariant = (s: PostStatus): "success" | "warning" | "default" =>
-  s === "PUBLISHED" ? "success" : s === "DRAFT" ? "warning" : "default";
 
 export default function ContentPage() {
   // ADR-102: posts and categories are written on `content` write
@@ -174,7 +173,7 @@ export default function ContentPage() {
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant={statusVariant(p.status)} size="sm">
+                        <Badge tone={toneOf("post", p.status)} size="sm">
                           {p.status}
                         </Badge>
                       </td>

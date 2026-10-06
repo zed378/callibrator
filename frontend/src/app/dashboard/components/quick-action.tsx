@@ -26,11 +26,11 @@ const QuickAction: React.FC<{
       } border border-border bg-card shadow-sm hover:shadow-md hover:border-primary/30`}
     >
       <div
-        className={`w-12 h-12 ${color} rounded-xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-none dark:shadow-lg`}
+        className={`w-12 h-12 ${color} rounded-xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}
       >
         {icon}
       </div>
-      <span className="text-sm font-medium group-hover:transition-colors duration-300 text-muted-foreground group-hover:text-foreground/80">
+      <span className="text-sm font-medium group-hover:transition-colors duration-300 text-muted-foreground group-hover:text-foreground">
         {label}
       </span>
     </Button>

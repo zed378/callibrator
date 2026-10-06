@@ -149,8 +149,10 @@ describe("tenants page — list states and scope", () => {
 
     const stat = (label: string) => screen.getByText(label, { selector: "p" }).nextElementSibling?.textContent;
     expect([stat("Total Tenants"), stat("Active"), stat("Suspended")]).toEqual(["2", "1", "1"]);
-    expect(screen.getByText("active").className).toContain("text-success");
-    expect(screen.getByText("suspended").className).toContain("text-destructive");
+    // ADR-122 (P11-05): the tone comes from lib/statusTone.ts; a suspended
+    // tenant is attention (alarm is only overdue/non-conformant/failed/revoked).
+    expect(screen.getByText("active")).toHaveAttribute("data-tone", "current");
+    expect(screen.getByText("suspended")).toHaveAttribute("data-tone", "attention");
   });
 
   it("a tenant admin reads only their own tenant, and gets no create or delete control", async () => {

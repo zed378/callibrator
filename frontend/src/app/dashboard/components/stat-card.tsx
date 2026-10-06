@@ -3,6 +3,17 @@
 import React, { useEffect, useState } from "react";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 
+const TOP_GRADIENT: Record<string, string> = {
+  "text-primary": "from-primary to-primary",
+  "text-accent": "from-accent to-accent",
+  "text-success": "from-success to-success",
+  "text-warning": "from-warning to-warning",
+  "text-destructive": "from-destructive to-destructive",
+  "text-chart-2": "from-chart-2 to-chart-2",
+  "text-chart-3": "from-chart-3 to-chart-3",
+  "text-chart-4": "from-chart-4 to-chart-4",
+};
+
 const StatCard: React.FC<{
   title: string;
   value: number | string;
@@ -33,14 +44,10 @@ const StatCard: React.FC<{
     return () => clearTimeout(timer);
   }, [delay]);
 
-  const topGradient =
-    color === "text-primary"
-      ? "from-primary to-accent"
-      : color === "text-success"
-        ? "from-success to-success"
-        : color === "text-accent"
-          ? "from-accent to-accent"
-          : "from-info to-info";
+  // ADR-122: one colour per tile (the copper-to-teal blend made the brand
+  // accent read as a second brand colour). Literal class names, so Tailwind
+  // generates them.
+  const topGradient = TOP_GRADIENT[color] ?? "from-info to-info";
 
   return (
     <div
@@ -92,7 +99,7 @@ const StatCard: React.FC<{
           )}
         </div>
         <div
-          className={`absolute inset-0 bg-linear-to-r from-transparent via-white/[0.02] to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 hidden lg:block`}
+          className={`absolute inset-0 bg-linear-to-r from-transparent via-card/[0.04] to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 hidden lg:block`}
         />
       </div>
     </div>

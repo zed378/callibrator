@@ -3,7 +3,6 @@ import React from "react";
 import {
   Webhook,
   WebhookDelivery,
-  WebhookDeliveryStatus,
 } from "@/api/services/webhook.service";
 import {
   Card,
@@ -17,6 +16,7 @@ import {
 } from "@/components/ui";
 import { Inbox, X } from "lucide-react";
 import { PaginatedResponse } from "@/types";
+import { toneOf } from "@/lib/statusTone";
 
 interface DeliveriesPanelProps {
   webhook: Webhook;
@@ -30,15 +30,6 @@ interface DeliveriesPanelProps {
 
 const asNode = (value: unknown) => value as React.ReactNode;
 
-const statusVariant: Record<
-  WebhookDeliveryStatus,
-  "success" | "warning" | "danger"
-> = {
-  success: "success",
-  pending: "warning",
-  failed: "danger",
-  exhausted: "danger",
-};
 
 export const DeliveriesPanel: React.FC<DeliveriesPanelProps> = ({
   webhook,
@@ -114,7 +105,7 @@ export const DeliveriesPanel: React.FC<DeliveriesPanelProps> = ({
                 ),
                 status: (
                   <Badge
-                    variant={statusVariant[delivery.status] || "danger"}
+                    tone={toneOf("webhookDelivery", delivery.status)}
                     size="sm"
                   >
                     {delivery.status}

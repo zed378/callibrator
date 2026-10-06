@@ -36,11 +36,13 @@ Rendering an empty table when the request failed is a lie about a compliance fig
 
 ## StatusBadge
 
-**Contract:** takes a domain and a state; resolves the semantic token and the label.
+**Contract:** takes a domain and a state; resolves the tone and the label from `lib/statusTone.ts` (as built: `components/ui/StatusBadge.tsx`, ADR-122).
 
 **Rules**
 
 - **always carries text.** A coloured dot is not a status ([`08-COLOR-SYSTEM.md`](./08-COLOR-SYSTEM.md))
+- **the tone is a shape and an icon too**: alarm solid + octagon, attention tinted with a border + triangle, current tinted + check, draft dashed outline + dashed circle, info tinted + info. Colour is the third channel (08 "Status Tones")
+- alarm only for overdue, non-conformant, failed and revoked; copper (the primary) and the tenant brand never appear in a badge
 - domain-aware: `pending` means different things for a transfer and a certificate
 - computed states are supported — **overdue is derived from `nextCalibrationDate`**, not read from a column
 

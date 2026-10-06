@@ -27,6 +27,7 @@ import {
 import { vendorService, type Vendor } from "@/api/services/vendor.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { toneOf } from "@/lib/statusTone";
 
 const STATUS_OPTIONS = [
   { value: "APPROVED", label: "Approved" },
@@ -48,20 +49,6 @@ const emptyForm: SupplierScorecardCreateInput = {
 const scoreVariant = (score: number): "success" | "warning" | "danger" =>
   score >= 80 ? "success" : score >= 60 ? "warning" : "danger";
 
-const statusVariant = (
-  status: string,
-): "success" | "warning" | "danger" | "default" => {
-  switch (status) {
-    case "APPROVED":
-      return "success";
-    case "PROBATION":
-      return "warning";
-    case "DISQUALIFIED":
-      return "danger";
-    default:
-      return "default";
-  }
-};
 
 /** Average of the three sub-scores — mirrors the backend's virtual overallScore. */
 const computeOverall = (f: SupplierScorecardCreateInput): number =>
@@ -256,7 +243,7 @@ export default function SupplierScorecardPage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant={statusVariant(String(value ?? ""))} size="sm">
+        <Badge tone={toneOf("supplier", String(value ?? ""))} size="sm">
           {String(value ?? "")}
         </Badge>
       ),

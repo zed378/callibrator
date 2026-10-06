@@ -316,7 +316,7 @@ export default function PostEditor({ initial }: { initial?: Post }) {
                   type="button"
                   onClick={() => set("coverImageUrl", "")}
                   aria-label="Remove cover image"
-                  className="absolute right-2 top-2 rounded-lg bg-black/60 p-1.5 text-white hover:bg-black/80"
+                  className="absolute right-2 top-2 rounded-lg bg-scrim p-1.5 text-scrim-foreground hover:bg-foreground hover:text-background"
                 >
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </button>

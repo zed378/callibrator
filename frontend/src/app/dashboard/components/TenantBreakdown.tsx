@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Building2, ArrowUpRight } from "lucide-react";
 import { Badge } from "@/components/ui";
 import type { TenantBreakdownRow } from "@/api/services/dashboard.service";
+import { toneOf } from "@/lib/statusTone";
 
 interface TenantBreakdownProps {
   rows: TenantBreakdownRow[];
@@ -17,8 +18,8 @@ export const TenantBreakdown: React.FC<TenantBreakdownProps> = ({ rows }) => {
     <div className="rounded-2xl border overflow-hidden border-border bg-card shadow-sm">
       <div className="px-6 py-5 border-b flex items-center justify-between border-border bg-muted/[0.03]">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-accent/10">
-            <Building2 className="w-5 h-5 text-accent" />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-chart-2/10">
+            <Building2 className="w-5 h-5 text-chart-2" />
           </div>
           <div>
             <h2 className="text-lg font-semibold text-foreground">
@@ -37,7 +38,9 @@ export const TenantBreakdown: React.FC<TenantBreakdownProps> = ({ rows }) => {
           <ArrowUpRight className="w-4 h-4" />
         </Link>
       </div>
-      <div className="overflow-x-auto">
+      {/* P11-07: a table that scrolls sideways at 360 px must be reachable by
+          keyboard (axe scrollable-region-focusable, WCAG 2.1.1). */}
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Tenant breakdown">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
@@ -62,10 +65,7 @@ export const TenantBreakdown: React.FC<TenantBreakdownProps> = ({ rows }) => {
                     {t.code || "-"}
                   </td>
                   <td className="px-6 py-3">
-                    <Badge
-                      variant={t.status === "active" ? "success" : "warning"}
-                      size="sm"
-                    >
+                    <Badge tone={toneOf("tenant", t.status)} size="sm">
                       {t.status || "unknown"}
                     </Badge>
                   </td>

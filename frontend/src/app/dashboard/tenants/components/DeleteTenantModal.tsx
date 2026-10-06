@@ -20,7 +20,7 @@ export const DeleteTenantModal: React.FC<DeleteTenantModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 bg-scrim flex items-center justify-center p-4 z-50">
       <div
         ref={panelRef}
         role="dialog"

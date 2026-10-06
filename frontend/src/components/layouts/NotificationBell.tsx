@@ -210,7 +210,7 @@ export const NotificationBell: React.FC = () => {
                         className={`block text-sm truncate ${
                           !notification.isRead
                             ? "font-semibold text-foreground"
-                            : "font-medium text-foreground/80"
+                            : "font-medium text-foreground"
                         }`}
                       >
                         {notification.title}
@@ -223,7 +223,7 @@ export const NotificationBell: React.FC = () => {
                     <span className="block text-xs text-muted-foreground truncate">
                       {notification.message}
                     </span>
-                    <span className="block text-[10px] text-muted-foreground/70 mt-0.5">
+                    <span className="block text-[10px] text-muted-foreground mt-0.5">
                       {new Date(notification.createdAt).toLocaleString()}
                     </span>
                   </span>
@@ -231,7 +231,7 @@ export const NotificationBell: React.FC = () => {
               ))
             ) : (
               <div className="py-10 text-center">
-                <Bell className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
+                <Bell className="w-8 h-8 mx-auto mb-2 text-muted-foreground" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">
                   No notifications yet
                 </p>

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { KanbanBoard, SprintStatus } from "@/api/services/kanban.service";
 import { Button, Badge } from "@/components/ui";
 import { Plus, ArrowRightLeft, Play, CheckCheck, Trash2 } from "lucide-react";
+import { toneOf } from "@/lib/statusTone";
 
 interface Props {
   board: KanbanBoard;
@@ -17,11 +18,6 @@ interface Props {
   onDeleteSprint: (sprintId: string) => void;
 }
 
-const STATUS_VARIANT: Record<SprintStatus, "success" | "info" | "default"> = {
-  active: "success",
-  planned: "info",
-  completed: "default",
-};
 
 export default function SprintBar({
   board,
@@ -67,7 +63,7 @@ export default function SprintBar({
 
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {current && (
-            <Badge variant={STATUS_VARIANT[current.status]} size="sm">
+            <Badge tone={toneOf("sprint", current.status)} size="sm">
               {current.status}
             </Badge>
           )}

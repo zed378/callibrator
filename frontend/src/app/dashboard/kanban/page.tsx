@@ -5,6 +5,7 @@ import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { Button, Card, CardContent, Alert } from "@/components/ui";
 import { Plus, KanbanSquare, Users } from "lucide-react";
 import { useKanbanProjects } from "./hooks/useKanbanProjects";
+import { readableOn } from "@/lib/readableOn";
 import CreateProjectModal from "./components/CreateProjectModal";
 
 export default function KanbanProjectsPage() {
@@ -60,8 +61,8 @@ export default function KanbanProjectsPage() {
                   <CardContent className="p-5">
                     <div className="flex items-start gap-3">
                       <span
-                        className="mt-1 h-10 w-10 rounded-xl flex items-center justify-center text-white shrink-0"
-                        style={{ backgroundColor: p.color || "#4f46e5" }}
+                        className="mt-1 h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: p.color || "#4f46e5", color: readableOn(p.color || "#4f46e5") }}
                       >
                         <KanbanSquare className="h-5 w-5" />
                       </span>

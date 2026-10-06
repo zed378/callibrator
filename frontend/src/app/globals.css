@@ -54,6 +54,38 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+  --color-neutral: var(--neutral);
+  --color-neutral-foreground: var(--neutral-foreground);
+
+  /* ADR-122 (P11-01): additive tokens */
+  --color-border-strong: var(--border-strong);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-pressed: var(--primary-pressed);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-selected: var(--surface-selected);
+  --color-sidebar: var(--sidebar);
+  --color-scrim: var(--scrim);
+  --color-scrim-foreground: var(--scrim-foreground);
+  --color-status-current: var(--status-current);
+  --color-status-current-foreground: var(--status-current-foreground);
+  --color-status-attention: var(--status-attention);
+  --color-status-attention-foreground: var(--status-attention-foreground);
+  --color-status-alarm: var(--status-alarm);
+  --color-status-alarm-foreground: var(--status-alarm-foreground);
+  --color-status-draft: var(--status-draft);
+  --color-status-draft-foreground: var(--status-draft-foreground);
+  --color-status-info: var(--status-info);
+  --color-status-info-foreground: var(--status-info-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-priority-urgent: var(--priority-urgent);
+  --color-priority-high: var(--priority-high);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-low: var(--priority-low);
+  --color-priority-none: var(--priority-none);
 }
 
 /* ==========================================================================
@@ -80,68 +112,146 @@
   }
 }
 
+/*
+ * ADR-122 (P11-01): the dashboard follows the warm palette (ADR-118) — warm
+ * neutral surfaces, charcoal ink, copper actions; espresso, ivory and a light
+ * copper in dark. Token NAMES are ADR-090's and unchanged; only values moved.
+ * Every pair is recomputed from this file by components/ui/a11y.adr090.test.tsx
+ * (text 4.5:1 on page, card and own /10 /15 tints; boundaries and series 3:1).
+ * Keep each colour a plain #RRGGBB literal, so the test can read it.
+ */
 :root {
   /* Light theme */
-  --background: #f8fafc; /* slate-50 */
-  --foreground: #0f172a; /* slate-900 */
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --muted: #f1f5f9; /* slate-100 */
-  --muted-foreground: #475569; /* slate-600 — ADR-090: 4.5:1 on muted and on tints */
-  --border: #e2e8f0; /* slate-200 */
-  --input: #e2e8f0;
+  --background: #faf8f5; /* warm off-white page */
+  --foreground: #1f1b17; /* charcoal */
+  --card: #fffdf9; /* paper */
+  --card-foreground: #1f1b17;
+  --popover: #fffdf9;
+  --popover-foreground: #1f1b17;
+  --muted: #f2eee8;
+  --muted-foreground: #5e554c; /* 6.31:1 on muted, 7.18 on card */
+  --border: #e4ded5; /* decorative separators only */
+  --input: #8f8273; /* control boundary: 3.24–3.69:1 (WCAG 1.4.11; D4) */
+  --border-strong: #8f8273; /* = input: any non-input control boundary */
 
-  --primary: #1d4ed8; /* blue-700 — trust blue (tenant-overridable); ADR-090 */
-  --primary-foreground: #ffffff;
-  --secondary: #f1f5f9; /* slate-100 */
-  --secondary-foreground: #1e293b; /* slate-800 */
-  --accent: #155e75; /* cyan-800 — clinical teal; ADR-090: 4.5:1 on its own tint */
-  --accent-foreground: #ffffff;
+  --primary: #9a4e22; /* copper (= --pub-accent; tenant-overridable) */
+  --primary-foreground: #fffdf9;
+  --primary-hover: #83411b; /* fill text 7.55:1 */
+  --primary-pressed: #6c3616; /* fill text 9.50:1 */
+  --secondary: #f2eee8;
+  --secondary-foreground: #2b251f;
+  --accent: #0e5a52; /* verified teal (= success); no longer a second brand colour */
+  --accent-foreground: #fffdf9;
 
-  --success: #046c4e; /* emerald-700/800 — health green; ADR-090 */
-  --success-foreground: #ffffff;
-  --warning: #92400e; /* amber-800 — ADR-090 (amber-600 was 3.2:1 under white) */
-  --warning-foreground: #ffffff;
-  --destructive: #be123c; /* rose-700 — ADR-090 */
-  --destructive-foreground: #ffffff;
-  --info: #0369a1; /* sky-700 — ADR-090 */
-  --info-foreground: #ffffff;
+  --success: #0e5a52; /* = --pub-success */
+  --success-foreground: #fffdf9;
+  --warning: #7a5700; /* ochre, hue 43° — kept away from copper's 22° */
+  --warning-foreground: #fffdf9;
+  --destructive: #a1282c; /* = --pub-danger */
+  --destructive-foreground: #fffdf9;
+  --info: #2f5b8a; /* slate blue */
+  --info-foreground: #fffdf9;
+  --neutral: #5a5e66; /* the grey "draft / inactive" status */
+  --neutral-foreground: #fffdf9;
 
+  --surface-hover: #f4f0ea; /* row / menu hover */
+  --surface-selected: #f6e9df; /* selected row, active nav item */
+  --sidebar: #f5f2ed; /* the navigation column */
+
+  /* Categorical chart series (Q3-A): copper, blue, green-teal, plum, ochre. */
+  --chart-1: #9a4e22;
+  --chart-2: #1f6bae;
+  --chart-3: #0b7558;
+  --chart-4: #9c4784;
+  --chart-5: #946800;
+
+  /* Kanban priority is NOT a status (doc 08): a sequential copper ramp, the
+     most urgent the strongest; every step 3:1 on card, page and muted. */
+  --priority-urgent: #6c3616;
+  --priority-high: #83411b;
+  --priority-medium: #9a4e22;
+  --priority-low: #b5683a;
+  --priority-none: #8f8273;
+
+  --scrim: rgb(31 27 23 / 0.55); /* modal / off-canvas backdrop */
+  /* Ink on a scrim laid over a user's photo (avatar / cover-image controls):
+     the scrim is dark in both themes, so this is paper in both. */
+  --scrim-foreground: #fffdf9;
   --ring: var(--primary);
 }
 
 .dark {
   /* Dark theme */
-  --background: #0f172a; /* slate-900 */
-  --foreground: #e2e8f0; /* slate-200 */
-  --card: #1e293b; /* slate-800 */
-  --card-foreground: #f1f5f9; /* slate-100 */
-  --popover: #1e293b;
-  --popover-foreground: #f1f5f9;
-  --muted: #1e293b; /* slate-800 */
-  --muted-foreground: #94a3b8; /* slate-400 */
-  --border: #334155; /* slate-700 */
-  --input: #334155;
+  --background: #191613; /* espresso */
+  --foreground: #efe9e1; /* ivory */
+  --card: #23201c;
+  --card-foreground: #efe9e1;
+  --popover: #2b2722; /* lifted: elevation by lightness */
+  --popover-foreground: #efe9e1;
+  --muted: #2b2722;
+  --muted-foreground: #b8aea2;
+  --border: #3a342e;
+  --input: #7d7266; /* 3.16–3.84:1 */
+  --border-strong: #7d7266;
 
-  --primary: #60a5fa; /* blue-400 — ADR-090: 4.5:1 as text on card */
-  --primary-foreground: #0f172a; /* dark text on the light blue (7:1) */
-  --secondary: #334155; /* slate-700 */
-  --secondary-foreground: #f1f5f9;
-  --accent: #22d3ee; /* cyan-400 — clinical teal, bright on dark */
-  --accent-foreground: #062a30; /* deep cyan for contrast on the bright accent */
+  --primary: #e3a47b; /* light copper (= --pub-dark-accent) */
+  --primary-foreground: #1a1511;
+  --primary-hover: #edb892;
+  --primary-pressed: #f3cbae;
+  --secondary: #2f2a25;
+  --secondary-foreground: #efe9e1;
+  --accent: #7ccfc0;
+  --accent-foreground: #10201d;
 
-  --success: #10b981; /* emerald-500 */
-  --success-foreground: #052e16;
-  --warning: #f59e0b; /* amber-500 */
-  --warning-foreground: #1c1207;
-  --destructive: #fb7185; /* rose-400 — ADR-090: 4.5:1 as text on card */
-  --destructive-foreground: #4c0519; /* rose-950 on the light rose (5.8:1) */
-  --info: #38bdf8; /* sky-400 */
-  --info-foreground: #082f49;
+  --success: #7ccfc0; /* = --pub-dark-verified */
+  --success-foreground: #10201d;
+  --warning: #e2bc5a;
+  --warning-foreground: #1f1a0b;
+  --destructive: #f49393; /* = --pub-dark-danger */
+  --destructive-foreground: #2a0e0e;
+  --info: #8db8e8;
+  --info-foreground: #0d1b2a;
+  --neutral: #c3c8cf;
+  --neutral-foreground: #191613;
 
+  --surface-hover: #2b2722;
+  --surface-selected: #3a2c22;
+  --sidebar: #1e1b17;
+
+  --chart-1: #e3a47b;
+  --chart-2: #7fb2ec;
+  --chart-3: #4fc59f;
+  --chart-4: #e29bcb;
+  --chart-5: #e2bc5a;
+
+  --priority-urgent: #f3cbae;
+  --priority-high: #edb892;
+  --priority-medium: #e3a47b;
+  --priority-low: #b87a55;
+  --priority-none: #7d7266;
+
+  --scrim: rgb(0 0 0 / 0.6);
+  --scrim-foreground: #fffdf9;
   --ring: var(--primary);
+}
+
+/*
+ * ADR-122: the domain names of the five status tones (doc 08 "Status
+ * Semantics"). Consumed only by lib/statusTone.ts, so a tenant brand or a
+ * decorative use can never become "the overdue colour" by accident.
+ */
+:root,
+.dark {
+  --status-current: var(--success);
+  --status-current-foreground: var(--success-foreground);
+  --status-attention: var(--warning);
+  --status-attention-foreground: var(--warning-foreground);
+  --status-alarm: var(--destructive);
+  --status-alarm-foreground: var(--destructive-foreground);
+  --status-draft: var(--neutral);
+  --status-draft-foreground: var(--neutral-foreground);
+  --status-info: var(--info);
+  --status-info-foreground: var(--info-foreground);
 }
 
 /*
@@ -154,10 +264,14 @@
 :root[data-tenant-brand] {
   --primary: var(--brand-primary-light);
   --primary-foreground: var(--brand-primary-foreground-light);
+  --primary-hover: var(--brand-primary-hover-light);
+  --primary-pressed: var(--brand-primary-pressed-light);
 }
 :root.dark[data-tenant-brand] {
   --primary: var(--brand-primary-dark);
   --primary-foreground: var(--brand-primary-foreground-dark);
+  --primary-hover: var(--brand-primary-hover-dark);
+  --primary-pressed: var(--brand-primary-pressed-dark);
 }
 
 /*

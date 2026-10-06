@@ -76,17 +76,22 @@ describe("brand files carry the warm palette", () => {
 
 describe("logo colours clear 3:1 against their surface (WCAG 1.4.11)", () => {
   // Surfaces: the public ivory and cream, the inverted warm charcoal, the
-  // dashboard card in light and dark (globals.css).
+  // dashboard card and sidebar in light and dark (globals.css, ADR-122).
   it.each([
     ["charcoal on ivory", "#1F1B17", "#FBF7F0"],
     ["copper on ivory", "#9A4E22", "#FBF7F0"],
     ["copper on cream", "#9A4E22", "#F4ECDF"],
     ["ivory on inverted charcoal", "#F6EFE4", "#241E19"],
     ["light copper on inverted charcoal", "#E3A47B", "#241E19"],
-    ["charcoal on the light card", "#1F1B17", "#ffffff"],
-    ["copper on the light card", "#9A4E22", "#ffffff"],
-    ["ivory on the dark card", "#F6EFE4", "#1e293b"],
-    ["light copper on the dark card", "#E3A47B", "#1e293b"],
+    ["charcoal on the light card", "#1F1B17", "#FFFDF9"],
+    ["copper on the light card", "#9A4E22", "#FFFDF9"],
+    ["ivory on the dark card", "#F6EFE4", "#23201C"],
+    ["light copper on the dark card", "#E3A47B", "#23201C"],
+    // ADR-122: the mark sits in the sidebar, one step off the card.
+    ["charcoal on the light sidebar", "#1F1B17", "#F5F2ED"],
+    ["copper on the light sidebar", "#9A4E22", "#F5F2ED"],
+    ["ivory on the dark sidebar", "#F6EFE4", "#1E1B17"],
+    ["light copper on the dark sidebar", "#E3A47B", "#1E1B17"],
   ])("%s", (_label, fg, bg) => {
     expect(ratio(fg, bg)).toBeGreaterThanOrEqual(3);
   });

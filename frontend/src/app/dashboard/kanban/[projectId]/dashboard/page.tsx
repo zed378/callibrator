@@ -114,12 +114,18 @@ function BarList({
   );
 }
 
+/**
+ * ADR-122 (P11-06, spec D5): priority is not a status, so it is never the
+ * alarm red. A sequential copper ramp (--priority-*, globals.css), the most
+ * urgent the strongest, each step 3:1 on the card in both themes; every bar
+ * carries its priority as a direct label. The old Tailwind hexes were 1.48–3.76:1.
+ */
 const PRIORITY_COLORS: Record<string, string> = {
-  urgent: "#ef4444",
-  high: "#f59e0b",
-  medium: "#3b82f6",
-  low: "#94a3b8",
-  none: "#cbd5e1",
+  urgent: "var(--priority-urgent)",
+  high: "var(--priority-high)",
+  medium: "var(--priority-medium)",
+  low: "var(--priority-low)",
+  none: "var(--priority-none)",
 };
 
 function KanbanDashboardContent() {

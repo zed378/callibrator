@@ -4,13 +4,8 @@ import React from 'react';
 import { KanbanCard, KanbanColumn } from '@/api/services/kanban.service';
 import { Avatar } from '@/components/ui';
 import { Link2, MessageSquare } from 'lucide-react';
+import { priorityDot } from "@/lib/priority";
 
-const PRIORITY_STYLES: Record<string, string> = {
-  low: 'bg-muted text-muted-foreground',
-  medium: 'bg-info/10 text-info',
-  high: 'bg-warning/10 text-warning',
-  urgent: 'bg-destructive/10 text-destructive',
-};
 
 interface Props {
   card: KanbanCard;
@@ -90,11 +85,8 @@ export default function CardTile({
             <span className="text-[11px] font-semibold text-muted-foreground">{card.cardKey}</span>
           )}
           {card.priority && (
-            <span
-              className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                PRIORITY_STYLES[card.priority] || ''
-              }`}
-            >
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-muted text-foreground">
+              <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${priorityDot(card.priority)}`} />
               {card.priority}
             </span>
           )}

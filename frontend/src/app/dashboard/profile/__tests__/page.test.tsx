@@ -65,7 +65,7 @@ jest.mock("@/api/client", () => ({
 
 // Mock useTheme for Input component
 jest.mock("@/contexts/ThemeContext", () => ({
-  useTheme: () => ({ theme: "dark" }),
+  useTheme: () => ({ theme: "dark", choice: "dark", followDevice: jest.fn() }),
 }));
 
 // Mock lucide-react icons (no-op)

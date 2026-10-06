@@ -123,7 +123,7 @@ export default function StoragePage() {
 
           <Card>
             <CardContent className="flex items-center gap-4 py-5">
-              <div className="rounded-xl bg-accent/10 p-3 text-accent">
+              <div className="rounded-xl bg-primary/10 p-3 text-primary">
                 <Cloud className="h-6 w-6" />
               </div>
               <div className="min-w-0">

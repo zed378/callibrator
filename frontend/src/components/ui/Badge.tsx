@@ -1,5 +1,6 @@
 import React from "react";
-import { X } from "lucide-react";
+import { CircleCheck, CircleDashed, Info, OctagonAlert, TriangleAlert, X } from "lucide-react";
+import { TONE_CLASSES, type StatusTone } from "@/lib/statusTone";
 
 interface BadgeProps {
   children: React.ReactNode;
@@ -11,6 +12,13 @@ interface BadgeProps {
     | "warning"
     | "danger"
     | "info";
+  /**
+   * ADR-122 (P11-05): a STATUS badge. The tone sets the shape and the icon
+   * as well as the colour (lib/statusTone.ts), and overrides `variant`. Use it
+   * for every domain state; `variant` stays for non-status chips (scopes,
+   * counts, tags).
+   */
+  tone?: StatusTone;
   size?: "sm" | "md";
   removable?: boolean;
   onRemove?: () => void;
@@ -19,9 +27,18 @@ interface BadgeProps {
   className?: string;
 }
 
+const TONE_ICON: Record<StatusTone, React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>> = {
+  alarm: OctagonAlert,
+  attention: TriangleAlert,
+  current: CircleCheck,
+  draft: CircleDashed,
+  info: Info,
+};
+
 export const Badge: React.FC<BadgeProps> = ({
   children,
   variant = "default",
+  tone,
   size = "md",
   removable = false,
   onRemove,
@@ -43,12 +60,16 @@ export const Badge: React.FC<BadgeProps> = ({
     md: "px-2.5 py-0.5 text-sm font-semibold",
   };
 
+  const ToneIcon = tone ? TONE_ICON[tone] : null;
+
   return (
     <span
+      data-tone={tone}
       className={`inline-flex items-center font-medium rounded-full ${
-        variantStyles[variant]
+        tone ? `gap-1 ${TONE_CLASSES[tone]}` : variantStyles[variant]
       } ${sizeStyles[size]} ${className}`}
     >
+      {ToneIcon && <ToneIcon aria-hidden={true} className={size === "sm" ? "h-3 w-3 shrink-0" : "h-3.5 w-3.5 shrink-0"} />}
       {removable ? (
         <span className="inline-flex items-center gap-1">
           {children}

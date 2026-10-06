@@ -6,7 +6,6 @@ import {
   CardContent,
   Table,
   Pagination,
-  Badge,
   Alert,
   Select,
   TableSkeleton,
@@ -17,6 +16,7 @@ import {
   InvoiceStatus,
   ListMeta,
 } from "@/api/services/billing.service";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface InvoicesTableProps {
   invoices: Invoice[];
@@ -42,23 +42,9 @@ const formatAmount = (currency: string, amount: string | number) => {
   }`;
 };
 
-const getStatusBadge = (status: Invoice["status"]) => {
-  const maps: Record<
-    Invoice["status"],
-    { variant: "success" | "info" | "default" | "danger"; label: string }
-  > = {
-    Paid: { variant: "success", label: "Paid" },
-    Open: { variant: "info", label: "Open" },
-    Draft: { variant: "default", label: "Draft" },
-    Uncollectible: { variant: "danger", label: "Uncollectible" },
-    Void: { variant: "danger", label: "Void" },
-  };
-  const current = maps[status] || {
-    variant: "default" as const,
-    label: status,
-  };
-  return <Badge variant={current.variant}>{current.label}</Badge>;
-};
+const getStatusBadge = (status: Invoice["status"]) => (
+  <StatusBadge domain="invoice" state={status} />
+);
 
 const passthrough = (value: unknown) => value as React.ReactNode;
 

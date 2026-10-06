@@ -1,8 +1,9 @@
 import React from "react";
 import { StockTransfer } from "@/types";
-import { Table, Badge, Button } from "@/components/ui";
+import { Table, Button } from "@/components/ui";
 import { Clock, XCircle, CheckCircle } from "lucide-react";
 import { actorLabel } from "@/lib/actorLabel";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface TransfersTableProps {
   data: StockTransfer[];
@@ -16,13 +17,7 @@ export const TransfersTable: React.FC<TransfersTableProps> = ({
   handleUpdateTransferStatus,
 }) => {
   const getTransferStatusBadge = (status: "pending" | "in_transit" | "completed" | "cancelled") => {
-    const variants = {
-      pending: "warning" as const,
-      in_transit: "primary" as const,
-      completed: "success" as const,
-      cancelled: "danger" as const,
-    };
-    return <Badge variant={variants[status]}>{status.toUpperCase().replace("_", " ")}</Badge>;
+return <StatusBadge domain="transfer" state={status} />;
   };
 
   const columns = [
