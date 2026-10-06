@@ -781,7 +781,7 @@ const listAttachments = async (
     where: where as WhereOptions,
     limit: safeLimit,
     offset,
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
   });
 
   return {

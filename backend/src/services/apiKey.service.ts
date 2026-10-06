@@ -195,7 +195,7 @@ const listApiKeys = async (
     where: { tenantId },
     limit: safeLimit,
     offset: (Number(page) - 1) * safeLimit,
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
   });
   return {
     rows: rows.map(publicKey),

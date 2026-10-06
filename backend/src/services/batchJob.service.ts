@@ -388,7 +388,7 @@ const getJobs = async (
     where: { tenantId },
     limit: limitN,
     offset,
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
   });
 
   return {

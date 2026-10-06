@@ -305,7 +305,7 @@ const fetchUserNotifications = async ({
       include: [stateInclude],
       limit: safeLimit,
       offset,
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"], ["id", "DESC"]],
       subQuery: false,
       distinct: true,
     });

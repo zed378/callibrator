@@ -267,7 +267,7 @@ const migrateAll = async (
 
   const rows = await Attachment.findAll({
     where: where as WhereOptions<AttachmentRow>,
-    order: [["createdAt", "ASC"]],
+    order: [["createdAt", "ASC"], ["id", "ASC"]],
     ...(limit ? { limit } : {}),
   });
 

@@ -125,7 +125,7 @@ describe("U-06 — the record list joins only the page", () => {
       expect(page).toMatch(new RegExp(`\\) AS "CalibrationRecord".* LEFT OUTER JOIN "${table}" AS "${alias}" ON [^]*?"${alias}"\\."tenant_id" = '${TENANT}'`));
     }
     expect(page).not.toMatch(/INNER JOIN/);
-    expect(page).toMatch(/ORDER BY "calibrationDate" DESC;?$/);
+    expect(page).toMatch(/ORDER BY "calibrationDate" DESC, "CalibrationRecord"\."id" DESC;?$/);
   });
 
   it("no total, no rows: findAndCountAll's rule is kept", async () => {

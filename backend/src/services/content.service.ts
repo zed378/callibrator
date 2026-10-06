@@ -336,7 +336,7 @@ const listPosts = async ({ type, status, category, find, page = 1, limit = DEFAU
       ],
       limit: safeLimit,
       offset,
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"], ["id", "DESC"]],
       distinct: true,
     });
 
@@ -517,6 +517,7 @@ const listPublishedPosts = async ({ type, category, page = 1, limit = DEFAULT_LI
       order: [
         ["publishedAt", "DESC"],
         ["createdAt", "DESC"],
+        ["id", "DESC"],
       ],
       distinct: true,
     });

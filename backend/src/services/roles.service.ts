@@ -355,6 +355,7 @@ class RolesService {
       order: [
         ["sort_order", "ASC"],
         ["created_at", "ASC"],
+        ["id", "ASC"],
       ],
       limit,
       offset,
@@ -940,6 +941,7 @@ class RolesService {
       order: [
         ["sort_order", "ASC"],
         ["created_at", "ASC"],
+        ["id", "ASC"],
       ],
     });
 

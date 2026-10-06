@@ -342,7 +342,7 @@ const fetchInvoices = async ({
       where: whereClause as WhereOptions,
       limit: safeLimit,
       offset,
-      order: [["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"], ["id", "DESC"]],
       include: [
         { model: Subscription, as: "subscription", attributes: ["id", "planId"] },
       ],

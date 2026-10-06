@@ -613,7 +613,7 @@ const fetchCertificates = async ({
 
     const { rows, count } = await Certificate.findAndCountAll({
       where: whereClause as WhereOptions,
-      order: [[orderColumn, orderDirection]],
+      order: [[orderColumn, orderDirection], ["id", orderDirection]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
       // required:false -> LEFT JOINs. Without it these default to INNER JOINs,

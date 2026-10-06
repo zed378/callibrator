@@ -313,7 +313,7 @@ export const listAccessRequests = async ({
 }> => {
   const { rows, count } = await AccessRequest.findAndCountAll({
     where: { status },
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
     limit,
     offset: (page - 1) * limit,
   });

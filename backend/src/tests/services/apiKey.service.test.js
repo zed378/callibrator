@@ -262,7 +262,7 @@ describe("apiKey.service", () => {
         where: { tenantId: "t1" },
         limit: DEFAULT_LIMIT,
         offset: 0,
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
       });
       expect(res.meta).toEqual({ total: 0, page: 1, limit: DEFAULT_LIMIT, totalPages: 0 });
     });

@@ -246,7 +246,7 @@ describe("migrateAll", () => {
     await service.migrateAll({ tenantId: "tenant-9", limit: 50 });
     expect(Attachment.findAll).toHaveBeenCalledWith({
       where: { storageKey: null, tenantId: "tenant-9" },
-      order: [["createdAt", "ASC"]],
+      order: [["createdAt", "ASC"], ["id", "ASC"]],
       limit: 50,
     });
   });
@@ -256,7 +256,7 @@ describe("migrateAll", () => {
     await service.migrateAll({});
     expect(Attachment.findAll).toHaveBeenCalledWith({
       where: { storageKey: null },
-      order: [["createdAt", "ASC"]],
+      order: [["createdAt", "ASC"], ["id", "ASC"]],
     });
   });
 

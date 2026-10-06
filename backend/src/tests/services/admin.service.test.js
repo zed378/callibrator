@@ -78,7 +78,7 @@ describe("adminService", () => {
         where: {},
         limit,
         offset: 0,
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
       });
 
       expect(result).toEqual({
@@ -113,7 +113,7 @@ describe("adminService", () => {
         },
         limit,
         offset: 0,
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
       });
 
       expect(result).toEqual({
@@ -140,7 +140,7 @@ describe("adminService", () => {
         where: {},
         limit: 10,
         offset: 10,
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
       });
     });
 

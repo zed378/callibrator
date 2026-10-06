@@ -127,7 +127,7 @@ const getRisks = async (tenantId: TenantId, query: RiskQuery): Promise<RiskList>
     where: where as WhereOptions,
     limit: parseInt(limit as string),
     offset: parseInt(offset as unknown as string),
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
     include: [
       { model: User, as: "identifier", attributes: ["id", "firstName", "lastName", "email"], required: false },
       { model: User, as: "assignee", attributes: ["id", "firstName", "lastName", "email"], required: false },

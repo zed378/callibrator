@@ -521,7 +521,7 @@ describe("batchJobService", () => {
         where: { tenantId: TENANT },
         limit: 10,
         offset: 10,
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
       });
       expect(result).toEqual({ total: 25, page: 2, limit: 10, totalPages: 3, jobs: [{ id: "j1" }] });
     });

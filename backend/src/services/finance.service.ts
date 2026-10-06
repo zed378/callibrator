@@ -244,7 +244,7 @@ const fetchAssetFinances = async ({
     where: whereClause as WhereOptions,
     limit: safeLimit,
     offset,
-    order: [["purchaseDate", "DESC"]],
+    order: [["purchaseDate", "DESC"], ["id", "DESC"]],
     include: includeRelations,
   });
 

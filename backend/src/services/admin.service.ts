@@ -93,7 +93,7 @@ const getAllTenants = async (
     where: where as WhereOptions,
     limit: limit as number,
     offset,
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
   });
 
   return {

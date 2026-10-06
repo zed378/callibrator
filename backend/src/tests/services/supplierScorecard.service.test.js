@@ -101,7 +101,7 @@ describe("supplierScorecard.service", () => {
         where: { tenantId: "tenant123" },
         limit: 10,
         offset: 0,
-        order: [["evaluationDate", "DESC"]],
+        order: [["evaluationDate", "DESC"], ["id", "DESC"]],
         include: [
           { model: Vendor, as: "vendor", attributes: ["id", "name"] },
           // A-90: LEFT JOIN — see includes.a90.test.js for the SQL.

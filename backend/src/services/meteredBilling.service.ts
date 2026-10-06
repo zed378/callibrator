@@ -669,7 +669,7 @@ const getBillingHistory = async (
     where,
     limit: safeLimit,
     offset: (safePage - 1) * safeLimit,
-    order: [["createdAt", "DESC"]],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
   });
   return {
     rows,
