@@ -6,7 +6,10 @@
  *  - HeroPointer: writes −1…1 to two CSS variables on a fine pointer, resets on
  *    leave, and does nothing under reduced motion or a coarse pointer;
  *  - QrVerifyDemo: idle → scanning → the "SAH" verdict after SCAN_MS, announced
- *    in a live region; at once under reduced motion; "again" resets;
+ *    in a live region; at once under reduced motion; "again" resets; the
+ *    certificate number breaks only after a hyphen (<wbr>), never mid-token,
+ *    and the demo uses the definite-width layout (P10-17 fix, 2026-10-06; the
+ *    geometry itself is checked in a browser by automate/responsive.browser.js);
  *  - DemoQr: a real QR matrix for the sample text (finder patterns present),
  *    with an accessible name, never a link;
  *  - WorkflowStory: the observer moves the active step, the rail and the
@@ -16,7 +19,7 @@ import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { TimeGreeting, partOfDay } from "../TimeGreeting";
 import { HeroPointer } from "../HeroPointer";
-import { QrVerifyDemo, SCAN_MS, type QrVerifyDemoLabels } from "../QrVerifyDemo";
+import { QrVerifyDemo, SCAN_MS, breakAfterHyphens, type QrVerifyDemoLabels } from "../QrVerifyDemo";
 import { DemoQr, DEMO_QR_TEXT, qrPath } from "../DemoQr";
 import { BeforeAfter } from "../BeforeAfter";
 import { CertificateExplorer, nearestSlide } from "../CertificateExplorer";
@@ -179,6 +182,34 @@ describe("QrVerifyDemo", () => {
     render(<QrVerifyDemo labels={labels} certificate={certificate} qr={<svg aria-label="qr" />} certificateTitle="Sertifikat" />);
     fireEvent.click(screen.getByRole("button", { name: labels.scan }));
     expect(screen.getByText(labels.verdict, { selector: ".lp-verdict-word" })).toBeInTheDocument();
+  });
+
+  it("breaks the certificate number only after a hyphen, on the paper and in the verdict", () => {
+    mockMedia({ "(prefers-reduced-motion: reduce)": true });
+    const { container } = render(
+      <QrVerifyDemo labels={labels} certificate={certificate} qr={<svg aria-label="qr" />} certificateTitle="Sertifikat" />,
+    );
+    // The definite-width layout: a container, then the grid; nothing breaks anywhere.
+    expect(container.querySelector(".lp-demo-wrap > .lp-demo > .lp-cert")).not.toBeNull();
+    expect(container.querySelector(".lp-demo > figure.lp-demo-phone > .lp-phone")).not.toBeNull();
+    expect(container.querySelector(".break-all")).toBeNull();
+    const paper = container.querySelector(".lp-cert .lp-cert-number");
+    expect(paper).toHaveTextContent(certificate.number);
+    // A <wbr> after each of the three hyphens, and every hyphen directly before one.
+    expect(paper?.querySelectorAll("wbr")).toHaveLength(3);
+    expect(paper?.innerHTML).toBe("CERT-<wbr>20261005-<wbr>CONTOH-<wbr>0001");
+    const button = screen.getByRole("button", { name: labels.scan });
+    expect(button).toHaveClass("whitespace-nowrap");
+    fireEvent.click(button);
+    const verdict = container.querySelector(".lp-verdict .lp-cert-number");
+    expect(verdict?.innerHTML).toBe("CERT-<wbr>20261005-<wbr>CONTOH-<wbr>0001");
+    // The other rows are plain text.
+    expect(screen.getByText(certificate.device).querySelector("wbr")).toBeNull();
+  });
+
+  it("breakAfterHyphens keeps a value without a hyphen whole", () => {
+    const { container } = render(<p>{breakAfterHyphens("CONTOH")}</p>);
+    expect(container.innerHTML).toBe("<p>CONTOH</p>");
   });
 
   it("clears a pending scan when it unmounts", () => {
