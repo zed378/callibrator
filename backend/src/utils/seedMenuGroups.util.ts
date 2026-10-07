@@ -96,6 +96,8 @@ function getMenuGroupId(slug: string): string {
     stock: "a0000000-0000-0000-0000-000000000235",
     storage: "a0000000-0000-0000-0000-000000000236",
     "access-requests": "a0000000-0000-0000-0000-000000000237", // P10-07, migration 0101
+    "upstream-import": "a0000000-0000-0000-0000-000000000238", // the rsync image import, migration 0115
+    "upstream-sql-import": "a0000000-0000-0000-0000-000000000239", // P24-06, migration 0116
     "predictive-maintenance": "a0000000-0000-0000-0000-000000000306",
     // Management sub-group categories (level 2 of the 3-level sidebar)
     "mgmt-organization": "a0000000-0000-0000-0000-000000000250",
@@ -315,6 +317,24 @@ async function seedMenuGroups(): Promise<void> {
       slug: "access-requests",
       icon: "Inbox",
       sortOrder: 6,
+      is_active: true,
+      parentSlug: "mgmt-organization",
+    },
+    // The rsync image import (upstream adoption): the super admin's photo import from the old server.
+    {
+      name: "Upstream Import",
+      slug: "upstream-import",
+      icon: "ImageDown",
+      sortOrder: 7,
+      is_active: true,
+      parentSlug: "mgmt-organization",
+    },
+    // P24-06: the super admin's SQL-dump import (parsed into staging, never executed).
+    {
+      name: "SQL Dump Import",
+      slug: "upstream-sql-import",
+      icon: "DatabaseZap",
+      sortOrder: 8,
       is_active: true,
       parentSlug: "mgmt-organization",
     },
@@ -828,6 +848,8 @@ async function seedRoleMenuPermissions(): Promise<void> {
         "tickets-response",
         "esignature",
         "access-requests", // P10-07 (migration 0101)
+        "upstream-import", // the rsync image import (migration 0115)
+        "upstream-sql-import", // P24-06 (migration 0116)
       ],
     },
     {

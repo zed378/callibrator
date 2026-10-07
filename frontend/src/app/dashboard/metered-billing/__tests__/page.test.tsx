@@ -152,11 +152,12 @@ describe("metered billing — reading", () => {
     const paid = screen.getAllByRole("row")[1];
     expect(within(paid).getByText("inv-0000")).toBeInTheDocument();
     expect(within(paid).getByText("49.00 USD")).toBeInTheDocument();
-    expect(within(paid).getByText("Paid")).toHaveClass("text-success");
+    // ADR-122 Am. 1: the registry's invoice tones (was text-success / text-warning, colour only).
+    expect(within(paid).getByText("Paid")).toHaveAttribute("data-tone", "current");
     expect(within(paid).getByText(new Date("2026-09-01T00:00:00.000Z").toLocaleDateString())).toBeInTheDocument();
     const open = screen.getAllByRole("row")[2];
     expect(within(open).getByText("12.50 USD")).toBeInTheDocument();
-    expect(within(open).getByText("Open")).toHaveClass("text-warning");
+    expect(within(open).getByText("Open")).toHaveAttribute("data-tone", "info");
     expect(mockedGet).toHaveBeenCalledWith("/api/v1/metered-billing/history", { params: { page: 1, limit: 10 } });
   });
 

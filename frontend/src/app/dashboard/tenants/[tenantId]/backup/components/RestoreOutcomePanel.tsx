@@ -4,7 +4,8 @@ import type {
   NotRestoredReason,
   RestoreOutcome,
 } from "@/api/services/tenantBackup.service";
-import { Alert, Badge } from "@/components/ui";
+import { Alert } from "@/components/ui";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 /**
  * What the last restore did, account by account (A-156).
@@ -79,9 +80,9 @@ export const RestoreOutcomePanel: React.FC<RestoreOutcomePanelProps> = ({
               <span className="font-medium text-foreground">
                 {entry.username}
               </span>
-              <Badge variant={reason === "erased" ? "danger" : "warning"}>
+              <StatusBadge domain="restoreGap" state={reason}>
                 {REASON_LABEL[reason]}
-              </Badge>
+              </StatusBadge>
               <span className="text-sm text-muted-foreground">
                 {REASON_ACTION[reason]}
               </span>

@@ -3,8 +3,6 @@
 
 import React from "react";
 import {
-  CheckCircle2,
-  XCircle,
   LayoutGrid,
   Settings,
   Pencil,
@@ -18,6 +16,7 @@ import {
   GroupCheckbox,
   ItemCheckbox,
 } from "./MenuGroupItemCardHelpers";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface MenuGroupItemCardProps {
   group: ExtendedMenuGroup;
@@ -171,21 +170,12 @@ export function MenuGroupItemCard({
                   </Badge>
                 )}
                 {group.isAssigned ? (
-                  <Badge variant="success" className="text-xs">
-                    <CheckCircle2 className="w-3 h-3 mr-0.5" />
-                    Via Group
-                  </Badge>
+                  <StatusBadge domain="menuAssignment" state="via_group" className="text-xs" />
                 ) : itemAssigned ? (
-                  <Badge variant="success" className="text-xs">
-                    <CheckCircle2 className="w-3 h-3 mr-0.5" />
-                    Assigned
-                  </Badge>
+                  <StatusBadge domain="menuAssignment" state="assigned" className="text-xs" />
                 ) : (
                   !group.isAssigned && (
-                    <Badge variant="danger" className="text-xs">
-                      <XCircle className="w-3 h-3 mr-0.5" />
-                      Not Assigned
-                    </Badge>
+                    <StatusBadge domain="menuAssignment" state="unassigned" className="text-xs" />
                   )
                 )}
               </div>

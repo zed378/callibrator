@@ -1,6 +1,6 @@
 # 03 — User Roles
 
-Source of truth: `backend/src/constants/roleConstants.js`. These values must stay in sync with the database seed; changing one without the other produces a role that exists but resolves no permissions.
+Source of truth: `backend/src/constants/roleConstants.ts` (the menu slugs the seed creates: `constants/seededMenuSlugs.ts`). These values must stay in sync with the database seed; changing one without the other produces a role that exists but resolves no permissions.
 
 ---
 
@@ -23,6 +23,8 @@ Source of truth: `backend/src/constants/roleConstants.js`. These values must sta
 Display names are Indonesian because the primary market is Indonesian healthcare (KARS, SNARS). The internal role name stays English and is what code compares against.
 
 > **Target — facility-bound users (ADR-124, decided 2026-10-07, not built).** Inside a provider tenant, a health facility's own staff will be users **bound to their facility** (`users.client_facility_id`). A bound user may hold only `HEALTHCARE ADMIN`, `HEALTHCARE TECHNICIAN`, `FACILITY MAINTENANCE` or `ROOM USER`, sees only that facility's data, and **passes no tenant-administration gate whatever its level** — the "Tenant administrator (healthcare facility)" scope above holds only for an *unbound* `HEALTHCARE ADMIN` (a self-served hospital's own administrator). Which role the upstream `client`/`teknisi_client` accounts get is UD-4 (open).
+>
+> **Target — what a bound user may hold (ADR-124 Amendment 1, P18-03, 2026-10-07, not built).** A bound user's effective permission is capped by a per-role **bound menu ceiling** applied inside the one effective-permission function of ADR-102, so the sidebar, the buttons and `dynamicAccess` agree and no per-user override lifts it: every bound role reads `home`, `dashboard`, `equipment`, `calibration`, `certificate`, `maintenance`, `ipm`, `ipm-templates` and writes its own profile; a bound `HEALTHCARE TECHNICIAN` may also write `calibration` (device registration — only if its role is granted it, UD-4 (b)) and `ipm` (capture); nothing administrative. **A bound `HEALTHCARE ADMIN` is read-only.** No new role is added; `ROLE_LEVELS` is unchanged. Three new menu slugs are planned: `ipm` and `ipm-templates` (children of `equipment`) and `client-facilities` (Management › Organization), with `ipm` write granted to `TECHNICIAN`, `HEALTHCARE TECHNICIAN` and `FACILITY MAINTENANCE`. Matrix: [`../../MEMORY/specs/P18-03-facility-scope-permissions.md`](../../MEMORY/specs/P18-03-facility-scope-permissions.md).
 
 ## `TENANT_ADMIN` — the twelfth role that is not a role
 

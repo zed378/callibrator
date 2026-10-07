@@ -6,7 +6,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
   Alert,
-  Badge,
   Button,
   Card,
   CardContent,
@@ -23,6 +22,7 @@ import {
   type ScimUser,
 } from "@/api/services/scim.service";
 import { useToastStore } from "@/stores/toastStore";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 type Tab = "users" | "groups";
 
@@ -165,9 +165,7 @@ export default function ScimPage() {
       key: "active",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant={value ? "success" : "default"} size="sm">
-          {value ? "Active" : "Inactive"}
-        </Badge>
+        <StatusBadge domain="active" state={value ? "active" : "inactive"} size="sm" />
       ),
     },
     {

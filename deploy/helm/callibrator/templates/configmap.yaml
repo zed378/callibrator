@@ -148,6 +148,9 @@ data:
   {{- with .Values.backend.cron.quarantineSweep }}
   QUARANTINE_SWEEP_SCHEDULER: {{ . | quote }}
   {{- end }}
+  {{- with .Values.backend.cron.upstreamSqlImportSweep }}
+  UPSTREAM_SQL_IMPORT_SWEEP_SCHEDULER: {{ . | quote }}
+  {{- end }}
   {{- else }}
   # Explicitly disabled: this replica is an API pod, not the scheduler.
   # EVERY scheduler, not only retention: before 2026-09-24 only
@@ -164,6 +167,7 @@ data:
   CALIBRATION_SCHEDULER: "disabled"
   TENANT_LIFECYCLE_SCHEDULER: "disabled"
   QUARANTINE_SWEEP_SCHEDULER: "disabled"
+  UPSTREAM_SQL_IMPORT_SWEEP_SCHEDULER: "disabled"
   WEBHOOK_DELIVERY_PURGE_SCHEDULER: "disabled"
   ATTACHMENT_FILE_SWEEP_SCHEDULER: "disabled"
   # The watchdog alerts on the scheduler pod; one per release is enough.

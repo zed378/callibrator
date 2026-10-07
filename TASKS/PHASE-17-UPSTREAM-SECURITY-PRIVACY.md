@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 3 DONE (pending legal review) / TODO (1: P17-06, unblocked by ADR-124) / BLOCKED (3) — 3 DONE · 1 TODO · 3 BLOCKED |
+| **Status** | 4 DONE (3 pending legal review; P17-06 threat model 2026-10-07) / BLOCKED (3) — 4 DONE · 0 TODO · 3 BLOCKED |
 | **Goal** | DPIA (UU PDP 27/2022, GDPR posture), legal basis, minimisation, file policy, threat model of the new surfaces |
 | **Depends on** | Phase 12 |
 | **Size** | M |
@@ -34,8 +34,8 @@ and a threat model. **Spec refs:** 00 § 9 (S-01…S-18) · 03 § 9 · 05 § 10 
 | P17-03 | Legal basis and DPA; facility notification text (ID); residency choice | BLOCKED | UD-18, OA-5 |
 | P17-04 | Minimisation list: migrated / archived / destroyed, per table and per file class (05 § 10) | **DONE 2026-10-07, pending legal review** — `docs/UPSTREAM/07-DATA-MINIMISATION.md` (certificate PDFs archive-only per the owner rule; finding F-CERT); [record](../MEMORY/records/2026-10-07-upstream-privacy-and-reports.md) | — |
 | P17-05 | File policy: content allow-list, ClamAV, SHA-256, derivatives stripping EXIF, originals only by signed download; an aggregate-only EXIF survey (tag presence counts, no values) | **DONE 2026-10-07, pending legal review** — `docs/UPSTREAM/08-FILE-POLICY.md` (photos only; keys `t/<tenant>/f/<faskes>/…`); the EXIF survey is deferred to the dry run P24-05 (files not opened outside it); [record](../MEMORY/records/2026-10-07-upstream-privacy-and-reports.md) | — |
-| P17-06 | Threat model of the new surfaces: the facility dimension and facility-bound users (ADR-124; was "access grants and the active-facility switch"), public capability page, offline queue (ADR-127), import tooling | TODO (unblocked by ADR-124) | P12-02 |
-| P17-07 | Security review before go/no-go: penetration test of the facility scope (ADR-124; was "grants"), public page and PWA sync; findings closed | BLOCKED | Phase 21, Phase 22 |
+| P17-06 | Threat model of the new surfaces: the facility dimension and facility-bound users (ADR-124; was "access grants and the active-facility switch"), public capability page, offline queue (ADR-127), import tooling | **DONE 2026-10-07** — [`docs/SECURITY/15-FASKES-SCOPE-THREAT-MODEL.md`](../docs/SECURITY/15-FASKES-SCOPE-THREAT-MODEL.md) (target): STRIDE over 24 enforcement points (FT-1 … FT-109) + LINDDUN, 10 findings in today's code (F-1 … F-10), 29 proposed ADR-124/125/127 additions (AM-1 … AM-29, to be recorded as amendments by the building cards), the **pre-invitation gate** (§ 11, G-01 … G-31), the P17-07 test cases (§ 12, PT-01 … PT-33), 12 open questions; the public page only at its facility edge (UD-15 open); [record](../MEMORY/records/2026-10-07-faskes-scope-threat-model.md) | P12-02 |
+| P17-07 | Security review before go/no-go: penetration test of the facility scope (ADR-124; was "grants"), public page and PWA sync; findings closed. **Scope fixed by P17-06 (2026-10-07):** run PT-01 … PT-33 of `docs/SECURITY/15` § 12 on a disposable production-mode stack with synthetic data (two tenants, two facilities + self, every bound role, an API key, SSO JIT on, two real phones); entry condition: every "gate" row of § 11 green and named in a record; exit: no open Critical/High, each finding with its fix and test named; the public-page cases (PT-31) wait on UD-15 / P12-06 | BLOCKED | Phase 21, Phase 22 |
 
 **DoD:** DPIA and threat model written and reviewed; every S-finding mapped to "not ported" or to the
 control that replaces it; no real value in any artefact. **Abuse case:** a DPIA that lists the data

@@ -41,6 +41,8 @@ export const SECRET_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = Ob
   TenantKey: Object.freeze(["privateKey"]),
   AccessRequest: Object.freeze(["invitationTokenHash", "sourceIpHash"]),
   CalibrationDevice: Object.freeze(["iotTokenHash"]),
+  // The rsync image import: the SSH password or key envelope, erased when the import ends.
+  UpstreamFileImport: Object.freeze(["secretCiphertext"]),
 });
 
 /** What the installer needs of a model class. */

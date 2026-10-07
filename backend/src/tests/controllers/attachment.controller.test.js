@@ -25,6 +25,10 @@ const attachmentService = require("../../services/attachment.service");
 const attachmentController = require("../../controllers/attachment.controller");
 const { success } = require("../../utils/response.util");
 const { sendStoredFile } = require("../../utils/fileResponse.util");
+// A-365: the handler reads the body the route's schema validated.
+const { validate } = require("../../middlewares/validation.middleware");
+const { createSignedUrlSchema } = require("../../validators/attachment.validator");
+const throughSchema = (r) => validate(createSignedUrlSchema)(r, {}, () => undefined);
 
 const VALID_USER_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VALID_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
@@ -256,11 +260,13 @@ describe("attachment Controller", () => {
 
     it("should generate a signed URL", async () => {
       req.params = { id: VALID_ATTACHMENT_ID };
-      req.body = { expiresInSec: 3600 };
+      // A-365: 3600 is above the 900 s default cap; 600 is a lifetime the route accepts.
+      req.body = { expiresInSec: 600 };
+      throughSchema(req);
 
       attachmentService.generateSignedUrl.mockResolvedValue({
         signedUrl: "https://cdn.example.com/file.pdf?token=abc",
-        expiresIn: 3600,
+        expiresIn: 600,
       });
 
       await attachmentController.createSignedUrl(req, res, next);
@@ -268,7 +274,7 @@ describe("attachment Controller", () => {
       expect(attachmentService.generateSignedUrl).toHaveBeenCalledWith(
         VALID_TENANT_ID,
         VALID_ATTACHMENT_ID,
-        { baseUrl: "https://callibrator.example", expiresInSec: 3600 },
+        { baseUrl: "https://callibrator.example", expiresInSec: 600, issuer: { userId: VALID_USER_ID, apiKeyId: null } },
       );
       expect(res.status).toHaveBeenCalledWith(200);
     });
@@ -276,6 +282,7 @@ describe("attachment Controller", () => {
     it("should use default expiresInSec when not provided", async () => {
       req.params = { id: VALID_ATTACHMENT_ID };
       req.body = {};
+      throughSchema(req);
 
       attachmentService.generateSignedUrl.mockResolvedValue({
         signedUrl: "https://cdn.example.com/file.pdf?token=abc",
@@ -287,7 +294,7 @@ describe("attachment Controller", () => {
       expect(attachmentService.generateSignedUrl).toHaveBeenCalledWith(
         VALID_TENANT_ID,
         VALID_ATTACHMENT_ID,
-        { baseUrl: "https://callibrator.example", expiresInSec: undefined },
+        { baseUrl: "https://callibrator.example", expiresInSec: undefined, issuer: { userId: VALID_USER_ID, apiKeyId: null } },
       );
     });
   });

@@ -18,6 +18,8 @@ import { success as loadedSuccess } from "../utils/response.util";
 import { baseUrlOf as loadedBaseUrlOf } from "../utils/publicBaseUrl.util";
 import { sendStoredFile as loadedSendStoredFile, sendStorageObject as loadedSendStorageObject } from "../utils/fileResponse.util";
 import { auditPrincipal as loadedAuditPrincipal } from "../utils/auditPrincipal.util";
+import { validated } from "../middlewares/validation.middleware";
+import { createSignedUrlSchema } from "../validators/attachment.validator";
 
 const asyncHandler = loadedAsyncHandler;
 const success = loadedSuccess;
@@ -112,10 +114,15 @@ const download = asyncHandler(async (req: Request, res: Response) => {
 });
 
 // POST /api/v1/attachments/:id/signed-url
+// A-365: the body passed validate(createSignedUrlSchema) on the route (the
+// lifetime is bounded), and the link is bound to the principal minting it.
 const createSignedUrl = asyncHandler(async (req: Request, res: Response) => {
+  const { expiresInSec } = validated(req, createSignedUrlSchema);
+  const principal = auditPrincipal(req);
   const data = await attachmentService.generateSignedUrl(tenantOf(req), req.params["id"] as string, {
     baseUrl: baseUrlOf(req),
-    expiresInSec: (req.body as { expiresInSec?: unknown } | undefined)?.expiresInSec,
+    expiresInSec,
+    issuer: { userId: principal.userId, apiKeyId: principal.apiKeyId },
   });
   success(res, data, null, "Signed URL generated", 200);
 });

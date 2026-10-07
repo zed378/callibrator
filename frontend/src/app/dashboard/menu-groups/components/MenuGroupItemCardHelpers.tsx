@@ -2,36 +2,19 @@
 "use client";
 
 import React from "react";
-import { CheckCircle2, XCircle } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
+import { CheckCircle2 } from "lucide-react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+
+// ADR-122 Amendment 1: assignment is a state — tone, shape, icon and label
+// come from lib/statusTone.ts ("menuAssignment").
 
 export function AssignmentBadge({
   groupState,
 }: {
   groupState: "all" | "none" | "some";
 }) {
-  if (groupState === "all") {
-    return (
-      <Badge variant="success">
-        <CheckCircle2 className="w-3 h-3 mr-1" />
-        Assigned
-      </Badge>
-    );
-  }
-  if (groupState === "some") {
-    return (
-      <Badge variant="warning">
-        <div className="w-2 h-2 bg-warning rounded-sm mr-1" />
-        Partially Assigned
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="default">
-      <XCircle className="w-3 h-3 mr-1" />
-      Not Assigned
-    </Badge>
-  );
+  const state = groupState === "all" ? "assigned" : groupState === "some" ? "partial" : "unassigned";
+  return <StatusBadge domain="menuAssignment" state={state} />;
 }
 
 export function GroupCheckbox({

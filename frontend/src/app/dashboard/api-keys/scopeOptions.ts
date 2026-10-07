@@ -19,6 +19,7 @@ const WORDS: Record<string, string> = {
   qms: "QMS",
   scim: "SCIM",
   sop: "SOP",
+  sql: "SQL", // P24-06: "upstream-sql-import"
   webauthn: "WebAuthn",
   esignature: "E-Signature",
 };

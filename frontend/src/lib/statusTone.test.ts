@@ -12,6 +12,17 @@
 import { STATUS_REGISTRY, TONE_CLASSES, statusOf, toneOf, type StatusDomain, type StatusTone } from "./statusTone";
 
 const EXPECTED: [StatusDomain, string, StatusTone][] = [
+  ["upstreamImport", "failed", "alarm"],
+  ["upstreamImport", "cancelled", "draft"],
+  ["upstreamImport", "transferring", "attention"],
+  ["upstreamImport", "completed", "current"],
+  // P24-06 — the SQL-dump import: in flight is attention, loaded current, failed the alarm, cancelled a decision
+  ["upstreamSqlImport", "uploaded", "draft"],
+  ["upstreamSqlImport", "scanning", "attention"],
+  ["upstreamSqlImport", "parsing", "attention"],
+  ["upstreamSqlImport", "loaded", "current"],
+  ["upstreamSqlImport", "failed", "alarm"],
+  ["upstreamSqlImport", "cancelled", "draft"],
   // device — maintenance is attention, never alarm (doc 08); retired is not an alarm
   ["device", "active", "current"],
   ["device", "inactive", "draft"],
@@ -77,6 +88,50 @@ const EXPECTED: [StatusDomain, string, StatusTone][] = [
   ["backup", "failed", "alarm"],
   ["backup", "in_progress", "attention"],
   ["backup", "pending", "draft"],
+  // ADR-122 Amendment 1 (2026-10-07) — the inline chips and status tiles.
+  // A calibration out of tolerance is non-conformant: the alarm.
+  ["calibrationResult", "compliant", "current"],
+  ["calibrationResult", "non_compliant", "alarm"],
+  // on/off states are current/draft, never alarm (doc 08: inactive is draft)
+  ["active", "active", "current"],
+  ["active", "inactive", "draft"],
+  ["enabled", "disabled", "draft"],
+  ["webhook", "disabled", "draft"],
+  ["iotIngest", "disabled", "draft"],
+  ["consent", "withdrawn", "draft"],
+  ["restriction", "unrestricted", "draft"],
+  ["setting", "not_set", "draft"],
+  ["passkey", "none", "draft"],
+  // something in force that changes what may happen: attention
+  ["legalHold", "active", "attention"],
+  ["recoveryCodes", "low", "attention"],
+  ["accessDecision", "blocked", "attention"],
+  ["accessDecision", "step_up", "attention"],
+  ["stockLevel", "low", "attention"],
+  ["stockLevel", "ok", "current"],
+  ["wip", "over", "attention"],
+  ["duplicate", "suspected", "attention"],
+  // documents and approvals: pending approval is attention (doc 08)
+  ["sop", "UNDER_REVIEW", "attention"],
+  ["sop", "PUBLISHED", "current"],
+  ["sop", "DRAFT", "draft"],
+  ["approval", "PENDING", "attention"],
+  ["vendorApproval", "pending", "attention"],
+  ["vendorApproval", "rejected", "alarm"],
+  ["menuAssignment", "partial", "attention"],
+  ["menuAssignment", "unassigned", "draft"],
+  ["restoreGap", "absent", "attention"],
+  ["restoreGap", "erased", "info"],
+  // system health (F-02): down is failed; not configured / unknown is never green
+  ["health", "healthy", "current"],
+  ["health", "error", "alarm"],
+  ["health", "neutral", "draft"],
+  ["healthVerdict", "unhealthy", "alarm"],
+  ["healthVerdict", "unknown", "draft"],
+  ["intervalAdvice", "shorten", "attention"],
+  // audit: a failed signature authentication is failed; a lockout is like a suspension
+  ["auditEvent", "SIGNATURE_AUTH_FAILED", "alarm"],
+  ["auditEvent", "ACCOUNT_LOCKED", "attention"],
 ];
 
 /** Every state that may be an alarm: overdue, non-conformant (CAPA required, disqualified), failed (incl. uncollectible/unpaid/exhausted), revoked. */
@@ -93,6 +148,16 @@ const ALARM_ALLOWED = new Set([
   "customDomain.failed",
   "invoice.Uncollectible",
   "subscription.Unpaid",
+  // Amendment 1: non-conformant (a calibration out of tolerance, a vendor that failed qualification) and failed (a dependency down, a signature authentication)
+  "calibrationResult.non_compliant",
+  "vendorApproval.rejected",
+  "health.error",
+  "healthVerdict.unhealthy",
+  "auditEvent.SIGNATURE_AUTH_FAILED",
+  // The rsync image import: a failed import is a failure.
+  "upstreamImport.failed",
+  // P24-06: a failed SQL-dump import is a failure.
+  "upstreamSqlImport.failed",
 ]);
 
 describe("statusTone registry (P11-05)", () => {

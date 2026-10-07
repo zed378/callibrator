@@ -288,3 +288,150 @@ It was also built on fabricated proof: randomuser faces, "12,000+", invented hos
 **Not done:** the live compose stack was not re-run for this change. The demo sweep needs only the frontend and ran against a production build. The VM is untouched.
 
 **Files:** `frontend/src/components/public/landing/QrVerifyDemo.tsx`, `landing.css`, `__tests__/landingIslands.p1017.test.tsx`; `automate/responsive.browser.js`; the `Makefile` (the `test-browser` help text); the 16 screenshots; this addendum, `MEMORY/CHANGELOG.md`, `MEMORY/MEMORY-INDEX.md`.
+
+
+## Addendum 2026-10-07 — first paint and LCP of `/` and `/login` (AC-5/AC-6)
+
+**The brief.** Lighthouse 12.8.2 mobile (simulated) missed AC-5/AC-6 (§6.2): `/` Performance 88, LCP 3.6 s; `/login` Performance 89, LCP 3.2 s. The task was to find out why and fix it without changing the design, the content, the CSP/nonce or any bundle ceiling. There is no new decision and no ADR: the changes are inside ADR-118 and doc 20, and nothing in `docs/` specified what was changed.
+
+### Root causes (measured, not inferred)
+
+Evidence: Lighthouse JSON (`network-requests`, `lcp-breakdown-insight`, `render-blocking-insight`, `metrics`); Chrome traces of the main thread, the GPU process and the raster threads; A/B runs through a rewriting proxy; and Lantern's own source in `@paulirish/trace_engine` (`FirstContentfulPaint.getFirstPaintBasedGraph`, `LargestContentfulPaint`).
+
+1. **Simulated LCP is set mostly by the bytes fetched before the observed paint, not by the two small stylesheets.**
+   - Lantern's LCP graph keeps every request that finished before the observed LCP (low-priority images excepted), and the CPU tasks of every script evaluated before it.
+   - On this host the GPU process spends ~100–200 ms rastering the first frame. The framework chunks (~133 KB transfer) download and evaluate inside that window, so they count as LCP-blocking.
+   - Bytes fetched before LCP:
+     - `/`: 366 KB (JS 155, fonts 80, document 47, images 46, CSS 30).
+     - `/login`: 288 KB (JS 185, fonts 58, CSS 25, document 19).
+   - **Floors under simulation** (`--blocked-url-patterns`, 3 runs each):
+     - `/login` with all JS blocked: LCP **1.96 s**.
+     - `/login` with framework JS only: **2.77 s**.
+     - `/` with all JS blocked: **2.64 s**.
+   - So **`/login` ≤ 1.8 s is not reachable in simulate mode on this host while the framework JS arrives before the first presented frame**, and `/` ≤ 2.5 s is not reachable even with no JS.
+2. **`/` laid out the whole page before its first paint.** The first `Layout` covered ~810 boxes and took 200–400 ms unthrottled (×4 under simulation). On a script-free copy:
+   - `content-visibility:auto` on the sections after the hero halved it (280 → 143 ms; FCP 358 → 221 ms).
+   - The rest was fonts. The `body` sets Inter's character variants (`font-feature-settings: "cv02","cv03","cv04","cv11"`, globals.css) for the dashboard, and the public surface inherited them. A non-default feature list shapes every text run on the slower path: −30 % of layout without it (143 → 104 ms).
+3. **`/login` shipped its whole API layer up front:** axios, the auth service and the auth store (~32 KB gzip), before anyone typed.
+4. **The "two late stylesheets" were a small item.** Through the proxy, each of these moved simulated LCP by less than an unpaired run's noise (±150 ms):
+   - merging the font CSS and `landing.css` into the global sheet;
+   - inlining the grain;
+   - `content-visibility`;
+   - the font-feature reset.
+
+   `experimental.inlineCss` was rejected: it is global, and it puts the 132 KB global sheet into every HTML response twice (once in `<style>`, once in the RSC payload).
+5. **Measurement traps found on the way (environment, not code):**
+   - A standalone build on **Windows** cannot load sharp: the output trace copies `sharp-win32-x64.node` but not `libvips-42.dll` / `libvips-cpp-*.dll`. Next then serves the 45.6 KB original instead of a 13 KB AVIF. The production image (Linux) is fine: `kalibrasi.zedth.my.id` returns `image/avif` 12.9 KB at `w=750`. The local snapshots measured below have the DLLs copied in.
+   - The shared `frontend/.next` was rebuilt by another agent under a running server once, which produced console errors and a11y/BP < 100. Every number below comes from standalone snapshots kept outside the repository.
+   - The host is shared, with host CPU load measured at 4–40 % during these runs. Single-variant medians swung by ±300 ms, so before/after is reported only from **interleaved** runs (base, after, base, after…).
+
+### Changes
+
+- `src/components/public/landing/landing.css`:
+  - The rule: `[data-surface="public"] #konten > .lp-section ~ .lp-section { content-visibility: auto; contain-intrinsic-size: auto 900px; }`. The hero is not affected. Sections stay in the accessibility tree and find-in-page; `auto` keeps a rendered section's real height.
+  - **Clipping check (paint containment):** nothing draws outside its section — at 360/390/768/1024/1280/1536 px, with and without reduced motion. It is a geometric check: box rects plus each element's real `box-shadow` extent, plus a 5 px focus-ring allowance on focusables, vertically, and horizontally for sections narrower than the viewport.
+  - **Pixel check:** a viewport-by-viewport comparison with the rule on and off, light/dark × 390/768/1280. It found only sub-pixel snapping (paint containment rounds each section's paint offset), with no visible change; the crops are identical by eye.
+  - A full-page screenshot blanks skipped sections. That is a capture artifact: the screenshot does not make them relevant.
+- `src/app/public-surface.css`:
+  - `font-feature-settings: normal` on `[data-surface="public"]`. The five public woff2 faces have no `cv02/cv03/cv04/cv11` (the GSUB/GPOS feature lists were read after Brotli decompression), so the glyphs are identical.
+  - The grain texture (`public/textures/grain-warm.svg`) is inlined as a data URI (`img-src` allows `data:`), which removes one request per public page.
+- `src/components/public/landing/DemoQr.tsx`: one rectangle per horizontal run of dark modules instead of one per module. The pixels are the same and the path is about half the length. Each QR's path appears twice per page (HTML and RSC payload), and `/` has three QRs.
+- `/login`'s API layer is loaded on demand:
+  - `src/app/login/hooks/authRuntime.ts` (new) re-exports the auth service, the auth store, `describeApiError` and `destinationAfterSignIn`.
+  - `useLoginForm.ts` reaches all of them through `import()` at the point of use.
+  - It prefetches at the visitor's first key press, tap or click **inside `<main>`**, and not on focus, because the identifier field autofocuses at hydration. It also does not prefetch from the theme toggle or the language form, which sit outside `<main>`, so that work never lands on their interaction.
+  - `destinationAfterSignIn` moved to `src/app/login/hooks/destination.ts`. **`src/app/sso-callback/page.tsx`: one import line changed** to point there. The file already carried another agent's uncommitted edits, which were left untouched.
+- **Tests:**
+  - `src/components/public/__tests__/publicPerf.p1017.test.ts` (9): the inlined grain equals the file byte for byte; `font-feature-settings: normal`; each woff2 is decompressed and holds no cv02/03/04/11 (with `kern` present as a check that the decode found the feature list); the `content-visibility` rule exists and never touches the hero.
+  - `src/app/login/hooks/useLoginForm.lazyAuth.p1017.test.tsx` (5): not loaded at render; not loaded by input outside `<main>`; loaded once at the first key press in the panel, after which the listeners go; a submit awaits the same import and reaches the API; listeners are removed on unmount. The load counter sits outside `jest.fn`, so `clearAllMocks` cannot hide an import-time load.
+  - `landingIslands.p1017.test.tsx`: the QR test now decodes the path back to cells and compares them with the encoder's matrix, cell by cell.
+
+### Before / after
+
+**Lighthouse 12.8.2, mobile, simulated:**
+- Production standalone builds of the pre-change tree ("before") and the final tree ("after"), on `127.0.0.1`.
+- Five interleaved rounds per page, median, 2026-10-07 17:30–17:38. Host CPU load was measured at 14 % at the start and 7 % midway.
+
+| Page | | Performance | LCP | FCP | TBT | Speed Index | CLS | A11y / BP / SEO |
+|---|---|---|---|---|---|---|---|---|
+| `/` | before | 88 | 3.61 s | 1.82 s | 52 ms | 3.34 s | 0 | 100 / 100 / 100 |
+| `/` | **after** | **89** | **3.42 s** | 1.98 s | 69 ms | 3.14 s | 0 | 100 / 100 / 100 |
+| `/login` | before | 93 | 3.11 s | 1.53 s | 110 ms | 1.53 s | 0.015 | 100 / 100 / 100 |
+| `/login` | **after** | **92** | **2.95 s** | 1.52 s | 157 ms | 1.52 s | 0.015 | 100 / 100 / 100 |
+
+Paired LCP difference (after − before, same round), both pages pooled:
+- 2026-10-07 17:30 run: **−151 ms median, 10 of 10 pairs lower**.
+- Two earlier interleaved rounds on intermediate trees agree, though both ran on a busier host (load 4–40 %):
+  - At 15:29: `/login` 84 → 90, LCP 3.43 → 3.03 s; `/` 80 → 85, LCP 3.74 → 3.57 s; median −311 ms, 8 of 10 pairs lower.
+  - Earlier: median −166 ms, 10 of 10 pairs lower.
+- `/login`'s TBT was higher after in two of the three rounds (110 → 157 ms in the final one). The cause is not established. The Performance score of `/login` is unchanged within noise.
+
+**Real browser, throttling applied (not simulated):**
+- Setup: scratch script `rum.cjs`: puppeteer-core with the repository's Chrome; a Moto G Power viewport; `Emulation.setCPUThrottlingRate 4`; network 150 ms latency, 1.6 Mbps down, 750 kbps up.
+- Metrics: LCP, CLS and FCP from PerformanceObservers. INP comes from the Event Timing API over two taps of the visible header toggle on each page, plus a tap and typing in the identifier field on `/login`.
+- 7 runs per build, median. Before and after alternated as separate 7-run blocks.
+
+| Page | | LCP | FCP | CLS | INP |
+|---|---|---|---|---|---|
+| `/` | before | 2.58 s (other blocks: 3.07, 2.48) | 2.58 s | 0.001 | 168 ms |
+| `/` | **after** | **1.87 s** (other blocks: 2.33, 1.94) | **0.88 s** | 0.001 | 152 ms |
+| `/login` | before | 0.96 s (other blocks: 1.26, 1.08) | 0.85 s | 0.015 | 192–208 ms |
+| `/login` | **after** | **0.95–1.06 s** (other blocks: 1.14, 0.99) | 0.94 s | 0.015 | 224–232 ms |
+
+- `/login`'s worst interaction is the **theme toggle** (`click` on its `<svg>`) in both builds.
+  - The prefetch cannot fire from it: the toggle sits outside `<main>`, and it is tapped before the field.
+  - Its code is unchanged.
+  - The after blocks ran second while host load rose (7 → 31 %).
+  - So `/login` INP sits at the 200 ms line on both builds. It is not attributed to this change, and it is not fixed: it is a whole-document restyle under 4× CPU.
+- `/login` CLS 0.015 is the `<Suspense>` fallback `<h1>` swapping for the panel's `<h1>`, the same in both builds; it is within AC-6's 0.05.
+
+**Bundle budget** (`scripts/bundle-budget.mjs`, no ceiling raised):
+- `/login`: **154.2 → 130.9 KB brotli** (178.3 → 152.4 KB gzip).
+- Every other route is unchanged; `/` stays at 128.5 KB brotli, 149.4 / 150 KB gzip.
+
+### AC-5 / AC-6 status
+
+- **Not met under Lighthouse simulation on this host:**
+  - `/`: Performance 89 against a target of ≥ 90. Its LCP of 3.42 s is above the 2.5 s target, and its JS-free bound is 2.64 s.
+  - `/login`: Performance 92 against a target of ≥ 95. Its LCP of 2.95 s is above the 1.8 s target, and its framework floor is 2.77 s.
+- **Met under applied throttling in a real browser:**
+  - `/` LCP 1.87 s against 2.5 s.
+  - `/login` LCP ≈ 1.0 s against 1.8 s.
+  - CLS ≤ 0.015 against 0.05.
+- **INP:** `/` 152 ms. `/login` sits at about 200–230 ms because of the theme toggle.
+- The WebPageTest run AC-6 names has not been made, and no run was made on a dedicated host or the VM.
+
+### What remains, and the next levers
+
+1. **`/request-access`, `/forgot-password` and `/invitation`** import the same API layer statically (147.8 / 148 KB brotli). Applying the `/login` pattern to them is the next step. They were out of scope here.
+2. **A public-only global stylesheet.** The root layout's `globals.css` is 132 KB raw (22 KB gzip): Tailwind for the whole dashboard, render-blocking on every public page. Giving the public routes their own root layout (route groups), and with it their own sheet, needs an ADR. It is proposed, not done.
+3. **Fonts before LCP.** Plus Jakarta 400/500/600 (37 KB) plus the italic (22.6 KB) load before `/`'s observed LCP. A variable-weight body face, or fewer weights, would be a design decision.
+4. **The framework floor** (~133 KB of root main chunks) is the Next/React runtime. The simulate-mode result depends on the host's paint pipeline: on a host where the first frame presents before the chunks evaluate, Lantern drops them from LCP. Measuring on the VM or a dedicated host is the remaining honest test.
+5. The theme toggle's INP on `/login`.
+
+### Gates (final tree)
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` (frontend) | 0 errors |
+| `npx eslint` on every changed file | 0 errors, 0 warnings |
+| Frontend jest with coverage (`npm run test:coverage -- --ci`) | **314 suites, 3,440 tests passed**, 0 failed; **94.12 / 85.06 / 89.83 / 94.77** against 90 / 81 / 86 / 91. `authRuntime.ts` and `DemoQr.tsx` are 100 %; `destination.ts` is 100 % of lines; `useLoginForm.ts` is 86.95 % of lines, with the uncovered lines being pre-existing error branches |
+| `node ../node_modules/next/dist/bin/next build` | exit 0 |
+| `node scripts/bundle-budget.mjs` | all 10 routes within the **unchanged** ceilings; `/login` 130.9 / 155 KB brotli |
+| `automate/responsive.browser.js` (production build, `FRONTEND_URL=http://localhost:27425`) | **45/45 page-mode pairs clean, 90/90 QR demo rows clean** |
+| `automate/a11y.browser.js` on the disposable stack `p1017perf` (production mode, built from this tree, ports 27270–27272) | **80/80 checks passed.** axe light and dark: `/` 0 findings; `/login` 0 WCAG findings, plus 1 best-practice `region` warning (the auth shell's back link and language form sit outside a landmark — that markup is unchanged by this work). Reflow at 200 % and reduced motion pass |
+| `automate/p10.browser.mts` on `p1017perf` | **12/12 checks passed** (`sso` is skipped by name, as in every earlier run: it needs `P10_MOCK_IDP_HOST`). Identifier-first sign-in, both passkeys, the one-time password, forgot/reset and verify all pass. CSP: 17 documents, 0 violations, 0 third-party requests |
+
+**Stack:**
+- Removed by name: `docker compose -p p1017perf … down -v`, then `docker image rm callibrator/backend:local callibrator/frontend:local`. Nothing was pruned.
+- The secrets file was deleted. The local servers were stopped by PID.
+
+**Files (this addendum):**
+- `frontend/src/components/public/landing/landing.css`, `DemoQr.tsx`, `__tests__/landingIslands.p1017.test.tsx`;
+- `frontend/src/app/public-surface.css`;
+- `frontend/src/app/login/hooks/useLoginForm.ts`, `authRuntime.ts` (new), `destination.ts` (new), `useLoginForm.lazyAuth.p1017.test.tsx` (new);
+- `frontend/src/components/public/__tests__/publicPerf.p1017.test.ts` (new);
+- `frontend/src/app/sso-callback/page.tsx` (one import line);
+- this addendum, `docs/TESTING/05-PERFORMANCE-TESTING.md` (Frontend), `docs/UI-UX/20-LANDING-AUTH-REVAMP.md` (the AC-5/AC-6 status under §13), `MEMORY/CHANGELOG.md`, `MEMORY/MEMORY-INDEX.md`.
+
+**Not touched:** `next.config.ts`, `app/layout.tsx`, `bundle-budget.json`, `package.json`, the lockfile and the backend.

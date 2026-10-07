@@ -177,6 +177,18 @@ const migrationModules: [string, MigrationModule][] = [
   ["0109-calibration-records-live-index.js", require("../migrations/0109-calibration-records-live-index")],
   // U-06b (ADR-120): the full-text search GIN indexes are per tenant (btree_gin), replacing 0003's.
   ["0110-search-tenant-gin.js", require("../migrations/0110-search-tenant-gin")],
+  // P20-01 (ADR-125 Am. 1): device_types (global catalogue) and calibration_devices.device_type_id (RESTRICT).
+  ["0111-device-types.js", require("../migrations/0111-device-types")],
+  // P20-03 (ADR-125 Am. 1, Am. 2): the inspection catalogue tables, immutability triggers, grants and base checklist v1.
+  ["0112-inspection-catalogue.js", require("../migrations/0112-inspection-catalogue")],
+  // The rsync image import (upstream adoption): upstream_file_imports, its tenant FK, the credential-erasure CHECK.
+  ["0113-upstream-file-imports.js", require("../migrations/0113-upstream-file-imports")],
+  // P24-06: the SQL-dump import — upstream_sql_imports, the import role and the upstream_import staging schema closed to the app role.
+  ["0114-upstream-sql-imports.js", require("../migrations/0114-upstream-sql-imports")],
+  // The rsync image import: the upstream-import menu entry and its SUPERADMIN grant (as 0101).
+  ["0115-upstream-import-menu.js", require("../migrations/0115-upstream-import-menu")],
+  // P24-06: the upstream-sql-import menu entry and its SUPERADMIN grant (as 0101, 0115).
+  ["0116-upstream-sql-import-menu.js", require("../migrations/0116-upstream-sql-import-menu")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

@@ -663,6 +663,29 @@ Measured on a production build (`next build` + `next start`), not the dev server
 | AC-11 | Copy-truthfulness guard (P10-11) green | Jest |
 | AC-12 | Live E2E: sign-in (password, MFA, one-time password → choose password), identifier-first SSO redirect, request-access submit → queue → approve, forgot/reset, verify valid/not-found | new specs in the live suite; the whole suite green in one run (ADR-077 standard) |
 
+**AC-5 / AC-6 status, 2026-10-07 (MEASURED; record `MEMORY/records/2026-10-05-landing-warm-redesign.md`, addendum 2026-10-07): not met under Lighthouse simulation on the workstation.**
+- Lighthouse, simulated:
+  - `/`: Performance **89**, LCP **3.42 s** (was 88 and 3.61 s).
+  - `/login`: Performance **92**, LCP **2.95 s** (was 93 and 3.11 s).
+  - Accessibility, Best Practices and SEO: 100 on both.
+  - CLS: 0 on `/`, 0.015 on `/login`.
+- Under throttling applied in a real browser (4× CPU, 150 ms, 1.6 Mbps), LCP is met:
+  - `/`: **1.87 s**.
+  - `/login`: **≈ 1.0 s**.
+- Why simulation stays above the targets:
+  - Lighthouse's simulation counts every byte that finished before the observed paint.
+  - On this host the framework's ~133 KB of JavaScript finishes first, which alone puts `/login` at **2.77 s**.
+  - `/` with no JavaScript at all is still **2.64 s**.
+- Still open:
+  - a WebPageTest run and a run on the VM or a dedicated host;
+  - `/login` INP sits at about 200 ms, from the theme toggle.
+- The changes made, all without design or content change:
+  - `content-visibility` on the landing's sections below the hero;
+  - the public surface no longer inherits the dashboard's font features;
+  - the grain is inlined;
+  - the demo QR path is shorter;
+  - `/login` loads its API layer on demand (first-load JS 154.2 → 130.9 KB brotli).
+
 ## 14. Release Checklist (before the public pages go live)
 
 *Walked 2026-10-01 for P10-13 (record `MEMORY/records/2026-10-01-p10-13-sso-a11y-ci.md`): an item is ticked only with evidence cited beside it; human-only, owner-only and release-time items stay open.*

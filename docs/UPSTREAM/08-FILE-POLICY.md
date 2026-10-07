@@ -198,3 +198,34 @@ default (UD-15). Exports never embed permanent photo URLs (09 § 4).
 | 162 referenced but missing | quarantine `file_missing`; listed per facility in the data-quality report |
 | 3,360 unreferenced (photos and PDFs) | not migrated; counted per folder; destroyed with the upstream copy (PDFs among them go to the archive only if the operator asks — they are not linked to any device) |
 | files replaced during the dual-run (`inventory_update` unlinks the old photo) | the delta by name at cutover (05 § 6.3) takes the new file; the old object stays attached to its row's history only if the row changed — decided by the ETL's idempotency rule (05 § 8) |
+
+## 11. As Built: the rsync Image Import (P24-07, ADR-130, 2026-10-07)
+
+The transfer and the ingest of § 2 exist as a super-admin module: **Dashboard → Organisation →
+Upstream Import** (`/dashboard/upstream-import`), API `/api/v1/admin/upstream-file-imports`
+(`backend/src/services/upstreamFileImport.service.ts` and `services/upstreamFileImport/`). It copies
+the **front** (`foto_depan`) and **serial-plate** (`foto_sn`) folders only — the certificate folder
+is not even nameable (§ 6) — from the upstream server over rsync/SSH into a quarantine, then runs
+the per-file pipeline. The full design is ADR-130; this section states where the build differs
+from §§ 2–7 above, so neither is read as the other.
+
+| § | This policy | As built (2026-10-07) | Until |
+|---|---|---|---|
+| 2 step 4 | SHA-256 against a source-side manifest | SHA-256 on arrival (rsync's transfer checksums guard the copy); no command runs on the source | P24-05 (by hand, on the source) |
+| 3 | HEIC accepted, JPEG derivative generated | HEIC **quarantined** (`heic_converter_unavailable`) and counted: no HEIC decoder in the backend | P21-02, then a re-run |
+| 4.1 | display and thumbnail derivatives | none | P21-02 |
+| 4.2 ⚖ | originals byte-exact by default | **GPS removed losslessly before the put** (EXIF GPS IFD emptied, XMP/IPTC/comment segments and PNG text/eXIf chunks dropped; orientation and image data untouched); source and stored SHA-256 both in the manifest | counsel's ruling (06 ⚖) |
+| 5 | ClamAV fail-closed | as specified (`virusScan.service`; a scanner error is `scan_failed`) | — |
+| 7 | `t/<tenant>/f/<faskes>/attachments/<uuid>.<ext>` | `t/<tenant>/attachments/<uuid>.<ext>` — the tenant's own scope; no source name in a key | P24-03 re-keys from the manifest |
+| 2 step 8 | an `attachments` row per file | none: the manifest (`<storage root>/.upstream-import/manifests/<import>.jsonl`, 0600, never served) maps each source path to its key and hashes for the ETL | P24-03 |
+| 9 | counts reconcile per folder | every file has a manifest line (ingested, skipped as already present, or quarantined with its reason); the notification and the API answer counts only | — |
+| 10 | the shell script and text file never migrated | refused by type (`file_type_refused`), moved to `.upstream-import/refused/<import>/…`, never executable (rsync writes 0600) | — |
+
+Quarantine reasons used: `file_type_refused`, `file_truncated`, `file_too_large`, `image_too_large`,
+`image_undecodable`, `heic_converter_unavailable`, `virus_found`, `scan_failed`,
+`storage_verify_failed`, `ingest_failed`. A re-run of the same source skips a file whose source
+path and SHA-256 an earlier completed import already ingested (`skippedPresent`); identical content
+at two paths is still two objects (§ 7) and counted as `duplicateContent`.
+
+The DPIA gate (06 § 5) is `UPSTREAM_REAL_DATA_ALLOWED`, default off: until R-01, R-03 and R-17 are
+closed, only a source declared synthetic on a host in `RSYNC_ALLOWED_HOSTS` can be imported.

@@ -67,3 +67,66 @@ export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
 /** A workflow (approval chain) instance. */
 export const WORKFLOW_INSTANCE_STATUSES = Object.freeze(["PENDING", "APPROVED", "REJECTED", "CANCELLED"] as const);
 export type WorkflowInstanceStatus = (typeof WORKFLOW_INSTANCE_STATUSES)[number];
+
+/**
+ * The inspection catalogue (P19-01 spec § 7, ADR-125 Amendment 1; tables of migrations 0111 and
+ * 0112). Device types, item definitions and templates share one lifecycle, `active` ⇄ `retired`:
+ * nothing in the catalogue is deleted, `retired` is the only removal (G-4).
+ */
+export const CATALOGUE_LIFECYCLE_STATUSES = Object.freeze(["active", "retired"] as const);
+export type CatalogueLifecycleStatus = (typeof CATALOGUE_LIFECYCLE_STATUSES)[number];
+
+/** A device type (`device_types.status`). */
+export const DEVICE_TYPE_STATUSES = CATALOGUE_LIFECYCLE_STATUSES;
+export type DeviceTypeStatus = CatalogueLifecycleStatus;
+
+/** A library item definition (`inspection_item_definitions.status`). */
+export const INSPECTION_ITEM_DEFINITION_STATUSES = CATALOGUE_LIFECYCLE_STATUSES;
+export type InspectionItemDefinitionStatus = CatalogueLifecycleStatus;
+
+/** A template (`inspection_templates.status`); a retired template has no published version. */
+export const INSPECTION_TEMPLATE_STATUSES = CATALOGUE_LIFECYCLE_STATUSES;
+export type InspectionTemplateStatus = CatalogueLifecycleStatus;
+
+/**
+ * A template version: draft → published → retired, or draft → discarded (G-6). Exactly one
+ * published and at most one draft per template; published content is immutable, and `retired`
+ * and `discarded` are final — held by the database (migration 0112's trigger), not only the service.
+ */
+export const TEMPLATE_VERSION_STATUSES = Object.freeze(["draft", "published", "retired", "discarded"] as const);
+export type TemplateVersionStatus = (typeof TEMPLATE_VERSION_STATUSES)[number];
+
+/** A tenant's proposal: submitted → accepted | rejected | withdrawn, each terminal. */
+export const TEMPLATE_PROPOSAL_STATUSES = Object.freeze(["submitted", "accepted", "rejected", "withdrawn"] as const);
+export type TemplateProposalStatus = (typeof TEMPLATE_PROPOSAL_STATUSES)[number];
+
+/**
+ * An upstream image import over rsync (ADR-130): pending → transferring → ingesting → completed; failed or cancelled from any
+ * non-terminal state. `completed`, `failed` and `cancelled` are terminal, and every terminal
+ * transition erases the stored credential in the same transaction.
+ */
+export const UPSTREAM_FILE_IMPORT_STATUSES = Object.freeze([
+  "pending",
+  "transferring",
+  "ingesting",
+  "completed",
+  "failed",
+  "cancelled",
+] as const);
+export type UpstreamFileImportStatus = (typeof UPSTREAM_FILE_IMPORT_STATUSES)[number];
+
+/**
+ * The SQL-dump import (ADR-129;
+ * P24-06): uploaded → scanning → parsing → loaded; failed or cancelled from any non-terminal
+ * state, and a failed run whose file is still kept may be retried (failed → uploaded). `loaded`
+ * and `cancelled` are terminal. The uploaded file is never executed — it is parsed.
+ */
+export const UPSTREAM_SQL_IMPORT_STATUSES = Object.freeze([
+  "uploaded",
+  "scanning",
+  "parsing",
+  "loaded",
+  "failed",
+  "cancelled",
+] as const);
+export type UpstreamSqlImportStatus = (typeof UPSTREAM_SQL_IMPORT_STATUSES)[number];

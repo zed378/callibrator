@@ -47,6 +47,8 @@ import {
   Inbox,
   Package,
   HardDrive,
+  ImageDown,
+  DatabaseZap,
 } from "lucide-react";
 import { BackendMenuGroup, BackendMenuItem } from "@/stores/menuStore";
 
@@ -117,6 +119,10 @@ export const iconMap: Record<string, React.ReactNode> = {
   HardDrive: React.createElement(HardDrive, { className: "w-5 h-5" }),
   // P10-07: the super admin's `access-requests` entry (seedMenuGroups.util, migration 0101).
   Inbox: React.createElement(Inbox, { className: "w-5 h-5" }),
+  // The rsync image import's `upstream-import` entry (seedMenuGroups.util, migration 0115).
+  ImageDown: React.createElement(ImageDown, { className: "w-5 h-5" }),
+  // P24-06: the SQL-dump import's `upstream-sql-import` entry (seedMenuGroups.util, migration 0116).
+  DatabaseZap: React.createElement(DatabaseZap, { className: "w-5 h-5" }),
 };
 
 export const smallIconMap: Record<string, React.ReactNode> = {
@@ -165,6 +171,8 @@ export const smallIconMap: Record<string, React.ReactNode> = {
   TicketCheck: React.createElement(TicketCheck, { className: "w-4 h-4" }),
   Sparkles: React.createElement(Sparkles, { className: "w-4 h-4" }),
   Inbox: React.createElement(Inbox, { className: "w-4 h-4" }),
+  ImageDown: React.createElement(ImageDown, { className: "w-4 h-4" }),
+  DatabaseZap: React.createElement(DatabaseZap, { className: "w-4 h-4" }),
 };
 
 // Converts a backend menu item (leaf or sub-group category) recursively so any

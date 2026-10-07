@@ -225,6 +225,10 @@
       "description": "Support / help-desk tickets (raise, triage, assign, discuss, resolve)"
     },
     {
+      "name": "Upstream Import",
+      "description": "The platform operator's import of the upstream application's device photos over rsync/SSH: check the source, confirm its host key, run the copy in the background, and receive a notification when it ends."
+    },
+    {
       "name": "UserPermissions",
       "description": "Per-user permission overrides (role inheritance plus custom grants and denies). Super admin only."
     },
@@ -2220,6 +2224,1453 @@
         }
       }
     },
+    "/api/v1/admin/upstream-file-imports": {
+      "get": {
+        "operationId": "upstreamImportList",
+        "summary": "List imports",
+        "tags": [
+          "Upstream Import"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/upstreamFileImports.openapi.ts",
+        "x-permission": {
+          "gate": "superAdminOnly"
+        },
+        "description": "Newest first.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of imports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/UpstreamFileImport"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data",
+                    "meta"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "operationId": "upstreamImportStart",
+        "summary": "Start an import",
+        "tags": [
+          "Upstream Import"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/upstreamFileImports.openapi.ts",
+        "x-permission": {
+          "gate": "superAdminOnly"
+        },
+        "description": "Runs the connection check again with the confirmed fingerprint; on success stores the import (the credential KMS-encrypted, erased when the import ends) and queues a background job. Audited. When the job cannot be queued the import is ended `failed` (`job_not_queued`) and the answer is 503.\n\n**409** — The check did not pass (the host key changed, the login or a class folder failed), the tenant is not active, or an import of the same source into the same tenant is still running.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "description": "The source server: a DNS name or an IP address",
+                    "example": "upstream.example.org",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253
+                  },
+                  "port": {
+                    "default": 22,
+                    "example": 22,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
+                  },
+                  "username": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9._-]{0,31}$",
+                    "example": "importer"
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "key"
+                    ],
+                    "description": "`key` is recommended"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024,
+                    "description": "SSH password (auth `password`). Write-only: never stored in clear, logged or returned"
+                  },
+                  "privateKey": {
+                    "type": "string",
+                    "maxLength": 16384,
+                    "description": "Unencrypted SSH private key (auth `key`, recommended). Write-only: never stored in clear, logged or returned"
+                  },
+                  "remotePath": {
+                    "description": "The upstream `public/uploads` directory; each file class is one folder under it",
+                    "example": "/var/www/app/public/uploads",
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 1024
+                  },
+                  "fileClasses": {
+                    "minItems": 1,
+                    "maxItems": 2,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "front",
+                        "serial"
+                      ]
+                    },
+                    "description": "`front` = foto_depan, `serial` = foto_sn. Certificate PDFs are never imported (archive-only, owner rule 2026-10-07)",
+                    "example": [
+                      "front",
+                      "serial"
+                    ]
+                  },
+                  "syntheticSource": {
+                    "default": false,
+                    "description": "The source holds synthetic test data. Required (with an allow-listed host) while UPSTREAM_REAL_DATA_ALLOWED is false",
+                    "type": "boolean"
+                  },
+                  "confirmedFingerprint": {
+                    "type": "string",
+                    "pattern": "^SHA256:[A-Za-z0-9+/]{43}$",
+                    "description": "The host-key fingerprint the operator confirmed",
+                    "example": "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU"
+                  },
+                  "targetTenantId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+                    "description": "The tenant whose storage receives the photos"
+                  },
+                  "bandwidthLimitKbps": {
+                    "description": "rsync --bwlimit, in KiB/s; empty for none",
+                    "example": 20480,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 64,
+                        "maximum": 1000000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "host",
+                  "username",
+                  "authMethod",
+                  "remotePath",
+                  "fileClasses",
+                  "confirmedFingerprint",
+                  "targetTenantId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The queued import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UpstreamFileImport"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-file-imports/{id}": {
+      "get": {
+        "operationId": "upstreamImportGet",
+        "summary": "One import",
+        "tags": [
+          "Upstream Import"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/upstreamFileImports.openapi.ts",
+        "x-permission": {
+          "gate": "superAdminOnly"
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The import's id",
+              "example": "5f0c2b8e-3a4d-4c6b-9e1f-7a8b9c0d1e2f"
+            },
+            "required": true,
+            "description": "The import's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UpstreamFileImport"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-file-imports/{id}/cancel": {
+      "post": {
+        "operationId": "upstreamImportCancel",
+        "summary": "Cancel an import",
+        "tags": [
+          "Upstream Import"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/upstreamFileImports.openapi.ts",
+        "x-permission": {
+          "gate": "superAdminOnly"
+        },
+        "description": "A queued import ends at once; a running one stops at its next check (within seconds) and keeps what it copied in staging for a later run. Audited; the requester is notified.\n\n**409** — The import has already ended.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The import's id",
+              "example": "5f0c2b8e-3a4d-4c6b-9e1f-7a8b9c0d1e2f"
+            },
+            "required": true,
+            "description": "The import's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UpstreamFileImport"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-file-imports/check-connection": {
+      "post": {
+        "operationId": "upstreamImportCheckConnection",
+        "summary": "Check a source server",
+        "tags": [
+          "Upstream Import"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/upstreamFileImports.openapi.ts",
+        "x-permission": {
+          "gate": "superAdminOnly"
+        },
+        "description": "Without `confirmedFingerprint`: reads the server's SSH host keys (no login). With it: logs in with that key pinned, lists each class folder with `rsync --dry-run --stats` and estimates files and bytes. At most 10 checks per 10 minutes per operator (429). Audited without the credential. While UPSTREAM_REAL_DATA_ALLOWED is false only a synthetic source on an allow-listed host is accepted (403).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "description": "The source server: a DNS name or an IP address",
+                    "example": "upstream.example.org",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253
+                  },
+                  "port": {
+                    "default": 22,
+                    "example": 22,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
+                  },
+                  "username": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9._-]{0,31}$",
+                    "example": "importer"
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "key"
+                    ],
+                    "description": "`key` is recommended"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024,
+                    "description": "SSH password (auth `password`). Write-only: never stored in clear, logged or returned"
+                  },
+                  "privateKey": {
+                    "type": "string",
+                    "maxLength": 16384,
+                    "description": "Unencrypted SSH private key (auth `key`, recommended). Write-only: never stored in clear, logged or returned"
+                  },
+                  "remotePath": {
+                    "description": "The upstream `public/uploads` directory; each file class is one folder under it",
+                    "example": "/var/www/app/public/uploads",
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 1024
+                  },
+                  "fileClasses": {
+                    "minItems": 1,
+                    "maxItems": 2,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "front",
+                        "serial"
+                      ]
+                    },
+                    "description": "`front` = foto_depan, `serial` = foto_sn. Certificate PDFs are never imported (archive-only, owner rule 2026-10-07)",
+                    "example": [
+                      "front",
+                      "serial"
+                    ]
+                  },
+                  "syntheticSource": {
+                    "default": false,
+                    "description": "The source holds synthetic test data. Required (with an allow-listed host) while UPSTREAM_REAL_DATA_ALLOWED is false",
+                    "type": "boolean"
+                  },
+                  "confirmedFingerprint": {
+                    "type": "string",
+                    "pattern": "^SHA256:[A-Za-z0-9+/]{43}$",
+                    "description": "The host-key fingerprint the operator confirmed",
+                    "example": "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU"
+                  }
+                },
+                "required": [
+                  "host",
+                  "username",
+                  "authMethod",
+                  "remotePath",
+                  "fileClasses"
+                ],
+                "description": "A source to check. Without `confirmedFingerprint` only the host keys are read (no login)"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UpstreamConnectionCheck"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-file-imports/config": {
+      "get": {
+        "operationId": "upstreamImportConfig",
+        "summary": "The import's configuration",
+        "tags": [
+          "Upstream Import"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/upstreamFileImports.openapi.ts",
+        "x-permission": {
+          "gate": "superAdminOnly"
+        },
+        "description": "Whether real upstream data may be imported (UPSTREAM_REAL_DATA_ALLOWED), how many hosts are allow-listed, and the file classes.",
+        "responses": {
+          "200": {
+            "description": "The configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "realDataAllowed": {
+                          "type": "boolean"
+                        },
+                        "allowListedHostCount": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "heicConversion": {
+                          "type": "boolean"
+                        },
+                        "fileClasses": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "enum": [
+                                  "front",
+                                  "serial"
+                                ]
+                              },
+                              "folder": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "folder"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "realDataAllowed",
+                        "allowListedHostCount",
+                        "heicConversion",
+                        "fileClasses"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-sql-imports": {
+      "get": {
+        "operationId": "adminListUpstreamSqlImports",
+        "summary": "The SQL-dump import runs",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/admin.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "SUPER_ADMIN",
+            "SUPERADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "P24-06: newest first, optionally by `status`. A run whose worker died is failed (`INTERRUPTED`) before the list is read.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "uploaded",
+                "scanning",
+                "parsing",
+                "loaded",
+                "failed",
+                "cancelled"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of runs; pagination in the top-level `meta`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/UpstreamSqlImportRun"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data",
+                    "meta"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "operationId": "adminUploadUpstreamSqlDump",
+        "summary": "Upload an upstream SQL dump (multipart, field `file`)",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/admin.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "SUPER_ADMIN",
+            "SUPERADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "P24-06: a mysqldump / MariaDB dump, plain or gzip, up to UPSTREAM_IMPORT_MAX_BYTES (200 MB by default). It is NEVER executed: it is held in the upload quarantine, virus-scanned, then PARSED by a background job into the `upstream_import` staging schema (only CREATE TABLE and INSERT are read; the minimisation policy decides which tables and columns are kept). The uploader is notified in-app and by e-mail when it ends. `dataClass` is the uploader's declaration: `real` is refused while UPSTREAM_REAL_DATA_ALLOWED is off. The request has UPSTREAM_IMPORT_UPLOAD_TIMEOUT_MS (15 minutes by default), not 30 s. Audited.\n\n**409** — Another import is uploaded, scanning or parsing. (A file declared real while UPSTREAM_REAL_DATA_ALLOWED is off is a 403, as for the rsync image import.)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dataClass": {
+                    "type": "string",
+                    "enum": [
+                      "synthetic",
+                      "real"
+                    ]
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "dataClass",
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The run, queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UpstreamSqlImportRun"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-sql-imports/{id}": {
+      "get": {
+        "operationId": "adminGetUpstreamSqlImport",
+        "summary": "One SQL-dump import run",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/admin.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "SUPER_ADMIN",
+            "SUPERADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "P24-06: its status, progress, per-table counts and reasons, and its failure code: counts only, never a value from the dump.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The import run's id",
+              "example": "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b"
+            },
+            "required": true,
+            "description": "The import run's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UpstreamSqlImportRun"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-sql-imports/{id}/cancel": {
+      "post": {
+        "operationId": "adminCancelUpstreamSqlImport",
+        "summary": "Cancel a SQL-dump import run",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/admin.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "SUPER_ADMIN",
+            "SUPERADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "P24-06: a queued run is cancelled at once and its file deleted; a scanning or parsing run is asked to stop (`cancelRequestedAt`), its staging rows are rolled back and its file deleted by the worker. Asking twice answers the run unchanged. Audited.\n\n**409** — The run is loaded, failed or cancelled.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The import run's id",
+              "example": "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b"
+            },
+            "required": true,
+            "description": "The import run's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UpstreamSqlImportRun"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-sql-imports/{id}/retry": {
+      "post": {
+        "operationId": "adminRetryUpstreamSqlImport",
+        "summary": "Retry a failed SQL-dump import run",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/admin.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "SUPER_ADMIN",
+            "SUPERADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "P24-06: only a failed run whose file is still kept; the re-run REPLACES the run's staging rows. Audited.\n\n**409** — The run is not failed, its file was deleted, or another import is active. (A run declared real while UPSTREAM_REAL_DATA_ALLOWED is off is a 403.)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The import run's id",
+              "example": "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b"
+            },
+            "required": true,
+            "description": "The import run's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run, queued again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UpstreamSqlImportRun"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-sql-imports/settings": {
+      "get": {
+        "operationId": "adminUpstreamSqlImportSettings",
+        "summary": "The SQL-dump import's limits and its DPIA gate",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/admin.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "SUPER_ADMIN",
+            "SUPERADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "P24-06: the upload cap, the decompressed cap, a failed run's file retention, whether real upstream data may be imported (UPSTREAM_REAL_DATA_ALLOWED) and whether stage 2 exists.",
+        "responses": {
+          "200": {
+            "description": "The settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "maxUploadBytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "maxUncompressedBytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "failedRetentionDays": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "realDataAllowed": {
+                          "type": "boolean"
+                        },
+                        "transformAvailable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "maxUploadBytes",
+                        "maxUncompressedBytes",
+                        "failedRetentionDays",
+                        "realDataAllowed",
+                        "transformAvailable"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/ai/ocr": {
       "post": {
         "operationId": "processCertificateOcr",
@@ -2478,7 +3929,7 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "`<resource>:<read|write>` (an absent action is `write`); the resource is one of 49 menu slugs. A wildcard resource or action is refused.",
+                    "description": "`<resource>:<read|write>` (an absent action is `write`); the resource is one of 50 menu slugs. A wildcard resource or action is refused.",
                     "example": [
                       "equipment:read",
                       "certificate:read"
@@ -3505,7 +4956,7 @@
         },
         "x-source": "code-first: src/routes/api/attachments.openapi.ts",
         "x-public": true,
-        "description": "The token from POST /:id/signed-url is the credential: an invalid or expired one is refused.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "description": "The token from POST /:id/signed-url is the credential: an invalid, tampered or expired one is refused (403) before any record is read. A valid token whose file was deleted or moved to another tenant, whose tenant is suspended, or whose issuer can no longer act answers 404 (A-365).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
         "parameters": [
           {
             "in": "path",
@@ -3525,11 +4976,11 @@
             "name": "token",
             "schema": {
               "type": "string",
-              "description": "`<expiry>.<signature>`",
-              "example": "1893456000.3f2a"
+              "description": "`<expiry>.<tenantId>.<issuer>.<signature>` (A-365); the older `<expiry>.<signature>` shape is refused",
+              "example": "1893456000.0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f.u1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d.3f2a"
             },
             "required": true,
-            "description": "`<expiry>.<signature>`"
+            "description": "`<expiry>.<tenantId>.<issuer>.<signature>` (A-365); the older `<expiry>.<signature>` shape is refused"
           }
         ],
         "responses": {
@@ -3585,7 +5036,7 @@
           "action": "read",
           "superAdmin": "bypasses"
         },
-        "description": "Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "description": "A-365: the lifetime is an integer from 30 s to the configured cap (default 900 s, never above 3600 s); above it, 400. The link is bound to the tenant and to the principal that minted it: it stops working when the file is deleted or moved, when the tenant is suspended, or when the issuer is deactivated (404).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
         "parameters": [
           {
             "in": "path",
@@ -3609,14 +5060,14 @@
                 "type": "object",
                 "properties": {
                   "expiresInSec": {
-                    "description": "Lifetime; the default applies otherwise",
-                    "example": 3600,
+                    "description": "Lifetime in seconds: an integer from 30 to the configured cap (ATTACHMENT_URL_MAX_TTL_SEC, default 900, never above 3600). Without it, ATTACHMENT_URL_TTL_SEC applies (default 300). Above the cap: 400",
+                    "example": 300,
                     "type": "integer",
-                    "minimum": 1,
-                    "maximum": 9007199254740991
+                    "minimum": 30,
+                    "maximum": 3600
                   }
                 },
-                "description": "Read by the controller; not validated by a schema on the route."
+                "description": "Optional; an empty body takes the default lifetime"
               }
             }
           }
@@ -74199,6 +75650,951 @@
         ],
         "additionalProperties": false,
         "description": "Counts over the tickets the caller may see."
+      },
+      "UpstreamConnectionCheck": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "host_key_unconfirmed",
+              "tool_missing",
+              "unreachable",
+              "timeout",
+              "host_key_mismatch",
+              "auth_failed",
+              "path_not_found",
+              "path_not_readable",
+              "cancelled",
+              "transfer_failed"
+            ],
+            "description": "`ok`: logged in and every class folder listed. `host_key_unconfirmed`: confirm one of `hostKeys`"
+          },
+          "hostKeys": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "fingerprint": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "fingerprint"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "confirmedHostKey": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "fingerprint": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "fingerprint"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "classes": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "front",
+                "serial"
+              ]
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "path_not_found",
+                    "path_not_readable"
+                  ]
+                },
+                "files": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "status",
+                "files",
+                "bytes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpstreamImportEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "hostKeys",
+          "confirmedHostKey",
+          "classes",
+          "estimate"
+        ],
+        "additionalProperties": false,
+        "description": "A connection check's outcome (a failed connection is an answer, not an error)"
+      },
+      "UpstreamFileImport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "targetTenantId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "transferring",
+              "ingesting",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "username": {
+            "type": "string"
+          },
+          "remotePath": {
+            "type": "string"
+          },
+          "fileClasses": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "front",
+                "serial"
+              ]
+            }
+          },
+          "authMethod": {
+            "type": "string",
+            "enum": [
+              "password",
+              "key"
+            ]
+          },
+          "hostKeyType": {
+            "type": "string"
+          },
+          "hostKeyFingerprint": {
+            "type": "string"
+          },
+          "syntheticSource": {
+            "type": "boolean"
+          },
+          "bandwidthLimitKbps": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpstreamImportEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "filesTransferred": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "bytesTransferred": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "filesProcessed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "filesToProcess": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "filesTransferred",
+                  "bytesTransferred",
+                  "filesProcessed",
+                  "filesToProcess"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpstreamImportSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorCode": {
+            "description": "A stable reason code when the import failed",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cancelRequested": {
+            "type": "boolean"
+          },
+          "credentialStored": {
+            "type": "boolean",
+            "description": "Whether the encrypted credential still exists (only while the import can run)"
+          },
+          "secretErasedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "batchJobId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestedBy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "targetTenantId",
+          "status",
+          "host",
+          "port",
+          "username",
+          "remotePath",
+          "fileClasses",
+          "authMethod",
+          "hostKeyType",
+          "hostKeyFingerprint",
+          "syntheticSource",
+          "bandwidthLimitKbps",
+          "estimate",
+          "progress",
+          "summary",
+          "errorCode",
+          "cancelRequested",
+          "credentialStored",
+          "secretErasedAt",
+          "batchJobId",
+          "requestedBy",
+          "startedAt",
+          "finishedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false,
+        "description": "One rsync image import (never its credential)"
+      },
+      "UpstreamImportEstimate": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "classes": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "front",
+                "serial"
+              ]
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "files": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "files",
+                "bytes"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "files",
+          "bytes",
+          "classes"
+        ],
+        "additionalProperties": false,
+        "description": "What the dry-run listing found (regular files and their bytes)"
+      },
+      "UpstreamImportSummary": {
+        "type": "object",
+        "properties": {
+          "filesCopied": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bytesCopied": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "ingested": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bytesIngested": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "skippedPresent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Same source path and SHA-256 as an earlier completed import"
+          },
+          "duplicateContent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Identical content at another path in this import (each is still its own object)"
+          },
+          "metadataStripped": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Files whose GPS/XMP/IPTC metadata was removed losslessly"
+          },
+          "quarantined": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "quarantinedByReason": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "file_type_refused",
+                "file_truncated",
+                "file_too_large",
+                "image_too_large",
+                "image_undecodable",
+                "heic_converter_unavailable",
+                "virus_found",
+                "scan_failed",
+                "storage_verify_failed",
+                "ingest_failed"
+              ]
+            },
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Files that could not be read or moved; left in staging for a re-run"
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "filesCopied",
+          "bytesCopied",
+          "ingested",
+          "bytesIngested",
+          "skippedPresent",
+          "duplicateContent",
+          "metadataStripped",
+          "quarantined",
+          "quarantinedByReason",
+          "failed",
+          "durationMs"
+        ],
+        "additionalProperties": false,
+        "description": "Counts only — never a file name"
+      },
+      "UpstreamSqlImportRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "uploaded",
+              "scanning",
+              "parsing",
+              "loaded",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "dataClass": {
+            "type": "string",
+            "enum": [
+              "synthetic",
+              "real"
+            ]
+          },
+          "compression": {
+            "type": "string",
+            "enum": [
+              "none",
+              "gzip"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sha256": {
+            "type": "string",
+            "example": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "bytesRead": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "uncompressedBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "progress": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Bytes of the file read, over its size"
+          },
+          "rowsLoaded": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "rowsRejected": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "rowsNotExtracted": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "tables": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "table": {
+                  "type": "string",
+                  "description": "The upstream table's name (structure, not data); `#invalid` for a name that is not a plain identifier",
+                  "example": "mst_faskes"
+                },
+                "staged": {
+                  "type": "boolean",
+                  "description": "Whether the minimisation policy stages this table (docs/UPSTREAM/07)"
+                },
+                "reason": {
+                  "description": "Why its rows were not loaded: the policy's, the parser's or `schema_conflict`",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "columns": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "excludedColumns": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991,
+                  "description": "Columns the policy never copies (credentials, internals)"
+                },
+                "rowsLoaded": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "rowsRejected": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "rowsNotExtracted": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "rejections": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "description": "Rejected rows by reason",
+                  "example": {
+                    "invalid_date": 2
+                  }
+                },
+                "notes": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "description": "Values loaded with a note (a zero date loaded as NULL)",
+                  "example": {
+                    "zero_date": 5
+                  }
+                }
+              },
+              "required": [
+                "table",
+                "staged",
+                "reason",
+                "columns",
+                "excludedColumns",
+                "rowsLoaded",
+                "rowsRejected",
+                "rowsNotExtracted",
+                "rejections",
+                "notes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "parseSummary": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "statements": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "comments": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "conditionalComments": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "delimiterRegions": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  },
+                  "completionMarker": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "statements",
+                  "comments",
+                  "conditionalComments",
+                  "delimiterRegions",
+                  "truncated",
+                  "completionMarker"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The parser's statement counts (every statement but CREATE TABLE and INSERT is counted and discarded)"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "FILE_MISSING",
+                  "INTEGRITY_MISMATCH",
+                  "INFECTED",
+                  "SCAN_FAILED",
+                  "REAL_DATA_NOT_ALLOWED",
+                  "TRUNCATED_INPUT",
+                  "DECOMPRESSED_TOO_LARGE",
+                  "CORRUPT_COMPRESSION",
+                  "STAGING_ROLE_INVALID",
+                  "STAGING_FAILED",
+                  "INTERRUPTED"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorSummary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transformStatus": {
+            "type": "string",
+            "enum": [
+              "not_available"
+            ],
+            "description": "Stage 2 (staging to the application's tables) is not built yet"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "fileRetained": {
+            "type": "boolean"
+          },
+          "fileRetainUntil": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "cancellable": {
+            "type": "boolean"
+          },
+          "cancelRequestedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "uploadedBy": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                  },
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scannedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parseStartedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "durationMs": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "dataClass",
+          "compression",
+          "sizeBytes",
+          "sha256",
+          "bytesRead",
+          "uncompressedBytes",
+          "progress",
+          "rowsLoaded",
+          "rowsRejected",
+          "rowsNotExtracted",
+          "tables",
+          "parseSummary",
+          "errorCode",
+          "errorSummary",
+          "transformStatus",
+          "attempt",
+          "fileRetained",
+          "fileRetainUntil",
+          "retryable",
+          "cancellable",
+          "cancelRequestedAt",
+          "uploadedBy",
+          "createdAt",
+          "startedAt",
+          "scannedAt",
+          "parseStartedAt",
+          "finishedAt",
+          "durationMs"
+        ],
+        "additionalProperties": false,
+        "description": "One upload of an upstream SQL dump and its run into staging"
       },
       "UsageAlert": {
         "type": "object",

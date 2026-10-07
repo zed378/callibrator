@@ -24,6 +24,7 @@ import {
 } from "@/api/services/sop.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 const PAGE_SIZE = 10;
 
@@ -170,9 +171,7 @@ export default function SopPage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant={value === "PUBLISHED" ? "success" : "warning"} size="sm">
-          {String(value ?? "")}
-        </Badge>
+        <StatusBadge domain="sop" state={String(value ?? "")} size="sm" />
       ),
     },
     {

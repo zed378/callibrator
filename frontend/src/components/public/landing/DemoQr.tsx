@@ -12,13 +12,26 @@ import QRCode from "qrcode";
 
 export const DEMO_QR_TEXT = "CONTOH DATA — Device Calibrator";
 
-/** One path of unit squares: small markup, crisp at any size. */
+/**
+ * One path, one rectangle per horizontal run of dark modules: crisp at any
+ * size, and the same pixels as a square per module. P10-17 perf addendum: a
+ * square per module made the path ~5.8 KB, and the page carries it twice (the
+ * HTML and the RSC payload) for each QR on it; runs make it about half that.
+ */
 export const qrPath = (text: string): { size: number; d: string } => {
   const { modules } = QRCode.create(text, { errorCorrectionLevel: "M" });
   const parts: string[] = [];
   for (let y = 0; y < modules.size; y += 1) {
-    for (let x = 0; x < modules.size; x += 1) {
-      if (modules.get(y, x)) parts.push(`M${x} ${y}h1v1h-1z`);
+    let x = 0;
+    while (x < modules.size) {
+      if (!modules.get(y, x)) {
+        x += 1;
+        continue;
+      }
+      const start = x;
+      while (x < modules.size && modules.get(y, x)) x += 1;
+      const run = x - start;
+      parts.push(`M${start} ${y}h${run}v1h-${run}z`);
     }
   }
   return { size: modules.size, d: parts.join("") };

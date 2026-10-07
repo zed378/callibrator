@@ -73,6 +73,8 @@ The verbatim questions, each option's trade-off and an Indonesian version are in
 | P11-13 | Dashboard typography: whether it adopts the public faces | BLOCKED — **needs owner input** (new; out of the palette scope on purpose) |
 | P11-14 | Accessibility, performance and live E2E verification of the redesign (P11-08 … P11-13) | BLOCKED — **needs owner input** (was P11-06) |
 
+**Left open by P11-01 … P11-07, closed 2026-10-07** ([addendum](../MEMORY/records/2026-10-06-p11-palette-theme.md#12-addendum-2026-10-07--the-two-items-left-open), ADR-122 Amendment 1): (1) `app/not-found.tsx`, `app/oauth/consent` and `app/sso-callback` are on the theme tokens, no two-hue gradient, and the colour guard now scans all of `app/**` and `components/**` (public surface included) with a new `blend` form — 15 findings → 0 outside an 18-finding allow-list; (2) the inline `variant={x ? "success" : …}` chips and the health tiles are on the status-tone registry (25 new domains), `Badge` lost its `success`/`warning`/`danger` variants, ordinal levels use `PriorityChip`, and `statusChips.p1105.guard` keeps it so — 40 findings → 0, no allow-list. **Still open:** P11-08 … P11-14 (owner-gated); notification-type icons, permission-level toggles and the stat tiles (session, stock, menu-group summaries) colour by token without the tone grammar — they are not statuses of a record, and no card covers them yet.
+
 **Renumbering note:** the placeholder cards of 2026-09-29 (P11-01 … P11-06) are now P11-08 … P11-12 and P11-14, with unchanged titles. They were placeholders with no DoD, so nothing that referenced them is invalidated.
 
 ---

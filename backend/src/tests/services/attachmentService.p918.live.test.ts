@@ -151,8 +151,8 @@ live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", ()
     }
     const [made] = await rows(
       `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url,
-                          status, must_change_password, is_deleted, created_at, updated_at)
-       VALUES (gen_random_uuid(), :t, :h, :e, 'x', 'P918', 'A', 'default.svg', 'ACTIVE', false, false, now(), now())
+                          status, is_active, must_change_password, is_deleted, created_at, updated_at)
+       VALUES (gen_random_uuid(), :t, :h, :e, 'x', 'P918', 'A', 'default.svg', 'ACTIVE', true, false, false, now(), now())
        RETURNING id`,
       { t: TENANT_A, h: `p918-att-${String(Date.now())}`, e: `p918-att-${String(Date.now())}@live.test` },
     );
@@ -250,7 +250,7 @@ live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", ()
   });
 
   it("a signed link downloads without a tenant; the delete removes the row's access and, after the commit, the file", async () => {
-    const { token } = await inTenant(TENANT_A, () => app.attachments.generateSignedUrl(TENANT_A, attId, { expiresInSec: 60 }));
+    const { token } = await inTenant(TENANT_A, () => app.attachments.generateSignedUrl(TENANT_A, attId, { expiresInSec: 60, issuer: { userId: userA } }));
     expect((await app.attachments.getSignedDownload(attId, token)).absPath).toBe(storedPath);
     await expect(app.attachments.getSignedDownload(attId, `${token}0`)).rejects.toMatchObject({ status: 403 });
 

@@ -18,19 +18,24 @@ describe('Badge', () => {
     expect(container.firstChild).toHaveClass('bg-primary/10');
   });
 
-  it('should apply success variant styles', () => {
-    const { container } = render(<Badge variant="success">Success</Badge>);
-    expect(container.firstChild).toHaveClass('bg-success/10');
-  });
-
-  it('should apply warning variant styles', () => {
-    const { container } = render(<Badge variant="warning">Warning</Badge>);
-    expect(container.firstChild).toHaveClass('bg-warning/10');
-  });
-
-  it('should apply danger variant styles', () => {
-    const { container } = render(<Badge variant="danger">Danger</Badge>);
-    expect(container.firstChild).toHaveClass('bg-destructive/10');
+  // ADR-122 Amendment 1 (2026-10-07): the success / warning / danger variants
+  // are gone — a status chip is `tone` from lib/statusTone.ts (shape + icon +
+  // colour). These three cases asserted the colour-only variants; they now
+  // assert the type refuses them (`npm run typecheck` fails if it does not).
+  it('refuses the colour-only status variants at the type level', () => {
+    // @ts-expect-error -- "success" is a status: use tone (ADR-122 Am. 1)
+    const success = <Badge variant="success">Success</Badge>;
+    // @ts-expect-error -- "warning" is a status: use tone (ADR-122 Am. 1)
+    const warning = <Badge variant="warning">Warning</Badge>;
+    // @ts-expect-error -- "danger" is a status: use tone (ADR-122 Am. 1)
+    const danger = <Badge variant="danger">Danger</Badge>;
+    for (const el of [success, warning, danger]) {
+      const { container } = render(el);
+      // An unknown variant renders no colour class at all.
+      expect(container.firstChild).not.toHaveClass('bg-success/10');
+      expect(container.firstChild).not.toHaveClass('bg-warning/10');
+      expect(container.firstChild).not.toHaveClass('bg-destructive/10');
+    }
   });
 
   it('should apply info variant styles', () => {

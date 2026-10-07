@@ -26,6 +26,15 @@ import {
   REQUEST_LOCALES,
 } from "@callibrator/contracts/accessRequestValues";
 import { storedTenantRow, TENANT_STATUSES } from "../../docs/openapi/tenantSchemas";
+import { UPSTREAM_SQL_IMPORT_STATUSES } from "@callibrator/contracts/states";
+import {
+  UPSTREAM_SQL_IMPORT_COMPRESSIONS,
+  UPSTREAM_SQL_IMPORT_DATA_CLASSES,
+  UPSTREAM_SQL_IMPORT_ERROR_CODES,
+  UPSTREAM_SQL_IMPORT_TRANSFORM_STATUSES,
+  listUpstreamSqlImportsSchema,
+  uploadUpstreamSqlImportSchema,
+} from "@callibrator/contracts/upstreamSqlImport";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 
 const superAdmin = { kind: "rbac", roles: ["SUPER_ADMIN", "SUPERADMIN"] } as const;
@@ -73,6 +82,77 @@ const queueAnswer = z.object({
 });
 
 const domains = z.object({ domains: z.array(z.string()).meta({ example: ["hospital.example"] }) });
+
+/** P24-06 — `:id` of an upstream SQL import run. */
+const sqlImportParams = z.object({
+  id: z.guid().meta({ description: "The import run's id", example: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b" }),
+});
+
+const count = z.number().int().min(0);
+const codeCounts = z.record(z.string(), count);
+
+/** One upstream table of a run: counts and codes only, never a value. */
+const sqlImportTable = z.object({
+  table: z.string().meta({
+    description: "The upstream table's name (structure, not data); `#invalid` for a name that is not a plain identifier",
+    example: "mst_faskes",
+  }),
+  staged: z.boolean().meta({ description: "Whether the minimisation policy stages this table (docs/UPSTREAM/07)" }),
+  reason: z.string().nullable().meta({ description: "Why its rows were not loaded: the policy's, the parser's or `schema_conflict`" }),
+  columns: count,
+  excludedColumns: count.meta({ description: "Columns the policy never copies (credentials, internals)" }),
+  rowsLoaded: count,
+  rowsRejected: count,
+  rowsNotExtracted: count,
+  rejections: codeCounts.meta({ description: "Rejected rows by reason", example: { invalid_date: 2 } }),
+  notes: codeCounts.meta({ description: "Values loaded with a note (a zero date loaded as NULL)", example: { zero_date: 5 } }),
+});
+
+/** A run as upstreamSqlImport.service#view answers it: never the file's path or name. */
+const sqlImportRun = z
+  .object({
+    id: z.guid(),
+    status: z.enum(UPSTREAM_SQL_IMPORT_STATUSES),
+    dataClass: z.enum(UPSTREAM_SQL_IMPORT_DATA_CLASSES),
+    compression: z.enum(UPSTREAM_SQL_IMPORT_COMPRESSIONS),
+    sizeBytes: count,
+    sha256: z.string().meta({ example: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" }),
+    bytesRead: count,
+    uncompressedBytes: count,
+    progress: z.number().min(0).max(1).meta({ description: "Bytes of the file read, over its size" }),
+    rowsLoaded: count,
+    rowsRejected: count,
+    rowsNotExtracted: count,
+    tables: z.array(sqlImportTable),
+    parseSummary: z
+      .object({
+        statements: codeCounts,
+        comments: count,
+        conditionalComments: count,
+        delimiterRegions: count,
+        truncated: z.boolean(),
+        completionMarker: z.boolean(),
+      })
+      .nullable()
+      .meta({ description: "The parser's statement counts (every statement but CREATE TABLE and INSERT is counted and discarded)" }),
+    errorCode: z.enum(UPSTREAM_SQL_IMPORT_ERROR_CODES).nullable(),
+    errorSummary: z.string().nullable(),
+    transformStatus: z.enum(UPSTREAM_SQL_IMPORT_TRANSFORM_STATUSES).meta({ description: "Stage 2 (staging to the application's tables) is not built yet" }),
+    attempt: z.number().int().min(1),
+    fileRetained: z.boolean(),
+    fileRetainUntil: z.iso.datetime().nullable(),
+    retryable: z.boolean(),
+    cancellable: z.boolean(),
+    cancelRequestedAt: z.iso.datetime().nullable(),
+    uploadedBy: z.object({ id: z.guid(), name: z.string().nullable() }).nullable(),
+    createdAt: z.iso.datetime(),
+    startedAt: z.iso.datetime().nullable(),
+    scannedAt: z.iso.datetime().nullable(),
+    parseStartedAt: z.iso.datetime().nullable(),
+    finishedAt: z.iso.datetime().nullable(),
+    durationMs: count.nullable(),
+  })
+  .meta({ id: "UpstreamSqlImportRun", description: "One upload of an upstream SQL dump and its run into staging" });
 
 export default defineRouteDocs({
   router: "api/admin.route",
@@ -259,6 +339,94 @@ export default defineRouteDocs({
         data: z.object({ invitationSent: z.boolean(), expiresAt: z.iso.datetime() }),
       },
       conflict: "The request is not approved, or its invitation was already accepted.",
+    },
+    {
+      method: "get",
+      path: "/upstream-sql-imports/settings",
+      operationId: "adminUpstreamSqlImportSettings",
+      summary: "The SQL-dump import's limits and its DPIA gate",
+      description:
+        "P24-06: the upload cap, the decompressed cap, a failed run's file retention, whether real upstream data may be " +
+        "imported (UPSTREAM_REAL_DATA_ALLOWED) and whether stage 2 exists.",
+      permission: superAdmin,
+      audited: false,
+      success: {
+        status: 200,
+        description: "The settings",
+        data: z.object({
+          maxUploadBytes: count,
+          maxUncompressedBytes: count,
+          failedRetentionDays: count,
+          realDataAllowed: z.boolean(),
+          transformAvailable: z.boolean(),
+        }),
+      },
+    },
+    {
+      method: "get",
+      path: "/upstream-sql-imports",
+      operationId: "adminListUpstreamSqlImports",
+      summary: "The SQL-dump import runs",
+      description: "P24-06: newest first, optionally by `status`. A run whose worker died is failed (`INTERRUPTED`) before the list is read.",
+      permission: superAdmin,
+      audited: false,
+      query: listUpstreamSqlImportsSchema,
+      success: { status: 200, description: "A page of runs; pagination in the top-level `meta`", list: sqlImportRun },
+    },
+    {
+      method: "post",
+      path: "/upstream-sql-imports",
+      operationId: "adminUploadUpstreamSqlDump",
+      summary: "Upload an upstream SQL dump (multipart, field `file`)",
+      description:
+        "P24-06: a mysqldump / MariaDB dump, plain or gzip, up to UPSTREAM_IMPORT_MAX_BYTES (200 MB by default). It is NEVER executed: " +
+        "it is held in the upload quarantine, virus-scanned, then PARSED by a background job into the `upstream_import` staging schema " +
+        "(only CREATE TABLE and INSERT are read; the minimisation policy decides which tables and columns are kept). The uploader is " +
+        "notified in-app and by e-mail when it ends. `dataClass` is the uploader's declaration: `real` is refused while " +
+        "UPSTREAM_REAL_DATA_ALLOWED is off. The request has UPSTREAM_IMPORT_UPLOAD_TIMEOUT_MS (15 minutes by default), not 30 s. Audited.",
+      permission: superAdmin,
+      audited: true,
+      bodyMediaType: "multipart/form-data",
+      body: uploadUpstreamSqlImportSchema.extend({ file: z.string().meta({ format: "binary" }) }),
+      success: { status: 201, description: "The run, queued", data: sqlImportRun },
+      conflict: "Another import is uploaded, scanning or parsing. (A file declared real while UPSTREAM_REAL_DATA_ALLOWED is off is a 403, as for the rsync image import.)",
+    },
+    {
+      method: "get",
+      path: "/upstream-sql-imports/:id",
+      operationId: "adminGetUpstreamSqlImport",
+      summary: "One SQL-dump import run",
+      description: "P24-06: its status, progress, per-table counts and reasons, and its failure code: counts only, never a value from the dump.",
+      permission: superAdmin,
+      audited: false,
+      params: sqlImportParams,
+      success: { status: 200, description: "The run", data: sqlImportRun },
+    },
+    {
+      method: "post",
+      path: "/upstream-sql-imports/:id/cancel",
+      operationId: "adminCancelUpstreamSqlImport",
+      summary: "Cancel a SQL-dump import run",
+      description:
+        "P24-06: a queued run is cancelled at once and its file deleted; a scanning or parsing run is asked to stop (`cancelRequestedAt`), " +
+        "its staging rows are rolled back and its file deleted by the worker. Asking twice answers the run unchanged. Audited.",
+      permission: superAdmin,
+      audited: true,
+      params: sqlImportParams,
+      success: { status: 200, description: "The run", data: sqlImportRun },
+      conflict: "The run is loaded, failed or cancelled.",
+    },
+    {
+      method: "post",
+      path: "/upstream-sql-imports/:id/retry",
+      operationId: "adminRetryUpstreamSqlImport",
+      summary: "Retry a failed SQL-dump import run",
+      description: "P24-06: only a failed run whose file is still kept; the re-run REPLACES the run's staging rows. Audited.",
+      permission: superAdmin,
+      audited: true,
+      params: sqlImportParams,
+      success: { status: 200, description: "The run, queued again", data: sqlImportRun },
+      conflict: "The run is not failed, its file was deleted, or another import is active. (A run declared real while UPSTREAM_REAL_DATA_ALLOWED is off is a 403.)",
     },
   ],
 });

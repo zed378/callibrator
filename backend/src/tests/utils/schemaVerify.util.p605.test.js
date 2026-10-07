@@ -133,7 +133,7 @@ describe("verifySchema", () => {
     expect(result.problems).toHaveLength(triggers.length);
   });
 
-  it("checks the append-only trigger, the void CHECK, the per-tenant serial index, the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes, and the audit_logs append-only triggers (Q-34, ADR-095), and the exactly-one-actor CHECKs (Q-51, migration 0105)", () => {
+  it("checks the append-only trigger, the void CHECK, the per-tenant serial index, the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes, and the audit_logs append-only triggers (Q-34, ADR-095), and the exactly-one-actor CHECKs (Q-51, migration 0105), and the inspection catalogue's triggers, unique indexes and CHECKs (P20-01/03, migrations 0111/0112)", () => {
     expect(EXPECTED_OBJECTS.map((o) => `${o.kind}:${o.name}`)).toEqual([
       "trigger:calibration_records_append_only",
       "trigger:calibration_records_no_truncate",
@@ -148,6 +148,25 @@ describe("verifySchema", () => {
       "index:users_username_lower_unique",
       "trigger:audit_logs_append_only",
       "trigger:audit_logs_no_truncate",
+      // P20-01 / P20-03 (migrations 0111, 0112): the inspection catalogue's controls.
+      "trigger:device_types_no_delete",
+      "trigger:device_types_no_truncate",
+      "trigger:inspection_item_definitions_no_delete",
+      "trigger:inspection_item_definitions_no_truncate",
+      "trigger:inspection_templates_no_delete",
+      "trigger:inspection_templates_no_truncate",
+      "trigger:inspection_template_proposals_no_delete",
+      "trigger:inspection_template_proposals_no_truncate",
+      "trigger:inspection_template_versions_immutable",
+      "trigger:inspection_template_versions_no_truncate",
+      "trigger:inspection_template_items_draft_only",
+      "trigger:inspection_template_items_no_truncate",
+      "index:device_types_name_unique",
+      "index:inspection_templates_one_base",
+      "index:inspection_template_versions_one_published",
+      "index:inspection_template_versions_one_draft",
+      "constraint:inspection_template_versions_published_complete",
+      "constraint:inspection_template_versions_publisher_exactly_one",
     ]);
   });
 });
@@ -161,7 +180,7 @@ describe("assertSchemaMatchesModels", () => {
     const result = await assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined });
     expect(result.problems).toEqual([]);
     expect(log.info).toHaveBeenCalledWith(`${TAG} note: column devices.legacy is not declared by model Device`);
-    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 13 control objects/));
+    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 31 control objects/));
     expect(log.error).not.toHaveBeenCalled();
   });
 
@@ -169,7 +188,7 @@ describe("assertSchemaMatchesModels", () => {
     const log = logger();
     const sequelize = fakeSequelize([devices], [], {});
     await expect(assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined })).rejects.toThrow(
-      /FAILED: 14 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
+      /FAILED: 32 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
     );
     expect(log.error).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] MISMATCH: table devices/));
   });

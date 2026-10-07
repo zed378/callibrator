@@ -356,6 +356,7 @@ jobs:
       CALIBRATION_SCHEDULER: disabled
       TENANT_LIFECYCLE_SCHEDULER: disabled
       QUARANTINE_SWEEP_SCHEDULER: disabled
+      UPSTREAM_SQL_IMPORT_SWEEP_SCHEDULER: disabled
       WEBHOOK_DISPATCH_SCHEDULER: disabled
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

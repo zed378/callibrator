@@ -184,14 +184,15 @@ describe('risk register — reading', () => {
     const { container } = await renderLoaded();
 
     const vent = rowOf('Ventilator calibration drift');
-    expect(within(vent).getByText('20')).toHaveClass('text-destructive');
+    // ADR-122 Am. 1: the RPN band is an ordinal level on the priority ramp, not a status colour.
+    expect(within(vent).getByText('20')).toHaveAttribute('data-level', 'urgent');
     expect(within(vent).getByText('safety')).toBeInTheDocument();
     expect(within(vent).getByText('OPEN')).toBeInTheDocument();
     expect(
       within(vent).getByText(new Date('2026-10-15T00:00:00.000Z').toLocaleDateString())
     ).toBeInTheDocument();
-    expect(within(rowOf('Supplier lead time')).getByText('6')).toHaveClass('text-success');
-    expect(within(rowOf('Budget overrun')).getByText('9')).toHaveClass('text-warning');
+    expect(within(rowOf('Supplier lead time')).getByText('6')).toHaveAttribute('data-level', 'low');
+    expect(within(rowOf('Budget overrun')).getByText('9')).toHaveAttribute('data-level', 'medium');
     expect(await axeViolations(container)).toEqual([]);
   });
 
@@ -288,7 +289,7 @@ describe('risk register — recording', () => {
     fireEvent.click(within(dialog).getByRole('option', { name: '4' }));
     fireEvent.click(within(dialog).getByRole('button', { name: /^Likelihood/ }));
     fireEvent.click(within(dialog).getByRole('option', { name: '4' }));
-    expect(within(dialog).getByText('16')).toHaveClass('text-destructive');
+    expect(within(dialog).getByText('16')).toHaveAttribute('data-level', 'urgent');
     fireEvent.change(within(dialog).getByLabelText('Mitigation Plan'), {
       target: { value: 'UPS' },
     });

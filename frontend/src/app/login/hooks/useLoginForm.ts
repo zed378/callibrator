@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuthStore } from "@/stores/authStore";
-import { authService } from "@/api/services/auth.service";
-import { CHANGE_PASSWORD_PATH, MFA_PATH, describeApiError } from "@/api/client";
 import { safeCallbackPath } from "@/lib/safeCallback";
 import { useI18n } from "@/i18n/MessagesProvider";
 import { minutesFrom, readApiFailure, signInMessage, ssoErrorKey } from "@/i18n/apiErrors";
@@ -18,18 +15,13 @@ import { getPasskeyAssertion } from "@/lib/passkey";
 // the test now builds them from the dictionary itself.
 
 /**
- * Where to go once signed in: the change-password screen when the account
- * must replace an administrator-set password (A-123), the MFA page when it
- * must enrol first (P6-07), else the callback. P10-04 (05 §5.1): the SSO
- * callback page routes through this too.
+ * P10-17 perf addendum: the API layer (axios, the auth service and store) is
+ * not in the page's first-load JavaScript. It is loaded here on first use, and
+ * prefetched once the browser is idle after the page is up, so a submit does
+ * not wait for it. `destinationAfterSignIn` lives in ./destination for the
+ * same reason (the SSO callback page imports it from there).
  */
-export const destinationAfterSignIn = (callbackUrl: string) => {
-  const user = useAuthStore.getState().user;
-  if (user?.mustChangePassword) return CHANGE_PASSWORD_PATH;
-  // P6-07: a platform operator without MFA has an enrolment-only session.
-  if (user?.mfaEnrolmentRequired) return MFA_PATH;
-  return callbackUrl;
-};
+const loadAuth = () => import("./authRuntime");
 
 /**
  * A-288 (ADR-100): the device position, asked for ONLY after the backend
@@ -120,6 +112,7 @@ export function useLoginForm() {
     setSsoLoading(true);
     setSsoError(null);
     try {
+      const { authService } = await loadAuth();
       const result = await authService.ssoStart(code.trim());
       if (result?.redirectUrl) {
         assignLocation(result.redirectUrl);
@@ -142,6 +135,26 @@ export function useLoginForm() {
     return false;
   };
 
+  // P10-17 perf addendum: fetch the API layer at the visitor's first key press,
+  // tap or click in the sign-in panel (<main>), so it is there by the time they
+  // submit (typing an address takes seconds), yet costs the page's load
+  // nothing. Not on focus: the identifier field takes focus as the page
+  // hydrates. Not for the theme toggle or language form outside <main>: that
+  // work would land on their interaction (INP). A failed prefetch is retried
+  // on use.
+  useEffect(() => {
+    const events = ["keydown", "pointerdown", "touchstart"] as const;
+    const prefetch = (event: Event) => {
+      if (!(event.target instanceof Element) || !event.target.closest("main")) return;
+      for (const type of events) document.removeEventListener(type, prefetch, true);
+      void loadAuth().catch(() => undefined);
+    };
+    for (const type of events) document.addEventListener(type, prefetch, { capture: true, passive: true });
+    return () => {
+      for (const type of events) document.removeEventListener(type, prefetch, true);
+    };
+  }, []);
+
   // `/login?org=<code>`: a tenant deep link goes straight to that tenant's SSO
   // when it is enabled, and otherwise shows the password step (doc 20 §7.2).
   const orgTried = useRef(false);
@@ -150,6 +163,7 @@ export function useLoginForm() {
     orgTried.current = true;
     void (async () => {
       try {
+        const { authService } = await loadAuth();
         const result = await authService.ssoStart(orgParam.trim());
         if (result?.redirectUrl) assignLocation(result.redirectUrl);
       } catch {
@@ -166,6 +180,7 @@ export function useLoginForm() {
     setError(null);
     setDiscovering(true);
     try {
+      const { authService } = await loadAuth();
       const result = await authService.discoverLogin(identifier);
       if (result?.next === "sso" && result.redirectUrl) {
         assignLocation(result.redirectUrl);
@@ -192,6 +207,7 @@ export function useLoginForm() {
   };
 
   const signIn = async (user: string, pass: string) => {
+    const { useAuthStore } = await loadAuth();
     const login = useAuthStore.getState().login;
     try {
       // The position is passed only once the backend has asked for it.
@@ -238,7 +254,7 @@ export function useLoginForm() {
         setStep("first");
         return;
       }
-      router.push(destinationAfterSignIn(callbackUrl));
+      router.push((await loadAuth()).destinationAfterSignIn(callbackUrl));
     } catch (err) {
       setError(failureMessage(err, "password"));
     } finally {
@@ -256,8 +272,10 @@ export function useLoginForm() {
     setFirstChangeLoading(true);
     setFirstChangeError(null);
     try {
+      const { authService } = await loadAuth();
       await authService.completeFirstSignIn(passwordChangeToken, newPassword);
     } catch (err) {
+      const { describeApiError } = await loadAuth();
       const { status, message } = describeApiError(err);
       setFirstChangeError(
         status === 401
@@ -281,7 +299,7 @@ export function useLoginForm() {
         return;
       }
       setStep("password");
-      router.push(destinationAfterSignIn(callbackUrl));
+      router.push((await loadAuth()).destinationAfterSignIn(callbackUrl));
     } catch (err) {
       setStep("password");
       setError(failureMessage(err, "password"));
@@ -303,8 +321,9 @@ export function useLoginForm() {
     if (!mfaToken) return;
     setMfaLoading(true);
     setError(null);
-    const complete = useAuthStore.getState().completeMfaLogin;
     try {
+      const { useAuthStore } = await loadAuth();
+      const complete = useAuthStore.getState().completeMfaLogin;
       try {
         if (locationRef.current) {
           await complete(mfaToken, mfaCode.trim(), useRecoveryCode, locationRef.current);
@@ -322,7 +341,7 @@ export function useLoginForm() {
         locationRef.current = location;
         await complete(mfaToken, mfaCode.trim(), useRecoveryCode, location);
       }
-      router.push(destinationAfterSignIn(callbackUrl));
+      router.push((await loadAuth()).destinationAfterSignIn(callbackUrl));
     } catch (err) {
       const message = failureMessage(err, "mfa");
       if (message === t("auth.error.mfaExpired")) {
@@ -356,6 +375,7 @@ export function useLoginForm() {
     setError(null);
     setPasskeyLoading(true);
     const ceremony = async (location?: SignInLocation): Promise<boolean> => {
+      const { authService, useAuthStore } = await loadAuth();
       const { ceremonyId, options } = await authService.passkeyOptions();
       const credential = await getPasskeyAssertion(options);
       if (!credential) return false;
@@ -379,7 +399,7 @@ export function useLoginForm() {
         locationRef.current = location;
         signedIn = await ceremony(location);
       }
-      if (signedIn) router.push(destinationAfterSignIn(callbackUrl));
+      if (signedIn) router.push((await loadAuth()).destinationAfterSignIn(callbackUrl));
     } catch (err) {
       const failure = readApiFailure(err);
       setError(

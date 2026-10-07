@@ -124,6 +124,27 @@ There is **no embedded MQTT broker** (A-17; corrected under ADR-088 — this lin
 | Bundle size | `@next/bundle-analyzer` |
 | Render cost | React DevTools Profiler |
 
+### Public pages against doc 20 AC-5/AC-6 (Lighthouse mobile, simulated)
+
+Every figure is labelled **TARGET** or **MEASURED**, as in the hot-path table. Source: [`MEMORY/records/2026-10-05-landing-warm-redesign.md`](../../MEMORY/records/2026-10-05-landing-warm-redesign.md), addendum 2026-10-07.
+
+**How these were measured:**
+- Lighthouse 12.8.2 on a production standalone build, run on the shared workstation (not a dedicated host, not the VM).
+- Five rounds, interleaved with the previous tree, median.
+- Image optimisation was working (AVIF); on Windows that needs libvips copied into the standalone output.
+
+| Page | Measure | Target (doc 20) | Label | Result |
+|---|---|---|---|---|
+| `/` | Performance | ≥ 90 | TARGET | **MEASURED 2026-10-07:** 88 → **89 — not met** |
+| `/` | LCP | ≤ 2.5 s | TARGET | **MEASURED 2026-10-07:** 3.61 → **3.42 s — not met** in simulation. Bound with all JS blocked: 2.64 s. Under throttling applied in a real browser (4× CPU, 150 ms, 1.6 Mbps): 2.58 → **1.87 s — met** |
+| `/login` | Performance | ≥ 95 | TARGET | **MEASURED 2026-10-07:** 93 → **92 — not met** (unchanged within noise) |
+| `/login` | LCP | ≤ 1.8 s | TARGET | **MEASURED 2026-10-07:** 3.11 → **2.95 s — not met** in simulation. **Floor with framework JS only: 2.77 s.** Real browser, applied throttling: **≈ 1.0 s — met** |
+| `/`, `/login` | CLS | ≤ 0.05 | TARGET | **MEASURED 2026-10-07:** 0 and 0.015 — met |
+| `/`, `/login` | INP | ≤ 200 ms | TARGET | **MEASURED 2026-10-07** (real browser, 4× CPU): `/` 152 ms — met. `/login` ~200–230 ms — at the line; the worst interaction is the theme toggle, the same in both builds |
+| `/login` | first-load JS | ≤ 155 KB brotli (budget) | TARGET | **MEASURED 2026-10-07:** 154.2 → **130.9 KB** (the API layer is loaded on first use) |
+
+**Why simulation cannot meet `/login`'s 1.8 s here.** Lighthouse's simulation (Lantern) estimates LCP from everything that finished before the *observed* paint. On this host the first frame is presented only after the framework chunks (~133 KB) have downloaded and run, so they count, and they alone put the estimate at 2.77 s. A host whose first frame presents earlier would not count them. The VM or a dedicated host is the remaining honest measurement.
+
 Two things worth checking specifically:
 
 **Store subscriptions.** `useStore((s) => s.field)` versus `const { field } = useStore()` — the compiler cannot narrow a subscription, and the wide form re-renders on every store change. It is the most common cause of a dashboard that feels sluggish under live notifications.

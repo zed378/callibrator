@@ -30,6 +30,7 @@ import {
 } from "@/app/dashboard/calibration/components/ESignatureFields";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 type Tab = "definitions" | "pending";
 
@@ -263,9 +264,7 @@ export default function WorkflowsPage() {
       key: "isActive",
       header: "Active",
       render: (value: unknown) => (
-        <Badge variant={value === false ? "default" : "success"} size="sm">
-          {value === false ? "Inactive" : "Active"}
-        </Badge>
+        <StatusBadge domain="active" state={value === false ? "inactive" : "active"} size="sm" />
       ),
     },
     {
@@ -343,9 +342,7 @@ export default function WorkflowsPage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge variant="warning" size="sm">
-          {String(value ?? "PENDING")}
-        </Badge>
+        <StatusBadge domain="approval" state={String(value ?? "PENDING")} size="sm" />
       ),
     },
     {

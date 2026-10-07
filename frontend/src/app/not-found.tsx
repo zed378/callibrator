@@ -16,11 +16,12 @@ export const metadata = {
 //
 // The concept is calibration-native: the missing page is rendered as an
 // instrument reading pinned PAST the maximum on a tolerance scale — the red
-// marker sits off the in-tolerance band. Cohesive with the app's Clinical
-// Precision system (Space Grotesk display, aurora + blueprint grid, trust-blue
-// / health-green / alert-red tokens, tabular numerals). No JS required; the
-// single ambient motion (pulsing marker) respects prefers-reduced-motion via
-// globals.css.
+// marker sits off the in-tolerance band. Colours are the theme tokens only
+// (ADR-122 warm palette, light and dark): copper `primary` for the reading and
+// the action, `success` / `destructive` for the band — no two-hue gradient
+// (Amendment 1: the copper→teal blend left with the teal's brand role). No JS
+// required; the single ambient motion (pulsing marker) respects
+// prefers-reduced-motion via globals.css.
 // ------------------------------------------------------------------
 
 // Evenly-spaced ruler ticks; the ones inside the nominal band read "in range".
@@ -100,7 +101,7 @@ export default function NotFound() {
         <div className="animate-fade-in-up mt-6">
           <div className="font-display text-[7rem] font-bold leading-none tracking-tighter text-foreground tabular-nums sm:text-[9rem]">
             4
-            <span className="bg-linear-to-br from-primary to-accent bg-clip-text text-transparent">
+            <span className="text-primary">
               0
             </span>
             4
@@ -122,7 +123,7 @@ export default function NotFound() {
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- deliberate: next/link in this root boundary loads on every page (see the note at the top) */}
           <a
             href="/"
-            className="group inline-flex items-center justify-center gap-2 rounded-xl bg-linear-to-r from-primary to-accent px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-primary/40"
+            className="group inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-300 hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-primary/40 active:bg-primary-pressed"
           >
             <Home className="h-4 w-4" />
             Back to home
@@ -138,7 +139,7 @@ export default function NotFound() {
         </div>
 
         {/* footnote */}
-        <p className="animate-fade-in delay-500 mt-10 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground/70">
+        <p className="animate-fade-in delay-500 mt-10 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
           <Gauge className="h-3.5 w-3.5" />
           Device Calibrator
         </p>

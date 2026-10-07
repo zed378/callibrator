@@ -416,7 +416,8 @@ describe("initSocket", () => {
   };
 
   const fakeSocket = (over = {}) => ({
-    user: { id: "user-1", tenantId: "tenant-1" },
+    // A-365: the role the handshake set (activeUser's), compared by the re-check.
+    user: { id: "user-1", tenantId: "tenant-1", role: { name: "TECHNICIAN" } },
     tenantContext: {
       tenantId: "tenant-1",
       isSuperAdmin: false,
@@ -664,8 +665,10 @@ describe("getIo before initialisation", () => {
 describe("P6-12 — an open socket stops when its principal stops", () => {
   const { recheckSocket, checkPrincipal, SOCKET_RECHECK_INTERVAL_MS } = socketModule.__testables;
 
+  // A-365: the context and role the handshake built (the re-check compares them).
   const openSocket = () => ({
-    user: { id: "user-1", tenantId: "tenant-1" },
+    user: { id: "user-1", tenantId: "tenant-1", role: { name: "TECHNICIAN" } },
+    tenantContext: { tenantId: "tenant-1", isSuperAdmin: false, isSystemTask: false },
     sessionId: "sess-1",
     disconnect: jest.fn(),
   });

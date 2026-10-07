@@ -416,10 +416,10 @@ describe("attachment.service", () => {
   // ================================================================
   describe("generateSignedUrl", () => {
     it("should generate a signed URL with HMAC token", async () => {
-      const mockAtt = { id: "a-1" };
+      const mockAtt = { id: "a-1", tenantId: "t-1" };
       Attachment.findOne.mockResolvedValueOnce(mockAtt);
 
-      const result = await attachmentService.generateSignedUrl("t-1", "a-1");
+      const result = await attachmentService.generateSignedUrl("t-1", "a-1", { issuer: { userId: "u-1" } });
 
       expect(result.url).toContain("/api/v1/attachments/a-1/signed");
       expect(result.token).toBeDefined();
@@ -427,10 +427,11 @@ describe("attachment.service", () => {
     });
 
     it("should use custom expiry when provided", async () => {
-      const mockAtt = { id: "a-1" };
+      const mockAtt = { id: "a-1", tenantId: "t-1" };
       Attachment.findOne.mockResolvedValueOnce(mockAtt);
 
       const result = await attachmentService.generateSignedUrl("t-1", "a-1", {
+        issuer: { userId: "u-1" },
         expiresInSec: 600,
       });
 
@@ -441,10 +442,10 @@ describe("attachment.service", () => {
   // ================================================================
   describe("_verifySignedToken", () => {
     it("should return true for a valid token", async () => {
-      const mockAtt = { id: "a-1" };
+      const mockAtt = { id: "a-1", tenantId: "t-1" };
       Attachment.findOne.mockResolvedValueOnce(mockAtt);
 
-      const { token } = await attachmentService.generateSignedUrl("t-1", "a-1");
+      const { token } = await attachmentService.generateSignedUrl("t-1", "a-1", { issuer: { userId: "u-1" } });
       const valid = attachmentService._verifySignedToken("a-1", token);
 
       expect(valid).toBe(true);

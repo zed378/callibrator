@@ -79,7 +79,7 @@ Totals: **Exists 3** (M01, M02, M06) · **Partial 8** (M03, M04, M05, M09, M10, 
 | Business rules | a client/facility-technician account maps to **exactly one** facility (data: 60 mappings, none multiple); provider staff are never mapped and see all facilities |
 | Callibrator | `routes/api/tenant.route.ts` (`/create`, `/edit`, `/settings`, `/:tenantId/logo`), `tenantHierarchy.route.ts`, `services/tenant.service.ts`, `tenantHierarchy.service.ts`; `dashboard/tenants`, `tenant-hierarchy` |
 | Status | **Partial** |
-| Gap | (1) facilities become **tenants**, created by the platform operator, not by a provider admin; (2) **provider staff serving many tenants does not exist** — a user has one `tenantId` (§ 10 of 00); (3) district-office → health-centre structure is in the device "room" field upstream; could become `tenant_hierarchies` (structure only) or warehouses/locations inside one tenant — ETL decision |
+| Gap | **Superseded by ADR-124 (2026-10-07, target):** facilities are `client_facilities` rows **inside** the provider tenant, created by its unbound administrator (`client-facilities` slug, P18-03 spec § 7); provider staff are unbound users of that tenant; facility accounts are users **bound** to one facility (the upstream `trx_mapping_user_client`), confined by the second scope — so (1) and (2) below no longer apply; (3) is UD-10. *As first written:* (1) facilities become **tenants**, created by the platform operator, not by a provider admin; (2) **provider staff serving many tenants does not exist** — a user has one `tenantId` (§ 10 of 00); (3) district-office → health-centre structure is in the device "room" field upstream; could become `tenant_hierarchies` (structure only) or warehouses/locations inside one tenant — ETL decision |
 
 ## M04 — Device-Type Catalogue and IPM Checklist Templates
 
@@ -217,15 +217,21 @@ and `admin/roleGroup.php` permission-menu residue, `Views/InventoryController.ph
 
 ---
 
-## Role Mapping (draft for Phase 18)
+## Role Mapping (Phase 18)
 
-| Upstream group | Proposed Callibrator role | Tenant | Notes |
+> **Amended 2026-10-07 (P18-03, ADR-124 and its Amendment 1 — target, not built).** The draft below this
+> note assumed facilities would be tenants and provider staff members of each (00 § 10 option 1); the
+> owner's tenancy (ADR-124) makes the **provider the tenant** and the facility a client inside it. The
+> full matrix — group → role → bound or tenant-wide → per menu slug read/write → which routes a bound
+> user reaches — is [`MEMORY/specs/P18-03-facility-scope-permissions.md`](../../MEMORY/specs/P18-03-facility-scope-permissions.md)
+> (§ 4 – § 8). Which role each group gets is **UD-4 (a)**, still open; the scope column is decided.
+
+| Upstream group | Callibrator role (UD-4 (a), recommended) | Scope (ADR-124) | Notes |
 |---|---|---|---|
-| `admin` | `CALIBRATOR ADMIN` | provider staff, member of each served facility tenant (00 § 10 option 1) | user/role admin stays with the platform/tenant admins |
-| `user` (Teknisi) | `TECHNICIAN` | same membership | IPM write, device write, calibration-date write |
-| `client` | `HEALTHCARE ADMIN` (if the facility runs its own users) or a read-only facility role | the facility tenant | upstream client is read-only; decide whether facilities get write |
-| `teknisi_client` | `HEALTHCARE TECHNICIAN` | the facility tenant | device registration + IPM in own facility |
-| (signature) IPSRS | `FACILITY MAINTENANCE` | the facility tenant | **new duty**: countersigns the IPM report electronically (upstream: wet signature) |
+| `admin` | `CALIBRATOR ADMIN` | **unbound** user of the provider tenant — every facility | administers users, client facilities, bindings; voids IPM sessions (ADR-126) |
+| `user` (Teknisi) | `TECHNICIAN` | **unbound** | IPM write (new `ipm` slug); device and calibration-date writes need **UD-4 (b)** (`calibration` write for the technical roles) |
+| `client` | first account per facility `HEALTHCARE ADMIN`, the others `ROOM USER` | **bound** to its facility | read-only in this group (spec § 5); a bound `HEALTHCARE ADMIN` is **not** a tenant administrator (ADR-124 § 7); facility user management is **UD-4 (c)** |
+| `teknisi_client` | `HEALTHCARE TECHNICIAN` | **bound** | device registration (UD-4 (b)) and IPM capture in its own facility only |
+| (signature) IPSRS | `FACILITY MAINTENANCE` | **bound** (unbound in a self-served hospital) | **new duty, UD-17:** countersigns the IPM report electronically; may not countersign its own session |
 
-Proposed new menu slug for gates: `ipm` (IPM capture/report) and `ipm-templates` (catalogue admin,
-platform-owned); device extensions stay under `equipment`; exports under the existing reports gate.
+Menu slugs (spec § 7; migration P20-06): **`ipm`** (IPM capture, history, report data — child of `equipment`), **`ipm-templates`** (the global catalogue's reads and the tenant's proposals; operator writes are `superAdminOnly`, ADR-125 — child of `equipment`), **`client-facilities`** (Management › Organization). Device routes are gated by **`calibration`**, not `equipment` (`equipment` gates only attachments — ADR-125 Am. 1 § 2); exports are frontend-rendered from paginated reads gated by the slug of what they read (ADR-126 § 8), and `/reports/*` stays provider-only. No new role; `ROLE_LEVELS` unchanged.

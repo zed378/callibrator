@@ -21,6 +21,7 @@ import { TimeGreeting, partOfDay } from "../TimeGreeting";
 import { HeroPointer } from "../HeroPointer";
 import { QrVerifyDemo, SCAN_MS, breakAfterHyphens, type QrVerifyDemoLabels } from "../QrVerifyDemo";
 import { DemoQr, DEMO_QR_TEXT, qrPath } from "../DemoQr";
+import QRCode from "qrcode";
 import { BeforeAfter } from "../BeforeAfter";
 import { CertificateExplorer, nearestSlide } from "../CertificateExplorer";
 import { StepFx, WorkflowStory, type WorkflowStep, type WorkflowStepId } from "../WorkflowStory";
@@ -230,8 +231,20 @@ describe("DemoQr", () => {
   it("draws a real QR matrix for the sample text, named, not a link", () => {
     const { size, d } = qrPath(DEMO_QR_TEXT);
     expect(size).toBeGreaterThanOrEqual(21);
-    // The top-left finder pattern: a dark 7-module row at y = 0.
-    for (let x = 0; x < 7; x += 1) expect(d).toContain(`M${x} 0h1v1h-1z`);
+    // The top-left finder pattern: a dark 7-module row at y = 0, one run.
+    expect(d.startsWith("M0 0h7v1h-7z")).toBe(true);
+    // The path covers exactly the encoder's dark modules: decode every run
+    // back to cells and compare with the matrix, cell by cell.
+    const { modules } = QRCode.create(DEMO_QR_TEXT, { errorCorrectionLevel: "M" });
+    const drawn = new Set<string>();
+    for (const [, x, y, run, back] of d.matchAll(/M(\d+) (\d+)h(\d+)v1h-(\d+)z/g)) {
+      expect(back).toBe(run);
+      for (let i = 0; i < Number(run); i += 1) drawn.add(`${Number(x) + i},${y}`);
+    }
+    expect(d.replace(/M\d+ \d+h\d+v1h-\d+z/g, "")).toBe("");
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) expect(drawn.has(`${x},${y}`)).toBe(Boolean(modules.get(y, x)));
+    }
     const { container } = render(<DemoQr label="Kode QR contoh" />);
     expect(screen.getByRole("img", { name: "Kode QR contoh" })).toBeInTheDocument();
     expect(container.querySelector("a")).toBeNull();

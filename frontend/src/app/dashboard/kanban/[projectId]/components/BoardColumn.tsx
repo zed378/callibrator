@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { KanbanCard, KanbanColumn } from "@/api/services/kanban.service";
 import { Plus, CheckCircle2 } from "lucide-react";
 import CardTile from "./CardTile";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface Props {
   column: KanbanColumn;
@@ -56,16 +57,19 @@ export default function BoardColumn({
           <h3 className="text-sm font-semibold text-foreground">
             {column.name}
           </h3>
-          <span
-            className={`text-xs rounded-full px-2 py-0.5 ${
-              overLimit
-                ? "bg-destructive/10 text-destructive"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {cards.length}
-            {column.wipLimit != null ? `/${column.wipLimit}` : ""}
-          </span>
+          {/* ADR-122 Am. 1: over the WIP limit is a state (attention: shape,
+              icon, colour); within it the count is a plain neutral chip. */}
+          {overLimit ? (
+            <StatusBadge domain="wip" state="over" size="sm">
+              {cards.length}
+              {`/${column.wipLimit}`}
+            </StatusBadge>
+          ) : (
+            <span className="text-xs rounded-full px-2 py-0.5 bg-muted text-muted-foreground">
+              {cards.length}
+              {column.wipLimit != null ? `/${column.wipLimit}` : ""}
+            </span>
+          )}
         </div>
       </div>
 

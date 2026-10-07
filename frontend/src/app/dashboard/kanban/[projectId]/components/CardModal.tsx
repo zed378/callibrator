@@ -110,7 +110,9 @@ export default function CardModal({
           .filter((a) => (a.mimeType || "").startsWith("image/"))
           .map(async (a) => {
             try {
-              const s = await attachmentService.getSignedUrl(a.id, 3600);
+              // A-365: no lifetime — the server default (300 s) is ample for a
+              // thumbnail the browser loads at once; above the cap is a 400.
+              const s = await attachmentService.getSignedUrl(a.id);
               return [a.id, s.url] as const;
             } catch {
               return [a.id, ""] as const;

@@ -26,11 +26,22 @@ import {
 } from "@/api/services/meteredBilling.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 const PAGE_SIZE = 10;
 
 const fmt = (v?: string) => (v ? new Date(v).toLocaleDateString() : "—");
 const num = (n?: number) => (typeof n === "number" ? n.toLocaleString() : "—");
+
+/**
+ * ADR-122 Am. 1: the invoice states ("Paid", "Open", …) are the billing
+ * invoice domain's (lib/statusTone.ts); matched without regard to case, as
+ * before: "paid" / "PAID" / "Paid" → "Paid".
+ */
+const invoiceState = (value: unknown): string => {
+  const s = String(value ?? "");
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+};
 
 export default function MeteredBillingPage() {
   // ADR-102: alerts are written on `metered-billing` write (meteredBilling.route.js).
@@ -187,14 +198,9 @@ export default function MeteredBillingPage() {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
-        <Badge
-          variant={
-            String(value ?? "").toLowerCase() === "paid" ? "success" : "warning"
-          }
-          size="sm"
-        >
+        <StatusBadge domain="invoice" state={invoiceState(value)} size="sm">
           {String(value ?? "—")}
-        </Badge>
+        </StatusBadge>
       ),
     },
   ];

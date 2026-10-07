@@ -141,6 +141,13 @@ WORKDIR /app
 # default, so EVERY apt request below is verified. Installing Debian's
 # ca-certificates package then regenerates the bundle from Debian's own set.
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+#
+# rsync, openssh-client (ssh, ssh-keyscan) and sshpass: the upstream image
+# import (services/upstreamFileImport, the ADR "rsync image import") copies the
+# upstream server's device photos over rsync/SSH. The backend spawns them with
+# fixed argument vectors, never a shell; sshpass reads the password from its
+# environment (SSHPASS), never argv. --no-install-recommends keeps xauth and
+# the rest of openssh-client's recommends out.
 RUN set -eux; \
     sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
     sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null || true; \
@@ -148,7 +155,10 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         openssl \
-        wget; \
+        wget \
+        rsync \
+        openssh-client \
+        sshpass; \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

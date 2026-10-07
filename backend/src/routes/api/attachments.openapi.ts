@@ -12,6 +12,7 @@
  */
 import { z } from "zod";
 import { defineRouteDocs } from "../../docs/openapi/operation";
+import { createSignedUrlSchema } from "../../validators/attachment.validator";
 
 const timestamp = z.iso.datetime();
 const FILE = "8c9d0e1f-2a3b-4c4d-9e5f-6a7b8c9d0e1f";
@@ -68,11 +69,17 @@ export default defineRouteDocs({
       path: "/:id/signed",
       operationId: "downloadSignedAttachment",
       summary: "Download an attachment with a signed, expiring token (no sign-in)",
-      description: "The token from POST /:id/signed-url is the credential: an invalid or expired one is refused.",
+      description:
+        "The token from POST /:id/signed-url is the credential: an invalid, tampered or expired one is refused (403) before any record is read. A valid token whose file was deleted or moved to another tenant, whose tenant is suspended, or whose issuer can no longer act answers 404 (A-365).",
       permission: null,
       audited: false,
       params,
-      query: z.object({ token: z.string().meta({ description: "`<expiry>.<signature>`", example: "1893456000.3f2a" }) }),
+      query: z.object({
+        token: z.string().meta({
+          description: "`<expiry>.<tenantId>.<issuer>.<signature>` (A-365); the older `<expiry>.<signature>` shape is refused",
+          example: "1893456000.0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f.u1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d.3f2a",
+        }),
+      }),
       success: { status: 200, description: FILE_ANSWER, file: { contentType: "application/octet-stream" } },
     },
     {
@@ -138,12 +145,12 @@ export default defineRouteDocs({
       path: "/:id/signed-url",
       operationId: "createAttachmentSignedUrl",
       summary: "Create a signed, expiring download link (for sharing without sign-in)",
+      description:
+        "A-365: the lifetime is an integer from 30 s to the configured cap (default 900 s, never above 3600 s); above it, 400. The link is bound to the tenant and to the principal that minted it: it stops working when the file is deleted or moved, when the tenant is suspended, or when the issuer is deactivated (404).",
       permission: equipment("read"),
       audited: false,
       params,
-      body: z
-        .object({ expiresInSec: z.number().int().min(1).optional().meta({ description: "Lifetime; the default applies otherwise", example: 3600 }) })
-        .meta({ description: "Read by the controller; not validated by a schema on the route." }),
+      body: createSignedUrlSchema,
       success: {
         status: 200,
         description: "The link",

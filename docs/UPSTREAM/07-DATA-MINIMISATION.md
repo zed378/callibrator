@@ -71,8 +71,8 @@ client entity in the provider tenant".
 | `mst_faskes.img_logo` | MIGRATE if the file exists and passes 08 | facility logo | 9 set; organisational |
 | `mst_alat` | **TRANSFORM** (5 case groups merged) | global catalogue `device_types` (UD-3) | reference data |
 | 12 `mst_*` checklist catalogues | TRANSFORM | `inspection_item_definitions` (versioned, UD-3) | reference data |
-| `mst_*.notes` | MIGRATE ⚖ | definition notes | catalogue text; free-text class — reviewed once by the operator, since it becomes **global** |
-| 5 `mapping_*` | TRANSFORM (5 duplicate pairs collapsed) | `device_type_inspection_items` | reference data |
+| `mst_*.notes` | MIGRATE ⚖ | definition notes — **operator-only**: never copied into a published version, never returned to a tenant (ADR-125 Am. 1; P19-01 spec § 4.2) | catalogue text; free-text class — reviewed once by the operator, since it becomes **global** |
+| 5 `mapping_*` | TRANSFORM (5 duplicate pairs collapsed) | ~~`device_type_inspection_items`~~ version 1 of each type's `inspection_template_versions` / `_items` (ADR-125; P19-01 spec § 12) | reference data |
 | `mst_fotodepan_inventory`, `mst_fotosn_inventory` (480 + 480) | **NOT MIGRATED** | — | an upload log of the dead mobile API; only file names, which the device rows already reference |
 | `mst_stok_konsumable` | NOT MIGRATED | — | empty |
 | `migrations` | NOT MIGRATED | — | framework log |

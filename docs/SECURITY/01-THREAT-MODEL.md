@@ -4,6 +4,8 @@ STRIDE over the trust boundaries in [`02-TRUST-BOUNDARIES.md`](./02-TRUST-BOUNDA
 
 Threats are `T<n>`, rated by consequence rather than by likelihood alone — a low-likelihood total-compromise beats a high-likelihood nuisance.
 
+The **facility (faskes) dimension inside a tenant** (ADR-124) and the **offline field PWA** (ADR-127) are target designs, not built; their threat model is a separate document, [`15-FASKES-SCOPE-THREAT-MODEL.md`](./15-FASKES-SCOPE-THREAT-MODEL.md) (threats `FT-n`, P17-06).
+
 ---
 
 ## Assets, Ranked

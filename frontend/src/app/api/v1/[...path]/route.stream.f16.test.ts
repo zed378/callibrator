@@ -29,6 +29,7 @@ jest.mock("next/headers", () => ({
 
 let mockBackendBase = "";
 let mockProxyTimeout = 32000;
+let mockUploadTimeout = 905000;
 jest.mock("@/constants", () => ({
   get API_BASE_URL() {
     return mockBackendBase;
@@ -36,6 +37,10 @@ jest.mock("@/constants", () => ({
   get PROXY_UPSTREAM_TIMEOUT_MS() {
     return mockProxyTimeout;
   },
+  get PROXY_UPLOAD_TIMEOUT_MS() {
+    return mockUploadTimeout;
+  },
+  LONG_UPLOAD_PATHS: ["admin/upstream-sql-imports"],
 }));
 
 import { NextRequest } from "next/server";
@@ -96,6 +101,18 @@ const backend = http.createServer((req, res) => {
     void within(downloadClientHasFirstChunk.fired).then(() => {
       downloadEndedAt = Date.now();
       res.end(downloadPart2);
+    });
+    return;
+  }
+
+  if (req.url === "/api/v1/admin/upstream-sql-imports") {
+    // P24-06: answers only after the whole dump has arrived, and slowly.
+    req.resume();
+    req.on("end", () => {
+      setTimeout(() => {
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end('{"success":true,"data":{"id":"run-1"}}');
+      }, 400);
     });
     return;
   }
@@ -322,6 +339,20 @@ describe("/api/v1/[...path] proxy — the upstream budget (F-14)", () => {
     let closed = false;
     await within(slowClosed.fired.then(() => void (closed = true)));
     expect(closed).toBe(true);
+  });
+
+  it("P24-06: the SQL-dump upload has its own, longer budget — the ordinary one would have cut it off", async () => {
+    mockProxyTimeout = 200;
+    mockUploadTimeout = 5000;
+    const res = await POST(
+      new NextRequest("http://localhost/api/v1/admin/upstream-sql-imports", { method: "POST", body: "-- dump" }),
+      params("admin/upstream-sql-imports"),
+    );
+    expect(res.status).toBe(201);
+    // A GET of the same path is not an upload: the ordinary budget applies.
+    const list = await GET(new NextRequest("http://localhost/api/v1/reports/slow"), params("reports/slow"));
+    expect(list.status).toBe(504);
+    mockProxyTimeout = 32000;
   });
 
   it("F-14: when the browser goes away the upstream request is aborted too", async () => {

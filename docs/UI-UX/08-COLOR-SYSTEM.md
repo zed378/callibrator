@@ -192,7 +192,7 @@ The dashboard follows the public palette's family, tempered for density: warm ne
 
 The dashboard warning (hue 43°) is deliberately yellower than the public `#8A5300` (36°): next to copper buttons all day, the public hue was too close to copper's 22°.
 
-**Components use semantic tokens only** — never a palette class, a hex value or a `dark:` colour variant. `src/tests/guards/dashboardColours.p1101.guard.test.ts` fails the build on one, outside the reviewed allow-list in `src/constants/colourExemptions.ts` (user-chosen data colours and the MFA QR's white ground).
+**Components use semantic tokens only** — never a palette class, a hex value or a `dark:` colour variant. `src/tests/guards/dashboardColours.p1101.guard.test.ts` fails the build on one, outside the reviewed allow-list in `src/constants/colourExemptions.ts` (user-chosen data colours, the MFA QR's white ground and a tenant logo's plate). Since ADR-122 Amendment 1 it scans every page and component (`app/**`, `components/**`, the public surface included) and also refuses a gradient across two hues (`from-primary to-accent`); a gradient within one token or into a neutral surface is allowed.
 
 ## Status Tones (ADR-122)
 

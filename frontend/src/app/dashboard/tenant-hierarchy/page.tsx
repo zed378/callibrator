@@ -27,6 +27,7 @@ import { tenantService } from '@/api/services/tenant.service';
 import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/stores/toastStore';
 import { usePermissions } from "@/hooks/usePermissions";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 const PLANS = ['free', 'professional', 'business', 'enterprise'];
 
@@ -183,9 +184,9 @@ export default function TenantHierarchyPage() {
       key: 'status',
       header: 'Status',
       render: (value: unknown) => (
-        <Badge variant={String(value).toUpperCase() === 'ACTIVE' ? 'success' : 'warning'} size="sm">
+        <StatusBadge domain="tenantLifecycle" state={String(value ?? '').toUpperCase()} size="sm">
           {String(value ?? '—')}
-        </Badge>
+        </StatusBadge>
       ),
     },
     {

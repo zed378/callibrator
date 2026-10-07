@@ -27,8 +27,8 @@ export const AdjustmentsTable: React.FC<AdjustmentsTableProps> = ({ data }) => {
       header: "Type",
       render: (val: unknown) => {
         const t = val as string;
-        const variants = { addition: "success" as const, subtraction: "warning" as const, write_off: "danger" as const };
-        return <Badge variant={variants[t as keyof typeof variants]}>{t.toUpperCase()}</Badge>;
+        // ADR-122 Am. 1: an adjustment type is a category, not a status.
+        return <Badge variant="secondary">{t.toUpperCase()}</Badge>;
       },
     },
     {

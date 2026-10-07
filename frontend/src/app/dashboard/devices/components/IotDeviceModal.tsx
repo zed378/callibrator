@@ -7,10 +7,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Dialog, Button, Input, Alert, Badge } from "@/components/ui";
+import { Dialog, Button, Input, Alert } from "@/components/ui";
 import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { Device } from "@/api/services/device.service";
 import { IotConfig, iotService, toleranceFromRows } from "@/api/services/iot.service";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface IotDeviceModalProps {
   device: Device | null;
@@ -132,9 +133,7 @@ export const IotDeviceModal: React.FC<IotDeviceModalProps> = ({ device, onClose,
               <div className="flex items-center gap-2">
                 <KeyRound className="h-4 w-4 text-primary" />
                 <h3 className="font-semibold">Ingest token</h3>
-                <Badge variant={config.iotEnabled ? "success" : "secondary"}>
-                  {config.iotEnabled ? "Ingest enabled" : "Ingest disabled"}
-                </Badge>
+                <StatusBadge domain="iotIngest" state={config.iotEnabled ? "enabled" : "disabled"} />
               </div>
               <p className="text-sm text-muted-foreground">
                 {config.hasToken

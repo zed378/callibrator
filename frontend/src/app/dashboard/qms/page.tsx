@@ -32,22 +32,26 @@ import {
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toneOf } from "@/lib/statusTone";
+import { PriorityChip } from "@/components/ui/PriorityChip";
 
 type Tab = "nc" | "capa";
 
 const PAGE_SIZE = 10;
 
 
-const severityVariant = (s: string): "default" | "info" | "warning" | "danger" => {
+/** ADR-122 Am. 1: severity is an ordinal level, not a status — the priority ramp. */
+const severityLevel = (s: string): string => {
   switch (s) {
     case "CRITICAL":
-      return "danger";
+      return "urgent";
     case "HIGH":
-      return "warning";
+      return "high";
     case "MEDIUM":
-      return "info";
+      return "medium";
+    case "LOW":
+      return "low";
     default:
-      return "default";
+      return "none";
   }
 };
 
@@ -233,9 +237,9 @@ export default function QmsPage() {
       key: "severity",
       header: "Severity",
       render: (value: unknown) => (
-        <Badge variant={severityVariant(String(value))} size="sm">
+        <PriorityChip level={severityLevel(String(value))} size="sm">
           {String(value ?? "")}
-        </Badge>
+        </PriorityChip>
       ),
     },
     {

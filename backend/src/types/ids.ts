@@ -63,3 +63,28 @@ export const toTenantId = (value: string): TenantId => {
  * branded here because this file is the one place a brand assertion is allowed.
  */
 export const NO_TENANT_ID = "00000000-0000-0000-0000-000000000000" as TenantId;
+
+/*
+ * The inspection catalogue (P20-01 / P20-03; spec MEMORY/specs/P19-01-inspection-catalogue.md § 4).
+ * Types only, as `UserId` began: the models declare their keys with them. Their validating
+ * constructors are added by the first module that turns a raw string into one (the catalogue
+ * service, P21-01).
+ */
+
+/** A device type's id (`device_types.id`). */
+export type DeviceTypeId = Brand<string, "DeviceTypeId">;
+
+/** A library item definition's id (`inspection_item_definitions.id`). */
+export type InspectionItemDefinitionId = Brand<string, "InspectionItemDefinitionId">;
+
+/** A checklist template's id (`inspection_templates.id`). */
+export type InspectionTemplateId = Brand<string, "InspectionTemplateId">;
+
+/** A template version's id (`inspection_template_versions.id`) — the id a session pins. */
+export type InspectionTemplateVersionId = Brand<string, "InspectionTemplateVersionId">;
+
+/** A version's item id (`inspection_template_items.id`) — the id a result pins. */
+export type InspectionTemplateItemId = Brand<string, "InspectionTemplateItemId">;
+
+/** A tenant's catalogue proposal id (`inspection_template_proposals.id`). */
+export type InspectionTemplateProposalId = Brand<string, "InspectionTemplateProposalId">;

@@ -84,10 +84,11 @@ const UsageMeter: React.FC<UsageMeterProps> = ({
 
 const getPlanBadgeVariant = (
   plan: string | null,
-): "default" | "primary" | "success" | "info" => {
+): "default" | "primary" | "info" => {
+  // ADR-122 Am. 1: a plan tier is not a status — never a status colour.
   switch (plan) {
     case "enterprise":
-      return "success";
+      return "primary";
     case "business":
       return "primary";
     case "professional":

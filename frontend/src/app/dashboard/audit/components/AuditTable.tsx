@@ -15,6 +15,7 @@ import {
   AuditLogUser,
   AuditMeta,
 } from "@/api/services/audit.service";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface AuditTableProps {
   logs: AuditLog[];
@@ -24,20 +25,22 @@ interface AuditTableProps {
   onPageChange: (page: number) => void;
 }
 
-const ACTION_BADGES: Record<
-  AuditAction,
-  { variant: "default" | "success" | "warning" | "danger" | "info"; label: string }
-> = {
-  CREATE: { variant: "success", label: "CREATE" },
-  UPDATE: { variant: "info", label: "UPDATE" },
-  DELETE: { variant: "danger", label: "DELETE" },
-  LOGIN: { variant: "default", label: "LOGIN" },
-  APPROVE: { variant: "success", label: "APPROVE" },
-  EXPORT: { variant: "warning", label: "EXPORT" },
-  // A-126 (ADR-051 Q-15): security events, shown as such.
-  ACCOUNT_LOCKED: { variant: "danger", label: "ACCOUNT LOCKED" },
-  SIGNATURE_AUTH_FAILED: { variant: "danger", label: "SIGNATURE AUTH FAILED" },
+/**
+ * ADR-122 Am. 1: an audit verb (CREATE, DELETE, …) is what happened, not a
+ * status — a neutral chip. The two security events (A-126, ADR-051 Q-15) are
+ * shown as such, through the registry ("auditEvent": shape, icon, colour).
+ */
+const ACTION_LABELS: Record<AuditAction, string> = {
+  CREATE: "CREATE",
+  UPDATE: "UPDATE",
+  DELETE: "DELETE",
+  LOGIN: "LOGIN",
+  APPROVE: "APPROVE",
+  EXPORT: "EXPORT",
+  ACCOUNT_LOCKED: "ACCOUNT LOCKED",
+  SIGNATURE_AUTH_FAILED: "SIGNATURE AUTH FAILED",
 };
+const SECURITY_EVENTS: ReadonlySet<string> = new Set(["ACCOUNT_LOCKED", "SIGNATURE_AUTH_FAILED"]);
 
 const COLUMN_COUNT = 6;
 
@@ -194,10 +197,7 @@ export const AuditTable: React.FC<AuditTableProps> = ({
             <tbody className="divide-y divide-border">
               {logs.map((log) => {
                 // The column is the model's AUDIT_LOG_ACTIONS enum; the contract publishes a string.
-                const badge = ACTION_BADGES[log.action as AuditAction] ?? {
-                  variant: "default" as const,
-                  label: log.action,
-                };
+                const actionLabel = ACTION_LABELS[log.action as AuditAction] ?? log.action;
                 const hasChanges =
                   !!log.changes &&
                   (log.changes.before !== undefined ||
@@ -232,9 +232,13 @@ export const AuditTable: React.FC<AuditTableProps> = ({
                         <AuditActor log={log} />
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <Badge variant={badge.variant} size="sm">
-                          {badge.label}
-                        </Badge>
+                        {SECURITY_EVENTS.has(log.action) ? (
+                          <StatusBadge domain="auditEvent" state={log.action} size="sm" />
+                        ) : (
+                          <Badge variant="secondary" size="sm">
+                            {actionLabel}
+                          </Badge>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="text-foreground">{log.resourceType}</div>

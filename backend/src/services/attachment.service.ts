@@ -49,6 +49,13 @@ import auditService from "./audit.service";
 import { auditEntryActor as loadedAuditEntryActor, actorChanges as loadedActorChanges } from "../utils/auditPrincipal.util";
 import { logger as loadedLogger } from "../middlewares/activityLog.middleware";
 import { env } from "../config/env";
+import {
+  SIGNED_URL_HARD_MAX_TTL_SEC,
+  SIGNED_URL_MIN_TTL_SEC,
+  isAllowedSignedUrlTtl,
+  signedUrlDefaultTtlSec,
+  signedUrlMaxTtlSec,
+} from "../config/signedUrl";
 import { sql } from "../utils/sql.util";
 import type { SqlRunner } from "../utils/sql.util";
 import {
@@ -153,7 +160,6 @@ if (!SIGN_SECRET) {
   );
 }
 const SIGNING_KEY: string = SIGN_SECRET;
-const DEFAULT_SIGNED_TTL = Number(env("ATTACHMENT_URL_TTL_SEC")) || 300;
 
 /**
  * Resolve the absolute on-disk path for an attachment, refusing one outside
@@ -959,21 +965,99 @@ const deleteAttachment = async (tenantId: string, id: string, actor: AttachmentA
 // ------------------------------------------------------------------
 // SIGNED URLS (HMAC token with expiry — public download without a session)
 // ------------------------------------------------------------------
+//
+// A-365 (F-1 of docs/SECURITY/15-FASKES-SCOPE-THREAT-MODEL.md § 9). The link
+// is a bearer capability: whoever holds it downloads the file without signing
+// in (the attachments page opens it in a new tab; the kanban card uses it for
+// image thumbnails). Until A-365 its token was `<exp>.<hmac(id.exp)>` with a
+// caller-chosen, UNBOUNDED lifetime: a member could mint a link that lived for
+// years, kept working after the member was deactivated, and named nobody.
+//
+//   - The lifetime is an integer in [30 s, the configured cap] (default 300 s,
+//     cap 900 s, never above 3600 s — config/signedUrl.ts). Anything else is a
+//     400 here as well as in the route's schema.
+//   - The token binds the attachment, its TENANT, the PRINCIPAL that minted it
+//     (`u<userId>` or `k<apiKeyId>`) and the expiry:
+//       <exp>.<tenantId>.<issuer>.<hmac("attachment-link/v2|id|tenant|issuer|exp")>
+//     The prefix separates it from every other HMAC made with the same secret
+//     (storage/signing.ts signs `<key>.<exp>`). A token of the old two-part
+//     shape is refused, so no unbounded link outlives this change.
+//   - Redemption re-checks, after the signature: the row is live (not deleted)
+//     AND belongs to the token's tenant; the tenant is neither deleted nor
+//     suspended; the issuer is still a live principal (a user active and not
+//     inactive/suspended/erased, as auth.middleware requires; a key active and
+//     unexpired). Every one of those failures is the same 404 — a link to a
+//     file that moved, went, or whose issuer left is indistinguishable from a
+//     link to a file that never existed. A bad or expired SIGNATURE stays a
+//     403, decided before any row is read, so it says nothing about any id.
+
+/** The signature input; the prefix keeps it apart from any other HMAC over this secret. */
+const signedLinkMessage = (id: string, tenantId: string, issuer: string, exp: number): string =>
+  `attachment-link/v2|${id}|${tenantId}|${issuer}|${String(exp)}`;
+
+const signLink = (id: string, tenantId: string, issuer: string, exp: number): string =>
+  crypto.createHmac("sha256", SIGNING_KEY).update(signedLinkMessage(id, tenantId, issuer, exp)).digest("hex");
+
+/** Who mints a link: the request's principal (auditPrincipal). */
+interface LinkIssuer {
+  userId?: string | null | undefined;
+  apiKeyId?: string | null | undefined;
+}
+
+/** `u<userId>` or `k<apiKeyId>` — the issuer as the token carries it. */
+const issuerTag = (issuer: LinkIssuer | undefined): string => {
+  if (issuer?.userId) {
+    return `u${issuer.userId}`;
+  }
+  if (issuer?.apiKeyId) {
+    return `k${issuer.apiKeyId}`;
+  }
+  throw new AppError(401, "A download link is minted by a signed-in principal");
+};
+
+/** A verified token's bound claims. */
+interface LinkClaims {
+  tenantId: string;
+  issuer: string;
+  exp: number;
+}
+
+/**
+ * The lifetime a caller asked for, or the default when it named none.
+ *
+ * @throws {AppError} 400 when it is not an integer in [30, the cap]
+ */
+const linkTtl = (expiresInSec: unknown): number => {
+  if (expiresInSec === undefined || expiresInSec === null) {
+    return signedUrlDefaultTtlSec();
+  }
+  if (!isAllowedSignedUrlTtl(expiresInSec)) {
+    throw new AppError(
+      400,
+      `A download link lives between ${String(SIGNED_URL_MIN_TTL_SEC)} and ${String(signedUrlMaxTtlSec())} seconds`,
+    );
+  }
+  return expiresInSec;
+};
+
 const generateSignedUrl = async (
   tenantId: string,
   id: string,
-  { baseUrl, expiresInSec }: { baseUrl?: string | undefined; expiresInSec?: unknown } = {},
+  { baseUrl, expiresInSec, issuer }: { baseUrl?: string | undefined; expiresInSec?: unknown; issuer?: LinkIssuer } = {},
 ): Promise<{ url: string; token: string; expiresAt: Date; expiresInSec: number }> => {
+  const tag = issuerTag(issuer);
+  const ttl = linkTtl(expiresInSec);
   const attachment = await loadOwned(tenantId, id);
-  const ttl = Number(expiresInSec) > 0 ? Number(expiresInSec) : DEFAULT_SIGNED_TTL;
   const exp = Math.floor(Date.now() / 1000) + ttl;
-  const sig = crypto
-    .createHmac("sha256", SIGNING_KEY)
-    .update(`${attachment.id}.${String(exp)}`)
-    .digest("hex");
-  const token = `${String(exp)}.${sig}`;
+  const token = `${String(exp)}.${attachment.tenantId}.${tag}.${signLink(attachment.id, attachment.tenantId, tag, exp)}`;
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty base URL falls through
   const base = (baseUrl || env("PUBLIC_BASE_URL") || "http://localhost:5000").replace(/\/$/, "");
+  logger.info("Attachment download link minted", {
+    attachmentId: attachment.id,
+    tenantId: attachment.tenantId,
+    issuer: tag,
+    expiresInSec: ttl,
+  });
   return {
     url: `${base}/api/v1/attachments/${attachment.id}/signed?token=${token}`,
     token,
@@ -982,35 +1066,78 @@ const generateSignedUrl = async (
   };
 };
 
-const verifySignedToken = (attachmentId: string, token: unknown): boolean => {
+/**
+ * Check a token's shape, expiry and signature for `attachmentId`.
+ *
+ * @returns the bound claims, or null when the token is malformed, expired,
+ *   longer-lived than any link may be, or not signed for this attachment
+ */
+const readSignedToken = (attachmentId: string, token: unknown): LinkClaims | null => {
   if (!token || typeof token !== "string") {
-    return false;
+    return null;
   }
-  const [expStr, sig] = token.split(".");
+  const parts = token.split(".");
+  if (parts.length !== 4) {
+    return null; // the pre-A-365 `<exp>.<sig>` shape included
+  }
+  const [expStr, tenantId, issuer, sig] = parts as [string, string, string, string];
   const exp = Number(expStr);
-  if (!exp || !sig) {
+  if (!Number.isInteger(exp) || !tenantId || !/^[uk]./.test(issuer) || !sig) {
+    return null;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (now > exp || exp - now > SIGNED_URL_HARD_MAX_TTL_SEC) {
+    return null; // expired, or a lifetime no configuration can grant
+  }
+  const expected = signLink(attachmentId, tenantId, issuer, exp);
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    return null;
+  }
+  return { tenantId, issuer, exp };
+};
+
+/** Whether a token verifies for this attachment (exported for tests). */
+const verifySignedToken = (attachmentId: string, token: unknown): boolean => readSignedToken(attachmentId, token) !== null;
+
+/** User statuses auth.middleware refuses (A-180: `erased`). */
+const REFUSED_USER_STATUSES = new Set<string | null | undefined>(["INACTIVE", "SUSPENDED", "erased"]);
+
+/** Whether the tenant is still there and neither suspended nor deleted (auth.middleware#tenantRefusal). */
+const tenantIsLive = async (tenantId: string): Promise<boolean> => {
+  const tenant = (await models.Tenant.findByPk(tenantId)) as { status?: string | null } | null;
+  if (!tenant) {
     return false;
   }
-  if (Math.floor(Date.now() / 1000) > exp) {
-    return false; // expired
+  const status = (tenant.status ?? "").toLowerCase();
+  return status !== "suspended" && status !== "deleted";
+};
+
+/** Whether the principal that minted the link could still act (auth.middleware's checks). */
+const issuerIsLive = async (tenantId: string, issuer: string): Promise<boolean> => {
+  const id = issuer.slice(1);
+  if (issuer.startsWith("u")) {
+    const user = (await models.User.findByPk(id)) as { isActive?: boolean; status?: string | null } | null;
+    return !!user && user.isActive === true && !REFUSED_USER_STATUSES.has(user.status);
   }
-  const expected = crypto
-    .createHmac("sha256", SIGNING_KEY)
-    .update(`${attachmentId}.${String(exp)}`)
-    .digest("hex");
-  if (sig.length !== expected.length) {
-    return false;
-  }
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+  const key = (await models.ApiKey.findOne({ where: { id, tenantId } })) as {
+    isActive?: boolean;
+    expiresAt?: Date | string | null;
+  } | null;
+  return !!key && key.isActive === true && !(key.expiresAt && new Date(key.expiresAt) < new Date());
 };
 
 // Resolve a download from a signed token (no tenant/session required).
 const getSignedDownload = async (id: string, token: unknown): Promise<StoredDownload> => {
-  if (!verifySignedToken(id, token)) {
+  const claims = readSignedToken(id, token);
+  if (!claims) {
     throw new AppError(403, "Invalid or expired download link");
   }
-  const attachment = (await Attachment.findByPk(id)) as unknown as AttachmentRow | null;
-  if (!attachment) {
+  // The public route runs with no tenant context, so the predicate is written
+  // here: the row must still be live AND in the tenant the link was made for.
+  const attachment = (await Attachment.findOne({
+    where: { id, tenantId: claims.tenantId },
+  })) as unknown as AttachmentRow | null;
+  if (!attachment || !(await tenantIsLive(claims.tenantId)) || !(await issuerIsLive(claims.tenantId, claims.issuer))) {
     throw new AppError(404, "Attachment not found");
   }
   return openAttachmentFile(attachment);

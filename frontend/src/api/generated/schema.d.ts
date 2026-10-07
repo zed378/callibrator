@@ -236,6 +236,221 @@ export interface paths {
         patch: operations["adminUpdateTenantStatus"];
         trace?: never;
     };
+    "/api/v1/admin/upstream-file-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List imports
+         * @description Newest first.
+         */
+        get: operations["upstreamImportList"];
+        put?: never;
+        /**
+         * Start an import
+         * @description Runs the connection check again with the confirmed fingerprint; on success stores the import (the credential KMS-encrypted, erased when the import ends) and queues a background job. Audited. When the job cannot be queued the import is ended `failed` (`job_not_queued`) and the answer is 503.
+         *
+         *     **409** — The check did not pass (the host key changed, the login or a class folder failed), the tenant is not active, or an import of the same source into the same tenant is still running.
+         */
+        post: operations["upstreamImportStart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-file-imports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One import */
+        get: operations["upstreamImportGet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-file-imports/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an import
+         * @description A queued import ends at once; a running one stops at its next check (within seconds) and keeps what it copied in staging for a later run. Audited; the requester is notified.
+         *
+         *     **409** — The import has already ended.
+         */
+        post: operations["upstreamImportCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-file-imports/check-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a source server
+         * @description Without `confirmedFingerprint`: reads the server's SSH host keys (no login). With it: logs in with that key pinned, lists each class folder with `rsync --dry-run --stats` and estimates files and bytes. At most 10 checks per 10 minutes per operator (429). Audited without the credential. While UPSTREAM_REAL_DATA_ALLOWED is false only a synthetic source on an allow-listed host is accepted (403).
+         */
+        post: operations["upstreamImportCheckConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-file-imports/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The import's configuration
+         * @description Whether real upstream data may be imported (UPSTREAM_REAL_DATA_ALLOWED), how many hosts are allow-listed, and the file classes.
+         */
+        get: operations["upstreamImportConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-sql-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The SQL-dump import runs
+         * @description P24-06: newest first, optionally by `status`. A run whose worker died is failed (`INTERRUPTED`) before the list is read.
+         */
+        get: operations["adminListUpstreamSqlImports"];
+        put?: never;
+        /**
+         * Upload an upstream SQL dump (multipart, field `file`)
+         * @description P24-06: a mysqldump / MariaDB dump, plain or gzip, up to UPSTREAM_IMPORT_MAX_BYTES (200 MB by default). It is NEVER executed: it is held in the upload quarantine, virus-scanned, then PARSED by a background job into the `upstream_import` staging schema (only CREATE TABLE and INSERT are read; the minimisation policy decides which tables and columns are kept). The uploader is notified in-app and by e-mail when it ends. `dataClass` is the uploader's declaration: `real` is refused while UPSTREAM_REAL_DATA_ALLOWED is off. The request has UPSTREAM_IMPORT_UPLOAD_TIMEOUT_MS (15 minutes by default), not 30 s. Audited.
+         *
+         *     **409** — Another import is uploaded, scanning or parsing. (A file declared real while UPSTREAM_REAL_DATA_ALLOWED is off is a 403, as for the rsync image import.)
+         */
+        post: operations["adminUploadUpstreamSqlDump"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-sql-imports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One SQL-dump import run
+         * @description P24-06: its status, progress, per-table counts and reasons, and its failure code: counts only, never a value from the dump.
+         */
+        get: operations["adminGetUpstreamSqlImport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-sql-imports/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a SQL-dump import run
+         * @description P24-06: a queued run is cancelled at once and its file deleted; a scanning or parsing run is asked to stop (`cancelRequestedAt`), its staging rows are rolled back and its file deleted by the worker. Asking twice answers the run unchanged. Audited.
+         *
+         *     **409** — The run is loaded, failed or cancelled.
+         */
+        post: operations["adminCancelUpstreamSqlImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-sql-imports/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry a failed SQL-dump import run
+         * @description P24-06: only a failed run whose file is still kept; the re-run REPLACES the run's staging rows. Audited.
+         *
+         *     **409** — The run is not failed, its file was deleted, or another import is active. (A run declared real while UPSTREAM_REAL_DATA_ALLOWED is off is a 403.)
+         */
+        post: operations["adminRetryUpstreamSqlImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-sql-imports/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The SQL-dump import's limits and its DPIA gate
+         * @description P24-06: the upload cap, the decompressed cap, a failed run's file retention, whether real upstream data may be imported (UPSTREAM_REAL_DATA_ALLOWED) and whether stage 2 exists.
+         */
+        get: operations["adminUpstreamSqlImportSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/ocr": {
         parameters: {
             query?: never;
@@ -408,7 +623,7 @@ export interface paths {
         };
         /**
          * Download an attachment with a signed, expiring token (no sign-in)
-         * @description The token from POST /:id/signed-url is the credential: an invalid or expired one is refused.
+         * @description The token from POST /:id/signed-url is the credential: an invalid, tampered or expired one is refused (403) before any record is read. A valid token whose file was deleted or moved to another tenant, whose tenant is suspended, or whose issuer can no longer act answers 404 (A-365).
          *
          *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
          */
@@ -432,7 +647,9 @@ export interface paths {
         put?: never;
         /**
          * Create a signed, expiring download link (for sharing without sign-in)
-         * @description Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         * @description A-365: the lifetime is an integer from 30 s to the configured cap (default 900 s, never above 3600 s); above it, 400. The link is bound to the tenant and to the principal that minted it: it stops working when the file is deleted or moved, when the tenant is suspended, or when the issuer is deactivated (404).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
          */
         post: operations["createAttachmentSignedUrl"];
         delete?: never;
@@ -11684,6 +11901,196 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** @description A connection check's outcome (a failed connection is an answer, not an error) */
+        UpstreamConnectionCheck: {
+            /**
+             * @description `ok`: logged in and every class folder listed. `host_key_unconfirmed`: confirm one of `hostKeys`
+             * @enum {string}
+             */
+            status: "ok" | "host_key_unconfirmed" | "tool_missing" | "unreachable" | "timeout" | "host_key_mismatch" | "auth_failed" | "path_not_found" | "path_not_readable" | "cancelled" | "transfer_failed";
+            hostKeys: {
+                type: string;
+                fingerprint: string;
+            }[];
+            confirmedHostKey: {
+                type: string;
+                fingerprint: string;
+            } | null;
+            classes: {
+                [key: string]: {
+                    /** @enum {string} */
+                    status: "ok" | "path_not_found" | "path_not_readable";
+                    files: number;
+                    bytes: number;
+                };
+            };
+            estimate: components["schemas"]["UpstreamImportEstimate"] | null;
+        };
+        /** @description One rsync image import (never its credential) */
+        UpstreamFileImport: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            targetTenantId: string;
+            /** @enum {string} */
+            status: "pending" | "transferring" | "ingesting" | "completed" | "failed" | "cancelled";
+            host: string;
+            port: number;
+            username: string;
+            remotePath: string;
+            fileClasses: ("front" | "serial")[];
+            /** @enum {string} */
+            authMethod: "password" | "key";
+            hostKeyType: string;
+            hostKeyFingerprint: string;
+            syntheticSource: boolean;
+            bandwidthLimitKbps: number | null;
+            estimate: components["schemas"]["UpstreamImportEstimate"] | null;
+            progress: {
+                filesTransferred: number;
+                bytesTransferred: number;
+                filesProcessed: number;
+                filesToProcess: number;
+            } | null;
+            summary: components["schemas"]["UpstreamImportSummary"] | null;
+            /** @description A stable reason code when the import failed */
+            errorCode: string | null;
+            cancelRequested: boolean;
+            /** @description Whether the encrypted credential still exists (only while the import can run) */
+            credentialStored: boolean;
+            secretErasedAt: string | null;
+            batchJobId: string | null;
+            requestedBy: string | null;
+            startedAt: string | null;
+            finishedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description What the dry-run listing found (regular files and their bytes) */
+        UpstreamImportEstimate: {
+            files: number;
+            bytes: number;
+            classes: {
+                [key: string]: {
+                    files: number;
+                    bytes: number;
+                };
+            };
+        };
+        /** @description Counts only — never a file name */
+        UpstreamImportSummary: {
+            filesCopied: number;
+            bytesCopied: number;
+            ingested: number;
+            bytesIngested: number;
+            /** @description Same source path and SHA-256 as an earlier completed import */
+            skippedPresent: number;
+            /** @description Identical content at another path in this import (each is still its own object) */
+            duplicateContent: number;
+            /** @description Files whose GPS/XMP/IPTC metadata was removed losslessly */
+            metadataStripped: number;
+            quarantined: number;
+            quarantinedByReason: {
+                [key: string]: number;
+            };
+            /** @description Files that could not be read or moved; left in staging for a re-run */
+            failed: number;
+            durationMs: number;
+        };
+        /** @description One upload of an upstream SQL dump and its run into staging */
+        UpstreamSqlImportRun: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "uploaded" | "scanning" | "parsing" | "loaded" | "failed" | "cancelled";
+            /** @enum {string} */
+            dataClass: "synthetic" | "real";
+            /** @enum {string} */
+            compression: "none" | "gzip";
+            sizeBytes: number;
+            /** @example 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 */
+            sha256: string;
+            bytesRead: number;
+            uncompressedBytes: number;
+            /** @description Bytes of the file read, over its size */
+            progress: number;
+            rowsLoaded: number;
+            rowsRejected: number;
+            rowsNotExtracted: number;
+            tables: {
+                /**
+                 * @description The upstream table's name (structure, not data); `#invalid` for a name that is not a plain identifier
+                 * @example mst_faskes
+                 */
+                table: string;
+                /** @description Whether the minimisation policy stages this table (docs/UPSTREAM/07) */
+                staged: boolean;
+                /** @description Why its rows were not loaded: the policy's, the parser's or `schema_conflict` */
+                reason: string | null;
+                columns: number;
+                /** @description Columns the policy never copies (credentials, internals) */
+                excludedColumns: number;
+                rowsLoaded: number;
+                rowsRejected: number;
+                rowsNotExtracted: number;
+                /**
+                 * @description Rejected rows by reason
+                 * @example {
+                 *       "invalid_date": 2
+                 *     }
+                 */
+                rejections: {
+                    [key: string]: number;
+                };
+                /**
+                 * @description Values loaded with a note (a zero date loaded as NULL)
+                 * @example {
+                 *       "zero_date": 5
+                 *     }
+                 */
+                notes: {
+                    [key: string]: number;
+                };
+            }[];
+            /** @description The parser's statement counts (every statement but CREATE TABLE and INSERT is counted and discarded) */
+            parseSummary: {
+                statements: {
+                    [key: string]: number;
+                };
+                comments: number;
+                conditionalComments: number;
+                delimiterRegions: number;
+                truncated: boolean;
+                completionMarker: boolean;
+            } | null;
+            errorCode: ("FILE_MISSING" | "INTEGRITY_MISMATCH" | "INFECTED" | "SCAN_FAILED" | "REAL_DATA_NOT_ALLOWED" | "TRUNCATED_INPUT" | "DECOMPRESSED_TOO_LARGE" | "CORRUPT_COMPRESSION" | "STAGING_ROLE_INVALID" | "STAGING_FAILED" | "INTERRUPTED") | null;
+            errorSummary: string | null;
+            /**
+             * @description Stage 2 (staging to the application's tables) is not built yet
+             * @enum {string}
+             */
+            transformStatus: "not_available";
+            attempt: number;
+            fileRetained: boolean;
+            fileRetainUntil: string | null;
+            retryable: boolean;
+            cancellable: boolean;
+            cancelRequestedAt: string | null;
+            uploadedBy: {
+                /** Format: uuid */
+                id: string;
+                name: string | null;
+            } | null;
+            /** Format: date-time */
+            createdAt: string;
+            startedAt: string | null;
+            scannedAt: string | null;
+            parseStartedAt: string | null;
+            finishedAt: string | null;
+            durationMs: number | null;
+        };
         /**
          * @example {
          *       "id": "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b",
@@ -12982,6 +13389,542 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    upstreamImportList: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of imports */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamFileImport"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    upstreamImportStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description The source server: a DNS name or an IP address
+                     * @example upstream.example.org
+                     */
+                    host: string;
+                    /**
+                     * @default 22
+                     * @example 22
+                     */
+                    port?: number;
+                    /** @example importer */
+                    username: string;
+                    /**
+                     * @description `key` is recommended
+                     * @enum {string}
+                     */
+                    authMethod: "password" | "key";
+                    /** @description SSH password (auth `password`). Write-only: never stored in clear, logged or returned */
+                    password?: string;
+                    /** @description Unencrypted SSH private key (auth `key`, recommended). Write-only: never stored in clear, logged or returned */
+                    privateKey?: string;
+                    /**
+                     * @description The upstream `public/uploads` directory; each file class is one folder under it
+                     * @example /var/www/app/public/uploads
+                     */
+                    remotePath: string;
+                    /**
+                     * @description `front` = foto_depan, `serial` = foto_sn. Certificate PDFs are never imported (archive-only, owner rule 2026-10-07)
+                     * @example [
+                     *       "front",
+                     *       "serial"
+                     *     ]
+                     */
+                    fileClasses: ("front" | "serial")[];
+                    /**
+                     * @description The source holds synthetic test data. Required (with an allow-listed host) while UPSTREAM_REAL_DATA_ALLOWED is false
+                     * @default false
+                     */
+                    syntheticSource?: boolean;
+                    /**
+                     * @description The host-key fingerprint the operator confirmed
+                     * @example SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU
+                     */
+                    confirmedFingerprint: string;
+                    /**
+                     * Format: uuid
+                     * @description The tenant whose storage receives the photos
+                     */
+                    targetTenantId: string;
+                    /**
+                     * @description rsync --bwlimit, in KiB/s; empty for none
+                     * @example 20480
+                     */
+                    bandwidthLimitKbps?: number | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The queued import */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamFileImport"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    upstreamImportGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The import's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The import */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamFileImport"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    upstreamImportCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The import's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The import */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamFileImport"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    upstreamImportCheckConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description The source server: a DNS name or an IP address
+                     * @example upstream.example.org
+                     */
+                    host: string;
+                    /**
+                     * @default 22
+                     * @example 22
+                     */
+                    port?: number;
+                    /** @example importer */
+                    username: string;
+                    /**
+                     * @description `key` is recommended
+                     * @enum {string}
+                     */
+                    authMethod: "password" | "key";
+                    /** @description SSH password (auth `password`). Write-only: never stored in clear, logged or returned */
+                    password?: string;
+                    /** @description Unencrypted SSH private key (auth `key`, recommended). Write-only: never stored in clear, logged or returned */
+                    privateKey?: string;
+                    /**
+                     * @description The upstream `public/uploads` directory; each file class is one folder under it
+                     * @example /var/www/app/public/uploads
+                     */
+                    remotePath: string;
+                    /**
+                     * @description `front` = foto_depan, `serial` = foto_sn. Certificate PDFs are never imported (archive-only, owner rule 2026-10-07)
+                     * @example [
+                     *       "front",
+                     *       "serial"
+                     *     ]
+                     */
+                    fileClasses: ("front" | "serial")[];
+                    /**
+                     * @description The source holds synthetic test data. Required (with an allow-listed host) while UPSTREAM_REAL_DATA_ALLOWED is false
+                     * @default false
+                     */
+                    syntheticSource?: boolean;
+                    /**
+                     * @description The host-key fingerprint the operator confirmed
+                     * @example SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU
+                     */
+                    confirmedFingerprint?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The outcome */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamConnectionCheck"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    upstreamImportConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            realDataAllowed: boolean;
+                            allowListedHostCount: number;
+                            heicConversion: boolean;
+                            fileClasses: {
+                                /** @enum {string} */
+                                name: "front" | "serial";
+                                folder: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminListUpstreamSqlImports: {
+        parameters: {
+            query?: {
+                status?: "uploaded" | "scanning" | "parsing" | "loaded" | "failed" | "cancelled";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of runs; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamSqlImportRun"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminUploadUpstreamSqlDump: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** @enum {string} */
+                    dataClass: "synthetic" | "real";
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The run, queued */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamSqlImportRun"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminGetUpstreamSqlImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The import run's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamSqlImportRun"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminCancelUpstreamSqlImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The import run's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamSqlImportRun"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminRetryUpstreamSqlImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The import run's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run, queued again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamSqlImportRun"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminUpstreamSqlImportSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            maxUploadBytes: number;
+                            maxUncompressedBytes: number;
+                            failedRetentionDays: number;
+                            realDataAllowed: boolean;
+                            transformAvailable: boolean;
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     processCertificateOcr: {
         parameters: {
             query?: never;
@@ -13116,7 +14059,7 @@ export interface operations {
                      */
                     name: string;
                     /**
-                     * @description `<resource>:<read|write>` (an absent action is `write`); the resource is one of 49 menu slugs. A wildcard resource or action is refused.
+                     * @description `<resource>:<read|write>` (an absent action is `write`); the resource is one of 50 menu slugs. A wildcard resource or action is refused.
                      * @example [
                      *       "equipment:read",
                      *       "certificate:read"
@@ -13431,7 +14374,7 @@ export interface operations {
     downloadSignedAttachment: {
         parameters: {
             query: {
-                /** @description `<expiry>.<signature>` */
+                /** @description `<expiry>.<tenantId>.<issuer>.<signature>` (A-365); the older `<expiry>.<signature>` shape is refused */
                 token: string;
             };
             header?: never;
@@ -13471,8 +14414,8 @@ export interface operations {
             content: {
                 "application/json": {
                     /**
-                     * @description Lifetime; the default applies otherwise
-                     * @example 3600
+                     * @description Lifetime in seconds: an integer from 30 to the configured cap (ATTACHMENT_URL_MAX_TTL_SEC, default 900, never above 3600). Without it, ATTACHMENT_URL_TTL_SEC applies (default 300). Above the cap: 400
+                     * @example 300
                      */
                     expiresInSec?: number;
                 };
