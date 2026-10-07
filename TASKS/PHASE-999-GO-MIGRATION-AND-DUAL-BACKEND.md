@@ -8,7 +8,7 @@
 
 > **ROADMAPPING RULE**: Phase 999 work MUST NOT begin until:
 > 1. Phase 9 (Backend TypeScript Migration) is 100% complete and verified.
-> 2. Upstream PHP Feature Adoption is complete according to the platform roadmap.
+> 2. Upstream PHP Feature Adoption — **Phases 12 … 31** ([index](./PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md)) — is complete according to the platform roadmap (its exit card is P31-04).
 
 All tasks in this phase are currently **Planned**. No Go implementation code, directory creation, or source code modifications have been performed in earlier phases.
 

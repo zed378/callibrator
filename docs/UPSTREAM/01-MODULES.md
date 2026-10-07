@@ -6,7 +6,7 @@
 > kalibrasi, laporan & ekspor, dashboard, aktivitas teknisi, halaman QR publik), **2 belum ada**
 > (formulir **IPM** dengan template ceklis per jenis alat, dan **laporan IPM**), dan **2 tidak
 > diadopsi** dalam bentuk aslinya (API mobile + APK — kemampuan *offline capture*-nya diputuskan di
-> UP-16 — dan sisa kode debug/phpinfo). Celah terbesar: (1) IPM dan template ceklisnya, (2) model "satu penyedia jasa melayani
+> Phase 28 — dan sisa kode debug/phpinfo). Celah terbesar: (1) IPM dan template ceklisnya, (2) model "satu penyedia jasa melayani
 > banyak faskes" — di Callibrator satu pengguna hanya punya satu tenant.
 
 **Status:** research, 2026-10-07. Statuses: **Exists** (we do it, maybe differently) · **Partial**
@@ -35,7 +35,7 @@ technician) · **C** = `client` (facility, read-only) · **FT** = `teknisi_clien
 | M11 | Dashboard | `DashboardController` | `dashboard` metrics, `frontend/src/app/dashboard/page.tsx` | **Partial** |
 | M12 | Technician activity view | `TeknisiController` | `audit`, calibration record lists | **Partial** |
 | M13 | Public QR device page & public IPM | `FaskesController::readQr/getIPM`, `downloadSertifikatIPM` | public certificate verify (`certificates` `/verify/:certificateNumber`, `frontend/src/app/verify`) | **Partial** |
-| M14 | Mobile API (JWT) & Android app | `Apiuser`, `AuthFilter`, `mst_foto*_inventory`, APK | `apiKeys`, REST API, `attachments`, `calibrationDevices/bulk-import` | **N/A** as-is (capability decision UP-16) |
+| M14 | Mobile API (JWT) & Android app | `Apiuser`, `AuthFilter`, `mst_foto*_inventory`, APK | `apiKeys`, REST API, `attachments`, `calibrationDevices/bulk-import` | **N/A** as-is (capability decision Phase 28) |
 | M15 | Platform residue (debug, phpinfo, template leftovers) | `recall`, `info.php`, `group.php` residue | — | **N/A** (do not adopt) |
 
 Totals: **Exists 3** (M01, M02, M06) · **Partial 8** (M03, M04, M05, M09, M10, M11, M12, M13 — M04 counted once, as Partial, although its template half is Missing) · **Missing 2** (M07, M08) · **N/A 2** (M14, M15) = 15.
@@ -66,7 +66,7 @@ Totals: **Exists 3** (M01, M02, M06) · **Partial 8** (M03, M04, M05, M09, M10, 
 | Business rules | a user's group is set by "Mapping User" (one form, `addUserToGroup`); admin can reset another user's password (confirm field must match); only admins may change name/email/username/photo on their own profile |
 | Callibrator | `routes/api/user.route.ts` (`/create`, `/edit`, `/:userId/password/reset`, `/:userId/avatar`), `roles.route.ts` (`/assign`), `menuGroups.route.ts`, `userPermissions.route.ts`; `services/user.service.ts`, `roles.service.ts`; pages `dashboard/users`, `roles`, `permissions`, `user-permissions`, `profile`, `change-password` |
 | Status | **Exists** |
-| Gap | role **mapping** of the 4 groups (UP-06): `admin`→`CALIBRATOR ADMIN`, `user`→`TECHNICIAN`, `client`→`HEALTHCARE ADMIN` (read-mostly) or `ROOM USER`/`USER` per facility choice, `teknisi_client`→`HEALTHCARE TECHNICIAN`. "Groups" CRUD maps to our roles admin, which is platform-level (roles are global, ADR-064) — provider admins should **not** create roles |
+| Gap | role **mapping** of the 4 groups (Phase 18): `admin`→`CALIBRATOR ADMIN`, `user`→`TECHNICIAN`, `client`→`HEALTHCARE ADMIN` (read-mostly) or `ROOM USER`/`USER` per facility choice, `teknisi_client`→`HEALTHCARE TECHNICIAN`. "Groups" CRUD maps to our roles admin, which is platform-level (roles are global, ADR-064) — provider admins should **not** create roles |
 
 ## M03 — Client Facilities (Faskes) and Client-User Mapping
 
@@ -197,7 +197,7 @@ Totals: **Exists 3** (M01, M02, M06) · **Partial 8** (M03, M04, M05, M09, M10, 
 | Roles | **Pub** |
 | Callibrator | public certificate verification `GET /api/v1/certificates/verify/:certificateNumber` (+ `/document`), `frontend/src/app/verify/[certificateNumber]`, rate-limited (`verifyBudget`) |
 | Status | **Partial** |
-| Gap | a public **device** page reached by an unguessable token in the QR (not the sequential number), showing only what the facility allows; legacy sticker continuity (UP-15) |
+| Gap | a public **device** page reached by an unguessable token in the QR (not the sequential number), showing only what the facility allows; legacy sticker continuity (Phase 27) |
 
 ## M14 — Mobile API (JWT) and Android App
 
@@ -207,7 +207,7 @@ Totals: **Exists 3** (M01, M02, M06) · **Partial 8** (M03, M04, M05, M09, M10, 
 | Tables | `mst_fotodepan_inventory`, `mst_fotosn_inventory` (photo upload log, 480 each) + inventory and IPM tables |
 | Callibrator | REST API with API keys (`apiKeys`), OpenAPI contracts (`*.openapi.ts`), `attachments`, `calibrationDevices/bulk-import`, rate limits, webhooks |
 | Status | **N/A** as-is |
-| Gap | the **offline field capture** capability — decide in UP-16 (PWA with an offline queue vs a native app on our API). The upstream API itself is not ported (S-10, S-11, dead routes) |
+| Gap | the **offline field capture** capability — decide in Phase 28 (PWA with an offline queue vs a native app on our API). The upstream API itself is not ported (S-10, S-11, dead routes) |
 
 ## M15 — Platform Residue
 
@@ -217,7 +217,7 @@ and `admin/roleGroup.php` permission-menu residue, `Views/InventoryController.ph
 
 ---
 
-## Role Mapping (draft for UP-06)
+## Role Mapping (draft for Phase 18)
 
 | Upstream group | Proposed Callibrator role | Tenant | Notes |
 |---|---|---|---|

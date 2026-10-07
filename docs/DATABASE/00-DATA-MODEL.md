@@ -84,6 +84,12 @@ Roughly 60 tables carry `tenantId` and are filtered automatically by the global 
 
 Everything else is tenant-scoped. A new table without a `tenantId` needs a reason, and the reason belongs in an ADR.
 
+**Target (decided 2026-10-07, not built):**
+
+- **ADR-125 — the inspection catalogue is global:** `device_types`, `inspection_item_definitions`, `inspection_templates`, `inspection_template_versions`, `inspection_template_items` carry no `tenant_id` (and no `client_facility_id`); every write route is super-admin only (`inspectionCatalogueGlobal.guard`); a published version is immutable. Tenants propose changes through the tenant-scoped `inspection_template_proposals`.
+- **ADR-124 — a second dimension, `client_facility_id`:** `client_facilities` (tenant-scoped) is a health facility the tenant serves. The device-anchored evidence tables (`calibration_devices`, `calibration_records`, `certificates`, `maintenance_work_orders`, `iot_readings`, and the new `inspection_sessions`/`inspection_results`) carry it NOT NULL with a composite FK `(tenant_id, client_facility_id)`; `attachments`, `warehouses`, `non_conformances`, `users` and `audit_logs` carry it nullable (NULL = provider-internal). The hooks apply it to facility-bound users.
+- **ADR-126 — `inspection_sessions`/`inspection_results` are append-only after submit** (trigger, the 0057 pattern); ADR-127 adds `idempotency_keys`.
+
 ## Delete Behaviour
 
 The rule from [`../PLAN/08-DOMAIN-MODEL.md`](../PLAN/08-DOMAIN-MODEL.md): **governance and evidence outlive operations.**

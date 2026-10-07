@@ -80,6 +80,8 @@ Result: 52 upstream tables → **8 existing tables** reused (`tenants`, `users`,
 
 ## 3. Tenant Mapping (the central decision, D-1)
 
+> **Superseded by the owner's clarification (2026-10-07) — ADR-124.** The owner stated that the tenant is the calibration company that serves the facilities. **Decided: option B's shape — one provider tenant, facilities inside it — but with the facility boundary in the global hooks, not in application code.** `mst_faskes` → **`client_facilities`** (tenant-scoped; 118 rows + the tenant's own `is_self` facility) in **one** provider tenant; devices, calibration records, IPM sessions/results, work orders and device attachments carry `client_facility_id` (composite FK `(tenant_id, client_facility_id)`); facility users (`client`, `teknisi_client`) are **facility-bound** users of the provider tenant (`users.client_facility_id`). `service_engagements` (below) is **not** built. Option B's bad implication ("a single missed filter leaks hospital A's devices to hospital B") is answered by ADR-124's deny-by-default second dimension, two-facility tests and guards. The text below is kept for provenance.
+
 **Upstream:** one provider (the operator, "SKP") × 118 client facilities in one database, isolated
 only in PHP (03 § 5). **Ours:** a tenant is "one customer organisation — a hospital, a hospital
 group member, or a calibration provider" (`docs/PLAN/10-TENANCY-AND-ONBOARDING.md`), isolation is
@@ -170,6 +172,8 @@ qr_code) WHERE qr_code IS NOT NULL AND deleted_at IS NULL`; leading indexes on `
 
 ### 4.3 `mst_alat` → `device_types` (NEW, global)
 
+> **Decided 2026-10-07 — ADR-125.** Global as proposed; § 4.5's mapping table is **replaced** by versioned `inspection_templates` / `inspection_template_versions` / `inspection_template_items` (a version *is* the mapping); the ETL seeds version 1 per type. Writes super-admin only; no "engagement-aware path" (no engagements exist under ADR-124).
+
 | Column | Type | From |
 |---|---|---|
 | `id` | uuid PK | new |
@@ -240,6 +244,8 @@ updated, only voided/superseded. Hence the dry run (05 § 7) is mandatory before
 The 110 devices with two rows (Q-9): both are imported, ordered by date.
 
 ### 4.8 IPM → `inspection_sessions` (NEW, tenant-scoped)
+
+> **Decided 2026-10-07 — ADR-126, ADR-124.** Add `client_facility_id` (NOT NULL, from the device), `template_version_id`, the ADR-062 lifecycle columns (`supersedes_id`, `superseded_by_id`, …, `void_*`), `submitted_*`, `client_ref` (ADR-127); `status` gains `discarded`; **drop `engagement_id`** (no engagements). `template_version_id` NULL only for imported rows (`legacy_key` set). Results: same `client_facility_id`, `template_item_id`; immutable once the session is submitted (trigger).
 
 A session is the upstream key `(no_qrcode, DATE(created_at))` (03 § 4.6).
 
@@ -323,6 +329,8 @@ New unions in `@callibrator/contracts/states` (so the frontend shares them): `IN
 
 ## 6. Users and Roles
 
+> **Superseded in part by the owner's clarification (2026-10-07) — ADR-124.** There is **one** provider tenant; the "mapped facility's tenant" below now reads **the provider tenant, with the user bound to the mapped `client_facilities` row** (`users.client_facility_id`). `client`/`teknisi_client` accounts become **facility-bound** users with a facility-side role (which one is UD-4); `admin`/`user` stay unbound provider staff. A bound `HEALTHCARE ADMIN` is **not** a tenant administrator (ADR-124 § 7) — "our tenant needs an administrator" is met by the provider's own admins. Performer snapshots are still needed: bound users cannot see provider staff.
+
 | Upstream group | Members | Target tenant | Target role (`ROLE_NAMES`) | Rationale |
 |---|---:|---|---|---|
 | `admin` | 10 | provider tenant | `CALIBRATOR ADMIN` | provider administrators; **not** `SUPERADMIN` (the platform operator is us, not the provider) |
@@ -382,6 +390,8 @@ No global uniqueness on any tenant-owned value (the QR code and serial are per t
 one would be an existence oracle, CLAUDE.md traps).
 
 ## 9. Decisions for the Owner
+
+> **2026-10-07:** D-1 decided by the owner as **revised UD-1** (the provider is the tenant; facilities are clients inside it — ADR-124); D-2 decided as UD-3 (global versioned catalogue — ADR-125). D-9 now reads "which facilities become `client_facilities` rows" (no tenant per facility). The others are carried as open questions (BACKLOG Q-57·UD-n).
 
 | # | Decision | Recommendation | Why it is not ours to take silently |
 |---|---|---|---|
@@ -457,14 +467,16 @@ With each table: a model (`deviceType.model.ts`, `inspectionItemDefinition.model
 
 ## 12. Database Phases (for the coordinator to merge with the code phases)
 
-| Phase | Name | Output | Exit evidence |
-|---|---|---|---|
-| UP-DB-1 | Structure research | 03, 04, 05 (this set) | record `2026-10-07-upstream-database-research` ✔ |
-| UP-DB-2 | Decisions | D-1 … D-11 answered; ADRs: tenant model + `service_engagements` (D-1), global catalogue (D-2), password policy for imported users (D-4) | ADRs in `MEMORY/DECISIONS.md` |
-| UP-DB-3 | Schema migration design → spec | `MEMORY/specs/UP-DB-3-*.md` per migration; contracts unions | spec reviewed |
-| UP-DB-4 | Migration implementation | migrations 0111–0118, models, routes' data layer, two-tenant tests, immutability trigger tests as `callibrator_app` | `make verify` green; `upgradeBoot.am3.live`; `make migrate-verify` |
-| UP-DB-5 | ETL tool | `backend/src/scripts/upstream-import/` (extract → stage → transform → load), id map, quarantine, file copier | unit tests on synthetic fixtures; no real data in the repo |
-| UP-DB-6 | ETL dry run | full run from the latest dump into a throwaway PG 18 + throwaway storage | 05 § 7 reconciliation all green; timings recorded |
-| UP-DB-7 | Reconciliation and sign-off | per-tenant counts/sums report reviewed by the operator; D-5/D-7 data-quality lists resolved | signed reconciliation |
-| UP-DB-8 | Cutover | freeze upstream → final dump → load → invitations → read-only upstream | 05 § 8 checklist; post-cutover reconciliation |
-| UP-DB-9 | Decommission | archive and drop `upstream_import`; upstream DB and files retained per retention decision, then destroyed | retention record |
+Merged into the plan's Phases 12 … 31 on 2026-10-07 (index `TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`, § 1); the column *Now* gives the phase each draft phase became.
+
+| Phase | Now | Name | Output | Exit evidence |
+|---|---|---|---|---|
+| UP-DB-1 | Phase 14 | Structure research | 03, 04, 05 (this set) | record `2026-10-07-upstream-database-research` ✔ |
+| UP-DB-2 | Phase 12 | Decisions | D-1 … D-11 answered; ADRs: tenant model + `service_engagements` (D-1), global catalogue (D-2), password policy for imported users (D-4) | ADRs in `MEMORY/DECISIONS.md` |
+| UP-DB-3 | Phase 19 | Schema migration design → spec | `MEMORY/specs/UP-DB-3-*.md` per migration; contracts unions | spec reviewed |
+| UP-DB-4 | Phase 20 | Migration implementation | migrations 0111–0118, models, routes' data layer, two-tenant tests, immutability trigger tests as `callibrator_app` | `make verify` green; `upgradeBoot.am3.live`; `make migrate-verify` |
+| UP-DB-5 | Phase 24 | ETL tool | `backend/src/scripts/upstream-import/` (extract → stage → transform → load), id map, quarantine, file copier | unit tests on synthetic fixtures; no real data in the repo |
+| UP-DB-6 | Phase 24 | ETL dry run | full run from the latest dump into a throwaway PG 18 + throwaway storage | 05 § 7 reconciliation all green; timings recorded |
+| UP-DB-7 | Phase 25 | Reconciliation and sign-off | per-tenant counts/sums report reviewed by the operator; D-5/D-7 data-quality lists resolved | signed reconciliation |
+| UP-DB-8 | Phase 30 | Cutover | freeze upstream → final dump → load → invitations → read-only upstream | 05 § 8 checklist; post-cutover reconciliation |
+| UP-DB-9 | Phase 31 | Decommission | archive and drop `upstream_import`; upstream DB and files retained per retention decision, then destroyed | retention record |

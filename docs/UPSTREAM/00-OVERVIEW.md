@@ -39,7 +39,7 @@ Companion documents:
 | [`03-DATABASE.md`](./03-DATABASE.md) | DB research | schema, counts, data quality, files |
 | [`04-SCHEMA-MAPPING.md`](./04-SCHEMA-MAPPING.md), [`05-DATA-MIGRATION.md`](./05-DATA-MIGRATION.md) | DB research | target schema in our conventions; ETL plan |
 
-The merged phase plan is [`TASKS/PHASE-UPSTREAM-PHP-ADOPTION.md`](../../TASKS/PHASE-UPSTREAM-PHP-ADOPTION.md); the draft below is kept for provenance.
+The merged phase plan is Phases 12 … 31, one file per phase, indexed in [`TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`](../../TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md); the draft below is kept for provenance.
 
 ---
 
@@ -249,9 +249,11 @@ site. **No secret value was read into, or is reproduced in, any document.**
 
 Privacy: the database and uploads hold personal data (names, emails, password hashes, login IPs,
 technician names on reports) and facility-identifying data; device photos may incidentally capture
-people or patient areas. See 03 § 9 and Phase UP-05 below.
+people or patient areas. See 03 § 9 and Phase 17 below.
 
 ## 10. Architecture Gap That Drives Everything: Provider vs Facility Tenancy
+
+> **Superseded by the owner's clarification (2026-10-07) — ADR-124.** The options below assumed facilities would be tenants. The owner stated that **the tenant is the calibration company that serves the facilities**. Decided: the provider is the tenant; each facility is a `client_facilities` row inside it; provider staff are tenant users who work across its facilities; facility staff are users **bound** to their facility by a second scope dimension applied centrally by the tenant hooks (deny-by-default, cross-facility = 404) — the central replacement for upstream's per-controller checks (S-05, S-11). Option 1 (facility = tenant + memberships) is **not** built and ADR-084 is not amended. A hospital that runs its own calibration remains a tenant with one facility, itself (ADR-124 § 1, awaiting the owner's confirmation). The analysis below is kept for provenance.
 
 | | Upstream | Callibrator (as built) |
 |---|---|---|
@@ -298,33 +300,33 @@ These are evidence for the ETL and for "do not copy" decisions, not criticism.
 
 ## Phases (draft for the coordinator)
 
-Draft phase list for `PHASE-UPSTREAM-PHP-ADOPTION.md`. Research phases are done as of 2026-10-07;
+Draft phase list for the plan, now Phases 12 … 31 in `TASKS/` (index [`PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`](../../TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md)). Research phases are done as of 2026-10-07;
 every later phase follows the repository's Definition of Done (`TASKS/00-TASK-CONVENTIONS.md`).
-IDs are provisional (`UP-nn`); the coordinator merges this with the DB agent's ETL plan.
+IDs were provisional (`UP-nn`); the coordinator merged this with the DB agent's ETL plan, and on 2026-10-07 the ids were renumbered: draft `UP-nn` is Phase 12 + nn, card `UP-nn-yy` is `P(12+nn)-yy` (mapping: Phase 12 § 7). The table shows the new numbers.
 
 | # | Phase | Goal | Output / exit | Depends on |
 |---|---|---|---|---|
-| UP-00 | **Decisions & ADRs** | Settle what blocks design: tenancy model (§ 10), scope (which features), mobile app, public QR page, IPM-as-record semantics, data that may legally move | ADRs in `MEMORY/DECISIONS.md`; Open Questions in `TASKS/BACKLOG.md` answered or delegated | — |
-| UP-01 | Code research | Understand the upstream code | **Done** — 00/01/02 | — |
-| UP-02 | DB-structure research | Understand schema, data, files | **Done** — 03 (DB agent) | — |
-| UP-03 | Module research | Group code into modules, map to ours | **Done** — 01 | UP-01 |
-| UP-04 | Feature research | Fine-grained feature gap list | **Done** — 02 | UP-03 |
-| UP-05 | **Security, privacy & data protection** | DPIA under Indonesia's PDP Law (UU 27/2022) and our GDPR posture; legal basis/contract with the provider and facilities for moving their data; credential rotation advice for the upstream (S-01..S-04) **before** any copy leaves the owner's machine again; photo/EXIF policy; retention of login IPs | DPIA record; decision on what is migrated vs archived; upstream hardening advice handed to the owner | UP-00 |
-| UP-06 | **Role & permission mapping** | Map 4 groups → our roles and menu slugs; define facility-side vs provider-side gates; two-tenant test plan | role matrix in 01; `seededMenuSlugs` additions | UP-00 |
-| UP-07 | **Domain design** | IPM session aggregate + versioned checklist templates; QR asset tag; device condition vocabulary; IPM report as an issued, immutable document; calibration-date vs calibration-record semantics (03 Q-11) | specs in `MEMORY/specs/`; doc amendments via the deviation protocol | UP-00, UP-06 |
-| UP-08 | **DB-structure migration to our conventions** | Sequelize models + forward migrations (UUID PKs, `tenant_id`, snake_case, `is_deleted`, audit, JSONB shapes) for catalogue, templates, IPM, device extensions | migrations proved on an upgrade boot; models with `initModel` | UP-07, DB agent 04 |
-| UP-09 | **Backend implementation** | Services, routes, Zod contracts, OpenAPI, permission gates, audit rows, two-tenant tests, report/PDF/XLSX | `make verify` green; live E2E for new routes | UP-08 |
-| UP-10 | **Frontend implementation** | Pages for catalogue admin, device registration with photos, IPM capture (mobile-first), IPM history/report, exports, client dashboard, public QR page | jest + browser a11y + responsive suites | UP-09 |
-| UP-11 | **Report & PDF template parity** | IPM report, inventory PDF, 5 calibration recaps — field-for-field parity (with our certificate numbering, QR verification and signatures added) | golden-file tests; side-by-side sign-off by the provider | UP-09 |
-| UP-12 | **Data migration / ETL** | Extract → transform (03 Q-1..Q-28) → load per tenant; 116 GB files into our storage (HEIC → JPEG, dedupe, strip host from URLs); idempotent re-runs | rehearsal on a disposable stack; counts reconciled | UP-08, UP-05, DB agent 05 |
-| UP-13 | **Reconciliation & parity verification** | Prove the migrated data equals the source: per-facility device counts, IPM sessions per device, documents per device, sampled report diff | reconciliation report; zero unexplained deltas | UP-12 |
-| UP-14 | **UAT with real users** | Provider technicians in the field (phones, poor connectivity), facility admins, IPSRS | UAT sign-off; defects triaged | UP-10, UP-13 |
-| UP-15 | **QR sticker continuity** | Thousands of physical stickers already exist; find out what they encode (number only, or a `…/readQr/SKPnnnnnn` URL) and keep them resolvable: redirect from the old host to our public device page | redirect map; sticker-scan test | UP-07, UP-10 |
-| UP-16 | **Mobile / offline capture** | Decide: retire the APK in favour of a responsive web capture (PWA, offline queue) or keep a native app on our API | ADR; if kept, API contract + device auth | UP-00 |
-| UP-17 | **Training & documentation** | Indonesian user guides for technicians, facility admins; changed concepts (one IPM can no longer be overwritten; corrections instead) | guides; short videos | UP-14 |
-| UP-18 | **Cutover & dual-run** | Freeze window, final delta ETL, read-only upstream, DNS/redirects, rollback plan; dual-run period where upstream is read-only reference | cutover runbook in `TASKS/`; go/no-go record | UP-13, UP-14, UP-15 |
-| UP-19 | **Decommission & archive** | Encrypted archive of the upstream DB + files for the retention period, secure deletion of copies (including `mozivid/` on workstations), credential revocation | decommission record | UP-18 |
+| Phase 12 | **Decisions & ADRs** | Settle what blocks design: tenancy model (§ 10), scope (which features), mobile app, public QR page, IPM-as-record semantics, data that may legally move | ADRs in `MEMORY/DECISIONS.md`; Open Questions in `TASKS/BACKLOG.md` answered or delegated | — |
+| Phase 13 | Code research | Understand the upstream code | **Done** — 00/01/02 | — |
+| Phase 14 | DB-structure research | Understand schema, data, files | **Done** — 03 (DB agent) | — |
+| Phase 15 | Module research | Group code into modules, map to ours | **Done** — 01 | Phase 13 |
+| Phase 16 | Feature research | Fine-grained feature gap list | **Done** — 02 | Phase 15 |
+| Phase 17 | **Security, privacy & data protection** | DPIA under Indonesia's PDP Law (UU 27/2022) and our GDPR posture; legal basis/contract with the provider and facilities for moving their data; credential rotation advice for the upstream (S-01..S-04) **before** any copy leaves the owner's machine again; photo/EXIF policy; retention of login IPs | DPIA record; decision on what is migrated vs archived; upstream hardening advice handed to the owner | Phase 12 |
+| Phase 18 | **Role & permission mapping** | Map 4 groups → our roles and menu slugs; define facility-side vs provider-side gates; two-tenant test plan | role matrix in 01; `seededMenuSlugs` additions | Phase 12 |
+| Phase 19 | **Domain design** | IPM session aggregate + versioned checklist templates; QR asset tag; device condition vocabulary; IPM report as an issued, immutable document; calibration-date vs calibration-record semantics (03 Q-11) | specs in `MEMORY/specs/`; doc amendments via the deviation protocol | Phase 12, Phase 18 |
+| Phase 20 | **DB-structure migration to our conventions** | Sequelize models + forward migrations (UUID PKs, `tenant_id`, snake_case, `is_deleted`, audit, JSONB shapes) for catalogue, templates, IPM, device extensions | migrations proved on an upgrade boot; models with `initModel` | Phase 19, DB agent 04 |
+| Phase 21 | **Backend implementation** | Services, routes, Zod contracts, OpenAPI, permission gates, audit rows, two-tenant tests, report/PDF/XLSX | `make verify` green; live E2E for new routes | Phase 20 |
+| Phase 22 | **Frontend implementation** | Pages for catalogue admin, device registration with photos, IPM capture (mobile-first), IPM history/report, exports, client dashboard, public QR page | jest + browser a11y + responsive suites | Phase 21 |
+| Phase 23 | **Report & PDF template parity** | IPM report, inventory PDF, 5 calibration recaps — field-for-field parity (with our certificate numbering, QR verification and signatures added) | golden-file tests; side-by-side sign-off by the provider | Phase 21 |
+| Phase 24 | **Data migration / ETL** | Extract → transform (03 Q-1..Q-28) → load per tenant; 116 GB files into our storage (HEIC → JPEG, dedupe, strip host from URLs); idempotent re-runs | rehearsal on a disposable stack; counts reconciled | Phase 20, Phase 17, DB agent 05 |
+| Phase 25 | **Reconciliation & parity verification** | Prove the migrated data equals the source: per-facility device counts, IPM sessions per device, documents per device, sampled report diff | reconciliation report; zero unexplained deltas | Phase 24 |
+| Phase 26 | **UAT with real users** | Provider technicians in the field (phones, poor connectivity), facility admins, IPSRS | UAT sign-off; defects triaged | Phase 22, Phase 25 |
+| Phase 27 | **QR sticker continuity** | Thousands of physical stickers already exist; find out what they encode (number only, or a `…/readQr/SKPnnnnnn` URL) and keep them resolvable: redirect from the old host to our public device page | redirect map; sticker-scan test | Phase 19, Phase 22 |
+| Phase 28 | **Mobile / offline capture** | Decide: retire the APK in favour of a responsive web capture (PWA, offline queue) or keep a native app on our API | ADR; if kept, API contract + device auth | Phase 12 |
+| Phase 29 | **Training & documentation** | Indonesian user guides for technicians, facility admins; changed concepts (one IPM can no longer be overwritten; corrections instead) | guides; short videos | Phase 26 |
+| Phase 30 | **Cutover & dual-run** | Freeze window, final delta ETL, read-only upstream, DNS/redirects, rollback plan; dual-run period where upstream is read-only reference | cutover runbook in `TASKS/`; go/no-go record | Phase 25, Phase 26, Phase 27 |
+| Phase 31 | **Decommission & archive** | Encrypted archive of the upstream DB + files for the retention period, secure deletion of copies (including `mozivid/` on workstations), credential revocation | decommission record | Phase 30 |
 
-Suggested build order inside UP-09/UP-10 (thin vertical slices): catalogue & templates → device
+Suggested build order inside Phases 21/22 (thin vertical slices): catalogue & templates → device
 extensions (QR, photos, condition) → IPM capture → IPM report → calibration-date entry & recaps →
 inventory exports → dashboard condition widgets → public QR page → provider multi-tenant access.

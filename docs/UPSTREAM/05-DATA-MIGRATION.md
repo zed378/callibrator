@@ -87,7 +87,7 @@ confirms with 3–5 events whose real local time is known. Pure `date` columns a
 `upstream_import.quarantine (source_table, legacy_id, reason, batch_id, created_at)` — reasons:
 `device_not_found` (Q-4, ~13 sessions + 13–91 detail rows per table), `duplicate_header` (Q-8),
 `file_missing` (162), `file_type_refused` (§ 6), `value_out_of_range` (kept but flagged), …
-Quarantine is reviewed by the operator before sign-off (UP-DB-7).
+Quarantine is reviewed by the operator before sign-off (Phase 25, draft UP-DB-7).
 
 ## 4. Id Mapping
 
@@ -102,7 +102,7 @@ tenant_id, batch_id, source_row_hash, source_values jsonb, imported_at`. Rules:
   D-5 duplicate, the original `kondisi_alat`) — it is personal-data-free for business tables, and
   **never** populated for `users`;
 - the schema is not granted to `callibrator_app` (proven in 04 § 10) and is archived and dropped at
-  decommission (UP-DB-9).
+  decommission (Phase 31, draft UP-DB-9).
 
 ## 5. Users and Passwords
 
@@ -140,6 +140,8 @@ The rest of the fork (`writable/logs` 161 MB, `writable/session` 507 files, `ven
 migrated.
 
 To move: the referenced, present files ≈ **58,650 files ≈ 110 GB**.
+
+> **Superseded 2026-10-07 (owner rule; `07-DATA-MINIMISATION.md`, `08-FILE-POLICY.md`; ADR-126 § 8).** Certificates and exports are rendered in the frontend and no certificate file is stored, so the **11.9 k upstream certificate PDFs (`uploads/inventory`, 19.2 GB) are not loaded into storage**: their data (date, device) is imported and the originals are archived offline. **Storage receives the device photos only — ≈ 47,080 files ≈ 91 GB** — at `t/<tenant>/f/<facility>/attachments/<uuid>.<ext>` (ADR-124 § 9: the key carries the facility). The figures below (110 GB, transfer time, storage cost) overstate the load by the PDFs and are kept for provenance.
 
 ### 6.2 Pipeline (per file)
 
@@ -218,7 +220,7 @@ targets (devices, users' profile fields, tenants) and, for append-only targets
 upstream edits sessions by delete-and-reinsert (new ids, same `legacy_key`), sessions are matched
 by `legacy_key`, not by upstream id, and their content hash covers all their detail rows.
 
-**Dry run (UP-DB-6).** A throwaway PostgreSQL 18 (`pgvector/pgvector:pg18`) with our migrations
+**Dry run (Phase 24, draft UP-DB-6).** A throwaway PostgreSQL 18 (`pgvector/pgvector:pg18`) with our migrations
 applied, a throwaway S3-compatible bucket, the latest dump, the full pipeline, then § 7. Measure
 and record every step's duration. Repeat until R-1 … R-12 are green and the quarantine is
 explained. **Estimated DB time:** staging load of 384 k rows < 1 min; transform + load with
@@ -231,7 +233,7 @@ objects under the import-created tenants' `t/<tenant>/` prefixes. Tenant FKs are
 there is no rollback to upstream for writes made in Callibrator; the fallback is to keep upstream
 read-only and fix forward.
 
-**Dual run and cutover (UP-DB-8).**
+**Dual run and cutover (Phase 30, draft UP-DB-8).**
 
 1. T-14 d: dry run on the latest dump; operator reviews the reconciliation and quarantine.
 2. T-7 d: files copied (bulk); invitations drafted; training.
@@ -241,7 +243,7 @@ read-only and fix forward.
 5. T+0 … T+30 d: upstream stays **read-only** for lookup; no dual writing (two systems of record
    for the same device history would diverge).
 6. T+30 d (or the retention decision): upstream DB and files archived encrypted, then destroyed
-   (UP-DB-9); `upstream_import` archived and dropped.
+   (Phase 31, draft UP-DB-9); `upstream_import` archived and dropped.
 
 Freeze length: dominated by the delta (a day's rows load in seconds; a day's files in minutes) —
 **under 1 hour** if the bulk was loaded ahead.
@@ -257,6 +259,8 @@ Freeze length: dominated by the delta (a day's rows load in seconds; a day's fil
 | Reconciliation | 12 checks × 119 tenants | minutes |
 
 ## 10. Privacy and Compliance (UU PDP, GDPR)
+
+> **Tenancy corrected 2026-10-07 (ADR-124):** the operator is the **tenant** and each facility a `client_facilities` row inside it, with its own staff bound to it by a central, deny-by-default facility scope; the roles below are unchanged in substance (the DPIA, `06-DPIA.md` § 2.2, is the current statement).
 
 **Roles.** For facility data (devices, inspection results, certificates) the **facility** is the
 controller; the operator and Callibrator are processors. For the operator's own staff accounts the

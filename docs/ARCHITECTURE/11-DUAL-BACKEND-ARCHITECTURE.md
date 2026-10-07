@@ -348,5 +348,5 @@ This architecture is recorded as **ADR-089** in [`../../MEMORY/DECISIONS.md`](..
 Key constraints from ADR-089:
 1. TypeScript backend is not deprecated. It remains the production reference implementation.
 2. Go backend is an additional engine, not a replacement.
-3. All Go implementation work lives in Phase 999, strictly after Phase 9 and Upstream PHP Feature Adoption.
+3. All Go implementation work lives in Phase 999, strictly after Phase 9 and Upstream PHP Feature Adoption (Phases 12 … 31, `TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`).
 4. Current scope (2026-09-27): documentation and planning only.
