@@ -19,6 +19,7 @@ import {
   DependencyReport,
   HealthReport,
 } from "@/api/services/health.service";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 type PanelState =
   | { kind: "loading" }
@@ -85,33 +86,6 @@ const formatCheckedAt = (iso: string): string => {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleTimeString();
 };
 
-const VERDICT_STYLES = {
-  loading: {
-    text: "Checking…",
-    box: "bg-muted/30 border-border",
-    dot: "bg-muted-foreground",
-    label: "text-muted-foreground",
-  },
-  healthy: {
-    text: "Required dependencies healthy",
-    box: "bg-success/10 border-success/30",
-    dot: "bg-success",
-    label: "text-success",
-  },
-  unhealthy: {
-    text: "Required dependency down",
-    box: "bg-destructive/10 border-destructive/30",
-    dot: "bg-destructive",
-    label: "text-destructive",
-  },
-  unknown: {
-    text: "Status unknown",
-    box: "bg-muted/30 border-border",
-    dot: "bg-muted-foreground",
-    label: "text-muted-foreground",
-  },
-} as const;
-
 export interface DashboardSystemHealthProps {
   /**
    * Only a super admin may read the per-dependency breakdown. For anyone else
@@ -149,7 +123,6 @@ export const DashboardSystemHealth: React.FC<DashboardSystemHealthProps> = ({
       : state.kind === "loading"
         ? "loading"
         : "unknown";
-  const verdictStyle = VERDICT_STYLES[verdict];
 
   return (
     <div className="rounded-2xl border border-border bg-card shadow-sm">
@@ -170,15 +143,9 @@ export const DashboardSystemHealth: React.FC<DashboardSystemHealthProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div
-            data-testid="health-verdict"
-            data-status={verdict}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${verdictStyle.box}`}
-          >
-            <div className={`w-2 h-2 rounded-full ${verdictStyle.dot}`} />
-            <span className={`text-xs font-semibold ${verdictStyle.label}`}>
-              {verdictStyle.text}
-            </span>
+          {/* ADR-122 Am. 1: the verdict is a registry status ("healthVerdict"). */}
+          <div data-testid="health-verdict" data-status={verdict}>
+            <StatusBadge domain="healthVerdict" state={verdict} size="sm" />
           </div>
           <button
             type="button"

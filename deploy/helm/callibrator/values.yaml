@@ -78,10 +78,12 @@ backend:
     backup: "0 3 * * 0"
     retention: "0 2 * * *"
     # Empty = the application default (calibration 01:00 daily, tenant
-    # lifecycle 02:30 daily, quarantine sweep hourly at :17).
+    # lifecycle 02:30 daily, quarantine sweep hourly at :17, the SQL-dump
+    # import's sweep hourly at :41).
     calibration: ""
     tenantLifecycle: ""
     quarantineSweep: ""
+    upstreamSqlImportSweep: ""
 
   service:
     type: ClusterIP

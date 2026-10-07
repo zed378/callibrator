@@ -1,9 +1,11 @@
 /**
- * P11-01 (ADR-122): the dashboard colours through semantic tokens only.
+ * P11-01 (ADR-122): the app colours through semantic tokens only.
  *
- * Scans every non-test `.ts`/`.tsx` file the dashboard renders — `app/dashboard/**`,
+ * Scans every non-test `.ts`/`.tsx` file under `app/**` and `components/**`
+ * (until 2026-10-07 only the dashboard tree: `app/dashboard/**`,
  * `components/{layouts,ui,editor,errors,icons,motion}`, `AccessDeniedModal`,
- * `ThemeToggle`, `TenantBrandingProvider` — for raw colour:
+ * `ThemeToggle`, `TenantBrandingProvider`; ADR-122 Amendment 1 grew it to the
+ * public pages and `components/public/**`) for raw colour:
  *
  *   hex       a `#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa` literal
  *   fn        `rgb(`, `rgba(`, `hsl(`, `hsla(`, `oklch(`, `oklab(`
@@ -12,6 +14,8 @@
  *   arbitrary an arbitrary colour value (`bg-[#…]`, `-[rgb…`, `-[color:…`)
  *   dark      a `dark:` colour variant (the token flips; a variant bypasses it)
  *   faded     faded text tokens (`text-muted-foreground/70`): contrast unverified
+ *   blend     a gradient across two hues (`from-primary to-accent`); one-token
+ *             gradients and fades into a neutral surface stay allowed
  *
  * A finding passes only if `constants/colourExemptions.ts` lists it (file,
  * literal, exact count, reason). It shipped as a ratchet seeded with the
@@ -21,7 +25,10 @@
  * files). P11-03 took the shell and components/ui to zero, P11-04 and P11-06
  * the modules; BASELINE is now empty and every finding outside the allow-list
  * fails. (The allow-list holds 17 after P11-04: the kanban fallback colour is
- * now also passed to lib/readableOn.)
+ * now also passed to lib/readableOn.) When the scope grew (Amendment 1) the
+ * new files held 15 findings in 5 files (not-found, oauth/consent,
+ * sso-callback: 6 blends + 1 faded; BrandIcon: 4 hex in a comment; BrandMark:
+ * white/black); all were fixed except BrandMark's logo plate (allow-listed).
  *
  * The patterns are written from the forbidden forms, not from the sweep, and a
  * fixture with one of each proves they fire (CLAUDE.md "Evidence").
@@ -32,15 +39,16 @@ import { COLOUR_EXEMPTIONS } from "@/constants/colourExemptions";
 
 const SRC = path.resolve(__dirname, "../..");
 
-const ROOTS = [
-  "app/dashboard",
-  "components/layouts",
-  "components/ui",
-  "components/editor",
-  "components/errors",
-  "components/icons",
-  "components/motion",
-];
+/**
+ * P11 follow-up (ADR-122 Amendment 1, 2026-10-07): the scan covers ALL of
+ * `app/**` and `components/**` — the public pages (`app/page.tsx`, `login`,
+ * `verify`, `not-found`, `oauth/consent`, `sso-callback`, …) and
+ * `components/public/**` included. The public surface colours through its own
+ * `--pub-*` tokens in `public-surface.css`; that CSS is not scanned (only
+ * `.ts`/`.tsx` are), and its TSX was already clean when the scope grew.
+ */
+const ROOTS = ["app", "components"];
+/** Files the first scope named one by one; still pinned so a move is noticed. */
 const SINGLES = ["components/AccessDeniedModal.tsx", "components/ThemeToggle.tsx", "components/TenantBrandingProvider.tsx"];
 
 /**
@@ -65,6 +73,46 @@ const PATTERNS: Record<string, RegExp> = {
   faded: /\btext-(?:[a-z]+-)?foreground\/\d+/g,
 };
 
+/**
+ * `blend`: a gradient whose stops name two different hues — the copper→teal
+ * `from-primary to-accent` the public error pages kept (ADR-122 §3: `accent`
+ * is the verified teal, not a second brand colour). A gradient within ONE
+ * token (`from-primary to-primary-hover`, `from-chart-2 to-chart-2`) or
+ * fading into a neutral surface stays allowed: no token defines a two-hue
+ * blend. Checked per line that names a gradient (`bg-linear-`, `bg-radial`,
+ * `bg-conic`, `bg-gradient-`).
+ */
+const GRADIENT = /\bbg-(?:linear|radial|conic|gradient)\b/;
+const STOP = /(?<![\w-])(?:from|via|to)-([a-z][a-z0-9-]*)/g;
+const NEUTRAL_STOPS = new Set([
+  "transparent",
+  "current",
+  "inherit",
+  "background",
+  "card",
+  "popover",
+  "muted",
+  "foreground",
+  "border",
+  "sidebar",
+  "secondary",
+]);
+const hueOf = (token: string): string => token.replace(/-(?:hover|pressed)$/, "");
+
+const blends = (text: string): string[] => {
+  const out: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (!GRADIENT.test(line)) continue;
+    const stops = [...line.matchAll(STOP)].map((m) => m[1]);
+    const hues = [...new Set(stops.map(hueOf).filter((h) => !NEUTRAL_STOPS.has(h)))];
+    if (hues.length > 1) out.push(hues.join("→"));
+  }
+  return out;
+};
+
+/** Every kind the scan reports; the fixture must exercise each. */
+const KINDS = [...Object.keys(PATTERNS), "blend"];
+
 interface Finding {
   kind: string;
   literal: string;
@@ -75,6 +123,7 @@ const scan = (text: string): Finding[] => {
   for (const [kind, re] of Object.entries(PATTERNS)) {
     for (const m of text.matchAll(re)) out.push({ kind, literal: m[0] });
   }
+  for (const literal of blends(text)) out.push({ kind: "blend", literal });
   return out;
 };
 
@@ -91,13 +140,12 @@ const files = (): string[] => {
     }
   };
   for (const r of ROOTS) walk(path.join(SRC, r));
-  for (const s of SINGLES) out.push(path.join(SRC, s));
   return out;
 };
 
 const rel = (abs: string) => path.relative(SRC, abs).split(path.sep).join("/");
 
-describe("P11-01 guard: the dashboard has no raw colour (ADR-122)", () => {
+describe("P11-01 guard: app/** and components/** have no raw colour (ADR-122)", () => {
   const all = files();
   const findings = new Map<string, Finding[]>();
   for (const f of all) {
@@ -105,9 +153,14 @@ describe("P11-01 guard: the dashboard has no raw colour (ADR-122)", () => {
     if (found.length) findings.set(rel(f), found);
   }
 
-  it("scans the dashboard tree", () => {
-    expect(all.length).toBeGreaterThan(250);
-    for (const s of SINGLES) expect(fs.existsSync(path.join(SRC, s))).toBe(true);
+  it("scans all of app/** and components/**, the public surface included", () => {
+    expect(all.length).toBeGreaterThan(350);
+    const scanned = new Set(all.map(rel));
+    for (const s of SINGLES) expect(scanned).toContain(s);
+    for (const s of ["app/page.tsx", "app/not-found.tsx", "app/oauth/consent/page.tsx", "app/sso-callback/page.tsx", "app/login/page.tsx"]) {
+      expect(scanned).toContain(s);
+    }
+    expect([...scanned].some((f) => f.startsWith("components/public/"))).toBe(true);
   });
 
   it("every exemption is still used exactly as reviewed (file, literal, count)", () => {
@@ -151,7 +204,7 @@ describe("P11-01 guard: each forbidden form is caught (fixture)", () => {
 
   it("the fixture covers every pattern and some allowed forms", () => {
     const kinds = new Set(lines.map((l) => l.expected));
-    for (const k of Object.keys(PATTERNS)) expect(kinds).toContain(k);
+    for (const k of KINDS) expect(kinds).toContain(k);
     expect(kinds).toContain("ok");
   });
 

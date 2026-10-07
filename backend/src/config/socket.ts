@@ -216,6 +216,37 @@ const checkPrincipal = async (
 const SOCKET_RECHECK_INTERVAL_MS = 60 * 1000;
 
 /**
+ * F-2 of docs/SECURITY/15-FASKES-SCOPE-THREAT-MODEL.md § 9 (A-365). The
+ * handshake builds the socket's tenant context and joins its rooms
+ * (`tenant_<id>`, `user_<id>`, and `super_admins` for a super admin) ONCE; the
+ * re-check used to refuse only a status change, so a principal whose scope
+ * changed while the socket stayed open kept the old context and rooms — a user
+ * demoted from super admin kept receiving every tenant's notifications in
+ * `super_admins`, and a user whose tenant or role changed kept the old tenant
+ * room. Rebuilding rooms in place would be a second copy of the handshake; the
+ * socket is disconnected instead, and the next connection's handshake builds
+ * the context and rooms from the principal as it is now.
+ *
+ * @param socket - an open socket, with the principal and context its handshake built
+ * @param user - the principal as checkPrincipal loaded it now
+ * @returns a server-side-only reason when the scope changed, else null
+ */
+const scopeDrift = (socket: AppSocket, user: SocketPrincipal): string | null => {
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- an empty tenantId reads as none, as the handshake reads it
+  const tenantNow = user.tenantId || null;
+  if (tenantNow !== socket.tenantContext.tenantId) {
+    return `user ${user.id} changed tenant`;
+  }
+  if (isSuperAdminRole(user.role?.name) !== socket.tenantContext.isSuperAdmin) {
+    return `user ${user.id} changed super-admin status`;
+  }
+  if (user.role?.name !== socket.user.role?.name) {
+    return `user ${user.id} changed role`;
+  }
+  return null;
+};
+
+/**
  * Re-check an open socket's principal; disconnect it when it no longer passes.
  * An error (the database or Redis briefly unreachable) is logged and the
  * socket kept: the next interval tries again. Disconnecting every socket on a
@@ -227,7 +258,9 @@ const SOCKET_RECHECK_INTERVAL_MS = 60 * 1000;
  */
 const recheckSocket = async (socket: AppSocket): Promise<boolean> => {
   try {
-    const { refusal } = await checkPrincipal(socket.sessionId, socket.user.id);
+    const checked = await checkPrincipal(socket.sessionId, socket.user.id);
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- an empty refusal reads as none, as before
+    const refusal = checked.refusal || (checked.user ? scopeDrift(socket, checked.user) : null);
     if (!refusal) {
       return false;
     }
@@ -467,6 +500,7 @@ const __testables = {
   authenticateHandshake,
   checkPrincipal,
   recheckSocket,
+  scopeDrift,
   SOCKET_RECHECK_INTERVAL_MS,
   corsOrigin,
   readAuthToken,

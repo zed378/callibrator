@@ -22,6 +22,10 @@ jest.mock("../../models", () => ({
   },
   Certificate: { findOne: jest.fn() },
   AuditLog: { create: jest.fn() },
+  // A-365: a signed link's redemption re-checks its tenant and its issuer.
+  Tenant: { findByPk: jest.fn() },
+  User: { findByPk: jest.fn() },
+  ApiKey: { findOne: jest.fn() },
 }));
 
 jest.mock("../../config", () => ({
@@ -55,7 +59,10 @@ const EventEmitter = require("events");
 const path = require("path");
 const fs = require("fs");
 const attachmentService = require("../../services/attachment.service");
-const { Attachment, Certificate } = require("../../models");
+const { Attachment, Certificate, Tenant, User } = require("../../models");
+
+// A-365: a signed link is minted by a principal.
+const ISSUER = { userId: "u-1" };
 const virusScan = require("../../services/virusScan.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const storagePath = require("../../utils/storagePath.util");
@@ -89,6 +96,9 @@ describe("attachment.service (coverage)", () => {
     fs.createReadStream.mockImplementation(() => streamOf(["hello"]));
     fs.existsSync.mockReturnValue(true);
     fs.promises.unlink.mockResolvedValue(undefined);
+    // A-365: the link's tenant and issuer are live unless a test says not.
+    Tenant.findByPk.mockResolvedValue({ id: "t-1", status: "active" });
+    User.findByPk.mockResolvedValue({ id: "u-1", isActive: true, status: "ACTIVE" });
   });
 
   // ================================================================
@@ -327,8 +337,8 @@ describe("attachment.service (coverage)", () => {
       mimeType: "text/plain",
     });
     const validTokenFor = async (id) => {
-      Attachment.findOne.mockResolvedValue({ id });
-      const { token } = await attachmentService.generateSignedUrl("t-1", id);
+      Attachment.findOne.mockResolvedValue({ id, tenantId: "t-1" });
+      const { token } = await attachmentService.generateSignedUrl("t-1", id, { issuer: ISSUER });
       return token;
     };
 
@@ -348,8 +358,8 @@ describe("attachment.service (coverage)", () => {
         message: "Invalid attachment path",
       });
 
-      Attachment.findByPk.mockResolvedValue(row(folder, fileName));
       const token = await validTokenFor("a-1");
+      Attachment.findOne.mockResolvedValue(row(folder, fileName));
       await expect(attachmentService.getSignedDownload("a-1", token)).rejects.toMatchObject({
         status: 400,
         message: "Invalid attachment path",
@@ -445,30 +455,38 @@ describe("attachment.service (coverage)", () => {
 
   // ================================================================
   describe("generateSignedUrl", () => {
-    it("uses the default TTL when expiresInSec is zero or negative", async () => {
-      Attachment.findOne.mockResolvedValue({ id: "a-1" });
+    // A-365: these two answered the default lifetime before; a lifetime that
+    // is not an integer in [30, the cap] is now refused (the route's schema
+    // refuses it first; the service refuses it for any other caller).
+    it("refuses a zero or negative expiresInSec (A-365)", async () => {
+      Attachment.findOne.mockResolvedValue({ id: "a-1", tenantId: "t-1" });
 
-      const r = await attachmentService.generateSignedUrl("t-1", "a-1", {
-        expiresInSec: -5,
-      });
-
-      expect(r.expiresInSec).toBe(300);
+      await expect(
+        attachmentService.generateSignedUrl("t-1", "a-1", { issuer: ISSUER, expiresInSec: -5 }),
+      ).rejects.toMatchObject({ status: 400 });
     });
 
-    it("uses the default TTL when expiresInSec is not a number", async () => {
-      Attachment.findOne.mockResolvedValue({ id: "a-1" });
+    it("refuses an expiresInSec that is not a number (A-365)", async () => {
+      Attachment.findOne.mockResolvedValue({ id: "a-1", tenantId: "t-1" });
 
-      const r = await attachmentService.generateSignedUrl("t-1", "a-1", {
-        expiresInSec: "soon",
-      });
+      await expect(
+        attachmentService.generateSignedUrl("t-1", "a-1", { issuer: ISSUER, expiresInSec: "soon" }),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("uses the default TTL when expiresInSec is absent", async () => {
+      Attachment.findOne.mockResolvedValue({ id: "a-1", tenantId: "t-1" });
+
+      const r = await attachmentService.generateSignedUrl("t-1", "a-1", { issuer: ISSUER });
 
       expect(r.expiresInSec).toBe(300);
     });
 
     it("honours an explicit baseUrl and strips its trailing slash", async () => {
-      Attachment.findOne.mockResolvedValue({ id: "a-1" });
+      Attachment.findOne.mockResolvedValue({ id: "a-1", tenantId: "t-1" });
 
       const r = await attachmentService.generateSignedUrl("t-1", "a-1", {
+        issuer: ISSUER,
         baseUrl: "https://files.example.com/",
       });
 
@@ -478,12 +496,12 @@ describe("attachment.service (coverage)", () => {
     });
 
     it("falls back to PUBLIC_BASE_URL when no baseUrl is supplied", async () => {
-      Attachment.findOne.mockResolvedValue({ id: "a-1" });
+      Attachment.findOne.mockResolvedValue({ id: "a-1", tenantId: "t-1" });
       const saved = process.env.PUBLIC_BASE_URL;
       process.env.PUBLIC_BASE_URL = "https://cdn.example.com";
 
       try {
-        const r = await attachmentService.generateSignedUrl("t-1", "a-1");
+        const r = await attachmentService.generateSignedUrl("t-1", "a-1", { issuer: ISSUER });
         expect(r.url).toContain("https://cdn.example.com/api/v1/attachments/a-1/signed");
       } finally {
         if (saved === undefined) {
@@ -495,12 +513,12 @@ describe("attachment.service (coverage)", () => {
     });
 
     it("falls back to localhost when neither baseUrl nor PUBLIC_BASE_URL is set", async () => {
-      Attachment.findOne.mockResolvedValue({ id: "a-1" });
+      Attachment.findOne.mockResolvedValue({ id: "a-1", tenantId: "t-1" });
       const saved = process.env.PUBLIC_BASE_URL;
       delete process.env.PUBLIC_BASE_URL;
 
       try {
-        const r = await attachmentService.generateSignedUrl("t-1", "a-1");
+        const r = await attachmentService.generateSignedUrl("t-1", "a-1", { issuer: ISSUER });
         expect(r.url).toContain("http://localhost:5000/api/v1/attachments/a-1/signed");
       } finally {
         if (saved !== undefined) {
@@ -510,9 +528,10 @@ describe("attachment.service (coverage)", () => {
     });
 
     it("returns an expiresAt consistent with the token's exp claim", async () => {
-      Attachment.findOne.mockResolvedValue({ id: "a-1" });
+      Attachment.findOne.mockResolvedValue({ id: "a-1", tenantId: "t-1" });
 
       const r = await attachmentService.generateSignedUrl("t-1", "a-1", {
+        issuer: ISSUER,
         expiresInSec: 60,
       });
       const exp = Number(r.token.split(".")[0]);
@@ -525,7 +544,7 @@ describe("attachment.service (coverage)", () => {
       Attachment.findOne.mockResolvedValue(null);
 
       await expect(
-        attachmentService.generateSignedUrl("t-1", "a-1"),
+        attachmentService.generateSignedUrl("t-1", "a-1", { issuer: ISSUER }),
       ).rejects.toMatchObject({ status: 404 });
     });
   });
@@ -561,8 +580,8 @@ describe("attachment.service (coverage)", () => {
     });
 
     it("rejects a correct-length signature signed for a different attachment", async () => {
-      Attachment.findOne.mockResolvedValue({ id: "a-1" });
-      const { token } = await attachmentService.generateSignedUrl("t-1", "a-1");
+      Attachment.findOne.mockResolvedValue({ id: "a-1", tenantId: "t-1" });
+      const { token } = await attachmentService.generateSignedUrl("t-1", "a-1", { issuer: ISSUER });
 
       expect(attachmentService._verifySignedToken("a-2", token)).toBe(false);
     });
@@ -571,14 +590,14 @@ describe("attachment.service (coverage)", () => {
   // ================================================================
   describe("getSignedDownload", () => {
     const validTokenFor = async (id) => {
-      Attachment.findOne.mockResolvedValue({ id });
-      const { token } = await attachmentService.generateSignedUrl("t-1", id);
+      Attachment.findOne.mockResolvedValue({ id, tenantId: "t-1" });
+      const { token } = await attachmentService.generateSignedUrl("t-1", id, { issuer: ISSUER });
       return token;
     };
 
     it("resolves the download without a tenant or session", async () => {
       const token = await validTokenFor("a-1");
-      Attachment.findByPk.mockResolvedValue({
+      Attachment.findOne.mockResolvedValue({
         id: "a-1",
         folder: "uploads/attachments",
         fileName: "doc.pdf",
@@ -593,7 +612,7 @@ describe("attachment.service (coverage)", () => {
         fileName: "Doc.pdf",
         mimeType: "application/pdf",
       });
-      expect(Attachment.findByPk).toHaveBeenCalledWith("a-1");
+      expect(Attachment.findOne).toHaveBeenLastCalledWith({ where: { id: "a-1", tenantId: "t-1" } });
     });
 
     it("throws 403 for an invalid token before touching the database", async () => {
@@ -603,7 +622,7 @@ describe("attachment.service (coverage)", () => {
         status: 403,
         message: "Invalid or expired download link",
       });
-      expect(Attachment.findByPk).not.toHaveBeenCalled();
+      expect(Attachment.findOne).not.toHaveBeenCalled();
     });
 
     it("throws 403 once a validly-signed token passes its expiry", async () => {
@@ -625,12 +644,13 @@ describe("attachment.service (coverage)", () => {
         nowSpy.mockRestore();
       }
 
-      expect(Attachment.findByPk).not.toHaveBeenCalled();
+      // Once, to mint the token; the expired redemption reads nothing.
+      expect(Attachment.findOne).toHaveBeenCalledTimes(1);
     });
 
     it("throws 404 when the signed attachment no longer exists", async () => {
       const token = await validTokenFor("a-1");
-      Attachment.findByPk.mockResolvedValue(null);
+      Attachment.findOne.mockResolvedValue(null);
 
       await expect(
         attachmentService.getSignedDownload("a-1", token),
@@ -639,7 +659,7 @@ describe("attachment.service (coverage)", () => {
 
     it("throws 410 when the signed file has vanished from disk", async () => {
       const token = await validTokenFor("a-1");
-      Attachment.findByPk.mockResolvedValue({
+      Attachment.findOne.mockResolvedValue({
         id: "a-1",
         folder: "uploads/attachments",
         fileName: "gone.pdf",
@@ -658,7 +678,7 @@ describe("attachment.service (coverage)", () => {
 
     it("rejects a traversal fileName even on a validly signed link", async () => {
       const token = await validTokenFor("a-1");
-      Attachment.findByPk.mockResolvedValue({
+      Attachment.findOne.mockResolvedValue({
         id: "a-1",
         folder: "uploads/attachments",
         fileName: `..${path.sep}..${path.sep}secrets.env`,

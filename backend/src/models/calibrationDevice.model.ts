@@ -20,7 +20,7 @@ import {
   type ReadingTolerance,
   type UncertaintyBudget,
 } from "../utils/jsonShape.util";
-import type { TenantId } from "../types/ids";
+import type { DeviceTypeId, TenantId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -53,6 +53,13 @@ interface CalibrationDevice extends Model<
   category: string | null;
   status: CreationOptional<(typeof CALIBRATION_DEVICE_STATUSES)[number] | null>;
   locationId: string | null;
+  /**
+   * P20-01 (ADR-125 Am. 1, G-5): the device's type in the GLOBAL catalogue, or none. RESTRICT —
+   * a type is never deleted. Added to existing databases by migration 0111 (with its index; none
+   * is declared here, ADR-100 Am. 3). Every include of `deviceType` says `required: false`: a
+   * device with no type must not vanish from a list (CLAUDE.md, the first trap).
+   */
+  deviceTypeId: CreationOptional<DeviceTypeId | null>;
   installationDate: Date | null;
   nextCalibrationDate: Date | null;
   calibrationIntervalDays: number | null;
@@ -74,6 +81,7 @@ interface CalibrationDevice extends Model<
 
   tenant?: NonAttribute<ModelInstance<"Tenant">>;
   warehouse?: NonAttribute<ModelInstance<"Warehouse">>;
+  deviceType?: NonAttribute<ModelInstance<"DeviceType"> | null>;
   calibrationRecords?: NonAttribute<ModelInstance<"CalibrationRecord">[]>;
 
   softDelete(): Promise<CalibrationDevice>;
@@ -143,6 +151,13 @@ const defineModel: DefineCalibrationDevice = (db, DataTypes) => {
         allowNull: true,
         references: { model: "warehouses", key: "id" },
         onDelete: "SET NULL",
+      },
+      deviceTypeId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "device_types", key: "id" },
+        onDelete: "RESTRICT",
+        onUpdate: "CASCADE",
       },
       installationDate: {
         type: DataTypes.DATE,
@@ -298,6 +313,14 @@ const defineModel: DefineCalibrationDevice = (db, DataTypes) => {
       foreignKey: "locationId",
       as: "warehouse",
       onDelete: "SET NULL",
+    });
+    // CalibrationDevice -> DeviceType (P20-01): tenant -> GLOBAL, the one direction ADR-125 § 7
+    // allows. No reverse association: a type's devices across tenants are other tenants' data.
+    // DeviceType has no defaultScope, but an include of it still says `required: false`.
+    CalibrationDevice.belongsTo(models.DeviceType, {
+      foreignKey: "deviceTypeId",
+      as: "deviceType",
+      onDelete: "RESTRICT",
     });
     // CalibrationDevice -> CalibrationRecord (hasMany)
     CalibrationDevice.hasMany(models.CalibrationRecord, {

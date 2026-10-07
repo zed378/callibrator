@@ -112,6 +112,27 @@ describe("DashboardSystemHealth (F-02)", () => {
     );
   });
 
+  it("ADR-122 Am. 1: each probe and the verdict carry a status tone (shape + icon + word), not colour alone", async () => {
+    getMock.mockResolvedValueOnce(envelope(503, postgresDown));
+
+    render(<DashboardSystemHealth isSuperAdmin />);
+
+    const tone = (el: HTMLElement) => el.querySelector("[data-tone]");
+    const postgres = await screen.findByTestId("health-dependency-postgres");
+    // Down is a failure: the alarm tone, with its icon.
+    expect(tone(postgres)).toHaveAttribute("data-tone", "alarm");
+    expect(tone(postgres)).toHaveTextContent("Down");
+    expect(tone(postgres)?.querySelector("svg")).not.toBeNull();
+    expect(tone(screen.getByTestId("health-dependency-redis"))).toHaveAttribute("data-tone", "current");
+    // Not configured / not measured: draft (dashed, never green).
+    expect(tone(screen.getByTestId("health-dependency-mqtt"))).toHaveAttribute("data-tone", "draft");
+    expect(tone(screen.getByTestId("health-dependency-mqtt"))).toHaveTextContent("Not configured");
+    expect(tone(screen.getByTestId("health-dependency-clamav"))).toHaveAttribute("data-tone", "draft");
+    // The verdict too.
+    expect(tone(screen.getByTestId("health-verdict"))).toHaveAttribute("data-tone", "alarm");
+    expect(screen.getByTestId("health-verdict")).toHaveTextContent("Required dependency down");
+  });
+
   it("F-02: optional dependencies that are off or unprobed are neutral, never green", async () => {
     getMock.mockResolvedValueOnce(envelope(503, postgresDown));
 

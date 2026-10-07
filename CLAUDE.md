@@ -86,7 +86,7 @@ It gives two tenants, principals by role in either, and a transaction double. It
 `tenant.edit.a63.test.js` and `user.profile.a63.test.js`, which show how to wire it.
 
 **Every `:id` route is now accounted for, and a guard keeps it so** (2026-09-29). Of the **201**
-routes with a path parameter, **150** have a two-tenant test asserting 404 and **51** are on a
+routes with a path parameter, **151** have a two-tenant test asserting 404 and **50** are on a
 reviewed allow-list (platform-only, public, capability-token or not-tenant-owned, each checked
 against the route's chain or model) — `backend/src/tests/guards/twoTenantRoutes.guard.test.ts`
 fails the build on a new `:id` route with neither. Write the test with `fixtures/twoTenantSuite.ts`

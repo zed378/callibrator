@@ -385,7 +385,12 @@ describe("D-12 — the phantom brand on converted models equals the runtime defa
     // (the reviewed DEFAULT_SCOPED list above), and a scanner finding fewer files cannot pass.
     // P10-05 adds a 72nd, born TypeScript: AccessRequest (no defaultScope, so unbranded);
     // ADR-108 Amendment 1 a 73rd: WebauthnCredential (no defaultScope).
-    expect(converted.length).toBe(73);
+    // P20-01 / P20-03 (ADR-125 Am. 1, G-4) six more, none with a defaultScope: DeviceType and the
+    // inspection catalogue (InspectionItemDefinition, -Template, -TemplateVersion, -TemplateItem,
+    // -TemplateProposal) — 79.
+    // The rsync image import adds UpstreamFileImport (born TypeScript, no defaultScope) — 80.
+    // The SQL-dump import (P24-06) adds UpstreamSqlImport (born TypeScript, no defaultScope) — 81.
+    expect(converted.length).toBe(81);
     expect(branded).toEqual([...DEFAULT_SCOPED]);
     const runtimeScoped = scopedModels.map((m) => m.name).filter((n) => converted.includes(n)).sort();
     expect(branded).toEqual(runtimeScoped);

@@ -4,14 +4,13 @@ import { TONE_CLASSES, type StatusTone } from "@/lib/statusTone";
 
 interface BadgeProps {
   children: React.ReactNode;
-  variant?:
-    | "default"
-    | "primary"
-    | "secondary"
-    | "success"
-    | "warning"
-    | "danger"
-    | "info";
+  /**
+   * A NON-status chip (a scope, a count, a tag, a tier). ADR-122 Amendment 1
+   * removed `success`, `warning` and `danger`: a chip coloured like a status
+   * IS a status and goes through `tone` (lib/statusTone.ts), which adds the
+   * shape and the icon (guard: tests/guards/statusChips.p1105.guard.test.ts).
+   */
+  variant?: "default" | "primary" | "secondary" | "info";
   /**
    * ADR-122 (P11-05): a STATUS badge. The tone sets the shape and the icon
    * as well as the colour (lib/statusTone.ts), and overrides `variant`. Use it
@@ -49,9 +48,6 @@ export const Badge: React.FC<BadgeProps> = ({
     default: "bg-muted text-muted-foreground",
     primary: "bg-primary/10 text-primary",
     secondary: "bg-secondary text-secondary-foreground",
-    success: "bg-success/10 text-success",
-    warning: "bg-warning/10 text-warning",
-    danger: "bg-destructive/10 text-destructive",
     info: "bg-info/10 text-info",
   };
 

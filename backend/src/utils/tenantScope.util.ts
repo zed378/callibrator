@@ -449,6 +449,35 @@ const assertSameTenant = (instance: TenantRow | null | undefined, model: ScopedM
 };
 
 /**
+ * A-365 (F-4 of docs/SECURITY/15-FASKES-SCOPE-THREAT-MODEL.md § 9). A bulk
+ * update's WHERE is scoped by `applyTenantWhere`, but its VALUES were never
+ * read: `Model.update({ tenantId: X }, { where })` inside tenant A's context
+ * matched A's rows and re-owned them to X. No route reaches it today (the
+ * request schemas strip unknown fields and no service passes the column), so
+ * this is the guard that keeps it so — the twin of `assertSameTenant` and of
+ * the bulkCreate refusal. Inside a tenant scope, a value for the tenant column
+ * that is not the context's tenant is refused; the context's own tenant (a
+ * no-op) passes. Skip scopes (no context, a system task, the super admin) are
+ * unchanged, as for every other hook; a deny scope's WHERE reaches no row.
+ *
+ * Sequelize v6 hands the values to `beforeBulkUpdate` as `options.attributes`
+ * (lib/model.js, `update`).
+ */
+const refuseBulkTenantReassign = (options: QueryOptions, model: ScopedModel): void => {
+  const key = tenantKeyOf(model);
+  if (!key) {return;}
+  const scope = resolveScope(options);
+  // A deny scope's WHERE matches nothing (NO_TENANT_UUID), so its values reach no row.
+  if (scope.mode !== "filter") {return;}
+  const values = options["attributes"];
+  if (typeof values !== "object" || values === null || !(key in values)) {return;}
+  const next = (values as Record<string, unknown>)[key];
+  if (String(next) !== String(scope.tenantId)) {
+    throw new Error("Security Violation: Attempted to bulk-update the tenant column to another tenant");
+  }
+};
+
+/**
  * W-34 — `Model.destroy({ truncate: true })` becomes `TRUNCATE`, which has no
  * WHERE: the predicate `beforeBulkDestroy` adds is silently dropped and every
  * tenant's rows go. Inside a tenant (or deny) scope it is refused.
@@ -558,6 +587,7 @@ const register = (db: HookedDatabase): void => {
     scopedByCount.add(options);
   });
   db.addHook("beforeBulkUpdate", function (this: ScopedModel, options: QueryOptions) {
+    refuseBulkTenantReassign(options, this);
     applyTenantWhere(options, this);
   });
   db.addHook("beforeBulkDestroy", function (this: ScopedModel, options: QueryOptions) {
@@ -601,5 +631,6 @@ export {
   assertSameTenant,
   scopeHooklessStatics,
   refuseScopedTruncate,
+  refuseBulkTenantReassign,
   register,
 };

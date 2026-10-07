@@ -54,6 +54,12 @@ const CROSS_TENANT = {
   // sql() (MEMORY/records/2026-09-30-p9-stage-c-leaf-services.md).
   "services/keyRotation.service.ts#${table}":
     "operator key rotation across every tenant's envelopes (S-08); each write binds the row's id and tenant",
+  // P24-06: the SQL-dump import's staging writes. Every statement runs on the
+  // STAGING connection (the import role) in the `upstream_import` schema, which
+  // holds no tenant-scoped table; the interpolated name is `upstream_import."stg_<t>"`
+  // with <t> from the staging allow-list (tablePolicy.ts) — and every value is bound.
+  "services/upstreamImport/stagingLoader.ts#${table}":
+    "the SQL-dump import's staging schema (upstream_import), the import role's own tables; no tenant-scoped table is named",
 };
 
 const tenantScopedTables = () => {

@@ -1,5 +1,6 @@
 /**
- * ADR-122 (P11-01): the reviewed exceptions to the dashboard colour guard
+ * ADR-122 (P11-01; scope grown to all of `app/**` and `components/**` by
+ * Amendment 1, 2026-10-07): the reviewed exceptions to the colour guard
  * (`src/tests/guards/dashboardColours.p1101.guard.test.ts`).
  *
  * The dashboard colours through semantic tokens only (globals.css). A raw
@@ -37,6 +38,9 @@ export const COLOUR_EXEMPTIONS: readonly ColourExemption[] = [
   // A QR code must be dark modules on a light ground in both themes, or
   // authenticator apps cannot read it (like the public .lp-paper objects).
   { file: "app/dashboard/mfa/page.tsx", literal: "bg-white", count: 1, reason: "the TOTP QR code needs a white quiet zone in both themes to scan" },
+  // A tenant's uploaded logo is an image drawn for a light ground; on the dark
+  // card it could vanish, so it sits on a white plate in both themes.
+  { file: "components/auth/BrandMark.tsx", literal: "bg-white", count: 1, reason: "user data: a tenant logo image needs a light plate in both themes to stay visible" },
   // Not a colour: a matter number in placeholder copy ("matter #1234").
   { file: "app/dashboard/data-retention/page.tsx", literal: "#1234", count: 1, reason: "not a colour: a reference number in a placeholder's example text" },
 ];

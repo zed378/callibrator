@@ -28,6 +28,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import { deferEffect } from "@/lib/deferEffect";
 import { toneOf } from "@/lib/statusTone";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 const STATUS_LABEL: Record<AccessRequestStatus, string> = {
   pending: "Pending",
@@ -251,7 +252,7 @@ export default function AccessRequestsPage() {
                             <span className="block text-muted-foreground">{r.workEmail}</span>
                           </td>
                           <td className="py-2 pr-3">{fmt(r.createdAt)}</td>
-                          <td className="py-2">{r.duplicateCount > 0 ? <Badge variant="warning">{r.duplicateCount}</Badge> : "—"}</td>
+                          <td className="py-2">{r.duplicateCount > 0 ? <StatusBadge domain="duplicate" state="suspected">{r.duplicateCount}</StatusBadge> : "—"}</td>
                         </tr>
                       ))}
                     </tbody>

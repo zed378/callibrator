@@ -19,6 +19,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import { PaginatedResponse } from "@/types";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface WebhooksTableProps {
   webhooks: PaginatedResponse<Webhook> | null;
@@ -106,11 +107,7 @@ export const WebhooksTable: React.FC<WebhooksTableProps> = ({
                   </code>
                 ),
                 events: renderEvents(webhook.events || []),
-                status: webhook.isActive ? (
-                  <Badge variant="success">Active</Badge>
-                ) : (
-                  <Badge variant="default">Disabled</Badge>
-                ),
+                status: <StatusBadge domain="webhook" state={webhook.isActive ? "active" : "disabled"} />,
                 created: (
                   <span className="text-sm">
                     {new Date(webhook.createdAt).toLocaleDateString()}

@@ -70,6 +70,8 @@ export const API_KEY_SCOPE_RESOURCES = [
   "webhooks",
   "attachments",
   "access-requests",
+  // P24-06: the SQL-dump import's menu (its routes are super admin only: a key holding it reaches nothing).
+  "upstream-sql-import",
   // A-311: gated by dynamicAccess, absent from MENU_SLUGS.
   "calibration",
   "certificate",

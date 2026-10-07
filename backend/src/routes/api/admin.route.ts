@@ -8,7 +8,7 @@
  * code-first: admin.openapi.ts (P9-25, ADR-103); the `@swagger` JSDoc this
  * file carried is gone.
  */
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { auth } from "../../middlewares/auth.middleware";
 import { rbac } from "../../middlewares/rbac.middleware";
 import { getAllTenants, updateTenantStatus, updateTenantFlags } from "../../controllers/admin.controller";
@@ -19,6 +19,19 @@ import { list as listAccessRequests, erase as eraseAccessRequests, detail as get
 import { tenantIdParamsSchema, getDomains as getSsoDomains, putDomains as putSsoDomains } from "../../controllers/ssoDomains.controller";
 import { listAccessRequestsSchema, accessRequestIdSchema, approveAccessRequestSchema, rejectAccessRequestSchema, eraseAccessRequestsSchema } from "../../validators/accessRequest.validator";
 import { ssoEmailDomainsSchema } from "../../validators/publicAuth.validator";
+import { superAdminOnly } from "../../middlewares/auth.middleware";
+import { upload } from "../../utils/upload.util";
+import { upstreamImportSettings } from "../../config/upstreamImport";
+import {
+  cancel as cancelSqlImport,
+  detail as getSqlImport,
+  list as listSqlImports,
+  retry as retrySqlImport,
+  settings as sqlImportSettings,
+  upload as uploadSqlImport,
+  uploadTimeBudget,
+} from "../../controllers/upstreamSqlImport.controller";
+import { listUpstreamSqlImportsSchema, upstreamSqlImportIdSchema } from "../../validators/upstreamSqlImport.validator";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -72,5 +85,51 @@ router.post(
   validate(accessRequestIdSchema, { from: "params" }),
   resendAccessRequestInvitation,
 );
+
+// ---------------------------------------------------------------------------
+// P24-06 — the SQL-dump import: a mysqldump / MariaDB dump is uploaded into the
+// quarantine, PARSED (never executed) by a background job into the
+// `upstream_import` staging schema, and its uploader notified. Super admin only
+// (this router's rbac, and `superAdminOnly` on each route besides). The runs
+// have no tenant: the :id routes are allow-listed as `platform` in the
+// two-tenant guard. Contract: admin.openapi.ts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Browsers name a .sql / .gz file inconsistently (Windows often sends
+ * application/octet-stream, or nothing); the service decides by CONTENT
+ * (gzip magic bytes, then a SQL-dump head), never by this header.
+ */
+const DUMP_MIMES = Object.freeze([
+  "application/sql",
+  "application/x-sql",
+  "text/x-sql",
+  "text/plain",
+  "application/gzip",
+  "application/x-gzip",
+  "application/x-gzip-compressed",
+  "application/octet-stream",
+  "",
+]);
+
+/** multer, built per request so UPSTREAM_IMPORT_MAX_BYTES is read at call time. The file stays in quarantine. */
+const dumpUpload: RequestHandler = (req, res, next) => {
+  upload({
+    folder: "uploads/.quarantine/upstream-sql",
+    allowedMimes: DUMP_MIMES,
+    allowedExtensions: [".sql", ".gz"],
+    maxFileSize: upstreamImportSettings().maxUploadBytes,
+    // The content check is the service's (a SQL dump or gzip); a magic-byte table has no entry for text.
+    validateMagicBytes: false,
+    holdInQuarantine: true,
+  })(req, res, next);
+};
+
+router.get("/upstream-sql-imports/settings", superAdminOnly, sqlImportSettings);
+router.get("/upstream-sql-imports", superAdminOnly, validate(listUpstreamSqlImportsSchema, { from: "query" }), listSqlImports);
+router.post("/upstream-sql-imports", superAdminOnly, uploadTimeBudget, dumpUpload, uploadSqlImport);
+router.get("/upstream-sql-imports/:id", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), getSqlImport);
+router.post("/upstream-sql-imports/:id/cancel", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), cancelSqlImport);
+router.post("/upstream-sql-imports/:id/retry", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), retrySqlImport);
 
 export = router;

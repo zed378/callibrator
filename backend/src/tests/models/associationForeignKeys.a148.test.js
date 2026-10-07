@@ -99,6 +99,18 @@ const UNCHANGED = Object.freeze({
   "access_requests.decided_by": "users SET NULL",
   // ADR-108 Amendment 1 (migration 0104): a passkey goes with its user.
   "webauthn_credentials.user_id": "users CASCADE",
+  // The rsync image import (migration 0113): a platform row. SET NULL — the requesting or
+  // cancelling super admin may be deleted and the batch job purged; the import's history stays.
+  // (target_tenant_id → tenants CASCADE is the migration's, not the model's: Q-16.)
+  "upstream_file_imports.requested_by": "users SET NULL",
+  "upstream_file_imports.cancelled_by": "users SET NULL",
+  "upstream_file_imports.batch_job_id": "batch_jobs SET NULL",
+  // The SQL-dump import (P24-06, migration 0114): a platform row, likewise. SET NULL — the
+  // uploading or cancelling super admin may be deleted and the batch job purged; the run's
+  // record stays. (notify_tenant_id is a routing hint with no key at all: Q-16.)
+  "upstream_sql_imports.uploaded_by": "users SET NULL",
+  "upstream_sql_imports.cancelled_by": "users SET NULL",
+  "upstream_sql_imports.batch_job_id": "batch_jobs SET NULL",
 
   // Added by concurrent work (2026-09-24), each with its own migration; they
   // are that work's decisions, recorded here so this list stays complete.
@@ -128,6 +140,36 @@ const UNCHANGED = Object.freeze({
   "calibration_records.api_key_id": "api_keys RESTRICT",
   "stock_adjustments.api_key_id": "api_keys RESTRICT",
   "stock_transfers.api_key_id": "api_keys RESTRICT",
+  // P20-01 / P20-03 (migrations 0111, 0112; ADR-125 Am. 1): the inspection
+  // catalogue is NEVER deleted (no-delete triggers, no DELETE grant), so every
+  // key into it is RESTRICT — G-5 for the device's type (not 04's SET NULL),
+  // and a version, its items, its template and its base cannot lose a link a
+  // session or result pins. Who created, published, retired or decided is a
+  // Part 11 attribution: RESTRICT, as calibration_records.voided_by.
+  "calibration_devices.device_type_id": "device_types RESTRICT",
+  "device_types.created_by": "users RESTRICT",
+  "device_types.updated_by": "users RESTRICT",
+  "inspection_item_definitions.created_by": "users RESTRICT",
+  "inspection_item_definitions.updated_by": "users RESTRICT",
+  "inspection_templates.device_type_id": "device_types RESTRICT",
+  "inspection_templates.created_by": "users RESTRICT",
+  "inspection_templates.updated_by": "users RESTRICT",
+  "inspection_template_versions.template_id": "inspection_templates RESTRICT",
+  "inspection_template_versions.base_version_id": "inspection_template_versions RESTRICT",
+  "inspection_template_versions.rebased_from_version_id": "inspection_template_versions RESTRICT",
+  "inspection_template_versions.published_by": "users RESTRICT",
+  "inspection_template_versions.retired_by": "users RESTRICT",
+  "inspection_template_versions.discarded_by": "users RESTRICT",
+  "inspection_template_versions.created_by": "users RESTRICT",
+  "inspection_template_versions.updated_by": "users RESTRICT",
+  "inspection_template_items.version_id": "inspection_template_versions RESTRICT",
+  "inspection_template_items.item_definition_id": "inspection_item_definitions RESTRICT",
+  "inspection_template_proposals.device_type_id": "device_types RESTRICT",
+  "inspection_template_proposals.based_on_version_id": "inspection_template_versions RESTRICT",
+  "inspection_template_proposals.resulting_version_id": "inspection_template_versions RESTRICT",
+  "inspection_template_proposals.submitted_by": "users RESTRICT",
+  "inspection_template_proposals.decided_by": "users RESTRICT",
+  "inspection_template_proposals.withdrawn_by": "users RESTRICT",
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */

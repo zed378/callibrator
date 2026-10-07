@@ -115,12 +115,20 @@
   display: flex;
   flex-direction: column;
   background-color: var(--pub-bg);
-  background-image: url("/textures/grain-warm.svg");
+  /* P10-17 perf addendum: public/textures/grain-warm.svg, inlined (img-src allows
+     data:), so no public page spends a request on it before first paint.
+     publicPerf.p1017.test.ts holds this copy equal to the file. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.33  0 0 0 0 0.22  0 0 0 0 0.12  0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
   color: var(--pub-text);
   font-family: var(--font-pub-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 1rem;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  /* P10-17 perf addendum: the body sets the dashboard's Inter character variants
+     (cv02, cv03, cv04, cv11). The public faces have none of them, so the glyphs
+     are the same, but the inherited setting made every text run on these pages
+     shape on the slower feature path: ~30 % of the first layout on '/'. */
+  font-feature-settings: normal;
 }
 
 [data-surface="public"] ::selection {

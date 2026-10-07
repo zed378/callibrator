@@ -33,6 +33,7 @@ import {
 } from "@/app/dashboard/calibration/components/ESignatureFields";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toneOf } from "@/lib/statusTone";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 type Tab = "sign" | "keys" | "workflows" | "verify";
 
@@ -595,9 +596,9 @@ export default function ESignaturePage() {
       render: (_v: unknown, r: Record<string, unknown>) => {
         const st = myStep(r as unknown as SignatureWorkflow);
         return st?.status === "pending" ? (
-          <Badge variant="warning" size="sm">
+          <StatusBadge domain="esignature" state="pending" size="sm">
             awaiting your signature
-          </Badge>
+          </StatusBadge>
         ) : (
           <span className="text-sm text-muted-foreground">{st?.status ?? "—"}</span>
         );

@@ -26,6 +26,7 @@ import {
 } from "@/api/services/gdpr.service";
 import { useToastStore } from "@/stores/toastStore";
 import { useAuthStore } from "@/stores/authStore";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 const CATEGORIES: ConsentCategory[] = [
   "analytics",
@@ -223,9 +224,7 @@ export default function GdprPage() {
       key: "status",
       header: "Decision",
       render: (value: unknown) => (
-        <Badge variant={value === "granted" ? "success" : "default"} size="sm">
-          {value === "granted" ? "Granted" : "Withdrawn"}
-        </Badge>
+        <StatusBadge domain="consent" state={value === "granted" ? "granted" : "withdrawn"} size="sm" />
       ),
     },
     {

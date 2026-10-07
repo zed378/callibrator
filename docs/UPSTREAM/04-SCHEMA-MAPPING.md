@@ -145,10 +145,10 @@ document only reserves the table.
 | Upstream | Target column | Rule |
 |---|---|---|
 | `id` | `id` (new uuid); `id_map('trx_inventory', id)` | |
-| `id_client` | `tenant_id` | via `id_map('mst_faskes')` |
+| `id_client` | ~~`tenant_id`~~ **`client_facility_id`** (ADR-124; Am. 2, P19-04 spec § 15) | via `id_map('mst_faskes')` → the `client_facilities` row; `tenant_id` = the provider tenant |
 | `no_qrcode` | **`qr_code varchar(32)` NEW** | unique per tenant among live rows (partial index); the label physically on the device — scanning it is the upstream workflow |
 | `nama_alat` | `name` | trimmed; NOT NULL holds (0 empty) |
-| `id_alat` | **`device_type_id uuid` NEW** → `device_types` SET NULL | |
+| `id_alat` | **`device_type_id uuid` NEW** → `device_types` ~~SET NULL~~ **RESTRICT** (ADR-125 Am. 1 § 5: the catalogue is never deleted) | |
 | `id_alat` (type name) | `category` | the type's name, ≤100 chars, for the existing filters |
 | `merk` | `manufacturer` | trimmed, empty → NULL |
 | `type` | `model` | trimmed |
@@ -172,7 +172,7 @@ qr_code) WHERE qr_code IS NOT NULL AND deleted_at IS NULL`; leading indexes on `
 
 ### 4.3 `mst_alat` → `device_types` (NEW, global)
 
-> **Decided 2026-10-07 — ADR-125.** Global as proposed; § 4.5's mapping table is **replaced** by versioned `inspection_templates` / `inspection_template_versions` / `inspection_template_items` (a version *is* the mapping); the ETL seeds version 1 per type. Writes super-admin only; no "engagement-aware path" (no engagements exist under ADR-124).
+> **Decided 2026-10-07 — ADR-125.** Global as proposed; § 4.5's mapping table is **replaced** by versioned `inspection_templates` / `inspection_template_versions` / `inspection_template_items` (a version *is* the mapping); the ETL seeds version 1 per type. Writes super-admin only; no "engagement-aware path" (no engagements exist under ADR-124). **Specified 2026-10-07 — P19-01 spec [`MEMORY/specs/P19-01-inspection-catalogue.md`](../../MEMORY/specs/P19-01-inspection-catalogue.md) § 4, ADR-125 Amendment 1 (target):** the catalogue tables are **not paranoid** and have no `defaultScope` (`deleted_at`/`is_deleted` below are dropped; `status active/retired` is the only removal; the name is unique across every status); § 4.4 gains structured limits (`limit_op` + `limit_value`/`limit_low`/`limit_high`/`limit_nominal`/`limit_tolerance` + verbatim `limit_text`), hard (`valid_*`) and soft (`warn_*`) input ranges and `input_kind`, and loses `applies_to_all_types` (replaced by base-template membership).
 
 | Column | Type | From |
 |---|---|---|
@@ -186,6 +186,8 @@ catalogue like `roles`, written only by the super admin (and later the provider 
 engagement-aware path). It must be added to `unscopedModels.d17`'s list with its reason.
 
 ### 4.4 Checklist catalogues → `inspection_item_definitions` (NEW, global)
+
+> **Superseded in detail by the P19-01 spec § 4.2 (ADR-125 Am. 1, target):** the column list below is the research proposal; the spec's is authoritative (structured limits, `valid_*`/`warn_*`, `input_kind`, `unit`, `status`, `notes` operator-only, no `applies_to_all_types`, not paranoid). The `section` ENUM is unchanged.
 
 | Column | Type | From |
 |---|---|---|
@@ -219,7 +221,7 @@ pairs of `mapping_fugsi_alat` collapse (Q). Index on `item_definition_id`.
 | `trx_inventory.foto_depan` | `resource_type` = the device resource type, `resource_id` = device id, `folder` = `device-photos`, `original_name` = `front.<ext>` |
 | `trx_inventory.foto_sn` | same, `original_name` = `serial-plate.<ext>` |
 | `trx_inventory_file.nama_file` | same resource, `folder` = `certificates-legacy`, `original_name` = `calibration-certificate-<n>.pdf` |
-| (all) | `file_name` = `<uuid>.<ext>`; **`storage_key` = `t/<tenant uuid>/attachments/<uuid>.<ext>`** (P8-01 layout, docs/STORAGE/04); `mime_type` by content sniffing, not extension; `size`; `checksum` = SHA-256; `uploaded_by` = mapped user or NULL; `created_at` = row date |
+| (all) | `file_name` = `<uuid>.<ext>`; **`storage_key` = `t/<tenant uuid>/f/<facility uuid>/attachments/<uuid>.<ext>`** (P8-01 layout, docs/STORAGE/04, with the facility segment of ADR-124 § 9 / 08 § 7; amended by ADR-124 Am. 2); `mime_type` by content sniffing, not extension; `size`; `checksum` = SHA-256; `uploaded_by` = mapped user or NULL; `created_at` = row date |
 
 Two extensions to the attachment contract are needed and belong to the implementing card:
 `device-photos` / `certificates-legacy` as allowed folders, and the device as an allowed
@@ -277,6 +279,8 @@ paging rule of `88e198c`); `performed_by`; `work_order_id`; `engagement_id`.
 
 ### 4.9 IPM detail → `inspection_results` (NEW, tenant-scoped)
 
+> **P19-01 (ADR-125 Am. 1 § 1, § 9, target) hands P19-02 these result columns:** `outcome` uses the wider `INSPECTION_OUTCOMES` (`good`/`minor_damage`/`major_damage` for physical, `available`/`not_available`/`empty` for consumables, besides the values below); `cleanliness_outcome` becomes `cleanliness` (`clean`/`dirty`); add `computed_outcome`, `outcome_source` (`technician`/`computed`), `warn_flag`; `template_item_id` NULL only for ad-hoc rows and imported history. See the P19-01 spec § 5.2.
+
 | Column | Type | From |
 |---|---|---|
 | `id` | uuid PK | |
@@ -308,7 +312,10 @@ which keeps no history and would fail ISO 17025 / 21 CFR Part 11 attributability
 
 | Upstream | Value | Target |
 |---|---|---|
-| checklist `status` (completeness, function, physical, other safety, consumable) | `1` / `0` / `-1` / empty | `pass` / `fail` / `not_applicable` / NULL |
+| checklist `status` (completeness, function, other safety) | `1` / `0` / `-1` / empty | `pass` / `fail` / `not_applicable` / NULL |
+| `trx_pemeriksaan_fisik.status` (physical) — **corrected 2026-10-07, ADR-125 Am. 1 § 1** (the report prints Baik / C-RR / RB, `pdf_ipm.php`) | `1` / `0` / `-1` / empty | `good` / `minor_damage` / `major_damage` / NULL |
+| `trx_pemeriksaan_fisik.status_kebersihan` | `1` / `0` | `clean` / `dirty` |
+| `trx_konsumabel.status` (consumable) — **corrected 2026-10-07, ADR-125 Am. 1 § 1** (printed Iya / Tidak / Habis) | `1` / `0` / `-1` | `available` / `not_available` / `empty` |
 | `trx_kondisi_kelistrikan.status` | `1` / `-1` | `pass` (value measured) / `not_applicable` |
 | `trx_keamanan_listrik.status` | `1` | `pass` (the outcome is in the value; see note) |
 | `trx_kinerja_alat.status`, `trx_battery.status` | `1` / `0` / NULL | `pass` / `fail` / NULL (set from the form's `Baik` choice) |

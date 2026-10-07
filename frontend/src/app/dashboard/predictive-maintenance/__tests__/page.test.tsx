@@ -105,11 +105,12 @@ describe("predictive maintenance — recommendations", () => {
     const pump = screen.getByText("Infusion Pump").closest("tr") as HTMLElement;
     expect(within(pump).getByText("365 days")).toBeInTheDocument();
     // Shorter than now: calibrate more often — flagged.
-    expect(within(pump).getByText("180 days")).toHaveClass("text-warning");
+    // ADR-122 Am. 1: a registry tone (attention), not a colour class.
+    expect(within(pump).getByText("180 days")).toHaveAttribute("data-tone", "attention");
     expect(within(pump).getByText("Anomaly rate 12% over 30 days")).toBeInTheDocument();
 
     const scale = screen.getByText("Scale").closest("tr") as HTMLElement;
-    expect(within(scale).getByText("270 days")).toHaveClass("text-success");
+    expect(within(scale).getByText("270 days")).toHaveAttribute("data-tone", "info");
     expect(within(scale).getAllByText("—")).toHaveLength(2);
     expect(await axeViolations(container)).toEqual([]);
   });

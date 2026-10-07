@@ -71,6 +71,8 @@ describe("A-124 — system actors", () => {
       "system:access-request-retention", // P10-05 (Q-42): pending requests expired, decided ones deleted after 12 months
       "system:usage-quota", // A-322: a free-plan tenant suspended by quota enforcement
       "system:storage-migration", // P8-01 (ADR-086 Am. 1): a row's bytes moved into storage by the operator's CLI
+      "system:catalogue-seed", // P20-03 (ADR-125 Am. 1): migration 0112 publishes the base checklist, version 1
+      "system:upstream-sql-import", // P24-06: the SQL-dump import's worker, reconciliation and file purge
     ]);
     for (const name of SYSTEM_ACTOR_NAMES) {
       expect(name).toMatch(/^system:[a-z][a-z-]*$/);

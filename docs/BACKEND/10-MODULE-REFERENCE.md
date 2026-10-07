@@ -109,6 +109,8 @@ per-user overrides (`UserMenuPermission`). `SUPERADMIN` short-circuits all check
 | 31 | Kanban Project Tracker & Analytics | HDC-KANBAN | `/kanban` |
 | 32 | Support Desk (Tickets) | HDC-TICKET | `/tickets` |
 | 33 | Pluggable Object Storage | HDC-STORAGE | `/storage`, `/attachments` |
+| 34 | Upstream Image Import (rsync, ADR-130) | HDC-UPIMG | `/admin/upstream-file-imports` |
+| 35 | Upstream SQL-Dump Import (ADR-129) | HDC-UPSQL | `/admin/upstream-sql-imports` |
 
 ---
 # MODULE 1: Authentication & Session Management
@@ -2654,7 +2656,8 @@ Base: `/api/v1/attachments` — see [attachments.route.ts](../../backend/src/rou
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ATTACHMENT_URL_SECRET` (→ `CERT_SIGNING_SECRET`) | dev default | Signed-URL HMAC |
-| `ATTACHMENT_URL_TTL_SEC` | 300 | Signed-URL lifetime |
+| `ATTACHMENT_URL_TTL_SEC` | 300 | Signed-URL lifetime when the caller names none (clamped into [30, the cap]) |
+| `ATTACHMENT_URL_MAX_TTL_SEC` | 900 | Cap on a caller's `expiresInSec` (clamped into [30, 3600]); above it, 400 (A-365, `config/signedUrl.ts`) |
 | `MAX_FILE_SIZE` | 5 MB (25 MB attachments) | Upload limit |
 | `VIRUS_SCAN_PROVIDER` | `none` | Virus scan provider |
 | `CLAMAV_*` | off | ClamAV (inactive) |
@@ -4327,6 +4330,219 @@ Base: `/api/v1/storage`, `/api/v1/attachments` — see [storage.route.ts](../../
 | Version | Date | Description |
 | --- | --- | --- |
 | 1.0.0 | 2026-07-24 | Added in Phase 0 (pluggable storage). MinIO live-verified; frontend settings page done. |
+
+---
+
+# MODULE 34: Upstream Image Import (rsync)
+
+### 1. General Information
+*   **Module Name:** Upstream Image Import
+*   **Module Code:** HDC-UPIMG
+*   **Version:** 1.0.0
+*   **Status:** Built 2026-10-07 (P24-07, ADR-130); real-data use gated by `UPSTREAM_REAL_DATA_ALLOWED` (docs/UPSTREAM/06 § 5)
+*   **Owner / Person in Charge:** Platform operator (super admin)
+
+### 2. Module Description
+Copies the upstream application's device photos (front: `foto_depan`, serial plate: `foto_sn`) from its server over rsync/SSH, in a background batch job, into a quarantine; ingests them into a chosen tenant's storage through the `docs/UPSTREAM/08-FILE-POLICY.md` pipeline; writes a manifest for the Phase 24 ETL; notifies the requester. Certificate PDFs are never imported (archive-only).
+
+### 3. Objectives
+*   Move ≈ 91 GB of photos without a shell, without an unconfirmed host key, and without a credential outliving the import.
+*   Nothing reachable before the scan; location metadata removed; counts that reconcile per folder.
+
+### 4. Scope
+*   In: check connection (host keys, login, per-class estimate), start, progress, cancel, list, detail, notification, quarantine, manifest.
+*   Out (later cards): HEIC conversion and derivatives (P21-02), attachment rows and the facility segment of the key (P24-03), a retention sweep of staging/refused files.
+
+### 5. Actors/Users
+*   **Super admin** (JWT only): every action. **System** (`system:batch-job`): runs, ends and audits the job.
+
+### 6. Features
+*   TOFU host key confirmed by a person (SHA256 fingerprint), pinned via a temporary known_hosts.
+*   Password (sshpass, `SSHPASS` only) or private key (0600 scratch file); KMS-encrypted at rest for the import's lifetime only; erased with the terminal status (CHECK-enforced).
+*   SSRF guard (every resolved address; `RSYNC_ALLOWED_HOSTS` exceptions), the DPIA gate, narrow input alphabets, argv after `--`.
+*   Resumable (`--partial`), bandwidth-limited, cancellable transfer; progress every 5 s.
+*   Ingest: size bounds, magic bytes, ClamAV fail-closed, SHA-256, structure and dimension checks, lossless GPS/XMP/IPTC removal, put + read-back verify, manifest, quarantine by reason, skip-if-already-present.
+
+### 7. Workflow
+```mermaid
+graph TD
+    A[check: ssh-keyscan] --> B[operator confirms fingerprint]
+    B --> C[check: rsync --dry-run per class, estimate]
+    C --> D[start: check again, store encrypted credential, queue batch job]
+    D --> E[job: rsync each class into the quarantine]
+    E --> F[ingest per file: 08-FILE-POLICY]
+    F --> G[storage t/tenant/attachments/uuid.ext + manifest]
+    F --> H[refused/reason/... quarantine]
+    G & H --> I[end: status + credential erased + audit, one transaction]
+    I --> J[notification: in-app + e-mail, counts only]
+```
+
+### 8. Input
+*   `host`, `port` (22), `username`, `authMethod` (`key` | `password`), `password` or `privateKey` (write-only), `remotePath` (absolute, the upstream `public/uploads`), `fileClasses` (`front`, `serial`), `syntheticSource`, `confirmedFingerprint`, `targetTenantId`, `bandwidthLimitKbps`.
+
+### 9. Output
+*   A check: `status`, `hostKeys`, `confirmedHostKey`, per-class `{status, files, bytes}`, `estimate`. An import: the projection in `UpstreamFileImport` (never the credential; `credentialStored`, `secretErasedAt`), `progress`, `summary` (counts only).
+
+### 10. Validation
+*   `validators/upstreamFileImport.validator.ts` (Zod): host name or IP literal; POSIX user name; absolute path of `[A-Za-z0-9._@+-]` segments, no `.`/`..`; password without line breaks; unencrypted PEM/OpenSSH key; `SHA256:` + 43 base64 characters.
+
+### 11. Business Rules
+*   Real data only when `UPSTREAM_REAL_DATA_ALLOWED=true`; otherwise synthetic + allow-listed host only (403), re-checked when the job starts.
+*   One live import per (tenant, host, port, path); only an active tenant; a failed pre-start check is a 409 with the state explained.
+*   Every terminal transition erases the credential in its own transaction; a live import whose batch job ended is failed `worker_interrupted` on read.
+
+### 12. Access Rights
+*   `auth` → `denyApiKey` → `superAdminOnly` on every route. Menu `upstream-import` granted to SUPERADMIN only (migration 0115). The `:id` routes are `platform` in the two-tenant guard.
+
+### 13. Database
+*   `upstream_file_imports` (migration 0113): target tenant FK (CASCADE), `secret_ciphertext` + CHECK, `estimate`/`progress`/`summary` JSONB (D-27 shapes), status ENUM (contracts `UPSTREAM_FILE_IMPORT_STATUSES`). Batch job type `upstream-file-import`.
+
+### 14. API
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/admin/upstream-file-imports/config` | gate state, allow-list size, classes |
+| POST | `/api/v1/admin/upstream-file-imports/check-connection` | keys; with a fingerprint, login + estimate |
+| GET | `/api/v1/admin/upstream-file-imports` | list (rows in `data`, `meta` top-level) |
+| POST | `/api/v1/admin/upstream-file-imports` | start |
+| GET | `/api/v1/admin/upstream-file-imports/:id` | detail |
+| POST | `/api/v1/admin/upstream-file-imports/:id/cancel` | cancel |
+
+### 15. Integration
+*   Batch jobs (inline or RabbitMQ worker), notifications (`channels: ["realtime","email"]`), KMS, storage layer, ClamAV (`virusScan.service`). Tools in the backend image: rsync, openssh-client, sshpass.
+
+### 16. Error Handling
+*   Connection outcomes are stable codes, never a tool's message: `unreachable`, `timeout`, `host_key_mismatch`, `auth_failed`, `path_not_found`, `path_not_readable`, `tool_missing`, `transfer_failed`; job failures add `source_refused`, `credential_unavailable`, `internal_error`, `job_not_queued`, `worker_interrupted`.
+
+### 17. Log and Audit
+*   PLATFORM-tenant audit rows: `UPSTREAM_CONNECTION_CHECK`, `UPSTREAM_FILE_IMPORT_START` (CREATE), `…_CANCEL_REQUESTED`, `…_COMPLETED` / `…_FAILED` / `…_CANCELLED` (with `credentialErased: true`); never the credential. The batch job's own state rows in the target tenant.
+
+### 18. Configuration
+*   `UPSTREAM_REAL_DATA_ALLOWED` (shared, default false), `RSYNC_ALLOWED_HOSTS`, `UPSTREAM_FILE_IMPORT_DIR` (default `<storage root>/.upstream-import`), `RSYNC_CHECK_TIMEOUT_MS` (120000), `RSYNC_IO_TIMEOUT_SEC` (300). Fixed: 10 MB / 1 KB file bounds, 12,000 px / 50 MP, `--max-size=64m`, 10 checks per 10 minutes per operator.
+
+### 19. Dependency
+*   No npm package added. OS packages in the image: `rsync`, `openssh-client`, `sshpass`.
+
+### 20. UI/Screen
+*   `/dashboard/upstream-import` (ID/EN on the page): the gate banner, the form, "Check connection" with the fingerprint to confirm and the estimate, Start, the list with status badges (`statusTone` domain `upstreamImport`), progress, details and cancel.
+
+### 21. Diagrams
+*   See § 7.
+
+### 22. Non-Functional Requirements
+*   Resumable over interruptions; a stalled transfer ends after `RSYNC_IO_TIMEOUT_SEC`; ingest is streaming per file (≤ 10 MB in memory at a time).
+
+### 23. Known Limitations
+*   HEIC quarantined until P21-02; no derivatives; keys without the facility segment; no attachment rows; maker notes not parsed; staging/refused files are not purged automatically; the rate limit is per process. ADR-130 § Implications.
+
+### 24. Change Log
+| Version | Date | Description |
+| --- | --- | --- |
+| 1.0.0 | 2026-10-07 | Built (P24-07, ADR-130); live-checked against a throwaway SSH server with synthetic photos. |
+
+# MODULE 35: Upstream SQL-Dump Import
+
+### 1. General Information
+*   **Module Name:** Upstream SQL-Dump Import
+*   **Module Code:** HDC-UPSQL
+*   **Version:** 1.0.0
+*   **Status:** Built 2026-10-07 — stage 1 (P24-06, ADR-129); stage 2 (the transform) designed, not built; real-data use gated by `UPSTREAM_REAL_DATA_ALLOWED` (docs/UPSTREAM/06 § 5)
+*   **Owner / Person in Charge:** Platform operator (super admin)
+
+### 2. Module Description
+Takes an upload of the upstream application's `mysqldump` / MariaDB dump (plain or gzip), virus-scans it and, in a background batch job, **parses — never executes — it**: only `CREATE TABLE` and `INSERT … VALUES` are read. The tables and columns `docs/UPSTREAM/07-DATA-MINIMISATION.md` allows are staged into the `upstream_import` schema (one typed table per source table, `import_run_id`, `source_row_number`) by a connection that runs as the import role; the application role cannot read that schema. The uploader is notified in-app and by e-mail with counts only.
+
+### 3. Objectives
+*   Bring the upstream dump into PostgreSQL without remote code execution and without staging anything 07 does not allow.
+*   Account for every row (loaded, rejected with a reason, or not extracted by policy); never repeat a value outside staging.
+
+### 4. Scope
+*   In: upload (≤ 200 MB, content-sniffed), scan, parse, stage, progress, cancel, retry, list, detail, notification, file retention and purge.
+*   Out (stage 2, P24-01 / P24-02): `upstream_import.id_map`, quarantine, the transform into the application's tables (ADR-129 § 10).
+
+### 5. Actors/Users
+*   **Super admin** (JWT): upload, cancel, retry, read. **System** (`system:upstream-sql-import`): the worker's transitions, the reconciliation, the file purge.
+
+### 6. Features
+*   Streaming byte-level parser: MariaDB escapes, introducers, hex/bit literals; every other statement (SET, LOCK, DROP, `DELIMITER` routines, …) counted and discarded; per-row rejection with resynchronisation; bounded memory (16 MiB per value and row, 1,024 columns, 1,000 tables).
+*   Deny-by-default table policy (41 tables staged; `users` without its ten credential / internal columns; `auth_logins` and the credential tables never extracted).
+*   Typed staging with per-value checks (a value PostgreSQL would refuse rejects its row; zero dates staged NULL and counted); multi-row bound INSERT; one staging transaction per run; a re-run replaces the run's rows.
+*   One active run (partial unique index + advisory lock); cancel (queued: at once; running: at the next progress tick, rolled back); retry of a failed run while its file is kept.
+
+### 7. Workflow
+```mermaid
+graph TD
+    A[upload: multer into the quarantine] --> B[sniff gzip / SQL head, SHA-256, move to .quarantine/upstream-sql/run.dump]
+    B --> C[run uploaded + audit, one transaction; batch job queued]
+    C --> D[job: gate, file present, SHA-256 again, ClamAV]
+    D --> E[parsing: staging connection SET ROLE callibrator_import, advisory lock, purge run rows]
+    E --> F[stream: gunzip, parse, policy, convert, INSERT batches]
+    F --> G[commit; loaded + counts + audit + notification; file deleted]
+    D & F --> H[failed / cancelled + audit + notification; file kept 7 days or deleted]
+```
+
+### 8. Input
+*   Multipart `file` (`.sql` / `.gz`) and `dataClass` (`synthetic` | `real`, the uploader's declaration). Query: `status`, `page`, `limit`.
+
+### 9. Output
+*   A run (`UpstreamSqlImportRun`): status, data class, compression, size, SHA-256, progress, rows loaded / rejected / not extracted, per-table counts and reasons, the parser's statement counts, the error code and its sentence, `transformStatus` (`not_available`), file retained / until, retryable, cancellable, timestamps. Never the file's path or name, never a value.
+
+### 10. Validation
+*   `@callibrator/contracts/upstreamSqlImport` (Zod): `dataClass`, list query, `:id`. The upload's fields are checked in the service after multer, so a refused file is deleted at once.
+
+### 11. Business Rules
+*   Real data only when `UPSTREAM_REAL_DATA_ALLOWED=true` (403 otherwise, as ADR-130), re-checked by the worker.
+*   One run uploaded / scanning / parsing at a time (409 naming the active run).
+*   The file is deleted once loaded, cancelled, infected or missing; a failed run keeps it `UPSTREAM_IMPORT_FAILED_RETENTION_DAYS`; an orphan file goes after an hour.
+*   A run whose job ended without moving it is failed `INTERRUPTED` (on read and by the hourly sweep).
+
+### 12. Access Rights
+*   The admin router's `auth` + `rbac(["SUPER_ADMIN", "SUPERADMIN"])`, and `superAdminOnly` on each route. Menu `upstream-sql-import` granted to SUPERADMIN only (migration 0116). The `:id` routes are `platform` in the two-tenant guard.
+
+### 13. Database
+*   `upstream_sql_imports` (migration 0114): status ENUM (contracts `UPSTREAM_SQL_IMPORT_STATUSES`), 5 CHECKs (hex SHA-256, vocabularies, counts, error code iff failed, file minimised), `tables` / `parse_summary` JSONB (D-27 shapes), the one-active partial unique index; `callibrator_app` without DELETE / TRUNCATE.
+*   Role `callibrator_import` (NOLOGIN, nothing in `public`); schema `upstream_import` owned by it, closed to PUBLIC and `callibrator_app`; tables `upstream_import.stg_<table>` created by the worker. Batch job type `upstream-sql-import`.
+
+### 14. API
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/admin/upstream-sql-imports/settings` | limits, the DPIA gate, stage 2 availability |
+| GET | `/api/v1/admin/upstream-sql-imports` | list (rows in `data`, `meta` top-level) |
+| POST | `/api/v1/admin/upstream-sql-imports` | upload (multipart), 201 |
+| GET | `/api/v1/admin/upstream-sql-imports/:id` | detail |
+| POST | `/api/v1/admin/upstream-sql-imports/:id/cancel` | cancel |
+| POST | `/api/v1/admin/upstream-sql-imports/:id/retry` | retry a failed run |
+
+### 15. Integration
+*   Batch jobs (inline or RabbitMQ), notifications (`channels: ["realtime","email"]`), `virusScan.service` (ClamAV, fail-closed), the upload quarantine (`upload.util`), the job monitor (sweep `upstream-sql-import-sweep`).
+
+### 16. Error Handling
+*   Fixed codes: `FILE_MISSING`, `INTEGRITY_MISMATCH`, `INFECTED`, `SCAN_FAILED`, `REAL_DATA_NOT_ALLOWED`, `TRUNCATED_INPUT`, `DECOMPRESSED_TOO_LARGE`, `CORRUPT_COMPRESSION`, `STAGING_ROLE_INVALID`, `STAGING_FAILED` (its SQLSTATE logged, never the message), `INTERRUPTED`. Row reasons and table reasons: the contract's vocabularies.
+
+### 17. Log and Audit
+*   PLATFORM-tenant rows, resource `UpstreamSqlImport`: `UPSTREAM_SQL_IMPORT_UPLOAD` (CREATE, the uploader), `UPSTREAM_SQL_IMPORT_STATE` per transition (with counts and the notification id when final), `…_CANCEL_REQUESTED`, `…_RETRY`, `…_FILE_PURGED`. Counts and codes only.
+
+### 18. Configuration
+*   `UPSTREAM_REAL_DATA_ALLOWED` (shared, default false), `UPSTREAM_IMPORT_DB_ROLE` (`callibrator_import`), `UPSTREAM_IMPORT_MAX_BYTES` (200 MiB), `UPSTREAM_IMPORT_MAX_UNCOMPRESSED_BYTES` (2 GiB), `UPSTREAM_IMPORT_FAILED_RETENTION_DAYS` (7), `UPSTREAM_IMPORT_UPLOAD_TIMEOUT_MS` (900000), `UPSTREAM_SQL_IMPORT_SWEEP_SCHEDULER` (`41 * * * *`; off on API pods). nginx: an exact `location = /api/v1/admin/upstream-sql-imports` at 210m, unbuffered.
+
+### 19. Dependency
+*   No npm package added.
+
+### 20. UI/Screen
+*   `/dashboard/upstream-sql-import` (ID/EN, its own language toggle): the DPIA banner, upload with progress and the synthetic-data declaration, the runs (polled while one is in flight; `statusTone` domain `upstreamSqlImport`), a run's detail with per-table counts, the failure in words, cancel and retry; `?run=<id>` opens the run a notification links to.
+
+### 21. Diagrams
+*   See § 7.
+
+### 22. Non-Functional Requirements
+*   58 MB synthetic dump (200 k rows) staged in ~10.4 s on PostgreSQL 18, ~95 MB of process memory over its baseline; memory does not grow with the file.
+
+### 23. Known Limitations
+*   Stage 2 not built; a dump not shaped like mysqldump (`--xml`, `--tab`, `REPLACE`) is not loaded; a changed column type is `schema_conflict` until staging's lifecycle is owned by stage 2; the upload and the worker must share the uploads volume; the real/synthetic declaration is trust in the uploader. ADR-129 § Implications.
+
+### 24. Change Log
+| Version | Date | Description |
+| --- | --- | --- |
+| 1.0.0 | 2026-10-07 | Built (P24-06, ADR-129); live on PostgreSQL 18 + ClamAV with a synthetic dump. |
 
 ---
 

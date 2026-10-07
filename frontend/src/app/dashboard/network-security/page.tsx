@@ -6,7 +6,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
   Alert,
-  Badge,
   Button,
   Card,
   CardContent,
@@ -22,6 +21,7 @@ import {
 } from "@/api/services/networkSecurity.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 // A first check only; the server validates and normalises every entry
 // (validators/networkSecurity.validator.ts, ADR-100): an IPv4 or IPv6 address,
@@ -323,12 +323,11 @@ export default function NetworkSecurityPage() {
                   restriction.
                 </p>
               </div>
-              <Badge
-                variant={allowlist.length ? "success" : "default"}
+              <StatusBadge
+                domain="restriction"
+                state={allowlist.length ? "enforced" : "unrestricted"}
                 size="sm"
-              >
-                {allowlist.length ? "Enforced" : "Unrestricted"}
-              </Badge>
+              />
             </div>
 
             {mayWrite && allowlist.length > 0 && (
@@ -422,9 +421,7 @@ export default function NetworkSecurityPage() {
                   Sign-in must originate within this radius of the anchor point.
                 </p>
               </div>
-              <Badge variant={geofence ? "success" : "default"} size="sm">
-                {geofence ? "Configured" : "Not set"}
-              </Badge>
+              <StatusBadge domain="setting" state={geofence ? "configured" : "not_set"} size="sm" />
             </div>
 
             {!mayWrite && (
@@ -539,13 +536,9 @@ export default function NetworkSecurityPage() {
             {evaluation && (
               <div className="space-y-3 rounded-md border border-border p-4">
                 <div className="flex items-center gap-2">
-                  <Badge variant={evaluation.allowed ? "success" : "danger"}>
-                    {evaluation.allowed ? "Allowed" : "Blocked"}
-                  </Badge>
+                  <StatusBadge domain="accessDecision" state={evaluation.allowed ? "allowed" : "blocked"} />
                   {evaluation.requiresStepUp && (
-                    <Badge variant="warning" size="sm">
-                      step-up required
-                    </Badge>
+                    <StatusBadge domain="accessDecision" state="step_up" size="sm" />
                   )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">

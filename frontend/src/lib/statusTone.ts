@@ -184,6 +184,163 @@ export const STATUS_REGISTRY = {
     pending: e("draft", "pending"),
     deleted: e("draft", "deleted"),
   },
+
+  // ── ADR-122 Amendment 1 (2026-10-07): the inline chips the P11-05 sweep
+  // left (`variant={x ? "success" : "default"}`) and the status tiles. Labels
+  // are the words each page showed before. ──
+
+  /** A calibration's pass/fail against its tolerance: non-conformant is the alarm. */
+  calibrationResult: {
+    compliant: e("current", "Compliant"),
+    non_compliant: e("alarm", "Non-Compliant"),
+  },
+  /** A thing switched on or off: a role, a SCIM user, a workflow, a storage location. */
+  active: {
+    active: e("current", "Active"),
+    inactive: e("draft", "Inactive"),
+  },
+  /** A setting in effect or not: a feature flag. */
+  enabled: {
+    enabled: e("current", "Enabled"),
+    disabled: e("draft", "Disabled"),
+  },
+  webhook: {
+    active: e("current", "Active"),
+    disabled: e("draft", "Disabled"),
+  },
+  /** A legal hold blocks purge and masking while it is on: attention, not alarm. */
+  legalHold: {
+    active: e("attention", "Active"),
+    inactive: e("draft", "Inactive"),
+  },
+  iotIngest: {
+    enabled: e("current", "Ingest enabled"),
+    disabled: e("draft", "Ingest disabled"),
+  },
+  /** GDPR consent decision. */
+  consent: {
+    granted: e("current", "Granted"),
+    withdrawn: e("draft", "Withdrawn"),
+  },
+  mfa: {
+    enabled: e("current", "MFA enabled"),
+  },
+  /** MFA recovery codes: few left needs attention (the page shows the count). */
+  recoveryCodes: {
+    low: e("attention", "Few recovery codes left"),
+    enough: e("draft", "Recovery codes left"),
+  },
+  passkey: {
+    registered: e("current", "Passkey"),
+    none: e("draft", "No passkey"),
+  },
+  /** A sign-in restriction (IP allow-list): enforced or not. */
+  restriction: {
+    enforced: e("current", "Enforced"),
+    unrestricted: e("draft", "Unrestricted"),
+  },
+  /** A setting that is configured or not set (the geofence). */
+  setting: {
+    configured: e("current", "Configured"),
+    not_set: e("draft", "Not set"),
+  },
+  /** A simulated sign-in decision: a block is the policy working, not a failure. */
+  accessDecision: {
+    allowed: e("current", "Allowed"),
+    blocked: e("attention", "Blocked"),
+    step_up: e("attention", "step-up required"),
+  },
+  stockLevel: {
+    low: e("attention", "Low Stock"),
+    ok: e("current", "OK"),
+  },
+  /** Controlled documents (SOP); sop.service PUBLISHABLE_STATES are DRAFT and UNDER_REVIEW. */
+  sop: {
+    DRAFT: e("draft", "DRAFT"),
+    UNDER_REVIEW: e("attention", "UNDER_REVIEW"),
+    PUBLISHED: e("current", "PUBLISHED"),
+    ARCHIVED: e("draft", "ARCHIVED"),
+  },
+  /** A workflow instance awaiting a decision. */
+  approval: {
+    PENDING: e("attention", "PENDING"),
+    APPROVED: e("current", "APPROVED"),
+    REJECTED: e("draft", "REJECTED"),
+  },
+  /** A vendor's qualification: a rejected vendor failed it (non-conformant, like a disqualified supplier). */
+  vendorApproval: {
+    pending: e("attention", "Pending"),
+    approved: e("current", "Approved"),
+    rejected: e("alarm", "Rejected"),
+  },
+  /** Why a restore did not bring an account back: absent asks for a re-invite; erased is a record of a GDPR erasure. */
+  restoreGap: {
+    absent: e("attention", "Not in this tenant"),
+    erased: e("info", "Erased (GDPR)"),
+  },
+  menuAssignment: {
+    assigned: e("current", "Assigned"),
+    via_group: e("current", "Via Group"),
+    partial: e("attention", "Partially Assigned"),
+    unassigned: e("draft", "Not Assigned"),
+  },
+  /** An access request that may duplicate another (the page shows the count). */
+  duplicate: {
+    suspected: e("attention", "Possible duplicate"),
+  },
+  /** A kanban column over its WIP limit (the page shows count/limit). */
+  wip: {
+    over: e("attention", "Over WIP limit"),
+  },
+  /** One dependency probe on the system-health panel (F-02): "neutral" is not configured or not measured — never green. */
+  health: {
+    healthy: e("current", "Operational"),
+    warning: e("attention", "Warning"),
+    error: e("alarm", "Down"),
+    neutral: e("draft", "Unknown"),
+  },
+  /** The panel's overall verdict. */
+  healthVerdict: {
+    loading: e("draft", "Checking…"),
+    healthy: e("current", "Required dependencies healthy"),
+    unhealthy: e("alarm", "Required dependency down"),
+    unknown: e("draft", "Status unknown"),
+  },
+  /** Predictive maintenance: the recommended interval against the current one. */
+  intervalAdvice: {
+    shorten: e("attention", "Shorten interval"),
+    extend: e("info", "Extend interval"),
+  },
+  /** Audit security events (A-126): an ordinary verb (CREATE, LOGIN…) is not a status and stays a neutral chip. */
+  auditEvent: {
+    SIGNATURE_AUTH_FAILED: e("alarm", "SIGNATURE AUTH FAILED"),
+    ACCOUNT_LOCKED: e("attention", "ACCOUNT LOCKED"),
+  },
+  /**
+   * The rsync image import (dashboard/upstream-import): a failed import is the alarm; a
+   * cancelled one is the operator's decision, not a failure.
+   */
+  upstreamImport: {
+    pending: e("draft", "Queued"),
+    transferring: e("attention", "Transferring"),
+    ingesting: e("attention", "Ingesting"),
+    completed: e("current", "Completed"),
+    failed: e("alarm", "Failed"),
+    cancelled: e("draft", "Cancelled"),
+  },
+  /**
+   * P24-06 — the SQL-dump import (dashboard/upstream-sql-import): a run in flight needs
+   * attention, a loaded one is current, a failed one the alarm, a cancelled one the operator's
+   * decision. The page shows each in its own words (i18n); these labels are the fallback.
+   */
+  upstreamSqlImport: {
+    uploaded: e("draft", "Queued"),
+    scanning: e("attention", "Scanning"),
+    parsing: e("attention", "Parsing"),
+    loaded: e("current", "Loaded"),
+    failed: e("alarm", "Failed"),
+    cancelled: e("draft", "Cancelled"),
+  },
 } satisfies Record<string, Domain>;
 
 export type StatusDomain = keyof typeof STATUS_REGISTRY;

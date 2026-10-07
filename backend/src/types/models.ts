@@ -10,6 +10,14 @@
  */
 import type defineAccessRequest from "../models/accessRequest.model";
 import type defineWebauthnCredential from "../models/webauthnCredential.model";
+import type defineDeviceType from "../models/deviceType.model";
+import type defineUpstreamFileImport from "../models/upstreamFileImport.model";
+import type defineUpstreamSqlImport from "../models/upstreamSqlImport.model";
+import type defineInspectionItemDefinition from "../models/inspectionItemDefinition.model";
+import type defineInspectionTemplate from "../models/inspectionTemplate.model";
+import type defineInspectionTemplateVersion from "../models/inspectionTemplateVersion.model";
+import type defineInspectionTemplateItem from "../models/inspectionTemplateItem.model";
+import type defineInspectionTemplateProposal from "../models/inspectionTemplateProposal.model";
 import type defineKanbanCard from "../models/kanbanCard.model";
 import type defineKanbanCardAssignee from "../models/kanbanCardAssignee.model";
 import type defineKanbanCardLabel from "../models/kanbanCardLabel.model";
@@ -168,6 +176,18 @@ export interface Models {
   AccessRequest: ReturnType<typeof defineAccessRequest>;
   // ADR-108 Amendment 1 — born TypeScript: a user's passkeys
   WebauthnCredential: ReturnType<typeof defineWebauthnCredential>;
+  // P20-01 / P20-03 (ADR-125) — born TypeScript: the global inspection catalogue, and the
+  // tenant-scoped proposals to it
+  DeviceType: ReturnType<typeof defineDeviceType>;
+  InspectionItemDefinition: ReturnType<typeof defineInspectionItemDefinition>;
+  InspectionTemplate: ReturnType<typeof defineInspectionTemplate>;
+  InspectionTemplateVersion: ReturnType<typeof defineInspectionTemplateVersion>;
+  InspectionTemplateItem: ReturnType<typeof defineInspectionTemplateItem>;
+  InspectionTemplateProposal: ReturnType<typeof defineInspectionTemplateProposal>;
+  // The rsync image import — born TypeScript: a platform row
+  UpstreamFileImport: ReturnType<typeof defineUpstreamFileImport>;
+  // The SQL-dump import (P24-06) — born TypeScript: a platform row
+  UpstreamSqlImport: ReturnType<typeof defineUpstreamSqlImport>;
 }
 
 /** An instance of the model registered under `K`. */

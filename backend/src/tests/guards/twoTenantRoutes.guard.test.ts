@@ -462,10 +462,14 @@ const EARLIER_TESTS: Readonly<Record<string, EarlierTest>> = {
 
 const ACCESS_REQUEST_QUEUE =
   "the platform's access-request queue (P10-05): super admin only (rbac on the admin router); the table has no tenant and no tenant principal reaches it";
+const UPSTREAM_SQL_IMPORTS =
+  "the SQL-dump import's runs (P24-06): a platform table with no tenant; super admin only (rbac on the admin router, and superAdminOnly on each route) — a tenant administrator gets 403 (tests/routes/upstreamSqlImport.route.p2406.test.ts)";
 const PLATFORM_TENANTS =
   "the platform operator's view of a tenant: only the super admin reaches it (ADR-051/ADR-052), so no tenant principal can name another tenant here";
 const PLATFORM_ROLE =
   "roles and menu groups are global (no tenant column) and managed by the super admin alone";
+const UPSTREAM_FILE_IMPORTS =
+  "the platform's rsync image import queue: super admin only (superAdminOnly + denyApiKey); the table names a target tenant and no tenant principal reaches it";
 const PLATFORM_SESSIONS = "the platform's session console, super admin only; a user's own sessions are /sessions/mine (session.own.q08)";
 const PLATFORM_PERMISSIONS = "per-user permission overrides, managed by the super admin alone";
 
@@ -483,6 +487,14 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
   "api/admin.route POST /access-requests/:id/approve": { kind: "platform", reason: ACCESS_REQUEST_QUEUE },
   "api/admin.route POST /access-requests/:id/reject": { kind: "platform", reason: ACCESS_REQUEST_QUEUE },
   "api/admin.route POST /access-requests/:id/resend-invitation": { kind: "platform", reason: ACCESS_REQUEST_QUEUE },
+  // The rsync image import: a platform table (it names a TARGET tenant, not the caller's); the
+  // router is auth + denyApiKey + superAdminOnly, so no tenant principal reaches an import by id
+  // (403, tests/routes/upstreamFileImports.route.test.ts).
+  "api/upstreamFileImports.route GET /:id": { kind: "platform", reason: UPSTREAM_FILE_IMPORTS },
+  "api/upstreamFileImports.route POST /:id/cancel": { kind: "platform", reason: UPSTREAM_FILE_IMPORTS },
+  "api/admin.route GET /upstream-sql-imports/:id": { kind: "platform", reason: UPSTREAM_SQL_IMPORTS },
+  "api/admin.route POST /upstream-sql-imports/:id/cancel": { kind: "platform", reason: UPSTREAM_SQL_IMPORTS },
+  "api/admin.route POST /upstream-sql-imports/:id/retry": { kind: "platform", reason: UPSTREAM_SQL_IMPORTS },
   "api/dataRetention.route PUT /:tenantId/policy": { kind: "platform", reason: PLATFORM_TENANTS },
   "api/dataRetention.route POST /:tenantId/legal-hold": { kind: "platform", reason: PLATFORM_TENANTS },
   "api/dataRetention.route DELETE /:tenantId/legal-hold": { kind: "platform", reason: PLATFORM_TENANTS },
@@ -575,10 +587,8 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
     reason: "the public site's published posts; posts are platform content with no tenant column",
   },
 
-  "api/attachments.route GET /:id/signed": {
-    kind: "capability",
-    reason: "a signed download link: the HMAC token over the id and expiry is the authorisation (attachment.service#verifySignedToken)",
-  },
+  // A-365: "api/attachments.route GET /:id/signed" left this list — its token
+  // binds the tenant, so it has a two-tenant test (routes/attachmentSigned.a365.test.ts).
 
   "api/content.route GET /posts/:id": {
     kind: "not-tenant-owned",

@@ -23,6 +23,7 @@ import { tenantService } from "@/api/services/tenant.service";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface FlagRow {
   key: string;
@@ -202,9 +203,7 @@ export default function FeatureFlagsPage() {
       header: "Effective",
       render: (value: unknown, row: Record<string, unknown>) => (
         <div className="flex items-center gap-2">
-          <Badge variant={value ? "success" : "default"} size="sm">
-            {value ? "Enabled" : "Disabled"}
-          </Badge>
+          <StatusBadge domain="enabled" state={value ? "enabled" : "disabled"} size="sm" />
           {row.overridden ? (
             <Badge variant="info" size="sm">
               override

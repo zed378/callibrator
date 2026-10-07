@@ -11,7 +11,6 @@ import React, {
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
   Alert,
-  Badge,
   Button,
   Card,
   CardContent,
@@ -26,6 +25,7 @@ import {
 } from "@/api/services/webauthn.service";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 /** Turn the browser's WebAuthn DOMExceptions into something a human can act on. */
 const explain = (err: unknown): string => {
@@ -238,9 +238,9 @@ export default function WebauthnPage() {
                       Loading…
                     </span>
                   ) : (
-                    <Badge variant={enabled ? "success" : "default"} size="sm">
+                    <StatusBadge domain="passkey" state={enabled ? "registered" : "none"} size="sm">
                       {enabled ? `${count} ${count === 1 ? "passkey" : "passkeys"}` : "No passkey"}
-                    </Badge>
+                    </StatusBadge>
                   )}
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">

@@ -28,6 +28,7 @@ import { vendorService, type Vendor } from "@/api/services/vendor.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toneOf } from "@/lib/statusTone";
+import { PriorityChip } from "@/components/ui/PriorityChip";
 
 const STATUS_OPTIONS = [
   { value: "APPROVED", label: "Approved" },
@@ -46,8 +47,12 @@ const emptyForm: SupplierScorecardCreateInput = {
   nextEvaluationDate: "",
 };
 
-const scoreVariant = (score: number): "success" | "warning" | "danger" =>
-  score >= 80 ? "success" : score >= 60 ? "warning" : "danger";
+/**
+ * ADR-122 Am. 1: a score band is an ordinal level, not a status (the Status
+ * column carries the supplier's state). The priority ramp reads as concern:
+ * under 60 urgent, under 80 medium, else low.
+ */
+const scoreLevel = (score: number): string => (score >= 80 ? "low" : score >= 60 ? "medium" : "urgent");
 
 
 /** Average of the three sub-scores — mirrors the backend's virtual overallScore. */
@@ -233,9 +238,9 @@ export default function SupplierScorecardPage() {
               3,
           ) || 0;
         return (
-          <Badge variant={scoreVariant(overall)} size="sm">
+          <PriorityChip level={scoreLevel(overall)} size="sm">
             {overall}
-          </Badge>
+          </PriorityChip>
         );
       },
     },
@@ -408,9 +413,9 @@ export default function SupplierScorecardPage() {
               label="Overall Score"
               helperText="Average of quality, delivery, and service."
             >
-              <Badge variant={scoreVariant(computeOverall(form))}>
+              <PriorityChip level={scoreLevel(computeOverall(form))}>
                 {computeOverall(form)}
-              </Badge>
+              </PriorityChip>
             </FormField>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

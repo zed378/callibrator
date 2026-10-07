@@ -7,10 +7,10 @@ import {
   Input,
   Textarea,
   Button,
-  Badge,
 } from "@/components/ui";
 import { Edit, Trash2, MapPin } from "lucide-react";
 import type { Warehouse, StorageLocation } from "@/types";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export interface LocationFormState {
   name: string;
@@ -159,9 +159,7 @@ export const LocationsModal: React.FC<LocationsModalProps> = ({
                        </div>
                      )}
                     <div className="mt-1">
-                      <Badge variant={loc.isActive ? "success" : "default"}>
-                        {loc.isActive ? "ACTIVE" : "INACTIVE"}
-                      </Badge>
+                      <StatusBadge domain="warehouse" state={loc.isActive ? "active" : "inactive"} />
                     </div>
                   </div>
                   {hasWriteAccess && (

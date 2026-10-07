@@ -31,6 +31,8 @@ jest.mock("@/constants", () => ({
     return mockBackendBase;
   },
   PROXY_UPSTREAM_TIMEOUT_MS: 32000,
+  PROXY_UPLOAD_TIMEOUT_MS: 905000,
+  LONG_UPLOAD_PATHS: ["admin/upstream-sql-imports"],
 }));
 
 import { NextRequest } from "next/server";

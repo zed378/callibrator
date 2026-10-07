@@ -29,6 +29,7 @@ import {
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { toneOf } from "@/lib/statusTone";
+import { PriorityChip } from "@/components/ui/PriorityChip";
 
 const STATUS_OPTIONS = [
   { value: "OPEN", label: "Open" },
@@ -61,9 +62,11 @@ const emptyForm: RiskCreateInput = {
   dueDate: "",
 };
 
-/** RPN = severity x likelihood (1-25). Colour-code the risk band. */
-const rpnVariant = (rpn: number): "success" | "warning" | "danger" =>
-  rpn >= 15 ? "danger" : rpn >= 8 ? "warning" : "success";
+/**
+ * RPN = severity x likelihood (1-25). The band is an ordinal level, not a
+ * status (ADR-122 Am. 1): the priority ramp — 15+ urgent, 8+ medium, else low.
+ */
+const rpnLevel = (rpn: number): string => (rpn >= 15 ? "urgent" : rpn >= 8 ? "medium" : "low");
 
 
 export default function RiskPage() {
@@ -216,9 +219,9 @@ export default function RiskPage() {
         const rpn =
           Number(row.severity ?? 0) * Number(row.likelihood ?? 0) || 0;
         return (
-          <Badge variant={rpnVariant(rpn)} size="sm">
+          <PriorityChip level={rpnLevel(rpn)} size="sm">
             {rpn}
-          </Badge>
+          </PriorityChip>
         );
       },
     },
@@ -400,13 +403,13 @@ export default function RiskPage() {
               label="Computed RPN"
               helperText="Severity × Likelihood — 15+ is a high-priority risk."
             >
-              <Badge
-                variant={rpnVariant(
+              <PriorityChip
+                level={rpnLevel(
                   Number(form.severity ?? 0) * Number(form.likelihood ?? 0),
                 )}
               >
                 {Number(form.severity ?? 0) * Number(form.likelihood ?? 0)}
-              </Badge>
+              </PriorityChip>
             </FormField>
 
             <FormField label="Mitigation Plan">

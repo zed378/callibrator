@@ -235,6 +235,14 @@ const JOBS: Readonly<Record<string, JobDefinition>> = Object.freeze({
     action: "Read the error (usually the database or permissions on the uploads volume); the next daily run retries in bounded batches.",
     singleton: true,
   },
+  // P24-06 — middlewares/upstreamSqlImportSweepScheduler.middleware.ts.
+  "upstream-sql-import-sweep": {
+    title: "Upstream SQL import sweep",
+    meaning:
+      "Uploaded upstream SQL dumps past their retention (or left by a crash) were NOT deleted — they hold personal data — and a run whose worker died may still show as running.",
+    action: "Read the error (usually the database or permissions on the uploads volume); the next hourly run retries.",
+    singleton: true,
+  },
 });
 
 const states = new Map<string, JobState>();

@@ -264,8 +264,26 @@ live("AM-3 — the current tree boots on a database the previous release built (
         { id: CERTIFICATE, tenant: TENANT, device: DEVICE },
       ],
     ];
+    // A base after 0096 (AM3_UPGRADE_BASE=25521ff, P20-01/03) already requires a certificate's
+    // verification token: the certificate row carries one when the column exists.
+    const [tokenColumn] = await rows<{ n: number }>(
+      "SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'certificates' AND column_name = 'verification_token'",
+    );
+    if ((tokenColumn?.n ?? 0) > 0) {
+      const last = seed[seed.length - 1];
+      if (last) {
+        seed[seed.length - 1] = [
+          "INSERT INTO certificates (id, tenant_id, device_id, certificate_number, verification_token, created_at, updated_at) " +
+            "VALUES (:id, :tenant, :device, 'CERT-AM3-0001', 'am3am3am3am3am3am3am3am3am3am3a3', now(), now())",
+          last[1],
+        ];
+      }
+    }
     for (const [sql, replacements] of seed) {
-      await db.query(sql, { replacements });
+      await db.query(sql, { replacements }).catch((e: unknown) => {
+        const parent = (e as { parent?: { message?: string } }).parent;
+        throw new Error(`seed row failed on the base schema: ${parent?.message ?? String(e)} — ${sql}`);
+      });
     }
 
     // 4. The CURRENT tree's boot schema step — no manual migrate — then once more.
@@ -357,6 +375,28 @@ live("AM-3 — the current tree boots on a database the previous release built (
       { id: RECORD },
     );
     expect(record).toEqual({ performed_by: USER, api_key_id: null });
+  });
+
+  it("P20-01 / P20-03 (0111, 0112): the catalogue's triggers ENABLE ALWAYS, the device's RESTRICT key, base checklist v1", async () => {
+    const triggers = await rows<{ t: string }>(
+      `SELECT c.relname || ':' || t.tgname || ':' || t.tgenabled::text AS t FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+        WHERE NOT t.tgisinternal AND (c.relname = 'device_types' OR c.relname LIKE 'inspection_%')`,
+    );
+    expect(triggers).toHaveLength(12);
+    expect(triggers.filter((r) => !r.t.endsWith(":A"))).toEqual([]);
+    const [fk] = await rows<{ confdeltype: string }>(
+      "SELECT confdeltype::text AS confdeltype FROM pg_constraint WHERE conname = 'calibration_devices_device_type_id_fkey'",
+    );
+    expect(fk).toEqual({ confdeltype: "r" });
+    const [base] = await rows<{ status: string; version_number: number; published_by_system: string }>(
+      "SELECT status::text AS status, version_number, published_by_system FROM inspection_template_versions WHERE id = '5eedca7a-0000-4000-8000-000000000002'",
+    );
+    expect(base).toEqual({ status: "published", version_number: 1, published_by_system: "system:catalogue-seed" });
+    // The previous release's device survived, with no type.
+    const [device] = await rows<{ device_type_id: string | null }>("SELECT device_type_id FROM calibration_devices WHERE id = :id", {
+      id: DEVICE,
+    });
+    expect(device).toEqual({ device_type_id: null });
   });
 
   it("a second boot on the upgraded database applies nothing and still passes the schema check", () => {

@@ -153,6 +153,23 @@ const SYSTEM_ACTORS = Object.freeze({
    * `filePath`). One UPDATE row per moved row, in the tenant, with the move.
    */
   STORAGE_MIGRATION: "system:storage-migration",
+  /**
+   * P20-03 (ADR-125 Amendment 1; P19-01 spec § 12) — migration 0112, which
+   * publishes the neutral base checklist, version 1, as the platform's own
+   * content: `inspection_template_versions.published_by_system` names it (a
+   * published version names exactly one publisher, a user or a system actor),
+   * and so does the APPROVE audit row the migration writes under the PLATFORM
+   * tenant. The ETL publishes under its own actor, added to this list by P24-02.
+   */
+  CATALOGUE_SEED: "system:catalogue-seed",
+  /**
+   * P24-06 — the SQL-dump import's worker (services/upstreamSqlImport.service.ts):
+   * every scanning / parsing / loaded / failed / cancelled transition it makes,
+   * the interrupted-run reconciliation and the expired-file purge, under the
+   * PLATFORM tenant. The super admin who uploaded, cancelled or retried is the
+   * actor of those transitions instead.
+   */
+  UPSTREAM_SQL_IMPORT: "system:upstream-sql-import",
 } as const);
 
 /** One system actor's name (`actor_name` of a `system` row). */

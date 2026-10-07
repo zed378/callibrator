@@ -15,8 +15,10 @@ import React from "react";
  *    `--pub-accent` where it is defined (copper, or the light copper inside an
  *    inverted section), else the `--logo-accent` theme token.
  *
- * Brand palette (ADR-118 Amendment 2, warm): charcoal #1F1B17 body and copper
- * #9A4E22 accent on light; ivory #F6EFE4 and light copper #E3A47B on dark.
+ * Brand palette (ADR-118 Amendment 2, warm): a charcoal body and a copper
+ * accent on light; ivory and light copper on dark — the values are the
+ * `--logo-ink` / `--logo-accent` tokens, listed in docs/UI-UX/08-COLOR-SYSTEM.md
+ * "Brand" (not repeated here, so the colour guard has nothing to exempt).
  * The shape is the original artwork, unchanged.
  */
 export function BrandIcon({

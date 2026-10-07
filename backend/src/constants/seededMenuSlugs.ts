@@ -75,6 +75,8 @@ export const SEEDED_MENU_SLUGS = [
   "tenants",
   "tickets-raise",
   "tickets-response",
+  "upstream-import",
+  "upstream-sql-import",
   "user-permissions",
   "users",
   "vendors",

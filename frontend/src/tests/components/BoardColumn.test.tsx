@@ -57,6 +57,8 @@ describe("BoardColumn", () => {
     );
     // count/limit rendered as "2/1"
     expect(screen.getByText("2/1")).toBeInTheDocument();
+    // ADR-122 Am. 1: over the limit is a status (attention tone, icon), not a red pill.
+    expect(screen.getByText("2/1")).toHaveAttribute("data-tone", "attention");
   });
 
   it("quick-adds a card on Enter", () => {

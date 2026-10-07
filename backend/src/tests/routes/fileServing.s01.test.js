@@ -59,8 +59,9 @@ jest.mock("../../models", () => ({
     ),
   },
   CalibrationDevice: {},
-  Tenant: {},
-  User: {},
+  // A-365: a signed link's redemption re-checks its tenant and issuer.
+  Tenant: { findByPk: jest.fn(async (id) => ({ id, status: "active" })) },
+  User: { findByPk: jest.fn(async (id) => ({ id, isActive: true, status: "ACTIVE" })) },
 }));
 jest.mock("../../config", () => ({
   db: { transaction: jest.fn(async (cb) => cb({ id: "TX" })) },
@@ -298,7 +299,7 @@ describe("S-01 — attachments are reached only through the gated route", () => 
   });
 
   it("ADR-042 step 6: deleting an attachment makes its URL and its signed link stop working, and unlinks the file", async () => {
-    const signed = await attachmentService.generateSignedUrl(fx.tenantA.id, ATT_A, { baseUrl: base });
+    const signed = await attachmentService.generateSignedUrl(fx.tenantA.id, ATT_A, { baseUrl: base, issuer: { userId: userA.id } });
     const signedPath = signed.url.slice(base.length);
     expect((await get(signedPath)).status).toBe(200);
 

@@ -1,10 +1,11 @@
 // src/app/dashboard/reports/components/InventorySection.tsx
 import React from "react";
-import { Badge, Button, Card, CardContent } from "@/components/ui";
+import { Button, Card, CardContent } from "@/components/ui";
 import { Table } from "@/components/ui/Table";
 import { Download, Package } from "lucide-react";
 import { InventoryReport } from "@/api/services/report.service";
 import { MetricCard } from "./ReportCards";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface InventorySectionProps {
   inventory: InventoryReport | null;
@@ -80,11 +81,7 @@ export const InventorySection: React.FC<InventorySectionProps> = ({
                 key: "lowStock",
                 header: "Low Stock",
                 render: (value) =>
-                  value ? (
-                    <Badge variant="warning">Low Stock</Badge>
-                  ) : (
-                    <Badge variant="success">OK</Badge>
-                  ),
+                  <StatusBadge domain="stockLevel" state={value ? "low" : "ok"} />,
               },
             ]}
             data={rows as unknown as Record<string, unknown>[]}

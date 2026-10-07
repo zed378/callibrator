@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { API_BASE_URL, PROXY_UPSTREAM_TIMEOUT_MS } from "@/constants";
+import { API_BASE_URL, LONG_UPLOAD_PATHS, PROXY_UPLOAD_TIMEOUT_MS, PROXY_UPSTREAM_TIMEOUT_MS } from "@/constants";
 import { CLIENT_ADDRESS_HEADERS, forwardedClientIp } from "@/lib/clientIp";
 import { FORWARDED_ORIGIN_HEADERS, forwardedOriginHeaders } from "@/lib/forwardedOrigin";
 import {
@@ -147,10 +147,12 @@ async function handleProxy(
   // headers arrive: a long download is not cut off mid-stream.
   const upstream = new AbortController();
   let timedOut = false;
+  // P24-06: a long upload answers only after its body has arrived; it gets its own budget.
+  const longUpload = req.method === "POST" && LONG_UPLOAD_PATHS.includes(pathStr);
   const timer = setTimeout(() => {
     timedOut = true;
     upstream.abort();
-  }, PROXY_UPSTREAM_TIMEOUT_MS);
+  }, longUpload ? PROXY_UPLOAD_TIMEOUT_MS : PROXY_UPSTREAM_TIMEOUT_MS);
   const onClientGone = () => upstream.abort();
   req.signal?.addEventListener("abort", onClientGone, { once: true });
 

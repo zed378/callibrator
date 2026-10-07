@@ -89,9 +89,10 @@ jest.mock("../../models", () => ({
   },
   TenantSettings: { findAll: jest.fn(() => Promise.resolve([])) },
   CalibrationDevice: {},
-  Tenant: {},
+  // A-365: a signed link's redemption re-checks its tenant and issuer.
+  Tenant: { findByPk: jest.fn((id: string) => Promise.resolve({ id, status: "active" })) },
   Tenants: {},
-  User: {},
+  User: { findByPk: jest.fn((id: string) => Promise.resolve({ id, isActive: true, status: "ACTIVE" })) },
   Users: {},
 }));
 jest.mock("../../config", () => ({
@@ -264,8 +265,8 @@ describe("P8-01 identity — an attachment", () => {
   });
 
   it("GET /attachments/:id/signed — the same, through a signed link", async () => {
-    const legacy = await attachmentService.generateSignedUrl(TENANT_A, "legacy", { baseUrl: "" });
-    const stored = await attachmentService.generateSignedUrl(TENANT_A, "stored", { baseUrl: "" });
+    const legacy = await attachmentService.generateSignedUrl(TENANT_A, "legacy", { baseUrl: "", issuer: { userId: USER_A } });
+    const stored = await attachmentService.generateSignedUrl(TENANT_A, "stored", { baseUrl: "", issuer: { userId: USER_A } });
     const local = (url: string): string => {
       const u = new URL(url);
       return `${u.pathname}${u.search}`.replace("/api/v1/attachments", "/att");

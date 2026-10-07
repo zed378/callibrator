@@ -88,6 +88,10 @@ export const MENU_PAGE_GATES: Readonly<Record<string, readonly PageGate[]>> = Ob
   stock: [menu("warehouse")],
   // admin.route.js — the access-request queue (P10-07): router.use(rbac(["SUPER_ADMIN", "SUPERADMIN"]))
   "access-requests": [SUPER_ADMIN_ONLY],
+  // upstreamFileImports.route.ts — the rsync image import: router.use(superAdminOnly)
+  "upstream-import": [SUPER_ADMIN_ONLY],
+  // admin.route.ts — the SQL-dump import (P24-06): router.use(rbac(["SUPER_ADMIN", "SUPERADMIN"])) and superAdminOnly
+  "upstream-sql-import": [SUPER_ADMIN_ONLY],
   // ticket.service.ts — the super admin may not raise a ticket (BR-13)
   "tickets-raise": [{ kind: "notSuperAdmin" }],
 });
@@ -115,4 +119,6 @@ export const MENU_PAGE_GATE_SOURCES: Readonly<Record<string, { readonly file: st
     stock: { file: "stock.route", text: '"warehouse", "read"' },
     scim: { file: "scim.route", text: "keyMayUseScim(req)) || isSuperAdmin(req.user)" },
     "access-requests": { file: "admin.route", text: 'rbac(["SUPER_ADMIN", "SUPERADMIN"])' },
+    "upstream-import": { file: "upstreamFileImports.route", text: "router.use(superAdminOnly)" },
+    "upstream-sql-import": { file: "admin.route", text: 'router.get("/upstream-sql-imports", superAdminOnly' },
   });

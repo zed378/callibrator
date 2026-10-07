@@ -28,6 +28,22 @@
 /* ── Shared ───────────────────────────────────────────────────────────── */
 
 [data-surface="public"] .lp-section { position: relative; }
+
+/*
+ * P10-17 perf addendum: every section after the hero skips layout and paint
+ * until it nears the viewport. The first layout of '/' laid out all ~810 boxes
+ * of the page before its first paint; with this it lays out the hero. The
+ * sections stay in the accessibility tree and in find-in-page. `auto` in
+ * contain-intrinsic-size keeps each section's real height once it has been
+ * rendered, so scrolling back up does not jump. Paint containment clips at the
+ * section box; nothing on the page draws outside its section (checked by a
+ * full-page pixel comparison with this rule on and off, record addendum).
+ */
+[data-surface="public"] #konten > .lp-section ~ .lp-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 900px;
+}
+
 [data-surface="public"] .lp-eyebrow {
   display: inline-flex;
   align-items: center;

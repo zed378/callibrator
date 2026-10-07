@@ -15,6 +15,8 @@ import { validateUuid } from "../../middlewares/validateUuid.middleware";
 import { upload } from "../../utils/upload.util";
 import { enforceStorageQuota } from "../../middlewares/enforceQuota.middleware";
 import attachmentController from "../../controllers/attachment.controller";
+import { validate } from "../../middlewares/validation.middleware";
+import { createSignedUrlSchema } from "../../validators/attachment.validator";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -128,6 +130,8 @@ router.post(
   auth,
   dynamicAccess(MENU_SLUGS.EQUIPMENT, "read"),
   validateUuid("id"),
+  // A-365: the lifetime is bounded (30 s … the configured cap); above it, 400.
+  validate(createSignedUrlSchema),
   attachmentController.createSignedUrl,
 );
 

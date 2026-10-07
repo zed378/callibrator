@@ -37,21 +37,14 @@ return <StatusBadge domain="backup" state={status} size="sm" />;
 
   // The create stores the type as sent ("FULL"); the scheduled job stores
   // the model's "full". Matched in either case; a NULL type reads as FULL.
+  // ADR-122 Am. 1: the backup type is a category, not a status — a neutral
+  // chip (it was coloured info/warning/success, which read as a state).
   const getBackupTypeBadge = (type: string | null) => {
-    const colors: Record<string, string> = {
-      FULL: "bg-info/10 text-info",
-      PARTIAL:
-        "bg-warning/10 text-warning",
-      USER_ONLY:
-        "bg-success/10 text-success",
-    };
     const key = (type ?? "FULL").toUpperCase();
     return (
-      <span
-        className={`px-2 py-1 rounded-full text-xs font-medium ${colors[key] ?? colors.FULL}`}
-      >
+      <Badge variant="secondary" size="sm">
         {key}
-      </span>
+      </Badge>
     );
   };
 

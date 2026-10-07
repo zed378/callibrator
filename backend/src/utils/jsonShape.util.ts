@@ -69,6 +69,75 @@ const passkeyTransports = z
   .max(7)
   .nullable();
 const webhookEvents = z.array(eventName);
+/*
+ * P20-03 (ADR-125 § 5): a tenant's proposed checklist items — at most 100
+ * objects. The item's own fields are the contract's (P21-01, the proposal item
+ * schema); here the column refuses anything that is not that list's shape.
+ */
+const proposedItems = z.array(object).max(100);
+
+/*
+ * The rsync image import (upstreamFileImport.service): counts only — never a
+ * file name, a path or a person (the notification and the API answer the
+ * same counts). Strict: an unexpected key is refused, so nothing else can be
+ * smuggled into the row.
+ */
+const count = z.number().int().min(0);
+const upstreamImportEstimate = z
+  .object({ files: count, bytes: count, classes: z.partialRecord(z.enum(["front", "serial"]), z.object({ files: count, bytes: count }).strict()) })
+  .strict();
+const upstreamImportProgress = z
+  .object({ filesTransferred: count, bytesTransferred: count, filesProcessed: count, filesToProcess: count })
+  .strict();
+const upstreamImportSummary = z
+  .object({
+    filesCopied: count,
+    bytesCopied: count,
+    ingested: count,
+    bytesIngested: count,
+    skippedPresent: count,
+    duplicateContent: count,
+    metadataStripped: count,
+    quarantined: count,
+    quarantinedByReason: z.record(z.string().regex(/^[a-z_]{1,40}$/), count),
+    failed: count,
+    durationMs: count,
+  })
+  .strict();
+
+/*
+ * The SQL-dump import (P24-06, upstreamSqlImport.service): per staged or
+ * skipped table, counts and fixed reason codes only — never a value from the
+ * dump. A table key is a plain identifier (or the parser's `#invalid`); a
+ * reason is a lower-case code. Strict: nothing else can ride along.
+ */
+const sqlCode = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/);
+const sqlImportTable = z
+  .object({
+    staged: z.boolean(),
+    reason: sqlCode.nullable(),
+    columns: count,
+    excludedColumns: count,
+    rowsLoaded: count,
+    rowsRejected: count,
+    rowsNotExtracted: count,
+    rejections: z.record(sqlCode, count),
+    notes: z.record(sqlCode, count),
+  })
+  .strict();
+const upstreamSqlImportTables = z
+  .record(z.string().regex(/^(#invalid|[a-z_][a-z0-9_]{0,62})$/), sqlImportTable)
+  .refine((tables) => Object.keys(tables).length <= 1001, { error: "At most 1,001 tables" });
+const upstreamSqlImportParseSummary = z
+  .object({
+    statements: z.record(sqlCode, count),
+    comments: count,
+    conditionalComments: count,
+    delimiterRegions: count,
+    truncated: z.boolean(),
+    completionMarker: z.boolean(),
+  })
+  .strict();
 
 /*
  * ADR-107 (Q-50): what a signed certificate prints, fixed at signing — written
@@ -154,6 +223,18 @@ export type CertificateSignedSnapshot = z.infer<typeof certificateSignedSnapshot
 /** `WebauthnCredential.transports` (ADR-108 Amendment 1). */
 export type PasskeyTransports = z.infer<typeof passkeyTransports>;
 
+/** `InspectionTemplateProposal.proposedItems` (P20-03): at most 100 JSON objects (the count is not in the type). */
+export type ProposedItems = z.infer<typeof proposedItems>;
+
+/** `UpstreamFileImport.estimate` / `.progress` / `.summary` (the rsync image import): counts only. */
+export type UpstreamImportEstimate = z.infer<typeof upstreamImportEstimate>;
+export type UpstreamImportProgress = z.infer<typeof upstreamImportProgress>;
+export type UpstreamImportSummary = z.infer<typeof upstreamImportSummary>;
+
+/** `UpstreamSqlImport.tables` / `.parseSummary` (the SQL-dump import): counts and codes only. */
+export type UpstreamSqlImportTables = z.infer<typeof upstreamSqlImportTables>;
+export type UpstreamSqlImportParseSummary = z.infer<typeof upstreamSqlImportParseSummary>;
+
 const JSON_SHAPES: Readonly<Record<string, z.ZodType | undefined>> = Object.freeze({
   "ApiKey.scopes": apiKeyScopes,
   "AuditLog.changes": object,
@@ -171,6 +252,12 @@ const JSON_SHAPES: Readonly<Record<string, z.ZodType | undefined>> = Object.free
   "Webhook.events": webhookEvents,
   "WebhookDelivery.payload": object,
   "WebauthnCredential.transports": passkeyTransports,
+  "InspectionTemplateProposal.proposedItems": proposedItems,
+  "UpstreamFileImport.estimate": upstreamImportEstimate,
+  "UpstreamFileImport.progress": upstreamImportProgress,
+  "UpstreamFileImport.summary": upstreamImportSummary,
+  "UpstreamSqlImport.tables": upstreamSqlImportTables,
+  "UpstreamSqlImport.parseSummary": upstreamSqlImportParseSummary,
 });
 
 /**

@@ -5,24 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 import { Shield, AlertCircle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { destinationAfterSignIn } from "@/app/login/hooks/useLoginForm";
-
-function AnimatedBackground() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <div
-        className="orb orb-primary absolute w-[600px] h-[600px] -top-[200px] -right-[200px] animate-orb-float-1"
-      />
-      <div
-        className="orb orb-accent absolute w-[500px] h-[500px] -bottom-[150px] -left-[150px] animate-orb-float-2"
-      />
-      <div
-        className="orb orb-secondary absolute w-[400px] h-[400px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-orb-float-1-reverse"
-      />
-      <div className="absolute inset-0 bg-grid-pattern opacity-100 dark:opacity-50" />
-    </div>
-  );
-}
+import { destinationAfterSignIn } from "@/app/login/hooks/destination";
 
 function SsoCallbackHandler() {
   const router = useRouter();
@@ -73,12 +56,10 @@ function SsoCallbackHandler() {
   }, [searchParams, loginWithSSOCode, router]);
 
   const cardBg =
-    "bg-card backdrop-blur-xl shadow-xl";
+    "bg-card border border-border backdrop-blur-xl shadow-xl";
 
   return (
-    <main className="min-h-screen flex items-center justify-center relative bg-linear-to-br from-muted via-info/10 to-primary/10 overflow-hidden p-6">
-      <AnimatedBackground />
-
+    <main className="min-h-screen flex items-center justify-center relative bg-background overflow-hidden p-6">
       <div
         className={`relative z-10 w-full max-w-md p-8 rounded-3xl shadow-2xl text-center animate-scale-in ${cardBg}`}
       >
@@ -155,7 +136,7 @@ function SsoCallbackHandler() {
 
             <Link
               href="/login"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-linear-to-r from-primary to-accent hover:from-primary hover:to-accent text-primary-foreground font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-primary/20 hover:shadow-primary/30"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary-hover active:bg-primary-pressed text-primary-foreground font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-primary/20 hover:shadow-primary/30"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Login</span>
@@ -171,7 +152,7 @@ export default function SsoCallbackPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-muted via-info/10 to-primary/10">
+        <div className="min-h-screen flex items-center justify-center bg-background">
           <div className="text-muted-foreground">
             Loading SSO Callback...
           </div>

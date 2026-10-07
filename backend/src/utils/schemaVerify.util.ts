@@ -195,6 +195,117 @@ const EXPECTED_OBJECTS: readonly ExpectedObject[] = Object.freeze([
     name: "audit_logs_no_truncate",
     why: "Q-34 / ADR-095: the audit trail cannot be truncated (migration 0091)",
   }),
+  // P20-01 / P20-03 (migrations 0111, 0112; ADR-125 and its Amendment 1): the inspection
+  // catalogue's controls — the no-delete and immutability triggers, and the invariants'
+  // partial unique indexes and CHECKs. A skipped migration must not pass silently.
+  Object.freeze({
+    kind: "trigger",
+    table: "device_types",
+    name: "device_types_no_delete",
+    why: "P20-01 / ADR-125 Am. 1: no device type is deleted, for any role (migration 0111)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "device_types",
+    name: "device_types_no_truncate",
+    why: "P20-01 / ADR-125 Am. 1: device_types cannot be truncated (migration 0111)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_item_definitions",
+    name: "inspection_item_definitions_no_delete",
+    why: "P20-03 / ADR-125 Am. 1: no library definition is deleted (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_item_definitions",
+    name: "inspection_item_definitions_no_truncate",
+    why: "P20-03 / ADR-125 Am. 1: the item library cannot be truncated (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_templates",
+    name: "inspection_templates_no_delete",
+    why: "P20-03 / ADR-125 Am. 1: no template is deleted (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_templates",
+    name: "inspection_templates_no_truncate",
+    why: "P20-03 / ADR-125 Am. 1: inspection_templates cannot be truncated (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_template_proposals",
+    name: "inspection_template_proposals_no_delete",
+    why: "P20-03 / ADR-125 § 5: a proposal is withdrawn, never deleted (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_template_proposals",
+    name: "inspection_template_proposals_no_truncate",
+    why: "P20-03 / ADR-125 § 5: proposals cannot be truncated (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_template_versions",
+    name: "inspection_template_versions_immutable",
+    why: "P20-03 / ADR-125 § 2: a published version is immutable, retired and discarded are final, none is deleted (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_template_versions",
+    name: "inspection_template_versions_no_truncate",
+    why: "P20-03 / ADR-125 § 2: template versions cannot be truncated (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_template_items",
+    name: "inspection_template_items_draft_only",
+    why: "P20-03 / ADR-125 § 2: only a draft's items are written or deleted (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "inspection_template_items",
+    name: "inspection_template_items_no_truncate",
+    why: "P20-03 / ADR-125 § 2: template items cannot be truncated (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "index",
+    table: "device_types",
+    name: "device_types_name_unique",
+    why: "P20-01 / ADR-125 Am. 1: one device type per name, whatever its case or status (migration 0111)",
+  }),
+  Object.freeze({
+    kind: "index",
+    table: "inspection_templates",
+    name: "inspection_templates_one_base",
+    why: "P20-03 / ADR-125 § 1: exactly one base template (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "index",
+    table: "inspection_template_versions",
+    name: "inspection_template_versions_one_published",
+    why: "P20-03 / ADR-125 § 2: exactly one published version per template (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "index",
+    table: "inspection_template_versions",
+    name: "inspection_template_versions_one_draft",
+    why: "P20-03 / ADR-125 Am. 1: at most one open draft per template (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "constraint",
+    table: "inspection_template_versions",
+    name: "inspection_template_versions_published_complete",
+    why: "P20-03 / ADR-125 § 2: a published version carries its number, hash, note and publication (migration 0112)",
+  }),
+  Object.freeze({
+    kind: "constraint",
+    table: "inspection_template_versions",
+    name: "inspection_template_versions_publisher_exactly_one",
+    why: "P20-03 / ADR-125 Am. 1: a published version names exactly one publisher, a user or a system actor (migration 0112)",
+  }),
 ]);
 
 const TAG = "[schema-verify]";

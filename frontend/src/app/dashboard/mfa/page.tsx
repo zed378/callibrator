@@ -3,7 +3,7 @@
 
 import React, { useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
-import { Badge, Button, Card, CardContent } from "@/components/ui";
+import { Button, Card, CardContent } from "@/components/ui";
 import {
   ShieldCheck,
   ShieldOff,
@@ -16,6 +16,7 @@ import {
 import { authService } from "@/api/services/auth.service";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 // "codes": the one-time recovery codes are on screen (A-141). They are never
 // retrievable again, so the page stays on them until the user confirms.
@@ -242,19 +243,18 @@ export default function MfaPage() {
                     {user?.email ?? "Your account"}
                   </h2>
                   {alreadyEnabled && (
-                    <Badge variant="success" size="sm">
-                      MFA enabled
-                    </Badge>
+                    <StatusBadge domain="mfa" state="enabled" size="sm" />
                   )}
                   {alreadyEnabled &&
                     typeof codesLeft === "number" &&
                     step !== "codes" && (
-                      <Badge
-                        variant={codesLeft < LOW_RECOVERY_CODES ? "warning" : "default"}
+                      <StatusBadge
+                        domain="recoveryCodes"
+                        state={codesLeft < LOW_RECOVERY_CODES ? "low" : "enough"}
                         size="sm"
                       >
                         {codesLeft} recovery {codesLeft === 1 ? "code" : "codes"} left
-                      </Badge>
+                      </StatusBadge>
                     )}
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">

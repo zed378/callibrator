@@ -164,14 +164,15 @@ describe('supplier scorecards — reading', () => {
     const medika = rowOf('PT Medika');
     expect(within(medika).getByText('90')).toBeInTheDocument();
     // Overall = round((90 + 85 + 80) / 3) = 85, badged as good.
-    expect(within(medika).getByText('85', { selector: 'span' })).toHaveClass('text-success');
+    // ADR-122 Am. 1: a score band is an ordinal level (priority ramp: a low score is the high concern).
+    expect(within(medika).getByText('85', { selector: 'span' })).toHaveAttribute('data-level', 'low');
     expect(within(medika).getByText('APPROVED')).toBeInTheDocument();
     expect(
       within(medika).getByText(new Date('2026-06-30T00:00:00.000Z').toLocaleDateString())
     ).toBeInTheDocument();
 
     const kalibra = rowOf('CV Kalibra');
-    expect(within(kalibra).getByText('55', { selector: 'span' })).toHaveClass('text-destructive');
+    expect(within(kalibra).getByText('55', { selector: 'span' })).toHaveAttribute('data-level', 'urgent');
     expect(within(kalibra).getByText('PROBATION')).toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);
   });
@@ -261,7 +262,7 @@ describe('supplier scorecards — evaluating', () => {
       target: { value: '80' },
     });
     fireEvent.change(within(dialog).getByLabelText('Service (0-100)'), { target: { value: '90' } });
-    expect(within(dialog).getByText('80')).toHaveClass('text-success');
+    expect(within(dialog).getByText('80')).toHaveAttribute('data-level', 'low');
     fireEvent.change(within(dialog).getByLabelText(/Evaluation Date/), {
       target: { value: '2026-09-01' },
     });

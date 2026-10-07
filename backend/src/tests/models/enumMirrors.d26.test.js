@@ -51,6 +51,8 @@ const modelEnums = () => {
 
 const validator = (name) => require(`../../validators/${name}`);
 const constant = (name) => require(`../../constants/${name}`);
+const states = () => require("@callibrator/contracts/states");
+const inspection = () => require("@callibrator/contracts/inspectionValues");
 
 /**
  * The enum values a field schema restricts to, looking through the wrappers
@@ -172,6 +174,26 @@ const MIRRORS = Object.freeze({
   "Tenant.status": { constants: [() => Object.values(constant("tenantStatus").TENANT_STATUS)] },
   "TenantBackup.status": { constants: [() => Object.values(models.TenantBackup.STATUS)] },
   "UsageAlert.comparison": { validators: [["meteredBilling.validator", "comparison", "equal"]] },
+  // P20-01 / P20-03 (ADR-125 Am. 1): the catalogue's vocabularies and state
+  // tuples live once in @callibrator/contracts (states.ts, inspectionValues.ts),
+  // read by the models, migrations 0111/0112 and (P21-01) the request schemas.
+  "DeviceType.status": { constants: [() => states().DEVICE_TYPE_STATUSES] },
+  "InspectionItemDefinition.inputKind": { constants: [() => inspection().INSPECTION_INPUT_KINDS] },
+  "InspectionItemDefinition.limitOp": { constants: [() => inspection().INSPECTION_LIMIT_OPS] },
+  "InspectionItemDefinition.section": { constants: [() => inspection().INSPECTION_SECTIONS] },
+  "InspectionItemDefinition.status": { constants: [() => states().INSPECTION_ITEM_DEFINITION_STATUSES] },
+  "InspectionTemplate.status": { constants: [() => states().INSPECTION_TEMPLATE_STATUSES] },
+  "InspectionTemplateItem.inputKind": { constants: [() => inspection().INSPECTION_INPUT_KINDS] },
+  "InspectionTemplateItem.limitOp": { constants: [() => inspection().INSPECTION_LIMIT_OPS] },
+  "InspectionTemplateItem.origin": { constants: [() => inspection().TEMPLATE_ITEM_ORIGINS] },
+  "InspectionTemplateItem.section": { constants: [() => inspection().INSPECTION_SECTIONS] },
+  "InspectionTemplateProposal.kind": { constants: [() => inspection().TEMPLATE_PROPOSAL_KINDS] },
+  "InspectionTemplateProposal.status": { constants: [() => states().TEMPLATE_PROPOSAL_STATUSES] },
+  "InspectionTemplateVersion.status": { constants: [() => states().TEMPLATE_VERSION_STATUSES] },
+  // The rsync image import (upstream adoption): its lifecycle, one list in @callibrator/contracts/states.
+  "UpstreamFileImport.status": { constants: [() => states().UPSTREAM_FILE_IMPORT_STATUSES] },
+  // The SQL-dump import (P24-06): its lifecycle, one list in @callibrator/contracts/states.
+  "UpstreamSqlImport.status": { constants: [() => states().UPSTREAM_SQL_IMPORT_STATUSES] },
   "Vendor.approvalStatus": { none: NO_MIRROR },
   "Vendor.status": { none: NO_MIRROR },
   "Vendor.type": { none: NO_MIRROR },

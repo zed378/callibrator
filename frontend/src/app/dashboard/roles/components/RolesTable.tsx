@@ -2,18 +2,13 @@ import React from "react";
 import { Shield, Edit2, Trash2 } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { Role } from "@/types";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface RolesTableProps {
   roles: Role[];
   onEdit: (role: Role) => void;
   onDelete: (id: string) => void;
 }
-
-const levelColor: Record<number, string> = {
-  1: "success",
-  2: "warning",
-  3: "danger",
-};
 
 export const RolesTable: React.FC<RolesTableProps> = ({
   roles,
@@ -72,24 +67,13 @@ export const RolesTable: React.FC<RolesTableProps> = ({
               </div>
             </td>
             <td className="px-6 py-4 whitespace-nowrap">
-              <Badge
-                variant={
-                  (levelColor[role.roleLevel ?? -1] || "default") as
-                    | "default"
-                    | "success"
-                    | "warning"
-                    | "danger"
-                }
-              >
+              {/* ADR-122 Am. 1: a role level is a rank, not a status — a neutral chip. */}
+              <Badge variant="secondary">
                 Level {role.roleLevel ?? "-"}
               </Badge>
             </td>
             <td className="px-6 py-4 whitespace-nowrap">
-              {role.isActive ? (
-                <Badge variant="success">Active</Badge>
-              ) : (
-                <Badge variant="danger">Inactive</Badge>
-              )}
+              <StatusBadge domain="active" state={role.isActive ? "active" : "inactive"} />
             </td>
             <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
               {role.createdAt

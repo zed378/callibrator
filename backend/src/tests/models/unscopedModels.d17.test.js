@@ -42,6 +42,8 @@ const espree = require(
 const allModels = [...new Set(Object.values(models.sequelize.models))];
 const hasTenantColumn = (m) => Boolean(m.rawAttributes.tenantId || m.rawAttributes.tenant_id);
 
+const CATALOGUE = "ADR-125: platform catalogue; writes superAdminOnly (inspectionCatalogueGlobal.guard)";
+
 /** name → { group, parentKeys, why } */
 const UNSCOPED = Object.freeze({
   Tenant: { group: "global", why: "it IS the tenant; reached by id only behind ownTenantGuard / superAdminOnly (A-01)" },
@@ -55,6 +57,24 @@ const UNSCOPED = Object.freeze({
     group: "global",
     why: "P10-05 (ADR-098 §6): a request precedes any tenant; public intake writes, the queue is super-admin only (admin router rbac)",
   },
+  UpstreamSqlImport: {
+    group: "global",
+    why: "P24-06: the SQL-dump import, a platform operation with no tenant (notifyTenantId is where the uploader's notification goes, not a scope); every route superAdminOnly on the admin router (rbac SUPER_ADMIN)",
+  },
+  UpstreamFileImport: {
+    group: "global",
+    why: "the rsync image import: a platform operation naming a TARGET tenant (targetTenantId, not tenantId); every route superAdminOnly + denyApiKey",
+  },
+  // P20-01 / P20-03 (ADR-125 § 7): the global inspection catalogue. No tenant
+  // and no facility column, by decision (UD-3); the five models declare no
+  // association to a tenant model (catalogueModels.p2003.guard); the route is
+  // the only write control (superAdminOnly, P21-01's inspectionCatalogueGlobal
+  // guard). Their proposals table IS tenant-scoped and is not listed here.
+  DeviceType: { group: "global", why: CATALOGUE },
+  InspectionItemDefinition: { group: "global", why: CATALOGUE },
+  InspectionTemplate: { group: "global", why: CATALOGUE },
+  InspectionTemplateVersion: { group: "global", why: CATALOGUE },
+  InspectionTemplateItem: { group: "global", why: CATALOGUE },
   WebauthnCredential: {
     group: "child",
     parentKeys: ["userId"],

@@ -1,9 +1,10 @@
 import React from "react";
 import { Calibration } from "@/api/services/calibration.service";
-import { Card, CardContent, Table, TableSkeleton, Badge, Button, Pagination } from "@/components/ui";
+import { Card, CardContent, Table, TableSkeleton, Button, Pagination } from "@/components/ui";
 import { Activity, PenTool } from "lucide-react";
 import { PaginatedResponse } from "@/types";
 import { actorLabel } from "@/lib/actorLabel";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 // Table rows arrive as generic records; narrow them back to Calibration.
 const asCalibration = (row: Record<string, unknown>): Calibration =>
@@ -63,9 +64,7 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
       key: "isCompliant",
       header: "Status",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <Badge variant={asCalibration(row).isCompliant ? "success" : "danger"}>
-          {asCalibration(row).isCompliant ? "Compliant" : "Non-Compliant"}
-        </Badge>
+        <StatusBadge domain="calibrationResult" state={asCalibration(row).isCompliant ? "compliant" : "non_compliant"} />
       ),
     },
     {

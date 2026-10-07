@@ -27,11 +27,10 @@ interface VendorsTableProps {
   handleQualify: (vendorId: string, approvalStatus: string) => void;
 }
 
+// ADR-122 Am. 1: anything but approved/rejected read as Pending before; it still does.
 const approvalBadge = (status?: string | null) => {
   const s = (status || "pending").toLowerCase();
-  if (s === "approved") return <Badge variant="success">Approved</Badge>;
-  if (s === "rejected") return <Badge variant="danger">Rejected</Badge>;
-  return <Badge variant="warning">Pending</Badge>;
+  return <StatusBadge domain="vendorApproval" state={s === "approved" || s === "rejected" ? s : "pending"} />;
 };
 
 const asNode = (value: unknown) => value as React.ReactNode;

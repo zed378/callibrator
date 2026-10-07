@@ -8,6 +8,10 @@ const BOX = { sm: "h-10 w-10", md: "h-12 w-12", lg: "h-16 w-16" } as const;
  * the product mark. The tenant logo can be any host/format (a
  * deploy asset), so it's a plain <img> — this intentionally sidesteps the
  * next/image `remotePatterns` restriction with no config change.
+ *
+ * The logo sits on a white plate in both themes (ADR-122, allow-listed in
+ * constants/colourExemptions.ts): a tenant's logo is an image drawn for a
+ * light ground, and on the dark card it could vanish.
  */
 export function BrandMark({
   logoUrl,
@@ -24,7 +28,7 @@ export function BrandMark({
       <img
         src={logoUrl}
         alt={name}
-        className={`${BOX[size]} rounded-2xl bg-white object-contain p-1.5 shadow-sm ring-1 ring-black/5`}
+        className={`${BOX[size]} rounded-2xl bg-white object-contain p-1.5 shadow-sm ring-1 ring-border`}
       />
     );
   }

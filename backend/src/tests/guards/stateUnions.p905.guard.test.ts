@@ -12,6 +12,12 @@ import fs from "fs";
 import path from "path";
 import {
   CAPA_STATUSES,
+  DEVICE_TYPE_STATUSES,
+  INSPECTION_ITEM_DEFINITION_STATUSES,
+  INSPECTION_TEMPLATE_STATUSES,
+  TEMPLATE_PROPOSAL_STATUSES,
+  TEMPLATE_VERSION_STATUSES,
+  UPSTREAM_FILE_IMPORT_STATUSES,
   CERTIFICATE_STATE,
   CERTIFICATE_STATUSES,
   STOCK_OPNAME_STATUSES,
@@ -39,6 +45,14 @@ const MACHINES: [model: string, tuple: readonly string[]][] = [
   ["Tenant", TENANT_LIFECYCLE_STATUSES],
   ["WebhookDelivery", WEBHOOK_DELIVERY_STATUSES],
   ["WorkflowInstance", WORKFLOW_INSTANCE_STATUSES],
+  // P20-01 / P20-03 (ADR-125 Am. 1): the inspection catalogue's lifecycles.
+  ["DeviceType", DEVICE_TYPE_STATUSES],
+  ["InspectionItemDefinition", INSPECTION_ITEM_DEFINITION_STATUSES],
+  ["InspectionTemplate", INSPECTION_TEMPLATE_STATUSES],
+  ["InspectionTemplateVersion", TEMPLATE_VERSION_STATUSES],
+  ["InspectionTemplateProposal", TEMPLATE_PROPOSAL_STATUSES],
+  // The rsync image import's lifecycle.
+  ["UpstreamFileImport", UPSTREAM_FILE_IMPORT_STATUSES],
 ];
 
 describe("P9-05 — state machines have one list each", () => {

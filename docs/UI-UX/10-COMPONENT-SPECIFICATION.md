@@ -45,6 +45,7 @@ Rendering an empty table when the request failed is a lie about a compliance fig
 - alarm only for overdue, non-conformant, failed and revoked; copper (the primary) and the tenant brand never appear in a badge
 - domain-aware: `pending` means different things for a transfer and a certificate
 - computed states are supported — **overdue is derived from `nextCalibrationDate`**, not read from a column
+- **no colour-only status chip** (ADR-122 Amendment 1): `Badge` has no `success` / `warning` / `danger` variant; every on/off, pass/fail or pending state is a registry domain. An **ordinal level** (priority, severity, risk RPN, a score band) is not a status: it is `PriorityChip` — a neutral chip with the priority-ramp dot. A **category** (an audit verb, a plan tier, a type) is a neutral `Badge`. `tests/guards/statusChips.p1105.guard.test.ts` enforces it
 
 A device can be `active` **and** overdue at once. The row shows both badges. Collapsing them loses the distinction between "in service" and "in service but out of interval", which is the distinction an auditor asks about.
 

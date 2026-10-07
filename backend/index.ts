@@ -39,6 +39,7 @@ import type RetentionSchedulerMiddlewareModule from "./src/middlewares/retention
 import type TenantLifecycleSchedulerMiddlewareModule from "./src/middlewares/tenantLifecycleScheduler.middleware";
 import type WebhookDeliverySchedulerMiddlewareModule from "./src/middlewares/webhookDeliveryScheduler.middleware";
 import type QuarantineSweepSchedulerMiddlewareModule from "./src/middlewares/quarantineSweepScheduler.middleware";
+import type * as UpstreamSqlImportSweepSchedulerModule from "./src/middlewares/upstreamSqlImportSweepScheduler.middleware";
 import type WebhookDeliveryPurgeSchedulerMiddlewareModule from "./src/middlewares/webhookDeliveryPurgeScheduler.middleware";
 import type AttachmentFileSweepSchedulerMiddlewareModule from "./src/middlewares/attachmentFileSweepScheduler.middleware";
 import type JobMonitorServiceModule from "./src/services/jobMonitor.service";
@@ -90,6 +91,7 @@ import type FinanceRouteModule from "./src/routes/api/finance.route";
 import type ContentRouteModule from "./src/routes/api/content.route";
 import type ScimRouteModule from "./src/routes/api/scim.route";
 import type AdminRouteModule from "./src/routes/api/admin.route";
+import type UpstreamFileImportsRouteModule from "./src/routes/api/upstreamFileImports.route";
 import type BatchJobsRouteModule from "./src/routes/api/batchJobs.route";
 import type QmsRouteModule from "./src/routes/api/qms.route";
 import type SopRouteModule from "./src/routes/api/sop.route";
@@ -472,6 +474,8 @@ const financeRoutes = require("./src/routes/api/finance.route") as typeof Financ
 const contentRoutes = require("./src/routes/api/content.route") as typeof ContentRouteModule;
 const scimRoutes = require("./src/routes/api/scim.route") as typeof ScimRouteModule;
 const adminRoutes = require("./src/routes/api/admin.route") as typeof AdminRouteModule;
+// The rsync image import (upstream adoption): super admin only, under /api/v1/admin.
+const upstreamFileImportRoutes = require("./src/routes/api/upstreamFileImports.route") as typeof UpstreamFileImportsRouteModule;
 const batchJobsRoutes = require("./src/routes/api/batchJobs.route") as typeof BatchJobsRouteModule;
 const qmsRoutes = require("./src/routes/api/qms.route") as typeof QmsRouteModule;
 const sopRoutes = require("./src/routes/api/sop.route") as typeof SopRouteModule;
@@ -504,6 +508,7 @@ const ticketRoutes = require("./src/routes/api/tickets.route") as typeof Tickets
 // Use GET /api/v1/migration/down to drop database tables
 // Use GET /api/v1/migration/unseeding to remove seeded data
 app.use("/api/v1/migration", migrationRoutes);
+app.use("/api/v1/admin/upstream-file-imports", upstreamFileImportRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/jobs", batchJobsRoutes);
 app.use("/api/v1/qms", qmsRoutes);
@@ -734,6 +739,8 @@ async function startServer() {
     initWebhookDeliveryScheduler();
     // S-33: remove uploads a crash left in uploads/.quarantine.
     initQuarantineSweep();
+    // P24-06: interrupted SQL-dump imports failed, expired and orphaned dump files deleted.
+    (require("./src/middlewares/upstreamSqlImportSweepScheduler.middleware") as typeof UpstreamSqlImportSweepSchedulerModule).initUpstreamSqlImportSweep();
     // ADR-070: finished webhook deliveries past retention, daily, bounded, audited.
     initWebhookDeliveryPurge();
     // D-22 (ADR-083): files of attachments deleted past retention, daily, bounded, audited.

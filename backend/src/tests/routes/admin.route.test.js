@@ -88,7 +88,7 @@ describe("Admin Routes", () => {
     expect([...methods].sort()).toEqual(["get", "patch", "post", "put"]);
   });
 
-  it("has exactly its 11 route endpoints: 3 tenant ones, 2 SSO-domain ones (P10-04) and 6 access-request ones (P10-05/07)", () => {
+  it("has exactly its 17 route endpoints: 3 tenant ones, 2 SSO-domain ones (P10-04), 6 access-request ones (P10-05/07) and 6 SQL-dump import ones (P24-06)", () => {
     const routes = adminRoutes.stack
       .filter((layer) => layer.route)
       .flatMap((layer) => Object.keys(layer.route.methods).map((m) => `${m.toUpperCase()} ${layer.route.path}`));
@@ -105,6 +105,12 @@ describe("Admin Routes", () => {
         "POST /access-requests/:id/approve",
         "POST /access-requests/:id/reject",
         "POST /access-requests/:id/resend-invitation",
+        "GET /upstream-sql-imports/settings",
+        "GET /upstream-sql-imports",
+        "POST /upstream-sql-imports",
+        "GET /upstream-sql-imports/:id",
+        "POST /upstream-sql-imports/:id/cancel",
+        "POST /upstream-sql-imports/:id/retry",
       ].sort(),
     );
   });

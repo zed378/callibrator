@@ -40,6 +40,7 @@ import crypto from "crypto";
 import redisService from "../redis.service";
 import { AppError as LoadedAppError } from "../../utils/appError.util";
 import { env } from "../../config/env";
+import { boundedSignedUrlTtlSec } from "../../config/signedUrl";
 
 const AppError = LoadedAppError;
 
@@ -169,14 +170,21 @@ class ScopedStorage {
    * A time-limited download URL. On S3 this is a presigned URL the client
    * fetches directly (`direct: true`), which keeps download traffic off the
    * app server; on local/NFS it is an HMAC-signed app route.
+   *
+   * A-365: the lifetime is bounded like an attachment link's — the default
+   * when none is named, otherwise clamped into [30 s, the configured cap]
+   * (config/signedUrl.ts) — so neither a presigned S3 URL nor a local token
+   * can be minted to outlive the cap (FT-78).
    */
   signedUrl(key: unknown, options: Record<string, unknown> & { baseUrl?: string | null } = {}): unknown {
     const guarded = this._guard(key);
+    const ttlSec = boundedSignedUrlTtlSec(options["ttlSec"]);
     if (this.driver.name === "s3") {
-      return this.driver.signedUrl(guarded, options);
+      return this.driver.signedUrl(guarded, { ...options, ttlSec });
     }
     return this.driver.signedUrl(guarded, {
       ...options,
+      ttlSec,
       // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: empty values also fall back
       baseUrl: options.baseUrl || env("PUBLIC_BASE_URL") || "",
       secret: SIGN_SECRET,

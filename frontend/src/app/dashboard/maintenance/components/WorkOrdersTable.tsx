@@ -9,13 +9,13 @@ import {
   CardContent,
   TableSkeleton,
   Table,
-  Badge,
   Button,
   Pagination,
 } from "@/components/ui";
 import { Wrench, Edit, Trash2 } from "lucide-react";
 import { PaginatedResponse } from "@/types";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { PriorityChip } from "@/components/ui/PriorityChip";
 
 interface WorkOrdersTableProps {
   workOrders: PaginatedResponse<WorkOrder> | null;
@@ -62,20 +62,15 @@ export const WorkOrdersTable: React.FC<WorkOrdersTableProps> = ({
   loadFailed = false,
 }) => {
   const getPriorityBadge = (priority: WorkOrder["priority"]) => {
-    const maps: Record<
-      WorkOrder["priority"],
-      { variant: "danger" | "warning" | "default"; label: string }
-    > = {
-      Critical: { variant: "danger", label: "Critical" },
-      High: { variant: "danger", label: "High" },
-      Medium: { variant: "warning", label: "Medium" },
-      Low: { variant: "default", label: "Low" },
+    // ADR-122 Am. 1: priority is not a status — the ordinal ramp (lib/priority.ts).
+    const maps: Record<WorkOrder["priority"], { level: string; label: string }> = {
+      Critical: { level: "urgent", label: "Critical" },
+      High: { level: "high", label: "High" },
+      Medium: { level: "medium", label: "Medium" },
+      Low: { level: "low", label: "Low" },
     };
-    const current = maps[priority] || {
-      variant: "default" as const,
-      label: priority,
-    };
-    return <Badge variant={current.variant}>{current.label}</Badge>;
+    const current = maps[priority] || { level: "none", label: priority };
+    return <PriorityChip level={current.level}>{current.label}</PriorityChip>;
   };
 
   const getStatusBadge = (status: WorkOrder["status"]) => {

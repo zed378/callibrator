@@ -182,6 +182,14 @@ const REVIEWED = Object.freeze({
   "accessRequest.service.ts::duplicateCounts::AccessRequest": [1, IDS], // the addresses on the page being shown
   "accessRequest.service.ts::getAccessRequest::AccessRequest": [1, PARENT], // the other requests of one address
   "accessRequest.service.ts::eraseAccessRequestsByEmail::AccessRequest": [1, PARENT], // one address's requests
+  // P24-06 (ADR-129): the SQL-dump import. The uploaders of one page of runs (≤ 100 ids); the
+  // active runs — at most ONE (the partial unique index upstream_sql_imports_one_active); the runs
+  // still holding a file — the active one and failed runs within their 7-day retention (uploads
+  // are serialised, so a handful). The sweep's "referenced files" set must be complete, or a kept
+  // dump would be taken for an orphan: it is not paged on purpose.
+  "upstreamSqlImport.service.ts::namesOf::User": [1, IDS],
+  "upstreamSqlImport.service.ts::reconcileInterrupted::UpstreamSqlImport": [1, CLOSED], // at most one active run
+  "upstreamSqlImport.service.ts::sweepUpstreamSqlImports::UpstreamSqlImport": [2, CLOSED], // runs still holding a file
   // P10-04: the super admin's SSO email-domain claims — one settings key.
   "loginDiscovery.service.ts::claimantOf::TenantSettings": [1, CLOSED],
   "loginDiscovery.service.ts::setSsoEmailDomains::TenantSettings": [1, CLOSED],

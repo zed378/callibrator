@@ -1,10 +1,11 @@
 // src/app/dashboard/reports/components/OverdueSection.tsx
 import React from "react";
-import { Badge, Button, Card, CardContent } from "@/components/ui";
+import { Button, Card, CardContent } from "@/components/ui";
 import { Table } from "@/components/ui/Table";
 import { Download, CheckCircle2 } from "lucide-react";
 import { OverdueDevicesReport } from "@/api/services/report.service";
 import { MetricCard } from "./ReportCards";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 interface OverdueSectionProps {
   overdue: OverdueDevicesReport | null;
@@ -70,9 +71,9 @@ export const OverdueSection: React.FC<OverdueSectionProps> = ({
                 key: "daysOverdue",
                 header: "Days Overdue",
                 render: (value) => (
-                  <Badge variant="danger">
+                  <StatusBadge domain="calibrationDue" state="overdue">
                     {Number(value ?? 0).toLocaleString()} days
-                  </Badge>
+                  </StatusBadge>
                 ),
               },
             ]}

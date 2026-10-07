@@ -210,6 +210,9 @@ export const MENU_SLUGS = {
   // P10-07 (ADR-098 §6): the super admin's access-request queue
   // (/dashboard/access-requests). SUPERADMIN only; migration 0101.
   ACCESS_REQUESTS: "access-requests",
+  // P24-06: the super admin's SQL-dump import (/dashboard/upstream-sql-import).
+  // SUPERADMIN only; migration 0116.
+  UPSTREAM_SQL_IMPORT: "upstream-sql-import",
 } as const;
 
 /** A seeded menu-group slug. */
@@ -311,6 +314,8 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.STORAGE]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
       // P10-07: approving a request creates a tenant (A-76) — the platform's alone.
       [MENU_SLUGS.ACCESS_REQUESTS]: PERMISSION_TYPES.WRITE, // migration 0101
+      // P24-06: the upstream SQL-dump import is a platform operation.
+      [MENU_SLUGS.UPSTREAM_SQL_IMPORT]: PERMISSION_TYPES.WRITE, // migration 0116
     },
     permissionType: "write",
   },

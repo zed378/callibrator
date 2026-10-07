@@ -76,7 +76,7 @@ const backend = (card: KanbanCard | Error = detail()) => {
   });
   post.mockImplementation(async (url: string) => {
     if (url.endsWith("/signed-url"))
-      return ok({ url: "https://files.test/signed/a-img", token: "t", expiresAt: "", expiresInSec: 3600 });
+      return ok({ url: "https://files.test/signed/a-img", token: "t", expiresAt: "", expiresInSec: 300 });
     throw new Error(`unexpected POST ${url}`);
   });
 };
@@ -145,7 +145,8 @@ describe("CardModal — reading a card", () => {
     expect(screen.getByText("manual.pdf")).toBeInTheDocument();
     // Only the image asked for a signed URL.
     expect(post).toHaveBeenCalledTimes(1);
-    expect(post).toHaveBeenCalledWith("/api/v1/attachments/a-img/signed-url", { expiresInSec: 3600 });
+    // A-365: no lifetime is asked for (the server default applies; 3600 is above the cap).
+    expect(post).toHaveBeenCalledWith("/api/v1/attachments/a-img/signed-url", {});
     expect(await axeViolations(container)).toEqual([]);
   });
 
@@ -368,7 +369,7 @@ describe("CardModal — attachments", () => {
         return ok(attachments[0]);
       }
       if (url.endsWith("/signed-url"))
-        return ok({ url: "https://files.test/signed/a-new", token: "t", expiresAt: "", expiresInSec: 3600 });
+        return ok({ url: "https://files.test/signed/a-new", token: "t", expiresAt: "", expiresInSec: 300 });
       throw new Error(url);
     });
     const file = new File(["x"], "reading.jpg", { type: "image/jpeg" });

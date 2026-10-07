@@ -21,6 +21,7 @@ import {
 import { deviceService, type Device } from "@/api/services/device.service";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export default function PredictiveMaintenancePage() {
   // ADR-102: analysing and approving are gated on `calibration` write
@@ -150,13 +151,15 @@ export default function PredictiveMaintenancePage() {
       render: (_value: unknown, row: Record<string, unknown>) => {
         const current = Number(row.calibrationIntervalDays ?? 0);
         const rec = Number(row.recommendedCalibrationInterval ?? 0);
-        // Shorter interval = more frequent calibration = higher risk signal.
-        const variant =
-          !current || rec === current ? "default" : rec < current ? "warning" : "success";
+        // Shorter interval = more frequent calibration = higher risk signal
+        // (attention); a longer one is information. Same or unknown: plain.
+        if (!current || rec === current) {
+          return <Badge size="sm">{rec} days</Badge>;
+        }
         return (
-          <Badge variant={variant} size="sm">
+          <StatusBadge domain="intervalAdvice" state={rec < current ? "shorten" : "extend"} size="sm">
             {rec} days
-          </Badge>
+          </StatusBadge>
         );
       },
     },

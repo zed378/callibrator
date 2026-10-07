@@ -30,7 +30,8 @@ PLAN/          19 files — product vision, requirements, business rules, roadma
 ARCHITECTURE/  13 files — high-level system design & Dual-Backend specification
 API/           15 files — complete API contract & backend interoperability contract
 DATABASE/      14 files — the 72-model schema, grouped by domain
-SECURITY/      15 files — threat model through incident response
+SECURITY/      16 files — threat model through incident response
+                          (15 is the target faskes-scope + offline-PWA threat model, P17-06)
                           (SECURITY/05 is mandatory reading — tenant isolation is
                           the number-one control in this system)
 MULTI-TENANCY/  5 files — extends SECURITY/05: hierarchy, lifecycle & backup,

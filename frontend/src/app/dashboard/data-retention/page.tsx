@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
   Alert,
-  Badge,
   Button,
   Card,
   CardContent,
@@ -27,6 +26,7 @@ import { tenantService } from "@/api/services/tenant.service";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 /**
  * The purgeable entities, keyed exactly as the backend accepts them (A-135).
@@ -219,9 +219,7 @@ export default function DataRetentionPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-lg font-semibold">Legal Hold</h2>
-                      <Badge variant={held ? "warning" : "default"} size="sm">
-                        {held ? "Active" : "Inactive"}
-                      </Badge>
+                      <StatusBadge domain="legalHold" state={held ? "active" : "inactive"} size="sm" />
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       While a legal hold is active, purge and PII masking are

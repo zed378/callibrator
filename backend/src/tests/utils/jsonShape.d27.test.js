@@ -43,9 +43,12 @@ const jsonAttributes = () => {
 
 describe("D-27 — every JSON column is declared", () => {
   // Fourteen at the D-27 audit; ADR-107 added Certificate.signedSnapshot; ADR-108
-  // Amendment 1 added WebauthnCredential.transports.
-  it("finds the sixteen JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports)", () => {
-    expect(jsonAttributes()).toHaveLength(16);
+  // Amendment 1 added WebauthnCredential.transports; P20-03 (ADR-125 § 5)
+  // InspectionTemplateProposal.proposedItems.
+  // The rsync image import adds three, counts only: UpstreamFileImport.estimate, .progress, .summary.
+  // The SQL-dump import (P24-06) adds two, counts and codes only: UpstreamSqlImport.tables, .parseSummary.
+  it("finds the twenty-two JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's two)", () => {
+    expect(jsonAttributes()).toHaveLength(22);
   });
 
   it("each JSON attribute validates against its OWN declared shape", () => {
@@ -102,6 +105,41 @@ const GOOD = {
   "WebhookDelivery.payload": [{ event: "certificate.signed", data: { id: "c-1" } }, {}],
   // ADR-108 Amendment 1: a passkey's reported transports, or none.
   "WebauthnCredential.transports": [["internal"], ["usb", "nfc", "hybrid"], null],
+  // P20-03 (ADR-125 § 5): a proposal's items — an empty list, or objects (their fields are P21-01's contract).
+  "InspectionTemplateProposal.proposedItems": [[], [{ section: "function", label: "Synthetic check A", inputKind: "tri_state" }]],
+  "UpstreamFileImport.estimate": [
+    { files: 0, bytes: 0, classes: {} },
+    { files: 4, bytes: 12000, classes: { front: { files: 3, bytes: 9000 }, serial: { files: 1, bytes: 3000 } } },
+  ],
+  "UpstreamFileImport.progress": [{ filesTransferred: 1, bytesTransferred: 2, filesProcessed: 0, filesToProcess: 3 }],
+  "UpstreamFileImport.summary": [
+    {
+      filesCopied: 4,
+      bytesCopied: 1,
+      ingested: 3,
+      bytesIngested: 1,
+      skippedPresent: 0,
+      duplicateContent: 0,
+      metadataStripped: 2,
+      quarantined: 1,
+      quarantinedByReason: { file_type_refused: 1 },
+      failed: 0,
+      durationMs: 10,
+    },
+  ],
+  // P24-06: per upstream table, counts and reason codes only; null before a run ends.
+  "UpstreamSqlImport.tables": [
+    null,
+    {},
+    {
+      mst_faskes: { staged: true, reason: null, columns: 7, excludedColumns: 0, rowsLoaded: 118, rowsRejected: 1, rowsNotExtracted: 0, rejections: { invalid_date: 1 }, notes: { zero_date: 2 } },
+      auth_logins: { staged: false, reason: "not_migrated", columns: 0, excludedColumns: 0, rowsLoaded: 0, rowsRejected: 0, rowsNotExtracted: 12, rejections: {}, notes: {} },
+    },
+  ],
+  "UpstreamSqlImport.parseSummary": [
+    null,
+    { statements: { create_table: 2, insert: 5, set: 3 }, comments: 9, conditionalComments: 4, delimiterRegions: 0, truncated: false, completionMarker: true },
+  ],
 };
 
 const BAD = {
@@ -142,6 +180,32 @@ const BAD = {
   "Webhook.events": [["Certificate Signed"], "certificate.signed", [""]],
   "WebhookDelivery.payload": ["{}", []],
   "WebauthnCredential.transports": [["bluetooth"], "usb", [1], ["usb", "usb", "usb", "usb", "usb", "usb", "usb", "usb"]],
+  "InspectionTemplateProposal.proposedItems": [{}, ["label"], [[]], Array.from({ length: 101 }, () => ({}))],
+  // Counts only: a file name smuggled in as a key, a negative or fractional count, a class that is not one.
+  "UpstreamFileImport.estimate": [{ files: 1, bytes: 1 }, { files: 1, bytes: 1, classes: { inventory: { files: 1, bytes: 1 } } }, { files: -1, bytes: 0, classes: {} }],
+  "UpstreamFileImport.progress": [{ filesTransferred: 1 }, { filesTransferred: 1.5, bytesTransferred: 0, filesProcessed: 0, filesToProcess: 0 }],
+  "UpstreamFileImport.summary": [
+    { filesCopied: 1 },
+    {
+      filesCopied: 1, bytesCopied: 1, ingested: 1, bytesIngested: 1, skippedPresent: 0, duplicateContent: 0, metadataStripped: 0,
+      quarantined: 1, quarantinedByReason: { "foto_depan/IMG_0001.jpg": 1 }, failed: 0, durationMs: 1,
+    },
+    {
+      filesCopied: 1, bytesCopied: 1, ingested: 1, bytesIngested: 1, skippedPresent: 0, duplicateContent: 0, metadataStripped: 0,
+      quarantined: 0, quarantinedByReason: {}, failed: 0, durationMs: 1, fileNames: ["x.jpg"],
+    },
+  ],
+  // P24-06: a value smuggled in as a key or a field, a name that is not an identifier, a negative count.
+  "UpstreamSqlImport.tables": [
+    { t: { staged: true } },
+    { "users; DROP": { staged: true, reason: null, columns: 0, excludedColumns: 0, rowsLoaded: 0, rowsRejected: 0, rowsNotExtracted: 0, rejections: {}, notes: {} } },
+    { t: { staged: true, reason: "Synthetic Name", columns: 0, excludedColumns: 0, rowsLoaded: 0, rowsRejected: 0, rowsNotExtracted: 0, rejections: {}, notes: {} } },
+    { t: { staged: true, reason: null, columns: 0, excludedColumns: 0, rowsLoaded: -1, rowsRejected: 0, rowsNotExtracted: 0, rejections: {}, notes: {}, sample: "x" } },
+  ],
+  "UpstreamSqlImport.parseSummary": [
+    { comments: 1 },
+    { statements: {}, comments: 0, conditionalComments: 0, delimiterRegions: 0, truncated: false, completionMarker: false, firstRow: "x" },
+  ],
 };
 
 const buildWith = (key, value) => {

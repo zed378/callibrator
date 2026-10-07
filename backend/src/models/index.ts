@@ -64,6 +64,14 @@ import { register as registerTenantScope } from "../utils/tenantScope.util";
 import { installSecretRedaction } from "./secretAttributes";
 import defineAccessRequest from "./accessRequest.model";
 import defineWebauthnCredential from "./webauthnCredential.model";
+import defineDeviceType from "./deviceType.model";
+import defineInspectionItemDefinition from "./inspectionItemDefinition.model";
+import defineInspectionTemplate from "./inspectionTemplate.model";
+import defineInspectionTemplateVersion from "./inspectionTemplateVersion.model";
+import defineInspectionTemplateItem from "./inspectionTemplateItem.model";
+import defineInspectionTemplateProposal from "./inspectionTemplateProposal.model";
+import defineUpstreamFileImport from "./upstreamFileImport.model";
+import defineUpstreamSqlImport from "./upstreamSqlImport.model";
 import defineApiKey from "./apiKey.model";
 import defineAssetFinance from "./assetFinance.model";
 import defineAttachment from "./attachment.model";
@@ -228,6 +236,19 @@ const models: Models = {
   AccessRequest: define(defineAccessRequest),
   // ADR-108 Amendment 1: several passkeys per user.
   WebauthnCredential: define(defineWebauthnCredential),
+  // P20-01 / P20-03 (ADR-125): the global inspection catalogue and the tenant-scoped proposals —
+  // last, so every existing model keeps its registration order.
+  DeviceType: define(defineDeviceType),
+  InspectionItemDefinition: define(defineInspectionItemDefinition),
+  InspectionTemplate: define(defineInspectionTemplate),
+  InspectionTemplateVersion: define(defineInspectionTemplateVersion),
+  InspectionTemplateItem: define(defineInspectionTemplateItem),
+  InspectionTemplateProposal: define(defineInspectionTemplateProposal),
+  // The rsync image import (upstream adoption): a platform row, not tenant-scoped — last, so every
+  // existing model keeps its registration order.
+  UpstreamFileImport: define(defineUpstreamFileImport),
+  // The SQL-dump import (P24-06): a platform row, not tenant-scoped — last, for the same reason.
+  UpstreamSqlImport: define(defineUpstreamSqlImport),
 };
 
 // Association Mapping: Iterate models, execute associate method if exists.
@@ -431,6 +452,26 @@ const barrel = Object.assign(database, {
   // ADR-108 Amendment 1: a user's passkeys (a child of the user, not tenant-scoped by column).
   WebauthnCredential: models.WebauthnCredential,
   WebauthnCredentials: models.WebauthnCredential,
+  // P20-01 / P20-03 (ADR-125): the global inspection catalogue (no tenant column — the hooks
+  // leave it alone; writes are the platform operator's) and the tenant-scoped proposals to it.
+  DeviceType: models.DeviceType,
+  DeviceTypes: models.DeviceType,
+  InspectionItemDefinition: models.InspectionItemDefinition,
+  InspectionItemDefinitions: models.InspectionItemDefinition,
+  InspectionTemplate: models.InspectionTemplate,
+  InspectionTemplates: models.InspectionTemplate,
+  InspectionTemplateVersion: models.InspectionTemplateVersion,
+  InspectionTemplateVersions: models.InspectionTemplateVersion,
+  InspectionTemplateItem: models.InspectionTemplateItem,
+  InspectionTemplateItems: models.InspectionTemplateItem,
+  InspectionTemplateProposal: models.InspectionTemplateProposal,
+  InspectionTemplateProposals: models.InspectionTemplateProposal,
+  // The rsync image import: a platform row (targetTenantId, not tenantId — the hooks leave it alone).
+  UpstreamFileImport: models.UpstreamFileImport,
+  UpstreamFileImports: models.UpstreamFileImport,
+  // The SQL-dump import: a platform row (notifyTenantId, not tenantId — the hooks leave it alone).
+  UpstreamSqlImport: models.UpstreamSqlImport,
+  UpstreamSqlImports: models.UpstreamSqlImport,
 });
 
 // A pure `export =` module, like every model file: no other export may sit beside it (a

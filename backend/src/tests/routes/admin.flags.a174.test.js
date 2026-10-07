@@ -19,6 +19,8 @@ jest.mock("../../middlewares/auth.middleware", () => ({
     req.user = { id: "super-1", tenantId: "platform" };
     next();
   },
+  // P24-06: the SQL-dump import's routes carry superAdminOnly beside the router's rbac.
+  superAdminOnly: (req, res, next) => next(),
 }));
 jest.mock("../../middlewares/rbac.middleware", () => ({
   rbac: () => (req, res, next) => next(),

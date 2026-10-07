@@ -115,7 +115,7 @@ function ConsentScreen() {
                 type="button"
                 onClick={() => decide(true)}
                 disabled={deciding}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-linear-to-r from-primary to-accent px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 disabled:opacity-60"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary-hover active:bg-primary-pressed disabled:opacity-60"
               >
                 <Check className="h-4 w-4" />
                 {deciding ? "Authorizing…" : "Allow"}

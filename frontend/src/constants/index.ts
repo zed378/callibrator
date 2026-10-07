@@ -43,6 +43,17 @@ export const API_VERSION = "/api/v1";
  */
 export const BACKEND_TIMEOUT_MS = 30000;
 export const PROXY_UPSTREAM_TIMEOUT_MS = 32000;
+/**
+ * P24-06: the upload of an upstream SQL dump (POST /api/v1/admin/upstream-sql-imports)
+ * answers only once the whole file has arrived — up to 200 MB. The backend gives that
+ * one request UPSTREAM_IMPORT_UPLOAD_TIMEOUT_MS (15 minutes) instead of its 30 s; the
+ * proxy waits a little longer than that for the answer's headers, and the browser's
+ * request (upstreamSqlImport.service) longer still.
+ */
+export const PROXY_UPLOAD_TIMEOUT_MS = 15 * 60 * 1000 + 5000;
+export const UPLOAD_CLIENT_TIMEOUT_MS = 15 * 60 * 1000 + 10000;
+/** The proxy paths (after /api/v1/) whose POST is such an upload. */
+export const LONG_UPLOAD_PATHS: readonly string[] = ["admin/upstream-sql-imports"];
 export const API_TIMEOUT = 35000;
 
 // Deploy-time tenant binding. When a single-tenant frontend is deployed with
