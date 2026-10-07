@@ -388,7 +388,18 @@ Working decisions Q-39 … Q-47 (ADR-098 §8) were set by the coordinating sessi
 
 ## Upstream PHP Feature Adoption ⏳
 
-**Post-Phase 9 Priority**: Merging and adopting upstream features from the original PHP fork. Must be completed before Phase 999 implementation begins.
+[`PHASE-UPSTREAM-PHP-ADOPTION.md`](./PHASE-UPSTREAM-PHP-ADOPTION.md) · research [`docs/UPSTREAM/`](../docs/UPSTREAM/README.md) · BACKLOG Q-57. Updated 2026-10-07.
+
+The upstream is **SKP IPM** (CodeIgniter 4: device inventory + IPM, inspection & preventive maintenance, for one service provider and its 118 client facilities), supplied by the owner as a local fork in `mozivid/` (gitignored). Must be completed before Phase 999 implementation begins.
+
+| Phase | Cards | Status |
+|---|---|---|
+| UP-01 … UP-04 Code, DB-structure, module and feature research | 4 | **DONE 2026-10-07** — records [code](../MEMORY/records/2026-10-07-upstream-code-research.md), [database](../MEMORY/records/2026-10-07-upstream-database-research.md) |
+| UP-00 Decisions & ADRs | 7 | **WIP** — owner decided UD-1 (facility = tenant, provider access by revocable per-facility grant; ADR amending ADR-084 required), UD-3 (global versioned catalogue; ADR required), UD-6 (many IPM per device, corrections not deletion), UD-14 (PWA with offline mode) on 2026-10-07; 14 decisions open |
+| UP-16 Mobile / offline decision | 3 | decision **DONE** (UD-14); ADR TODO |
+| UP-05 … UP-15, UP-17 … UP-19 (security/privacy, roles, domain design, DB migration, backend, frontend, report parity, ETL incl. ~110 GB of files, reconciliation, UAT, QR stickers, training, cutover, decommission) | 82 | **BLOCKED** on the ADRs, the open owner decisions and the owner actions OA-1 … OA-8 (rotate the upstream DB password and JWT secret first); 4 TODO cards can start (DPIA, minimisation list, file policy, report-layout reference) |
+
+**Plan written 2026-10-07; implementation blocked.** 96 cards: 5 DONE · 9 TODO · 1 WIP · 81 BLOCKED.
 
 ---
 

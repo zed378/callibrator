@@ -47,6 +47,9 @@ SEARCH/         3 files — global search and its full-text layer
 OBSERVABILITY/  2 files — what this system actually logs, and where it goes
 STORAGE/        3 files — pluggable object storage, per tenant, and its operations
 ARCHIVE/        9 files — superseded documents, kept for provenance, never authoritative
+UPSTREAM/       7 files — research on the upstream PHP app (SKP IPM: inventory + IPM) to be adopted;
+                          describes the upstream, not Callibrator (added 2026-10-07; plan in
+                          TASKS/PHASE-UPSTREAM-PHP-ADOPTION.md)
 ```
 
 Counts are `find docs/<folder> -name "*.md"`, README included, taken 2026-09-28; they sum to 194, and
