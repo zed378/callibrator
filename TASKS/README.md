@@ -46,7 +46,7 @@ That is recorded as PR-4 in [`../docs/PLAN/18-RISK-REGISTER.md`](../docs/PLAN/18
 | [`PHASE-9-TYPESCRIPT-MIGRATION.md`](./PHASE-9-TYPESCRIPT-MIGRATION.md) | 🔴 Backend JavaScript → strict TypeScript (ADR-038). Not started; blocked on audit wave 0 |
 | [`PHASE-10-LANDING-AUTH-REVAMP.md`](./PHASE-10-LANDING-AUTH-REVAMP.md) | 🟡 Landing, sign-in, request access, forgot/reset, passkey sign-in and verification revamp (ADR-098; spec `docs/UI-UX/20-LANDING-AUTH-REVAMP.md`). **Runs now, in parallel with finishing Phase 9**: frontend-focused, its backend pieces written in TypeScript. P10-00 (remove the fabricated proof from the live landing) goes first |
 | [`PHASE-11-DASHBOARD-REVAMP.md`](./PHASE-11-DASHBOARD-REVAMP.md) | ⏸ Admin dashboard revamp — **on hold until the owner instructs**. Placeholder cards only; research in `docs/UI-UX/research/01–03` |
-| **Upstream PHP Feature Adoption** | ⏳ Priority task after Phase 9 to adopt and merge upstream features from the original PHP fork |
+| [`PHASE-UPSTREAM-PHP-ADOPTION.md`](./PHASE-UPSTREAM-PHP-ADOPTION.md) | ⏳ Upstream PHP Feature Adoption (after Phase 9, before Phase 999): the SKP IPM CodeIgniter app (inventory + IPM). **Research DONE 2026-10-07** (`docs/UPSTREAM/`); 20 phases, 96 cards; 4 owner decisions taken, implementation **blocked** on ADRs, 14 open decisions and owner actions |
 | [`PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md`](./PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md) | ⏳ Dual-backend Go engine porting backlog (ADR-089). 25 planned tasks; MUST NOT start before Phase 9 & Upstream PHP adoption |
 | [`BACKLOG.md`](./BACKLOG.md) | Open questions, specification gaps, deliberate deferrals, unverified claims |
 
