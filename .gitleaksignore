@@ -30,3 +30,9 @@ af9fd5cdfd038d2d35f20e072591108beb95ac2a:docs/DEVOPS/01-CI-CD.md:stripe-access-t
 35ebd76823beb0c41e5d88a67b260faab61cce4f:TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md:generic-api-key:256
 # a sample login response: the standard HS256 JWT header followed by "...", no payload or signature
 c905e7418364e80e16add6fc4dd96980f991761b:docs/API/14-BACKEND-INTEROPERABILITY-CONTRACT.md:generic-api-key:102
+# 2026-10-07 (CI run 37613291599 on fe66b79): a Debian package name and its
+# installed size (the krb5 crypto library that openssh-client pulls in) in a
+# record's package list. The generic-api-key rule read the word after
+# "crypto" as a key. Read by hand: not a credential. Reproduced with
+# gitleaks 8.30.1 and this config; the only finding over the 62 commits.
+fe66b79525ea899260a16a52a5ef77e44f267074:MEMORY/records/2026-10-07-rsync-image-import-module.md:generic-api-key:112

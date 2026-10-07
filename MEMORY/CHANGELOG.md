@@ -8,6 +8,15 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-07 — CI on `fe66b79`: a gitleaks false positive and `sharp` 0.35.5 ([record](./records/2026-10-07-ci-fe66b79.md))
+- **Security (dependencies):** `sharp` 0.35.4 → 0.35.5 (HIGH GHSA-wq5f-xc86-pv6w, the librsvg it bundles; pulled in by `next`).
+  - The lockfile changed only for `sharp` and its `@img/*` binaries.
+  - `npm audit --omit=dev --audit-level=high` and `npm-audit-gate.js` both exit 0.
+  - `next build` passes, and the image optimiser serves WebP.
+- **CI (secret scan):** one false positive is fingerprinted in `.gitleaksignore`: a Debian package name and its size, in the rsync-import record, which the `generic-api-key` rule read as a key.
+  - **No real secret is in the history** (gitleaks 8.30.1, 62 commits).
+  - No rule was widened.
+
 ### 2026-10-07 — Public pages paint sooner; `/login` loads its API code on demand (P10-17 perf addendum; [record](./records/2026-10-05-landing-warm-redesign.md#addendum-2026-10-07--first-paint-and-lcp-of--and-login-ac-5ac-6))
 - **Performance (frontend):**
   - The landing lays out only its hero before the first paint; the sections below use `content-visibility: auto`.
