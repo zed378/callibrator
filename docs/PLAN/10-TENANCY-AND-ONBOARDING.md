@@ -10,6 +10,9 @@ Security treatment of the tenant boundary is in [`../SECURITY/05-MULTI-TENANCY-S
 
 One customer organisation — a hospital, a hospital group member, or a calibration provider. `tenants` carries:
 
+> **Target — ADR-124 (decided 2026-10-07, not built).** A tenant is the organisation that **performs or manages** the calibration and maintenance work: a service company serving many health facilities, or a hospital serving itself. Health facilities are **clients inside the tenant** (`client_facilities`, one `is_self` row per tenant, created with the tenant), not tenants of their own and not child tenants. Onboarding a provider's client is therefore *adding a facility* (and optionally facility-bound users), not creating a tenant. The hierarchy below is unchanged and still grants nothing (ADR-084).
+
+
 | Group | Columns |
 |---|---|
 | Identity | `name`, `code`, `subdomain`, `domain`, `email` |

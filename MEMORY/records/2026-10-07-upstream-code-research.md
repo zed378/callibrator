@@ -1,5 +1,7 @@
 # Upstream PHP adoption — code, module and feature research
 
+> **Card ids renumbered 2026-10-07: see PHASE-12 mapping** — [`TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`](../../TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md) § 7 (`UP-xx-yy` → `P(12+xx)-yy`; the plan file `PHASE-UPSTREAM-PHP-ADOPTION.md` was split into Phases 12 … 31 and deleted). This record keeps the ids it was written with.
+
 **Date:** 2026-10-07 · **Task:** Upstream PHP Feature Adoption, research phases UP-01, UP-03, UP-04 (BACKLOG Q-57) · **Decision:** none taken; the tenancy decision is raised for the owner (`docs/UPSTREAM/00-OVERVIEW.md` § 10) · **Base commit:** `25521ff` (working tree, not committed) · **Companion record:** [`2026-10-07-upstream-database-research.md`](./2026-10-07-upstream-database-research.md) (DB agent, in parallel)
 
 > **Privacy:** this record holds structure only. No data value, credential, key, e-mail, phone, person name, facility name or password hash from the upstream was copied into the repository.

@@ -77,7 +77,7 @@ Both are the same shape: an administrative action that removes the ability to un
 4. Contain: disable the endpoint if it can be disabled without wider damage.
 5. Fix, with a two-tenant test that fails before the fix and passes after.
 6. Sweep for the same shape elsewhere — a missing predicate is rarely unique.
-7. Notify affected tenants. GDPR Article 33: 72 hours where personal data is involved.
+7. Notify affected tenants. GDPR Article 33: 72 hours where personal data is involved. **UU PDP (Indonesia, Law 27/2022) Art. 46, as read:** written notice within **3 × 24 hours** to the **data subjects and** the supervisory agency — see the row below. Where facilities are clients inside a tenant (ADR-124, target), scope the reach per facility from `audit_logs` so each facility learns only about its own records.
 8. Record in MEMORY/, naming the mechanism, not just the symptom.
 ```
 
@@ -148,6 +148,7 @@ The window needs **reviewing**, not assuming: check for duplicate webhook delive
 | Internal | immediately | facts, not speculation |
 | Affected tenant | as soon as reach is established | what, whose, when, what we are doing |
 | Supervisory authority | within 72 hours where personal data is involved | GDPR Article 33 |
+| Data subjects **and** the supervisory agency (*Lembaga*) | within **3 × 24 hours** of awareness, in writing: what data, when and how, what is being done | **UU PDP Art. 46** (as read; counsel confirms when the clock starts and the channel — `../UPSTREAM/06-DPIA.md` § 8). The platform tells the tenant within 24 hours so the controller can meet it (added 2026-10-07 with ADR-124) |
 | All customers | if trust in the platform is affected | |
 
 Say what is known and what is not. "We are still determining scope" is a real answer; a confident wrong number is not, and it will be quoted back.

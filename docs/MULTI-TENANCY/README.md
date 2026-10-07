@@ -6,6 +6,8 @@ How one hospital is kept out of another's data, where that isolation is delibera
 
 > **Target standard: TypeScript, strict (ADR-038).** The backend is mixed JavaScript and TypeScript during Phase 9 (ADR-087). The isolation core — `backend/src/utils/tenantScope.util.ts` and `backend/src/middlewares/tenantContext.middleware.ts` — was converted by 2026-09-28; most modules these documents describe are still `.js`. Each document names the files it describes and labels current behaviour **as-built**.
 
+> **Target — a second scope dimension inside a tenant (ADR-124, decided 2026-10-07, not built).** Health facilities become clients inside the tenant that serves them, and a facility's own staff are confined to their facility by the same hooks, deny-by-default, cross-facility = 404. Summary in [`../SECURITY/05-MULTI-TENANCY-SECURITY.md`](../SECURITY/05-MULTI-TENANCY-SECURITY.md) § Target — the Facility Dimension. No cross-tenant path is added.
+
 ## Documents
 
 | | Document | Covers |

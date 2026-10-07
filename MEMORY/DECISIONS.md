@@ -4991,6 +4991,8 @@ effect by later ADRs and only needed closing with evidence. Four needed a decisi
 **Status:** Accepted, implemented 2026-09-27/28. Part of it reached `a31c601` unverified (committed with every agent's
 in-flight edits); the rest, the tests' completion and this entry are in the working tree.
 
+**Reaffirmed, not amended, by ADR-124 (2026-10-07):** the owner's clarification of UD-1 puts a health facility *inside* the tenant that serves it, as a client (`client_facilities`), so no cross-tenant working path is introduced and §2 stands unchanged — the hierarchy, and every other structural relationship, still grants no visibility.
+
 ---
 
 ## ADR-086: The Schema Step Runs Under a PostgreSQL Advisory Lock, Not in an Init Container; Phase 8's Remaining Cards Wait on Their Triggers
@@ -9936,6 +9938,400 @@ On 2026-10-06 the owner pushed three public repositories, built at the repositor
 6. **A guard changed meaning.** `composeBuildContext.a332.guard.test.ts` now pins the build context to `docker-compose.build.yml` and additionally fails if the base, vm, staging or prod file declares a build, or if a local build takes a registry name. A future overlay that wants to build must stack the build overlay, not grow its own `build:`.
 7. **The dev and e2e overlays are no longer complete without the build overlay.** Used alone, they pull the published images (and the dev frontend would point at the reference URL). The Makefile and CI stack it; a hand-typed command must too. The header of each says so.
 8. **Docker Hub's anonymous pull limit** applies to hosts that are not logged in. A VM deploy pulls three application images plus the pinned third-party ones; ordinary use is well under the limit, a crash-looping `pull_policy: always` would not be (no overlay sets it).
+
+---
+
+## ADR-124: The Tenant Is the Organisation That Performs Calibration and Maintenance; a Health Facility (Faskes) Is a Client Inside It; Facility-Bound Users Are Confined to Their Facility by a Second, Deny-by-Default Scope Applied by the Same Hooks
+
+**Date:** 2026-10-07 · **Status:** Accepted as the **TARGET — nothing here is built.** The tenancy model is the **owner's** (UD-1 as revised 2026-10-07: *"sebagai konteks tenant adalah perusahaan kalibrator yang melayani faskes"* — "the tenant is the calibration company that serves health facilities"); the mechanism, and the reading that a hospital performing its own calibration stays a valid tenant, are decided by the ADR-writing agent under the owner's standing delegation (decide by best practice, record it) and are flagged for the owner's confirmation in `TASKS/BACKLOG.md` Q-57·T · **Card:** P12-02 · **Builds in:** P18-03, P19-04, P20-07, P21-09, P22-09; threat model P17-06; security review P17-07 · **Works with:** ADR-048 (includes are scoped, join type kept), ADR-064 (roles global; unscoped models are reviewed), ADR-073 (hookless statics), ADR-084 (**not amended** — reaffirmed), ADR-085 (socket re-check), ADR-094 (users named in a body), ADR-107 (snapshots), ADR-120 (cache keys per scope) · **Supersedes:** the first reading of UD-1 (facility = tenant, provider staff acting through a per-facility grant and an "active facility" switch), which was **never written as an ADR**: the owner corrected it before this entry existed, so there is no withdrawn ADR to keep · **Record:** `MEMORY/records/2026-10-07-upstream-adrs.md`
+
+**Confirmed by the owner 2026-10-07** (Q-57·T (a)): a tenant is whoever does the calibration work — a calibration company serving many facilities, or a hospital's IPSRS serving itself with exactly one `is_self` facility; existing tenants keep working. Q-57·T (b)–(d) remain working decisions awaiting confirmation. Serial uniqueness (UD-9) decided the same day: per facility, `(tenant_id, client_facility_id, serial_number)`.
+
+### Context
+
+Callibrator's documents describe two kinds of tenant "on opposite sides of the same transaction": healthcare facilities (`HEALTHCARE ADMIN` tenants) and calibration providers (`CALIBRATOR ADMIN` tenants), isolated from each other (`docs/PLAN/00-PROJECT-OVERVIEW.md`). Nothing in the code connects the two sides: a user has exactly one `tenantId` (`backend/src/models/user.model.ts`), only the super admin crosses tenants, and ADR-084 §2 settled that no structural relationship (the hierarchy) grants visibility.
+
+The upstream SKP IPM application (`docs/UPSTREAM/00-OVERVIEW.md`) is one provider serving 118 facilities (*faskes*) — hospitals, clinics, community health centres, district health offices — with its own admins and technicians, plus two kinds of facility staff: read-only `client` accounts and facility technicians (`teknisi_client`). It enforced the facility boundary **per controller**, and that is where its worst findings came from (S-04, S-05, S-11: a facility id taken from the URL, query or body).
+
+On 2026-10-07 the coordinator first put UD-1 as "each facility = its own hospital tenant; the provider acts through a revocable cross-tenant grant". The owner then clarified the premise: **the tenant is the calibration company; the facilities are its clients.** That removes the cross-tenant working path entirely, and replaces it with a different, smaller problem: inside one tenant, some users (the facility's own staff) must see only their facility.
+
+Two readings of the owner's sentence were possible: (a) the whole product's tenant becomes the calibration company and hospitals stop being tenants; (b) the tenant is *whoever performs or manages the calibration work*. Reading (a) would invalidate every existing hospital tenant and the hospital-side roles; nothing the owner said asks for that. This ADR takes reading (b) and asks the owner to confirm it (Q-57·T).
+
+### Decision
+
+1. **A tenant is an organisation that performs or manages calibration and maintenance work** — the data controller's processor and the subscriber of the product. Two shapes, one model:
+   - **a service company** (e.g. the upstream provider) serving many client facilities;
+   - **a facility serving itself** — a hospital whose own maintenance unit (IPSRS) runs its devices. It is a tenant with exactly one client facility: itself.
+
+   Existing tenants stay valid with no change of meaning. Isolation **between** tenants is exactly as today (deny-by-default hooks, 404, ADR-084 unchanged). There is **no cross-tenant working path**: no grant, no membership table, no "act in another tenant" switch.
+
+2. **A health facility (faskes) is a first-class entity inside a tenant: `client_facilities`** (new, tenant-scoped). No existing model fits: `tenants`/`tenant_hierarchies` are tenants (a facility as a child tenant is the rejected cross-tenant shape), `warehouses` are locations (a facility *has* rooms), `vendors` are suppliers.
+
+   | Column | Note |
+   |---|---|
+   | `id` uuid PK; `tenant_id` NN → tenants RESTRICT | scoped by the hooks like every tenant table |
+   | `name`, `code` | `UNIQUE (tenant_id, code)` — per tenant only (no global uniqueness: the oracle trap) |
+   | `kind` ENUM | `hospital`, `clinic`, `health_centre`, `district_office`, `laboratory`, `other` |
+   | `is_self` boolean NN | the tenant's own premises; **exactly one per tenant** (partial unique `(tenant_id) WHERE is_self`) |
+   | `status` ENUM | `active`, `inactive`, `ended` — a client that leaves is `ended`, never deleted; its history stays |
+   | address, phone, contact fields; `legacy_id` | the ETL's link (Phase 24) |
+   | `UNIQUE (tenant_id, id)` | the target of composite foreign keys |
+   | timestamps, `deleted_at`, `is_deleted` | soft delete refused while any facility-scoped row references it (RESTRICT) |
+
+   Every tenant gets its `is_self` facility at migration time and at tenant creation (`tenant.service#createTenant`), so "the tenant's own devices" is always a facility too and the model has no special case for self-served hospitals or for a provider's own reference standards.
+
+3. **Facility-scoped models carry `client_facility_id`**, with a **composite foreign key `(tenant_id, client_facility_id)` → `client_facilities (tenant_id, id)`**, so a row can never name another tenant's facility. A model is facility-scoped **if and only if** it declares the attribute — the same "declare the column and the hooks find you" rule as `tenantId`.
+   - **NOT NULL** (the device-anchored evidence chain): `calibration_devices`, `calibration_records`, `certificates`, `maintenance_work_orders` (its `device_id` is NOT NULL), `iot_readings`, and the new `inspection_sessions`, `inspection_results` (ADR-126). The value is the device's facility, stamped from the parent in the service and checked by the composite key; a device moved between facilities is a later, separately audited operation (P19-03) — children keep the facility they were created in.
+   - **NULLABLE** (rows that may or may not belong to a facility): `attachments` (a device photo or certificate PDF has its resource's facility; an SOP's has none), `warehouses` (a facility's rooms vs the provider's own stores, UD-10), `non_conformances` (`device_id` nullable), `users` (§ 4).
+   - A NULL facility means **provider-internal**: a facility-bound principal never sees it (`client_facility_id = $f` never matches NULL), so the nullable case needs no extra rule.
+   - **Every facility-owned row has it NOT NULL** (the DPIA's R-04 (3), `docs/UPSTREAM/06-DPIA.md`, where it is called `faskes_id`): on a nullable table a CHECK ties it to the row's kind — an attachment whose `resource_type` is a facility-scoped resource (a device, a calibration record, an IPM session, a work order) must carry it; a room (`warehouses` of kind room) must carry it. Rows that reference each other inside the chain use composite keys `(tenant_id, client_facility_id, …)` where the spec (P19-04) can make them, so a session cannot name a device of another facility.
+   - The exact list is fixed by the P19-04 spec and pinned by a guard (§ 10): a new model joining the evidence chain must declare the attribute or be listed as provider-internal with a reason.
+
+4. **A user is facility-bound if and only if `users.client_facility_id` is set.** Bound-ness is a property of the user row, set by the tenant's administrator, never derived from the role name and never read from a request. Provider staff (and a self-served hospital's own staff) are unbound and see every facility of their tenant.
+   - A bound user's facility must be `active`; an `inactive` or `ended` facility refuses its bound users at authentication with 403, as a suspended tenant does (A-101).
+   - Bound users may hold only the facility-side roles `HEALTHCARE ADMIN`, `HEALTHCARE TECHNICIAN`, `FACILITY MAINTENANCE`, `ROOM USER` (refused with 400 otherwise, in the service and in the user-create/update contract). Which of them the upstream `client` and `teknisi_client` accounts get is UD-4 (open).
+   - `users.email` stays globally unique: a facility employee has one account.
+
+5. **The second scope dimension.** The request context (`tenantContext.middleware.ts`, `TenantContextStore`) gains `clientFacilityId: ClientFacilityId | null` and `facilityBound: boolean`, set by `auth` from the **loaded user row** only — never a header, body or query (the upstream's S-05/S-11 shape is impossible by construction). The tenant dimension is unchanged. The facility dimension is applied by **the same global hooks**, in the same places (root `where`, every include's ON clause with the join type pinned as ADR-048 does, bulk updates/destroys, the wrapped hookless statics of ADR-073, create stamping, `bulkCreate`/`upsert` refusal of a mismatched row), resolved as:
+
+   ```
+   options.skipFacilityScope       -> skip   (explicit, greppable; a separate opt-out from skipTenantScope)
+   no context                      -> skip   (as for tenants: pre-auth, migrations, schedulers)
+   isSystemTask / isSuperAdmin     -> skip
+   not facilityBound               -> skip   (provider staff: the tenant predicate alone)
+   facilityBound, model facility-scoped
+                 and clientFacilityId -> filter client_facility_id = clientFacilityId
+   facilityBound, model facility-scoped, no facility -> DENY (NO_FACILITY_UUID)
+   facilityBound, model tenant-scoped but NOT facility-scoped
+                 and not on FACILITY_READABLE -> DENY (NO_TENANT_UUID: the model is provider-internal)
+   ```
+
+   - **The last line is what makes it deny-by-default.** A bound user is not merely filtered on the facility tables: every other tenant table (stock, vendors, QMS, kanban, tickets, billing, settings, other users, audit) answers nothing to them unless it is on a reviewed `FACILITY_READABLE` list with its own reason and its own rule (expected to hold only per-user rows such as the caller's own notifications and sessions, which are already keyed by user). A new tenant model is therefore invisible to facility users until someone decides otherwise.
+   - On create, a bound principal's `client_facility_id` is **stamped and forced** to its own facility; an unbound principal must supply it (validated by the composite key; an id from another tenant cannot satisfy it).
+   - Global models (the catalogue, ADR-125; roles; menus) are untouched by either dimension.
+   - The tenant-scope unit tests and ADR-048's include tests gain the facility twin: every association under a bound context, both join types.
+
+6. **Cross-facility is 404, exactly like cross-tenant.** Another facility's device, session, record, certificate, file or report is indistinguishable from a missing one for a bound user. A permission failure on their **own** facility's data is 403.
+
+7. **Routes are deny-by-default for bound users, as a second layer.** A route is reachable by a bound principal only if it is explicitly marked **facility-accessible** (a marker the route declares, read by a new guard). Everything else answers 403 to them. The marker is refused by the guard on any route gated by `superAdminOnly` or by an `rbac()` tenant-administration level, so a bound `HEALTHCARE ADMIN` (whose `ROLE_LEVELS` entry equals the tenant-admin tier) can never reach the provider's tenant administration — users, roles, settings, SSO, API keys, backups, billing. Two layers on purpose: the hooks stop data leaving; the route layer stops a bound user reaching an action whose side effects are not row reads (an export job, a webhook test, a search across models).
+
+8. **Raw SQL.** `sql()` statements already bind `tenant_id = $n` (P9-07). A statement naming a facility-scoped table must also bind the facility predicate when the context is bound. A helper produces the fragment from the **context**, never from a parameter: unbound → no predicate; bound → `client_facility_id = $n` with the facility id, or `NO_FACILITY_UUID` if the context has none. There is deliberately **no** `($n IS NULL OR …)` form: a NULL that means "everything" is the RLS fail-open of ADR-029 again. `rawSqlTenantPredicate.d05` gains the twin rule (a statement naming a facility-scoped table must mention `client_facility_id`, or be listed as unreachable by bound principals with a reason).
+
+9. **Everything that is not a query:**
+   - **Caches** (ADR-120 dashboard aggregates, permission loads): a key in facility-scoped territory includes the facility id for bound principals (`…:<tenant>:f:<facility>`), never shared with the unbound scope.
+   - **Socket.IO** (ADR-031/085): a bound socket joins `facility_<tenantId>_<facilityId>` and its user room, **never** `tenant_<id>`. Every emitter of a facility-scoped event emits to the tenant room (provider staff) and to that facility's room. A guard checks that no bound socket joins a tenant room; the 60-second re-check also re-reads the user's facility and its status.
+   - **Reports, exports, PDFs.** By the owner's rule of 2026-10-07 (certificates **and** data exports are rendered in the frontend; no certificate or export file is stored — ADR-095 §4 extended, see ADR-126 § 8), a report or export is a set of **paginated API reads** that the browser renders. Its scoping is therefore the scoping of those reads: the hooks, the route marker, the two-facility tests — there is no export file and no export worker to scope. Any batch job that still runs (none is planned for this phase) carries the facility context into the worker (`jobContext`). Initially facility-accessible: the reads behind the facility's inventory list/export, its IPM reports, its certificates and its devices' attachments — each with a two-facility test.
+   - **Search and RAG** (`document_chunks`) are **not** facility-accessible until their own review: one missed branch in a many-table search is a leak.
+   - **Storage keys carry the facility:** a facility-owned file is stored at `t/<tenant>/f/<facility>/attachments/<uuid>.<ext>` (derivatives beside it), as `docs/UPSTREAM/08-FILE-POLICY.md` § 7 specifies; provider-internal files keep `t/<tenant>/…`. The key is never the authorisation: **before any signed download URL is issued** the attachment row is loaded **in the caller's context** (both dimensions applied by the hooks — a bound user cannot load another facility's row, so the answer is 404) and the key's facility segment is compared with the row's `client_facility_id`; a mismatch is refused and logged as an integrity error. The code change belongs to Phase 21 (the P8-01 key layout gains the segment); the existing `t/<tenant>/attachments/…` keys of today's tenants stay valid as their self facility's files.
+   - **Breach scoping per facility:** `audit_logs.client_facility_id` lets a breach be scoped facility by facility, so each facility — the controller of its records — is told only about its own (DPIA § 8). The notice duty under UU PDP Art. 46 (3 × 24 hours, to the data subjects and the agency) is added to `docs/SECURITY/12-INCIDENT-RESPONSE.md` beside GDPR's 72 hours.
+   - **Audit:** `audit_logs` gains a nullable `client_facility_id`, stamped from the row or the context, so a facility view of the trail is possible later; facility users do not read the audit log in this ADR (the audit route is not facility-accessible).
+   - **Notifications/reminders** about a facility's devices go to that facility's bound users who hold the menu, and to provider staff — never to another facility's users.
+   - **Certificates** (ADR-107): the **customer** printed on a certificate (ISO/IEC 17025 7.8.2) is the client facility, snapshotted at signing; the laboratory is the tenant. For a self-served tenant both are the same organisation.
+   - **API keys** stay tenant-wide (unbound). A facility-bound key is not offered; the per-tenant import key (P24-04) is unbound.
+   - **SSO/SCIM:** bound users authenticate through the tenant's configuration; a facility cannot bring its own IdP for its staff (one tenant, one SSO configuration) — later decision if asked.
+   - **Impersonation:** an operator impersonating a bound user gets that user's bound context — what the user sees is what support sees. No change to the mechanism.
+   - **Suspension:** a suspended tenant refuses all its users, bound ones included (unchanged); an `inactive`/`ended` facility refuses only its bound users (§ 4).
+   - **Quota and billing:** bound users are users of the tenant and count against `limitSeats` today. Whether facility accounts should count is commercial (Q-57·T asks).
+
+10. **Tests and guards that make it stay true (built with P20-07/P21-09):**
+    - `fixtures/twoFacilitySuite.ts` over `memoryDb` (the real models and the real hooks): one tenant, facilities F1 and F2, a bound user in F1, an unbound technician; every facility-accessible `:id` route asserts **404** for F2's row and that F2 is absent from every list, marked `@two-facility <route file> <METHOD> <path>`.
+    - `twoFacilityRoutes.guard` (the twin of `twoTenantRoutes.guard`): every facility-accessible `:id` route has a two-facility test.
+    - `facilityAccessibleRoutes.guard`: the marker never sits on a platform or tenant-admin route; the list of marked routes is reviewed like `routeGateExemptions`.
+    - `facilityScopedModels.guard`: every model on the evidence chain declares `clientFacilityId`, every other tenant model is either provider-internal or on `FACILITY_READABLE` with a reason (the `unscopedModels.d17` pattern).
+    - The deny branch: a bound principal with no resolvable facility sees zero rows of every facility-scoped model, and zero rows of every provider-internal model.
+    - The A-90 trap: every include of `User` from a facility-scoped model is `required: false` (provider technicians are invisible to bound users), and the author is shown from a snapshot (`performer_snapshot`, ADR-126) — an INNER include would make the facility's own records disappear for its own staff.
+    - Socket isolation and cache-key tests for a bound principal.
+    - **Coverage the DPIA's R-04 (2) asks for:** the two-facility cases are not only `:id` routes — every list, every export read (ADR-126 § 8), every include tree reachable from a facility-accessible route, every raw-SQL statement naming a facility-scoped table, every socket room and every signed-URL issuance gets a case where a user of facility A asks for facility B's data and gets 404 / nothing / an export containing only A.
+    - **No facility-bound user is invited** in any tenant before these guards and suites are green and named in a record, and P17-06/07 have threat-modelled and tested the scope (DPIA R-04 (5)). A bound user never gets a "switch facility" (R-04 (6)): a person who works for two facilities has two accounts, or is provider staff.
+
+11. **Rollout.** Migrations (P20-07): `client_facilities`; one `is_self` facility per existing tenant; `client_facility_id` on the models of § 3, backfilled to the tenant's self facility, then NOT NULL where § 3 says; the composite keys; `users.client_facility_id`; `audit_logs.client_facility_id`. Every existing row lands in a self facility and every existing user stays unbound, so **no current tenant's behaviour changes** until a second facility or a bound user exists. The upstream import (Phase 24) creates **one** provider tenant with 118 client facilities (+ its self facility); the facility users are bound. No bound user is created in any tenant before the two-facility guard and suite are green and P17-07 has reviewed them.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| **Facility = tenant, provider staff act through a revocable cross-tenant grant with an "active facility" switch** (the first reading of UD-1; 04 § 3 option A) | the owner's correction: the facility is the provider's client, not a subscriber. It also built the first cross-tenant working path (auth, session, socket, audit in two tenants, 118 tenants to onboard) to solve a problem the real model does not have |
+| **Facilities as child tenants under the provider** (`tenants.parent_id`) | ADR-084 §2: the hierarchy grants no visibility, so provider staff could not see their clients' devices without the cross-tenant path above |
+| **A facility filter in each controller/service** (the upstream's way; 04 § 3 option B as first written) | "remember the WHERE" — the exact mechanism behind upstream S-05/S-11 and behind PR-1; one missed filter leaks a facility's devices to another |
+| **Bound-ness from the role** (`ROOM USER` ⇒ bound) | a self-served hospital's own `HEALTHCARE ADMIN` is unbound; a provider's facility admin is bound — same role, different scope. Deriving scope from a role name is also the A-07/N-01 class of bug |
+| **Filter only the facility tables; let bound users see the rest of the tenant** | a facility user would read the provider's vendors, stock, kanban, tickets, other clients' names in any table that mentions them; deny-by-default must apply to the whole tenant, not only to the tables we remembered |
+| **PostgreSQL RLS for the facility dimension** | rejected for tenants in ADR-029/039 (fail-open `''`, per-request round trips); one mechanism for both dimensions is easier to reason about and test |
+| **A `($facility IS NULL OR client_facility_id = $facility)` predicate** | a NULL that means "all" is fail-open; unbound principals get no predicate at all instead |
+| **Per-technician facility assignment for provider staff** (a technician sees only assigned facilities) | the owner said provider staff work across their tenant's facilities; addable later as a narrowing set on unbound users without changing this design |
+| **Reading (a): the tenant is always a calibration company; hospitals stop being tenants** | invalidates every existing hospital tenant and the hospital-side tenant administration for no stated need; reading (b) contains (a) as its main case |
+
+### Implications, including the bad ones
+
+- **The product description changes.** "Healthcare facilities and calibration providers are two kinds of tenant on opposite sides of the transaction" becomes "a tenant is whoever performs the work; facilities are its clients (or itself)". `docs/PLAN/00`, `PLAN/03`, `PLAN/10`, `SECURITY/05`, `MULTI-TENANCY/README`, `DATABASE/00` are amended with this ADR, as target.
+- **A hospital with its own IPSRS that also uses an outside provider has two copies of its world**: its own tenant, and a client record inside the provider's tenant. Nothing flows between them (no cross-tenant path, by design). Moving records between them is export/import, a later decision (Q-57·T).
+- **A second dimension in the most security-critical code in the system.** `tenantScope.util.ts` grows a second resolution order; every hook, the include walk, the static wrappers and the create stamp gain a twin branch. The tests double. This is the code ADR-048 found wrong once; it must be reviewed as such (P17-07).
+- **The `FACILITY_READABLE` deny is strict.** Features a facility user might reasonably expect — their own profile pieces stored in tenant tables, a ticket to the provider, a notification preference — fail closed until each is reviewed onto the list. That is the price of the default.
+- **A bound `HEALTHCARE ADMIN` is not a tenant administrator.** The role's level says it is; the route marker and the guard override that for bound users. Anyone who later adds a tenant-admin route and marks it facility-accessible "for the facility admin" is refused by the guard — and needs an ADR.
+- **The A-90 trap widens.** Provider staff are invisible to bound users, so every author column on the evidence chain needs `required: false` plus a snapshot, and every existing list a facility user can reach must be swept (P19-04).
+- **Backfill on every existing table of § 3.** One migration touches the largest tables (`calibration_records`, `attachments`); it runs in one transaction per table and is proved with `upgradeBoot.am3.live` on production-shaped data. Indexes on the new column live in the migration (ADR-100 Am. 3).
+- **Moving a device between facilities** has no answer yet: its history stays in the old facility (children keep their facility). P19-03 decides.
+- **Seats:** facility accounts count as tenant seats until the owner decides otherwise.
+- **Faskes groupings** (a district office over its health centres, UD-10) are not modelled: a bound user sees exactly one facility. A group view is a later, explicit decision.
+
+### Security analysis
+
+| Threat | Control |
+|---|---|
+| Bound user names another facility's id in a path, body or query | the facility comes from the user row only; the hooks filter every read and include; the answer is 404 identical to missing (§ 5, § 6) |
+| Bound user reads a provider-internal table (vendors, stock, other users, audit) | the DENY branch for tenant models not facility-scoped (§ 5) and the route layer (§ 7) |
+| Bound facility admin escalates to tenant administration | the route marker is refused on tenant-admin and platform routes by guard (§ 7) |
+| A new table or route forgets the facility | the model guard and the route default (deny) make forgetting fail closed; the two-facility guard makes a marked route without a test fail the build (§ 10) |
+| Raw SQL bypasses the hooks | context-derived predicate helper, no NULL-means-all form, d05 twin rule (§ 8) |
+| Cache, socket room or batch job carries another facility's data | facility in the key; bound sockets never join the tenant room; job context bound (§ 9) |
+| A signed URL or a guessed storage key reaches another facility's file | keys carry the facility segment; a URL is issued only after the row is loaded in the caller's context and its facility matches the key (§ 9) |
+| Cross-tenant | unchanged — the tenant dimension is untouched and still applies first |
+| Cross-facility existence oracle through a uniqueness 409 | any value a **bound** user can write is unique **per facility** (`(tenant_id, client_facility_id, …)` — e.g. the serial, UD-9 / P19-03), so their 409 can only name their own facility's rows; values only provider staff write (facility `code`, the provider-issued QR) stay unique per tenant, and bound users never see them for other facilities |
+| Repudiation | audit rows carry the facility; performer snapshots on records |
+
+### Status
+
+**Accepted 2026-10-07 as the target. Not built.** Reading (b) (§ 1: a self-served hospital remains a tenant) awaits the owner's confirmation (Q-57·T); until confirmed it is the working decision. `docs/` amended as target: `PLAN/00-PROJECT-OVERVIEW.md`, `PLAN/03-USER-ROLES.md`, `PLAN/10-TENANCY-AND-ONBOARDING.md`, `SECURITY/05-MULTI-TENANCY-SECURITY.md`, `MULTI-TENANCY/README.md`, `DATABASE/00-DATA-MODEL.md`, `SECURITY/12-INCIDENT-RESPONSE.md` (UU PDP notice), `UPSTREAM/00-OVERVIEW.md` § 10, `UPSTREAM/04-SCHEMA-MAPPING.md` § 3/§ 6/§ 9, `UPSTREAM/05-DATA-MIGRATION.md` § 6.1/§ 10, `UPSTREAM/02-FEATURES.md` § B. Mitigations (1)–(4) and (6) of the DPIA's R-04 are specified here (§ 5, § 3, § 10, § 9); (5) is P17-06/07.
+
+---
+
+## ADR-125: Device Types and Inspection Checklists Are One Global, Versioned Catalogue Without `tenant_id` — Written Only by the Platform Operator, a Published Version Is Immutable, Every Session Pins the Version It Used; Tenants Propose Through a Tenant-Scoped Table
+
+**Date:** 2026-10-07 · **Status:** Accepted as the **TARGET — nothing here is built.** "One global, versioned catalogue, like `roles`" is the **owner's** decision (UD-3, 2026-10-07); the version model, the write path and the guards are decided by the ADR-writing agent under the owner's delegation · **Card:** P12-03 · **Builds in:** P19-01 (spec), P20-01/03, P21-01, P22-01, P24-02 (seeding) · **Works with:** ADR-064 §1 (global tables are guarded at the route), D-17 (`unscopedModels.d17`), D-05/P9-07 (`rawSqlTenantPredicate.d05`), ADR-124 (the facility dimension does not apply to global models), ADR-126 (sessions pin a version), ADR-127 (offline download) · **Record:** `MEMORY/records/2026-10-07-upstream-adrs.md`
+
+### Context
+
+An IPM session is a checklist whose items depend on the device type: tools used, function checks, completeness, electrical-safety tests with limits, performance tests with a setting and a reference value (`docs/UPSTREAM/02-FEATURES.md` F-19 … F-22), plus sections common to every type (environment, supply, physical, maintenance tasks, recommendation — F-21). Upstream keeps 344 device types and ~480 checklist items in 12 `mst_*` tables and 5 `mapping_*` tables, writable only by seeders and SQL (drift D-10); a change to a mapping silently changes every past report, because reports are re-rendered from current rows.
+
+The owner chose one catalogue for the whole platform rather than one per tenant (UD-3). Our data model admits a table without `tenant_id` only with a reason in an ADR (`docs/DATABASE/00-DATA-MODEL.md`): roles, menus and the CMS are the precedents (ADR-064 §1, D-16), guarded by making every write route SUPERADMIN-only.
+
+### Decision
+
+1. **Global tables, no tenant column, no facility column** (ADR-124 does not apply):
+
+   | Table | Holds |
+   |---|---|
+   | `device_types` | `name`, a normalised name (`UNIQUE lower(btrim(name)) WHERE deleted_at IS NULL`), `status` `active`/`retired`, `legacy_id` (04 § 4.3) |
+   | `inspection_item_definitions` | the reusable item library (04 § 4.4): `section`, `label`, `input_kind` (`check`, `tri_state`, `condition_clean`, `measured`, `measured_with_limit`, `setting_measured_reference`, `text` — F-20), `unit`, `limit_op`/`limit_value`/`limit_unit`, `setting`, `reference_value`, `allowed_outcomes`, legacy keys |
+   | `inspection_templates` | one per device type, plus exactly **one base template** (`device_type_id IS NULL`) holding the common sections of F-21 |
+   | `inspection_template_versions` | `template_id`, `version_number` (`UNIQUE (template_id, version_number)`), `status` `draft`/`published`/`retired`, `base_version_id` (the base version materialised into it), `content_hash` (SHA-256 of the canonical item list), `change_note` (required to publish), `published_at/_by`, `retired_at/_by` |
+   | `inspection_template_items` | the items **of one version**, copied from the library and frozen with it: section, label, input kind, unit, limits, setting, reference value, allowed outcomes, `required`, `sort_order`, `item_definition_id` (provenance, nullable) |
+
+   04 § 4.5's `device_type_inspection_items` mapping is **replaced** by `inspection_template_items`: the version *is* the mapping. The ETL seeds version 1 of each type from the upstream `mapping_*` tables (P24-02).
+
+2. **A version is self-contained and immutable once published.** Publishing materialises the current base version's items into the type version, computes `content_hash`, and in the same transaction moves the template's previously published version to `retired` — **exactly one published version per template** (partial unique index). After publish, a trigger refuses any `UPDATE` of a version's content columns and any `INSERT`/`UPDATE`/`DELETE` of its items, for every role (the 0057 pattern, tested as `callibrator_app`). Nothing in the catalogue is ever hard-deleted: a device type or a template is `retired`.
+
+3. **Sessions pin a version.** `inspection_sessions.template_version_id` → `inspection_template_versions` RESTRICT, and each result pins `template_item_id` plus a snapshot of the label it showed (ADR-126). A report is rendered from the session's pinned version, so a later version never rewrites a past report (upstream's re-render defect). A **retired** version stays a valid definition: no new session may *start* on it online (409, "this checklist was replaced by version n; reload"), but a session captured offline against it is accepted (ADR-127 § 6).
+
+4. **Who writes.** Every route that creates, edits, publishes or retires a catalogue row is `superAdminOnly`, held route by route by a new guard `inspectionCatalogueGlobal.guard` in the shape of `rolesGlobal.d16.test.js` (a new mutating route fails the inventory). Every publish and retire writes an audit row (PLATFORM tenant, like role changes) inside its transaction with the version id and content hash. No separation of duties is enforced between the operator who edits a draft and the one who publishes it (the platform has few operators; the same reason Q-54 left SoD open for single-admin tenants); a version built from a tenant's accepted proposal has two parties by construction.
+
+5. **How a tenant asks for a change: `inspection_template_proposals` (tenant-scoped).** A provider's administrator proposes a new type, a new item or a changed limit in a row of **its own tenant** (`tenant_id`, scoped by the hooks; `status` `submitted`/`accepted`/`rejected`/`withdrawn`; the proposed items as JSON; reason). The operator reviews it (super-admin context) and, on acceptance, creates a draft version from it; the proposal records the resulting version id. Drafts never become visible to tenants, so no tenant ever sees another tenant's proposal or an unpublished change. On acceptance the operator removes anything that identifies a facility or person from the proposed text: catalogue text is platform content, readable by every tenant.
+
+6. **Who reads.** Published and retired versions, their items, and active device types are readable by any authenticated principal holding `ipm`, `ipm-templates` or `equipment` read — facility-bound users included (ADR-124: global models have no facility dimension, and the route is facility-accessible). Drafts are operator-only. `GET /api/v1/ipm/templates/published` returns every published version with a strong `ETag` over the sorted `(version id, content_hash)` set and answers `304` to `If-None-Match` — the offline download of F-79/ADR-127.
+
+7. **How the tenant hooks leave them alone, and the guards that change.**
+   - The hooks scope a model if and only if it declares `tenantId`/`tenant_id` (`tenantScope.util.ts#tenantKeyOf`) — the mechanism `roles` already relies on. The five catalogue models declare neither (nor `clientFacilityId`), and must never declare an attribute of those names; the proposal model does, and is scoped.
+   - `unscopedModels.d17`: the five models are added to `UNSCOPED` as group `"global"` with the reason "ADR-125: platform catalogue; writes superAdminOnly (inspectionCatalogueGlobal.guard)".
+   - `rawSqlTenantPredicate.d05`: no change needed — it derives the tenant-scoped set from the real models, so catalogue tables are not in it. A raw statement that **joins** a tenant table to a catalogue table still binds the tenant (and, under ADR-124, the facility) predicate for the tenant table — the existing rule.
+   - `twoTenantRoutes.guard`: catalogue read routes with a path parameter are allow-listed as `not-tenant-owned` (checked against the real model); mutating ones as `platform`. Proposal routes get `twoTenantSuite` tests asserting 404.
+   - **No association from a catalogue model to a tenant model is declared** (`DeviceType.hasMany(CalibrationDevice)` and the like). A count of how many devices use a type is computed in the tenant's own context; a cross-tenant usage figure would be an aggregate of other tenants' data, and only the operator may see one.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| **Per-tenant catalogues** (`tenant_id` on every catalogue table) | not the owner's choice; 118 copies of the same 344 types in the upstream case, and no shared improvement of a checklist |
+| **Provider-owned catalogue referenced by facilities** | a cross-tenant foreign key (D-2) — only meaningful under the cross-tenant model ADR-124 rejected |
+| **Mutable templates without versions** (upstream's model) | a changed limit rewrites every past report's meaning; fails ISO 17025 7.5 / Part 11 record integrity |
+| **Version the item library instead of copying items into a version** | a version would then be a set of pointers into a moving library; the copy makes a version readable on its own, offline, forever |
+| **Drafts stored in the global tables with a `proposed_by_tenant_id` column** | drafts would need an application-level visibility filter on a global table — "remember the WHERE"; a tenant-scoped proposal table gets the hooks for free |
+| **Several published versions per type at once** (tenant picks) | that is per-tenant templates by another name; one published version keeps reports comparable |
+| **Enforced four-eyes publishing** | blocks a platform with one operator; the immutable version, the audit row and the content hash make a bad publish visible and correctable by the next version |
+
+### Implications, including the bad ones
+
+- **A tenant cannot tailor a checklist.** A facility that needs an extra check adds an ad-hoc item in the session (F-39, F-42); a permanent change waits for the operator to publish. If tenants need their own templates, that is a new ADR.
+- **The operator becomes the bottleneck** for catalogue quality and turnaround, and owns its content legally (it is platform content in compliance reports).
+- **Publishing retires the previous version immediately**, so a technician online with a stale form gets a 409 and must reload; one offline keeps working (ADR-127).
+- **Limit parsing** (`≤ 100 µA`, `± 10 %`) becomes structured data at seeding; values that do not parse are kept as text and evaluated by a person, not by the server (F-42).
+- **Global text is readable by every tenant**: a careless change note or item label that names a facility leaks it platform-wide. The review in § 5 is a person, not a mechanism.
+- **Five more unscoped models.** Each is a place where the deny-by-default hooks do nothing; the route guard is the only write control.
+
+### Status
+
+**Accepted 2026-10-07 as the target. Not built.** `docs/` amended as target: `DATABASE/00-DATA-MODEL.md` (global tables), `UPSTREAM/04-SCHEMA-MAPPING.md` § 4.3–4.5, `UPSTREAM/02-FEATURES.md` F-20/F-22.
+
+---
+
+## ADR-126: An IPM Session Is an Issued Record — Many per Device, Draft → Submitted, Corrected by Supersession and Voided With a Reason, Never Edited After Submit or Deleted; "Due" Is Computed From an Interval, Not Enforced by a Month Rule; the IPM Report and Every Export Are Rendered in the Frontend
+
+**Date:** 2026-10-07 · **Status:** Accepted as the **TARGET — nothing here is built.** "Many sessions per device, full history, corrections and voids, nothing deleted; a monthly schedule may flag due" is the **owner's** decision (UD-6, 2026-10-07); "certificates and data exports are rendered in the frontend; no certificate or export file is stored" is the **owner's** rule of 2026-10-07; the state machine, the trigger and the interval rule are decided by the ADR-writing agent under the owner's delegation · **Card:** P12-04 · **Builds in:** P19-02, P19-06, P20-04/05, P21-03/04, P22-03/04, P23-02 … 04 · **Works with:** ADR-062 (calibration records append-only; the correction/void pattern reused here), ADR-084 Q-02 (a terminal state with an audited way back), ADR-095 §4 (the backend renders no certificate PDF), ADR-107 (snapshots), ADR-124 (facility scope), ADR-125 (pinned template version), ADR-127 (offline capture) · **Record:** `MEMORY/records/2026-10-07-upstream-adrs.md`
+
+### Context
+
+Upstream stores an IPM visit across 16 tables with no header row; its "update" deletes **every row of the current month** for the device and inserts the new ones (drift D-07, F-55), and editing a past IPM deletes and re-inserts it (F-56). There is at most one IPM per device per month, history is destroyed on every correction, there is no audit trail (S-16), and the report is re-rendered from current rows (no issued copy). That fails ISO/IEC 17025 7.5 (technical records: original observations retained, changes traceable) and 21 CFR Part 11 §11.10(e) (audit trail; changes must not obscure prior entries).
+
+Our calibration records already solve the same problem (ADR-062): append-only in the database, a correction is a new record that supersedes the original (`POST /:id/corrections`), a void names a reason (`POST /:id/void`) and is final, and a trigger holds it for every role.
+
+### Decision
+
+1. **The aggregate:** `inspection_sessions` (header) and `inspection_results` (one row per checklist item), both tenant- and facility-scoped (ADR-124: `tenant_id`, `client_facility_id` NOT NULL, from the device), with the shape of `docs/UPSTREAM/04-SCHEMA-MAPPING.md` § 4.8–4.9 plus:
+   - `template_version_id` → the pinned catalogue version (ADR-125), NOT NULL for every session not created by the import; results carry `template_item_id` and the label snapshot;
+   - the lifecycle columns of ADR-062: `supersedes_id`, `superseded_by_id`, `superseded_at`, `correction_reason`, `void_reason`, `voided_by`, `voided_at`; and `submitted_at`, `submitted_by`;
+   - `performer_snapshot` `{ name, role, organisation }` taken at submit (ADR-107 precedent) — the facility's own users cannot see provider staff (ADR-124 § 10), and an upstream performer may not exist as a user (04 § 6);
+   - `client_ref` (uuid, `UNIQUE (tenant_id, client_ref)`), `captured_offline`, `client_captured_at` — for ADR-127.
+
+2. **Many sessions per device, always.** Two sessions on the same device in the same month, or the same day, are both kept — no 409 for "already done this month" (02 F-55's suggested 409 is **not** adopted). Two technicians who captured the same device offline produce two sessions, both kept, numbered in submit order.
+
+3. **States and transitions** (`status` ENUM `draft`, `submitted`, `voided`, `discarded`; "superseded" is `submitted` with `superseded_by_id` set; a session is **effective** when `submitted` and not superseded):
+
+   | From | Action | To | Who | Otherwise |
+   |---|---|---|---|---|
+   | — | create (prefill from device + published version) | `draft` | `ipm` write | 409 if the device is retired, or the version is not published (online) |
+   | `draft` | edit header and results | `draft` | the draft's creator | 403 for another user in the same tenant/facility |
+   | `draft` | discard | `discarded` (final; rows kept) | creator, or a tenant administrator | — |
+   | `draft` | submit | `submitted` | creator | **400** if required items are missing; **409** on any other state |
+   | `submitted` (effective) | correct | a **new** `draft` with `supersedes_id`, results copied | `ipm` write | **409** on a voided, superseded or draft session ("correct the latest version, n") ; one open correction draft per original (partial unique on `supersedes_id WHERE status = 'draft'`) |
+   | correction `draft` | submit | `submitted`; in the same transaction the original gets `superseded_by_id`/`superseded_at` | creator | 409 if the original was superseded or voided meanwhile |
+   | `submitted` (effective) | void, with reason | `voided` (final) | an **unbound tenant administrator** (rbac; ADR-124 keeps bound users out of rbac gates) | 409 on any other state |
+
+   Every 409 carries a state explanation ("this IPM was submitted on 2026-10-03 and cannot be edited — submit a correction"). Every transition writes its audit row inside its transaction. A date change is a correction (`performed_at` differs; reason required). Voiding the head of a chain voids **the visit**: predecessors stay superseded and readable — to fix a wrong correction, correct it again.
+
+4. **Visit number** (F-54): assigned at the **first** submit of a chain, as the count of the device's chain roots already submitted or voided + 1, under a row lock on the device (`SELECT … FOR UPDATE`) so concurrent submits serialise; corrections inherit it; voided visits keep theirs (gaps are evidence, not errors). `UNIQUE (tenant_id, device_id, visit_number) WHERE supersedes_id IS NULL AND status IN ('submitted','voided')`. Upstream's stored `visit` value is imported as is on history (D-08 says it is unreliable; the report shows it as imported).
+
+5. **Immutability in the database** (migration of P20-05, the 0057 pattern, tested as `callibrator_app`): `DELETE` and `TRUNCATE` refused on both tables for every role; on a session whose `OLD.status <> 'draft'` an `UPDATE` may change only the lifecycle columns, each once (`superseded_*`; `status` `submitted → voided` with `void_reason`/`voided_by`/`voided_at`), plus `updated_at`; `inspection_results` refuses `INSERT`/`UPDATE`/`DELETE` unless its session is `draft`. Draft results may be replaced while the draft is open — a draft is work in progress, not yet a record; discarding it keeps its rows. The application role loses `UPDATE`/`DELETE` on both tables except the lifecycle columns. The trigger is listed in `schemaVerify` `EXPECTED_OBJECTS`.
+
+6. **"Due" replaces the month rule.** A device is **due for IPM** when it has no effective session with `performed_at` inside its current interval:
+   - interval in months from `calibration_devices.ipm_interval_months` (nullable override; `0` = not under IPM), else the tenant setting `ipm.intervalMonths`, else **not scheduled**;
+   - with an interval of `n`, the device is due in calendar month M (tenant time zone, default `Asia/Jakarta`) when the month of its last effective session + `n` ≤ M;
+   - the upstream import sets `ipm.intervalMonths = 1` for the provider tenant, preserving its monthly practice as a **flag**, not a constraint;
+   - computed at read (index `(tenant_id, device_id, performed_at DESC, id)`), never stored; it feeds the dashboard and lists. It never blocks a capture. Side effects of a recommendation (`needs_repair` → work order, `not_fit_for_use` → device status, `needs_calibration` → scheduler flag) are UD-17, open.
+
+7. **Imported history** (Phase 24): every upstream session is imported as `submitted`, effective, with `template_version_id` NULL allowed **only** when `legacy_key IS NOT NULL` (CHECK), results with `item_definition_id`/`template_item_id` NULL where no match exists and the raw text kept (04 § 4.9). An import error is corrected by the same correction/void path — never by `UPDATE`; hence the dry run (P24-05) is mandatory.
+
+8. **The IPM report and every export are rendered in the frontend; nothing is stored as a file.** By the owner's rule of 2026-10-07, extending ADR-095 §4 from certificates to every document:
+   - the **IPM report** (F-58 … F-61) is a frontend renderer fed by a data document from the API (the session, its pinned version's items, its results, the device and facility snapshots, the performer snapshot), with the same hash discipline as the certificate document (ADR-095 §4, ADR-107: the printed fields are bound by a hash in the data document; the QR on the page resolves to `/verify` and checks it). Whether the IPM report is also issued through the certificate pipeline (numbering, signature, IPSRS countersignature) is P19-06 with UD-17;
+   - **inventory lists, calibration recaps and IPM lists** (F-65 … F-69: upstream Dompdf and PhpSpreadsheet) are generated in the browser from **paginated API reads** (the envelope's `meta` paging; reads end their order in `id`, `pageOrderTiebreaker.ci3.guard`). There is **no backend PDF or XLSX generation, no batch job writing an export file, and no stored report, certificate or export file**. A large export is many page reads assembled client-side, with progress shown; the API's existing page-size caps bound each read;
+   - the upstream's external calibration-certificate PDFs (~11.9 k files) are **not** loaded into our storage: the certificate **data** (date, device, laboratory) is imported, and the original files are archived offline under the file policy of P17-05 (the privacy work owns that policy);
+   - a corrected session's report shows that it supersedes visit *n*'s earlier version, and the earlier one stays renderable.
+   - *Owner, 2026-10-07:* the rule covers reports and exports. The **GDPR personal-data export stays as built (ADR-114, a backend ZIP)** — it is a legal data-subject download, not a rendered report. The external-lab certificate PDFs are **archive-only** (encrypted, offline, outside the application), with an optional later data-entry pass recording the latest certificate's key data per device, rendered by the frontend (`docs/UPSTREAM/07-DATA-MINIMISATION.md` § 4.1).
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| **Upstream's one-per-month with replace** | destroys history (D-07); the owner rejected it (UD-6) |
+| **One per month, a second submission 409 unless it is a correction** (02 F-55's proposal) | a second real visit in a month (a repair follow-up) is legitimate work; the owner chose "many" |
+| **Edit in place with an audit trail of old values** | the record would be mutable evidence; Part 11 accepts it only with a full prior-value trail, and our pattern (ADR-062) already avoids mutation entirely |
+| **Corrections as a new submitted session directly (no draft)** | an IPM correction re-enters dozens of items; a draft lets the technician edit a copy and submit once |
+| **Void restores the predecessor of a corrected session** | two meanings for one act; correcting again is explicit |
+| **Store "due" in a column maintained by a job** | stale between runs and one more mutable column; computed at read is exact and cheap with the index |
+| **Backend-rendered PDF/XLSX (upstream's Dompdf/Spout), or a batch job writing export files** | the owner's rule; also ADR-095 §4's reasons (no headless browser in the backend image, no stored documents to protect, retain or purge) |
+
+### Implications, including the bad ones
+
+- **Technicians must learn "correct, don't overwrite"** and that a wrong session stays visible as superseded (P29-02). A void needs an unbound tenant administrator (the provider's, or a self-served hospital's own); a technician — and a facility-bound administrator — cannot void, only correct (or ask).
+- **Visit numbers have gaps** after voids and the imported numbers are unreliable (D-08).
+- **Two technicians can create duplicate sessions** for one visit; the list shows them and one is voided by an administrator. Nothing prevents it.
+- **Draft rows are mutable**; only the submit is the record. A discarded draft keeps its rows, which grow the tables.
+- **Due is a read-time computation**; a dashboard over 23 k devices needs the index and the ADR-120 cache per scope (and per facility, ADR-124).
+- **A frontend-rendered export depends on the browser**: a very large inventory (upstream exhausted 512 MB server-side for one facility with photos) must be paged and rendered progressively; photos in a PDF are fetched one by one through signed URLs. A slow phone may struggle with the largest facility; the export screen states its size first.
+- **No stored report means the evidence is the data plus the hash**, not a PDF file: an auditor's copy is rendered on demand and verified by the QR.
+
+### Status
+
+**Accepted 2026-10-07 as the target. Not built.** `docs/` amended as target: `UPSTREAM/02-FEATURES.md` F-55, F-56, F-58 … F-69 (notes), `UPSTREAM/04-SCHEMA-MAPPING.md` § 4.8–4.9.
+
+---
+
+## ADR-127: Field Capture Is a Progressive Web App With an Offline Queue — IndexedDB Per User, Idempotent Replay Through the Normal API, Append-Only Makes Conflicts Rare and Each One a 409 With a Reason; the Service Worker Lives Under the Nonce CSP; No Native App
+
+**Date:** 2026-10-07 · **Status:** Accepted as the **TARGET — nothing here is built.** "A PWA with offline mode (offline capture + sync, camera for photos and QR), no native app" is the **owner's** decision (UD-14, 2026-10-07); "certificates and exports are rendered in the frontend" is the owner's rule of 2026-10-07; the storage, sync, security and support-floor rules are decided by the ADR-writing agent under the owner's delegation · **Cards:** P28-02 (this); builds in P19-08 (spec), P21-03 (idempotency), P22-03/10; APK retirement P28-03; field UAT P26-02 · **Works with:** ADR-059 (the browser never holds the access token), ADR-071/ADR-090 (nonce CSP, pages render per request), ADR-085 (revocation window), ADR-124 (tenant and facility scope), ADR-125 (catalogue download), ADR-126 (session states, `client_ref`) · **Record:** `MEMORY/records/2026-10-07-upstream-adrs.md`
+
+### Context
+
+Provider technicians work inside hospitals and health centres where connectivity is poor (basements, radiology, rural centres). Upstream shipped a React Native APK whose batch endpoints and downloadable catalogue suggest offline capture (`docs/UPSTREAM/00-OVERVIEW.md` § 6, F-77 … F-79); its API trusted `id_user`/`id_client` from the body (S-11) and its tokens carried the password hash (S-10). The owner chose a PWA over a native app (UD-14).
+
+The frontend today has no service worker, no web manifest and no IndexedDB use. It is constrained by: a per-request **nonce CSP with `'strict-dynamic'`** and every page rendered per request (ADR-071; `frontend/src/lib/securityHeaders.ts`), which sends no `worker-src` or `manifest-src`; a `Permissions-Policy` of `camera=()` (camera blocked); and an access token the browser never holds — the Next server keeps it in an httpOnly cookie and its proxy forwards it (ADR-059, `frontend/src/lib/authCookies.ts`; access 15 min, session 7 days).
+
+### Decision
+
+1. **Scope of offline mode.** Offline is a mode of the **field capture** screens only: the device lookup by QR, device registration with photos, and IPM capture (ADR-126 drafts and submit). The rest of the dashboard stays online-only and says so when offline. Offline mode is opt-in per device ("prepare this phone for offline work"), so an office PC never caches tenant data.
+
+2. **Installability.** A web app manifest (`/manifest.webmanifest`, `start_url` the capture screen, `display: standalone`, icons from the brand set), served `'self'`. Installation to the home screen is recommended and, on iOS, effectively required: a home-screen web app is not subject to Safari's seven-day eviction of script-written storage. `navigator.storage.persist()` is requested when offline mode is enabled; the screen shows whether it was granted and the quota used (`navigator.storage.estimate()`).
+
+3. **The service worker under our CSP.**
+   - The CSP gains **`worker-src 'self'`** and **`manifest-src 'self'`** explicitly. Without them a worker falls back to `script-src`, where `'strict-dynamic'` makes the browser ignore `'self'` and the registration is refused.
+   - One worker, `/sw.js`, a **static, same-origin, versioned** file built with the app (no third-party workbox CDN; no `importScripts` from another origin); scope `/`; the proxy matcher keeps serving it without page CSP, as it does `_next/static`.
+   - **What it caches.** `/_next/static/*` (content-hashed, immutable) cache-first. The capture screen's **HTML document network-first, cached copy only as an offline fallback**, replaced on every successful online load. No other HTML, no API response containing tenant data in the Cache API — tenant data lives only in IndexedDB (§ 4).
+   - **The nonce, honestly.** A cached capture page carries the nonce of the response it was rendered with, and its cached headers carry the same nonce, so it runs offline — but that nonce is replayed until the next online load. A nonce protects against markup injected into a response; the cached document is a server-rendered page with no user content in it (data is rendered client-side from IndexedDB, escaped by React), so the replay gives an attacker nothing they could not already do with an injection the server rendered. This is a deliberate, recorded exception to "a nonce is used once", limited to one document, and only while offline.
+   - The worker never sees or stores a token: requests go to the same-origin `/api` proxy with the httpOnly cookies, as now.
+
+4. **Offline storage: IndexedDB, one database per user and tenant** (`callibrator-field-<tenantId>-<userId>`), holding:
+   - the **catalogue** (published versions, ADR-125), refreshed with `If-None-Match` — platform content, not tenant data;
+   - a **working set** of devices the technician chose to take offline (a facility, or a list), at most what the screen states (default 2,000 devices per facility), each with only the fields capture needs — no photos of other devices, no documents;
+   - the **outbox**: drafts, submits and photos waiting to sync.
+
+   The working set expires: **72 hours** after the last successful sync it is purged (the outbox is not). **Encryption at rest:** outbox and working set are encrypted with an AES-GCM key generated as a **non-extractable** WebCrypto key stored in the same database. That protects copies of the browser profile (backups, a forensic image of a powered-off phone); it does **not** protect against someone using the unlocked phone, which only the device's lock screen and the purge rules do (§ 8).
+
+5. **Photos.** Captured with `<input type="file" accept="image/*" capture="environment">` (no permission prompt; the platform camera UI). Before queueing, the client decodes with `createImageBitmap`, resizes to at most 2048 px on the long edge and re-encodes **JPEG** (quality 0.8) through a canvas — which **drops EXIF** (GPS, device serials, timestamps) as a side effect. A file the browser cannot decode (HEIC on a browser without HEIC support) is queued as is and converted, stripped and scanned on the server (P21-02 / P17-05: content sniffing, ClamAV, EXIF strip, HEIC → JPEG). The server never trusts the client's stripping. The `Permissions-Policy` changes to `camera=(self)`.
+
+6. **QR scanning.** `getUserMedia` + `BarcodeDetector` where available; otherwise a **pure-JavaScript** decoder (jsQR class), loaded on demand from our own bundle. A WebAssembly decoder is **not** used: it would need `'wasm-unsafe-eval'` in `script-src`. Typing the QR number is always possible.
+
+7. **The sync protocol.** The outbox replays **the normal API** — there is no separate batch endpoint:
+   - Every queued mutation carries an **`Idempotency-Key`** (a client UUID v4). The backend keeps `idempotency_keys (tenant_id, user_id, key, request_hash, status, response, created_at)` for **30 days**, keyed per tenant and user — a key can never collide across tenants, so it is no existence oracle. Same key and same request hash → the stored response, replayed; same key, different hash → **409** "this key was used for a different request"; a key still in flight → 409 "retry later".
+   - A session created offline carries `client_ref` (ADR-126, `UNIQUE (tenant_id, client_ref)`); the server assigns the primary key. A client-chosen primary key is **not** accepted: a collision with another tenant's row would be an existence oracle.
+   - Order per session: create draft → upload photos (each with its own key) → submit. The outbox is a per-session ordered queue; sessions sync independently.
+   - **Attribution and scope come from the server**, never from the payload: tenant and facility from the authenticated user (ADR-124), the performer from the session. `client_captured_at` is stored as the device's claim beside the server's `received_at` and is never used for ordering, visit numbers or "due".
+   - **Triggers:** app start, the `online` and `visibilitychange` events, a "Sync now" button, and Background Sync where the browser has it (Chromium). **iOS has no Background Sync**: the outbox syncs only while the app is open. The screen shows the outbox count everywhere in field mode.
+
+8. **Conflicts are rare, and each one is a 409 or 404 with a reason the technician sees.** Sessions are append-only and many per device (ADR-126), so two offline captures of one device are not a conflict — both are kept. What can fail on replay, each kept in the outbox as "needs attention" with the server's explanation, never silently dropped:
+   - the device was retired, moved or deleted meanwhile → 409 / 404;
+   - the catalogue version was **retired** meanwhile → **accepted** (an immutable version is still a valid definition, ADR-125 § 3); a version that never existed → 400;
+   - the user lost the menu permission or (bound users) their facility was ended → 403, kept for an administrator or discarded by the user;
+   - required items missing → 400 on submit; the draft is synced and the technician completes it.
+
+9. **Authentication on a shared or lost phone.**
+   - Offline, no request is made, so the 15-minute access token does not matter; on reconnect the proxy refreshes as now. Past the 7-day session the user signs in again; the outbox survives **only for the same user and tenant** (its database name) and syncs after sign-in.
+   - **Logout** purges the working set and the catalogue copy for that user; with a non-empty outbox it **refuses** and explains, offering "sync now" or an explicit, confirmed "discard N unsynced items". There is no silent loss of captured work and no silent retention after logout.
+   - A **revoked session** (ADR-084, ADR-085) answers 401 on the next online contact; the client then purges the working set (the outbox stays, encrypted, for the same user's next sign-in).
+   - Offline, the app cannot tell who holds the phone. Handing an unlocked, signed-in phone to a colleague lets them capture under the first user's name until the next sync. There is no offline PIN (§ alternatives); the mitigations are the device lock screen (required by the field guide, P29-01), the 72-hour working-set purge, and the audit trail showing `captured_offline`.
+   - A **lost phone**: the administrator revokes the user's sessions (`/sessions` and logout-all exist); the phone's working set is purged on its next online contact, and expires in 72 hours if it never comes online; what remains readable to someone with the unlocked phone is at most the working set and the outbox.
+
+10. **Browser support floor.** Offline mode needs Service Worker, IndexedDB, WebCrypto (`AES-GCM`, non-extractable keys) and `createImageBitmap`: **Android Chrome / Chromium 120+**, **iOS/iPadOS Safari 17.4+ as an installed home-screen app**, current desktop Chromium/Firefox/Safari for office use. A browser missing any of them gets online-only capture with a banner saying why. Proved on real phones with the network cut and restored before P22-10 is DONE (its DoD) and in field UAT (P26-02).
+
+11. **Reports on the device.** Because the IPM report is rendered in the frontend from a data document (ADR-126 § 8), a technician can preview a draft's report offline from the outbox; the **issued** report, with its hash and QR, exists only after the server accepted the submit.
+
+12. **The APK** is retired at cutover (P28-03); its API (`api_v1`) is not ported — the PWA uses the same API as the dashboard.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| **A native app (keep or rebuild the React Native APK)** | the owner chose a PWA; a second client to sign, release and support, and a token the app would have to hold (ADR-059 keeps tokens out of client code) |
+| **A batch sync endpoint (upstream's `insert_ipm` arrays)** | a second write path with its own validation and audit to keep in step; replaying the normal API with idempotency keys reuses every gate, contract and two-tenant test |
+| **Client-generated primary keys** | a collision with another tenant's id is an existence oracle; `client_ref` per tenant does the job |
+| **Last-write-wins or merge on conflict** | there is nothing to merge in an append-only record set; a refused replay must be explained, not resolved silently |
+| **Cache API responses in the service worker** | tenant data in a second store with weaker controls; IndexedDB under one encryption key and one purge rule is easier to reason about |
+| **An offline PIN or a key derived from the password** | a PIN protects little on a phone already unlocked and adds a credential to forget; a password-derived key would need the password offline, i.e. a stored verifier |
+| **Cache every dashboard page for offline** | multiplies nonce replay and tenant data at rest for screens nobody uses in a basement |
+| **A WASM QR decoder** | needs `'wasm-unsafe-eval'` in the CSP |
+| **Keep `'strict-dynamic'` alone and rely on its fallback for workers** | browsers refuse the registration; an explicit `worker-src 'self'` is narrower than widening `script-src` |
+
+### Implications, including the bad ones
+
+- **iOS syncs only while the app is open**, and needs the home-screen install to keep its storage; a technician who never opens the app after work leaves the outbox on the phone.
+- **The nonce of the cached capture page is replayed while offline** (§ 3) — a recorded exception to ADR-071's per-response nonce.
+- **The CSP and `Permissions-Policy` change** (`worker-src`, `manifest-src`, `camera=(self)`), which changes `securityHeaders.ts`, its tests and the browser CSP smoke.
+- **A shared, unlocked phone defeats attribution offline** until the next sync; the audit trail can show only that the capture was offline.
+- **Encrypted IndexedDB does not stop someone holding the unlocked phone.** The working set (≤ 72 h, ≤ the stated device count) is what such a person can read.
+- **Storage quotas** vary (Safari asks the user beyond its initial allowance); the outbox refuses a new photo when the quota estimate is nearly exhausted, with a message, rather than failing mid-write.
+- **A new table (`idempotency_keys`)** and a 30-day purge job; every capture endpoint must honour the header (tested by replay in the two-tenant and two-facility suites).
+- **Logout can be refused** while unsynced work exists — surprising, and deliberate.
+- **Old browsers get online-only capture**, which is the upstream web form's level, not the APK's.
+
+### Status
+
+**Accepted 2026-10-07 as the target. Not built.** `docs/` amended as target: `FRONTEND/00-FRONTEND-STANDARDS.md` § Content Security Policy, `UPSTREAM/02-FEATURES.md` F-77 … F-79.
 
 ---
 

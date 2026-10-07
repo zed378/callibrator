@@ -46,8 +46,27 @@ That is recorded as PR-4 in [`../docs/PLAN/18-RISK-REGISTER.md`](../docs/PLAN/18
 | [`PHASE-9-TYPESCRIPT-MIGRATION.md`](./PHASE-9-TYPESCRIPT-MIGRATION.md) | 🔴 Backend JavaScript → strict TypeScript (ADR-038). Not started; blocked on audit wave 0 |
 | [`PHASE-10-LANDING-AUTH-REVAMP.md`](./PHASE-10-LANDING-AUTH-REVAMP.md) | 🟡 Landing, sign-in, request access, forgot/reset, passkey sign-in and verification revamp (ADR-098; spec `docs/UI-UX/20-LANDING-AUTH-REVAMP.md`). **Runs now, in parallel with finishing Phase 9**: frontend-focused, its backend pieces written in TypeScript. P10-00 (remove the fabricated proof from the live landing) goes first |
 | [`PHASE-11-DASHBOARD-REVAMP.md`](./PHASE-11-DASHBOARD-REVAMP.md) | ⏸ Admin dashboard revamp — **on hold until the owner instructs**. Placeholder cards only; research in `docs/UI-UX/research/01–03` |
-| [`PHASE-UPSTREAM-PHP-ADOPTION.md`](./PHASE-UPSTREAM-PHP-ADOPTION.md) | ⏳ Upstream PHP Feature Adoption (after Phase 9, before Phase 999): the SKP IPM CodeIgniter app (inventory + IPM). **Research DONE 2026-10-07** (`docs/UPSTREAM/`); 20 phases, 96 cards; 4 owner decisions taken, implementation **blocked** on ADRs, 14 open decisions and owner actions |
-| [`PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md`](./PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md) | ⏳ Dual-backend Go engine porting backlog (ADR-089). 25 planned tasks; MUST NOT start before Phase 9 & Upstream PHP adoption |
+| [`PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`](./PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md) | 🟡 Upstream PHP adoption (SKP IPM), was UP-00: Decisions & ADRs — 7 cards, 4 DONE · 1 WIP · 2 BLOCKED. **Index of Phases 12 … 31**: decisions UD-1 … UD-18, owner actions OA-1 … OA-8, group-wide DoD, build order, old `UP-` → new id mapping (§ 7). |
+| [`PHASE-13-UPSTREAM-CODE-RESEARCH.md`](./PHASE-13-UPSTREAM-CODE-RESEARCH.md) | ✅ Upstream PHP adoption (SKP IPM), was UP-01: Code Research — 1 card, 1 DONE. |
+| [`PHASE-14-UPSTREAM-DB-RESEARCH.md`](./PHASE-14-UPSTREAM-DB-RESEARCH.md) | ✅ Upstream PHP adoption (SKP IPM), was UP-02: DB-Structure Research — 1 card, 1 DONE. |
+| [`PHASE-15-UPSTREAM-MODULE-RESEARCH.md`](./PHASE-15-UPSTREAM-MODULE-RESEARCH.md) | ✅ Upstream PHP adoption (SKP IPM), was UP-03: Module Research — 1 card, 1 DONE. |
+| [`PHASE-16-UPSTREAM-FEATURE-RESEARCH.md`](./PHASE-16-UPSTREAM-FEATURE-RESEARCH.md) | ✅ Upstream PHP adoption (SKP IPM), was UP-04: Feature Research — 1 card, 1 DONE. |
+| [`PHASE-17-UPSTREAM-SECURITY-PRIVACY.md`](./PHASE-17-UPSTREAM-SECURITY-PRIVACY.md) | 🟡 Upstream PHP adoption (SKP IPM), was UP-05: Security, Privacy & Data Protection — 7 cards, 3 DONE · 1 TODO · 3 BLOCKED. |
+| [`PHASE-18-UPSTREAM-ROLES-PERMISSIONS.md`](./PHASE-18-UPSTREAM-ROLES-PERMISSIONS.md) | 🟡 Upstream PHP adoption (SKP IPM), was UP-06: Role & Permission Mapping — 4 cards, 1 TODO · 3 BLOCKED. |
+| [`PHASE-19-UPSTREAM-DOMAIN-DESIGN.md`](./PHASE-19-UPSTREAM-DOMAIN-DESIGN.md) | 🟡 Upstream PHP adoption (SKP IPM), was UP-07: Domain Design — 8 cards, 1 TODO · 7 BLOCKED. |
+| [`PHASE-20-UPSTREAM-DB-MIGRATION.md`](./PHASE-20-UPSTREAM-DB-MIGRATION.md) | ⏳ Upstream PHP adoption (SKP IPM), was UP-08: DB-Structure Migration to Our Conventions — 9 cards, 9 BLOCKED. |
+| [`PHASE-21-UPSTREAM-BACKEND.md`](./PHASE-21-UPSTREAM-BACKEND.md) | ⏳ Upstream PHP adoption (SKP IPM), was UP-09: Backend Implementation — 10 cards, 10 BLOCKED. |
+| [`PHASE-22-UPSTREAM-FRONTEND.md`](./PHASE-22-UPSTREAM-FRONTEND.md) | ⏳ Upstream PHP adoption (SKP IPM), was UP-10: Frontend Implementation — 10 cards, 10 BLOCKED. |
+| [`PHASE-23-UPSTREAM-REPORTS.md`](./PHASE-23-UPSTREAM-REPORTS.md) | 🟡 Upstream PHP adoption (SKP IPM), was UP-11: Report & PDF Parity — 5 cards, 1 DONE · 4 BLOCKED. |
+| [`PHASE-24-UPSTREAM-DATA-ETL.md`](./PHASE-24-UPSTREAM-DATA-ETL.md) | ⏳ Upstream PHP adoption (SKP IPM), was UP-12: Data ETL (incl. ~91 GB of Photos) — 5 cards, 5 BLOCKED. |
+| [`PHASE-25-UPSTREAM-RECONCILIATION.md`](./PHASE-25-UPSTREAM-RECONCILIATION.md) | ⏳ Upstream PHP adoption (SKP IPM), was UP-13: Reconciliation & Parity Verification — 4 cards, 4 BLOCKED. |
+| [`PHASE-26-UPSTREAM-UAT.md`](./PHASE-26-UPSTREAM-UAT.md) | ⏳ Upstream PHP adoption (SKP IPM), was UP-14: UAT With Real Users — 3 cards, 3 BLOCKED. |
+| [`PHASE-27-UPSTREAM-QR-CONTINUITY.md`](./PHASE-27-UPSTREAM-QR-CONTINUITY.md) | ⏳ Upstream PHP adoption (SKP IPM), was UP-15: QR Sticker Continuity — 4 cards, 4 BLOCKED. |
+| [`PHASE-28-UPSTREAM-MOBILE-OFFLINE.md`](./PHASE-28-UPSTREAM-MOBILE-OFFLINE.md) | 🟡 Upstream PHP adoption (SKP IPM), was UP-16: Mobile / Offline Decision — 3 cards, 2 DONE · 1 BLOCKED. |
+| [`PHASE-29-UPSTREAM-TRAINING-DOCS.md`](./PHASE-29-UPSTREAM-TRAINING-DOCS.md) | 🟡 Upstream PHP adoption (SKP IPM), was UP-17: Training & Documentation in Indonesian — 4 cards, 1 TODO · 3 BLOCKED. |
+| [`PHASE-30-UPSTREAM-CUTOVER.md`](./PHASE-30-UPSTREAM-CUTOVER.md) | ⏳ Upstream PHP adoption (SKP IPM), was UP-18: Cutover & Dual-Run — 5 cards, 5 BLOCKED. |
+| [`PHASE-31-UPSTREAM-DECOMMISSION.md`](./PHASE-31-UPSTREAM-DECOMMISSION.md) | ⏳ Upstream PHP adoption (SKP IPM), was UP-19: Decommission & Archive — 4 cards, 4 BLOCKED. |
+| [`PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md`](./PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md) | ⏳ Dual-backend Go engine porting backlog (ADR-089). 25 planned tasks; MUST NOT start before Phase 9 & the upstream PHP adoption (Phases 12 … 31) |
 | [`BACKLOG.md`](./BACKLOG.md) | Open questions, specification gaps, deliberate deferrals, unverified claims |
 
 **Phases 0–5 are written retrospectively.** They were executed before `TASKS/` was used as intended, so those files reconstruct what was actually built from the code, the migration sequence and the audit report — not from a plan that was followed.

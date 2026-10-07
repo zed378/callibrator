@@ -386,20 +386,37 @@ Working decisions Q-39 … Q-47 (ADR-098 §8) were set by the coordinating sessi
 
 ---
 
-## Upstream PHP Feature Adoption ⏳
+## Phases 12 … 31 — Upstream PHP Feature Adoption ⏳
 
-[`PHASE-UPSTREAM-PHP-ADOPTION.md`](./PHASE-UPSTREAM-PHP-ADOPTION.md) · research [`docs/UPSTREAM/`](../docs/UPSTREAM/README.md) · BACKLOG Q-57. Updated 2026-10-07.
+Index [`PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`](./PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md) (decisions UD-1 … UD-18, owner actions OA-1 … OA-8, group-wide DoD, build order, old `UP-` → new id mapping) · research [`docs/UPSTREAM/`](../docs/UPSTREAM/README.md) · BACKLOG Q-57. Updated 2026-10-07: the single plan file `PHASE-UPSTREAM-PHP-ADOPTION.md` was split by the owner's instruction into one file per phase, **Phases 12 … 31** (draft `UP-xx` → Phase 12 + xx; card `UP-xx-yy` → `P(12+xx)-yy`).
 
-The upstream is **SKP IPM** (CodeIgniter 4: device inventory + IPM, inspection & preventive maintenance, for one service provider and its 118 client facilities), supplied by the owner as a local fork in `mozivid/` (gitignored). Must be completed before Phase 999 implementation begins.
+The upstream is **SKP IPM** (CodeIgniter 4: device inventory + IPM, inspection & preventive maintenance, for one service provider and its 118 client facilities), supplied by the owner as a local fork in `mozivid/` (gitignored). Roadmap: Phase 9 → 10 → 11 → **12 … 31** → Phase 999; the group must exit (P31-04) before Phase 999 implementation begins.
 
-| Phase | Cards | Status |
-|---|---|---|
-| UP-01 … UP-04 Code, DB-structure, module and feature research | 4 | **DONE 2026-10-07** — records [code](../MEMORY/records/2026-10-07-upstream-code-research.md), [database](../MEMORY/records/2026-10-07-upstream-database-research.md) |
-| UP-00 Decisions & ADRs | 7 | **WIP** — owner decided UD-1 (facility = tenant, provider access by revocable per-facility grant; ADR amending ADR-084 required), UD-3 (global versioned catalogue; ADR required), UD-6 (many IPM per device, corrections not deletion), UD-14 (PWA with offline mode) on 2026-10-07; 14 decisions open |
-| UP-16 Mobile / offline decision | 3 | decision **DONE** (UD-14); ADR TODO |
-| UP-05 … UP-15, UP-17 … UP-19 (security/privacy, roles, domain design, DB migration, backend, frontend, report parity, ETL incl. ~110 GB of files, reconciliation, UAT, QR stickers, training, cutover, decommission) | 82 | **BLOCKED** on the ADRs, the open owner decisions and the owner actions OA-1 … OA-8 (rotate the upstream DB password and JWT secret first); 4 TODO cards can start (DPIA, minimisation list, file policy, report-layout reference) |
+| Phase | Cards | Status | Notes |
+|---|---:|---|---|
+| [12 — Decisions & ADRs](./PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md) | 7 | 4 DONE · 1 WIP · 2 BLOCKED | owner decided UD-1 (revised the same day: **the tenant is the calibration company; facilities are clients inside it**), UD-3, UD-6, UD-14; second batch 2026-10-07: Q-57·T (a) confirmed, UD-9 (serial unique per facility), certificate PDFs archive-only, GDPR export (ADR-114) unchanged. ADR-124 … ADR-127 written; 13 open decisions carried as BACKLOG Q-57·UD-n + Q-57·T (b–d) — [record](../MEMORY/records/2026-10-07-upstream-adrs.md). P12-01/05/06 remain |
+| [13 — Code Research](./PHASE-13-UPSTREAM-CODE-RESEARCH.md) | 1 | 1 DONE | [record](../MEMORY/records/2026-10-07-upstream-code-research.md) |
+| [14 — DB-Structure Research](./PHASE-14-UPSTREAM-DB-RESEARCH.md) | 1 | 1 DONE | [record](../MEMORY/records/2026-10-07-upstream-database-research.md) |
+| [15 — Module Research](./PHASE-15-UPSTREAM-MODULE-RESEARCH.md) | 1 | 1 DONE | [record](../MEMORY/records/2026-10-07-upstream-code-research.md) |
+| [16 — Feature Research](./PHASE-16-UPSTREAM-FEATURE-RESEARCH.md) | 1 | 1 DONE | [record](../MEMORY/records/2026-10-07-upstream-code-research.md) |
+| [17 — Security, Privacy & Data Protection](./PHASE-17-UPSTREAM-SECURITY-PRIVACY.md) | 7 | 3 DONE · 1 TODO · 3 BLOCKED | P17-02 DPIA, P17-04 minimisation, P17-05 file policy DONE (pending legal review) — [record](../MEMORY/records/2026-10-07-upstream-privacy-and-reports.md); P17-06 threat model TODO; P17-01 waits on the owner actions OA-1 … OA-3 (`docs/UPSTREAM/10-OWNER-CHECKLIST.md`) |
+| [18 — Role & Permission Mapping](./PHASE-18-UPSTREAM-ROLES-PERMISSIONS.md) | 4 | 1 TODO · 3 BLOCKED | P18-03 facility scope ↔ permissions TODO; the rest on UD-4 |
+| [19 — Domain Design](./PHASE-19-UPSTREAM-DOMAIN-DESIGN.md) | 8 | 1 TODO · 7 BLOCKED | P19-01 catalogue spec TODO; the rest on open decisions |
+| [20 — DB-Structure Migration to Our Conventions](./PHASE-20-UPSTREAM-DB-MIGRATION.md) | 9 | 9 BLOCKED |  |
+| [21 — Backend Implementation](./PHASE-21-UPSTREAM-BACKEND.md) | 10 | 10 BLOCKED |  |
+| [22 — Frontend Implementation](./PHASE-22-UPSTREAM-FRONTEND.md) | 10 | 10 BLOCKED |  |
+| [23 — Report & PDF Parity](./PHASE-23-UPSTREAM-REPORTS.md) | 5 | 1 DONE · 4 BLOCKED | P23-01 report-layout reference DONE — [record](../MEMORY/records/2026-10-07-upstream-privacy-and-reports.md) |
+| [24 — Data ETL (incl. ~91 GB of Photos)](./PHASE-24-UPSTREAM-DATA-ETL.md) | 5 | 5 BLOCKED |  |
+| [25 — Reconciliation & Parity Verification](./PHASE-25-UPSTREAM-RECONCILIATION.md) | 4 | 4 BLOCKED |  |
+| [26 — UAT With Real Users](./PHASE-26-UPSTREAM-UAT.md) | 3 | 3 BLOCKED |  |
+| [27 — QR Sticker Continuity](./PHASE-27-UPSTREAM-QR-CONTINUITY.md) | 4 | 4 BLOCKED |  |
+| [28 — Mobile / Offline Decision](./PHASE-28-UPSTREAM-MOBILE-OFFLINE.md) | 3 | 2 DONE · 1 BLOCKED | decision DONE (UD-14), ADR-127 DONE (P28-02); APK retirement waits on cutover |
+| [29 — Training & Documentation in Indonesian](./PHASE-29-UPSTREAM-TRAINING-DOCS.md) | 4 | 1 TODO · 3 BLOCKED | P29-02 "what changed" note TODO |
+| [30 — Cutover & Dual-Run](./PHASE-30-UPSTREAM-CUTOVER.md) | 5 | 5 BLOCKED |  |
+| [31 — Decommission & Archive](./PHASE-31-UPSTREAM-DECOMMISSION.md) | 4 | 4 BLOCKED |  |
+| **Total** | **96** | **14 DONE · 1 WIP · 4 TODO · 77 BLOCKED** | |
 
-**Plan written 2026-10-07; implementation blocked.** 96 cards: 5 DONE · 9 TODO · 1 WIP · 81 BLOCKED.
+**Plan written 2026-10-07; implementation blocked** on the open owner decisions and the owner actions OA-1 … OA-8 (rotate the upstream DB password and JWT secret first — step-by-step owner checklist in `docs/UPSTREAM/10-OWNER-CHECKLIST.md`). ETL scope: ~91 GB of device photos; the certificate PDFs are archived offline, not loaded.
 
 ---
 
@@ -417,7 +434,7 @@ The upstream is **SKP IPM** (CodeIgniter 4: device inventory + IPM, inspection &
 | Frontend Integration & Shared Extract | P999-18 … P999-20 | `Planned` |
 | Deploy, Performance & Close-out | P999-21 … P999-25 | `Planned` |
 
-*Note: Implementation is strictly blocked until Phase 9 and Upstream PHP Feature Adoption complete.*
+*Note: Implementation is strictly blocked until Phase 9 and the upstream PHP feature adoption (Phases 12 … 31) complete.*
 
 ---
 

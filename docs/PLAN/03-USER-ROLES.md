@@ -22,6 +22,8 @@ Source of truth: `backend/src/constants/roleConstants.js`. These values must sta
 
 Display names are Indonesian because the primary market is Indonesian healthcare (KARS, SNARS). The internal role name stays English and is what code compares against.
 
+> **Target — facility-bound users (ADR-124, decided 2026-10-07, not built).** Inside a provider tenant, a health facility's own staff will be users **bound to their facility** (`users.client_facility_id`). A bound user may hold only `HEALTHCARE ADMIN`, `HEALTHCARE TECHNICIAN`, `FACILITY MAINTENANCE` or `ROOM USER`, sees only that facility's data, and **passes no tenant-administration gate whatever its level** — the "Tenant administrator (healthcare facility)" scope above holds only for an *unbound* `HEALTHCARE ADMIN` (a self-served hospital's own administrator). Which role the upstream `client`/`teknisi_client` accounts get is UD-4 (open).
+
 ## `TENANT_ADMIN` — the twelfth role that is not a role
 
 `TENANT_ADMIN` appears in `ROLE_NAMES` and `ROLE_LEVELS` at level 8, but it is **not seeded** and no user holds it. It is a logical authorization tier that lets one `rbac()` gate cover both `HEALTHCARE ADMIN` and `CALIBRATOR ADMIN` by level comparison, rather than repeating a two-name list at every tenant-administrative route.

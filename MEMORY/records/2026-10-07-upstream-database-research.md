@@ -1,5 +1,7 @@
 # Upstream database research — `skp_ipm` structure, quality, mapping and ETL plan
 
+> **Card ids renumbered 2026-10-07: see PHASE-12 mapping** — [`TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`](../../TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md) § 7 (`UP-xx-yy` → `P(12+xx)-yy`; the plan file `PHASE-UPSTREAM-PHP-ADOPTION.md` was split into Phases 12 … 31 and deleted). This record keeps the ids it was written with.
+
 **Date:** 2026-10-07 · **Task:** Upstream PHP Feature Adoption (TASKS/BACKLOG.md Q-57), database
 part · **Base commit:** `25521ff` (working tree; nothing committed) · **Decision:** none taken —
 eleven owner decisions proposed (D-1 … D-11 in `docs/UPSTREAM/04-SCHEMA-MAPPING.md` § 9)

@@ -94,8 +94,11 @@ workflow engine ──▶ gated approval on Certificate / StockTransfer / WorkOr
 storage abstraction ──▶ attachments ──▶ per-tenant buckets
      (Phase 4)
 
-Phase 9 (TypeScript Migration) ──▶ Upstream PHP Feature Adoption ──▶ Phase 999 (Go Porting & Dual Backend)
+Phase 9 (TypeScript Migration) ──▶ Phases 12 … 31 (Upstream PHP Feature Adoption) ──▶ Phase 999 (Go Porting & Dual Backend)
      (CRITICAL RULE: Go implementation MUST NOT begin before Phase 999)
+     (Phases 10 and 11 — landing and dashboard revamps — sit between 9 and 12 in the board;
+      the upstream adoption is Phases 12 … 31, one TASKS/ file per phase since 2026-10-07,
+      index TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md)
 ```
 
 ## Definition of Phase Complete

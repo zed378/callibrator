@@ -100,6 +100,24 @@ These are the places a leak can still happen. Each needs its own attention.
 | **Global search** | queries many tables at once; one missed branch is enough | re-read after any change |
 | **Kanban child tables** | only `kanban_projects` and `kanban_cards` carry `tenantId` | a query starting from a child table must join to the project |
 
+## Target — the Facility Dimension (ADR-124, decided 2026-10-07, NOT built)
+
+> **Nothing in this section exists in code.** It records the decided design (deviation protocol: ADR-124) so that nobody builds a different one.
+
+The owner clarified on 2026-10-07 that **the tenant is the organisation that performs the calibration and maintenance work** — a service company serving many health facilities (*faskes*), or a hospital serving itself — and that **a facility is a client inside that tenant** (`client_facilities`). There is **no cross-tenant working path**: everything above stays exactly as it is, and ADR-084 is not amended.
+
+What is added is a **second dimension inside a tenant**, for the facility's own staff:
+
+- A user is **facility-bound** iff `users.client_facility_id` is set (by the tenant administrator; never from a request, never from the role name). Provider staff are unbound.
+- The request context gains `clientFacilityId` and `facilityBound`, set by `auth` from the loaded user row. **The same global hooks** apply it — root `where`, every include's ON clause (join type kept, ADR-048), bulk writes, the wrapped statics (ADR-073), create stamping — to every model that declares `clientFacilityId`.
+- **Deny by default for bound users:** a facility-scoped model is filtered to their facility (no facility → `NO_FACILITY_UUID`, nothing); **every other tenant-scoped model answers nothing** unless it is on a reviewed `FACILITY_READABLE` list. A new table is invisible to facility users until someone decides otherwise.
+- **Cross-facility is 404**, identical to missing and to cross-tenant.
+- **Routes are deny-by-default for bound users:** only routes marked facility-accessible are reachable, and a guard refuses the marker on platform and tenant-administration routes — a bound `HEALTHCARE ADMIN` is not a tenant administrator.
+- Raw SQL binds `client_facility_id = $n` from the context when bound; there is **no** `$n IS NULL OR …` form (fail-open). Cache keys carry the facility for bound principals; bound sockets join a facility room, never the tenant room.
+- Tests: a **two-facility** suite (`twoFacilitySuite` over `memoryDb`) and guard, the twins of the two-tenant ones.
+
+Full design, alternatives and bad implications: ADR-124 in [`../../MEMORY/DECISIONS.md`](../../MEMORY/DECISIONS.md).
+
 ## Status Codes Leak
 
 **Cross-tenant access returns 404, never 403.**
