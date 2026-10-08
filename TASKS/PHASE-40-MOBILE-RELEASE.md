@@ -10,7 +10,7 @@
 |---|---|
 | **Status** | **BLOCKED** — 8 cards: 8 BLOCKED (written 2026-10-08; nothing built) |
 | **Goal** | the app is distributed internally to real users, proved in the field, released, and the group exits |
-| **Depends on** | Phases 38 and 39 DONE; Q-M1 … Q-M4 answered |
+| **Depends on** | Phases 38 and 39 DONE; Q-M1 answered (Q-M2 … Q-M6 answered by the owner, 2026-10-08) |
 | **Size** | L |
 | **Cards** | 8: P40-01 … P40-08 |
 | **Definition of Done** | as Phase 37, plus `docs/MOBILE/08` § 8 in full for every release card |
@@ -42,17 +42,24 @@
 **Definition of Done**
 - [ ] EAS Update channels with code signing; updates applied at cold start only, never during sync; rollback rehearsed and recorded
 
-### P40-03 — Crash and error reporting (after the DPIA)
+### P40-03 — The app-log client for `POST /mobile/logs` (owner Q-M5: logs go to our own backend)
 
 | | |
 |---|---|
 | **Status** | BLOCKED |
-| **Depends on** | the sub-processor approved in the DPIA (owner, legal) |
-| **Spec refs** | `docs/MOBILE/01` § 5 · `docs/MOBILE/07` § 9 |
+| **Depends on** | P36-14 |
+| **Spec refs** | `docs/MOBILE/20` § 11a · `docs/MOBILE/01` § 5 · `docs/MOBILE/07` § 9 |
 | **Spec required** | no |
 
+**Why:** field problems must be diagnosable; a third-party crash reporter is **not planned** until the DPIA approves one (Q-M5).
+
 **Definition of Done**
-- [ ] Reporter scrubbing proved: no body, token, tenant value, free text or photo in a report (a test inspects a captured event)
+- [ ] **Opt-in** per install (off by default), explained in the settings screen; revocable, and revoking deletes the unsent queue
+- [ ] **Scrubbing proved:** no body, token, tenant value, free text or photo in an entry — a test inspects queued entries against `01` § 5's rule and the server's redaction list
+- [ ] **Batching:** entries queued locally (bounded, non-tenant data only, outside the encrypted store), sent in batches within the server caps (200 entries / 64 KB), backing off on 429; never sent during a sync cycle's budget
+
+**Abuse cases**
+- Logging a request body "only in debug builds" that ships to testers
 
 ### P40-04 — Privacy labels, DPIA addendum, store metadata
 

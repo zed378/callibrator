@@ -39,7 +39,7 @@ The owner then added the **tenant setup screen before sign-in**, received from t
 
 - ADR numbers: ADR-134 is theirs (shared packages, backend for native clients); ADR-135 is this one. In `DECISIONS.md` ADR-134 now precedes ADR-135 (checked at the end of the day).
 - I aligned with their documents: the native ingress prefix, the `X-App-*` / `X-Installation-Id` headers, 426 `APP_UPDATE_REQUIRED`, refresh rotation (a crash between rotation and the local write loses the session, which is accepted), window classes, TanStack Query hooks, `/m/sso-return`, and the `.well-known` files on the **backend**. `05` § 5 first said "frontend"; it was corrected with a note, per their `20` § 8.3 and ADR-134 § B.6.
-- Tenant-setup IDs come from them: P33-11 (`GET /api/v1/public/tenants/by-code/:code`), P33-12 (hint-scoped sign-in), P33-05 (SSO start by code), P32-02 (palette), P32-06 (hint injector), P34-03 (the setup screen). The setup link is `https://<host>/m/setup?org=<code>`. I confirmed these to them by message.
+- Tenant-setup IDs (renumbered the same day — old → new: P33-11 → **P36-11**, P33-12 → **P36-12**, P33-05 → **P36-05**, P32-02 → **P35-02**, P32-06 → **P35-06**, P34-03 → **P37-03**; the text below keeps the old ids as they were sent) came from them: P33-11 (`GET /api/v1/public/tenants/by-code/:code`), P33-12 (hint-scoped sign-in), P33-05 (SSO start by code), P32-02 (palette), P32-06 (hint injector), P34-03 (the setup screen). The setup link is `https://<host>/m/setup?org=<code>`. I confirmed these to them by message.
 
 ## Deviations
 

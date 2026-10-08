@@ -15,7 +15,8 @@ AsyncAPI 3 describes the channels (rooms), the messages (event names and payload
 reuse `contracts/openapi` components through `$ref`), the operations (who sends what), and the
 security of the handshake. It cannot describe Socket.IO's **protocol**: Engine.IO transports, packet
 encoding, acknowledgements, namespaces. Those are pinned by **version**: "Socket.IO protocol v5 as
-implemented by `socket.io` 4.x". They are proved by the conformance suite's realtime checks
+implemented by `socket.io` 4.x" — stated once here: **"Socket.IO v4" in these documents means the
+`socket.io` 4.x libraries, which speak Socket.IO protocol v5 over Engine.IO protocol v4**. They are proved by the conformance suite's realtime checks
 ([`06`](./06-CONFORMANCE-SUITE.md) § 3.5), not by the document. Socket.IO-specific facts (the
 acknowledgement callback, the `auth` handshake object) are written as AsyncAPI bindings or `x-socketio`
 extensions.
@@ -29,15 +30,16 @@ extensions.
    credential.
 3. The handshake applies the same principal checks as HTTP `auth` (account, tenant, facility).
 4. **Re-check while open (P6-12, A-365):** every 60 s the server re-reads the principal. It disconnects
-   on a tenant, super-admin or role change, and (ADR-124 § 9) on a facility or facility-status change.
+   on a tenant, super-admin or role change (as built), and — **target**, ADR-124 § 9 / P21-09 — on a facility
+   or facility-status change.
 
 ## 3. Rooms (channels)
 
 | Room | Joined | Isolation rule |
 |---|---|---|
-| `tenant_<tenantId>` | on connect, by the server (as built) | tenant-wide broadcasts. **A facility-bound socket never joins it** (ADR-124 § 9 — target) |
+| `tenant_<tenantId>` | on connect, by the server (as built) | tenant-wide broadcasts. **Target** (ADR-124 § 9, P21-09): a facility-bound socket never joins it — today every socket joins it; there is no facility check in `config/socket.ts` |
 | `user_<userId>` | on connect (as built) | direct messages, e.g. notifications |
-| `super_admins` | on connect when the principal is a super admin (as built) | cross-tenant notifications for the platform operator only |
+| `super_admins` | on connect when the principal is a super admin (as built, `config/socket.ts`) | reserved for cross-tenant notifications to the platform operator — **nothing emits to it today** (`notification.service.ts` emits to user rooms); documented as an empty channel until an emitter exists |
 | `board_<projectId>` | on the client's `kanban:join`, after `kanban.assertAccess(…, "viewer")` (as built) | kanban live updates; access is checked on join, and a refused join answers `{ ok: false }` |
 | `facility_<tenantId>_<facilityId>` | target (ADR-124 § 9) | facility-scoped events for bound users |
 

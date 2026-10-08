@@ -30,14 +30,15 @@ an ADR). The same holds for a client.
 
 The first `contracts/` is **not written by hand from nothing**. It is the as-built contract, frozen:
 
-1. Run the as-built generator one last time (`openapi:generate`): code-first operations ∪ the remaining
-   JSDoc (ADR-103 § 5).
+1. Run the as-built generator one last time (`openapi:generate`). **As built (2026-10-08) every one of
+   the 491 operations is `x-source: code-first`**: no `@swagger` block remains, and
+   `openapiRoutes.undocumented.json` and the Spectral legacy baseline are both empty (the list was
+   emptied in `1100658`).
 2. Normalise it (`servers`, sorted keys, 3.1 only), split it per module into `contracts/openapi/`, and
    bundle it back. The bundle must equal the as-built document **semantically**: oasdiff both ways
    reports 0 changes. This is the **v1 baseline**, recorded with its hash.
 3. Add what the as-built document lacks, as **additive** changes: the top-level error `code` on every
-   error response ([`04`](./04-ERROR-CODES.md)); the 429 envelope gap ADR-103 recorded; the 76 routes
-   on `openapiRoutes.undocumented.json` (each documented or explicitly marked internal);
+   error response ([`04`](./04-ERROR-CODES.md)); `code: RATE_LIMITED` on the (already enveloped) 429;
    `x-module` on every operation (the gateway's routing key, [`07`](./07-PORTING-PLAYBOOK.md) § 2).
 4. From then on `contracts/` is the source. `backend/openapi.json` stops being committed by the
    backend; the bundle `contracts/dist/openapi.json` replaces it everywhere it is read (Scalar
@@ -79,7 +80,7 @@ construct, not to hand-edit generated code.
 `@callibrator/contracts` request schemas), CI runs the **as-built code-first generator for that module**
 and requires **oasdiff = 0 both ways** against `contracts/` for its operations. When the module flips to
 the generated validators, the check is deleted for it. The equivalence list **only shrinks** (the
-`openapiRoutes.undocumented.json` pattern).
+`openapiRoutes.undocumented.json` pattern, now empty).
 
 What does **not** change in Node: `validate(schema, { from })` stays the only middleware form (now fed
 by generated schemas), `validated(req, schema)` in handlers, the 400 envelope, the tenant hooks,
@@ -103,8 +104,8 @@ by generated schemas), `validated(req, schema)` in handlers, the 400 envelope, t
 | ADR-103 gate | Re-pointed |
 |---|---|
 | **Stale** — `openapi:check` fails when the committed document differs from the generated one | `contract:check`: the bundle `contracts/dist/openapi.json` equals a fresh bundle of `contracts/openapi/**`; every **generated** artefact (Node Zod, client types, i18n code keys, AsyncAPI types) equals a fresh generation |
-| **Invalid** — Spectral (`backend/.spectral.yaml`, ERROR for code-first, a shrink-only legacy baseline) | Spectral moves to `contracts/.spectral.yaml`, with the same rules plus: `x-module` required; every error response references the error envelope with `code`; every `code` used exists in `codes.yaml`; every `x-rule` exists in `rules/` with vectors. The legacy baseline (18 on 2026-09-30) carries over shrink-only. **AsyncAPI** validated by the AsyncAPI parser |
-| **Breaking** — oasdiff `breaking` against `origin/main`, `--fail-on ERR` | oasdiff on `contracts/dist/openapi.json` vs `origin/main`'s. **v1 is additive only**: a breaking change to a `/api/v1` operation fails, with no exception. It goes to `/api/v2` ([`03`](./03-BEHAVIOUR-SPEC.md) § 15). The mobile rule of `docs/MOBILE/08` § 5 (check against the oldest supported app's snapshot) is the same command with another base |
+| **Invalid** — Spectral (`backend/.spectral.yaml`, ERROR for code-first, a shrink-only legacy baseline) | Spectral moves to `contracts/.spectral.yaml`, with the same rules plus: `x-module` required; every error response references the error envelope with `code`; every `code` used exists in `codes.yaml`; every `x-rule` exists in `rules/` with vectors. The legacy baseline is **empty** as built and stays empty. **AsyncAPI** validated by the AsyncAPI parser |
+| **Breaking** — oasdiff `breaking` against `origin/main`, `--fail-on ERR` | oasdiff on `contracts/dist/openapi.json` vs `origin/main`'s. **v1 is additive only**: a breaking change to a `/api/v1` operation fails, except the **CD-1** class (a security/validation tightening of input that was never valid), accepted only through a reviewed allow-list entry naming its ADR (B-VER-1). Everything else goes to `/api/v2` ([`03`](./03-BEHAVIOUR-SPEC.md) § 15). The mobile rule of `docs/MOBILE/08` § 5 (check against the oldest supported app's snapshot) is the same command with another base |
 | **Undocumented route** — `openapiRoutes.p925` (every mounted route has an operation) | per engine: every route the engine mounts is an operation in `contracts/` whose `x-module` the engine serves, and **every operation of a module the engine claims** (`/meta` capabilities) is mounted. Node: the existing guard reading `contracts/`. Other engines: the conformance suite's route-inventory check ([`06`](./06-CONFORMANCE-SUITE.md) § 3.6) |
 | **Frontend types current** — `api:types:check` | unchanged, reading `contracts/dist/openapi.json` |
 | **`x-permission` cannot lie** — compared with the mounted chain (`openapiRoutes.p925`) | stays for Node. For another engine, the conformance suite's permission matrix proves the gate from outside ([`06`](./06-CONFORMANCE-SUITE.md) § 3.3) |

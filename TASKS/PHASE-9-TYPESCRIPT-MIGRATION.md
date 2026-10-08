@@ -1016,7 +1016,7 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 | **Status** | **IN PROGRESS** — the workspace and its build are done, and the **first slice** (`fields`, `vendor`, `calibrationDevices`) moved on 2026-09-29 (**ADR-097**, record [`2026-09-29-p9-22-contracts.md`](../MEMORY/records/2026-09-29-p9-22-contracts.md)). Proven so far: both images build from the root, the backend binary boots (schema OK), `dist` resolves the compiled package, `next build` bundles value imports, and the vendors + calibration-devices E2E pass (16/16). **The full E2E set against this change has not had a clean run** (degraded Docker host; see the record) · **Depends on** P9-11 (DONE) · **Size** L |
 | **Spec refs** | ADR-038 (shared contracts row) · ADR-087 decision 7 · ADR-044 / ADR-046 · `docs/FRONTEND/03-API-CLIENT.md` |
 | **Spec required** | **yes** — the design is **ADR-097** (below, in short) |
-| **Open** | **Q-48**: `packages/contracts` (ADR-038/087, as built) vs ADR-089's planned `shared/contracts`. Not settled here; consumers import by package name, so a move changes no import |
+| **Open** | **Q-48**: `packages/contracts` (ADR-038/087, as built) vs ADR-089's planned `shared/contracts`. Not settled here; consumers import by package name, so a move changes no import. **Settled 2026-10-08 by ADR-134 (plan): `packages/contracts` stays; no root `shared/`** |
 
 **Why:** the frontend's API types are hand-written, and an earlier audit found services calling endpoints that did not exist while their tests mocked the fabrication. A shared Zod schema makes a contract break a compile error in `frontend/`. (It did, on the first compile: the vendor create call sent a `rating` the API has always stripped. That is Q-37.)
 

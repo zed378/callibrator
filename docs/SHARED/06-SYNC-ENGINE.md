@@ -184,7 +184,7 @@ then `findDeviceByQr`. A miss offline is "not in the devices you took offline".
 
 | Answer (via `@callibrator/api-client`'s `ApiError`, `03` § 6.2) | Engine outcome |
 |---|---|
-| 2xx (including a replayed key's stored answer) | record server id / revision / confirmed state; op `done`; plan the next |
+| 2xx (including a replayed key's answer — the stored status with the body re-read in the current context; no body is stored) | record server id / revision / confirmed state; op `done`; plan the next |
 | network, timeout, 5xx, 429 (`Retry-After`), 409 `IDEMPOTENCY_IN_FLIGHT` | retry the **same frozen op** with backoff, unlimited while the capture exists |
 | 409 `IDEMPOTENCY_KEY_REUSED` | a client defect: re-plan once with a new key automatically, then attention ("internal sync error") |
 | 409 `IDEMPOTENCY_SCOPE_CHANGED` | attention; re-plan with a new key only after the user confirms (their access changed) |

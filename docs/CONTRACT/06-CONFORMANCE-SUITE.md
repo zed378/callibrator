@@ -51,7 +51,10 @@ A spec that cannot be expressed black-box (it inspects a Node internal) stays in
 
 Generated from the contract: for **every operation** with `x-tenant-scoped: true` and a path parameter,
 a principal of tenant B requests tenant A's resource and gets **404 `NOT_FOUND`**, byte-identical to an
-unknown id (B-STATUS-2). For lists, A's rows are absent and counts exclude them. The same runs per
+unknown id (B-STATUS-2) — compared after **normalising `X-Request-Id`, `Date` and other per-response
+headers** (the comparison is of status, body and the contract's headers). For **writes**, B's refused
+update or delete is followed by A's read of the row, asserting it is **unchanged**. For lists, A's rows are
+absent and counts exclude them. The same runs per
 facility for `x-facility-accessible` operations, with a bound user of F2 against F1's rows (ADR-124
 § 10, P18-04's 38 cases), and with **403 `FACILITY_ROUTE_REFUSED`** for unmarked routes. The generated
 case list is diffed against the Node suite's `@two-tenant` / `@two-facility` markers: a route covered
@@ -74,7 +77,11 @@ principals:
 - **no 5xx** on any generated input;
 - stateful links (create → read → update → delete) where the contract declares `links`.
 
-Its seed is fixed per run, so a failure reproduces.
+Its seed is fixed per run, so a failure reproduces. **Budgets:** per-address request budgets
+(`requestBudget`, B-RATE-1) would turn fuzzing into a stream of 429s; the suite runs against a stack
+whose budgets are raised by a **conformance configuration** for the fuzz principals only, and a
+separate behaviour check proves each budget at its real value (B-RATE-1). A 429 during fuzzing is a
+harness error, not a pass.
 
 ### 3.5 Behaviour and realtime
 
@@ -112,7 +119,15 @@ undocumented route answers 404, never 200).
 | `conformance-node` | the full suite against the Node backend on the compose stack | merge, when `backend/`, `contracts/` or `conformance/` changed |
 | `conformance-<engine>` | the suite for the modules the engine claims | merge, when that engine, `contracts/` or `conformance/` changed |
 | `conformance-gateway` | the suite through the gateway with the production routing table | a routing change |
-| nightly | every engine × full suite × both browsers' realtime client versions | opens an issue on failure |
+| nightly | every engine × full suite + Schemathesis at full depth × the realtime checks | opens an issue on failure |
+
+**CD-2 — CI budget** (decided by the coordinator under the owner's delegation, 2026-10-08): on change,
+only the **modules whose paths changed** run (path filters per module, plus the full suite when
+`contracts/` or `conformance/harness` change); the **full suite plus Schemathesis run nightly**. The
+ceiling is the **free GitHub Actions minutes** of the repository's plan (the owner's no-budget rule):
+the monthly use is recorded in the nightly job's summary, and when the ceiling is reached, what is
+dropped first is the **nightly fuzz depth** (fewer Schemathesis examples per operation), then the
+nightly realtime matrix — never the per-change module runs.
 
 This also closes the gap the web never closed: the live E2E suite **in CI** (A-19). The first Phase 33
 job that runs it is its first CI run.

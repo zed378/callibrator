@@ -70,6 +70,10 @@ Each finding was checked against the code before the edit:
 - 10: jsPDF under Hermes added as an open feasibility item (`../SHARED/01` § 3, `05` § 7a, P37-01).
 Phase 36 now has 14 cards; the group total is 56.
 
+## Audit round 2 (2026-10-08, later) — shared rows, other rows, sweep
+
+Verified against the code first (`vm-http.conf` location inheritance; the Next proxy's header denylist; `validation.middleware.ts` `details` outside production; `response.util.ts#error` spreading `extra` at the top level). Shared rows 1–15 fixed in `docs/MOBILE/20`, `21` (rewritten to ADR-136's module-by-module model, claims as built), ADR-134 B.1, `docs/SHARED/01`, `03`, `06`, Phases 35, 36 (P36-01, P36-08 now a check), 38, 40 (P40-03 is the app-log client). Other rows: CHANGELOG/INDEX counts (56); BACKLOG Q-C1 … Q-C3 (owner), CD-1/CD-2 (coordinator D-1/D-2, renumbered because `D-` is the deferral series), Q-M1 open, D-11 lead; `CLAUDE.md` rows 23 and 25; `data.code` → top-level `code` in specs P19-02/06/08 and ADR-126 Am. 1 item 9; the PROGRESS `%s` link. Sweep: `AGENTS.md`, `README.md`, `TASKS/README.md`, `TASKS/PROGRESS.md`, `TASKS/PHASE-9` (Q-48 settled), `TASKS/PHASE-12` (roadmap line), `docs/README.md`, `docs/ARCHITECTURE/00`, `04`, `docs/SECURITY/05`, `docs/BACKEND/05` (RLS second layer, Q-C1), `docs/BACKEND/03`, `docs/ENGINEERING/10` (contract-first target notes). Historical records and the ARCHIVE were left untouched.
+
 ## Evidence
 
 No test was run; none is claimed. Every "as built" statement in the documents names its file, read on 2026-10-08.

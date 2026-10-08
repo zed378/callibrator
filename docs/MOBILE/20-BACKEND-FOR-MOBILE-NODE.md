@@ -27,7 +27,7 @@
 4. **Every new route** has a permission gate or a reviewed exemption (`routePermissionGuard.p604`),
    is **written into the contract-first `contracts/` folder first** (OpenAPI 3.1 / AsyncAPI 3 /
    behaviour spec — owner decision 2026-10-08, ADR-136) with a **stable machine `code`** for every
-   refusal (§ 13a), then implemented with its `*.openapi.ts` conforming to it (ADR-103), a facility-scope decision (marked facility-accessible, or 403
+   refusal (§ 13a), then implemented with validators **generated** from it (`backend/src/generated/contract/`, ADR-136, `docs/CONTRACT/02` § 3 — no hand-written `*.openapi.ts` for new routes — a module's existing `*.openapi.ts` survives only until that module is flipped to generation, P32-03/04), a facility-scope decision (marked facility-accessible, or 403
    to bound users — ADR-124 Am. 1), its audit rows inside the transaction, and — if it has a path
    parameter — a two-tenant **and** a two-facility test asserting 404.
 
@@ -188,20 +188,28 @@ gets the as-built one SSO-start refusal (ADR-100).
 ## 3. The Native Ingress — `https://<host>/native/api/v1/…`
 
 **Decision (ADR-134 § B.1):** the app reaches the backend through a **path prefix on the platform
-host**, `/native/`, which the edge routes **directly to the backend**, rewriting `/native/api/` to
+host**, `/native/`, which the edge routes **past Next, to the internal gateway hop and from there to the engine serving each module** (ADR-136 — today the gateway has one upstream, the Node backend), rewriting `/native/api/` to
 `/api/`. The generated client's paths stay `/api/v1/…`; only the app's `baseUrl` is
 `https://<host>/native` (`../SHARED/03` § 5).
 
 ```nginx
 # deploy/compose/nginx/vm-http.conf and default.conf (target, P36-01)
 location /native/api/ {
+    # A location with ANY proxy_set_header of its own inherits NONE from the server block
+    # (vm-http.conf's /socket.io/ note, A-16) — so the client-address headers are repeated here.
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $remote_addr;
+    proxy_set_header X-Forwarded-Proto $client_proto;
+    proxy_set_header CF-Connecting-IP  "";
+    proxy_set_header CF-Visitor        "";
     proxy_set_header Cookie "";                      # never a web session through this door
     proxy_set_header X-Callibrator-Client "native";  # overwrites anything the client sent
     proxy_set_header X-Forwarded-Prefix "/native";
     proxy_set_header X-Callibrator-Tenant-Hint $http_x_tenant_code;  # the app's hint, moved
     proxy_set_header X-Tenant-Code "";                # never the super-admin override (§ 2a.4)
     proxy_set_header X-Tenant-Id "";
-    proxy_pass http://backend/api/;                  # the backend, never Next
+    proxy_pass http://gateway/api/;                  # the internal gateway hop (ADR-136, `docs/CONTRACT/07` § 2) — never Next
 }
 ```
 
@@ -211,6 +219,12 @@ location /native/api/ {
 - **Cookies are stripped** at the edge: a browser on the platform origin cannot turn its web session
   into tokens through `/native/`. **The backend ignores cookies for authentication anyway** (it reads
   `Authorization: Bearer` only, `middlewares/auth.middleware.ts`); stripping is defence in depth.
+- **`X-Callibrator-*` exists only on the native ingress.** The Next proxy copies incoming request
+  headers to the backend except a denylist (`frontend/src/app/api/v1/[...path]/route.ts`), and every
+  other edge location passes client headers through; so the Next proxy's denylist and **every non-native
+  edge location** must strip `X-Callibrator-Client` and `X-Callibrator-Tenant-Hint` (any `X-Callibrator-*`)
+  — otherwise a browser could mark itself native or inject a tenant hint. A test per path (`/api/` through
+  Next, `/socket.io/`, `/oidc/`, `/.well-known/`) proves the headers do not reach the backend.
 - **`X-Callibrator-Client: native`** is set by the edge, so the backend can apply the native policies
   (§ 5, § 9). It is **not a security boundary**: a deployment that exposes the backend's port directly
   lets a caller set it. It never grants anything; it only *adds* restrictions (a version floor, reuse
@@ -374,7 +388,8 @@ configuration, and is the only place a non-https callback is ever accepted.
   its TTL (as built: short-lived).
 - `start` is public with `requestBudget("ssoStart")` (the as-built budget); `exchange` is public with
   a new `requestBudget("ssoExchange")`; `authorize` is a redirect route with the start id as its only
-  input. All three are reviewed gate exemptions (`public`) with reasons, unmarked for facility scope
+  input, behind `requestBudget("ssoAuthorize")` (per address; an unknown or spent start id is the same
+  refusal as ADR-100's SSO start). All three are reviewed gate exemptions (`public`) with reasons, unmarked for facility scope
   (they have no principal yet), and the bound-user rules apply **after** authentication as for the web
   (`FACILITY_BINDING_PENDING` for a JIT user in a multi-facility tenant — P18-03 § 12).
 - **SAML tenants:** the same flow works when the backend runs the SAML leg (the hand-off is the same
@@ -451,8 +466,8 @@ An installed binary cannot be recalled. The server decides whether an old copy m
   `openapi:breaking` record **and** a floor raise announced through `X-App-Update-Recommended` first.
   A floor never discards an outbox: a 426 stops syncing until the update (`04` § 11).
 - **The oldest supported app's contract is a CI input (P36-07):** at each app release the generated
-  `openapi.json` it was built against is committed as a snapshot
-  (`backend/openapi-snapshots/mobile-<version>.json`); `openapi:breaking` runs against the snapshot
+  contract bundle it was built against (`contracts/dist/openapi.json`, ADR-136) is committed as a
+  snapshot (`contracts/snapshots/mobile-<version>.json`); `openapi:breaking` runs against the snapshot
   of the **oldest version at or above the floor** as well as against `main`, so a backend change that
   would break an installed, still-supported app fails the build.
 
@@ -576,8 +591,9 @@ Until a crash-reporting processor is approved (ADR-135), the app uploads its own
 - **Body** (`contracts/` first): `{ entries: [{ at, level, event, fields }] }` — `event` matches an
   allow-listed pattern (`^[a-z0-9_.:-]{1,64}$`), `fields` are flat string/number/boolean values.
   **Caps:** at most 200 entries and 64 KB per request (413 above); each string at most 512 characters
-  (truncated); `requestBudget("mobileLogs")` 30 uploads per hour and 5 MB per day per installation
-  (429 above).
+  (truncated); `requestBudget("mobileLogs")` 30 uploads per hour and 5 MB per day, counted **per
+  installation, per user and per session family** — `X-Installation-Id` is client-chosen, so the user
+  and family caps are the binding ones (429 above).
 - **Untrusted content:** stored as data in a tenant-scoped `mobile_logs` table (hooks apply); **never**
   interpolated into a line of the server's own logger (no log injection — values stay structured
   fields, control characters stripped); **never rendered as HTML** in an administrator viewer (text
@@ -601,13 +617,14 @@ the envelope (Q-53). The app inherits them unchanged (`login`, `mfaSignIn`, `pas
 |---|---|
 | `nativeRefresh` | 60 / 15 min per installation (a background run refreshes at most once) |
 | `ssoExchange` | 20 / 15 min per address |
+| `ssoAuthorize` | 30 / 15 min per address |
 | `pushTokenRegister` | 20 / hour per user |
 | `mobileConfigPublic` | 120 / 15 min per address |
 | `mobileAttestation` | 10 / hour per installation |
 | `tenantByCodeMiss` | 30 / 15 min per address — **404s only** (the enumeration signal, as ADR-100's verify pair) |
 | `tenantByCode` | 600 / 15 min per address, every request — loose, for hospitals and carrier CGNAT on onboarding day |
 | `tenantDiscoverMiss` / `tenantDiscover` | the same pair for `POST /public/tenants/discover` |
-| `mobileLogs` | 30 uploads / hour and 5 MB / day per installation |
+| `mobileLogs` | 30 uploads / hour and 5 MB / day per installation — **and** per user and per session family (the installation id is client-chosen, so it alone bounds nothing) |
 
 ## 13. Audit, Scope and Tests — the Phase 36 Rules
 
@@ -647,7 +664,7 @@ the envelope (Q-53). The app inherits them unchanged (`login`, `mfaSignIn`, `pas
   `make test-e2e` for the native routes (through `/native/`).
 - **Contract first (ADR-136):** every route, header, response and `code` above is in `contracts/`
   before the Node implementation, and the Go variant (`21`) implements the same files; every new route
-  has its `*.openapi.ts` conforming to them; `openapi:check`, `openapi:lint`,
+  is generated from them (`contract:generate`, `contract:check`) and passes its module's conformance suite; `openapi:check`, `openapi:lint`,
   `openapi:breaking` (additive only) pass; `@callibrator/api-client` regenerated; P36-08 publishes
   `x-facility-accessible` on every operation (`../SHARED/05` § 5).
 
@@ -670,7 +687,8 @@ i18n `errors.*` keys. Codes are never renamed; a retired code stays reserved.
 | `SESSION_EXPIRED_ABSOLUTE` | 401 | § 5 rule 4 — the 30-day limit; a re-sign-in prompt, outbox kept |
 | `TENANT_NOT_FOUND` | 404 | §§ 2a.1, 2a.5 — the one uniform answer of both public tenant lookups |
 | `OFFLINE_NOT_ALLOWED` | — (a `/mobile/config` field reason) | § 9a |
-| the as-built `PASSWORD_CHANGE_REQUIRED`, `MFA_ENROLMENT_REQUIRED`, `SCOPE_LOSS_CODES`, IPM and idempotency codes | as built / P19-02 | unchanged |
+| `PASSWORD_CHANGE_REQUIRED`, `MFA_ENROLMENT_REQUIRED` | 403 | **as built** (A-123, A-160) |
+| `SCOPE_LOSS_CODES`, the IPM conflict codes, the idempotency codes | 403 / 409 | **target, not built** — specified by P19-02 / P19-08, built by P21-02/03/09 |
 
 ## 14. Threats Specific to Native Clients
 

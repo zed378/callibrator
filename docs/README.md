@@ -78,10 +78,10 @@ hidden document. The files that do exist are as-built and name their source.
 
 | Dimension | Reality |
 |---|---|
-| Backend Architecture | **Dual-Backend Target Architecture (ADR-089)** — TypeScript backend (`backend/src/`) existing reference implementation; future Go backend engine (`backend-go/`) planned for Phase 999 |
+| Backend Architecture | **Dual-Backend Target Architecture (ADR-089, amended by ADR-136)** — TypeScript backend (`backend/src/`) existing implementation; the API contract becomes contract-first in `contracts/` (Phases 32 … 34); a future Go engine (`backend-go/`) ported module by module in Phase 999 |
 | Backend Runtime | Express.js + Sequelize — **JavaScript/CommonJS today, strict TypeScript is the target for Phase 9** (ADR-038; plan in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`) |
 | Database | PostgreSQL 18 + pgvector, only (ADR-039 for the engine, ADR-041 for the version — the reference deployment runs 18.6 since the closing deploy of 2026-10-02, which wiped it per the owner's decision). The engine-agnostic premise of ADR-029 was dropped; its tenant-isolation mechanism stands |
-| Frontend Architecture | **Multi-Frontend & Shared Component Architecture** — Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Zustand · Root-level `shared/` area |
+| Frontend Architecture | Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Zustand · target: shared logic and design tokens in `packages/*` with the planned React Native app (ADR-134, ADR-135) — no root `shared/`, no shared UI |
 | Realtime | Socket.IO both ends (see ADR-031) |
 | Infrastructure | Redis · RabbitMQ · MQTT (client, external broker) · ClamAV · pgvector |
 | Modules | 33 functional backend modules, 53 mounted route modules |

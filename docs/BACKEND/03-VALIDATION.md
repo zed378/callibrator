@@ -133,6 +133,8 @@ A controller that throws `validateInput`'s `{ status: 400, message: "Validation 
 
 The validators are the authority — they are what runs.
 
+> **Target (ADR-136, owner decision 2026-10-08; Phases 32 … 34):** the direction reverses — the contract-first `contracts/` becomes the source, and Node's validators are **generated** from it into `backend/src/generated/contract/` (`docs/CONTRACT/02` § 3); a module's `*.openapi.ts` is deleted when it is flipped. The paragraph below describes the as-built code-first state until then.
+
 **Since P9-25 (ADR-103) the contract is generated from the validators themselves, route module by route module.** A route's `routes/api/<name>.openapi.ts` names the same Zod schema object its `validate()` mounts, and `npm run openapi:generate` renders it into the committed `backend/openapi.json` with `zod-openapi`. For those routes the published request body cannot drift from the enforced one. Routes not yet moved still publish their `@swagger` JSDoc (merged into the same document), and `swaggerValidatorAlignment.p608` keeps comparing those against the validators; its `KNOWN_DRIFT` list shrinks as modules move (vendor left it with the P9-25 pilot).
 
 The document is checked, not regenerated on build: `npm run openapi:check` fails the build, the image build and CI when the committed file is not what the source generates. *(As-built until 2026-09-30: `npm run swagger:generate` rewrote `swagger.json` from JSDoc alone at build time.)*

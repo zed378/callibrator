@@ -108,6 +108,8 @@ RLS was implemented (migration `0012`) and removed (migration `0015`, ADR-029). 
 
 The rule to carry forward: **an isolation mechanism whose "no context" branch permits rather than denies is not an isolation mechanism.**
 
+> **Target — decided by the owner 2026-10-08 (Q-C1, ADR-136; built in Phase 34):** RLS returns as a **second layer** beneath the ORM hooks, **fail-closed** (no tenant setting ⇒ no rows), staged — the evidence-chain tables first, before a second engine writes to them — with its cost measured first; reads run inside transactions (`SET LOCAL` is lost outside one), and the super-admin `skipTenantScope` path gets an explicit, reviewed bypass. The ORM hooks stay the first layer. Nothing here is built.
+
 ## Where the Hooks Do Not Reach
 
 Each of these needs its own attention. They are where a leak can still happen.

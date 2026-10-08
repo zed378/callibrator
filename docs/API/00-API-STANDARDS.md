@@ -1,5 +1,7 @@
 # 00 — API Standards
 
+> **ADR-136 (2026-10-08) — target, not built:** the API contract moves to a language-neutral, contract-first `contracts/` folder (OpenAPI 3.1, AsyncAPI 3, a behaviour spec, an error-code catalogue); every backend generates its validators from it and is proved by one black-box conformance suite; ports replace Node module by module behind a gateway. See [`docs/CONTRACT/`](../CONTRACT/00-README.md). Where this document describes the code-first contract (ADR-103) or a full-port parity model (ADR-089), it describes **today's** state; ADR-136 is the plan.
+
 Read this before any other `API/` document. Every contract in this folder assumes it.
 
 - **Base path:** `/api/v1`

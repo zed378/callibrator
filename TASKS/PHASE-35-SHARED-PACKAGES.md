@@ -85,7 +85,7 @@ Added to the global DoD, not instead of it:
       with the tenant (`docs/SHARED/07` § 3)
 - [ ] **Contract first:** every new or changed route, event and error `code` is written into the root
       `contracts/` folder (OpenAPI 3.1 / AsyncAPI 3 / behaviour spec, ADR-136) **before** its code, with a
-      stable machine `code` for every refusal; the backend conforms (its `*.openapi.ts` and the conformance
+      stable machine `code` for every refusal; the backend conforms (validators generated into `backend/src/generated/contract/` — inside the 100 % coverage gate via explicit `collectCoverageFrom`, excluded from ESLint by path with a verified do-not-edit header; a module's `*.openapi.ts` survives only until it is flipped, P32-03/04 — and the conformance
       gate of ADR-136 green; `openapi:breaking` passes); `@callibrator/api-client` regenerated from `contracts/` and
       `api:types:check` green
 - [ ] **No secret** in a response, a log, `audit_logs.changes`, the app bundle, an OTA update or a crash
@@ -97,7 +97,7 @@ Added to the global DoD, not instead of it:
 ## 3. Owner Questions Carried by the Group
 
 The design decisions were made under the owner's delegation and recorded in ADR-134 and ADR-135 with
-their alternatives. **Q-58 … Q-61 were answered by the owner on 2026-10-08**; Q-M1 … Q-M4 remain open:
+their alternatives. **Q-58 … Q-61 and Q-M2 … Q-M6 were answered by the owner on 2026-10-08; only Q-M1 remains open:**
 
 | # | Question | Recommendation | Blocks |
 |---|---|---|---|
@@ -105,7 +105,8 @@ their alternatives. **Q-58 … Q-61 were answered by the owner on 2026-10-08**; 
 | Q-59 (ADR-134) | Native session absolute lifetime: 30 days (re-sign-in monthly) — or longer for field technicians? | **decided (owner, 2026-10-08): 30 days absolute; a tenant may shorten it** | — |
 | Q-60 (ADR-134) | Extend refresh-reuse detection to **web** sessions (needs a grace window for racing tabs)? | **decided (owner, 2026-10-08): mobile only for now; web revisited with a cross-tab refresh lock** | — |
 | Q-61 (ADR-134) | Reserve the `@callibrator` scope on npm (squatting protection for the private packages)? | **decided (owner, 2026-10-08): yes** — owner to-do: create the free npm organisation `callibrator` (BACKLOG) | — |
-| Q-M1 … Q-M4 (ADR-135) | store identity and app id; production hosts in the binary; Android fallback listing; EAS plan and device lab budget | `docs/MOBILE/08` § 9 | Phases 37, 37 |
+| Q-M1 (ADR-135) | store identity (legal name, D-U-N-S) and the reverse-domain app id | **open** — `docs/MOBILE/08` § 9 | P37-01, P40-01 |
+| Q-M2 … Q-M6 (ADR-135) | production hosts; Android fallback; EAS plan and device lab; logs to our own backend; no super admins in v1 | **decided (owner, 2026-10-08)** — `docs/MOBILE/08` § 9 | — |
 
 These are recorded in [`BACKLOG.md`](./BACKLOG.md) (Open Questions) by the change that wrote this plan.
 

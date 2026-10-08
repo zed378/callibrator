@@ -22,18 +22,27 @@
 
 ## 2. The Gateway
 
-- **What it is:** the existing edge (nginx in compose and on the VM; the Helm ingress) gains a
-  **routing table**: `module → engine`, keyed by path prefix. Every operation in `contracts/` carries
-  `x-module`, and the table is **generated** from the contract plus a small `routing.yaml`
-  (`module: node|go|…`). No hand-written location blocks per path.
+- **Where it sits — an internal hop.** As built, the public edge sends `/api/` to **Next**
+  (`deploy/compose/nginx/vm-http.conf`, `location /api/ { proxy_pass http://frontend; }`), and Next's proxy
+  reaches the backend directly through `BACKEND_INTERNAL_URL`. The gateway is therefore an **internal**
+  service: `BACKEND_INTERNAL_URL` points at the gateway, the native ingress `/native/api/v1` (ADR-134)
+  points at the same gateway, and the gateway forwards to the engines. One gateway, two front doors.
+- **What it is:** an nginx (or equivalent) **routing table per operation** — method + path template —
+  generated from the contract's operations and their `x-module`, plus a small `routing.yaml`
+  (`module: node|go|…`). Routing by path prefix is not enough: `/api/v1/tenants` is mounted by four
+  routers and `/api/v1/auth` by two, so one prefix spans several modules. The generator emits a
+  **precedence order** (literal segments before parameters, as Express resolves them), and a test asserts
+  that **every operation resolves to exactly one engine** and no two rules overlap ambiguously. No
+  hand-written location blocks.
 - **What it is not:** it does not authenticate, authorise, transform bodies or merge responses. A
-  request goes to exactly one engine. The Next proxy for the web and the native ingress `/native/api/v1`
-  (ADR-134) sit **in front of** it, unchanged.
+  request goes to exactly one engine.
 - **Module boundaries** follow the route modules (55 as built) grouped into gateway modules by data
   ownership. A module owns its tables' **writes**. Reads of another module's tables are allowed through
   the database (one schema) but are listed, so a port knows its read dependencies.
 - **Rules:**
-  - a module is routed to an engine only when that engine scores **100%** on it ([`06`](./06-CONFORMANCE-SUITE.md) § 4);
+  - a module is routed to an engine only when **both** the source and the target engine score **100%**
+    on it on the **same contract version** (owner, 2026-10-08 — Q-C2), so the rollback target is
+    known-good ([`06`](./06-CONFORMANCE-SUITE.md) § 4);
   - a routing change is a deploy with its own record;
   - rollback is the previous table, with no data migration, because the database is shared and both
     engines keep the contract.
@@ -45,9 +54,12 @@
 
 ## 3. Migrations: Plain SQL, Runnable From Any Language
 
-As built: 98 TypeScript migrations under Umzug (`backend/src/config/migrator.ts`, table
-`schema_migrations`), **plus `db.sync()`**, which builds base tables and indexes from the Sequelize
-models at boot (ADR-100 Am. 3: a model index on a later migration's column breaks the upgrade boot).
+As built: **95** TypeScript migrations under Umzug (`0001` … `0123`, with gaps; `backend/src/config/migrator.ts`,
+table `schema_migrations`), **plus `db.sync()`** (`config/migrate.ts`), which builds the base tables and
+indexes from the Sequelize models (ADR-100 Am. 3: a model index on a later migration's column breaks the
+upgrade boot). Migrations and seeds are also triggered over HTTP by the internal routes
+`GET /api/v1/migration/{up,seeding,seed-demo,down,unseeding}` (`routes/internal/migration.route.ts`) —
+**Node-internal**, not part of `contracts/`.
 
 **Target (Phase 34):**
 
@@ -58,14 +70,28 @@ models at boot (ADR-100 Am. 3: a model index on a later migration's column break
    the baseline as `INSERT`s.
 2. **From then on, every schema change is a plain `.sql` file** (`db/migrations/<UTC timestamp>_<slug>.up.sql`,
    with a `.down.sql` where a down is meaningful). Each file runs in **one transaction** (PostgreSQL
-   transactional DDL), except files marked `-- no-transaction` (e.g. `CREATE INDEX CONCURRENTLY`).
+   transactional DDL), except the files the chosen tool lets you mark as non-transactional (e.g.
+   `CREATE INDEX CONCURRENTLY`) — the **marker syntax is the tool's own** (dbmate:
+   `-- migrate:up transaction:false`; golang-migrate has no per-file marker and needs such a statement
+   in a file of its own run outside a transaction by the runner's configuration). The card fixes the
+   syntax with the tool.
 3. **One runner, language-neutral:** a single static binary run by every engine's deploy and by CI.
-   **golang-migrate** is recommended (plain up/down SQL files, a version table, a CLI usable from any
-   language). The card confirms it under the package rule against two alternatives (`dbmate`, Atlas).
-   The runner's version table continues the Umzug history: the baseline marks every Umzug migration as
-   applied.
-4. **`db.sync()` is retired.** The schema comes only from SQL. Sequelize models describe it and must not
-   create it. A guard compares the models' attributes and indexes with the database (the as-built
+   **golang-migrate** is recommended (plain up/down SQL files, a CLI usable from any language), against
+   `dbmate` and Atlas, confirmed by the card under the package rule.
+   - **A distinct version table.** Umzug's table is `schema_migrations` — which is also the **default**
+     table of golang-migrate and dbmate (with different columns; golang-migrate stores a single
+     version). The new runner **must** be configured with its own table (e.g. `schema_versions`), so the
+     two histories never collide.
+   - **The upgrade gate.** A deployment must first be on the **last Umzug release** (every Umzug
+     migration applied — checked against the manifest); only then is the new runner run with
+     `force <baseline version>` and, from then on, `up`. A deployment on an older release is refused with
+     a message naming the release to install first.
+4. **`db.sync()` is retired**, and so are the HTTP migration routes (`/migration/up`, `/down`,
+   `/seeding`, `/unseeding`, `/seed-demo`): the runner applies schema; seeds become SQL files (roles,
+   menus, the base catalogue in the baseline; demo data as a separate, refused-in-production seed file
+   run by the runner's CLI). If the bootstrap flow still needs an HTTP trigger, it is re-implemented as a
+   Node-internal route that **calls the runner**, documented as internal (not in `contracts/`). The
+   schema comes only from SQL. Sequelize models describe it and must not create it. A guard compares the models' attributes and indexes with the database (the as-built
    `modelIndexColumns.am3.guard` grows into a full model ↔ schema check).
 5. **Data migrations** that need application logic (back-fills) are written as SQL where possible. A
    back-fill that truly needs code is a **one-off job** in whichever engine, not a migration, and is
@@ -77,17 +103,29 @@ models at boot (ADR-100 Am. 3: a model index on a later migration's column break
 ## 4. Sessions Valid on Every Engine: JWKS
 
 As built: access tokens are JWTs with `JWT_ALGORITHM` defaulting to **HS256** (a shared secret), with a
-key ring (ADR-119) and a session row checked per request. Sharing an HMAC secret with every engine would
-let every engine **mint** tokens.
+**single-algorithm** key ring (ADR-119, `utils/jwt.util.ts`) and a session row checked per request.
+**Purpose tokens** — activation (24 h), MFA (5 min), socket (300 s), first sign-in — are signed with the
+same keys (`PURPOSE_TOKEN_TYPES`). The claims are `id`, `email`, `sid`, `amr`, `impersonatorId`, `typ`
+(`auth.service.ts`). Sharing an HMAC secret with every engine would let every engine **mint** tokens.
 
 **Target (Phase 34):**
 
-- Access tokens are signed **ES256** with a `kid`. Signing keys live only with the **issuer**: the
-  engine that serves the `auth` module. One issuer at a time.
-- Every engine **verifies** against the issuer's **JWKS**, served internally at
-  `/internal/.well-known/session-jwks.json`. It is not public (the separate OIDC-provider JWKS at
-  `/.well-known/jwks.json` stays as built and is a different key set). Verifiers cache it by `kid` and
-  refetch on an unknown `kid`.
+- Access **and purpose** tokens are signed **ES256** with a `kid` **in the JWT header**; the claim set is
+  unchanged (B-AUTH-2: `id`, `email`, `sid`, `amr`, `impersonatorId`, `typ`, plus `iat`, `exp`). Signing
+  keys live only with the **issuer**: the engine that serves the `auth` module. One issuer at a time.
+- Every engine **verifies** against the issuer's **JWKS**, served on an **internal** mount at
+  `/internal/.well-known/session-jwks.json`. **No `/internal` mount exists today** — it is target, built by
+  P34-02, reachable only on the internal network (the edge refuses `/internal/` on public hosts). The
+  OIDC-provider JWKS at **`/oidc/.well-known/jwks.json`** (`oidc.route.ts`; the root `/.well-known/` is the
+  ACME static mount, `backend/index.ts`) stays as built and is a different key set. Verifiers cache the
+  JWKS by `kid` and refetch on an unknown `kid` — **rate-limited** (at most one refetch per few seconds
+  per verifier), so a flood of forged `kid`s cannot hammer the issuer.
+- **The HS256 → ES256 move** happens on the **issuer only**, which for one access-token lifetime
+  verifies **both** algorithms (its ring holds the old HMAC key for verification only, signs ES256 only);
+  the other engines are not routed any module until the window has passed, so they never need HMAC.
+  This changes the as-built single-algorithm ring — an explicit, tested exception for that window.
+  Purpose tokens follow the same move (an activation link minted before the switch stays valid for its
+  24 h on the issuer).
 - **Rotation:** a new key is published in the JWKS **before** it signs; the old key stays published until
   every token signed with it has expired (access-token lifetime + clock skew). The ring of ADR-119
   becomes the JWKS's key list.
@@ -102,7 +140,8 @@ let every engine **mint** tokens.
 ## 5. `GET /api/v1/meta` — Contract Version and Capabilities
 
 - Public, ETag, cheap: `{ contractVersion, capabilities: { "<module>": true|false, "<feature>": true|false } }`
-  (B-META-1).
+  (B-META-1), **deployment-wide only** — per-tenant and per-user flags stay behind the authenticated
+  mobile configuration read; rate limit `requestBudget("meta")` per address.
 - The **gateway** answers it, or the engine serving the `meta` module answers it from the routing table:
   a module is `true` when routed to an engine that implements it **fully**. Feature capabilities (e.g.
   `mobile.passkeys`, `ipm.countersign`) are the server flags of `docs/MOBILE/01` § 6.
@@ -124,7 +163,7 @@ hooks (ADR-029, ADR-048, ADR-124). Go uses predicates in every repository functi
   with no resolvable tenant sees nothing;
 - raw SQL with the bound tenant (and facility) predicate only (`sql()` in Node; the same rule elsewhere).
 
-**The RLS question (owner question Q-C1).** The owner removed PostgreSQL Row Level Security earlier
+**RLS — decided (owner, 2026-10-08, Q-C1: yes, a second layer, fail-closed, staged).** The owner removed PostgreSQL Row Level Security earlier
 (ADR-029, migrations 0012 → 0015). Three reasons were given:
 1. RLS is PostgreSQL-only, while MySQL was still supported;
 2. the policy failed open on an empty `app.current_tenant`;
@@ -133,14 +172,20 @@ hooks (ADR-029, ADR-048, ADR-124). Go uses predicates in every repository functi
 With two or more engines writing one database, isolation is now implemented **N times**, and a single
 missed predicate in a new engine is a cross-tenant leak that no other layer stops.
 
-**Recommendation: yes, reintroduce RLS — as a second layer, never the only one, and fail-closed.**
+**Decision: reintroduce RLS as a second layer, never the only one, fail-closed and staged.**
 - Reason 1 no longer holds: PostgreSQL is the only database (ADR-039).
 - Reason 2 is a policy defect, not an RLS property. The policy reads
   `current_setting('callibrator.tenant_id')` **without** `missing_ok`, so an unset setting **raises**,
   and an empty value matches no row.
-- Reason 3: set the tenant (and facility) with `SET LOCAL` inside the transaction each engine already
-  opens for a mutation, and in one round trip combined with the first statement for reads. Measure it
-  with the U-06 k6 scripts before deciding.
+- Reason 3: the tenant (and facility) are set with `SET LOCAL` **inside a transaction**. Under the
+  extended query protocol a `SET LOCAL` outside a transaction is lost at the next statement, so **reads
+  too must run inside a transaction** (a read-only one) whenever an RLS-protected table is queried — that
+  is the real cost: a `BEGIN`/`COMMIT` pair and one `SET LOCAL` per request on those tables. It is
+  **measured first** with the U-06 k6 scripts, before any policy is enabled.
+- **The super-admin bypass path:** the as-built cross-tenant reads (`skipTenantScope` for the super
+  admin and the system tasks, ADR-029) run under a role or setting the policies admit explicitly
+  (`callibrator.bypass_tenant = on`, set only by those code paths, reviewed like `skipTenantScope`) —
+  never by disabling RLS; migrations run as a `BYPASSRLS` role.
 
 Start with the evidence-chain tables (devices, records, certificates, IPM sessions and results,
 attachments, audit). Enable it only after the gateway exists and before the **first non-Node engine
@@ -154,8 +199,8 @@ as the proof.
 - a second mechanism to keep in step with the hooks, whose disagreement shows as a denied query
   (a 500 if unhandled).
 
-The owner decides (ADR-136 Q-C1). Until then, the conformance suite plus each engine's deny-branch tests
-are the only proof.
+Built by P34-07. Until it is enabled, the conformance suite plus each engine's deny-branch tests are the
+only proof.
 
 ## 7. What a Module Port Must Deliver (checklist)
 

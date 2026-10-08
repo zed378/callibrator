@@ -30,7 +30,7 @@ All tasks in this phase are currently **Planned**. No Go implementation code, di
 
 | Task ID | Work Package Title | Status | Primary Dependencies | Description & DoD Summary |
 |---|---|---|---|---|
-| **P999-01** | Architecture Foundation & Contract Alignment | `Planned` | Phase 9, Upstream Adoption | Formalize dual-backend specifications, verify contract parity tooling, finalize `shared/` contract types. |
+| **P999-01** | Architecture Foundation & Contract Alignment | `Planned` | Phase 9, Upstream Adoption | Formalize dual-backend specifications, verify contract parity tooling, ~~finalize `shared/` contract types~~ — **re-scoped (ADR-136):** align with `contracts/` (no root `shared/`, ADR-134). |
 | **P999-02** | Go Project Bootstrap & Toolchain Setup | `Planned` | P999-01 | Initialize `backend-go/` module, standard folder hierarchy (`cmd/`, `internal/`, `pkg/`), Makefile, `golangci-lint` configuration. |
 | **P999-03** | Domain Entity & Value Object Porting | `Planned` | P999-02 | Port core domain entities (`Device`, `CalibrationRecord`, `Certificate`, `Tenant`, `User`) into Go `internal/domain/entity`. |
 | **P999-04** | Application & Service Layer Migration | `Planned` | P999-03 | Implement core use cases and domain services (`DeviceService`, `CalibrationService`, `TenantService`) in Go. |
@@ -47,9 +47,9 @@ All tasks in this phase are currently **Planned**. No Go implementation code, di
 | **P999-15** | Unit & Integration Test Suite Construction | `Planned` | P999-04, P999-05 | Build unit and integration test suites using Go `testing` and `testify`, ensuring 100% tenant isolation assertions. |
 | **P999-16** | API Parity & Contract Compatibility Verification | `Planned` | P999-06, P999-15 | Execute contract test suite against running Go backend binary, asserting exact HTTP code and JSON envelope parity with TS backend. |
 | **P999-17** | Data Compatibility & Schema Migration Alignment | `Planned` | P999-05 | Verify shared PostgreSQL 18 schema compatibility, migration integrity, and index alignment across both backends. |
-| **P999-18** | Frontend Go API Adapter Implementation | `Planned` | P999-06 | Build `frontend/src/services/api-go.ts` adapter implementing `ICalibrationAPIClient` interface for Go backend integration. |
-| **P999-19** | Shared Component Refactoring & Extraction | `Planned` | P999-18 | Extract frontend presentational controls into `shared/components/` and `shared/utilities/`, ensuring 100% backend-agnostic behavior. |
-| **P999-20** | Dual-Backend Integration & Proxy Routing Setup | `Planned` | P999-18 | Configure reverse proxy (nginx / Caddy) to support dynamic path routing between TypeScript and Go backend engines. |
+| **P999-18** | Frontend Go API Adapter Implementation | ~~`Planned`~~ **Superseded (ADR-134, ADR-136)** | P999-06 | Build `frontend/src/services/api-go.ts` adapter implementing `ICalibrationAPIClient` interface for Go backend integration. |
+| **P999-19** | Shared Component Refactoring & Extraction | ~~`Planned`~~ **Superseded (ADR-134, ADR-136)** | P999-18 | Extract frontend presentational controls into `shared/components/` and `shared/utilities/`, ensuring 100% backend-agnostic behavior. |
+| **P999-20** | Dual-Backend Integration & Proxy Routing Setup | `Planned` | ~~P999-18~~ P34-04 (the gateway), P999-06 | **Re-scoped (ADR-136):** route modules through the P34-04 gateway — was: configure reverse proxy (nginx / Caddy) to support dynamic path routing between TypeScript and Go backend engines. |
 | **P999-21** | As-Built Documentation & Module Reference | `Planned` | P999-20 | Update `docs/BACKEND/`, `docs/API/`, and module reference documents to describe shipped Go backend modules as-built. |
 | **P999-22** | Deployment & Runtime Containerization | `Planned` | P999-20 | Create multi-stage Dockerfile for Go backend binary, update Docker Compose and Helm deployment manifests. |
 | **P999-23** | Performance & Benchmark Verification | `Planned` | P999-20 | Conduct load testing (k6/autocannon) comparing memory usage, p95 latency, and throughput between TS and Go backends. |
@@ -116,7 +116,7 @@ Services            Repositories           │
 
 1. **Definition of Done**: A Phase 999 task is NOT marked `DONE` until:
    - Implementation is complete and verified by named unit/integration tests.
-   - Parity assertions pass against the reference backend.
+   - ~~Parity assertions pass against the reference backend.~~ **Re-scoped (ADR-136):** the module scores **100% in the conformance suite** on the current contract version (`docs/CONTRACT/06` § 4), with Node also at 100% on it (Q-C2); a parity diff against Node is a diagnostic only.
    - Cross-tenant 404 security assertions pass.
    - A change record is written in `MEMORY/records/` and indexed in `MEMORY/MEMORY-INDEX.md`.
 2. **Strict No-Deletion Rule**: The TypeScript backend MUST NOT be deleted or broken while completing Phase 999 tasks.

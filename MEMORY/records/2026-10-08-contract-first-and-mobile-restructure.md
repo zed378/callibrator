@@ -17,7 +17,7 @@ Deliverables: `docs/CONTRACT/`, ADR-136, Phases 32–34, the Phase 999 update, t
 
 - `frontend/src/api/typed.ts` (openapi-fetch + openapi-typescript); 56 service files; the Next proxy `frontend/src/app/api/v1/[...path]`.
 - `backend/package.json` `openapi:generate|check|lint|breaking` (ADR-103).
-- 98 Umzug migrations (`config/migrator.ts`, table `schema_migrations`) plus `db.sync()` at boot (`index.ts`).
+- 95 Umzug migrations (0001 … 0123 with gaps) (`config/migrator.ts`, table `schema_migrations`) plus `db.sync()` at boot (`index.ts`).
 - `utils/jwt.util.ts`: `JWT_ALGORITHM` defaults to HS256.
 - `response.util.ts#error` puts `code` **top-level** through `extra`; only `PASSWORD_CHANGE_REQUIRED` and `MFA_ENROLMENT_REQUIRED` use it.
 - `config/socket.ts`: socket.io ^4.8.4 with the Redis adapter. Rooms `tenant_`, `user_`, `super_admins`, `board_`. Client events `kanban:join` (with an ack) and `kanban:leave`. Server events `new_notification` plus 18 `kanban:*` events (`emitToBoard` callers).
@@ -63,4 +63,5 @@ Deliverables: `docs/CONTRACT/`, ADR-136, Phases 32–34, the Phase 999 update, t
 - **Q-C1:** RLS as a second layer. Recommendation: yes, fail-closed, on the evidence chain first, before a second engine writes.
 - **Q-C2:** a module moves only when both engines are at 100%. Recommendation: yes.
 - **Q-C3:** how long v1 lives beside a v2. Recommendation: ≥ 90 days, and while any supported app uses it.
-- Still open from ADR-135: Q-M1, Q-M6.
+- From ADR-135: Q-M6 is **decided** (owner (C): not in v1, enforced server-side); only **Q-M1** is open.
+- **Addendum (same day):** the owner decided Q-C1 (yes, staged, fail-closed), Q-C2 (yes) and Q-C3 (≥ 90 days after v2); the coordinator decided CD-1 (one v1 exception class) and CD-2 (CI budget) under delegation; the round-2 audit corrections are listed in ADR-136 Amendment 1, and ADR-136 banners were added to `docs/API/00`, `docs/API/14`, `docs/BACKEND/12` and `docs/ARCHITECTURE/11`.

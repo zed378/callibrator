@@ -51,7 +51,7 @@
 |---|---|
 | **Status** | BLOCKED |
 | **Depends on** | Phase 34 DONE · P999 Go foundation (bootstrap, JWKS verification, isolation) |
-| **Spec refs** | `docs/MOBILE/20` (the native ingress prefix and why) · `docs/MOBILE/21` · `docs/SHARED/03-API-CLIENT.md` § 5 · `docs/ARCHITECTURE/11` § 5 · P999-20, P999-22 · memory `callibrator-deployment-gotchas` (the frontend owns `/api/`) |
+| **Spec refs** | `docs/MOBILE/20` (the native ingress prefix and why) · `docs/MOBILE/21` · `docs/SHARED/03-API-CLIENT.md` § 5 · `docs/CONTRACT/07` § 2 (the gateway, per operation) · P999-20, P999-22 · memory `callibrator-deployment-gotchas` (the frontend owns `/api/`) |
 | **Spec required** | no |
 
 **Why:** the app reaches the backend directly on `https://<host>/native/api/v1/…`, never through the
@@ -233,7 +233,7 @@ Google's and Apple's hands; the rule is enforced in one place on each engine.
 |---|---|
 | **Status** | BLOCKED |
 | **Depends on** | P1000-02 … P1000-09 |
-| **Spec refs** | `docs/ARCHITECTURE/11` § 5 (coexistence) · `docs/MOBILE/21` · `docs/MOBILE/04` § 11 · ADR-119 (key ring) · P999-17 (schema compatibility) |
+| **Spec refs** | `docs/CONTRACT/07` § 2, § 4 (routing per module, the issuer move) · `docs/MOBILE/21` · `docs/MOBILE/04` § 11 · ADR-119 (key ring) · P999-17 (schema compatibility) |
 | **Spec required** | **yes** — `MEMORY/specs/P1000-10-module-move-continuity.md` (builds on `docs/CONTRACT/07` § 4: the issuer move, JWKS) |
 
 **Why:** with the app in users' hands, moving a backend-for-mobile module (above all `auth`, the token **issuer** — `docs/CONTRACT/07` § 4) from Node to Go — or back — must not sign everyone out, lose a push registration, duplicate a replayed
@@ -307,7 +307,7 @@ capture or break a frozen op in an outbox.
 |---|---|
 | **Status** | BLOCKED |
 | **Depends on** | P1000-02 |
-| **Spec refs** | owner decision 2026-10-08 (ADR-135 § 14) · `docs/MOBILE/11-TENANT-SETUP-AND-BRANDING.md` · `docs/MOBILE/20` § 2a, § 16 (Node cards **P36-11**, **P36-12**; native SSO start by tenant code in **P36-05**) · `docs/MOBILE/21` · `backend/src/middlewares/auth.middleware.ts` (tenant headers honoured for the super admin only, as built) · `backend/src/routes/api/authPublic.route.ts` (`POST /auth/login/discover`, as built) · ADR-042 (raster logos only) |
+| **Spec refs** | owner decision 2026-10-08 (ADR-135 § 14) · `docs/MOBILE/11-TENANT-SETUP-AND-BRANDING.md` · `docs/MOBILE/20` § 2a (Node cards **P36-11**, **P36-12**; native SSO start by tenant code in **P36-05**) · `docs/MOBILE/21` · `backend/src/middlewares/auth.middleware.ts` (tenant headers honoured for the super admin only, as built) · `backend/src/routes/api/authPublic.route.ts` (`POST /auth/login/discover`, as built) · ADR-042 (raster logos only) |
 | **Spec required** | no (the contract is `20`'s) |
 
 **Why:** the app identifies its tenant before sign-in and sends it as a hint. On the Go engine the
@@ -316,7 +316,7 @@ a hint — a Go handler that let `X-Tenant-Code` select the tenant of a non-supe
 be a cross-tenant hole.
 
 **Definition of Done**
-- [ ] `GET /api/v1/public/tenants/by-code/:code` on Go: case-insensitive, the same public fields (name, logo URL, `primaryColor`, `{ sso: { enabled, protocol, buttonLabel }, passwordAllowed, passkeyAllowed }`), one uniform 404 (unknown, no code, suspended, mobile not enabled), `requestBudget("tenantByCode")`, `ETag` / 304 — parity diff with TS; a test that no other tenant field (settings, SSO secrets, IdP URLs with credentials, counts) is ever serialised
+- [ ] `GET /api/v1/public/tenants/by-code/:code` on Go: case-insensitive, the same public fields (name, logo URL, `primaryColor`, `{ sso: { enabled, protocol, buttonLabel }, passwordAllowed, passkeyAllowed }`), one uniform 404 (unknown, no code, suspended, mobile not enabled), **both** budgets — `requestBudget("tenantByCodeMiss")` (strict, counting 404s only) and `requestBudget("tenantByCode")` (loose), `ETag` / 304 — parity diff with TS; a test that no other tenant field (settings, SSO secrets, IdP URLs with credentials, counts) is ever serialised
 - [ ] The `mobile.enabled` settings gate (refused while `tenants.code` is null) and `UNIQUE (lower(code))` honoured identically
 - [ ] Sign-in with `X-Tenant-Code`: an account of another tenant → the **generic invalid-credentials 401**, byte-identical to a wrong password (no oracle), on both engines; the token's tenant is authoritative; the super-admin-only header override unchanged — two-tenant tests, mutation-checked (let the hint select the tenant → the named test fails)
 - [ ] The native SSO start by tenant code (P36-05's shape) on Go

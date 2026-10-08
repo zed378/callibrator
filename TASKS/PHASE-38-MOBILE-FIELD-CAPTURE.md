@@ -130,7 +130,7 @@
 | **Spec required** | no |
 
 **Definition of Done**
-- [ ] The real-device script steps 1–5, 9–13 on the owned lab (Samsung, aggressive-OEM Android, iPhone, iPad) as a named run in `MEMORY/records/`; background behaviour recorded as observed
+- [ ] The real-device script steps 1–5, 9–13 on the **personal devices available** (owner, Q-M4: no owned lab for now — `docs/MOBILE/09` § 5) as a named run in `MEMORY/records/`, the record naming which device classes (Samsung, aggressive-OEM Android, iPhone, iPad) were and were not covered; background behaviour recorded as observed
 - [ ] Phase summary; `PROGRESS.md` updated
 
 **Abuse cases**

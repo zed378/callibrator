@@ -1,9 +1,12 @@
 # 04 — Error Codes: the Catalogue and Its Conventions (TARGET)
 
 > **TARGET — nothing here is built.** As built (2026-10-08): errors carry a prose `message`. A machine
-> `code` exists only where a client had to react to a gate. `response.util.ts#error` adds it as a
-> **top-level** field through `extra` (`PASSWORD_CHANGE_REQUIRED`, `MFA_ENROLMENT_REQUIRED`,
-> `auth.middleware.ts`). The frontend maps status + code to messages in `frontend/src/i18n/apiErrors.ts`.
+> `code` exists only where a client had to react, as a **top-level** field, through **two mechanisms**:
+> `response.util.ts#error`'s `extra` (`PASSWORD_CHANGE_REQUIRED`, `MFA_ENROLMENT_REQUIRED`,
+> `auth.middleware.ts`), and a thrown error's **`publicCode`**, which `utils/controllerWrapper.util.ts`
+> sends as `code` (ADR-100: `LOCATION_REQUIRED`, `NETWORK_POLICY`, `SELF_LOCKOUT` from
+> `signInPolicy.service.ts`; the web keys on them in `frontend/src/i18n/apiErrors.ts`,
+> `login/hooks/useLoginForm.ts`, `authStore.ts`). The frontend maps status + code to messages in `frontend/src/i18n/apiErrors.ts`.
 
 ---
 
@@ -70,10 +73,11 @@ IPM_NOT_DRAFT:
 
 | Source | Codes |
 |---|---|
-| As built (gates) | `PASSWORD_CHANGE_REQUIRED`, `MFA_ENROLMENT_REQUIRED` |
+| As built (gates, `extra`) | `PASSWORD_CHANGE_REQUIRED`, `MFA_ENROLMENT_REQUIRED` |
+| As built (sign-in policy, `publicCode`, ADR-100) | `LOCATION_REQUIRED`, `NETWORK_POLICY`, `SELF_LOCKOUT` |
 | Scope loss (P19-08 § 9.5, ADR-127 Am. 1) | `ACCOUNT_INACTIVE`, `TENANT_SUSPENDED`, `TENANT_DELETED`, `FACILITY_INACTIVE`, `FACILITY_ENDED`, `FACILITY_BINDING_PENDING` |
 | Facility gate (ADR-124 Am. 2 § 8) | `FACILITY_ROUTE_REFUSED`, `FACILITY_UNRESOLVED` |
-| IPM (P19-02, `IPM_CONFLICT_CODES` in `@callibrator/contracts`) | `IPM_DRAFT_EXISTS`, `IPM_REVISION_CONFLICT`, `IPM_NOT_DRAFT`, `IPM_VOIDED`, `IPM_SUPERSEDED`, `IPM_ORIGINAL_NOT_EFFECTIVE`, `IPM_DEVICE_RETIRED`, `IPM_DEVICE_INACTIVE`, `IPM_FACILITY_ENDED`, `IPM_NO_CHECKLIST`, `IPM_VERSION_RETIRED` |
+| IPM (P19-02; `IPM_CONFLICT_CODES` is **target** — not yet in `packages/contracts/src`) | `IPM_DRAFT_EXISTS`, `IPM_REVISION_CONFLICT`, `IPM_NOT_DRAFT`, `IPM_VOIDED`, `IPM_SUPERSEDED`, `IPM_ORIGINAL_NOT_EFFECTIVE`, `IPM_DEVICE_RETIRED`, `IPM_DEVICE_INACTIVE`, `IPM_FACILITY_ENDED`, `IPM_NO_CHECKLIST`, `IPM_VERSION_RETIRED` |
 | Idempotency (ADR-126 Am. 1) | `IDEMPOTENCY_KEY_REUSED`, `IDEMPOTENCY_IN_FLIGHT`, `IDEMPOTENCY_SCOPE_CHANGED` |
 | Backend for mobile (`docs/MOBILE/20` § 13a, ADR-134) | `APP_UPDATE_REQUIRED`, `SESSION_REVOKED`, `REFRESH_RACE`, `NATIVE_BROWSER_REFUSED`, `NATIVE_CLIENT_REQUIRED`, `TENANT_CODE_REQUIRED`, `INVALID_CREDENTIALS`, `SSO_EXCHANGE_FAILED`, `SESSION_EXPIRED_ABSOLUTE`, `TENANT_NOT_FOUND` (the uniform answer of both public tenant lookups) |
 | Devices (P19-03, ADR-132) | the QR and serial conflicts of the P19-03 spec (exact names fixed there) |
