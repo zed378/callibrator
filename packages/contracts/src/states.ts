@@ -161,3 +161,18 @@ export type ClientFacilityStatus = (typeof CLIENT_FACILITY_STATUSES)[number];
  */
 export const CLIENT_FACILITY_MOVE_STATUSES = Object.freeze(["in_progress", "completed"] as const);
 export type ClientFacilityMoveStatus = (typeof CLIENT_FACILITY_MOVE_STATUSES)[number];
+
+/**
+ * An IPM session (ADR-126 § 3, Am. 1; P19-02 spec § 7): `draft` → `submitted` | `discarded`,
+ * `submitted` → `voided`. "Superseded" is `submitted` with `superseded_by_id`. `voided` and
+ * `discarded` are final — held by the database (migration 0127's trigger), for every role.
+ */
+export const INSPECTION_SESSION_STATUSES = Object.freeze(["draft", "submitted", "voided", "discarded"] as const);
+export type InspectionSessionStatus = (typeof INSPECTION_SESSION_STATUSES)[number];
+
+/**
+ * An idempotency key (ADR-127 § 7, ADR-126 Am. 1 § 8; P19-02 spec § 9.1): written `in_flight`
+ * before the route runs, `completed` in the route's own transaction.
+ */
+export const IDEMPOTENCY_KEY_STATUSES = Object.freeze(["in_flight", "completed"] as const);
+export type IdempotencyKeyStatus = (typeof IDEMPOTENCY_KEY_STATUSES)[number];

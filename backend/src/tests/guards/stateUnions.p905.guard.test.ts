@@ -15,6 +15,7 @@ import {
   CLIENT_FACILITY_STATUSES,
   DEVICE_TYPE_STATUSES,
   INSPECTION_ITEM_DEFINITION_STATUSES,
+  INSPECTION_SESSION_STATUSES,
   INSPECTION_TEMPLATE_STATUSES,
   TEMPLATE_PROPOSAL_STATUSES,
   TEMPLATE_VERSION_STATUSES,
@@ -58,6 +59,9 @@ const MACHINES: [model: string, tuple: readonly string[]][] = [
   // in_progress → completed, are a pair other lists also contain in that order — a literal
   // search would flag them; enumMirrors.d26 holds ClientFacilityMove.status to the tuple.)
   ["ClientFacility", CLIENT_FACILITY_STATUSES],
+  // P20-04 (ADR-126 § 3): an IPM session's lifecycle. (An idempotency key's in_flight → completed
+  // is held by enumMirrors.d26.)
+  ["InspectionSession", INSPECTION_SESSION_STATUSES],
 ];
 
 describe("P9-05 — state machines have one list each", () => {

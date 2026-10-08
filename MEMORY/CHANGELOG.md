@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-09 — The IPM session's tables and their immutability in the database (P20-04, P20-05; ADR-126 Am. 3) ([record](./records/2026-10-09-p20-04-05-ipm-schema.md))
+- **Added (schema only, no routes yet):** migration 0126 — `inspection_sessions`, `inspection_results`, `inspection_session_signatures`, `idempotency_keys`, tenant- and facility-scoped with composite keys that follow a device move; migration 0127 — after submit a session changes only in its lifecycle, results only while a draft, signatures never, for every database role.
+- **Operational:** the boot applies 0126 and 0127; `0126 down` refuses once any IPM row or key exists. Re-running 0117 alone afterwards would break every IPM result insert (42703) — never run a migration outside the manifest order.
+
 ### 2026-10-09 — The global inspection catalogue gets its API: device types, checklists, publishing, the offline download, tenant proposals (P21-01; ADR-125 Am. 3) ([record](./records/2026-10-09-p21-01-catalogue-api.md))
 - **Added:** `/api/v1/device-types` (read by any `calibration` / `ipm` / `ipm-templates` reader; written by the platform operator); `/api/v1/ipm/templates/published` (every published checklist and the active types, strong `ETag`, 304); `/api/v1/ipm/template-versions/:id`; the operator's item library, templates, drafts, publish (publishing the base checklist re-publishes every type checklist on it) and discard; tenant proposals (`ipm-templates`) and the operator's queue under `/api/v1/admin/ipm/template-proposals`.
 - **Changed:** a device may carry `deviceTypeId`; giving it a retired or unknown type is a 400 (a device keeps a type that was retired later).

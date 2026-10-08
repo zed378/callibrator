@@ -15,6 +15,10 @@ import type defineUpstreamFileImport from "../models/upstreamFileImport.model";
 import type defineUpstreamSqlImport from "../models/upstreamSqlImport.model";
 import type defineClientFacility from "../models/clientFacility.model";
 import type defineClientFacilityMove from "../models/clientFacilityMove.model";
+import type defineInspectionSession from "../models/inspectionSession.model";
+import type defineInspectionResult from "../models/inspectionResult.model";
+import type defineInspectionSessionSignature from "../models/inspectionSessionSignature.model";
+import type defineIdempotencyKey from "../models/idempotencyKey.model";
 import type defineInspectionItemDefinition from "../models/inspectionItemDefinition.model";
 import type defineInspectionTemplate from "../models/inspectionTemplate.model";
 import type defineInspectionTemplateVersion from "../models/inspectionTemplateVersion.model";
@@ -194,6 +198,11 @@ export interface Models {
   // device-move log (provider-internal)
   ClientFacility: ReturnType<typeof defineClientFacility>;
   ClientFacilityMove: ReturnType<typeof defineClientFacilityMove>;
+  // P20-04 (ADR-126 Am. 1–2) — born TypeScript: the IPM aggregate and the idempotency keys
+  InspectionSession: ReturnType<typeof defineInspectionSession>;
+  InspectionResult: ReturnType<typeof defineInspectionResult>;
+  InspectionSessionSignature: ReturnType<typeof defineInspectionSessionSignature>;
+  IdempotencyKey: ReturnType<typeof defineIdempotencyKey>;
 }
 
 /** An instance of the model registered under `K`. */

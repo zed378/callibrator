@@ -392,7 +392,9 @@ describe("D-12 — the phantom brand on converted models equals the runtime defa
     // The SQL-dump import (P24-06) adds UpstreamSqlImport (born TypeScript, no defaultScope) — 81.
     // P20-07 (ADR-124 Am. 2, G-F3) adds ClientFacility and ClientFacilityMove, neither paranoid nor
     // with a defaultScope (an include of a facility must never be an INNER JOIN) — 83.
-    expect(converted.length).toBe(83);
+    // P20-04 (ADR-126 Am. 1, G-S4) adds InspectionSession, InspectionResult,
+    // InspectionSessionSignature and IdempotencyKey, none paranoid nor with a defaultScope — 87.
+    expect(converted.length).toBe(87);
     expect(branded).toEqual([...DEFAULT_SCOPED]);
     const runtimeScoped = scopedModels.map((m) => m.name).filter((n) => converted.includes(n)).sort();
     expect(branded).toEqual(runtimeScoped);

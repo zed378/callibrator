@@ -61,6 +61,10 @@ const FACILITY_SCOPED: Readonly<Record<string, { databaseNotNull: boolean; why: 
   Warehouse: { databaseNotNull: false, why: "a room's facility; NULL = the provider's store (0123, G-F4)" },
   User: { databaseNotNull: false, why: "the binding: set ⇔ bound (0123)" },
   AuditLog: { databaseNotNull: false, why: "where the act happened; no FK, no back-fill (0117)" },
+  // P20-04 (ADR-126 § 1, Am. 2 § 5): the IPM aggregate — the device's facility, and the session's.
+  InspectionSession: { databaseNotNull: true, why: "its device's facility (0126)" },
+  InspectionResult: { databaseNotNull: true, why: "its session's facility (0126)" },
+  InspectionSessionSignature: { databaseNotNull: true, why: "its session's facility (0126)" },
 });
 
 /** Models with a device key that are NOT facility-scoped — provider-internal, DENY for bound principals (P21-09). */

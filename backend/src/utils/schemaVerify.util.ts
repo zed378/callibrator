@@ -160,6 +160,42 @@ const P2007_OBJECTS: readonly ExpectedObject[] = Object.freeze([
 ]);
 
 /**
+ * P20-04 / P20-05 (migrations 0126, 0127; ADR-126 § 5, Am. 1 § 3, Am. 2 § 5): the IPM aggregate's
+ * controls — the composite keys that keep a session in its device's facility and a result or
+ * signature in its session's, the facility triggers, the invariants' partial unique indexes, the
+ * CHECKs a submit relies on, and the immutability triggers (every role, each with the device-move
+ * exception). A skipped migration must not pass silently.
+ */
+const P2004_OBJECTS: readonly ExpectedObject[] = Object.freeze([
+  ...(["inspection_sessions", "inspection_results", "inspection_session_signatures"] as const).flatMap((table) => [
+    control("trigger", table, `${table}_facility_default`, "P20-04 / ADR-124 Am. 3: a row takes its device's or session's facility (migration 0126)"),
+    control("trigger", table, `${table}_facility_open`, "P20-04 / ADR-124 Am. 2: no row is added to an ended facility (migration 0126)"),
+    control("trigger", table, `${table}_facility_guard`, "P20-04 / ADR-124 Am. 2 (AM-6): the facility changes only by a device move (migration 0126)"),
+  ]),
+  control("constraint", "inspection_sessions", "inspection_sessions_device_facility_fkey", "P20-04 / ADR-126 § 1: a session's facility is its device's, and follows a move (migration 0126)"),
+  control("constraint", "inspection_results", "inspection_results_session_facility_fkey", "P20-04 / ADR-126 § 1: a result's facility is its session's (migration 0126)"),
+  control("constraint", "inspection_session_signatures", "inspection_session_signatures_session_facility_fkey", "P20-04 / ADR-126 Am. 2 § 5: a signature's facility is its session's (migration 0126)"),
+  control("index", "inspection_sessions", "inspection_sessions_tenant_facility_id_unique", "P20-04 / P19-04 § 5.1: the composite-key target of results and signatures (migration 0126)"),
+  control("index", "inspection_sessions", "inspection_sessions_visit_unique", "P20-04 / ADR-126 § 4: one visit number per device root (migration 0126)"),
+  control("index", "inspection_sessions", "inspection_sessions_linear_chain", "P20-04 / ADR-126 § 3: a session is corrected at most once — the chain is a line (migration 0126)"),
+  control("index", "inspection_sessions", "inspection_sessions_one_root_draft", "P20-04 / ADR-126 Am. 1 § 7: one open root draft per device and technician (migration 0126)"),
+  control("index", "inspection_sessions", "inspection_sessions_client_ref_unique", "P20-04 / ADR-126 Am. 1 § 1: a client_ref is unique per creator (migration 0126)"),
+  control("index", "inspection_sessions", "inspection_sessions_report_number_unique", "P20-04 / ADR-126 Am. 2 § 2: a report number is unique per tenant (migration 0126)"),
+  control("index", "inspection_results", "inspection_results_one_per_item", "P20-04 / ADR-126 § 1: one result per template item of a session (migration 0126)"),
+  control("index", "inspection_session_signatures", "inspection_session_signatures_session_kind_unique", "P20-04 / ADR-126 Am. 2 § 5: one signature per kind per session (migration 0126)"),
+  control("index", "idempotency_keys", "idempotency_keys_user_key_unique", "P20-04 / ADR-127 § 7: an idempotency key is unique per tenant and user (migration 0126)"),
+  control("constraint", "inspection_sessions", "inspection_sessions_issued_fields", "P20-04 / ADR-126 Am. 1–2: a submitted or voided session carries its number, snapshots and report fields (migration 0126)"),
+  control("constraint", "idempotency_keys", "idempotency_keys_one_principal", "P20-04 / ADR-127 § 7: a key names exactly one caller, a user or an API key (migration 0126)"),
+  control("trigger", "inspection_sessions", "inspection_sessions_append_only", "P20-05 / ADR-126 § 5: after the draft only the lifecycle changes, each once; never deleted (migration 0127)"),
+  control("trigger", "inspection_sessions", "inspection_sessions_no_truncate", "P20-05 / ADR-126 § 5: inspection_sessions cannot be truncated (migration 0127)"),
+  control("trigger", "inspection_sessions", "inspection_sessions_correction_same_device", "P20-05 / P19-02 § 5.3: a correction stays on its original's device (migration 0127)"),
+  control("trigger", "inspection_results", "inspection_results_draft_only", "P20-05 / ADR-126 § 5: results are written only while their session is a draft (migration 0127)"),
+  control("trigger", "inspection_results", "inspection_results_no_truncate", "P20-05 / ADR-126 § 5: inspection_results cannot be truncated (migration 0127)"),
+  control("trigger", "inspection_session_signatures", "inspection_session_signatures_append_only", "P20-05 / ADR-126 Am. 2 § 5: a signature is never changed or deleted, and binds the issued hash (migration 0127)"),
+  control("trigger", "inspection_session_signatures", "inspection_session_signatures_no_truncate", "P20-05 / ADR-126 Am. 2 § 5: signatures cannot be truncated (migration 0127)"),
+]);
+
+/**
  * Objects that live only in migrations and carry a control. Each is checked
  * by name on its table.
  */
@@ -363,6 +399,7 @@ const EXPECTED_OBJECTS: readonly ExpectedObject[] = Object.freeze([
   // every existing create path relies on, no insert into an ended facility, the composite keys that
   // keep a child in its device's facility, the AM-7 attachment triggers, the user-binding triggers.
   ...P2007_OBJECTS,
+  ...P2004_OBJECTS,
 ]);
 
 const TAG = "[schema-verify]";

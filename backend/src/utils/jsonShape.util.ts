@@ -178,6 +178,60 @@ const certificateSignedSnapshot = z
   .strict();
 
 /*
+ * P20-04 (ADR-126 Am. 1 § 5, Am. 2 § 1; P19-02 spec § 4.1, P19-06 spec § 4): what an IPM session
+ * fixes at submit, and who signed its report. Strict, every key present: a snapshot is printed and
+ * (P19-06) hashed, so a missing, extra or mistyped key is refused. Never an e-mail, phone or user
+ * id in a person snapshot (FT-15).
+ */
+const snapshotId = z.guid().nullable();
+const personSnapshot = z
+  .object({ name: z.string().min(1).max(255), role: snapshotText, organisation: snapshotText })
+  .strict();
+const ipmDeviceSnapshot = z
+  .object({
+    name: snapshotText,
+    manufacturer: snapshotText,
+    model: snapshotText,
+    serialNumber: snapshotText,
+    qrCode: snapshotText,
+    deviceTypeId: snapshotId,
+    deviceTypeName: snapshotText,
+    lastCalibrationDate: snapshotText,
+    nextCalibrationDate: snapshotText,
+  })
+  .strict();
+const ipmFacilitySnapshot = z
+  .object({ id: z.guid(), name: z.string().min(1), code: snapshotText, kind: snapshotText, address: snapshotText })
+  .strict();
+const fromTo = z.object({ from: snapshotText, to: snapshotText }).strict().nullable();
+/* What one submit did (§ 8); `{}` on imported history — so every key is optional, nothing else allowed. */
+const ipmSideEffects = z
+  .object({
+    preventiveWorkOrderId: snapshotId,
+    repairWorkOrderId: snapshotId,
+    deviceStatus: fromTo,
+    deviceLocation: fromTo,
+    calibrationRequested: z.boolean(),
+    notices: z.array(z.string().max(500)).max(20),
+  })
+  .partial()
+  .strict();
+const ipmIssuerSnapshot = z
+  .object({
+    version: z.literal(1),
+    name: snapshotText,
+    email: snapshotText,
+    phone: snapshotText,
+    address: snapshotText,
+    city: snapshotText,
+    state: snapshotText,
+    zipCode: snapshotText,
+    country: snapshotText,
+    website: snapshotText,
+  })
+  .strict();
+
+/*
  * The TypeScript type of each JSON shape a converted model declares (P9-10,
  * spec item 5, ADR-064 item 10 / D-27): the shape's `z.infer`.
  */
@@ -241,6 +295,15 @@ export type UpstreamImportSummary = z.infer<typeof upstreamImportSummary>;
 export type UpstreamSqlImportTables = z.infer<typeof upstreamSqlImportTables>;
 export type UpstreamSqlImportParseSummary = z.infer<typeof upstreamSqlImportParseSummary>;
 
+/** `InspectionSession.performerSnapshot`, `InspectionSessionSignature.signerSnapshot` (P20-04): a person as printed. */
+export type IpmPersonSnapshot = z.infer<typeof personSnapshot>;
+
+/** `InspectionSession.deviceSnapshot` / `.facilitySnapshot` / `.sideEffects` / `.issuerSnapshot` (P20-04). */
+export type IpmDeviceSnapshot = z.infer<typeof ipmDeviceSnapshot>;
+export type IpmFacilitySnapshot = z.infer<typeof ipmFacilitySnapshot>;
+export type IpmSideEffects = z.infer<typeof ipmSideEffects>;
+export type IpmIssuerSnapshot = z.infer<typeof ipmIssuerSnapshot>;
+
 const JSON_SHAPES: Readonly<Record<string, z.ZodType | undefined>> = Object.freeze({
   "ApiKey.scopes": apiKeyScopes,
   "AuditLog.changes": object,
@@ -265,6 +328,12 @@ const JSON_SHAPES: Readonly<Record<string, z.ZodType | undefined>> = Object.free
   "UpstreamSqlImport.tables": upstreamSqlImportTables,
   "UpstreamSqlImport.parseSummary": upstreamSqlImportParseSummary,
   "ClientFacilityMove.counts": clientFacilityMoveCounts,
+  "InspectionSession.performerSnapshot": personSnapshot,
+  "InspectionSession.deviceSnapshot": ipmDeviceSnapshot,
+  "InspectionSession.facilitySnapshot": ipmFacilitySnapshot,
+  "InspectionSession.sideEffects": ipmSideEffects,
+  "InspectionSession.issuerSnapshot": ipmIssuerSnapshot,
+  "InspectionSessionSignature.signerSnapshot": personSnapshot,
 });
 
 /**

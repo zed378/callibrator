@@ -78,7 +78,7 @@ describe("G-02 — the facility dimension over the real registry", () => {
     );
     expect(readableModels.map((m) => m.name).sort()).toEqual(Object.keys(readable).sort());
     // Named here so G-12 (facilityReadable.guard) finds each entry's exercising test.
-    expect(Object.keys(readable).sort()).toEqual(["ClientFacility", "ConsentRecord", "DsarRequest", "Notification", "Session"]);
+    expect(Object.keys(readable).sort()).toEqual(["ClientFacility", "ConsentRecord", "DsarRequest", "IdempotencyKey", "Notification", "Session"]);
     expect(internalModels.length).toBeGreaterThan(20);
   });
 

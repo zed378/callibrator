@@ -145,6 +145,9 @@ describe("P20-01 / P20-03 — the inspection catalogue is global, unscoped, and 
       .sort((a, b) => a.key.localeCompare(b.key));
     expect(into).toEqual([
       { key: "CalibrationDevice.deviceType", type: "BelongsTo", onDelete: "RESTRICT" },
+      // P20-04 (ADR-126 § 1): a result pins its template item, a session its version.
+      { key: "InspectionResult.templateItem", type: "BelongsTo", onDelete: "RESTRICT" },
+      { key: "InspectionSession.templateVersion", type: "BelongsTo", onDelete: "RESTRICT" },
       { key: "InspectionTemplateProposal.basedOnVersion", type: "BelongsTo", onDelete: "RESTRICT" },
       { key: "InspectionTemplateProposal.deviceType", type: "BelongsTo", onDelete: "RESTRICT" },
       { key: "InspectionTemplateProposal.resultingVersion", type: "BelongsTo", onDelete: "RESTRICT" },

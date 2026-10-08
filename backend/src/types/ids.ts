@@ -89,6 +89,18 @@ export type InspectionTemplateItemId = Brand<string, "InspectionTemplateItemId">
 /** A tenant's catalogue proposal id (`inspection_template_proposals.id`). */
 export type InspectionTemplateProposalId = Brand<string, "InspectionTemplateProposalId">;
 
+/** An IPM session's id (`inspection_sessions.id`, P20-04) — server-assigned, never a client's. */
+export type InspectionSessionId = Brand<string, "InspectionSessionId">;
+
+/** An IPM result's id (`inspection_results.id`, P20-04) — replaced with a draft's results; nothing references it. */
+export type InspectionResultId = Brand<string, "InspectionResultId">;
+
+/** An IPM report signature's id (`inspection_session_signatures.id`, P20-04 / P19-06). */
+export type InspectionSessionSignatureId = Brand<string, "InspectionSessionSignatureId">;
+
+/** An idempotency key row's id (`idempotency_keys.id`, P20-04) — not the client's `Idempotency-Key`. */
+export type IdempotencyKeyId = Brand<string, "IdempotencyKeyId">;
+
 /** The constructors' shared check. */
 const assertUuid = (value: string, what: string): void => {
   if (!UUID_SHAPE.test(value)) {
