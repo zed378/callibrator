@@ -50,9 +50,14 @@ const CATALOGUE_DECIMALS = [
   "warnMin",
   "warnMax",
 ];
-const EXACT_DECIMAL_STRINGS = new Set(
-  ["InspectionItemDefinition", "InspectionTemplateItem"].flatMap((m) => CATALOGUE_DECIMALS.map((a) => `${m}.${a}`)),
-);
+// P20-04 (P19-02 spec § 4.2): an IPM result's measured values are compared against the same
+// limits on the same scaled integers, so they are exact strings too.
+const EXACT_DECIMAL_STRINGS = new Set([
+  ...["InspectionItemDefinition", "InspectionTemplateItem"].flatMap((m) => CATALOGUE_DECIMALS.map((a) => `${m}.${a}`)),
+  "InspectionResult.measuredValue",
+  "InspectionResult.measuredValue1",
+  "InspectionResult.measuredValue2",
+]);
 const decimals = allDecimals.filter(([m, a]) => !EXACT_DECIMAL_STRINGS.has(`${m}.${a}`));
 const exact = allDecimals.filter(([m, a]) => EXACT_DECIMAL_STRINGS.has(`${m}.${a}`));
 
@@ -82,7 +87,7 @@ describe("D-21 — every DECIMAL attribute reads as a number", () => {
     expect(row[attribute]).toBeNull();
   });
 
-  it("the reviewed exact-decimal columns (ADR-125 Am. 2) are exactly the catalogue's twenty, every one found", () => {
+  it("the reviewed exact-decimal columns (ADR-125 Am. 2) are exactly the catalogue's twenty and the IPM result's three, every one found", () => {
     expect(exact.map(([m, a]) => `${m}.${a}`).sort()).toEqual([...EXACT_DECIMAL_STRINGS].sort());
   });
 

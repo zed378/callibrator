@@ -10622,6 +10622,40 @@ Our calibration records already solve the same problem (ADR-062): append-only in
 
 **`docs/` amended (as target):** `UPSTREAM/09-REPORT-LAYOUTS.md` § 1 (D1), § 2.5; `UPSTREAM/02-FEATURES.md` F-58 … F-61, F-75, the priority list; `DATABASE/00-DATA-MODEL.md` (ADR-126 bullet); `docs/SECURITY/15` FT-71 (proof); `MEMORY/specs/P18-03-…` § 5.2 (`esignature`), § 6 (signature rows), § 10.1 (signature tables); `MEMORY/specs/P18-04-…` A-11, C-09; `MEMORY/specs/P19-02-…` § 4.1, § 10.2 (pointers).
 
+
+### ADR-126 Amendment 3 (2026-10-09, P20-04 + P20-05): the IPM aggregate's schema and triggers as built — migrations 0126 and 0127; no global uniqueness but the token; `idempotency_keys.user_id` nullable; server-side time defaults; the correction's visit number checked by the trigger; signatures get the full facility trio
+
+**Date:** 2026-10-09 · **Status:** Accepted, **built** (migrations 0126, 0127). Decided by the implementing agent under the owner's standing delegation (decide by best practice, record it) · **Cards:** P20-04, P20-05 · **Specs:** [`P19-02`](./specs/P19-02-ipm-session-aggregate.md) § 4, § 5, § 9.1; [`P19-06`](./specs/P19-06-ipm-report-document.md) § 4 (as-built notes added) · **Record:** `MEMORY/records/2026-10-09-p20-04-05-ipm-schema.md`
+
+**Why an amendment.** Building the tables against the code found one contradiction in the spec, two uniquenesses that CLAUDE.md forbids, a time default the models cannot express, and places where the spec left the trigger's exact reach open.
+
+**Decision.**
+1. **No global uniqueness but the verification token.** `inspection_results` legacy key is `UNIQUE (tenant_id, legacy_table, legacy_id)` (spec: `(legacy_table, legacy_id)`), and the linear-chain index is `(tenant_id, supersedes_id)` (spec: `(supersedes_id)`). A global uniqueness is a cross-tenant existence oracle (CLAUDE.md, The Traps). The one global unique left is `verification_token`, as ADR-126 Am. 2 § 3 decided (random, resolved without a tenant). `tests/migrations/0126-0127` holds that list to exactly that one.
+2. **`idempotency_keys.user_id` is nullable.** The spec's table says NOT NULL, and its CHECK says exactly one of `user_id` / `api_key_id`; both cannot hold for an API-key row. The CHECK wins (`num_nonnulls(user_id, api_key_id) = 1`), the Q-51 precedent (0105). The two per-caller uniques are non-partial `(tenant_id, user_id, key)` and `(tenant_id, api_key_id, key)` (NULLs are distinct, so the other principal's rows never collide), and `user_id` and `api_key_id` get their own leading indexes (D-20).
+3. **Server-side `now()` defaults** on `inspection_sessions.performed_at`, `.received_at` and `inspection_session_signatures.signed_at`. The models' `DataTypes.NOW` is applied by Sequelize only and never becomes a column default, so a raw-SQL writer (the ETL, a script) would have none, and "the server's time of the create" (spec § 4.1) would not be the database's.
+4. **The append-only trigger checks a correction's visit number** at its submit (spec § 6: "the trigger refuses a head whose number differs from its root's"). It also freezes `voided` and `discarded` rows entirely, except for the facility column under a move. The draft-only trigger refuses a result's change of session, and applies the "no template item without ad-hoc or import" rule to UPDATE as well as INSERT.
+5. **Signatures get all three facility triggers** (default, open, guard), as sessions and results do (spec § 5.3). P19-06 § 4.2 named only the default.
+6. **CHECKs added beyond the spec's list:** lower-case hex shape of `report_content_hash`, `document_hash`, `request_hash` and `scope_fingerprint`; an idempotency key's `completed` ⇔ `completed_at` with a response status; `expires_at > created_at`. The three text-length rules are one CHECK, `inspection_sessions_text_lengths`.
+7. **The read-order index `(session_id, section, sort_order, id)` is not built.** The unique `(session_id, section, sort_order)` is the same order, and because it is unique, a trailing `id` never breaks a tie.
+8. **Grants are written as GRANT + REVOKE**, not as REVOKE only, so the result holds even where 0057's default privileges were not applied.
+
+**Alternatives considered.**
+| Alternative | Why not |
+|---|---|
+| Keep the spec's global legacy and chain uniques | A probe naming another tenant's ids learns that they exist (23505 versus success); per tenant costs nothing |
+| `user_id` NOT NULL and a separate table for API-key keys | Two tables for one mechanism; the middleware (P21-03) would branch on the principal everywhere |
+| Leave `performed_at` / `received_at` without a database default | The ETL (P24-02) and every raw writer would have to send the server's time themselves; a forgotten one is a 23502 |
+| Check the correction's visit number in the service only | The spec asks for the trigger; the owner and the ETL would otherwise be able to write a chain with two numbers |
+| Build the redundant read-order index | One more index on every result write, and no read served that the unique does not serve |
+
+**Implications, including the bad ones.**
+- **`location_id … ON DELETE SET NULL` acts as RESTRICT for a submitted session.** The append-only trigger refuses the SET NULL, so a hard delete of a room is refused while a submitted IPM names it. Warehouses are paranoid (soft-deleted), so only a hard delete meets this. The room is snapshotted at submit either way.
+- **Re-running 0117's `up` alone after 0126** puts the functions back without the `result` branch. Then every IPM result insert fails with 42703, because 0117's fall-through reads a `device_id` that a result does not have. The live suite proves this as its fail-before. It is the shape of the 0057-after-0119 trap, recorded in 0126's header.
+- **Older live suites had to stop matching the new tables.** `clientFacilities.p2007`, `inspectionCatalogue.p2003` and `upgradeBoot.am3` counted triggers by name pattern (`%facilit%`, `inspection_%`) and now exclude the three IPM tables. `p2003`'s down/up path reverts 0127/0126 before 0112, because the IPM tables reference the catalogue.
+- The device move (P21-09d) carries sessions, results and signatures by cascade with no service change. **The move's "open IPM draft" 409 is still not built** (P21-03), so the database moves a device that has an open draft.
+
+**`docs/` amended:** `DATABASE/00-DATA-MODEL.md` (the ADR-126 bullet: built), the P19-02 spec § 4.1, § 4.2, § 9.1 and the P19-06 spec § 4.2 (as-built notes referencing this amendment).
+
 ---
 
 ## ADR-127: Field Capture Is a Progressive Web App With an Offline Queue — IndexedDB Per User, Idempotent Replay Through the Normal API, Append-Only Makes Conflicts Rare and Each One a 409 With a Reason; the Service Worker Lives Under the Nonce CSP; No Native App

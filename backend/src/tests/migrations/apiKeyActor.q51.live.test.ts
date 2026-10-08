@@ -206,7 +206,8 @@ live("Q-51 — migration 0105 on live PostgreSQL 18", () => {
 
   it("FAIL-BEFORE: before 0105 a key's id in adjusted_by / performed_by / requested_by fails the users foreign key", async () => {
     const [cols] = await g.db.query(
-      "SELECT table_name FROM information_schema.columns WHERE column_name = 'api_key_id' ORDER BY table_name",
+      // idempotency_keys (P20-04, born with api_key_id; sync() builds it from today's model) is not one of 0105's tables.
+      "SELECT table_name FROM information_schema.columns WHERE column_name = 'api_key_id' AND table_name <> 'idempotency_keys' ORDER BY table_name",
     );
     expect(cols).toEqual([]);
     await inRolledBack(g.db, async (t) => {

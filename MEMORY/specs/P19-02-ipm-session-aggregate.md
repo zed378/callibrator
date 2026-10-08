@@ -160,6 +160,8 @@ text lengths (`correction_reason`, `void_reason` 3 – 2000; `notes` ≤ 4000).
 - `inspection_sessions_one_root_draft` `UNIQUE (tenant_id, device_id, created_by) WHERE status = 'draft' AND supersedes_id IS NULL` — one open capture per device per technician (G-S9); two technicians may each have one.
 - `inspection_sessions_client_ref_unique`, `inspection_sessions_legacy_key_unique` (above).
 
+> **As built (2026-10-09, migration 0126; ADR-126 Amendment 3):** the linear chain is `UNIQUE (tenant_id, supersedes_id)` (no global uniqueness); `performed_at` and `received_at` default to `now()` in the database; the text lengths are one CHECK `inspection_sessions_text_lengths`, plus `inspection_sessions_report_hash_shape`. The correction's visit number is checked by 0127's append-only trigger at its submit.
+
 **Indexes (D-20 leading indexes and list orders):** `(tenant_id, client_facility_id, device_id)` (the composite FK); `(tenant_id, device_id, performed_at DESC, id)` (device history, ADR-126 § 6); **partial** `inspection_sessions_effective_device` `(tenant_id, device_id, performed_at DESC, id) WHERE status = 'submitted' AND superseded_by_id IS NULL` ("due" and "last IPM"); `(tenant_id, client_facility_id, performed_at DESC, id)` (bound lists); `(tenant_id, status, performed_at DESC, id)`; one each on `template_version_id`, `supersedes_id`, `superseded_by_id`, `created_by`, `updated_by`, `performed_by`, `submitted_by`, `voided_by`, `discarded_by`, `location_id`, `work_order_id`, `follow_up_work_order_id`. List-order indexes for the busiest bound lists are **measured** in P21-03 (the U-06 method), not guessed.
 
 ### 4.2 `inspection_results` (tenant- and facility-scoped)
@@ -189,6 +191,8 @@ text lengths (`correction_reason`, `void_reason` 3 – 2000; `notes` ≤ 4000).
 | `sort_order` | integer | NN | inside its section; template rows take the item's order, ad-hoc rows follow them |
 | `legacy_table`, `legacy_id` | varchar(64), integer | NULL | `UNIQUE (legacy_table, legacy_id) WHERE legacy_id IS NOT NULL` |
 | `created_at`, `updated_at` | timestamptz | NN | |
+
+> **As built (2026-10-09, migration 0126; ADR-126 Amendment 3):** the legacy key is `UNIQUE (tenant_id, legacy_table, legacy_id)` (no global uniqueness); the read-order index `(session_id, section, sort_order, id)` is not built — the unique `(session_id, section, sort_order)` is that order; 0127's draft-only trigger also refuses a result's change of session and applies the no-item rule to UPDATE.
 
 **Unique / indexes:** `inspection_results_one_per_item` `UNIQUE (session_id, template_item_id) WHERE template_item_id IS NOT NULL`; `UNIQUE (session_id, section, sort_order)`; `(tenant_id, client_facility_id, session_id)` (the FK); `(session_id, section, sort_order, id)` (read order); `(template_item_id)`; `(item_definition_id, created_at)` (trend of one check across versions — later reporting). **Bounds** (Zod + service): ≤ 300 template results + ≤ 100 ad-hoc rows per session.
 
@@ -338,7 +342,7 @@ Device `condition` (P19-03) is not changed by an IPM; certificates are not issue
 | `resource_type`, `resource_id` | varchar(64), uuid NULL | what the first call created or changed — **no body is stored** |
 | `created_at`, `completed_at`, `expires_at` | timestamptz | `expires_at = created_at + 30 days` |
 
-`UNIQUE (tenant_id, user_id, key)` (and `(tenant_id, api_key_id, key)`); index `(expires_at)` for the purge. **`FACILITY_READABLE` gains `IdempotencyKey: { rule: "own-user", attribute: "userId" }`** (G-S11; test `idempotencyKeys.facility.test.ts`). The purge is a nightly job deleting expired rows (no audit row per key — it is plumbing; the job logs a count).
+`UNIQUE (tenant_id, user_id, key)` (and `(tenant_id, api_key_id, key)`); index `(expires_at)` for the purge. **As built (2026-10-09, migration 0126; ADR-126 Amendment 3):** `user_id` is NULLABLE — the table's "NN" contradicted the exactly-one CHECK, and the CHECK wins (`num_nonnulls(user_id, api_key_id) = 1`); both uniques are non-partial, `user_id` and `api_key_id` have their own leading indexes; CHECKs on the hash shapes, the completion pair and the expiry. **`FACILITY_READABLE` gains `IdempotencyKey: { rule: "own-user", attribute: "userId" }`** (G-S11; test `idempotencyKeys.facility.test.ts`). The purge is a nightly job deleting expired rows (no audit row per key — it is plumbing; the job logs a count).
 
 ### 9.2 The middleware `idempotency()` (P21-03)
 

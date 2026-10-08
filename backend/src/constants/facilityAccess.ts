@@ -116,6 +116,13 @@ export const FACILITY_READABLE = Object.freeze({
     reason: "own data-subject requests",
     test: "utils/tenantScope.facilityDeny.test.ts",
   },
+  // P20-04 (ADR-126 Am. 1 § 8, G-S11): a bound technician records and replays its own capture keys.
+  IdempotencyKey: {
+    rule: "own-user",
+    attribute: "userId",
+    reason: "own idempotency keys (a bound technician's capture writes); an API key's row has no user and is hidden",
+    test: "models/idempotencyKeys.facility.test.ts",
+  },
 } as const satisfies Record<string, FacilityReadableEntry>);
 
 /** A model name with a `FACILITY_READABLE` rule. */

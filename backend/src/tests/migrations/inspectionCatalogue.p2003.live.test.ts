@@ -83,6 +83,9 @@ interface Graph {
   };
   m0111: Migration;
   m0112: Migration & { seedContentHash(): string };
+  /** P20-04 / P20-05: their tables reference the catalogue, so they are reverted before it. */
+  m0126: Migration;
+  m0127: Migration;
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph is loaded per "process" with jest.isolateModules; typed by the members used */
@@ -98,6 +101,8 @@ const startProcess = (): Graph => {
       schemaVerify: require("../../utils/schemaVerify.util") as Graph["schemaVerify"],
       m0111: require("../../migrations/0111-device-types") as Migration,
       m0112: require("../../migrations/0112-inspection-catalogue") as Graph["m0112"],
+      m0126: require("../../migrations/0126-ipm-sessions") as Migration,
+      m0127: require("../../migrations/0127-ipm-immutability") as Migration,
     };
   });
   if (!graph) {
@@ -163,7 +168,8 @@ const catalogueTriggers = async (db: LiveDb): Promise<string[]> =>
     await rows(
       db,
       `SELECT c.relname || ':' || t.tgname || ':' || t.tgenabled::text AS t FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-        WHERE NOT t.tgisinternal AND (c.relname = 'device_types' OR c.relname LIKE 'inspection_%') ORDER BY 1`,
+        WHERE NOT t.tgisinternal AND (c.relname = 'device_types' OR c.relname LIKE 'inspection_%')
+          AND c.relname NOT IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures') ORDER BY 1`, // the catalogue's, not the IPM aggregate's (0126, 0127)
     )
   )
     .map((r) => String(r["t"]))
@@ -286,6 +292,7 @@ live("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () =>
          FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
         WHERE c.contype = 'f' AND (conrelid::regclass::text LIKE 'inspection_%' OR conrelid::regclass::text = 'device_types'
               OR (conrelid::regclass::text = 'calibration_devices' AND a.attname = 'device_type_id'))
+          AND conrelid::regclass::text NOT IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures') -- the IPM aggregate's keys are 0126's
         ORDER BY 1`,
     );
     // device_types 2, definitions 2, templates 3, versions 8, items 2, proposals 7, the device's 1.
@@ -467,7 +474,10 @@ live("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () =>
     expect(result.problems).toEqual([]);
     // The catalogue's 18 are among the objects verified (the list's total grows with later
     // migrations: 31 when this was written, 76 after P20-07).
-    const catalogue = g.schemaVerify.EXPECTED_OBJECTS.filter((o) => /^(device_types|inspection_)/.test(o.table));
+    // The catalogue's tables only — the IPM aggregate's (inspection_sessions, _results, _session_signatures; P20-04/05) are not.
+    const catalogue = g.schemaVerify.EXPECTED_OBJECTS.filter(
+      (o) => /^(device_types|inspection_)/.test(o.table) && !/^inspection_(sessions|results|session_signatures)$/.test(o.table),
+    );
     expect(catalogue).toHaveLength(18);
     expect(result.objects).toBe(g.schemaVerify.EXPECTED_OBJECTS.length);
   });
@@ -501,6 +511,9 @@ live("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () =>
     await g.db.query("ALTER TABLE device_types ENABLE ALWAYS TRIGGER device_types_no_delete");
 
     const qi = g.db.getQueryInterface();
+    // The IPM aggregate (0126, 0127 — empty here) references the catalogue: reverted first, in manifest order.
+    await g.m0127.down({ context: qi });
+    await g.m0126.down({ context: qi });
     await g.m0112.down({ context: qi });
     await g.m0111.down({ context: qi });
     expect(await catalogueTriggers(g.db)).toEqual([]);
@@ -510,6 +523,8 @@ live("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () =>
 
     await g.m0111.up({ context: qi });
     await g.m0112.up({ context: qi });
+    await g.m0126.up({ context: qi });
+    await g.m0127.up({ context: qi });
     expect(await catalogueTriggers(g.db)).toEqual(TRIGGERS.map((t) => `${t}:A`).sort());
     expect(await recomputedHash(g.db)).toBe(g.m0112.seedContentHash());
     expect(await rows(g.db, "SELECT count(*)::int AS n FROM audit_logs WHERE resource_type = 'InspectionTemplateVersion' AND resource_id = :id", { id: BASE_VERSION }))

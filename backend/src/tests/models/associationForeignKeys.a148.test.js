@@ -178,6 +178,29 @@ const UNCHANGED = Object.freeze({
   "client_facilities.created_by": "users RESTRICT",
   "client_facilities.updated_by": "users RESTRICT",
   "client_facility_moves.moved_by": "users RESTRICT",
+  // P20-04 (migration 0126; ADR-126 Am. 1–2): the IPM aggregate's single-column keys. Every person
+  // (creator, editor, performer, submitter, voider, discarder, signer, key owner) is a Part 11
+  // attribution — RESTRICT; the pinned catalogue rows and the visit's work orders are RESTRICT (a
+  // record never loses what it pinned); a session's own chain is RESTRICT; the draft's chosen room
+  // is SET NULL (spec § 4.1: the room is snapshotted at submit). The composite device and session
+  // keys are the migration's (Sequelize cannot express them).
+  "inspection_sessions.template_version_id": "inspection_template_versions RESTRICT",
+  "inspection_sessions.supersedes_id": "inspection_sessions RESTRICT",
+  "inspection_sessions.superseded_by_id": "inspection_sessions RESTRICT",
+  "inspection_sessions.created_by": "users RESTRICT",
+  "inspection_sessions.updated_by": "users RESTRICT",
+  "inspection_sessions.performed_by": "users RESTRICT",
+  "inspection_sessions.submitted_by": "users RESTRICT",
+  "inspection_sessions.location_id": "warehouses SET NULL",
+  "inspection_sessions.work_order_id": "maintenance_work_orders RESTRICT",
+  "inspection_sessions.follow_up_work_order_id": "maintenance_work_orders RESTRICT",
+  "inspection_sessions.voided_by": "users RESTRICT",
+  "inspection_sessions.discarded_by": "users RESTRICT",
+  "inspection_results.template_item_id": "inspection_template_items RESTRICT",
+  "inspection_results.item_definition_id": "inspection_item_definitions RESTRICT",
+  "inspection_session_signatures.signer_id": "users RESTRICT",
+  "idempotency_keys.user_id": "users RESTRICT",
+  "idempotency_keys.api_key_id": "api_keys RESTRICT",
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */

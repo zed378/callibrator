@@ -207,6 +207,10 @@ const migrationModules: [string, MigrationModule][] = [
   ["0124-ipm-menus-technician-calibration.js", require("../migrations/0124-ipm-menus-technician-calibration")],
   // P21-01 (ADR-125 Am. 3): a base rebase's version is left out of the one-open-draft index.
   ["0125-catalogue-rebase-drafts.js", require("../migrations/0125-catalogue-rebase-drafts")],
+  // P20-04 (ADR-126 Am. 1–2): inspection_sessions / _results / _session_signatures and idempotency_keys; the facility functions' result branch.
+  ["0126-ipm-sessions.js", require("../migrations/0126-ipm-sessions")],
+  // P20-05 (ADR-126 § 5): the IPM append-only, draft-only, correction-same-device and signature triggers, each with the device-move exception.
+  ["0127-ipm-immutability.js", require("../migrations/0127-ipm-immutability")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

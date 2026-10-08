@@ -74,6 +74,10 @@ import defineUpstreamFileImport from "./upstreamFileImport.model";
 import defineUpstreamSqlImport from "./upstreamSqlImport.model";
 import defineClientFacility from "./clientFacility.model";
 import defineClientFacilityMove from "./clientFacilityMove.model";
+import defineInspectionSession from "./inspectionSession.model";
+import defineInspectionResult from "./inspectionResult.model";
+import defineInspectionSessionSignature from "./inspectionSessionSignature.model";
+import defineIdempotencyKey from "./idempotencyKey.model";
 import defineApiKey from "./apiKey.model";
 import defineAssetFinance from "./assetFinance.model";
 import defineAttachment from "./attachment.model";
@@ -253,6 +257,13 @@ const models: Models = {
   UpstreamSqlImport: define(defineUpstreamSqlImport),
   ClientFacility: define(defineClientFacility),
   ClientFacilityMove: define(defineClientFacilityMove),
+  // P20-04 (ADR-126 Am. 1–2): the IPM sessions, their results and report signatures (tenant- and
+  // facility-scoped), and the per-user idempotency keys — last, so every existing model keeps its
+  // registration order.
+  InspectionSession: define(defineInspectionSession),
+  InspectionResult: define(defineInspectionResult),
+  InspectionSessionSignature: define(defineInspectionSessionSignature),
+  IdempotencyKey: define(defineIdempotencyKey),
 };
 
 // Association Mapping: Iterate models, execute associate method if exists.
@@ -482,6 +493,16 @@ const barrel = Object.assign(database, {
   ClientFacilities: models.ClientFacility,
   ClientFacilityMove: models.ClientFacilityMove,
   ClientFacilityMoves: models.ClientFacilityMove,
+  // P20-04 (ADR-126 Am. 1–2): the IPM aggregate (tenant- and facility-scoped) and the idempotency
+  // keys (tenant-scoped; FACILITY_READABLE own-user).
+  InspectionSession: models.InspectionSession,
+  InspectionSessions: models.InspectionSession,
+  InspectionResult: models.InspectionResult,
+  InspectionResults: models.InspectionResult,
+  InspectionSessionSignature: models.InspectionSessionSignature,
+  InspectionSessionSignatures: models.InspectionSessionSignature,
+  IdempotencyKey: models.IdempotencyKey,
+  IdempotencyKeys: models.IdempotencyKey,
 });
 
 // A pure `export =` module, like every model file: no other export may sit beside it (a

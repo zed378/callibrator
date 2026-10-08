@@ -22,7 +22,7 @@
  *     facilityBackfill    — every row back-filled to its tenant's self facility, reconciled per
  *                           table AND per tenant against the seed; the nullable set exactly NULL
  *                           where § 5.1 says;
- *     facilityNotNull     — NOT NULL where § 5.1 says; schemaVerify (76 control objects); every
+ *     facilityNotNull     — NOT NULL where § 5.1 says; schemaVerify (every control object); every
  *                           trigger ENABLE ALWAYS;
  *     facilityCompositeFk — a child naming another facility than its device's, a device naming
  *                           another tenant's facility, a certificate whose record is in another
@@ -90,7 +90,7 @@ interface LiveDb {
 interface Graph {
   db: LiveDb;
   migrator: { up(options?: object): Promise<{ name: string }[]>; down(options?: object): Promise<{ name: string }[]> };
-  schemaVerify: { verifySchema(db: unknown): Promise<{ problems: string[]; objects: number }> };
+  schemaVerify: { verifySchema(db: unknown): Promise<{ problems: string[]; objects: number }>; EXPECTED_OBJECTS: readonly unknown[] };
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph is loaded per "process" with jest.isolateModules; typed by the members used */
@@ -440,7 +440,8 @@ live("P20-07 — migrations 0117 – 0123 on live PostgreSQL 18", () => {
       const triggers = await rows(
         g.db,
         `SELECT c.relname || ':' || t.tgname AS t, t.tgenabled::text AS e FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-          WHERE NOT t.tgisinternal AND (t.tgname LIKE '%facilit%' OR c.relname LIKE 'client_facilit%')`,
+          WHERE NOT t.tgisinternal AND (t.tgname LIKE '%facilit%' OR c.relname LIKE 'client_facilit%')
+            AND c.relname NOT IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures')`, // 0126's facility triggers are P20-04's, not the seven's
       );
       expect(triggers).toHaveLength(31);
       expect(triggers.filter((r) => r["e"] !== "A")).toEqual([]);
@@ -449,7 +450,7 @@ live("P20-07 — migrations 0117 – 0123 on live PostgreSQL 18", () => {
     it("schemaVerify passes: every table, column and control object (the P20-07 ones among them)", async () => {
       const result = await g.schemaVerify.verifySchema(g.db);
       expect(result.problems).toEqual([]);
-      expect(result.objects).toBe(76);
+      expect(result.objects).toBe(g.schemaVerify.EXPECTED_OBJECTS.length); // 76 after P20-07; later migrations add theirs (P20-04/05: 106)
     });
 
     it("the per-tenant serial index is gone, the per-facility one is there (UD-9)", async () => {
@@ -813,7 +814,13 @@ live("P20-07 — migrations 0117 – 0123 on live PostgreSQL 18", () => {
     await expect(g.migrator.down({ step: 1 })).rejects.toThrow(/0123 down: the database holds 1 client facility beyond the tenants' own/);
     // Clean up the one row (nothing references it: a hard delete — spec § 4.6).
     await g.db.query(`DELETE FROM client_facilities WHERE id = '${F1}'`);
+    // The later migrations are re-applied for the check (0126 owns tables the models declare), then
+    // reverted again, as E2 expects them.
+    await g.migrator.up();
     expect((await g.schemaVerify.verifySchema(g.db)).problems).toEqual([]);
+    if (firstLater !== undefined) {
+      await g.migrator.down({ to: firstLater });
+    }
   });
 
   it("E2. on a single-facility database: down × 7 removes every object and keeps every row; up × 7 rebuilds and back-fills again", async () => {

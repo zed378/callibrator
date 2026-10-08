@@ -118,7 +118,9 @@ All five are **set by the draft → submitted update** (the trigger of P19-02 §
 - `INSERT` refused unless the session (read `FOR SHARE`) is `submitted`, not superseded, has `legacy_key IS NULL`, and `NEW.document_hash = report_content_hash`; a `countersign` row refused unless a `performer` row exists and `NEW.signer_id` differs from the session's `submitted_by` and from the performer row's `signer_id`.
 - The service's own 409/403 answer first (§ 7); the trigger is the floor for every other writer (the ETL, a script, the owner).
 
-**Grants:** `callibrator_app` SELECT, INSERT (no UPDATE, DELETE, TRUNCATE) — the 0057 two layers. `schemaVerify` `EXPECTED_OBJECTS` lists the trigger. `facilityScopedModels.guard` (G-11): the model declares `clientFacilityId`. `associationForeignKeys.a148`: `signer_id` RESTRICT.
+**Grants:** `callibrator_app` SELECT, INSERT (no UPDATE, DELETE, TRUNCATE) — the 0057 two layers.
+
+> **As built (2026-10-09, migrations 0126 / 0127; ADR-126 Amendment 3):** the table also gets the facility `open` and `guard` triggers (`facility_accepts_inserts`, `facility_column_guard('result')`), `signed_at` defaults to `now()` in the database, and `document_hash` has a lower-case hex CHECK. Proven as `callibrator_app` and the owner by `inspectionImmutable.p2005.live` and through a device move by `deviceMove.p2007.live`. `schemaVerify` `EXPECTED_OBJECTS` lists the trigger. `facilityScopedModels.guard` (G-11): the model declares `clientFacilityId`. `associationForeignKeys.a148`: `signer_id` RESTRICT.
 
 ---
 

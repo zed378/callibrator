@@ -98,6 +98,40 @@ export type TemplateProposalKind = (typeof TEMPLATE_PROPOSAL_KINDS)[number];
 export const TEMPLATE_ITEM_ORIGINS = Object.freeze(["base", "type"] as const);
 export type TemplateItemOrigin = (typeof TEMPLATE_ITEM_ORIGINS)[number];
 
+/**
+ * The IPM session's vocabularies (P20-04; P19-02 spec § 4; P19-06 spec § 4). Each is a frozen tuple
+ * in its database ENUM's order (migration 0126 and `sync` create the types from it).
+ */
+
+/** A session's overall "Hasil Pemeriksaan" / "Hasil Maintenance", and a result's computed verdict. */
+export const INSPECTION_OVERALL_OUTCOMES = Object.freeze(["pass", "fail"] as const);
+export type InspectionOverallOutcome = (typeof INSPECTION_OVERALL_OUTCOMES)[number];
+
+/** The recommendation that drives a submit's side effects (F-51; upstream 1 / 0 / −1 / −2). */
+export const INSPECTION_RECOMMENDATIONS = Object.freeze([
+  "fit_for_use",
+  "needs_calibration",
+  "not_fit_for_use",
+  "needs_repair",
+] as const);
+export type InspectionRecommendation = (typeof INSPECTION_RECOMMENDATIONS)[number];
+
+/** Whose verdict a result's `outcome` is: the technician's, or computed from the item's limit. */
+export const INSPECTION_OUTCOME_SOURCES = Object.freeze(["technician", "computed"] as const);
+export type InspectionOutcomeSource = (typeof INSPECTION_OUTCOME_SOURCES)[number];
+
+/** An IPM report signature: the performer's, or the IPSRS countersignature (P19-06 § 4.2). */
+export const INSPECTION_SIGNATURE_KINDS = Object.freeze(["performer", "countersign"] as const);
+export type InspectionSignatureKind = (typeof INSPECTION_SIGNATURE_KINDS)[number];
+
+/** The meaning printed with a signature (Part 11 § 11.50 (b)): performer = authorship, countersign = review. */
+export const INSPECTION_SIGNATURE_MEANINGS = Object.freeze(["authorship", "review"] as const);
+export type InspectionSignatureMeaning = (typeof INSPECTION_SIGNATURE_MEANINGS)[number];
+
+/** The credential re-entered at signing. */
+export const INSPECTION_SIGNATURE_AUTH_METHODS = Object.freeze(["password", "mfa"] as const);
+export type InspectionSignatureAuthMethod = (typeof INSPECTION_SIGNATURE_AUTH_METHODS)[number];
+
 /** One section's rules: the input kinds it allows, its outcome set, and whether a session may add ad-hoc rows. */
 export interface InspectionSectionRule {
   readonly inputKinds: readonly InspectionInputKind[];

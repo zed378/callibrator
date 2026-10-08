@@ -21,7 +21,10 @@
  *  - a move that forgets the files is refused at COMMIT (AM-7 follow); one left in progress too;
  *  - a rolled-back move leaves no move row, no audit row and every child where it was;
  *  - an in-progress move row is invisible to ANOTHER session: naming it there admits nothing;
- *  - a move into a facility already holding the serial is refused (UD-9, per facility).
+ *  - a move into a facility already holding the serial is refused (UD-9, per facility);
+ *  - P20-04 / P20-05 (spec P19-02 § 17): the device's submitted IPM session, its result and its
+ *    signature, and an open draft, follow the move through 0127's append-only, draft-only and
+ *    signature triggers — the cascade passes all of them; nothing else of them changes.
  *
  *   docker run -d --name p2007-pg18b -e POSTGRES_PASSWORD=p2007pass -p 127.0.0.1:55208:5432 pgvector/pgvector:pg18
  *   P2007_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55208 DB_NAME=p2007move_scratch DB_USER=postgres DB_PASS=p2007pass \
@@ -30,6 +33,7 @@
  */
 import { Sequelize, type Transaction } from "sequelize";
 import { env } from "../../config/env";
+import { HASH, draftSql, resultSql, signatureSql, submitSql } from "../fixtures/ipmLive";
 
 const live = env("P2007_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
@@ -37,6 +41,7 @@ const APP_ROLE = "callibrator_app";
 const T = "c2007000-0000-4000-8000-000000000001";
 const ROLE = "c2007000-0000-4000-8000-000000000002";
 const USER = "c2007000-0000-4000-8000-000000000003";
+const USER2 = "c2007000-0000-4000-8000-000000000004";
 const F1 = "c2007000-0000-4000-8000-0000000000f1";
 const F2 = "c2007000-0000-4000-8000-0000000000f2";
 const F3 = "c2007000-0000-4000-8000-0000000000f3";
@@ -45,8 +50,11 @@ const TWIN = "c2007000-0000-4000-8000-0000000000d2";
 const R1 = "c2007000-0000-4000-8000-0000000000e1";
 const R2 = "c2007000-0000-4000-8000-0000000000e2";
 const MOVE = "c2007000-0000-4000-8000-0000000000a1";
+// P20-04 / P20-05 (G-S7): a submitted IPM session with a result and the performer's signature, and an open draft.
+const IPM = "c2007000-0000-4000-8000-0000000000b1";
+const IPM_DRAFT = "c2007000-0000-4000-8000-0000000000b2";
 
-const CHILDREN = ["calibration_records", "certificates", "maintenance_work_orders", "iot_readings", "non_conformances"] as const;
+const CHILDREN = ["calibration_records", "certificates", "maintenance_work_orders", "iot_readings", "non_conformances", "inspection_sessions"] as const;
 
 type Row = Record<string, unknown>;
 
@@ -153,7 +161,8 @@ live("P20-07 — a device move cascades along one path, as callibrator_app (Post
          ('${F1}', '${T}', 'Rumah Sakit Asal', 'F-0001', 'hospital', now(), now()),
          ('${F2}', '${T}', 'Klinik Tujuan', 'F-0002', 'clinic', now(), now()),
          ('${F3}', '${T}', 'Puskesmas Lain', 'F-0003', 'health_centre', now(), now())`,
-      `INSERT INTO users (id, tenant_id, role_id, username, email, password, first_name, last_name, created_at, updated_at) VALUES (${user}, '${T}', '${ROLE}', 'mover', 'mover@example.test', 'x', 'M', 'V', now(), now())`,
+      `INSERT INTO users (id, tenant_id, role_id, username, email, password, first_name, last_name, created_at, updated_at) VALUES (${user}, '${T}', '${ROLE}', 'mover', 'mover@example.test', 'x', 'M', 'V', now(), now()),
+         ('${USER2}', '${T}', '${ROLE}', 'teknisi2', 'teknisi2@example.test', 'x', 'T', 'D', now(), now())`,
       `INSERT INTO calibration_devices (id, tenant_id, client_facility_id, name, serial_number, created_at, updated_at) VALUES
          ('${DEVICE}', '${T}', '${F1}', 'Infusion pump sintetis', 'SN-MOVE-1', now(), now()),
          ('${TWIN}', '${T}', '${F3}', 'Kembaran', 'SN-MOVE-1', now(), now())`,
@@ -174,6 +183,18 @@ live("P20-07 — a device move cascades along one path, as callibrator_app (Post
          (gen_random_uuid(), '${T}', 'workorder', (SELECT id FROM maintenance_work_orders WHERE device_id = '${DEVICE}'), 'd', 'd.jpg', NULL, now(), now())`,
     ]) {
       await db.query(sql).catch((e: unknown) => {
+        throw new Error(`seed failed: ${failure(e)} — ${sql.slice(0, 90)}`);
+      });
+    }
+    // The IPM history (P20-04): a draft with a result, submitted, signed; and another user's open draft.
+    for (const [sql, replacements] of [
+      [draftSql(), { id: IPM, tenant: T, device: DEVICE, user: USER }],
+      [resultSql, { resultId: "c2007000-0000-4000-8000-0000000000c1", tenant: T, session: IPM, sort: 1 }],
+      [submitSql, { id: IPM, visit: 1, reportNumber: "IPM-F-0001-20261009-001", token: "tok-move" }],
+      [signatureSql, { signatureId: "c2007000-0000-4000-8000-0000000000c2", tenant: T, session: IPM, kind: "performer", signer: USER, hash: HASH }],
+      [draftSql(), { id: IPM_DRAFT, tenant: T, device: DEVICE, user: USER2 }],
+    ] as const) {
+      await db.query(sql, { replacements }).catch((e: unknown) => {
         throw new Error(`seed failed: ${failure(e)} — ${sql.slice(0, 90)}`);
       });
     }
@@ -289,6 +310,13 @@ live("P20-07 — a device move cascades along one path, as callibrator_app (Post
       { id: R2, supersedes_id: R1, superseded: false },
     ]);
     expect(await q("SELECT count(*)::int AS n FROM attachments WHERE rekey_pending")).toEqual([{ n: 4 }]);
+    // P20-04 / P20-05: the IPM result and signature followed their session (one cascade path each),
+    // and the submitted session is otherwise untouched (0127's triggers admitted the facility alone).
+    expect(await q(`SELECT 'result' AS k, f.code FROM inspection_results x JOIN client_facilities f ON f.id = x.client_facility_id
+      UNION ALL SELECT 'signature', f.code FROM inspection_session_signatures x JOIN client_facilities f ON f.id = x.client_facility_id ORDER BY 1`))
+      .toEqual([{ k: "result", code: "F-0002" }, { k: "signature", code: "F-0002" }]);
+    expect(await q(`SELECT status::text, visit_number, report_number FROM inspection_sessions WHERE id = '${IPM}'`))
+      .toEqual([{ status: "submitted", visit_number: 1, report_number: "IPM-F-0001-20261009-001" }]);
     expect(await q("SELECT status::text, completed_at IS NOT NULL AS done, counts->>'iot_readings' AS iot FROM client_facility_moves")).toEqual([
       { status: "completed", done: true, iot: "3" },
     ]);

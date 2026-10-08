@@ -48,8 +48,10 @@ describe("D-27 — every JSON column is declared", () => {
   // The rsync image import adds three, counts only: UpstreamFileImport.estimate, .progress, .summary.
   // The SQL-dump import (P24-06) adds two, counts and codes only: UpstreamSqlImport.tables, .parseSummary.
   // P20-07 (ADR-124 Am. 2) adds one, counts only: ClientFacilityMove.counts.
-  it("finds the twenty-three JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's two, P20-07's move counts)", () => {
-    expect(jsonAttributes()).toHaveLength(23);
+  // P20-04 (ADR-126 Am. 1–2) adds six, strict snapshots: InspectionSession.performerSnapshot,
+  // .deviceSnapshot, .facilitySnapshot, .sideEffects, .issuerSnapshot, InspectionSessionSignature.signerSnapshot.
+  it("finds the twenty-nine JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's two, P20-07's move counts, P20-04's six IPM snapshots)", () => {
+    expect(jsonAttributes()).toHaveLength(29);
   });
 
   it("each JSON attribute validates against its OWN declared shape", () => {
@@ -147,6 +149,43 @@ const GOOD = {
     {},
     { calibration_records: 3, certificates: 1, iot_readings: 0, attachments_rekey: 2 },
   ],
+  // P20-04: what a submit fixes (null on a draft), and a signer.
+  "InspectionSession.performerSnapshot": [null, { name: "Teknisi Sintetis", role: "TECHNICIAN", organisation: null }],
+  "InspectionSession.deviceSnapshot": [
+    null,
+    {
+      name: "Infusion pump",
+      manufacturer: null,
+      model: "X-1",
+      serialNumber: "SN-1",
+      qrCode: null,
+      deviceTypeId: "5eedca7a-0000-4000-8000-000000000009",
+      deviceTypeName: "Infusion pump",
+      lastCalibrationDate: "2026-01-02",
+      nextCalibrationDate: null,
+    },
+  ],
+  "InspectionSession.facilitySnapshot": [
+    null,
+    { id: "5eedca7a-0000-4000-8000-00000000000f", name: "Rumah Sakit Sintetis", code: "F-0001", kind: "hospital", address: null },
+  ],
+  "InspectionSession.sideEffects": [
+    null,
+    {},
+    {
+      preventiveWorkOrderId: "5eedca7a-0000-4000-8000-0000000000aa",
+      repairWorkOrderId: null,
+      deviceStatus: { from: "active", to: "maintenance" },
+      deviceLocation: null,
+      calibrationRequested: false,
+      notices: ["Repair work order was opened by the previous version"],
+    },
+  ],
+  "InspectionSession.issuerSnapshot": [
+    null,
+    { version: 1, name: "Penyedia", email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: "ID", website: null },
+  ],
+  "InspectionSessionSignature.signerSnapshot": [{ name: "IPSRS Sintetis", role: "FACILITY MAINTENANCE", organisation: "Rumah Sakit Sintetis" }],
 };
 
 const BAD = {
@@ -220,6 +259,13 @@ const BAD = {
     { "Synthetic Name": 1 },
     { certificates: "x" },
   ],
+  // P20-04: a printed snapshot is strict — no e-mail or id smuggled into a person, no missing key.
+  "InspectionSession.performerSnapshot": [{}, { name: "", role: null, organisation: null }, { name: "A", role: null, organisation: null, email: "a@b.c" }],
+  "InspectionSession.deviceSnapshot": [{ name: "x" }, []],
+  "InspectionSession.facilitySnapshot": [{ id: "not-a-uuid", name: "x", code: null, kind: null, address: null }, {}],
+  "InspectionSession.sideEffects": [{ calibrationRequested: "yes" }, { notices: "x" }, { body: "a stored response" }],
+  "InspectionSession.issuerSnapshot": [{ version: 2, name: null, email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: null, website: null }, {}],
+  "InspectionSessionSignature.signerSnapshot": [{ name: "A", role: null, organisation: null, userId: "x" }, "A"],
 };
 
 const buildWith = (key, value) => {

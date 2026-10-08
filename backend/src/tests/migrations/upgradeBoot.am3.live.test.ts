@@ -380,7 +380,8 @@ live("AM-3 — the current tree boots on a database the previous release built (
   it("P20-01 / P20-03 (0111, 0112): the catalogue's triggers ENABLE ALWAYS, the device's RESTRICT key, base checklist v1", async () => {
     const triggers = await rows<{ t: string }>(
       `SELECT c.relname || ':' || t.tgname || ':' || t.tgenabled::text AS t FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-        WHERE NOT t.tgisinternal AND (c.relname = 'device_types' OR c.relname LIKE 'inspection_%')`,
+        WHERE NOT t.tgisinternal AND (c.relname = 'device_types' OR c.relname LIKE 'inspection_%')
+          AND c.relname NOT IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures')`, // the catalogue's, not the IPM aggregate's (0126, 0127)
     );
     expect(triggers).toHaveLength(12);
     expect(triggers.filter((r) => !r.t.endsWith(":A"))).toEqual([]);
@@ -416,7 +417,8 @@ live("AM-3 — the current tree boots on a database the previous release built (
     expect(user).toEqual({ f: null });
     const triggers = await rows<{ e: string }>(
       `SELECT t.tgenabled::text AS e FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-        WHERE NOT t.tgisinternal AND (t.tgname LIKE '%facilit%' OR c.relname LIKE 'client_facilit%')`,
+        WHERE NOT t.tgisinternal AND (t.tgname LIKE '%facilit%' OR c.relname LIKE 'client_facilit%')
+          AND c.relname NOT IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures')`, // 0126's facility triggers are P20-04's, not P20-07's
     );
     expect(triggers).toHaveLength(31);
     expect(triggers.filter((r) => r.e !== "A")).toEqual([]);

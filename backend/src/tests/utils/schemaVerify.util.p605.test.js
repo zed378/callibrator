@@ -133,7 +133,7 @@ describe("verifySchema", () => {
     expect(result.problems).toHaveLength(triggers.length);
   });
 
-  it("checks the append-only trigger, the void CHECK, the serial index (per facility since 0118), the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes, and the audit_logs append-only triggers (Q-34, ADR-095), and the exactly-one-actor CHECKs (Q-51, migration 0105), and the inspection catalogue's triggers, unique indexes and CHECKs (P20-01/03, migrations 0111/0112), and the client-facility controls (P20-07, migrations 0117 – 0123)", () => {
+  it("checks the append-only trigger, the void CHECK, the serial index (per facility since 0118), the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes, and the audit_logs append-only triggers (Q-34, ADR-095), and the exactly-one-actor CHECKs (Q-51, migration 0105), and the inspection catalogue's triggers, unique indexes and CHECKs (P20-01/03, migrations 0111/0112), and the client-facility controls (P20-07, migrations 0117 – 0123), and the IPM aggregate's (P20-04/05, migrations 0126/0127)", () => {
     expect(EXPECTED_OBJECTS.map((o) => `${o.kind}:${o.name}`)).toEqual([
       "trigger:calibration_records_append_only",
       "trigger:calibration_records_no_truncate",
@@ -213,6 +213,37 @@ describe("verifySchema", () => {
       "constraint:users_client_facility_fkey",
       "trigger:users_facility_binding_guard",
       "trigger:users_facility_bound_role",
+      // P20-04 / P20-05 (migrations 0126, 0127): the IPM aggregate's controls.
+      "trigger:inspection_sessions_facility_default",
+      "trigger:inspection_sessions_facility_open",
+      "trigger:inspection_sessions_facility_guard",
+      "trigger:inspection_results_facility_default",
+      "trigger:inspection_results_facility_open",
+      "trigger:inspection_results_facility_guard",
+      "trigger:inspection_session_signatures_facility_default",
+      "trigger:inspection_session_signatures_facility_open",
+      "trigger:inspection_session_signatures_facility_guard",
+      "constraint:inspection_sessions_device_facility_fkey",
+      "constraint:inspection_results_session_facility_fkey",
+      "constraint:inspection_session_signatures_session_facility_fkey",
+      "index:inspection_sessions_tenant_facility_id_unique",
+      "index:inspection_sessions_visit_unique",
+      "index:inspection_sessions_linear_chain",
+      "index:inspection_sessions_one_root_draft",
+      "index:inspection_sessions_client_ref_unique",
+      "index:inspection_sessions_report_number_unique",
+      "index:inspection_results_one_per_item",
+      "index:inspection_session_signatures_session_kind_unique",
+      "index:idempotency_keys_user_key_unique",
+      "constraint:inspection_sessions_issued_fields",
+      "constraint:idempotency_keys_one_principal",
+      "trigger:inspection_sessions_append_only",
+      "trigger:inspection_sessions_no_truncate",
+      "trigger:inspection_sessions_correction_same_device",
+      "trigger:inspection_results_draft_only",
+      "trigger:inspection_results_no_truncate",
+      "trigger:inspection_session_signatures_append_only",
+      "trigger:inspection_session_signatures_no_truncate",
     ]);
   });
 });
@@ -226,7 +257,7 @@ describe("assertSchemaMatchesModels", () => {
     const result = await assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined });
     expect(result.problems).toEqual([]);
     expect(log.info).toHaveBeenCalledWith(`${TAG} note: column devices.legacy is not declared by model Device`);
-    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 76 control objects/));
+    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 106 control objects/));
     expect(log.error).not.toHaveBeenCalled();
   });
 
@@ -234,7 +265,7 @@ describe("assertSchemaMatchesModels", () => {
     const log = logger();
     const sequelize = fakeSequelize([devices], [], {});
     await expect(assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined })).rejects.toThrow(
-      /FAILED: 77 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
+      /FAILED: 107 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
     );
     expect(log.error).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] MISMATCH: table devices/));
   });
