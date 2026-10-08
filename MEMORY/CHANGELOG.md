@@ -8,6 +8,72 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-08 — The backend-agnostic contract planned (ADR-136); the Go mobile phases restructured; mobile owner answers ([record](./records/2026-10-08-contract-first-and-mobile-restructure.md))
+- **Plan (target, not built):** one language-neutral contract in `contracts/` that every backend implements and every client is generated from, so the web and the mobile app never need a version per backend; a black-box conformance suite (a port or module is done only at 100%), run in CI for each backend; ports replace Node module by module behind a gateway on one database (`docs/CONTRACT/`). Phases 32 … 34, after Phase 31.
+- **Restructured:** one mobile plan (Phases 35 … 40); only the backend for mobile has a Go variant (Phase 1000). Phase 999 (Go) is now built module by module against the contract.
+- **Owner answers (mobile):** production builds name the production domains only; a restricted public Play listing for customers without Android Enterprise; no budget for now (free EAS tier, local builds, personal devices); no crash reporter — app logs go to our own backend.
+
+### 2026-10-08 — The live database suites repaired and run in CI; migration 0030 no longer rewrites tenant references on a re-run (A-366, A-367) ([record](./records/2026-10-08-live-suites-repair.md))
+- **Fixed (A-366):**
+  - Migration 0030, when re-run (a restore without `schema_migrations`), treated `access_requests.provisioned_tenant_id` and `upstream_file_imports.target_tenant_id` as tenant owners: NOT NULL and RESTRICT.
+  - A restored database with a pending access request would have refused to boot. Without one, every new access request would have failed to insert.
+  - 0030 now touches only `tenant_id` / `tenantId`. Fail-before unit and live tests.
+- **Repaired:**
+  - Eight live suites that were failing unnoticed: `dataIntegrity.p6` (every case since 0110), `dataIdentity.dbA`, `attachmentService.p918`, `inspectionCatalogue.p2003` (stale since later migrations and the storage cut-over), and `queryCount.p804`, `dataLayer.dbC`, `dataLayer.dbD`, `tenantHookless.w34` (each assumed a pre-built database and now builds its own).
+  - No assertion was loosened.
+- **New:** `npm run test:live` runs every live suite on a fresh database each (36 runs, MQTT included), and CI job `live-db` runs it on PostgreSQL 18 with Mosquitto 2 (not yet run on GitHub). `liveSuites.a367.guard` fails a new live suite the runner does not know.
+
+### 2026-10-08 — Shared packages and the backend for mobile planned (ADR-134); the mobile plan is Phases 35 … 40 ([record](./records/2026-10-08-shared-packages-mobile-backend-docs.md))
+- **Docs (target, not built):** `docs/SHARED/` — eight cross-platform packages (contracts, tokens, api-client, i18n, domain, sync-engine, headless hooks, icons) holding logic and design tokens only, in `packages/*`; the web migrates onto them without behaviour change; the API client is generated from the contract-first `contracts/` folder (ADR-136). `docs/MOBILE/20` (today's backend) and `21` (Go engine): a native ingress, install sessions with refresh-reuse detection, tenant lookup by organisation code, hospital SSO through an app link, native passkeys, push via FCM/APNs, a minimum app version (426), device attestation.
+- **Supersedes:** ADR-089's root `shared/`, shared UI components and per-backend frontend adapter (banners on `docs/ARCHITECTURE/11`, `12`, `docs/FRONTEND/12`, `13`); Q-48's planned move of `packages/contracts`.
+- **Plans:** Phases 35 … 40, 55 cards, all BLOCKED behind the contract group (Phases 32 … 34). Owner questions Q-58 … Q-61.
+
+### 2026-10-08 — The native mobile app planned (ADR-135); Go-variant mobile phases 1000 … 1002 ([record](./records/2026-10-08-mobile-app-docs.md))
+- **Docs (target, not built):** `docs/MOBILE/` — an Expo + EAS React Native app for Android and iOS, phone and tablet, beside the offline PWA: screens per role, tablet split view, offline field capture on an encrypted SQLite store, camera/QR, push without personal data, SSO/passkeys/biometric unlock, internal distribution (Apple Business Manager, Managed Google Play), signed over-the-air updates, Maestro tests.
+- **Owner decision folded in:** a tenant setup screen before sign-in (organisation code, setup QR/link, MDM, or work email); the tenant's logo and colour apply in the app; one build for every tenant.
+- **Plans:** Phases 1000 … 1002 (Go variant, after Phase 999), 30 cards, all BLOCKED. ADR-127's "no native app" superseded; the PWA stays.
+
+### 2026-10-08 — Upstream adoption: client facilities in the database (P20-07, migrations 0117 – 0123); ADR-124 Am. 3 ([record](./records/2026-10-08-p20-07-client-facilities.md))
+- **Built:**
+  - `client_facilities`, with one self facility per tenant, created at migration and by every tenant-creation path (audited).
+  - `client_facility_id` on devices, records, certificates, work orders, IoT readings, non-conformances, attachments, warehouses, users and audit rows, back-filled to each tenant's self facility.
+  - Composite keys tie every child to its device's facility and cascade a device move.
+  - Triggers keep the column immutable outside a move, guard user binding and its role set, and refuse new rows in an ended facility.
+  - The attachment rule (AM-7), checked at commit.
+  - Serial numbers are unique per facility (UD-9).
+- **Existing tenants notice nothing:** the database fills the facility on insert (ADR-124 Am. 3) while a tenant has only its own facility. Nothing outside the database is facility-aware yet; the hooks and routes come with P21-09.
+- **Operations:**
+  - Deploy this release with **Recreate**: an old replica cannot insert devices after 0118.
+  - The back-fill took about 76 s for 100k devices and 1M IoT readings on a workstation.
+  - An upgrade refuses a database holding a work order, record, certificate or reading on another tenant's device until that row is repaired.
+- **Plans:** P20-07 DONE. Upstream group: 33 of 98 cards DONE.
+
+### 2026-10-08 — Upstream adoption: the IPM report and offline field capture specified; ADR-126 Am. 2, ADR-127 Am. 1 ([record](./records/2026-10-08-p19-06-08-specs.md))
+- **Specs (target, not built):**
+  - P19-06, the IPM report: number, verification, integrity hash, electronic signatures of the technician and the IPSRS, the PDF and the on-screen report, all rendered in the browser.
+  - P19-08, offline field capture: the `/field` app, its service worker, the encrypted offline store, sync and conflicts, photos and QR scanning, purge rules, shared phones, installation and updates, real-device tests.
+- **Decisions (working, under the owner's delegation):**
+  - The IPM report is a document of the IPM itself, not a certificate.
+  - Its public verification needs the token printed in the QR.
+  - The technician signs online after submitting; the facility's IPSRS countersigns where the tenant enables it.
+  - Offline mode lives only under `/field`, and one field user is allowed per phone profile.
+- **Plans:** no card changes state (P23-02 and P22-10 still wait on their build prerequisites). Upstream group: 32 of 98 cards DONE.
+
+### 2026-10-08 — Upstream adoption: the IPM session, the device register's extensions and calibration dates specified; ADR-126 Am. 1, ADR-132, ADR-133 ([record](./records/2026-10-08-p19-02-03-05-specs.md))
+- **Specs (target, not built):** P19-02 (IPM sessions and results: states, corrections, voids, visit numbers, side effects, "due", offline idempotency), P19-03 (QR, condition, rooms, photos, QR lookup), P19-05 (calibration dates and due dates).
+- **Decisions (working, under the owner's delegation):** the QR is set only by provider staff, normalised with a per-tenant prefix; condition is separate from status; rooms are facility rooms; a void of an IPM reverses only its own maintenance record; the quick calibration entry stores no file.
+- **Defect found, fix decided (not built):** a device's next calibration date moves backward when an older record is entered, and corrections and voids never update it (BACKLOG G-11; ADR-133; P21-05).
+- **Plans:** P19-06, P19-08, P20-02, P20-04, P20-05, P20-08, P24-04 unblocked. Upstream group: 30 of 98 cards DONE.
+
+### 2026-10-08 — Upstream adoption: every open decision carried as a working decision; roles, grants and the two-facility test plan specified; the "what changed" note in Indonesian; ADR-131 ([record](./records/2026-10-08-phase12-18-29-docs.md))
+- **Decisions (working, under the owner's delegation of 2026-10-08; the owner may revise):**
+  - Technicians (`TECHNICIAN`, `HEALTHCARE TECHNICIAN`) will get `calibration` write in **every** tenant (UD-4 (b)) — device registration and calibration records; voiding a calibration record moves to tenant administrators in the same release. **Not built yet** (P20-06); its record must state the effect on existing tenants.
+  - A client facility that leaves is offered a browser-rendered handover package; ending deletes nothing; its staff accounts are deactivated after 30 days (UD-18 (b)).
+  - UD-2, UD-5, UD-7, UD-8, UD-10 … UD-13, UD-15 … UD-17 and Q-57·T (b)–(d) taken as recommended. Still the owner's: the legal basis and contracts (OA-5) and the facts/actions OA-1 … OA-8.
+- **Plans:** P12-01 and Phase 18 complete (role matrix with deterministic import rules, grants spec, two-tenant / two-facility test plan); P12-05, P12-06, P19-02, P19-03, P19-05, P20-06 unblocked. Upstream group: 27 of 98 cards DONE.
+- **Docs (Indonesian):** `docs/UPSTREAM/11-WHAT-CHANGED-ID.md` for facility and provider staff.
+- **Frontend (proposed, not built):** ADR-131 — the public pages get their own root layout and stylesheet (P10-18); the API layer of three public forms loads on demand (P10-19).
+
 ### 2026-10-07 — CI on `fe66b79`: a gitleaks false positive and `sharp` 0.35.5 ([record](./records/2026-10-07-ci-fe66b79.md))
 - **Security (dependencies):** `sharp` 0.35.4 → 0.35.5 (HIGH GHSA-wq5f-xc86-pv6w, the librsvg it bundles; pulled in by `next`).
   - The lockfile changed only for `sharp` and its `@img/*` binaries.

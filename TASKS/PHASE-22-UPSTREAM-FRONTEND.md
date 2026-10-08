@@ -37,7 +37,7 @@ page notes · docs/FRONTEND/00 · docs/UI-UX/08 · ADR-122 · ADR-071/090 · P19
 | P22-07 | Dashboard condition widgets and technician activity | F-70 … F-73 | BLOCKED | P21-07 |
 | P22-08 | Public device page `d/[token]` | F-74, F-75 | BLOCKED | P21-08 |
 | P22-09 | Client-facility management and facility-bound users for the tenant administrator; a facility filter (convenience, not a boundary) for provider staff; the facility user's restricted navigation | F-13 … F-17 | BLOCKED | P21-09 |
-| P22-10 | PWA offline mode: service worker, IndexedDB queue of drafts and photos, background sync, conflict display | F-78, F-79 | BLOCKED (scope decided, UD-14) | P22-03, P19-08 |
+| P22-10 | PWA offline mode: service worker, IndexedDB queue of drafts and photos, background sync, conflict display — **specified 2026-10-08 by P19-08** ([spec](../MEMORY/specs/P19-08-offline-field-capture.md); ADR-127 Am. 1: the `/field` one-document app, worker scope `/field`, frozen sync ops, purge rules, AM-23 wipe, real-device script § 16.5). **Planning note (2026-10-08, ADR-134):** build the sync engine (planner, runner, classification, purge) behind the port boundary of [`docs/SHARED/06-SYNC-ENGINE.md`](../docs/SHARED/06-SYNC-ENGINE.md) § 11 — no direct IndexedDB, WebCrypto or `window` calls inside it — so that P35-07 is a move into `@callibrator/sync-engine`, not a refactor | F-78, F-79 | BLOCKED (P19-08 DONE as spec 2026-10-08; still waits on P22-03, and on the server pieces of P19-08 § 9.5 in P21-02/03/09) | P22-03, P19-08 |
 
 **DoD (adds):** jest, accessibility (light + dark), responsive and live browser suites cover each page;
 offline mode proved on a real phone with the network cut and restored (named run in the record).

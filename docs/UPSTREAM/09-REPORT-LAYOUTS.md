@@ -40,7 +40,7 @@ same pattern. **The backend renders no PDF and writes no XLSX.**
 
 | # | Upstream document | Engine, paper | Route (filter) | Target in Callibrator | Card |
 |---|---|---|---|---|---|
-| D1 | **IPM report** (HTML preview + PDF download) | Dompdf, **A4 landscape** | `ipm/htmlToPDF` (login), `ipm/downloadSertifikatIPM` (**public**), `ipm/getIPM/<qr>/<date>` (**public**) | **issued IPM report on the certificate pipeline** (`type: maintenance`), frontend jsPDF renderer, QR to `/verify` with token | P19-06, P23-02 |
+| D1 | **IPM report** (HTML preview + PDF download) | Dompdf, **A4 landscape** | `ipm/htmlToPDF` (login), `ipm/downloadSertifikatIPM` (**public**), `ipm/getIPM/<qr>/<date>` (**public**) | ~~issued IPM report on the certificate pipeline (`type: maintenance`)~~ **an issued document of the IPM session itself** (number, token, hash on the session — **ADR-126 Am. 2**, P19-06 spec; no certificate row), frontend jsPDF renderer, QR to `/verify/ipm/<number>?t=<token>` | P19-06, P23-02 |
 | D2 | **Inventory list PDF — provider** | Dompdf, **A3 landscape**, photo thumbnails optional | `inventory_download_admin` (login) | frontend jsPDF, paged API reads, thumbnails from derivatives | P23-03 |
 | D3 | Inventory list PDF — facility | Dompdf, A4 landscape | `inventory_download` (login) | same renderer, facility variant | P23-03 |
 | D4 | **Inventory XLSX** (two near-identical implementations) | Spout | `inventory_download_admin_xls` (login), `kalibrasi_download_admin_xls` (admin, user) | frontend XLSX writer | P23-04 |
@@ -108,11 +108,11 @@ technician name from the user of the first environment row; visit from the envir
 
 | Aspect | Target |
 |---|---|
-| Record | a certificate row `type: maintenance` issued when the IPM session is submitted (UD-6, P12-04) |
-| Data | `GET /certificates/:id/document` extended (or a sibling document endpoint) with the IPM sections — every printed field, `verifyUrl`, integrity hash over the data (v3 snapshot pattern, ADR-107: the issuer, device and people as at issue) |
+| Record | ~~a certificate row `type: maintenance` issued when the IPM session is submitted (UD-6, P12-04)~~ **corrected 2026-10-08 (ADR-126 Am. 2, P19-06 spec § 2 G-R1): the submitted session is the issued record** — `report_number` (`IPM-<facility code>-<YYYYMMDD>-<NNN>`, per tenant, facility and day), `verification_token`, `report_content_hash` (`ipm-report-v1`, stored and recomputed) and `issuer_snapshot` written by the submit; no certificate row (issuing a certificate is never a facility-bound act, and the certificate's approval lifecycle has no IPM counterpart) |
+| Data | ~~`GET /certificates/:id/document` extended (or a sibling document endpoint)~~ `GET /ipm/sessions/:sessionId/report-document` (P19-06 spec § 10) — every printed field, `verifyUrl`, the integrity hash over the data (the ADR-107 snapshot discipline: issuer, device, facility, room and people as at submit) |
 | Renderer | frontend jsPDF module beside `certificatePdf.ts`, **A4 landscape** to keep the upstream's one-page density; Noto Sans (Unicode, as the certificate); the same status watermark for anything not issued |
-| Letterhead | the **issuer** block = the calibration company's tenant identity snapshot (name, address, logo) — the provider's letterhead becomes data, not a hard-coded image ⚖ design: confirm in P19-06 |
-| Added beyond parity | report number; QR to `/verify/<number>?t=<token>`; integrity hash; page "x / y" and generation time in a footer; electronic signature of the technician at submit and the IPSRS countersignature (UD-17) in place of the wet-signature line (a wet-signature line stays printable for facilities that do not enable countersigning) |
+| Letterhead | the **issuer** block = the calibration company's tenant identity snapshot (name, address, contacts — `issuer_snapshot`, hashed) and its **live** logo (not hashed; stated on the page) — the provider's letterhead becomes data, not a hard-coded image. **Confirmed by P19-06 (ADR-126 Am. 2)** |
+| Added beyond parity | report number; QR to `/verify/ipm/<number>?t=<token>` (the token is **required** — no minimal verdict, P19-06 § 9); integrity hash; page "x / y" and generation time in a footer; the technician's electronic signature (a separate online act **after** the submit — never in the offline outbox) and the IPSRS countersignature (UD-17, tenant setting `ipm.countersignEnabled`) printed above a wet-signature line that always stays printable (P19-06 § 7, § 11) |
 | Golden test | synthetic session → the document JSON → jsPDF text extraction: section order, labels, code → label maps (§ 2.2), L-1…L-4 fixed |
 
 ## 3. D2 / D3 — Inventory List PDFs

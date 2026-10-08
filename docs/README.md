@@ -52,6 +52,18 @@ UPSTREAM/      12 files — research on the upstream PHP app (SKP IPM: inventory
                           describes the upstream, not Callibrator (added 2026-10-07; plan in
                           TASKS/PHASE-12 … PHASE-31, index
                           TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md)
+MOBILE/       TARGET — the native app (Expo + EAS, ADR-135): architecture, screens and roles,
+                          phone/tablet, offline field capture, native features, sign-in, security,
+                          distribution, testing, a11y/i18n, tenant setup (00 … 11, 90); backend for
+                          mobile 20 (Node) / 21 (Go). Plans: TASKS/PHASE-35 … 40 (one plan),
+                          PHASE-1000 (Go backend for mobile)
+CONTRACT/     TARGET — the backend-agnostic contract (ADR-136): contract-first contracts/,
+                          behaviour spec, error codes, Socket.IO in AsyncAPI, the conformance suite,
+                          the module-by-module porting playbook (00 … 07, 90). Plan: TASKS/PHASE-32 … 34
+SHARED/       TARGET — the cross-platform packages (ADR-134): architecture and dependency rules,
+                          tokens, api-client (generated from the contract-first contracts/, ADR-136),
+                          i18n, domain, sync-engine, headless hooks, icons, conventions (00 … 08, 90).
+                          Only packages/contracts exists today. Plan: TASKS/PHASE-35 … 40
 ```
 
 Counts are `find docs/<folder> -name "*.md"`, README included, taken 2026-09-28; they sum to 194, and

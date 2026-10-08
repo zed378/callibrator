@@ -9,6 +9,18 @@
 > **ROADMAPPING RULE**: Phase 999 work MUST NOT begin until:
 > 1. Phase 9 (Backend TypeScript Migration) is 100% complete and verified.
 > 2. Upstream PHP Feature Adoption — **Phases 12 … 31** ([index](./PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md)) — is complete according to the platform roadmap (its exit card is P31-04).
+> 3. **The backend-agnostic contract group — Phases 32 … 34** — is done (exit card P34-09): `contracts/`, the conformance suite, plain-SQL migrations, JWKS, `/meta`, the gateway (ADR-136, added 2026-10-08).
+
+> **RE-PLANNED 2026-10-08 (owner decision, ADR-136; amends ADR-089):** Go is built **module by module against `contracts/`**, behind the gateway, on the shared database, and each module is **done only at 100% of the conformance suite** (`docs/CONTRACT/06`, `07`). It is no longer a full port proved by a byte-parity diff against the TypeScript backend. Consequences for the table below (rows annotated, not deleted, so their history stays readable):
+> - **P999-01** formalises against `contracts/` (no `shared/` contract types — ADR-134 superseded the root `shared/`).
+> - **P999-09** validation is **generated** from `contracts/` (the Go generator chosen there), not hand-matched to Zod; the named rules pass `contracts/vectors/`.
+> - **P999-07** verifies tokens through the **JWKS** (P34-02); Go becomes an issuer only when the `auth` module moves.
+> - **P999-15/16**: the proof is the **conformance suite per module**; the parity diff stays a diagnostic where the contract is silent.
+> - **P999-17**: the schema comes from the plain-SQL migrations (P34-01); Go runs the same runner and never creates schema itself.
+> - **P999-18, P999-19 — superseded**: there is no per-backend frontend adapter and no shared UI (ADR-134); clients are generated from `contracts/` and hide unimplemented modules through `/meta`.
+> - **P999-20** is the gateway of P34-04 (routing per module), not a separate proxy design.
+> - **Realtime**: Go emits through the Socket.IO Redis-adapter format first and owns the socket server last (`docs/CONTRACT/05` § 6).
+> - **Order of modules**: `docs/CONTRACT/07` § 8. The Go backend-for-mobile modules: [`PHASE-1000-MOBILE-BACKEND-GO.md`](./PHASE-1000-MOBILE-BACKEND-GO.md).
 
 All tasks in this phase are currently **Planned**. No Go implementation code, directory creation, or source code modifications have been performed in earlier phases.
 

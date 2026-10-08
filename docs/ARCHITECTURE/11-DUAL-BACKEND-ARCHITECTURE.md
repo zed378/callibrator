@@ -1,5 +1,7 @@
 # 11 — Dual-Backend Architecture
 
+> **Superseded in part by ADR-134 (2026-10-08, plan).** The root `shared/` area, shared UI components and a per-backend frontend adapter described here are **not** the plan any more: shared code lives in `packages/*` (logic and design tokens only; each platform renders its own UI), and one OpenAPI-generated client serves both engines. See [`docs/SHARED/01-ARCHITECTURE.md`](../SHARED/01-ARCHITECTURE.md) § 9. The rest of this document stands until P32-09 rewrites it.
+
 > **Scope:** This document describes the **target** architecture as of 2026-09-27 (ADR-089). The current runtime is the TypeScript backend only (`backend/src/`). The Go backend engine (`backend-go/`) is a future implementation assigned exclusively to **Phase 999**. Nothing documented under Go here exists in the repository today. Do not implement any of it before Phase 999 is entered.
 
 Related documents:

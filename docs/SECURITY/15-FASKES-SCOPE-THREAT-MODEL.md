@@ -327,7 +327,7 @@ Extends `utils/sql.util.ts` and `tests/utils/rawSqlTenantPredicate.d05.test.js`.
 | Id | Threat | L×I | Control | Residual | Proof |
 |---|---|---|---|---|---|
 | FT-49 (I) | **Serial number 409** reveals that another facility holds a serial | 3×2=6 | **decided** (UD-9): `UNIQUE (tenant_id, client_facility_id, serial_number)` — a bound user's 409 can only name its own facility's rows | 1×2=2 | *proposed* `serialUnique.twoFacility.test.ts` + live index check in P20-02 |
-| FT-50 (I) | **QR code 409** (unique per tenant, 04/P19-03): if a bound facility technician may register devices or set a QR, a 409 reveals "this sticker number is used in some other facility" | 2×2=4 | ADR-124 security analysis assumes bound users never write the QR. **Open (OQ-2):** may bound users create devices? If yes: the QR is assigned by provider staff only, or the 409 says only "this QR cannot be used here — contact your provider" (a 1-bit oracle, accepted) | 2×2=4 | *proposed* `qrUnique.twoFacility.test.ts` once P19-03 decides |
+| FT-50 (I) | **QR code 409** (unique per tenant, 04/P19-03): if a bound facility technician may register devices or set a QR, a 409 reveals "this sticker number is used in some other facility" | 2×2=4 | ADR-124 security analysis assumes bound users never write the QR. ~~Open (OQ-2)~~ **Decided 2026-10-08 (ADR-132 § 1, P19-03):** bound technicians create devices but the bound contracts carry **no QR field** — only provider staff assign stickers, so no QR 409 reaches a bound user | 1×2=2 | *proposed* `calibrationDevices.bound.contract.test.ts` (QR refused 400) and `calibrationDevices.qr.p2102.test.ts` (P19-03 spec § 13) |
 | FT-51 (I) | **Facility `code`** (unique per tenant) — only provider staff write it | 1×2=2 | ADR-124 § 2 | 1×2=2 | — |
 | FT-52 (I) | **`client_ref`** (`UNIQUE (tenant_id, client_ref)`, ADR-126 § 1): a create whose `client_ref` collides with another facility's session answers 409, or — worse — returns the existing row as an idempotent success | 1×4=4 | client refs are random UUID v4 (unguessable). **AM-16:** a duplicate `client_ref` is resolved **in the caller's context**: same user and visible → the idempotent answer; otherwise a 409 that names nothing; or scope the key `(tenant_id, created_by, client_ref)` (OQ-6) | 1×2=2 | *proposed* `clientRef.twoFacility.test.ts` |
 | FT-53 (I) | **`Idempotency-Key`** collision across users | 1×3=3 | ADR-127 § 7: keyed `(tenant_id, user_id, key)` | 1×3=3 | *proposed* `idempotencyKeys.p2103.test.ts` |
@@ -377,7 +377,7 @@ Extends `config/socket.ts` (rooms `tenant_<id>`, `user_<id>`, `super_admins`, `b
 | Id | Threat | L×I | Control | Residual | Proof |
 |---|---|---|---|---|---|
 | FT-70 (I) | An export page read returns another facility's rows (the upstream S-04 `inventory_download_admin_xls?id_client=` class) | 4×4=16 | ADR-124 § 9: exports are paginated API reads under the hooks, the marker and the two-facility tests; there is no export file and no export worker | 1×4=4 | ADR-124 § 10 / DPIA R-04 (2): *proposed* `exportReads.twoFacility.test.ts` — every read behind the inventory, recap and IPM-list exports, every page, "an export containing only A" |
-| FT-71 (I) | The report's data document (session, version items, device and facility snapshots, performer snapshot) includes provider-internal fields | 2×3=6 | a fixed contract for the document (P19-06); snapshots limited (FT-15) | 1×3=3 | contract test in P19-06 |
+| FT-71 (I) | The report's data document (session, version items, device and facility snapshots, performer snapshot) includes provider-internal fields | 2×3=6 | a fixed contract for the document (P19-06); snapshots limited (FT-15) | 1×3=3 | contract test in P19-06 — **specified 2026-10-08:** *proposed* `packages/contracts/test/ipmReport.contract.test.ts` (strict key sets of `IpmReportDocument` and the public `ipmVerification`: no user id, person's e-mail/phone, `tenant_id`, `client_ref`, `legacy_key`, work-order id, void reason) — P19-06 spec § 10.2, ADR-126 Am. 2 |
 | FT-72 (I) | Photos embedded in a browser-rendered PDF via permanent URLs | 2×3=6 | photos fetched one by one through signed, expiring URLs (ADR-126 implications; 08 § 8); no permanent URL in an export | 1×3=3 → EP-17 | — |
 | FT-73 (D) | A bound user pages through a huge export and starves the provider (≈ 23 k devices) | 2×2=4 | each read capped by the API page size; the user's own facility only | 1×2=2 | — |
 
@@ -523,7 +523,7 @@ changes the owner's decisions.
 
 | # | Addition | Why (threats) | Card |
 |---|---|---|---|
-| AM-1 | **A binding change (bind, unbind, move) or a facility leaving `active` revokes all of the user's sessions**, in the same transaction; the PWA purges its working set on 401 **and** on the account/tenant/facility 403 codes | stale grants: FT-46, FT-95, FT-96 | P19-04, P19-08 |
+| AM-1 | **A binding change (bind, unbind, move) or a facility leaving `active` revokes all of the user's sessions**, in the same transaction; the PWA purges its working set on 401 **and** on the account/tenant/facility 403 codes | stale grants: FT-46, FT-95, FT-96 | P19-04, P19-08 — client part **adopted by ADR-127 Am. 1 § 4 (2026-10-08):** the PWA purges on a **failed refresh** and on `data.code` ∈ `SCOPE_LOSS_CODES` (never on a raw 401/403 — a wrong signing password is a 401); the server attaches the codes (P21-03 tenant/account, P21-09 facility) |
 | AM-2 | The context's facility has **one writer** (`tenantContextMiddleware` from `req.user`, and the socket handshake from the loaded user); no token claim carries it | FT-01, FT-02, FT-06 | P21-09 |
 | AM-3 | `facilityBound` is a row property (bound, or pending), not inferred after a join | FT-03 | P19-04 |
 | AM-4 | `runForTenant` takes the facility for jobs started by bound principals | FT-07 | P21-09 |
@@ -537,18 +537,18 @@ changes the owner's decisions.
 | AM-12 | The unmarked-route 403 is decided before any parameter is read | FT-37, FT-55 | P21-09 |
 | AM-13 | No handler widens on `clientFacilityId == null` | FT-39 | P21-09 |
 | AM-14 | Only **unbound** tenant admins write bindings and bound users' roles; self-profile and invitation contracts never accept the facility | FT-42, FT-45 | P18-03, P21-09 |
-| AM-15 | JIT/SCIM users in a multi-facility tenant are created `INACTIVE` pending an administrator's binding decision | FT-44 | P21-09 (+ owner confirmation, OQ-3) |
-| AM-16 | `client_ref` duplicates resolved in the caller's context (or the key scoped per user) | FT-52 | P19-02, P19-08 |
+| AM-15 | JIT/SCIM users in a multi-facility tenant are created `INACTIVE` pending an administrator's binding decision — **as specified:** a `users.facility_binding_pending` flag, not `INACTIVE` (ADR-124 Am. 2 § 6) | FT-44 | P21-09 — **working decision 2026-10-08** (OQ-3, § 13.1); no longer awaiting the owner |
+| AM-16 | `client_ref` duplicates resolved in the caller's context (or the key scoped per user) | FT-52 | P19-02, P19-08 — **adopted by ADR-126 Am. 1 § 1 (2026-10-08):** `UNIQUE (tenant_id, created_by, client_ref)`, resolved in context |
 | AM-17 | No "load unscoped, then compare" in services | FT-55 | P21-09 |
 | AM-18 | Cache keys from the context, with distinct bound (`f:<id>`) and unbound (`all`) segments | FT-61 | P21-07, P21-09 |
 | AM-19 | Emitters name the facility from the row; tenant-wide notifications carry no facility data | FT-65 | P21-09 |
 | AM-20 | Socket re-check disconnects on any scope difference | FT-67 | P21-09 |
 | AM-21 | One recipient function per row's facility for notifications and digests | FT-68, FT-69 | P21-09 |
 | AM-22 | Signed URLs: TTL capped (300 s for facility resources), token bound to tenant + facility, re-checked at redemption, never stored in artefacts | FT-75, FT-78 | P21-09 — the cap, the tenant + issuer binding and the redemption re-check **built for all tenants 2026-10-07 (A-365)**; the facility binding remains |
-| AM-23 | One field user per browser profile; a different user's sign-in purges others' working sets | FT-86 | P19-08, P22-10 |
-| AM-24 | Purge also on server time at every online contact | FT-87 | P19-08 |
-| AM-25 | Idempotency records store the scope; no stored-response replay across a scope change | FT-92 | P19-08, P21-03 |
-| AM-26 | A scope fingerprint returned by `/auth/verify` and the sync response; a change purges | FT-96 | P19-08 |
+| AM-23 | One field user per browser profile; a different user's sign-in purges others' working sets | FT-86 | P19-08, P22-10 — **adopted by ADR-127 Am. 1 § 7 (2026-10-08):** enabling refused while another user's data remains; another user's sign-in purges others' working sets without opening their outboxes; an audited administrator wipe (`POST /field/wipes`) |
+| AM-24 | Purge also on server time at every online contact | FT-87 | P19-08 — **adopted by ADR-127 Am. 1 § 4 (2026-10-08):** every online response's `Date` compared with the last sync's server time |
+| AM-25 | Idempotency records store the scope; no stored-response replay across a scope change | FT-92 | P19-08, P21-03 — **adopted by ADR-126 Am. 1 § 8 (2026-10-08):** a scope fingerprint, the resource reference instead of a body, a re-read in context, 409 on a changed scope |
+| AM-26 | A scope fingerprint returned by `/auth/verify` and the sync response; a change purges | FT-96 | P19-08 — **adopted by ADR-127 Am. 1 § 4 (2026-10-08):** from `POST /auth/verify` only, called at the start of every sync cycle (there is no separate sync response); built by P21-09 |
 | AM-27 | The ETL never imports a facility account unbound; ambiguous mappings are quarantined | FT-100 | P24-02 |
 | AM-28 | `upstream_import.id_map` gains `client_facility_id` | FT-102 | P24-01 |
 | AM-29 | An advisory identifying-text lint on catalogue publish (warns the operator) plus the operator-guide rule; complements the P19-01 spec's "acceptance copies nothing" | FT-108 | P21-01 |
@@ -655,7 +655,7 @@ these need either an amendment by the building card (AM-n) or the owner's view (
 |---|---|---|---|
 | OQ-1 | Should a binding change revoke the user's sessions (AM-1)? | **Yes** — the only control that makes every "then ↔ now" capability (sockets, PWA, idempotency, signed-URL issuance) fail at once | P19-04 amendment to ADR-124 · **working decision, § 13.1** |
 | OQ-2 | May **bound** users create devices or set a QR (facility technicians did upstream)? | Create devices yes (their own facility); the QR assigned by the provider or by the scanned sticker with a 409 that names nothing | P18-03 / P19-03 (UD-4 related) · **answered by ADR-124 Am. 1 § 9; § 13.1** |
-| OQ-3 | JIT/SCIM in a multi-facility tenant (AM-15) | Create `INACTIVE` pending binding; later, an IdP-group → facility mapping if a provider asks | P21-09; owner confirms · **working decision, § 13.1** |
+| OQ-3 | JIT/SCIM in a multi-facility tenant (AM-15) | Create `INACTIVE` pending binding; later, an IdP-group → facility mapping if a provider asks | P21-09 · **working decision, § 13.1** (2026-10-07, re-taken 2026-10-08 as one that ships — no longer awaiting the owner) |
 | OQ-4 | May a bound facility admin manage its own facility's users? | Not in this phase (ADR-124: not a tenant administrator). If asked later: a separate route that forces the actor's facility, roles ≤ its own and within the bound set, audited — and an ADR | **owner** (product), then ADR · **working decision, § 13.1** (UD-4 (c)) |
 | OQ-5 | Device move between facilities vs composite FKs from children to `(tenant, facility, device)` — children keep their facility (ADR-124 § 3), so an `ON UPDATE` of the device's facility conflicts with the children's FK | Decide in P19-03: a move creates the device's new facility history by closing the old device record and opening a linked one, or the FK targets `(tenant, device)` plus a trigger comparing facilities at child insert only | P19-03 · **working decision, § 13.1** |
 | OQ-6 | Scope of `client_ref` uniqueness (AM-16) | `(tenant_id, created_by, client_ref)`; a collision with another user's ref is a 409 that names nothing | P19-02 / P19-08 · **working decision, § 13.1** |
@@ -676,17 +676,17 @@ wins** and the difference is noted.
 | # | Working decision | Carried by |
 |---|---|---|
 | OQ-1 | **Yes** — a binding change (bind, unbind, move) revokes all of the user's sessions, in the same transaction (AM-1) | P19-04 (amendment to ADR-124) |
-| OQ-2 | Bound users **do not set QR codes** (provider staff assign them; a collision's 409 names nothing). Device **creation** by a bound technician: the coordinating session proposed "not in this phase — provider staff do", but **ADR-124 Am. 1 § 9 wins**: bound technicians create and edit devices in their own facility, subject to UD-4 (b) (`calibration` write for the technical roles) and the bound menu ceiling | P18-03 (done), P19-03 |
-| OQ-3 | JIT (SSO) and SCIM users in a tenant with **more than one** facility are created **`INACTIVE`** until an administrator binds them (or leaves them unbound) — AM-15 | P21-09 |
+| OQ-2 | Bound users **do not set QR codes** (provider staff assign them; a collision's 409 names nothing). **Finalised 2026-10-08 by ADR-132 § 1 (P19-03):** the bound device contracts have no QR field at all, so no QR 409 reaches a bound user (FT-50 closed). Device **creation** by a bound technician: the coordinating session proposed "not in this phase — provider staff do", but **ADR-124 Am. 1 § 9 wins**: bound technicians create and edit devices in their own facility, subject to UD-4 (b) (`calibration` write for the technical roles) and the bound menu ceiling | P18-03 (done), P19-03 |
+| OQ-3 | JIT (SSO) and SCIM users in a tenant with **more than one** facility are refused until an administrator binds them (or confirms them unbound) — AM-15. **2026-10-08:** a working decision that ships, recorded in `TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md` § 3 ("Working decisions of 2026-10-08") — it does **not** await the owner (the owner may revise it, as any working decision). As specified (ADR-124 Am. 2 § 6) the mechanism is a `facility_binding_pending` flag refused with `FACILITY_BINDING_PENDING`, not the `INACTIVE` status | P21-09 |
 | OQ-4 | **No** facility-admin user management in this phase (= UD-4 (c)); a later route would force the actor's facility and roles within the bound set, audited, with an ADR | P21-09; owner if requested |
-| OQ-5 | Moving a device between facilities is a **dedicated, audited operation** that re-parents its children in one transaction — never a plain update of `client_facility_id` (AM-6 refuses that); its design is P19-03's | P19-03 |
-| OQ-6 | `client_ref` is unique **per creating user**: `(tenant_id, created_by, client_ref)`; another user's collision is a 409 that names nothing | P19-02 / P19-08 |
+| OQ-5 | Moving a device between facilities is a **dedicated, audited operation** that re-parents its children in one transaction — never a plain update of `client_facility_id` (AM-6 refuses that). **Designed by ADR-124 Am. 2 § 2 (P19-04, 2026-10-07):** children follow the device; ADR-132 § 8 (P19-03) adds the room | P19-04 (done), P19-03 (room) |
+| OQ-6 | `client_ref` is unique **per creating user**: `(tenant_id, created_by, client_ref)`; another user's collision is a 409 that names nothing — **adopted by ADR-126 Am. 1 § 1 (2026-10-08)** | P19-02 (done) / P19-08 |
 | OQ-7 | **Cap the signed-URL TTL for all tenants now** — done (A-365): default 300 s, cap 900 s configurable, hard ceiling 3600 s, token bound to tenant + issuer, re-checked at redemption | done |
 | OQ-8 | The dashboard is facility-accessible at go-live **only** with the facility-keyed cache (AM-18) and its two-facility test (G-20) green; otherwise **hidden** for bound users, whose home page is built from marked reads — consistent with ADR-124 Am. 1 § 9 | P18-03 (done), P21-07 |
 | OQ-9 | `FACILITY_READABLE` per-user tables: notifications, the user's own sessions and own profile (Am. 1 § 5 adds consent records and DSAR requests, each `user_id` = self). **Tickets:** the coordinating session proposed "yes, scoped to their facility", but **ADR-124 Am. 1 § 9 wins: tickets to the provider come later** (with a rule "own tickets only", or facility-scoped, decided then) | P18-03 (done) |
-| OQ-10 | **Enforce in the app** one field user per browser profile (AM-23); the field guide explains it | P19-08, P22-10 |
+| OQ-10 | **Enforce in the app** one field user per browser profile (AM-23); the field guide explains it | P19-08, P22-10 — **adopted by ADR-127 Am. 1 § 7 (2026-10-08)** |
 | OQ-11 | **No** facility-scoped API keys in this phase; key creation warns that a key reads **every** facility | P21-09 |
-| OQ-12 | A device move writes **two audit rows**, one stamped with each facility (leaving, arriving) | P19-03 |
+| OQ-12 | A device move writes **two audit rows**, one stamped with each facility (leaving, arriving) — **adopted by ADR-124 Am. 2 § 2** | P19-04 (done) |
 
 ## 14. Residual Risk Summary
 

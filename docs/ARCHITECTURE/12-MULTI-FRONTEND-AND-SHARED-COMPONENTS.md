@@ -1,5 +1,7 @@
 # 12 — Multi-Frontend and Shared Component Architecture
 
+> **Superseded in part by ADR-134 (2026-10-08, plan).** The root `shared/` area, shared UI components and a per-backend frontend adapter described here are **not** the plan any more: shared code lives in `packages/*` (logic and design tokens only; each platform renders its own UI), and one OpenAPI-generated client serves both engines. See [`docs/SHARED/01-ARCHITECTURE.md`](../SHARED/01-ARCHITECTURE.md) § 9. The rest of this document stands until P32-09 rewrites it.
+
 > **Status: Planned (Phase 999 and beyond).** The current frontend is a single Next.js 16 application at `frontend/src/`. The `shared/` root described here does not exist yet. A Go-targeted frontend adapter does not exist. Do not create this directory structure before the Go backend (Phase 999) begins producing stable API endpoints.
 
 Current frontend: [`../ARCHITECTURE/02-FRONTEND-ARCHITECTURE.md`](./02-FRONTEND-ARCHITECTURE.md).
