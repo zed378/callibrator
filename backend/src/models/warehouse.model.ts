@@ -16,6 +16,7 @@ import {
   type NonAttribute,
   type Sequelize,
 } from "sequelize";
+import { WAREHOUSE_KINDS, type WarehouseKind } from "@callibrator/contracts/deviceValues";
 import type { ClientFacilityId, TenantId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
@@ -41,6 +42,14 @@ interface Warehouse extends Model<
   address: string | null;
   description: string | null;
   status: CreationOptional<(typeof WAREHOUSE_STATUSES)[number] | null>;
+  /**
+   * P20-02 (UD-10, ADR-132 § 5; migration 0128): a provider's `store` (the default — every row
+   * before 0128) or a facility's `room`. CHECKs there: a room has a facility, a store no floor; a
+   * room's name and floor are unique per facility among live rooms.
+   */
+  kind: CreationOptional<WarehouseKind>;
+  /** A room's floor (upstream `lantai`); NULL for a store. */
+  floor: CreationOptional<string | null>;
   isDeleted: CreationOptional<boolean>;
   createdAt: CreationOptional<Date>;
   updatedAt: CreationOptional<Date>;
@@ -108,6 +117,16 @@ const defineModel: DefineWarehouse = (db, DataTypes) => {
       status: {
         type: DataTypes.ENUM(...WAREHOUSE_STATUSES),
         defaultValue: "active",
+      },
+      // P20-02 (migration 0128): no index or CHECK here (ADR-100 Am. 3).
+      kind: {
+        type: DataTypes.ENUM(...WAREHOUSE_KINDS),
+        allowNull: false,
+        defaultValue: "store",
+      },
+      floor: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
       },
       isDeleted: {
         type: DataTypes.BOOLEAN,

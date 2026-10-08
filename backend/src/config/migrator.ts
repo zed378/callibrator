@@ -211,6 +211,10 @@ const migrationModules: [string, MigrationModule][] = [
   ["0126-ipm-sessions.js", require("../migrations/0126-ipm-sessions")],
   // P20-05 (ADR-126 § 5): the IPM append-only, draft-only, correction-same-device and signature triggers, each with the device-move exception.
   ["0127-ipm-immutability.js", require("../migrations/0127-ipm-immutability")],
+  // P20-02 (ADR-132, ADR-133, Am. 1 of each): the device extensions (QR, condition, rooms, lab, registrant, IPM interval, client_ref), the calibration-date columns and their triggers.
+  ["0128-device-extensions.js", require("../migrations/0128-device-extensions")],
+  // P20-08 (ADR-132 § 6, P19-02 § 12): attachments.purpose, one live device photo per purpose, the inspectionsession attachment type (AM-7).
+  ["0129-attachment-purpose.js", require("../migrations/0129-attachment-purpose")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

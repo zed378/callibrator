@@ -115,7 +115,7 @@ const countChildren = async (tenantId: TenantId, deviceId: string, transaction: 
   };
 };
 
-/** The ids of the device's children a file can be linked to (records, certificates, work orders). */
+/** The ids of the device's children a file can be linked to (records, certificates, work orders, IPM sessions). */
 const linkedChildIds = async (tenantId: TenantId, deviceId: string, transaction: Transaction): Promise<string[]> => {
   const where = { tenantId, deviceId };
   const options = { where, attributes: ["id"], paranoid: false, transaction };
@@ -123,6 +123,9 @@ const linkedChildIds = async (tenantId: TenantId, deviceId: string, transaction:
     ...(await models.CalibrationRecord.unscoped().findAll(options)),
     ...(await models.Certificate.unscoped().findAll(options)),
     ...(await models.MaintenanceWorkOrder.unscoped().findAll(options)),
+    // P20-08 (P19-02 § 12, AM-7): an IPM session's photos follow it — 0129's follow trigger
+    // refuses a commit that leaves one behind.
+    ...(await models.InspectionSession.findAll(options)),
   ] as unknown as { id: string }[];
   return rows.map((r) => r.id);
 };

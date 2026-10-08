@@ -133,7 +133,7 @@ describe("verifySchema", () => {
     expect(result.problems).toHaveLength(triggers.length);
   });
 
-  it("checks the append-only trigger, the void CHECK, the serial index (per facility since 0118), the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes, and the audit_logs append-only triggers (Q-34, ADR-095), and the exactly-one-actor CHECKs (Q-51, migration 0105), and the inspection catalogue's triggers, unique indexes and CHECKs (P20-01/03, migrations 0111/0112), and the client-facility controls (P20-07, migrations 0117 – 0123), and the IPM aggregate's (P20-04/05, migrations 0126/0127)", () => {
+  it("checks the append-only trigger, the void CHECK, the serial index (per facility since 0118), the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes, and the audit_logs append-only triggers (Q-34, ADR-095), and the exactly-one-actor CHECKs (Q-51, migration 0105), and the inspection catalogue's triggers, unique indexes and CHECKs (P20-01/03, migrations 0111/0112), and the client-facility controls (P20-07, migrations 0117 – 0123), and the IPM aggregate's (P20-04/05, migrations 0126/0127), and the device extensions' and photo purposes' (P20-02/08, migrations 0128/0129)", () => {
     expect(EXPECTED_OBJECTS.map((o) => `${o.kind}:${o.name}`)).toEqual([
       "trigger:calibration_records_append_only",
       "trigger:calibration_records_no_truncate",
@@ -244,6 +244,25 @@ describe("verifySchema", () => {
       "trigger:inspection_results_no_truncate",
       "trigger:inspection_session_signatures_append_only",
       "trigger:inspection_session_signatures_no_truncate",
+      // P20-02 / P20-08 (migrations 0128, 0129): the device extensions and the photo purposes.
+      "index:calibration_devices_tenant_qr_code_unique",
+      "index:calibration_devices_client_ref_unique",
+      "constraint:calibration_devices_qr_code_shape",
+      "constraint:calibration_devices_next_date_has_source",
+      "constraint:calibration_devices_calibration_request",
+      "constraint:calibration_devices_calibration_requested_by_session_id_fkey",
+      "trigger:calibration_devices_location_facility",
+      "trigger:calibration_devices_request_same_device",
+      "trigger:calibration_devices_next_date_source",
+      "constraint:warehouses_room_has_facility",
+      "index:warehouses_room_name_unique",
+      "trigger:warehouses_room_devices_facility",
+      "constraint:calibration_records_external_has_lab",
+      "constraint:calibration_records_external_no_results",
+      "constraint:attachments_purpose_values",
+      "constraint:attachments_purpose_resource",
+      "index:attachments_one_live_device_photo",
+      "trigger:inspection_sessions_attachments_follow_facility",
     ]);
   });
 });
@@ -257,7 +276,7 @@ describe("assertSchemaMatchesModels", () => {
     const result = await assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined });
     expect(result.problems).toEqual([]);
     expect(log.info).toHaveBeenCalledWith(`${TAG} note: column devices.legacy is not declared by model Device`);
-    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 106 control objects/));
+    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 124 control objects/));
     expect(log.error).not.toHaveBeenCalled();
   });
 
@@ -265,7 +284,7 @@ describe("assertSchemaMatchesModels", () => {
     const log = logger();
     const sequelize = fakeSequelize([devices], [], {});
     await expect(assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined })).rejects.toThrow(
-      /FAILED: 107 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
+      /FAILED: 125 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
     );
     expect(log.error).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] MISMATCH: table devices/));
   });

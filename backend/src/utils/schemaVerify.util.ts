@@ -196,6 +196,34 @@ const P2004_OBJECTS: readonly ExpectedObject[] = Object.freeze([
 ]);
 
 /**
+ * P20-02 / P20-08 (migrations 0128, 0129; ADR-132, ADR-133 and Am. 1 of each; P19-02 § 12): the
+ * device register's and the calibration dates' controls — a QR unique per tenant over every row, a
+ * room in its device's facility (both ways), the request naming the device's own session, the next
+ * date's source, an external date's lab; one live device photo per purpose, a purpose on its own
+ * resource type, and AM-7's follow trigger on the IPM session table.
+ */
+const P2002_OBJECTS: readonly ExpectedObject[] = Object.freeze([
+  control("index", "calibration_devices", "calibration_devices_tenant_qr_code_unique", "P20-02 / ADR-132 § 1: a QR code is unique per tenant over every row, deleted ones included (migration 0128)"),
+  control("index", "calibration_devices", "calibration_devices_client_ref_unique", "P20-02 / ADR-132 § 4: an offline client_ref is unique per creator (migration 0128)"),
+  control("constraint", "calibration_devices", "calibration_devices_qr_code_shape", "P20-02 / ADR-132 Am. 1: a QR code is stored normalised (migration 0128)"),
+  control("constraint", "calibration_devices", "calibration_devices_next_date_has_source", "P20-02 / ADR-133 § 1: a next calibration date says where it came from (migration 0128)"),
+  control("constraint", "calibration_devices", "calibration_devices_calibration_request", "P20-02 / ADR-133 § 4: a calibration request names its IPM session (migration 0128)"),
+  control("constraint", "calibration_devices", "calibration_devices_calibration_requested_by_session_id_fkey", "P20-02 / P19-05 § 4.2: the request's session exists (migration 0128)"),
+  control("trigger", "calibration_devices", "calibration_devices_location_facility", "P20-02 / ADR-132 § 5: a room holds only devices of its facility, a location only of its tenant (migration 0128)"),
+  control("trigger", "calibration_devices", "calibration_devices_request_same_device", "P20-02 / P19-05 § 4.2: the requesting IPM session is the device's own (migration 0128)"),
+  control("trigger", "calibration_devices", "calibration_devices_next_date_source", "P20-02 / ADR-133 Am. 1: a date written without a source is 'manual', no date has none (migration 0128)"),
+  control("constraint", "warehouses", "warehouses_room_has_facility", "P20-02 / ADR-132 § 5 (G-F4): a room belongs to a client facility (migration 0128)"),
+  control("index", "warehouses", "warehouses_room_name_unique", "P20-02 / ADR-132 § 5: a live room's name and floor are unique per facility (migration 0128)"),
+  control("trigger", "warehouses", "warehouses_room_devices_facility", "P20-02 / ADR-132 Am. 1: a room's facility does not change under its devices (migration 0128)"),
+  control("constraint", "calibration_records", "calibration_records_external_has_lab", "P20-02 / ADR-133 § 3: an external calibration names its laboratory (migration 0128)"),
+  control("constraint", "calibration_records", "calibration_records_external_no_results", "P20-02 / ADR-133 § 2: an external calibration carries no results (migration 0128)"),
+  control("constraint", "attachments", "attachments_purpose_values", "P20-08 / ADR-132 § 6: a purpose is one of the four (migration 0129)"),
+  control("constraint", "attachments", "attachments_purpose_resource", "P20-08 / ADR-132 § 6: a device purpose only on a device, ipm_evidence only on an IPM session (migration 0129)"),
+  control("index", "attachments", "attachments_one_live_device_photo", "P20-08 / ADR-132 § 6: one live front and serial-plate photo per device (migration 0129)"),
+  control("trigger", "inspection_sessions", "inspection_sessions_attachments_follow_facility", "P20-08 / AM-7: a session whose facility changed leaves no photo behind, at commit (migration 0129)"),
+]);
+
+/**
  * Objects that live only in migrations and carry a control. Each is checked
  * by name on its table.
  */
@@ -400,6 +428,7 @@ const EXPECTED_OBJECTS: readonly ExpectedObject[] = Object.freeze([
   // keep a child in its device's facility, the AM-7 attachment triggers, the user-binding triggers.
   ...P2007_OBJECTS,
   ...P2004_OBJECTS,
+  ...P2002_OBJECTS,
 ]);
 
 const TAG = "[schema-verify]";

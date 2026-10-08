@@ -83,6 +83,9 @@ const ROLE = "a3a3a3a3-0000-4000-8000-000000000002";
 const USER = "a3a3a3a3-0000-4000-8000-000000000003";
 const DEVICE = "a3a3a3a3-0000-4000-8000-000000000004";
 const RECORD = "a3a3a3a3-0000-4000-8000-000000000005";
+// P20-02 (0128): a device with a next calibration date and a store, as the previous release left them.
+const DATED_DEVICE = "a3a3a3a3-0000-4000-8000-0000000000d2";
+const STORE = "a3a3a3a3-0000-4000-8000-0000000000e1";
 const CERTIFICATE = "a3a3a3a3-0000-4000-8000-000000000006";
 
 /**
@@ -254,6 +257,15 @@ live("AM-3 — the current tree boots on a database the previous release built (
         { id: DEVICE, tenant: TENANT },
       ],
       [
+        "INSERT INTO calibration_devices (id, tenant_id, name, serial_number, next_calibration_date, created_at, updated_at) " +
+          "VALUES (:id, :tenant, 'AM3 dated device', 'AM3-SN-2', now() + interval '1 year', now(), now())",
+        { id: DATED_DEVICE, tenant: TENANT },
+      ],
+      [
+        "INSERT INTO warehouses (id, tenant_id, name, code, created_at, updated_at) VALUES (:id, :tenant, 'AM3 store', 'AM3-G', now(), now())",
+        { id: STORE, tenant: TENANT },
+      ],
+      [
         "INSERT INTO calibration_records (id, tenant_id, device_id, performed_by, calibration_date, created_at, updated_at) " +
           "VALUES (:id, :tenant, :device, :user, now(), now(), now())",
         { id: RECORD, tenant: TENANT, device: DEVICE, user: USER },
@@ -418,7 +430,8 @@ live("AM-3 — the current tree boots on a database the previous release built (
     const triggers = await rows<{ e: string }>(
       `SELECT t.tgenabled::text AS e FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
         WHERE NOT t.tgisinternal AND (t.tgname LIKE '%facilit%' OR c.relname LIKE 'client_facilit%')
-          AND c.relname NOT IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures')`, // 0126's facility triggers are P20-04's, not P20-07's
+          AND c.relname NOT IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures')
+          AND t.tgname NOT IN ('calibration_devices_location_facility', 'warehouses_room_devices_facility')`, // 0126's are P20-04's, 0128's P20-02's — not P20-07's
     );
     expect(triggers).toHaveLength(31);
     expect(triggers.filter((r) => r.e !== "A")).toEqual([]);
@@ -426,6 +439,26 @@ live("AM-3 — the current tree boots on a database the previous release built (
       "SELECT count(*)::int AS n FROM audit_logs WHERE resource_type = 'ClientFacility' AND actor_name = 'system:client-facility-backfill'",
     );
     expect(audit).toEqual({ n: 2 });
+  });
+
+  it("P20-02 / P20-08 (0128, 0129): an existing store stays a store, an existing date is labelled 'manual', a record is a full record; nothing else is filled", async () => {
+    expect(await rows("SELECT id, kind::text AS kind, floor FROM warehouses WHERE id = :id", { id: STORE })).toEqual([{ id: STORE, kind: "store", floor: null }]);
+    expect(
+      await rows(
+        `SELECT id, next_calibration_date_source::text AS s, qr_code, "condition"::text AS c, created_by FROM calibration_devices
+          WHERE id IN (:ids) ORDER BY id`,
+        { ids: [DEVICE, DATED_DEVICE] },
+      ),
+    ).toEqual(
+      [
+        { id: DEVICE, s: null, qr_code: null, c: null, created_by: null },
+        { id: DATED_DEVICE, s: "manual", qr_code: null, c: null, created_by: null },
+      ].sort((a, b) => a.id.localeCompare(b.id)),
+    );
+    expect(await rows("SELECT entry_kind::text AS k, performer_snapshot FROM calibration_records WHERE id = :id", { id: RECORD })).toEqual([
+      { k: "full_record", performer_snapshot: null },
+    ]);
+    expect(await rows("SELECT count(*)::int AS n FROM attachments WHERE purpose IS NOT NULL")).toEqual([{ n: 0 }]);
   });
 
   it("a second boot on the upgraded database applies nothing and still passes the schema check", () => {

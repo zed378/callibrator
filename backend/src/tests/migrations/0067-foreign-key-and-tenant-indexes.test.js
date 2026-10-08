@@ -53,6 +53,8 @@ const UNREADABLE_INDEX_SITES = Object.freeze({
     "removeIndex(TABLE, name) over globalUniques(): the legacy GLOBAL unique index on calibration_devices.serial_number, whatever it was named; the same migration adds the per-tenant (tenant_id, serial_number) index",
   "0070-custom-domain-partial-uniqueness.ts":
     'DROP INDEX "<legacy.index_name>": the legacy global unique index on custom_domains.domain; the same migration adds the partial per-tenant ones',
+  "0128-device-extensions.ts":
+    "warehouses_room_name_unique is an EXPRESSION index (lower(btrim(name)), coalesce(lower(btrim(floor)), '')) — a uniqueness rule of live rooms per facility, not a foreign-key index; warehouses (tenant_id, client_facility_id) is indexed by 0123",
 });
 
 /**

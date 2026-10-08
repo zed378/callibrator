@@ -50,8 +50,9 @@ describe("D-27 — every JSON column is declared", () => {
   // P20-07 (ADR-124 Am. 2) adds one, counts only: ClientFacilityMove.counts.
   // P20-04 (ADR-126 Am. 1–2) adds six, strict snapshots: InspectionSession.performerSnapshot,
   // .deviceSnapshot, .facilitySnapshot, .sideEffects, .issuerSnapshot, InspectionSessionSignature.signerSnapshot.
-  it("finds the twenty-nine JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's two, P20-07's move counts, P20-04's six IPM snapshots)", () => {
-    expect(jsonAttributes()).toHaveLength(29);
+  // P20-02 adds CalibrationDevice.registrantSnapshot and CalibrationRecord.performerSnapshot (migration 0128).
+  it("finds the thirty-one JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's two, P20-07's move counts, P20-04's six IPM snapshots, P20-02's two)", () => {
+    expect(jsonAttributes()).toHaveLength(31);
   });
 
   it("each JSON attribute validates against its OWN declared shape", () => {
@@ -186,6 +187,11 @@ const GOOD = {
     { version: 1, name: "Penyedia", email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: "ID", website: null },
   ],
   "InspectionSessionSignature.signerSnapshot": [{ name: "IPSRS Sintetis", role: "FACILITY MAINTENANCE", organisation: "Rumah Sakit Sintetis" }],
+  "CalibrationDevice.registrantSnapshot": [{ name: "Teknisi Sintetis", role: "TECHNICIAN", organisation: null }],
+  "CalibrationRecord.performerSnapshot": [
+    { name: "Teknisi Sintetis", role: "TECHNICIAN", organisation: "Penyedia Sintetis" },
+    { name: "Former upstream user #7", role: null, organisation: null, source: "upstream-import" },
+  ],
 };
 
 const BAD = {
@@ -266,6 +272,8 @@ const BAD = {
   "InspectionSession.sideEffects": [{ calibrationRequested: "yes" }, { notices: "x" }, { body: "a stored response" }],
   "InspectionSession.issuerSnapshot": [{ version: 2, name: null, email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: null, website: null }, {}],
   "InspectionSessionSignature.signerSnapshot": [{ name: "A", role: null, organisation: null, userId: "x" }, "A"],
+  "CalibrationDevice.registrantSnapshot": [{ name: "A", role: null, organisation: null, email: "a@example.test" }, { name: "" , role: null, organisation: null }],
+  "CalibrationRecord.performerSnapshot": [{ name: "A", role: null, organisation: null, source: "manual" }, { role: null, organisation: null }],
 };
 
 const buildWith = (key, value) => {

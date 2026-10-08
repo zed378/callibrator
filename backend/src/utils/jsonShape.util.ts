@@ -187,6 +187,19 @@ const snapshotId = z.guid().nullable();
 const personSnapshot = z
   .object({ name: z.string().min(1).max(255), role: snapshotText, organisation: snapshotText })
   .strict();
+/*
+ * P20-02 (ADR-132 § 4, ADR-133 § 3; P19-03 spec § 4.1, P19-05 spec § 4.1): a device's registrant and
+ * a calibration record's performer, as taken at insert. The performer of an imported row also says
+ * `source: "upstream-import"` (only imported rows carry it — CHECK calibration_records_external_has_lab).
+ */
+const calibrationPerformerSnapshot = z
+  .object({
+    name: z.string().min(1).max(255),
+    role: snapshotText,
+    organisation: snapshotText,
+    source: z.literal("upstream-import").optional(),
+  })
+  .strict();
 const ipmDeviceSnapshot = z
   .object({
     name: snapshotText,
@@ -298,6 +311,12 @@ export type UpstreamSqlImportParseSummary = z.infer<typeof upstreamSqlImportPars
 /** `InspectionSession.performerSnapshot`, `InspectionSessionSignature.signerSnapshot` (P20-04): a person as printed. */
 export type IpmPersonSnapshot = z.infer<typeof personSnapshot>;
 
+/** `CalibrationDevice.registrantSnapshot` (P20-02): a person as recorded at create — the IPM person shape. */
+export type PersonSnapshot = z.infer<typeof personSnapshot>;
+
+/** `CalibrationRecord.performerSnapshot` (P20-02): the person shape, plus `source` on an imported row. */
+export type CalibrationPerformerSnapshot = z.infer<typeof calibrationPerformerSnapshot>;
+
 /** `InspectionSession.deviceSnapshot` / `.facilitySnapshot` / `.sideEffects` / `.issuerSnapshot` (P20-04). */
 export type IpmDeviceSnapshot = z.infer<typeof ipmDeviceSnapshot>;
 export type IpmFacilitySnapshot = z.infer<typeof ipmFacilitySnapshot>;
@@ -334,6 +353,8 @@ const JSON_SHAPES: Readonly<Record<string, z.ZodType | undefined>> = Object.free
   "InspectionSession.sideEffects": ipmSideEffects,
   "InspectionSession.issuerSnapshot": ipmIssuerSnapshot,
   "InspectionSessionSignature.signerSnapshot": personSnapshot,
+  "CalibrationDevice.registrantSnapshot": personSnapshot,
+  "CalibrationRecord.performerSnapshot": calibrationPerformerSnapshot,
 });
 
 /**

@@ -102,6 +102,8 @@ CHECKs: `calibration_records_external_has_lab` `entry_kind <> 'external_date' OR
 
 Existing rows: `next_calibration_date_source` = `manual` where `next_calibration_date` is set (the migration's one set-based UPDATE — `calibration_devices` is not append-only), else NULL.
 
+*As built (ADR-133 Am. 1, migration 0128, 2026-10-09):* a trigger `calibration_devices_next_date_source` fills the source (`manual` when a date is written without one, NULL without a date) until P21-05's writers name it; `calibration_records_external_has_lab` compares `coalesce(performer_snapshot->>'source', '')` (the literal predicate passed on NULL); `calibration_records_effective_device` is left to P21-05's measurement.
+
 ---
 
 ## 5. The Next Due Date — One Rule, Applied on Create, Correction and Void (G-C1, G-C2)

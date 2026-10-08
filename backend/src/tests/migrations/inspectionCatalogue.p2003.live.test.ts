@@ -86,6 +86,8 @@ interface Graph {
   /** P20-04 / P20-05: their tables reference the catalogue, so they are reverted before it. */
   m0126: Migration;
   m0127: Migration;
+  m0128: Migration;
+  m0129: Migration;
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph is loaded per "process" with jest.isolateModules; typed by the members used */
@@ -103,6 +105,8 @@ const startProcess = (): Graph => {
       m0112: require("../../migrations/0112-inspection-catalogue") as Graph["m0112"],
       m0126: require("../../migrations/0126-ipm-sessions") as Migration,
       m0127: require("../../migrations/0127-ipm-immutability") as Migration,
+      m0128: require("../../migrations/0128-device-extensions") as Migration,
+      m0129: require("../../migrations/0129-attachment-purpose") as Migration,
     };
   });
   if (!graph) {
@@ -511,7 +515,10 @@ live("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () =>
     await g.db.query("ALTER TABLE device_types ENABLE ALWAYS TRIGGER device_types_no_delete");
 
     const qi = g.db.getQueryInterface();
-    // The IPM aggregate (0126, 0127 — empty here) references the catalogue: reverted first, in manifest order.
+    // The IPM aggregate (0126, 0127 — empty here) references the catalogue: reverted first, in manifest order,
+    // after 0129 and 0128 (P20-08 / P20-02), whose device key and functions name the session table.
+    await g.m0129.down({ context: qi });
+    await g.m0128.down({ context: qi });
     await g.m0127.down({ context: qi });
     await g.m0126.down({ context: qi });
     await g.m0112.down({ context: qi });
@@ -525,6 +532,8 @@ live("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () =>
     await g.m0112.up({ context: qi });
     await g.m0126.up({ context: qi });
     await g.m0127.up({ context: qi });
+    await g.m0128.up({ context: qi });
+    await g.m0129.up({ context: qi });
     expect(await catalogueTriggers(g.db)).toEqual(TRIGGERS.map((t) => `${t}:A`).sort());
     expect(await recomputedHash(g.db)).toBe(g.m0112.seedContentHash());
     expect(await rows(g.db, "SELECT count(*)::int AS n FROM audit_logs WHERE resource_type = 'InspectionTemplateVersion' AND resource_id = :id", { id: BASE_VERSION }))

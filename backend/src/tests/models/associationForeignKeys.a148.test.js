@@ -201,6 +201,13 @@ const UNCHANGED = Object.freeze({
   "inspection_session_signatures.signer_id": "users RESTRICT",
   "idempotency_keys.user_id": "users RESTRICT",
   "idempotency_keys.api_key_id": "api_keys RESTRICT",
+  // P20-02 (migration 0128; ADR-132 § 4, ADR-133 § 3): the device's usual laboratory and a record's
+  // laboratory are SET NULL (the name is kept as recorded — external_lab_name; vendors are paranoid,
+  // so only a hard delete reaches it, and on a record the append-only trigger then refuses it); the
+  // registrant is a Part 11 attribution — RESTRICT. The request's session key is the migration's.
+  "calibration_devices.calibration_vendor_id": "vendors SET NULL",
+  "calibration_devices.created_by": "users RESTRICT",
+  "calibration_records.calibration_vendor_id": "vendors SET NULL",
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */

@@ -53,6 +53,7 @@ const validator = (name) => require(`../../validators/${name}`);
 const constant = (name) => require(`../../constants/${name}`);
 const states = () => require("@callibrator/contracts/states");
 const inspection = () => require("@callibrator/contracts/inspectionValues");
+const deviceValues = () => require("@callibrator/contracts/deviceValues");
 
 /**
  * The enum values a field schema restricts to, looking through the wrappers
@@ -118,6 +119,12 @@ const MIRRORS = Object.freeze({
   },
   "AuditLog.actorType": { constants: [() => constant("systemActors").ACTOR_TYPE_VALUES] },
   "BatchJob.status": { none: NO_MIRROR },
+  // P20-02 (ADR-132, ADR-133; migration 0128): the device register's and calibration dates' tuples
+  // live once in @callibrator/contracts/deviceValues, read by the models and the migration.
+  "CalibrationDevice.condition": { constants: [() => deviceValues().DEVICE_CONDITIONS] },
+  "CalibrationDevice.conditionSource": { constants: [() => deviceValues().DEVICE_CONDITION_SOURCES] },
+  "CalibrationDevice.nextCalibrationDateSource": { constants: [() => deviceValues().NEXT_CALIBRATION_DATE_SOURCES] },
+  "CalibrationRecord.entryKind": { constants: [() => deviceValues().CALIBRATION_ENTRY_KINDS] },
   "CalibrationDevice.status": { validators: [["calibrationDevices.validator", "status", "equal"]] },
   // qms.validator spreads these same constants; its `status` key is shared
   // by the non-conformance and CAPA schemas, so the constant is the mirror.
@@ -217,6 +224,7 @@ const MIRRORS = Object.freeze({
   "Vendor.approvalStatus": { none: NO_MIRROR },
   "Vendor.status": { none: NO_MIRROR },
   "Vendor.type": { none: NO_MIRROR },
+  "Warehouse.kind": { constants: [() => deviceValues().WAREHOUSE_KINDS] },
   "Warehouse.status": { none: NO_MIRROR },
   "WebhookDelivery.status": { none: NO_MIRROR },
   "Workflow.resourceType": { validators: [["workflow.validator", "resourceType", "equal"]] },

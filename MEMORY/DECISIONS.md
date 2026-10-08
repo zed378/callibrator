@@ -11042,6 +11042,37 @@ Upstream identifies every device by a QR sticker number that every IPM row point
 
 **Accepted 2026-10-08 as the target. Not built.** `docs/` amended as target: `UPSTREAM/04-SCHEMA-MAPPING.md` § 4.2, § 4.6, § 5, § 8; `UPSTREAM/02-FEATURES.md` F-23 … F-29 (notes); `DATABASE/00-DATA-MODEL.md`; `docs/SECURITY/15` § 13.1 (OQ-2 finalised), FT-50; `MEMORY/specs/P18-03-…` § 8.2 A-9 and § 14 (UD-10 resolved); `MEMORY/specs/P18-04-…` rows A-12, A-13, B-15, C-10, C-11; `MEMORY/specs/P19-04-…` § 11.2 (the move's room).
 
+### ADR-132 Amendment 1 (2026-10-09, P20-02 + P20-08): the device extensions and the photo purpose as built — migrations 0128 and 0129; the QR's shape in the database, the room invariant held from both sides, `inspectionsession` in the database but not yet in the API
+
+**Date:** 2026-10-09 · **Status:** Accepted, **built** (migrations 0128, 0129). Decided by the implementing agent under the owner's standing delegation (decide by best practice, record it) · **Cards:** P20-02, P20-08 · **Specs:** [`P19-03`](./specs/P19-03-device-extensions.md) § 4, § 6, § 7.1; [`P19-02`](./specs/P19-02-ipm-session-aggregate.md) § 12 (as-built notes added) · **Record:** `MEMORY/records/2026-10-09-p20-02-08-device-extensions.md`
+
+**Why an amendment.** Building the columns against the code left five places where the spec's controls had a hole or a choice to make.
+
+**Decision.**
+1. **The QR's normalised shape is a CHECK** (`calibration_devices_qr_code_shape`, `QR_CODE_PATTERN` from `@callibrator/contracts/deviceValues`). The spec put normalisation in the service only; a raw writer (the ETL, a script) could then store `tst000001` beside `TST000001`, and the per-tenant unique would not see them as one sticker.
+2. **The room invariant is held from both sides.** Besides the spec's `calibration_devices_location_facility` (which also refuses a location of another tenant and fires on `tenant_id`), `warehouses_room_devices_facility` refuses changing a room's facility, kind or tenant while it holds a device of another facility. Without it, `UPDATE warehouses SET client_facility_id = …` would silently put a facility's devices in another facility's room.
+3. **`client_ref` needs its creator** (`calibration_devices_client_ref_creator`): the unique is `(tenant_id, created_by, client_ref)`, and NULLs are distinct, so a ref without a creator would never collide.
+4. **The models carry the attributes only.** `calibration_requested_by_session_id` has no `references` on the model (devices → sessions → work orders → devices would be a cycle for sync); its key is the migration's, `ON UPDATE RESTRICT ON DELETE RESTRICT`. No association (vendor, creator, session) is added: P21-02 adds them with its reads, each `required: false`.
+5. **P20-08:** `attachments_purpose_resource` lists the device purposes from the contract instead of `LIKE 'device_%'` (`_` is a wildcard); a separate `attachments_purpose_values` CHECK holds the four values. `FACILITY_ATTACHMENT_TYPES` (frozen with 0117 – 0123) is not changed; 0129 owns the widened list and rebuilds the four functions from their previous migration's text (tested byte for byte). **`LINKABLE_RESOURCES` does not gain `inspectionsession` yet:** the generic `POST /attachments` would then link a photo to any session the caller can see, without P19-02 § 12's rule (draft, own session, `ipm` write). P21-03 adds the type with that rule. The device move now carries an IPM session's photos (`deviceMove.service` `linkedChildIds`), since 0129's follow trigger refuses a commit that leaves one behind.
+
+**Alternatives considered.**
+| Alternative | Why not |
+|---|---|
+| Normalise the QR in the service only (the spec) | a raw writer stores a second spelling of one sticker; the unique cannot tell |
+| Guard the room only on the device side (the spec) | a warehouse update re-homes every device in the room, unseen |
+| A composite FK device → room | refused by the spec (stores have no facility); still true |
+| `references` on the session key in the model | sync orders tables by references; the cycle devices → sessions → work orders → devices |
+| Add `inspectionsession` to `LINKABLE_RESOURCES` now | opens an upload path to submitted sessions with no draft/creator rule until P21-03 |
+| Widen `FACILITY_ATTACHMENT_TYPES` | changes what 0117 – 0123 would re-run; an applied migration's text must stay what it ran |
+
+**Implications, including the bad ones.**
+- A device whose `location_id` points at another tenant's warehouse (legacy data only) can no longer have its location or facility updated until it is repaired; the move refuses it.
+- `ON DELETE SET NULL` of `calibration_records.calibration_vendor_id` acts as RESTRICT: the append-only trigger refuses the cascade's update. Vendors are paranoid, so only a hard delete meets it.
+- Until P21-03 no API path writes an IPM photo; the database accepts one (tested live).
+- The room-name unique is an expression index, so D-20's reader lists 0128 among its reviewed unreadable sites.
+
+**`docs/` amended:** the P19-03 spec § 4.3, § 6.2, § 7.1 and the P19-02 spec § 12 (as-built notes referencing this amendment).
+
 ---
 
 ## ADR-133: Calibration Dates — the Next Due Date Is Derived From the Latest Effective Record on Create, Correction and Void; an External Calibration Is Recorded by Its Date and Key Data on a Narrow Route, With No File; a Performer Snapshot Is Written at Insert; Imported Dates Name the Person, or the Import Key
@@ -11085,6 +11116,28 @@ Today `createCalibrationRecord` sets the device's `nextCalibrationDate` from whi
 ### Status
 
 **Accepted 2026-10-08 as the target. Not built.** `docs/` amended as target: `UPSTREAM/04-SCHEMA-MAPPING.md` § 4.7; `UPSTREAM/02-FEATURES.md` F-62 … F-64 (notes); `DATABASE/00-DATA-MODEL.md`; `MEMORY/specs/P19-04-…` § 12 (the snapshot source); `MEMORY/specs/P18-04-…` row A-14.
+
+### ADR-133 Amendment 1 (2026-10-09, P20-02): the calibration-date columns as built — the source filled by the database until P21-05, the external-lab CHECK made NULL-safe, the effective-record index left to P21-05
+
+**Date:** 2026-10-09 · **Status:** Accepted, **built** (migration 0128). Decided by the implementing agent under the owner's standing delegation · **Card:** P20-02 · **Spec:** [`P19-05`](./specs/P19-05-calibration-dates.md) § 4 (as-built notes added) · **Record:** `MEMORY/records/2026-10-09-p20-02-08-device-extensions.md`
+
+**Decision.**
+1. **`calibration_devices_next_date_source` (BEFORE INSERT OR UPDATE OF the date or the source, ENABLE ALWAYS) fills the source:** NULL when there is no date, `manual` when a date is written without a source; a source given explicitly is kept. The spec's CHECK `(next_calibration_date IS NULL) = (next_calibration_date_source IS NULL)` would otherwise refuse **every** writer that exists today (the device form, `createCalibrationRecord`, the import), none of which names a source — proven live (23514 with the trigger disabled). The ADR-124 Am. 3 precedent: the database supplies a default until the services do. P21-05 writes `record` explicitly when it derives the date, and decides whether the trigger stays as a backstop.
+2. **`calibration_records_external_has_lab` uses `coalesce(performer_snapshot->>'source', '') = 'upstream-import'`.** The spec's `performer_snapshot->>'source' = 'upstream-import'` is NULL on a row with no snapshot, and a CHECK passes on NULL — so an external date with no lab and no snapshot was accepted. Proven live with the spec's literal predicate.
+3. **The partial index `calibration_records_effective_device` is not built.** The spec makes it conditional on P21-05's measurement against 0109's live index; it is P21-05's.
+
+**Alternatives considered.**
+| Alternative | Why not |
+|---|---|
+| Change the device and record services to name the source now | the derivation that decides `record` is P21-05's (ADR-133 § 1); labelling today's path `record` without it would be wrong half the time |
+| Leave the CHECK out until P21-05 | the ETL (P24) and raw writers would have no control; the source would drift from the date |
+| Keep the spec's predicate | it accepts the very row it is meant to refuse |
+
+**Implications, including the bad ones.**
+- **Until P21-05 every date is labelled `manual`**, including one `createCalibrationRecord` derived from a record. The back-fill gives every existing date `manual`, as the spec says.
+- A source set to `record` stays `record` when a later write changes only the date; after P21-05 the device form must send `manual` explicitly.
+
+**`docs/` amended:** the P19-05 spec § 4.1, § 4.2 (as-built notes referencing this amendment).
 
 ---
 

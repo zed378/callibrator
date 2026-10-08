@@ -428,6 +428,7 @@ Every path parameter is named in `validate(schema, { from: ["params", …] })` (
 - P20-08 replaces 0123's CHECK `attachments_facility_kind` with the widened list, `facility_resource_device`/`facility_resource_facility` with an `inspectionsession` branch, and adds `inspection_sessions_attachments_follow_facility` (the AM-7 second trigger on the new resource table) — a move cascading to a session with photos must update them, or the commit fails.
 - `attachments.purpose` (P19-03 § 7) value `ipm_evidence` is allowed only with resource type `inspectionsession` (CHECK).
 - Upload rule for a bound principal (A-5's `boundGate`): the session loaded **in context**, `draft`, created by the caller, `ipm` write.
+- *As built (ADR-132 Am. 1 § 5, migration 0129, 2026-10-09):* the CHECK, the four functions (`facility_resource_device`/`_facility` + `facility_insert_default` and `attachments_facility_matches_resource`, which read the type list) and the follow trigger are built; `LINKABLE_RESOURCES` is **not** widened yet — P21-03 adds `inspectionsession` together with the upload rule above. The device move carries the session photos (`deviceMove.service`).
 
 ---
 
