@@ -54,7 +54,19 @@ export const TENANT_ADMIN_SETTING_KEYS = Object.freeze([
   "ai_vendor",
   "ai_base_url",
   "ai_api_key",
+  // P21-09e (P19-04 spec § 4.6, UD-18 (b)): the off-boarding of a client facility — the days after
+  // `ended` before its bound accounts are deactivated (default 30), and the years its records are
+  // kept after `ended` (unset: no end date; the data-retention policy reports, never purges evidence).
+  "client_facilities_bound_user_deactivation_days",
+  "client_facilities_ended_retention_years",
 ] as const);
+
+/** P21-09e: the integer settings above, with their allowed range (an empty value clears one). */
+export type TenantAdminIntegerSettingKey = "client_facilities_bound_user_deactivation_days" | "client_facilities_ended_retention_years";
+export const TENANT_ADMIN_INTEGER_SETTINGS: Readonly<Record<TenantAdminIntegerSettingKey, { readonly min: number; readonly max: number }>> = Object.freeze({
+  client_facilities_bound_user_deactivation_days: { min: 1, max: 3650 },
+  client_facilities_ended_retention_years: { min: 1, max: 100 },
+});
 
 /** One key a tenant administrator may write. */
 export type TenantAdminSettingKey = (typeof TENANT_ADMIN_SETTING_KEYS)[number];

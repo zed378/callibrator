@@ -64,6 +64,12 @@ const SYSTEM_TASKS = Object.freeze({
    * delivery is then sent inside runForTenant(its own tenant).
    */
   WEBHOOK_DISPATCH: "webhook-dispatch: claim due deliveries across every tenant",
+  /**
+   * P21-09e (P19-04 spec § 4.6, UD-18 (b)) — boundAccountDeactivation.service: which client
+   * facilities ended long enough ago, in every tenant (one bounded read). Each facility's accounts
+   * are then deactivated inside runForTenant(its own tenant).
+   */
+  BOUND_ACCOUNT_DEACTIVATION: "bound-account-deactivation: ended client facilities across every tenant",
 } as const);
 
 /** One reviewed cross-tenant opt-out reason. */

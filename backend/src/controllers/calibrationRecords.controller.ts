@@ -28,6 +28,10 @@ import {
 } from "../validators/calibrationRecords.validator";
 import { validateInput } from "../validators/input";
 import type { TenantId, UserId } from "../types/ids";
+import { withDisplay, withDisplays } from "../services/personDisplay.service";
+
+/** P21-09e (spec § 12): the performer shown beside each record, for every viewer. */
+const RECORD_PEOPLE = { performerDisplay: "performedBy" } as const;
 
 const asyncHandler = loadedAsyncHandler;
 const sendResult = loadedSendResult;
@@ -64,8 +68,9 @@ const getAllCalibrationRecords = asyncHandler(async (req: Request, res: Response
   // no rows; sendResult sends it down the error path and ignores the meta.
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- as built: a failed result has no page (ADR-038 rule 3)
   const page: Partial<typeof result.data> = result.data || {};
+  const rows = page.rows ? await withDisplays(page.rows, RECORD_PEOPLE) : page.rows;
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3)
-  sendResult(res, { ...result, data: page.rows }, page.meta || null);
+  sendResult(res, { ...result, data: rows }, page.meta || null);
 });
 
 const getSpecificCalibrationRecord = asyncHandler(async (req: Request, res: Response) => {
@@ -79,7 +84,7 @@ const getSpecificCalibrationRecord = asyncHandler(async (req: Request, res: Resp
     calibrationRecordId,
   );
 
-  sendResult(res, result);
+  sendResult(res, result.data ? { ...result, data: await withDisplay(result.data, RECORD_PEOPLE) } : result);
 });
 
 const createCalibrationRecord = asyncHandler(async (req: Request, res: Response) => {

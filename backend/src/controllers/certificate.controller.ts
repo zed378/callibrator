@@ -32,6 +32,10 @@ import {
 } from "../validators/certificate.validator";
 import { validateInput } from "../validators/input";
 import type { TenantId, UserId } from "../types/ids";
+import { certificateSnapshotDisplay, withDisplay, withDisplays } from "../services/personDisplay.service";
+
+/** P21-09e (spec § 12): the people of a certificate, for every viewer. */
+const CERTIFICATE_PEOPLE = { calibratedByDisplay: "calibratedBy", approvedByDisplay: "approvedBy", signedByDisplay: "signedBy" } as const;
 
 const asyncHandler = loadedAsyncHandler;
 const sendResult = loadedSendResult;
@@ -77,7 +81,7 @@ const getAllCertificates = asyncHandler(async (req: Request, res: Response) => {
 
   // The list result nests rows and meta inside `data`; the envelope puts rows
   // in `data` and meta beside it.
-  sendResult(res, { ...result, data: result.data.rows }, result.data.meta);
+  sendResult(res, { ...result, data: await withDisplays(result.data.rows, CERTIFICATE_PEOPLE, certificateSnapshotDisplay) }, result.data.meta);
 });
 
 /**
@@ -92,7 +96,7 @@ const getSpecificCertificate = asyncHandler(async (req: Request, res: Response) 
     certificateId,
   );
 
-  sendResult(res, result);
+  sendResult(res, result.data ? { ...result, data: await withDisplay(result.data, CERTIFICATE_PEOPLE, certificateSnapshotDisplay) } : result);
 });
 
 /**

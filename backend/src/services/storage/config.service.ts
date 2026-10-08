@@ -207,6 +207,9 @@ const getTenantConfig = async (tenantId: TenantId | null | undefined): Promise<u
 
   const rows = await TenantSettings.findAll({
     where: { tenantId, key: [CONFIG_KEY, CREDENTIALS_KEY] },
+    // skipFacilityScope: the tenant's storage driver for a bound user's own upload or download
+    // (A-5 / A-6); never returned to the caller (P18-03 § 10.2).
+    skipFacilityScope: true,
   });
 
   const configRow = rows.find((r) => r.key === CONFIG_KEY);

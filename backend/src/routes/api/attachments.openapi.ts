@@ -11,6 +11,7 @@
  * credential. A row of another tenant answers 404. Examples are synthetic.
  */
 import { z } from "zod";
+import { personDisplay } from "@callibrator/contracts/people";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 import { createSignedUrlSchema } from "../../validators/attachment.validator";
 
@@ -31,6 +32,7 @@ const Attachment = z
     size: z.number().int(),
     checksum: z.string().nullable(),
     uploadedBy: z.guid().nullable(),
+    uploaderDisplay: personDisplay.nullable().optional().meta({ description: "P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail" }),
     url: z.string().meta({ description: "The gated download route (S-01): it works for a signed-in member of the tenant only" }),
     createdAt: timestamp,
   })

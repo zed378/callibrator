@@ -1468,6 +1468,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calibration-devices/{calibrationDeviceId}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a device, and its whole history, to another client facility
+         * @description Tenant administrators only (rbac), who also need `calibration` write (dynamicAccess). API keys are refused. The device's records, certificates, work orders, IoT readings, non-conformances and files follow it (P19-04 § 11); the move is recorded with two audit rows, one in each facility. A room of the old facility is cleared unless `targetLocationId` names a room of the target or a provider store. Not facility-accessible: a facility-bound principal is refused 403 `FACILITY_ROUTE_REFUSED` before a parameter is read.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — The device is already in the target; the target is not active; the device is retired; a certificate of the device is not yet signed or revoked; the target already holds the serial number; the location belongs to another facility.
+         */
+        post: operations["moveCalibrationDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calibration-devices/{calibrationDeviceId}/moves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A device's moves between client facilities
+         * @description `calibration` read, newest first. Not facility-accessible: a facility-bound principal is refused 403 `FACILITY_ROUTE_REFUSED` before a parameter is read.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["listCalibrationDeviceMoves"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calibration-devices/{calibrationDeviceId}/reinstate": {
         parameters: {
             query?: never;
@@ -8453,6 +8499,13 @@ export interface components {
             size: number;
             checksum: string | null;
             uploadedBy: string | null;
+            /** @description P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail */
+            uploaderDisplay?: {
+                name: string | null;
+                role: string | null;
+                organisation: string | null;
+                redacted: boolean;
+            } | null;
             /** @description The gated download route (S-01): it works for a signed-in member of the tenant only */
             url: string;
             /** Format: date-time */
@@ -8719,6 +8772,13 @@ export interface components {
             /** Format: uuid */
             deviceId: string;
             performedBy: string | null;
+            /** @description P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail */
+            performerDisplay?: {
+                name: string | null;
+                role: string | null;
+                organisation: string | null;
+                redacted: boolean;
+            } | null;
             apiKeyId: string | null;
             /** Format: date-time */
             calibrationDate: string;
@@ -8981,6 +9041,27 @@ export interface components {
                 firstName: string;
                 lastName: string;
                 email: string;
+            } | null;
+            /** @description P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail */
+            calibratedByDisplay?: {
+                name: string | null;
+                role: string | null;
+                organisation: string | null;
+                redacted: boolean;
+            } | null;
+            /** @description P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail */
+            approvedByDisplay?: {
+                name: string | null;
+                role: string | null;
+                organisation: string | null;
+                redacted: boolean;
+            } | null;
+            /** @description P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail */
+            signedByDisplay?: {
+                name: string | null;
+                role: string | null;
+                organisation: string | null;
+                redacted: boolean;
             } | null;
             /** @description Detail read only */
             calibrationRecord?: {
@@ -9653,6 +9734,49 @@ export interface components {
             } | null;
             hasToken: boolean;
             tokenIssuedAt: string | null;
+        };
+        DeviceMove: {
+            /** Format: uuid */
+            id: string;
+            from: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            to: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            reason: string;
+            /** Format: uuid */
+            movedBy: string;
+            counts: {
+                [key: string]: number;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            completedAt: string;
+        };
+        DeviceMoveResult: {
+            /** Format: uuid */
+            moveId: string;
+            /** Format: uuid */
+            calibrationDeviceId: string;
+            /** Format: uuid */
+            fromClientFacilityId: string;
+            /** Format: uuid */
+            toClientFacilityId: string;
+            locationId: string | null;
+            counts: {
+                calibration_records: number;
+                certificates: number;
+                maintenance_work_orders: number;
+                iot_readings: number;
+                non_conformances: number;
+                attachments_rekey: number;
+            };
         };
         /**
          * @description A calibration device whose next calibration is due within the window.
@@ -12900,6 +13024,13 @@ export interface components {
                 lastName: string;
                 email: string;
             } | null;
+            /** @description P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail */
+            assigneeDisplay?: {
+                name: string | null;
+                role: string | null;
+                organisation: string | null;
+                redacted: boolean;
+            } | null;
         };
         WorkOrderListItem: {
             /** Format: uuid */
@@ -12951,6 +13082,13 @@ export interface components {
                 firstName: string;
                 lastName: string;
                 email: string;
+            } | null;
+            /** @description P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail */
+            assigneeDisplay?: {
+                name: string | null;
+                role: string | null;
+                organisation: string | null;
+                redacted: boolean;
             } | null;
         };
     };
@@ -16468,6 +16606,86 @@ export interface operations {
                         status: number;
                         message: string;
                         data: null;
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    moveCalibrationDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration device's id */
+                calibrationDeviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    targetClientFacilityId: string;
+                    targetLocationId?: string | null;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The move */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["DeviceMoveResult"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listCalibrationDeviceMoves: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration device's id */
+                calibrationDeviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The completed moves */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["DeviceMove"][];
                     };
                 };
             };
@@ -31448,6 +31666,7 @@ export interface operations {
                     roleId: string;
                     tenantId?: (string | "") | null;
                     status?: string | null;
+                    clientFacilityId?: string | null;
                 };
             };
         };

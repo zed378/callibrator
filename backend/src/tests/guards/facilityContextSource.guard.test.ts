@@ -43,6 +43,15 @@ const FACILITY_BOUND_NAMERS = [
   "services/clientFacilityAdmin.service.ts",
   "services/userFacilityBinding.service.ts",
   "utils/tenantScope.util.ts",
+  // P21-09d / e: read the context's flag (the raw-SQL clause, the cache key, the signed-link issuer,
+  // the move's unbound check, the display redaction, the bound upload gate) — never build one.
+  "middlewares/boundUploadGate.middleware.ts",
+  "services/user.service.ts",
+  "services/attachment.service.ts",
+  "services/dashboardCache.service.ts",
+  "services/deviceMove.service.ts",
+  "services/personDisplay.service.ts",
+  "utils/facilityPredicate.util.ts",
 ];
 /** The readers among them: they read the context's flag and never build one. */
 const READERS = [
@@ -51,6 +60,13 @@ const READERS = [
   "services/clientFacilityAdmin.service.ts",
   "services/userFacilityBinding.service.ts",
   "utils/tenantScope.util.ts",
+  "middlewares/boundUploadGate.middleware.ts",
+  "services/user.service.ts",
+  "services/attachment.service.ts",
+  "services/dashboardCache.service.ts",
+  "services/deviceMove.service.ts",
+  "services/personDisplay.service.ts",
+  "utils/facilityPredicate.util.ts",
 ];
 
 const writersIn = (sources: { rel: string; text: string }[]): string[] =>

@@ -1343,6 +1343,9 @@ const passwordManagedBy = async (
       where: { tenantId: user.tenantId, key: IDP_NAME_KEYS },
       attributes: ["key", "value"],
       skipTenantScope: true,
+      // skipFacilityScope: names the identity provider in a bound user's password-change refusal
+      // (S-1); the user's own tenant, never returned as rows (P18-03 § 10.2).
+      skipFacilityScope: true,
       raw: true,
     });
     const byKey = new Map(rows.map((row) => [row.key, row.value]));

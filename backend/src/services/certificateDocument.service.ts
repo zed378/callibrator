@@ -474,9 +474,32 @@ const PERSON_ATTRIBUTES = ["id", "firstName", "lastName"];
 const DOCUMENT_INCLUDES = (): object[] => [
   { model: models.CalibrationDevice, as: "device", required: false },
   { model: models.Tenant, as: "tenant", attributes: [...ISSUER_ATTRIBUTES], required: false },
-  { model: models.User, as: "calibratedByUser", attributes: PERSON_ATTRIBUTES, required: false },
-  { model: models.User, as: "approvedByUser", attributes: PERSON_ATTRIBUTES, required: false },
-  { model: models.User, as: "signedByUser", attributes: PERSON_ATTRIBUTES, required: false },
+  // P21-09e (spec § 12 rule 6): a facility-bound viewer of its facility's UNSIGNED certificate sees
+  // the same printed names (and so the same content hash) as provider staff — names only.
+  {
+    model: models.User,
+    as: "calibratedByUser",
+    attributes: PERSON_ATTRIBUTES,
+    required: false,
+    // skipFacilityScope: the certificate's people are provider staff (no facility); names only (FACILITY_SCOPE_SKIPS).
+    skipFacilityScope: true,
+  },
+  {
+    model: models.User,
+    as: "approvedByUser",
+    attributes: PERSON_ATTRIBUTES,
+    required: false,
+    // skipFacilityScope: the certificate's people are provider staff (no facility); names only (FACILITY_SCOPE_SKIPS).
+    skipFacilityScope: true,
+  },
+  {
+    model: models.User,
+    as: "signedByUser",
+    attributes: PERSON_ATTRIBUTES,
+    required: false,
+    // skipFacilityScope: the certificate's people are provider staff (no facility); names only (FACILITY_SCOPE_SKIPS).
+    skipFacilityScope: true,
+  },
 ];
 
 /** The result shape the controllers turn into an envelope (as the other certificate services). */

@@ -90,7 +90,8 @@ describe("calibrationRecordsController", () => {
         to: undefined,
         includeSuperseded: false,
       });
-      expect(success).toHaveBeenCalledWith(res, [{ id: "rec-1" }], { total: 1 }, "Success", 200);
+      // P21-09e (spec § 12): each row carries its performer's display (none here: no person id).
+      expect(success).toHaveBeenCalledWith(res, [{ id: "rec-1", performerDisplay: null }], { total: 1 }, "Success", 200);
     });
 
     it("converts query strings the way the schema names them", async () => {

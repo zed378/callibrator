@@ -68,7 +68,8 @@ const LOAD_ROUTE: Readonly<Record<string, readonly [string, string]>> = {
   "/dashboard": ["api/dashboard.route.ts", "GET /metrics"],
   "/dashboard/devices": ["api/calibrationDevices.route.ts", "GET /"],
   "/dashboard/calibration": ["api/certificates.route.ts", "GET /"],
-  "/dashboard/maintenance": ["api/maintenance.route.ts", "GET /work-orders"],
+  // P21-09e: the list is `GET /api/v1/maintenance` (frontend maintenance.service); `/work-orders` named no route.
+  "/dashboard/maintenance": ["api/maintenance.route.ts", "GET /"],
   "/dashboard/warehouses": ["api/warehouse.route.ts", "GET /"],
   "/dashboard/profile": ["api/menuGroups.route.ts", "GET /my-permissions"],
   "/dashboard/change-password": ["api/auth.route.ts", "POST /just-update-password"],
@@ -77,12 +78,9 @@ const LOAD_ROUTE: Readonly<Record<string, readonly [string, string]>> = {
 
 /** Leaves whose load route is not marked yet, with the card that marks it (ADR-124 Am. 5 § 4). */
 const PENDING_LOAD: Readonly<Record<string, string>> = {
-  "/dashboard": "P21-09e — A-11 (OQ-8), or the facility home A-10",
-  "/dashboard/devices": "P21-09e — A-1 device list",
-  "/dashboard/calibration": "P21-09e — A-7 certificates",
-  "/dashboard/maintenance": "P21-09e — A-8 work orders (read)",
-  "/dashboard/warehouses": "P21-09e — rooms (ADR-132 § 5)",
-  "/dashboard/change-password": "P21-09e — the MFA / password self routes (with the reviewed settings skip, P18-03 § 10.2)",
+  // ADR-124 Am. 6 § 6: re-assigned from P21-09e to the cards P18-03 names for them.
+  "/dashboard": "P21-07 — A-10 (OQ-8): marked only with dashboard.twoFacility and G-20 green",
+  "/dashboard/warehouses": "P20-02 / P21-02 — A-9 rooms (ADR-132 § 5)",
   "/dashboard/esignature": "P21-03 / P21-04 — N-5, the IPM session signature (ADR-126 Am. 2 § 6)",
 };
 

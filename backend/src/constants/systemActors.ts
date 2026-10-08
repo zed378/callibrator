@@ -179,6 +179,17 @@ const SYSTEM_ACTORS = Object.freeze({
    * for a seed with no user, to this actor).
    */
   CLIENT_FACILITY_BACKFILL: "system:client-facility-backfill",
+  /**
+   * P21-09d (P19-04 spec § 9.4) — services/attachmentRekey.service.ts: the file of a moved device
+   * (or of one of its moved children) copied under its new facility's key segment, the row's
+   * `storage_key` switched and `rekey_pending` cleared. One UPDATE row per re-keyed file.
+   */
+  ATTACHMENT_REKEY: "system:attachment-rekey",
+  /**
+   * P21-09e (P19-04 spec § 4.6, UD-18 (b)) — services/boundAccountDeactivation.service.ts: a
+   * facility-bound account deactivated 30 days after its facility ended. One UPDATE row per user.
+   */
+  BOUND_ACCOUNT_DEACTIVATION: "system:bound-account-deactivation",
 } as const);
 
 /** One system actor's name (`actor_name` of a `system` row). */

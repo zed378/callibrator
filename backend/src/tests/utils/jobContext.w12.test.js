@@ -68,6 +68,7 @@ describe("ADR-069 — the cross-tenant opt-outs are a closed, reviewed list", ()
       "SESSION_CLEANUP",
       "QUARANTINE_SWEEP",
       "WEBHOOK_DISPATCH",
+      "BOUND_ACCOUNT_DEACTIVATION", // P21-09e (UD-18 (b)): the ended client facilities, once per run
     ]);
   });
 

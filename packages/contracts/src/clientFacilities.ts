@@ -188,3 +188,35 @@ export const userFacilityBinding = z.strictObject({
   reason: z.string().trim().min(3).max(500),
 });
 export type UserFacilityBindingInput = z.output<typeof userFacilityBinding>;
+
+// ==========================================
+// DEVICE MOVE (§ 11, P21-09d)
+// ==========================================
+
+/**
+ * `POST /calibration-devices/:calibrationDeviceId/move` — params and body together
+ * (`validate(schema, { from: ["params", "body"] })`). `targetLocationId`: a room of the target
+ * facility or a provider store (P19-03 § 9, ADR-132 § 8); omitted, a room of the old facility is
+ * cleared.
+ */
+export const deviceMove = z.strictObject({
+  calibrationDeviceId: uuid(),
+  targetClientFacilityId: uuid(),
+  targetLocationId: uuid().nullable().optional(),
+  reason: z.string().trim().min(3).max(500),
+});
+export type DeviceMoveInput = z.output<typeof deviceMove>;
+
+/** `GET /calibration-devices/:calibrationDeviceId/moves`. */
+export const deviceMovesParams = z.object({ calibrationDeviceId: uuid() });
+
+/** The children a move carries, per table, and the files flagged for re-keying (`counts`). */
+export const DEVICE_MOVE_COUNT_KEYS = Object.freeze([
+  "calibration_records",
+  "certificates",
+  "maintenance_work_orders",
+  "iot_readings",
+  "non_conformances",
+  "attachments_rekey",
+] as const);
+export type DeviceMoveCountKey = (typeof DEVICE_MOVE_COUNT_KEYS)[number];

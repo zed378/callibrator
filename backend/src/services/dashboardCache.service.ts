@@ -14,9 +14,12 @@
  *    TTL: a write is visible on the dashboard at most 30 s later. Nothing
  *    invalidates on write (ADR-120 says why).
  *  - The KEY is the scope the figures were computed for, and the kind of
- *    caller that asked: `dashboard:metrics:v1:tenant:<callerTenantId>:<target>`
- *    for a tenant principal (target = its own tenant, always), and
- *    `dashboard:metrics:v1:platform:<target>` for the super admin (target = a
+ *    caller that asked: `dashboard:metrics:v2:tenant:<callerTenantId>:<scope>:<target>`
+ *    for a tenant principal (target = its own tenant, always; P21-09d, spec
+ *    P19-04 § 9.2: scope = `all` for an unbound principal, `f:<facility>` for a
+ *    facility-BOUND one, read from the request CONTEXT, never a controller
+ *    argument — the two segments cannot coincide), and
+ *    `dashboard:metrics:v2:platform:<target>` for the super admin (target = a
  *    tenant id or `global`). Two tenants never share a key, and a tenant never
  *    reads a value the platform view computed, or the other way round. The
  *    result does not vary by role inside a tenant (the gate is `home` read,
@@ -36,6 +39,8 @@
  */
 import redis from "./redis.service";
 import { logger } from "../middlewares/activityLog.middleware";
+import { tenantStorage } from "../middlewares/tenantContext.middleware";
+import { NO_FACILITY_ID } from "../types/ids";
 
 /** How long a computed dashboard is served, in seconds: the staleness bound. */
 export const DASHBOARD_CACHE_TTL_SECONDS = 30;
@@ -43,7 +48,7 @@ export const DASHBOARD_CACHE_TTL_SECONDS = 30;
 /** How many scopes the in-process fallback holds (oldest evicted first). */
 export const DASHBOARD_LRU_MAX = 500;
 
-const KEY_PREFIX = "dashboard:metrics:v1";
+const KEY_PREFIX = "dashboard:metrics:v2";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -72,7 +77,19 @@ export const dashboardCacheKey = (caller: DashboardCaller, target: string | null
   if (!own || !UUID_RE.test(own) || target !== own) {
     return null;
   }
-  return `${KEY_PREFIX}:tenant:${own}:${target}`;
+  return `${KEY_PREFIX}:tenant:${own}:${facilityScopeSegment()}:${target}`;
+};
+
+/**
+ * P21-09d (AM-18, F-3) — the facility segment of a tenant principal's key, from the CONTEXT:
+ * `f:<facility>` for a bound principal (the deny sentinel when it has none), `all` otherwise.
+ */
+export const facilityScopeSegment = (): string => {
+  const ctx = tenantStorage.getStore();
+  if (!ctx || ctx.isSuperAdmin || ctx.isSystemTask || ctx.facilityBound !== true) {
+    return "all";
+  }
+  return `f:${ctx.clientFacilityId ?? NO_FACILITY_ID}`;
 };
 
 interface LruEntry {

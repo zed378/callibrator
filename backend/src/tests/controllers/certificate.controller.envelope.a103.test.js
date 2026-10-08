@@ -140,7 +140,10 @@ describe("A-103 — certificate controller: a non-2xx result is an error envelop
         success: true,
         status: 200,
         message: "ok",
-        data: { id: CERT_ID },
+        // P21-09e (spec § 12): the certificate READ carries its people's displays.
+        data: handler === "getSpecificCertificate"
+          ? { id: CERT_ID, calibratedByDisplay: null, approvedByDisplay: null, signedByDisplay: null }
+          : { id: CERT_ID },
       });
     });
   });
@@ -198,7 +201,7 @@ describe("A-103 — certificate controller: a non-2xx result is an error envelop
       success: true,
       status: 200,
       message: "Fetch certificates successful",
-      data: [{ id: CERT_ID }],
+      data: [{ id: CERT_ID, calibratedByDisplay: null, approvedByDisplay: null, signedByDisplay: null }], // P21-09e
       meta,
     });
   });

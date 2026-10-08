@@ -43,6 +43,8 @@ import { DEFAULT_LIMIT as loadedDefaultLimit, MAX_LIMIT as loadedMaxLimit } from
 import virusScan from "./virusScan.service";
 import { assertInQuarantine as loadedAssertInQuarantine } from "../utils/upload.util";
 import storage from "./storage";
+import storageKeys from "./storage/keys";
+import { tenantStorage } from "../middlewares/tenantContext.middleware";
 import storedFile from "./storedFile.service";
 import type { StorageObject } from "../utils/fileResponse.util";
 import auditService from "./audit.service";
@@ -117,6 +119,10 @@ interface AttachmentRow {
   size: number | string;
   checksum: string | null;
   storageKey?: string | null;
+  /** P20-07: the facility the file belongs to (its resource's); null for a standalone file. */
+  clientFacilityId?: string | null;
+  /** P21-09d: the key's facility segment lags a device move until the re-key job runs (§ 9.4). */
+  rekeyPending?: boolean;
   uploadedBy: string | null;
   isDeleted?: boolean;
   createdAt: Date;
@@ -262,9 +268,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * @param tenantId - the principal's tenant
  * @param resourceType - the type sent
  * @param resourceId - the id sent
+ * P21-09d: resolves the linked record's client facility too (the file's storage key carries it,
+ * spec P19-04 § 9.3); null for a standalone file or a model without a facility.
+ *
  * @throws {AppError} 400 for an unknown type, a malformed id or an unlinkable type; 404 when no such record
  */
-const assertLinkTarget = async (tenantId: string, resourceType: unknown, resourceId: unknown): Promise<void> => {
+const assertLinkTarget = async (tenantId: string, resourceType: unknown, resourceId: unknown): Promise<string | null> => {
   /* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string -- as built: an empty type is "generic", and the type is interpolated as sent */
   if (!isAttachmentResourceType(resourceType || "generic")) {
     throw new AppError(
@@ -273,7 +282,7 @@ const assertLinkTarget = async (tenantId: string, resourceType: unknown, resourc
     );
   }
   if (resourceId === undefined || resourceId === null || resourceId === "") {
-    return;
+    return null;
   }
   const modelName = LINKABLE_RESOURCES[String(resourceType || "generic").toLowerCase()];
   if (!modelName) {
@@ -298,10 +307,14 @@ const assertLinkTarget = async (tenantId: string, resourceType: unknown, resourc
   if (Model.rawAttributes && Model.rawAttributes["isDeleted"]) {
     where["isDeleted"] = false;
   }
-  const record = await Model.findOne({ where, attributes: ["id"] });
+  const withFacility = Boolean(Model.rawAttributes?.["clientFacilityId"]);
+  const record = (await Model.findOne({ where, attributes: withFacility ? ["id", "clientFacilityId"] : ["id"] })) as {
+    clientFacilityId?: string | null;
+  } | null;
   if (!record) {
     throw new AppError(404, "Resource not found");
   }
+  return record.clientFacilityId ?? null;
 };
 
 // ------------------------------------------------------------------
@@ -653,8 +666,9 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
 
   // A-97: multer has already written the file. A refused link must not leave
   // it on disk, or in the tenant's storage accounting.
+  let clientFacilityId: string | null;
   try {
-    await assertLinkTarget(tenantId, meta.resourceType, meta.resourceId);
+    clientFacilityId = await assertLinkTarget(tenantId, meta.resourceType, meta.resourceId);
   } catch (err) {
     await fs.promises.unlink(absPath).catch(() => undefined);
     throw err;
@@ -678,7 +692,8 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
     // putLocalFile removes the quarantine copy once the object is written.
     assertInQuarantine(absPath);
     scoped = await storage.getTenantStorage(tenantId);
-    storageKey = scoped.buildKey({ domain: "attachments", name: upload.filename });
+    // P21-09d (spec § 9.3): a file of a facility's record lives under `t/<tenant>/f/<facility>/`.
+    storageKey = scoped.buildKey({ domain: "attachments", name: upload.filename, clientFacilityId });
     await storedFile.putLocalFile(scoped, storageKey, absPath, upload.mimetype);
   } catch (err) {
     await fs.promises.unlink(absPath).catch(() => undefined);
@@ -717,6 +732,8 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
           checksum,
           // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty uploader is null
           uploadedBy: meta.uploadedBy || null,
+          // P21-09d: the resource's facility, named (the database would derive the same, AM-7).
+          ...(clientFacilityId ? { clientFacilityId } : {}),
         } as unknown as CreationAttributes<InstanceType<typeof Attachment>>,
         { transaction },
       )) as unknown as AttachmentRow;
@@ -815,6 +832,48 @@ const loadOwned = async (tenantId: string, id: string): Promise<AttachmentRow> =
 const getAttachment = async (tenantId: string, id: string): Promise<Record<string, unknown>> => toPublic(await loadOwned(tenantId, id));
 
 /**
+ * P21-09d - whether a loaded row's storage key is where its facility says (spec P19-04 § 9.3,
+ * FT-77): the key's facility segment equals the row's `client_facility_id`; or the key has no
+ * segment and the row has no facility (a standalone file) or is in the tenant's SELF facility
+ * (every file stored before the segment existed, ADR-124 § 9); or the row waits for the re-key
+ * job after a device move (`rekey_pending`, § 9.4). Run on a row already loaded in the caller's
+ * context - the one post-load comparison AM-17 allows.
+ */
+const keyMatchesRow = async (attachment: AttachmentRow): Promise<boolean> => {
+  if (!attachment.storageKey || attachment.rekeyPending === true) {
+    return true;
+  }
+  const segment = storageKeys.facilityOfKey(attachment.storageKey);
+  const rowFacility = attachment.clientFacilityId ?? null;
+  if (segment !== null) {
+    return segment === rowFacility;
+  }
+  if (rowFacility === null) {
+    return true;
+  }
+  const self = await models.ClientFacility.findOne({
+    where: { id: rowFacility, tenantId: attachment.tenantId, isSelf: true },
+    attributes: ["id"],
+  });
+  return self !== null;
+};
+
+/**
+ * Refuse a row whose key and facility disagree - the same 404 as a missing file, logged as an
+ * integrity error (an operator looks; a client learns nothing).
+ */
+const assertKeyIntegrity = async (attachment: AttachmentRow): Promise<void> => {
+  if (!(await keyMatchesRow(attachment))) {
+    logger.error("Attachment integrity: the storage key's facility does not match the row", {
+      attachmentId: attachment.id,
+      tenantId: attachment.tenantId,
+      clientFacilityId: attachment.clientFacilityId ?? null,
+    });
+    throw new AppError(404, "Attachment not found");
+  }
+};
+
+/**
  * The bytes of a loaded, live row, ready to send. P8-01: a keyed row is opened
  * in its OWN tenant's storage (the row's tenant, never the caller's input), so
  * a key naming another tenant's namespace is refused by the storage guard. A
@@ -826,6 +885,7 @@ const openAttachmentFile = async (attachment: AttachmentRow): Promise<StoredDown
   const fileName = attachment.originalName;
   const { mimeType } = attachment;
   if (attachment.storageKey) {
+    await assertKeyIntegrity(attachment);
     const scoped = await storage.getTenantStorage(attachment.tenantId);
     try {
       return { object: await storedFile.openObject(scoped, attachment.storageKey), fileName, mimeType };
@@ -991,12 +1051,24 @@ const deleteAttachment = async (tenantId: string, id: string, actor: AttachmentA
 //     link to a file that never existed. A bad or expired SIGNATURE stays a
 //     403, decided before any row is read, so it says nothing about any id.
 
-/** The signature input; the prefix keeps it apart from any other HMAC over this secret. */
-const signedLinkMessage = (id: string, tenantId: string, issuer: string, exp: number): string =>
-  `attachment-link/v2|${id}|${tenantId}|${issuer}|${String(exp)}`;
+//
+// P21-09d (spec P19-04 § 9.5, AM-22) - v3: the token also binds the row's FACILITY at minting
+// (`-` for a file with none), and a BOUND user mints as `b<userId>`:
+//   <exp>.<tenantId>.<issuer>.<facility>.<hmac("attachment-link/v3|id|tenant|facility|issuer|exp")>
+// Redemption additionally requires the row's facility to still equal the token's (a moved file
+// kills its old links) and, for a `b` issuer, that the issuer is still bound to that facility and
+// the facility is `active` (a re-bound, unbound or ended user's links die). The same 404 for each.
+// A v2 (four-part) token is refused like every other malformed one.
 
-const signLink = (id: string, tenantId: string, issuer: string, exp: number): string =>
-  crypto.createHmac("sha256", SIGNING_KEY).update(signedLinkMessage(id, tenantId, issuer, exp)).digest("hex");
+/** The token's facility segment for a row without a facility. */
+const NO_FACILITY_SEGMENT = "-";
+
+/** The signature input; the prefix keeps it apart from any other HMAC over this secret. */
+const signedLinkMessage = (id: string, tenantId: string, facility: string, issuer: string, exp: number): string =>
+  `attachment-link/v3|${id}|${tenantId}|${facility}|${issuer}|${String(exp)}`;
+
+const signLink = (id: string, tenantId: string, facility: string, issuer: string, exp: number): string =>
+  crypto.createHmac("sha256", SIGNING_KEY).update(signedLinkMessage(id, tenantId, facility, issuer, exp)).digest("hex");
 
 /** Who mints a link: the request's principal (auditPrincipal). */
 interface LinkIssuer {
@@ -1004,10 +1076,16 @@ interface LinkIssuer {
   apiKeyId?: string | null | undefined;
 }
 
-/** `u<userId>` or `k<apiKeyId>` — the issuer as the token carries it. */
+/** Whether the active context is a facility-bound principal's (it mints as `b<userId>`). */
+const mintedByBound = (): boolean => {
+  const ctx = tenantStorage.getStore();
+  return Boolean(ctx && !ctx.isSuperAdmin && !ctx.isSystemTask && ctx.facilityBound === true);
+};
+
+/** `u<userId>`, `b<userId>` (a bound user, P21-09d) or `k<apiKeyId>` — the issuer as the token carries it. */
 const issuerTag = (issuer: LinkIssuer | undefined): string => {
   if (issuer?.userId) {
-    return `u${issuer.userId}`;
+    return `${mintedByBound() ? "b" : "u"}${issuer.userId}`;
   }
   if (issuer?.apiKeyId) {
     return `k${issuer.apiKeyId}`;
@@ -1018,6 +1096,8 @@ const issuerTag = (issuer: LinkIssuer | undefined): string => {
 /** A verified token's bound claims. */
 interface LinkClaims {
   tenantId: string;
+  /** The row's facility at minting, or NO_FACILITY_SEGMENT. */
+  facility: string;
   issuer: string;
   exp: number;
 }
@@ -1048,8 +1128,10 @@ const generateSignedUrl = async (
   const tag = issuerTag(issuer);
   const ttl = linkTtl(expiresInSec);
   const attachment = await loadOwned(tenantId, id);
+  await assertKeyIntegrity(attachment);
   const exp = Math.floor(Date.now() / 1000) + ttl;
-  const token = `${String(exp)}.${attachment.tenantId}.${tag}.${signLink(attachment.id, attachment.tenantId, tag, exp)}`;
+  const facility = attachment.clientFacilityId ?? NO_FACILITY_SEGMENT;
+  const token = `${String(exp)}.${attachment.tenantId}.${tag}.${facility}.${signLink(attachment.id, attachment.tenantId, facility, tag, exp)}`;
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty base URL falls through
   const base = (baseUrl || env("PUBLIC_BASE_URL") || "http://localhost:5000").replace(/\/$/, "");
   logger.info("Attachment download link minted", {
@@ -1077,23 +1159,23 @@ const readSignedToken = (attachmentId: string, token: unknown): LinkClaims | nul
     return null;
   }
   const parts = token.split(".");
-  if (parts.length !== 4) {
-    return null; // the pre-A-365 `<exp>.<sig>` shape included
+  if (parts.length !== 5) {
+    return null; // the pre-A-365 `<exp>.<sig>` and the v2 four-part shapes included
   }
-  const [expStr, tenantId, issuer, sig] = parts as [string, string, string, string];
+  const [expStr, tenantId, issuer, facility, sig] = parts as [string, string, string, string, string];
   const exp = Number(expStr);
-  if (!Number.isInteger(exp) || !tenantId || !/^[uk]./.test(issuer) || !sig) {
+  if (!Number.isInteger(exp) || !tenantId || !/^[ubk]./.test(issuer) || !facility || !sig) {
     return null;
   }
   const now = Math.floor(Date.now() / 1000);
   if (now > exp || exp - now > SIGNED_URL_HARD_MAX_TTL_SEC) {
     return null; // expired, or a lifetime no configuration can grant
   }
-  const expected = signLink(attachmentId, tenantId, issuer, exp);
+  const expected = signLink(attachmentId, tenantId, facility, issuer, exp);
   if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
     return null;
   }
-  return { tenantId, issuer, exp };
+  return { tenantId, facility, issuer, exp };
 };
 
 /** Whether a token verifies for this attachment (exported for tests). */
@@ -1112,12 +1194,25 @@ const tenantIsLive = async (tenantId: string): Promise<boolean> => {
   return status !== "suspended" && status !== "deleted";
 };
 
-/** Whether the principal that minted the link could still act (auth.middleware's checks). */
-const issuerIsLive = async (tenantId: string, issuer: string): Promise<boolean> => {
+/**
+ * Whether the principal that minted the link could still act (auth.middleware's checks). A BOUND
+ * issuer (`b`, P21-09d) must also still be bound to the token's facility, and that facility active.
+ */
+const issuerIsLive = async (tenantId: string, issuer: string, facility: string): Promise<boolean> => {
   const id = issuer.slice(1);
-  if (issuer.startsWith("u")) {
-    const user = (await models.User.findByPk(id)) as { isActive?: boolean; status?: string | null } | null;
-    return !!user && user.isActive === true && !REFUSED_USER_STATUSES.has(user.status);
+  if (issuer.startsWith("u") || issuer.startsWith("b")) {
+    const user = (await models.User.findByPk(id)) as { isActive?: boolean; status?: string | null; clientFacilityId?: string | null } | null;
+    if (user?.isActive !== true || REFUSED_USER_STATUSES.has(user.status)) {
+      return false;
+    }
+    if (issuer.startsWith("u")) {
+      return true;
+    }
+    if (facility === NO_FACILITY_SEGMENT || user.clientFacilityId !== facility) {
+      return false;
+    }
+    const held = (await models.ClientFacility.findOne({ where: { id: facility, tenantId }, attributes: ["status"] })) as { status?: string } | null;
+    return held?.status === "active";
   }
   const key = (await models.ApiKey.findOne({ where: { id, tenantId } })) as {
     isActive?: boolean;
@@ -1137,7 +1232,12 @@ const getSignedDownload = async (id: string, token: unknown): Promise<StoredDown
   const attachment = (await Attachment.findOne({
     where: { id, tenantId: claims.tenantId },
   })) as unknown as AttachmentRow | null;
-  if (!attachment || !(await tenantIsLive(claims.tenantId)) || !(await issuerIsLive(claims.tenantId, claims.issuer))) {
+  if (
+    !attachment ||
+    (attachment.clientFacilityId ?? NO_FACILITY_SEGMENT) !== claims.facility ||
+    !(await tenantIsLive(claims.tenantId)) ||
+    !(await issuerIsLive(claims.tenantId, claims.issuer, claims.facility))
+  ) {
     throw new AppError(404, "Attachment not found");
   }
   return openAttachmentFile(attachment);

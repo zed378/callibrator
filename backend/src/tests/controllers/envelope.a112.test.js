@@ -191,7 +191,7 @@ describe("A-112 — calibrationRecords controller: a non-2xx result is an error 
       success: true,
       status: 200,
       message: "Fetch calibration records successful",
-      data: [{ id: RECORD_ID }],
+      data: [{ id: RECORD_ID, performerDisplay: null }], // P21-09e
       meta,
     });
   });

@@ -16,6 +16,7 @@
  * types from them. The contract for /api/v1/maintenance work orders (create and update bodies).
  */
 import { z } from "zod";
+import { personDisplay } from "./people";
 import { isoDate, numeric, optionalText, uuid } from "./fields";
 import { WORK_ORDER_STATUSES } from "./states";
 
@@ -146,6 +147,7 @@ const workOrderListItem = z
     device: z.object({ id: rowId, name: z.string(), serialNumber: z.string().nullable() }).nullable(),
     vendor: z.object({ id: rowId, name: z.string() }).nullable(),
     assignee: assigneeRef,
+    assigneeDisplay: personDisplay.nullable().optional().meta({ description: "P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail" }),
   })
   .meta({ id: "WorkOrderListItem" });
 
@@ -156,6 +158,7 @@ const workOrderDetailResponse = z
     device: z.looseObject({ id: rowId, name: z.string() }).nullable().meta({ description: "The device row (soft-deleted ones included)" }),
     vendor: z.looseObject({ id: rowId, name: z.string() }).nullable().meta({ description: "The vendor row (soft-deleted ones included)" }),
     assignee: assigneeRef,
+    assigneeDisplay: personDisplay.nullable().optional().meta({ description: "P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail" }),
   })
   .meta({ id: "WorkOrderDetail" });
 

@@ -12,6 +12,10 @@
  */
 import type { Request, Response } from "express";
 import attachmentService from "../services/attachment.service";
+import { withDisplay, withDisplays } from "../services/personDisplay.service";
+
+/** P21-09e (spec § 12): the uploader shown beside each file, for every viewer. */
+const FILE_PEOPLE = { uploaderDisplay: "uploadedBy" } as const;
 import { asyncHandler as loadedAsyncHandler } from "../utils/controllerWrapper.util";
 import { success as loadedSuccess } from "../utils/response.util";
 // A-189: the configured public origin, never the proxy-facing Host header.
@@ -68,7 +72,7 @@ const list = asyncHandler(async (req: Request, res: Response) => {
     page,
     limit,
   });
-  success(res, result.rows, result.meta, "Attachments retrieved", 200);
+  success(res, await withDisplays(result.rows, FILE_PEOPLE), result.meta, "Attachments retrieved", 200);
 });
 
 // GET /api/v1/attachments/orphans — D-22 (ADR-070): the tenant's live
@@ -82,7 +86,7 @@ const listOrphans = asyncHandler(async (req: Request, res: Response) => {
 // GET /api/v1/attachments/:id
 const getOne = asyncHandler(async (req: Request, res: Response) => {
   const data = await attachmentService.getAttachment(tenantOf(req), req.params["id"] as string);
-  success(res, data, null, "Attachment retrieved", 200);
+  success(res, await withDisplay(data, FILE_PEOPLE), null, "Attachment retrieved", 200);
 });
 
 /** What the service answers for a download: a storage object, or a legacy path. */

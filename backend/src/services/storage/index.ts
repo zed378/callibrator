@@ -127,8 +127,8 @@ class ScopedStorage {
   }
 
   /** Build a key inside this tenant's namespace. */
-  buildKey({ domain, name }: { domain: string; name: string }): string {
-    return keys.buildKey({ tenantId: this.tenantId, domain, name });
+  buildKey({ domain, name, clientFacilityId = null }: { domain: string; name: string; clientFacilityId?: string | null }): string {
+    return keys.buildKey({ tenantId: this.tenantId, clientFacilityId, domain, name });
   }
 
   _guard(key: unknown): string {

@@ -131,6 +131,8 @@ describe("G-09 — FACILITY_ACCESSIBLE_ROUTES", () => {
     ["api/user.route.ts", "PATCH /edit"],
     ["api/certificates.route.ts", "POST /:certificateId/approve"],
     ["api/user.route.ts", "PUT /:userId/client-facility"],
+    // P21-09d: the device move is provider administration (rbac TENANT_ADMIN).
+    ["api/calibrationDevices.route.ts", "POST /:calibrationDeviceId/move"],
   ])("bites: a marker planted on %s %s is refused", (file, key) => {
     const route = routeOf(file, key);
     expect(route).toBeDefined();

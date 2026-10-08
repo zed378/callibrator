@@ -208,14 +208,14 @@ describe("A-365 — redemption re-checks the row, its tenant and the issuer", ()
   });
 
   it("a tampered token is refused: the tenant segment rewritten to tenant B", async () => {
-    const [exp, , issuer, sig] = (await tokenOf(owner, ATTACHMENT_A)).split(".");
-    const res = await redeem(ATTACHMENT_A, [exp, tenantB, issuer, sig].join("."));
+    const [exp, , issuer, facility, sig] = (await tokenOf(owner, ATTACHMENT_A)).split(".");
+    const res = await redeem(ATTACHMENT_A, [exp, tenantB, issuer, facility, sig].join("."));
     expect(res.status).toBe(403);
   });
 
   it("a tampered token is refused: the expiry pushed forward", async () => {
-    const [exp, tenant, issuer, sig] = (await tokenOf(owner, ATTACHMENT_A)).split(".");
-    const res = await redeem(ATTACHMENT_A, [String(Number(exp) + 86400), tenant, issuer, sig].join("."));
+    const [exp, tenant, issuer, facility, sig] = (await tokenOf(owner, ATTACHMENT_A)).split(".");
+    const res = await redeem(ATTACHMENT_A, [String(Number(exp) + 86400), tenant, issuer, facility, sig].join("."));
     expect(res.status).toBe(403);
   });
 
@@ -316,10 +316,13 @@ describe("A-365 — the service's other callers and principals", () => {
   });
 
   it.each([
-    ["a non-numeric expiry", (t: string[]) => ["soon", t[1], t[2], t[3]]],
-    ["an empty tenant", (t: string[]) => [t[0], "", t[2], t[3]]],
-    ["an issuer of no known kind", (t: string[]) => [t[0], t[1], `x${owner.id}`, t[3]]],
-    ["an empty signature", (t: string[]) => [t[0], t[1], t[2], ""]],
+    ["a non-numeric expiry", (t: string[]) => ["soon", t[1], t[2], t[3], t[4]]],
+    ["an empty tenant", (t: string[]) => [t[0], "", t[2], t[3], t[4]]],
+    ["an issuer of no known kind", (t: string[]) => [t[0], t[1], `x${owner.id}`, t[3], t[4]]],
+    // P21-09d (v3): the facility segment is part of the token.
+    ["an empty facility", (t: string[]) => [t[0], t[1], t[2], "", t[4]]],
+    ["an empty signature", (t: string[]) => [t[0], t[1], t[2], t[3], ""]],
+    ["the v2 four-part shape", (t: string[]) => [t[0], t[1], t[2], t[4]]],
   ])("a token with %s is refused (403)", async (_label, mangle) => {
     const parts = (await tokenOf(owner, ATTACHMENT_A)).split(".");
     expect((await redeem(ATTACHMENT_A, mangle(parts).join("."))).status).toBe(403);
@@ -327,6 +330,6 @@ describe("A-365 — the service's other callers and principals", () => {
 
   it("a token claiming a lifetime beyond the hard ceiling is refused even before its signature is checked", () => {
     const exp = Math.floor(Date.now() / 1000) + 3601;
-    expect(service._verifySignedToken(ATTACHMENT_A, `${String(exp)}.${owner.tenantId}.u${owner.id}.${"0".repeat(64)}`)).toBe(false);
+    expect(service._verifySignedToken(ATTACHMENT_A, `${String(exp)}.${owner.tenantId}.u${owner.id}.-.${"0".repeat(64)}`)).toBe(false);
   });
 });

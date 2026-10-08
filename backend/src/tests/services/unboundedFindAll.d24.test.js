@@ -178,6 +178,23 @@ const REVIEWED = Object.freeze({
   "clientFacilityAdmin.service.ts::facilityOptions::models.ClientFacility": [1, CLOSED],
   "clientFacilityAdmin.service.ts::facilityUsers::models.User": [1, PARENT],
   "clientFacilityAdmin.service.ts::changeFacilityStatus::models.User": [1, PARENT],
+  // P21-09d (spec § 9.6): one facility's active bound accounts (its staff), the audience of a
+  // reminder about one of its devices.
+  "notificationRecipients.ts::recipientsFor::models.User": [1, PARENT],
+  // P21-09d (spec § 11): the moved device's records, certificates and work orders (one device's
+  // history), and its moves with the two facilities each names.
+  "deviceMove.service.ts::linkedChildIds::models.CalibrationRecord.unscoped()": [1, PARENT],
+  "deviceMove.service.ts::linkedChildIds::models.Certificate.unscoped()": [1, PARENT],
+  "deviceMove.service.ts::linkedChildIds::models.MaintenanceWorkOrder.unscoped()": [1, PARENT],
+  "deviceMove.service.ts::listDeviceMoves::models.ClientFacilityMove": [1, PARENT],
+  "deviceMove.service.ts::listDeviceMoves::models.ClientFacility": [1, IDS],
+  // P21-09e (spec § 12): the authors of the rows already being answered (one page), their
+  // facilities and tenants — by the ids those rows hold.
+  "personDisplay.service.ts::displayPeople::models.User.unscoped()": [1, IDS],
+  "personDisplay.service.ts::displayPeople::models.ClientFacility": [1, IDS],
+  "personDisplay.service.ts::displayPeople::models.Tenant": [1, IDS],
+  // P21-09e (§ 4.6): one ended facility's active bound accounts.
+  "boundAccountDeactivation.service.ts::deactivateFacilityAccounts::models.User": [1, PARENT],
   // ADR-108 Amendment 1: one user's passkeys — at most MAX_PASSKEYS_PER_USER (10).
   "webauthn.service.ts::getRegistrationOptions::WebauthnCredential": [1, PARENT],
   "webauthn.service.ts::getLoginOptions::WebauthnCredential": [1, PARENT],

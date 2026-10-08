@@ -52,6 +52,12 @@ const createUserSchema = z.object({
   roleId: uuid(),
   tenantId: uuid().or(z.literal("")).nullable().optional(),
   status: caseless(USER_STATUSES, "upper").nullable().default("ACTIVE"),
+  /**
+   * P21-09e (P19-04 spec § 10.2): an unbound administrator may create the account BOUND to a
+   * client facility of the tenant, under the binding rules (§ 10.1 step 3); 409 while
+   * FACILITY_BINDING_ENABLED is off.
+   */
+  clientFacilityId: uuid().nullable().optional(),
 });
 
 // ==========================================

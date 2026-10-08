@@ -19,6 +19,8 @@ jest.mock("../../models", () => ({
   Role: {
     findOne: jest.fn(),
   },
+  // P21-09e (§ 10.6): provisioning asks whether the tenant serves a client facility (none here).
+  ClientFacility: { count: jest.fn().mockResolvedValue(0) },
 }));
 
 // P6-11: a JIT-provisioned account commits with its audit row.
