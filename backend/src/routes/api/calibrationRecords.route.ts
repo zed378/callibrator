@@ -9,6 +9,8 @@
 import { Router } from "express";
 import { auth, denyApiKey } from "../../middlewares/auth.middleware";
 import { dynamicAccess } from "../../middlewares/dynamicAccess.middleware";
+import { rbac } from "../../middlewares/rbac.middleware";
+import { ROLE_NAMES } from "../../constants/roleConstants";
 import { validateUuid } from "../../middlewares/validateUuid.middleware";
 import { denyPlatformAuthoring } from "../../middlewares/denyPlatformAuthoring.middleware"; // A-127, ADR-051 Q-17
 import calibrationRecordsController from "../../controllers/calibrationRecords.controller";
@@ -51,11 +53,15 @@ router.post(
 
 // Q-51: an API key is refused (403). voided_by names the person who voids a
 // regulated record (a users FK), and a void is final — a person answers for it.
+// P20-06 (spec P18-01-02 § 4.3, ADR-124 Am. 5): a tenant administrator's act,
+// narrowed in the release that gives the technicians `calibration` write
+// (UD-4 (b)) — a correction (a new superseding record) stays open to them.
 router.post(
   "/:calibrationRecordId/void",
   auth,
   denyApiKey,
   validateUuid("calibrationRecordId"),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
   dynamicAccess("calibration", "write"),
   denyPlatformAuthoring,
   calibrationRecordsController.voidCalibrationRecord,

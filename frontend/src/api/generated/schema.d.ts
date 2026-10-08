@@ -1617,7 +1617,7 @@ export interface paths {
         put?: never;
         /**
          * Void a calibration record entered in error
-         * @description The record is kept, hidden from ordinary reads, with the reason and who voided it. A void is final. An API key is refused (403): a person answers for a void (Q-51). The platform tenant authors nothing here (403, A-127).
+         * @description The record is kept, hidden from ordinary reads, with the reason and who voided it. A void is final. Tenant administrators only (rbac), who also need `calibration` write (dynamicAccess); a technician corrects instead (P20-06). An API key is refused (403): a person answers for a void (Q-51). The platform tenant authors nothing here (403, A-127).
          *
          *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
          *
@@ -1928,6 +1928,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/client-facilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the tenant's client facilities
+         * @description Filter by `status`, `kind` or `q` (name or code); every order ends in `id`. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         */
+        get: operations["listClientFacilities"];
+        put?: never;
+        /**
+         * Add a client facility
+         * @description A new facility of the caller's tenant, active; never a self facility. The code and the name are unique per tenant (409 names the clash). An API key is refused (403): a person answers for a facility's lifecycle. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         *
+         *     **409** — A facility with this code / name already exists in the tenant.
+         */
+        post: operations["createClientFacility"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/client-facilities/{clientFacilityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One client facility
+         * @description Another tenant's facility is a 404, identical to one that does not exist. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["getClientFacility"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a client facility created by mistake
+         * @description Tenant administrators only (rbac), who also need `client-facilities` write (dynamicAccess). Only a facility nothing references — end it otherwise; its history is kept. An API key is refused (403): a person answers for a facility's lifecycle. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — The self facility, or a facility that holds devices, users, rooms or moves.
+         */
+        delete: operations["deleteClientFacility"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit a client facility
+         * @description Its organisational and contact fields; the tenant's own facility keeps its code SELF (409). An API key is refused (403): a person answers for a facility's lifecycle. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — The code or name clashes with another facility of the tenant, or the self facility's code would change.
+         */
+        patch: operations["updateClientFacility"];
+        trace?: never;
+    };
+    "/api/v1/client-facilities/{clientFacilityId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deactivate, end, reactivate or reinstate a client facility
+         * @description With a reason. Leaving `active` revokes every session of the facility's bound users in the same transaction. Reinstating an ended facility needs a tenant administrator (403). An API key is refused (403): a person answers for a facility's lifecycle. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — The self facility's status never changes; the facility is already in that status; an ended facility goes back to active only.
+         */
+        post: operations["changeClientFacilityStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/client-facilities/{clientFacilityId}/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The users bound to a client facility
+         * @description `users` read. Another tenant's facility is a 404. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["listClientFacilityUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/client-facilities/mine": {
         parameters: {
             query?: never;
@@ -1940,6 +2050,26 @@ export interface paths {
          * @description For a facility-bound account: its facility (name, code, kind, status) for the app shell. For an unbound account (the provider's staff, a self-served hospital): null. Reachable by a bound account (facility-accessible, S-8).
          */
         get: operations["getMyClientFacility"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/client-facilities/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tenant's facilities for a picker
+         * @description Any one of `calibration`, `ipm` or `client-facilities` read: technicians pick a facility without administering them. By name. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         */
+        get: operations["listClientFacilityOptions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9005,6 +9135,54 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /**
+         * @description A health facility the tenant serves (ADR-124). Never carries the import key.
+         * @example {
+         *       "id": "f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1",
+         *       "name": "Facility One",
+         *       "code": "F-0001",
+         *       "kind": "hospital",
+         *       "isSelf": false,
+         *       "status": "active",
+         *       "statusReason": null,
+         *       "statusChangedAt": null,
+         *       "address": null,
+         *       "city": null,
+         *       "province": null,
+         *       "postalCode": null,
+         *       "phone": null,
+         *       "contactName": null,
+         *       "contactEmail": null,
+         *       "contactPhone": null,
+         *       "createdAt": "2026-10-08T00:00:00.000Z",
+         *       "updatedAt": "2026-10-08T00:00:00.000Z"
+         *     }
+         */
+        ClientFacility: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            code: string;
+            /** @enum {string} */
+            kind: "hospital" | "clinic" | "health_centre" | "district_office" | "laboratory" | "other";
+            isSelf: boolean;
+            /** @enum {string} */
+            status: "active" | "inactive" | "ended";
+            statusReason: string | null;
+            statusChangedAt: string | null;
+            address: string | null;
+            city: string | null;
+            province: string | null;
+            postalCode: string | null;
+            phone: string | null;
+            contactName: string | null;
+            contactEmail: string | null;
+            contactPhone: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
         /** @description The caller's own client facility; null for an account not bound to one */
         ClientFacilityMine: {
             /** Format: uuid */
@@ -9017,6 +9195,26 @@ export interface components {
             /** @enum {string} */
             status: "active" | "inactive" | "ended";
         } | null;
+        /** @description A facility in a picker or the provider's facility filter */
+        ClientFacilityOption: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            code: string;
+            /** @enum {string} */
+            status: "active" | "inactive" | "ended";
+            isSelf: boolean;
+        };
+        /** @description A user bound to the facility */
+        ClientFacilityUser: {
+            /** Format: uuid */
+            id: string;
+            username: string;
+            firstName: string | null;
+            lastName: string | null;
+            roleId: string | null;
+            status: string | null;
+        };
         ComplianceReport: {
             summary: components["schemas"]["ReportComplianceSummary"];
         };
@@ -14115,7 +14313,7 @@ export interface operations {
                      */
                     name: string;
                     /**
-                     * @description `<resource>:<read|write>` (an absent action is `write`); the resource is one of 50 menu slugs. A wildcard resource or action is refused.
+                     * @description `<resource>:<read|write>` (an absent action is `write`); the resource is one of 53 menu slugs. A wildcard resource or action is refused.
                      * @example [
                      *       "equipment:read",
                      *       "certificate:read"
@@ -17248,6 +17446,300 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    listClientFacilities: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+                status?: "active" | "inactive" | "ended";
+                kind?: "hospital" | "clinic" | "health_centre" | "district_office" | "laboratory" | "other";
+                q?: string;
+                sort?: "name" | "code" | "createdAt";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of facilities; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["ClientFacility"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createClientFacility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    code: string;
+                    /** @enum {string} */
+                    kind?: "hospital" | "clinic" | "health_centre" | "district_office" | "laboratory" | "other";
+                    address?: string | null;
+                    city?: string | null;
+                    province?: string | null;
+                    postalCode?: string | null;
+                    phone?: string | null;
+                    contactName?: string | null;
+                    contactEmail?: string | null;
+                    contactPhone?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The facility */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["ClientFacility"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getClientFacility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The client facility's id */
+                clientFacilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The facility */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["ClientFacility"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    deleteClientFacility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The client facility's id */
+                clientFacilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: null;
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    updateClientFacility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The client facility's id */
+                clientFacilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    code?: string;
+                    /** @enum {string} */
+                    kind?: "hospital" | "clinic" | "health_centre" | "district_office" | "laboratory" | "other";
+                    address?: string | null;
+                    city?: string | null;
+                    province?: string | null;
+                    postalCode?: string | null;
+                    phone?: string | null;
+                    contactName?: string | null;
+                    contactEmail?: string | null;
+                    contactPhone?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The facility */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["ClientFacility"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    changeClientFacilityStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The client facility's id */
+                clientFacilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "active" | "inactive" | "ended";
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The facility and how many sessions were revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            facility: components["schemas"]["ClientFacility"];
+                            sessionsRevoked: number;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listClientFacilityUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The client facility's id */
+                clientFacilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bound users, by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["ClientFacilityUser"][];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     getMyClientFacility: {
         parameters: {
             query?: never;
@@ -17270,6 +17762,36 @@ export interface operations {
                         status: number;
                         message: string;
                         data: components["schemas"]["ClientFacilityMine"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listClientFacilityOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every facility of the tenant, short form */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["ClientFacilityOption"][];
                     };
                 };
             };
@@ -21802,6 +22324,8 @@ export interface operations {
                         message: string;
                         data: {
                             superAdmin: boolean;
+                            /** @description P21-09c: the caller is bound to a client facility — its permissions are capped by the bound menu ceiling and unmarked routes refuse it */
+                            facilityBound: boolean;
                             permissions: {
                                 [key: string]: "read" | "write";
                             };
@@ -22387,6 +22911,8 @@ export interface operations {
                         message: string;
                         data: {
                             superAdmin: boolean;
+                            /** @description P21-09c: the caller is bound to a client facility — its permissions are capped by the bound menu ceiling and unmarked routes refuse it */
+                            facilityBound: boolean;
                             permissions: {
                                 [key: string]: "read" | "write";
                             };

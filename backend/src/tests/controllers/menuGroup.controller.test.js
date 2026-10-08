@@ -40,6 +40,7 @@ jest.mock("../../services/effectivePermission.service", () => ({
   loadPermissionSources: jest.fn(async () => ({ superAdmin: false, matrix: {}, overrides: {} })),
   menuEntryVisible: jest.fn((_principal, _sources, slug) => mockVisible.has(slug)),
   effectivePermissionMap: jest.fn(() => ({})),
+  isBound: jest.fn(() => false), // P21-09c
 }));
 
 // Mock success and error responses
@@ -405,7 +406,7 @@ describe("MenuGroup Controller Tests", () => {
 
       expect(success).toHaveBeenCalledWith(
         res,
-        { superAdmin: false, permissions: {} },
+        { superAdmin: false, facilityBound: false, permissions: {} },
         null,
         "Effective permissions fetched successfully",
         200,

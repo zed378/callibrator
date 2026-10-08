@@ -17,7 +17,12 @@
  *     #getUserOverrideMatrix): `read` / `write`, or `none`, a revocation;
  *  3. `write` implies `read`; any verb but `read` (`approve`, `sign`,
  *     `generate`, `update`, …) needs `write` (normalizePermission);
- *  4. the super admin passes every menu gate (dynamicAccess "SUPER_ADMIN bypass").
+ *  4. the super admin passes every menu gate (dynamicAccess "SUPER_ADMIN bypass");
+ *  5. P21-09c (P18-03 § 5): a facility-BOUND principal (its loaded row's `clientFacilityId` is
+ *     set, AM-3) is capped by the bound menu ceiling (constants/facilityAccess
+ *     BOUND_MENU_CEILING): min(1 ⊕ 2, ceiling[role][slug]); a slug absent from its role's
+ *     ceiling is none — an override cannot lift a bound user above it. Unbound principals are
+ *     untouched.
  *
  * API-key principals are not handled here: their scopes are checked by
  * apiKey.service#scopeAllows and they have no menu.
@@ -27,6 +32,8 @@ import userPermissionService from "./userPermission.service";
 import { ROLE_LEVELS, ROLE_NAMES } from "../constants/roleConstants";
 import type { PageGate } from "../constants/menuPageAccess";
 import { MENU_PAGE_GATES } from "../constants/menuPageAccess";
+import { BOUND_MENU_CEILING } from "../constants/facilityAccess";
+import type { CeilingAccess } from "../constants/facilityAccess";
 import type { UserId } from "../types/ids";
 import { isSuperAdminRoleName } from "../utils/role.util";
 
@@ -43,6 +50,10 @@ export interface PermissionPrincipal {
     readonly roleLevel?: number | null;
     readonly role_level?: number | null;
   } | null;
+  /** The loaded user row's facility (AM-3): set ⇒ bound. Never from a request. */
+  readonly clientFacilityId?: string | null;
+  /** An API-key principal is never bound (FT-04). */
+  readonly isApiKey?: boolean | null;
 }
 
 /** A menu's effective access for a principal, or nothing. */
@@ -53,7 +64,17 @@ export interface PermissionSources {
   readonly superAdmin: boolean;
   readonly matrix: Readonly<Record<string, readonly (string | undefined)[]>>;
   readonly overrides: Readonly<Record<string, string>>;
+  /** P21-09c: the bound menu ceiling of a bound principal; absent (or null) for an unbound one. */
+  readonly ceiling?: Readonly<Record<string, CeilingAccess>> | null;
 }
+
+/** Whether the principal is facility-bound: its loaded row names a facility (AM-3); never an API key. */
+export const isBound = (principal: PermissionPrincipal | null | undefined): boolean =>
+  principal?.isApiKey !== true && typeof principal?.clientFacilityId === "string" && principal.clientFacilityId !== "";
+
+/** The ceiling of a bound principal's role — the empty ceiling for a role outside the bound set (fail closed). */
+const ceilingOf = (principal: PermissionPrincipal): Readonly<Record<string, CeilingAccess>> =>
+  (BOUND_MENU_CEILING as Readonly<Record<string, Readonly<Record<string, CeilingAccess>> | undefined>>)[principal.role?.name ?? ""] ?? {};
 
 /** Called when the per-user override lookup fails; the role grants are then used alone (as built). */
 export type OverrideErrorHandler = (error: Error) => void;
@@ -93,7 +114,25 @@ export const loadPermissionSources = async (
       }
     }
   }
-  return { superAdmin: false, matrix, overrides };
+  return { superAdmin: false, matrix, overrides, ceiling: isBound(principal) ? ceilingOf(principal) : null };
+};
+
+/**
+ * P21-09c — `held` capped by one ceiling cell: none ⇒ nothing; read ⇒ read when anything is held;
+ * write ⇒ unchanged (the ceiling never adds a grant).
+ *
+ * @param held - the permission types the role and override give
+ * @param cell - the ceiling cell, or undefined (none)
+ * @returns the capped permission types
+ */
+const capped = (held: (string | undefined)[], cell: CeilingAccess | undefined): (string | undefined)[] => {
+  if (cell === undefined) {
+    return [];
+  }
+  if (cell === "write") {
+    return held;
+  }
+  return held.some((p) => p === "read" || p === "write") ? ["read"] : [];
 };
 
 /**
@@ -101,11 +140,14 @@ export const loadPermissionSources = async (
  * role's, replaced by the user's override when there is one (`none` → none).
  */
 export const permissionsForMenu = (sources: PermissionSources, menuName: string): (string | undefined)[] => {
+  let held: (string | undefined)[];
   if (Object.prototype.hasOwnProperty.call(sources.overrides, menuName)) {
     const override = sources.overrides[menuName];
-    return override === "none" ? [] : [override];
+    held = override === "none" ? [] : [override];
+  } else {
+    held = [...(sources.matrix[menuName] ?? [])];
   }
-  return [...(sources.matrix[menuName] ?? [])];
+  return sources.ceiling ? capped(held, Object.hasOwn(sources.ceiling, menuName) ? sources.ceiling[menuName] : undefined) : held;
 };
 
 /** Whether `held` grants `permType` (`write` implies `read`). */

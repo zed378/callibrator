@@ -72,7 +72,12 @@ export const API_KEY_SCOPE_RESOURCES = [
   "access-requests",
   // P24-06: the SQL-dump import's menu (its routes are super admin only: a key holding it reaches nothing).
   "upstream-sql-import",
-  // A-311: gated by dynamicAccess, absent from MENU_SLUGS.
+  // P20-06 (spec P18-01-02 § 3.4, P18-03 § 12): read is assignable; IPM submit / correct / void
+  // carry denyApiKey, as every client-facility write does.
+  "ipm",
+  "ipm-templates",
+  "client-facilities",
+  // A-311: gated by dynamicAccess, absent from MENU_SLUGS (`calibration` joined MENU_SLUGS in P20-06).
   "calibration",
   "certificate",
   "maintenance",

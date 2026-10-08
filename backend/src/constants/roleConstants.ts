@@ -213,6 +213,16 @@ export const MENU_SLUGS = {
   // P24-06: the super admin's SQL-dump import (/dashboard/upstream-sql-import).
   // SUPERADMIN only; migration 0116.
   UPSTREAM_SQL_IMPORT: "upstream-sql-import",
+  // P20-06 (spec P18-01-02 § 4.1): the seeded slug of the device register
+  // (/dashboard/devices). The routes name it as the literal "calibration";
+  // the member exists so the UD-4 (b) rows below can name it.
+  CALIBRATION: "calibration",
+  // P20-06 (spec P18-03 § 7, P18-01-02 § 3.1; migration 0124): IPM sessions and
+  // the IPM checklists under Equipment, client facilities under
+  // Management › Organisation.
+  IPM: "ipm",
+  IPM_TEMPLATES: "ipm-templates",
+  CLIENT_FACILITIES: "client-facilities",
 } as const;
 
 /** A seeded menu-group slug. */
@@ -316,6 +326,9 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.ACCESS_REQUESTS]: PERMISSION_TYPES.WRITE, // migration 0101
       // P24-06: the upstream SQL-dump import is a platform operation.
       [MENU_SLUGS.UPSTREAM_SQL_IMPORT]: PERMISSION_TYPES.WRITE, // migration 0116
+      [MENU_SLUGS.IPM]: PERMISSION_TYPES.WRITE, // P20-06 (migration 0124)
+      [MENU_SLUGS.IPM_TEMPLATES]: PERMISSION_TYPES.WRITE, // P20-06 (migration 0124)
+      [MENU_SLUGS.CLIENT_FACILITIES]: PERMISSION_TYPES.WRITE, // P20-06 (migration 0124)
     },
     permissionType: "write",
   },
@@ -378,6 +391,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.API_KEYS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
       [MENU_SLUGS.WEBHOOKS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
       [MENU_SLUGS.ATTACHMENTS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.CLIENT_FACILITIES]: PERMISSION_TYPES.WRITE, // P20-06 (migration 0124)
     },
     permissionType: "write",
   },
@@ -424,6 +438,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.API_KEYS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
       [MENU_SLUGS.WEBHOOKS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
       [MENU_SLUGS.ATTACHMENTS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.CLIENT_FACILITIES]: PERMISSION_TYPES.WRITE, // P20-06 (migration 0124)
     },
     permissionType: "write",
   },
@@ -457,6 +472,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.TENANTS]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
       [MENU_SLUGS.TENANT_HIERARCHY]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
       [MENU_SLUGS.ATTACHMENTS]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
+      [MENU_SLUGS.CLIENT_FACILITIES]: PERMISSION_TYPES.READ, // P20-06 (migration 0124)
     },
     permissionType: "read",
   },
@@ -488,6 +504,8 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
+      [MENU_SLUGS.CALIBRATION]: PERMISSION_TYPES.WRITE, // UD-4 (b), working decision 2026-10-08 (migration 0124)
+      [MENU_SLUGS.IPM]: PERMISSION_TYPES.WRITE, // P20-06 (migration 0124)
       [MENU_SLUGS.KANBAN]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
@@ -504,6 +522,8 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
+      [MENU_SLUGS.CALIBRATION]: PERMISSION_TYPES.WRITE, // UD-4 (b), working decision 2026-10-08 (migration 0124)
+      [MENU_SLUGS.IPM]: PERMISSION_TYPES.WRITE, // P20-06 (migration 0124)
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
     },
@@ -518,6 +538,10 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
+      // P20-06: a self-served hospital's IPSRS captures IPM; a bound one is
+      // capped to read by the bound menu ceiling (P18-03 § 5). `calibration`
+      // is NOT widened for this role (UD-4 (b) names the technicians only).
+      [MENU_SLUGS.IPM]: PERMISSION_TYPES.WRITE, // P20-06 (migration 0124)
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
     },

@@ -157,6 +157,25 @@ export type ClientFacilityListQueryInput = z.output<typeof clientFacilityListQue
 /** `:clientFacilityId`. */
 export const clientFacilityIdParams = z.object({ clientFacilityId: uuid() });
 
+/**
+ * `PATCH /client-facilities/:clientFacilityId` as the route validates it — the path parameter and
+ * the body together (`validate(schema, { from: ["params", "body"] })`, the path-parameter trap):
+ * strict, at least one field besides the id. The body alone is `clientFacilityUpdate`.
+ */
+export const clientFacilityEdit = z
+  .strictObject({
+    clientFacilityId: uuid(),
+    name: facilityName.optional(),
+    code: facilityCode.optional(),
+    ...facilityDetails,
+  })
+  .refine((v) => Object.keys(v).some((k) => k !== "clientFacilityId"), { error: "Change at least one field" });
+export type ClientFacilityEditInput = z.output<typeof clientFacilityEdit>;
+
+/** `POST /client-facilities/:clientFacilityId/status` as the route validates it (params + body). */
+export const clientFacilityStatusRequest = clientFacilityStatusChange.extend({ clientFacilityId: uuid() });
+export type ClientFacilityStatusRequestInput = z.output<typeof clientFacilityStatusRequest>;
+
 // ==========================================
 // USER BINDING (§ 10.1)
 // ==========================================

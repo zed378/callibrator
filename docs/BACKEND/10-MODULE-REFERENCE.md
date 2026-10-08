@@ -1369,8 +1369,10 @@ Base: `/api/v1/calibration-records`, `/api/v1/calibration-scheduler`.
 
 | Method | Endpoint | Function |
 | --- | --- | --- |
-| GET/POST | `/calibration-records` | List / create record |
-| GET/PUT/DELETE | `/calibration-records/:id` | Detail / update / delete |
+| GET/POST | `/calibration-records` | List / create record (`calibration` read / write) |
+| GET | `/calibration-records/:calibrationRecordId` | Detail (no PUT, no DELETE since P6-03 — append-only, ADR-062) |
+| POST | `/calibration-records/:calibrationRecordId/corrections` | Correct: a new superseding record (`calibration` write) |
+| POST | `/calibration-records/:calibrationRecordId/void` | Void, final: `rbac([TENANT_ADMIN])` + `calibration` write, no API key (P20-06, ADR-124 Am. 5) |
 | GET | `/calibration-scheduler/due` | Preview due/overdue devices |
 | POST | `/calibration-scheduler/run` | Run scan → work orders + notifications |
 

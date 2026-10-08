@@ -81,6 +81,9 @@ interface MenuRequester {
   id?: string | null;
   roleId?: string | null;
   role?: ({ id?: string | null; name?: string | null; roleLevel?: number | null } & Record<string, unknown>) | null;
+  /** P21-09c: the loaded row's facility — set ⇒ bound, and the bound menu ceiling applies (P18-03 § 5). */
+  clientFacilityId?: string | null;
+  isApiKey?: boolean | null;
 }
 
 type AssignedMap = Record<string, boolean> | null;
@@ -361,7 +364,13 @@ const getRoleMenuAssignments = async (roleId: string, requester: MenuRequester |
   let principal: PermissionPrincipal;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-conversion -- as built: ids compared as strings (a numeric id from a caller compares equal)
   if (requester && requesterRoleId && String(requesterRoleId) === String(roleId)) {
-    principal = { id: requester.id, role: { ...requester.role, id: roleId } } as unknown as PermissionPrincipal;
+    // P21-09c: the requester's own menu carries its facility binding (the ceiling applies).
+    principal = {
+      id: requester.id,
+      role: { ...requester.role, id: roleId },
+      clientFacilityId: requester.clientFacilityId ?? null,
+      isApiKey: requester.isApiKey ?? null,
+    } as unknown as PermissionPrincipal;
   } else {
     const role = (await Role.findByPk(roleId, { attributes: ["id", "name", "roleLevel", "status"] })) as unknown as {
       id: string;
@@ -449,14 +458,25 @@ const getRoleMenuAssignments = async (roleId: string, requester: MenuRequester |
  */
 const getMyPermissions = async (
   requester: MenuRequester,
-): Promise<{ superAdmin: boolean; permissions: ReturnType<typeof EffectivePermissionModule.effectivePermissionMap> }> => {
+): Promise<{
+  superAdmin: boolean;
+  facilityBound: boolean;
+  permissions: ReturnType<typeof EffectivePermissionModule.effectivePermissionMap>;
+}> => {
   const effectivePermission = loadEffectivePermission();
-  const principal = { id: requester.id, role: requester.role } as unknown as PermissionPrincipal;
+  const principal = {
+    id: requester.id,
+    role: requester.role,
+    clientFacilityId: requester.clientFacilityId ?? null,
+    isApiKey: requester.isApiKey ?? null,
+  } as unknown as PermissionPrincipal;
   const sources = await effectivePermission.loadPermissionSources(principal);
   const menus = (await MenuGroup.findAll({ where: { isActive: true }, attributes: ["slug"] })) as unknown as { slug: string | null }[];
   const slugs = menus.map((m) => m.slug).filter(Boolean) as string[];
   return {
     superAdmin: sources.superAdmin,
+    // P21-09c (P18-03 § 13): the pages hide the actions a bound user's unmarked routes would refuse.
+    facilityBound: effectivePermission.isBound(principal),
     permissions: effectivePermission.effectivePermissionMap(sources, slugs),
   };
 };

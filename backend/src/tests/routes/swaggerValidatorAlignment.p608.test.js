@@ -194,7 +194,18 @@ const withoutPathParams = (schema, routePath) => {
     return schema;
   }
   const present = params.filter((p) => p in schema.shape);
-  return present.length ? schema.omit(Object.fromEntries(present.map((p) => [p, true]))) : schema;
+  if (!present.length) {
+    return schema;
+  }
+  // Zod 4 refuses `.omit()` on an object carrying a refinement (P21-09c's `clientFacilityEdit`:
+  // "at least one field"). The comparison reads fields and `required` only, so the same shape and
+  // catchall without the path parameters is the same body for it.
+  const refined = (schema.def.checks || []).length > 0;
+  if (!refined) {
+    return schema.omit(Object.fromEntries(present.map((p) => [p, true])));
+  }
+  const rest = Object.fromEntries(Object.entries(schema.shape).filter(([key]) => !present.includes(key)));
+  return schema.def.catchall ? z.object(rest).catchall(schema.def.catchall) : z.object(rest);
 };
 
 let divergences;

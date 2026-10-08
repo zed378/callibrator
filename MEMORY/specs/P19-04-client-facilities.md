@@ -503,6 +503,8 @@ Swept lists (the P18-03 Matrix D reads): A-1 devices, A-4 records, A-6 attachmen
 
 ### 13.1 Routes (`routes/api/clientFacilities.route.ts` + `.openapi.ts`; mounted `/api/v1/client-facilities`)
 
+> **As built (P21-09c, 2026-10-08, ADR-124 Am. 5 § 4):** every administration route below is mounted with the gates of this table; `PATCH` and `POST …/status` validate `clientFacilityEdit` / `clientFacilityStatusRequest` (the body plus the path parameter) from `["params", "body"]`; the `client-facilities` menu entry is seeded **inactive** until its page (P22). `GET /menu-groups/my-permissions` answers `facilityBound`; the bound menu ceiling is applied in `effectivePermission`.
+>
 > **As built (P21-09b, ADR-124 Am. 4 § 1, § 6):** `GET /mine` and `PUT /users/:userId/client-facility` are mounted; the administration routes wait for **P20-06** (the `client-facilities` and `ipm` slugs) and land in P21-09c — their service is `services/clientFacilityAdmin.service.ts`. The binding route's gate is `dynamicAccess("users", "update", { checkTenant })` (`update` normalises to write).
 
 | Method + path | Gate | Marked (bound) | Two-tenant | Notes |

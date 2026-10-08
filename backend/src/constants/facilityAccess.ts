@@ -31,6 +31,40 @@ export const FACILITY_BOUND_ROLES = Object.freeze([
 /** One role a facility-bound user may hold. */
 export type FacilityBoundRole = (typeof FACILITY_BOUND_ROLES)[number];
 
+/** A ceiling cell: the most a bound role may hold on a slug (absent = none). */
+export type CeilingAccess = "read" | "write";
+
+/**
+ * P21-09c — the bound menu ceiling (P18-03 § 5.2, Matrix B; ADR-124 Am. 1 § 1): for a BOUND
+ * principal the effective permission is min(role matrix ⊕ override, ceiling[role][slug]); a slug
+ * absent here is NONE, so a bound user never holds a provider-administration menu whatever its
+ * role or a per-user override says. Keyed by role NAME (the four of FACILITY_BOUND_ROLES; any
+ * other role name on a bound principal gets the empty ceiling — fail closed). Read by
+ * services/effectivePermission.ts only, so `dynamicAccess`, the sidebar and
+ * `GET /menu-groups/my-permissions` cannot disagree. The ceiling never ADDS a grant: bound
+ * `HEALTHCARE TECHNICIAN` `calibration` W is effective because UD-4 (b) (P20-06) grants it.
+ * Held to the seeded slugs and the marked routes by tests/services/effectivePermission.boundCeiling
+ * (G-P1) and tests/guards/boundCeilingRoutes.guard (G-P3).
+ */
+const SHARED_CEILING = {
+  home: "read",
+  dashboard: "read",
+  "profile-page": "write",
+  "change-password": "write",
+  equipment: "read",
+  certificate: "read",
+  maintenance: "read",
+  "ipm-templates": "read",
+  warehouse: "read",
+} as const satisfies Record<string, CeilingAccess>;
+
+export const BOUND_MENU_CEILING: Readonly<Record<FacilityBoundRole, Readonly<Record<string, CeilingAccess>>>> = Object.freeze({
+  [ROLE_NAMES.HEALTCARE_ADMIN]: Object.freeze({ ...SHARED_CEILING, calibration: "read", ipm: "read" }),
+  [ROLE_NAMES.HEALTHCARE_TECHNICIAN]: Object.freeze({ ...SHARED_CEILING, calibration: "write", ipm: "write", esignature: "write" }),
+  [ROLE_NAMES.FACILITY_MAINTENANCE]: Object.freeze({ ...SHARED_CEILING, calibration: "read", ipm: "read", esignature: "write" }),
+  [ROLE_NAMES.ROOM_USER]: Object.freeze({ ...SHARED_CEILING, calibration: "read", ipm: "read" }),
+});
+
 /** The two context-derived rule kinds (spec § 7.5). Any other kind does not compile. */
 export type FacilityReadableRule = "own-facility" | "own-user";
 
