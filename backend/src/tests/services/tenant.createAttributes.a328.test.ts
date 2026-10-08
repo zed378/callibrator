@@ -15,6 +15,15 @@
  *
  * REAL service, models and audit service on fixtures/memoryDb; Redis doubled.
  */
+
+// P20-07: tenant creation also makes the tenant's self client facility (services/clientFacility,
+// proven on memoryDb by clientFacility.service.p2007 and on PostgreSQL by clientFacilities.p2007.live).
+// A fixture here: this suite is about the tenant, so the facility is a stand-in.
+jest.mock("../../services/clientFacility.service", () => ({
+  SELF_FACILITY_CODE: "SELF",
+  selfFacilityName: (name: string): string => name,
+  createSelfFacility: jest.fn(() => Promise.resolve({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
+}));
 import type * as MemoryDbModule from "../fixtures/memoryDb";
 import type * as Service from "../../services/tenant.service";
 import type * as TenantContext from "../../middlewares/tenantContext.middleware";

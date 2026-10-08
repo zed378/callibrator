@@ -77,6 +77,12 @@ const webhookEvents = z.array(eventName);
 const proposedItems = z.array(object).max(100);
 
 /*
+ * P20-07 (ADR-124 Am. 2; P19-04 spec § 5.5): a device move's counts — children moved per table and
+ * attachments flagged for re-keying. Table-name keys, non-negative integer values; nothing else.
+ */
+const clientFacilityMoveCounts = z.record(z.string().regex(/^[a-z_]{1,63}$/), z.number().int().nonnegative());
+
+/*
  * The rsync image import (upstreamFileImport.service): counts only — never a
  * file name, a path or a person (the notification and the API answer the
  * same counts). Strict: an unexpected key is refused, so nothing else can be
@@ -258,6 +264,7 @@ const JSON_SHAPES: Readonly<Record<string, z.ZodType | undefined>> = Object.free
   "UpstreamFileImport.summary": upstreamImportSummary,
   "UpstreamSqlImport.tables": upstreamSqlImportTables,
   "UpstreamSqlImport.parseSummary": upstreamSqlImportParseSummary,
+  "ClientFacilityMove.counts": clientFacilityMoveCounts,
 });
 
 /**

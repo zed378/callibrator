@@ -238,7 +238,7 @@ describe("A-176 — PATCH /tenants/settings takes only tenant-admin keys", () =>
     // A-160: a level that is not a whole number makes the policy apply to everyone.
     ["a non-integer level", "true", "abc"],
   ])("the exact body the MFA policy panel (A-160) sends is accepted — %s", async (_n, required, level) => {
-    // frontend/src/app/dashboard/tenants/components/MfaPolicyPanel.tsx#save
+    // frontend/src/app/(app)/dashboard/tenants/components/MfaPolicyPanel.tsx#save
     const res = await patch({
       tenantId: TENANT,
       settings: { mfa_required: required, mfa_required_min_role_level: level },

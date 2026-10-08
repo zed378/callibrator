@@ -37,20 +37,27 @@ const doc = fs.readFileSync(path.join(frontend, "../docs/UI-UX/20-LANDING-AUTH-R
 
 /** The public page sources: every non-test file a public route renders. */
 const PUBLIC_SOURCE_ROOTS = [
-  "src/app/page.tsx",
-  "src/app/layout.tsx",
+  // P10-18 (ADR-131): the public routes live in the `(public)` route group (a
+  // folder, not a URL segment), with their own root layout, 404 and sheet.
+  "src/app/(public)/page.tsx",
+  "src/app/(public)/layout.tsx",
+  "src/app/(public)/error.tsx",
+  "src/app/(public)/not-found.tsx",
+  "src/app/global-not-found.tsx",
+  "src/app/rootDocument.tsx",
   "src/components/public",
-  "src/app/login",
-  "src/app/request-access",
-  "src/app/forgot-password",
-  "src/app/invitation",
-  "src/app/verify",
+  "src/app/(public)/login",
+  "src/app/(public)/request-access",
+  "src/app/(public)/forgot-password",
+  "src/app/(public)/invitation",
+  "src/app/(public)/verify",
   // P10-13: blog and news render on the public surface too (their chrome; the
   // posts themselves are authored content from the CMS, not source files).
-  "src/app/blog",
-  "src/app/news",
+  "src/app/(public)/blog",
+  "src/app/(public)/news",
   "src/components/blog",
   "src/app/public-surface.css",
+  "src/app/public.css",
 ];
 
 const walk = (p: string): string[] => {
@@ -81,7 +88,7 @@ const DICTS: Array<[string, Dict]> = [
 describe("P10-11: copy-truthfulness guard", () => {
   it("found the public sources it guards", () => {
     expect(sources.length).toBeGreaterThanOrEqual(20);
-    expect(sources.some((f) => f.endsWith(path.join("src", "app", "page.tsx")))).toBe(true);
+    expect(sources.some((f) => f.endsWith(path.join("src", "app", "(public)", "page.tsx")))).toBe(true);
   });
 
   it.each(DICTS)("the %s dictionary holds no banned term", (_locale, dict) => {

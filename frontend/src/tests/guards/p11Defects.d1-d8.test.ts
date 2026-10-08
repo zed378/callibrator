@@ -90,13 +90,13 @@ describe("P11 defects D1–D3, D7, D8: text on its own background, both themes (
   const cases: [string, string, RegExp, string][] = [
     [
       "D1 backup form inputs",
-      "app/dashboard/tenants/[tenantId]/backup/components/BackupCreateModal.tsx",
+      "app/(app)/dashboard/tenants/[tenantId]/backup/components/BackupCreateModal.tsx",
       /className="(w-full px-3 py-2 border[^"]*)"/,
       "card", // the dialog panel
     ],
     [
       "D2 SSO panel heading",
-      "app/dashboard/tenants/components/SsoSettingsPanel.tsx",
+      "app/(app)/dashboard/tenants/components/SsoSettingsPanel.tsx",
       /<h2 id=\{titleId\} className="([^"]*)"/,
       "background", // the panel is bg-background
     ],
@@ -130,7 +130,7 @@ describe("P11 defects D1–D3, D7, D8: text on its own background, both themes (
 
   it("D1: the backup inputs draw a 3:1 control boundary (border-input) on the card", () => {
     const classes = classesAt(
-      "app/dashboard/tenants/[tenantId]/backup/components/BackupCreateModal.tsx",
+      "app/(app)/dashboard/tenants/[tenantId]/backup/components/BackupCreateModal.tsx",
       /className="(w-full px-3 py-2 border[^"]*)"/,
     );
     expect(classes).toMatch(/\bborder-input\b/);

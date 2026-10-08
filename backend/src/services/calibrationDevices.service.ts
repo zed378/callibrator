@@ -132,8 +132,15 @@ const attachmentService = (): typeof AttachmentService => require("./attachment.
 // The index is per tenant, so a violation is always in the caller's own tenant:
 // answering it with a 409 discloses nothing about another tenant.
 
-/** The composite unique index created by migration 0026. */
-const SERIAL_UNIQUE_INDEX = "calibration_devices_tenant_id_serial_number_unique";
+/**
+ * The serial's unique index: per FACILITY since migration 0118 (UD-9, P20-07), which replaced
+ * 0026's per-tenant one — the same rows for a tenant with one facility. Both names are claimed,
+ * so a database not yet upgraded answers the same 409.
+ */
+const SERIAL_UNIQUE_INDEXES: readonly string[] = Object.freeze([
+  "calibration_devices_tenant_facility_serial_unique",
+  "calibration_devices_tenant_id_serial_number_unique",
+]);
 
 /**
  * An empty serial is "no serial". The validator allows "" (and trims "  " to
@@ -221,7 +228,7 @@ const isSerialUniqueViolation = (error: unknown): boolean => {
   const e = error as UniqueErrorLike;
   return (
     e.name === "SequelizeUniqueConstraintError" &&
-    (e.parent?.constraint === SERIAL_UNIQUE_INDEX ||
+    (SERIAL_UNIQUE_INDEXES.includes(e.parent?.constraint ?? "") ||
       // UniqueConstraintError always carries `fields` (`{}` when none were parsed)
       Object.hasOwn(e.fields, "serial_number"))
   );

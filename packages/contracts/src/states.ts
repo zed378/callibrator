@@ -130,3 +130,34 @@ export const UPSTREAM_SQL_IMPORT_STATUSES = Object.freeze([
   "cancelled",
 ] as const);
 export type UpstreamSqlImportStatus = (typeof UPSTREAM_SQL_IMPORT_STATUSES)[number];
+
+/**
+ * A client facility (ADR-124 § 2; P19-04 spec § 4.1): what kind of health facility a calibration
+ * company serves. The self facility of every tenant is `other`.
+ */
+export const CLIENT_FACILITY_KINDS = Object.freeze([
+  "hospital",
+  "clinic",
+  "health_centre",
+  "district_office",
+  "laboratory",
+  "other",
+] as const);
+export type ClientFacilityKind = (typeof CLIENT_FACILITY_KINDS)[number];
+
+/**
+ * A client facility's lifecycle (ADR-124 Am. 2; P19-04 spec § 4.4): `active` ⇄ `inactive`
+ * (bound users refused, provider staff work), either → `ended` (the client left: no new rows),
+ * `ended` → `active` only by a tenant administrator. A tenant's self facility is always `active`
+ * — held by the database (migration 0117's CHECK). Nothing is deleted by ending.
+ */
+export const CLIENT_FACILITY_STATUSES = Object.freeze(["active", "inactive", "ended"] as const);
+export type ClientFacilityStatus = (typeof CLIENT_FACILITY_STATUSES)[number];
+
+/**
+ * A device move between facilities (ADR-124 Am. 2 § 2; P19-04 spec § 5.5, § 11): written
+ * `in_progress` by the moving transaction and `completed` before it commits — the database
+ * refuses a commit that leaves it `in_progress` (migration 0117).
+ */
+export const CLIENT_FACILITY_MOVE_STATUSES = Object.freeze(["in_progress", "completed"] as const);
+export type ClientFacilityMoveStatus = (typeof CLIENT_FACILITY_MOVE_STATUSES)[number];

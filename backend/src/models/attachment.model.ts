@@ -20,7 +20,7 @@ import {
   ATTACHMENT_RESOURCE_TYPES,
   isAttachmentResourceType,
 } from "../constants/attachmentResources";
-import type { TenantId, UserId } from "../types/ids";
+import type { ClientFacilityId, TenantId, UserId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -34,6 +34,17 @@ interface Attachment extends Model<
   /** D-22: one of constants/attachmentResources (ignoring case), validated when written. A STRING column, so a legacy row may hold another value. */
   resourceType: CreationOptional<string>;
   resourceId: string | null;
+  /**
+   * P20-07 (ADR-124 Am. 2, AM-7): the facility of the record the file is linked to — set exactly
+   * when the attachment is LINKED (`resourceId`) to a facility-scoped type (device, record,
+   * certificate, work order), NULL otherwise (CHECK in migration 0123). Polymorphic, so no foreign
+   * key: two deferred constraint triggers hold it equal to its resource's at commit, both ways. The
+   * database fills it from the resource when it is omitted (Am. 3); the service stamps it from the
+   * resource loaded in context, never from a request (P21-09).
+   */
+  clientFacilityId: CreationOptional<ClientFacilityId | null>;
+  /** P20-07: the key's facility segment differs from the row's after a device move; a job re-keys (P21-09). */
+  rekeyPending: CreationOptional<boolean>;
   fileName: string;
   originalName: string;
   folder: CreationOptional<string>;
@@ -103,6 +114,17 @@ const defineModel: DefineAttachment = (db, DataTypes) => {
       resourceId: {
         type: DataTypes.UUID,
         allowNull: true,
+      },
+      // P20-07 (ADR-124 Am. 2, AM-7): the linked resource's facility, or NULL (0123's CHECK).
+      clientFacilityId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      // P20-07: set by a device move when the storage key names the old facility (spec § 9.4).
+      rekeyPending: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
       },
       // Stored filename on disk (opaque, randomized by multer).
       fileName: {

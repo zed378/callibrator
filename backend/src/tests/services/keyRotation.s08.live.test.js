@@ -73,6 +73,8 @@ const boot = (env) => {
   return graph;
 };
 
+const { LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+
 live("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
   const pems = {};
   const secrets = {};
@@ -191,7 +193,9 @@ live("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
       }
     }
     expect(await readAll(owner)).toEqual(secrets);
-  });
+    // db.sync({ force: true }) of every model: the whole suite takes 13-17 s on a quiet workstation, and
+    // this hook alone passed jest's 10 s default on a loaded host (2026-10-08 live-suites run).
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     await owner.db.close();

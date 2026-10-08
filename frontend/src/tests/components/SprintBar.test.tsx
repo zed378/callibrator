@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
-import SprintBar from "@/app/dashboard/kanban/[projectId]/components/SprintBar";
+import SprintBar from "@/app/(app)/dashboard/kanban/[projectId]/components/SprintBar";
 import { KanbanBoard } from "@/api/services/kanban.service";
 
 const board = (over: Partial<KanbanBoard> = {}): KanbanBoard =>

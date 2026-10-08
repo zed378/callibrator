@@ -134,6 +134,11 @@ const MIRRORS = Object.freeze({
       () => validator("certificate.validator").CERTIFICATE_TYPES,
     ],
   },
+  // P20-07 (ADR-124 Am. 2): the client facility's kind and lifecycle, and the move's — one list each in
+  // @callibrator/contracts/states.
+  "ClientFacility.kind": { constants: [() => states().CLIENT_FACILITY_KINDS] },
+  "ClientFacility.status": { constants: [() => states().CLIENT_FACILITY_STATUSES] },
+  "ClientFacilityMove.status": { constants: [() => states().CLIENT_FACILITY_MOVE_STATUSES] },
   "ConsentRecord.status": { none: NO_MIRROR },
   "CustomDomain.domainType": { validators: [["customDomains.validator", "type", "equal"]] },
   "CustomDomain.status": { none: "customDomains.service DOMAIN_STATUS (not loadable without the service's I/O); the live test holds the column to the model" },

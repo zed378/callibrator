@@ -170,6 +170,15 @@ const SYSTEM_ACTORS = Object.freeze({
    * actor of those transitions instead.
    */
   UPSTREAM_SQL_IMPORT: "system:upstream-sql-import",
+  /**
+   * P20-07 (ADR-124 Am. 2 § 4; P19-04 spec § 4.3) — migration 0117, which gives every tenant
+   * that exists when it runs (PLATFORM and soft-deleted tenants included) its self facility, and
+   * writes one CREATE row (`changes.operation` CREATE_SELF_FACILITY) per facility in that
+   * facility's own tenant. A tenant created later gets its self facility from
+   * services/clientFacility.service.ts#createSelfFacility, attributed to the creating user (or,
+   * for a seed with no user, to this actor).
+   */
+  CLIENT_FACILITY_BACKFILL: "system:client-facility-backfill",
 } as const);
 
 /** One system actor's name (`actor_name` of a `system` row). */

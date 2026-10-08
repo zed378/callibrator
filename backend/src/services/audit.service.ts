@@ -53,6 +53,12 @@ interface AuditEntry {
   action: AuditAction;
   resourceType: string;
   resourceId?: string | null | undefined;
+  /**
+   * P20-07 (ADR-124 Am. 2 § 5): the client facility the act happened in, stamped on
+   * `audit_logs.client_facility_id`. Given by the caller that knows it (the self facility's
+   * creation); resolving it from the resource when omitted is P21-09's (spec § 16).
+   */
+  clientFacilityId?: string | null | undefined;
   /** Never secrets: this table is permanent (D-27 redacts them). */
   changes?: Record<string, unknown> | null | undefined;
   ipAddress?: string | null | undefined;
@@ -190,6 +196,7 @@ const logAction = async (
     action,
     resourceType,
     resourceId = null,
+    clientFacilityId = null,
     changes = null,
     ipAddress = null,
     userAgent = null,
@@ -226,6 +233,8 @@ const logAction = async (
         // Only when there is one: the column defaults to NULL, and the
         // ordinary row keeps the exact shape it always had.
         ...(impersonator ? { impersonatorId: impersonator } : {}),
+        // P20-07: likewise only when there is one (no caller but the self facility's sets it yet).
+        ...(clientFacilityId ? { clientFacilityId } : {}),
         action,
         resourceType,
         resourceId,

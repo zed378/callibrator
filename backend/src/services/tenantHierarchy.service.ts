@@ -36,6 +36,7 @@ import { logger as loadedLogger } from "../middlewares/activityLog.middleware";
 import { AppError as LoadedAppError } from "../utils/appError.util";
 import { db as loadedDb } from "../config";
 import auditService from "./audit.service";
+import { createSelfFacility } from "./clientFacility.service";
 import { PLATFORM_TENANT_ID as LOADED_PLATFORM_TENANT_ID } from "../constants/platformTenant";
 import { env } from "../config/env";
 import type { TenantId } from "../types/ids";
@@ -242,6 +243,9 @@ const createSubOrganization = async (
         { transaction },
       );
 
+      // P20-07 (ADR-124 Am. 2 § 4): the child tenant's own client facility, audited in the child.
+      const selfFacility = await createSelfFacility(created, { userId: actor.userId }, { transaction });
+
       await auditService.logAction(
         {
           tenantId: PLATFORM_TENANT_ID,
@@ -253,6 +257,7 @@ const createSubOrganization = async (
             operation: "CREATE_SUB_ORGANIZATION",
             before: {},
             after: { name: data.name, code: childCode, subdomain, parentId: parentTenantId, path, depth },
+            selfFacilityId: selfFacility.id,
           },
           ipAddress: actor.ipAddress,
           userAgent: actor.userAgent,

@@ -8,6 +8,17 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-08 — The public pages get their own root layout and stylesheet (P10-18, ADR-131 built + Am. 1); three public forms load their API layer on demand (P10-19) ([record](./records/2026-10-08-p10-18-19-public-layout.md))
+- **Built:**
+  - `app/(public)` and `app/(app)` route groups, each with a root layout rendered through one `app/rootDocument.tsx` (nonce, `lang`, metadata, no providers). **No URL changed** (route table identical).
+  - The public pages load `app/public.css` (public tokens + Tailwind for the public sources only) instead of the dashboard's sheet: first-load CSS `/` 28.1 → 16.7 KB gzip, `/login` and the other public pages 23.3 → 12.0 KB.
+  - A public-styled 404 (`app/global-not-found.tsx`, `(public)/not-found.tsx`); per-group error boundaries, each one `<main>`/`<h1>`.
+  - `/request-access`, `/forgot-password`, `/invitation`: first-load JS 147.8 / 146.8 / 146.4 → 127.6 / 126.7 / 126.3 KB brotli; requests unchanged.
+  - `bundle-budget.mjs` reports CSS and enforces `cssGzipKB`; three JS ceilings lowered, none raised.
+- **Users notice:** signing in and out is now a full page load (two root layouts); the public pages look identical (pixel comparison: 0.00 %); the 404 is drawn in the public look.
+- **Not claimed:** simulated LCP did not move beyond noise (AC-5/AC-6 still not met under Lighthouse simulation; `/` FCP 1.97 → 1.82 s; real-browser `/login` LCP 1.54 → 1.22 s). The live E2E pair was not run.
+- **Found:** A-368 (pre-existing): the calibration records table overlaps its cells at 360 px once a record exists.
+
 ### 2026-10-08 — The backend-agnostic contract planned (ADR-136); the Go mobile phases restructured; mobile owner answers ([record](./records/2026-10-08-contract-first-and-mobile-restructure.md))
 - **Plan (target, not built):** one language-neutral contract in `contracts/` that every backend implements and every client is generated from, so the web and the mobile app never need a version per backend; a black-box conformance suite (a port or module is done only at 100%), run in CI for each backend; ports replace Node module by module behind a gateway on one database (`docs/CONTRACT/`). Phases 32 … 34, after Phase 31.
 - **Restructured:** one mobile plan (Phases 35 … 40); only the backend for mobile has a Go variant (Phase 1000). Phase 999 (Go) is now built module by module against the contract.

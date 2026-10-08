@@ -44,7 +44,7 @@
  * subject is the pair (models, migrations); the expectation is the reviewed
  * ALLOW list below, and a stale entry fails.
  */
-import { scanMigrationSource, scanMigrations, type Added } from "../fixtures/migrationScan";
+import { scanMigrationSource, scanMigrations, scanSharedModuleSource, type Added } from "../fixtures/migrationScan";
 import type * as SequelizeModule from "sequelize";
 import type * as ModelsModule from "../../models";
 
@@ -194,6 +194,36 @@ describe("AM-3 — no model index on a column a migration adds (db.sync() runs b
     // A `down` that re-adds a dropped column is not an addition (0044 restores iot_device_token).
     const token = scan.added.filter((a) => a.column === "iot_device_token");
     expect(token.map((a) => a.file)).not.toContain("0044-iot-device-token-hash.ts");
+  });
+
+  it("P20-07: sees the client-facility columns 0117 – 0123 add, though they share a helper module", () => {
+    const keys = new Set(scan.added.map((a) => `${a.table}.${a.column}`));
+    expect([...keys]).toEqual(
+      expect.arrayContaining([
+        "audit_logs.client_facility_id",
+        "calibration_devices.client_facility_id",
+        "calibration_records.client_facility_id",
+        "certificates.client_facility_id",
+        "maintenance_work_orders.client_facility_id",
+        "iot_readings.client_facility_id",
+        "attachments.client_facility_id",
+        "attachments.rekey_pending",
+        "non_conformances.client_facility_id",
+        "warehouses.client_facility_id",
+        "users.client_facility_id",
+        "users.facility_binding_pending",
+      ]),
+    );
+  });
+
+  it("P20-07: a shared migration module may not add a column or create an index (closed world) — comments aside", () => {
+    expect(scanSharedModuleSource("x.shared.ts", "/** ADD COLUMN in a comment */ export const f = 1;").unresolved).toEqual([]);
+    expect(scanSharedModuleSource("x.shared.ts", "const s = `ALTER TABLE ${t} ADD COLUMN c UUID`;").unresolved).toEqual([
+      "x.shared.ts: a shared migration module adds a column — write it in the migration's own up",
+    ]);
+    expect(scanSharedModuleSource("x.shared.ts", "const s = 'CREATE UNIQUE INDEX i ON t (c)';").unresolvedIndexes).toEqual([
+      "x.shared.ts: a shared migration module creates an index — write it in the migration's own up",
+    ]);
   });
 
   it("finds the models' sync() indexes (not vacuous)", () => {

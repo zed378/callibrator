@@ -20,7 +20,7 @@ import {
   type ReadingTolerance,
   type UncertaintyBudget,
 } from "../utils/jsonShape.util";
-import type { DeviceTypeId, TenantId } from "../types/ids";
+import type { ClientFacilityId, DeviceTypeId, TenantId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -60,6 +60,18 @@ interface CalibrationDevice extends Model<
    * device with no type must not vanish from a list (CLAUDE.md, the first trap).
    */
   deviceTypeId: CreationOptional<DeviceTypeId | null>;
+  /**
+   * P20-07 (ADR-124 Am. 2 and Am. 3): the client facility holding the device — the root of the
+   * evidence chain's second scope dimension. NOT NULL in the database (migration 0118), with the
+   * composite foreign key `(tenant_id, client_facility_id)` → client_facilities RESTRICT and the
+   * target `UNIQUE (tenant_id, client_facility_id, id)` its children reference. Optional on create:
+   * a device written without one gets the tenant's self facility from the database while the
+   * tenant has no other facility (0118's default trigger, Am. 3); with other facilities it must be
+   * named. Changed only by the audited move (`callibrator.facility_move`, P21-09) — every other
+   * UPDATE of the column is refused for every role. No `references` and no index here: both are
+   * composite and live in the migration (ADR-100 Am. 3).
+   */
+  clientFacilityId: CreationOptional<ClientFacilityId>;
   installationDate: Date | null;
   nextCalibrationDate: Date | null;
   calibrationIntervalDays: number | null;
@@ -82,6 +94,7 @@ interface CalibrationDevice extends Model<
   tenant?: NonAttribute<ModelInstance<"Tenant">>;
   warehouse?: NonAttribute<ModelInstance<"Warehouse">>;
   deviceType?: NonAttribute<ModelInstance<"DeviceType"> | null>;
+  clientFacility?: NonAttribute<ModelInstance<"ClientFacility"> | null>;
   calibrationRecords?: NonAttribute<ModelInstance<"CalibrationRecord">[]>;
 
   softDelete(): Promise<CalibrationDevice>;
@@ -158,6 +171,12 @@ const defineModel: DefineCalibrationDevice = (db, DataTypes) => {
         references: { model: "device_types", key: "id" },
         onDelete: "RESTRICT",
         onUpdate: "CASCADE",
+      },
+      // P20-07: NOT NULL in the database (0118); allowNull here because the database fills it on
+      // insert (Am. 3) — Sequelize's own notNull check would refuse a create that omits it.
+      clientFacilityId: {
+        type: DataTypes.UUID,
+        allowNull: true,
       },
       installationDate: {
         type: DataTypes.DATE,
@@ -321,6 +340,15 @@ const defineModel: DefineCalibrationDevice = (db, DataTypes) => {
       foreignKey: "deviceTypeId",
       as: "deviceType",
       onDelete: "RESTRICT",
+    });
+    // CalibrationDevice -> ClientFacility (P20-07, ADR-124): the facility holding the device. The
+    // key is COMPOSITE `(tenant_id, client_facility_id)` and lives in migration 0118, so the
+    // association declares no constraint (`constraints: false`: sync must not build a second,
+    // single-column one). ClientFacility has no defaultScope; an include still says `required: false`.
+    CalibrationDevice.belongsTo(models.ClientFacility, {
+      foreignKey: "clientFacilityId",
+      as: "clientFacility",
+      constraints: false,
     });
     // CalibrationDevice -> CalibrationRecord (hasMany)
     CalibrationDevice.hasMany(models.CalibrationRecord, {

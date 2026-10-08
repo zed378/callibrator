@@ -399,6 +399,33 @@ live("AM-3 — the current tree boots on a database the previous release built (
     expect(device).toEqual({ device_type_id: null });
   });
 
+  it("P20-07 (0117 – 0123): every tenant got its self facility; the old device, record and certificate are in it; the controls are ENABLE ALWAYS", async () => {
+    const facilities = await rows<{ tenant_id: string; code: string; is_self: boolean; n: number }>(
+      "SELECT tenant_id, code, is_self, count(*) OVER (PARTITION BY tenant_id)::int AS n FROM client_facilities ORDER BY tenant_id",
+    );
+    expect(facilities).toEqual([
+      { tenant_id: "00000000-0000-4000-8000-000000000001", code: "SELF", is_self: true, n: 1 },
+      { tenant_id: TENANT, code: "SELF", is_self: true, n: 1 },
+    ]);
+    const [own] = await rows<{ id: string }>("SELECT id FROM client_facilities WHERE tenant_id = :t", { t: TENANT });
+    for (const [table, rowId] of [["calibration_devices", DEVICE], ["calibration_records", RECORD], ["certificates", CERTIFICATE]] as const) {
+      const [row] = await rows<{ f: string }>(`SELECT client_facility_id AS f FROM ${table} WHERE id = :id`, { id: rowId });
+      expect([table, row?.f]).toEqual([table, own?.id]);
+    }
+    const [user] = await rows<{ f: string | null }>("SELECT client_facility_id AS f FROM users WHERE id = :id", { id: USER });
+    expect(user).toEqual({ f: null });
+    const triggers = await rows<{ e: string }>(
+      `SELECT t.tgenabled::text AS e FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+        WHERE NOT t.tgisinternal AND (t.tgname LIKE '%facilit%' OR c.relname LIKE 'client_facilit%')`,
+    );
+    expect(triggers).toHaveLength(31);
+    expect(triggers.filter((r) => r.e !== "A")).toEqual([]);
+    const [audit] = await rows<{ n: number }>(
+      "SELECT count(*)::int AS n FROM audit_logs WHERE resource_type = 'ClientFacility' AND actor_name = 'system:client-facility-backfill'",
+    );
+    expect(audit).toEqual({ n: 2 });
+  });
+
   it("a second boot on the upgraded database applies nothing and still passes the schema check", () => {
     expect(again.status).toBe(0);
     expect(again.result).toEqual({ applied: [], verify: "passed" });

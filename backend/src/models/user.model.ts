@@ -18,7 +18,7 @@ import {
 } from "sequelize";
 import { DEFAULT_UPLOAD_PLACEHOLDER } from "../constants/appConstants";
 import { envOr } from "../config/env";
-import type { TenantId, UserId } from "../types/ids";
+import type { ClientFacilityId, TenantId, UserId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -71,6 +71,17 @@ interface User extends Model<
   otpRequestCount: CreationOptional<number | null>;
   otpLastRequestedAt: Date | null;
   passwordChangedAt: Date | null;
+  /**
+   * P20-07 (ADR-124 § 4, Am. 2 § 6): set ⇔ the user is BOUND to that client facility of its tenant
+   * (sees that facility only — the hooks, P21-09); NULL = unbound (provider staff, a self-served
+   * hospital's users — every user that existed before migration 0123). Composite foreign key
+   * `(tenant_id, client_facility_id)` → client_facilities RESTRICT (0123). Changed only by the
+   * binding operation under `callibrator.facility_binding`; a bound row's role must be one of
+   * FACILITY_BOUND_ROLES — both held by 0123's triggers for every role and write path.
+   */
+  clientFacilityId: CreationOptional<ClientFacilityId | null>;
+  /** P20-07 (G-F6, AM-15): a JIT/SCIM user waiting for an administrator to bind it, or confirm it unbound. */
+  facilityBindingPending: CreationOptional<boolean>;
   isDeleted: CreationOptional<boolean>;
   createdAt: CreationOptional<Date>;
   updatedAt: CreationOptional<Date>;
@@ -83,6 +94,7 @@ interface User extends Model<
 
   role?: NonAttribute<ModelInstance<"Role">>;
   tenant?: NonAttribute<ModelInstance<"Tenant">>;
+  clientFacility?: NonAttribute<ModelInstance<"ClientFacility"> | null>;
   sessions?: NonAttribute<ModelInstance<"Session">[]>;
   requestedTransfers?: NonAttribute<ModelInstance<"StockTransfer">[]>;
   approvedTransfers?: NonAttribute<ModelInstance<"StockTransfer">[]>;
@@ -273,6 +285,16 @@ const defineModel: DefineUser = (db, DataTypes) => {
         type: DataTypes.DATE,
         allowNull: true,
       },
+      // P20-07 (ADR-124 Am. 2): the facility binding. Its composite key and triggers are 0123's.
+      clientFacilityId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      facilityBindingPending: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
       isDeleted: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
@@ -456,6 +478,14 @@ const defineModel: DefineUser = (db, DataTypes) => {
       foreignKey: "roleId",
       as: "role",
       onDelete: "SET NULL",
+    });
+    // User -> ClientFacility (P20-07, ADR-124 § 4): the facility a bound user is confined to. The
+    // key is COMPOSITE `(tenant_id, client_facility_id)` (migration 0123), so no single-column
+    // constraint here. ClientFacility has no defaultScope; an include says `required: false`.
+    User.belongsTo(models.ClientFacility, {
+      foreignKey: "clientFacilityId",
+      as: "clientFacility",
+      constraints: false,
     });
     // User -> Tenant
     User.belongsTo(models.Tenant, {

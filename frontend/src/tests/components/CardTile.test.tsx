@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
-import CardTile from "@/app/dashboard/kanban/[projectId]/components/CardTile";
+import CardTile from "@/app/(app)/dashboard/kanban/[projectId]/components/CardTile";
 import { KanbanCard } from "@/api/services/kanban.service";
 
 const card = (over: Partial<KanbanCard> = {}): KanbanCard =>

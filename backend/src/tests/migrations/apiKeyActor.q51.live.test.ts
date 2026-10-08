@@ -25,6 +25,7 @@
  *     DB_USER=postgres DB_PASS=... npm test -- src/tests/migrations/apiKeyActor.q51.live --coverage=false
  */
 import { env } from "../../config/env";
+import { SELF_FACILITIES_SQL } from "../fixtures/selfFacility";
 
 const live = env("Q51_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
@@ -184,6 +185,8 @@ live("Q-51 — migration 0105 on live PostgreSQL 18", () => {
        VALUES (:s, :t, :w, 'Fuse 5A', 10, 0, false, now(), now())`,
       { replacements: { s: STOCK, t: TENANT, w: WAREHOUSE_A } },
     );
+    // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+    await g.db.query(SELF_FACILITIES_SQL);
     await g.db.query(
       `INSERT INTO calibration_devices (id, tenant_id, name, serial_number, created_at, updated_at)
        VALUES (:d, :t, 'Infusion pump', 'SN-Q51', now(), now())`,

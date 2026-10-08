@@ -1,47 +1,57 @@
 {
-  "$comment": "P10-13 (ADR-098 Amendment 2, doc 20 §13 AC-7). First-load JavaScript per public route, compressed per file; checked by scripts/bundle-budget.mjs after `next build`. brotliKB is the AC-7 figure where doc 20 sets one ('/' ≤ 180, '/verify/*' ≤ 120); every other number is a regression ceiling set a few KB over the 2026-09-30 build. Raising a ceiling is a reviewed change with a record, never a way to make CI green.",
+  "$comment": "P10-13 (ADR-098 Amendment 2, doc 20 §13 AC-7). First-load JavaScript per public route, compressed per file; checked by scripts/bundle-budget.mjs after `next build`. brotliKB is the AC-7 figure where doc 20 sets one ('/' ≤ 180, '/verify/*' ≤ 120); every other number is a regression ceiling set a few KB over the 2026-09-30 build. Raising a ceiling is a reviewed change with a record, never a way to make CI green. P10-19 (2026-10-08): /request-access, /forgot-password and /invitation load their API layer on demand; their ceilings were lowered to the new build plus a few KB. P10-18 (ADR-131 decision 6, 2026-10-08): cssGzipKB is each public route's first-load CSS ceiling (every stylesheet its manifest lists, gzip), set a little over the first build on the public root layout's own sheet; before ADR-131 every public route loaded the dashboard's 22 KB-gzip sheet (/: 28.1 KB, the rest 23.3 KB).",
   "routes": {
     "/": {
       "brotliKB": 180,
       "gzipKB": 150,
-      "note": "AC-7: 180 KB"
+      "note": "AC-7: 180 KB",
+      "cssGzipKB": 18
     },
     "/verify/[certificateNumber]": {
       "brotliKB": 120,
       "gzipKB": 141,
-      "note": "AC-7: 120 KB (brotli; the framework alone is 127 KB gzip)"
+      "note": "AC-7: 120 KB (brotli; the framework alone is 127 KB gzip)",
+      "cssGzipKB": 13
     },
     "/login": {
       "brotliKB": 155,
-      "gzipKB": 179
+      "gzipKB": 179,
+      "cssGzipKB": 13
     },
     "/request-access": {
-      "brotliKB": 148,
-      "gzipKB": 171
+      "brotliKB": 131,
+      "gzipKB": 152,
+      "cssGzipKB": 13
     },
     "/forgot-password": {
-      "brotliKB": 148,
-      "gzipKB": 171
+      "brotliKB": 131,
+      "gzipKB": 152,
+      "cssGzipKB": 13
     },
     "/invitation": {
-      "brotliKB": 148,
-      "gzipKB": 171
+      "brotliKB": 131,
+      "gzipKB": 152,
+      "cssGzipKB": 13
     },
     "/blog": {
       "brotliKB": 124,
-      "gzipKB": 144
+      "gzipKB": 144,
+      "cssGzipKB": 13
     },
     "/blog/[slug]": {
       "brotliKB": 124,
-      "gzipKB": 144
+      "gzipKB": 144,
+      "cssGzipKB": 13
     },
     "/news": {
       "brotliKB": 124,
-      "gzipKB": 144
+      "gzipKB": 144,
+      "cssGzipKB": 13
     },
     "/news/[slug]": {
       "brotliKB": 124,
-      "gzipKB": 144
+      "gzipKB": 144,
+      "cssGzipKB": 13
     }
   }
 }

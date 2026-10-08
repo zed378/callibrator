@@ -60,7 +60,7 @@ const findings = (files: readonly string[]): string[] =>
 describe("Q-43 — the product name a user reads is \"Device Calibrator\"", () => {
   it("scanned the dashboard chrome and the rest of the app (a scan that finds nothing has not passed)", () => {
     const rel = FRONTEND_FILES.map((f) => path.relative(SRC, f).split(path.sep).join("/"));
-    expect(rel).toEqual(expect.arrayContaining(["components/layouts/Sidebar.tsx", "components/layouts/TopBar.tsx", "app/dashboard/layout.tsx"]));
+    expect(rel).toEqual(expect.arrayContaining(["components/layouts/Sidebar.tsx", "components/layouts/TopBar.tsx", "app/(app)/dashboard/layout.tsx"]));
     expect(FRONTEND_FILES.length).toBeGreaterThan(100);
   });
 

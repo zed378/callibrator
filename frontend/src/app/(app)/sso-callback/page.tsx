@@ -1,0 +1,165 @@
+"use client";
+
+import React, { useEffect, useRef, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAuthStore } from "@/stores/authStore";
+import { Shield, AlertCircle, ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { destinationAfterSignIn } from "@/app/(public)/login/hooks/destination";
+
+function SsoCallbackHandler() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { loginWithSSOCode, error: authError } = useAuthStore();
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"processing" | "success" | "error">(
+    "processing",
+  );
+
+  // A-60: the backend redirects here with a one-time `code`, never a token.
+  // It redeems once, so the exchange must run once — React's development
+  // double-invoke of effects would otherwise spend it and then report the
+  // second attempt's refusal.
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+
+    const processSso = async () => {
+      const code = searchParams.get("code");
+      // Single-use and short-lived, but it still has no business in history.
+      window.history.replaceState(null, "", window.location.pathname);
+      if (!code) {
+        setError("SSO Authentication failed: code query parameter is missing.");
+        setStatus("error");
+        return;
+      }
+
+      try {
+        await loginWithSSOCode(code);
+        setStatus("success");
+        // P10-04 (05 §5.1): the same routing as a password sign-in — a forced
+        // password change or MFA enrolment comes before the dashboard.
+        router.push(destinationAfterSignIn("/dashboard"));
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to process SSO login response.",
+        );
+        setStatus("error");
+      }
+    };
+
+    processSso();
+  }, [searchParams, loginWithSSOCode, router]);
+
+  const cardBg =
+    "bg-card border border-border backdrop-blur-xl shadow-xl";
+
+  return (
+    <main className="min-h-screen flex items-center justify-center relative bg-background overflow-hidden p-6">
+      <div
+        className={`relative z-10 w-full max-w-md p-8 rounded-3xl shadow-2xl text-center animate-scale-in ${cardBg}`}
+      >
+        {status === "processing" && (
+          <div className="flex flex-col items-center py-6">
+            <div className="relative mb-6">
+              <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20">
+                <Shield className="w-10 h-10 text-primary animate-pulse" />
+              </div>
+              <div className="absolute inset-0 bg-primary/20 rounded-full blur-lg -z-10" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-2">
+              SSO Authentication
+            </h1>
+            <p className="text-muted-foreground mb-6">
+              Verifying secure single sign-on response...
+            </p>
+            <div className="flex justify-center">
+              <svg
+                className="animate-spin h-8 w-8 text-primary"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            </div>
+          </div>
+        )}
+
+        {status === "success" && (
+          <div className="flex flex-col items-center py-6">
+            <div className="relative mb-6">
+              <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center border border-success/20">
+                <Shield className="w-10 h-10 text-success" />
+              </div>
+              <div className="absolute inset-0 bg-success/20 rounded-full blur-lg -z-10" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-2">
+              Success
+            </h1>
+            <p className="text-muted-foreground">
+              Successfully authenticated. Redirecting to dashboard...
+            </p>
+          </div>
+        )}
+
+        {status === "error" && (
+          <div className="flex flex-col items-center py-6">
+            <div className="relative mb-6">
+              <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center border border-destructive/20">
+                <AlertCircle className="w-10 h-10 text-destructive" />
+              </div>
+              <div className="absolute inset-0 bg-destructive/20 rounded-full blur-lg -z-10" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-2">
+              Authentication Error
+            </h1>
+            <p className="text-destructive text-sm mb-8 max-w-sm mx-auto">
+              {error || authError || "Unknown authentication error"}
+            </p>
+
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary-hover active:bg-primary-pressed text-primary-foreground font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-primary/20 hover:shadow-primary/30"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Login</span>
+            </Link>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
+export default function SsoCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-muted-foreground">
+            Loading SSO Callback...
+          </div>
+        </div>
+      }
+    >
+      <SsoCallbackHandler />
+    </Suspense>
+  );
+}

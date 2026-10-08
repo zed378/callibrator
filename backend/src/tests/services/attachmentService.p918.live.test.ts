@@ -17,6 +17,11 @@
  *  - a signed link downloads without a tenant, and stops working after the
  *    delete; the delete removes the file after the commit.
  *
+ * Since P8-01 (ADR-086 Am. 1) a new upload is an OBJECT in its tenant's storage
+ * (`attachments.storage_key`), not a path under uploads/: the suite reads and
+ * checks the stored bytes through that storage (`getTenantStorage`), and asserts
+ * a download carries the object and no legacy `absPath`.
+ *
  * OPT-IN — an EMPTY or already-built SCRATCH database (the name must contain
  * "scratch"); it leaves audit rows (append-only). Files it writes under
  * uploads/ are removed in afterAll.
@@ -28,6 +33,7 @@
 import fs from "fs";
 import path from "path";
 import { env } from "../../config/env";
+import { SELF_FACILITIES_SQL } from "../fixtures/selfFacility";
 
 const live = env("P918_ATT_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
@@ -49,16 +55,25 @@ interface LiveDb {
   transaction(): Promise<LiveTx>;
   close(): Promise<void>;
 }
+/** What a download answers: the stored object (P8-01), or a legacy path. */
+interface StoredDownload {
+  object?: { meta: Row; open(): Promise<unknown> };
+  absPath?: string;
+}
+interface ScopedStorage {
+  exists(key: string): Promise<boolean>;
+  delete(key: string): Promise<unknown>;
+}
 interface AttachmentService {
   createAttachment(tenantId: string, file: unknown, meta?: object): Promise<Row>;
   getAttachment(tenantId: string, id: string): Promise<Row>;
-  getDownload(tenantId: string, id: string): Promise<{ absPath: string }>;
+  getDownload(tenantId: string, id: string): Promise<StoredDownload>;
   deleteAttachment(tenantId: string, id: string, actor?: object): Promise<{ id: string }>;
   listOrphans(tenantId: string, query?: object): Promise<{ rows: Row[]; meta: Row }>;
   softDeleteForResource(tenantId: string, modelName: string, resourceId: string, options: object): Promise<string[]>;
   restoreForResource(tenantId: string, modelName: string, resourceId: string, options: object): Promise<string[]>;
   generateSignedUrl(tenantId: string, id: string, options?: object): Promise<{ token: string }>;
-  getSignedDownload(id: string, token: unknown): Promise<{ absPath: string }>;
+  getSignedDownload(id: string, token: unknown): Promise<StoredDownload>;
 }
 interface Graph {
   db: LiveDb;
@@ -68,6 +83,7 @@ interface Graph {
   tenantStorage: { run(context: object, fn: () => void): void };
   quarantinePath: (...parts: string[]) => string;
   attachments: AttachmentService;
+  storage: { getTenantStorage(tenantId: string): Promise<ScopedStorage> };
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph is loaded per "process" with jest.isolateModules; typed by the members used */
@@ -85,6 +101,7 @@ const startProcess = (): Graph => {
       tenantStorage: (require("../../middlewares/tenantContext.middleware") as { tenantStorage: Graph["tenantStorage"] }).tenantStorage,
       quarantinePath: (require("../../utils/upload.util") as { quarantinePath: Graph["quarantinePath"] }).quarantinePath,
       attachments: require("../../services/attachment.service") as AttachmentService,
+      storage: require("../../services/storage") as Graph["storage"],
     };
   });
   if (!graph) {
@@ -102,6 +119,31 @@ live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", ()
   let app: Graph;
   let userA = "";
   const written: string[] = [];
+  /** Objects this suite stored in tenant A's storage, removed in afterAll. */
+  const storedKeys: string[] = [];
+
+  /** The bytes of a download's stored object (a P8-01 upload has no legacy path). */
+  const contentOf = async (download: StoredDownload): Promise<string> => {
+    expect(download.absPath).toBeUndefined();
+    if (!download.object) {
+      throw new Error("the download carries no stored object");
+    }
+    const chunks: Buffer[] = [];
+    for await (const chunk of (await download.object.open()) as AsyncIterable<Buffer | string>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  };
+  /** The row's storage key (owner read). */
+  const keyOf = async (id: string): Promise<string> => {
+    const [row] = (await owner.db.query("SELECT storage_key FROM attachments WHERE id = :id", { replacements: { id } }))[0];
+    const key = row?.["storage_key"];
+    if (typeof key !== "string" || key === "") {
+      throw new Error(`attachment ${id} has no storage key`);
+    }
+    return key;
+  };
+  const storedInA = async (key: string): Promise<boolean> => (await app.storage.getTenantStorage(TENANT_A)).exists(key);
 
   const rows = async (sql: string, replacements: object = {}): Promise<Row[]> => (await owner.db.query(sql, { replacements }))[0];
 
@@ -143,6 +185,8 @@ live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", ()
       );
     }
     for (const [id, tenant, serial] of [[DEVICE_A, TENANT_A, "P918-A1"], [DEVICE_A2, TENANT_A, "P918-A2"], [DEVICE_B, TENANT_B, "P918-B1"]] as const) {
+      // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+      await owner.db.query(SELF_FACILITIES_SQL);
       await owner.db.query(
         `INSERT INTO calibration_devices (id, tenant_id, name, serial_number, status, is_deleted, created_at, updated_at)
          VALUES (:id, :t, :n, :s, 'active', false, now(), now()) ON CONFLICT (id) DO NOTHING`,
@@ -168,12 +212,16 @@ live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", ()
     for (const file of written) {
       fs.rmSync(file, { force: true });
     }
+    const scoped = await app.storage.getTenantStorage(TENANT_A);
+    for (const key of storedKeys) {
+      await scoped.delete(key);
+    }
     await app.db.close();
     await owner.db.close();
   });
 
   let attId = "";
-  let storedPath = "";
+  let storedKey = "";
 
   it("an upload in tenant A is moved out of quarantine, recorded and audited, linked to A's device", async () => {
     const file = quarantined("evidence.txt", "p918 evidence");
@@ -185,9 +233,10 @@ live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", ()
     attId = String(created["id"]);
     expect(created).toMatchObject({ tenantId: TENANT_A, resourceType: "device", resourceId: DEVICE_A, size: 13 });
     expect(fs.existsSync(inQuarantine)).toBe(false);
-    storedPath = (await inTenant(TENANT_A, () => app.attachments.getDownload(TENANT_A, attId))).absPath;
-    written.push(storedPath);
-    expect(fs.readFileSync(storedPath, "utf8")).toBe("p918 evidence");
+    storedKey = await keyOf(attId);
+    storedKeys.push(storedKey);
+    expect(storedKey.startsWith(`t/${TENANT_A}/`)).toBe(true);
+    expect(await contentOf(await inTenant(TENANT_A, () => app.attachments.getDownload(TENANT_A, attId)))).toBe("p918 evidence");
     const [audit] = await rows(
       "SELECT action::text AS action, user_id, ip_address, changes->>'checksum' AS checksum FROM audit_logs WHERE resource_id = :id",
       { id: attId },
@@ -209,7 +258,7 @@ live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", ()
       await expect404(inTenant(TENANT_B, () => app.attachments.getDownload(TENANT_B, id)));
       await expect404(inTenant(TENANT_B, () => app.attachments.deleteAttachment(TENANT_B, id, { userId: userA })));
     }
-    expect(fs.existsSync(storedPath)).toBe(true);
+    expect(await storedInA(storedKey)).toBe(true);
   });
 
   it("listOrphans (bound parameters) answers A's orphan to A and nothing to B, as the application role", async () => {
@@ -217,7 +266,7 @@ live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", ()
     const orphan = await inTenant(TENANT_A, () =>
       app.attachments.createAttachment(TENANT_A, file, { resourceType: "device", resourceId: DEVICE_A2, uploadedBy: userA }),
     );
-    written.push((await inTenant(TENANT_A, () => app.attachments.getDownload(TENANT_A, String(orphan["id"])))).absPath);
+    storedKeys.push(await keyOf(String(orphan["id"])));
     await owner.db.query("UPDATE calibration_devices SET is_deleted = true WHERE id = :id", { replacements: { id: DEVICE_A2 } });
 
     const forA = await inTenant(TENANT_A, () => app.attachments.listOrphans(TENANT_A, { page: 1, limit: 10 }));
@@ -251,11 +300,11 @@ live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", ()
 
   it("a signed link downloads without a tenant; the delete removes the row's access and, after the commit, the file", async () => {
     const { token } = await inTenant(TENANT_A, () => app.attachments.generateSignedUrl(TENANT_A, attId, { expiresInSec: 60, issuer: { userId: userA } }));
-    expect((await app.attachments.getSignedDownload(attId, token)).absPath).toBe(storedPath);
+    expect(await contentOf(await app.attachments.getSignedDownload(attId, token))).toBe("p918 evidence");
     await expect(app.attachments.getSignedDownload(attId, `${token}0`)).rejects.toMatchObject({ status: 403 });
 
     await inTenant(TENANT_A, () => app.attachments.deleteAttachment(TENANT_A, attId, { userId: userA }));
-    expect(fs.existsSync(storedPath)).toBe(false);
+    expect(await storedInA(storedKey)).toBe(false);
     await expect404(inTenant(TENANT_A, () => app.attachments.getAttachment(TENANT_A, attId)));
     await expect(app.attachments.getSignedDownload(attId, token)).rejects.toMatchObject({ status: 404 });
     const [row] = await rows("SELECT is_deleted FROM attachments WHERE id = :id", { id: attId });

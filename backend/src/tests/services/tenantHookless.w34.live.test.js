@@ -7,8 +7,11 @@
  * proves what PostgreSQL does with it: tenant A's calls see and change only
  * A's rows, with NO tenant in their own `where`.
  *
- * OPT-IN — needs a database built by db.sync() of the current models plus
- * every migration (migrator.up()):
+ * OPT-IN — the suite builds its database the way the backend boots
+ * (fixtures/liveBoot#bootSchema: db.sync() of the current models plus every
+ * migration) before it switches role; on a built database that applies
+ * nothing. (It used to ASSUME a built database: on a fresh one every case
+ * failed in beforeAll with no message — 2026-10-08, the live-suites repair.)
  *
  *   W34_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/tenantHookless.w34.live --coverage=false
@@ -20,7 +23,7 @@
  * on the role the application uses. The rows it writes carry no audit row, so
  * the cleanup DELETEs are ones the role may make.
  */
-const { enterAppRole, APP_ROLE } = require("../fixtures/liveBoot");
+const { bootSchema, enterAppRole, APP_ROLE } = require("../fixtures/liveBoot");
 
 const live = process.env.W34_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -70,6 +73,7 @@ live("W-34 — hookless statics on live PostgreSQL", () => {
     db.options.logging = false;
     ({ Stock } = require("../../models"));
     ({ runForTenant } = require("../../utils/jobContext.util"));
+    await bootSchema(db, require("../../config/migrator").migrator);
     await enterAppRole(db);
     await cleanup();
     for (const [id, sub] of [

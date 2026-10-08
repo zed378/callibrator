@@ -47,8 +47,9 @@ describe("D-27 — every JSON column is declared", () => {
   // InspectionTemplateProposal.proposedItems.
   // The rsync image import adds three, counts only: UpstreamFileImport.estimate, .progress, .summary.
   // The SQL-dump import (P24-06) adds two, counts and codes only: UpstreamSqlImport.tables, .parseSummary.
-  it("finds the twenty-two JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's two)", () => {
-    expect(jsonAttributes()).toHaveLength(22);
+  // P20-07 (ADR-124 Am. 2) adds one, counts only: ClientFacilityMove.counts.
+  it("finds the twenty-three JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's two, P20-07's move counts)", () => {
+    expect(jsonAttributes()).toHaveLength(23);
   });
 
   it("each JSON attribute validates against its OWN declared shape", () => {
@@ -140,6 +141,12 @@ const GOOD = {
     null,
     { statements: { create_table: 2, insert: 5, set: 3 }, comments: 9, conditionalComments: 4, delimiterRegions: 0, truncated: false, completionMarker: true },
   ],
+  // P20-07: a device move's counts per table (and attachments flagged); null while in progress.
+  "ClientFacilityMove.counts": [
+    null,
+    {},
+    { calibration_records: 3, certificates: 1, iot_readings: 0, attachments_rekey: 2 },
+  ],
 };
 
 const BAD = {
@@ -205,6 +212,13 @@ const BAD = {
   "UpstreamSqlImport.parseSummary": [
     { comments: 1 },
     { statements: {}, comments: 0, conditionalComments: 0, delimiterRegions: 0, truncated: false, completionMarker: false, firstRow: "x" },
+  ],
+  // P20-07: a negative or fractional count, a name that is not a table identifier, a value smuggled in.
+  "ClientFacilityMove.counts": [
+    { calibration_records: -1 },
+    { calibration_records: 1.5 },
+    { "Synthetic Name": 1 },
+    { certificates: "x" },
   ],
 };
 

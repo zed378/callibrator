@@ -15,7 +15,7 @@ import {
   type NcSeverity,
   type NcStatus,
 } from "../constants/qmsConstants";
-import type { TenantId, UserId } from "../types/ids";
+import type { ClientFacilityId, TenantId, UserId } from "../types/ids";
 import type { ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -33,6 +33,14 @@ interface NonConformance extends Model<
   severity: CreationOptional<NcSeverity>;
   reportedBy: UserId;
   deviceId: string | null;
+
+  /**
+   * P20-07 (ADR-124 Am. 2): the device's client facility, or NULL exactly when the NC concerns no
+   * device (CHECK in migration 0123). The composite key `(tenant_id, client_facility_id, device_id)`
+   * → calibration_devices cascades a device move; the database fills it from the device when it is
+   * omitted, and clears it when the device link is cleared (ADR-124 Am. 3).
+   */
+  clientFacilityId: CreationOptional<ClientFacilityId | null>;
   dateIdentified: Date;
   rootCause: string | null;
   createdAt: CreationOptional<Date>;
@@ -129,6 +137,12 @@ const defineModel: DefineNonConformance = (sequelize, DataTypes) => {
       deviceId: {
         type: DataTypes.UUID,
         field: "device_id",
+        allowNull: true,
+      },
+      // P20-07: nullable — NULL exactly when deviceId is (0123's CHECK); filled by the database.
+      clientFacilityId: {
+        type: DataTypes.UUID,
+        field: "client_facility_id",
         allowNull: true,
       },
       dateIdentified: {

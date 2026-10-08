@@ -27,6 +27,7 @@
 
 const { enterAppRole, grantAppRoleOnSyncedSchema, APP_ROLE } = require("../fixtures/liveBoot");
 const { LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
 const live = process.env.Q84_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -105,6 +106,8 @@ live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => 
       { replacements: { a: TENANT_A, b: TENANT_B } },
     );
     const device = async (tenantId, name, status) => {
+      // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+      await g.db.query(SELF_FACILITIES_SQL);
       const [[row]] = await g.db.query(
         `INSERT INTO calibration_devices (id, tenant_id, name, status, iot_enabled, is_deleted,
                                           calibration_interval_days, created_at, updated_at)

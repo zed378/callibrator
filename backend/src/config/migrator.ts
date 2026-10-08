@@ -189,6 +189,20 @@ const migrationModules: [string, MigrationModule][] = [
   ["0115-upstream-import-menu.js", require("../migrations/0115-upstream-import-menu")],
   // P24-06: the upstream-sql-import menu entry and its SUPERADMIN grant (as 0101, 0115).
   ["0116-upstream-sql-import-menu.js", require("../migrations/0116-upstream-sql-import-menu")],
+  // P20-07 (ADR-124 Am. 2, Am. 3): client facilities — M1 the table, the move log, the trigger functions and one self facility per tenant.
+  ["0117-client-facilities.js", require("../migrations/0117-client-facilities")],
+  // P20-07 M2: calibration_devices.client_facility_id (back-filled to the self facility, NOT NULL, composite keys) and the serial per facility (UD-9).
+  ["0118-facility-devices.js", require("../migrations/0118-facility-devices")],
+  // P20-07 M3: calibration_records.client_facility_id from the device; 0057's function admits a device move.
+  ["0119-facility-calibration-records.js", require("../migrations/0119-facility-calibration-records")],
+  // P20-07 M4: certificates.client_facility_id; the device key cascades, the record key is deferred.
+  ["0120-facility-certificates.js", require("../migrations/0120-facility-certificates")],
+  // P20-07 M5: maintenance_work_orders.client_facility_id.
+  ["0121-facility-work-orders.js", require("../migrations/0121-facility-work-orders")],
+  // P20-07 M6: iot_readings.client_facility_id (the largest table, alone).
+  ["0122-facility-iot-readings.js", require("../migrations/0122-facility-iot-readings")],
+  // P20-07 M7: attachments (AM-7 deferred triggers), non_conformances, warehouses, users (binding and bound-role triggers).
+  ["0123-facility-nullable.js", require("../migrations/0123-facility-nullable")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

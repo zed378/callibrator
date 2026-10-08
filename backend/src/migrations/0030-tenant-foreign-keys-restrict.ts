@@ -22,7 +22,9 @@
  *
  * WHAT THIS DOES
  *
- * 1. Every single-column foreign key to `tenants` (except `tenants.parent_id`)
+ * 1. Every single-column foreign key to `tenants` on a tenant-OWNER column
+ *    (`tenant_id`, `tenantId`; A-366 — not `tenants.parent_id`, and not a column
+ *    that only references a tenant, such as `access_requests.provisioned_tenant_id`)
  *    becomes `ON DELETE RESTRICT ON UPDATE CASCADE`, except the tables on
  *    TENANT_FK_CASCADE — derived, ephemeral or pure-integration data that has
  *    no meaning without its tenant and no regulatory retention — which keep
@@ -161,6 +163,18 @@ const TENANT_FK_CASCADE = Object.freeze([
 const TENANT_NULLABLE = Object.freeze(["users", "sessions", "data_retention_policies"]);
 
 /**
+ * A-366: the columns that say which tenant OWNS a row — `tenant_id`, and UsageMetrics' camel-case
+ * `tenantId`. Only these are this migration's. A column that merely REFERENCES a tenant is not:
+ * `access_requests.provisioned_tenant_id` (0099: SET NULL, NULL while a request is pending) and
+ * `upstream_file_imports.target_tenant_id` (0113: CASCADE) are added after 0030 has run, so only a
+ * re-run sees them — the restore without `schema_migrations` that D-09 proves. Before A-366 that
+ * re-run made the first NOT NULL (refusing the boot over a pending request, or breaking every new
+ * one) and both RESTRICT. Every tenant reference that existed when 0030 first ran was one of these
+ * two names (or `tenants.parent_id`, excluded by the query), so a first run is unchanged.
+ */
+const TENANT_OWNER_COLUMNS = Object.freeze(["tenant_id", "tenantId"]);
+
+/**
  * User foreign keys on regulated records that become ON DELETE RESTRICT.
  * `notNull` mirrors the model attribute's allowNull: false.
  *
@@ -242,6 +256,9 @@ const planTargets = (fks: ForeignKeyRow[]): Target[] => {
   for (const [key, existing] of byColumn as Map<string, [ForeignKeyRow, ...ForeignKeyRow[]]>) {
     const { table_name: table, column_name: column, ref_table: ref } = existing[0];
     if (ref === TENANTS) {
+      if (!TENANT_OWNER_COLUMNS.includes(column)) {
+        continue; // A-366: a reference to a tenant, not the row's owner
+      }
       targets.push({
         key,
         table,
@@ -360,6 +377,7 @@ const fkName = (table: string, column: string): string => `${table}_${column}_fk
 export = {
   TENANT_FK_CASCADE,
   TENANT_NULLABLE,
+  TENANT_OWNER_COLUMNS,
   USER_FK_RESTRICT,
   STATE_TABLE,
   tenantAction,

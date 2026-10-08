@@ -72,6 +72,8 @@ import defineInspectionTemplateItem from "./inspectionTemplateItem.model";
 import defineInspectionTemplateProposal from "./inspectionTemplateProposal.model";
 import defineUpstreamFileImport from "./upstreamFileImport.model";
 import defineUpstreamSqlImport from "./upstreamSqlImport.model";
+import defineClientFacility from "./clientFacility.model";
+import defineClientFacilityMove from "./clientFacilityMove.model";
 import defineApiKey from "./apiKey.model";
 import defineAssetFinance from "./assetFinance.model";
 import defineAttachment from "./attachment.model";
@@ -249,6 +251,8 @@ const models: Models = {
   UpstreamFileImport: define(defineUpstreamFileImport),
   // The SQL-dump import (P24-06): a platform row, not tenant-scoped — last, for the same reason.
   UpstreamSqlImport: define(defineUpstreamSqlImport),
+  ClientFacility: define(defineClientFacility),
+  ClientFacilityMove: define(defineClientFacilityMove),
 };
 
 // Association Mapping: Iterate models, execute associate method if exists.
@@ -472,6 +476,12 @@ const barrel = Object.assign(database, {
   // The SQL-dump import: a platform row (notifyTenantId, not tenantId — the hooks leave it alone).
   UpstreamSqlImport: models.UpstreamSqlImport,
   UpstreamSqlImports: models.UpstreamSqlImport,
+  // P20-07 (ADR-124 Am. 2): the client facilities inside a tenant (tenant-scoped; the facility
+  // itself, so no clientFacilityId) and the device-move log (tenant-scoped, provider-internal).
+  ClientFacility: models.ClientFacility,
+  ClientFacilities: models.ClientFacility,
+  ClientFacilityMove: models.ClientFacilityMove,
+  ClientFacilityMoves: models.ClientFacilityMove,
 });
 
 // A pure `export =` module, like every model file: no other export may sit beside it (a

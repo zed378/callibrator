@@ -73,6 +73,7 @@ describe("A-124 — system actors", () => {
       "system:storage-migration", // P8-01 (ADR-086 Am. 1): a row's bytes moved into storage by the operator's CLI
       "system:catalogue-seed", // P20-03 (ADR-125 Am. 1): migration 0112 publishes the base checklist, version 1
       "system:upstream-sql-import", // P24-06: the SQL-dump import's worker, reconciliation and file purge
+      "system:client-facility-backfill", // P20-07 (ADR-124 Am. 2): migration 0117's self facility per tenant, and seeds with no user
     ]);
     for (const name of SYSTEM_ACTOR_NAMES) {
       expect(name).toMatch(/^system:[a-z][a-z-]*$/);

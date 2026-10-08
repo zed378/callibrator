@@ -429,6 +429,73 @@ jobs:
         run: tail -n 300 boot.log boot2.log 2>/dev/null || true
 
   # --------------------------------------------------------------------------
+  # Every live database suite (`*.live.test.*`) against a real PostgreSQL 18 and
+  # a real MQTT broker (A-367). The unit job skips them (each is opt-in and needs
+  # a database), so until this job four of them had been failing unnoticed, one
+  # for every case (MEMORY/records/2026-10-08-live-suites-repair.md).
+  # `npm run test:live` creates a fresh database per suite, runs it as its header
+  # says, and drops it; liveSuites.a367.guard (in backend-test) fails a new live
+  # suite that is in neither of its lists. The suites that need RabbitMQ, Redis,
+  # S3 or an older revision's checkout stay by hand (scripts/live-suites.ts).
+  live-db:
+    name: live database suites (PostgreSQL 18 + MQTT)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        # The deployment's image, digest-pinned in deploy/compose (P7-07).
+        image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: callibrator
+          POSTGRES_PASSWORD: ci-postgres-not-a-secret
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U callibrator -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_USER: callibrator
+      DB_PASS: ci-postgres-not-a-secret
+      DB_DIALECT: postgres
+      DB_SSL: "false"
+      MQTT_LIVE_HOST: localhost
+      MQTT_LIVE_PORT: "1883"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Test environment (template + random secrets)
+        run: |
+          set -euo pipefail
+          cp backend/.env.example backend/.env
+          for k in CERT_SIGNING_SECRET ENCRYPT_KEY ATTACHMENT_URL_SECRET KMS_MASTER_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET ACCESS_REQUEST_IP_PEPPER; do
+            v="$(openssl rand -hex 32)"
+            echo "::add-mask::$v"
+            echo "$k=$v" >> "$GITHUB_ENV"
+          done
+      # A step, not a service: Mosquitto 2 listens on localhost only unless given a
+      # configuration, and a service container cannot be given a command.
+      - name: MQTT broker (Mosquitto 2, anonymous, digest-pinned)
+        run: |
+          set -euo pipefail
+          docker run -d --name mqtt -p 1883:1883 \
+            eclipse-mosquitto@sha256:38c0da4f2ef84284d47b3b3eeea1cb3bdeabe81ee10caf0cd5c5ff61ee3ea408 \
+            mosquitto -c /mosquitto-no-auth.conf
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/1883) 2>/dev/null; then echo "broker up after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          docker logs mqtt; exit 1
+      - name: npm run test:live
+        working-directory: backend
+        run: npm run test:live -- --with=mqtt
+
+  # --------------------------------------------------------------------------
   deploy-config:
     name: deploy config (helm render + schema · compose config)
     runs-on: ubuntu-24.04

@@ -1,3 +1,4 @@
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 /**
  * Phase 6 data-integrity controls against a REAL PostgreSQL — P6-03, P6-05,
  * P6-06 (and the migrations that carry them).
@@ -44,12 +45,15 @@ const startProcess = () => {
       tenantStorage: require("../../middlewares/tenantContext.middleware").tenantStorage,
       dbRole: require("../../utils/dbRole.util"),
       schemaVerify: require("../../utils/schemaVerify.util"),
+      m0003: require("../../migrations/0003-add-search-vectors"),
       m0026: require("../../migrations/0026-calibration-device-serial-per-tenant"),
+      m0034: require("../../migrations/0034-platform-tenant"),
       m0057: require("../../migrations/0057-calibration-records-append-only"),
       m0059: require("../../migrations/0059-stock-adjustment-reason-and-item"),
       m0063: require("../../migrations/0063-user-identity-case-insensitive"),
       m0089: require("../../migrations/0089-calibration-device-retired-terminal"),
       m0091: require("../../migrations/0091-audit-logs-append-only"),
+      m0118: require("../../migrations/0118-facility-devices"),
       migrator: require("../../config/migrator").migrator,
       stockService: require("../../services/stock.service"),
     };
@@ -105,7 +109,14 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
     g = startProcess();
     await g.db.sync({ force: true });
     const qi = g.db.getQueryInterface();
+    // 0003's generated search_vector columns: no model declares them, so sync() never makes them,
+    // and 0110 (ADR-120) indexes them. The boot runs 0003 first; this suite records it as executed
+    // below (LAST_HAND_PICKED), so it must run it, or 0110 fails on a column the boot always has.
+    await g.m0003.up({ context: qi });
     await g.m0026.up({ context: qi });
+    // 0034's PLATFORM tenant: 0112 (P20-03) writes its base checklist's audit row under it, and
+    // refuses without it. Like 0003, the boot always has it; this suite records 0034 as executed.
+    await g.m0034.up({ context: qi });
     // As migration 0012 left five tables (A-242): RLS on and forced, no policy.
     for (const t of ["categories", "posts", "post_categories", "workflow_steps", "workflow_actions"]) {
       await g.db.query(`ALTER TABLE ${t} ENABLE ROW LEVEL SECURITY`);
@@ -137,6 +148,8 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
       return row.id;
     };
     const device = async (tenantId, serial) => {
+      // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+      await g.db.query(SELF_FACILITIES_SQL);
       const [[row]] = await g.db.query(
         `INSERT INTO calibration_devices (id, tenant_id, name, serial_number, iot_enabled, is_deleted,
                                           calibration_interval_days, created_at, updated_at)
@@ -586,8 +599,12 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
   // ------------------------------------------------------------------
   // P6-06 — serial numbers per tenant
   // ------------------------------------------------------------------
-  describe("P6-06 — UNIQUE (tenant_id, serial_number)", () => {
-    it("two tenants hold the same serial (seeded above); one tenant cannot hold it twice", async () => {
+  // P20-07 (UD-9, migration 0118) replaced 0026's (tenant_id, serial_number) index with
+  // (tenant_id, client_facility_id, serial_number). Every device here is in its tenant's one (self)
+  // facility, so the P6-06 guarantee — no duplicate within a tenant's inventory — is asserted
+  // against the index that carries it now.
+  describe("P6-06 — UNIQUE (tenant_id, client_facility_id, serial_number)", () => {
+    it("two tenants hold the same serial (seeded above); one tenant's facility cannot hold it twice", async () => {
       const [rows] = await g.db.query(
         "SELECT tenant_id FROM calibration_devices WHERE serial_number = 'SN-SHARED-1' ORDER BY tenant_id",
       );
@@ -601,7 +618,7 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
           { t: TENANT_A },
         );
         expect(err.original.code).toBe("23505"); // unique_violation
-        expect(err.original.constraint).toBe("calibration_devices_tenant_id_serial_number_unique");
+        expect(err.original.constraint).toBe(g.m0118.SERIAL_UNIQUE);
       });
     });
 
@@ -609,9 +626,16 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
       const [[index]] = await g.db.query(
         `SELECT pg_get_indexdef(ix.indexrelid) AS def, ix.indpred IS NULL AS whole_table
            FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid
-          WHERE i.relname = 'calibration_devices_tenant_id_serial_number_unique'`,
+          WHERE i.relname = :name`,
+        { replacements: { name: g.m0118.SERIAL_UNIQUE } },
       );
       expect(index.whole_table).toBe(true);
+      expect(index.def).toMatch(/UNIQUE INDEX .* \(tenant_id, client_facility_id, serial_number\)$/);
+      // 0026's index is gone, not kept beside it.
+      const [old] = await g.db.query("SELECT 1 FROM pg_class WHERE relname = :name", {
+        replacements: { name: g.m0118.OLD_SERIAL_UNIQUE },
+      });
+      expect(old).toEqual([]);
       expect(index.def).not.toMatch(/WHERE/i);
       await inRolledBack(g.db, async (t) => {
         await g.db.query(
@@ -627,7 +651,7 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
           { t: TENANT_A },
         );
         expect(err.original.code).toBe("23505");
-        expect(err.original.constraint).toBe("calibration_devices_tenant_id_serial_number_unique");
+        expect(err.original.constraint).toBe(g.m0118.SERIAL_UNIQUE);
       });
     });
   });
@@ -707,30 +731,36 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
   // ------------------------------------------------------------------
   // Migration 0057 — idempotent, and down keeps the record trail
   // ------------------------------------------------------------------
+  // calibration_records carries other migrations' triggers too since P20-07 (0119's facility
+  // default, open and guard; 0123's attachments-follow). 0057 owns exactly its two.
+  const M0057_TRIGGERS = ["calibration_records_append_only", "calibration_records_no_truncate"];
+  const recordTriggers = async () => {
+    const [rows] = await g.db.query(
+      "SELECT tgname FROM pg_trigger WHERE tgrelid = 'calibration_records'::regclass AND NOT tgisinternal ORDER BY tgname",
+    );
+    return rows.map((r) => r.tgname);
+  };
+
   describe("migration 0057", () => {
     it("a second run changes nothing and succeeds", async () => {
+      const before = await recordTriggers();
+      expect(before).toEqual(expect.arrayContaining(M0057_TRIGGERS));
       await g.m0057.up({ context: g.db.getQueryInterface() });
-      const [triggers] = await g.db.query(
-        "SELECT tgname FROM pg_trigger WHERE tgrelid = 'calibration_records'::regclass AND NOT tgisinternal ORDER BY tgname",
-      );
-      expect(triggers.map((r) => r.tgname)).toEqual([
-        "calibration_records_append_only",
-        "calibration_records_no_truncate",
-      ]);
+      expect(await recordTriggers()).toEqual(before);
     });
 
     it("down removes the trigger but keeps the lifecycle columns; up restores it", async () => {
       const qi = g.db.getQueryInterface();
+      const before = await recordTriggers();
       await g.m0057.down({ context: qi });
-      const [none] = await g.db.query(
-        "SELECT tgname FROM pg_trigger WHERE tgrelid = 'calibration_records'::regclass AND NOT tgisinternal",
-      );
-      expect(none).toEqual([]);
+      // Exactly 0057's two are gone; every other migration's trigger is untouched.
+      expect(await recordTriggers()).toEqual(before.filter((name) => !M0057_TRIGGERS.includes(name)));
       const [cols] = await g.db.query(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'calibration_records' AND column_name = 'supersedes_id'",
       );
       expect(cols).toHaveLength(1);
       await g.m0057.up({ context: qi });
+      expect(await recordTriggers()).toEqual(before);
       expect((await g.schemaVerify.verifySchema(g.db)).problems).toEqual([]);
     });
   });

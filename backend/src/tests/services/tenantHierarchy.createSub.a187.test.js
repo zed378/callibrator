@@ -15,6 +15,15 @@
  * below means what PostgreSQL would have kept.
  */
 
+// P20-07: tenant creation also makes the tenant's self client facility (services/clientFacility,
+// proven on memoryDb by clientFacility.service.p2007 and on PostgreSQL by clientFacilities.p2007.live).
+// A fixture here: this suite is about the tenant, so the facility is a stand-in.
+jest.mock("../../services/clientFacility.service", () => ({
+  SELF_FACILITY_CODE: "SELF",
+  selfFacilityName: (name) => name,
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
+}));
+
 process.env.HIERARCHY_ENABLED = "true";
 
 const PARENT = "11111111-1111-4111-8111-111111111111";
@@ -143,7 +152,15 @@ describe("A-187 — createSubOrganization creates a valid tenant, its hierarchy 
       operation: "CREATE_SUB_ORGANIZATION",
       before: {},
       after: { name: "Branch A", code: "HOSP_A_003", subdomain: "hosp-a-003", parentId: PARENT, path: "/hosp_a/hosp_a_003", depth: 1 },
+      // P20-07 (P19-04 spec § 4.3): the child's self facility, made in the same transaction, is named.
+      selfFacilityId: "5e1f0000-0000-4000-8000-0000000000f0",
     });
+    const { createSelfFacility } = require("../../services/clientFacility.service");
+    expect(createSelfFacility).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Branch A" }),
+      { userId: actor.userId },
+      { transaction: expect.anything() },
+    );
   });
 
   it("an explicit code is used, and its subdomain follows it", async () => {

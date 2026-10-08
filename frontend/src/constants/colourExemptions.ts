@@ -25,22 +25,22 @@ export const COLOUR_EXEMPTIONS: readonly ColourExemption[] = [
   // Kanban: a project's and a label's colour are user-chosen data. These are
   // the defaults offered in the picker and the fallback for a row that has
   // none; the text drawn on them is chosen by contrast (lib/readableOn.ts).
-  { file: "app/dashboard/kanban/hooks/useKanbanProjects.ts", literal: "#4f46e5", count: 2, reason: `${USER_COLOUR} (project colour default)` },
-  { file: "app/dashboard/kanban/page.tsx", literal: "#4f46e5", count: 2, reason: `${USER_COLOUR} (project colour fallback)` },
-  { file: "app/dashboard/kanban/[projectId]/page.tsx", literal: "#4f46e5", count: 2, reason: `${USER_COLOUR} (project colour fallback)` },
-  { file: "app/dashboard/kanban/[projectId]/components/CardTile.tsx", literal: "#94a3b8", count: 1, reason: `${USER_COLOUR} (label colour fallback)` },
-  { file: "app/dashboard/kanban/[projectId]/components/ManageBoardModal.tsx", literal: "#ef4444", count: 1, reason: `${USER_COLOUR} (new label default)` },
-  { file: "app/dashboard/kanban/[projectId]/components/ManageBoardModal.tsx", literal: "#94a3b8", count: 2, reason: `${USER_COLOUR} (label colour fallback)` },
+  { file: "app/(app)/dashboard/kanban/hooks/useKanbanProjects.ts", literal: "#4f46e5", count: 2, reason: `${USER_COLOUR} (project colour default)` },
+  { file: "app/(app)/dashboard/kanban/page.tsx", literal: "#4f46e5", count: 2, reason: `${USER_COLOUR} (project colour fallback)` },
+  { file: "app/(app)/dashboard/kanban/[projectId]/page.tsx", literal: "#4f46e5", count: 2, reason: `${USER_COLOUR} (project colour fallback)` },
+  { file: "app/(app)/dashboard/kanban/[projectId]/components/CardTile.tsx", literal: "#94a3b8", count: 1, reason: `${USER_COLOUR} (label colour fallback)` },
+  { file: "app/(app)/dashboard/kanban/[projectId]/components/ManageBoardModal.tsx", literal: "#ef4444", count: 1, reason: `${USER_COLOUR} (new label default)` },
+  { file: "app/(app)/dashboard/kanban/[projectId]/components/ManageBoardModal.tsx", literal: "#94a3b8", count: 2, reason: `${USER_COLOUR} (label colour fallback)` },
   // Tenants: the brand colour picker's default. The stored colour is turned
   // into an accessible --primary per theme by lib/brandColor.ts (ADR-090 am.).
-  { file: "app/dashboard/tenants/components/TenantFormFields.tsx", literal: "#4f46e5", count: 2, reason: `${USER_COLOUR} (tenant brand picker default)` },
-  { file: "app/dashboard/tenants/hooks/useTenants.ts", literal: "#4f46e5", count: 3, reason: `${USER_COLOUR} (tenant brand default)` },
+  { file: "app/(app)/dashboard/tenants/components/TenantFormFields.tsx", literal: "#4f46e5", count: 2, reason: `${USER_COLOUR} (tenant brand picker default)` },
+  { file: "app/(app)/dashboard/tenants/hooks/useTenants.ts", literal: "#4f46e5", count: 3, reason: `${USER_COLOUR} (tenant brand default)` },
   // A QR code must be dark modules on a light ground in both themes, or
   // authenticator apps cannot read it (like the public .lp-paper objects).
-  { file: "app/dashboard/mfa/page.tsx", literal: "bg-white", count: 1, reason: "the TOTP QR code needs a white quiet zone in both themes to scan" },
+  { file: "app/(app)/dashboard/mfa/page.tsx", literal: "bg-white", count: 1, reason: "the TOTP QR code needs a white quiet zone in both themes to scan" },
   // A tenant's uploaded logo is an image drawn for a light ground; on the dark
   // card it could vanish, so it sits on a white plate in both themes.
   { file: "components/auth/BrandMark.tsx", literal: "bg-white", count: 1, reason: "user data: a tenant logo image needs a light plate in both themes to stay visible" },
   // Not a colour: a matter number in placeholder copy ("matter #1234").
-  { file: "app/dashboard/data-retention/page.tsx", literal: "#1234", count: 1, reason: "not a colour: a reference number in a placeholder's example text" },
+  { file: "app/(app)/dashboard/data-retention/page.tsx", literal: "#1234", count: 1, reason: "not a colour: a reference number in a placeholder's example text" },
 ];

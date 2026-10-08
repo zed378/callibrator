@@ -264,6 +264,9 @@ const grantApplicationRole = async (sequelize: Sequelize, transaction: Transacti
 export = {
   TABLE,
   FUNCTION_NAME,
+  // P20-07: exported (no behaviour change) so migration 0119, which replaces this function with
+  // one admitting a device move's facility change, restores exactly this text on `down`.
+  FUNCTION_SQL,
   ROW_TRIGGER,
   TRUNCATE_TRIGGER,
   SUPERSEDES_INDEX,

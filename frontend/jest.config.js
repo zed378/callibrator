@@ -49,8 +49,12 @@ const config = {
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
-    '!src/app/layout.tsx',
-    '!src/app/page.tsx',
+    // The root documents (ADR-131: one per route group, plus the global 404).
+    // Their shared body, app/rootDocument.tsx, is tested and counted.
+    '!src/app/(public)/layout.tsx',
+    '!src/app/(app)/layout.tsx',
+    '!src/app/global-not-found.tsx',
+    '!src/app/(public)/page.tsx',
     // Test infrastructure (helpers under src/tests), not product code.
     '!src/tests/**',
   ],

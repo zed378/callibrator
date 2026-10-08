@@ -25,6 +25,7 @@
 
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchema, enterAppRole } = require("../fixtures/liveBoot");
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
 const live = process.env.CALIBRATION_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -84,6 +85,8 @@ live("calibration scan — two concurrent scans, live PostgreSQL (W-03)", () => 
        VALUES (:t, 'W-03 Hospital', 'w03-live', 'w03@example.test', now(), now())`,
       { replacements: { t: TENANT } },
     );
+    // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+    await p1.db.query(SELF_FACILITIES_SQL);
     await p1.db.query(
       `INSERT INTO calibration_devices (id, tenant_id, name, status, next_calibration_date, created_at, updated_at)
        VALUES (:d, :t, 'Infusion pump', 'active', now() - interval '3 days', now(), now())`,

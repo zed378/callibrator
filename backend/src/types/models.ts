@@ -13,6 +13,8 @@ import type defineWebauthnCredential from "../models/webauthnCredential.model";
 import type defineDeviceType from "../models/deviceType.model";
 import type defineUpstreamFileImport from "../models/upstreamFileImport.model";
 import type defineUpstreamSqlImport from "../models/upstreamSqlImport.model";
+import type defineClientFacility from "../models/clientFacility.model";
+import type defineClientFacilityMove from "../models/clientFacilityMove.model";
 import type defineInspectionItemDefinition from "../models/inspectionItemDefinition.model";
 import type defineInspectionTemplate from "../models/inspectionTemplate.model";
 import type defineInspectionTemplateVersion from "../models/inspectionTemplateVersion.model";
@@ -188,6 +190,10 @@ export interface Models {
   UpstreamFileImport: ReturnType<typeof defineUpstreamFileImport>;
   // The SQL-dump import (P24-06) — born TypeScript: a platform row
   UpstreamSqlImport: ReturnType<typeof defineUpstreamSqlImport>;
+  // P20-07 (ADR-124 Am. 2) — born TypeScript: the client facilities inside a tenant, and the
+  // device-move log (provider-internal)
+  ClientFacility: ReturnType<typeof defineClientFacility>;
+  ClientFacilityMove: ReturnType<typeof defineClientFacilityMove>;
 }
 
 /** An instance of the model registered under `K`. */

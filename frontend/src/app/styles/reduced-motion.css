@@ -1,0 +1,30 @@
+/*
+ * ADR-131 (P10-18): shared by both global sheets — app/globals.css (the signed-in
+ * application) and app/public.css (the public surface) — so the two cannot
+ * drift. Moved here unchanged from globals.css.
+ */
+/* ==========================================================================
+   Reduced motion, everywhere (ADR-090 amendment; automate/a11y.browser.js).
+   The blocks above stop named loops one class at a time, and the browser
+   suite found what that misses: the sign-in page's fade/scale entrances, the
+   landing page's ping and nav transitions. With `reduce`, every animation and
+   transition finishes at once in its end state (the entrance classes all use
+   `forwards`, so content lands visible). A spinner keeps turning: it is a
+   status, not decoration, and freezing it reads as a hang.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

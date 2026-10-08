@@ -99,6 +99,12 @@ const nextConfig: NextConfig = {
     root: path.join(__dirname, ".."),
   },
   cacheComponents: true,
+  experimental: {
+    // ADR-131 (P10-18): two root layouts — app/(public) and app/(app) — leave no
+    // single layout to compose a 404 from; a URL no route matches renders
+    // app/global-not-found.tsx (Next 16, still behind this flag).
+    globalNotFound: true,
+  },
   // NOTE: API requests are proxied by the app-router route handler at
   // src/app/api/v1/[...path]/route.ts, which injects the Authorization header
   // and X-Tenant-ID from httpOnly cookies and strips backend Set-Cookie
