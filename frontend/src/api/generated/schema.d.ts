@@ -1335,7 +1335,7 @@ export interface paths {
         put?: never;
         /**
          * Verify the caller's session
-         * @description The user, whether an MFA enrolment is required, and who manages the password (`passwordManagedBy`).
+         * @description The user, whether an MFA enrolment is required, and who manages the password (`passwordManagedBy`). P21-09: the facility scope — `clientFacilityId` (null: not bound to a client facility), `facilityBound`, `facilityMode` (`single`: the tenant has only its own facility, so the client hides every facility concept) and `scopeFingerprint`, which changes when the tenant, the binding, the role or the bound facility's status does (an offline client purges its working set on a change — AM-26).
          */
         post: operations["verifySession"];
         delete?: never;
@@ -1920,6 +1920,26 @@ export interface paths {
          *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
          */
         get: operations["getVerifiedCertificateDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/client-facilities/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's own client facility
+         * @description For a facility-bound account: its facility (name, code, kind, status) for the app shell. For an unbound account (the provider's staff, a self-served hospital): null. Reachable by a bound account (facility-accessible, S-8).
+         */
+        get: operations["getMyClientFacility"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6926,6 +6946,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{userId}/client-facility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Bind a user to a client facility, or unbind it
+         * @description P21-09 (ADR-124 Am. 2 § 6): the one way a user's facility changes. `clientFacilityId` binds (a facility of the tenant, not its own, active; the role must be HEALTHCARE ADMIN, HEALTHCARE TECHNICIAN, FACILITY MAINTENANCE or ROOM USER); null unbinds and needs `roleId` — the role across every facility. Tenant administrators who are not bound themselves; never on oneself (400). Every session of the user is revoked. One audit row per affected facility. Not available to facility accounts (403). Refused (409) while FACILITY_BINDING_ENABLED is off — the pre-invitation gate.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — Facility-bound accounts are not enabled yet; the facility is the tenant's own or not active; the user is already bound this way, or not bound at all.
+         */
+        put: operations["setUserClientFacility"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{userId}/mfa/reset": {
         parameters: {
             query?: never;
@@ -8961,6 +9005,18 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** @description The caller's own client facility; null for an account not bound to one */
+        ClientFacilityMine: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            code: string;
+            /** @enum {string} */
+            kind: "hospital" | "clinic" | "health_centre" | "district_office" | "laboratory" | "other";
+            isSelf: boolean;
+            /** @enum {string} */
+            status: "active" | "inactive" | "ended";
+        } | null;
         ComplianceReport: {
             summary: components["schemas"]["ReportComplianceSummary"];
         };
@@ -15829,6 +15885,13 @@ export interface operations {
                         status: number;
                         message: string;
                         data: {
+                            /** @description The client facility the account is bound to; null when unbound */
+                            clientFacilityId: string | null;
+                            facilityBound: boolean;
+                            /** @enum {string} */
+                            facilityMode: "single" | "multi";
+                            /** @description SHA-256 (hex) of the contract's scopeFingerprintInput (tenant, facility or `unbound`, role, facility status) */
+                            scopeFingerprint: string;
                             mfaEnrolmentRequired: boolean;
                             /** @description Who manages the password when it is not this application; null when it is */
                             passwordManagedBy: {
@@ -16066,6 +16129,8 @@ export interface operations {
                     nextCalibrationDate?: (string | "") | null;
                     calibrationIntervalDays?: (number | "") | null;
                     remarks?: string | null;
+                    /** Format: uuid */
+                    clientFacilityId?: string;
                 };
             };
         };
@@ -17180,6 +17245,36 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getMyClientFacility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The facility, or null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["ClientFacilityMine"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -30497,6 +30592,59 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    setUserClientFacility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user's id */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    clientFacilityId: string | null;
+                    /** Format: uuid */
+                    roleId?: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The binding after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            /** Format: uuid */
+                            userId: string;
+                            clientFacilityId: string | null;
+                            roleId: string | null;
+                            /** @enum {string} */
+                            operation: "BIND_FACILITY" | "UNBIND_FACILITY" | "REBIND_FACILITY" | "CONFIRM_UNBOUND";
+                            sessionsRevoked: number;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
         };
     };

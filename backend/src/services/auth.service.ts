@@ -64,6 +64,7 @@ import type { z } from "zod";
 import type { ModelInstance } from "../types/models";
 // N-01: the one super-admin predicate (both spellings).
 import { isSuperAdmin, isSuperAdminRoleName } from "../utils/role.util";
+import { scopeFingerprintInput, type FacilityMode } from "@callibrator/contracts/clientFacilities";
 
 const { Users, Role, Tenants } = models;
 const {
@@ -1057,6 +1058,14 @@ const verifyUserSession = async (userId: string, _session?: unknown): Promise<Au
         attributes: ["id", "name", "roleLevel"],
         required: false,
       },
+      // P21-09 (AM-26): the bound facility's status enters the scope fingerprint.
+      // In a bound context the readable rule shows exactly this row.
+      {
+        model: models.ClientFacility,
+        as: "clientFacility",
+        attributes: ["id", "status"],
+        required: false,
+      },
     ],
   });
   if (!user) {
@@ -1094,15 +1103,53 @@ const verifyUserSession = async (userId: string, _session?: unknown): Promise<Au
       // when the recovery codes are running out. Only a count, never a code.
       mfaEnabled: !!user.mfaEnabled,
       mfaRecoveryCodesRemaining: recoveryCodesRemaining(user),
+      // P21-09 (spec § 13.1; P19-08 § 9.5, AM-26): the facility scope as the
+      // clients need it — `facilityMode: "single"` hides every facility concept
+      // (a self-served hospital notices nothing); the fingerprint changes when
+      // the tenant, the binding, the role or the bound facility's status does,
+      // and the PWA purges its working set on a change.
+      ...(await facilityScopeOf(user)),
     },
   };
+};
+
+/**
+ * P21-09 — the facility part of "who am I": `clientFacilityId` (null: unbound), `facilityBound`,
+ * `facilityMode` (does the tenant serve any facility beyond its own?) and `scopeFingerprint`
+ * (SHA-256, hex, of `scopeFingerprintInput` — the contract's canonical text).
+ *
+ * @param user - the verified user, with its `clientFacility` include
+ * @returns the four fields
+ */
+const facilityScopeOf = async (user: ModelInstance<"User">): Promise<{
+  clientFacilityId: string | null;
+  facilityBound: boolean;
+  facilityMode: FacilityMode;
+  scopeFingerprint: string;
+}> => {
+  const clientFacilityId = user.clientFacilityId ?? null;
+  const others = user.tenantId
+    ? await models.ClientFacility.count({ where: { tenantId: user.tenantId, isSelf: false } })
+    : 0;
+  const scopeFingerprint = crypto
+    .createHash("sha256")
+    .update(
+      scopeFingerprintInput({
+        tenantId: user.tenantId ?? null,
+        clientFacilityId,
+        roleId: user.roleId ?? null,
+        facilityStatus: clientFacilityId ? user.clientFacility?.status ?? null : null,
+      }),
+    )
+    .digest("hex");
+  return { clientFacilityId, facilityBound: clientFacilityId !== null, facilityMode: others > 0 ? "multi" : "single", scopeFingerprint };
 };
 
 // ------------------------------------------------------------------
 // GET AUTH USER (FOR MIDDLEWARE)
 // ------------------------------------------------------------------
 const getAuthUserWithTenant = async (userId: string): Promise<SignInUser | null> => {
-  const { Roles, Tenants, TenantSettings } = models;
+  const { Roles, Tenants, TenantSettings, ClientFacility } = models;
   const user = await Users.findByPk(userId, {
     include: [
       {
@@ -1118,6 +1165,15 @@ const getAuthUserWithTenant = async (userId: string): Promise<SignInUser | null>
         model: Tenants,
         as: "tenant",
         attributes: ["id", "name", "status"],
+        required: false,
+      },
+      // P21-09 (spec § 7.1, § 7.2): a bound account's facility, for its status
+      // (the refusal codes) — LEFT, and loaded with no context (this runs
+      // before one exists), so an unbound account reads null.
+      {
+        model: ClientFacility,
+        as: "clientFacility",
+        attributes: ["id", "status"],
         required: false,
       },
     ],

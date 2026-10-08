@@ -78,6 +78,8 @@ jest.mock("../../models", () => {
       }),
     },
     AuditLog: { create: (...args) => mockRef.ledger.AuditLog.create(...args) },
+    // P21-09 (G-F1): a create resolves its client facility — none here.
+    ClientFacility: { findOne: jest.fn(async () => null) },
     User: {},
   };
 });

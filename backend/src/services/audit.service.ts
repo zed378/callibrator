@@ -56,7 +56,8 @@ interface AuditEntry {
   /**
    * P20-07 (ADR-124 Am. 2 § 5): the client facility the act happened in, stamped on
    * `audit_logs.client_facility_id`. Given by the caller that knows it (the self facility's
-   * creation); resolving it from the resource when omitted is P21-09's (spec § 16).
+   * creation, a binding's one row per facility); when omitted, P21-09 resolves it from the
+   * resource (spec § 16 — `resolveAuditFacility`).
    */
   clientFacilityId?: string | null | undefined;
   /** Never secrets: this table is permanent (D-27 redacts them). */
@@ -187,6 +188,56 @@ const resolveActor = (
  * @returns the row, or null after a logged failure outside a transaction
  * @throws the insert's error, when called with a transaction
  */
+/** A model as `resolveAuditFacility` reads it: its attributes, and a primary-key read. */
+interface FacilityResource {
+  rawAttributes?: Record<string, unknown>;
+  unscoped: () => {
+    findByPk: (id: string, options: Record<string, unknown>) => Promise<{ get: (key: string) => unknown } | null>;
+  };
+}
+
+/** A UUID (the shape every facility-scoped resource id has); anything else is not looked up. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * P21-09 (spec § 16; hand-off 3 of P20-07) — the client facility of the resource an audit row
+ * names, when its caller did not say: so a forgetful caller still stamps the row correctly (the
+ * breach-scoping record of ADR-124 § 9). One primary-key read, in the mutation's transaction, of a
+ * model that DECLARES `clientFacilityId` (the facility-scoped models of the registry, read here,
+ * not listed) — or the facility itself for `ClientFacility`. Deleted rows count (`unscoped`,
+ * `paranoid: false`): a delete's row names the facility the row was in. Anything else — another
+ * resource type, a non-UUID id, a row not found — stamps nothing (NULL), as before.
+ *
+ * @param resourceType - the audit row's resource type (a model name)
+ * @param resourceId - its id
+ * @param transaction - the mutation's transaction
+ * @returns the facility, or null
+ */
+const resolveAuditFacility = async (
+  resourceType: string,
+  resourceId: string | null | undefined,
+  transaction: Transaction | null | undefined,
+): Promise<string | null> => {
+  if (!resourceId || !UUID_SHAPE.test(resourceId) || resourceType === "AuditLog") {
+    return null;
+  }
+  if (resourceType === "ClientFacility") {
+    return resourceId;
+  }
+  const model = (models as unknown as Record<string, FacilityResource | undefined>)[resourceType];
+  // A value of the barrel that is not a model (`sequelize`), or a test double without attributes.
+  if (!model?.rawAttributes || !("clientFacilityId" in model.rawAttributes)) {
+    return null;
+  }
+  const row = await model.unscoped().findByPk(resourceId, {
+    attributes: ["id", "clientFacilityId"],
+    paranoid: false,
+    ...(transaction ? { transaction } : {}),
+  });
+  const facility = row ? row.get("clientFacilityId") : null;
+  return typeof facility === "string" && facility ? facility : null;
+};
+
 const logAction = async (
   {
     tenantId,
@@ -214,6 +265,8 @@ const logAction = async (
     const actor = resolveActor(userId, systemActor);
     // D-27 (ADR-070): a secret never reaches this permanent table — its value
     // is replaced, and the call site that tried is named so it gets fixed.
+    // P21-09 (spec § 16): the facility from the resource, when the caller did not name it.
+    const facilityId = clientFacilityId ?? (await resolveAuditFacility(resourceType, resourceId, transaction));
     const { value: safeChanges, redacted } = redactAuditChanges(changes);
     if (redacted.length > 0) {
       logger.warn("Audit changes carried secret-bearing fields; their values were redacted", {
@@ -233,8 +286,8 @@ const logAction = async (
         // Only when there is one: the column defaults to NULL, and the
         // ordinary row keeps the exact shape it always had.
         ...(impersonator ? { impersonatorId: impersonator } : {}),
-        // P20-07: likewise only when there is one (no caller but the self facility's sets it yet).
-        ...(clientFacilityId ? { clientFacilityId } : {}),
+        // P20-07: likewise only when there is one — named by the caller, or resolved above (P21-09).
+        ...(facilityId ? { clientFacilityId: facilityId } : {}),
         action,
         resourceType,
         resourceId,

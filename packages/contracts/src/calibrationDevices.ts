@@ -45,6 +45,10 @@ const createCalibrationDeviceSchema = z.object({
   nextCalibrationDate: dateLike().or(z.literal("")).nullable().optional(),
   calibrationIntervalDays: numeric(z.number().int().min(1)).or(z.literal("")).nullable().optional(),
   remarks: optionalText(),
+  // P21-09 (G-F1; ADR-124 Am. 2 § 1): the client facility the device belongs to. Optional — an
+  // unbound creator naming none gets the tenant's own (self) facility; a bound one gets its own.
+  // Create only: a device changes facility through the audited move, never an edit (AM-6).
+  clientFacilityId: uuid().optional(),
 });
 
 const updateCalibrationDeviceSchema = z.object({

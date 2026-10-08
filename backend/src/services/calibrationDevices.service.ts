@@ -29,8 +29,9 @@ import type * as CalibrationDevicesValidator from "../validators/calibrationDevi
 import type AttachmentService from "./attachment.service";
 import type * as Fs from "fs";
 import type { AuditAction } from "../constants/auditActions";
-import type { TenantId } from "../types/ids";
+import type { ClientFacilityId, TenantId } from "../types/ids";
 import type { ModelInstance } from "../types/models";
+import { tenantStorage } from "../middlewares/tenantContext.middleware";
 
 const Op = LoadedOp;
 const { CalibrationDevice } = models;
@@ -169,11 +170,25 @@ interface SerialHolder {
  * index covers every row. The tenant predicate is explicit, and the global
  * tenant hooks still apply (they are hooks, not a scope).
  *
+ * P21-09 (UD-9, hand-off 2 of P20-07): the index is per FACILITY since 0118
+ * (`calibration_devices_tenant_facility_serial_unique`), so the pre-check is
+ * too — the same serial in two client facilities is two instruments. When the
+ * facility is not known (a database without the self facility the backstop
+ * trigger would refuse anyway) the check stays per tenant, the stricter one.
+ *
  * @param tenantId
+ * @param clientFacilityId - the facility the device is (or will be) in
  * @param serialNumber
  */
-const findSerialHolder = (tenantId: TenantId, serialNumber: string | null | undefined): Promise<DeviceRow | null> => {
+const findSerialHolder = (
+  tenantId: TenantId,
+  clientFacilityId: string | null | undefined,
+  serialNumber: string | null | undefined,
+): Promise<DeviceRow | null> => {
   const where: Record<string, unknown> = { tenantId, serialNumber };
+  if (clientFacilityId) {
+    where["clientFacilityId"] = clientFacilityId;
+  }
   return CalibrationDevice.unscoped().findOne({
     where: where as WhereOptions,
     attributes: ["id", "isDeleted", "deletedAt"],
@@ -375,6 +390,55 @@ const fetchSpecificCalibrationDevice = async (
   }
 };
 
+/** Where `resolveCreateFacility` sends a create: a facility, or an answer instead of the create. */
+type CreateFacility = { ok: true; clientFacilityId: ClientFacilityId | undefined } | { ok: false; outcome: Outcome<null> };
+
+/**
+ * P21-09 — the client facility a new device is created in (G-F1; ADR-124 Am. 2 § 1, Am. 3 § 3;
+ * hand-off 1 of P20-07). The service now names the facility on EVERY create, so a tenant with a
+ * second facility no longer meets Am. 3's 23502:
+ *  - a facility-BOUND principal: its own facility (the hooks stamp and force it too); naming
+ *    another is answered as a missing one — 404, never a hint that it exists;
+ *  - an unbound principal naming one: that facility of the tenant (404 when it is not one; 409
+ *    when it has `ended` — spec § 4.4);
+ *  - an unbound principal naming none: the tenant's SELF facility — every create path of today
+ *    (API, bulk import, frontend) sends none, and a self-served hospital notices nothing.
+ * A database without the tenant's self facility leaves it unnamed: the default trigger of 0118,
+ * kept as the backstop, then fills or refuses it.
+ *
+ * @param tenantId - the caller's tenant
+ * @param requested - the facility the request names, if any
+ * @returns the facility, or the answer to send instead
+ */
+const resolveCreateFacility = async (tenantId: TenantId, requested: string | null | undefined): Promise<CreateFacility> => {
+  const notFound: CreateFacility = { ok: false, outcome: { success: false, status: 404, message: "Client facility not found", data: null } };
+  const ctx = tenantStorage.getStore();
+  if (ctx?.facilityBound === true && !ctx.isSuperAdmin && ctx.clientFacilityId) {
+    return requested && requested !== ctx.clientFacilityId ? notFound : { ok: true, clientFacilityId: ctx.clientFacilityId };
+  }
+  const { ClientFacility } = models;
+  if (requested) {
+    const facility = await ClientFacility.findOne({ where: { id: requested, tenantId }, attributes: ["id", "name", "status"] });
+    if (!facility) {
+      return notFound;
+    }
+    if (facility.status === "ended") {
+      return {
+        ok: false,
+        outcome: {
+          success: false,
+          status: 409,
+          message: `${facility.name} has ended; new records cannot be added. Reinstate it first.`,
+          data: null,
+        },
+      };
+    }
+    return { ok: true, clientFacilityId: facility.id };
+  }
+  const self = await ClientFacility.findOne({ where: { tenantId, isSelf: true }, attributes: ["id"] });
+  return { ok: true, clientFacilityId: self?.id };
+};
+
 /**
  * Create a new calibration device
  */
@@ -392,11 +456,18 @@ const createCalibrationDevice = async (
 
     normaliseSerial(validated);
 
+    // P21-09 (G-F1): the facility, before the serial check that is per facility.
+    const facility = await resolveCreateFacility(tenantId, validated.clientFacilityId);
+    if (!facility.ok) {
+      return facility.outcome;
+    }
+    const { clientFacilityId } = facility;
+
     // Check for a duplicate serial number (only when one is supplied — a null
     // serialNumber must not be used as a WHERE parameter). Deleted devices
     // count: the unique index covers them (A-92).
     const holder = validated.serialNumber
-      ? await findSerialHolder(tenantId, validated.serialNumber)
+      ? await findSerialHolder(tenantId, clientFacilityId, validated.serialNumber)
       : null;
 
     if (holder) {
@@ -407,6 +478,11 @@ const createCalibrationDevice = async (
     try {
       device = await db.transaction(async (transaction) => {
         const values: Record<string, unknown> = { ...validated, tenantId };
+        if (clientFacilityId) {
+          values["clientFacilityId"] = clientFacilityId;
+        } else {
+          delete values["clientFacilityId"];
+        }
         const created = await CalibrationDevice.create(
           values as CreationAttributes<DeviceRow>,
           { transaction },
@@ -419,7 +495,7 @@ const createCalibrationDevice = async (
       if (isSerialUniqueViolation(error)) {
         return serialConflict(
           validated.serialNumber,
-          await findSerialHolder(tenantId, validated.serialNumber),
+          await findSerialHolder(tenantId, clientFacilityId, validated.serialNumber),
         );
       }
       throw error;
@@ -480,7 +556,7 @@ const updateCalibrationDevice = async (
     const changesSerial =
       validated.serialNumber && validated.serialNumber !== device.serialNumber;
     if (changesSerial) {
-      const holder = await findSerialHolder(tenantId, validated.serialNumber);
+      const holder = await findSerialHolder(tenantId, device.clientFacilityId, validated.serialNumber);
       if (holder && holder.id !== device.id) {
         return serialConflict(validated.serialNumber, holder);
       }
@@ -497,7 +573,7 @@ const updateCalibrationDevice = async (
       if (isSerialUniqueViolation(error)) {
         return serialConflict(
           validated.serialNumber,
-          await findSerialHolder(tenantId, validated.serialNumber),
+          await findSerialHolder(tenantId, device.clientFacilityId, validated.serialNumber),
         );
       }
       // Q-02: retired by a concurrent request after the check above — the
@@ -607,7 +683,7 @@ const restoreCalibrationDevice = async (
     // global tenant hooks still apply (they are hooks, not a scope).
     const device = await CalibrationDevice.unscoped().findOne({
       where: { id: calibrationDeviceId, tenantId },
-      attributes: ["id", "tenantId", "name", "serialNumber", "isDeleted"],
+      attributes: ["id", "tenantId", "clientFacilityId", "name", "serialNumber", "isDeleted"],
     });
 
     if (!device) {
@@ -636,8 +712,14 @@ const restoreCalibrationDevice = async (
     });
 
     if (device.serialNumber) {
+      // P21-09 (UD-9): the serial is unique per facility — only a live holder
+      // in the device's own facility blocks the restore.
+      const liveWhere: Record<string, unknown> = { tenantId, serialNumber: device.serialNumber, id: { [Op.ne]: device.id } };
+      if (device.clientFacilityId) {
+        liveWhere["clientFacilityId"] = device.clientFacilityId;
+      }
       const liveHolder = await CalibrationDevice.findOne({
-        where: { tenantId, serialNumber: device.serialNumber, id: { [Op.ne]: device.id } },
+        where: liveWhere as WhereOptions,
         attributes: ["id"],
       });
       if (liveHolder) {
@@ -799,13 +881,19 @@ const bulkImportCalibrationDevices = async (
     const headers = (parsedLines[0] as string[]).map((h) => h.toLowerCase().trim());
     const dataRows = parsedLines.slice(1);
 
-    // Every serial the tenant holds, DELETED devices included: the unique
-    // index (tenant_id, serial_number) covers them, so a row re-using one
-    // failed the whole bulkCreate with a 500 (A-92). Same lookup rules as
-    // findSerialHolder: unscoped (no isDeleted filter), paranoid off, tenant
-    // predicate explicit.
+    // P21-09 (G-F1): an import names no facility, so its devices go where an
+    // unbound create without one goes — the tenant's self facility (a bound
+    // principal's own). Choosing a client facility for an import is later work.
+    // Naming none never refuses (only a named facility can be missing or ended).
+    const clientFacilityId = ((await resolveCreateFacility(tenantId, null)) as Extract<CreateFacility, { ok: true }>).clientFacilityId;
+
+    // Every serial the facility holds, DELETED devices included: the unique
+    // index (tenant_id, client_facility_id, serial_number) covers them, so a
+    // row re-using one failed the whole bulkCreate with a 500 (A-92). Same
+    // lookup rules as findSerialHolder: unscoped (no isDeleted filter),
+    // paranoid off, tenant (and facility, UD-9) predicate explicit.
     const existingDevices = await CalibrationDevice.unscoped().findAll({
-      where: { tenantId },
+      where: clientFacilityId ? { tenantId, clientFacilityId } : { tenantId },
       attributes: ["serialNumber", "isDeleted", "deletedAt"],
       paranoid: false,
     });
@@ -896,6 +984,7 @@ const bulkImportCalibrationDevices = async (
         toInsert.push({
           ...checked.value,
           tenantId,
+          ...(clientFacilityId ? { clientFacilityId } : {}),
         });
       }
     }

@@ -8,14 +8,17 @@
  * gone.
  */
 import { Router } from "express";
-import { auth } from "../../middlewares/auth.middleware";
+import { auth, denyApiKey } from "../../middlewares/auth.middleware";
 import { dynamicAccess } from "../../middlewares/dynamicAccess.middleware";
 import { validateUuid } from "../../middlewares/validateUuid.middleware";
 import { rbac } from "../../middlewares/rbac.middleware";
+import { validate } from "../../middlewares/validation.middleware";
 import { ROLE_NAMES } from "../../constants";
 import { upload } from "../../utils/upload.util";
 import { enforceSeatQuota, enforceStorageQuota } from "../../middlewares/enforceQuota.middleware";
 import userController from "../../controllers/user.controller";
+import { bindUser } from "../../controllers/clientFacility.controller";
+import { userFacilityBinding } from "@callibrator/contracts/clientFacilities";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -178,6 +181,24 @@ router.post(
   rbac([ROLE_NAMES.TENANT_ADMIN]),
   // Audited inside userService.resetUserPassword's transaction.
   userController.resetUserPassword,
+);
+
+/* ------------------------------------------------------------------ */
+/* CLIENT-FACILITY BINDING (P21-09, ADR-124 Am. 2 § 6)                */
+/* ------------------------------------------------------------------ */
+// Bind, re-bind, unbind or confirm unbound — the ONE way a user's facility
+// changes. NOT facility-accessible: a bound HEALTHCARE ADMIN gets 403 before
+// the parameters are read. Refused (409) while FACILITY_BINDING_ENABLED is off
+// (the pre-invitation gate). Audited (one row per facility) and the user's
+// sessions revoked inside userFacilityBinding.service#setBinding's transaction.
+router.put(
+  "/:userId/client-facility",
+  auth,
+  denyApiKey,
+  dynamicAccess("users", "update", { checkTenant: true }),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  validate(userFacilityBinding, { from: ["params", "body"] }),
+  bindUser,
 );
 
 export = router;

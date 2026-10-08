@@ -36,6 +36,11 @@
  * (`scopeHooklessStatics`). `restore` does fire hooks, which were not
  * registered until 2026-09-25.
  *
+ * THE FACILITY DIMENSION (P21-09, ADR-124 Am. 2 § 8). Every hook also applies a second,
+ * deny-by-default scope for a FACILITY-BOUND principal (`ctx.facilityBound`): a facility model
+ * is filtered to the principal's facility, a FACILITY_READABLE model to its rule, and any other
+ * tenant model is denied — see `resolveFacilityScope`. Unbound principals are untouched.
+ *
  * Eleven hooks are registered, plus `afterDefine` to wrap each new model's
  * hookless statics. Read/bulk-write verbs get a predicate; create-shaped
  * verbs get a stamp. `bulkCreate` and `upsert` (D-01) were outside the hooks
@@ -54,7 +59,8 @@
 
 import { Op } from "sequelize";
 import { tenantStorage } from "../middlewares/tenantContext.middleware";
-import { NO_TENANT_ID, type TenantId } from "../types/ids";
+import { NO_FACILITY_ID, NO_TENANT_ID, type TenantId } from "../types/ids";
+import { FACILITY_READABLE, type FacilityReadableEntry } from "../constants/facilityAccess";
 
 /** An attribute definition, as far as this module reads it. */
 interface AttributeDefinition {
@@ -63,6 +69,8 @@ interface AttributeDefinition {
 
 /** A Sequelize model, as far as this module reads it (private members included). */
 export interface ScopedModel {
+  /** The model name (`FACILITY_READABLE` is keyed by it). */
+  name?: string;
   rawAttributes?: Record<string, AttributeDefinition | undefined>;
   _scope: { where?: unknown };
   _getIncludedAssociation(model: unknown, as: unknown): ScopedAssociation | null;
@@ -90,11 +98,19 @@ interface ScopedInclude {
   through?: { where?: unknown; [key: string]: unknown };
   _pseudo?: boolean;
   skipTenantScope?: boolean;
+  /** P21-09: the include-level twin of the root `skipFacilityScope` (reviewed, G-13). */
+  skipFacilityScope?: boolean;
 }
 
 /** Query / hook options, as far as this module reads and writes them. */
 export interface QueryOptions {
   skipTenantScope?: boolean;
+  /** P21-09: the reviewed opt-out of the facility dimension (spec § 7.6, G-13). */
+  skipFacilityScope?: boolean;
+  /** P21-09 (AM-6): the device move's id — the one operation that may change a row's facility. */
+  facilityMove?: unknown;
+  /** P21-09 (AM-6): the user-binding operation — the one that may change `users.client_facility_id`. */
+  facilityBinding?: unknown;
   where?: unknown;
   include?: unknown;
   truncate?: boolean;
@@ -485,8 +501,271 @@ const refuseBulkTenantReassign = (options: QueryOptions, model: ScopedModel): vo
 const refuseScopedTruncate = (options: QueryOptions | null | undefined, model: ScopedModel): void => {
   if (!options?.truncate || !tenantKeyOf(model)) {return;}
   const scope = resolveScope(options);
-  if (scope.mode === "skip") {return;}
+  // P21-09 (FT-19): a bound context is refused even when the tenant predicate was skipped.
+  if (scope.mode === "skip" && resolveFacilityScope(model, options.skipFacilityScope).mode === "skip") {return;}
   throw new Error("Security Violation: Attempted to truncate a tenant-scoped table inside a tenant context");
+};
+
+/* ------------------------------------------------------------------ */
+/* THE FACILITY DIMENSION (P21-09; ADR-124 Am. 2 § 8; spec § 7.3 – § 7.6) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How the active context scopes a query in the SECOND dimension — the client facility a bound
+ * principal is confined to. Resolved per model, beside (never instead of) the tenant scope:
+ *
+ *   options.skipFacilityScope                     -> skip   (reviewed, G-13)
+ *   no context                                    -> skip   (pre-auth, migrations, ETL, schedulers)
+ *   ctx.isSystemTask || ctx.isSuperAdmin          -> skip
+ *   !ctx.facilityBound                            -> skip   (provider staff; self-served hospitals)
+ *   the model has a facility key                  -> filter { <facility key>: ctx.clientFacilityId ?? NO_FACILITY_ID }
+ *   the model has no tenant key either            -> skip   (global: roles, menus, catalogue, tenants)
+ *   FACILITY_READABLE[model.name]                 -> rule   { <attribute>: own facility / own user }
+ *   otherwise                                     -> deny   { <tenant key>: NO_TENANT_ID } (provider-internal)
+ *
+ * `skipTenantScope` does NOT skip this dimension (FT-30): a bound request reaching one of the
+ * reviewed tenant opt-outs is still confined, and a deny writes NO_TENANT_ID on the tenant column
+ * even when the tenant predicate was skipped.
+ */
+export type FacilityScope =
+  | { mode: "skip" }
+  | { mode: "filter" | "rule" | "deny"; key: string; value: string };
+
+/** The facility column for a model, or null when the model has none. */
+const facilityKeyOf = (model: ScopedModel | null | undefined): "clientFacilityId" | "client_facility_id" | null => {
+  const attrs = model?.rawAttributes;
+  if (!attrs) {return null;}
+  if (attrs["clientFacilityId"]) {return "clientFacilityId";}
+  if (attrs["client_facility_id"]) {return "client_facility_id";}
+  return null;
+};
+
+/** The model's FACILITY_READABLE entry, if any. */
+const readableEntryOf = (model: ScopedModel): FacilityReadableEntry | null => {
+  const name = model.name;
+  if (!name || !Object.prototype.hasOwnProperty.call(FACILITY_READABLE, name)) {return null;}
+  // Present: the hasOwnProperty check above.
+  return (FACILITY_READABLE as Readonly<Record<string, FacilityReadableEntry>>)[name] as FacilityReadableEntry;
+};
+
+/** Whether the active context is a bound principal's (the only one the dimension applies to). */
+const boundContext = (): boolean => {
+  const ctx = tenantStorage.getStore();
+  return Boolean(ctx && !ctx.isSystemTask && !ctx.isSuperAdmin && ctx.facilityBound === true);
+};
+
+/**
+ * Decide how the active context scopes `model` in the facility dimension.
+ *
+ * @param model - the model a hook fired for (or an include's model)
+ * @param skip - `skipFacilityScope` at this level
+ * @returns the facility scope
+ */
+const resolveFacilityScope = (model: ScopedModel, skip?: boolean): FacilityScope => {
+  if (skip || !boundContext()) {return { mode: "skip" };}
+  // boundContext() has just read a store.
+  const ctx = tenantStorage.getStore() as NonNullable<ReturnType<typeof tenantStorage.getStore>>;
+  const facilityKey = facilityKeyOf(model);
+  if (facilityKey) {
+    return { mode: "filter", key: facilityKey, value: ctx.clientFacilityId ?? NO_FACILITY_ID };
+  }
+  const tenantKey = tenantKeyOf(model);
+  if (!tenantKey) {return { mode: "skip" };}
+  const readable = readableEntryOf(model);
+  if (readable) {
+    const value = readable.rule === "own-facility" ? ctx.clientFacilityId ?? NO_FACILITY_ID : ctx.userId ?? NO_TENANT_ID;
+    return { mode: "rule", key: readable.attribute, value };
+  }
+  return { mode: "deny", key: tenantKey, value: NO_TENANT_ID };
+};
+
+/**
+ * The column (not the attribute) a scope names — for the hooks that run after mapping (W-33).
+ * An attribute without a field name (or none at all) names its own column, as applyTenantWhere.
+ */
+const columnOf = (model: ScopedModel, key: string): string => {
+  const field = model.rawAttributes?.[key]?.field;
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- an EMPTY field name falls back too, as applyTenantWhere's `||`
+  return field ? field : key;
+};
+
+/**
+ * Put the facility predicate on a read / bulk-write query's root, AND-ed beside the tenant
+ * predicate and FORCED: a caller's own `clientFacilityId` in the `where` (a provider filter)
+ * cannot widen a bound query (FT-10) — the forced value replaces it, and any other shape is AND-ed.
+ *
+ * @param options - the query options (mutated)
+ * @param model - the model the hook fired for
+ * @param how - `byField`: name the column (bulk destroy / restore, W-33)
+ */
+const applyFacilityWhere = (options: QueryOptions, model: ScopedModel, { byField = false }: { byField?: boolean } = {}): void => {
+  const scope = resolveFacilityScope(model, options.skipFacilityScope);
+  if (scope.mode === "skip") {return;}
+  const key = byField ? columnOf(model, scope.key) : scope.key;
+  options.where = withTenantPredicate(options.where, key, scope.value);
+};
+
+/**
+ * The include-tree twin of `applyFacilityWhere` (AM-5): each include's model is resolved on its
+ * own — a facility model gets the facility predicate in its ON clause, a readable model its rule,
+ * a provider-internal model NO_TENANT_ID (deny per include: a LEFT join reads null, an INNER one
+ * drops the row) — with the join type pinned exactly as `scopeIncludes` pins it. `through` models
+ * too; `separate` includes re-enter `beforeFind`; an include's `skipFacilityScope` is honoured.
+ *
+ * @param includes - conformed includes
+ * @param parentModel - the model they hang off
+ */
+const scopeFacilityIncludes = (includes: ScopedInclude[], parentModel: ScopedModel): void => {
+  for (const include of includes) {
+    if (include._pseudo || include.skipFacilityScope || isSeparate(include)) {continue;}
+
+    const scope = resolveFacilityScope(include.model);
+    if (scope.mode !== "skip") {
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- only `undefined` is pinned; `??=` would also overwrite an explicit null (as scopeIncludes)
+      if (include.required === undefined) {
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- Boolean(a || b), as scopeIncludes
+        include.required = Boolean(include.where || include.model._scope.where);
+      }
+      include.where = withTenantPredicate(include.where, scope.key, scope.value);
+    }
+
+    const throughModel = associationOf(include, parentModel)?.through?.model;
+    if (throughModel) {
+      const throughScope = resolveFacilityScope(throughModel);
+      if (throughScope.mode !== "skip") {
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as scopeIncludes
+        const through = include.through || {};
+        include.through = { ...through, where: withTenantPredicate(through.where, throughScope.key, throughScope.value) };
+      }
+    }
+
+    if (Array.isArray(include.include)) {
+      scopeFacilityIncludes(include.include as ScopedInclude[], include.model);
+    }
+  }
+};
+
+/**
+ * Put the facility dimension on every include of a find / count. A root `skipFacilityScope` skips
+ * the whole tree; nothing is done outside a bound context (the common case costs one store read).
+ */
+const applyFacilityToIncludes = (options: QueryOptions, model: ScopedModel): void => {
+  if (!options.include || options.skipFacilityScope || !boundContext()) {return;}
+  model._conformIncludes(options, model);
+  model._expandIncludeAll(options);
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- _conformIncludes above mutates `options`
+  if (!options.include) {return;}
+  scopeFacilityIncludes(options.include as ScopedInclude[], model);
+};
+
+/** Whether a row value matches a scope's value (compared as strings, as the tenant guards do). */
+const sameValue = (actual: unknown, expected: string): boolean =>
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- an id of any JavaScript type is compared as its string
+  actual !== undefined && actual !== null && String(actual) === expected;
+
+/**
+ * Stamp — or refuse — the facility dimension on a row a bound principal creates (spec § 7.4):
+ * a facility model or a readable model gets its value stamped when missing and a mismatched value
+ * REFUSED (never silently re-owned — the bulkCreate rule); a provider-internal model is refused
+ * outright ("a facility-bound principal cannot write provider-internal data") unless the call is a
+ * reviewed `skipFacilityScope`.
+ *
+ * @param instance - the row
+ * @param model - the model the hook fired for
+ * @param options - the create options
+ * @param verb - for the refusal message
+ */
+const applyFacilityAssignment = (instance: TenantRow | null | undefined, model: ScopedModel, options: QueryOptions | null | undefined, verb = "create"): void => {
+  const scope = resolveFacilityScope(model, options?.skipFacilityScope);
+  if (scope.mode === "skip" || !instance) {return;}
+  if (scope.mode === "deny") {
+    throw new Error(`Security Violation: A facility-bound principal cannot ${verb} provider-internal data`);
+  }
+  const current = instance[scope.key];
+  if (current === undefined || current === null) {
+    // The own-facility rule compares a primary key: a bound principal never creates the facility row.
+    if (scope.mode === "rule" && scope.key === "id") {
+      throw new Error(`Security Violation: A facility-bound principal cannot ${verb} a client facility`);
+    }
+    instance[scope.key] = scope.value;
+    return;
+  }
+  if (!sameValue(current, scope.value)) {
+    throw new Error(`Security Violation: Attempted to ${verb} a row of another client facility`);
+  }
+};
+
+/** `beforeBulkCreate`: every row as `applyFacilityAssignment`; the INSERT column list keeps the key. */
+const applyFacilityAssignmentBulk = (instances: (TenantRow | null | undefined)[] | null | undefined, model: ScopedModel, options?: QueryOptions): void => {
+  const scope = resolveFacilityScope(model, options?.skipFacilityScope);
+  if (scope.mode === "skip") {return;}
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- a missing list is no rows
+  for (const instance of instances || []) {
+    applyFacilityAssignment(instance, model, options, "bulkCreate");
+  }
+  if (options && Array.isArray(options.fields) && !(options.fields as unknown[]).includes(scope.key)) {
+    (options.fields as unknown[]).push(scope.key);
+  }
+};
+
+/**
+ * `beforeUpsert` cannot stamp (see assertUpsertTenant): a bound principal's upsert must carry its
+ * own facility (or rule value); missing, mismatched or provider-internal is refused.
+ */
+const assertUpsertFacility = (values: TenantRow | null | undefined, model: ScopedModel, options?: QueryOptions): void => {
+  const scope = resolveFacilityScope(model, options?.skipFacilityScope);
+  if (scope.mode === "skip") {return;}
+  if (scope.mode === "deny") {
+    throw new Error("Security Violation: A facility-bound principal cannot upsert provider-internal data");
+  }
+  if (!sameValue(values?.[scope.key], scope.value)) {
+    throw new Error("Security Violation: Attempted to upsert a row outside the principal's client facility");
+  }
+};
+
+/** `beforeDestroy` / `beforeRestore` (instance): a bound principal acts only on its own facility's rows. */
+const assertSameFacility = (instance: TenantRow | null | undefined, model: ScopedModel, options?: QueryOptions): void => {
+  const scope = resolveFacilityScope(model, options?.skipFacilityScope);
+  if (scope.mode === "skip") {return;}
+  if (scope.mode === "deny" || !sameValue(instance?.[scope.key], scope.value)) {
+    throw new Error("Security Violation: Attempted to destroy or restore a row outside the principal's client facility");
+  }
+};
+
+/** Whether the options carry one of the two typed operations allowed to change a facility (AM-6). */
+const facilityChangeAllowed = (options: QueryOptions | null | undefined): boolean =>
+  Boolean(options?.facilityMove) || options?.facilityBinding === true;
+
+const FACILITY_CHANGE_REFUSED = "Security Violation: A row's client facility changes only through a device move or a user binding";
+
+/**
+ * AM-6 — a row's facility changes only through the device move or the user binding. The bulk
+ * twin of A-365's `refuseBulkTenantReassign`, but for EVERY context (unbound principals, the super
+ * admin and system tasks too): an integrity rule, not a scope rule. Outside any context (the ETL,
+ * migrations) nothing is checked here, as for every hook — the database triggers hold there.
+ */
+const refuseFacilityReassign = (options: QueryOptions, model: ScopedModel): void => {
+  const key = facilityKeyOf(model);
+  if (!key || !tenantStorage.getStore() || facilityChangeAllowed(options)) {return;}
+  const values = options["attributes"];
+  if (typeof values === "object" && values !== null && key in values) {
+    throw new Error(FACILITY_CHANGE_REFUSED);
+  }
+};
+
+/** A row that can say whether an attribute changed (a Sequelize instance). */
+interface ChangeTracking {
+  changed?: (key: string) => unknown;
+}
+
+/** The instance twin of `refuseFacilityReassign` (`beforeUpdate`: `save()` / `instance.update()`). */
+const refuseFacilityChange = (instance: TenantRow | null | undefined, model: ScopedModel, options?: QueryOptions): void => {
+  const key = facilityKeyOf(model);
+  if (!key || !instance || !tenantStorage.getStore() || facilityChangeAllowed(options)) {return;}
+  const tracking = instance as ChangeTracking;
+  if (typeof tracking.changed === "function" && tracking.changed(key)) {
+    throw new Error(FACILITY_CHANGE_REFUSED);
+  }
 };
 
 /**
@@ -537,6 +816,9 @@ const scopeHooklessStatics = (model: ScopedModel | null | undefined): void => {
       if (Array.isArray(scoped.include)) {scoped.include = [...(scoped.include as ScopedInclude[])];}
       applyTenantWhere(scoped, this);
       applyTenantToIncludes(scoped, this);
+      // P21-09: the facility dimension, as a find gets it (FT-11, FT-17).
+      applyFacilityWhere(scoped, this);
+      applyFacilityToIncludes(scoped, this);
       return aggregate.call(this, attribute, aggregateFunction, scoped);
     },
   });
@@ -553,11 +835,19 @@ const scopeHooklessStatics = (model: ScopedModel | null | undefined): void => {
       // `model` is tenant-scoped (checked above), and the wrapper is only on it.
       const key = tenantKeyOf(this) as string;
       const scope = resolveScope(options);
-      if (scope.mode === "skip") {
+      // P21-09 (FT-18): the facility predicate is added beside the tenant one, as for a find.
+      const facility = resolveFacilityScope(this, options.skipFacilityScope);
+      if (scope.mode === "skip" && facility.mode === "skip") {
         return increment.call(this, fields, options);
       }
-      const value = scope.mode === "deny" ? NO_TENANT_UUID : scope.tenantId;
-      return increment.call(this, fields, { ...options, where: withTenantPredicate(options.where, key, value) });
+      let where: unknown = options.where;
+      if (scope.mode !== "skip") {
+        where = withTenantPredicate(where, key, scope.mode === "deny" ? NO_TENANT_UUID : scope.tenantId);
+      }
+      if (facility.mode !== "skip") {
+        where = withTenantPredicate(where, facility.key, facility.value);
+      }
+      return increment.call(this, fields, { ...options, where });
     },
   });
 
@@ -577,45 +867,62 @@ const register = (db: HookedDatabase): void => {
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built
   Object.values(db.models || {}).forEach(scopeHooklessStatics);
   db.addHook("afterDefine", (model: ScopedModel) => { scopeHooklessStatics(model); });
+  // P21-09: every hook below also applies the facility dimension (spec § 7.4) — after the
+  // tenant step; outside a bound context it does nothing but AM-6 (a facility changes only by a
+  // move or a binding), which holds for every context.
   db.addHook("beforeFind", function (this: ScopedModel, options: QueryOptions) {
     applyTenantWhere(options, this);
     applyTenantToIncludes(options, this);
+    applyFacilityWhere(options, this);
+    applyFacilityToIncludes(options, this);
   });
   db.addHook("beforeCount", function (this: ScopedModel, options: QueryOptions) {
     applyTenantWhere(options, this);
     applyTenantToIncludes(options, this);
+    applyFacilityWhere(options, this);
+    applyFacilityToIncludes(options, this);
     scopedByCount.add(options);
   });
   db.addHook("beforeBulkUpdate", function (this: ScopedModel, options: QueryOptions) {
     refuseBulkTenantReassign(options, this);
+    refuseFacilityReassign(options, this);
     applyTenantWhere(options, this);
+    applyFacilityWhere(options, this);
   });
   db.addHook("beforeBulkDestroy", function (this: ScopedModel, options: QueryOptions) {
     refuseScopedTruncate(options, this);
     applyTenantWhere(options, this, { byField: true });
+    applyFacilityWhere(options, this, { byField: true });
   });
   // W-34: `Model.restore` maps names to columns BEFORE this hook, exactly as
   // `destroy` does (W-33), so the predicate names the column.
   db.addHook("beforeBulkRestore", function (this: ScopedModel, options: QueryOptions) {
     applyTenantWhere(options, this, { byField: true });
+    applyFacilityWhere(options, this, { byField: true });
   });
   db.addHook("beforeRestore", function (this: ScopedModel, instance: TenantRow, options: QueryOptions) {
     assertSameTenant(instance, this, options);
+    assertSameFacility(instance, this, options);
   });
   db.addHook("beforeCreate", function (this: ScopedModel, instance: TenantRow, options: QueryOptions) {
     applyTenantAssignment(instance, this, options);
+    applyFacilityAssignment(instance, this, options);
   });
   db.addHook("beforeBulkCreate", function (this: ScopedModel, instances: TenantRow[], options: QueryOptions) {
     applyTenantAssignmentBulk(instances, this, options);
+    applyFacilityAssignmentBulk(instances, this, options);
   });
   db.addHook("beforeUpdate", function (this: ScopedModel, instance: TenantRow, options: QueryOptions) {
     applyTenantAssignment(instance, this, options);
+    refuseFacilityChange(instance, this, options);
   });
   db.addHook("beforeUpsert", function (this: ScopedModel, values: TenantRow, options: QueryOptions) {
     assertUpsertTenant(values, this, options);
+    assertUpsertFacility(values, this, options);
   });
   db.addHook("beforeDestroy", function (this: ScopedModel, instance: TenantRow, options: QueryOptions) {
     assertSameTenant(instance, this, options);
+    assertSameFacility(instance, this, options);
   });
 };
 
@@ -632,5 +939,16 @@ export {
   scopeHooklessStatics,
   refuseScopedTruncate,
   refuseBulkTenantReassign,
+  facilityKeyOf,
+  resolveFacilityScope,
+  applyFacilityWhere,
+  applyFacilityToIncludes,
+  applyFacilityAssignment,
+  applyFacilityAssignmentBulk,
+  assertUpsertFacility,
+  assertSameFacility,
+  refuseFacilityReassign,
+  refuseFacilityChange,
+  columnOf,
   register,
 };

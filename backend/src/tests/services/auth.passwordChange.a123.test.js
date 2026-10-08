@@ -34,6 +34,8 @@ jest.mock("../../models", () => ({
   Role: {},
   Roles: {},
   Tenants: { name: "Tenants" },
+  // P21-09: "who am I" counts the tenant's client facilities (facilityMode).
+  ClientFacility: { count: jest.fn(async () => 0) },
 }));
 
 jest.mock("../../utils/password.util", () => ({

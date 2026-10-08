@@ -102,9 +102,9 @@ These are the places a leak can still happen. Each needs its own attention.
 | **Global search** | queries many tables at once; one missed branch is enough | re-read after any change |
 | **Kanban child tables** | only `kanban_projects` and `kanban_cards` carry `tenantId` | a query starting from a child table must join to the project |
 
-## Target — the Facility Dimension (ADR-124, decided 2026-10-07, NOT built)
+## The Facility Dimension (ADR-124, decided 2026-10-07; PARTLY built 2026-10-08)
 
-> **Nothing in this section exists in code.** It records the decided design (deviation protocol: ADR-124) so that nobody builds a different one.
+> **As built (2026-10-08):** the schema (P20-07, migrations 0117 – 0123) and, by P21-09a/b (ADR-124 Am. 4), the context (`userId`, `clientFacilityId`, `facilityBound` from the loaded row), the facility branch of **every** hook in `utils/tenantScope.util.ts` (`FACILITY_READABLE`, reviewed `skipFacilityScope`, the AM-6 refusal), the `FACILITY_*` refusal codes, the socket rooms, the route gate (`FACILITY_ACCESSIBLE_ROUTES`, `middlewares/facilityRouteGate.middleware.ts`) and the binding route behind `FACILITY_BINDING_ENABLED` (off). **Still target:** the bound menu ceiling, device moves, storage-key segments and signed-link v3, the person display, and every domain route for bound users (P21-09c – e). No bound account exists yet. The rest of this section is the decided design.
 
 The owner clarified on 2026-10-07 that **the tenant is the organisation that performs the calibration and maintenance work** — a service company serving many health facilities (*faskes*), or a hospital serving itself — and that **a facility is a client inside that tenant** (`client_facilities`). There is **no cross-tenant working path**: everything above stays exactly as it is, and ADR-084 is not amended.
 

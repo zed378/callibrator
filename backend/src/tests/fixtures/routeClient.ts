@@ -23,6 +23,8 @@ import type * as TenantContext from "../../middlewares/tenantContext.middleware"
 import type * as ErrorHandlers from "../../middlewares/errorHandlers.middleware";
 import type * as NotFound from "../../middlewares/notFound.middleware";
 import type * as TwoTenants from "./twoTenants";
+import type * as RouteTable from "../../utils/routeTable";
+import type * as Express from "express";
 import type { MemoryDb } from "./memoryDb";
 import { findSecrets, secretsMessage } from "../support/secretScan";
 
@@ -72,6 +74,12 @@ export interface CallOptions {
   readonly baseUrl?: string;
   readonly file?: unknown;
   readonly files?: unknown;
+  /**
+   * P21-09: the route file of `router` (relative to src/routes, e.g. `api/user.route.ts`), so the
+   * facility route gate can find a bound principal's route on FACILITY_ACCESSIBLE_ROUTES. Without
+   * it every bound request is refused (the gate's deny by default).
+   */
+  readonly routeFile?: string;
 }
 
 interface AuthState {
@@ -228,7 +236,17 @@ const makeRes = (resolve: (r: RouteResponse) => void): Record<string, unknown> =
 export const call = (router: RouterLike, method: string, url: string, opts: CallOptions = {}): Promise<RouteResponse> => {
   const { errorHandler } = jest.requireActual<typeof ErrorHandlers>("../../middlewares/errorHandlers.middleware");
   const { notFound } = jest.requireActual<typeof NotFound>("../../middlewares/notFound.middleware");
-  const { body = {}, query = {}, headers = {}, baseUrl = "/api/v1/test", file, files } = opts;
+  const { body = {}, query = {}, headers = {}, baseUrl = "/api/v1/test", file, files, routeFile } = opts;
+  // P21-09: the index the facility route gate resolves against — this router, mounted at baseUrl.
+  const { registerRouteIndex } = jest.requireActual<typeof RouteTable>("../../utils/routeTable");
+  const express = jest.requireActual<typeof Express>("express");
+  if (typeof router === "function") {
+    const root = express.Router();
+    root.use(baseUrl, router as Express.Router);
+    registerRouteIndex({ root: root as unknown as RouteTable.RouterLike, fileOf: (r) => (r === router ? (routeFile ?? null) : null) });
+  } else {
+    registerRouteIndex(null);
+  }
   // S-20 / A-331 (ADR-100 Amendment 4): every response is scanned for
   // credential material; a finding rejects the call (tests/support/secretScan.ts).
   const route = `${method.toUpperCase()} ${baseUrl}${url}`;

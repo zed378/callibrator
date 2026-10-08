@@ -114,6 +114,8 @@ import type ESignatureRouteModule from "./src/routes/api/eSignature.route";
 import type KanbanRouteModule from "./src/routes/api/kanban.route";
 import type TicketsRouteModule from "./src/routes/api/tickets.route";
 import type * as AuthorizationWiringUtilModule from "./src/utils/authorizationWiring.util";
+import type * as RouteTableModule from "./src/utils/routeTable";
+import type ClientFacilitiesRouteModule from "./src/routes/api/clientFacilities.route";
 import type MigratorModule from "./src/config/migrator";
 import type * as MigrationLockUtilModule from "./src/utils/migrationLock.util";
 import type * as SchemaVerifyUtilModule from "./src/utils/schemaVerify.util";
@@ -497,6 +499,7 @@ const tenantHierarchyRoutes = require("./src/routes/api/tenantHierarchy.route") 
 const eSignatureRoutes = require("./src/routes/api/eSignature.route") as typeof ESignatureRouteModule;
 const kanbanRoutes = require("./src/routes/api/kanban.route") as typeof KanbanRouteModule;
 const ticketRoutes = require("./src/routes/api/tickets.route") as typeof TicketsRouteModule;
+const clientFacilityRoutes = require("./src/routes/api/clientFacilities.route") as typeof ClientFacilitiesRouteModule;
 
 // ======================================================
 // ROUTES ENDPOINT
@@ -573,6 +576,8 @@ app.use("/api/v1/tenant-hierarchy", tenantHierarchyRoutes);
 app.use("/api/v1/esignature", eSignatureRoutes);
 app.use("/api/v1/kanban", kanbanRoutes);
 app.use("/api/v1/tickets", ticketRoutes);
+// P21-09 (ADR-124): client facilities — the bound user's own facility (S-8).
+app.use("/api/v1/client-facilities", clientFacilityRoutes);
 // Per-dependency readiness detail. Gated (auth + denyApiKey + superAdminOnly)
 // because it names every dependency and why it is failing — A-06.
 app.use("/api/v1/health", internalHealthRoutes);
@@ -635,6 +640,11 @@ app.use(notFound);
 // errorHandler (src/tests/middlewares/requestTimeout.f14.test.js).
 app.use(requestTimeoutHandler);
 app.use(errorHandler);
+
+// P21-09 (spec § 7.7, AM-12): the route table the facility route gate resolves
+// a bound principal's request against — registered now that every router is
+// mounted, so it holds the order Express dispatches in (shadowing included).
+(require("./src/utils/routeTable") as typeof RouteTableModule).registerAppRouteIndex(app);
 
 // ======================================================
 // START SERVER

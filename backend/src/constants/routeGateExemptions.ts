@@ -96,6 +96,9 @@ const SCIM: RouteGateExemption = {
 };
 
 const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> = {
+  "api/clientFacilities.route.ts": {
+    "GET /mine": { kind: SELF, reason: "P21-09 (S-8): the caller's own client facility, or null when unbound — read through the facility rule id = own" },
+  },
   "api/session.route.ts": {
     "GET /mine": { kind: SELF, reason: "Q-08 (ADR-084): lists the caller's own sessions only — ownSessions.service filters on req.user.id" },
     "POST /mine/:id/revoke": { kind: SELF, reason: "Q-08 (ADR-084): revokes one of the caller's own sessions — another user's is 404 (ownSessions.service)" },
