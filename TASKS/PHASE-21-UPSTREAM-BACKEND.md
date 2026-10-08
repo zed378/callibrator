@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 5 DONE (P21-09a … **P21-09e** — 2026-10-08) · 1 TODO (P21-01 — unblocked by P20-06) · 8 BLOCKED |
+| **Status** | 6 DONE (**P21-01** — 2026-10-09; P21-09a … P21-09e — 2026-10-08) · 0 TODO · 8 BLOCKED |
 | **Goal** | Services, routes, Zod contracts, OpenAPI, gates, audit, two-tenant tests |
 | **Depends on** | Phase 20 |
 | **Size** | L |
@@ -28,7 +28,7 @@ Phase 19 specs · docs/API/00 · docs/BACKEND/00 · CLAUDE.md non-negotiables. *
 
 | Card | Title | Features | Status | Depends on |
 |---|---|---|---|---|
-| P21-01 | Catalogue and template API: device types, versions, publish (audited), published-catalogue download with ETag (routes, contracts and tests: P19-01 spec § 8, § 13). **Also lands (deferred by P20-03, ADR-125 Am. 2):** `parseDecimal`, `parseLimit`, `normaliseUnit`, `evaluate`, `resolveTemplateVersion`, `inspectionCatalogue.ts`, the brand constructors, the retired-type 400 on a device; the schema, models, vocabularies and canonical hash are built (0111/0112) | F-19 … F-22, F-31, F-79 | **TODO** (unblocked 2026-10-08: P20-06 DONE — `ipm` / `ipm-templates` seeded, inactive until P22) | P20-01, 03, P20-06 |
+| P21-01 | Catalogue and template API: device types, versions, publish (audited), published-catalogue download with ETag (routes, contracts and tests: P19-01 spec § 8, § 13). **Also lands (deferred by P20-03, ADR-125 Am. 2):** `parseDecimal`, `parseLimit`, `normaliseUnit`, `evaluate`, `resolveTemplateVersion`, `inspectionCatalogue.ts`, the brand constructors, the retired-type 400 on a device; the schema, models, vocabularies and canonical hash are built (0111/0112) | F-19 … F-22, F-31, F-79 | **DONE 2026-10-09** — 34 routes (`/device-types`, `/ipm/…`, the admin proposal queue), the parsers and evaluator in contracts, the brand constructors, the retired-type 400, `inspectionCatalogueGlobal.guard`, migration 0125 (a base rebase's version is not an operator draft) — [record](../MEMORY/records/2026-10-09-p21-01-catalogue-api.md); ADR-125 Am. 3 | P20-01, 03, P20-06 |
 | P21-02 | Device extensions: QR lookup, type, photos (sniffing, HEIC → JPEG, EXIF strip, thumbnails, ClamAV), photo replace; **+ `GET /calibration-devices?view=field`** (the PWA working set, P19-08 § 7.2) | F-23 … F-29 | BLOCKED | P20-02, 08 |
 | P21-03 | IPM sessions: prefill, draft, submit, correction, void, list/history; idempotency keys for offline sync; **+ for the PWA (P19-08 spec § 9.5, 2026-10-08):** `POST /attachments` honours `Idempotency-Key`, tenant/account refusals carry `SCOPE_LOSS_CODES`, `POST /field/wipes` | F-35 … F-57 | BLOCKED | P20-04, 05 |
 | P21-04 | IPM side effects in the submit transaction: work order, device status, scheduler flag, "due" flag; **+ the IPM report's issuance in the submit (number, token, hash, issuer snapshot), the report document, the signatures route and the public verification** ([P19-06 spec](../MEMORY/specs/P19-06-ipm-report-document.md) § 4 – § 10, added 2026-10-08) | F-48, F-51, F-54, F-58 … F-61 | BLOCKED (UD-17 a working decision; P19-06 DONE as spec) | P21-03, UD-17, P19-06 |

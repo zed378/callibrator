@@ -14,9 +14,10 @@
  * (P19-06) build the same bytes. The hash itself is computed with each platform's own SHA-256:
  * this package imports no Node or DOM API.
  *
- * NOT here yet (P21-01, with the API that uses them): `parseDecimal`, `parseLimit`,
- * `normaliseUnit`, `evaluate`, `resolveTemplateVersion` and the request/response schemas of
- * `inspectionCatalogue.ts` (spec § 6, § 7.5, § 8.4).
+ * P21-01 (2026-10-09) adds the one parser and evaluator the server, the offline client and the
+ * ETL share (spec § 6, § 7.5): `parseDecimal`, `normaliseUnit`, `parseLimit`, `evaluate`,
+ * `resolveTemplateVersion`, and `inspectionContentProblems` (the publish-time checks of § 7.2).
+ * The request/response schemas are `inspectionCatalogue.ts`.
  */
 
 /** The checklist sections, in capture and print order (spec § 5.1). */
@@ -279,3 +280,448 @@ export const canonicalTemplateVersion = (version: CanonicalTemplateVersionInput)
     baseVersionId: version.baseVersionId,
     items: [...version.items].sort(readOrder).map(canonicalItem),
   });
+
+// ── Parsing, units, limits and evaluation (spec § 6; P21-01) ─────────────────
+
+/** What `parseDecimal` read: the canonical decimal, or null when the text is refused; and the text as given. */
+export interface ParsedDecimal {
+  readonly value: string | null;
+  readonly raw: string;
+}
+
+/** One separator, `,` or `.`, read as the decimal point; no grouping, no exponent (spec § 6.1). */
+const CAPTURED_DECIMAL = /^[+-]?\d+(?:[.,]\d+)?$/;
+
+/**
+ * A captured decimal (spec § 6.1): trimmed; `0,7` → `0.7`; the ambiguous `1.200` is one point two
+ * (the form shows the parsed value back before submit); digit grouping (`1.000,5`, `1 000`) and
+ * exponents are refused (`value` null, `raw` kept). A number is read through its string form.
+ *
+ * @param input - the text (or number) as entered
+ * @returns the canonical decimal (`canonicalDecimal`) or null, and the raw text
+ */
+export const parseDecimal = (input: string | number | null | undefined): ParsedDecimal => {
+  if (input === null || input === undefined) {
+    return { value: null, raw: "" };
+  }
+  const raw = typeof input === "number" ? String(input) : input;
+  const text = raw.trim();
+  return { value: CAPTURED_DECIMAL.test(text) ? canonicalDecimal(text.replace(",", ".")) : null, raw };
+};
+
+/**
+ * The closed alias table of spec § 6.3 (after the character folding of `normaliseUnit`). A new
+ * alias is a contract change, never data.
+ */
+export const UNIT_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  uA: "µA",
+  ohm: "Ω",
+  Ohm: "Ω",
+  OHM: "Ω",
+  mohm: "mΩ",
+  kohm: "kΩ",
+  Mohm: "MΩ",
+  C: "°C",
+  "%RH": "%",
+  BPM: "bpm",
+  Bpm: "bpm",
+  lpm: "L/min",
+  LPM: "L/min",
+  "l/min": "L/min",
+  ml: "mL",
+  "ml/h": "mL/h",
+});
+
+/** Look-alike characters folded first: Greek mu → micro sign, ohm sign → Greek omega, ring / ordinal → degree. */
+const FOLDS: readonly (readonly [RegExp, string])[] = [
+  [/μ/g, "µ"],
+  [/Ω/g, "Ω"],
+  [/[˚º]/g, "°"],
+];
+
+/**
+ * One unit token, normalised (spec § 6.3): look-alikes folded, then the alias table. An unknown
+ * token is kept as written (trimmed, at most 20 characters — the column): still a valid label,
+ * and a limit on it still evaluates (the same unit on both sides). There is no conversion.
+ *
+ * @param token - the unit as written
+ * @returns the canonical unit, or null for none
+ */
+export const normaliseUnit = (token: string | null | undefined): string | null => {
+  const folded = FOLDS.reduce((text, [pattern, to]) => text.replace(pattern, to), (token ?? "").trim());
+  if (folded === "") {
+    return null;
+  }
+  return (UNIT_ALIASES[folded] ?? folded).slice(0, 20);
+};
+
+/** A limit as `parseLimit` reads it — the structured columns of spec § 4.2. */
+export interface ParsedLimit {
+  readonly op: InspectionLimitOp;
+  readonly value: string | null;
+  readonly low: string | null;
+  readonly high: string | null;
+  readonly nominal: string | null;
+  readonly tolerance: string | null;
+  /** The limit's own unit, normalised; null when it names none, and for a percentage tolerance. */
+  readonly unit: string | null;
+  /** The limit as written (trimmed, whitespace collapsed, `˚` → `°`): what the report prints. */
+  readonly text: string;
+}
+
+const NUM = String.raw`([+-]?\d+(?:[.,]\d+)?)`;
+const UNSIGNED = String.raw`(\d+(?:[.,]\d+)?)`;
+/** A unit: one token that does not start like a number. */
+const UNIT = String.raw`(?:\s*([^\s\d+\-±.,][^\s]*))?`;
+const PM = String.raw`(?:±|\+\/-|\+-)`;
+
+const COMPARE = new RegExp(String.raw`^(≤|<=|<|≥|>=|>)\s*${NUM}${UNIT}$`, "u");
+const MAXIMUM = new RegExp(String.raw`^(?:max|maks)\.?\s*${NUM}${UNIT}$`, "iu");
+const MINIMUM = new RegExp(String.raw`^min\.?\s*${NUM}${UNIT}$`, "iu");
+const PERCENT = new RegExp(String.raw`^${PM}\s*${UNSIGNED}\s*%$`, "u");
+const ABSOLUTE = new RegExp(String.raw`^${PM}\s*${UNSIGNED}${UNIT}$`, "u");
+const NOMINAL = new RegExp(String.raw`^${NUM}\s*${PM}\s*${UNSIGNED}(?:\s*(%)$|${UNIT}$)`, "u");
+const BETWEEN = new RegExp(String.raw`^${NUM}\s*(?:-|–|s\.d\.|to)\s*${NUM}${UNIT}$`, "iu");
+
+const COMPARATORS: Readonly<Record<string, InspectionLimitOp>> = Object.freeze({
+  "≤": "lte",
+  "<=": "lte",
+  "<": "lt",
+  "≥": "gte",
+  ">=": "gte",
+  ">": "gt",
+});
+
+// ── Exact decimal arithmetic on scaled integers (spec § 6.1, § 6.4) ──────────
+
+/** A decimal as an integer and a count of fractional digits: `0.7` = 7 × 10⁻¹. */
+interface Scaled {
+  readonly digits: bigint;
+  readonly scale: number;
+}
+
+const TEN = BigInt(10);
+const ZERO = BigInt(0);
+const HUNDRED = BigInt(100);
+
+const pow10 = (n: number): bigint => {
+  let result = BigInt(1);
+  for (let i = 0; i < n; i += 1) {
+    result *= TEN;
+  }
+  return result;
+};
+
+/** A decimal as a scaled integer, or null when it is absent or not a plain decimal. */
+const scaledOf = (value: DecimalInput | undefined): Scaled | null => {
+  const text = value === undefined ? null : parseDecimal(value).value;
+  if (text === null) {
+    return null;
+  }
+  const dot = text.indexOf(".");
+  const fraction = dot < 0 ? "" : text.slice(dot + 1);
+  return { digits: BigInt(`${dot < 0 ? text : text.slice(0, dot)}${fraction}`), scale: fraction.length };
+};
+
+/** `value`'s digits at `scale` (≥ its own). */
+const at = (value: Scaled, scale: number): bigint => value.digits * pow10(scale - value.scale);
+
+const abs = (n: bigint): bigint => (n < ZERO ? -n : n);
+
+/** -1, 0 or 1 for `a` against `b`, exactly; null when either is absent or not a decimal. */
+const compareScaled = (a: Scaled | null, b: Scaled | null): number | null => {
+  if (!a || !b) {
+    return null;
+  }
+  const scale = Math.max(a.scale, b.scale);
+  const d = at(a, scale) - at(b, scale);
+  return d < ZERO ? -1 : d > ZERO ? 1 : 0;
+};
+
+/** -1, 0 or 1; 0 when either side is absent (nothing to compare). */
+const compareDecimals = (a: DecimalInput, b: DecimalInput): number => compareScaled(scaledOf(a), scaledOf(b)) ?? 0;
+
+/** A NUM group the pattern matched: always a decimal parseDecimal accepts. */
+const decimalOf = (text: string | undefined): string | null => parseDecimal(text).value;
+
+/**
+ * A reference value or limit as written → its structured form (spec § 6.2). Anything outside the
+ * grammar is `{ op: "text" }`: printed as written and never evaluated (fail-closed: a person
+ * decides). A range whose low end is above its high end is `text` too.
+ *
+ * @param input - the limit text
+ * @returns the limit, or null for no limit (empty)
+ */
+export const parseLimit = (input: string | null | undefined): ParsedLimit | null => {
+  const text = (input ?? "").replace(/[˚º]/g, "°").replace(/\s+/g, " ").trim();
+  if (text === "") {
+    return null;
+  }
+  const none = { value: null, low: null, high: null, nominal: null, tolerance: null, unit: null, text };
+  let m = COMPARE.exec(text);
+  if (m) {
+    return { ...none, op: COMPARATORS[m[1] as string] as InspectionLimitOp, value: decimalOf(m[2]), unit: normaliseUnit(m[3]) };
+  }
+  m = MAXIMUM.exec(text) ?? MINIMUM.exec(text);
+  if (m) {
+    return { ...none, op: /^min/i.test(text) ? "gte" : "lte", value: decimalOf(m[1]), unit: normaliseUnit(m[2]) };
+  }
+  m = PERCENT.exec(text);
+  if (m) {
+    return { ...none, op: "plus_minus_pct", tolerance: decimalOf(m[1]) };
+  }
+  m = ABSOLUTE.exec(text);
+  if (m) {
+    return { ...none, op: "plus_minus", tolerance: decimalOf(m[1]), unit: normaliseUnit(m[2]) };
+  }
+  m = NOMINAL.exec(text);
+  if (m) {
+    const pct = m[3] === "%";
+    return {
+      ...none,
+      op: pct ? "plus_minus_pct" : "plus_minus",
+      nominal: decimalOf(m[1]),
+      tolerance: decimalOf(m[2]),
+      unit: pct ? null : normaliseUnit(m[4]),
+    };
+  }
+  m = BETWEEN.exec(text);
+  if (m) {
+    const low = decimalOf(m[1]);
+    const high = decimalOf(m[2]);
+    if (compareDecimals(low, high) <= 0) {
+      return { ...none, op: "between", low, high, unit: normaliseUnit(m[3]) };
+    }
+  }
+  return { ...none, op: "text" };
+};
+
+/** The limit columns `evaluate` reads (an item definition or a template item). */
+export interface EvaluableItem {
+  readonly limitOp: InspectionLimitOp | null;
+  readonly limitValue?: DecimalInput | undefined;
+  readonly limitLow?: DecimalInput | undefined;
+  readonly limitHigh?: DecimalInput | undefined;
+  readonly limitNominal?: DecimalInput | undefined;
+  readonly limitTolerance?: DecimalInput | undefined;
+  /** The nominal of a tolerance when the limit names none. */
+  readonly settingValue?: DecimalInput | undefined;
+}
+
+/** One reading: a decimal, or absent, or `not_applicable`. */
+// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- `DecimalInput` admits any string; the outcome a reading may carry instead of a number is spelt out for the reader
+export type InspectionReading = DecimalInput | "not_applicable" | undefined;
+
+type Determinate = "pass" | "fail";
+
+const verdict = (ok: boolean): Determinate => (ok ? "pass" : "fail");
+
+/** One present reading against the limit; null when the limit cannot be evaluated. */
+const evaluateOne = (item: EvaluableItem, m: Scaled): Determinate | null => {
+  switch (item.limitOp) {
+    case "lt":
+    case "lte":
+    case "gt":
+    case "gte": {
+      const c = compareScaled(m, scaledOf(item.limitValue));
+      return c === null ? null : verdict({ lt: c < 0, lte: c <= 0, gt: c > 0, gte: c >= 0 }[item.limitOp]);
+    }
+    case "between": {
+      const low = compareScaled(m, scaledOf(item.limitLow));
+      const high = compareScaled(m, scaledOf(item.limitHigh));
+      return low === null || high === null ? null : verdict(low >= 0 && high <= 0);
+    }
+    case "plus_minus":
+    case "plus_minus_pct": {
+      const nominal = scaledOf(item.limitNominal ?? item.settingValue);
+      const tolerance = scaledOf(item.limitTolerance);
+      if (!nominal || !tolerance) {
+        return null;
+      }
+      const scale = Math.max(m.scale, nominal.scale, tolerance.scale);
+      const deviation = abs(at(m, scale) - at(nominal, scale));
+      return item.limitOp === "plus_minus"
+        ? verdict(deviation <= at(tolerance, scale))
+        : // |m − n| ≤ |n| × t / 100, on integers at `scale`: |M − N| × 100 × 10^scale ≤ |N| × T.
+          verdict(deviation * HUNDRED * pow10(scale) <= abs(at(nominal, scale)) * at(tolerance, scale));
+    }
+    case "text":
+    case null:
+      // Printed as written, or no limit: indeterminate — a person decides (spec § 6.4).
+      return null;
+  }
+};
+
+/**
+ * The computed outcome of an item's readings (spec § 6.4): `fail` if any present reading fails,
+ * `pass` if every present reading passes and at least one is present, else null (indeterminate).
+ * A reading that is absent, `not_applicable` or not a plain decimal is not present. Boundaries are
+ * inclusive for `≤`, `≥`, `between` and `±`; all arithmetic is on scaled integers.
+ *
+ * @param item - the limit columns (and the setting, the default nominal)
+ * @param readings - reading 1 and, for a setting/measured/reference item, reading 2
+ * @returns pass, fail or null
+ */
+export const evaluate = (item: EvaluableItem, readings: readonly InspectionReading[]): Determinate | null => {
+  const outcomes = readings
+    .map((reading) => (reading === "not_applicable" ? null : scaledOf(reading)))
+    .filter((reading): reading is Scaled => reading !== null)
+    .map((reading) => evaluateOne(item, reading));
+  if (outcomes.includes("fail")) {
+    return "fail";
+  }
+  return outcomes.length > 0 && outcomes.every((o) => o === "pass") ? "pass" : null;
+};
+
+/** The one thing `resolveTemplateVersion` reads of a published version. */
+export interface PublishedVersionRef {
+  /** NULL for the base template's version. */
+  readonly deviceTypeId: string | null;
+}
+
+/**
+ * Which published version a new session pins (spec § 7.5): the device type's own; else (no type,
+ * no template, a retired template) the base's; else null — the caller answers 409 "No published
+ * checklist exists". Pure, so the offline client resolves exactly as the server (ADR-127).
+ *
+ * @param published - the published versions (one per active template, at most)
+ * @param deviceTypeId - the device's type, if any
+ * @returns the version to pin, or null
+ */
+export const resolveTemplateVersion = <V extends PublishedVersionRef>(
+  published: readonly V[],
+  deviceTypeId: string | null | undefined,
+): V | null =>
+  (deviceTypeId ? published.find((v) => v.deviceTypeId === deviceTypeId) : undefined) ??
+  published.find((v) => v.deviceTypeId === null) ??
+  null;
+
+// ── An item's content, built and checked (spec § 4.2, § 7.2) ─────────────────
+
+/** The content columns of a definition or a template item (spec § 4.2), decimals as canonical strings. */
+export interface InspectionItemContent {
+  readonly section: InspectionSection;
+  readonly label: string;
+  readonly inputKind: InspectionInputKind;
+  readonly unit: string | null;
+  readonly symbol: string | null;
+  readonly settingText: string | null;
+  readonly settingValue: string | null;
+  readonly limitOp: InspectionLimitOp | null;
+  readonly limitValue: string | null;
+  readonly limitLow: string | null;
+  readonly limitHigh: string | null;
+  readonly limitNominal: string | null;
+  readonly limitTolerance: string | null;
+  readonly limitText: string | null;
+  readonly validMin: string | null;
+  readonly validMax: string | null;
+  readonly warnMin: string | null;
+  readonly warnMax: string | null;
+  readonly allowedOutcomes: readonly InspectionOutcome[];
+}
+
+/** What an operator writes for an item: the limit as TEXT (the server parses it), decimals as entered. */
+export interface InspectionItemContentInput {
+  readonly section: InspectionSection;
+  readonly label: string;
+  readonly inputKind: InspectionInputKind;
+  readonly unit?: string | null | undefined;
+  readonly symbol?: string | null | undefined;
+  readonly settingText?: string | null | undefined;
+  readonly settingValue?: DecimalInput | undefined;
+  readonly limitText?: string | null | undefined;
+  readonly validMin?: DecimalInput | undefined;
+  readonly validMax?: DecimalInput | undefined;
+  readonly warnMin?: DecimalInput | undefined;
+  readonly warnMax?: DecimalInput | undefined;
+  readonly allowedOutcomes?: readonly InspectionOutcome[] | undefined;
+}
+
+const textOrNull = (value: string | null | undefined): string | null => {
+  const text = (value ?? "").trim();
+  return text === "" ? null : text;
+};
+
+/**
+ * The stored content of an item: the unit normalised, the limit parsed from its text (spec § 6.2),
+ * the setting's number read from its text when it spells one (§ 4.2), decimals canonical.
+ *
+ * @param input - what the operator wrote
+ * @returns the 19 content columns
+ */
+export const inspectionContentOf = (input: InspectionItemContentInput): InspectionItemContent => {
+  const limit = parseLimit(input.limitText);
+  const settingText = textOrNull(input.settingText);
+  return {
+    section: input.section,
+    label: input.label.trim(),
+    inputKind: input.inputKind,
+    unit: normaliseUnit(input.unit),
+    symbol: textOrNull(input.symbol),
+    settingText,
+    settingValue: parseDecimal(input.settingValue ?? settingText).value,
+    limitOp: limit?.op ?? null,
+    limitValue: limit?.value ?? null,
+    limitLow: limit?.low ?? null,
+    limitHigh: limit?.high ?? null,
+    limitNominal: limit?.nominal ?? null,
+    limitTolerance: limit?.tolerance ?? null,
+    limitText: limit?.text ?? null,
+    validMin: parseDecimal(input.validMin).value,
+    validMax: parseDecimal(input.validMax).value,
+    warnMin: parseDecimal(input.warnMin).value,
+    warnMax: parseDecimal(input.warnMax).value,
+    allowedOutcomes: [...(input.allowedOutcomes ?? [])],
+  };
+};
+
+const MEASURED_KINDS: readonly InspectionInputKind[] = ["measured", "measured_with_limit", "setting_measured_reference"];
+const LIMIT_KINDS: readonly InspectionInputKind[] = ["measured_with_limit", "setting_measured_reference"];
+
+/**
+ * What is wrong with an item's content (spec § 4.2's CHECKs, § 5.1, § 6.2's unit rule, § 7.2's
+ * publish refusals) — one sentence each, empty when it may be stored and published. Run by the
+ * request schemas (a 400 before the service) and again at publish over every item.
+ *
+ * @param content - the stored form (`inspectionContentOf`)
+ * @returns the problems, in a fixed order
+ */
+export const inspectionContentProblems = (content: InspectionItemContent): string[] => {
+  const problems: string[] = [];
+  const rule = INSPECTION_SECTION_RULES[content.section];
+  const where = `"${content.label}"`;
+  if (!rule.inputKinds.includes(content.inputKind)) {
+    problems.push(`${where}: the ${content.section} section takes ${rule.inputKinds.join(", ")} items, not ${content.inputKind}.`);
+  }
+  const outside = content.allowedOutcomes.filter((o) => !rule.outcomes.includes(o));
+  if (outside.length > 0) {
+    problems.push(`${where}: ${outside.join(", ")} is not an outcome of the ${content.section} section.`);
+  }
+  if (content.allowedOutcomes.length === 0 && content.inputKind !== "measured" && content.inputKind !== "text") {
+    problems.push(`${where}: choose at least one allowed outcome.`);
+  }
+  if (content.inputKind === "text" && content.allowedOutcomes.length > 0) {
+    problems.push(`${where}: a text item has no outcomes.`);
+  }
+  if (MEASURED_KINDS.includes(content.inputKind) && content.unit === null) {
+    problems.push(`${where}: a measured item needs its unit.`);
+  }
+  if (content.limitOp !== null && !LIMIT_KINDS.includes(content.inputKind)) {
+    problems.push(`${where}: only a measured-with-limit or a setting/measured/reference item has a limit.`);
+  }
+  const limitUnit = parseLimit(content.limitText)?.unit ?? null;
+  if (limitUnit !== null && content.unit !== null && limitUnit !== content.unit) {
+    problems.push(`${where}: the limit is in ${limitUnit} but the item records ${content.unit}.`);
+  }
+  if (compareDecimals(content.validMin, content.validMax) > 0) {
+    problems.push(`${where}: the valid range's minimum is above its maximum.`);
+  }
+  if (compareDecimals(content.warnMin, content.warnMax) > 0) {
+    problems.push(`${where}: the warning range's minimum is above its maximum.`);
+  }
+  if (compareDecimals(content.warnMin, content.validMin) < 0 || compareDecimals(content.warnMax, content.validMax) > 0) {
+    problems.push(`${where}: the warning range must lie inside the valid range.`);
+  }
+  return problems;
+};

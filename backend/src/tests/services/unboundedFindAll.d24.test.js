@@ -172,6 +172,21 @@ const OPEN = "OPEN — grows with the tenant, not paged yet (ADR-083 follow-up)"
 
 /** Each entry: [the most calls allowed under this key, why it is bounded]. */
 const REVIEWED = Object.freeze({
+  // P21-01 (ADR-125): the GLOBAL inspection catalogue — platform content bounded by the catalogue's
+  // size (about 344 device types, one template each, at most 300 items per version, one published
+  // version per template), never by a tenant's data; the published document is the offline download
+  // and is ETag-cached (spec § 8.3).
+  "inspectionTemplate.service.ts::itemsOf::models.InspectionTemplateItem": [1, PARENT],
+  "inspectionTemplate.service.ts::listTemplates::models.InspectionTemplateVersion": [2, CLOSED],
+  "inspectionTemplate.service.ts::draftRows::models.InspectionItemDefinition": [1, IDS],
+  "inspectionTemplate.service.ts::publishIn::models.InspectionTemplateVersion": [1, PARENT],
+  "inspectionTemplate.service.ts::rebaseTypes::models.InspectionTemplate": [1, CLOSED],
+  "inspectionTemplate.service.ts::publishedCatalogueEtag::models.InspectionTemplateVersion": [1, CLOSED],
+  "inspectionTemplate.service.ts::publishedCatalogueEtag::models.DeviceType": [1, CLOSED],
+  "inspectionTemplate.service.ts::publishedCatalogue::models.InspectionTemplateVersion": [1, CLOSED],
+  "inspectionTemplate.service.ts::publishedCatalogue::models.DeviceType": [1, CLOSED],
+  "inspectionTemplate.service.ts::publishedCatalogue::models.InspectionTemplate": [1, IDS],
+  "inspectionTemplate.service.ts::publishedCatalogue::models.InspectionTemplateItem": [1, IDS],
   // P21-09 (ADR-124): a tenant's client facilities — the health facilities one calibration company
   // serves (the upstream provider: tens, UD-11) — for a picker; and one facility's bound accounts
   // (its staff), listed for the administrator and read to revoke their sessions on a status change.

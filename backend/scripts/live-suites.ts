@@ -67,6 +67,7 @@ export const SUITES: readonly Suite[] = Object.freeze([
   { id: "p2007move", file: "src/tests/migrations/deviceMove.p2007.live.test.ts", env: { P2007_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p2006", file: "src/tests/migrations/menuGrants.p2006.live.test.ts", env: { P2006_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p2003", file: "src/tests/migrations/inspectionCatalogue.p2003.live.test.ts", env: { P2003_PG_LIVE_TEST: "1" }, db: "scratch" },
+  { id: "p2101", file: "src/tests/migrations/inspectionCatalogue.p2101.live.test.ts", env: { P2101_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "uifix", file: "src/tests/migrations/uiCorrectness.adr101adr102.live.test.ts", env: { UIFIX_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p1005", file: "src/tests/services/accessRequest.p1005.live.test.ts", env: { P1005_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p918att", file: "src/tests/services/attachmentService.p918.live.test.ts", env: { P918_ATT_PG_LIVE_TEST: "1" }, db: "scratch" },

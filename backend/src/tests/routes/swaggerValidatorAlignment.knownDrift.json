@@ -1,1 +1,5 @@
-{}
+{
+  "GET /api/v1/ipm/template-versions": [
+    "no documented JSON body; the validator requires templateId"
+  ]
+}

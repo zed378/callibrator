@@ -470,6 +470,12 @@ const PLATFORM_ROLE =
   "roles and menu groups are global (no tenant column) and managed by the super admin alone";
 const UPSTREAM_FILE_IMPORTS =
   "the platform's rsync image import queue: super admin only (superAdminOnly + denyApiKey); the table names a target tenant and no tenant principal reaches it";
+const CATALOGUE_READ =
+  "the global inspection catalogue (ADR-125): the row has no tenant column — every tenant reads the same published content";
+const CATALOGUE_WRITE =
+  "the global inspection catalogue's operator routes (ADR-125 § 4): superAdminOnly, held by inspectionCatalogueGlobal.guard; no tenant principal reaches them";
+const PROPOSAL_QUEUE =
+  "the operator's decision on a tenant's catalogue proposal (ADR-125 § 5): super admin only (the admin router's rbac and superAdminOnly); the tenant side is covered by ipmTemplateProposals.twoTenant";
 const PLATFORM_SESSIONS = "the platform's session console, super admin only; a user's own sessions are /sessions/mine (session.own.q08)";
 const PLATFORM_PERMISSIONS = "per-user permission overrides, managed by the super admin alone";
 
@@ -491,6 +497,26 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
   // router is auth + denyApiKey + superAdminOnly, so no tenant principal reaches an import by id
   // (403, tests/routes/upstreamFileImports.route.test.ts).
   "api/upstreamFileImports.route GET /:id": { kind: "platform", reason: UPSTREAM_FILE_IMPORTS },
+  // P21-01 (ADR-125 § 7): the GLOBAL inspection catalogue. Reads by id name a row with no tenant
+  // column (checked against the model); every write is the operator's (superAdminOnly). The
+  // proposals are tenant-owned and covered by ipmTemplateProposals.twoTenant (markers).
+  "api/deviceTypes.route GET /:deviceTypeId": { kind: "not-tenant-owned", reason: CATALOGUE_READ, model: "DeviceType" },
+  "api/deviceTypes.route PATCH /:deviceTypeId": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/deviceTypes.route POST /:deviceTypeId/retire": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/deviceTypes.route POST /:deviceTypeId/reactivate": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route GET /template-versions/:versionId": { kind: "not-tenant-owned", reason: CATALOGUE_READ, model: "InspectionTemplateVersion" },
+  "api/ipm.route GET /item-definitions/:itemDefinitionId": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route PATCH /item-definitions/:itemDefinitionId": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route POST /item-definitions/:itemDefinitionId/retire": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route POST /templates/:templateId/retire": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route POST /templates/:templateId/reactivate": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route POST /templates/:templateId/versions": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route PUT /template-versions/:versionId/items": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route PATCH /template-versions/:versionId": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route POST /template-versions/:versionId/publish": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/ipm.route POST /template-versions/:versionId/discard": { kind: "platform", reason: CATALOGUE_WRITE },
+  "api/admin.route POST /ipm/template-proposals/:proposalId/accept": { kind: "platform", reason: PROPOSAL_QUEUE },
+  "api/admin.route POST /ipm/template-proposals/:proposalId/reject": { kind: "platform", reason: PROPOSAL_QUEUE },
   "api/upstreamFileImports.route POST /:id/cancel": { kind: "platform", reason: UPSTREAM_FILE_IMPORTS },
   "api/admin.route GET /upstream-sql-imports/:id": { kind: "platform", reason: UPSTREAM_SQL_IMPORTS },
   "api/admin.route POST /upstream-sql-imports/:id/cancel": { kind: "platform", reason: UPSTREAM_SQL_IMPORTS },

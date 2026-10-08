@@ -49,6 +49,9 @@ const createCalibrationDeviceSchema = z.object({
   // unbound creator naming none gets the tenant's own (self) facility; a bound one gets its own.
   // Create only: a device changes facility through the audited move, never an edit (AM-6).
   clientFacilityId: uuid().optional(),
+  // P21-01 (ADR-125; spec P19-01 § 4.7): the device's type in the global catalogue. A retired type
+  // cannot be GIVEN (400); a device that already holds one keeps it. null clears it.
+  deviceTypeId: uuid().nullable().optional(),
 });
 
 const updateCalibrationDeviceSchema = z.object({
@@ -63,6 +66,8 @@ const updateCalibrationDeviceSchema = z.object({
   nextCalibrationDate: dateLike().or(z.literal("")).nullable().optional(),
   calibrationIntervalDays: numeric(z.number().int().min(1)).or(z.literal("")).nullable().optional(),
   remarks: optionalText(),
+  // P21-01: as on create — a retired type is refused only when the edit CHANGES the type.
+  deviceTypeId: uuid().nullable().optional(),
 });
 
 export {

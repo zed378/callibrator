@@ -150,6 +150,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ipm/template-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The catalogue proposal queue
+         * @description P21-01 (ADR-125 § 5): every tenant's proposals, oldest first, with the tenant each came from.
+         */
+        get: operations["adminListInspectionTemplateProposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ipm/template-proposals/{proposalId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a catalogue proposal
+         * @description P21-01: opens a draft on the device type's checklist (creating the checklist when it has none) or links the open one — nothing is copied from the proposal: the operator adds each item to the draft. A new-type proposal names the type the operator created (`deviceTypeId`). The submitter is notified; audited in the proposal's tenant. An API key is refused.
+         *
+         *     **409** — The proposal was already decided or withdrawn, or the device type / its checklist is retired.
+         */
+        post: operations["adminAcceptInspectionTemplateProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ipm/template-proposals/{proposalId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a catalogue proposal
+         * @description P21-01: with a decision note. The submitter is notified; audited in the proposal's tenant. An API key is refused.
+         *
+         *     **409** — The proposal was already decided or withdrawn.
+         */
+        post: operations["adminRejectInspectionTemplateProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/tenants": {
         parameters: {
             query?: never;
@@ -2445,6 +2509,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/device-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List device types
+         * @description Any one of `calibration`, `ipm` or `ipm-templates` read. `status` is `active` by default; `retired` and `all` are open to every reader (a device's retired type still resolves). By name, then id. Reachable by a facility-bound account (global content).
+         */
+        get: operations["listDeviceTypes"];
+        put?: never;
+        /**
+         * Create a device type
+         * @description The name is unique over every status, case-insensitively; a retired name is reactivated, not recreated. The platform operator only (super admin; an API key is refused). Audited under the platform tenant.
+         *
+         *     **409** — A device type with that name exists (the message says when it is retired and should be reactivated).
+         */
+        post: operations["createDeviceType"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-types/{deviceTypeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One device type
+         * @description Any status. Global content: every tenant reads the same row.
+         */
+        get: operations["getDeviceType"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename a device type
+         * @description An active type only. The platform operator only (super admin; an API key is refused). Audited under the platform tenant.
+         *
+         *     **409** — The type is retired, or another type has the name.
+         */
+        patch: operations["renameDeviceType"];
+        trace?: never;
+    };
+    "/api/v1/device-types/{deviceTypeId}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate a device type
+         * @description The platform operator only (super admin; an API key is refused). Audited under the platform tenant.
+         *
+         *     **409** — The type is active.
+         */
+        post: operations["reactivateDeviceType"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-types/{deviceTypeId}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire a device type
+         * @description Devices keep it; it can no longer be given to a device (400 there). The platform operator only (super admin; an API key is refused). Audited under the platform tenant.
+         *
+         *     **409** — The type is already retired.
+         */
+        post: operations["retireDeviceType"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/esignature/history": {
         parameters: {
             query?: never;
@@ -3161,6 +3321,368 @@ export interface paths {
          * @description Public: authenticated by the device's ingest token in `x-iot-token` (or `token` in the body), not a bearer token. 401 without a token, for an unknown one, or for a device with IoT disabled; 400 without a `payload` object. Limited to 600 requests a minute per client address.
          */
         post: operations["ingestIotReading"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/item-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the item library
+         * @description By section, label, id. The platform operator only (super admin; an API key is refused).
+         */
+        get: operations["listInspectionItemDefinitions"];
+        put?: never;
+        /**
+         * Add an item to the library
+         * @description The content is a union on `inputKind`; the limit is TEXT (`limitText`), parsed by the server (`≤ 0,5 mA`, `± 10 %`, `N – N °C`; anything else is kept as text and never evaluated). A unit mismatch between the limit and the item is a 400. The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         */
+        post: operations["createInspectionItemDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/item-definitions/{itemDefinitionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One item definition
+         * @description The platform operator only (super admin; an API key is refused).
+         */
+        get: operations["getInspectionItemDefinition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit a library item
+         * @description An active definition: its content (same section and input kind — 400 otherwise), its default and its notes. Drafts and versions hold copies: only a later copy sees the edit. The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — The definition is retired.
+         */
+        patch: operations["updateInspectionItemDefinition"];
+        trace?: never;
+    };
+    "/api/v1/ipm/item-definitions/{itemDefinitionId}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire a library item
+         * @description It can no longer be added to a draft; existing copies are untouched. The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — The definition is already retired.
+         */
+        post: operations["retireInspectionItemDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/template-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tenant's catalogue proposals
+         * @description `ipm-templates` read. The caller's tenant only, newest first. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         */
+        get: operations["listInspectionTemplateProposals"];
+        put?: never;
+        /**
+         * Propose a catalogue change
+         * @description `ipm-templates` write; an API key is refused. A new device type, items to add, change or retire. Nothing is copied into the catalogue on acceptance: the operator opens a draft and adds each item. Audited in the tenant. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         */
+        post: operations["createInspectionTemplateProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/template-proposals/{proposalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One proposal
+         * @description Another tenant's proposal is a 404, identical to a missing one. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         */
+        get: operations["getInspectionTemplateProposal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/template-proposals/{proposalId}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw a proposal
+         * @description `ipm-templates` write; a submitted proposal of the caller's tenant only. Audited in the tenant. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         *
+         *     **409** — The proposal was already accepted, rejected or withdrawn (the message says when).
+         */
+        post: operations["withdrawInspectionTemplateProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/template-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One checklist's version history
+         * @description Every status, newest first. The platform operator only (super admin; an API key is refused).
+         */
+        get: operations["listInspectionTemplateVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/template-versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One checklist version
+         * @description A published or retired version with its items (old sessions pin retired ones; the report renders from it). A draft or a discarded draft is the operator's: anyone else gets 404, identical to a missing id.
+         */
+        get: operations["getInspectionTemplateVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Save a draft's change note
+         * @description The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — The version is not an open draft (published, retired or discarded — the message names its state and when), or the body's `revision` is not the draft's (another save came first: reload).
+         */
+        patch: operations["updateInspectionDraftNote"];
+        trace?: never;
+    };
+    "/api/v1/ipm/template-versions/{versionId}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard a draft
+         * @description Terminal; the rows are kept. The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — Only a draft can be discarded.
+         */
+        post: operations["discardInspectionDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/template-versions/{versionId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save a draft's items
+         * @description Replaces the draft's items wholesale, at the `revision` the editor read; the revision moves on. Each item names its library definition (an active one); its content, when given, is the operator's edit of the copy. The array order is the order inside each section. The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — The version is not an open draft (published, retired or discarded — the message names its state and when), or the body's `revision` is not the draft's (another save came first: reload).
+         */
+        put: operations["replaceInspectionDraftItems"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/template-versions/{versionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish a draft
+         * @description Checks every item (400 names each problem), materialises the base checklist into a type version, retires the previous published version, numbers it, computes its content hash, all in one transaction. Publishing the BASE also publishes a rebased version of every published type checklist (`rebasedVersionIds`). The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — The version is not an open draft (published, retired or discarded — the message names its state and when), or the body's `revision` is not the draft's (another save came first: reload). Or the template is retired, or the base checklist has no published version yet.
+         */
+        post: operations["publishInspectionTemplateVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List checklist templates
+         * @description With each one's published version and open draft. The platform operator only (super admin; an API key is refused).
+         */
+        get: operations["listInspectionTemplates"];
+        put?: never;
+        /**
+         * Create a device type's checklist
+         * @description One per device type, for an active type (the base checklist exists from the start). The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — The device type is retired, or already has a checklist.
+         */
+        post: operations["createInspectionTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/templates/{templateId}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate a checklist
+         * @description It has no published version until its next publish. The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — The template is active, or it is the base checklist.
+         */
+        post: operations["reactivateInspectionTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/templates/{templateId}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire a checklist
+         * @description Its published version is retired with it; new sessions for the type use the base checklist. The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — The template is already retired, or it is the base checklist (never retired).
+         */
+        post: operations["retireInspectionTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/templates/{templateId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open a draft
+         * @description Empty, or (default) a copy of the published version's own items. One open draft per template. The platform operator only (super admin; an API key is refused). Audited under the platform tenant, inside the transaction.
+         *
+         *     **409** — The template already has an open draft, or it is retired.
+         */
+        post: operations["createInspectionTemplateDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/templates/published": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The published checklist catalogue
+         * @description Every published checklist version with its items in read order, and the active device types — one document, not a page. A strong `ETag` covers both (version id : content hash, device type id : name); a matching `If-None-Match` answers **304** with no body. `Cache-Control: private, no-cache`. Any one of `calibration`, `ipm` or `ipm-templates` read; reachable by a facility-bound account (global content). No actor is returned.
+         */
+        get: operations["getPublishedInspectionCatalogue"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9779,6 +10301,21 @@ export interface components {
             };
         };
         /**
+         * @description A device type of the global inspection catalogue (ADR-125)
+         * @example {
+         *       "id": "d7d7d7d7-d7d7-4d7d-8d7d-d7d7d7d7d7d7",
+         *       "name": "Test Device Type A",
+         *       "status": "active"
+         *     }
+         */
+        DeviceType: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            status: "active" | "retired";
+        };
+        /**
          * @description A calibration device whose next calibration is due within the window.
          * @example {
          *       "id": "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
@@ -9875,6 +10412,317 @@ export interface components {
             longitude: number;
             /** @description 50 when not given */
             radiusKm: number;
+        };
+        /** @description A library item definition (operator only) */
+        InspectionItemDefinition: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+            label: string;
+            /** @enum {string} */
+            inputKind: "check" | "tri_state" | "condition_clean" | "measured" | "measured_with_limit" | "setting_measured_reference" | "text";
+            unit: string | null;
+            symbol: string | null;
+            settingText: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            settingValue: string | null;
+            limitOp: ("lt" | "lte" | "gt" | "gte" | "between" | "plus_minus" | "plus_minus_pct" | "text") | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitValue: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitLow: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitHigh: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitNominal: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitTolerance: string | null;
+            /** @description The limit as written — what the report prints */
+            limitText: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            validMin: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            validMax: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            warnMin: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            warnMax: string | null;
+            allowedOutcomes: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+            defaultRequired: boolean;
+            /** @description Operator-only; never copied into a version */
+            notes: string | null;
+            /** @enum {string} */
+            status: "active" | "retired";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description The active device types and every published checklist version (ADR-127 offline download) */
+        InspectionPublishedCatalogue: {
+            /** @constant */
+            schema: "inspection-catalogue-v1";
+            deviceTypes: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            }[];
+            versions: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                templateId: string;
+                deviceTypeId: string | null;
+                versionNumber: number | null;
+                baseVersionId: string | null;
+                contentHash: string | null;
+                publishedAt: string | null;
+                items: components["schemas"]["InspectionTemplateItem"][];
+            }[];
+        };
+        /** @description The published version, the one it retired and (for the base) the rebased type versions */
+        InspectionPublishResult: {
+            version: components["schemas"]["InspectionTemplateVersion"];
+            retiredVersionId: string | null;
+            rebasedVersionIds: string[];
+        };
+        /** @description A checklist template with its published version and open draft (operator) */
+        InspectionTemplate: {
+            /** Format: uuid */
+            id: string;
+            deviceTypeId: string | null;
+            deviceTypeName: string | null;
+            /** @enum {string} */
+            status: "active" | "retired";
+            publishedVersion: {
+                /** Format: uuid */
+                id: string;
+                versionNumber: number | null;
+                publishedAt: string | null;
+            } | null;
+            openDraft: {
+                /** Format: uuid */
+                id: string;
+                revision: number;
+                /** Format: date-time */
+                createdAt: string;
+            } | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description One item of a checklist version, frozen with it */
+        InspectionTemplateItem: {
+            /**
+             * Format: uuid
+             * @description The id a session's result pins
+             */
+            id: string;
+            /** Format: uuid */
+            itemDefinitionId: string;
+            /** @enum {string} */
+            origin: "base" | "type";
+            /** @enum {string} */
+            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+            label: string;
+            /** @enum {string} */
+            inputKind: "check" | "tri_state" | "condition_clean" | "measured" | "measured_with_limit" | "setting_measured_reference" | "text";
+            unit: string | null;
+            symbol: string | null;
+            settingText: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            settingValue: string | null;
+            limitOp: ("lt" | "lte" | "gt" | "gte" | "between" | "plus_minus" | "plus_minus_pct" | "text") | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitValue: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitLow: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitHigh: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitNominal: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            limitTolerance: string | null;
+            /** @description The limit as written — what the report prints */
+            limitText: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            validMin: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            validMax: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            warnMin: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            warnMax: string | null;
+            allowedOutcomes: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+            required: boolean;
+            sortOrder: number;
+        };
+        /** @description A tenant's proposal for the catalogue (its own tenant's only) */
+        InspectionTemplateProposal: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "new_device_type" | "add_items" | "change_items" | "retire_items";
+            deviceTypeId: string | null;
+            proposedDeviceTypeName: string | null;
+            basedOnVersionId: string | null;
+            proposedItems: {
+                [key: string]: unknown;
+            }[];
+            reason: string;
+            /** @enum {string} */
+            status: "submitted" | "accepted" | "rejected" | "withdrawn";
+            /** Format: uuid */
+            submittedBy: string;
+            decidedAt: string | null;
+            decisionNote: string | null;
+            /** @description The draft an acceptance opened or linked */
+            resultingVersionId: string | null;
+            withdrawnAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A proposal in the operator's queue, with its tenant */
+        InspectionTemplateProposalQueueRow: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "new_device_type" | "add_items" | "change_items" | "retire_items";
+            deviceTypeId: string | null;
+            proposedDeviceTypeName: string | null;
+            basedOnVersionId: string | null;
+            proposedItems: {
+                [key: string]: unknown;
+            }[];
+            reason: string;
+            /** @enum {string} */
+            status: "submitted" | "accepted" | "rejected" | "withdrawn";
+            /** Format: uuid */
+            submittedBy: string;
+            decidedAt: string | null;
+            decisionNote: string | null;
+            /** @description The draft an acceptance opened or linked */
+            resultingVersionId: string | null;
+            withdrawnAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: uuid */
+            tenantId: string;
+        };
+        /** @description A checklist version with its items in read order */
+        InspectionTemplateVersion: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            templateId: string;
+            /** @description null for the base checklist */
+            deviceTypeId: string | null;
+            /** @enum {string} */
+            status: "draft" | "published" | "retired" | "discarded";
+            versionNumber: number | null;
+            baseVersionId: string | null;
+            rebasedFromVersionId: string | null;
+            /** @description SHA-256 (hex) of the canonical content (spec § 7.6) */
+            contentHash: string | null;
+            changeNote: string | null;
+            revision: number;
+            publishedAt: string | null;
+            retiredAt: string | null;
+            discardedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            items: components["schemas"]["InspectionTemplateItem"][];
+        };
+        /** @description A checklist version's header (no items) */
+        InspectionTemplateVersionSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            templateId: string;
+            /** @description null for the base checklist */
+            deviceTypeId: string | null;
+            /** @enum {string} */
+            status: "draft" | "published" | "retired" | "discarded";
+            versionNumber: number | null;
+            baseVersionId: string | null;
+            rebasedFromVersionId: string | null;
+            /** @description SHA-256 (hex) of the canonical content (spec § 7.6) */
+            contentHash: string | null;
+            changeNote: string | null;
+            revision: number;
+            publishedAt: string | null;
+            retiredAt: string | null;
+            discardedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
         /** @description Totals across the tenant's stock, and per warehouse. */
         InventoryReport: {
@@ -13563,6 +14411,128 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    adminListInspectionTemplateProposals: {
+        parameters: {
+            query?: {
+                status?: "submitted" | "accepted" | "rejected" | "withdrawn";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of proposals; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateProposalQueueRow"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminAcceptInspectionTemplateProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The proposal's id */
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    decisionNote?: string;
+                    /** Format: uuid */
+                    deviceTypeId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The proposal, with the draft it opened */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateProposal"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminRejectInspectionTemplateProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The proposal's id */
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    decisionNote: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateProposal"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     adminListTenants: {
         parameters: {
             query?: {
@@ -16467,6 +17437,7 @@ export interface operations {
                     remarks?: string | null;
                     /** Format: uuid */
                     clientFacilityId?: string;
+                    deviceTypeId?: string | null;
                 };
             };
         };
@@ -16553,6 +17524,7 @@ export interface operations {
                     nextCalibrationDate?: (string | "") | null;
                     calibrationIntervalDays?: (number | "") | null;
                     remarks?: string | null;
+                    deviceTypeId?: string | null;
                 };
             };
         };
@@ -18887,6 +19859,230 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    listDeviceTypes: {
+        parameters: {
+            query?: {
+                search?: string;
+                status?: "active" | "retired" | "all";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of device types; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["DeviceType"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createDeviceType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The new, active device type */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["DeviceType"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getDeviceType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The device type's id */
+                deviceTypeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["DeviceType"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    renameDeviceType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The device type's id */
+                deviceTypeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The device type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["DeviceType"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    reactivateDeviceType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The device type's id */
+                deviceTypeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["DeviceType"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    retireDeviceType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The device type's id */
+                deviceTypeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["DeviceType"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     getSignatureHistory: {
         parameters: {
             query?: {
@@ -20593,6 +21789,1071 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listInspectionItemDefinitions: {
+        parameters: {
+            query?: {
+                section?: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                inputKind?: "check" | "tri_state" | "condition_clean" | "measured" | "measured_with_limit" | "setting_measured_reference" | "text";
+                status?: "active" | "retired" | "all";
+                search?: string;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of definitions; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionItemDefinition"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createInspectionItemDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    content: {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "check";
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "tri_state";
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "condition_clean";
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "text";
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "measured";
+                        unit: string;
+                        validMin?: string | number | null;
+                        validMax?: string | number | null;
+                        warnMin?: string | number | null;
+                        warnMax?: string | number | null;
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "measured_with_limit";
+                        unit: string;
+                        limitText?: string | null;
+                        validMin?: string | number | null;
+                        validMax?: string | number | null;
+                        warnMin?: string | number | null;
+                        warnMax?: string | number | null;
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "setting_measured_reference";
+                        unit: string;
+                        settingText?: string | null;
+                        settingValue?: string | number | null;
+                        limitText?: string | null;
+                        validMin?: string | number | null;
+                        validMax?: string | number | null;
+                        warnMin?: string | number | null;
+                        warnMax?: string | number | null;
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    };
+                    defaultRequired?: boolean;
+                    notes?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The definition */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionItemDefinition"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getInspectionItemDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The item definition's id */
+                itemDefinitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The definition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionItemDefinition"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    updateInspectionItemDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The item definition's id */
+                itemDefinitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    content?: {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "check";
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "tri_state";
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "condition_clean";
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "text";
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "measured";
+                        unit: string;
+                        validMin?: string | number | null;
+                        validMax?: string | number | null;
+                        warnMin?: string | number | null;
+                        warnMax?: string | number | null;
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "measured_with_limit";
+                        unit: string;
+                        limitText?: string | null;
+                        validMin?: string | number | null;
+                        validMax?: string | number | null;
+                        warnMin?: string | number | null;
+                        warnMax?: string | number | null;
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    } | {
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        symbol?: string | null;
+                        /** @constant */
+                        inputKind: "setting_measured_reference";
+                        unit: string;
+                        settingText?: string | null;
+                        settingValue?: string | number | null;
+                        limitText?: string | null;
+                        validMin?: string | number | null;
+                        validMax?: string | number | null;
+                        warnMin?: string | number | null;
+                        warnMax?: string | number | null;
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                    };
+                    defaultRequired?: boolean;
+                    notes?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The definition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionItemDefinition"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    retireInspectionItemDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The item definition's id */
+                itemDefinitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The definition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionItemDefinition"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listInspectionTemplateProposals: {
+        parameters: {
+            query?: {
+                status?: "submitted" | "accepted" | "rejected" | "withdrawn";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of proposals; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateProposal"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createInspectionTemplateProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    kind: "new_device_type" | "add_items" | "change_items" | "retire_items";
+                    /** Format: uuid */
+                    deviceTypeId?: string;
+                    proposedDeviceTypeName?: string;
+                    /** Format: uuid */
+                    basedOnVersionId?: string;
+                    proposedItems?: {
+                        /** Format: uuid */
+                        itemDefinitionId?: string;
+                        /** @enum {string} */
+                        section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                        label: string;
+                        /** @enum {string} */
+                        inputKind: "check" | "tri_state" | "condition_clean" | "measured" | "measured_with_limit" | "setting_measured_reference" | "text";
+                        unit?: string | null;
+                        symbol?: string | null;
+                        settingText?: string | null;
+                        limitText?: string | null;
+                        validMin?: string | number | null;
+                        validMax?: string | number | null;
+                        warnMin?: string | number | null;
+                        warnMax?: string | number | null;
+                        allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                        required?: boolean;
+                        note?: string | null;
+                    }[];
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The proposal */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateProposal"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getInspectionTemplateProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The proposal's id */
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateProposal"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    withdrawInspectionTemplateProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The proposal's id */
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateProposal"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listInspectionTemplateVersions: {
+        parameters: {
+            query: {
+                templateId: string;
+                status?: "draft" | "published" | "retired" | "discarded";
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of version headers; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateVersionSummary"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getInspectionTemplateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The checklist version's id */
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateVersion"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    updateInspectionDraftNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The checklist version's id */
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: number;
+                    changeNote: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateVersion"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    discardInspectionDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The checklist version's id */
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The discarded version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateVersion"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    replaceInspectionDraftItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The checklist version's id */
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: number;
+                    items: {
+                        /** Format: uuid */
+                        itemDefinitionId: string;
+                        required?: boolean;
+                        content?: {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            symbol?: string | null;
+                            /** @constant */
+                            inputKind: "check";
+                            allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                        } | {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            symbol?: string | null;
+                            /** @constant */
+                            inputKind: "tri_state";
+                            allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                        } | {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            symbol?: string | null;
+                            /** @constant */
+                            inputKind: "condition_clean";
+                            allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                        } | {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            symbol?: string | null;
+                            /** @constant */
+                            inputKind: "text";
+                        } | {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            symbol?: string | null;
+                            /** @constant */
+                            inputKind: "measured";
+                            unit: string;
+                            validMin?: string | number | null;
+                            validMax?: string | number | null;
+                            warnMin?: string | number | null;
+                            warnMax?: string | number | null;
+                            allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                        } | {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            symbol?: string | null;
+                            /** @constant */
+                            inputKind: "measured_with_limit";
+                            unit: string;
+                            limitText?: string | null;
+                            validMin?: string | number | null;
+                            validMax?: string | number | null;
+                            warnMin?: string | number | null;
+                            warnMax?: string | number | null;
+                            allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                        } | {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            symbol?: string | null;
+                            /** @constant */
+                            inputKind: "setting_measured_reference";
+                            unit: string;
+                            settingText?: string | null;
+                            settingValue?: string | number | null;
+                            limitText?: string | null;
+                            validMin?: string | number | null;
+                            validMax?: string | number | null;
+                            warnMin?: string | number | null;
+                            warnMax?: string | number | null;
+                            allowedOutcomes?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty")[];
+                        };
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description The draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateVersion"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    publishInspectionTemplateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The checklist version's id */
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: number;
+                    changeNote: string;
+                };
+            };
+        };
+        responses: {
+            /** @description What the publish did */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionPublishResult"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listInspectionTemplates: {
+        parameters: {
+            query?: {
+                deviceTypeId?: string;
+                status?: "active" | "retired";
+                hasDraft?: boolean;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of templates; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplate"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createInspectionTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    deviceTypeId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The template (no version yet) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplate"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    reactivateInspectionTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The checklist template's id */
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The template's status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            status: "active" | "retired";
+                            retiredVersionId: string | null;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    retireInspectionTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The checklist template's id */
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The template's status and the version retired with it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            /** Format: uuid */
+                            id: string;
+                            /** @enum {string} */
+                            status: "active" | "retired";
+                            retiredVersionId: string | null;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createInspectionTemplateDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The checklist template's id */
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @default published
+                     * @enum {string}
+                     */
+                    copyFrom?: "published" | "empty";
+                };
+            };
+        };
+        responses: {
+            /** @description The draft */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionTemplateVersion"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getPublishedInspectionCatalogue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The catalogue document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["InspectionPublishedCatalogue"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             429: components["responses"]["RateLimited"];
         };
     };

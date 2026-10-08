@@ -403,6 +403,10 @@ const GUARDED = [
 // moved out of this list must move into GUARDED, and a new one must land in
 // one of the two.
 const NOT_GUARDED = {
+  "ipm.route.ts POST /template-versions/:versionId/publish":
+    "P21-01 (ADR-125 § 4): publishing a checklist of the GLOBAL catalogue — a platform operation by the super admin (superAdminOnly), inside no tenant, audited under PLATFORM; not a record a tenant attests",
+  "ipm.route.ts POST /template-proposals":
+    "P21-01 (ADR-125 § 5): a tenant's PROPOSAL to the platform operator — a request, not a regulated record; ipm-templates write, API keys refused",
   "accessRequests.route.ts POST /":
     "P10-05 (ADR-098 §6): the PUBLIC access-request intake (matched on its `submit` handler); no principal, no tenant, authors no Part 11 record",
   "admin.route.ts POST /access-requests/:id/approve":
