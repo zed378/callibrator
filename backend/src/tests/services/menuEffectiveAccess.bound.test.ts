@@ -81,7 +81,9 @@ const PENDING_LOAD: Readonly<Record<string, string>> = {
   // ADR-124 Am. 6 § 6: re-assigned from P21-09e to the cards P18-03 names for them.
   "/dashboard": "P21-07 — A-10 (OQ-8): marked only with dashboard.twoFacility and G-20 green",
   "/dashboard/warehouses": "P20-02 / P21-02 — A-9 rooms (ADR-132 § 5)",
-  "/dashboard/esignature": "P21-03 / P21-04 — N-5, the IPM session signature (ADR-126 Am. 2 § 6)",
+  // P21-04 (ADR-126 Am. 5 § 9): N-5 is marked, but the leaf's load route `/esignature/my-workflows` stays unmarked by
+  // design (P19-06 § 8.2) — a bound signer signs on the IPM report page. Re-assigned to the frontend card.
+  "/dashboard/esignature": "P23-02 — the bound signature UI is the IPM report page (P19-06 § 12); the leaf is hidden or re-pointed for bound users",
 };
 
 const isMarked = (file: string, key: string): boolean =>

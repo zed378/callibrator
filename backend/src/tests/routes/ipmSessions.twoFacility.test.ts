@@ -15,6 +15,13 @@
  * @two-facility api/ipmSessions.route.ts POST /:sessionId/discard
  * @two-facility api/ipmSessions.route.ts POST /:sessionId/corrections
  * @two-facility api/calibrationDevices.route.ts GET /:calibrationDeviceId/ipm-sessions
+ *
+ * P21-04 (C-03, C-06, C-09): the submit, the report document and the signature — F2's session is the
+ * bound F1 principal's 404 (nothing written); its own F1 session is reached.
+ *
+ * @two-facility api/ipmSessions.route.ts POST /:sessionId/submit
+ * @two-facility api/ipmSessions.route.ts GET /:sessionId/report-document
+ * @two-facility api/ipmSessions.route.ts POST /:sessionId/signatures
  */
 import type * as MemoryDbModule from "../fixtures/memoryDb";
 import type * as RouteClient from "../fixtures/routeClient";
@@ -24,6 +31,8 @@ import type { Principal } from "../fixtures/routeClient";
 import type * as SessionsRoute from "../../routes/api/ipmSessions.route";
 import type * as DevicesRoute from "../../routes/api/calibrationDevices.route";
 import { IPM, seedIpmWorld, type IpmWorld } from "../fixtures/ipmSeed";
+import { IPM_RESULTS, answerAdvisoryLocks } from "../fixtures/ipmIssue";
+import type CertificateServiceModule from "../../services/certificate.service";
 
 jest.mock("../../config", () => ({
   db: jest.requireActual<typeof MemoryDbModule>("../fixtures/memoryDb").memoryDb().sequelize,
@@ -39,6 +48,7 @@ const sessions = jest.requireActual<typeof SessionsRoute>("../../routes/api/ipmS
 const devices = jest.requireActual<typeof DevicesRoute>("../../routes/api/calibrationDevices.route");
 
 const ROUTE_FILE = "api/ipmSessions.route.ts";
+const certificateService = jest.requireActual<typeof CertificateServiceModule>("../../services/certificate.service");
 
 interface Ctx extends FacilitySuiteContext {
   readonly bound: Principal;
@@ -52,7 +62,32 @@ beforeEach(() => {
   grantAllMenus();
   world = seedIpmWorld(mdb, twoTenants(), seedTenants);
   ctx = { bound: world.bound, unbound: world.staff };
+  answerAdvisoryLocks(mdb);
+  jest.spyOn(certificateService, "verifySignerCredentials").mockResolvedValue(undefined);
 });
+
+/** P21-04: fill a draft to revision 2 (header, then the complete results) as its creator; then, optionally, submit it. */
+const prepare = async (principal: Principal, draftId: string, submit: boolean): Promise<void> => {
+  const steps: [string, string, unknown][] = [
+    ["PATCH", `/${draftId}`, { revision: 0, inspectionOutcome: "pass", maintenanceOutcome: "pass", recommendation: "fit_for_use" }],
+    ["PUT", `/${draftId}/results`, { revision: 1, results: IPM_RESULTS }],
+  ];
+  if (submit) {
+    steps.push(["POST", `/${draftId}/submit`, { revision: 2 }]);
+  }
+  for (const [method, url, body] of steps) {
+    as(principal);
+    const res = await call(sessions, method, url, { body, routeFile: ROUTE_FILE });
+    if (res.status !== 200) {
+      throw new Error(`prepare: ${method} ${url} answered ${String(res.status)}`);
+    }
+  }
+};
+/** DRAFT1 (the bound technician's, F1) and DRAFT2 (staff's, F2) complete — submitted when `submit`. */
+const prepareBoth = (submit: boolean) => async (): Promise<void> => {
+  await prepare(world.bound, IPM.DRAFT1, submit);
+  await prepare(world.staff, IPM.DRAFT2, submit);
+};
 
 const id = (key: keyof typeof IPM) => (): string => IPM[key];
 
@@ -100,6 +135,36 @@ twoFacilitySuite({
       ownStatus: 201,
       writes: ["InspectionSession", "InspectionResult", "AuditLog"],
       unboundToo: true,
+    },
+    {
+      key: "POST /:sessionId/submit",
+      method: "POST",
+      path: (s) => `/${s}/submit`,
+      ownId: id("DRAFT1"),
+      foreignId: id("DRAFT2"),
+      before: prepareBoth(false),
+      body: { revision: 2 },
+      writes: ["InspectionSession", "MaintenanceWorkOrder", "AuditLog"],
+    },
+    {
+      key: "GET /:sessionId/report-document",
+      method: "GET",
+      path: (s) => `/${s}/report-document`,
+      ownId: id("DRAFT1"),
+      foreignId: id("DRAFT2"),
+      before: prepareBoth(true),
+      unboundToo: true,
+    },
+    {
+      key: "POST /:sessionId/signatures",
+      method: "POST",
+      path: (s) => `/${s}/signatures`,
+      ownId: id("DRAFT1"),
+      foreignId: id("DRAFT2"),
+      before: prepareBoth(true),
+      body: { kind: "performer", authMethod: "password", authPayload: "synthetic-secret", meaningAcknowledged: true },
+      ownStatus: 201,
+      writes: ["InspectionSessionSignature", "AuditLog"],
     },
   ],
   lists: [{ key: "GET /", path: "/", ownId: id("S1"), foreignId: id("S2") }],

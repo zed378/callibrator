@@ -393,6 +393,8 @@ Each input row is checked against **the pinned version's item** (loaded server-s
 
 > **As built (2026-10-09, P21-03a/b/c; ADR-126 Amendment 4):** mounted at `/api/v1/ipm/sessions` (`routes/api/ipmSessions.route.ts`) plus the device history on `calibrationDevices.route.ts`; built: the list, one session, create, header, results, discard, correction draft, the device history, `Idempotency-Key` on every draft write and on `POST /attachments`, the IPM photo rule, `POST /field/wipes`. **The submit, the correction's submit, the void, `GET /ipm/due` and `computeIpmDue`/`missingRequiredItems` are P21-04's** — 0126's issued-fields CHECK needs the report's issuance in the submitting UPDATE. `IPM_SUPERSEDED`'s `headId` is top-level, like `draftId`. A refused request (any non-2xx) frees its idempotency key.
 
+> **As built (2026-10-09, P21-04; ADR-126 Amendment 5):** the submit (N-3, idempotent), the correction's submit, the void (`rbac([TENANT_ADMIN])`, unmarked), the report document (N-2) and the signatures (N-5) on the same router; `GET /ipm/verify/:reportNumber` (public) and `GET /ipm/due` (N-9) on `routes/api/ipmReports.route.ts` at `/api/v1/ipm`. The recommendation's side effects of § 8 are switched per tenant by `ipm_recommendation_side_effects` (unset = on — UD-17 is a working decision); the Preventative order and the room confirmation are not. The settings of § 4.3 are the allow-listed keys `tenant_time_zone`, `ipm_interval_months`, `ipm_countersign_enabled`. `missingRequiredItems`' rule per input kind is ADR-126 Am. 5 § 10.
+
 Every path parameter is named in `validate(schema, { from: ["params", …] })` (the 400-on-every-request trap); handlers read `validated(req, schema)`; every route has its `*.openapi.ts` (ADR-103); `openapi:breaking` has nothing to break (all new).
 
 ### 10.3 Contracts (named exports)
@@ -421,6 +423,8 @@ Every path parameter is named in `validate(schema, { from: ["params", …] })` (
 | otherwise | `{ state: "ok", dueMonth, lastPerformedAt, intervalMonths }` |
 
 "Effective" = `status = 'submitted' AND superseded_by_id IS NULL` (a correction's head counts at its own `performed_at`; voided visits do not count). Device reads gain `ipmDue`; `GET /calibration-devices` gains the filter `ipmDue` (`due`, `never_inspected`). **Implementation:** one batched read per page — `sql()` with the tenant predicate bound and **`facilityClause('d.client_facility_id', n)`** (P19-04 § 8) over `calibration_devices d LEFT JOIN LATERAL (… inspection_sessions … ORDER BY performed_at DESC, id DESC LIMIT 1)` using the partial index `inspection_sessions_effective_device`; listed in `rawSqlTenantPredicate.d05`'s facility twin and proved by `rawSqlFacility.live.test.ts` (memoryDb refuses raw SQL). It never blocks a capture. The dashboard's due counts (P21-07) cache per scope (AM-18).
+
+> **As built (2026-10-09, P21-04; ADR-126 Amendment 5 § 12):** `computeIpmDue` and `zonedDay` in contracts `inspectionValues.ts`; `GET /ipm/due` (`services/ipmDue.service#listDue`) is the raw read described here, with `facilityClause` bound for a bound caller (proved by `ipmDue.p2104` and `ipmSubmit.p2104.live`). Not built yet: `ipmDue` on the device reads and the `ipmDue` filter of `GET /calibration-devices`; a `month` parameter.
 
 ---
 

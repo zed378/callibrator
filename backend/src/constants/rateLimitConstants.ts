@@ -238,6 +238,24 @@ const API_ENDPOINTS = {
     windowMs: WINDOW.FIFTEEN_MIN,
     description: "Certificate verification",
   },
+  // P21-04 (P19-06 § 8.1): the public IPM report verification — every request (300) and every
+  // answer that is not a verdict (60), per address (ADR-100's pair); and the IPM report signature,
+  // per user and address (a credential is checked — the A-185 class).
+  ipmVerifyToken: {
+    maxRequests: 300,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "IPM report verification",
+  },
+  ipmVerify: {
+    maxRequests: 60,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "IPM report verification",
+  },
+  ipmSignature: {
+    maxRequests: 10,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "IPM report signing",
+  },
   // ---------------------------------------------------------------------
   // Phase 10 (ADR-098) — the public ways in, per client address.
   // ---------------------------------------------------------------------

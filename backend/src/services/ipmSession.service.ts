@@ -115,22 +115,22 @@ export interface IpmWriteResult {
 // HELPERS
 // ------------------------------------------------------------------
 
-const day = (date: Date | null | undefined): string => (date ? date.toISOString().slice(0, 10) : "an unknown date");
+export const day = (date: Date | null | undefined): string => (date ? date.toISOString().slice(0, 10) : "an unknown date");
 
-const conflict = (code: IpmConflictCode, message: string, fields: Readonly<Record<string, string>> = {}): CodedError =>
+export const conflict = (code: IpmConflictCode, message: string, fields: Readonly<Record<string, string>> = {}): CodedError =>
   new CodedError(409, code, message, fields);
 
-const facilityBound = (): boolean => tenantStorage.getStore()?.facilityBound === true;
+export const facilityBound = (): boolean => tenantStorage.getStore()?.facilityBound === true;
 
 /** The acting person; an IPM is a person's record (the route refuses keys too — G-S8). */
-const personOf = (actor: IpmActor): string => {
+export const personOf = (actor: IpmActor): string => {
   if (!actor.userId) {
     throw new AppError(403, "An IPM is recorded by a person, not by an API key.");
   }
   return actor.userId;
 };
 
-const audit = async (
+export const audit = async (
   transaction: Transaction,
   tenantId: TenantId,
   actor: IpmActor,
@@ -185,7 +185,7 @@ const assertPerformedAt = (performedAt: Date | undefined): void => {
 };
 
 /** The session `id`, locked FOR UPDATE, in the caller's context — or the 404. */
-const lockSession = async (id: string, transaction: Transaction): Promise<SessionRow> => {
+export const lockSession = async (id: string, transaction: Transaction): Promise<SessionRow> => {
   const session = await models.InspectionSession.findOne({ where: { id }, transaction, lock: transaction.LOCK.UPDATE });
   if (!session) {
     throw new AppError(404, SESSION_NOT_FOUND);
@@ -194,7 +194,7 @@ const lockSession = async (id: string, transaction: Transaction): Promise<Sessio
 };
 
 /** The device `id`, locked FOR UPDATE, in the caller's context — or the 404. */
-const lockDevice = async (id: string, transaction: Transaction): Promise<DeviceRow> => {
+export const lockDevice = async (id: string, transaction: Transaction): Promise<DeviceRow> => {
   const device = await models.CalibrationDevice.findOne({ where: { id }, transaction, lock: transaction.LOCK.UPDATE });
   if (!device) {
     throw new AppError(404, DEVICE_NOT_FOUND);
@@ -203,7 +203,7 @@ const lockDevice = async (id: string, transaction: Transaction): Promise<DeviceR
 };
 
 /** An ended facility takes no new records (0117's `facility_accepts_inserts`; spec § 7.1). */
-const assertFacilityOpen = async (clientFacilityId: string, transaction: Transaction): Promise<void> => {
+export const assertFacilityOpen = async (clientFacilityId: string, transaction: Transaction): Promise<void> => {
   const facility = await models.ClientFacility.findOne({ where: { id: clientFacilityId }, attributes: ["id", "name", "status"], transaction });
   if (facility?.status === "ended") {
     throw conflict("IPM_FACILITY_ENDED", `${facility.name} has ended; new records cannot be added. Reinstate it first.`);
@@ -302,7 +302,7 @@ const headerOf = (s: SessionRow): Record<string, unknown> => ({
   clientFacilityId: s.clientFacilityId,
   templateVersionId: s.templateVersionId,
   status: s.status,
-  effective: s.status === "submitted" && s.supersededById === null,
+  effective: s.status === "submitted" && !s.supersededById,
   revision: s.revision,
   supersedesId: s.supersedesId,
   correctionReason: s.correctionReason,
@@ -351,7 +351,7 @@ const withPerformer = async (rows: readonly SessionRow[], extra: readonly Record
   );
 
 /** One session's full view: header, results in read order, the pinned version's hash, the device. */
-const sessionView = async (session: SessionRow, transaction: Transaction | null = null, notices: readonly string[] = []): Promise<Record<string, unknown>> => {
+export const sessionView = async (session: SessionRow, transaction: Transaction | null = null, notices: readonly string[] = []): Promise<Record<string, unknown>> => {
   const results = await models.InspectionResult.findAll({ where: { sessionId: session.id }, transaction });
   const version = session.templateVersionId
     ? await models.InspectionTemplateVersion.findOne({ where: { id: session.templateVersionId }, attributes: ["id", "versionNumber", "contentHash"], transaction })
@@ -804,7 +804,7 @@ export const discardSession = async (tenantId: TenantId, input: IpmSessionDiscar
 // ------------------------------------------------------------------
 
 /** The latest member of the chain `session` belongs to, following `supersededById` in context. */
-const headOf = async (session: SessionRow, transaction: Transaction): Promise<SessionRow> => {
+export const headOf = async (session: SessionRow, transaction: Transaction): Promise<SessionRow> => {
   let head = session;
   for (let hops = 0; head.supersededById && hops < 1000; hops += 1) {
     const next = await models.InspectionSession.findOne({ where: { id: head.supersededById }, transaction });

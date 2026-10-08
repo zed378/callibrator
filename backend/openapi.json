@@ -122,6 +122,10 @@
       "description": "IoT telemetry ingestion endpoints (device-token authenticated) with anomaly detection against reading tolerances"
     },
     {
+      "name": "IPM Reports",
+      "description": "The IPM report's public verification and the devices whose IPM is due (ADR-126)"
+    },
+    {
       "name": "IPM Sessions",
       "description": "Inspection and preventive maintenance sessions: drafts, corrections and their history (ADR-126)"
     },
@@ -23724,6 +23728,136 @@
         }
       }
     },
+    "/api/v1/ipm/due": {
+      "get": {
+        "operationId": "listIpmDue",
+        "summary": "Devices whose IPM is due",
+        "tags": [
+          "IPM Reports"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/ipmReports.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "ipm",
+          "action": "read",
+          "superAdmin": "bypasses"
+        },
+        "description": "`ipm` read. `state=due` (default): devices whose last effective IPM month + interval is this month or earlier in the tenant's time zone, and scheduled devices never inspected; `never_inspected`; `all_scheduled`. The interval is the device's `ipmIntervalMonths` (0 = not under IPM), else the tenant's `ipm_interval_months` (unset: nothing is scheduled). Retired and inactive devices are never scheduled. Ordered by name, then id. A facility-bound account sees its facility's devices only.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "clientFacilityId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "default": "due",
+              "type": "string",
+              "enum": [
+                "due",
+                "never_inspected",
+                "all_scheduled"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of devices; pagination in the top-level `meta`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IpmDueDevice"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data",
+                    "meta"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/ipm/item-definitions": {
       "get": {
         "operationId": "listInspectionItemDefinitions",
@@ -26436,6 +26570,130 @@
         }
       }
     },
+    "/api/v1/ipm/sessions/{sessionId}/report-document": {
+      "get": {
+        "operationId": "getIpmReportDocument",
+        "summary": "The IPM report's data document (the browser renders it)",
+        "tags": [
+          "IPM Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/ipmSessions.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "ipm",
+          "action": "read",
+          "superAdmin": "bypasses"
+        },
+        "description": "`ipm` read. An issued report (submitted, superseded or voided) to anyone in scope, with its hash recomputed now (`integrity.state`: a mismatch is shown, logged and counted, never re-hashed); a draft previews to its creator only (403 otherwise); a discarded draft has no report (409 `IPM_NOT_SUBMITTED`). `render=pdf|print` writes an `EXPORT` audit row BEFORE the document is sent (a failed audit write fails the read); a read without it is not audited. No PDF is stored.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `IPM_NOT_SUBMITTED` (a discarded draft has no report).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The IPM session's id",
+              "example": "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1"
+            },
+            "required": true,
+            "description": "The IPM session's id"
+          },
+          {
+            "in": "query",
+            "name": "render",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pdf",
+                "print"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "en"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/IpmReportDocument"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/ipm/sessions/{sessionId}/results": {
       "put": {
         "operationId": "replaceIpmSessionResults",
@@ -27343,6 +27601,398 @@
         "responses": {
           "200": {
             "description": "The draft",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/IpmSession"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/ipm/sessions/{sessionId}/signatures": {
+      "post": {
+        "operationId": "signIpmReport",
+        "summary": "Sign an IPM report (the performer) or countersign it (the facility's IPSRS)",
+        "tags": [
+          "IPM Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/ipmSessions.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "esignature",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "`esignature` write; online only — the password or the current MFA code is re-entered now (a wrong one: 401, `SIGNATURE_AUTH_FAILED` audited; the client treats this path as a credential endpoint). The performer signs its own report (`IPM_SIGNATURE_NOT_PERFORMER`, 403); the countersignature needs the tenant's `ipm_countersign_enabled`, the performer's signature first, and a FACILITY MAINTENANCE user bound to the session's facility (or the self facility's own IPSRS) who did not submit it (403 `IPM_COUNTERSIGN_SOD` / `_ROLE` / `_FACILITY`). The signature binds the stored content hash. 10 per 15 minutes per user and address. An API key and the platform operator are refused. Audited inside the transaction.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `IPM_NOT_SUBMITTED`, `IPM_VOIDED`, `IPM_SUPERSEDED` (with `headId`), `IPM_REPORT_IMPORTED`, `IPM_ALREADY_SIGNED`, `IPM_COUNTERSIGN_DISABLED`, `IPM_REPORT_NOT_SIGNED`, `IPM_ALREADY_COUNTERSIGNED`, `IPM_REPORT_INTEGRITY`.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The IPM session's id",
+              "example": "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1"
+            },
+            "required": true,
+            "description": "The IPM session's id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "performer",
+                      "countersign"
+                    ]
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "mfa"
+                    ]
+                  },
+                  "authPayload": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "meaningAcknowledged": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "kind",
+                  "authMethod",
+                  "authPayload",
+                  "meaningAcknowledged"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The signature as the report prints it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/IpmReportSignature"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/ipm/sessions/{sessionId}/submit": {
+      "post": {
+        "operationId": "submitIpmSession",
+        "summary": "Submit a draft: issue its report and run its side effects",
+        "tags": [
+          "IPM Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/ipmSessions.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "ipm",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "One transaction: the visit number (a root: the device's next; a correction: the original's, which it supersedes), the report's issuance — number `IPM-<facility code>-<YYYYMMDD>-<NNN>` per facility and day in the tenant's time zone, a verification token, the content hash (`ipm-report-v1`), the issuer and the snapshots — and the side effects: the visit's Preventative work order; for `needs_repair` a Repair work order, for `not_fit_for_use` the device to `maintenance`, for `needs_calibration` the calibration request (UD-17, a working decision, switched per tenant by `ipm_recommendation_side_effects`); a confirmed room moves the device. A correction applies only what it adds and reverses nothing but its own calibration request (`sideEffects.notices`). Missing header outcomes or required items → 400 naming them by section and label. Only the draft's creator (another user in scope: 403). Every 409 carries a top-level `code`: `IPM_NOT_DRAFT` (submitted, voided or discarded — the message says when and what to do instead), `IPM_REVISION_CONFLICT` (another save came first: reload). `ipm` write; an API key is refused (an IPM is a person's record) and so is the platform operator (ADR-052). Audited inside the transaction. Reachable by a facility-bound HEALTHCARE TECHNICIAN in its own facility. Honours an `Idempotency-Key` header (a UUID v4): a repeat of a completed request answers the stored status with the session re-read now; a different body under the key → 409 `IDEMPOTENCY_KEY_REUSED`; a changed access → 409 `IDEMPOTENCY_SCOPE_CHANGED`; a request still in flight → 409 `IDEMPOTENCY_IN_FLIGHT`. A failed request frees its key.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `IPM_NOT_DRAFT`, `IPM_REVISION_CONFLICT`, `IPM_DEVICE_RETIRED` (discard the draft), `IPM_FACILITY_ENDED`, `IPM_ORIGINAL_NOT_EFFECTIVE` (the corrected IPM was voided or corrected by someone else), or an idempotency code.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The IPM session's id",
+              "example": "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1"
+            },
+            "required": true,
+            "description": "The IPM session's id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "revision"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The submitted session, with `sideEffects` and its report number",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/IpmSession"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/ipm/sessions/{sessionId}/void": {
+      "post": {
+        "operationId": "voidIpmSession",
+        "summary": "Void a submitted IPM (the chain's head)",
+        "tags": [
+          "IPM Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/ipmSessions.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "TENANT_ADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "A tenant administrator who is not facility-bound (a bound one: 403 — the route is not facility-accessible, and the service re-checks). The visit's Preventative work order is cancelled and a calibration request raised by the chain is cleared; the Repair work order and the device status are not reversed (`notices`). Final: there is no un-void. An API key and the platform operator are refused. Audited inside the transaction.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `IPM_NOT_SUBMITTED` (a draft: discard it), `IPM_VOIDED` (already voided), `IPM_SUPERSEDED` (void the head; its `headId`).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The IPM session's id",
+              "example": "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1"
+            },
+            "required": true,
+            "description": "The IPM session's id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The voided session, with `notices`",
             "content": {
               "application/json": {
                 "schema": {
@@ -30000,6 +30650,98 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/ipm/verify/{reportNumber}": {
+      "get": {
+        "operationId": "verifyIpmReport",
+        "summary": "Publicly verify a printed IPM report (no auth)",
+        "tags": [
+          "IPM Reports"
+        ],
+        "security": [],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/ipmReports.openapi.ts",
+        "x-public": true,
+        "description": "The target of the report's QR. The token (24 random bytes, base64url) is required: a malformed number or token, an unknown token or a number that is not the token's report all answer the same 404 `No IPM report matches this link.`. The verdict says issued, superseded (with the newer report's number, never its token) or voided (the date, never the reason), with the signatures, the integrity and the data document to render. Per client address, every request counts against 300 per 15 minutes and every answer that is not a verdict also against 60 per 15 minutes; beyond either, 429 with Retry-After.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reportNumber",
+            "schema": {
+              "type": "string",
+              "description": "The report number",
+              "example": "IPM-F-0001-20261008-003"
+            },
+            "required": true,
+            "description": "The report number"
+          },
+          {
+            "in": "query",
+            "name": "token",
+            "schema": {
+              "description": "The report's verification token (from its QR code)",
+              "example": "q3kZ0x9VbN2mP4rT6wY8aC1dE3fG5hJ7",
+              "type": "string"
+            },
+            "description": "The report's verification token (from its QR code)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/IpmVerification"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -78610,6 +79352,573 @@
           "updatedAt": "2026-09-02T00:00:00.000Z"
         }
       },
+      "IpmDueDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "qrCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serialNumber": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clientFacilityId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ipmIntervalMonths": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ipmDue": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "not_scheduled",
+                  "never_inspected",
+                  "due",
+                  "ok"
+                ]
+              },
+              "dueMonth": {
+                "example": "2026-11",
+                "type": "string"
+              },
+              "lastPerformedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "intervalMonths": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "state"
+            ],
+            "additionalProperties": false,
+            "description": "computeIpmDue (contracts) — the server's and the field app's answer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "qrCode",
+          "serialNumber",
+          "clientFacilityId",
+          "status",
+          "ipmIntervalMonths",
+          "ipmDue"
+        ],
+        "additionalProperties": false,
+        "description": "A device whose IPM is due (ADR-126 § 6: computed at read, never enforced)"
+      },
+      "IpmReportDocument": {
+        "type": "object",
+        "properties": {
+          "scheme": {
+            "type": "string",
+            "const": "ipm-report-v1"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "issued",
+              "preview"
+            ]
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "reportNumber": {
+            "example": "IPM-F-0001-20261008-003",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verifyUrl": {
+            "description": "The QR's link (issued only; absent from the public verdict's copy)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "submitted",
+              "superseded",
+              "voided"
+            ]
+          },
+          "lineage": {
+            "type": "object",
+            "properties": {
+              "supersedesReportNumber": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "supersededByReportNumber": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "supersededAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "voidedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "supersedesReportNumber",
+              "supersededByReportNumber",
+              "supersededAt",
+              "voidedAt"
+            ],
+            "additionalProperties": false
+          },
+          "issuer": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "The letterhead at submit, and the live logo (unhashed)"
+          },
+          "facility": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "address": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "code",
+              "kind",
+              "address"
+            ],
+            "additionalProperties": false
+          },
+          "device": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "room": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "floor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "visitNumber": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "legacyVisitNumber": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "performedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "submittedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "checklist": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section": {
+                  "type": "string",
+                  "enum": [
+                    "environment",
+                    "electrical_supply",
+                    "tools_used",
+                    "other_safety",
+                    "physical",
+                    "electrical_safety",
+                    "function",
+                    "completeness",
+                    "performance",
+                    "battery",
+                    "maintenance_task",
+                    "consumable"
+                  ]
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                }
+              },
+              "required": [
+                "section",
+                "items"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "inspectionOutcome": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "maintenanceOutcome": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recommendation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "performer": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "role": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "organisation": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "role",
+              "organisation"
+            ],
+            "additionalProperties": false
+          },
+          "signatures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IpmReportSignature"
+            }
+          },
+          "countersignEnabled": {
+            "type": "boolean"
+          },
+          "integrity": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "scheme": {
+                    "type": "string"
+                  },
+                  "hash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "example": "0000000000000000000000000000000000000000000000000000000000000000"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "match",
+                      "mismatch"
+                    ]
+                  }
+                },
+                "required": [
+                  "scheme",
+                  "hash",
+                  "state"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flags": {
+            "type": "object",
+            "properties": {
+              "capturedOffline": {
+                "type": "boolean"
+              },
+              "imported": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "capturedOffline",
+              "imported"
+            ],
+            "additionalProperties": false
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "scheme",
+          "kind",
+          "sessionId",
+          "reportNumber",
+          "verifyUrl",
+          "status",
+          "lineage",
+          "issuer",
+          "facility",
+          "device",
+          "room",
+          "floor",
+          "visitNumber",
+          "legacyVisitNumber",
+          "performedAt",
+          "submittedAt",
+          "timeZone",
+          "checklist",
+          "sections",
+          "inspectionOutcome",
+          "maintenanceOutcome",
+          "recommendation",
+          "notes",
+          "performer",
+          "signatures",
+          "countersignEnabled",
+          "integrity",
+          "flags",
+          "generatedAt"
+        ],
+        "additionalProperties": false,
+        "description": "The IPM report's data document — the browser renders it (no PDF is stored)"
+      },
+      "IpmReportSignature": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "performer",
+              "countersign"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organisation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "meaning": {
+            "type": "string",
+            "enum": [
+              "authorship",
+              "review"
+            ]
+          },
+          "signedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "authMethod": {
+            "type": "string",
+            "enum": [
+              "password",
+              "mfa"
+            ]
+          },
+          "valid": {
+            "type": "boolean",
+            "description": "Its document hash equals the stored and the recomputed content hash"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "role",
+          "organisation",
+          "meaning",
+          "signedAt",
+          "authMethod",
+          "valid"
+        ],
+        "additionalProperties": false,
+        "description": "An electronic signature on an IPM report (Part 11: name, time, meaning)"
+      },
       "IpmResult": {
         "type": "object",
         "properties": {
@@ -79951,6 +81260,212 @@
         ],
         "additionalProperties": false,
         "description": "An IPM session's header (lists)"
+      },
+      "IpmVerification": {
+        "type": "object",
+        "properties": {
+          "found": {
+            "type": "boolean",
+            "const": true
+          },
+          "reportNumber": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "issued",
+              "superseded",
+              "voided"
+            ]
+          },
+          "supersededBy": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "reportNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "reportNumber",
+                  "at"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "voidedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issuedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issuer": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "facility": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "device": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "visitNumber": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "performedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recommendation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signatures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IpmReportSignature"
+            }
+          },
+          "countersignEnabled": {
+            "type": "boolean"
+          },
+          "integrity": {
+            "type": "object",
+            "properties": {
+              "scheme": {
+                "type": "string"
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+                "example": "0000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "match",
+                  "mismatch"
+                ]
+              }
+            },
+            "required": [
+              "scheme",
+              "hash",
+              "state"
+            ],
+            "additionalProperties": false
+          },
+          "document": {
+            "$ref": "#/components/schemas/IpmReportDocument"
+          }
+        },
+        "required": [
+          "found",
+          "reportNumber",
+          "status",
+          "supersededBy",
+          "voidedAt",
+          "issuedAt",
+          "issuer",
+          "facility",
+          "device",
+          "visitNumber",
+          "performedAt",
+          "recommendation",
+          "signatures",
+          "countersignEnabled",
+          "integrity",
+          "document"
+        ],
+        "additionalProperties": false,
+        "description": "The verdict for the holder of the printed report's QR; never an id, tenant, token or void reason"
       },
       "KanbanBoard": {
         "type": "object",

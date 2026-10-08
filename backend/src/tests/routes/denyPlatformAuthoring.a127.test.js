@@ -394,6 +394,9 @@ const GUARDED = [
   "certificates.route.ts POST /:certificateId/submit",
   "certificates.route.ts PUT /:certificateId",
   "eSignature.route.ts POST /sign",
+  // P21-04 (ADR-126 Am. 5): the IPM submit issues the report; the signature is Part 11 authorship (the void carries the guard too, outside this scan).
+  "ipmSessions.route.ts POST /:sessionId/signatures",
+  "ipmSessions.route.ts POST /:sessionId/submit",
   "sop.route.ts PATCH /:id/publish",
   "sop.route.ts POST /:id/acknowledge",
   "workflows.route.ts POST /instances/:instanceId/action",

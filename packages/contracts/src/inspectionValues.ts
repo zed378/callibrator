@@ -783,6 +783,13 @@ export const IPM_CONFLICT_CODES = Object.freeze([
   "IPM_SUPERSEDED",
   "IPM_CORRECTION_OPEN",
   "IPM_ORIGINAL_NOT_EFFECTIVE",
+  // P21-04 (P19-06 spec § 13): the report and its signatures.
+  "IPM_ALREADY_SIGNED",
+  "IPM_ALREADY_COUNTERSIGNED",
+  "IPM_REPORT_NOT_SIGNED",
+  "IPM_COUNTERSIGN_DISABLED",
+  "IPM_REPORT_IMPORTED",
+  "IPM_REPORT_INTEGRITY",
 ] as const);
 export type IpmConflictCode = (typeof IPM_CONFLICT_CODES)[number];
 
@@ -975,4 +982,170 @@ export const normaliseResult = (item: NormalisableItem, input: IpmResultValues):
       };
     }
   }
+};
+
+// ── IPM submit completeness and "due" (P21-04; P19-02 spec § 7.2, § 11) ──────
+
+/** A pinned template item, as the completeness check reads it. */
+export interface RequirableItem {
+  readonly id: string;
+  readonly section: InspectionSection;
+  readonly label: string;
+  readonly inputKind: InspectionInputKind;
+  readonly required: boolean;
+}
+
+/** A stored result, as the completeness check reads it. */
+export interface AnsweredResult {
+  readonly templateItemId: string | null;
+  readonly outcome: string | null;
+  readonly cleanliness?: string | null | undefined;
+  readonly measuredValue: string | null;
+  readonly measuredValue1: string | null;
+  readonly textValue: string | null;
+}
+
+/** One required item a submit still misses. */
+export interface MissingItem {
+  readonly section: InspectionSection;
+  readonly label: string;
+}
+
+/**
+ * Whether a result answers its item (the submit's rule; a draft may hold a partial row):
+ *  - `check`, `tri_state`: an outcome;
+ *  - `condition_clean`: an outcome AND the cleanliness (`09` L-3 prints both);
+ *  - `measured`, `measured_with_limit`: a reading, or "not applicable";
+ *  - `setting_measured_reference`: the first reading AND the technician's outcome;
+ *  - `text`: a text.
+ */
+const answers = (kind: InspectionInputKind, r: AnsweredResult): boolean => {
+  switch (kind) {
+    case "check":
+    case "tri_state":
+      return r.outcome !== null;
+    case "condition_clean":
+      return r.outcome !== null && (r.cleanliness ?? null) !== null;
+    case "measured":
+    case "measured_with_limit":
+      return r.measuredValue !== null || r.outcome === "not_applicable";
+    case "setting_measured_reference":
+      return r.measuredValue1 !== null && r.outcome !== null;
+    case "text":
+      return r.textValue !== null;
+  }
+};
+
+/**
+ * The REQUIRED items of the pinned version that the results do not answer, in print order
+ * (section, then the items' order as given) — the 400 of a submit lists them by section and label
+ * (P19-02 spec § 7.2). Pure: the offline client shows the same list before it syncs.
+ *
+ * @param items - the pinned version's items, in read order
+ * @param results - the draft's results
+ * @returns the missing items (empty when the draft is complete)
+ */
+export const missingRequiredItems = (items: readonly RequirableItem[], results: readonly AnsweredResult[]): MissingItem[] => {
+  const byItem = new Map(results.flatMap((r) => (r.templateItemId === null ? [] : [[r.templateItemId, r] as const])));
+  return items
+    .filter((item) => {
+      if (!item.required) {
+        return false;
+      }
+      const result = byItem.get(item.id);
+      return result === undefined || !answers(item.inputKind, result);
+    })
+    .map((item) => ({ section: item.section, label: item.label }))
+    .sort((a, b) => INSPECTION_SECTIONS.indexOf(a.section) - INSPECTION_SECTIONS.indexOf(b.section));
+};
+
+/** A date's calendar parts in an IANA time zone. */
+export interface ZonedDay {
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+}
+
+/**
+ * The calendar day of an instant in a time zone (the report number's day, "due"'s month).
+ *
+ * @param at - the instant
+ * @param timeZone - an IANA zone (e.g. `Asia/Jakarta`)
+ * @returns year, month (1 – 12) and day
+ */
+export const zonedDay = (at: Date, timeZone: string): ZonedDay => {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(at);
+  const part: Readonly<Record<string, string>> = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return { year: Number(part["year"]), month: Number(part["month"]), day: Number(part["day"]) };
+};
+
+/** `YYYYMMDD` of a zoned day (the report number's day). */
+export const compactDay = (d: ZonedDay): string => `${String(d.year)}${String(d.month).padStart(2, "0")}${String(d.day).padStart(2, "0")}`;
+
+/** Whether `timeZone` is an IANA zone this runtime knows. */
+export const isTimeZone = (timeZone: string): boolean => {
+  try {
+    return Intl.DateTimeFormat("en", { timeZone }).resolvedOptions().timeZone !== "";
+  } catch {
+    return false;
+  }
+};
+
+/** The time zone of a tenant that set none (P19-02 spec § 4.3). */
+export const DEFAULT_TIME_ZONE = "Asia/Jakarta";
+
+/** The states "due" answers (P19-02 spec § 11). */
+export const IPM_DUE_STATES = Object.freeze(["not_scheduled", "never_inspected", "due", "ok"] as const);
+export type IpmDueState = (typeof IPM_DUE_STATES)[number];
+
+/** What `computeIpmDue` reads of one device. */
+export interface IpmDueInput {
+  /** The device's status; `retired`, `inactive` or a deleted device is never scheduled. */
+  readonly status: string | null;
+  readonly deleted?: boolean | undefined;
+  /** `calibration_devices.ipm_interval_months`: 0 = not under IPM, null = the tenant's. */
+  readonly intervalOverride: number | null;
+  /** The tenant setting `ipm_interval_months` (null = not scheduled). */
+  readonly tenantInterval: number | null;
+  /** The newest EFFECTIVE session's `performed_at` (submitted, not superseded), or null. */
+  readonly lastEffectivePerformedAt: Date | null;
+  readonly today: Date;
+  readonly timeZone: string;
+}
+
+/** "Due", as every reader shows it. */
+export type IpmDue =
+  | { readonly state: "not_scheduled" }
+  | { readonly state: "never_inspected"; readonly intervalMonths: number }
+  | { readonly state: "due" | "ok"; readonly dueMonth: string; readonly lastPerformedAt: string; readonly intervalMonths: number };
+
+const monthIndex = (d: ZonedDay): number => d.year * 12 + (d.month - 1);
+const monthText = (index: number): string => `${String(Math.floor(index / 12))}-${String((index % 12) + 1).padStart(2, "0")}`;
+
+/**
+ * "Due" (ADR-126 § 6; P19-02 spec § 11): computed at read, never enforced. A device is due in the
+ * month of its last effective IPM (tenant zone) plus its interval; a device never inspected under
+ * a schedule counts as due. The server is authoritative; the PWA shows the same.
+ *
+ * @param input - the device, the tenant's interval and zone, and today
+ * @returns the state
+ */
+export const computeIpmDue = (input: IpmDueInput): IpmDue => {
+  if (input.deleted === true || input.status === "retired" || input.status === "inactive") {
+    return { state: "not_scheduled" };
+  }
+  const interval = input.intervalOverride ?? input.tenantInterval;
+  if (interval === null || interval <= 0) {
+    return { state: "not_scheduled" };
+  }
+  if (input.lastEffectivePerformedAt === null) {
+    return { state: "never_inspected", intervalMonths: interval };
+  }
+  const due = monthIndex(zonedDay(input.lastEffectivePerformedAt, input.timeZone)) + interval;
+  return {
+    state: due <= monthIndex(zonedDay(input.today, input.timeZone)) ? "due" : "ok",
+    dueMonth: monthText(due),
+    lastPerformedAt: input.lastEffectivePerformedAt.toISOString(),
+    intervalMonths: interval,
+  };
 };

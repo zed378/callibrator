@@ -46,7 +46,13 @@ import {
   isRedactedSettingKey as loadedIsRedactedSettingKey,
   SECRET_SETTING_MASK as LOADED_SECRET_SETTING_MASK,
 } from "../constants/tenantSecretSettings";
-import { isTenantAdminSettingKey as loadedIsTenantAdminSettingKey, TENANT_ADMIN_INTEGER_SETTINGS } from "../constants/tenantAdminSettings";
+import {
+  isTenantAdminSettingKey as loadedIsTenantAdminSettingKey,
+  TENANT_ADMIN_BOOLEAN_SETTINGS,
+  TENANT_ADMIN_INTEGER_SETTINGS,
+  TENANT_ADMIN_TIME_ZONE_SETTINGS,
+} from "../constants/tenantAdminSettings";
+import { isTimeZone } from "@callibrator/contracts/inspectionValues";
 import { envOr } from "../config/env";
 import type { TenantId, UserId } from "../types/ids";
 import type { ModelInstance } from "../types/models";
@@ -284,6 +290,15 @@ const assertTenantAdminSettings = (entries: [string, unknown][]): void => {
       if (!Number.isInteger(n) || n < range.min || n > range.max) {
         throw new AppError(400, `Setting "${key}" must be a whole number from ${String(range.min)} to ${String(range.max)}`);
       }
+    }
+    // P21-04: a boolean setting is true or false; a time zone one the runtime knows (else every report
+    // number and "due" month of the tenant would throw at read). Empty or null clears either.
+    const cleared = value === null || value === "";
+    if (!cleared && TENANT_ADMIN_BOOLEAN_SETTINGS.includes(key) && value !== true && value !== false && value !== "true" && value !== "false") {
+      throw new AppError(400, `Setting "${key}" must be true or false`);
+    }
+    if (!cleared && TENANT_ADMIN_TIME_ZONE_SETTINGS.includes(key) && !(typeof value === "string" && isTimeZone(value))) {
+      throw new AppError(400, `Setting "${key}" must be an IANA time zone, e.g. Asia/Jakarta`);
     }
     // A-176: a URL the server itself will call is checked when it is saved
     // (https in production, no internal/metadata host) — a clear 400 now,
@@ -1448,6 +1463,8 @@ const service = {
   getTenantSettings,
   updateTenantSettings,
   getTenantUserCount,
+  /** P21-04: the IPM report document's live, unhashed letterhead logo (P19-06 § 10.2). */
+  logoUrl,
 };
 
 export = service;

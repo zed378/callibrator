@@ -241,6 +241,9 @@ const ipmIssuerSnapshot = z
     zipCode: snapshotText,
     country: snapshotText,
     website: snapshotText,
+    // P21-04 (ADR-126 Am. 5): the tenant's time zone at issue — the canonical payload binds it, so a
+    // later change of the tenant's zone cannot turn an issued report's recomputed hash into a mismatch.
+    timeZone: z.string().min(1).max(64),
   })
   .strict();
 

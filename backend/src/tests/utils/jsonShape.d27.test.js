@@ -184,7 +184,8 @@ const GOOD = {
   ],
   "InspectionSession.issuerSnapshot": [
     null,
-    { version: 1, name: "Penyedia", email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: "ID", website: null },
+    // P21-04 (ADR-126 Am. 5): the tenant's time zone at issue is part of the snapshot.
+    { version: 1, name: "Penyedia", email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: "ID", website: null, timeZone: "Asia/Jakarta" },
   ],
   "InspectionSessionSignature.signerSnapshot": [{ name: "IPSRS Sintetis", role: "FACILITY MAINTENANCE", organisation: "Rumah Sakit Sintetis" }],
   "CalibrationDevice.registrantSnapshot": [{ name: "Teknisi Sintetis", role: "TECHNICIAN", organisation: null }],
@@ -270,7 +271,12 @@ const BAD = {
   "InspectionSession.deviceSnapshot": [{ name: "x" }, []],
   "InspectionSession.facilitySnapshot": [{ id: "not-a-uuid", name: "x", code: null, kind: null, address: null }, {}],
   "InspectionSession.sideEffects": [{ calibrationRequested: "yes" }, { notices: "x" }, { body: "a stored response" }],
-  "InspectionSession.issuerSnapshot": [{ version: 2, name: null, email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: null, website: null }, {}],
+  "InspectionSession.issuerSnapshot": [
+    { version: 2, name: null, email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: null, website: null, timeZone: "Asia/Jakarta" },
+    {},
+    // P21-04: without the time zone the recomputed hash could not bind the zone the report was issued in.
+    { version: 1, name: null, email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: null, website: null },
+  ],
   "InspectionSessionSignature.signerSnapshot": [{ name: "A", role: null, organisation: null, userId: "x" }, "A"],
   "CalibrationDevice.registrantSnapshot": [{ name: "A", role: null, organisation: null, email: "a@example.test" }, { name: "" , role: null, organisation: null }],
   "CalibrationRecord.performerSnapshot": [{ name: "A", role: null, organisation: null, source: "manual" }, { role: null, organisation: null }],

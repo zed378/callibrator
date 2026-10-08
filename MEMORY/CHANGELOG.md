@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-09 — IPMs can be submitted: the report is issued, signed, verified publicly; corrections and voids complete; "due" (P21-04; ADR-126 Am. 5) ([record](./records/2026-10-09-p21-04-ipm-submit-report-signatures.md))
+- **Added:** `POST /api/v1/ipm/sessions/:sessionId/submit` — issues the report (number `IPM-<facility>-<YYYYMMDD>-<NNN>`, verification token, `ipm-report-v1` content hash, issuer snapshot), numbers the visit, writes the visit's Preventative work order and the recommendation's side effects (UD-17, a **working decision**: Repair order, device to `maintenance`, calibration request — switchable per tenant by `ipm_recommendation_side_effects`); a correction's submit supersedes the original.
+- **Added:** `POST …/void` (unbound tenant administrator), `GET …/report-document` (the data the browser renders; `?render=` audited), `POST …/signatures` (the performer's signature and the IPSRS countersignature, behind `ipm_countersign_enabled`), the public `GET /api/v1/ipm/verify/:reportNumber?token=`, and `GET /api/v1/ipm/due`.
+- **Added:** tenant settings `tenant_time_zone`, `ipm_interval_months`, `ipm_countersign_enabled`, `ipm_recommendation_side_effects` (validated when saved).
+- **Changed:** the issuer snapshot's shape gains `timeZone`; the e-signature sidebar leaf for bound users moves to P23-02 (G-P2).
+
 ### 2026-10-09 — IPM drafts and corrections get their API; offline replays are idempotent; IPM photos; scope-loss codes (P21-03; ADR-126 Am. 4) ([record](./records/2026-10-09-p21-03-ipm-session-api.md))
 - **Added:** `/api/v1/ipm/sessions` — list, one session, create a draft (pinned checklist, `clientRef`), edit the header, replace the results (checked against the pinned version), discard, start a correction; `GET /api/v1/calibration-devices/:id/ipm-sessions`. Every 409 carries a top-level `code` (`IPM_CONFLICT_CODES`). **Not yet:** submit, void, "due" (P21-04).
 - **Added:** `Idempotency-Key` on every IPM draft write and on `POST /attachments` (replay answers the stored status with the resource re-read; a refused request frees its key); a nightly purge (`IDEMPOTENCY_KEY_PURGE_SCHEDULER`, 03:53).
