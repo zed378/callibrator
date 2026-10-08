@@ -441,7 +441,8 @@ live("P20-07 — migrations 0117 – 0123 on live PostgreSQL 18", () => {
         g.db,
         `SELECT c.relname || ':' || t.tgname AS t, t.tgenabled::text AS e FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
           WHERE NOT t.tgisinternal AND (t.tgname LIKE '%facilit%' OR c.relname LIKE 'client_facilit%')
-            AND c.relname NOT IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures')`, // 0126's facility triggers are P20-04's, not the seven's
+            AND c.relname NOT IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures')
+            AND t.tgname NOT IN ('calibration_devices_location_facility', 'warehouses_room_devices_facility')`, // 0126's facility triggers are P20-04's, 0128's room triggers P20-02's — not the seven's
       );
       expect(triggers).toHaveLength(31);
       expect(triggers.filter((r) => r["e"] !== "A")).toEqual([]);

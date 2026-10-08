@@ -16,6 +16,7 @@ import {
   type NonAttribute,
   type Sequelize,
 } from "sequelize";
+import { ATTACHMENT_PURPOSES, type AttachmentPurpose } from "@callibrator/contracts/deviceValues";
 import {
   ATTACHMENT_RESOURCE_TYPES,
   isAttachmentResourceType,
@@ -45,6 +46,13 @@ interface Attachment extends Model<
   clientFacilityId: CreationOptional<ClientFacilityId | null>;
   /** P20-07: the key's facility segment differs from the row's after a device move; a job re-keys (P21-09). */
   rekeyPending: CreationOptional<boolean>;
+  /**
+   * P20-08 (ADR-132 § 6; migration 0129): what a photo shows — `device_front`,
+   * `device_serial_plate`, `device_other` on a device, `ipm_evidence` on an IPM session (CHECKs
+   * there); one live front and serial-plate photo per device (partial unique there). NULL for
+   * every other file. Never a `folder` value (G-D4).
+   */
+  purpose: CreationOptional<AttachmentPurpose | null>;
   fileName: string;
   originalName: string;
   folder: CreationOptional<string>;
@@ -125,6 +133,13 @@ const defineModel: DefineAttachment = (db, DataTypes) => {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: false,
+      },
+      // P20-08 (migration 0129): one of ATTACHMENT_PURPOSES or NULL; its CHECKs and the
+      // one-live-device-photo unique live in the migration (ADR-100 Am. 3).
+      purpose: {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+        validate: { isIn: [[...ATTACHMENT_PURPOSES]] },
       },
       // Stored filename on disk (opaque, randomized by multer).
       fileName: {

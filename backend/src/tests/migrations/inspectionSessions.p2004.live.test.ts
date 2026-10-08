@@ -78,6 +78,8 @@ interface Graph {
   m0117: { FUNCTIONS: readonly (readonly [string, string, string])[] };
   m0126: Migration & { FUNCTIONS: readonly (readonly [string, string])[] };
   m0127: Migration;
+  m0128: Migration;
+  m0129: Migration;
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph is loaded per "process" with jest.isolateModules; typed by the members used */
@@ -94,6 +96,8 @@ const startProcess = (): Graph => {
       m0117: require("../../migrations/0117-client-facilities") as Graph["m0117"],
       m0126: require("../../migrations/0126-ipm-sessions") as Graph["m0126"],
       m0127: require("../../migrations/0127-ipm-immutability") as Migration,
+      m0128: require("../../migrations/0128-device-extensions") as Migration,
+      m0129: require("../../migrations/0129-attachment-purpose") as Migration,
     };
   });
   if (!graph) {
@@ -121,7 +125,8 @@ const ipmTriggers = async (db: LiveDb): Promise<string[]> =>
     await rows(
       db,
       `SELECT c.relname || ':' || t.tgname || ':' || t.tgenabled::text AS t FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-        WHERE NOT t.tgisinternal AND c.relname IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures') ORDER BY 1`,
+        WHERE NOT t.tgisinternal AND c.relname IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures')
+          AND t.tgname <> 'inspection_sessions_attachments_follow_facility' ORDER BY 1`, // 0129's (P20-08), not 0126/0127's
     )
   ).map((r) => String(r["t"]));
 
@@ -165,8 +170,9 @@ live("P20-04 — migration 0126 on live PostgreSQL 18 (with 0127, as the boot ap
     await admin.close();
   });
 
-  it("0126 and 0127 are applied, last, and their sixteen triggers are ENABLE ALWAYS ('A')", async () => {
-    expect(applied.slice(-2)).toEqual(["0126-ipm-sessions.js", "0127-ipm-immutability.js"]);
+  it("0126 and 0127 are applied (then 0128, 0129), and their sixteen triggers are ENABLE ALWAYS ('A')", async () => {
+    // 0128 and 0129 (P20-02 / P20-08) follow them in the manifest.
+    expect(applied.slice(-4, -2)).toEqual(["0126-ipm-sessions.js", "0127-ipm-immutability.js"]);
     const triggers = await ipmTriggers(g.db);
     expect(triggers).toHaveLength(16);
     expect(triggers.filter((x) => !x.endsWith(":A"))).toEqual([]);
@@ -377,6 +383,9 @@ live("P20-04 — migration 0126 on live PostgreSQL 18 (with 0127, as the boot ap
         UNION ALL SELECT 'c:' || conname FROM pg_constraint WHERE conrelid::regclass::text IN ('inspection_sessions', 'inspection_results', 'inspection_session_signatures', 'idempotency_keys')
         UNION ALL SELECT 't:' || tgname || tgenabled::text FROM pg_trigger WHERE NOT tgisinternal AND tgrelid::regclass::text LIKE 'inspection_%' ORDER BY 1`);
     const before = await objects();
+    // 0129 and 0128 (P20-08 / P20-02) name the session table (a device key, the functions): reverted first.
+    await g.m0129.down({ context: qi });
+    await g.m0128.down({ context: qi });
     await g.m0127.down({ context: qi });
     await g.m0126.down({ context: qi });
     expect(await rows(g.db, "SELECT to_regclass('inspection_sessions') AS s, to_regclass('idempotency_keys') AS k")).toEqual([{ s: null, k: null }]);
@@ -386,6 +395,8 @@ live("P20-04 — migration 0126 on live PostgreSQL 18 (with 0127, as the boot ap
     expect(String(fn?.["prosrc"])).not.toContain("'result'");
     await g.m0126.up({ context: qi });
     await g.m0127.up({ context: qi });
+    await g.m0128.up({ context: qi });
+    await g.m0129.up({ context: qi });
     expect(await objects()).toEqual(before);
     expect((await g.schemaVerify.verifySchema(g.db)).problems).toEqual([]);
   });

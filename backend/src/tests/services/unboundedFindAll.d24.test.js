@@ -201,6 +201,7 @@ const REVIEWED = Object.freeze({
   "deviceMove.service.ts::linkedChildIds::models.CalibrationRecord.unscoped()": [1, PARENT],
   "deviceMove.service.ts::linkedChildIds::models.Certificate.unscoped()": [1, PARENT],
   "deviceMove.service.ts::linkedChildIds::models.MaintenanceWorkOrder.unscoped()": [1, PARENT],
+  "deviceMove.service.ts::linkedChildIds::models.InspectionSession": [1, PARENT],
   "deviceMove.service.ts::listDeviceMoves::models.ClientFacilityMove": [1, PARENT],
   "deviceMove.service.ts::listDeviceMoves::models.ClientFacility": [1, IDS],
   // P21-09e (spec § 12): the authors of the rows already being answered (one page), their

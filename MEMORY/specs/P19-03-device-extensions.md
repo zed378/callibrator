@@ -114,6 +114,7 @@ The same function normalises the lookup path parameter, the create/update body a
 - `UNIQUE (tenant_id, qr_code) WHERE qr_code IS NOT NULL` — every row, soft-deleted and retired included (a sticker is physical; a deleted device restored keeps it, A-133).
 - The service pre-checks in the **unbound** caller's context (the only callers who can set a QR, § 5) and answers **409** `DEVICE_QR_TAKEN` "QR code <qr> is already on device <name> in <facility>." / "… on a deleted device (<name>); restore it, or use another sticker." — unbound callers see every facility, so naming discloses nothing beyond their scope. The unique index is the backstop for the race (`SequelizeUniqueConstraintError` on `qr_code` → the same 409, as `isSerialUniqueViolation` does today).
 - **Changing** a device's QR (sticker replaced) is an unbound `calibration` write (`PUT`, audited before/after); clearing it is allowed (a device awaiting a sticker).
+- *As built (ADR-132 Am. 1 § 1, migration 0128, 2026-10-09):* the database also holds the normalised shape — CHECK `calibration_devices_qr_code_shape` on `QR_CODE_PATTERN` (`@callibrator/contracts/deviceValues`).
 
 ### 4.4 Condition (G-D3)
 
@@ -156,6 +157,8 @@ CHECK `warehouses_room_has_facility` `kind <> 'room' OR client_facility_id IS NO
 
 If `NEW.location_id` names a warehouse of kind `room`, its `client_facility_id` must equal `NEW.client_facility_id` (and its tenant the device's); a `store` is accepted for any device of the tenant (a workshop or depot — provider-internal, so a bound reader sees the location as NULL). A composite FK is not used: today's devices point at NULL-facility stores, which a composite FK `(tenant, facility, location)` would refuse. The service checks first and answers **400** "This room belongs to another facility."
 
+*As built (ADR-132 Am. 1 § 2, migration 0128, 2026-10-09):* the trigger also refuses a location of another tenant (any kind) and fires on `tenant_id`; a second trigger, `warehouses_room_devices_facility`, refuses changing a room's facility, kind or tenant while it holds a device of another facility.
+
 ### 6.3 Find-or-create a room from the device form (G-D7)
 
 Create and update accept either `locationId` (an existing room or store of the tenant, loaded in context) **or** `room: { name, floor? }`: the service normalises (`trim`, collapse whitespace), looks up a live room of the **device's facility** with that name and floor, and creates one if none exists (`kind room`, code `R-` + a per-tenant sequence, as the ETL — `04` § 4.2), in the device's transaction, audited (`CREATE Warehouse`, operation `CREATE_ROOM_FROM_DEVICE`). Gated by the device route's `calibration` write — so a bound technician can add a room **of its own facility** (stamped by the hooks), never a store. Stock routes refuse a room as a stock location (**400** "Rooms hold devices, not stock."; stock pickers list `kind = 'store'` only) — the "warehouse" vocabulary for a ward is a UI concern: the device and IPM screens say "Room / Ruangan".
@@ -180,6 +183,8 @@ One room per distinct normalised `(facility, nama_ruangan, lantai)` after the cl
 | `purpose` | varchar(32) NULL, CHECK in (`device_front`, `device_serial_plate`, `device_other`, `ipm_evidence`) | `ATTACHMENT_PURPOSES` in contracts |
 
 CHECK `attachments_purpose_resource`: `purpose IS NULL OR (purpose LIKE 'device_%' AND lower(resource_type) IN ('device','calibrationdevice')) OR (purpose = 'ipm_evidence' AND lower(resource_type) = 'inspectionsession')` · UNIQUE `attachments_one_live_device_photo` `(tenant_id, resource_id, purpose) WHERE purpose IN ('device_front','device_serial_plate') AND is_deleted = false` — one live front and one live serial-plate photo per device. The IPM resource type and 0123's widened CHECK/functions are P19-02 § 12 (same migration).
+
+*As built (ADR-132 Am. 1 § 5, migration 0129, 2026-10-09):* the device purposes are listed explicitly (not `LIKE 'device_%'`), plus CHECK `attachments_purpose_values`.
 
 ### 7.2 Routes and rules (P21-02)
 

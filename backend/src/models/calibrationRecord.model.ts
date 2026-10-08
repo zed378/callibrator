@@ -16,7 +16,8 @@ import {
   type NonAttribute,
   type Sequelize,
 } from "sequelize";
-import { jsonShape, type CalibrationResults } from "../utils/jsonShape.util";
+import { CALIBRATION_ENTRY_KINDS, type CalibrationEntryKind } from "@callibrator/contracts/deviceValues";
+import { jsonShape, type CalibrationPerformerSnapshot, type CalibrationResults } from "../utils/jsonShape.util";
 import type { ClientFacilityId, TenantId, UserId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
@@ -69,6 +70,21 @@ interface CalibrationRecord extends Model<
   supersededAt: Date | null;
   voidReason: string | null;
   voidedBy: UserId | null;
+  /*
+   * P20-02 (ADR-133 § 3; P19-05 spec § 4.1) — added by migration 0128 (its CHECKs and the vendor
+   * index there, ADR-100 Am. 3). Immutable after insert like every content column (the 0057/0119
+   * trigger compares the whole row).
+   */
+  /** `full_record` (every row before 0128) or `external_date` (an outside lab's date and key data). */
+  entryKind: CreationOptional<CalibrationEntryKind>;
+  /** The laboratory that performed it (vendors, SET NULL). */
+  calibrationVendorId: CreationOptional<string | null>;
+  /** The laboratory's name as recorded — readable when the vendor row changes, and to a bound reader. */
+  externalLabName: CreationOptional<string | null>;
+  roomSnapshot: CreationOptional<string | null>;
+  floorSnapshot: CreationOptional<string | null>;
+  /** JSONB, D-27 shape `CalibrationRecord.performerSnapshot` — at insert only, never back-filled. */
+  performerSnapshot: CreationOptional<CalibrationPerformerSnapshot | null>;
   createdAt: CreationOptional<Date>;
   updatedAt: CreationOptional<Date>;
   deletedAt: CreationOptional<Date | null>;
@@ -229,6 +245,36 @@ const defineModel: DefineCalibrationRecord = (db, DataTypes) => {
         allowNull: true,
         references: { model: "users", key: "id" },
         onDelete: "RESTRICT",
+      },
+      // P20-02 (migration 0128).
+      entryKind: {
+        type: DataTypes.ENUM(...CALIBRATION_ENTRY_KINDS),
+        allowNull: false,
+        defaultValue: "full_record",
+      },
+      calibrationVendorId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "vendors", key: "id" },
+        onDelete: "SET NULL",
+        onUpdate: "CASCADE",
+      },
+      externalLabName: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      roomSnapshot: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      floorSnapshot: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
+      performerSnapshot: {
+        type: DataTypes.JSONB,
+        validate: { shape: jsonShape("CalibrationRecord.performerSnapshot") },
+        allowNull: true,
       },
     },
     {

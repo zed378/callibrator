@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-09 — Device register extensions, calibration-date columns and photo purposes in the database (P20-02, P20-08; ADR-132 Am. 1, ADR-133 Am. 1) ([record](./records/2026-10-09-p20-02-08-device-extensions.md))
+- **Added (schema only, no routes yet):** migration 0128 — a device's QR (unique per tenant, deleted devices included), condition, inventory date, lab, registrant, IPM interval and offline reference; rooms (`warehouses.kind = room`, a floor, a facility, a name unique per facility) that hold only their facility's devices; a calibration record's entry kind, lab and snapshots; the next date's source; the IPM calibration request. Migration 0129 — `attachments.purpose` with one live front and serial-plate photo per device; IPM-session photos scoped to the session's facility and carried by a device move.
+- **Operational:** every existing warehouse becomes a `store`; every existing next calibration date is labelled `manual`. `0128`/`0129 down` refuse once any new column holds data.
+
 ### 2026-10-09 — The IPM session's tables and their immutability in the database (P20-04, P20-05; ADR-126 Am. 3) ([record](./records/2026-10-09-p20-04-05-ipm-schema.md))
 - **Added (schema only, no routes yet):** migration 0126 — `inspection_sessions`, `inspection_results`, `inspection_session_signatures`, `idempotency_keys`, tenant- and facility-scoped with composite keys that follow a device move; migration 0127 — after submit a session changes only in its lifecycle, results only while a draft, signatures never, for every database role.
 - **Operational:** the boot applies 0126 and 0127; `0126 down` refuses once any IPM row or key exists. Re-running 0117 alone afterwards would break every IPM result insert (42703) — never run a migration outside the manifest order.

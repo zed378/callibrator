@@ -16,11 +16,20 @@ import {
   type Sequelize,
 } from "sequelize";
 import {
+  DEVICE_CONDITION_SOURCES,
+  DEVICE_CONDITIONS,
+  NEXT_CALIBRATION_DATE_SOURCES,
+  type DeviceCondition,
+  type DeviceConditionSource,
+  type NextCalibrationDateSource,
+} from "@callibrator/contracts/deviceValues";
+import {
   jsonShape,
+  type PersonSnapshot,
   type ReadingTolerance,
   type UncertaintyBudget,
 } from "../utils/jsonShape.util";
-import type { ClientFacilityId, DeviceTypeId, TenantId } from "../types/ids";
+import type { ClientFacilityId, DeviceTypeId, TenantId, UserId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -86,6 +95,36 @@ interface CalibrationDevice extends Model<
   readingTolerance: ReadingTolerance | null;
   recommendedCalibrationInterval: number | null;
   recommendationReason: string | null;
+  /*
+   * P20-02 (ADR-132, ADR-133; P19-03 spec § 4, P19-05 spec § 4.2) — added to existing databases by
+   * migration 0128, which holds every CHECK, index and the session key; none is declared here
+   * (ADR-100 Am. 3). Optional on create: every one is nullable or filled by the database.
+   */
+  /** The QR sticker number, normalised (`normaliseQrCode`); unique per tenant over every row; written by unbound callers only. */
+  qrCode: CreationOptional<string | null>;
+  /** When the device entered the register (upstream `tgl_inventory`) — not `installationDate`. DATEONLY: a `YYYY-MM-DD` string. */
+  inventoriedOn: CreationOptional<string | null>;
+  accessoriesComplete: CreationOptional<boolean | null>;
+  /** NULL = not assessed; with `conditionSource` (CHECK: both or neither). Separate from `status` (G-D3). */
+  condition: CreationOptional<DeviceCondition | null>;
+  conditionChangedAt: CreationOptional<Date | null>;
+  conditionSource: CreationOptional<DeviceConditionSource | null>;
+  /** The usual calibration laboratory (vendors, SET NULL). Provider-internal: a bound reader never gets the vendor row. */
+  calibrationVendorId: CreationOptional<string | null>;
+  /** The registrant (users, RESTRICT); NULL for devices created before 0128. */
+  createdBy: CreationOptional<UserId | null>;
+  /** JSONB, D-27 shape `CalibrationDevice.registrantSnapshot` — taken at create, never back-filled. */
+  registrantSnapshot: CreationOptional<PersonSnapshot | null>;
+  /** ADR-126 § 6: 0 = not under IPM, NULL = the tenant setting; 0 – 60 (CHECK). */
+  ipmIntervalMonths: CreationOptional<number | null>;
+  /** Offline registration's reference (ADR-127 § 7), unique per creator. */
+  clientRef: CreationOptional<string | null>;
+  /** Where `nextCalibrationDate` came from; NULL exactly when there is no date (CHECK). The database fills `manual` when a date is written without one (0128's trigger, ADR-133 Am. 1). */
+  nextCalibrationDateSource: CreationOptional<NextCalibrationDateSource | null>;
+  /** The IPM `needs_calibration` flag (G-C8), with the session that raised it (CHECK: both or neither). */
+  calibrationRequestedAt: CreationOptional<Date | null>;
+  /** → inspection_sessions (id) RESTRICT, in migration 0128 only (no `references` here: sync would order the tables in a cycle). The session is this device's (trigger). */
+  calibrationRequestedBySessionId: CreationOptional<string | null>;
   isDeleted: CreationOptional<boolean>;
   createdAt: CreationOptional<Date>;
   updatedAt: CreationOptional<Date>;
@@ -239,6 +278,70 @@ const defineModel: DefineCalibrationDevice = (db, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
         comment: "Reason for the recommended interval change",
+      },
+      // P20-02 (migration 0128): no index, CHECK or unique here (ADR-100 Am. 3).
+      qrCode: {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+      },
+      inventoriedOn: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
+      accessoriesComplete: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+      },
+      condition: {
+        type: DataTypes.ENUM(...DEVICE_CONDITIONS),
+        allowNull: true,
+      },
+      conditionChangedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      conditionSource: {
+        type: DataTypes.ENUM(...DEVICE_CONDITION_SOURCES),
+        allowNull: true,
+      },
+      calibrationVendorId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "vendors", key: "id" },
+        onDelete: "SET NULL",
+        onUpdate: "CASCADE",
+      },
+      createdBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
+        onUpdate: "CASCADE",
+      },
+      registrantSnapshot: {
+        type: DataTypes.JSONB,
+        validate: { shape: jsonShape("CalibrationDevice.registrantSnapshot") },
+        allowNull: true,
+      },
+      ipmIntervalMonths: {
+        type: DataTypes.SMALLINT,
+        allowNull: true,
+      },
+      clientRef: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      nextCalibrationDateSource: {
+        type: DataTypes.ENUM(...NEXT_CALIBRATION_DATE_SOURCES),
+        allowNull: true,
+      },
+      calibrationRequestedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      calibrationRequestedBySessionId: {
+        type: DataTypes.UUID,
+        allowNull: true,
       },
       isDeleted: {
         type: DataTypes.BOOLEAN,
