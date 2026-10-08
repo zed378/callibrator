@@ -36,8 +36,14 @@ import {
   uploadUpstreamSqlImportSchema,
 } from "@callibrator/contracts/upstreamSqlImport";
 import { defineRouteDocs } from "../../docs/openapi/operation";
+import { acceptProposalBody, listProposalsQuery, proposalIdParams, rejectProposalBody } from "@callibrator/contracts/inspectionCatalogue";
+import { TemplateProposal, TemplateProposalQueueRow } from "../../docs/openapi/inspectionCatalogueSchemas";
 
 const superAdmin = { kind: "rbac", roles: ["SUPER_ADMIN", "SUPERADMIN"] } as const;
+
+const proposalParams = z.object({
+  proposalId: proposalIdParams.shape.proposalId.meta({ description: "The proposal's id", example: "c4c4c4c4-c4c4-4c4c-8c4c-c4c4c4c4c4c4" }),
+});
 
 const tenantParams = z.object({
   id: z.guid().meta({ description: "The tenant's id", example: "2b7c9e41-5d3a-4f6e-8a1b-0c9d8e7f6a5b" }),
@@ -427,6 +433,46 @@ export default defineRouteDocs({
       params: sqlImportParams,
       success: { status: 200, description: "The run, queued again", data: sqlImportRun },
       conflict: "The run is not failed, its file was deleted, or another import is active. (A run declared real while UPSTREAM_REAL_DATA_ALLOWED is off is a 403.)",
+    },
+    {
+      method: "get",
+      path: "/ipm/template-proposals",
+      operationId: "adminListInspectionTemplateProposals",
+      summary: "The catalogue proposal queue",
+      description: "P21-01 (ADR-125 § 5): every tenant's proposals, oldest first, with the tenant each came from.",
+      permission: superAdmin,
+      audited: false,
+      query: listProposalsQuery,
+      success: { status: 200, description: "A page of proposals; pagination in the top-level `meta`", list: TemplateProposalQueueRow },
+    },
+    {
+      method: "post",
+      path: "/ipm/template-proposals/:proposalId/accept",
+      operationId: "adminAcceptInspectionTemplateProposal",
+      summary: "Accept a catalogue proposal",
+      description:
+        "P21-01: opens a draft on the device type's checklist (creating the checklist when it has none) or links the open one — " +
+        "nothing is copied from the proposal: the operator adds each item to the draft. A new-type proposal names the type the " +
+        "operator created (`deviceTypeId`). The submitter is notified; audited in the proposal's tenant. An API key is refused.",
+      permission: superAdmin,
+      audited: true,
+      params: proposalParams,
+      body: acceptProposalBody,
+      conflict: "The proposal was already decided or withdrawn, or the device type / its checklist is retired.",
+      success: { status: 200, description: "The proposal, with the draft it opened", data: TemplateProposal },
+    },
+    {
+      method: "post",
+      path: "/ipm/template-proposals/:proposalId/reject",
+      operationId: "adminRejectInspectionTemplateProposal",
+      summary: "Reject a catalogue proposal",
+      description: "P21-01: with a decision note. The submitter is notified; audited in the proposal's tenant. An API key is refused.",
+      permission: superAdmin,
+      audited: true,
+      params: proposalParams,
+      body: rejectProposalBody,
+      conflict: "The proposal was already decided or withdrawn.",
+      success: { status: 200, description: "The proposal", data: TemplateProposal },
     },
   ],
 });

@@ -276,6 +276,19 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
     "GET /": { kind: "read", reason: "A-8: the facility's work orders (vendor and assignee includes are LEFT, provider-internal)" },
     "GET /:orderId": { kind: "read", reason: "A-8: one work order of the facility, with the assignee display" },
   },
+  // P21-01 (ADR-125 § 6, spec P19-01 § 8.1): the GLOBAL catalogue's reads — no facility-owned rows,
+  // the same content for every reader; the operator routes and the proposals stay unmarked.
+  "api/deviceTypes.route.ts": {
+    "GET /": { kind: "read", reason: "global content (ADR-125 § 6), no facility-owned rows: the device-type picker" },
+    "GET /:deviceTypeId": { kind: "read", reason: "global content (ADR-125 § 6), no facility-owned rows: one device type, any status" },
+  },
+  "api/ipm.route.ts": {
+    "GET /templates/published": { kind: "read", reason: "global content (ADR-125 § 6), no facility-owned rows: the published checklists (ADR-127 offline download)" },
+    "GET /template-versions/:versionId": {
+      kind: "read",
+      reason: "global content (ADR-125 § 6), no facility-owned rows: a published or retired checklist version (a draft is a 404)",
+    },
+  },
 });
 
 /** One raw statement over a facility-scoped table that a bound principal cannot reach. */

@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-09 — The global inspection catalogue gets its API: device types, checklists, publishing, the offline download, tenant proposals (P21-01; ADR-125 Am. 3) ([record](./records/2026-10-09-p21-01-catalogue-api.md))
+- **Added:** `/api/v1/device-types` (read by any `calibration` / `ipm` / `ipm-templates` reader; written by the platform operator); `/api/v1/ipm/templates/published` (every published checklist and the active types, strong `ETag`, 304); `/api/v1/ipm/template-versions/:id`; the operator's item library, templates, drafts, publish (publishing the base checklist re-publishes every type checklist on it) and discard; tenant proposals (`ipm-templates`) and the operator's queue under `/api/v1/admin/ipm/template-proposals`.
+- **Changed:** a device may carry `deviceTypeId`; giving it a retired or unknown type is a 400 (a device keeps a type that was retired later).
+- **Migration 0125:** the one-open-draft index leaves out a base rebase's version.
+- **Users notice:** nothing yet — the `ipm` / `ipm-templates` menus stay inactive until P22.
+
 ### 2026-10-08 — Devices move between client facilities with their history; facility accounts get their facility's records and their own self-service; identity providers cannot place an account in a facility (P21-09d, P21-09e; ADR-124 Am. 6) ([P21-09d record](./records/2026-10-08-p21-09d-move-keys-links.md), [P21-09e record](./records/2026-10-08-p21-09e-displays-routes-provisioning.md))
 - **Added:** `POST /api/v1/calibration-devices/:id/move` (tenant administrators) and `GET …/moves` — the device's records, certificates, work orders, readings, non-conformances and files follow it; two audit rows; files re-keyed under the new facility afterwards.
 - **Added:** records, files, certificates and work orders carry `performerDisplay` / `uploaderDisplay` / `calibratedByDisplay` … / `assigneeDisplay` — a name, role and organisation, never an id or e-mail; a signed certificate shows its printed snapshot.

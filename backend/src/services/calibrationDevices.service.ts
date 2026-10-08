@@ -32,6 +32,7 @@ import type { AuditAction } from "../constants/auditActions";
 import type { ClientFacilityId, TenantId } from "../types/ids";
 import type { ModelInstance } from "../types/models";
 import { tenantStorage } from "../middlewares/tenantContext.middleware";
+import { deviceTypeAssignmentRefusal } from "./deviceType.service";
 
 const Op = LoadedOp;
 const { CalibrationDevice } = models;
@@ -473,6 +474,22 @@ const boundWriteRefusal = async (
 };
 
 /**
+ * P21-01 (ADR-125; spec P19-01 § 4.7) — the 400 for GIVING a device a type that does not exist
+ * or is retired. Keeping the type it already holds (retired or not) and clearing it are allowed.
+ *
+ * @param deviceTypeId - the body's type (undefined: not changed; null: cleared)
+ * @param current - the device's type now (null on create)
+ * @returns the refusal, or null
+ */
+const typeRefusal = async (deviceTypeId: string | null | undefined, current: string | null): Promise<Outcome<null> | null> => {
+  if (!deviceTypeId || deviceTypeId === current) {
+    return null;
+  }
+  const message = await deviceTypeAssignmentRefusal(deviceTypeId);
+  return message ? { success: false, status: 400, message, data: null } : null;
+};
+
+/**
  * Create a new calibration device
  */
 const createCalibrationDevice = async (
@@ -489,7 +506,7 @@ const createCalibrationDevice = async (
 
     normaliseSerial(validated);
 
-    const refused = await boundWriteRefusal(tenantId, validated, false);
+    const refused = (await boundWriteRefusal(tenantId, validated, false)) ?? (await typeRefusal(validated.deviceTypeId, null));
     if (refused) {
       return refused;
     }
@@ -589,6 +606,11 @@ const updateCalibrationDevice = async (
     // reinstatement, never an edit.
     if (retirement.leavesRetirement(device, validated)) {
       return retirement.retirementConflict(device);
+    }
+
+    const typeRefused = await typeRefusal(validated.deviceTypeId, device.deviceTypeId);
+    if (typeRefused) {
+      return typeRefused;
     }
 
     normaliseSerial(validated);

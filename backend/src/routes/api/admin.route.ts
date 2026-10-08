@@ -9,7 +9,7 @@
  * file carried is gone.
  */
 import { Router, type RequestHandler } from "express";
-import { auth } from "../../middlewares/auth.middleware";
+import { auth, denyApiKey } from "../../middlewares/auth.middleware";
 import { rbac } from "../../middlewares/rbac.middleware";
 import { getAllTenants, updateTenantStatus, updateTenantFlags } from "../../controllers/admin.controller";
 import { validate } from "../../middlewares/validation.middleware";
@@ -32,6 +32,8 @@ import {
   uploadTimeBudget,
 } from "../../controllers/upstreamSqlImport.controller";
 import { listUpstreamSqlImportsSchema, upstreamSqlImportIdSchema } from "../../validators/upstreamSqlImport.validator";
+import { acceptProposal, listProposalsQuery, rejectProposal } from "@callibrator/contracts/inspectionCatalogue";
+import { accept as acceptCatalogueProposal, proposalQueue, reject as rejectCatalogueProposal } from "../../controllers/inspectionCatalogue.controller";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -131,5 +133,27 @@ router.post("/upstream-sql-imports", superAdminOnly, uploadTimeBudget, dumpUploa
 router.get("/upstream-sql-imports/:id", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), getSqlImport);
 router.post("/upstream-sql-imports/:id/cancel", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), cancelSqlImport);
 router.post("/upstream-sql-imports/:id/retry", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), retrySqlImport);
+
+// ---------------------------------------------------------------------------
+// P21-01 (ADR-125 § 5; spec P19-01 § 7.4, § 8.2) — the catalogue proposals' queue across tenants
+// and the operator's decisions (super admin: this router's rbac; the decisions also superAdminOnly
+// and JWT only). Accepting copies nothing into the catalogue: it opens or links a draft.
+// Contract: admin.openapi.ts.
+// ---------------------------------------------------------------------------
+router.get("/ipm/template-proposals", superAdminOnly, validate(listProposalsQuery, { from: "query" }), proposalQueue);
+router.post(
+  "/ipm/template-proposals/:proposalId/accept",
+  denyApiKey,
+  superAdminOnly,
+  validate(acceptProposal, { from: ["params", "body"] }),
+  acceptCatalogueProposal,
+);
+router.post(
+  "/ipm/template-proposals/:proposalId/reject",
+  denyApiKey,
+  superAdminOnly,
+  validate(rejectProposal, { from: ["params", "body"] }),
+  rejectCatalogueProposal,
+);
 
 export = router;

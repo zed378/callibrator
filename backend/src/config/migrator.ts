@@ -205,6 +205,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0123-facility-nullable.js", require("../migrations/0123-facility-nullable")],
   // P20-06 (ADR-124 Am. 5): the ipm / ipm-templates / client-facilities menu entries and grants; UD-4 (b) calibration write for the technicians.
   ["0124-ipm-menus-technician-calibration.js", require("../migrations/0124-ipm-menus-technician-calibration")],
+  // P21-01 (ADR-125 Am. 3): a base rebase's version is left out of the one-open-draft index.
+  ["0125-catalogue-rebase-drafts.js", require("../migrations/0125-catalogue-rebase-drafts")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

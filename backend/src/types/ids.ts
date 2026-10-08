@@ -66,9 +66,9 @@ export const NO_TENANT_ID = "00000000-0000-0000-0000-000000000000" as TenantId;
 
 /*
  * The inspection catalogue (P20-01 / P20-03; spec MEMORY/specs/P19-01-inspection-catalogue.md § 4).
- * Types only, as `UserId` began: the models declare their keys with them. Their validating
- * constructors are added by the first module that turns a raw string into one (the catalogue
- * service, P21-01).
+ * The models declare their keys with them; P21-01 (the catalogue services, the first modules
+ * that turn a raw id — a validated path parameter or body field — into one) adds their
+ * validating constructors below.
  */
 
 /** A device type's id (`device_types.id`). */
@@ -88,6 +88,61 @@ export type InspectionTemplateItemId = Brand<string, "InspectionTemplateItemId">
 
 /** A tenant's catalogue proposal id (`inspection_template_proposals.id`). */
 export type InspectionTemplateProposalId = Brand<string, "InspectionTemplateProposalId">;
+
+/** The constructors' shared check. */
+const assertUuid = (value: string, what: string): void => {
+  if (!UUID_SHAPE.test(value)) {
+    throw new TypeError(`${what} must be a UUID`);
+  }
+};
+
+/**
+ * @throws {TypeError} when `value` is not a UUID
+ */
+export const toDeviceTypeId = (value: string): DeviceTypeId => {
+  assertUuid(value, "A device type id");
+  return value as DeviceTypeId;
+};
+
+/**
+ * @throws {TypeError} when `value` is not a UUID
+ */
+export const toInspectionItemDefinitionId = (value: string): InspectionItemDefinitionId => {
+  assertUuid(value, "An item definition id");
+  return value as InspectionItemDefinitionId;
+};
+
+/**
+ * @throws {TypeError} when `value` is not a UUID
+ */
+export const toInspectionTemplateId = (value: string): InspectionTemplateId => {
+  assertUuid(value, "A template id");
+  return value as InspectionTemplateId;
+};
+
+/**
+ * @throws {TypeError} when `value` is not a UUID
+ */
+export const toInspectionTemplateVersionId = (value: string): InspectionTemplateVersionId => {
+  assertUuid(value, "A template version id");
+  return value as InspectionTemplateVersionId;
+};
+
+/**
+ * @throws {TypeError} when `value` is not a UUID
+ */
+export const toInspectionTemplateItemId = (value: string): InspectionTemplateItemId => {
+  assertUuid(value, "A template item id");
+  return value as InspectionTemplateItemId;
+};
+
+/**
+ * @throws {TypeError} when `value` is not a UUID
+ */
+export const toInspectionTemplateProposalId = (value: string): InspectionTemplateProposalId => {
+  assertUuid(value, "A proposal id");
+  return value as InspectionTemplateProposalId;
+};
 
 /*
  * Client facilities (P20-07; ADR-124 and its Amendment 2; spec

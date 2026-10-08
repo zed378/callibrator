@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | BLOCKED — 10 BLOCKED |
+| **Status** | 1 TODO (P22-01 — unblocked by P21-01, 2026-10-09) · 9 BLOCKED |
 | **Goal** | Pages, PWA field capture with offline mode |
 | **Depends on** | Phase 21 |
 | **Size** | L |
@@ -28,7 +28,7 @@ page notes · docs/FRONTEND/00 · docs/UI-UX/08 · ADR-122 · ADR-071/090 · P19
 
 | Card | Title | Features | Status | Depends on |
 |---|---|---|---|---|
-| P22-01 | Catalogue and template admin (`dashboard/ipm-templates`) | F-22 | BLOCKED | P21-01 |
+| P22-01 | Catalogue and template admin (`dashboard/ipm-templates`) | F-22 | **TODO** (unblocked 2026-10-09: P21-01 DONE) | P21-01 |
 | P22-02 | Device form and list: QR, type picker, mandatory photos, condition, thumbnails | F-23 … F-31 | BLOCKED | P21-02 |
 | P22-03 | IPM capture: mobile-first stepper, camera QR scan, autosave draft | F-35 … F-53 | BLOCKED | P21-03 |
 | P22-04 | IPM history, corrections and void; device "IPM" tab | F-54 … F-57 | BLOCKED | P21-03 |

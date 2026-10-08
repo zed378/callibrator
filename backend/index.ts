@@ -117,6 +117,8 @@ import type TicketsRouteModule from "./src/routes/api/tickets.route";
 import type * as AuthorizationWiringUtilModule from "./src/utils/authorizationWiring.util";
 import type * as RouteTableModule from "./src/utils/routeTable";
 import type ClientFacilitiesRouteModule from "./src/routes/api/clientFacilities.route";
+import type DeviceTypesRouteModule from "./src/routes/api/deviceTypes.route";
+import type IpmRouteModule from "./src/routes/api/ipm.route";
 import type MigratorModule from "./src/config/migrator";
 import type * as MigrationLockUtilModule from "./src/utils/migrationLock.util";
 import type * as SchemaVerifyUtilModule from "./src/utils/schemaVerify.util";
@@ -501,6 +503,8 @@ const eSignatureRoutes = require("./src/routes/api/eSignature.route") as typeof 
 const kanbanRoutes = require("./src/routes/api/kanban.route") as typeof KanbanRouteModule;
 const ticketRoutes = require("./src/routes/api/tickets.route") as typeof TicketsRouteModule;
 const clientFacilityRoutes = require("./src/routes/api/clientFacilities.route") as typeof ClientFacilitiesRouteModule;
+const deviceTypeRoutes = require("./src/routes/api/deviceTypes.route") as typeof DeviceTypesRouteModule;
+const ipmRoutes = require("./src/routes/api/ipm.route") as typeof IpmRouteModule;
 
 // ======================================================
 // ROUTES ENDPOINT
@@ -579,6 +583,9 @@ app.use("/api/v1/kanban", kanbanRoutes);
 app.use("/api/v1/tickets", ticketRoutes);
 // P21-09 (ADR-124): client facilities — the bound user's own facility (S-8).
 app.use("/api/v1/client-facilities", clientFacilityRoutes);
+// P21-01 (ADR-125): the global inspection catalogue — device types, checklists, proposals.
+app.use("/api/v1/device-types", deviceTypeRoutes);
+app.use("/api/v1/ipm", ipmRoutes);
 // Per-dependency readiness detail. Gated (auth + denyApiKey + superAdminOnly)
 // because it names every dependency and why it is failing — A-06.
 app.use("/api/v1/health", internalHealthRoutes);

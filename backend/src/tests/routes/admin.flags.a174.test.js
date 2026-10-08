@@ -21,6 +21,8 @@ jest.mock("../../middlewares/auth.middleware", () => ({
   },
   // P24-06: the SQL-dump import's routes carry superAdminOnly beside the router's rbac.
   superAdminOnly: (req, res, next) => next(),
+  // P21-01: the catalogue-proposal decisions carry denyApiKey.
+  denyApiKey: (req, res, next) => next(),
 }));
 jest.mock("../../middlewares/rbac.middleware", () => ({
   rbac: () => (req, res, next) => next(),
