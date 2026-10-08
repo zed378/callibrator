@@ -108,8 +108,8 @@ effective(bound user, slug) = min( roleMatrix ⊕ userOverride (as today),
 | `maintenance` | R | R | R | R | work orders on the facility's devices (read) |
 | `ipm` (new) | R | **W** | R (+ countersign, **UD-17**) | R | HT captures IPM in its facility (upstream parity); void is unbound-only |
 | `ipm-templates` (new) | R | R | R | R | published catalogue is global content; proposals are not facility-accessible |
-| `esignature` | — | **UD-17** | **UD-17** | — | signing the IPM report as performer / IPSRS waits on P19-06 + UD-17; signature tables are provider-internal until then |
-| `warehouse` | **UD-10** (R) | **UD-10** (R) | **UD-10** (R) | **UD-10** (R) | rooms as locations of the facility; until UD-10 decides, none |
+| `esignature` | — | **W** (N-5 only) | **W** (N-5 only) | — | **resolved 2026-10-08 by P19-06 (ADR-126 Am. 2 § 6):** the performer signs its own sessions and the IPSRS countersigns its facility's through the one marked route N-5; every other `/esignature/*` route stays unmarked (403 for bound users); IPM signatures live in the facility-scoped `inspection_session_signatures`, not the provider-internal signature tables |
+| `warehouse` | **R** | **R** | **R** | **R** | rooms as locations of the facility — **resolved 2026-10-08 by ADR-132 § 5 (P19-03 spec § 6.4):** read for every bound role; the hooks return only rooms of the caller's facility (stores have no facility) |
 | every other slug (`account`, `management`, `users`, `roles`, `permissions`, `user-permissions`, `menu-groups`, `sessions`, `tenants`, `tenant-hierarchy`, `tenant-lifecycle`, `client-facilities`, `access-requests`, `security`, `oidc`, `webauthn`, `network-security`, `scim`, `gdpr`, `custom-domains`, `api-keys`, `webhooks`, `storage`, `attachments`, `feature-flags`, `billing`, `finance`, `metered-billing`, `audit`, `data-retention`, `batch-jobs`, `content`, `stock`, `vendors`, `supplier-scorecard`, `qms`, `sop`, `workflows`, `risk`, `kanban`, `tickets-raise`, `tickets-response`, `reports`, `predictive-maintenance`, `calibration-scheduler`, `ai-assistant`, `notifications`, `mgmt-*`) | — | — | — | — | provider administration or provider-internal data (FT-26, FT-37); reports/search/AI unreviewed (FT-57 … FT-59) |
 
 ¹ **Bound HT `calibration` W is effective only if UD-4 (b) grants `HEALTHCARE TECHNICIAN` `calibration` write** (today its role holds read; the ceiling never adds a grant). Until then a bound HT registers no device, which is the strict reading — the ceiling is ready either way.
@@ -138,8 +138,8 @@ effective(bound user, slug) = min( roleMatrix ⊕ userOverride (as today),
 | `ipm` read (sessions, history, report data document) | ✔ | all | all | all | all | F | F | F | F |
 | `ipm` write — create draft, edit own draft, submit, discard own draft, correct | ✔ ² | all | all ✱ | — | all | F ✱ | — (unbound FM: all ✱) | — | — |
 | `ipm` void (unbound tenant administrator, `rbac`) | ✔ ² | all | — | — | all | — | — | — | — (refused) |
-| IPM report: performer signature | — | own sessions | own sessions | — | own sessions | own sessions, **UD-17** | — | — | — |
-| IPM report: IPSRS countersignature | — | — | — | — | — | — | F, **UD-17** (unbound FM of a self tenant: all) | — | **UD-17** |
+| IPM report: performer signature (P19-06 § 7) | — | own sessions | own sessions | — | own sessions | own sessions | — | — | — |
+| IPM report: IPSRS countersignature (P19-06 § 7; tenant setting `ipm.countersignEnabled`) | — | — | — | — | — | — | F (unbound FM of a self tenant: its self facility) | — | — (decided 2026-10-08: the IPSRS only) |
 | `ipm-templates` read (published catalogue) | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 | `ipm-templates` write — proposals (submit, withdraw) | queue | ✔ ✱ | — | — | ✔ ✱ | — | — | — | — (unmarked) |
 | catalogue authoring, publish, retire, accept proposals (`superAdminOnly`) | ✔ | — | — | — | — | — | — | — | — |
@@ -151,7 +151,7 @@ effective(bound user, slug) = min( roleMatrix ⊕ userOverride (as today),
 | `attachments` upload | ✔ | all | all | all | all | F: device / IPM photos only (§ 8 A-5) | — | — | — |
 | `reports` (`/summary`, `/compliance`, `/calibration-workload`, `/overdue-devices`, `/inventory`) | ✔ | all | all | all | all | — | — | — | — |
 | `dashboard` metrics | ✔ | all | all | all | all | F, **OQ-8** | F, OQ-8 | F, OQ-8 | F, OQ-8 |
-| `warehouse` (rooms) read | ✔ | all | all | all | all | F, **UD-10** | F, UD-10 | F, UD-10 | F, UD-10 |
+| `warehouse` (rooms) read | ✔ | all | all | all | all | F (ADR-132, 2026-10-08) | F | F | F |
 | `users`, `roles`, `api-keys`, `webhooks`, `storage`, settings, SSO/OIDC/SCIM, backups, billing, audit, data retention, GDPR administration, feature flags, custom domains, network security, tenant hierarchy / lifecycle | ✔ | as today | as today | as today | as today | — | — | — | — (refused) |
 | `stock`, `vendors`, `qms`, `sop`, `workflows`, `risk`, `kanban`, `tickets-*`, `search`, `ai-assistant`, `predictive-maintenance` | as today | as today | as today | as today | as today | — | — | — | — |
 | own profile, password, MFA, passkeys, sessions, notifications, GDPR data-subject rights | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
@@ -224,7 +224,7 @@ Every route **not** listed answers **403** to a bound principal, decided before 
 | A-6 | `GET /api/v1/attachments`, `GET /:id`, `GET /:id/download`, `POST /:id/signed-url` | `equipment` read | all bound | the row is loaded in context before any URL is issued; TTL capped (AM-22) | ✔ |
 | A-7 | `GET /api/v1/certificates`, `GET /:certificateId`, `GET /:certificateId/document`, `GET /:certificateId/pdf` | `certificate` read | all bound | signer/author includes `required: false` + snapshot | ✔ |
 | A-8 | `GET /api/v1/maintenance`, `GET /:orderId` | `maintenance` read | all bound | vendor and assignee includes `required: false` (they are provider-internal: deny per include, AM-5) | ✔ |
-| A-9 | `GET /api/v1/warehouses`, `GET /:warehouseId`, `GET /:warehouseId/locations` | `warehouse` read | all bound | **only after UD-10** makes rooms facility rows (`warehouses.client_facility_id`, ADR-124 § 3); until then unmarked | ✔ |
+| A-9 | `GET /api/v1/warehouses`, `GET /:warehouseId` (**marked 2026-10-08**, ADR-132 § 5; `GET /:warehouseId/locations` stays unmarked — storage locations are provider-internal) | `warehouse` read | all bound | rooms are `warehouses` of `kind = room` with a facility (P19-03 § 6); lands with P20-02 / P21-02 | ✔ |
 | A-10 | `GET /api/v1/dashboard/metrics` | `home` read | all bound | **OQ-8, decided:** marked only when P21-07 delivers `dashboard.twoFacility` and G-20 (cache key per facility) green; until then unmarked and the bound home page is built from A-1/N-2 reads | ✔ (figures) |
 
 **Deliberately not marked** (bound → 403): device `DELETE`, `restore`, `reinstate`, `bulk-import`; every calibration-record write; every certificate write (`POST /`, `PUT`, `DELETE`, approve, submit, sign, revoke) and `GET /certificates/stats`; maintenance writes; `GET /attachments/orphans`, `DELETE /attachments/:id`; `/reports/*` (PT-10); `/calibration-scheduler/*`; `/predictive-maintenance/*`; `/iot/*` (authenticated); `/search`; `/ai/*`; `/stocks/*`; `/vendors/*`; `/qms/*`, `/sop/*`, `/workflows/*`, `/risk/*`, `/supplier-scorecard/*`; `/kanban/*`; `/tickets/*`; `POST /notifications/test`; `/esignature/*` (until UD-17, then E-1); every route of users, roles, user permissions, menu-group administration, sessions administration, tenants, tenant hierarchy / lifecycle, backups, API keys, webhooks, storage, billing, quota, metered billing, finance, audit, data retention, GDPR administration, feature flags, custom domains, network security, OIDC, SCIM, content, access requests, admin, jobs.
@@ -237,7 +237,7 @@ Every route **not** listed answers **403** to a bound principal, decided before 
 | N-2 | IPM session list, get, history per device, the report data document (P19-02, P19-06) | `ipm` read | all bound | performer snapshot; no provider user include (A-90) | ✔ |
 | N-3 | IPM create draft (prefill), edit own draft, submit, discard own draft, correct (P19-02, P21-03) | `ipm` write + `denyPlatformAuthoring` + `denyApiKey` on submit/correct | HT·b | device loaded in context; facility stamped from the device; `client_ref` resolved in context (AM-16); draft edit by its creator only (403) | ✔ |
 | N-4 | IPM void (P19-02) | `ipm` write + `rbac([TENANT_ADMIN])` + unbound | **none** | refused by the guard (rbac tenant-admin) | — |
-| N-5 | IPM report signatures: performer sign, IPSRS countersign (P19-06) | `esignature` write + `denyPlatformAuthoring` | HT·b (own sessions), FM·b (its facility) | **UD-17**; SoD § 11 | ✔ |
+| N-5 | IPM report signatures: performer sign, IPSRS countersign — `POST /ipm/sessions/:sessionId/signatures` (P19-06 spec § 8, fixed 2026-10-08) | `denyApiKey` + `esignature` write + `denyPlatformAuthoring` | HT·b (own sessions), FM·b (its facility) | UD-17 working decision; SoD § 11 | ✔ |
 | N-6 | device photos upload / replace (P19-03, P21-02) | `calibration` write | HT·b (UD-4 (b)) | as A-5 | ✔ |
 | N-7 | `GET /api/v1/client-facilities`, `GET /:id`, create, edit, status, bind/unbind (P19-04, P21-09) | `client-facilities` read/write; binding on `users` write + `rbac([TENANT_ADMIN])` | **none** | administration; S-8 is the bound user's read | — |
 | N-8 | technician activity list (P21-07) | `ipm` read | all bound | the facility-scoped form only, with the performer snapshot (FT-60) | ✔ |
@@ -245,6 +245,7 @@ Every route **not** listed answers **403** to a bound principal, decided before 
 | N-10 | quick calibration-date entry (P19-05, P21-05) | `calibration` write | **none** | provider (laboratory) work | — |
 | N-11 | proposals (P19-01 § 8) | `ipm-templates` read/write | **none** | provider-internal (P19-01) | — |
 | N-12 | public device page (P21-08) | public capability token | n/a | `routeGateExemptions` kind `public`; not a marker matter | — |
+| N-13 (added 2026-10-08 by P18-04) | QR lookup — `GET /api/v1/calibration-devices/by-qr/:qrCode` (path **fixed** by the P19-03 spec § 8.2, registered before `/:calibrationDeviceId`) | `calibration` read | all bound | field capture starts by scanning a sticker (F-23, ADR-127 § 6); another facility's or tenant's QR → 404 identical to an unknown one (PT-31); the answer carries no data of a foreign device | ✔ |
 
 ---
 
@@ -275,7 +276,7 @@ Every route **not** listed answers **403** to a bound principal, decided before 
 | `Notification` (`notifications`) | `user_id = ctx.userId` | own notifications (S-5); a tenant broadcast with no user is not shown to bound users (AM-19 carries no facility data in broadcasts anyway) | `notification.facility.test.ts` |
 | `ConsentRecord` (`consent_records`) | `user_id = ctx.userId` | own consent (S-4) | `gdprSelf.facility.test.ts` |
 | `DsarRequest` (`dsar_requests`) | `user_id = ctx.userId` | own data-subject requests (S-4) | `gdprSelf.facility.test.ts` |
-| `SignatureRecord`, `ESignatureRecord` | `user_id = ctx.userId` | **UD-17 only** — own signature history when E-1 is marked; absent until then | (P19-06) |
+| ~~`SignatureRecord`, `ESignatureRecord`~~ | — | **not added (2026-10-08, P19-06 / ADR-126 Am. 2 § 5):** IPM signatures are rows of the facility-scoped `inspection_session_signatures`; the provider-internal signature tables stay off this list and `/esignature/history` stays unmarked | — |
 
 **Not on the list, and why:** `WebauthnCredential`, `NotificationState` (no `tenant_id`, C-9 — the hooks never touch them); `User` (facility-scoped, nullable, ADR-124 § 3 — a bound user sees its own row and its facility's colleagues only where a marked route reads users, and none does); `AuditLog` (facility-scoped nullable — rows are **written** with the facility stamped; no marked route reads them); every other tenant model (DENY).
 
@@ -301,7 +302,7 @@ These run on the bound user's behalf and return **no row to the caller**; puttin
 | IPM correction | any `ipm` writer in scope (HT·b in its facility) | none — a correction is a new attestation by its own submitter; the original stays | 409 on a voided/superseded/draft original | ADR-126 § 3 |
 | IPM void | an **unbound** tenant administrator | none enforced against the submitter: void is a recorded retraction with a reason, not an approval; a bound HA can never void | 403 (bound: route), 409 (state) | ADR-126 § 3 |
 | IPM report performer signature | the session's submitter only | no one signs another's performance | 403 | **UD-17 / P19-06** |
-| IPM report IPSRS countersignature | a `FACILITY MAINTENANCE` of **the session's facility** (bound there, or unbound in a self-served tenant) holding `esignature` write | **the countersigner may not be the submitter** (ADR-101's rule: an author does not review its own record), and a provider technician cannot countersign for a facility | 403 with the rule named | **UD-17 (recommendation; dependent cells marked)** |
+| IPM report IPSRS countersignature | a `FACILITY MAINTENANCE` of **the session's facility** (bound there, or unbound in a self-served tenant) holding `esignature` write | **the countersigner may not be the submitter** (ADR-101's rule: an author does not review its own record), and a provider technician cannot countersign for a facility | 403 with the rule named (`IPM_COUNTERSIGN_SOD`, `IPM_COUNTERSIGN_ROLE`, `IPM_COUNTERSIGN_FACILITY`) | **UD-17 working decision 2026-10-08; specified by P19-06 § 7.1** |
 | Certificate approve | `certificate` write | not its drafter or submitter | 403 | ADR-101 (unchanged; bound users never reach it) |
 | Catalogue publish | super admin | none enforced (few operators) | — | ADR-125 § 4 |
 | Proposal → version | tenant admin proposes, operator accepts | two parties by construction | — | ADR-125 § 5 |
@@ -332,15 +333,15 @@ These run on the bound user's behalf and return **no row to the caller**; puttin
 
 | Decision | Cells | Recommendation | Where |
 |---|---|---|---|
-| **UD-4 (a)** role of each upstream group | Matrix A roles | as § 4.2 (unchanged from Q-57·UD-4) | Phase 12 § 3, open |
-| **UD-4 (b)** — *added by this card* — do the technical roles get `calibration` write by default (device registration, calibration-date entry), F4/Q2 of UI research 03? | Matrix C `calibration` write for `T`, `HT·b`; A-2, A-3, N-6 | **Yes for `TECHNICIAN` and `HEALTHCARE TECHNICIAN` in every tenant** (seed + migration), keeping device restore/reinstate behind `rbac([TENANT_ADMIN])`; the alternative (per-user overrides on the imported provider tenant only) leaves every other tenant's technicians read-only and is the repeated-override smell `docs/PLAN/03` warns of | Phase 12 § 3, open |
-| **UD-4 (c)** — *added* — may a bound facility admin manage its own facility's users (threat model OQ-4)? | none in this group | **No in this group**; if asked, a separate route forcing the actor's facility and roles ≤ its own within the bound set, audited, with an ADR | Phase 12 § 3, open |
-| **UD-17** IPSRS countersignature and recommendation side effects | `esignature` ceiling, N-5, § 11 countersign, `SignatureRecord` entries | countersign by the facility's `FACILITY MAINTENANCE`, not the submitter, per-tenant setting | open |
-| **UD-10** rooms | `warehouse` ceiling, A-9 | rooms as facility-owned `warehouses` rows | open |
+| **UD-4 (a)** role of each upstream group | Matrix A roles | as § 4.2 (unchanged from Q-57·UD-4) | **working decision 2026-10-07** (Phase 12 § 3); final matrix and assignment rules: [`P18-01-02-role-matrix-and-grants.md`](./P18-01-02-role-matrix-and-grants.md) § 2 |
+| **UD-4 (b)** — *added by this card* — do the technical roles get `calibration` write by default (device registration, calibration-date entry), F4/Q2 of UI research 03? | Matrix C `calibration` write for `T`, `HT·b`; A-2, A-3, N-6 | **Yes for `TECHNICIAN` and `HEALTHCARE TECHNICIAN` in every tenant** (seed + migration), keeping device restore/reinstate behind `rbac([TENANT_ADMIN])`; the alternative (per-user overrides on the imported provider tenant only) leaves every other tenant's technicians read-only and is the repeated-override smell `docs/PLAN/03` warns of | **working decision 2026-10-08 — ships** (Phase 12 § 3); effect on existing tenants and the calibration-record void narrowed to `rbac([TENANT_ADMIN])`: P18-01-02 spec § 3.2, § 4.3 |
+| **UD-4 (c)** — *added* — may a bound facility admin manage its own facility's users (threat model OQ-4)? | none in this group | **No in this group**; if asked, a separate route forcing the actor's facility and roles ≤ its own within the bound set, audited, with an ADR | **working decision 2026-10-07** (no) |
+| **UD-17** IPSRS countersignature and recommendation side effects | `esignature` ceiling, N-5, § 11 countersign, `SignatureRecord` entries | countersign by the facility's `FACILITY MAINTENANCE`, not the submitter, per-tenant setting | **working decision 2026-10-08** (Phase 12 § 3) |
+| **UD-10** rooms | `warehouse` ceiling, A-9 | rooms as facility-owned `warehouses` rows | **working decision 2026-10-08** (Phase 12 § 3); **specified by P19-03 (ADR-132 § 5):** `kind = room` + `floor`, the ceiling's `warehouse` read and A-9 marked |
 | **OQ-8** dashboard at go-live | A-10 | **decided here:** marked only with `dashboard.twoFacility` + G-20 green; otherwise the facility home from A-1/N-2 | — |
-| **OQ-2** bound users create devices / set QR | A-2, A-3 | **decided here:** create and edit in their facility (subject to UD-4 (b)); QR not settable by a bound principal, or a 409 that names nothing (P19-03 finalises) | — |
+| **OQ-2** bound users create devices / set QR | A-2, A-3 | **decided here:** create and edit in their facility (subject to UD-4 (b)); QR not settable by a bound principal, or a 409 that names nothing — **finalised 2026-10-08 by ADR-132 § 1 (P19-03):** not settable (the bound contracts have no QR field) | — |
 | **OQ-9** per-user `FACILITY_READABLE`; tickets | § 10.1 | **decided here:** the per-user set yes; tickets later | — |
-| **OQ-3 / AM-15** JIT and SCIM in multi-facility tenants | § 12 | inactive until bound or confirmed | P21-09, owner to confirm |
+| **OQ-3 / AM-15** JIT and SCIM in multi-facility tenants | § 12 | inactive until bound or confirmed | P21-09 — **working decision 2026-10-08** (Phase 12 § 3) |
 
 ---
 

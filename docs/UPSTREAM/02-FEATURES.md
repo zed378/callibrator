@@ -105,6 +105,8 @@ write / provider admin read), reports under the existing reports gate (`canReadR
 
 ## D. Device Inventory (M05)
 
+> **Specified 2026-10-08 — P19-03 spec [`MEMORY/specs/P19-03-device-extensions.md`](../../MEMORY/specs/P19-03-device-extensions.md), ADR-132 (target); where a row below differs, the spec wins.** F-23: the QR is normalised with the **tenant's** prefix/digit settings (no hard-coded `SKP`), unique per tenant over every row, set only by provider staff; lookup `GET /api/v1/calibration-devices/by-qr/:qrCode` (facility-accessible, the same 404 for every miss). F-24: condition is its own column (`good`/`not_good`/`broken`), not the status; rooms are `warehouses` of kind `room` with a floor, inside the device's facility; registrant in `created_by`. F-25/F-28: photos carry `attachments.purpose` (front / serial plate / other), `POST`/`DELETE /calibration-devices/:id/photos`, replace in one transaction; not mandatory at the API (`photosComplete` computed); no `folder` semantics. F-26: the facility is a field of the unbound create (required in a multi-facility tenant).
+
 | ID | Feature | Upstream — where / how | Status | Implementation notes | Size | Deps / risks |
 |---|---|---|---|---|---|---|
 | F-23 | Register a device with a **QR sticker number**, normalised to `SKP` + 6 digits, **unique**, checked before save | `inventorySave`, `inventorySaveClient` | **Partial** | add `qr_code varchar(32)` (normalised by a pure function with tests) to `calibration_devices`; unique **per tenant** among live rows, partial index `(tenant_id, qr_code)` (04 § 4.2), 409 + explanation on a duplicate (never a global unique — the existence-oracle trap). Lookup `GET /api/v1/calibration-devices?qrCode=` | M | F-17; global-uniqueness trap; 4 non-conforming legacy QR values |
@@ -128,6 +130,8 @@ write / provider admin read), reports under the existing reports gate (`canReadR
 ## F. IPM Capture (M07)
 
 > **Decided 2026-10-07 — ADR-126 (UD-6).** Many sessions per device; F-55's "409 on a second submission in the month" is **not** adopted — a monthly interval only flags a device *due* (computed). F-56 is the correction/void pattern of ADR-062: a correction is a new draft that supersedes the original on submit; a void names a reason and is final; results immutable after submit (trigger). Sessions and results carry `client_facility_id` (ADR-124).
+
+> **Specified 2026-10-08 — P19-02 spec [`MEMORY/specs/P19-02-ipm-session-aggregate.md`](../../MEMORY/specs/P19-02-ipm-session-aggregate.md), ADR-126 Amendment 1 (target); its routes and columns supersede the paragraph below:** routes `GET/POST /api/v1/ipm/sessions`, `GET/PATCH /ipm/sessions/:sessionId`, `PUT …/results`, `POST …/{submit,discard,corrections,void}`, `GET /calibration-devices/:id/ipm-sessions`, `GET /ipm/due`; **no prefill route** (F-36: the draft create returns the prefilled draft); F-53: the room confirmed on the draft updates the device at submit; F-54: visit = max + 1 at the chain's first submit (imported history renumbered by date, upstream value kept); F-48/F-51: side effects per UD-12/UD-17 on entry only (§ 8 of the spec); every write `denyApiKey`, `Idempotency-Key` honoured.
 
 All rows below share one new aggregate. Tables as in 04 § 4.8–4.9 (authoritative):
 `inspection_sessions` (device, performer + snapshot, `performed_at`, `visit_number`,
@@ -170,16 +174,18 @@ two-tenant 404 test. **Page:** `frontend/src/app/dashboard/ipm` (list + history)
 
 ## G. IPM Report (M08)
 
-> **Decided 2026-10-07 — ADR-126 § 8 (the owner's rule: certificates and exports are rendered in the frontend; no certificate or export file is stored).** F-58 … F-60 are a **frontend renderer** fed by a data document from the API, with the hash/QR discipline of the certificate document (ADR-095 §4, ADR-107) — not `GET /certificates/:id/pdf` of a stored PDF and not a backend PDF. Print/download is the browser's. F-61 stays with UD-17.
+> **Decided 2026-10-07 — ADR-126 § 8 (the owner's rule: certificates and exports are rendered in the frontend; no certificate or export file is stored).** F-58 … F-60 are a **frontend renderer** fed by a data document from the API, with the hash/QR discipline of the certificate document (ADR-095 §4, ADR-107) — not `GET /certificates/:id/pdf` of a stored PDF and not a backend PDF. Print/download is the browser's. F-61 stays with UD-17. **Specified 2026-10-08 — P19-06 spec, ADR-126 Am. 2:** the report is a document **of the submitted session** (number `IPM-<facility code>-<YYYYMMDD>-<NNN>`, required verification token, stored content hash `ipm-report-v1`, issuer snapshot) — **not** a certificate row; signatures in the facility-scoped `inspection_session_signatures`; public verification `GET /ipm/verify/:reportNumber?token=` and the page `/verify/ipm/[reportNumber]`.
 
 | ID | Feature | Upstream — where / how | Status | Implementation notes | Size | Deps / risks |
 |---|---|---|---|---|---|---|
 | F-58 | **IPM report** layout: header (IPM title, device name, provider logo), identity block, "Visit ke", all sections in two columns, results, notes, signature lines for technician (name) and IPSRS | `ipm/pdf_ipm.php` | **Missing** | new template on the certificate pipeline: certificate `type: "maintenance"` already exists; ~~render HTML → PDF with puppeteer (`certificatePdf.service.ts`)~~ **corrected 2026-10-07:** the backend renders no PDF (ADR-095) and no report file is stored (owner rule) — the frontend renders it with jsPDF from a data document, A4 landscape (see `09-REPORT-LAYOUTS.md` § 2.5); **issue once at submit** (`certificateNumber`, ~~stored file~~, `verificationToken`, QR to `/verify/…`); provider branding from the provider tenant's logo/colour | **L** | Phase 23 parity sign-off |
-| F-59 | Download the IPM report as PDF | `downloadSertifikatIPM` | **Missing** | `GET /api/v1/certificates/:id/pdf` reuse | S | F-58 |
-| F-60 | Print preview button (hidden in PDF) | `pdf_ipm.php` `window.print()` | **Missing** | browser preview of the stored PDF | S | F-58 |
-| F-61 | Countersignature by technician and IPSRS | wet signature on paper | **Missing** | **improvement:** `eSignature` workflow (technician signs on submit, `FACILITY MAINTENANCE` countersigns) — 21 CFR Part 11 friendly | M | `eSignature` module; IPSRS accounts must exist in each facility |
+| F-59 | Download the IPM report as PDF | `downloadSertifikatIPM` | **Missing** | ~~`GET /api/v1/certificates/:id/pdf` reuse~~ **2026-10-08 (P19-06):** the browser renders the PDF from `GET /ipm/sessions/:sessionId/report-document?render=pdf` (the read audited as `EXPORT`); nothing stored | S | F-58 |
+| F-60 | Print preview button (hidden in PDF) | `pdf_ipm.php` `window.print()` | **Missing** | ~~browser preview of the stored PDF~~ **2026-10-08 (P19-06):** the on-screen report page (the accessible version) and the rendered PDF; a draft previews with a "DRAFT — NOT A RECORD" watermark, offline too | S | F-58 |
+| F-61 | Countersignature by technician and IPSRS | wet signature on paper | **Missing** | **improvement:** ~~`eSignature` workflow (technician signs on submit, …)~~ **2026-10-08 (P19-06, ADR-126 Am. 2):** the technician signs **after** the submit is accepted, online, with a re-entered credential (never in the offline outbox); the facility's `FACILITY MAINTENANCE` countersigns after it (tenant setting `ipm.countersignEnabled`, never the submitter); rows in `inspection_session_signatures`, not `e_signature_records`; a wet-signature line stays printable — 21 CFR Part 11 § 11.50/11.70/11.200 | M | IPSRS accounts only where a facility countersigns electronically |
 
 ## H. Calibration Date Recording (M09)
+
+> **Specified 2026-10-08 — P19-05 spec [`MEMORY/specs/P19-05-calibration-dates.md`](../../MEMORY/specs/P19-05-calibration-dates.md), ADR-133 (target).** F-62: `POST /api/v1/calibration-devices/:id/calibration-dates` (after the QR lookup) records an `external_date` record — laboratory, certificate number, stated next date, verdict — and **no file** (owner rule: no certificate file stored); history kept. The device's next due date is derived from its latest **effective** record on create, correction and void (today's code moves it backward on an older record — fixed). F-63/F-69: `GET /calibration-records?latestOnly=true`. F-64: UD-8's interim rule — `tgl_kalibrasi` is not a record; OA-7 decides.
 
 | ID | Feature | Upstream — where / how | Status | Implementation notes | Size | Deps / risks |
 |---|---|---|---|---|---|---|
@@ -213,12 +219,12 @@ two-tenant 404 test. **Page:** `frontend/src/app/dashboard/ipm` (list + history)
 | ID | Feature | Upstream — where / how | Status | Implementation notes | Size | Deps / risks |
 |---|---|---|---|---|---|---|
 | F-74 | **Public device page by QR**: device identity, facility, photos, links to calibration documents and to each IPM | `FaskesController::readQr` | **Partial** | public certificate verify exists. New `GET /api/v1/public/devices/:token` (no auth, rate-limited like `verifyBudget`) where `token` is a random, revocable capability (≥128-bit) printed in **new** QR stickers; tenant setting controls what is shown (default: identity + calibration status + last IPM date; photos and documents off). Page `frontend/src/app/d/[token]` under the public CSP; route on the reviewed exemption list (`routeGateExemptions.ts`) as "capability-token" | M | privacy decision; Phase 27 legacy stickers |
-| F-75 | Public IPM report view and PDF by QR + date | `ipm/getIPM`, `downloadSertifikatIPM` | **Partial** | replaced by the certificate verify page of the issued IPM report (F-58) — reachable from F-74, never by a guessable number | S | F-58 |
+| F-75 | Public IPM report view and PDF by QR + date | `ipm/getIPM`, `downloadSertifikatIPM` | **Partial** | replaced by ~~the certificate verify page~~ **the IPM report verification page `/verify/ipm/<number>?t=<token>`** (P19-06 § 9; token required) of the issued IPM report (F-58) — reachable from F-74, never by a guessable number | S | F-58 |
 | F-76 | Legacy QR continuity: existing stickers keep resolving | implicit (stickers in the field) | **Missing** | if stickers encode a URL on the old host, keep a redirect service mapping `SKPnnnnnn` → the device's capability token (rate-limited, showing only the minimal public view). If they encode only the number, a technician lookup inside the app suffices | S | **unknown sticker content — owner to scan one** |
 
 ## L. Mobile API and App (M14)
 
-> **Decided 2026-10-07 — ADR-127 (UD-14).** PWA, no native app (F-77 retired at cutover, P28-03). F-78: per-user encrypted IndexedDB outbox replaying the **normal** API with `Idempotency-Key` headers and a per-tenant `client_ref`; conflicts are 409/404 with a reason; no batch endpoint. F-79 as written (ETag, ADR-125 § 6).
+> **Decided 2026-10-07 — ADR-127 (UD-14).** PWA, no native app (F-77 retired at cutover, P28-03). F-78: per-user encrypted IndexedDB outbox replaying the **normal** API with `Idempotency-Key` headers and a ~~per-tenant~~ **per-creator** `client_ref` (ADR-126 Am. 1); conflicts are 409/404 with a reason; no batch endpoint. F-79 as written (ETag, ADR-125 § 6). **Specified 2026-10-08 — P19-08 spec, ADR-127 Am. 1:** the field app is one document `/field` with the worker scoped to `/field`; ops planned from the local capture and frozen before sending; purge on a failed refresh and on scope-loss codes.
 
 | ID | Feature | Upstream — where / how | Status | Implementation notes | Size | Deps / risks |
 |---|---|---|---|---|---|---|
@@ -251,7 +257,7 @@ two-tenant 404 test. **Page:** `frontend/src/app/dashboard/ipm` (list + history)
    facilities. ADR first.
 2. **F-19..F-22 catalogue and versioned templates** — every IPM depends on them.
 3. **F-35..F-57 IPM aggregate** — the core of the upstream, absent here.
-4. **F-58..F-61 IPM report** — on our certificate pipeline, issued and verifiable.
+4. **F-58..F-61 IPM report** — ~~on our certificate pipeline~~ issued with the session (ADR-126 Am. 2), verifiable and signed.
 5. **F-23..F-25 device asset tag, condition and photos**.
 6. **F-65..F-69 PDF/XLSX exports** as batch jobs.
 7. **F-74..F-76 public device page** with capability tokens + legacy sticker continuity.

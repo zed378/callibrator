@@ -142,6 +142,8 @@ document only reserves the table.
 
 ### 4.2 `trx_inventory` → `calibration_devices` (EXISTING)
 
+> **Specified 2026-10-08 — P19-03 spec [`MEMORY/specs/P19-03-device-extensions.md`](../../MEMORY/specs/P19-03-device-extensions.md), ADR-132 (target).** Where this table differs, the spec wins: `qr_code` is normalised by `normaliseQrCode` with the **tenant's** prefix/digit settings and is unique per tenant over **every** row (reserved after a soft delete — not `WHERE deleted_at IS NULL`); only provider staff (unbound) set it; `kondisi_alat` → a separate **`condition`** column (`good` ← Baik/Laik, `not_good` ← Tidak Baik, `broken` ← Rusak) and `status` stays `active` except `Rusak` → `inactive` (§ 5 amended); room + floor → a `warehouses` row of **`kind = room`** with its own `floor` column and the device's facility (not `description`); `id_user` → `created_by` + `registrant_snapshot`; `tgl_kalibrasi` is not imported (UD-8, P19-05 spec § 9); new `ipm_interval_months`, `client_ref`.
+
 | Upstream | Target column | Rule |
 |---|---|---|
 | `id` | `id` (new uuid); `id_map('trx_inventory', id)` | |
@@ -223,6 +225,8 @@ pairs of `mapping_fugsi_alat` collapse (Q). Index on `item_definition_id`.
 | `trx_inventory_file.nama_file` | same resource, `folder` = `certificates-legacy`, `original_name` = `calibration-certificate-<n>.pdf` |
 | (all) | `file_name` = `<uuid>.<ext>`; **`storage_key` = `t/<tenant uuid>/f/<facility uuid>/attachments/<uuid>.<ext>`** (P8-01 layout, docs/STORAGE/04, with the facility segment of ADR-124 § 9 / 08 § 7; amended by ADR-124 Am. 2); `mime_type` by content sniffing, not extension; `size`; `checksum` = SHA-256; `uploaded_by` = mapped user or NULL; `created_at` = row date |
 
+> **Specified 2026-10-08 — P19-03 spec § 7, ADR-132 (target):** `folder` is the legacy disk path and keeps that meaning; the photo's role is a new column **`attachments.purpose`** (`device_front`, `device_serial_plate`, `device_other`, `ipm_evidence`), one live front and one live serial-plate photo per device. The `certificates-legacy` row above is **void**: the certificate PDFs are archive-only (owner rule 2026-10-07, `07` § 4.1) — no attachment row, no object.
+
 Two extensions to the attachment contract are needed and belong to the implementing card:
 `device-photos` / `certificates-legacy` as allowed folders, and the device as an allowed
 `resource_type` if `ATTACHMENT_RESOURCE_TYPES` (loaded in `attachment.service.ts`) does not already
@@ -230,6 +234,8 @@ list it. The original upstream file names are **not** stored (some contain perso
 names, 03 § 6); the `id_map` keeps the link.
 
 ### 4.7 `trx_kalibrasi` → `calibration_records` (EXISTING)
+
+> **Specified 2026-10-08 — P19-05 spec [`MEMORY/specs/P19-05-calibration-dates.md`](../../MEMORY/specs/P19-05-calibration-dates.md) § 9, ADR-133 (target).** Under ADR-124 the provider's technicians are users **of the same tenant**, so the reasoning "provider technicians are in another tenant" below is obsolete: `performed_by` = the imported user when the upstream `id_user` maps to one; the per-tenant import API key (`api_key_id`) only for NULL and deleted users; `entry_kind = external_date`; `nama_ruangan` → `room_snapshot` (not `notes`); `performer_snapshot` at insert (`07` § 3); no laboratory inferred; a future date quarantined.
 
 | Upstream | Target | Rule |
 |---|---|---|
@@ -247,6 +253,8 @@ The 110 devices with two rows (Q-9): both are imported, ordered by date.
 
 ### 4.8 IPM → `inspection_sessions` (NEW, tenant-scoped)
 
+> **Specified 2026-10-08 — P19-02 spec [`MEMORY/specs/P19-02-ipm-session-aggregate.md`](../../MEMORY/specs/P19-02-ipm-session-aggregate.md) § 4, ADR-126 Amendment 1 (target) — the spec's column list is authoritative:** not paranoid (no `deleted_at`/`is_deleted`); **no environment header columns** (environment is two results of the base checklist); `visit_number` is recomputed for imported history in date order, the upstream value kept in `legacy_visit_number`; `client_ref` unique per creator; `device_snapshot`, `facility_snapshot`, `room_snapshot`/`floor_snapshot`, `work_order_id` (the visit's Preventative order) and `follow_up_work_order_id` (Repair); `performed_at` in UD-7's zone.
+>
 > **Decided 2026-10-07 — ADR-126, ADR-124.** Add `client_facility_id` (NOT NULL, from the device), `template_version_id`, the ADR-062 lifecycle columns (`supersedes_id`, `superseded_by_id`, …, `void_*`), `submitted_*`, `client_ref` (ADR-127); `status` gains `discarded`; **drop `engagement_id`** (no engagements). `template_version_id` NULL only for imported rows (`legacy_key` set). Results: same `client_facility_id`, `template_item_id`; immutable once the session is submitted (trigger).
 
 A session is the upstream key `(no_qrcode, DATE(created_at))` (03 § 4.6).
@@ -322,7 +330,7 @@ which keeps no history and would fail ISO 17025 / 21 CFR Part 11 attributability
 | `trx_alat_kerja_digunakan.status`, `trx_pemeliharaan_alat.status` | `1` / `0` | `done` / `not_done` |
 | `trx_hasil_pemeriksaan`, `trx_hasil_maintenance` | `1` / `0` | `pass` / `fail` |
 | `trx_rekomendasi_hasil_pekerjaan` | `1` / `0` / `-1` / `-2` | `fit_for_use` / `needs_calibration` / `not_fit_for_use` / `needs_repair` |
-| `trx_inventory.kondisi_alat` | `Baik`, `Laik` / `Tidak Baik`, `Rusak` | device `status` `active` / `inactive` |
+| `trx_inventory.kondisi_alat` — **amended 2026-10-08, ADR-132** (a separate condition column) | `Baik`, `Laik` / `Tidak Baik` / `Rusak` | device `condition` `good` / `not_good` / `broken`; `status` `active`, except `Rusak` → `inactive` |
 | `trx_inventory.aksesoris` | `Ada` / `Tidak` | `true` / `false` |
 | `auth_groups.name` | see § 6 | role |
 
@@ -358,7 +366,7 @@ New unions in `@callibrator/contracts/states` (so the frontend shares them): `IN
 | `created_at` | `created_at` | |
 | last successful `auth_logins.date` | `last_login_at` (optional) | the login log itself is not migrated |
 
-**Orphans:** IPM/inventory rows written by deleted users (Q-2, Q-3) keep `performed_by = NULL`,
+**Orphans — amended 2026-10-08 (P19-02, carrying `07` § 3):** the snapshot reads `"Former upstream user #<n>"` with `<n>` a **per-migration sequence number**, never the upstream id (the link lives only in `id_map` until it is dropped). The original text follows. IPM/inventory rows written by deleted users (Q-2, Q-3) keep `performed_by = NULL`,
 `performed_by_legacy_id`, and a snapshot `{ name: "Former upstream user #<legacy id>" }` — no
 placeholder `users` rows are created (they would need fake unique e-mails and would count as seats).
 
@@ -385,7 +393,7 @@ placeholder `users` rows are created (they would need fake unique e-mails and wo
 
 | Table | Constraint / index |
 |---|---|
-| `calibration_devices` | `UNIQUE (tenant_id, id)` (target of composite FKs); partial `UNIQUE (tenant_id, qr_code)`; FK indexes `device_type_id`, `calibration_vendor_id` |
+| `calibration_devices` | `UNIQUE (tenant_id, id)` (target of composite FKs); `UNIQUE (tenant_id, qr_code) WHERE qr_code IS NOT NULL` (every row — ADR-132); FK indexes `device_type_id`, `calibration_vendor_id`, `created_by` |
 | `device_types` | `UNIQUE lower(btrim(name)) WHERE deleted_at IS NULL`; `UNIQUE legacy_id` |
 | `inspection_item_definitions` | `UNIQUE (legacy_table, legacy_id)`; `CHECK cardinality(allowed_outcomes) > 0` |
 | `device_type_inspection_items` | `UNIQUE (device_type_id, item_definition_id)`; index `item_definition_id` |

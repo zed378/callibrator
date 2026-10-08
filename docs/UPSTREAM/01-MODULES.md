@@ -224,14 +224,20 @@ and `admin/roleGroup.php` permission-menu residue, `Views/InventoryController.ph
 > owner's tenancy (ADR-124) makes the **provider the tenant** and the facility a client inside it. The
 > full matrix — group → role → bound or tenant-wide → per menu slug read/write → which routes a bound
 > user reaches — is [`MEMORY/specs/P18-03-facility-scope-permissions.md`](../../MEMORY/specs/P18-03-facility-scope-permissions.md)
-> (§ 4 – § 8). Which role each group gets is **UD-4 (a)**, still open; the scope column is decided.
+> (§ 4 – § 8). ~~Which role each group gets is **UD-4 (a)**, still open~~ — **amended 2026-10-08 (P18-01, P18-02):**
+> the roles below are the **working decisions** of the owner's delegation (UD-4 (a) 2026-10-07; UD-4 (b)
+> 2026-10-08, which ships: `TECHNICIAN` and `HEALTHCARE TECHNICIAN` get `calibration` write in every tenant,
+> with calibration-record void narrowed to `rbac([TENANT_ADMIN])`); the deterministic assignment rules
+> (which `client` account becomes the facility's `HEALTHCARE ADMIN`, ambiguous mappings, inactive accounts)
+> and the final grant table are [`MEMORY/specs/P18-01-02-role-matrix-and-grants.md`](../../MEMORY/specs/P18-01-02-role-matrix-and-grants.md).
+> Target, not built (seed and migration: P20-06).
 
-| Upstream group | Callibrator role (UD-4 (a), recommended) | Scope (ADR-124) | Notes |
+| Upstream group | Callibrator role (UD-4 (a), working decision 2026-10-07) | Scope (ADR-124) | Notes |
 |---|---|---|---|
 | `admin` | `CALIBRATOR ADMIN` | **unbound** user of the provider tenant — every facility | administers users, client facilities, bindings; voids IPM sessions (ADR-126) |
-| `user` (Teknisi) | `TECHNICIAN` | **unbound** | IPM write (new `ipm` slug); device and calibration-date writes need **UD-4 (b)** (`calibration` write for the technical roles) |
+| `user` (Teknisi) | `TECHNICIAN` | **unbound** | IPM write (new `ipm` slug); device and calibration-date writes through **UD-4 (b)** (`calibration` write for the technical roles — working decision 2026-10-08) |
 | `client` | first account per facility `HEALTHCARE ADMIN`, the others `ROOM USER` | **bound** to its facility | read-only in this group (spec § 5); a bound `HEALTHCARE ADMIN` is **not** a tenant administrator (ADR-124 § 7); facility user management is **UD-4 (c)** |
-| `teknisi_client` | `HEALTHCARE TECHNICIAN` | **bound** | device registration (UD-4 (b)) and IPM capture in its own facility only |
+| `teknisi_client` | `HEALTHCARE TECHNICIAN` | **bound** | device registration (UD-4 (b), working decision 2026-10-08) and IPM capture in its own facility only |
 | (signature) IPSRS | `FACILITY MAINTENANCE` | **bound** (unbound in a self-served hospital) | **new duty, UD-17:** countersigns the IPM report electronically; may not countersign its own session |
 
 Menu slugs (spec § 7; migration P20-06): **`ipm`** (IPM capture, history, report data — child of `equipment`), **`ipm-templates`** (the global catalogue's reads and the tenant's proposals; operator writes are `superAdminOnly`, ADR-125 — child of `equipment`), **`client-facilities`** (Management › Organization). Device routes are gated by **`calibration`**, not `equipment` (`equipment` gates only attachments — ADR-125 Am. 1 § 2); exports are frontend-rendered from paginated reads gated by the slug of what they read (ADR-126 § 8), and `/reports/*` stays provider-only. No new role; `ROLE_LEVELS` unchanged.

@@ -99,6 +99,11 @@ Phase 9 (TypeScript Migration) ──▶ Phases 12 … 31 (Upstream PHP Feature 
      (Phases 10 and 11 — landing and dashboard revamps — sit between 9 and 12 in the board;
       the upstream adoption is Phases 12 … 31, one TASKS/ file per phase since 2026-10-07,
       index TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md)
+
+Phases 12 … 31 ──▶ Phases 32 … 34 (backend-agnostic API contract, ADR-136) ──▶ Phases 35 … 40 (mobile:
+     shared packages, backend for mobile — Node variant, the native app; ADR-134, ADR-135; one plan,
+     index TASKS/PHASE-35-SHARED-PACKAGES.md) ──▶ Phase 999 ──▶ Phase 1000+ (backend for mobile, Go variant)
+     (owner decisions 2026-10-08; nothing in Phases 32 … 40 or 1000+ is built)
 ```
 
 ## Definition of Phase Complete
