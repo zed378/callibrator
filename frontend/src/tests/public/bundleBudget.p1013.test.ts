@@ -9,6 +9,9 @@
  *  - it ignores the nomodule polyfills;
  *  - over a ceiling → exit 1 and the offending route named; under → exit 0;
  *  - no build → exit 2.
+ *
+ * P10-18 (ADR-131): a route under a route group is found by its URL, and the
+ * first-load CSS (entryCSSFiles) is counted and held to `cssGzipKB`.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -37,10 +40,15 @@ const write = (rel: string, content: string) => {
   fs.writeFileSync(abs, content);
 };
 
-const manifest = (route: string, entries: Record<string, string[]>) =>
+const manifest = (
+  route: string,
+  entries: Record<string, string[]>,
+  css: Record<string, Array<{ path: string; inlined: boolean }>> = {},
+) =>
   `globalThis.__RSC_MANIFEST = globalThis.__RSC_MANIFEST || {};\nglobalThis.__RSC_MANIFEST[${JSON.stringify(route)}] = ${JSON.stringify({
     clientModules: {},
     entryJSFiles: entries,
+    entryCSSFiles: css,
   })};`;
 
 const brotli = (rel: string) =>
@@ -119,9 +127,77 @@ describe("P10-13: the first-load JavaScript budget check", () => {
     expect(res.status).toBe(2);
   });
 
+  describe("P10-18 (ADR-131): route groups and first-load CSS", () => {
+    beforeEach(() => {
+      write("static/chunks/public.css", noise(6_000, 5));
+      write("static/chunks/fonts.css", noise(1_000, 6));
+      write(
+        "server/app/(public)/login/page_client-reference-manifest.js",
+        manifest(
+          "/(public)/login/page",
+          {
+            "[project]/src/app/(public)/layout": ["static/chunks/layout.js"],
+            "[project]/src/app/(public)/login/page": ["static/chunks/page.js"],
+          },
+          {
+            "[project]/src/app/(public)/layout": [
+              { path: "static/chunks/public.css", inlined: false },
+              { path: "static/chunks/fonts.css", inlined: false },
+            ],
+            "[project]/src/app/(public)/login/page": [{ path: "static/chunks/public.css", inlined: false }],
+          },
+        ),
+      );
+    });
+
+    const report = (budget: object) => {
+      write("budget.json", JSON.stringify(budget));
+      const res = spawnSync(process.execPath, [script, "--dir", dir, "--budget", path.join(dir, "budget.json"), "--json"], {
+        encoding: "utf8",
+      });
+      return JSON.parse(res.stdout).report[0];
+    };
+
+    it("finds a route under a (group) folder by its URL", () => {
+      const r = report({ routes: { "/login": { brotliKB: 100, gzipKB: 100 } } });
+      expect(r.error).toBeUndefined();
+      expect(r.files.map((f: { file: string }) => f.file).sort()).toEqual([
+        "static/chunks/layout.js",
+        "static/chunks/page.js",
+        "static/chunks/root.js",
+      ]);
+    });
+
+    it("counts each listed stylesheet once and passes under the CSS ceiling", () => {
+      const r = report({ routes: { "/login": { brotliKB: 100, gzipKB: 100, cssGzipKB: 100 } } });
+      expect(r.cssFiles.map((f: { file: string }) => f.file).sort()).toEqual(["static/chunks/fonts.css", "static/chunks/public.css"]);
+      expect(r.css.raw).toBe(
+        fs.statSync(path.join(dir, "static/chunks/public.css")).size + fs.statSync(path.join(dir, "static/chunks/fonts.css")).size,
+      );
+      expect(r.overCss).toBe(false);
+      expect(run({ routes: { "/login": { brotliKB: 100, gzipKB: 100, cssGzipKB: 100 } } }).status).toBe(0);
+    });
+
+    it("fails, listing the sheets, when the route's CSS is over its ceiling", () => {
+      const res = run({ routes: { "/login": { brotliKB: 100, gzipKB: 100, cssGzipKB: 2 } } });
+      expect(res.status).toBe(1);
+      expect(res.stdout).toMatch(/✗ \/login/);
+      expect(res.stdout).toContain("static/chunks/public.css");
+    });
+
+    it("a route with no CSS ceiling reports its CSS and does not fail on it", () => {
+      const r = report({ routes: { "/login": { brotliKB: 100, gzipKB: 100 } } });
+      expect(r.css.gzip).toBeGreaterThan(0);
+      expect(r.overCss).toBe(false);
+    });
+  });
+
   it("the committed budget holds doc 20's AC-7 figures", () => {
     const committed = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../bundle-budget.json"), "utf8"));
     expect(committed.routes["/"].brotliKB).toBeLessThanOrEqual(180);
     expect(committed.routes["/verify/[certificateNumber]"].brotliKB).toBeLessThanOrEqual(120);
+    // P10-18 (ADR-131 decision 6): the landing and the sign-in page carry a CSS ceiling.
+    expect(committed.routes["/"].cssGzipKB).toEqual(expect.any(Number));
+    expect(committed.routes["/login"].cssGzipKB).toEqual(expect.any(Number));
   });
 });

@@ -24,6 +24,7 @@
  */
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
 const live = process.env.W14_MQTT_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -67,6 +68,8 @@ live("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", () => 
        VALUES (:t, 'w14-live', 'w14-live', 'w14@example.test', now(), now())`,
       { t: T },
     );
+    // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+    await q(SELF_FACILITIES_SQL);
     await q(
       `INSERT INTO calibration_devices (id, tenant_id, name, status, iot_enabled, reading_tolerance, created_at, updated_at)
        VALUES (:d, :t, 'Fridge probe', 'active', true, '{"temperature": {"max": 8}}', now(), now())`,

@@ -18,7 +18,7 @@ import {
   type SaveOptions,
   type Sequelize as SequelizeClass,
 } from "sequelize";
-import type { TenantId, UserId } from "../types/ids";
+import type { ClientFacilityId, TenantId, UserId } from "../types/ids";
 import type { ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 import { CERTIFICATE_STATE, CERTIFICATE_STATUSES } from "@callibrator/contracts/states";
@@ -52,6 +52,16 @@ interface Certificate extends Model<
   tenantId: TenantId;
   calibrationRecordId: string | null;
   deviceId: string;
+
+  /**
+   * P20-07 (ADR-124 Am. 2 and Am. 3): the device's client facility, always. NOT NULL in the
+   * database (migration 0120) with the composite foreign key `(tenant_id, client_facility_id,
+   * device_id)` → calibration_devices `(tenant_id, client_facility_id, id)` ON UPDATE CASCADE — a
+   * row can name no other facility than its device's, and a device move carries it along. Optional
+   * on create: the database fills it from the device (Am. 3). Never changed except by that
+   * cascade under `callibrator.facility_move` (P21-09). No index or key declared here (ADR-100 Am. 3).
+   */
+  clientFacilityId: CreationOptional<ClientFacilityId>;
   certificateNumber: string;
   type: CreationOptional<
     (typeof CERTIFICATE_TYPES)[keyof typeof CERTIFICATE_TYPES] | null
@@ -161,6 +171,12 @@ const defineModel: DefineCertificate = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "calibration_devices", key: "id" },
+      },
+      // P20-07: NOT NULL in the database; allowNull here because the database fills it from the
+      // device on insert (ADR-124 Am. 3). The composite key lives in the migration.
+      clientFacilityId: {
+        type: DataTypes.UUID,
+        allowNull: true,
       },
       // Certificate details
       certificateNumber: {

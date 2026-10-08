@@ -409,6 +409,8 @@ Paired LCP difference (after − before, same round), both pages pooled:
 4. **The framework floor** (~133 KB of root main chunks) is the Next/React runtime. The simulate-mode result depends on the host's paint pipeline: on a host where the first frame presents before the chunks evaluate, Lantern drops them from LCP. Measuring on the VM or a dedicated host is the remaining honest test.
 5. The theme toggle's INP on `/login`.
 
+*2026-10-08:* items 1 and 2 are done — P10-19 (the three forms load their API layer on demand) and P10-18 (ADR-131: the public pages' own root layout and sheet). Results, including why simulated LCP did not move: [`2026-10-08-p10-18-19-public-layout.md`](./2026-10-08-p10-18-19-public-layout.md).
+
 ### Gates (final tree)
 
 | Gate | Result |

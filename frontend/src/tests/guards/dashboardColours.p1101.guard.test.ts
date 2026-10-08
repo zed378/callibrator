@@ -41,9 +41,9 @@ const SRC = path.resolve(__dirname, "../..");
 
 /**
  * P11 follow-up (ADR-122 Amendment 1, 2026-10-07): the scan covers ALL of
- * `app/**` and `components/**` — the public pages (`app/page.tsx`, `login`,
- * `verify`, `not-found`, `oauth/consent`, `sso-callback`, …) and
- * `components/public/**` included. The public surface colours through its own
+ * `app/**` and `components/**` — the public pages (`app/(public)/page.tsx`,
+ * `login`, `verify`, the 404s, `oauth/consent`, `sso-callback`, …; route groups
+ * since P10-18, ADR-131) and `components/public/**` included. The public surface colours through its own
  * `--pub-*` tokens in `public-surface.css`; that CSS is not scanned (only
  * `.ts`/`.tsx` are), and its TSX was already clean when the scope grew.
  */
@@ -157,7 +157,7 @@ describe("P11-01 guard: app/** and components/** have no raw colour (ADR-122)", 
     expect(all.length).toBeGreaterThan(350);
     const scanned = new Set(all.map(rel));
     for (const s of SINGLES) expect(scanned).toContain(s);
-    for (const s of ["app/page.tsx", "app/not-found.tsx", "app/oauth/consent/page.tsx", "app/sso-callback/page.tsx", "app/login/page.tsx"]) {
+    for (const s of ["app/(public)/page.tsx", "app/(app)/not-found.tsx", "app/(app)/oauth/consent/page.tsx", "app/(app)/sso-callback/page.tsx", "app/(public)/login/page.tsx", "app/global-not-found.tsx", "components/public/PublicNotFound.tsx"]) {
       expect(scanned).toContain(s);
     }
     expect([...scanned].some((f) => f.startsWith("components/public/"))).toBe(true);

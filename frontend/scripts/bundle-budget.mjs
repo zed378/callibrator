@@ -17,6 +17,13 @@
  * Chunks a client component loads later with `import()` are not first-load
  * and are not counted.
  *
+ * P10-18 (ADR-131): the same report also counts each route's first-load CSS —
+ * every stylesheet the manifest lists under `entryCSSFiles` (its root layout's
+ * global sheet, the page's own, the font faces), all render-blocking — and a
+ * route whose budget sets `cssGzipKB` fails over it. A route under a route
+ * group (`app/(public)/login`) is found by its URL: the group folder is not a
+ * path segment, so the manifest is looked up under each `(group)` folder too.
+ *
  * Each file is compressed here, per file, as a server would send it:
  * brotli quality 11 (a precompressed or CDN-compressed asset) and gzip level 6
  * (Node's and most servers' default). The budget file sets a ceiling for each.
@@ -50,12 +57,29 @@ const readManifest = (file) => {
   new Function("globalThis", code)(sandbox.globalThis);
   const entries = Object.values(sandbox.globalThis.__RSC_MANIFEST);
   if (entries.length !== 1) throw new Error(`${file}: expected one manifest entry, found ${entries.length}`);
-  return /** @type {{ entryJSFiles: Record<string, string[]> }} */ (entries[0]);
+  return /** @type {{ entryJSFiles: Record<string, string[]>, entryCSSFiles?: Record<string, Array<{ path: string, inlined?: boolean }>> }} */ (
+    entries[0]
+  );
 };
 
-/** "/" → server/app/page_client-reference-manifest.js; "/verify/[n]" → server/app/verify/[n]/page_… */
-const manifestFor = (route) =>
-  path.join(distDir, "server", "app", ...route.split("/").filter(Boolean), "page_client-reference-manifest.js");
+/**
+ * "/" → server/app/page_client-reference-manifest.js; "/verify/[n]" → server/app/verify/[n]/page_…;
+ * under a route group (ADR-131) → server/app/(public)/verify/[n]/page_… — the first that exists.
+ */
+const manifestFor = (route) => {
+  const segments = route.split("/").filter(Boolean);
+  const appDir = path.join(distDir, "server", "app");
+  const direct = path.join(appDir, ...segments, "page_client-reference-manifest.js");
+  if (fs.existsSync(direct)) return direct;
+  const groups = fs.existsSync(appDir)
+    ? fs.readdirSync(appDir).filter((d) => /^\(.+\)$/.test(d)).sort()
+    : [];
+  for (const group of groups) {
+    const grouped = path.join(appDir, group, ...segments, "page_client-reference-manifest.js");
+    if (fs.existsSync(grouped)) return grouped;
+  }
+  return direct;
+};
 
 const sizeCache = new Map();
 /** @param {string} rel a path relative to the build output, e.g. static/chunks/x.js */
@@ -82,7 +106,7 @@ const main = () => {
   }
   /** @type {{ rootMainFiles: string[] }} */
   const buildManifest = JSON.parse(fs.readFileSync(buildManifestPath, "utf8"));
-  /** @type {{ routes: Record<string, { brotliKB: number, gzipKB: number, note?: string }> }} */
+  /** @type {{ routes: Record<string, { brotliKB: number, gzipKB: number, cssGzipKB?: number, note?: string }> }} */
   const budget = JSON.parse(fs.readFileSync(budgetFile, "utf8"));
 
   const report = [];
@@ -108,8 +132,25 @@ const main = () => {
     }
     const overBrotli = total.brotli > limit.brotliKB * KB;
     const overGzip = total.gzip > limit.gzipKB * KB;
-    if (overBrotli || overGzip) failed = true;
-    report.push({ route, total, limit, overBrotli, overGzip, files: perFile });
+
+    // First-load CSS: every stylesheet any entry of the route lists, once each.
+    const cssFiles = new Set();
+    for (const sheets of Object.values(manifest.entryCSSFiles ?? {})) {
+      for (const sheet of sheets) if (!sheet.inlined) cssFiles.add(sheet.path);
+    }
+    const css = { raw: 0, gzip: 0, brotli: 0 };
+    const cssPerFile = [];
+    for (const f of cssFiles) {
+      const s = sizes(f);
+      css.raw += s.raw;
+      css.gzip += s.gzip;
+      css.brotli += s.brotli;
+      cssPerFile.push({ file: f, ...s });
+    }
+    const overCss = limit.cssGzipKB !== undefined && css.gzip > limit.cssGzipKB * KB;
+
+    if (overBrotli || overGzip || overCss) failed = true;
+    report.push({ route, total, limit, overBrotli, overGzip, overCss, files: perFile, css, cssFiles: cssPerFile });
   }
 
   if (asJson) {
@@ -126,11 +167,19 @@ const main = () => {
         console.log(`  ✗ ${r.route}: ${r.error}`);
         continue;
       }
-      const mark = r.overBrotli || r.overGzip ? "✗" : "✓";
+      const mark = r.overBrotli || r.overGzip || r.overCss ? "✗" : "✓";
       console.log(
         `  ${mark} ${r.route.padEnd(28)} brotli ${fmt(r.total.brotli).padStart(9)} / ${r.limit.brotliKB} KB` +
-          `   gzip ${fmt(r.total.gzip).padStart(9)} / ${r.limit.gzipKB} KB   (${r.files.length} files)`,
+          `   gzip ${fmt(r.total.gzip).padStart(9)} / ${r.limit.gzipKB} KB   (${r.files.length} files)` +
+          `   css gzip ${fmt(r.css.gzip).padStart(8)}` +
+          (r.limit.cssGzipKB !== undefined ? ` / ${r.limit.cssGzipKB} KB` : "") +
+          ` (raw ${fmt(r.css.raw)}, ${r.cssFiles.length} files)`,
       );
+      if (r.overCss) {
+        for (const f of [...r.cssFiles].sort((a, b) => b.gzip - a.gzip)) {
+          console.log(`      ${f.file}  css raw ${fmt(f.raw)}  gzip ${fmt(f.gzip)}`);
+        }
+      }
       if (r.overBrotli || r.overGzip) {
         for (const f of r.files.filter((x) => !x.root).sort((a, b) => b.brotli - a.brotli)) {
           console.log(`      ${f.file}  brotli ${fmt(f.brotli)}  gzip ${fmt(f.gzip)}`);

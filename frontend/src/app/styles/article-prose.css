@@ -1,0 +1,119 @@
+/*
+ * ADR-131 (P10-18): shared by both global sheets — app/globals.css (the signed-in
+ * application) and app/public.css (the public surface) — so the two cannot
+ * drift. Moved here unchanged from globals.css. The public sheet overrides
+ * the colours under [data-surface="public"] (public-surface.css).
+ */
+/* ==========================================================================
+   ARTICLE PROSE — typography for WYSIWYG content (public blog/news bodies +
+   the dashboard rich-text editor). Semantic tokens only; no typography plugin.
+   ========================================================================== */
+.article-prose {
+  color: var(--foreground);
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+.article-prose > :first-child {
+  margin-top: 0;
+}
+.article-prose h1 {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 2rem 0 0.75rem;
+}
+.article-prose h2 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  margin: 1.85rem 0 0.7rem;
+}
+.article-prose h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.6rem;
+}
+.article-prose p {
+  margin: 0 0 1.1rem;
+}
+.article-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.article-prose a:hover {
+  opacity: 0.85;
+}
+.article-prose ul,
+.article-prose ol {
+  margin: 0 0 1.1rem;
+  padding-left: 1.5rem;
+}
+.article-prose ul {
+  list-style: disc;
+}
+.article-prose ol {
+  list-style: decimal;
+}
+.article-prose li {
+  margin: 0.3rem 0;
+}
+.article-prose blockquote {
+  margin: 1.5rem 0;
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  border-left: 3px solid var(--primary);
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.article-prose img {
+  border-radius: 0.75rem;
+  margin: 1.5rem 0;
+  max-width: 100%;
+  height: auto;
+}
+.article-prose figure {
+  margin: 1.5rem 0;
+}
+.article-prose figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.article-prose strong {
+  font-weight: 700;
+  color: var(--foreground);
+}
+.article-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--muted);
+  padding: 0.15em 0.4em;
+  border-radius: 0.35rem;
+}
+.article-prose pre {
+  background: var(--muted);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+.article-prose pre code {
+  background: none;
+  padding: 0;
+}
+.article-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+/* TipTap empty-editor placeholder */
+.article-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

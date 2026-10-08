@@ -133,12 +133,12 @@ describe("verifySchema", () => {
     expect(result.problems).toHaveLength(triggers.length);
   });
 
-  it("checks the append-only trigger, the void CHECK, the per-tenant serial index, the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes, and the audit_logs append-only triggers (Q-34, ADR-095), and the exactly-one-actor CHECKs (Q-51, migration 0105), and the inspection catalogue's triggers, unique indexes and CHECKs (P20-01/03, migrations 0111/0112)", () => {
+  it("checks the append-only trigger, the void CHECK, the serial index (per facility since 0118), the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes, and the audit_logs append-only triggers (Q-34, ADR-095), and the exactly-one-actor CHECKs (Q-51, migration 0105), and the inspection catalogue's triggers, unique indexes and CHECKs (P20-01/03, migrations 0111/0112), and the client-facility controls (P20-07, migrations 0117 – 0123)", () => {
     expect(EXPECTED_OBJECTS.map((o) => `${o.kind}:${o.name}`)).toEqual([
       "trigger:calibration_records_append_only",
       "trigger:calibration_records_no_truncate",
       "constraint:calibration_records_void_reason_check",
-      "index:calibration_devices_tenant_id_serial_number_unique",
+      "index:calibration_devices_tenant_facility_serial_unique", // UD-9 (P20-07, 0118) replaced 0026's per-tenant index
       "trigger:calibration_devices_retired_terminal",
       "constraint:stock_adjustments_reason_not_blank",
       "constraint:calibration_records_actor_exactly_one",
@@ -167,6 +167,52 @@ describe("verifySchema", () => {
       "index:inspection_template_versions_one_draft",
       "constraint:inspection_template_versions_published_complete",
       "constraint:inspection_template_versions_publisher_exactly_one",
+      // P20-07 (migrations 0117 – 0123): the client-facility dimension, written out by hand.
+      "index:client_facilities_one_self",
+      "index:client_facilities_tenant_id_id_unique",
+      "constraint:client_facilities_self_active",
+      "trigger:client_facilities_identity_immutable",
+      "trigger:client_facility_moves_append_only",
+      "trigger:client_facility_moves_no_truncate",
+      "trigger:client_facility_moves_complete_at_commit",
+      "trigger:calibration_devices_facility_default",
+      "trigger:calibration_devices_facility_open",
+      "trigger:calibration_devices_facility_guard",
+      "constraint:calibration_devices_client_facility_fkey",
+      "trigger:calibration_records_facility_default",
+      "trigger:calibration_records_facility_open",
+      "trigger:calibration_records_facility_guard",
+      "constraint:calibration_records_device_facility_fkey",
+      "trigger:certificates_facility_default",
+      "trigger:certificates_facility_open",
+      "trigger:certificates_facility_guard",
+      "constraint:certificates_device_facility_fkey",
+      "trigger:maintenance_work_orders_facility_default",
+      "trigger:maintenance_work_orders_facility_open",
+      "trigger:maintenance_work_orders_facility_guard",
+      "constraint:maintenance_work_orders_device_facility_fkey",
+      "trigger:iot_readings_facility_default",
+      "trigger:iot_readings_facility_guard",
+      "constraint:iot_readings_device_facility_fkey",
+      "constraint:certificates_record_facility_fkey",
+      "trigger:attachments_facility_default",
+      "trigger:attachments_facility_open",
+      "trigger:attachments_facility_guard",
+      "trigger:attachments_facility_matches_resource",
+      "constraint:attachments_facility_kind",
+      "trigger:calibration_devices_attachments_follow_facility",
+      "trigger:calibration_records_attachments_follow_facility",
+      "trigger:certificates_attachments_follow_facility",
+      "trigger:maintenance_work_orders_attachments_follow_facility",
+      "trigger:non_conformances_facility_default",
+      "trigger:non_conformances_facility_open",
+      "trigger:non_conformances_facility_guard",
+      "constraint:non_conformances_facility_follows_device",
+      "constraint:non_conformances_device_facility_fkey",
+      "constraint:warehouses_client_facility_fkey",
+      "constraint:users_client_facility_fkey",
+      "trigger:users_facility_binding_guard",
+      "trigger:users_facility_bound_role",
     ]);
   });
 });
@@ -180,7 +226,7 @@ describe("assertSchemaMatchesModels", () => {
     const result = await assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined });
     expect(result.problems).toEqual([]);
     expect(log.info).toHaveBeenCalledWith(`${TAG} note: column devices.legacy is not declared by model Device`);
-    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 31 control objects/));
+    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 76 control objects/));
     expect(log.error).not.toHaveBeenCalled();
   });
 
@@ -188,7 +234,7 @@ describe("assertSchemaMatchesModels", () => {
     const log = logger();
     const sequelize = fakeSequelize([devices], [], {});
     await expect(assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined })).rejects.toThrow(
-      /FAILED: 32 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
+      /FAILED: 77 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
     );
     expect(log.error).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] MISMATCH: table devices/));
   });

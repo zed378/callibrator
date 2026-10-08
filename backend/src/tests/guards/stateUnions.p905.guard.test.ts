@@ -12,6 +12,7 @@ import fs from "fs";
 import path from "path";
 import {
   CAPA_STATUSES,
+  CLIENT_FACILITY_STATUSES,
   DEVICE_TYPE_STATUSES,
   INSPECTION_ITEM_DEFINITION_STATUSES,
   INSPECTION_TEMPLATE_STATUSES,
@@ -53,6 +54,10 @@ const MACHINES: [model: string, tuple: readonly string[]][] = [
   ["InspectionTemplateProposal", TEMPLATE_PROPOSAL_STATUSES],
   // The rsync image import's lifecycle.
   ["UpstreamFileImport", UPSTREAM_FILE_IMPORT_STATUSES],
+  // P20-07 (ADR-124 Am. 2): a client facility's lifecycle. (A device move's two states,
+  // in_progress → completed, are a pair other lists also contain in that order — a literal
+  // search would flag them; enumMirrors.d26 holds ClientFacilityMove.status to the tuple.)
+  ["ClientFacility", CLIENT_FACILITY_STATUSES],
 ];
 
 describe("P9-05 — state machines have one list each", () => {

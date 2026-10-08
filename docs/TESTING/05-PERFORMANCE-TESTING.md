@@ -126,7 +126,7 @@ There is **no embedded MQTT broker** (A-17; corrected under ADR-088 — this lin
 
 ### Public pages against doc 20 AC-5/AC-6 (Lighthouse mobile, simulated)
 
-Every figure is labelled **TARGET** or **MEASURED**, as in the hot-path table. Source: [`MEMORY/records/2026-10-05-landing-warm-redesign.md`](../../MEMORY/records/2026-10-05-landing-warm-redesign.md), addendum 2026-10-07.
+Every figure is labelled **TARGET** or **MEASURED**, as in the hot-path table. Source: [`MEMORY/records/2026-10-05-landing-warm-redesign.md`](../../MEMORY/records/2026-10-05-landing-warm-redesign.md), addendum 2026-10-07. The 2026-10-08 rows: [`MEMORY/records/2026-10-08-p10-18-19-public-layout.md`](../../MEMORY/records/2026-10-08-p10-18-19-public-layout.md).
 
 **How these were measured:**
 - Lighthouse 12.8.2 on a production standalone build, run on the shared workstation (not a dedicated host, not the VM).
@@ -142,6 +142,9 @@ Every figure is labelled **TARGET** or **MEASURED**, as in the hot-path table. S
 | `/`, `/login` | CLS | ≤ 0.05 | TARGET | **MEASURED 2026-10-07:** 0 and 0.015 — met |
 | `/`, `/login` | INP | ≤ 200 ms | TARGET | **MEASURED 2026-10-07** (real browser, 4× CPU): `/` 152 ms — met. `/login` ~200–230 ms — at the line; the worst interaction is the theme toggle, the same in both builds |
 | `/login` | first-load JS | ≤ 155 KB brotli (budget) | TARGET | **MEASURED 2026-10-07:** 154.2 → **130.9 KB** (the API layer is loaded on first use) |
+| `/`, `/login` | first-load CSS (gzip) | `/` ≤ 18 KB, others ≤ 13 KB (`cssGzipKB`, P10-18) | TARGET | **MEASURED 2026-10-08:** `/` 28.1 → **16.7 KB** (162.4 → 79.4 KB raw); `/login` and every other public page 23.3 → **12.0 KB** (139.7 → 56.6 KB raw) — the public root layout's own sheet (ADR-131) |
+| `/request-access`, `/forgot-password`, `/invitation` | first-load JS | ≤ 131 KB brotli (lowered from 148, P10-19) | TARGET | **MEASURED 2026-10-08:** 147.8 / 146.8 / 146.4 → **127.6 / 126.7 / 126.3 KB** (the API layer is loaded on first use) |
+| `/`, `/login` | after ADR-131 | as above | TARGET | **MEASURED 2026-10-08** (Lighthouse, 5 interleaved rounds, the quietest of three runs): `/` LCP 3.38 → 3.37 s, FCP 1.97 → **1.82 s**, SI 2.93 → 1.89 s, Performance 90 → 89 (TBT 53 → 135 ms: the window opens at the earlier FCP); `/login` LCP 2.92 → 2.91 s, Performance 93 → 93. **Not met; LCP unchanged within noise.** Real browser, applied throttling: `/login` LCP 1.54 → **1.22 s**, `/` 2.30 → 2.40 s (within spread) |
 
 **Why simulation cannot meet `/login`'s 1.8 s here.** Lighthouse's simulation (Lantern) estimates LCP from everything that finished before the *observed* paint. On this host the first frame is presented only after the framework chunks (~133 KB) have downloaded and run, so they count, and they alone put the estimate at 2.77 s. A host whose first frame presents earlier would not count them. The VM or a dedicated host is the remaining honest measurement.
 

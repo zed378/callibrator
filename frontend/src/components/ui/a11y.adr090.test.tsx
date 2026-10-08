@@ -26,9 +26,9 @@ import { Table } from "./Table/Table";
 import { Alert } from "./Alert";
 import { Card, CardHeader } from "./Card";
 import { Select } from "./Select";
-import { PasswordLoginForm } from "@/app/login/components/PasswordLoginForm";
-import { DevicesTable } from "@/app/dashboard/devices/components/DevicesTable";
-import { TenantCard } from "@/app/dashboard/tenants/components/TenantCard";
+import { PasswordLoginForm } from "@/app/(public)/login/components/PasswordLoginForm";
+import { DevicesTable } from "@/app/(app)/dashboard/devices/components/DevicesTable";
+import { TenantCard } from "@/app/(app)/dashboard/tenants/components/TenantCard";
 import type { Tenant } from "@/types";
 
 jest.mock("next/navigation", () => ({

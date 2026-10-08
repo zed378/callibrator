@@ -88,3 +88,35 @@ export type InspectionTemplateItemId = Brand<string, "InspectionTemplateItemId">
 
 /** A tenant's catalogue proposal id (`inspection_template_proposals.id`). */
 export type InspectionTemplateProposalId = Brand<string, "InspectionTemplateProposalId">;
+
+/*
+ * Client facilities (P20-07; ADR-124 and its Amendment 2; spec
+ * MEMORY/specs/P19-04-client-facilities.md § 4). The second scope dimension: a health facility
+ * inside the tenant that serves it. The hooks that read it are P21-09's.
+ */
+
+/** A client facility's id (`client_facilities.id`). */
+export type ClientFacilityId = Brand<string, "ClientFacilityId">;
+
+/** A device move's id (`client_facility_moves.id`) — the value of `callibrator.facility_move`. */
+export type ClientFacilityMoveId = Brand<string, "ClientFacilityMoveId">;
+
+/**
+ * The validating constructor of `ClientFacilityId` (P20-07: services/clientFacility is the first
+ * module that turns a raw id — the self facility it has just read or created — into one).
+ *
+ * @throws {TypeError} when `value` is not a UUID
+ */
+export const toClientFacilityId = (value: string): ClientFacilityId => {
+  if (!UUID_SHAPE.test(value)) {
+    throw new TypeError("A client facility id must be a UUID");
+  }
+  return value as ClientFacilityId;
+};
+
+/**
+ * The facility dimension's deny sentinel (spec § 4): a well-formed UUID no v4 generator produces,
+ * distinct from NO_TENANT_ID so a log says which branch denied. Migration 0117's CHECK refuses it
+ * as a facility id, so a deny predicate on it matches nothing.
+ */
+export const NO_FACILITY_ID = "00000000-0000-0000-0000-00000000f000" as ClientFacilityId;

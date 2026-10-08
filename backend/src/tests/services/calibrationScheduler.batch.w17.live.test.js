@@ -27,6 +27,7 @@
  */
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
 const live = process.env.CALIBRATION_BATCH_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -65,6 +66,8 @@ live("calibration scan — batched transactions on live PostgreSQL (W-17)", () =
       );
     }
     for (const [d, t, i] of [...A_DEVICES.map((d, i) => [d, A, i]), [B_DEVICE, B, 9]]) {
+      // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+      await q(SELF_FACILITIES_SQL);
       await q(
         `INSERT INTO calibration_devices (id, tenant_id, name, serial_number, status, next_calibration_date, created_at, updated_at)
          VALUES (:d, :t, :name, :sn, 'active', now() - interval '3 days', now(), now())`,

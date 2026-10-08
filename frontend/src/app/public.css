@@ -1,0 +1,72 @@
+/*
+ * ADR-131 (P10-18): the PUBLIC surface's global sheet — imported only by
+ * app/(public)/layout.tsx and app/global-not-found.tsx. It carries the public
+ * tokens (public-surface.css), the three partials both sheets share, and a
+ * Tailwind build that scans ONLY the public sources below. The dashboard's
+ * sheet (globals.css, ~132 KB raw) is no longer render-blocking here.
+ *
+ * The @source list is a maintained boundary: a component a public page renders
+ * that lies outside it gets no utilities, in production only. The guard
+ * src/tests/guards/publicSheet.p1018.guard.test.ts walks the public pages'
+ * import graph and fails on any file with a class list outside these paths.
+ */
+@import "tailwindcss" source(none);
+@import "./public-surface.css";
+@import "./styles/motion-tokens.css";
+@import "./styles/article-prose.css";
+@import "./styles/reduced-motion.css";
+
+@source "./(public)";
+@source "./global-not-found.tsx";
+@source "./rootDocument.tsx";
+@source "../components/public";
+@source "../components/blog";
+@source "../components/brand";
+@source "../components/errors/PublicRouteError.tsx";
+@source "../components/auth/Spinner.tsx";
+@source "../components/icons/static.tsx";
+
+/* The theme switch is the shared `.dark` class on <html> (lib/theme.ts). */
+@variant dark (&:is(.dark *));
+
+/* The document's default face is the public body face (Tailwind's preflight
+   puts --font-sans on <html>). Tailwind's own default is a nine-family system
+   stack ("Apple Color Emoji", "Noto Color Emoji", Roboto, …); resolving it on
+   the root made the first layout measurably slower on Windows (P10-18 record).
+   `.pub-mono` and the article body's code use the mono face the public layout
+   declares (fonts/mono.ts), as on the dashboard. */
+@theme inline {
+  --font-sans: var(--font-pub-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
+  /* The canvas behind the surface (overscroll, the instant before it paints):
+     the surface's own background, so no edge shows another colour. These two
+     values are --pub-bg and --pub-dark-bg; publicSheet.p1018 holds them equal. */
+  background-color: #fbf7f0;
+}
+html.dark {
+  background-color: #1a1511;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme-choice]) {
+    background-color: #1a1511;
+    color-scheme: dark;
+  }
+}
+
+body {
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* The brand mark's accent (components/brand/BrandIcon.tsx): the surface's
+   accent, as globals.css resolves it on a public surface. */
+.logo-accent {
+  fill: var(--pub-accent, var(--logo-accent));
+}

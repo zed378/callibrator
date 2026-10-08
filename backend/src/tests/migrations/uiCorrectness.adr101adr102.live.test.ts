@@ -19,6 +19,7 @@
  *     DB_USER=postgres DB_PASS=... npm test -- src/tests/migrations/uiCorrectness.adr101adr102.live --coverage=false
  */
 import { env } from "../../config/env";
+import { SELF_FACILITIES_SQL } from "../fixtures/selfFacility";
 
 const live = env("UIFIX_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
@@ -116,6 +117,8 @@ live("ADR-101 / ADR-102 migrations on PostgreSQL 18", () => {
         { id, T, role: role?.["id"] ?? null, name, email: `${String(name)}@live.test` },
       );
     }
+    // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+    await q(SELF_FACILITIES_SQL);
     await q(`INSERT INTO calibration_devices (id, tenant_id, name, serial_number, created_at, updated_at)
              VALUES (:DEV, :T, 'Pump', 'SN-101', now(), now())
              ON CONFLICT (id) DO NOTHING`, { DEV, T });

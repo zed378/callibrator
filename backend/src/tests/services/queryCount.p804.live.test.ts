@@ -18,8 +18,12 @@
  *  - dashboard: all 20 aggregates run, never more than DASHBOARD_CONCURRENCY
  *    of them in flight at once (it was 20 against a 20-connection pool).
  *
- * OPT-IN — needs a SCRATCH database (its name must contain "scratch") built by
- * db.sync() of the current models plus every migration. It writes one tenant
+ * OPT-IN — needs a SCRATCH database (its name must contain "scratch"). The suite
+ * builds it the way the backend boots (fixtures/liveBoot#bootSchema: db.sync()
+ * of the current models plus every migration, under the schema lock) before it
+ * switches to the application role; on an already-built database that applies
+ * nothing. (It used to ASSUME a database someone had built: on an empty one all
+ * four cases failed in beforeAll with no message.) It writes one tenant
  * with fixed ids and leaves its audit rows behind: audit_logs is append-only
  * (0091), which is why the database must be a scratch one.
  *
@@ -32,6 +36,8 @@
  *     DB_USER=... DB_PASS=... npm test -- src/tests/services/queryCount.p804.live --coverage=false
  */
 import { env } from "../../config/env";
+import { LIVE_BOOT_TIMEOUT_MS } from "../fixtures/disposableDatabase";
+import { bootSchema } from "../fixtures/liveBoot";
 
 const live = env("P804_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
@@ -68,12 +74,13 @@ interface Services {
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports -- CommonJS services, typed by the members used */
-const load = (): { db: LiveDb; s: Services } => {
+const load = (): { db: LiveDb; s: Services; migrator: Parameters<typeof bootSchema>[1] } => {
   const db = (require("../../config") as { db: LiveDb }).db;
   db.options.logging = false;
   require("../../models");
   return {
     db,
+    migrator: (require("../../config/migrator") as { migrator: Parameters<typeof bootSchema>[1] }).migrator,
     s: {
       kanban: require("../../services/kanban.service") as Services["kanban"],
       audit: require("../../services/audit.service") as Services["audit"],
@@ -151,7 +158,10 @@ live("P8-04 — statements per service call, on live PostgreSQL 18", () => {
 
   beforeAll(async () => {
     expect(env("DB_NAME")).toMatch(/scratch/);
-    ({ db, s } = load());
+    const loaded = load();
+    ({ db, s } = loaded);
+    // As the owner, before the role switch: sync + every migration (none pending on a built database).
+    await bootSchema(loaded.db as unknown as Parameters<typeof bootSchema>[0], loaded.migrator);
     const quiet = { info: (): void => undefined, warn: (): void => undefined };
     await s.dbRole.enterApplicationRole({ sequelize: db, logger: quiet, env: { DB_APP_ROLE: "callibrator_app" } });
     const [[who]] = await db.query("SELECT current_user AS u");
@@ -195,7 +205,7 @@ live("P8-04 — statements per service call, on live PostgreSQL 18", () => {
         [TENANT, USER, AUDIT_ROWS],
       );
     }
-  });
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     db.options.logging = false;

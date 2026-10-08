@@ -390,7 +390,9 @@ describe("D-12 — the phantom brand on converted models equals the runtime defa
     // -TemplateProposal) — 79.
     // The rsync image import adds UpstreamFileImport (born TypeScript, no defaultScope) — 80.
     // The SQL-dump import (P24-06) adds UpstreamSqlImport (born TypeScript, no defaultScope) — 81.
-    expect(converted.length).toBe(81);
+    // P20-07 (ADR-124 Am. 2, G-F3) adds ClientFacility and ClientFacilityMove, neither paranoid nor
+    // with a defaultScope (an include of a facility must never be an INNER JOIN) — 83.
+    expect(converted.length).toBe(83);
     expect(branded).toEqual([...DEFAULT_SCOPED]);
     const runtimeScoped = scopedModels.map((m) => m.name).filter((n) => converted.includes(n)).sort();
     expect(branded).toEqual(runtimeScoped);

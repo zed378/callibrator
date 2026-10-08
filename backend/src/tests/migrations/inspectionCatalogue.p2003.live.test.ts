@@ -77,7 +77,10 @@ interface Migration {
 interface Graph {
   db: LiveDb;
   migrator: { up(options?: object): Promise<{ name: string }[]> };
-  schemaVerify: { verifySchema(db: unknown): Promise<{ problems: string[]; objects: number }> };
+  schemaVerify: {
+    verifySchema(db: unknown): Promise<{ problems: string[]; objects: number }>;
+    EXPECTED_OBJECTS: readonly { table: string; name: string }[];
+  };
   m0111: Migration;
   m0112: Migration & { seedContentHash(): string };
 }
@@ -265,8 +268,14 @@ live("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () =>
   });
 
   it("0111 + 0112 up: twelve triggers, all ENABLE ALWAYS ('A')", async () => {
-    const applied = await g.migrator.up();
+    const applied = await g.migrator.up({ to: "0112-inspection-catalogue.js" });
     expect(applied.map((m) => m.name)).toEqual(["0111-device-types.js", "0112-inspection-catalogue.js"]);
+    expect(await catalogueTriggers(g.db)).toEqual(TRIGGERS.map((t) => `${t}:A`).sort());
+    // Every LATER migration too (0113 onwards, written after this suite), as the boot applies them:
+    // the cases below — schemaVerify against the current models, the reboot — need the whole
+    // manifest, and the catalogue's controls must survive it.
+    const later = (await g.migrator.up()).map((m) => m.name);
+    expect(later.every((name) => name > "0112-inspection-catalogue.js")).toBe(true);
     expect(await catalogueTriggers(g.db)).toEqual(TRIGGERS.map((t) => `${t}:A`).sort());
   });
 
@@ -456,7 +465,11 @@ live("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () =>
   it("schemaVerify passes: every table, column and control object (the catalogue's 18 among them)", async () => {
     const result = await g.schemaVerify.verifySchema(g.db);
     expect(result.problems).toEqual([]);
-    expect(result.objects).toBe(31);
+    // The catalogue's 18 are among the objects verified (the list's total grows with later
+    // migrations: 31 when this was written, 76 after P20-07).
+    const catalogue = g.schemaVerify.EXPECTED_OBJECTS.filter((o) => /^(device_types|inspection_)/.test(o.table));
+    expect(catalogue).toHaveLength(18);
+    expect(result.objects).toBe(g.schemaVerify.EXPECTED_OBJECTS.length);
   });
 
   it("a REBOOT on the migrated database: sync() (showIndex on every new index), the migrator (nothing), the schema check", async () => {

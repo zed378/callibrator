@@ -170,6 +170,14 @@ const UNCHANGED = Object.freeze({
   "inspection_template_proposals.submitted_by": "users RESTRICT",
   "inspection_template_proposals.decided_by": "users RESTRICT",
   "inspection_template_proposals.withdrawn_by": "users RESTRICT",
+  // P20-07 (migration 0117; ADR-124 Am. 2): who created, edited or changed the status of a client
+  // facility, and who moved a device between facilities, are Part 11 attributions — RESTRICT, as the
+  // catalogue's. (The tenant keys are 0030's rule; the composite facility and device keys are the
+  // migration's own, which Sequelize cannot express.)
+  "client_facilities.status_changed_by": "users RESTRICT",
+  "client_facilities.created_by": "users RESTRICT",
+  "client_facilities.updated_by": "users RESTRICT",
+  "client_facility_moves.moved_by": "users RESTRICT",
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */

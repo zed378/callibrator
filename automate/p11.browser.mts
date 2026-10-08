@@ -398,27 +398,24 @@ const continuity = async (browser: Browser): Promise<void> => {
         return "dark carried, toggle pressed";
       });
 
-      // c. choose light in the dashboard (dark device) → public surface light in the same document.
-      await check("continuity c: light chosen in the dashboard → the public surface is light without a reload (D9)", async () => {
+      // c. choose light in the dashboard (dark device) → the public surface is light.
+      // ADR-131 (P10-18): the public pages are another root layout, so going from
+      // the dashboard to `/` is a full document load (it used to be a client
+      // navigation into the same document, which this check probed). The choice
+      // must survive that load: it is applied before first paint from storage.
+      await check("continuity c: light chosen in the dashboard → the public surface is light after the cross-layout load (D9)", async () => {
         await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
         await page.click('header button[aria-pressed="true"]');
         await page.waitForFunction(() => !document.documentElement.classList.contains("dark"), { timeout: 5000 });
         const choice = await page.evaluate(() => document.documentElement.getAttribute("data-theme-choice"));
         if (choice !== "light") throw new Error(`data-theme-choice is ${String(choice)} after choosing light (D9)`);
-        // A public surface mounted in THIS document (what a client navigation to `/` does).
-        const bg = await page.evaluate(() => {
-          const probe = document.createElement("div");
-          probe.setAttribute("data-surface", "public");
-          document.body.appendChild(probe);
-          const c = getComputedStyle(probe).backgroundColor;
-          probe.remove();
-          return c;
-        });
-        if (bg !== "rgb(251, 247, 240)") throw new Error(`a public surface would render ${bg}, not ivory #FBF7F0`);
         await page.goto(`${FRONTEND_URL}/`, { waitUntil: "networkidle2", timeout: STEP_TIMEOUT });
         const landing = await bodyBackground(page);
         if (landing !== "rgb(251, 247, 240)") throw new Error(`the landing is ${landing} after choosing light`);
-        return "light carried to the public surface on a dark device";
+        if (await isDark(page)) throw new Error("<html> is dark on the landing after choosing light");
+        const landed = await page.evaluate(() => document.documentElement.getAttribute("data-theme-choice"));
+        if (landed !== "light") throw new Error(`the landing's data-theme-choice is ${String(landed)}`);
+        return "light carried to the public surface on a dark device, across the root-layout boundary";
       });
 
       // d. "Use device setting" clears the choice.

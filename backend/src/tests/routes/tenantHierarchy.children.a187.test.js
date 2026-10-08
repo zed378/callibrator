@@ -13,6 +13,15 @@
  *    and creates a child under tenant B with one audit row.
  */
 
+// P20-07: tenant creation also makes the tenant's self client facility (services/clientFacility,
+// proven on memoryDb by clientFacility.service.p2007 and on PostgreSQL by clientFacilities.p2007.live).
+// A fixture here: this suite is about the tenant, so the facility is a stand-in.
+jest.mock("../../services/clientFacility.service", () => ({
+  SELF_FACILITY_CODE: "SELF",
+  selfFacilityName: (name) => name,
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
+}));
+
 const mockFx = { current: null, created: [], hierarchy: [] };
 let currentUser = null;
 

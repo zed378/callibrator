@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
-import BoardColumn from "@/app/dashboard/kanban/[projectId]/components/BoardColumn";
+import BoardColumn from "@/app/(app)/dashboard/kanban/[projectId]/components/BoardColumn";
 import { KanbanCard, KanbanColumn } from "@/api/services/kanban.service";
 
 const column = (over: Partial<KanbanColumn> = {}): KanbanColumn => ({

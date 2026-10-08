@@ -16,7 +16,7 @@ import {
   type NonAttribute,
   type Sequelize,
 } from "sequelize";
-import type { TenantId } from "../types/ids";
+import type { ClientFacilityId, TenantId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -30,6 +30,12 @@ interface Warehouse extends Model<
 > {
   id: CreationOptional<string>;
   tenantId: TenantId;
+  /**
+   * P20-07 (ADR-124 Am. 2, G-F4): the client facility a room belongs to; NULL = the provider's own
+   * store. Composite foreign key `(tenant_id, client_facility_id)` → client_facilities in migration
+   * 0123; the CHECK that a room carries one waits for UD-10's room kind.
+   */
+  clientFacilityId: CreationOptional<ClientFacilityId | null>;
   name: string;
   code: string;
   address: string | null;
@@ -77,6 +83,11 @@ const defineModel: DefineWarehouse = (db, DataTypes) => {
         allowNull: false,
         references: { model: "tenants", key: "id" },
         onDelete: "RESTRICT",
+      },
+      // P20-07: nullable; the composite key lives in migration 0123 (ADR-100 Am. 3).
+      clientFacilityId: {
+        type: DataTypes.UUID,
+        allowNull: true,
       },
       name: {
         type: DataTypes.STRING(255),

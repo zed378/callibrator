@@ -34,6 +34,7 @@ import {
 import { STORED_LOGO_NAME as LOADED_STORED_LOGO_NAME } from "../constants/tenantLogo";
 import redis from "./redis.service";
 import auditService from "./audit.service";
+import { createSelfFacility } from "./clientFacility.service";
 import {
   auditEntryActor as loadedAuditEntryActor,
   actorChanges as loadedActorChanges,
@@ -668,6 +669,10 @@ const createTenant = async (
       { transaction },
     );
 
+    // P20-07 (ADR-124 Am. 2 § 4): the tenant's own client facility, in the same
+    // transaction, audited in the NEW tenant — every tenant has exactly one.
+    const selfFacility = await createSelfFacility(tenant, { userId: createdBy || null }, { transaction });
+
     // A-95: inside the transaction — a failed insert re-throws and the tenant
     // is not created. A-125: recorded under PLATFORM, never the actor's home
     // tenant (F-7).
@@ -685,6 +690,7 @@ const createTenant = async (
             subdomain: tenant.subdomain,
             limitSeats: tenant.limitSeats,
           },
+          selfFacilityId: selfFacility.id,
         },
         ipAddress: actor.ipAddress || null,
         userAgent: actor.userAgent || null,

@@ -9,6 +9,15 @@
  * module load, so every test sets env then re-requires the service.
  */
 
+// P20-07: tenant creation also makes the tenant's self client facility (services/clientFacility,
+// proven on memoryDb by clientFacility.service.p2007 and on PostgreSQL by clientFacilities.p2007.live).
+// A fixture here: this suite is about the tenant, so the facility is a stand-in.
+jest.mock("../../services/clientFacility.service", () => ({
+  SELF_FACILITY_CODE: "SELF",
+  selfFacilityName: (name) => name,
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
+}));
+
 // Every mocked value below is defined OUTSIDE its factory so it keeps a stable
 // identity across the jest.resetModules() calls each test makes. A factory-local
 // jest.fn()/Symbol/class would be re-created on each registry reset, so the copy

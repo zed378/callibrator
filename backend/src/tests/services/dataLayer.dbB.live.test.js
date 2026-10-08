@@ -25,6 +25,7 @@
  */
 
 const { enterAppRole, grantAppRoleOnSyncedSchema, APP_ROLE } = require("../fixtures/liveBoot");
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
 const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -131,6 +132,8 @@ live("dbB data layer — live PostgreSQL (D-18, D-19, D-20, D-21)", () => {
         { t: TENANT_A, w: ids.workflow, s: ids.step, u: ids.user },
       )
     ).id;
+    // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+    await g.db.query(SELF_FACILITIES_SQL);
     ids.device = (
       await one(
         `INSERT INTO calibration_devices (id, tenant_id, name, serial_number, iot_enabled, is_deleted,

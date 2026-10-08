@@ -9,7 +9,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { PriorityChip } from "../PriorityChip";
 import { StatusBadge } from "../StatusBadge";
-import HealthIndicator from "@/app/dashboard/components/health-indicator";
+import HealthIndicator from "@/app/(app)/dashboard/components/health-indicator";
 import { axeViolations } from "@/tests/a11y/axe";
 
 describe("PriorityChip (ADR-122 Am. 1)", () => {

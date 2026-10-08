@@ -15,7 +15,7 @@ import {
   ACTOR_NAME_MAX_LENGTH,
   ACTOR_TYPE_VALUES,
 } from "../constants/systemActors";
-import type { TenantId, UserId } from "../types/ids";
+import type { ClientFacilityId, TenantId, UserId } from "../types/ids";
 import type { ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -47,6 +47,13 @@ interface AuditLog extends Model<
   action: (typeof AUDIT_LOG_ACTIONS)[number];
   resourceType: string;
   resourceId: string | null;
+  /**
+   * P20-07 (ADR-124 Am. 2 § 5): the client facility the act happened in — the breach-scoping
+   * record. No foreign key (a trail outlives what it names, like `resourceId`) and no back-fill
+   * (append-only, 0091): NULL on a row written before migration 0117 means the tenant's self
+   * facility, the only one there was. Stamped by the audit service (from the resource, P21-09).
+   */
+  clientFacilityId: CreationOptional<ClientFacilityId | null>;
   /** JSONB, D-27 shape `AuditLog.changes`: { before, after } snapshots. */
   changes: AuditLogChanges | null;
   ipAddress: string | null;
@@ -160,6 +167,11 @@ const defineModel: DefineAuditLog = (sequelize) => {
       },
       resourceId: {
         type: DataTypes.STRING,
+        allowNull: true,
+      },
+      // P20-07: no FK, no back-fill; its index (tenant_id, client_facility_id, created_at) is 0117's.
+      clientFacilityId: {
+        type: DataTypes.UUID,
         allowNull: true,
       },
       changes: {

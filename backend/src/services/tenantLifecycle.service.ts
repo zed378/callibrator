@@ -462,10 +462,15 @@ const cancelOffboarding = async (tenantId: TenantId, actor: LifecycleActor = {})
 
 /**
  * The tenant-scoped tables a hard delete removes itself, in this order, once
- * nothing retained is left (D-23): configuration, accounts, billing plan.
- * Everything on 0030's TENANT_FK_CASCADE list goes with the tenant row.
+ * nothing retained is left (D-23): configuration, accounts, the tenant's
+ * client facilities (P20-07: every tenant has its self facility — organisation
+ * data like its settings, not a retained record; after the accounts, whose
+ * binding keys reference them), billing plan. Everything on 0030's
+ * TENANT_FK_CASCADE list goes with the tenant row. A facility still holding a
+ * device is unreachable here: the device is a retained record, so the delete
+ * is refused before this list is reached.
  */
-const DELETED_WITH_TENANT = Object.freeze(["tenant_settings", "users", "subscriptions"]);
+const DELETED_WITH_TENANT = Object.freeze(["tenant_settings", "users", "client_facilities", "subscriptions"]);
 
 /** A tenant-scoped model and the attribute that carries its tenant. */
 interface ScopedModel {

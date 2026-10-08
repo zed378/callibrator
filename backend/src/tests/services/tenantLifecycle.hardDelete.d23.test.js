@@ -92,22 +92,23 @@ describe("D-23 — hard delete of an offboarded tenant", () => {
       .sort();
     const expected = scoped
       .map((m) => m.tableName)
-      .filter((t) => !TENANT_FK_CASCADE.includes(t) && !["tenant_settings", "users", "subscriptions"].includes(t))
+      .filter((t) => !TENANT_FK_CASCADE.includes(t) && !["tenant_settings", "users", "client_facilities", "subscriptions"].includes(t))
       .sort();
     expect(counted).toEqual(expected);
     // The regulated records are among them.
     expect(counted).toEqual(expect.arrayContaining(["audit_logs", "calibration_records", "certificates", "signature_records", "invoices"]));
   });
 
-  it("with nothing retained: settings, users and subscriptions, then the tenant row, and one audit row — in one transaction", async () => {
+  // P20-07: the tenant's client facilities (its self facility) go after its users, before the plan.
+  it("with nothing retained: settings, users, client facilities and subscriptions, then the tenant row, and one audit row — in one transaction", async () => {
     const res = await tenantLifecycle.hardDeleteOffboardedTenant(TENANT, { userId: "super-1", ipAddress: "10.0.0.1" });
 
-    expect(res).toEqual({ tenantId: TENANT, deleted: { tenant_settings: 2, users: 2, subscriptions: 2 } });
-    expect(mockCalls.destroyed.map(([t]) => t)).toEqual(["tenant_settings", "users", "subscriptions", "tenants"]);
-    for (const [table, options] of mockCalls.destroyed.slice(0, 3)) {
+    expect(res).toEqual({ tenantId: TENANT, deleted: { tenant_settings: 2, users: 2, client_facilities: 2, subscriptions: 2 } });
+    expect(mockCalls.destroyed.map(([t]) => t)).toEqual(["tenant_settings", "users", "client_facilities", "subscriptions", "tenants"]);
+    for (const [table, options] of mockCalls.destroyed.slice(0, 4)) {
       expect({ table, ...options }).toMatchObject({ table, force: true, skipTenantScope: true, transaction: "TX" });
     }
-    expect(mockCalls.destroyed[3][1]).toEqual({ force: true, transaction: "TX" });
+    expect(mockCalls.destroyed[4][1]).toEqual({ force: true, transaction: "TX" });
     expect(mockCalls.audit).toEqual([
       {
         row: expect.objectContaining({
@@ -120,7 +121,7 @@ describe("D-23 — hard delete of an offboarded tenant", () => {
           changes: {
             operation: "TENANT_HARD_DELETE",
             before: { name: "Closed Hospital", status: "deleted" },
-            deleted: { tenant_settings: 2, users: 2, subscriptions: 2 },
+            deleted: { tenant_settings: 2, users: 2, client_facilities: 2, subscriptions: 2 },
           },
         }),
         options: { transaction: "TX" },

@@ -334,6 +334,32 @@ describe("migration 0030 — tenant and regulated-user foreign keys (Q-16)", () 
       expect(log.ddl.some((d) => d.includes("capas.assigned_to") || d.includes("capas_assigned_to"))).toBe(false);
     });
 
+    it("A-366: a REFERENCE to a tenant that is not the row's owner is not this migration's — untouched, on a first run or a re-run", async () => {
+      // 0099 (access_requests.provisioned_tenant_id, SET NULL, NULL while pending) and 0113
+      // (upstream_file_imports.target_tenant_id, CASCADE) add these after 0030 has run, so only a
+      // re-run sees them — D-09's restore-without-schema_migrations. Before A-366 that re-run made
+      // provisioned_tenant_id NOT NULL and both RESTRICT (dataIdentity.dbA.live, PostgreSQL 18).
+      const catalog = oldCatalog();
+      catalog.fks.push(fk("access_requests", "provisioned_tenant_id", "SET NULL"));
+      catalog.fks.push(fk("upstream_file_imports", "target_tenant_id", "CASCADE"));
+      catalog.notNull.add("upstream_file_imports.target_tenant_id");
+      const { qi, state, log } = fakeQueryInterface(catalog);
+
+      await migration.up({ context: ctx(qi) });
+
+      expect(find(state, "access_requests", "provisioned_tenant_id")).toEqual([
+        expect.objectContaining({ name: "access_requests_provisioned_tenant_id_fkey", del: "n", upd: "c" }),
+      ]);
+      expect(find(state, "upstream_file_imports", "target_tenant_id")).toEqual([
+        expect.objectContaining({ name: "upstream_file_imports_target_tenant_id_fkey", del: "c", upd: "c" }),
+      ]);
+      expect(state.notNull.has("access_requests.provisioned_tenant_id")).toBe(false);
+      expect(log.ddl.some((d) => /access_requests|upstream_file_imports/.test(d))).toBe(false);
+      expect((state.stateTable ?? []).some((r) => /access_requests|upstream_file_imports/.test(r.table_name))).toBe(false);
+      // The owner columns are still all of it: tenant_id, and UsageMetrics' camel-case tenantId.
+      expect(migration.TENANT_OWNER_COLUMNS).toEqual(["tenant_id", "tenantId"]);
+    });
+
     it("replaces duplicate and oddly-named constraints on one column with exactly one", async () => {
       const catalog = oldCatalog();
       catalog.fks.push(fk("certificates", "tenant_id", "CASCADE", { name: "certificates_tenant_id_fkey1" }));

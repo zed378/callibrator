@@ -24,6 +24,8 @@
  * Run on PostgreSQL 18.6 (pgvector/pgvector:pg18) on 2026-09-25.
  */
 
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
+
 const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const APP_ROLE = process.env.DB_APP_ROLE || "callibrator_app";
@@ -173,6 +175,8 @@ live("A-215 / A-259 — live PostgreSQL", () => {
   describe("A-259", () => {
     beforeAll(async () => {
       const tenantId = g.constants.DEFAULT_TENANT.id;
+      // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+      await g.db.query(SELF_FACILITIES_SQL);
       const [[device]] = await g.db.query(
         `INSERT INTO calibration_devices (id, tenant_id, name, serial_number, iot_enabled, is_deleted,
                                           calibration_interval_days, created_at, updated_at)

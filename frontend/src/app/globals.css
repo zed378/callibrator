@@ -1,6 +1,13 @@
 @import "tailwindcss";
-/* P10-01 (ADR-098): the public surface's own tokens, scoped to [data-surface="public"]. */
-@import "./public-surface.css";
+/*
+ * ADR-131 (P10-18): this is the SIGNED-IN application's global sheet, imported
+ * only by app/(app)/layout.tsx. The public surface has its own (app/public.css,
+ * with public-surface.css); neither group imports the other's. The three
+ * partials below are shared by both sheets.
+ */
+@import "./styles/motion-tokens.css";
+@import "./styles/article-prose.css";
+@import "./styles/reduced-motion.css";
 
 /* Dark mode is class-based: `.dark` is toggled on <html> by ThemeContext. */
 @variant dark (&:is(.dark *));
@@ -88,29 +95,6 @@
   --color-priority-none: var(--priority-none);
 }
 
-/* ==========================================================================
-   MOTION TOKENS (immersive layer — FRONTEND.md Part I)
-   Shared easings / durations / stagger for GSAP, Framer, and CSS. Reduced
-   motion collapses the durations to 0 so every animation degrades to a static
-   end-state. Keep new visuals deriving from --primary/--accent so tenant
-   branding (TenantBrandingProvider) still recolors them.
-   ========================================================================== */
-:root {
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
-  --dur-fast: 220ms;
-  --dur-base: 480ms;
-  --dur-slow: 900ms;
-  --stagger: 60ms;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --dur-fast: 0ms;
-    --dur-base: 0ms;
-    --dur-slow: 0ms;
-  }
-}
 
 /*
  * ADR-122 (P11-01): the dashboard follows the warm palette (ADR-118) — warm
@@ -777,145 +761,5 @@ body {
   .animate-draw-check {
     animation: none !important;
     stroke-dashoffset: 0;
-  }
-}
-
-/* ==========================================================================
-   ARTICLE PROSE — typography for WYSIWYG content (public blog/news bodies +
-   the dashboard rich-text editor). Semantic tokens only; no typography plugin.
-   ========================================================================== */
-.article-prose {
-  color: var(--foreground);
-  font-size: 1.05rem;
-  line-height: 1.75;
-}
-.article-prose > :first-child {
-  margin-top: 0;
-}
-.article-prose h1 {
-  font-size: 1.9rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  margin: 2rem 0 0.75rem;
-}
-.article-prose h2 {
-  font-size: 1.55rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.2;
-  margin: 1.85rem 0 0.7rem;
-}
-.article-prose h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 1.5rem 0 0.6rem;
-}
-.article-prose p {
-  margin: 0 0 1.1rem;
-}
-.article-prose a {
-  color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.article-prose a:hover {
-  opacity: 0.85;
-}
-.article-prose ul,
-.article-prose ol {
-  margin: 0 0 1.1rem;
-  padding-left: 1.5rem;
-}
-.article-prose ul {
-  list-style: disc;
-}
-.article-prose ol {
-  list-style: decimal;
-}
-.article-prose li {
-  margin: 0.3rem 0;
-}
-.article-prose blockquote {
-  margin: 1.5rem 0;
-  padding: 0.25rem 0 0.25rem 1.25rem;
-  border-left: 3px solid var(--primary);
-  color: var(--muted-foreground);
-  font-style: italic;
-}
-.article-prose img {
-  border-radius: 0.75rem;
-  margin: 1.5rem 0;
-  max-width: 100%;
-  height: auto;
-}
-.article-prose figure {
-  margin: 1.5rem 0;
-}
-.article-prose figcaption {
-  margin-top: 0.5rem;
-  font-size: 0.85rem;
-  color: var(--muted-foreground);
-  text-align: center;
-}
-.article-prose strong {
-  font-weight: 700;
-  color: var(--foreground);
-}
-.article-prose code {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  background: var(--muted);
-  padding: 0.15em 0.4em;
-  border-radius: 0.35rem;
-}
-.article-prose pre {
-  background: var(--muted);
-  padding: 1rem;
-  border-radius: 0.75rem;
-  overflow-x: auto;
-  margin: 1.5rem 0;
-}
-.article-prose pre code {
-  background: none;
-  padding: 0;
-}
-.article-prose hr {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 2rem 0;
-}
-/* TipTap empty-editor placeholder */
-.article-prose p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  color: var(--muted-foreground);
-  float: left;
-  height: 0;
-  pointer-events: none;
-}
-
-/* ==========================================================================
-   Reduced motion, everywhere (ADR-090 amendment; automate/a11y.browser.js).
-   The blocks above stop named loops one class at a time, and the browser
-   suite found what that misses: the sign-in page's fade/scale entrances, the
-   landing page's ping and nav transitions. With `reduce`, every animation and
-   transition finishes at once in its end state (the entrance classes all use
-   `forwards`, so content lands visible). A spinner keeps turning: it is a
-   status, not decoration, and freezing it reads as a hang.
-   ========================================================================== */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-delay: 0ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    transition-delay: 0ms !important;
-    scroll-behavior: auto !important;
-  }
-  .animate-spin {
-    animation-duration: 1s !important;
-    animation-iteration-count: infinite !important;
   }
 }

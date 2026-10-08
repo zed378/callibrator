@@ -27,6 +27,7 @@
 
 const { enterAppRole, grantAppRoleOnSyncedSchema, APP_ROLE } = require("../fixtures/liveBoot");
 const { LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
 const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -86,6 +87,8 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
   };
 
   const device = async (tenantId, serial) => {
+    // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+    await g.db.query(SELF_FACILITIES_SQL);
     const [[row]] = await g.db.query(
       `INSERT INTO calibration_devices (id, tenant_id, name, serial_number, iot_enabled, is_deleted,
                                         calibration_interval_days, created_at, updated_at)
@@ -186,7 +189,9 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
 
       const row = await g.models.User.unscoped().findByPk(ids.technician, { paranoid: false });
       expect(row).not.toBeNull();
-      expect(row.toJSON()).toMatchObject({
+      // The STORED values: toJSON() drops the secret attributes since models/secretAttributes.ts
+      // (it never reaches res.json), so it cannot show that the erasure cleared them.
+      expect(row.get({ plain: true })).toMatchObject({
         id: ids.technician,
         tenantId: TENANT_A,
         email: `erased_${ids.technician}@erased.local`,
@@ -317,9 +322,11 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
   // ------------------------------------------------------------------
   describe("D-40 — two code-less tenants issue certificates on the same day", () => {
     it("both succeed with distinct, tenant-specific numbers", async () => {
+      // As the controller calls it since A-282 (ADR-100): the audit actor is the principal, and a
+      // call without one fails closed ("An audit entry must name its actor").
       const issue = (tenantId, userId, deviceId) =>
         app.tenantStorage.run({ tenantId }, () =>
-          app.certificates.createCertificate(tenantId, userId, { deviceId }),
+          app.certificates.createCertificate(tenantId, userId, { deviceId }, { userId }),
         );
 
       const a = await issue(TENANT_A, ids.dpo, ids.deviceA);
@@ -372,6 +379,19 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
 
       expect(reapplied.length).toBeGreaterThan(50);
       expect(await rowCounts()).toEqual(before);
+      // A-366: 0030's re-run leaves a tenant REFERENCE that is not the row's owner as its own
+      // migration made it (0099: nullable, SET NULL; 0113: CASCADE) — it made them NOT NULL / RESTRICT.
+      const [refs] = await g.db.query(
+        `SELECT cl.relname AS t, a.attname AS c, c.confdeltype AS del, a.attnotnull AS not_null
+           FROM pg_constraint c JOIN pg_class cl ON cl.oid = c.conrelid
+           JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+          WHERE c.contype = 'f' AND c.confrelid = 'tenants'::regclass
+            AND a.attname IN ('provisioned_tenant_id', 'target_tenant_id') ORDER BY 1`,
+      );
+      expect(refs).toEqual([
+        { t: "access_requests", c: "provisioned_tenant_id", del: "n", not_null: false },
+        { t: "upstream_file_imports", c: "target_tenant_id", del: "c", not_null: true },
+      ]);
       // Every migration, twice: well past jest's 10 s default on PG 18.
     }, 180000);
   });

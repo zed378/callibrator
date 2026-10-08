@@ -33,6 +33,7 @@
  */
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
 const live = process.env.BACKGROUND_JOBS_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -80,6 +81,8 @@ live("background jobs — tenant context, audit and bounds on live PostgreSQL (W
         { id, tenantId, name, email: `${name}@example.test` },
       );
     }
+    // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+    await q(SELF_FACILITIES_SQL);
     await q(
       `INSERT INTO calibration_devices (id, tenant_id, name, status, iot_enabled, reading_tolerance, created_at, updated_at)
        VALUES (:d, :t, 'Fridge probe', 'active', true, '{"temperature": {"max": 50}}', now(), now())`,

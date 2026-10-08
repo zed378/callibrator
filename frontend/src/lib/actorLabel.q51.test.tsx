@@ -7,9 +7,9 @@
  */
 import { render, screen } from "@testing-library/react";
 import { actorLabel } from "./actorLabel";
-import { AdjustmentsTable } from "@/app/dashboard/stock/components/AdjustmentsTable";
-import { TransfersTable } from "@/app/dashboard/stock/components/TransfersTable";
-import { CalibrationRecordsTable } from "@/app/dashboard/calibration/components/CalibrationRecordsTable";
+import { AdjustmentsTable } from "@/app/(app)/dashboard/stock/components/AdjustmentsTable";
+import { TransfersTable } from "@/app/(app)/dashboard/stock/components/TransfersTable";
+import { CalibrationRecordsTable } from "@/app/(app)/dashboard/calibration/components/CalibrationRecordsTable";
 import type { StockAdjustment, StockTransfer } from "@/types";
 import type { Calibration } from "@/api/services/calibration.service";
 

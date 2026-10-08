@@ -37,6 +37,7 @@ import * as bootstrapCredential from "./bootstrapCredential.service";
 import { isProduction as loadedIsProduction } from "../config/env";
 import { AppError as LoadedAppError } from "../utils/appError.util";
 import featureFlagService from "./featureFlag.service";
+import { createSelfFacility } from "./clientFacility.service";
 import seedMenuGroupsUtil from "../utils/seedMenuGroups.util";
 // The JavaScript also destructured ROLE_NAMES, PASSWORD_SALT_ROUNDS,
 // PERMISSION_TYPES, MENU_SLUGS and PROFILE_SUB_ROUTES and never read them (the
@@ -611,6 +612,10 @@ async function seedPlatformTenant(): Promise<void> {
     await Tenant.create({ ...PLATFORM_TENANT });
     logger.info(`Created platform tenant: ${PLATFORM_TENANT.name}`);
   }
+  // P20-07 (ADR-124 Am. 2 § 4): PLATFORM has its self facility like every tenant — ensured on
+  // every seed (find, else create and audit), so a database seeded before migration 0117 ran, or a
+  // row created here, never stays without one.
+  await createSelfFacility(PLATFORM_TENANT);
 }
 
 /**
@@ -630,6 +635,8 @@ async function seedDefaultTenant(): Promise<undefined> {
       await Tenant.create(DEFAULT_TENANT);
       logger.info(`Created default tenant: ${DEFAULT_TENANT.name}`);
     }
+    // P20-07: ensured, as for PLATFORM above.
+    await createSelfFacility(DEFAULT_TENANT);
   } catch (error) {
     logger.error(`Failed to seed default tenant: ${errMsg(error)}`);
     throw error;
@@ -962,11 +969,13 @@ interface DemoCounts {
 async function seedDemoTenants(): Promise<number> {
   let created = 0;
   for (const t of DEMO_TENANTS) {
-    const [, wasCreated] = await Tenant.findOrCreate({
+    const [tenant, wasCreated] = await Tenant.findOrCreate({
       where: { subdomain: t.subdomain },
       defaults: { ...t, isDeleted: false },
       paranoid: false,
     });
+    // P20-07: every tenant has its self facility (ensured: a re-seed finds it).
+    await createSelfFacility({ id: tenant.id, name: tenant.name ?? t.name });
     if (wasCreated) {
       created += 1;
     }

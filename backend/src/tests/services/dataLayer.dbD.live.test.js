@@ -18,9 +18,13 @@
  *  - D-29: 0019's `up`, re-run against a table whose signing-key index exists
  *    only under ANOTHER name, does not create a second one.
  *
- * OPT-IN — needs a scratch database ALREADY BOOTED the way backend/index.js
- * boots (db.sync(), then every migration), whose name contains "scratch", and
- * DB_APP_ROLE naming the role migration 0057 created:
+ * OPT-IN — needs a scratch database (its name contains "scratch") and
+ * DB_APP_ROLE naming the application role. The suite boots the schema the way
+ * backend/index.js does (fixtures/liveBoot#bootSchema: db.sync(), then every
+ * migration — 0057 creates and grants DB_APP_ROLE) as the owner before it
+ * switches role; on an already-booted database that applies nothing. (It used
+ * to ASSUME a booted database: on a fresh one every case failed in beforeAll
+ * with no message — 2026-10-08, the live-suites repair.)
  *
  *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55922 DB_NAME=dbd_fresh_scratch \
  *     DB_USER=postgres DB_PASS=x DB_APP_ROLE=dbd_fresh_app \
@@ -98,6 +102,8 @@ live("dbD — ADR-083 on live PostgreSQL 18, as the application role", () => {
       throw new Error("Set DB_APP_ROLE: this test runs as the application role");
     }
     g = startProcess();
+    // As the owner, before anything else: sync + every migration (none pending on a booted database).
+    await require("../fixtures/liveBoot").bootSchema(g.db, require("../../config/migrator").migrator);
 
     // D-29, as the OWNER (DDL): the signing-key index under another name only.
     const qi = g.db.getQueryInterface();

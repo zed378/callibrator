@@ -109,6 +109,56 @@ interface TableRow {
   table_name: string;
 }
 
+/** A P20-07 control object (frozen). */
+const control = (kind: ExpectedObjectKind, table: string, name: string, why: string): ExpectedObject =>
+  Object.freeze({ kind, table, name, why });
+
+/** The NOT NULL children of calibration_devices (migrations 0119 – 0122), and whether each refuses an ended facility. */
+const P2007_CHILDREN: readonly (readonly [table: string, migration: string, open: boolean])[] = Object.freeze([
+  ["calibration_records", "0119", true],
+  ["certificates", "0120", true],
+  ["maintenance_work_orders", "0121", true],
+  ["iot_readings", "0122", false],
+]);
+
+const P2007_OBJECTS: readonly ExpectedObject[] = Object.freeze([
+  control("index", "client_facilities", "client_facilities_one_self", "P20-07 / ADR-124 Am. 2: exactly one self facility per tenant (migration 0117)"),
+  control("index", "client_facilities", "client_facilities_tenant_id_id_unique", "P20-07 / ADR-124 § 2: the composite-key target (tenant_id, id) (migration 0117)"),
+  control("constraint", "client_facilities", "client_facilities_self_active", "P20-07 / ADR-124 Am. 2: a tenant's self facility is always active (migration 0117)"),
+  control("trigger", "client_facilities", "client_facilities_identity_immutable", "P20-07 / ADR-124 Am. 2: a facility's id, tenant and self flag never change (migration 0117)"),
+  control("trigger", "client_facility_moves", "client_facility_moves_append_only", "P20-07 / ADR-124 Am. 2: a device move only completes, never changes or disappears (migration 0117)"),
+  control("trigger", "client_facility_moves", "client_facility_moves_no_truncate", "P20-07 / ADR-124 Am. 2: the move log cannot be truncated (migration 0117)"),
+  control("trigger", "client_facility_moves", "client_facility_moves_complete_at_commit", "P20-07 / ADR-124 Am. 2: no transaction commits a move left in progress (migration 0117)"),
+  control("trigger", "calibration_devices", "calibration_devices_facility_default", "P20-07 / ADR-124 Am. 3: a device written without a facility gets the self facility (migration 0118)"),
+  control("trigger", "calibration_devices", "calibration_devices_facility_open", "P20-07 / ADR-124 Am. 2: no device is added to an ended facility (migration 0118)"),
+  control("trigger", "calibration_devices", "calibration_devices_facility_guard", "P20-07 / ADR-124 Am. 2 (AM-6): a device's facility changes only by an audited move (migration 0118)"),
+  control("constraint", "calibration_devices", "calibration_devices_client_facility_fkey", "P20-07 / ADR-124 § 3: a device names a facility of its own tenant (migration 0118)"),
+  ...P2007_CHILDREN.flatMap(([table, migration, open]) => [
+    control("trigger", table, `${table}_facility_default`, `P20-07 / ADR-124 Am. 3: a row written without a facility takes its device's (migration ${migration})`),
+    ...(open ? [control("trigger", table, `${table}_facility_open`, `P20-07 / ADR-124 Am. 2: no row is added to an ended facility (migration ${migration})`)] : []),
+    control("trigger", table, `${table}_facility_guard`, `P20-07 / ADR-124 Am. 2 (AM-6): the facility changes only by a device move (migration ${migration})`),
+    control("constraint", table, `${table}_device_facility_fkey`, `P20-07 / ADR-124 Am. 2: a row's facility is its device's, and follows a move (migration ${migration})`),
+  ]),
+  control("constraint", "certificates", "certificates_record_facility_fkey", "P20-07 / ADR-124 Am. 2: a certificate's record is in its facility, checked at commit (migration 0120)"),
+  control("trigger", "attachments", "attachments_facility_default", "P20-07 / ADR-124 Am. 3: a linked file takes its record's facility (migration 0123)"),
+  control("trigger", "attachments", "attachments_facility_open", "P20-07 / ADR-124 Am. 2: no file is added to an ended facility (migration 0123)"),
+  control("trigger", "attachments", "attachments_facility_guard", "P20-07 / ADR-124 Am. 2 (AM-6): a file's facility changes only by a device move (migration 0123)"),
+  control("trigger", "attachments", "attachments_facility_matches_resource", "P20-07 / AM-7: a file's facility equals its record's, at commit (migration 0123)"),
+  control("constraint", "attachments", "attachments_facility_kind", "P20-07 / ADR-124 § 3: a file has a facility exactly when linked to a facility-scoped record (migration 0123)"),
+  ...["calibration_devices", "calibration_records", "certificates", "maintenance_work_orders"].map((table) =>
+    control("trigger", table, `${table}_attachments_follow_facility`, "P20-07 / AM-7: a record whose facility changed leaves no file behind, at commit (migration 0123)"),
+  ),
+  control("trigger", "non_conformances", "non_conformances_facility_default", "P20-07 / ADR-124 Am. 3: an NC takes its device's facility, none without a device (migration 0123)"),
+  control("trigger", "non_conformances", "non_conformances_facility_open", "P20-07 / ADR-124 Am. 2: no NC is added to an ended facility (migration 0123)"),
+  control("trigger", "non_conformances", "non_conformances_facility_guard", "P20-07 / ADR-124 Am. 2 (AM-6): an NC's facility changes only by a device move (migration 0123)"),
+  control("constraint", "non_conformances", "non_conformances_facility_follows_device", "P20-07 / ADR-124 § 3: an NC has a facility exactly when it has a device (migration 0123)"),
+  control("constraint", "non_conformances", "non_conformances_device_facility_fkey", "P20-07 / ADR-124 Am. 2: an NC's facility is its device's (migration 0123)"),
+  control("constraint", "warehouses", "warehouses_client_facility_fkey", "P20-07 / ADR-124 § 3: a room names a facility of its own tenant (migration 0123)"),
+  control("constraint", "users", "users_client_facility_fkey", "P20-07 / ADR-124 § 4: a bound user names a facility of its own tenant (migration 0123)"),
+  control("trigger", "users", "users_facility_binding_guard", "P20-07 / ADR-124 Am. 2 § 6: a binding changes only by the binding operation (migration 0123)"),
+  control("trigger", "users", "users_facility_bound_role", "P20-07 / ADR-124 § 4: a bound user holds one of the four facility roles (migration 0123)"),
+]);
+
 /**
  * Objects that live only in migrations and carry a control. Each is checked
  * by name on its table.
@@ -132,11 +182,13 @@ const EXPECTED_OBJECTS: readonly ExpectedObject[] = Object.freeze([
     name: "calibration_records_void_reason_check",
     why: "P6-03: a voided calibration record names a reason (migration 0057)",
   }),
+  // UD-9 (P20-07, migration 0118): 0026's per-tenant serial index became per FACILITY — identical
+  // for a tenant with one facility.
   Object.freeze({
     kind: "index",
     table: "calibration_devices",
-    name: "calibration_devices_tenant_id_serial_number_unique",
-    why: "P6-06 / ADR-049: serial numbers are unique per tenant (migration 0026)",
+    name: "calibration_devices_tenant_facility_serial_unique",
+    why: "P6-06 / ADR-049, UD-9: serial numbers are unique per client facility (migration 0118, replacing 0026's per-tenant index)",
   }),
   Object.freeze({
     kind: "trigger",
@@ -306,6 +358,11 @@ const EXPECTED_OBJECTS: readonly ExpectedObject[] = Object.freeze([
     name: "inspection_template_versions_publisher_exactly_one",
     why: "P20-03 / ADR-125 Am. 1: a published version names exactly one publisher, a user or a system actor (migration 0112)",
   }),
+  // P20-07 (migrations 0117 – 0123; ADR-124 Am. 2, Am. 3): the client-facility dimension's controls —
+  // one self facility per tenant, the facility column immutable outside a move, the insert default
+  // every existing create path relies on, no insert into an ended facility, the composite keys that
+  // keep a child in its device's facility, the AM-7 attachment triggers, the user-binding triggers.
+  ...P2007_OBJECTS,
 ]);
 
 const TAG = "[schema-verify]";

@@ -794,11 +794,26 @@ export const migrationFiles = (): string[] => {
   return out.sort();
 };
 
+/**
+ * P20-07: a module SHARED by migrations (`*.shared.ts`, e.g. facilityMigration.shared.ts) has no
+ * `up` of its own. It may hold helpers, but never a statement that adds a column or creates an
+ * index — those stay literal in each migration's own `up`, where this reader sees them. A shared
+ * module whose code (comments aside) mentions either is UNRESOLVED (the closed world holds).
+ */
+const SHARED_MODULE = /\.shared\.(js|ts)$/;
+export const scanSharedModuleSource = (rel: string, text: string): Scan => {
+  const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const columns = /ADD\s+COLUMN/i.test(code) ? [`${rel}: a shared migration module adds a column — write it in the migration's own up`] : [];
+  const indexes = /CREATE\s+(?:UNIQUE\s+)?INDEX/i.test(code) ? [`${rel}: a shared migration module creates an index — write it in the migration's own up`] : [];
+  return { added: [], unresolved: columns, indexes: [], dropped: [], unresolvedIndexes: indexes };
+};
+
 export const scanMigrations = (): Scan => {
   const all: Scan = { added: [], unresolved: [], indexes: [], dropped: [], unresolvedIndexes: [] };
   for (const full of migrationFiles()) {
     const rel = path.relative(MIGRATIONS_DIR, full).split(path.sep).join("/");
-    const one = scanMigrationSource(rel, fs.readFileSync(full, "utf8"));
+    const text = fs.readFileSync(full, "utf8");
+    const one = SHARED_MODULE.test(rel) ? scanSharedModuleSource(rel, text) : scanMigrationSource(rel, text);
     all.added.push(...one.added);
     all.indexes.push(...one.indexes);
     all.dropped.push(...one.dropped);

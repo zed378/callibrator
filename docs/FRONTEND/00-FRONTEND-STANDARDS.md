@@ -89,7 +89,7 @@ A service therefore calls relative `/api/v1/…` paths through `client.ts`; it n
 
 As built (ADR-071): the content origin sends a **per-request nonce CSP with `'strict-dynamic'`**, minted in `src/proxy.ts` (the Next 16 "proxy", formerly middleware) and built by `src/lib/securityHeaders.ts`. What that means for code:
 
-- **Every page renders per request.** The root layout reads `headers()` and exports `instant = false`; a prerendered page or static shell would have no nonce and none of its scripts would run. `use cache` data caching is unaffected.
+- **Every page renders per request.** Each root layout reads `headers()` (through `app/rootDocument.tsx`) and exports `instant = false` — since ADR-131 there are two, `app/(public)/layout.tsx` and `app/(app)/layout.tsx`, plus `app/global-not-found.tsx`; a prerendered page or static shell would have no nonce and none of its scripts would run. `use cache` data caching is unaffected.
 - **No inline `<script>` of your own** except through the nonce (`x-nonce`, read in a Server Component — `ThemeInitScript` is the one). No `on*=` attributes (`script-src-attr 'none'`), no `eval`.
 - **A `<style>` element needs the nonce; a `style={{…}}` attribute does not** (`style-src-attr 'unsafe-inline'`). Prefer Tailwind classes; do not inject `<style>`.
 - **Images come from `'self'`, `data:`, `blob:` and the API origin only.** An absolute URL to another host does not load — upload the file instead.
@@ -154,6 +154,21 @@ Rendering an empty list when the request failed is a lie about a compliance figu
 ## Styling
 
 Tailwind, with semantic tokens from `globals.css`. Components reference **semantic** tokens, never primitives — that is what makes theming and tenant branding work without touching a component.
+
+**Two root layouts, two global sheets (ADR-131, built 2026-10-08 by P10-18).** The App Router tree is split into two route groups — folders, not URL segments, so no path changed:
+
+| Group | Root layout | Global sheet | What lives there |
+|---|---|---|---|
+| `app/(public)/` | `(public)/layout.tsx` | `app/public.css` — `public-surface.css` (the `--pub-*` tokens) + a Tailwind build that scans **only** its `@source` paths | the landing, sign-in, request access, forgot password, invitation, `/verify/*`, blog, news |
+| `app/(app)/` | `(app)/layout.tsx` | `app/globals.css` — the dashboard tokens (ADR-090/122) and Tailwind for the whole app | the dashboard, and the flows drawn in its look: `/activation`, `/sso-callback`, `/oauth/consent` |
+
+- **The rule for a new page:** a page that renders through `AuthShell` / `PublicSurface` / `ContentShell` or the `--pub-*` tokens goes in `(public)`; a page that renders dashboard components or tokens goes in `(app)`.
+- **Both layouts render through `app/rootDocument.tsx`** (nonce on the theme script, `lang`, metadata, no client providers) and declare `export const instant = false` themselves; `tests/guards/rootLayouts.p1018.guard.test.ts` holds them to it.
+- **Neither group imports the other's sheet.** The two share three partials (`app/styles/motion-tokens.css`, `article-prose.css`, `reduced-motion.css`).
+- **`public.css`'s `@source` list is a boundary:** a component a public page renders from outside it gets no utilities, in production only. `tests/guards/publicSheet.p1018.guard.test.ts` walks the public import graph and fails on such a file — add its folder to the list.
+- **Crossing groups is a full document load** (sign-in `/login` → `/dashboard`, sign-out, a dashboard link to `/verify/*`). The theme choice carries through `localStorage` and the pre-paint script; nothing else may rely on client state surviving the crossing.
+- **404 and errors:** a URL no route matches renders `app/global-not-found.tsx` (public sheet; `experimental.globalNotFound`); `notFound()` renders the group's own `not-found.tsx`; each group has its own `error.tsx` (`PublicRouteError` / `RouteError`), each one `<main>` and one `<h1>`.
+- **Fonts:** Inter and Space Grotesk are declared only in `(app)/layout.tsx`; the public faces in `fonts/public.ts`; JetBrains Mono, used by both, in `fonts/mono.ts`.
 
 No CSS-in-JS. No component-scoped stylesheets except where a third-party library requires one.
 

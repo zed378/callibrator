@@ -13,9 +13,13 @@
  *    rows and recent ones, and writes a system-actor audit row per tenant that
  *    satisfies migration 0033's actor CHECK.
  *
- * OPT-IN — needs a scratch database ALREADY BOOTED the way backend/index.js
- * boots (db.sync(), then every migration), whose name contains "scratch", and
- * DB_APP_ROLE naming the role migration 0057 created:
+ * OPT-IN — needs a scratch database (its name contains "scratch") and
+ * DB_APP_ROLE naming the application role. The suite boots the schema the way
+ * backend/index.js does (fixtures/liveBoot#bootSchema: db.sync(), then every
+ * migration — 0057 creates and grants DB_APP_ROLE) as the owner before it
+ * switches role; on an already-booted database that applies nothing. (It used
+ * to ASSUME a booted database: on a fresh one every case failed in beforeAll
+ * with no message — 2026-10-08, the live-suites repair.)
  *
  *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55611 DB_NAME=dbc_fresh_scratch \
  *     DB_USER=postgres DB_PASS=x DB_APP_ROLE=callibrator_app \
@@ -23,6 +27,8 @@
  *
  * Every run creates its own tenants, so it can be re-run on the same database.
  */
+
+const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
 const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -74,6 +80,36 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
       )
     ).id;
 
+  /**
+   * P20-07: a PRE-A-97 attachment naming another tenant's record cannot be written any more — the
+   * AM-7 trigger refuses it at commit (migration 0123). Such a row can only exist as the upgrade
+   * left it: back-filled to its own tenant's self facility. The fixture builds exactly that, as the
+   * owner, with the AM-7 trigger lifted for its one INSERT inside a transaction (DDL is
+   * transactional: no other session ever sees it off). The trigger is never weakened for the code
+   * under test.
+   */
+  const legacyAttachment = async (tenantId, resourceType, resourceId) => {
+    const { Sequelize } = require("sequelize");
+    const owner = new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASS, {
+      host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 5432), dialect: "postgres", logging: false,
+    });
+    try {
+      return await owner.transaction(async (transaction) => {
+        await owner.query("ALTER TABLE attachments DISABLE TRIGGER attachments_facility_matches_resource", { transaction });
+        const [[row]] = await owner.query(
+          `INSERT INTO attachments (id, tenant_id, resource_type, resource_id, client_facility_id, file_name, original_name, created_at, updated_at)
+           VALUES (gen_random_uuid(), :tenantId, :resourceType, :resourceId,
+                   (SELECT id FROM client_facilities WHERE tenant_id = :tenantId AND is_self), 'f.bin', 'f.pdf', now(), now()) RETURNING id`,
+          { transaction, replacements: { tenantId, resourceType, resourceId } },
+        );
+        await owner.query("ALTER TABLE attachments ENABLE ALWAYS TRIGGER attachments_facility_matches_resource", { transaction });
+        return row.id;
+      });
+    } finally {
+      await owner.close();
+    }
+  };
+
   beforeAll(async () => {
     if (!/scratch/.test(process.env.DB_NAME || "")) {
       throw new Error(`Refusing DB_NAME="${process.env.DB_NAME}": use a scratch database`);
@@ -82,6 +118,8 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
       throw new Error("Set DB_APP_ROLE: this test runs as the application role");
     }
     g = startProcess();
+    // As the owner, before anything else: sync + every migration (none pending on a booted database).
+    await require("../fixtures/liveBoot").bootSchema(g.db, require("../../config/migrator").migrator);
     await g.dbRole.enterApplicationRole({ sequelize: g.db, logger: { info() {}, warn() {} } });
     expect((await one("SELECT current_user AS u")).u).toBe(process.env.DB_APP_ROLE);
 
@@ -100,6 +138,8 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
         { t: A, u: `dbc-${tag}`, e: `dbc-${tag}@dbc.test` },
       )
     ).id;
+    // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
+    await q(SELF_FACILITIES_SQL);
     const device = async (tenantId) =>
       (
         await one(
@@ -134,7 +174,7 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
     const a2 = await attachment(A, "Certificate", ids.certA);
     const onDevice = await attachment(A, "device", ids.deviceA);
     // Tenant B's row naming A's certificate id (a pre-A-97 row): not A's to touch.
-    const foreign = await attachment(B, "certificate", ids.certA);
+    const foreign = await legacyAttachment(B, "certificate", ids.certA);
 
     const result = await inTenant(A, () =>
       g.certificates.deleteCertificate(A, ids.certA, { userId: ids.user, ipAddress: "127.0.0.1" }),
@@ -178,7 +218,9 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
       await one(
         `INSERT INTO maintenance_work_orders (id, tenant_id, device_id, title, created_at, updated_at, deleted_at)
          VALUES (gen_random_uuid(), :t, :d, 'gone', now(), now(), now()) RETURNING id`,
-        { t: A, d: ids.deviceB },
+        // P20-07: the work order is A's, on A's (deleted) device — a work order on another tenant's
+        // device is refused by the composite key (0121); the parent missing or deleted is the point.
+        { t: A, d: ids.deviceA },
       )
     ).id;
     const voided = (
@@ -191,7 +233,7 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
     ).id;
     const deletedParent = await attachment(A, "workorder", order);
     const unlinkable = await attachment(A, "post", randomUUID());
-    const crossTenant = await attachment(A, "certificate", ids.certB);
+    const crossTenant = await legacyAttachment(A, "certificate", ids.certB);
     const voidedEvidence = await attachment(A, "calibration", voided);
     const liveParent = await attachment(B, "certificate", ids.certB);
     const standalone = await attachment(A, "generic", null);

@@ -1,0 +1,28 @@
+/*
+ * ADR-131 (P10-18): shared by both global sheets — app/globals.css (the signed-in
+ * application) and app/public.css (the public surface) — so the two cannot
+ * drift. Moved here unchanged from globals.css.
+ */
+/* ==========================================================================
+   MOTION TOKENS (immersive layer — FRONTEND.md Part I)
+   Shared easings / durations / stagger for GSAP, Framer, and CSS. Reduced
+   motion collapses the durations to 0 so every animation degrades to a static
+   end-state. Keep new visuals deriving from --primary/--accent so tenant
+   branding (TenantBrandingProvider) still recolors them.
+   ========================================================================== */
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+  --dur-fast: 220ms;
+  --dur-base: 480ms;
+  --dur-slow: 900ms;
+  --stagger: 60ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+}

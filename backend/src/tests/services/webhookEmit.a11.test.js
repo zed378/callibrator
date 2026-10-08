@@ -342,7 +342,7 @@ describe("A-11 — the catalogue is what is emitted", () => {
 
   it("the frontend offers exactly `*` and the catalogue — and no longer the inert webhook.test", () => {
     const modal = fs.readFileSync(
-      path.join(__dirname, "../../../../frontend/src/app/dashboard/webhooks/components/WebhookModal.tsx"),
+      path.join(__dirname, "../../../../frontend/src/app/(app)/dashboard/webhooks/components/WebhookModal.tsx"),
       "utf8",
     );
     const block = modal.match(/const PREDEFINED_EVENTS = \[([\s\S]*?)\];/)[1];

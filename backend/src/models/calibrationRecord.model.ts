@@ -17,7 +17,7 @@ import {
   type Sequelize,
 } from "sequelize";
 import { jsonShape, type CalibrationResults } from "../utils/jsonShape.util";
-import type { TenantId, UserId } from "../types/ids";
+import type { ClientFacilityId, TenantId, UserId } from "../types/ids";
 import type { DefaultScoped, ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -36,6 +36,16 @@ interface CalibrationRecord extends Model<
   id: CreationOptional<string>;
   tenantId: TenantId;
   deviceId: string;
+
+  /**
+   * P20-07 (ADR-124 Am. 2 and Am. 3): the device's client facility, always. NOT NULL in the
+   * database (migration 0119) with the composite foreign key `(tenant_id, client_facility_id,
+   * device_id)` → calibration_devices `(tenant_id, client_facility_id, id)` ON UPDATE CASCADE — a
+   * row can name no other facility than its device's, and a device move carries it along. Optional
+   * on create: the database fills it from the device (Am. 3). Never changed except by that
+   * cascade under `callibrator.facility_move` (P21-09). No index or key declared here (ADR-100 Am. 3).
+   */
+  clientFacilityId: CreationOptional<ClientFacilityId>;
   /** Null when an API key recorded it (Q-51): then `apiKeyId` names it. Exactly one is set (CHECK, migration 0105). */
   performedBy: UserId | null;
   /** The API key that recorded it (Q-51); null for a user. Content: immutable after insert (0057 trigger). */
@@ -104,6 +114,12 @@ const defineModel: DefineCalibrationRecord = (db, DataTypes) => {
         allowNull: false,
         references: { model: "calibration_devices", key: "id" },
         onDelete: "RESTRICT",
+      },
+      // P20-07: NOT NULL in the database; allowNull here because the database fills it from the
+      // device on insert (ADR-124 Am. 3). The composite key lives in the migration.
+      clientFacilityId: {
+        type: DataTypes.UUID,
+        allowNull: true,
       },
       // Q-51: nullable — a record an API key wrote names the key in
       // api_key_id instead. CHECK calibration_records_actor_exactly_one

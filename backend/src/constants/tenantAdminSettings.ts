@@ -22,7 +22,7 @@
  * through their own endpoints.
  *
  * The list is derived from the code, not invented (2026-09-24):
- *  - WRITTEN by the frontend: the SSO form (frontend/src/app/dashboard/tenants/
+ *  - WRITTEN by the frontend: the SSO form (frontend/src/app/(app)/dashboard/tenants/
  *    components/sso/useSsoSettings.ts) — the six `sso_*` keys. It is the only
  *    screen that calls `PATCH /tenants/settings`; branding uses tenant columns.
  *  - READ by the backend with no other writer:

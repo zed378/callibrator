@@ -40,6 +40,7 @@
     "build:dist": "tsx scripts/build-dist.ts",
     "typecheck": "node ../node_modules/@typescript/native/bin/tsc -p tsconfig.json --noEmit",
     "ratchet": "tsx scripts/ts-ratchet.ts",
+    "test:live": "tsx scripts/live-suites.ts",
     "openapi:generate": "tsx scripts/openapi.ts generate",
     "openapi:check": "tsx scripts/openapi.ts check",
     "openapi:lint": "tsx scripts/openapi.ts lint",

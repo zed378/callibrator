@@ -12,9 +12,9 @@ import fs from "node:fs";
 import path from "node:path";
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ConfirmationModal } from "@/app/dashboard/session-management/components/ConfirmationModal";
-import { DeleteTenantModal } from "@/app/dashboard/tenants/components/DeleteTenantModal";
-import { RolesDeleteConfirm } from "@/app/dashboard/roles/components/RolesDeleteConfirm";
+import { ConfirmationModal } from "@/app/(app)/dashboard/session-management/components/ConfirmationModal";
+import { DeleteTenantModal } from "@/app/(app)/dashboard/tenants/components/DeleteTenantModal";
+import { RolesDeleteConfirm } from "@/app/(app)/dashboard/roles/components/RolesDeleteConfirm";
 import { axeViolations } from "@/tests/a11y/axe";
 
 const CASES: Array<[string, (onClose: () => void) => React.ReactElement, RegExp]> = [

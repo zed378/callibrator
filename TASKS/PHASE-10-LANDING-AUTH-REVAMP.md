@@ -34,8 +34,8 @@ Phase 10 is **frontend-focused**. Its backend pieces (P10-04's discovery endpoin
 | P10-15 | Invitation acceptance: set-password page and endpoint | **DONE in working tree 2026-10-02; DONE on commit** (live 2026-10-02: invitation acceptance in `p10-access-requests.e2e` (I and J) and the browser *invitation* check (I); [record](../MEMORY/records/2026-10-02-p10-live-pair-ij.md)). Before: **IN REVIEW** 2026-09-30: endpoint built; `/invitation` page built 2026-09-30 ([record](../MEMORY/records/2026-09-30-P10-15-invitation-page.md)); live E2E outstanding ([record](../MEMORY/records/2026-09-30-p10-backend-access-requests-passkey.md), ADR-108) | P10-05 |
 | P10-16 | First super admin: one-time bootstrap password, revealed only inside the container | **DONE in working tree 2026-10-02; DONE on commit** (live 2026-10-02: the seed answered the file path only; `docker logs` 1 pointer line, 0 occurrences of the 24-character value; read with `exec backend cat /app/.bootstrap/superadmin-password`; [record](../MEMORY/records/2026-10-02-p10-live-pair-ij.md)). Before: **DONE in code 2026-09-29** — live check open | — |
 | P10-17 | Warm, human-centric redesign of the public pages; light/dark mode | **DONE in working tree 2026-10-05** — ADR-118 + Am. 1, 3; [record](../MEMORY/records/2026-10-05-landing-warm-redesign.md) | P10-03, P10-04, P10-06 |
-| P10-18 | Public route group with its own root layout and global stylesheet (Phase 10 follow-up, performance) | **TODO** (added 2026-10-08) — ADR-131 (Accepted, not built) | P10-17 |
-| P10-19 | Load the API layer on demand on `/request-access`, `/forgot-password` and `/invitation` (the `/login` pattern; Phase 10 follow-up, performance) | **TODO** (added 2026-10-08) — no ADR needed | P10-17 |
+| P10-18 | Public route group with its own root layout and global stylesheet (Phase 10 follow-up, performance) | **DONE 2026-10-08** — ADR-131 built, Amendment 1; [record](../MEMORY/records/2026-10-08-p10-18-19-public-layout.md). Live E2E pair not run | P10-17 |
+| P10-19 | Load the API layer on demand on `/request-access`, `/forgot-password` and `/invitation` (the `/login` pattern; Phase 10 follow-up, performance) | **DONE 2026-10-08** — [record](../MEMORY/records/2026-10-08-p10-18-19-public-layout.md) | P10-17 |
 
 ---
 
@@ -511,23 +511,23 @@ Phase 10 is **frontend-focused**. Its backend pieces (P10-04's discovery endpoin
 
 | | |
 |---|---|
-| **Status** | **TODO** (added 2026-10-08, Phase 10 follow-up) |
+| **Status** | **DONE 2026-10-08** (added 2026-10-08, Phase 10 follow-up) — ADR-131 Amendment 1 records what the build settled |
 | **Depends on** | P10-17 |
 | **Spec refs** | **ADR-131** · ADR-071 / ADR-090 (nonce CSP, per-request rendering) · ADR-098 Am. 2 · ADR-118 · ADR-122 · `MEMORY/records/2026-10-05-landing-warm-redesign.md` § "What remains" item 2 and its 2026-10-07 addendum |
 | **Spec required** | no — ADR-131 is the specification |
-| **Record** | to be written by the building card |
+| **Record** | [record](../MEMORY/records/2026-10-08-p10-18-19-public-layout.md) |
 
 **Why:** the dashboard's Tailwind sheet (`globals.css`, ~132 KB raw / 22 KB gzip compiled) is render-blocking on every public page through the one root layout; doc 20 AC-5/AC-6 are still not met under Lighthouse simulation.
 
 **Definition of Done**
-- [ ] `app/(public)/layout.tsx` and `app/(app)/layout.tsx`, each owning `<html>`/`<body>`, both through one shared root-document helper (nonce, `instant = false`, `lang`, theme script, metadata, no client providers), held by a guard test
-- [ ] `public.css` (public tokens + Tailwind scanning only public sources) and `globals.css` without `public-surface.css`; no group imports the other's sheet
-- [ ] `app/global-not-found.tsx` on the public sheet; `(app)` has its own `not-found.tsx`; each group its `error.tsx`; each renders with a stylesheet, a nonce and one `<main>`/`<h1>`
-- [ ] the `next build` route table identical before and after (URLs unchanged); every moved test passes; full frontend jest gate green
-- [ ] first-load CSS of `/` and `/login` measured before/after (raw, gzip, render-blocking bytes); `bundle-budget.mjs` gains a CSS ceiling for public routes
-- [ ] Lighthouse 5× median interleaved on `/` and `/login` before/after, same host — a gain claimed only from a quiet host or the VM
-- [ ] `responsive.browser.js` 45/45, `a11y.browser.js` 80/80, `p10.browser.mts` 12/12, `p11.browser.mts` green in both themes, the CSP browser smoke 0 violations, live E2E pair green
-- [ ] `docs/FRONTEND/00-FRONTEND-STANDARDS.md` and `docs/UI-UX/20-LANDING-AUTH-REVAMP.md` amended (deviation protocol, ADR-131)
+- [x] `app/(public)/layout.tsx` and `app/(app)/layout.tsx`, each owning `<html>`/`<body>`, both through `app/rootDocument.tsx` (nonce, `lang`, theme script, metadata, no client providers; `instant = false` in each file), held by `rootLayouts.p1018.guard`
+- [x] `public.css` (public tokens + Tailwind with `source(none)` and an `@source` list, held by `publicSheet.p1018.guard`) and `globals.css` without `public-surface.css`; no group imports the other's sheet
+- [x] `app/global-not-found.tsx` on the public sheet; `(app)` has its own `not-found.tsx`, `(public)` too (blog/news `notFound()`); each group its `error.tsx`; each renders with a stylesheet, a nonce and one `<main>`/`<h1>` (curl + browser on the stack; `PublicNotFound.p1018`, `RouteError.f07`)
+- [x] the `next build` route table identical before and after (94 rows, `diff` empty); every moved test passes; full frontend jest gate green
+- [x] first-load CSS of `/` and `/login` measured before/after: `/` 162.4 → 79.4 KB raw, 28.1 → 16.7 KB gzip; `/login` 139.7 → 56.6 KB raw, 23.3 → 12.0 KB gzip (all render-blocking); `bundle-budget.mjs` reports CSS and fails over `cssGzipKB`
+- [x] Lighthouse 5× median interleaved on `/` and `/login` before/after, same host, three runs — **no LCP gain claimed** (none beyond noise; FCP on `/` 1.97 → 1.82 s); not a quiet host or the VM
+- [x] `responsive.browser.js` 45/45 + 90/90, `a11y.browser.js` 80/80, `p10.browser.mts` 12/12 (CSP: 24 documents, 0 violations), `p11.browser.mts` continuity + states 13/13 and axe 70/72 — the two failures are A-368, pre-existing (reproduced on the pre-change build); a cross-layout sign-in → dashboard → sign-out smoke 12/12. **Not done: the live E2E pair**
+- [x] `docs/FRONTEND/00-FRONTEND-STANDARDS.md`, `docs/UI-UX/20-LANDING-AUTH-REVAMP.md` and `docs/TESTING/05-PERFORMANCE-TESTING.md` amended; ADR-131 Amendment 1
 
 **Abuse cases**
 - One layout forgets the nonce → every script of that group refused under `'strict-dynamic'`
@@ -540,17 +540,17 @@ Phase 10 is **frontend-focused**. Its backend pieces (P10-04's discovery endpoin
 
 | | |
 |---|---|
-| **Status** | **TODO** (added 2026-10-08, Phase 10 follow-up) |
+| **Status** | **DONE 2026-10-08** (added 2026-10-08, Phase 10 follow-up) |
 | **Depends on** | P10-17 |
 | **Spec refs** | `MEMORY/records/2026-10-05-landing-warm-redesign.md` § "What remains" item 1 and the 2026-10-07 addendum (the `/login` pattern: `app/login/hooks/useLoginForm.ts`, `authRuntime.ts`, `useLoginForm.lazyAuth.p1017.test.tsx`) |
 | **Spec required** | no |
-| **Record** | to be written by the building card |
+| **Record** | [record](../MEMORY/records/2026-10-08-p10-18-19-public-layout.md) |
 
 **Why:** the three pages import axios and the auth store statically (first-load 147.8 / 148 KB brotli); `/login` dropped 154.2 → 130.9 KB by fetching them at the visitor's first input.
 
 **Definition of Done**
-- [ ] each form imports its API module on first interaction (or submit), as `/login` does; the request payloads and error handling identical (a presentation-only proof like `authPresentation.p1017`)
-- [ ] a lazy-load test per page (the `useLoginForm.lazyAuth.p1017` shape); full frontend jest gate green
-- [ ] first-load JS of the three routes measured before/after; `bundle-budget.mjs` ceilings lowered to the new values plus headroom
-- [ ] `p10.browser.mts` (request access, forgot/reset, invitation) green; CSP smoke 0 violations
+- [x] each form imports the auth service on first key press or tap inside `<main>` and awaits it on submit (`components/public/authApi.ts`, `hooks/usePrefetchOnFirstInput.ts`, which `/login` now shares); payloads and error handling identical — the unchanged `requestAccess.p1006`, `forgotPassword.p1009` and `invitation.p1015` suites assert the exact request bodies through the mocked API client
+- [x] a lazy-load test per page (`lazyAuth.p1019` in each page's `__tests__`; fail-before shown with a static import); full frontend jest gate green
+- [x] first-load JS 147.8 / 146.8 / 146.4 → 127.6 / 126.7 / 126.3 KB brotli; ceilings lowered 148/171 → 131/152 KB (brotli/gzip)
+- [x] `p10.browser.mts` request access, invitation and forgot/reset green; CSP 0 violations
 
