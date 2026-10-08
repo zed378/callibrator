@@ -3369,6 +3369,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipm/due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devices whose IPM is due
+         * @description `ipm` read. `state=due` (default): devices whose last effective IPM month + interval is this month or earlier in the tenant's time zone, and scheduled devices never inspected; `never_inspected`; `all_scheduled`. The interval is the device's `ipmIntervalMonths` (0 = not under IPM), else the tenant's `ipm_interval_months` (unset: nothing is scheduled). Retired and inactive devices are never scheduled. Ordered by name, then id. A facility-bound account sees its facility's devices only.
+         */
+        get: operations["listIpmDue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ipm/item-definitions": {
         parameters: {
             query?: never;
@@ -3545,6 +3565,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipm/sessions/{sessionId}/report-document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The IPM report's data document (the browser renders it)
+         * @description `ipm` read. An issued report (submitted, superseded or voided) to anyone in scope, with its hash recomputed now (`integrity.state`: a mismatch is shown, logged and counted, never re-hashed); a draft previews to its creator only (403 otherwise); a discarded draft has no report (409 `IPM_NOT_SUBMITTED`). `render=pdf|print` writes an `EXPORT` audit row BEFORE the document is sent (a failed audit write fails the read); a read without it is not audited. No PDF is stored.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `IPM_NOT_SUBMITTED` (a discarded draft has no report).
+         */
+        get: operations["getIpmReportDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ipm/sessions/{sessionId}/results": {
         parameters: {
             query?: never;
@@ -3563,6 +3607,78 @@ export interface paths {
          */
         put: operations["replaceIpmSessionResults"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/sessions/{sessionId}/signatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign an IPM report (the performer) or countersign it (the facility's IPSRS)
+         * @description `esignature` write; online only — the password or the current MFA code is re-entered now (a wrong one: 401, `SIGNATURE_AUTH_FAILED` audited; the client treats this path as a credential endpoint). The performer signs its own report (`IPM_SIGNATURE_NOT_PERFORMER`, 403); the countersignature needs the tenant's `ipm_countersign_enabled`, the performer's signature first, and a FACILITY MAINTENANCE user bound to the session's facility (or the self facility's own IPSRS) who did not submit it (403 `IPM_COUNTERSIGN_SOD` / `_ROLE` / `_FACILITY`). The signature binds the stored content hash. 10 per 15 minutes per user and address. An API key and the platform operator are refused. Audited inside the transaction.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `IPM_NOT_SUBMITTED`, `IPM_VOIDED`, `IPM_SUPERSEDED` (with `headId`), `IPM_REPORT_IMPORTED`, `IPM_ALREADY_SIGNED`, `IPM_COUNTERSIGN_DISABLED`, `IPM_REPORT_NOT_SIGNED`, `IPM_ALREADY_COUNTERSIGNED`, `IPM_REPORT_INTEGRITY`.
+         */
+        post: operations["signIpmReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/sessions/{sessionId}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a draft: issue its report and run its side effects
+         * @description One transaction: the visit number (a root: the device's next; a correction: the original's, which it supersedes), the report's issuance — number `IPM-<facility code>-<YYYYMMDD>-<NNN>` per facility and day in the tenant's time zone, a verification token, the content hash (`ipm-report-v1`), the issuer and the snapshots — and the side effects: the visit's Preventative work order; for `needs_repair` a Repair work order, for `not_fit_for_use` the device to `maintenance`, for `needs_calibration` the calibration request (UD-17, a working decision, switched per tenant by `ipm_recommendation_side_effects`); a confirmed room moves the device. A correction applies only what it adds and reverses nothing but its own calibration request (`sideEffects.notices`). Missing header outcomes or required items → 400 naming them by section and label. Only the draft's creator (another user in scope: 403). Every 409 carries a top-level `code`: `IPM_NOT_DRAFT` (submitted, voided or discarded — the message says when and what to do instead), `IPM_REVISION_CONFLICT` (another save came first: reload). `ipm` write; an API key is refused (an IPM is a person's record) and so is the platform operator (ADR-052). Audited inside the transaction. Reachable by a facility-bound HEALTHCARE TECHNICIAN in its own facility. Honours an `Idempotency-Key` header (a UUID v4): a repeat of a completed request answers the stored status with the session re-read now; a different body under the key → 409 `IDEMPOTENCY_KEY_REUSED`; a changed access → 409 `IDEMPOTENCY_SCOPE_CHANGED`; a request still in flight → 409 `IDEMPOTENCY_IN_FLIGHT`. A failed request frees its key.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `IPM_NOT_DRAFT`, `IPM_REVISION_CONFLICT`, `IPM_DEVICE_RETIRED` (discard the draft), `IPM_FACILITY_ENDED`, `IPM_ORIGINAL_NOT_EFFECTIVE` (the corrected IPM was voided or corrected by someone else), or an idempotency code.
+         */
+        post: operations["submitIpmSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/sessions/{sessionId}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Void a submitted IPM (the chain's head)
+         * @description A tenant administrator who is not facility-bound (a bound one: 403 — the route is not facility-accessible, and the service re-checks). The visit's Preventative work order is cancelled and a calibration request raised by the chain is cleared; the Repair work order and the device status are not reversed (`notices`). Final: there is no un-void. An API key and the platform operator are refused. Audited inside the transaction.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `IPM_NOT_SUBMITTED` (a draft: discard it), `IPM_VOIDED` (already voided), `IPM_SUPERSEDED` (void the head; its `headId`).
+         */
+        post: operations["voidIpmSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3851,6 +3967,28 @@ export interface paths {
          * @description Every published checklist version with its items in read order, and the active device types — one document, not a page. A strong `ETag` covers both (version id : content hash, device type id : name); a matching `If-None-Match` answers **304** with no body. `Cache-Control: private, no-cache`. Any one of `calibration`, `ipm` or `ipm-templates` read; reachable by a facility-bound account (global content). No actor is returned.
          */
         get: operations["getPublishedInspectionCatalogue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/verify/{reportNumber}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Publicly verify a printed IPM report (no auth)
+         * @description The target of the report's QR. The token (24 random bytes, base64url) is required: a malformed number or token, an unknown token or a number that is not the token's report all answer the same 404 `No IPM report matches this link.`. The verdict says issued, superseded (with the newer report's number, never its token) or voided (the date, never the reason), with the signatures, the integrity and the data document to render. Per client address, every request counts against 300 per 15 minutes and every answer that is not a verdict also against 60 per 15 minutes; beyond either, 429 with Retry-After.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["verifyIpmReport"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11023,6 +11161,121 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /** @description A device whose IPM is due (ADR-126 § 6: computed at read, never enforced) */
+        IpmDueDevice: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            qrCode: string | null;
+            serialNumber: string | null;
+            /** Format: uuid */
+            clientFacilityId: string;
+            status: string | null;
+            ipmIntervalMonths: number | null;
+            /** @description computeIpmDue (contracts) — the server's and the field app's answer */
+            ipmDue: {
+                /** @enum {string} */
+                state: "not_scheduled" | "never_inspected" | "due" | "ok";
+                /** @example 2026-11 */
+                dueMonth?: string;
+                /** Format: date-time */
+                lastPerformedAt?: string;
+                intervalMonths?: number;
+            };
+        };
+        /** @description The IPM report's data document — the browser renders it (no PDF is stored) */
+        IpmReportDocument: {
+            /** @constant */
+            scheme: "ipm-report-v1";
+            /** @enum {string} */
+            kind: "issued" | "preview";
+            /** Format: uuid */
+            sessionId: string;
+            /** @example IPM-F-0001-20261008-003 */
+            reportNumber: string | null;
+            /** @description The QR's link (issued only; absent from the public verdict's copy) */
+            verifyUrl: string | null;
+            /** @enum {string} */
+            status: "draft" | "submitted" | "superseded" | "voided";
+            lineage: {
+                supersedesReportNumber: string | null;
+                supersededByReportNumber: string | null;
+                supersededAt: string | null;
+                voidedAt: string | null;
+            };
+            /** @description The letterhead at submit, and the live logo (unhashed) */
+            issuer: {
+                [key: string]: string | null;
+            };
+            facility: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                code: string | null;
+                kind: string | null;
+                address: string | null;
+            };
+            device: {
+                [key: string]: string | null;
+            };
+            room: string | null;
+            floor: string | null;
+            visitNumber: number | null;
+            legacyVisitNumber: number | null;
+            /** Format: date-time */
+            performedAt: string;
+            submittedAt: string | null;
+            timeZone: string;
+            checklist: {
+                [key: string]: unknown;
+            };
+            sections: {
+                /** @enum {string} */
+                section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                items: {
+                    [key: string]: unknown;
+                }[];
+            }[];
+            inspectionOutcome: string | null;
+            maintenanceOutcome: string | null;
+            recommendation: string | null;
+            notes: string | null;
+            performer: {
+                name: string;
+                role: string | null;
+                organisation: string | null;
+            };
+            signatures: components["schemas"]["IpmReportSignature"][];
+            countersignEnabled: boolean;
+            integrity: {
+                scheme: string;
+                /** @example 0000000000000000000000000000000000000000000000000000000000000000 */
+                hash: string;
+                /** @enum {string} */
+                state: "match" | "mismatch";
+            } | null;
+            flags: {
+                capturedOffline: boolean;
+                imported: boolean;
+            };
+            /** Format: date-time */
+            generatedAt: string;
+        };
+        /** @description An electronic signature on an IPM report (Part 11: name, time, meaning) */
+        IpmReportSignature: {
+            /** @enum {string} */
+            kind: "performer" | "countersign";
+            name: string;
+            role: string | null;
+            organisation: string | null;
+            /** @enum {string} */
+            meaning: "authorship" | "review";
+            signedAt: string | null;
+            /** @enum {string} */
+            authMethod: "password" | "mfa";
+            /** @description Its document hash equals the stored and the recomputed content hash */
+            valid: boolean;
+        };
         /** @description One answered checklist item, in read order (section, then sort order) */
         IpmResult: {
             /** Format: uuid */
@@ -11224,6 +11477,42 @@ export interface components {
                 organisation: string | null;
                 redacted: boolean;
             } | null;
+        };
+        /** @description The verdict for the holder of the printed report's QR; never an id, tenant, token or void reason */
+        IpmVerification: {
+            /** @constant */
+            found: true;
+            reportNumber: string;
+            /** @enum {string} */
+            status: "issued" | "superseded" | "voided";
+            supersededBy: {
+                reportNumber: string | null;
+                at: string | null;
+            } | null;
+            voidedAt: string | null;
+            issuedAt: string | null;
+            issuer: {
+                name: string | null;
+            };
+            facility: {
+                name: string;
+            };
+            device: {
+                [key: string]: string | null;
+            };
+            visitNumber: number | null;
+            performedAt: string | null;
+            recommendation: string | null;
+            signatures: components["schemas"]["IpmReportSignature"][];
+            countersignEnabled: boolean;
+            integrity: {
+                scheme: string;
+                /** @example 0000000000000000000000000000000000000000000000000000000000000000 */
+                hash: string;
+                /** @enum {string} */
+                state: "match" | "mismatch";
+            };
+            document: components["schemas"]["IpmReportDocument"];
         };
         /** @description A full board: the project, its columns, one sprint's cards, labels, sprints and members. */
         KanbanBoard: {
@@ -22260,6 +22549,43 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    listIpmDue: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+                clientFacilityId?: string;
+                state?: "due" | "never_inspected" | "all_scheduled";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of devices; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmDueDevice"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     listInspectionItemDefinitions: {
         parameters: {
             query?: {
@@ -22859,6 +23185,45 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    getIpmReportDocument: {
+        parameters: {
+            query?: {
+                render?: "pdf" | "print";
+                lang?: "id" | "en";
+            };
+            header?: never;
+            path: {
+                /** @description The IPM session's id */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmReportDocument"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     replaceIpmSessionResults: {
         parameters: {
             query?: never;
@@ -22990,6 +23355,138 @@ export interface operations {
         };
         responses: {
             /** @description The draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSession"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    signIpmReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The IPM session's id */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    kind: "performer" | "countersign";
+                    /** @enum {string} */
+                    authMethod: "password" | "mfa";
+                    authPayload: string;
+                    /** @constant */
+                    meaningAcknowledged: true;
+                };
+            };
+        };
+        responses: {
+            /** @description The signature as the report prints it */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmReportSignature"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    submitIpmSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The IPM session's id */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: number;
+                };
+            };
+        };
+        responses: {
+            /** @description The submitted session, with `sideEffects` and its report number */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSession"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    voidIpmSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The IPM session's id */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The voided session, with `notices` */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -23734,6 +24231,42 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    verifyIpmReport: {
+        parameters: {
+            query?: {
+                /** @description The report's verification token (from its QR code) */
+                token?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The report number */
+                reportNumber: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verdict */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmVerification"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
         };
     };

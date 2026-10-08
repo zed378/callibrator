@@ -59,14 +59,32 @@ export const TENANT_ADMIN_SETTING_KEYS = Object.freeze([
   // kept after `ended` (unset: no end date; the data-retention policy reports, never purges evidence).
   "client_facilities_bound_user_deactivation_days",
   "client_facilities_ended_retention_years",
+  // P21-04 (P19-02 spec § 4.3, § 11; P19-06 spec § 7.3; UD-17 a working decision, ADR-126 Am. 5): the
+  // tenant's IANA time zone (report numbers' day, "due"'s month; unset = Asia/Jakarta), the IPM interval
+  // in months (unset = not scheduled), the electronic IPSRS countersignature (unset = off), and the
+  // switch for the recommendation's side effects (unset = on — the reversible part of UD-17).
+  "tenant_time_zone",
+  "ipm_interval_months",
+  "ipm_countersign_enabled",
+  "ipm_recommendation_side_effects",
 ] as const);
 
 /** P21-09e: the integer settings above, with their allowed range (an empty value clears one). */
-export type TenantAdminIntegerSettingKey = "client_facilities_bound_user_deactivation_days" | "client_facilities_ended_retention_years";
+export type TenantAdminIntegerSettingKey =
+  | "client_facilities_bound_user_deactivation_days"
+  | "client_facilities_ended_retention_years"
+  | "ipm_interval_months";
 export const TENANT_ADMIN_INTEGER_SETTINGS: Readonly<Record<TenantAdminIntegerSettingKey, { readonly min: number; readonly max: number }>> = Object.freeze({
   client_facilities_bound_user_deactivation_days: { min: 1, max: 3650 },
   client_facilities_ended_retention_years: { min: 1, max: 100 },
+  ipm_interval_months: { min: 1, max: 60 },
 });
+
+/** P21-04: the boolean settings above — `true` / `false` (a string or a JSON boolean), or nothing (cleared). */
+export const TENANT_ADMIN_BOOLEAN_SETTINGS: readonly string[] = Object.freeze(["ipm_countersign_enabled", "ipm_recommendation_side_effects"]);
+
+/** P21-04: the settings holding an IANA time zone (checked against the runtime's zone database when saved). */
+export const TENANT_ADMIN_TIME_ZONE_SETTINGS: readonly string[] = Object.freeze(["tenant_time_zone"]);
 
 /** One key a tenant administrator may write. */
 export type TenantAdminSettingKey = (typeof TENANT_ADMIN_SETTING_KEYS)[number];

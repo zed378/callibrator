@@ -26,7 +26,7 @@ const routes: RouteChain[] = loadRouteChains();
  * (ADR-124 Am. 5 § 4). Bound users cannot exist while FACILITY_BINDING_ENABLED is off.
  */
 const PENDING: Readonly<Record<string, string>> = Object.freeze({
-  esignature: "P21-03 / P21-04 — N-5, the IPM session signature (ADR-126 Am. 2 § 6)",
+  // P21-04 (2026-10-09) marked N-5, `POST /ipm/sessions/:sessionId/signatures`: `esignature` left the list.
 });
 
 type Access = "read" | "write";

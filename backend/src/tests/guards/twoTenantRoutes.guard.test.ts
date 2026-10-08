@@ -608,6 +608,11 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
     kind: "public",
     reason: "public certificate document behind the verification page, token-gated (certificatePdf.service#getVerifiedDocument)",
   },
+  "api/ipmReports.route GET /verify/:reportNumber": {
+    kind: "public",
+    reason:
+      "public IPM report verification (the QR on the printed report, P21-04): the 192-bit token is the capability; a malformed, unknown or mismatched link is one identical 404 (ipmReport.p2104)",
+  },
   "api/content.route GET /posts/public/:slug": {
     kind: "public",
     reason: "the public site's published posts; posts are platform content with no tenant column",

@@ -76,6 +76,13 @@ describe("P21-03 — the codes", () => {
       "IPM_SUPERSEDED",
       "IPM_CORRECTION_OPEN",
       "IPM_ORIGINAL_NOT_EFFECTIVE",
+      // P21-04 (P19-06 spec § 13): the report and its signatures.
+      "IPM_ALREADY_SIGNED",
+      "IPM_ALREADY_COUNTERSIGNED",
+      "IPM_REPORT_NOT_SIGNED",
+      "IPM_COUNTERSIGN_DISABLED",
+      "IPM_REPORT_IMPORTED",
+      "IPM_REPORT_INTEGRITY",
     ]);
     expect(IDEMPOTENCY_CONFLICT_CODES).toEqual(["IDEMPOTENCY_IN_FLIGHT", "IDEMPOTENCY_KEY_REUSED", "IDEMPOTENCY_SCOPE_CHANGED"]);
     expect(Object.isFrozen(IPM_CONFLICT_CODES)).toBe(true);

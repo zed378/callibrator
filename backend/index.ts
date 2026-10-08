@@ -121,6 +121,7 @@ import type ClientFacilitiesRouteModule from "./src/routes/api/clientFacilities.
 import type DeviceTypesRouteModule from "./src/routes/api/deviceTypes.route";
 import type IpmRouteModule from "./src/routes/api/ipm.route";
 import type IpmSessionsRouteModule from "./src/routes/api/ipmSessions.route";
+import type IpmReportsRouteModule from "./src/routes/api/ipmReports.route";
 import type FieldRouteModule from "./src/routes/api/field.route";
 import type MigratorModule from "./src/config/migrator";
 import type * as MigrationLockUtilModule from "./src/utils/migrationLock.util";
@@ -509,6 +510,7 @@ const clientFacilityRoutes = require("./src/routes/api/clientFacilities.route") 
 const deviceTypeRoutes = require("./src/routes/api/deviceTypes.route") as typeof DeviceTypesRouteModule;
 const ipmRoutes = require("./src/routes/api/ipm.route") as typeof IpmRouteModule;
 const ipmSessionRoutes = require("./src/routes/api/ipmSessions.route") as typeof IpmSessionsRouteModule;
+const ipmReportRoutes = require("./src/routes/api/ipmReports.route") as typeof IpmReportsRouteModule;
 const fieldRoutes = require("./src/routes/api/field.route") as typeof FieldRouteModule;
 
 // ======================================================
@@ -592,6 +594,7 @@ app.use("/api/v1/client-facilities", clientFacilityRoutes);
 app.use("/api/v1/device-types", deviceTypeRoutes);
 // P21-03 (ADR-126): IPM sessions — mounted before `/api/v1/ipm`, whose router has no `/sessions`.
 app.use("/api/v1/ipm/sessions", ipmSessionRoutes);
+app.use("/api/v1/ipm", ipmReportRoutes);
 app.use("/api/v1/ipm", ipmRoutes);
 // P21-03 (P19-08 § 11.3): the field app's administrator wipe.
 app.use("/api/v1/field", fieldRoutes);

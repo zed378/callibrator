@@ -132,6 +132,36 @@ export const ipmSessionCorrection = z.strictObject({ sessionId: uuid(), ...corre
 export type IpmSessionCorrection = z.output<typeof ipmSessionCorrection>;
 
 // ==========================================
+// SUBMIT AND VOID (P21-04; § 7.2, § 8)
+// ==========================================
+
+const submitShape = { revision };
+/** `POST /ipm/sessions/:sessionId/submit` — the body alone: the revision last read. */
+export const ipmSessionSubmitBody = z.strictObject(submitShape);
+/** `POST /ipm/sessions/:sessionId/submit` (params + body). No report field is ever taken from a body. */
+export const ipmSessionSubmit = z.strictObject({ sessionId: uuid(), ...submitShape });
+export type IpmSessionSubmit = z.output<typeof ipmSessionSubmit>;
+
+const voidShape = { reason };
+/** `POST /ipm/sessions/:sessionId/void` — the body alone. */
+export const ipmSessionVoidBody = z.strictObject(voidShape);
+/** `POST /ipm/sessions/:sessionId/void` (params + body): the chain's head, by an unbound tenant administrator. */
+export const ipmSessionVoid = z.strictObject({ sessionId: uuid(), ...voidShape });
+export type IpmSessionVoid = z.output<typeof ipmSessionVoid>;
+
+/** The "due" list's filters (P19-02 spec § 11; `GET /ipm/due`). */
+export const IPM_DUE_FILTERS = Object.freeze(["due", "never_inspected", "all_scheduled"] as const);
+
+/** `GET /ipm/due` — devices whose IPM is due this month (tenant zone), never inspected, or every scheduled one. */
+export const ipmDueQuery = z.strictObject({
+  page,
+  limit,
+  clientFacilityId: uuid().optional(),
+  state: z.enum(IPM_DUE_FILTERS).default("due"),
+});
+export type IpmDueQuery = z.output<typeof ipmDueQuery>;
+
+// ==========================================
 // RESULTS (§ 9.4)
 // ==========================================
 

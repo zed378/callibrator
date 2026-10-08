@@ -122,3 +122,99 @@ export const IpmSession = z
     notices: z.array(z.string()).meta({ description: "What the server noted (e.g. an offline capture on a non-current checklist)" }),
   })
   .meta({ id: "IpmSession", description: "An IPM session with its results (ADR-126)" });
+
+// ── P21-04: the report document, its signatures, the public verdict and "due" (P19-06 § 9, § 10) ──
+
+const hash = z.string().regex(/^[0-9a-f]{64}$/).meta({ example: "0".repeat(64) });
+
+/** A signature as the document prints it: never the signer's id, address or agent (FT-71). */
+export const IpmReportSignature = z
+  .object({
+    kind: z.enum(["performer", "countersign"]),
+    name: z.string(),
+    role: text,
+    organisation: text,
+    meaning: z.enum(["authorship", "review"]),
+    signedAt: at.nullable(),
+    authMethod: z.enum(["password", "mfa"]),
+    valid: z.boolean().meta({ description: "Its document hash equals the stored and the recomputed content hash" }),
+  })
+  .meta({ id: "IpmReportSignature", description: "An electronic signature on an IPM report (Part 11: name, time, meaning)" });
+
+/** The data document the browser renders (`ipm-report-v1`). */
+export const IpmReportDocument = z
+  .object({
+    scheme: z.literal("ipm-report-v1"),
+    kind: z.enum(["issued", "preview"]),
+    sessionId: id,
+    reportNumber: text.meta({ example: "IPM-F-0001-20261008-003" }),
+    verifyUrl: text.meta({ description: "The QR's link (issued only; absent from the public verdict's copy)" }),
+    status: z.enum(["draft", "submitted", "superseded", "voided"]),
+    lineage: z.object({ supersedesReportNumber: text, supersededByReportNumber: text, supersededAt: at.nullable(), voidedAt: at.nullable() }),
+    issuer: z.record(z.string(), z.string().nullable()).meta({ description: "The letterhead at submit, and the live logo (unhashed)" }),
+    facility: z.object({ id, name: z.string(), code: text, kind: text, address: text }),
+    device: z.record(z.string(), z.string().nullable()),
+    room: text,
+    floor: text,
+    visitNumber: z.number().int().nullable(),
+    legacyVisitNumber: z.number().int().nullable(),
+    performedAt: at,
+    submittedAt: at.nullable(),
+    timeZone: z.string(),
+    checklist: z.record(z.string(), z.unknown()),
+    sections: z.array(z.object({ section: z.enum(INSPECTION_SECTIONS), items: z.array(z.record(z.string(), z.unknown())) })),
+    inspectionOutcome: text,
+    maintenanceOutcome: text,
+    recommendation: text,
+    notes: text,
+    performer: z.object({ name: z.string(), role: text, organisation: text }),
+    signatures: z.array(IpmReportSignature),
+    countersignEnabled: z.boolean(),
+    integrity: z.object({ scheme: z.string(), hash, state: z.enum(["match", "mismatch"]) }).nullable(),
+    flags: z.object({ capturedOffline: z.boolean(), imported: z.boolean() }),
+    generatedAt: at,
+  })
+  .meta({ id: "IpmReportDocument", description: "The IPM report's data document — the browser renders it (no PDF is stored)" });
+
+/** The public verdict. */
+export const IpmVerification = z
+  .object({
+    found: z.literal(true),
+    reportNumber: z.string(),
+    status: z.enum(["issued", "superseded", "voided"]),
+    supersededBy: z.object({ reportNumber: text, at: at.nullable() }).nullable(),
+    voidedAt: at.nullable(),
+    issuedAt: at.nullable(),
+    issuer: z.object({ name: text }),
+    facility: z.object({ name: z.string() }),
+    device: z.record(z.string(), z.string().nullable()),
+    visitNumber: z.number().int().nullable(),
+    performedAt: at.nullable(),
+    recommendation: text,
+    signatures: z.array(IpmReportSignature),
+    countersignEnabled: z.boolean(),
+    integrity: z.object({ scheme: z.string(), hash, state: z.enum(["match", "mismatch"]) }),
+    document: IpmReportDocument,
+  })
+  .meta({ id: "IpmVerification", description: "The verdict for the holder of the printed report's QR; never an id, tenant, token or void reason" });
+
+/** One device of the "due" list. */
+export const IpmDueDevice = z
+  .object({
+    id,
+    name: z.string(),
+    qrCode: text,
+    serialNumber: text,
+    clientFacilityId: id,
+    status: text,
+    ipmIntervalMonths: z.number().int().nullable(),
+    ipmDue: z
+      .object({
+        state: z.enum(["not_scheduled", "never_inspected", "due", "ok"]),
+        dueMonth: z.string().optional().meta({ example: "2026-11" }),
+        lastPerformedAt: at.optional(),
+        intervalMonths: z.number().int().optional(),
+      })
+      .meta({ description: "computeIpmDue (contracts) — the server's and the field app's answer" }),
+  })
+  .meta({ id: "IpmDueDevice", description: "A device whose IPM is due (ADR-126 § 6: computed at read, never enforced)" });

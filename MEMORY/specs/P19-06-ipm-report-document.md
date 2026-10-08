@@ -196,6 +196,8 @@ Tenant setting **`ipm.countersignEnabled`** (boolean, unset = `false`), written 
 - **on:** the IPSRS column prints the electronic countersignature when it exists, else "Awaiting electronic countersignature" **above the same empty line**, so a facility without an IPSRS account can still sign on paper.
 - Turning the setting **off** later never hides an existing countersignature; turning it on never makes an old report "incomplete" — no state depends on it. A report is a record from its submit (ADR-126 § 3); signatures are attestations added to it.
 
+> **As built (2026-10-09, P21-04; ADR-126 Amendment 5 § 1, § 2, § 5):** the setting is the allow-listed key `ipm_countersign_enabled` (`true` / `false`, unset = off). The credential is checked by `certificate.service#verifySignerCredentials` in place (not moved). The countersign notice reaches the facility's bound IPSRS; a self-served hospital's unbound IPSRS is not notified yet (open).
+
 ### 7.4 Integrity of a signature
 
 A signature is **valid** on display when its `document_hash` equals the recomputed content hash and the session's stored hash (§ 6). The document shows `valid: true | false` per signature; a false one prints "signature does not match this content" and raises the § 6 alert. There is no revocation of an IPM signature: a wrong report is corrected (a new version, new signatures) or voided.
@@ -233,6 +235,8 @@ A signature is **valid** on display when its `document_hash` equals the recomput
 - Lookup **by token** (`verification_token`, global unique) with `skipTenantScope` and `skipFacilityScope` (a reviewed entry on both lists, G-13, reason "public verification by capability token"); then a **constant-time** comparison of the stored `report_number` with the parameter. Absent token, unknown token, mismatched number → **404** `{ success: false, message: "No IPM report matches this link." }`, byte-identical in every case, counted against `ipmVerify`.
 - Found → **200** with `ipmVerification` (§ 9.3). No session id, tenant id, user id, legacy key, client ref, work-order id, `side_effects`, `ip_address` or `user_agent` in it.
 - Not audited per request (no principal; the request log has it), as the certificate verification.
+
+> **As built (2026-10-09, P21-04; ADR-126 Amendment 5 § 3, § 6, § 7):** the verdict's `document` carries the session id and the facility id (the browser's recomputation binds both; opaque ids); the issuer snapshot keeps the tenant's time zone; an integrity mismatch is an error log with the code `IPM_REPORT_INTEGRITY_MISMATCH` and a process counter (no metrics registry yet). `ipmReportPayloadOfDocument` (contracts) rebuilds the payload from a served document.
 
 ### 9.3 The verdict (`ipmVerification`, contract `ipmReport.ts`)
 

@@ -181,6 +181,18 @@ const REVIEWED = Object.freeze({
   "ipmSession.service.ts::pinnedItems::models.InspectionTemplateItem": [1, PARENT],
   "ipmSession.service.ts::replaceResults::models.InspectionResult": [1, PARENT],
   "ipmSession.service.ts::createCorrection::models.InspectionResult": [1, PARENT],
+  // P21-04 (ADR-126 Am. 5): one session's results, signatures (at most two) and its pinned version's
+  // items (≤ 300); four keys of one tenant's settings; one facility's report numbers of ONE day (the
+  // sequence, under the advisory lock); the bound users recipientsFor already chose (an id list).
+  "ipmReport.service.ts::pinnedItemsOf::models.InspectionTemplateItem": [1, PARENT],
+  "ipmReport.service.ts::reportResults::models.InspectionResult": [1, PARENT],
+  "ipmReport.service.ts::issuedDocument::models.InspectionSessionSignature": [1, PARENT],
+  "ipmSettings.service.ts::ipmSettingsOf::models.TenantSettings": [1, KEYS],
+  "ipmSignature.service.ts::notifyCountersigners::models.User": [1, IDS],
+  "ipmSignature.service.ts::signReport::models.InspectionSessionSignature": [1, PARENT],
+  "ipmSubmit.service.ts::nextReportNumber::models.InspectionSession": [1, PARENT],
+  "ipmSubmit.service.ts::assertComplete::models.InspectionResult": [1, PARENT],
+  "ipmSubmit.service.ts::submitSession::models.InspectionResult": [1, PARENT],
   // P21-01 (ADR-125): the GLOBAL inspection catalogue — platform content bounded by the catalogue's
   // size (about 344 device types, one template each, at most 300 items per version, one published
   // version per template), never by a tenant's data; the published document is the offline download

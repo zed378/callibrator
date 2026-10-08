@@ -149,6 +149,13 @@ export const FACILITY_SCOPE_SKIPS: Readonly<Record<string, string>> = Object.fre
     "P21-09e (P18-03 § 10.2, A-5 / S-7): the storage quota bounds the tenant's bytes; scoped to the uploader's facility it would under-count and fail open. A sum only",
   "services/auth.service.ts#passwordManagedBy":
     "P21-09e (P18-03 § 10.2, S-1): names the identity provider in a federated bound user's password-change refusal; the user's own tenant, two settings keys, no row returned",
+  // P21-04 (ADR-126 Am. 5):
+  "services/ipmSettings.service.ts#ipmSettingsOf":
+    "P21-04 (P18-03 § 10.2, G-13): the tenant's IPM policy (time zone, interval, countersigning, the side-effects switch) for a bound technician's submit, report and signature — four keys of the user's own tenant, parsed, never returned",
+  "services/ipmSubmit.service.ts#nextReportNumber":
+    "P21-04 (P19-06 § 5): the report-number sequence counts the tenant's numbers of one facility code and day — a device moved to another facility keeps its numbers, so a bound reader's facility predicate would re-issue one (23505); only the numbers are read, under the advisory lock",
+  "services/ipmReport.service.ts#verifyReport":
+    "P21-04 (P19-06 § 9.2): the public verification has no principal; the session is resolved by its 192-bit token alone (global unique, random — no oracle, ADR-100), then the superseding report's number in the token's own tenant",
   "services/personDisplay.service.ts#displayPeople":
     "P21-09e (spec § 12): the author of a facility's record is provider staff or a person of another facility; the tenant predicate stays, and a bound viewer gets a redacted display for another facility's people — never an id, e-mail or username",
 });
@@ -263,7 +270,7 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
     },
   },
   // P21-03 (spec P19-02 § 10.1): IPM sessions — reads N-2, draft writes N-3 (within the bound ceiling only HEALTHCARE
-  // TECHNICIAN holds `ipm` write). The void (N-4) is P21-04's and stays unmarked.
+  // TECHNICIAN holds `ipm` write). The void (N-4, P21-04) stays unmarked.
   "api/ipmSessions.route.ts": {
     "GET /": { kind: "read", reason: "A-10 (N-2): the facility's IPM sessions (the hooks force the facility predicate)" },
     "GET /:sessionId": { kind: "read", reason: "A-10 (N-2): one session of the facility; another facility's is the same 404 as a missing one" },
@@ -272,6 +279,18 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
     "PUT /:sessionId/results": { kind: "write", reason: "A-10 (N-3): the creator's own draft results, checked against the pinned version" },
     "POST /:sessionId/discard": { kind: "write", reason: "A-10 (N-3): the creator discards its own draft (the administrator's discard is unbound only)" },
     "POST /:sessionId/corrections": { kind: "write", reason: "A-10 (N-3): a correction draft of an effective session of the facility" },
+    // P21-04 (ADR-126 Am. 5): the submit (N-3), the report document (N-2) and the signature (N-5 — the ONLY marked
+    // `esignature` route; `/esignature/*` stays unmarked). The void (N-4) stays unmarked.
+    "POST /:sessionId/submit": { kind: "write", reason: "A-10 (N-3): the creator submits its own draft of the facility; the report is issued in the same transaction" },
+    "GET /:sessionId/report-document": { kind: "read", reason: "A-10 (N-2): the report document of a session of the facility; a draft previews to its creator only" },
+    "POST /:sessionId/signatures": {
+      kind: "write",
+      reason: "A-11 (N-5): the performer signs its report; the facility's own IPSRS countersigns — never the submitter, never for another facility (404)",
+    },
+  },
+  // P21-04 (P19-02 § 11): "due" — the raw read carries facilityClause (G-14) for a bound principal.
+  "api/ipmReports.route.ts": {
+    "GET /due": { kind: "read", reason: "C-13 (N-9): the facility's devices whose IPM is due; the raw read binds the facility (facilityClause)" },
   },
   "api/calibrationRecords.route.ts": {
     "GET /": { kind: "read", reason: "A-4: the facility's calibration records, with the performer display (A-90)" },

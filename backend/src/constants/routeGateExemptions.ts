@@ -155,6 +155,13 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "GET /verify/:certificateNumber": { kind: PUBLIC, reason: "QR code on a printed certificate, scanned by anyone; the number alone yields the minimal verdict, the certificate's verification token (carried by the QR) the full one (A-293)" },
     "GET /verify/:certificateNumber/document": { kind: PUBLIC, reason: "the signed-PDF link from the public verification page; a signed, expiring token is the capability (as for /storage/object)" },
   },
+  "api/ipmReports.route.ts": {
+    "GET /verify/:reportNumber": {
+      kind: PUBLIC,
+      reason:
+        "IPM report verification by capability token (ADR-126 Am. 2): the printed report's QR carries a 192-bit token; a malformed, unknown or mismatched link is one identical 404; per-address request budgets (ADR-100)",
+    },
+  },
   "api/content.route.ts": {
     "GET /posts/public": { kind: PUBLIC, reason: "the public site; published rows only, read-only" },
     "GET /posts/public/:slug": { kind: PUBLIC, reason: "the public site; published rows only, read-only" },
