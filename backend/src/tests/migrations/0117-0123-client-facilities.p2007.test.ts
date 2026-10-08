@@ -244,8 +244,9 @@ describe("migrations 0117 – 0123 — client facilities (P20-07)", () => {
     });
 
     it("the facility-scoped attachment types are the linkable ones minus the provider-internal kanban card", () => {
+      // `inspectionsession` is linkable since P21-03; 0129 (not this frozen list) adds it to the CHECK.
       expect([...shared.FACILITY_ATTACHMENT_TYPES].sort()).toEqual(
-        Object.keys(LINKABLE_RESOURCES).filter((t) => t !== "kanbancard").sort(),
+        Object.keys(LINKABLE_RESOURCES).filter((t) => t !== "kanbancard" && t !== "inspectionsession").sort(),
       );
     });
 

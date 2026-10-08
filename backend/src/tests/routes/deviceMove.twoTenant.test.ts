@@ -244,6 +244,28 @@ describe("P19-04 § 11.2 — the move", () => {
     expect(testWrites()).toEqual([]);
   });
 
+  it("P21-03 (spec § 11.2): an open IPM draft of the device → 409 naming how many; nothing written", async () => {
+    for (const [id, by] of [
+      ["5e550000-0000-4000-8000-000000000001", ctx.owner.id],
+      ["5e550000-0000-4000-8000-000000000002", supervisor.id],
+    ] as const) {
+      mdb.seed("InspectionSession", {
+        id,
+        tenantId: ctx.owner.tenantId,
+        clientFacilityId: F1,
+        deviceId: DEVICE,
+        templateVersionId: "7e7e7e7e-0000-4000-8000-000000000003",
+        status: "draft",
+        createdBy: by,
+        performedBy: by,
+      });
+    }
+    seeded = mdb.committed().length;
+    const res = await req(ctx.owner, "POST", `/${DEVICE}/move`, { targetClientFacilityId: F2, reason: REASON });
+    expect({ status: res.status, message: bodyOf(res).message }).toEqual({ status: 409, message: "Submit or discard the 2 open IPM draft(s) of this device first." });
+    expect(testWrites()).toEqual([]);
+  });
+
   it("the serial already used in the target → 409 naming it", async () => {
     mdb.seed("CalibrationDevice", device("d1000000-0000-4000-8000-000000000006", ctx.owner.tenantId, F1, { serialNumber: "SN-TWIN" }));
     seeded = mdb.committed().length;

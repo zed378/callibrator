@@ -36,6 +36,8 @@ export const LINKABLE_RESOURCES = Object.freeze({
   workorder: "MaintenanceWorkOrder",
   maintenanceworkorder: "MaintenanceWorkOrder",
   kanbancard: "KanbanCard",
+  // P21-03 (P19-02 § 12; ADR-132 Am. 1 § 5): an IPM photo — the session's draft, its creator only.
+  inspectionsession: "InspectionSession",
 } as const);
 
 export const STANDALONE_RESOURCE_TYPES = Object.freeze(["generic", "ticket", "post"] as const);

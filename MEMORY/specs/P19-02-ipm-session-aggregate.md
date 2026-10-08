@@ -391,6 +391,8 @@ Each input row is checked against **the pinned version's item** (loaded server-s
 
 **IPM photos** use the existing `POST /attachments` (A-5's bound gate already names "the IPM photo type") with `resourceType: "inspectionsession"`, `resourceId`, `purpose: "ipm_evidence"` (P20-08 adds the type and the purpose — P19-03 § 7): allowed while the session is a draft and only for its creator (403 otherwise); a photo of a submitted session cannot be deleted (**409** `IPM_NOT_DRAFT` "Photos of a submitted IPM are part of its record."). They are evidence, not the device's register photos.
 
+> **As built (2026-10-09, P21-03a/b/c; ADR-126 Amendment 4):** mounted at `/api/v1/ipm/sessions` (`routes/api/ipmSessions.route.ts`) plus the device history on `calibrationDevices.route.ts`; built: the list, one session, create, header, results, discard, correction draft, the device history, `Idempotency-Key` on every draft write and on `POST /attachments`, the IPM photo rule, `POST /field/wipes`. **The submit, the correction's submit, the void, `GET /ipm/due` and `computeIpmDue`/`missingRequiredItems` are P21-04's** — 0126's issued-fields CHECK needs the report's issuance in the submitting UPDATE. `IPM_SUPERSEDED`'s `headId` is top-level, like `draftId`. A refused request (any non-2xx) frees its idempotency key.
+
 Every path parameter is named in `validate(schema, { from: ["params", …] })` (the 400-on-every-request trap); handlers read `validated(req, schema)`; every route has its `*.openapi.ts` (ADR-103); `openapi:breaking` has nothing to break (all new).
 
 ### 10.3 Contracts (named exports)

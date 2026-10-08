@@ -227,6 +227,14 @@ const JOBS: Readonly<Record<string, JobDefinition>> = Object.freeze({
     action: "Read the error (usually the database); the next daily run retries and removes the backlog in bounded batches.",
     singleton: true,
   },
+  // P21-03 — middlewares/idempotencyKeyPurgeScheduler.middleware.ts (spec P19-02 § 9.1).
+  "idempotency-key-purge": {
+    title: "Idempotency key purge",
+    meaning:
+      "Idempotency keys older than 30 days were NOT removed. Nothing is lost and no replay changes; idempotency_keys keeps growing until a run succeeds.",
+    action: "Read the error (usually the database); the next daily run retries and removes the backlog in bounded batches.",
+    singleton: true,
+  },
   // D-22 (ADR-083) — middlewares/attachmentFileSweepScheduler.middleware.js.
   "attachment-file-sweep": {
     title: "Deleted attachment file sweep",

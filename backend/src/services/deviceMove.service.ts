@@ -9,8 +9,8 @@
  *  1. the actor is UNBOUND (re-checked here; the route is unmarked and `rbac([TENANT_ADMIN])`);
  *  2. the device (locked) and the target facility are loaded in the caller's context (404);
  *  3. the 409s of § 11.2, each a state explanation: same facility, a target not active, a retired
- *     device, a certificate not yet signed or revoked, the serial already used in the target, a
- *     location of another facility;
+ *     device, a certificate not yet signed or revoked, an open IPM draft, the serial already used in
+ *     the target, a location of another facility;
  *  4. one transaction: the `client_facility_moves` row (`in_progress`), the transaction-local
  *     `callibrator.facility_move` naming it, the device's facility (and room) updated with the
  *     typed `facilityMove` option — the database CASCADES the facility to every child along one
@@ -21,8 +21,7 @@
  *  5. after commit: the re-key job (§ 9.4) and `device:moved_out` / `device:moved_in` to each
  *     facility's room, the device id only (§ 9.1).
  *
- * Not checked yet: an open IPM draft of the device (§ 11.2) — IPM sessions do not exist before
- * P20-04 / P21-03, which add that 409 here (ADR-124 Am. 6 § 2).
+ * P21-03 adds § 11.2's open-IPM-draft 409 (any creator's draft of the device).
  *
  * Named exports only.
  */
@@ -179,6 +178,12 @@ export const moveDevice = async (tenantId: TenantId, input: DeviceMoveInput, act
         409,
         `Certificate ${pending.certificateNumber} is ${String(pending.status)}; issue or void it first — its customer is the facility the calibration was done for.`,
       );
+    }
+    // P21-03 (spec § 11.2): an open IPM draft is a capture in progress for THIS facility — moving the
+    // device would carry it into another client's records. Counted across every creator.
+    const openDrafts = await models.InspectionSession.count({ where: { tenantId, deviceId: device.id, status: "draft" }, transaction });
+    if (openDrafts > 0) {
+      throw new AppError(409, `Submit or discard the ${String(openDrafts)} open IPM draft(s) of this device first.`);
     }
     if (device.serialNumber) {
       const twin = await models.CalibrationDevice.unscoped().findOne({

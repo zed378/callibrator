@@ -172,6 +172,15 @@ const OPEN = "OPEN — grows with the tenant, not paged yet (ADR-083 follow-up)"
 
 /** Each entry: [the most calls allowed under this key, why it is bounded]. */
 const REVIEWED = Object.freeze({
+  // P21-03 (ADR-126 Am. 4): an IPM session's results are bounded by the contract (≤ 400 per session,
+  // one session's rows); the published versions and active templates are the global catalogue
+  // (one published version per template); a pinned version's items ≤ 300 (P19-01 § 4.5).
+  "ipmSession.service.ts::publishedVersions::models.InspectionTemplate": [1, CLOSED],
+  "ipmSession.service.ts::publishedVersions::models.InspectionTemplateVersion": [1, CLOSED],
+  "ipmSession.service.ts::sessionView::models.InspectionResult": [1, PARENT],
+  "ipmSession.service.ts::pinnedItems::models.InspectionTemplateItem": [1, PARENT],
+  "ipmSession.service.ts::replaceResults::models.InspectionResult": [1, PARENT],
+  "ipmSession.service.ts::createCorrection::models.InspectionResult": [1, PARENT],
   // P21-01 (ADR-125): the GLOBAL inspection catalogue — platform content bounded by the catalogue's
   // size (about 344 device types, one template each, at most 300 items per version, one published
   // version per template), never by a tenant's data; the published document is the offline download

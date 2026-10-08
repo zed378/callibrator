@@ -3,7 +3,7 @@
  *
  * The upload is gated on `equipment` READ, which every seeded role holds — so a facility-BOUND
  * `ROOM USER` could otherwise put any file into the tenant's storage. For a bound principal the
- * upload must be a photo of a DEVICE (the IPM photo type joins with P19-02 / P21-03):
+ * upload must be a photo of a DEVICE, or (P21-03) of the caller's own IPM DRAFT:
  *
  *  - `resourceType` `device` / `calibrationDevice`, with a `resourceId` — a standalone file
  *    (`generic`, `ticket`, `post`) and every other type (certificate, calibration, work order,
@@ -25,8 +25,16 @@ import { allows, loadPermissionSources, type PermissionPrincipal } from "../serv
 /** The machine-readable code of a refused bound upload (top-level `code`). */
 export const FACILITY_UPLOAD_REFUSED = "FACILITY_UPLOAD_REFUSED";
 
-/** The resource types a bound principal may attach a file to, lower-cased (A-5). */
-const BOUND_UPLOAD_TYPES: readonly string[] = ["device", "calibrationdevice"];
+/**
+ * The resource types a bound principal may attach a file to, lower-cased (A-5), each with the menu
+ * slug whose WRITE it needs: a device photo `calibration`, an IPM photo `ipm` (P21-03; the service
+ * then holds it to the caller's own draft — attachment.service#assertIpmPhotoTarget).
+ */
+const BOUND_UPLOAD_TYPES: Readonly<Record<string, string>> = Object.freeze({
+  device: "calibration",
+  calibrationdevice: "calibration",
+  inspectionsession: "ipm",
+});
 
 const refuse = async (req: Request, res: Response, message: string): Promise<void> => {
   const file = (req as Request & { file?: { path?: string } }).file;
@@ -47,14 +55,15 @@ export const boundUploadGate = async (req: Request, res: Response, next: NextFun
   }
   const body = req.body as { resourceType?: unknown; resourceId?: unknown };
   const type = typeof body.resourceType === "string" ? body.resourceType.toLowerCase() : "";
-  if (!BOUND_UPLOAD_TYPES.includes(type) || typeof body.resourceId !== "string" || body.resourceId === "") {
-    await refuse(req, res, "A facility account can attach photos to its facility's devices only.");
+  const slug = Object.hasOwn(BOUND_UPLOAD_TYPES, type) ? BOUND_UPLOAD_TYPES[type] : undefined;
+  if (!slug || typeof body.resourceId !== "string" || body.resourceId === "") {
+    await refuse(req, res, "A facility account can attach photos to its facility's devices and its own IPM drafts only.");
     return;
   }
   try {
     const sources = await loadPermissionSources(principal as PermissionPrincipal);
-    if (!allows(sources, "calibration", "write")) {
-      await refuse(req, res, "Attaching a device photo needs calibration write.");
+    if (!allows(sources, slug, "write")) {
+      await refuse(req, res, `Attaching this photo needs ${slug} write.`);
       return;
     }
   } catch (err) {

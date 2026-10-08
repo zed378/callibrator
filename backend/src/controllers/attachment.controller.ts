@@ -149,6 +149,9 @@ const remove = asyncHandler(async (req: Request, res: Response) => {
   success(res, data, null, "Attachment deleted", 200);
 });
 
-const controller = { upload, list, listOrphans, getOne, download, createSignedUrl, downloadSigned, remove };
+// P21-03 (G-O8): the idempotency replay's reader — the attachment, re-read in the current context.
+const readForReplay = (id: string, req: Request): Promise<unknown> => attachmentService.getAttachment(tenantOf(req), id);
+
+const controller = { upload, list, listOrphans, getOne, download, createSignedUrl, downloadSigned, remove, readForReplay };
 
 export = controller;

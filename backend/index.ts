@@ -42,6 +42,7 @@ import type QuarantineSweepSchedulerMiddlewareModule from "./src/middlewares/qua
 import type * as UpstreamSqlImportSweepSchedulerModule from "./src/middlewares/upstreamSqlImportSweepScheduler.middleware";
 import type * as BoundAccountDeactivationSchedulerModule from "./src/middlewares/boundAccountDeactivationScheduler.middleware";
 import type WebhookDeliveryPurgeSchedulerMiddlewareModule from "./src/middlewares/webhookDeliveryPurgeScheduler.middleware";
+import type * as IdempotencyKeyPurgeSchedulerModule from "./src/middlewares/idempotencyKeyPurgeScheduler.middleware";
 import type AttachmentFileSweepSchedulerMiddlewareModule from "./src/middlewares/attachmentFileSweepScheduler.middleware";
 import type JobMonitorServiceModule from "./src/services/jobMonitor.service";
 import type RedisServiceModule from "./src/services/redis.service";
@@ -119,6 +120,8 @@ import type * as RouteTableModule from "./src/utils/routeTable";
 import type ClientFacilitiesRouteModule from "./src/routes/api/clientFacilities.route";
 import type DeviceTypesRouteModule from "./src/routes/api/deviceTypes.route";
 import type IpmRouteModule from "./src/routes/api/ipm.route";
+import type IpmSessionsRouteModule from "./src/routes/api/ipmSessions.route";
+import type FieldRouteModule from "./src/routes/api/field.route";
 import type MigratorModule from "./src/config/migrator";
 import type * as MigrationLockUtilModule from "./src/utils/migrationLock.util";
 import type * as SchemaVerifyUtilModule from "./src/utils/schemaVerify.util";
@@ -505,6 +508,8 @@ const ticketRoutes = require("./src/routes/api/tickets.route") as typeof Tickets
 const clientFacilityRoutes = require("./src/routes/api/clientFacilities.route") as typeof ClientFacilitiesRouteModule;
 const deviceTypeRoutes = require("./src/routes/api/deviceTypes.route") as typeof DeviceTypesRouteModule;
 const ipmRoutes = require("./src/routes/api/ipm.route") as typeof IpmRouteModule;
+const ipmSessionRoutes = require("./src/routes/api/ipmSessions.route") as typeof IpmSessionsRouteModule;
+const fieldRoutes = require("./src/routes/api/field.route") as typeof FieldRouteModule;
 
 // ======================================================
 // ROUTES ENDPOINT
@@ -585,7 +590,11 @@ app.use("/api/v1/tickets", ticketRoutes);
 app.use("/api/v1/client-facilities", clientFacilityRoutes);
 // P21-01 (ADR-125): the global inspection catalogue — device types, checklists, proposals.
 app.use("/api/v1/device-types", deviceTypeRoutes);
+// P21-03 (ADR-126): IPM sessions — mounted before `/api/v1/ipm`, whose router has no `/sessions`.
+app.use("/api/v1/ipm/sessions", ipmSessionRoutes);
 app.use("/api/v1/ipm", ipmRoutes);
+// P21-03 (P19-08 § 11.3): the field app's administrator wipe.
+app.use("/api/v1/field", fieldRoutes);
 // Per-dependency readiness detail. Gated (auth + denyApiKey + superAdminOnly)
 // because it names every dependency and why it is failing — A-06.
 app.use("/api/v1/health", internalHealthRoutes);
@@ -761,6 +770,8 @@ async function startServer() {
     (require("./src/middlewares/upstreamSqlImportSweepScheduler.middleware") as typeof UpstreamSqlImportSweepSchedulerModule).initUpstreamSqlImportSweep();
     // ADR-070: finished webhook deliveries past retention, daily, bounded, audited.
     initWebhookDeliveryPurge();
+    // P21-03 (spec P19-02 § 9.1): Idempotency-Key rows past their 30 days, daily, bounded.
+    (require("./src/middlewares/idempotencyKeyPurgeScheduler.middleware") as typeof IdempotencyKeyPurgeSchedulerModule).initIdempotencyKeyPurge();
     // D-22 (ADR-083): files of attachments deleted past retention, daily, bounded, audited.
     initAttachmentFileSweep();
     // P21-09e (UD-18 (b)): bound accounts of client facilities ended past their period, nightly, audited.

@@ -20,6 +20,8 @@ import {
 import { reinstateCalibrationDeviceSchema } from "../../validators/calibrationDeviceReinstate.validator";
 import { deviceMove, DEVICE_MOVE_COUNT_KEYS } from "@callibrator/contracts/clientFacilities";
 import { defineRouteDocs } from "../../docs/openapi/operation";
+import { deviceIpmSessionsQuery } from "@callibrator/contracts/inspectionSessions";
+import { IpmSessionSummary } from "../../docs/openapi/ipmSessionSchemas";
 
 const timestamp = z.iso.datetime();
 
@@ -251,6 +253,21 @@ export default defineRouteDocs({
       audited: false,
       params: deviceIdParams,
       success: { status: 200, description: "The completed moves", data: z.array(DeviceMove) },
+    },
+    {
+      method: "get",
+      path: "/:calibrationDeviceId/ipm-sessions",
+      operationId: "listCalibrationDeviceIpmSessions",
+      summary: "A device's IPM history",
+      description:
+        "`ipm` read. Submitted and voided sessions and the caller's own drafts, newest first (`performedAt`, then `id`), with the chain " +
+        "links (`supersedesId`, `supersededById`, `effective`). The device is read in the caller's context first: another tenant's or " +
+        "another facility's device is the 404 of a missing one. Reachable by a facility-bound account (its facility's devices).",
+      permission: { kind: "dynamicAccess", resource: "ipm", action: "read" },
+      audited: false,
+      params: deviceIdParams,
+      query: z.object({ page: deviceIpmSessionsQuery.shape.page, limit: deviceIpmSessionsQuery.shape.limit }),
+      success: { status: 200, description: "A page of sessions; pagination in the top-level `meta`", list: IpmSessionSummary },
     },
     {
       method: "post",

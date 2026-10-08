@@ -18,6 +18,7 @@ import { enforceStorageQuota } from "../../middlewares/enforceQuota.middleware";
 import attachmentController from "../../controllers/attachment.controller";
 import { validate } from "../../middlewares/validation.middleware";
 import { createSignedUrlSchema } from "../../validators/attachment.validator";
+import { idempotency } from "../../middlewares/idempotency.middleware";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -98,6 +99,9 @@ router.post(
   }),
   // P21-09e (P18-03 § 8.2 A-5): a facility-bound uploader attaches device photos only.
   boundUploadGate,
+  // P21-03 (P19-08 § 9.5, G-O8): a replayed photo upload stores one file — the request hash covers
+  // the file's SHA-256 and the fields.
+  idempotency({ slug: MENU_SLUGS.EQUIPMENT, read: attachmentController.readForReplay }),
   attachmentController.upload,
 );
 

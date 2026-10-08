@@ -52,6 +52,8 @@ const FACILITY_BOUND_NAMERS = [
   "services/deviceMove.service.ts",
   "services/personDisplay.service.ts",
   "utils/facilityPredicate.util.ts",
+  // P21-03: the IPM discard reads the flag (an administrator's discard is unbound only).
+  "services/ipmSession.service.ts",
 ];
 /** The readers among them: they read the context's flag and never build one. */
 const READERS = [
@@ -67,6 +69,7 @@ const READERS = [
   "services/deviceMove.service.ts",
   "services/personDisplay.service.ts",
   "utils/facilityPredicate.util.ts",
+  "services/ipmSession.service.ts",
 ];
 
 const writersIn = (sources: { rel: string; text: string }[]): string[] =>

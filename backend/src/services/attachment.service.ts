@@ -39,6 +39,8 @@ import type * as ModelsModule from "../models";
 import config from "../config";
 import storagePath from "../utils/storagePath.util";
 import { AppError as LoadedAppError } from "../utils/appError.util";
+import { CodedError } from "../utils/codedError.util";
+import { completeIdempotentRequest } from "./idempotency.service";
 import { DEFAULT_LIMIT as loadedDefaultLimit, MAX_LIMIT as loadedMaxLimit } from "../constants";
 import virusScan from "./virusScan.service";
 import { assertInQuarantine as loadedAssertInQuarantine } from "../utils/upload.util";
@@ -250,6 +252,11 @@ const LINKABLE_RESOURCES: Readonly<Record<string, string>> = loadedLinkableResou
 const ATTACHMENT_RESOURCE_TYPES = loadedAttachmentResourceTypes;
 const isAttachmentResourceType = loadedIsAttachmentResourceType;
 
+/** The model an IPM photo links to (`LINKABLE_RESOURCES.inspectionsession`). */
+const IPM_SESSION_MODEL = "InspectionSession";
+/** The purpose every IPM photo carries (0129's `attachments_purpose_resource`). */
+const IPM_PHOTO_PURPOSE = "ipm_evidence";
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -273,7 +280,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *
  * @throws {AppError} 400 for an unknown type, a malformed id or an unlinkable type; 404 when no such record
  */
-const assertLinkTarget = async (tenantId: string, resourceType: unknown, resourceId: unknown): Promise<string | null> => {
+const assertLinkTarget = async (tenantId: string, resourceType: unknown, resourceId: unknown, uploader: string | null): Promise<string | null> => {
   /* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-base-to-string -- as built: an empty type is "generic", and the type is interpolated as sent */
   if (!isAttachmentResourceType(resourceType || "generic")) {
     throw new AppError(
@@ -308,13 +315,38 @@ const assertLinkTarget = async (tenantId: string, resourceType: unknown, resourc
     where["isDeleted"] = false;
   }
   const withFacility = Boolean(Model.rawAttributes?.["clientFacilityId"]);
-  const record = (await Model.findOne({ where, attributes: withFacility ? ["id", "clientFacilityId"] : ["id"] })) as {
+  const ipm = modelName === IPM_SESSION_MODEL;
+  const attributes = withFacility ? ["id", "clientFacilityId", ...(ipm ? ["status", "createdBy"] : [])] : ["id"];
+  const record = (await Model.findOne({ where, attributes })) as {
     clientFacilityId?: string | null;
+    status?: string;
+    createdBy?: string | null;
   } | null;
   if (!record) {
     throw new AppError(404, "Resource not found");
   }
+  if (ipm) {
+    assertIpmPhotoTarget(record, uploader);
+  }
   return record.clientFacilityId ?? null;
+};
+
+/**
+ * P21-03 (P19-02 spec § 10.2, § 12): an IPM photo is evidence of the CAPTURE — added while the
+ * session is a draft, by the technician who started it (an API key is no technician).
+ *
+ * @param session - the session, loaded in context
+ * @param uploader - the uploading user (null for an API key)
+ * @throws {CodedError} 409 `IPM_NOT_DRAFT` once submitted, voided or discarded
+ * @throws {AppError} 403 for anyone but the draft's creator
+ */
+const assertIpmPhotoTarget = (session: { status?: string; createdBy?: string | null }, uploader: string | null): void => {
+  if (session.status !== "draft") {
+    throw new CodedError(409, "IPM_NOT_DRAFT", `Photos are added to an IPM draft only; this IPM is ${String(session.status)}.`);
+  }
+  if (!uploader || session.createdBy !== uploader) {
+    throw new AppError(403, "Only the technician who started this IPM can add photos to it.");
+  }
 };
 
 // ------------------------------------------------------------------
@@ -567,6 +599,8 @@ const LIVE_PARENTS = Object.freeze({
   CalibrationRecord: { table: "calibration_records", live: "p.deleted_at IS NULL" },
   MaintenanceWorkOrder: { table: "maintenance_work_orders", live: "p.deleted_at IS NULL" },
   KanbanCard: { table: "kanban_cards", live: "p.deleted_at IS NULL" },
+  // P21-03: a session row is never deleted (0127's append-only trigger) — its photos are never orphans.
+  InspectionSession: { table: "inspection_sessions", live: "TRUE" },
 });
 
 const quoteList = (values: readonly string[]): string => values.map((v) => `'${v}'`).join(", ");
@@ -668,7 +702,7 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
   // it on disk, or in the tenant's storage accounting.
   let clientFacilityId: string | null;
   try {
-    clientFacilityId = await assertLinkTarget(tenantId, meta.resourceType, meta.resourceId);
+    clientFacilityId = await assertLinkTarget(tenantId, meta.resourceType, meta.resourceId, meta.uploadedBy ?? null);
   } catch (err) {
     await fs.promises.unlink(absPath).catch(() => undefined);
     throw err;
@@ -734,6 +768,8 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
           uploadedBy: meta.uploadedBy || null,
           // P21-09d: the resource's facility, named (the database would derive the same, AM-7).
           ...(clientFacilityId ? { clientFacilityId } : {}),
+          // P21-03: an IPM photo is the session's evidence (P19-02 § 12).
+          ...(typeof meta.resourceType === "string" && LINKABLE_RESOURCES[meta.resourceType.toLowerCase()] === IPM_SESSION_MODEL ? { purpose: IPM_PHOTO_PURPOSE } : {}),
         } as unknown as CreationAttributes<InstanceType<typeof Attachment>>,
         { transaction },
       )) as unknown as AttachmentRow;
@@ -765,6 +801,8 @@ const createAttachment = async (tenantId: string, file: unknown, meta: Attachmen
         },
         { transaction },
       );
+      // P21-03 (P19-08 § 9.5, G-O8): a replayed photo upload answers this row, never a second file.
+      await completeIdempotentRequest(transaction, 201, "Attachment", created.id);
       return created;
     });
   } catch (err) {
@@ -970,6 +1008,13 @@ const deleteAttachment = async (tenantId: string, id: string, actor: AttachmentA
         409,
         `This file is evidence for certificate ${parent.certificateNumber}, which is ${parent.status}. Evidence for an approved or signed certificate cannot be deleted — revoke the certificate first.`,
       );
+    }
+  }
+
+  if (attachment.resourceId && LINKABLE_RESOURCES[attachment.resourceType.toLowerCase()] === IPM_SESSION_MODEL) {
+    const session = await models.InspectionSession.findOne({ where: { id: attachment.resourceId }, attributes: ["id", "status"] });
+    if (session && session.status !== "draft") {
+      throw new CodedError(409, "IPM_NOT_DRAFT", "Photos of a submitted IPM are part of its record.");
     }
   }
 
