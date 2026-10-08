@@ -8,8 +8,8 @@
                                CALLIBRATOR PLATFORM
                                         │
              ┌──────────────────────────┴──────────────────────────┐
-             │            Shared Presentation & Contracts          │
-             │           (shared/components/, shared/contracts/)   │
+             │     Contract & shared packages (ADR-136, ADR-134)    │
+             │      (contracts/ · packages/*: logic + tokens)       │
              └──────────────────────────┬──────────────────────────┘
                                         │
                          ┌──────────────┴──────────────┐
@@ -43,9 +43,9 @@ Socket.IO runs on the backend process and shares its HTTP port.
 
 ## Design Decisions That Explain Everything Else
 
-### Dual-Backend Target Architecture (ADR-089)
+### Dual-Backend Target Architecture (ADR-089, amended by ADR-134 and ADR-136)
 
-Callibrator employs a **dual-backend target architecture**:
+Callibrator employs a **dual-backend target architecture**, now planned as a module-by-module port behind the contract-first `contracts/` (ADR-136; `docs/CONTRACT/07`), after Phases 32 … 40; no root `shared/` and no shared UI (ADR-134):
 - **Existing TypeScript Backend (`backend/src/`)**: The active reference implementation serving 53 route modules and 71 Sequelize models. Retained and supported throughout all phases.
 - **Future Go Backend Engine (`backend-go/`)**: Additional high-performance backend engine introduced in **Phase 999** for high-concurrency tasks (IoT ingest, telemetry, read-heavy APIs).
 

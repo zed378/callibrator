@@ -4522,11 +4522,11 @@ asserted before and after.
 
 What it found:
 
-- **D-1** — the backend image cannot render a certificate PDF: `pkg` does not package the ESM
+- **CD-1** — the backend image cannot render a certificate PDF: `pkg` does not package the ESM
   `puppeteer-core` (`ERR_MODULE_NOT_FOUND …/puppeteer-core/lib/puppeteer/api/Browser.js`), so
   `POST /certificates/:id/pdf` answers 500. The drill rendered the PDFs with the same service code on
   the host. `--fallback-to-source` and adding the packages as `pkg` assets did not fix it. **Open.**
-- **D-2** — PostgreSQL ran crash recovery twice under load: the postmaster was PID 1 and treated a
+- **CD-2** — PostgreSQL ran crash recovery twice under load: the postmaster was PID 1 and treated a
   killed health check's `pg_isready` as a crashed child ("untracked child process … exited with exit
   code 2"), terminating every session. **Fixed:** `init: true` on the compose `postgres` service.
   (RabbitMQ showed the same shape at teardown: a zombie that could not be stopped.)
@@ -4610,7 +4610,7 @@ What it found:
   rows). Measured on the drill: not noticeable; not measured at production volume.
 - **The escrow is a procedure.** Nothing enforces that it exists or audits reads of it; there is no
   external KMS.
-- **D-1 is open: the shipped image cannot render certificate PDFs.** Signing works; the document does
+- **CD-1 is open: the shipped image cannot render certificate PDFs.** Signing works; the document does
   not. This is a release blocker for certificates and belongs to the image/packaging owner.
 - **RPO is the dump's age.** Nothing configures WAL archiving; the 1-hour RPO in
   `docs/ARCHITECTURE/09` was marked "yes" and is not achievable as shipped.
@@ -5153,7 +5153,7 @@ per replica) at this data volume.
 - **Not triggered.** P8-06 still also waits on Q-03.
 
 **Not measured, and why.**
-- **Memory under sustained PDF rendering:** the image cannot render certificate PDFs (M-11 / P7-04 D-1).
+- **Memory under sustained PDF rendering:** the image cannot render certificate PDFs (M-11 / P7-04 CD-1).
 - **The MQTT ingest path:** not run; a telemetry flood test is still owed. The card's premise that "the broker
   shares the API process" is **stale**: there is no embedded broker (A-17). The backend is an MQTT *client*, and
   its message handler shares the API event loop.
@@ -7162,7 +7162,7 @@ Also changed, outside the per-validator table:
 
 ## ADR-095: Audit Rows Are Append-Only in the Database and Only Masking May Change Them; a System Role Cannot Be Soft-Deleted; the Backend Renders No Certificate PDF — the Frontend Renders It From a Data Document Whose Hash Binds Every Printed Field
 
-**Date:** 2026-09-29 · **Findings:** Q-34, Q-35, Q-36 (`TASKS/BACKLOG.md`), M-11 / ADR-078 D-1 ·
+**Date:** 2026-09-29 · **Findings:** Q-34, Q-35, Q-36 (`TASKS/BACKLOG.md`), M-11 / ADR-078 CD-1 ·
 **Authority:** the orchestrator decided Q-34 to Q-36 by best practice. For M-11 it first asked for a
 packaging fix, then relayed the **owner's decision (2026-09-29): certificate PDF rendering moves to the
 frontend**. · **Record:** [`records/2026-09-29-adr095-audit-append-only-pdf-frontend.md`](records/2026-09-29-adr095-audit-append-only-pdf-frontend.md)
@@ -7267,7 +7267,7 @@ PostgreSQL 18.6 passes **5/5** (it was 3/5).
 
 ### 4. M-11 — the backend renders no certificate PDF
 
-**Context.** ADR-078 D-1: in the shipped pkg binary, `POST /certificates/:id/pdf` answered 500. puppeteer 25
+**Context.** ADR-078 CD-1: in the shipped pkg binary, `POST /certificates/:id/pdf` answered 500. puppeteer 25
 is ES-module-only, and Node's ESM loader cannot read pkg's `/snapshot`.
 
 Two findings came out of the work:
@@ -10276,7 +10276,7 @@ The owner chose one catalogue for the whole platform rather than one per tenant 
 | Alternative | Why not |
 |---|---|
 | **Per-tenant catalogues** (`tenant_id` on every catalogue table) | not the owner's choice; 118 copies of the same 344 types in the upstream case, and no shared improvement of a checklist |
-| **Provider-owned catalogue referenced by facilities** | a cross-tenant foreign key (D-2) — only meaningful under the cross-tenant model ADR-124 rejected |
+| **Provider-owned catalogue referenced by facilities** | a cross-tenant foreign key (CD-2) — only meaningful under the cross-tenant model ADR-124 rejected |
 | **Mutable templates without versions** (upstream's model) | a changed limit rewrites every past report's meaning; fails ISO 17025 7.5 / Part 11 record integrity |
 | **Version the item library instead of copying items into a version** | a version would then be a set of pointers into a moving library; the copy makes a version readable on its own, offline, forever |
 | **Drafts stored in the global tables with a `proposed_by_tenant_id` column** | drafts would need an application-level visibility filter on a global table — "remember the WHERE"; a tenant-scoped proposal table gets the hooks for free |
@@ -10435,7 +10435,7 @@ Our calibration records already solve the same problem (ADR-062): append-only in
 6. **Side effects (UD-12, UD-17) apply on entry:** the chain's first submit creates a **Completed Preventative** work order (`autoScheduled false`) and applies the recommendation (`needs_repair` → an Open Repair order; `not_fit_for_use` → device `maintenance`; `needs_calibration` → `calibration_requested_*` on the device, ADR-133); a correction **reuses** the Preventative order and applies only recommendations it newly enters; **nothing is reversed automatically** except the derived calibration request (cleared when its chain is voided or corrected away from `needs_calibration`) and, on a void, the visit's own Preventative order (`Cancelled`). The response lists what to review. A confirmed room different from the device's updates the device at submit.
 7. **Every IPM write refuses API keys** (`denyApiKey`), not only submit and correct. **No prefill route:** the draft create returns the prefilled draft; one open root draft per device per technician (409 `IPM_DRAFT_EXISTS` with the caller's draft id). Drafts use a `revision` for optimistic concurrency.
 8. **Idempotency (ADR-127 § 7, AM-25):** `idempotency_keys` stores the request hash, a **scope fingerprint** (tenant, facility, role, the route slug's effective permission), the response status and the **resource reference — never a body**; a replay re-reads the resource in the current context; a changed scope is 409 `IDEMPOTENCY_SCOPE_CHANGED`. **`IdempotencyKey` joins `FACILITY_READABLE`** with the rule `user_id = ctx.userId` (amends ADR-124 Am. 1 § 5's list; the facility-readable guard G-12 holds it).
-9. **409s carry machine-readable codes** in `data.code` (`IPM_CONFLICT_CODES`, `IDEMPOTENCY_CONFLICT_CODES` in `@callibrator/contracts`) so the PWA explains each refused replay.
+9. **409s carry machine-readable codes** as a top-level `code` (corrected 2026-10-08 from `data.code` — as built, `response.util.ts#error` puts its `extra` at the top level and `data` is `null`; ADR-136, `docs/CONTRACT/04`) (`IPM_CONFLICT_CODES`, `IDEMPOTENCY_CONFLICT_CODES` in `@callibrator/contracts`) so the PWA explains each refused replay.
 10. **"Due"** is `computeIpmDue` in contracts, read through one `sql()` per page with the facility clause, over a partial index of effective sessions; `retired` and `inactive` devices are not scheduled; "never inspected" counts as due.
 11. **Imported history** pins no version, keeps result snapshots (label, setting, reference, symbol, unit), computes an electrical-safety verdict only where a matched definition's limit is determinate ("evaluated at import"), applies no side effect, and names a gone performer by a per-migration sequence (`07` § 3 — carried into `04` § 6).
 
@@ -10939,7 +10939,7 @@ A second client (the native app, ADR-135) must agree with the web on meaning —
 
 ### Decision — B. Backend for native clients (`docs/MOBILE/20`; Go: `21`)
 
-1. **Native ingress `/native/api/` on the platform host** → the backend, cookies stripped, `X-Callibrator-Client: native` set by the edge (a policy marker, never a grant), browser requests refused (Q-58 — **the owner decided the path prefix, 2026-10-08**).
+1. **Native ingress `/native/api/` on the platform host** → the backend, cookies stripped, `X-Callibrator-Client: native` set by the edge (a policy marker, never a grant; the Next proxy and every non-native edge location strip all `X-Callibrator-*` headers, so a browser can neither mark itself native nor inject a tenant hint; the native location repeats the client-address headers, since an nginx location with its own `proxy_set_header` inherits none), browser requests refused (Q-58 — **the owner decided the path prefix, 2026-10-08**).
 2. **Install sessions:** `sessions` gains `client_kind`, `family_id`, `installation_id`, `platform`, `app_version`, `app_build` (snake_case); revocation is per family.
 3. **Native refresh:** row-locked rotation; reuse or installation mismatch revokes the family; a same-install race within 5 s answers `REFRESH_RACE` without revocation, and the client re-reads its stored token and retries once; past the 30-day absolute limit the refresh answers `SESSION_EXPIRED_ABSOLUTE` and the app prompts a re-sign-in with the outbox kept; web families unchanged (Q-60 — **owner, 2026-10-08: mobile only for now; web revisited together with a cross-tab refresh lock**).
 4. **Lifetimes:** access 15 min, refresh 7 days sliding (as built), a **30-day absolute** limit per native family, tenants may shorten, never lengthen (Q-59 — **decided by the owner, 2026-10-08**).
@@ -10988,7 +10988,7 @@ A second client (the native app, ADR-135) must agree with the web on meaning —
 
 ## ADR-135: The Mobile App Is an Expo React Native App Shipped With EAS — expo-router, Shared Logic and Tokens Only, Offline Field Capture on SQLCipher With Keys in the Keychain/Keystore, Internal Distribution Through Managed Store Channels, Code-Signed OTA Updates; Beside the PWA, Not Instead of It
 
-**Date:** 2026-10-08 · **Status:** Accepted as the **PLAN — nothing here is built.** The framework (React Native with **Expo + EAS**), the platforms (Android + iOS, phone + tablet), internal distribution, the users, "the offline PWA stays", "share logic + design tokens only", offline = field capture only, the native capabilities, the sign-in methods, the same monorepo (`apps/mobile`), "same brand, native feel" and the roadmap (mobile plan Phases 35 … 40 after the contract group 32 … 34; Go backend for mobile Phase 1000, after Phase 999) are the **owner's** decisions of 2026-10-08 (`TASKS/BACKLOG.md` D-11); the mechanisms below are decided by the mobile documentation agent under the owner's standing delegation (decide by best practice, record it), with the questions that only the owner can answer listed at the end · **Documents:** [`docs/MOBILE/`](../docs/MOBILE/00-README.md) `00` … `11`, `90` · **Plan:** Go backend for mobile [`TASKS/PHASE-1000-MOBILE-BACKEND-GO.md`](../TASKS/PHASE-1000-MOBILE-BACKEND-GO.md) (restructured 2026-10-08, ADR-136); one mobile plan, Phases 35 … 40 (its own author); Go backend for mobile `TASKS/PHASE-1000-MOBILE-BACKEND-GO.md` · **Works with:** ADR-134 (the shared packages and the backend for native clients — written beside this one by the shared-packages documentation agent), ADR-089 (dual backend), ADR-124 + Am. 1–3 (facility scope, the bound ceiling), ADR-126 + Am. 1–2 (IPM sessions, the report), ADR-127 + Am. 1 (the PWA), ADR-122 (palette, status tones), ADR-132, ADR-133 · **Amends:** ADR-127's title clause "No Native App" and its alternatives row "A native app" (§ 9 below) · **Record:** `MEMORY/records/2026-10-08-mobile-app-docs.md`
+**Date:** 2026-10-08 · **Status:** Accepted as the **PLAN — nothing here is built.** The framework (React Native with **Expo + EAS**), the platforms (Android + iOS, phone + tablet), internal distribution, the users, "the offline PWA stays", "share logic + design tokens only", offline = field capture only, the native capabilities, the sign-in methods, the same monorepo (`apps/mobile`), "same brand, native feel" and the roadmap (mobile plan Phases 35 … 40 after the contract group 32 … 34; Go backend for mobile Phase 1000, after Phase 999) are the **owner's** decisions of 2026-10-08 (`TASKS/BACKLOG.md` D-11); the mechanisms below are decided by the mobile documentation agent under the owner's standing delegation (decide by best practice, record it), with the questions that only the owner can answer listed at the end · **Documents:** [`docs/MOBILE/`](../docs/MOBILE/00-README.md) `00` … `11`, `90` · **Plan:** Go backend for mobile [`TASKS/PHASE-1000-MOBILE-BACKEND-GO.md`](../TASKS/PHASE-1000-MOBILE-BACKEND-GO.md) (restructured 2026-10-08, ADR-136); one mobile plan, Phases 35 … 40 (its own author) · **Works with:** ADR-134 (the shared packages and the backend for native clients — written beside this one by the shared-packages documentation agent), ADR-089 (dual backend), ADR-124 + Am. 1–3 (facility scope, the bound ceiling), ADR-126 + Am. 1–2 (IPM sessions, the report), ADR-127 + Am. 1 (the PWA), ADR-122 (palette, status tones), ADR-132, ADR-133 · **Amends:** ADR-127's title clause "No Native App" and its alternatives row "A native app" (§ 9 below) · **Record:** `MEMORY/records/2026-10-08-mobile-app-docs.md`
 
 ### Context
 
@@ -11104,7 +11104,7 @@ The owner's goal: the Next.js frontend and the mobile app must **never need a ve
 - The frontend already uses a typed client generated from `backend/openapi.json` (`frontend/src/api/typed.ts`, openapi-fetch + openapi-typescript; 56 service files) through the Next proxy `frontend/src/app/api/v1/[...path]/route.ts`.
 - The contract is generated **code-first** from Express's Zod (ADR-103), so the Node backend is its author.
 - The behaviour clients depend on lives only in Node and in prose: the envelope, 404-not-403, 409 explanations, refresh-once, cookies, uploads and streaming.
-- Errors are prose; a machine `code` exists only on two gates.
+- Errors are prose; a machine `code` exists only where a client must react — two gates (`extra` in `auth.middleware.ts`) and the sign-in policy codes `LOCATION_REQUIRED`, `NETWORK_POLICY`, `SELF_LOCKOUT` (a thrown `publicCode`, sent as top-level `code` by `controllerWrapper.util.ts`, ADR-100).
 - The Socket.IO events (`new_notification`, 18 `kanban:*` events, `kanban:join`/`leave`) are undocumented.
 - Migrations are TypeScript (Umzug), with `db.sync()` building tables at boot.
 - Tenant isolation lives in Sequelize hooks (ADR-029, ADR-048).
@@ -11178,7 +11178,7 @@ Any second engine would have to reverse-engineer all of it from Node.
 - **The generator is a new critical dependency**: a generator defect produces wrong validators in Node. Mitigated by the conformance suite and the equivalence check during the migration, but real.
 - **Every error gains a `code`** — an additive change, but it touches every module and every 409.
 - **Retiring `db.sync()`** changes how a fresh install builds its schema; the baseline must be exact or fresh installs diverge from upgraded ones. The baseline diff is the gate.
-- **The HS256 → ES256 move** is a security-sensitive change to every session. Tokens issued before it are honoured until expiry, then refused, and that window needs care.
+- **The HS256 → ES256 move** is a security-sensitive change to every session **and every purpose token** (activation 24 h, MFA 5 min, socket 300 s share the access keys). The as-built ring is single-algorithm, so the issuer gets an explicit, tested mixed-algorithm verification window; no other engine serves a module during it.
 - **A gateway with a routing table** is a new operational surface: a wrong table sends a module to an engine that does not implement it. The CI check against conformance scores and the generated (not hand-written) routing reduce the risk, and do not remove it.
 - **Two engines on one database** means isolation is implemented N times; without RLS (Q-C1), one missed predicate in a new engine is a leak that only the conformance suite would catch.
 - **Cross-module transactions** constrain the porting order (the evidence chain moves together) or force an engine to write another module's tables.
@@ -11189,13 +11189,34 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q-C1 | Reintroduce PostgreSQL **RLS** as a second isolation layer once a second engine writes the database? (It was removed by ADR-029: MySQL support, which is gone; a fail-open policy, which is fixable; and per-request cost, which is measurable) | **Yes — as a second layer, fail-closed** (`current_setting` without `missing_ok`; `SET LOCAL` per transaction), on the evidence-chain tables first, enabled before the first non-Node engine writes them, cost measured with U-06's k6 scripts; never the only control (P34-07) |
-| Q-C2 | May a module be routed to a port when the port scores 100% but Node's own score on that module dropped below 100% in the same run (e.g. a newly added check)? | **No** — a module moves only when both the source and the target are at 100% on the same contract version, so the rollback target is known-good |
-| Q-C3 | When `/api/v2` is ever needed: how long does v1 stay served beside it? | **≥ 90 days**, and longer while any supported mobile version uses v1 (`docs/MOBILE/08` § 5) |
+| Q-C1 — **decided 2026-10-08 (owner): yes** | Reintroduce PostgreSQL **RLS** as a second isolation layer once a second engine writes the database? (It was removed by ADR-029: MySQL support, which is gone; a fail-open policy, which is fixable; and per-request cost, which is measurable) | **Yes — as a second layer, fail-closed** (`current_setting` without `missing_ok`; `SET LOCAL` per transaction), on the evidence-chain tables first, enabled before the first non-Node engine writes them, cost measured with U-06's k6 scripts; never the only control (P34-07) |
+| Q-C2 — **decided 2026-10-08 (owner): yes, both at 100%** | May a module be routed to a port when the port scores 100% but Node's own score on that module dropped below 100% in the same run (e.g. a newly added check)? | **No** — a module moves only when both the source and the target are at 100% on the same contract version, so the rollback target is known-good |
+| Q-C3 — **decided 2026-10-08 (owner)** | When `/api/v2` is ever needed: how long does v1 stay served beside it? | **≥ 90 days**, and longer while any supported mobile version uses v1 (`docs/MOBILE/08` § 5) |
+
+
+### ADR-136 Amendment 1 (2026-10-08, the same day): the owner's answers, the coordinator's delegated decisions, and the round-2 audit
+
+**Owner, 2026-10-08:**
+- **Q-C1 — yes.** RLS returns as a **second layer, fail-closed, staged**: the evidence-chain tables first, before a second engine writes them; the cost measured first (U-06 k6); **reads run inside transactions** wherever an RLS table is read (a `SET LOCAL` outside a transaction is lost under the extended protocol); the super-admin / system-task `skipTenantScope` paths get an explicit, reviewed bypass setting, never a disabled policy (`docs/CONTRACT/07` § 6, P34-07).
+- **Q-C2 — yes.** A module moves only when **both** engines score 100% on the same contract version (`07` § 2, P34-04).
+- **Q-C3.** v1 stays served **at least 90 days after v2**, and as long as any supported app uses it (`03` B-VER-2).
+
+**Decided by the coordinator under the owner's delegation, 2026-10-08:**
+- **CD-1 (v1 strictness).** v1 is additive-only with **one** recorded exception class: a **security/validation tightening of input that was never valid**. It is recorded in `contracts/CHANGELOG.md` with an ADR reference, announced through the minimum-app-version policy, and accepted by `openapi:breaking` only through a **reviewed allow-list entry**; everything else breaking goes to `/v2`. This resolves B-PAGE-3 vs B-VER-1 and covers the as-built `POST /sop` W-10 case (ADR-121).
+- **CD-2 (CI budget).** Per-module conformance runs on change (path-filtered); the full suite plus Schemathesis run nightly; the ceiling is the free GitHub minutes, and when it is exceeded the **nightly fuzz depth** is dropped first (`06` § 5, P33-08).
+
+**Decided by the writers (left to them by the coordinator):**
+- the gateway is an **internal hop** — `BACKEND_INTERNAL_URL` (the Next proxy's upstream) and `/native/api/v1` both point at it (as built, the public edge sends `/api/` to Next);
+- routing is **per operation** (method + path template), because `/api/v1/tenants` spans four routers and `/api/v1/auth` two;
+- the **claim set** stays as built (`id`, `email`, `sid`, `amr`, `impersonatorId`, `typ`, `iat`, `exp`), with `kid` in the JWT header;
+- the SQL runner uses a **distinct version table** (Umzug's `schema_migrations` is also the default of golang-migrate and dbmate) and an upgrade gate (last Umzug release first, then `force <baseline>`); `db.sync()` and the HTTP migration/seed routes are retired or re-implemented as Node-internal;
+- `/meta` is **deployment-wide only**, with its own request budget.
+
+**Round-2 audit corrections** (each verified against the code): what was called "as built" in `03` is now split from target, with the building card named (B-AUTH-3: `tenantRefusal` sends prose and no code, no facility check; B-STATUS-2/3: `notFound()` and 409s send no code; B-FILE-1: 413/415 codes do not exist; B-ENV-3: `validate()` sends `details` outside production while `controllerWrapper` sends `errors`); the 429 envelope is already built (Q-53/ADR-109); all 491 operations are code-first and the undocumented list and the Spectral baseline are empty, so P32-05 was repurposed (internal-route classification); 95 Umzug migrations, not 98; the OIDC JWKS is at `/oidc/.well-known/jwks.json` and no `/internal` mount exists yet (P34-02 builds it); the socket facility check is target and the `super_admins` room has no emitter; `IPM_CONFLICT_CODES` is target; generated code is in the 100% coverage gate, outside ESLint, and `*.openapi.ts` files go with each module's flip (P32-03/04).
 
 ### Status
 
-**Accepted 2026-10-08 as the plan. Not built.** `docs/` written as target: `docs/CONTRACT/00` … `07`, `90`. Amended by reference (deviation protocol): ADR-089 and ADR-103 status lines; `TASKS/PHASE-999` (re-plan block); `docs/MOBILE/00`, `01` (one mobile plan); ADR-135 § 13. `docs/API/00`, `14`, `docs/ARCHITECTURE/11` and `docs/BACKEND/12` are amended by P32-06 and Phase 999's first card (each gets a banner pointing at `docs/CONTRACT/` when the contract exists); until then this ADR is the authority on where the contract lives.
+**Accepted 2026-10-08 as the plan. Not built.** `docs/` written as target: `docs/CONTRACT/00` … `07`, `90`. Amended by reference (deviation protocol): ADR-089 and ADR-103 status lines; `TASKS/PHASE-999` (re-plan block); `docs/MOBILE/00`, `01` (one mobile plan); ADR-135 § 13. `docs/API/00`, `docs/API/14`, `docs/ARCHITECTURE/11` and `docs/BACKEND/12` carry an **ADR-136 banner** since 2026-10-08 (deviation protocol); their full rewrites belong to P32-06 and Phase 999's first card.
 
 ---
 

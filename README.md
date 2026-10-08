@@ -187,7 +187,7 @@ Full board: [`TASKS/PROGRESS.md`](TASKS/PROGRESS.md). Everything unverified is l
 | **Phase 10** — landing, sign-in, request access, verification | 🟡 in progress ([`TASKS/PHASE-10-LANDING-AUTH-REVAMP.md`](TASKS/PHASE-10-LANDING-AUTH-REVAMP.md), ADR-098) |
 | **Phase 11** — admin dashboard revamp | ⏸ on hold until the owner instructs ([`TASKS/PHASE-11-DASHBOARD-REVAMP.md`](TASKS/PHASE-11-DASHBOARD-REVAMP.md)) |
 | **Upstream PHP feature adoption** | ⏳ after Phase 9; must finish before Phase 999 |
-| **Phase 999** — Go backend engine, dual backend | ⏳ planned, nothing built ([`TASKS/PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md`](TASKS/PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md), ADR-089) |
+| **Phase 999** — Go backend engine, dual backend | ⏳ planned, nothing built ([`TASKS/PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md`](TASKS/PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md), ADR-089 as amended by ADR-136: module-by-module behind the contract, after Phases 32 … 40) |
 
 ## The Rules That Matter Most
 

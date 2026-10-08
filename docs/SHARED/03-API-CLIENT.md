@@ -165,11 +165,11 @@ Every failure **rejects** with one normalised `ApiError` (F-07's rule, extended)
 ```ts
 export class ApiError extends Error {
   readonly status: number | null;          // null: no response
-  readonly code: string | null;            // the backend's machine code (`data.code` / `code`)
+  readonly code: string | null;            // the backend's machine code — the envelope's top-level `code`
   readonly kind: "http" | "timeout" | "network" | "aborted" | "contract";
   readonly requestId: string | null;       // X-Request-Id — what a user quotes to support
   readonly retryAfterSeconds: number | null;
-  readonly details: unknown;               // 400 field details (Zod issues as the backend sends them)
+  readonly errors: readonly { path: string; code: string; message: string }[] | null; // 400 field errors — the contract's top-level `errors[]` (docs/CONTRACT/03 B-ENV-3, target); as built only `details[{field,message}]`, and only outside production
 }
 ```
 
@@ -192,8 +192,11 @@ export class ApiError extends Error {
 ### 6.3 `Idempotency-Key`
 
 The backend honours `Idempotency-Key` on the capture routes and `POST /attachments` (ADR-127 § 7,
-P19-02 § 9.2, built by P21-03): same key + same request hash → the stored answer replayed; same key,
-different hash → 409 `IDEMPOTENCY_KEY_REUSED`; in flight → 409 `IDEMPOTENCY_IN_FLIGHT`.
+P19-02 § 9.2, built by P21-03): same key + same request hash → the stored **status**, with the body
+**re-read in the current context** (no response body is stored — ADR-126 Am. 1; `docs/CONTRACT/03`
+B-IDEM-1); same key, different hash → 409 `IDEMPOTENCY_KEY_REUSED`; in flight → 409
+`IDEMPOTENCY_IN_FLIGHT`; the caller's access changed since the first attempt → 409
+`IDEMPOTENCY_SCOPE_CHANGED`. All target (P21-03).
 
 - The option exists **only on operations whose OpenAPI document declares the header** — the
   generated `parameters.header` type carries it, so passing a key to a route that would ignore it is a

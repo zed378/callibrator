@@ -12,7 +12,7 @@ Table-by-table detail is in [`../DATABASE/`](../DATABASE/00-DATA-MODEL.md). This
 |---|---|
 | materialised path in `tenant_hierarchies` instead of a recursive CTE | stands; recursive CTEs now allowed |
 | `VIRTUAL` columns (`risks.rpn`, `supplier_scorecards.overallScore`) instead of generated columns | stands; generated columns now allowed |
-| ORM-layer tenant isolation instead of RLS (ADR-029) | **stands** — MySQL was one of three reasons; the fail-open policy and per-request cost remain. RLS as defence in depth is an open decision |
+| ORM-layer tenant isolation instead of RLS (ADR-029) | **stands** — MySQL was one of three reasons; the fail-open policy and per-request cost remain. RLS as defence in depth was **decided by the owner 2026-10-08 (Q-C1, ADR-136)**: a fail-closed second layer, staged, evidence-chain tables first — target, Phase 34 |
 
 pgvector is required: `document_chunks.embedding` is `vector(1536)` and retrieval is a tenant-scoped cosine-distance search. The former non-PostgreSQL branch — which returned the five most *recent* chunks as "context" regardless of relevance — was removed with MySQL support (ADR-039).
 

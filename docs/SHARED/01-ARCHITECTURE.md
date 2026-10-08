@@ -142,9 +142,10 @@ root — OpenAPI 3.1 for HTTP, AsyncAPI 3 for events/realtime, and a behaviour s
 it. `@callibrator/api-client` is **generated from `contracts/`** (`src/generated/schema.d.ts`, with
 `api:types` / `api:types:check` pointed at the contract files), not from `backend/openapi.json`. The
 frontend and the app import `paths` and `components` from the package: one generated file, two
-clients, one check. How `backend/openapi.json` and the Zod schemas of `packages/contracts` relate to
-`contracts/` (generated from it, or checked against it) is ADR-136's decision; this document assumes
-only that `contracts/` is authoritative and that a drift between it and the running backend fails CI.
+clients, one check. **ADR-136 decided generation:** Node's validators are **generated** from
+`contracts/` (`backend/src/generated/contract/`, `docs/CONTRACT/02` § 3), `backend/openapi.json` stops
+being committed (the bundle `contracts/dist/openapi.json` replaces it), and each engine is **proved by
+conformance** to `contracts/` (`docs/CONTRACT/06`), not by diffing engines.
 
 **Naming:** the root `contracts/` (language-neutral files) and `packages/contracts`
 (`@callibrator/contracts`, TypeScript/Zod) are different things; this folder always writes the
@@ -258,9 +259,9 @@ Every client is bound to **the OpenAPI document**, not to an implementation:
    Zod (ADR-103).
 2. `@callibrator/api-client` is generated from `contracts/`; the web and the app call `paths`, never
    a backend-specific module.
-3. The Go engine (ADR-089, Phase 999) must serve **the same document** — same paths, envelope, status
-   codes, error `code`s and headers (`docs/API/14-BACKEND-INTEROPERABILITY-CONTRACT.md`,
-   `docs/BACKEND/12` § 1.1, § 8). Its parity suite runs the contract against both engines.
+3. The Go engine (Phase 999, re-planned on ADR-136's strangler) must score **100 %** on the
+   conformance suite of a module's contract version before the gateway routes that module to it
+   (`docs/CONTRACT/06`, `07`; owner Q-C2). A diff between engines is a diagnostic only.
 4. Switching a deployment's engine is a **server** change (nginx/ingress); the clients' `baseUrl` does
    not even change. An installed app built before the switch keeps working because the contract did.
 

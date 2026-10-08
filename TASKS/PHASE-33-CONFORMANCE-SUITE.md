@@ -131,7 +131,8 @@
 | **Spec required** | no |
 
 **Definition of Done**
-- [ ] `conformance-node` in CI on the compose stack, blocking merges on `backend/`, `contracts/`, `conformance/` changes; a matrix ready for further engines; a nightly full run
+- [ ] `conformance-node` in CI on the compose stack: **path-filtered per module** on change, blocking merges on `backend/`, `contracts/`, `conformance/` changes; the **full suite plus Schemathesis nightly** (CD-2, `docs/CONTRACT/06` § 5); a matrix ready for further engines
+- [ ] The CI-minutes ceiling recorded (free GitHub Actions minutes), the monthly use printed by the nightly job, and the drop order applied when exceeded (nightly fuzz depth first)
 - [ ] A-19 (live E2E not in CI) closed by this job — named run id in the record
 - [ ] Runs in free CI minutes (owner, 2026-10-08: no paid services)
 

@@ -20,23 +20,30 @@
 - **B-ENV-2.** An error response has `success: false`, `data: null` (never `{}` or `[]`,
   `docs/BACKEND/12` § 9), the HTTP status in `status`, a human `message`, and a **top-level `code`**
   from the catalogue ([`04`](./04-ERROR-CODES.md)) on every error status: 400, 401, 403, 404, 409, 410,
-  413, 415, 422, 426, 429, 5xx. As built: `code` exists only on a few gates (`PASSWORD_CHANGE_REQUIRED`,
-  `MFA_ENROLMENT_REQUIRED`). Making it universal is P32.
-- **B-ENV-3.** A 400 from validation carries `errors: [{ path, code, message }]` at top level (as built:
-  the `extra.errors` of `response.util.ts#error`). `path` is a JSON Pointer into the request part
-  (`/body/serialNumber`, `/params/id`, `/query/limit`).
+  413, 415, 422, 426, 429, 5xx. As built: `code` exists only where a client must react — the gates
+  `PASSWORD_CHANGE_REQUIRED` / `MFA_ENROLMENT_REQUIRED` (`auth.middleware.ts`, via `response.util.ts#error`'s
+  `extra`) and the sign-in policy codes `LOCATION_REQUIRED`, `NETWORK_POLICY`, `SELF_LOCKOUT` (a thrown
+  error's `publicCode`, sent as top-level `code` by `utils/controllerWrapper.util.ts`, ADR-100). Making it
+  universal is P32-07 / P32-08.
+- **B-ENV-3 (target, P32-07).** A 400 from validation carries `errors: [{ path, code, message }]` at top
+  level, in every environment; `path` is a JSON Pointer into the request part (`/body/serialNumber`,
+  `/params/id`, `/query/limit`). **As built** it is inconsistent: `validate()` sends
+  `details: [{ field, message }]` **outside production only** (`middlewares/validation.middleware.ts`), while
+  `controllerWrapper` and some controllers send `errors: [{ field, message }]`. P32-07 unifies them
+  additively (`errors[]` added everywhere; `details` stays non-production).
 - **B-ENV-4.** `details` (stack, internal message) **MUST NOT** appear in production (as built:
   `isProduction()`). A generic 500 carries `requestId` (A-132).
-- **B-ENV-5 (gap closed).** 429 uses the envelope with `code: RATE_LIMITED` and a `Retry-After` header.
-  ADR-103 recorded that the as-built 429 is not the envelope. P32 closes it as an additive change.
+- **B-ENV-5.** 429 uses the envelope with a `Retry-After` header — **as built** (Q-53 / ADR-109:
+  `globalRateLimit.middleware.ts`, `requestBudget.middleware.ts`, the `RateLimited` response component).
+  Only `code: RATE_LIMITED` is new (P32-07, additive).
 
 ## 2. Status Codes (B-STATUS)
 
 | Rule | |
 |---|---|
 | **B-STATUS-1** | 400 validation · 401 not authenticated (or a credential just sent is wrong) · 403 permission failure **inside the caller's own tenant/facility** · **404 not found, including another tenant's or facility's row** · **409 invalid state transition or uniqueness conflict, with a state explanation** · 410 gone (a spent capability token) · 413/415 upload limits · 426 app update required (ADR-134) · 429 budget · 5xx server |
-| **B-STATUS-2 (as built)** | **Not-found, soft-deleted and not-yours are indistinguishable**: same status, same `code` (`NOT_FOUND`), same `message`, same headers, and no timing difference beyond noise (`docs/SECURITY/05`). A 403 never reveals that a row exists in another tenant |
-| **B-STATUS-3 (as built)** | A **409 is a state explanation**: its `message` says what state the resource is in and what must happen first ("this certificate is in `draft` and must be submitted first"), and its `code` names the conflict (`CERTIFICATE_NOT_SUBMITTED`, `IPM_NOT_DRAFT` …). A conflict is never a 500 |
+| **B-STATUS-2** | (as built: the status, message and headers; **target**, P32-07: the `code` — `notFound()` sends none today) **Not-found, soft-deleted and not-yours are indistinguishable**: same status, same `code` (`NOT_FOUND`), same `message`, same headers, and no timing difference beyond noise (`docs/SECURITY/05`). A 403 never reveals that a row exists in another tenant |
+| **B-STATUS-3** | (as built: the 409 and its explanatory `message`; **target**, P32-08: the conflict `code`s — none exists today) A **409 is a state explanation**: its `message` says what state the resource is in and what must happen first ("this certificate is in `draft` and must be submitted first"), and its `code` names the conflict (`CERTIFICATE_NOT_SUBMITTED`, `IPM_NOT_DRAFT` …). A conflict is never a 500 |
 | **B-STATUS-4** | A route the caller's facility binding forbids answers **403 `FACILITY_ROUTE_REFUSED`** before reading any parameter (ADR-124 Am. 2 § 8) |
 
 ## 3. Authentication and Sessions (B-AUTH)
@@ -49,12 +56,17 @@
 - **B-AUTH-2.** Access tokens are **JWTs signed with an asymmetric key** (ES256) with a `kid`. Every
   engine verifies them against the **JWKS** of the token issuer ([`07`](./07-PORTING-PLAYBOOK.md) § 4).
   As built: `JWT_ALGORITHM` defaults to **HS256**, a shared secret. Moving to ES256 + JWKS is P34.
-  Claims are a contract: `sub`, `tid` (tenant), `sid` (session), `iat`, `exp`, `kid`. A facility is
-  **not** a claim: it is read from the user row (ADR-124 AM-2).
-- **B-AUTH-3 (as built).** Every authenticated request re-checks the **session row** (revocation) and
-  the principal (account active, tenant not suspended, facility active). A revoked session answers 401
-  at once; a scope loss answers 403 with a scope-loss `code` (`ACCOUNT_INACTIVE`, `TENANT_SUSPENDED`,
-  `TENANT_DELETED`, `FACILITY_INACTIVE`, `FACILITY_ENDED`, `FACILITY_BINDING_PENDING`).
+  The **claim set is a contract**, kept from the as-built tokens (`auth.service.ts`: `id`, `email`, `sid`,
+  `amr`, `impersonatorId`, `typ`) plus the standard `iat`, `exp` — renaming `id` to `sub` is **not** done in
+  v1. **`kid` lives in the JWT header**, never in the claims. A facility and a tenant are **not** claims:
+  both are read from the user row (ADR-124 AM-2). Purpose tokens (activation 24 h, MFA 5 min, socket
+  300 s — `jwt.util.ts` `PURPOSE_TOKEN_TYPES`) share the access-token keys and follow the same move
+  (`07` § 4).
+- **B-AUTH-3.** Every authenticated request re-checks the **session row** (revocation) and the principal.
+  **As built:** the session row, an active account and a non-suspended tenant — a refusal is a 403 with
+  **prose and no code** (`auth.middleware.ts#tenantRefusal`). **Target:** the facility-active check
+  (P21-09) and the scope-loss `code`s `ACCOUNT_INACTIVE`, `TENANT_SUSPENDED`, `TENANT_DELETED` (P21-03)
+  and `FACILITY_INACTIVE`, `FACILITY_ENDED`, `FACILITY_BINDING_PENDING` (P21-09).
 - **B-AUTH-4 (as built).** **Refresh once on 401**: a client that gets 401 on a non-credential endpoint
   performs **one** refresh (single-flight) and retries once; a second 401 or a failed refresh ends the
   session. A **credential endpoint** (sign-in, MFA, password confirmation, signature) answering 401 is
@@ -72,7 +84,8 @@
 ## 4. Cookies and CSRF (B-CSRF)
 
 - **B-CSRF-1.** Cookies are a **client-transport** concern of the web: the backend contract is
-  bearer-only, so any engine is cookie-free. The Next proxy (one implementation, in the frontend) owns
+  **bearer-only for authentication**; the one cookie the backend itself sets is the OIDC **binding** cookie
+  of the SSO start (`controllers/sso.controller.ts`), which authenticates nothing. The Next proxy (one implementation, in the frontend) owns
   the session cookies (`HttpOnly`, `Secure`, `SameSite=Lax`), and their CSRF protection is the proxy's.
   That protection is the same-origin check of the Next route handlers plus `SameSite`, as built
   (ADR-059 / ADR-074). A port **MUST NOT** add cookie authentication to the backend.
@@ -88,7 +101,8 @@
   (`pageOrderTiebreaker.ci3.guard`).
 - **B-PAGE-3.** A `limit` above the maximum is a **400**, never a silent clamp (each operation's schema
   states `maximum`). Where as-built code clamps today, the contract records the as-built behaviour
-  first, and the change is a P32 card.
+  first; turning a clamp into a 400 is a tightening of input that was never valid — allowed in v1 only
+  under **CD-1** (B-VER-1).
 - **B-PAGE-4.** Unknown query parameters are **ignored**; known ones with a wrong type are 400. Filters,
   `sort` values and their defaults are enumerated per operation.
 
@@ -113,10 +127,11 @@
 
 ## 8. Uploads and Downloads (B-FILE)
 
-- **B-FILE-1 (as built).** Uploads are `multipart/form-data` with one `file` part and the other fields as
-  parts; limits (size, MIME types, extensions) are per operation in the contract (`x-upload`). Content
-  is sniffed and virus-scanned server-side; a refused type is 415 `UNSUPPORTED_MEDIA_TYPE` and too large
-  is 413 `PAYLOAD_TOO_LARGE`. SVG is never accepted for public images (ADR-042).
+- **B-FILE-1.** Uploads are `multipart/form-data` with one `file` part and the other fields as parts;
+  limits (size, MIME types, extensions) are per operation in the contract (`x-upload`); content is
+  sniffed and virus-scanned server-side; SVG is never accepted for public images (ADR-042) — **as built**.
+  **Target (P32-08):** a refused type is 415 `UNSUPPORTED_MEDIA_TYPE` and too large is 413
+  `PAYLOAD_TOO_LARGE` — neither status nor code is used consistently today.
 - **B-FILE-2 (as built).** Files are downloaded through **short-lived signed links** (ADR-128): a TTL cap,
   binding to the tenant and the issuing principal, and a re-check at redemption. A spent or expired link
   is 410 / 404 as documented. The token format is opaque to clients.
@@ -172,7 +187,9 @@ isolation, event names and payloads, and the 60-second principal re-check.
 - **B-META-1.** `GET /api/v1/meta` (public, ETag) answers
   `{ contractVersion: "1.<minor>.<patch>", capabilities: { <module>: true|false, <feature flag>: … } }`.
   A client hides a feature whose capability is false. It never infers capabilities from an engine name,
-  and the answer names no engine ([`07`](./07-PORTING-PLAYBOOK.md) § 5).
+  and the answer names no engine ([`07`](./07-PORTING-PLAYBOOK.md) § 5). **Deployment-wide only**: no
+  per-tenant or per-user flag appears here; those stay behind the authenticated mobile configuration
+  read (`docs/MOBILE/01` § 6). Rate limit: `requestBudget("meta")`, per address (P34-03).
 
 ## 15. Versioning (B-VER)
 
@@ -180,7 +197,14 @@ isolation, event names and payloads, and the 60-second principal re-check.
   **additive only**: new operations, new optional request fields, new response fields, new enum values
   **only where the operation declares the enum open** (`x-extensible-enum: true`), new error codes. Every
   client MUST ignore unknown response fields.
-- **B-VER-2.** A breaking change is a new **`/api/v2`** operation set, served beside v1 until v1's retirement,
-  announced through `/meta` and the mobile minimum-version policy (≥ 90 days, `docs/MOBILE/08` § 5).
+  **CD-1 — the one exception class** (decided by the coordinator under the owner's delegation,
+  2026-10-08): a **security or validation tightening of input that was never valid** (a clamp becoming a
+  400, an unvalidated body gaining validation — the as-built `POST /sop` W-10 case, ADR-121). It is
+  recorded in `contracts/CHANGELOG.md` with an ADR reference, announced through the mobile
+  minimum-app-version policy (`docs/MOBILE/08` § 5), and accepted by `openapi:breaking` **only through a
+  reviewed allow-list entry** naming the ADR. Every other breaking change goes to `/api/v2`.
+- **B-VER-2.** A breaking change is a new **`/api/v2`** operation set, served beside v1 and announced
+  through `/meta` and the mobile minimum-version policy. **Owner, 2026-10-08 (Q-C3):** v1 stays served
+  **at least 90 days after v2**, and for as long as any supported app version uses it.
 - **B-VER-3.** `contracts/VERSION` follows `1.<minor>.<patch>`: minor for additive changes, patch for
   documentation-only changes. `/meta` reports it.

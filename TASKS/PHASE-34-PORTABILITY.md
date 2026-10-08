@@ -8,7 +8,7 @@
 
 | | |
 |---|---|
-| **Status** | **BLOCKED** — 9 cards, 9 BLOCKED (written 2026-10-08; nothing built; P34-07 also waits on the owner, Q-C1) |
+| **Status** | **BLOCKED** — 9 cards, 9 BLOCKED (written 2026-10-08; nothing built; Q-C1 decided by the owner 2026-10-08) |
 | **Goal** | everything a second engine needs to serve some modules beside Node on one database: language-neutral migrations, sessions verifiable by any engine, capability discovery for clients, per-module routing, the realtime contract — proved by a rehearsal with a second instance before any new language exists |
 | **Depends on** | P33-10 |
 | **Size** | L |
@@ -28,8 +28,10 @@
 
 **Definition of Done**
 - [ ] `db/migrations/000000_baseline.sql` from a migrated database; restore + catalogue diff = 0 (named run); seeds as `INSERT`s
-- [ ] The runner chosen and pinned (golang-migrate recommended; dbmate, Atlas compared), its version table continuing the Umzug history; one transaction per file, except files marked `-- no-transaction`
-- [ ] `db.sync()` removed from boot; the model ↔ schema guard (attributes and indexes) replaces it
+- [ ] The runner chosen and pinned (golang-migrate recommended; dbmate, Atlas compared), configured with a **distinct version table** (Umzug already uses `schema_migrations`, the default table of both golang-migrate and dbmate); one transaction per file, with the non-transactional marker syntax of the chosen tool (`docs/CONTRACT/07` § 3)
+- [ ] **Upgrade gate:** the runner refuses a database that is not on the last Umzug release (every Umzug migration in the manifest applied); then `force <baseline>`; a live upgrade from the last Umzug release
+- [ ] `db.sync()` removed from boot (`config/migrate.ts`); the model ↔ schema guard (attributes and indexes) replaces it
+- [ ] The HTTP migration and seed routes (`routes/internal/migration.route.ts`: `/up`, `/down`, `/seeding`, `/unseeding`, `/seed-demo`) retired or re-implemented as a Node-internal trigger of the runner (not in `contracts/`); seeds as SQL files; demo seed refused in production
 - [ ] Every migration since the baseline written as SQL; grants and triggers tested **as `callibrator_app`**; clean-database and production-shaped upgrade (`upgradeBoot` pattern) green; `make migrate-verify` reads the columns
 - [ ] The deploy flows (compose, VM, Helm) run the runner before any engine starts
 
@@ -47,8 +49,9 @@
 | **Spec required** | no |
 
 **Definition of Done**
-- [ ] Access tokens signed ES256 with `kid`; claims `sub`, `tid`, `sid`, `iat`, `exp` (no facility claim); the issuer alone holds the private keys
-- [ ] `/internal/.well-known/session-jwks.json` (internal mount only), cached by verifiers, refetched on an unknown `kid`
+- [ ] Access **and purpose** tokens (activation, MFA, socket, first sign-in — `PURPOSE_TOKEN_TYPES`) signed ES256 with `kid` **in the header**; the as-built claim set kept (`id`, `email`, `sid`, `amr`, `impersonatorId`, `typ`, `iat`, `exp`; no tenant or facility claim); the issuer alone holds the private keys
+- [ ] A new **`/internal` mount** (none exists today) reachable only on the internal network — the edge refuses `/internal/` on public hosts (a live check); `/internal/.well-known/session-jwks.json` on it, cached by verifiers, refetched on an unknown `kid` **at most once per few seconds per verifier** (rate-limited)
+- [ ] The HS256 → ES256 switch on the **issuer only**: for one access-token lifetime (24 h for activation tokens) it verifies both algorithms — an explicit exception to the single-algorithm ring of `jwt.util.ts`, tested; no other engine is routed a module during that window
 - [ ] Rotation rehearsed: publish → sign → retire after the token lifetime, with no forced sign-out (a live test); HS256 tokens issued before the switch honoured until expiry, then refused
 - [ ] Revocation still per request through the session row
 
@@ -66,7 +69,7 @@
 | **Spec required** | no |
 
 **Definition of Done**
-- [ ] `/meta` in the contract and in Node (public, ETag); capabilities from the routing table and the server flags; no engine name
+- [ ] `/meta` in the contract and in Node (public, ETag, `requestBudget("meta")` per address); **deployment-wide** capabilities only (from the routing table and deployment-wide server flags; per-tenant flags stay behind the authenticated mobile configuration read); no engine name
 - [ ] The web reads it at start and on focus and hides features with a false capability (absent, not disabled); a component test per hidden feature
 - [ ] `X-Served-By` stripped on the public host (a live check)
 
@@ -75,14 +78,15 @@
 | | |
 |---|---|
 | **Status** | BLOCKED |
-| **Depends on** | P32-01 |
-| **Spec refs** | `docs/CONTRACT/07` § 2 · `deploy/compose/nginx/*.conf` · the Helm ingress · memory `callibrator-deployment-gotchas` (`/api/` goes to the frontend's proxy first) |
+| **Depends on** | P32-01 · P33-08 (the routing check reads the CI conformance scores) |
+| **Spec refs** | `docs/CONTRACT/07` § 2 · `deploy/compose/nginx/*.conf` (as built: `location /api/` → Next) · `BACKEND_INTERNAL_URL` (the Next proxy's upstream) · the Helm ingress · memory `callibrator-deployment-gotchas` (`/api/` goes to the frontend's proxy first) |
 | **Spec required** | no |
 
 **Definition of Done**
-- [ ] `routing.yaml` (module → engine) + a generator writing the nginx and Helm routing from the contract's `x-module`; a stale generation fails CI
-- [ ] The web proxy (`/api/v1`) and the native ingress (`/native/api/v1`) both pass through the table
-- [ ] The routing refuses a module whose engine lacks a 100% conformance score on the current contract version (a CI check reading the scores)
+- [ ] The gateway is an **internal hop**: `BACKEND_INTERNAL_URL` (the Next proxy's upstream) and the native ingress `/native/api/v1` both point at it; it forwards to the engines; the public edge is unchanged
+- [ ] `routing.yaml` (module → engine) + a generator writing the routing **per operation** (method + path template, from the contract's `x-module`) with a generated precedence order (literal segments before parameters); a stale generation fails CI
+- [ ] A test that **every operation resolves to exactly one engine** — `/api/v1/tenants` (four routers) and `/api/v1/auth` (two) included — and no two rules overlap ambiguously
+- [ ] The routing refuses a module unless **both** the source and the target engine score 100% on it on the same contract version (owner, Q-C2; a CI check reading the scores)
 - [ ] Rollback = the previous table; a live test switches a module back and forth with no failed request beyond the documented retry
 
 ### P34-05 — The AsyncAPI document and its guard
@@ -113,20 +117,21 @@
 - [ ] The six realtime checks with the official `socket.io-client` 4.x, against Node, in CI
 - [ ] Adapter interoperability proven with a second publisher using the `@socket.io/redis-emitter` format
 
-### P34-07 — Row Level Security as a second layer (owner decision Q-C1)
+### P34-07 — Row Level Security as a second layer (owner decision Q-C1: yes)
 
 | | |
 |---|---|
-| **Status** | BLOCKED — **on the owner** (ADR-136 Q-C1; recommendation: yes, fail-closed, second layer) |
-| **Depends on** | P34-01; the owner's answer |
+| **Status** | BLOCKED — **decided by the owner 2026-10-08 (Q-C1: yes — a second layer, fail-closed, staged)** |
+| **Depends on** | P34-01 |
 | **Spec refs** | `docs/CONTRACT/07` § 6 · ADR-029 (why RLS was removed) · ADR-039 · migrations 0012/0015 · `docs/SECURITY/05` |
-| **Spec required** | **yes**, if the owner says yes |
+| **Spec required** | **yes** — `MEMORY/specs/P34-07-rls-second-layer.md` |
 
-**Definition of Done (if yes)**
+**Definition of Done**
 - [ ] Policies on the evidence-chain tables reading `current_setting('callibrator.tenant_id')` **without** `missing_ok` (unset → error; empty → no rows) and the facility twin; `SET LOCAL` per transaction in Node
 - [ ] Tested **as `callibrator_app`**: no context → error, a wrong tenant → no rows; migrations and cross-tenant system tasks under a role with `BYPASSRLS`, listed and reviewed
 - [ ] Cost measured with the U-06 k6 scripts before and after; the record states it
-- [ ] If the owner says no: the card is closed with the decision recorded, and `07` § 6 says so
+- [ ] **Reads inside transactions** wherever an RLS-protected table is read (a `SET LOCAL` outside a transaction is lost under the extended protocol); the super-admin / system-task bypass (`skipTenantScope` paths) admitted by an explicit, reviewed setting, never by disabling RLS
+- [ ] **Staged:** the cost measured with the U-06 k6 scripts **before** enabling; the evidence-chain tables first; enabled before the first non-Node engine writes them
 
 ### P34-08 — The strangler rehearsal: one leaf module on a second instance
 

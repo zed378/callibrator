@@ -1,5 +1,7 @@
 # 12 — Go Porting Specification
 
+> **ADR-136 (2026-10-08) — target, not built:** the API contract moves to a language-neutral, contract-first `contracts/` folder (OpenAPI 3.1, AsyncAPI 3, a behaviour spec, an error-code catalogue); every backend generates its validators from it and is proved by one black-box conformance suite; ports replace Node module by module behind a gateway. See [`docs/CONTRACT/`](../CONTRACT/00-README.md). Where this document describes the code-first contract (ADR-103) or a full-port parity model (ADR-089), it describes **today's** state; ADR-136 is the plan.
+
 > **Status: Planned (Phase 999). Nothing in this document is built.** No `backend-go/` directory, no Go source files, no `go.mod` exists in this repository today. Do not implement any of this before Phase 999 is formally entered — after Phase 9 (TypeScript migration) closes and Upstream PHP Feature Adoption (Phases 12 … 31) is absorbed into the product.
 
 Architecture overview: [`../ARCHITECTURE/11-DUAL-BACKEND-ARCHITECTURE.md`](../ARCHITECTURE/11-DUAL-BACKEND-ARCHITECTURE.md).

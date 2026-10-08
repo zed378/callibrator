@@ -1,5 +1,7 @@
 # 14 — Backend Interoperability & API Contract
 
+> **ADR-136 (2026-10-08) — target, not built:** the API contract moves to a language-neutral, contract-first `contracts/` folder (OpenAPI 3.1, AsyncAPI 3, a behaviour spec, an error-code catalogue); every backend generates its validators from it and is proved by one black-box conformance suite; ports replace Node module by module behind a gateway. See [`docs/CONTRACT/`](../CONTRACT/00-README.md). Where this document describes the code-first contract (ADR-103) or a full-port parity model (ADR-089), it describes **today's** state; ADR-136 is the plan.
+
 > **Status: Planned (Phase 999).** The Go backend does not exist. This document defines the contract both backends must satisfy as a precondition for the Go backend to serve production traffic. Every section marked "both backends" describes what the TypeScript backend already does (`backend/src/`) and what the Go backend (`backend-go/`) must reproduce.
 
 TypeScript backend API standards (the reference): [`00-API-STANDARDS.md`](./00-API-STANDARDS.md).

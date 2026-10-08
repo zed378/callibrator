@@ -26,12 +26,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ### 2026-10-08 — Shared packages and the backend for mobile planned (ADR-134); the mobile plan is Phases 35 … 40 ([record](./records/2026-10-08-shared-packages-mobile-backend-docs.md))
 - **Docs (target, not built):** `docs/SHARED/` — eight cross-platform packages (contracts, tokens, api-client, i18n, domain, sync-engine, headless hooks, icons) holding logic and design tokens only, in `packages/*`; the web migrates onto them without behaviour change; the API client is generated from the contract-first `contracts/` folder (ADR-136). `docs/MOBILE/20` (today's backend) and `21` (Go engine): a native ingress, install sessions with refresh-reuse detection, tenant lookup by organisation code, hospital SSO through an app link, native passkeys, push via FCM/APNs, a minimum app version (426), device attestation.
 - **Supersedes:** ADR-089's root `shared/`, shared UI components and per-backend frontend adapter (banners on `docs/ARCHITECTURE/11`, `12`, `docs/FRONTEND/12`, `13`); Q-48's planned move of `packages/contracts`.
-- **Plans:** Phases 35 … 40, 55 cards, all BLOCKED behind the contract group (Phases 32 … 34). Owner questions Q-58 … Q-61.
+- **Plans:** Phases 35 … 40, 56 cards (P36-14 added by audit round 1), all BLOCKED behind the contract group (Phases 32 … 34). Owner questions Q-58 … Q-61.
 
 ### 2026-10-08 — The native mobile app planned (ADR-135); Go-variant mobile phases 1000 … 1002 ([record](./records/2026-10-08-mobile-app-docs.md))
 - **Docs (target, not built):** `docs/MOBILE/` — an Expo + EAS React Native app for Android and iOS, phone and tablet, beside the offline PWA: screens per role, tablet split view, offline field capture on an encrypted SQLite store, camera/QR, push without personal data, SSO/passkeys/biometric unlock, internal distribution (Apple Business Manager, Managed Google Play), signed over-the-air updates, Maestro tests.
 - **Owner decision folded in:** a tenant setup screen before sign-in (organisation code, setup QR/link, MDM, or work email); the tenant's logo and colour apply in the app; one build for every tenant.
-- **Plans:** Phases 1000 … 1002 (Go variant, after Phase 999), 30 cards, all BLOCKED. ADR-127's "no native app" superseded; the PWA stays.
+- **Plans:** Phases 1000 … 1002 (Go variant, after Phase 999; restructured the same day into one file, `PHASE-1000-MOBILE-BACKEND-GO.md`), 30 cards, all BLOCKED. ADR-127's "no native app" superseded; the PWA stays.
 
 ### 2026-10-08 — Upstream adoption: client facilities in the database (P20-07, migrations 0117 – 0123); ADR-124 Am. 3 ([record](./records/2026-10-08-p20-07-client-facilities.md))
 - **Built:**

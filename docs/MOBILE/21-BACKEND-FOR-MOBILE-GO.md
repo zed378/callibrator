@@ -29,15 +29,22 @@ would make the engines disagree and the app's behaviour depend on the deployment
 
 ## 2. Preconditions From Phase 999
 
+**The model is ADR-136's strangler** (`docs/CONTRACT/07`), not a whole-backend switch: a **gateway**
+routes each **module** (per operation, by `x-module`) to Node or Go; a module moves only when Go scores
+**100 %** on that module's conformance suite of the **same contract version** (owner, Q-C2); both
+engines share one database migrated by **one plain-SQL runner that every engine can run**
+(`docs/CONTRACT/07` § 3); signing keys are shared through **JWKS** (§ 4 there). A field-by-field diff of
+Node and Go answers is a **diagnostic**, never the gate — the gate is conformance to `contracts/`.
+
 | Needed from Phase 999 | Card (as planned in `TASKS/PHASE-999-…`) | Why |
 |---|---|---|
-| JWT verification and issuance with the same keys and claims (`sid`, `amr`, `impersonatorId`) | P999-07 | a token issued by one engine is accepted by the other while both run (shared `sessions` table) |
+| JWT verification and issuance with the same keys and **the as-built claims, unrenamed** — `id`, `email`, `sid`, `amr`, `impersonatorId`, `typ`, `iat`, `exp` (`auth.service.ts`; no `sub`/`tid`); `kid` in the **header**; access **and** purpose tokens (activation, MFA, socket) on ES256, the HS256 → ES256 switch run on the issuer only, verifying both for one token lifetime; keys from the internal JWKS `/internal/.well-known/session-jwks.json` (P34-02), unknown-`kid` refetches rate-limited; the OIDC JWKS stays at `/oidc/.well-known/jwks.json` (`docs/CONTRACT/03` B-AUTH-2, `07` § 4) | P999-07 | a token issued by one engine is accepted by the other while modules are split between them (shared `sessions` table) |
 | Session lookup and per-request revocation on the shared `sessions` table (snake_case columns) | P999-07 | doc 12 § 3.2's critical note |
 | RBAC/ABAC, tenant **and facility** context propagation, two-tenant 404 | P999-08 | every native route inherits them |
 | The validation layer matching the Zod schemas | P999-09 | request contracts identical |
 | Error translation to the envelope (incl. `code`) | P999-10 | the app switches on `code` |
 | Background workers with per-job tenant context | P999-12 | the push dispatcher |
-| Contract parity suite | P999-16 | the proof of § 7 |
+| The conformance suite at 100 % per module (`docs/CONTRACT/06`) | P999-16 | the gate of § 7 |
 
 **Owner decisions carried unchanged into Go (2026-10-08, Q-58 … Q-60):** the `/native/` path-prefix
 ingress; a 30-day absolute native session lifetime that a tenant may shorten; refresh-reuse detection
@@ -52,7 +59,7 @@ no non-stdlib imports; consumer-defined interfaces; context propagation; no glob
 |---|---|---|
 | Native ingress marker (§ 3) | edge sets `X-Callibrator-Client: native`; Express middleware reads it | `internal/transport/http/middleware/client_kind.go` puts `ClientKind` into `context.Context` (a typed key, never a string key); the edge rule is the same file, its upstream pointed at the Go service |
 | Browser refusal on `/native/` (§ 3) | middleware: `Origin`/`Sec-Fetch-Mode` → 403 | same rule in `client_kind.go`; identical 403 envelope |
-| Session columns, families (§ 4) | migration in `backend/src/migrations/`; `session.model.ts` attributes snake_case | **no migration in Go** — the schema is shared and migrated by the Node migrator until Phase 999 decides otherwise (`11` § 4.4); `session_repo.go` struct tags `db:"family_id"`, `db:"client_kind"`, … (snake_case, doc 12 § 3.2) |
+| Session columns, families (§ 4) | a plain-SQL migration in the shared runner (ADR-136; `docs/CONTRACT/07` § 3) | **the same migration file** — there is one runner and one version table for every engine; Go adds no DDL of its own; `session_repo.go` struct tags `db:"family_id"`, `db:"client_kind"`, … (snake_case, doc 12 § 3.2) |
 | Refresh rotation + reuse detection (§ 5) | `auth.service.ts#refreshUserToken` | `internal/application/auth/session_service.go`: one `pgx.Tx` — `SELECT … FROM sessions WHERE token_hash = $1 FOR UPDATE`, rotation, family revocation, audit insert, commit (§ 5 below) |
 | Native SSO start/authorize/exchange (§ 7) | `sso.controller.ts` + Redis | `internal/application/auth/sso_native.go`; Redis via `go-redis/v9` (`GETDEL`, same key names and TTLs — § 5); PKCE check with `crypto/sha256` + `encoding/base64.RawURLEncoding`; OIDC RP with `github.com/coreos/go-oidc/v3` + `golang.org/x/oauth2`; SAML with `github.com/crewjam/saml` (SAML parity is a Phase 999 matter first) |
 | Native passkey origins (§ 8) | `@simplewebauthn/server`, `WEBAUTHN_NATIVE_ORIGINS` | `github.com/go-webauthn/webauthn` with `RPOrigins` = web origin + the `android:apk-key-hash:` list; challenge/session storage in the **same Redis keys and encoding** as Node |
@@ -93,31 +100,32 @@ compares status, `code` and envelope (§ 7).
 |---|---|---|
 | **Concurrent refresh** | Go serves concurrent requests on real threads; two refreshes of one token arriving together are likelier to interleave than on Node's single event loop. Without a row lock both could rotate, and the loser would be read as a **reuse** and revoke the family | the Node implementation (P36-03) **defines** the semantics with `SELECT … FOR UPDATE` on the session row (the second request waits, then sees `TOKEN_ROTATION`; within 5 s and from the same installation it receives 401 `REFRESH_RACE` **without** family revocation — doc 20 § 5 rule 2a); Go ports exactly that, and a parity test fires 10 concurrent refreshes at each engine |
 | **Encrypted columns** (`push_tokens.token`, other secret attributes) | a row written by Node must decrypt in Go and vice versa while both run | the envelope format of `models/secretAttributes.ts` (algorithm, IV, key id, encoding) is specified as a contract in Phase 999's KMS card; a cross-engine test writes with one and reads with the other |
-| **Redis keys** (SSO start entries, hand-off codes, WebAuthn challenges, budgets) | different key names or encodings split state between engines in a mixed deployment | key formats are a documented contract (doc 20 names each); Phase 1000's parity suite reads keys written by the other engine |
+| **Redis keys** (SSO start entries, hand-off codes, WebAuthn challenges, budgets) | different key names or encodings split state between engines in a mixed deployment | key formats are a documented contract (doc 20 names each); a cross-engine test reads keys written by the other engine |
 | **semver** | `golang.org/x/mod/semver` requires `v`; pre-release ordering differs from naive string compare | one normalising helper; a shared table of comparisons both engines must pass |
 | **JSON shape** | `null` vs omitted, number vs string decimals, timestamps (doc 12 § 6) | the 426 envelope, the login answer and the session list are compared field by field in parity tests |
 | **WebAuthn library behaviour** | `go-webauthn` and `@simplewebauthn` differ in defaults (user verification, attestation, base64url handling, challenge expiry) | the options and the verification policy are written down in doc 20 § 8 terms and asserted in both engines with recorded ceremonies (fixtures from a real Android and iOS authenticator) |
 | **APNs/FCM clients** | Go's HTTP/2 and OAuth2 are first-class, but retry/backoff and error mapping are new code | the error table of doc 20 § 10.2 is the spec; a fake provider server returns each error in tests |
-| **SAML** | the Go SAML library may not support every configuration a tenant uses on Node | per-tenant SAML parity is checked before a deployment moves to Go; until then that deployment stays on Node (full backend per deployment, `11` § 5) |
-| **Migrations** | two engines, one schema | the schema is migrated by one migrator only (Node's, until a Phase 999 sub-ADR moves it); Go never runs DDL |
+| **SAML** | the Go SAML library may not support every configuration a tenant uses on Node | the SSO module stays routed to Node until Go scores 100 % on it, SAML cases included (the gateway keeps the rest of the deployment on Go meanwhile) |
+| **Migrations** | two engines, one schema | one plain-SQL runner, one distinct version table, run by whichever engine deploys (ADR-136; `docs/CONTRACT/07` § 3); no engine-specific DDL |
 
 ## 6. Coexistence
 
-Phase 999's model is **full backend per deployment** first (`11` § 5). For a native client this means:
+Under ADR-136 the gateway routes **module by module** (`docs/CONTRACT/07` § 2); the native ingress
+`/native/api/` sits in front of the gateway, unchanged. For a native client this means:
 
-- the native ingress points at the engine the deployment runs; the app cannot tell;
-- sessions and push tokens live in the shared database, so a deployment switched from Node to Go keeps
-  every signed-in phone signed in (same JWT keys, same `sessions` rows) — **this is a requirement**,
-  tested by signing in on Node, switching the stack, and refreshing on Go;
-- if partial routing (999b) is ever adopted, the push dispatcher must run on **one** engine at a time
-  (both claim with `SKIP LOCKED`, so two would be safe, but metrics and rate budgets would split) — the
-  sub-ADR decides.
+- the app cannot tell which engine answers which module, and never needs to;
+- sessions and push tokens live in the shared database and keys are shared through JWKS, so a phone
+  stays signed in while modules move — **a requirement**, tested by signing in while `auth` is on Node,
+  moving `auth` to Go, and refreshing;
+- the push dispatcher (a worker of the notifications module) runs on the engine its module is routed
+  to — one at a time; both claim with `SKIP LOCKED`, so an overlap during a move is safe;
+- a module's move back is the previous routing table (`docs/CONTRACT/07` § 2), with no data migration.
 
 ## 7. Proof
 
-1. **Contract:** the OpenAPI document served by the Go engine equals the TypeScript one for every
-   native route (diffed with the same `openapi:breaking` tool, zero differences), and Go responses are
-   validated against it (response-schema validation in the parity suite).
+1. **Contract (the gate):** Go scores **100 %** on the conformance suite (`docs/CONTRACT/06`) for each
+   module that carries a native route, on the same contract version as Node (Q-C2). Neither engine
+   authors the contract; `contracts/` does.
 2. **Behaviour:** doc 20's tests re-expressed against the Go engine — reuse detection, family
    revocation, 426 and its exemptions, SSO exchange failures (one answer), native passkey origins,
    push-token scoping (two tenants, two facilities), payload rule, audit inside the transaction, rate
@@ -125,9 +133,11 @@ Phase 999's model is **full backend per deployment** first (`11` § 5). For a na
 3. **The app itself:** the **same Maestro suite**, unchanged, against a compose stack running the Go
    engine — sign-in (password + MFA, SSO, passkey), offline capture and sync, push registration,
    version floor. A suite that needs a change to pass on Go is a parity defect, not a test update.
-4. **Mixed state:** sign in and capture offline against Node; switch the stack to Go; sync — the
-   outbox replays with the same idempotency keys and is accepted (the `idempotency_keys` rows written by
-   Node are honoured by Go).
+4. **Mixed state:** sign in and capture offline with the capture modules on Node; move them to Go;
+   sync — the outbox replays with the same idempotency keys and is accepted (the `idempotency_keys`
+   rows written by Node are honoured by Go).
+5. **Diagnostic only:** a field-by-field diff of the two engines' answers helps find a defect; it never
+   replaces (1).
 
 ## 8. Bad Implications
 

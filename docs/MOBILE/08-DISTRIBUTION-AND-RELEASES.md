@@ -166,7 +166,8 @@ wrongly signed update is refused.
   supported app version** as well as `main` (a card of the mobile phases adds the snapshot).
 - **Support window:** the current and the previous MINOR are supported at least; `minimumSupported`
   rises only with a release note and, except for a security fix, after 30 days' notice in the app.
-- **Two backends** (ADR-089): a deployment runs one backend; the policy is the same on both, and the
+- **Two backends** (ADR-089, ADR-136): during a port a deployment may serve modules from both engines
+  behind the internal gateway (`docs/CONTRACT/07`); the policy is the same on both, and the
   conformance suite (`docs/CONTRACT/06`) proves every module the app uses on every engine at 100%, so an
   app version supported on the Node backend is supported on the Go backend of the same release.
 

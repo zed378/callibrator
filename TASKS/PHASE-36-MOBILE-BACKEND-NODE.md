@@ -3,7 +3,7 @@
 > Part of the **mobile group, Phases 35 … 40 (one plan)** (index, build order, group-wide DoD and
 > owner questions: [Phase 35](./PHASE-35-SHARED-PACKAGES.md)). Spec:
 > [`docs/MOBILE/20-BACKEND-FOR-MOBILE-NODE.md`](../docs/MOBILE/20-BACKEND-FOR-MOBILE-NODE.md) · ADR-134 § B.
-> The Go variant of this phase is planned after Phase 999 (Phase 1000+, by its author — the backend for mobile is the one part of the mobile plan with two variants).
+> The Go variant of this phase is planned after Phase 999 (Phase 1000, by its author — the backend for mobile is the one part of the mobile plan with two variants).
 >
 > ← [Phase 35 — Shared Packages](./PHASE-35-SHARED-PACKAGES.md) · [Phase 37 — Mobile App Foundation](./PHASE-37-MOBILE-APP-FOUNDATION.md) →
 
@@ -37,7 +37,9 @@ triggers tested as `callibrator_app` on PostgreSQL 18.
 **Why:** the Next proxy strips tokens by design; a phone has no other path to them.
 
 **Definition of Done**
-- [ ] Both nginx files and the Helm ingress route `/native/api/` to the backend with the prefix rewritten, `Cookie` stripped, `X-Callibrator-Client: native` set (overwriting client input)
+- [ ] Both nginx files and the Helm ingress route `/native/api/` to the internal gateway hop (ADR-136; today: the Node backend) with the prefix rewritten, `Cookie` stripped, `X-Callibrator-Client: native` set (overwriting client input), and the client-address headers **repeated** in the location (Host, X-Real-IP, X-Forwarded-For, X-Forwarded-Proto, CF-Connecting-IP/CF-Visitor blanked — a location with its own `proxy_set_header` inherits none)
+- [ ] **Live check:** `req.ip` and the protocol seen by the backend through `/native/` equal those seen through `/api/` (a request from a known address over https), named in the record
+- [ ] The Next proxy's header denylist and every non-native edge location strip `X-Callibrator-*`; a test per path proves no browser request reaches the backend with them
 - [ ] Backend middleware reads the marker into the request; a request with `Origin` or `Sec-Fetch-Mode` on the native ingress → 403 — **after** proving on an Android and an iOS build that React Native's `fetch` sends neither (if one does, the rule is dropped and recorded)
 - [ ] Live test on the compose stack: login through `/native/` returns tokens; through `/api/` it does not (A-71 still holds); a browser-shaped request to `/native/` is refused
 - [ ] Helm validated on the kind cluster (stated as kind-only, U-01)
@@ -169,7 +171,7 @@ triggers tested as `callibrator_app` on PostgreSQL 18.
 **Abuse cases**
 - Exempting the capture routes from 426 "so old phones can still sync" — a floor exists because those builds are unsafe
 
-### P36-08 — `x-facility-accessible` in the OpenAPI document
+### P36-08 — Check: `x-facility-accessible` in the contract equals the route gate
 
 | | |
 |---|---|
@@ -181,7 +183,7 @@ triggers tested as `callibrator_app` on PostgreSQL 18.
 **Why:** clients hide unmarked writes from bound users; the list must reach them from the one constant the gate reads.
 
 **Definition of Done**
-- [ ] Every operation carries `x-facility-accessible: true|false` generated from `FACILITY_ACCESSIBLE_ROUTES` (no second list); a test fails if the document and the constant disagree
+- [ ] **A check only** — `x-facility-accessible` is added to every operation by P32-06's extension set (contract-first, ADR-136); this card adds the test that the contract's value equals the backend's `FACILITY_ACCESSIBLE_ROUTES` for every operation, and that the native routes of this phase carry the right value
 - [ ] `canInvoke` (domain) reads it from the generated types; the web's per-page bound tests still green
 
 **Abuse cases**

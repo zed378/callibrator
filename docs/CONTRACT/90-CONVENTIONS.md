@@ -56,7 +56,9 @@ one.
 
 ## 4. Change Rules
 
-- **Additive only in v1** (B-VER-1). The breaking gate refuses anything else, and "but nobody uses it" is
+- **Additive only in v1** (B-VER-1), except the **CD-1** class — a security/validation tightening of input
+  that was never valid, with a changelog line, an ADR reference, the minimum-app-version announcement and
+  a reviewed allow-list entry for `openapi:breaking`. The breaking gate refuses anything else, and "but nobody uses it" is
   not an exception.
 - Every change bumps `VERSION` (minor or patch) and adds a `CHANGELOG.md` line.
 - A change to a named rule is a **new rule id** (`…-v2`) with its own vectors. The old one stays for data
