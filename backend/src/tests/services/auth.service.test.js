@@ -9,6 +9,8 @@ jest.mock("../../models", () => ({
     create: jest.fn(),
   },
   Roles: { findOne: jest.fn() },
+  // P21-09: "who am I" counts the tenant's client facilities (facilityMode).
+  ClientFacility: { count: jest.fn(async () => 0) },
 }));
 jest.mock("../../utils/password.util");
 // A-72: loginUser/loginMfa write a LOGIN audit row; its contract is covered

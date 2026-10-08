@@ -24,6 +24,7 @@ import {
 } from "../../validators/user.validator";
 import { ErrorEnvelope } from "../../docs/openapi/envelope";
 import { defineRouteDocs } from "../../docs/openapi/operation";
+import { userFacilityBinding } from "@callibrator/contracts/clientFacilities";
 
 const users = (action: "read" | "create" | "update" | "delete") => ({ kind: "dynamicAccess", resource: "users", action }) as const;
 
@@ -282,6 +283,36 @@ export default defineRouteDocs({
           sessionsRevoked: z.number().int().meta({ description: "The user's sessions signed out" }),
         }),
       },
+    },
+    {
+      method: "put",
+      path: "/:userId/client-facility",
+      operationId: "setUserClientFacility",
+      summary: "Bind a user to a client facility, or unbind it",
+      description:
+        "P21-09 (ADR-124 Am. 2 § 6): the one way a user's facility changes. `clientFacilityId` binds (a facility of the tenant, " +
+        "not its own, active; the role must be HEALTHCARE ADMIN, HEALTHCARE TECHNICIAN, FACILITY MAINTENANCE or ROOM USER); null " +
+        "unbinds and needs `roleId` — the role across every facility. Tenant administrators who are not bound themselves; never on " +
+        "oneself (400). Every session of the user is revoked. One audit row per affected facility. Not available to facility " +
+        "accounts (403). Refused (409) while FACILITY_BINDING_ENABLED is off — the pre-invitation gate.",
+      permission: users("update"),
+      audited: true,
+      params: userParams,
+      body: userFacilityBinding.omit({ userId: true }),
+      success: {
+        status: 200,
+        description: "The binding after the change",
+        data: z.object({
+          userId: z.guid(),
+          clientFacilityId: z.guid().nullable(),
+          roleId: z.guid().nullable(),
+          operation: z.enum(["BIND_FACILITY", "UNBIND_FACILITY", "REBIND_FACILITY", "CONFIRM_UNBOUND"]),
+          sessionsRevoked: z.number().int().min(0),
+        }),
+      },
+      conflict:
+        "Facility-bound accounts are not enabled yet; the facility is the tenant's own or not active; the user is already bound " +
+        "this way, or not bound at all.",
     },
   ],
 });

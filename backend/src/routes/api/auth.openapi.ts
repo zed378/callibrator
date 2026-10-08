@@ -20,6 +20,7 @@ import { z } from "zod";
 import { forgotPasswordSchema, firstSignInPasswordSchema, loginSchema, registerSchema, resetPasswordSchema } from "../../validators/auth.validator";
 import { ssoExchangeSchema, ssoLoginSchema } from "../../validators/sso.validator";
 import { defineRouteDocs } from "../../docs/openapi/operation";
+import { FACILITY_MODES } from "@callibrator/contracts/clientFacilities";
 
 const own = { kind: "authenticated", reason: "the caller's own account and session" } as const;
 
@@ -167,7 +168,12 @@ export default defineRouteDocs({
       path: "/verify",
       operationId: "verifySession",
       summary: "Verify the caller's session",
-      description: "The user, whether an MFA enrolment is required, and who manages the password (`passwordManagedBy`).",
+      description:
+        "The user, whether an MFA enrolment is required, and who manages the password (`passwordManagedBy`). " +
+        "P21-09: the facility scope — `clientFacilityId` (null: not bound to a client facility), `facilityBound`, " +
+        "`facilityMode` (`single`: the tenant has only its own facility, so the client hides every facility concept) " +
+        "and `scopeFingerprint`, which changes when the tenant, the binding, the role or the bound facility's status " +
+        "does (an offline client purges its working set on a change — AM-26).",
       permission: own,
       audited: false,
       success: {
@@ -176,6 +182,13 @@ export default defineRouteDocs({
         // P9-25 item 11: passwordManagedBy is auth.service#passwordManagedBy's
         // object (A-216), not a string.
         data: z.looseObject({
+          clientFacilityId: z.guid().nullable().meta({ description: "The client facility the account is bound to; null when unbound" }),
+          facilityBound: z.boolean(),
+          facilityMode: z.enum(FACILITY_MODES),
+          scopeFingerprint: z
+            .string()
+            .regex(/^[0-9a-f]{64}$/)
+            .meta({ description: "SHA-256 (hex) of the contract's scopeFingerprintInput (tenant, facility or `unbound`, role, facility status)" }),
           mfaEnrolmentRequired: z.boolean(),
           passwordManagedBy: z
             .object({ protocol: z.string().meta({ description: "The federated sign-in method (saml, oidc)" }), provider: z.string().nullable() })

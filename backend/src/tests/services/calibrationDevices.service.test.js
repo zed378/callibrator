@@ -25,6 +25,9 @@ jest.mock("../../models", () => ({
     // too); it hands back the same mock so findOne/findAll stay shared.
     unscoped: jest.fn(),
   },
+  // P21-09 (G-F1): a create resolves its client facility — none here, so the
+  // device is created without one (the database's default trigger fills it).
+  ClientFacility: { findOne: jest.fn(async () => null) },
 }));
 
 // A-133: device writes run in a managed transaction with their audit row

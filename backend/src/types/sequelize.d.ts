@@ -74,4 +74,31 @@ declare module "sequelize" {
     /** The password this update writes signs in once (P10-16). */
     oneTimePassword?: boolean;
   }
+  // P21-09 (ADR-124 Am. 2 § 8; spec § 5.4, § 7.6): the facility dimension's options, on every
+  // operation the hooks scope. `skipFacilityScope` is the reviewed opt-out (G-13 — it never skips
+  // the tenant predicate, and `skipTenantScope` never skips it); `facilityMove` (the move's id)
+  // and `facilityBinding` are the two typed operations allowed to change a row's facility (AM-6).
+  interface FacilityScopeOptions {
+    /** Opt out of the facility dimension for this operation (reviewed: FACILITY_SCOPE_SKIPS). */
+    skipFacilityScope?: boolean;
+    /** The device move changing this row's facility (services/deviceMove). */
+    facilityMove?: string;
+    /** The user-binding operation changing this user's facility (services/userFacilityBinding). */
+    facilityBinding?: boolean;
+  }
+  /* eslint-disable @typescript-eslint/no-empty-object-type -- declaration merging: each interface gains the keys above */
+  interface FindOptions extends FacilityScopeOptions {}
+  interface CountOptions extends FacilityScopeOptions {}
+  interface UpdateOptions extends FacilityScopeOptions {}
+  interface DestroyOptions extends FacilityScopeOptions {}
+  interface RestoreOptions extends FacilityScopeOptions {}
+  interface CreateOptions extends FacilityScopeOptions {}
+  interface BulkCreateOptions extends FacilityScopeOptions {}
+  interface UpsertOptions extends FacilityScopeOptions {}
+  interface SaveOptions extends FacilityScopeOptions {}
+  interface InstanceDestroyOptions extends FacilityScopeOptions {}
+  interface InstanceRestoreOptions extends FacilityScopeOptions {}
+  interface InstanceUpdateOptions extends FacilityScopeOptions {}
+  interface IncrementDecrementOptions extends FacilityScopeOptions {}
+  /* eslint-enable @typescript-eslint/no-empty-object-type */
 }

@@ -43,6 +43,10 @@ describe("tenantContext.middleware", () => {
       tenantId: "tenant-abc",
       isSuperAdmin: false,
       isSystemTask: false,
+      // P21-09: the facility half of the context (no principal: unbound, no user).
+      userId: null,
+      clientFacilityId: null,
+      facilityBound: false,
     });
   });
 

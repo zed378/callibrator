@@ -306,6 +306,9 @@ const assertIdentityFree = async (
     paranoid: false,
     // A-128: deliberately global — as the unique index this predicts is.
     skipTenantScope: true,
+    // skipFacilityScope: the unique index is global, so a bound user editing its own profile must
+    // meet every holder, not only its facility's (P21-09; FACILITY_SCOPE_SKIPS). Only `id` is read.
+    skipFacilityScope: true,
     // `undefined` keeps the CLS transaction (not null); the cast is for exactOptionalPropertyTypes.
     transaction: transaction as Transaction,
   });

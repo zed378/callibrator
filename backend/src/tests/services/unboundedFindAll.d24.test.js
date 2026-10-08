@@ -172,6 +172,12 @@ const OPEN = "OPEN — grows with the tenant, not paged yet (ADR-083 follow-up)"
 
 /** Each entry: [the most calls allowed under this key, why it is bounded]. */
 const REVIEWED = Object.freeze({
+  // P21-09 (ADR-124): a tenant's client facilities — the health facilities one calibration company
+  // serves (the upstream provider: tens, UD-11) — for a picker; and one facility's bound accounts
+  // (its staff), listed for the administrator and read to revoke their sessions on a status change.
+  "clientFacilityAdmin.service.ts::facilityOptions::models.ClientFacility": [1, CLOSED],
+  "clientFacilityAdmin.service.ts::facilityUsers::models.User": [1, PARENT],
+  "clientFacilityAdmin.service.ts::changeFacilityStatus::models.User": [1, PARENT],
   // ADR-108 Amendment 1: one user's passkeys — at most MAX_PASSKEYS_PER_USER (10).
   "webauthn.service.ts::getRegistrationOptions::WebauthnCredential": [1, PARENT],
   "webauthn.service.ts::getLoginOptions::WebauthnCredential": [1, PARENT],

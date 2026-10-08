@@ -324,6 +324,10 @@ describe("socket handshake authentication", () => {
       tenantId: "tenant-1",
       isSuperAdmin: false,
       isSystemTask: false,
+      // P21-09: the facility half of the context (an unbound user).
+      userId: "user-1",
+      clientFacilityId: null,
+      facilityBound: false,
     });
   });
 
@@ -359,6 +363,10 @@ describe("socket handshake authentication", () => {
         tenantId: null,
         isSuperAdmin: true,
         isSystemTask: false,
+        // P21-09: the facility half of the context (a super admin is never bound).
+        userId: "user-1",
+        clientFacilityId: null,
+        facilityBound: false,
       });
     },
   );

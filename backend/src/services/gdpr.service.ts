@@ -1797,6 +1797,9 @@ async function assertEmailFree(
     attributes: ["id"],
     paranoid: false,
     skipTenantScope: true,
+    // skipFacilityScope: the e-mail is unique across every account, so a bound subject's
+    // rectification must meet every holder (P21-09; FACILITY_SCOPE_SKIPS). Only `id` is read.
+    skipFacilityScope: true,
     transaction,
   });
   if (taken) {

@@ -57,8 +57,9 @@ import redisService from "../services/redis.service";
 import jwtUtil from "../utils/jwt.util";
 import authService from "../services/auth.service";
 import sessionService from "../services/session.service";
-import { tenantStorage } from "../middlewares/tenantContext.middleware";
+import { facilityContextOf, tenantStorage } from "../middlewares/tenantContext.middleware";
 import type { TenantContextStore } from "../middlewares/tenantContext.middleware";
+import { facilityRefusalOf } from "../utils/facilityRefusal.util";
 import { logger } from "../middlewares/activityLog.middleware";
 
 // N-01 / V-15: the one super-admin predicate (utils/role.util.ts).
@@ -76,6 +77,10 @@ interface SocketPrincipal {
   status?: string;
   tenant?: { status?: string | null } | null;
   role?: { name?: unknown } | null;
+  /** P21-09: the facility a bound account is confined to (null: unbound), and its row's status. */
+  clientFacilityId?: string | null;
+  clientFacility?: { status?: unknown } | null;
+  facilityBindingPending?: boolean;
 }
 
 /** A socket that passed the handshake: its principal, session and tenant context. */
@@ -202,6 +207,14 @@ const checkPrincipal = async (
     }
   }
 
+  // P21-09 (spec § 7.2, § 9.1; AM-20): the HTTP refusal codes, at the
+  // handshake and on every re-check — a facility that leaves `active` closes
+  // its bound users' sockets within one interval.
+  const facilityRefused = facilityRefusalOf(user);
+  if (facilityRefused) {
+    return { refusal: `user ${user.id} is refused: ${facilityRefused.code}` };
+  }
+
   return { user };
 };
 
@@ -242,6 +255,12 @@ const scopeDrift = (socket: AppSocket, user: SocketPrincipal): string | null => 
   }
   if (user.role?.name !== socket.user.role?.name) {
     return `user ${user.id} changed role`;
+  }
+  // P21-09 (spec § 9.1, AM-20): a binding change (bind, unbind, re-bind) moves
+  // the principal to other rooms — disconnect, never re-join in place.
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- an empty facility reads as none, as the handshake reads it
+  if ((user.clientFacilityId || null) !== (socket.tenantContext.clientFacilityId ?? null)) {
+    return `user ${user.id} changed client facility`;
   }
   return null;
 };
@@ -325,6 +344,9 @@ const authenticateHandshake = async (socket: Socket, next: Next): Promise<unknow
       // eslint-disable-next-line @typescript-eslint/prefer-optional-chain -- as built: `role && role.name`
       isSuperAdmin: isSuperAdminRole(principal.role && principal.role.name),
       isSystemTask: false,
+      // P21-09 (spec § 7.1): the facility half, from the loaded row — the
+      // socket entry path's one writer (G-16).
+      ...facilityContextOf(principal),
     };
 
     return next();
@@ -426,7 +448,14 @@ const initSocket = (server: HttpServer): Server => {
     recheckTimer.unref();
 
     // Join tenant room for tenant-scoped broadcasts (tenant isolation).
-    void socket.join(`tenant_${socket.user.tenantId as string}`);
+    // P21-09 (spec § 9.1, AM-19): a facility-BOUND principal never joins the
+    // tenant room — a tenant broadcast carries every facility's data. It joins
+    // its facility's room instead (emitters name the facility from the ROW).
+    if (socket.tenantContext.facilityBound === true) {
+      void socket.join(`facility_${socket.user.tenantId as string}_${socket.tenantContext.clientFacilityId as string}`);
+    } else {
+      void socket.join(`tenant_${socket.user.tenantId as string}`);
+    }
 
     // Join user room for direct messages.
     void socket.join(`user_${socket.user.id}`);
@@ -445,6 +474,10 @@ const initSocket = (server: HttpServer): Server => {
       "kanban:join",
       withTenantContext(socket, async (projectId: unknown, ack: unknown) => {
         try {
+          // P21-09: kanban is provider-internal — a bound principal never joins a board.
+          if (socket.tenantContext.facilityBound === true) {
+            throw new Error("Kanban boards are not available to facility accounts");
+          }
           // eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: required at call time (see above)
           const kanban = require("../services/kanban.service") as typeof KanbanService;
           await kanban.assertAccess(socket.user as Parameters<typeof kanban.assertAccess>[0], projectId as Parameters<typeof kanban.assertAccess>[1], "viewer");

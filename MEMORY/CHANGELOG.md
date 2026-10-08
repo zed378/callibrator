@@ -8,6 +8,17 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-08 — The facility dimension: bound accounts are confined by the hooks and the route layer; the binding route (P21-09a, P21-09b; ADR-124 Am. 4) ([record](./records/2026-10-08-p21-09-facility-dimension.md))
+- **Built:**
+  - A second, deny-by-default scope in the global hooks for a facility-bound account: its facility's rows, its own facility/session/notification/consent rows, nothing else; a row's facility changes only through a move or a binding (AM-6), in every context.
+  - A bound account whose facility is paused or ended (or still waiting to be bound) is refused with a top-level `code` (`FACILITY_INACTIVE`, `FACILITY_ENDED`, `FACILITY_BINDING_PENDING`, `FACILITY_UNRESOLVED`); its sockets join only its facility's room.
+  - `POST /auth/verify` returns `clientFacilityId`, `facilityBound`, `facilityMode` and `scopeFingerprint`.
+  - A route gate: a bound account reaches only the reviewed self routes; everything else answers 403 `FACILITY_ROUTE_REFUSED` before a parameter is read.
+  - `GET /api/v1/client-facilities/mine`; `PUT /api/v1/users/:userId/client-facility` (refused with 409 until `FACILITY_BINDING_ENABLED=true`).
+  - A device created without a facility goes to the tenant's own facility; serial numbers are checked per facility; audit rows carry the resource's facility.
+- **Users notice:** nothing — no account is bound yet, and a tenant with only its own facility reads `facilityMode: "single"`.
+- **Not yet:** the facility administration routes (wait on P20-06's menu slugs), device moves, the bound menu ceiling, domain reads for bound accounts (P21-09c – e).
+
 ### 2026-10-08 — The public pages get their own root layout and stylesheet (P10-18, ADR-131 built + Am. 1); three public forms load their API layer on demand (P10-19) ([record](./records/2026-10-08-p10-18-19-public-layout.md))
 - **Built:**
   - `app/(public)` and `app/(app)` route groups, each with a root layout rendered through one `app/rootDocument.tsx` (nonce, `lang`, metadata, no providers). **No URL changed** (route table identical).

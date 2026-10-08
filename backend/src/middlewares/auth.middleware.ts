@@ -30,6 +30,7 @@ import {
   mfaEnrolmentRequired as loadedMfaEnrolmentRequired,
 } from "../utils/mfaPolicy.util";
 import { isSuperAdmin as loadedIsSuperAdmin } from "../utils/role.util";
+import { facilityRefusalOf as loadedFacilityRefusalOf } from "../utils/facilityRefusal.util";
 
 const verifyAccessToken = loadedVerifyAccessToken;
 const unauthorized = loadedUnauthorized;
@@ -42,6 +43,7 @@ const isPlatformTenant = loadedIsPlatformTenant;
 const isActiveTenantStatus = loadedIsActiveTenantStatus;
 const MFA_ENROLMENT_REQUIRED_CODE = LOADED_MFA_ENROLMENT_REQUIRED_CODE;
 const mfaEnrolmentRequired = loadedMfaEnrolmentRequired;
+const facilityRefusalOf = loadedFacilityRefusalOf;
 
 /** A verified access token's claims, as this middleware reads them. */
 interface AccessClaims {
@@ -61,6 +63,10 @@ interface LoadedUser {
   mustChangePassword?: unknown;
   readonly role?: { readonly name?: unknown } | null;
   isApiKey?: unknown;
+  /** P21-09: the facility the account is bound to (null: unbound), its row, and the JIT/SCIM flag. */
+  clientFacilityId?: unknown;
+  clientFacility?: { status?: unknown } | null;
+  facilityBindingPending?: unknown;
   [field: string]: unknown;
 }
 
@@ -442,6 +448,18 @@ const auth: RequestHandler = async (req: Request, res: Response, next: NextFunct
       r.tenant = user.tenant;
     }
 
+    // ==========================================
+    // FACILITY REFUSAL (P21-09, spec § 7.2, AM-1)
+    // ==========================================
+    // A bound account whose facility is paused or ended, or an account still
+    // waiting to be bound, is refused with a TOP-LEVEL machine-readable code —
+    // the PWA purges its working set on the scope-loss ones. After the tenant
+    // refusal (A-101) and before the context is built.
+    const facilityRefused = facilityRefusalOf(user);
+    if (facilityRefused) {
+      return errorResponse(res, facilityRefused.message, 403, null, { code: facilityRefused.code });
+    }
+
     // Only allow explicit tenant header overrides if user is SUPER_ADMIN.
     // Tenant-bound and tenant-less non-super-admin accounts must NEVER be able
     // to select a tenant via request headers — doing so would let any
@@ -520,6 +538,8 @@ const optionalAuth: RequestHandler = async (req: Request, res: Response, next: N
       user.isActive &&
       (user.status === "ACTIVE" || user.status === "INACTIVE") &&
       !tenantRefusal(user) &&
+      // P21-09: an account its facility refuses is anonymous here, as a suspended tenant's is.
+      !facilityRefusalOf(user) &&
       !mustChangePasswordFirst(user, req, impersonatorFrom(decoded)) &&
       !mustEnrolMfaFirst(user, req, impersonatorFrom(decoded), signInMethodFrom(decoded))
     ) {

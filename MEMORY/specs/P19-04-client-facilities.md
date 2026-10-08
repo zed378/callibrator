@@ -323,6 +323,8 @@ resolveFacilityScope(model, options):
 
 ### 7.4 Every hook branch
 
+> **As built (P21-09a, ADR-124 Am. 4 § 3):** a bound create is **stamped** when the facility (or rule value) is missing and **refused** when it names another — never overwritten ("forced" read as "cannot end up anywhere else", the tenant hooks' `bulkCreate` rule); the own-facility rule never stamps a primary key. Built in `utils/tenantScope.util.ts` (`resolveFacilityScope` … `refuseFacilityChange`); tests `tenantScope.facility`, `tenantScope.facilityDeny`.
+
 | Hook / path | Tenant (today) | Facility twin (target) |
 |---|---|---|
 | `beforeFind`, `beforeCount` (root) | `applyTenantWhere` | `applyFacilityWhere`: filter / rule / deny as § 7.3 |
@@ -358,6 +360,8 @@ The attribute is per model because `Session` uses snake-case attributes (the CLA
 - **P21-09 must review each of today's 29 `skipTenantScope: true` sites** (16 files: `controllers/sso.controller.ts`; `services/auth.service.ts` (3), `bootstrapCredential`, `customDomains`, `gdpr`, `jobMonitor`, `loginDiscovery` (4), `ownSessions` (2), `passkeyLogin`, `rateLimiter.redis`, `scheduledBackup` (2), `session` (5), `signInPolicy` (2), `tenantLifecycle` (2), `user`) and record per site: *unreachable under a bound context* (pre-auth, system), *correct under the facility branch* (e.g. `ownSessions` → `Session` own-user rule), or *needs a reviewed `skipFacilityScope`*.
 
 ### 7.7 The route gate — identifiers and mechanics
+
+> **As built (P21-09b, ADR-124 Am. 4 § 4 – § 5):** the index is `app.router`, registered at boot by `utils/routeTable#registerAppRouteIndex` with each router mapped to its route file; `resolveRoute` uses router 2's own matchers; **no index registered refuses every bound request**. Marked so far: S-1 (verify, logout, logout-all, socket-token, impersonate/exit), S-2 `GET /sessions/mine`, S-5 `GET /notifications` + `PATCH /read-all`, S-6, S-7 `PATCH /users/:userId/profile` (`selfParam`), S-8. Tests `facilityRouteIndex.parity`, `facilityRouteDefault` (G-10), `facilityAccessibleRoutes.guard` (G-09).
 
 - **`FACILITY_ACCESSIBLE_ROUTES`** (constants/facilityAccess.ts), keyed like `routeGateExemptions` (route file → `"METHOD /path"`) → `{ kind: "read" | "write" | "self", reason, selfParam?, boundGate? }` — the P18-03 § 8 rows.
 - **`facilityRouteGate`** (`middlewares/facilityRouteGate.middleware.ts`) is called **from `tenantContextMiddleware`** for a bound principal, after the context is built — so it covers routers that mount `auth` with `router.use(auth)` (33 routers do; `req.route` is not set there) and route-level `auth` alike, and it runs before any `validate` (AM-12: id-independent 403).
@@ -498,6 +502,8 @@ Swept lists (the P18-03 Matrix D reads): A-1 devices, A-4 records, A-6 attachmen
 ## 13. API — Routes, Contracts, Gates, Markers, Status Codes
 
 ### 13.1 Routes (`routes/api/clientFacilities.route.ts` + `.openapi.ts`; mounted `/api/v1/client-facilities`)
+
+> **As built (P21-09b, ADR-124 Am. 4 § 1, § 6):** `GET /mine` and `PUT /users/:userId/client-facility` are mounted; the administration routes wait for **P20-06** (the `client-facilities` and `ipm` slugs) and land in P21-09c — their service is `services/clientFacilityAdmin.service.ts`. The binding route's gate is `dynamicAccess("users", "update", { checkTenant })` (`update` normalises to write).
 
 | Method + path | Gate | Marked (bound) | Two-tenant | Notes |
 |---|---|---|---|---|

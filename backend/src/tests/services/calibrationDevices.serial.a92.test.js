@@ -85,7 +85,10 @@ const serialViolation = (serial) =>
 const isSelect = (sql) => /^SELECT /i.test(sql);
 const isWrite = (sql) => /^(INSERT|UPDATE) /i.test(sql);
 const filtersLiveOnly = (sql) => /"is_deleted" = false/.test(sql);
-const selects = () => mockDb.statements.map((s) => s.text).filter(isSelect);
+// P21-09: a create first resolves its client facility (G-F1: the tenant's self
+// facility) — a lookup of client_facilities, not the serial lookup this suite pins.
+const selects = () =>
+  mockDb.statements.map((s) => s.text).filter(isSelect).filter((t) => !/FROM "client_facilities"/.test(t));
 
 /** Everything a statement writes: inline SQL plus its bind parameters. */
 const writes = (sql, options, serial) =>
