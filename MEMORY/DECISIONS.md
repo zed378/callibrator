@@ -4522,11 +4522,11 @@ asserted before and after.
 
 What it found:
 
-- **CD-1** — the backend image cannot render a certificate PDF: `pkg` does not package the ESM
+- **D-1** — the backend image cannot render a certificate PDF: `pkg` does not package the ESM
   `puppeteer-core` (`ERR_MODULE_NOT_FOUND …/puppeteer-core/lib/puppeteer/api/Browser.js`), so
   `POST /certificates/:id/pdf` answers 500. The drill rendered the PDFs with the same service code on
   the host. `--fallback-to-source` and adding the packages as `pkg` assets did not fix it. **Open.**
-- **CD-2** — PostgreSQL ran crash recovery twice under load: the postmaster was PID 1 and treated a
+- **D-2** — PostgreSQL ran crash recovery twice under load: the postmaster was PID 1 and treated a
   killed health check's `pg_isready` as a crashed child ("untracked child process … exited with exit
   code 2"), terminating every session. **Fixed:** `init: true` on the compose `postgres` service.
   (RabbitMQ showed the same shape at teardown: a zombie that could not be stopped.)
@@ -4610,7 +4610,7 @@ What it found:
   rows). Measured on the drill: not noticeable; not measured at production volume.
 - **The escrow is a procedure.** Nothing enforces that it exists or audits reads of it; there is no
   external KMS.
-- **CD-1 is open: the shipped image cannot render certificate PDFs.** Signing works; the document does
+- **D-1 is open: the shipped image cannot render certificate PDFs.** Signing works; the document does
   not. This is a release blocker for certificates and belongs to the image/packaging owner.
 - **RPO is the dump's age.** Nothing configures WAL archiving; the 1-hour RPO in
   `docs/ARCHITECTURE/09` was marked "yes" and is not achievable as shipped.
@@ -5153,7 +5153,7 @@ per replica) at this data volume.
 - **Not triggered.** P8-06 still also waits on Q-03.
 
 **Not measured, and why.**
-- **Memory under sustained PDF rendering:** the image cannot render certificate PDFs (M-11 / P7-04 CD-1).
+- **Memory under sustained PDF rendering:** the image cannot render certificate PDFs (M-11 / P7-04 D-1).
 - **The MQTT ingest path:** not run; a telemetry flood test is still owed. The card's premise that "the broker
   shares the API process" is **stale**: there is no embedded broker (A-17). The backend is an MQTT *client*, and
   its message handler shares the API event loop.
@@ -7162,7 +7162,7 @@ Also changed, outside the per-validator table:
 
 ## ADR-095: Audit Rows Are Append-Only in the Database and Only Masking May Change Them; a System Role Cannot Be Soft-Deleted; the Backend Renders No Certificate PDF — the Frontend Renders It From a Data Document Whose Hash Binds Every Printed Field
 
-**Date:** 2026-09-29 · **Findings:** Q-34, Q-35, Q-36 (`TASKS/BACKLOG.md`), M-11 / ADR-078 CD-1 ·
+**Date:** 2026-09-29 · **Findings:** Q-34, Q-35, Q-36 (`TASKS/BACKLOG.md`), M-11 / ADR-078 D-1 ·
 **Authority:** the orchestrator decided Q-34 to Q-36 by best practice. For M-11 it first asked for a
 packaging fix, then relayed the **owner's decision (2026-09-29): certificate PDF rendering moves to the
 frontend**. · **Record:** [`records/2026-09-29-adr095-audit-append-only-pdf-frontend.md`](records/2026-09-29-adr095-audit-append-only-pdf-frontend.md)
@@ -7267,7 +7267,7 @@ PostgreSQL 18.6 passes **5/5** (it was 3/5).
 
 ### 4. M-11 — the backend renders no certificate PDF
 
-**Context.** ADR-078 CD-1: in the shipped pkg binary, `POST /certificates/:id/pdf` answered 500. puppeteer 25
+**Context.** ADR-078 D-1: in the shipped pkg binary, `POST /certificates/:id/pdf` answered 500. puppeteer 25
 is ES-module-only, and Node's ESM loader cannot read pkg's `/snapshot`.
 
 Two findings came out of the work:
@@ -10276,7 +10276,7 @@ The owner chose one catalogue for the whole platform rather than one per tenant 
 | Alternative | Why not |
 |---|---|
 | **Per-tenant catalogues** (`tenant_id` on every catalogue table) | not the owner's choice; 118 copies of the same 344 types in the upstream case, and no shared improvement of a checklist |
-| **Provider-owned catalogue referenced by facilities** | a cross-tenant foreign key (CD-2) — only meaningful under the cross-tenant model ADR-124 rejected |
+| **Provider-owned catalogue referenced by facilities** | a cross-tenant foreign key (D-2) — only meaningful under the cross-tenant model ADR-124 rejected |
 | **Mutable templates without versions** (upstream's model) | a changed limit rewrites every past report's meaning; fails ISO 17025 7.5 / Part 11 record integrity |
 | **Version the item library instead of copying items into a version** | a version would then be a set of pointers into a moving library; the copy makes a version readable on its own, offline, forever |
 | **Drafts stored in the global tables with a `proposed_by_tenant_id` column** | drafts would need an application-level visibility filter on a global table — "remember the WHERE"; a tenant-scoped proposal table gets the hooks for free |
