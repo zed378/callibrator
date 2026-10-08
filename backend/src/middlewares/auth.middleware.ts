@@ -31,6 +31,7 @@ import {
 } from "../utils/mfaPolicy.util";
 import { isSuperAdmin as loadedIsSuperAdmin } from "../utils/role.util";
 import { facilityRefusalOf as loadedFacilityRefusalOf } from "../utils/facilityRefusal.util";
+import type { ScopeLossCode } from "@callibrator/contracts/clientFacilities";
 
 const verifyAccessToken = loadedVerifyAccessToken;
 const unauthorized = loadedUnauthorized;
@@ -110,6 +111,21 @@ const SIDLESS_ACCESS_TOKENS_ACCEPTED = false as boolean;
 const isSuperAdminPrincipal = loadedIsSuperAdmin;
 
 /**
+ * P21-03 (P19-08 § 9.5, G-O5; AM-1) — a suspended or deleted tenant's refusal, with the top-level
+ * `code` on which the offline client purges its working set (`SCOPE_LOSS_CODES`).
+ *
+ * @param status - `suspended` or `deleted`
+ * @returns the message and the code
+ */
+const tenantStatusRefusal = (status: "suspended" | "deleted"): { message: string; code: ScopeLossCode } => ({
+  message: `Tenant account is ${status}`,
+  code: status === "suspended" ? "TENANT_SUSPENDED" : "TENANT_DELETED",
+});
+
+/** P21-03 (G-O5): an account that may no longer act — banned, inactive, suspended or erased. */
+const ACCOUNT_INACTIVE: ScopeLossCode = "ACCOUNT_INACTIVE";
+
+/**
  * A-101 — why this principal's tenant may not act, or null when it may. The
  * same rule as the sign-in points (auth.service.js `tenantRefusal`, A-83),
  * kept here rather than imported because most suites replace auth.service
@@ -132,7 +148,7 @@ const isSuperAdminPrincipal = loadedIsSuperAdmin;
  * @param user - `{ tenantId?, tenant?: { status? } | null }`
  * @returns the refusal message (answered with 403)
  */
-const tenantRefusal = (user: LoadedUser): string | null => {
+const tenantRefusal = (user: LoadedUser): { message: string; code: ScopeLossCode } | null => {
   if (!user.tenantId) {
     return null;
   }
@@ -144,16 +160,14 @@ const tenantRefusal = (user: LoadedUser): string | null => {
   // excludePlatformTenant hook does NOT cover the include that loads
   // `user.tenant`, so the tenant row alone would have let it through.
   if (isPlatformTenant(user.tenantId as Parameters<typeof isPlatformTenant>[0]) && !isSuperAdminPrincipal(user)) {
-    return "Tenant account is not available";
+    return { message: "Tenant account is not available", code: "TENANT_DELETED" };
   }
   if (!user.tenant) {
-    return "Tenant account is deleted";
+    return { message: "Tenant account is deleted", code: "TENANT_DELETED" };
   }
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/no-base-to-string -- as built: `String(status || "")`
   const status = String(user.tenant.status || "").toLowerCase();
-  return status === "suspended" || status === "deleted"
-    ? `Tenant account is ${status}`
-    : null;
+  return status === "suspended" || status === "deleted" ? tenantStatusRefusal(status) : null;
 };
 
 /**
@@ -279,7 +293,8 @@ const tryApiKeyAuth = async (req: Request, res: Response, next: NextFunction): P
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/no-base-to-string -- as built: `key.tenant && String(status || "")`
   const tenantStatus = keyTenant && String(keyTenant.status || "").toLowerCase();
   if (tenantStatus === "suspended" || tenantStatus === "deleted") {
-    forbidden(res, `Tenant account is ${tenantStatus}`);
+    const refusal = tenantStatusRefusal(tenantStatus);
+    errorResponse(res, refusal.message, 403, null, { code: refusal.code });
     return true;
   }
   // Synthetic principal — carries a non-privileged role name so downstream
@@ -373,12 +388,12 @@ const auth: RequestHandler = async (req: Request, res: Response, next: NextFunct
     // ==========================================
 
     if (!user.isActive) {
-      return forbidden(res, "Account banned");
+      return errorResponse(res, "Account banned", 403, null, { code: ACCOUNT_INACTIVE });
     }
 
     // A-180: "erased" — a GDPR-anonymised account (gdpr.service).
     if (user.status === "INACTIVE" || user.status === "SUSPENDED" || user.status === "erased") {
-      return forbidden(res, `Account is ${user.status.toLowerCase()}`);
+      return errorResponse(res, `Account is ${user.status.toLowerCase()}`, 403, null, { code: ACCOUNT_INACTIVE });
     }
 
     // ==========================================
@@ -442,7 +457,7 @@ const auth: RequestHandler = async (req: Request, res: Response, next: NextFunct
     if (user.tenantId) {
       const refusal = tenantRefusal(user);
       if (refusal) {
-        return forbidden(res, refusal);
+        return errorResponse(res, refusal.message, 403, null, { code: refusal.code });
       }
       r.tenantId = user.tenantId;
       r.tenant = user.tenant;

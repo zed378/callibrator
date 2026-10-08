@@ -9,6 +9,7 @@ jest.mock("../../utils/jwt.util", () => ({
 jest.mock("../../utils/response.util", () => ({
   unauthorized: jest.fn(),
   forbidden: jest.fn(),
+  error: jest.fn(),
 }));
 
 jest.mock("../../services/auth.service", () => ({
@@ -44,7 +45,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 
 const { verifyAccessToken } = require("../../utils/jwt.util");
-const { unauthorized, forbidden } = require("../../utils/response.util");
+const { unauthorized, forbidden, error: errorResponse } = require("../../utils/response.util");
 const authService = require("../../services/auth.service");
 const tenantService = require("../../services/tenant.service");
 const apiKeyService = require("../../services/apiKey.service");
@@ -133,7 +134,7 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalledWith(res, "Account banned", 403, null, { code: "ACCOUNT_INACTIVE" });
     });
 
     it("should reject suspended user", async () => {
@@ -147,7 +148,7 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalledWith(res, "Account is suspended", 403, null, { code: "ACCOUNT_INACTIVE" });
     });
 
     it("A-180: rejects an erased (GDPR-anonymised) account by its status alone", async () => {
@@ -161,7 +162,7 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalledWith(res, "Account is erased");
+      expect(errorResponse).toHaveBeenCalledWith(res, "Account is erased", 403, null, { code: "ACCOUNT_INACTIVE" });
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -291,10 +292,12 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalled();
-      expect(forbidden).toHaveBeenCalledWith(
+      expect(errorResponse).toHaveBeenCalledWith(
         expect.anything(),
         "Tenant account is suspended",
+        403,
+        null,
+        { code: "TENANT_SUSPENDED" },
       );
     });
 
@@ -311,7 +314,7 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalledWith(res, "Tenant account is deleted", 403, null, { code: "TENANT_DELETED" });
     });
 
     it("should handle API key without tenant object", async () => {
@@ -418,7 +421,7 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalledWith(res, "Tenant account is suspended", 403, null, { code: "TENANT_SUSPENDED" });
     });
 
     it("should reject user with deleted tenant", async () => {
@@ -437,7 +440,7 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalledWith(res, "Tenant account is deleted", 403, null, { code: "TENANT_DELETED" });
     });
 
     it("should reject user with SUSPENDED tenant status (uppercase)", async () => {
@@ -456,7 +459,7 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalledWith(res, "Tenant account is suspended", 403, null, { code: "TENANT_SUSPENDED" });
     });
 
     it("should reject user with DELETED tenant status (uppercase)", async () => {
@@ -475,7 +478,7 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalledWith(res, "Tenant account is deleted", 403, null, { code: "TENANT_DELETED" });
     });
 
     it("should allow super admin to override tenant via x-tenant-id", async () => {
@@ -566,7 +569,7 @@ describe("auth middleware", () => {
 
       await auth(req, res, next);
 
-      expect(forbidden).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalledWith(res, "Account is inactive", 403, null, { code: "ACCOUNT_INACTIVE" });
     });
 
     it("should handle error in try-catch block", async () => {

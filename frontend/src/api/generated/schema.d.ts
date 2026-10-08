@@ -1532,6 +1532,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calibration-devices/{calibrationDeviceId}/ipm-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A device's IPM history
+         * @description `ipm` read. Submitted and voided sessions and the caller's own drafts, newest first (`performedAt`, then `id`), with the chain links (`supersedesId`, `supersededById`, `effective`). The device is read in the caller's context first: another tenant's or another facility's device is the 404 of a missing one. Reachable by a facility-bound account (its facility's devices).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["listCalibrationDeviceIpmSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calibration-devices/{calibrationDeviceId}/move": {
         parameters: {
             query?: never;
@@ -2938,6 +2960,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/field/wipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a wipe of another user's offline data
+         * @description A tenant administrator (then `ipm` write) records that it is about to wipe another user's offline captures on a phone; the app deletes only after this answer (ADR-135). The wiped user must be of the caller's tenant (else 404). One audit row (`DELETE`, resource `User`, `FIELD_DATA_WIPED`, the counts). An API key is refused. Not available to a facility-bound account (403 FACILITY_ROUTE_REFUSED).
+         */
+        post: operations["recordFieldWipe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/finance": {
         parameters: {
             query?: never;
@@ -3393,6 +3435,134 @@ export interface paths {
          *     **409** — The definition is already retired.
          */
         post: operations["retireInspectionItemDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List IPM sessions
+         * @description `ipm` read. Default: submitted and voided sessions and the caller's own drafts (`status` narrows; `discarded` only on request); `effective=true` keeps submitted sessions not superseded. Newest first, ending in `id`. A facility-bound account sees its facility's sessions only (a foreign `clientFacilityId` answers an empty page).
+         */
+        get: operations["listIpmSessions"];
+        put?: never;
+        /**
+         * Start an IPM draft for a device
+         * @description Pins a checklist version: the one sent (a retired one only when `capturedOffline`), else the device's current one. The device is read in the caller's context (another tenant's or facility's is the 404). A `clientRef` the caller already used answers **200** with that session (an offline replay). `ipm` write; an API key is refused (an IPM is a person's record) and so is the platform operator (ADR-052). Audited inside the transaction. Reachable by a facility-bound HEALTHCARE TECHNICIAN in its own facility. Honours an `Idempotency-Key` header (a UUID v4): a repeat of a completed request answers the stored status with the session re-read now; a different body under the key → 409 `IDEMPOTENCY_KEY_REUSED`; a changed access → 409 `IDEMPOTENCY_SCOPE_CHANGED`; a request still in flight → 409 `IDEMPOTENCY_IN_FLIGHT`. A failed request frees its key.
+         *
+         *     **409** — Top-level `code`: `IPM_DEVICE_RETIRED`, `IPM_DEVICE_INACTIVE`, `IPM_FACILITY_ENDED`, `IPM_VERSION_RETIRED`, `IPM_VERSION_STALE`, `IPM_NO_CHECKLIST`, `IPM_DRAFT_EXISTS` (with the caller's own `draftId`), `IPM_CLIENT_REF_REUSED`; or an idempotency code.
+         */
+        post: operations["createIpmSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One IPM session with its results
+         * @description `ipm` read. Header, results in read order, the pinned version's hash, the device prefill, the performer display.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["getIpmSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit a draft's header
+         * @description The date, the confirmed room (a room of the device's facility, else 400), the outcomes, the recommendation and the notes. Only the draft's creator (another user in scope: 403). Every 409 carries a top-level `code`: `IPM_NOT_DRAFT` (submitted, voided or discarded — the message says when and what to do instead), `IPM_REVISION_CONFLICT` (another save came first: reload). `ipm` write; an API key is refused (an IPM is a person's record) and so is the platform operator (ADR-052). Audited inside the transaction. Reachable by a facility-bound HEALTHCARE TECHNICIAN in its own facility. Honours an `Idempotency-Key` header (a UUID v4): a repeat of a completed request answers the stored status with the session re-read now; a different body under the key → 409 `IDEMPOTENCY_KEY_REUSED`; a changed access → 409 `IDEMPOTENCY_SCOPE_CHANGED`; a request still in flight → 409 `IDEMPOTENCY_IN_FLIGHT`. A failed request frees its key.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `IPM_NOT_DRAFT`, `IPM_REVISION_CONFLICT`, or an idempotency code.
+         */
+        patch: operations["updateIpmSessionHeader"];
+        trace?: never;
+    };
+    "/api/v1/ipm/sessions/{sessionId}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a correction of a submitted IPM
+         * @description A new draft that supersedes the session once submitted, with its header and results copied. A `clientRef` the caller already used answers **200** with that session. `ipm` write; an API key is refused (an IPM is a person's record) and so is the platform operator (ADR-052). Audited inside the transaction. Reachable by a facility-bound HEALTHCARE TECHNICIAN in its own facility. Honours an `Idempotency-Key` header (a UUID v4): a repeat of a completed request answers the stored status with the session re-read now; a different body under the key → 409 `IDEMPOTENCY_KEY_REUSED`; a changed access → 409 `IDEMPOTENCY_SCOPE_CHANGED`; a request still in flight → 409 `IDEMPOTENCY_IN_FLIGHT`. A failed request frees its key.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `IPM_NOT_SUBMITTED`, `IPM_VOIDED` (a void is final), `IPM_SUPERSEDED` (with the chain's `headId`), `IPM_CORRECTION_OPEN`, `IPM_FACILITY_ENDED`, `IPM_NO_CHECKLIST`, `IPM_CLIENT_REF_REUSED`, or an idempotency code.
+         */
+        post: operations["correctIpmSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/sessions/{sessionId}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard a draft
+         * @description By its creator, or a tenant administrator who is not facility-bound (anyone else: 403). The row is kept; discarded is final. `ipm` write; an API key is refused (an IPM is a person's record) and so is the platform operator (ADR-052). Audited inside the transaction. Reachable by a facility-bound HEALTHCARE TECHNICIAN in its own facility. Honours an `Idempotency-Key` header (a UUID v4): a repeat of a completed request answers the stored status with the session re-read now; a different body under the key → 409 `IDEMPOTENCY_KEY_REUSED`; a changed access → 409 `IDEMPOTENCY_SCOPE_CHANGED`; a request still in flight → 409 `IDEMPOTENCY_IN_FLIGHT`. A failed request frees its key.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `IPM_NOT_DRAFT` (only a draft can be discarded), or an idempotency code.
+         */
+        post: operations["discardIpmSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipm/sessions/{sessionId}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a draft's results
+         * @description Each row names a pinned template item (or an ad-hoc row of a section that takes them) and is checked against the server's copy of the item: readings are decimals (`0,7` allowed, grouping refused) inside the possible range; a measured-with-limit outcome is computed from the limit and cannot be overridden (400 names the item). Only the draft's creator (another user in scope: 403). Every 409 carries a top-level `code`: `IPM_NOT_DRAFT` (submitted, voided or discarded — the message says when and what to do instead), `IPM_REVISION_CONFLICT` (another save came first: reload). `ipm` write; an API key is refused (an IPM is a person's record) and so is the platform operator (ADR-052). Audited inside the transaction. Reachable by a facility-bound HEALTHCARE TECHNICIAN in its own facility. Honours an `Idempotency-Key` header (a UUID v4): a repeat of a completed request answers the stored status with the session re-read now; a different body under the key → 409 `IDEMPOTENCY_KEY_REUSED`; a changed access → 409 `IDEMPOTENCY_SCOPE_CHANGED`; a request still in flight → 409 `IDEMPOTENCY_IN_FLIGHT`. A failed request frees its key.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `IPM_NOT_DRAFT`, `IPM_REVISION_CONFLICT`, `IPM_FACILITY_ENDED`, or an idempotency code.
+         */
+        put: operations["replaceIpmSessionResults"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -10401,6 +10571,23 @@ export interface components {
             createdAt: string;
         };
         /**
+         * @description A recorded wipe of another user's offline data on a phone — counts only
+         * @example {
+         *       "wipedUserId": "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2",
+         *       "captures": 2,
+         *       "photos": 5,
+         *       "recordedAt": "2026-10-09T03:00:00.000Z"
+         *     }
+         */
+        FieldWipeRecord: {
+            /** Format: uuid */
+            wipedUserId: string;
+            captures: number;
+            photos: number;
+            /** Format: date-time */
+            recordedAt: string;
+        };
+        /**
          * @example {
          *       "latitude": -6.2,
          *       "longitude": 106.8,
@@ -10835,6 +11022,208 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description One answered checklist item, in read order (section, then sort order) */
+        IpmResult: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+            /** @enum {string} */
+            inputKind: "check" | "tri_state" | "condition_clean" | "measured" | "measured_with_limit" | "setting_measured_reference" | "text";
+            templateItemId: string | null;
+            itemDefinitionId: string | null;
+            isAdHoc: boolean;
+            /** @description The server's copy of the item's label (the technician's text on an ad-hoc row) */
+            label: string;
+            unit: string | null;
+            symbol: string | null;
+            settingText: string | null;
+            referenceText: string | null;
+            outcome: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty") | null;
+            cleanliness: ("clean" | "dirty") | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            measuredValue: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            measuredValue1: string | null;
+            /**
+             * @description An exact decimal as a string (never a binary float)
+             * @example 0.5
+             */
+            measuredValue2: string | null;
+            textValue: string | null;
+            computedOutcome: ("pass" | "fail") | null;
+            outcomeSource: ("technician" | "computed") | null;
+            warnFlag: boolean;
+            disagreementFlag: boolean;
+            sortOrder: number;
+        };
+        /** @description An IPM session with its results (ADR-126) */
+        IpmSession: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            deviceId: string;
+            /** Format: uuid */
+            clientFacilityId: string;
+            templateVersionId: string | null;
+            /** @enum {string} */
+            status: "draft" | "submitted" | "voided" | "discarded";
+            /** @description Submitted and not superseded: the visit's current record */
+            effective: boolean;
+            /** @description A draft's save counter; every write sends the revision it last read */
+            revision: number;
+            supersedesId: string | null;
+            correctionReason: string | null;
+            supersededById: string | null;
+            supersededAt: string | null;
+            /** Format: date-time */
+            performedAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            capturedOffline: boolean;
+            /** @description The phone's claim; never used for ordering, numbering or due */
+            clientCapturedAt: string | null;
+            clientRef: string | null;
+            createdBy: string | null;
+            performedBy: string | null;
+            submittedAt: string | null;
+            visitNumber: number | null;
+            legacyVisitNumber: number | null;
+            inspectionOutcome: ("pass" | "fail") | null;
+            maintenanceOutcome: ("pass" | "fail") | null;
+            recommendation: ("fit_for_use" | "needs_calibration" | "not_fit_for_use" | "needs_repair") | null;
+            notes: string | null;
+            locationId: string | null;
+            performerSnapshot: {
+                name: string;
+                role: string | null;
+                organisation: string | null;
+            } | null;
+            roomSnapshot: string | null;
+            floorSnapshot: string | null;
+            deviceSnapshot: {
+                [key: string]: unknown;
+            } | null;
+            facilitySnapshot: {
+                [key: string]: unknown;
+            } | null;
+            sideEffects: {
+                [key: string]: unknown;
+            } | null;
+            workOrderId: string | null;
+            followUpWorkOrderId: string | null;
+            reportNumber: string | null;
+            voidReason: string | null;
+            voidedAt: string | null;
+            discardedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description Who performed it: the submit's snapshot once submitted, else the user's display (A-90) */
+            performerDisplay: {
+                name: string | null;
+                role: string | null;
+                organisation: string | null;
+                redacted: boolean;
+            } | null;
+            templateVersionNumber: number | null;
+            /** @description The pinned version's content hash (the client renders its catalogue copy of it) */
+            templateContentHash: string | null;
+            /** @description The device prefill, read in the caller's context */
+            device: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                manufacturer: string | null;
+                model: string | null;
+                serialNumber: string | null;
+                qrCode: string | null;
+                deviceTypeId: string | null;
+                locationId: string | null;
+                status: string | null;
+            } | null;
+            results: components["schemas"]["IpmResult"][];
+            /** @description What the server noted (e.g. an offline capture on a non-current checklist) */
+            notices: string[];
+        };
+        /** @description An IPM session's header (lists) */
+        IpmSessionSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            deviceId: string;
+            /** Format: uuid */
+            clientFacilityId: string;
+            templateVersionId: string | null;
+            /** @enum {string} */
+            status: "draft" | "submitted" | "voided" | "discarded";
+            /** @description Submitted and not superseded: the visit's current record */
+            effective: boolean;
+            /** @description A draft's save counter; every write sends the revision it last read */
+            revision: number;
+            supersedesId: string | null;
+            correctionReason: string | null;
+            supersededById: string | null;
+            supersededAt: string | null;
+            /** Format: date-time */
+            performedAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            capturedOffline: boolean;
+            /** @description The phone's claim; never used for ordering, numbering or due */
+            clientCapturedAt: string | null;
+            clientRef: string | null;
+            createdBy: string | null;
+            performedBy: string | null;
+            submittedAt: string | null;
+            visitNumber: number | null;
+            legacyVisitNumber: number | null;
+            inspectionOutcome: ("pass" | "fail") | null;
+            maintenanceOutcome: ("pass" | "fail") | null;
+            recommendation: ("fit_for_use" | "needs_calibration" | "not_fit_for_use" | "needs_repair") | null;
+            notes: string | null;
+            locationId: string | null;
+            performerSnapshot: {
+                name: string;
+                role: string | null;
+                organisation: string | null;
+            } | null;
+            roomSnapshot: string | null;
+            floorSnapshot: string | null;
+            deviceSnapshot: {
+                [key: string]: unknown;
+            } | null;
+            facilitySnapshot: {
+                [key: string]: unknown;
+            } | null;
+            sideEffects: {
+                [key: string]: unknown;
+            } | null;
+            workOrderId: string | null;
+            followUpWorkOrderId: string | null;
+            reportNumber: string | null;
+            voidReason: string | null;
+            voidedAt: string | null;
+            discardedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description Who performed it: the submit's snapshot once submitted, else the user's display (A-90) */
+            performerDisplay: {
+                name: string | null;
+                role: string | null;
+                organisation: string | null;
+                redacted: boolean;
+            } | null;
         };
         /** @description A full board: the project, its columns, one sprint's cards, labels, sprints and members. */
         KanbanBoard: {
@@ -17588,6 +17977,45 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    listCalibrationDeviceIpmSessions: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The calibration device's id */
+                calibrationDeviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of sessions; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSessionSummary"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     moveCalibrationDevice: {
         parameters: {
             query?: never;
@@ -20900,6 +21328,46 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    recordFieldWipe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    wipedUserId: string;
+                    captures: number;
+                    photos: number;
+                };
+            };
+        };
+        responses: {
+            /** @description The wipe as recorded */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["FieldWipeRecord"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     listAssetFinances: {
         parameters: {
             query?: {
@@ -22122,6 +22590,418 @@ export interface operations {
                         status: number;
                         message: string;
                         data: components["schemas"]["InspectionItemDefinition"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listIpmSessions: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+                deviceId?: string;
+                clientFacilityId?: string;
+                status?: "draft" | "submitted" | "voided" | "discarded";
+                effective?: boolean;
+                recommendation?: "fit_for_use" | "needs_calibration" | "not_fit_for_use" | "needs_repair";
+                performedBy?: string;
+                from?: string | (string);
+                to?: string | (string);
+                q?: string;
+                sort?: "performedAt" | "visitNumber";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of sessions; pagination in the top-level `meta` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSessionSummary"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createIpmSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    deviceId: string;
+                    /** Format: uuid */
+                    templateVersionId?: string;
+                    clientRef?: string;
+                    capturedOffline?: boolean;
+                    clientCapturedAt?: string | (string);
+                    performedAt?: string | (string);
+                };
+            };
+        };
+        responses: {
+            /** @description The draft (200 when the `clientRef` was already recorded) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSession"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getIpmSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The IPM session's id */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSession"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    updateIpmSessionHeader: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The IPM session's id */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: number;
+                    performedAt?: string | (string);
+                    locationId?: string | null;
+                    inspectionOutcome?: ("pass" | "fail") | null;
+                    maintenanceOutcome?: ("pass" | "fail") | null;
+                    recommendation?: ("fit_for_use" | "needs_calibration" | "not_fit_for_use" | "needs_repair") | null;
+                    notes?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSession"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    correctIpmSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The IPM session's id */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    clientRef?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The correction draft (200 when the `clientRef` was already recorded) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSession"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    discardIpmSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The IPM session's id */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The discarded draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSession"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    replaceIpmSessionResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The IPM session's id */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: number;
+                    results: ({
+                        /** @constant */
+                        inputKind: "check";
+                        /** Format: uuid */
+                        templateItemId?: string;
+                        adHoc?: {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            unit?: string | null;
+                            symbol?: string | null;
+                            settingText?: string | null;
+                            referenceText?: string | null;
+                        };
+                        outcome?: ("done" | "not_done") | null;
+                    } | {
+                        /** @constant */
+                        inputKind: "tri_state";
+                        /** Format: uuid */
+                        templateItemId?: string;
+                        adHoc?: {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            unit?: string | null;
+                            symbol?: string | null;
+                            settingText?: string | null;
+                            referenceText?: string | null;
+                        };
+                        outcome?: ("pass" | "fail" | "not_applicable" | "done" | "not_done" | "good" | "minor_damage" | "major_damage" | "available" | "not_available" | "empty") | null;
+                    } | {
+                        /** @constant */
+                        inputKind: "condition_clean";
+                        /** Format: uuid */
+                        templateItemId?: string;
+                        adHoc?: {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            unit?: string | null;
+                            symbol?: string | null;
+                            settingText?: string | null;
+                            referenceText?: string | null;
+                        };
+                        outcome?: ("good" | "minor_damage" | "major_damage") | null;
+                        cleanliness?: ("clean" | "dirty") | null;
+                    } | {
+                        /** @constant */
+                        inputKind: "measured";
+                        /** Format: uuid */
+                        templateItemId?: string;
+                        adHoc?: {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            unit?: string | null;
+                            symbol?: string | null;
+                            settingText?: string | null;
+                            referenceText?: string | null;
+                        };
+                        value?: (string | number) | null;
+                        notApplicable?: boolean;
+                    } | {
+                        /** @constant */
+                        inputKind: "measured_with_limit";
+                        /** Format: uuid */
+                        templateItemId?: string;
+                        adHoc?: {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            unit?: string | null;
+                            symbol?: string | null;
+                            settingText?: string | null;
+                            referenceText?: string | null;
+                        };
+                        value?: (string | number) | null;
+                        notApplicable?: boolean;
+                        outcome?: ("pass" | "fail" | "not_applicable") | null;
+                    } | {
+                        /** @constant */
+                        inputKind: "setting_measured_reference";
+                        /** Format: uuid */
+                        templateItemId?: string;
+                        adHoc?: {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            unit?: string | null;
+                            symbol?: string | null;
+                            settingText?: string | null;
+                            referenceText?: string | null;
+                        };
+                        value1?: (string | number) | null;
+                        value2?: (string | number) | null;
+                        outcome?: ("pass" | "fail") | null;
+                    } | {
+                        /** @constant */
+                        inputKind: "text";
+                        /** Format: uuid */
+                        templateItemId?: string;
+                        adHoc?: {
+                            /** @enum {string} */
+                            section: "environment" | "electrical_supply" | "tools_used" | "other_safety" | "physical" | "electrical_safety" | "function" | "completeness" | "performance" | "battery" | "maintenance_task" | "consumable";
+                            label: string;
+                            unit?: string | null;
+                            symbol?: string | null;
+                            settingText?: string | null;
+                            referenceText?: string | null;
+                        };
+                        text?: string | null;
+                    })[];
+                };
+            };
+        };
+        responses: {
+            /** @description The draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["IpmSession"];
                     };
                 };
             };

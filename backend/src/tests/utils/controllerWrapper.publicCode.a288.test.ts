@@ -71,3 +71,22 @@ it("asyncHandlerWithMapping (no details argument) sends the code too", async () 
   });
   expect(payload).toMatchObject({ status: 403, code: "SELF_LOCKOUT" });
 });
+
+describe("P21-03 (ADR-126 Am. 4 § 2) — a coded error's public fields go top-level beside `code`", () => {
+  it("string values under camelCase keys are sent; the envelope's own keys, other key shapes and non-strings are not", async () => {
+    const error = Object.assign(new AppError(409, "Exists"), {
+      publicCode: "IPM_DRAFT_EXISTS",
+      publicFields: { draftId: "d-1", status: "200", data: "x", code: "OTHER", Bad: "no", "with-dash": "no", count: 3 },
+    });
+    const payload = await run(error);
+    delete payload["details"];
+    expect(payload).toEqual({ success: false, status: 409, message: "Exists", data: null, code: "IPM_DRAFT_EXISTS", draftId: "d-1" });
+  });
+
+  it("fields that are not an object are ignored", async () => {
+    for (const publicFields of [null, "draftId", 7]) {
+      const payload = await run(Object.assign(new AppError(409, "Exists"), { publicCode: "IPM_DRAFT_EXISTS", publicFields }));
+      expect(Object.keys(payload).filter((k) => k !== "details").sort()).toEqual(["code", "data", "message", "status", "success"]);
+    }
+  });
+});

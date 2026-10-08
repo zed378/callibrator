@@ -257,6 +257,21 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
     "GET /:calibrationDeviceId": { kind: "read", reason: "A-1: one device of the facility; another facility's is the same 404 as a missing one" },
     "POST /": { kind: "write", reason: "A-2: HEALTHCARE TECHNICIAN (UD-4 (b)) registers a device in its own facility — stamped, another facility refused (404)" },
     "PUT /:calibrationDeviceId": { kind: "write", reason: "A-3: edit a device of the facility; a bound writer cannot change its status or point it at a location it cannot read" },
+    "GET /:calibrationDeviceId/ipm-sessions": {
+      kind: "read",
+      reason: "A-10 (P21-03, N-2): a device's IPM history — the device is read in context first, another facility's is the 404",
+    },
+  },
+  // P21-03 (spec P19-02 § 10.1): IPM sessions — reads N-2, draft writes N-3 (within the bound ceiling only HEALTHCARE
+  // TECHNICIAN holds `ipm` write). The void (N-4) is P21-04's and stays unmarked.
+  "api/ipmSessions.route.ts": {
+    "GET /": { kind: "read", reason: "A-10 (N-2): the facility's IPM sessions (the hooks force the facility predicate)" },
+    "GET /:sessionId": { kind: "read", reason: "A-10 (N-2): one session of the facility; another facility's is the same 404 as a missing one" },
+    "POST /": { kind: "write", reason: "A-10 (N-3): a draft for a device of the facility — the device is read in context, another facility's is the 404" },
+    "PATCH /:sessionId": { kind: "write", reason: "A-10 (N-3): the creator's own draft header (another creator's draft: 403)" },
+    "PUT /:sessionId/results": { kind: "write", reason: "A-10 (N-3): the creator's own draft results, checked against the pinned version" },
+    "POST /:sessionId/discard": { kind: "write", reason: "A-10 (N-3): the creator discards its own draft (the administrator's discard is unbound only)" },
+    "POST /:sessionId/corrections": { kind: "write", reason: "A-10 (N-3): a correction draft of an effective session of the facility" },
   },
   "api/calibrationRecords.route.ts": {
     "GET /": { kind: "read", reason: "A-4: the facility's calibration records, with the performer display (A-90)" },
@@ -265,7 +280,8 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
   "api/attachments.route.ts": {
     "POST /": {
       kind: "write",
-      reason: "A-5: a device photo of the facility, with calibration write (C-4: standalone and other types refused)",
+      reason:
+        "A-5: a device photo of the facility, with calibration write; an IPM photo of the caller's own draft, with ipm write (P21-03) — standalone and other types refused (C-4)",
       boundGate: "boundUploadGate",
     },
     "GET /": { kind: "read", reason: "A-6: the facility's files, with the uploader display" },

@@ -151,6 +151,14 @@ export const toInspectionTemplateItemId = (value: string): InspectionTemplateIte
 /**
  * @throws {TypeError} when `value` is not a UUID
  */
+export const toInspectionSessionId = (value: string): InspectionSessionId => {
+  assertUuid(value, "An IPM session id");
+  return value as InspectionSessionId;
+};
+
+/**
+ * @throws {TypeError} when `value` is not a UUID
+ */
 export const toInspectionTemplateProposalId = (value: string): InspectionTemplateProposalId => {
   assertUuid(value, "A proposal id");
   return value as InspectionTemplateProposalId;

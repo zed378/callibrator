@@ -8,6 +8,13 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-09 — IPM drafts and corrections get their API; offline replays are idempotent; IPM photos; scope-loss codes (P21-03; ADR-126 Am. 4) ([record](./records/2026-10-09-p21-03-ipm-session-api.md))
+- **Added:** `/api/v1/ipm/sessions` — list, one session, create a draft (pinned checklist, `clientRef`), edit the header, replace the results (checked against the pinned version), discard, start a correction; `GET /api/v1/calibration-devices/:id/ipm-sessions`. Every 409 carries a top-level `code` (`IPM_CONFLICT_CODES`). **Not yet:** submit, void, "due" (P21-04).
+- **Added:** `Idempotency-Key` on every IPM draft write and on `POST /attachments` (replay answers the stored status with the resource re-read; a refused request frees its key); a nightly purge (`IDEMPOTENCY_KEY_PURGE_SCHEDULER`, 03:53).
+- **Added:** IPM photos (`resourceType: inspectionsession`, the caller's own draft only); `POST /api/v1/field/wipes` (tenant administrators, counts only).
+- **Changed:** 403 refusals of an inactive/banned account and of a suspended/deleted tenant carry `code` (`ACCOUNT_INACTIVE`, `TENANT_SUSPENDED`, `TENANT_DELETED`); a device with an open IPM draft cannot be moved (409).
+- **Users notice:** nothing yet — the `ipm` menu stays inactive until P22.
+
 ### 2026-10-09 — Device register extensions, calibration-date columns and photo purposes in the database (P20-02, P20-08; ADR-132 Am. 1, ADR-133 Am. 1) ([record](./records/2026-10-09-p20-02-08-device-extensions.md))
 - **Added (schema only, no routes yet):** migration 0128 — a device's QR (unique per tenant, deleted devices included), condition, inventory date, lab, registrant, IPM interval and offline reference; rooms (`warehouses.kind = room`, a floor, a facility, a name unique per facility) that hold only their facility's devices; a calibration record's entry kind, lab and snapshots; the next date's source; the IPM calibration request. Migration 0129 — `attachments.purpose` with one live front and serial-plate photo per device; IPM-session photos scoped to the session's facility and carried by a device move.
 - **Operational:** every existing warehouse becomes a `store`; every existing next calibration date is labelled `manual`. `0128`/`0129 down` refuse once any new column holds data.

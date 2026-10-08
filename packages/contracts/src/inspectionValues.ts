@@ -759,3 +759,220 @@ export const inspectionContentProblems = (content: InspectionItemContent): strin
   }
   return problems;
 };
+
+// ── IPM sessions: conflict codes and one result's normal form (P21-03; P19-02 spec § 7, § 9.4) ──
+
+/**
+ * The machine-readable codes of an IPM session's 409s (P19-02 spec § 7; ADR-127 § 8). Each travels
+ * in the TOP-LEVEL `code` of the answer, beside its explanation, so the offline outbox shows the
+ * server's reason for every "needs attention" item. Frozen; the order is the spec's.
+ */
+export const IPM_CONFLICT_CODES = Object.freeze([
+  "IPM_DEVICE_RETIRED",
+  "IPM_DEVICE_INACTIVE",
+  "IPM_FACILITY_ENDED",
+  "IPM_VERSION_RETIRED",
+  "IPM_VERSION_STALE",
+  "IPM_NO_CHECKLIST",
+  "IPM_DRAFT_EXISTS",
+  "IPM_CLIENT_REF_REUSED",
+  "IPM_REVISION_CONFLICT",
+  "IPM_NOT_DRAFT",
+  "IPM_NOT_SUBMITTED",
+  "IPM_VOIDED",
+  "IPM_SUPERSEDED",
+  "IPM_CORRECTION_OPEN",
+  "IPM_ORIGINAL_NOT_EFFECTIVE",
+] as const);
+export type IpmConflictCode = (typeof IPM_CONFLICT_CODES)[number];
+
+/** The `Idempotency-Key` middleware's 409 codes (P19-02 spec § 9.2; AM-25). */
+export const IDEMPOTENCY_CONFLICT_CODES = Object.freeze([
+  "IDEMPOTENCY_IN_FLIGHT",
+  "IDEMPOTENCY_KEY_REUSED",
+  "IDEMPOTENCY_SCOPE_CHANGED",
+] as const);
+export type IdempotencyConflictCode = (typeof IDEMPOTENCY_CONFLICT_CODES)[number];
+
+/** At most this many result rows in one session: 300 template rows + 100 ad-hoc rows (spec § 4.2). */
+export const IPM_MAX_RESULTS = 400;
+/** At most this many ad-hoc rows in one session (spec § 4.2). */
+export const IPM_MAX_AD_HOC_RESULTS = 100;
+
+/** What `normaliseResult` reads of the item a result answers: a pinned template item, or an ad-hoc row's section. */
+export interface NormalisableItem extends EvaluableItem {
+  readonly section: InspectionSection;
+  readonly label: string;
+  readonly inputKind: InspectionInputKind;
+  readonly limitText?: string | null | undefined;
+  readonly validMin?: DecimalInput | undefined;
+  readonly validMax?: DecimalInput | undefined;
+  readonly warnMin?: DecimalInput | undefined;
+  readonly warnMax?: DecimalInput | undefined;
+  /** Empty: the section's outcomes. */
+  readonly allowedOutcomes: readonly InspectionOutcome[];
+}
+
+/**
+ * What a technician sent for one item (the `ipmResultInput` contract's values). A draft may be
+ * incomplete, so every value is optional; which ones a kind accepts is the contract's union.
+ * `value` is the reading of `measured` / `measured_with_limit`; `value1` / `value2` the two
+ * readings of `setting_measured_reference` (ADR-126 Am. 4 § 3).
+ */
+export interface IpmResultValues {
+  readonly inputKind: InspectionInputKind;
+  readonly outcome?: InspectionOutcome | null | undefined;
+  readonly cleanliness?: InspectionCleanliness | null | undefined;
+  readonly value?: DecimalInput | undefined;
+  readonly value1?: DecimalInput | undefined;
+  readonly value2?: DecimalInput | undefined;
+  readonly notApplicable?: boolean | undefined;
+  readonly text?: string | null | undefined;
+}
+
+/** The stored columns of one result, as the server writes them (spec § 4.2). */
+export interface NormalisedResult {
+  readonly outcome: InspectionOutcome | null;
+  readonly cleanliness: InspectionCleanliness | null;
+  readonly measuredValue: string | null;
+  readonly measuredValue1: string | null;
+  readonly measuredValue2: string | null;
+  readonly textValue: string | null;
+  readonly computedOutcome: InspectionOverallOutcome | null;
+  readonly outcomeSource: InspectionOutcomeSource | null;
+  readonly warnFlag: boolean;
+  readonly disagreementFlag: boolean;
+}
+
+/** `normaliseResult`'s answer: the row, or the one problem the 400 names. */
+export type NormaliseOutcome = { readonly ok: true; readonly result: NormalisedResult } | { readonly ok: false; readonly problem: string };
+
+/** One reading against the item's hard and warning ranges. */
+type Reading = { readonly ok: true; readonly value: string | null; readonly warn: boolean } | { readonly ok: false; readonly problem: string };
+
+const NO_READING: Reading = Object.freeze({ ok: true, value: null, warn: false });
+
+const outsideOf = (bound: DecimalInput | undefined, op: "gte" | "lte", value: string): boolean =>
+  bound !== null && bound !== undefined && evaluate({ limitOp: op, limitValue: bound }, [value]) === "fail";
+
+const readingOf = (item: NormalisableItem, input: DecimalInput | undefined): Reading => {
+  if (input === null || input === undefined || (typeof input === "string" && input.trim() === "")) {
+    return NO_READING;
+  }
+  const parsed = parseDecimal(input);
+  if (parsed.value === null) {
+    return { ok: false, problem: `The value of "${item.label}" (${parsed.raw}) is not a number: write one decimal separator and no digit grouping.` };
+  }
+  if (outsideOf(item.validMin, "gte", parsed.value) || outsideOf(item.validMax, "lte", parsed.value)) {
+    const range = `${String(item.validMin ?? "…")} – ${String(item.validMax ?? "…")}`;
+    return { ok: false, problem: `"${item.label}": ${parsed.value} is outside the possible range (${range}); check the reading.` };
+  }
+  return { ok: true, value: parsed.value, warn: outsideOf(item.warnMin, "gte", parsed.value) || outsideOf(item.warnMax, "lte", parsed.value) };
+};
+
+const EMPTY_RESULT: NormalisedResult = Object.freeze({
+  outcome: null,
+  cleanliness: null,
+  measuredValue: null,
+  measuredValue1: null,
+  measuredValue2: null,
+  textValue: null,
+  computedOutcome: null,
+  outcomeSource: null,
+  warnFlag: false,
+  disagreementFlag: false,
+});
+
+/**
+ * One result, checked against the item it answers and put in its stored form (P19-02 spec § 9.4;
+ * P19-01 § 5.2, § 6). The item is the SERVER's copy (the pinned version's, or the ad-hoc row's
+ * section): labels, limits and kinds are never taken from the client. Pure, so the offline client
+ * shows the same 400 before it syncs.
+ *
+ *  - the kind must be the item's; an outcome must be one the item (else its section) allows;
+ *  - a reading is a decimal (`parseDecimal`: grouping refused), inside `valid_min/max` (else the
+ *    400), and outside `warn_min/max` sets `warnFlag`;
+ *  - `measured_with_limit`: a determinate computed outcome IS the outcome — a different one sent
+ *    is refused ("re-measure instead of overriding it"); indeterminate → the technician's choice;
+ *  - `setting_measured_reference`: the technician's outcome, the computed one beside it, and
+ *    `disagreementFlag` when both are known and differ;
+ *  - `not_applicable` only where the item allows it, and then with no reading.
+ *
+ * A draft may be incomplete: an absent value stays NULL (the submit checks completeness).
+ *
+ * @param item - the item, as the server holds it
+ * @param input - the values sent
+ * @returns the stored columns, or the problem
+ */
+export const normaliseResult = (item: NormalisableItem, input: IpmResultValues): NormaliseOutcome => {
+  if (input.inputKind !== item.inputKind) {
+    return { ok: false, problem: `"${item.label}" is a ${item.inputKind} item, not ${input.inputKind}.` };
+  }
+  const allowed = item.allowedOutcomes.length > 0 ? item.allowedOutcomes : INSPECTION_SECTION_RULES[item.section].outcomes;
+  const outcome = input.outcome ?? null;
+  if (outcome !== null && !allowed.includes(outcome)) {
+    return { ok: false, problem: `"${item.label}" cannot be answered "${outcome}"; choose one of: ${allowed.join(", ")}.` };
+  }
+  const notApplicable = input.notApplicable === true;
+  if (notApplicable && !allowed.includes("not_applicable")) {
+    return { ok: false, problem: `"${item.label}" cannot be marked not applicable.` };
+  }
+  const chosen = { outcome, outcomeSource: outcome === null ? null : ("technician" as const) };
+  switch (item.inputKind) {
+    case "check":
+    case "tri_state":
+      return { ok: true, result: { ...EMPTY_RESULT, ...chosen } };
+    case "condition_clean":
+      return { ok: true, result: { ...EMPTY_RESULT, ...chosen, cleanliness: input.cleanliness ?? null } };
+    case "text": {
+      const text = input.text?.trim() ?? "";
+      return { ok: true, result: { ...EMPTY_RESULT, textValue: text === "" ? null : text } };
+    }
+    case "measured":
+    case "measured_with_limit": {
+      if (notApplicable) {
+        return { ok: true, result: { ...EMPTY_RESULT, outcome: "not_applicable", outcomeSource: "technician" } };
+      }
+      const reading = readingOf(item, input.value);
+      if (!reading.ok) {
+        return reading;
+      }
+      if (item.inputKind === "measured") {
+        return { ok: true, result: { ...EMPTY_RESULT, measuredValue: reading.value, warnFlag: reading.warn } };
+      }
+      const computed = reading.value === null ? null : evaluate(item, [reading.value]);
+      if (computed !== null && outcome !== null && outcome !== computed) {
+        return {
+          ok: false,
+          problem: `The result of "${item.label}" is computed from its limit (${item.limitText ?? "its limit"}): ${computed}. Re-measure instead of overriding it.`,
+        };
+      }
+      const base = { ...EMPTY_RESULT, measuredValue: reading.value, warnFlag: reading.warn, computedOutcome: computed };
+      return { ok: true, result: computed === null ? { ...base, ...chosen } : { ...base, outcome: computed, outcomeSource: "computed" } };
+    }
+    case "setting_measured_reference": {
+      const first = readingOf(item, input.value1);
+      if (!first.ok) {
+        return first;
+      }
+      const second = readingOf(item, input.value2);
+      if (!second.ok) {
+        return second;
+      }
+      const readings = [first.value, second.value].filter((v): v is string => v !== null);
+      const computed = readings.length === 0 ? null : evaluate(item, readings);
+      return {
+        ok: true,
+        result: {
+          ...EMPTY_RESULT,
+          ...chosen,
+          measuredValue1: first.value,
+          measuredValue2: second.value,
+          warnFlag: first.warn || second.warn,
+          computedOutcome: computed,
+          disagreementFlag: computed !== null && outcome !== null && computed !== outcome,
+        },
+      };
+    }
+  }
+};

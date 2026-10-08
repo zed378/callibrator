@@ -39,6 +39,7 @@ interface ThrownError {
   retryAfterSeconds?: unknown;
   errors?: unknown;
   publicCode?: unknown;
+  publicFields?: unknown;
   [key: string]: unknown;
 }
 
@@ -64,6 +65,24 @@ const publicCodeOf = (error: ThrownError | null | undefined): string | null =>
   error && typeof error.publicCode === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.publicCode)
     ? error.publicCode
     : null;
+
+/**
+ * P21-03 — the extra top-level fields a coded error carries (utils/codedError.util): string values
+ * under camelCase keys only, and never `success`, `status`, `message`, `data` or `code`.
+ */
+const publicFieldsOf = (error: ThrownError | null | undefined): Record<string, string> => {
+  const fields = error?.publicFields;
+  if (!fields || typeof fields !== "object") {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(fields as Record<string, unknown>)) {
+    if (typeof value === "string" && /^[a-z][A-Za-z0-9]{0,63}$/.test(key) && !["success", "status", "message", "data", "code"].includes(key)) {
+      out[key] = value;
+    }
+  }
+  return out;
+};
 
 /** A controller function, as the wrappers call it. */
 type Controller = (req: Request, res: Response, next: NextFunction) => unknown;
@@ -117,7 +136,7 @@ const sendCaughtError = (
   }
   const code = publicCodeOf(error);
   if (code) {
-    return sendError(res, message, status, detailsArg[0] ?? null, { code });
+    return sendError(res, message, status, detailsArg[0] ?? null, { ...publicFieldsOf(error), code });
   }
   return sendError(res, message, status, ...detailsArg);
 };

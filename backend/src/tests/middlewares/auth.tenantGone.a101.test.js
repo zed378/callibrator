@@ -27,6 +27,7 @@ jest.mock("../../utils/jwt.util", () => ({
 jest.mock("../../utils/response.util", () => ({
   unauthorized: jest.fn(),
   forbidden: jest.fn(),
+  error: jest.fn(),
 }));
 
 jest.mock("../../services/auth.service", () => ({
@@ -56,7 +57,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 
 const { verifyAccessToken } = require("../../utils/jwt.util");
-const { unauthorized, forbidden } = require("../../utils/response.util");
+const { unauthorized, forbidden, error: errorResponse } = require("../../utils/response.util");
 const authService = require("../../services/auth.service");
 const tenantService = require("../../services/tenant.service");
 const { auth, optionalAuth } = require("../../middlewares/auth.middleware");
@@ -91,8 +92,10 @@ beforeEach(() => {
   next = jest.fn();
 });
 
+// P21-03 (G-O5): a tenant refusal carries its SCOPE_LOSS_CODES code at the top level.
 const refusedWith = (message) => {
-  expect(forbidden).toHaveBeenCalledWith(res, message);
+  const code = message.endsWith("suspended") ? "TENANT_SUSPENDED" : "TENANT_DELETED";
+  expect(errorResponse).toHaveBeenCalledWith(res, message, 403, null, { code });
   // The request goes no further, and no tenant context is established.
   expect(next).not.toHaveBeenCalled();
   expect(req.tenantId).toBeUndefined();
@@ -155,7 +158,7 @@ describe("A-101: auth refuses a user whose tenant is gone", () => {
 
     await auth(req, res, next);
 
-    expect(forbidden).toHaveBeenCalledWith(res, "Account banned");
+    expect(errorResponse).toHaveBeenCalledWith(res, "Account banned", 403, null, { code: "ACCOUNT_INACTIVE" });
   });
 });
 

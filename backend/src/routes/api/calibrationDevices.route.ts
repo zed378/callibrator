@@ -18,6 +18,8 @@ import reinstateController from "../../controllers/calibrationDeviceReinstate.co
 import { validate } from "../../middlewares/validation.middleware";
 import { deviceMove, deviceMovesParams } from "@callibrator/contracts/clientFacilities";
 import { move as moveDevice, moves as listDeviceMoves } from "../../controllers/deviceMove.controller";
+import { deviceIpmSessionsQuery } from "@callibrator/contracts/inspectionSessions";
+import { deviceHistory as ipmDeviceHistory } from "../../controllers/ipmSession.controller";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -102,6 +104,16 @@ router.get(
   dynamicAccess("calibration", "read"),
   validate(deviceMovesParams, { from: ["params"] }),
   listDeviceMoves,
+);
+
+// P21-03 (spec P19-02 § 10.2): the device's IPM history with its chain links — `ipm` read,
+// marked (N-2): the device is loaded in context first, another facility's is the 404.
+router.get(
+  "/:calibrationDeviceId/ipm-sessions",
+  auth,
+  dynamicAccess("ipm", "read"),
+  validate(deviceIpmSessionsQuery, { from: ["params", "query"] }),
+  ipmDeviceHistory,
 );
 
 router.post(
