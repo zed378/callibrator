@@ -40,7 +40,13 @@ export type RoleMenuGrant = DataOf<Op<`${M}/assign`, "post">>;
  * `permissions` holds only the slugs the caller has; `superAdmin` passes every
  * menu gate.
  */
-export type EffectivePermissions = DataOf<Op<`${M}/my-permissions`, "get">>;
+type EffectivePermissionsWire = DataOf<Op<`${M}/my-permissions`, "get">>;
+/**
+ * P21-09c: `facilityBound` (P18-03 § 13) is optional in the store — absent reads as unbound, so a
+ * state set before the field existed (and every test fixture granting permissions) stays valid;
+ * `getMyPermissions` always sets it.
+ */
+export type EffectivePermissions = Omit<EffectivePermissionsWire, "facilityBound"> & { facilityBound?: boolean };
 
 class MenuGroupRoleService {
   /**
@@ -106,6 +112,8 @@ class MenuGroupRoleService {
     // Defensive, as built: a body without `data` grants nothing.
     return {
       superAdmin: response?.data?.superAdmin === true,
+      // P21-09c (P18-03 § 13): a facility-bound caller; absent reads as unbound.
+      facilityBound: response?.data?.facilityBound === true,
       permissions: response?.data?.permissions ?? {},
     };
   }

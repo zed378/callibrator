@@ -120,7 +120,11 @@ export default defineRouteDocs({
       success: {
         status: 200,
         description: "Whether the caller is a super admin, and their permission per menu",
-        data: z.object({ superAdmin: z.boolean(), permissions: z.record(z.string(), z.enum(["read", "write"])) }),
+        data: z.object({
+          superAdmin: z.boolean(),
+          facilityBound: z.boolean().meta({ description: "P21-09c: the caller is bound to a client facility — its permissions are capped by the bound menu ceiling and unmarked routes refuse it" }),
+          permissions: z.record(z.string(), z.enum(["read", "write"])),
+        }),
       },
     },
     {

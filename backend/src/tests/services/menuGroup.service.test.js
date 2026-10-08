@@ -42,6 +42,7 @@ jest.mock("../../services/effectivePermission.service", () => ({
   loadPermissionSources: jest.fn(async () => ({ superAdmin: false, matrix: {}, overrides: {} })),
   menuEntryVisible: jest.fn((_principal, _sources, slug) => mockVisible.has(slug)),
   effectivePermissionMap: jest.fn(() => ({})),
+  isBound: jest.fn(() => false), // P21-09c
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -224,6 +225,8 @@ describe("menuGroup.service", () => {
       expect(effective.loadPermissionSources).toHaveBeenCalledWith({
         id: "u-1",
         role: { id: "role-1", name: "Admin" },
+        clientFacilityId: null, // P21-09c: the requester's binding (unbound here)
+        isApiKey: null,
       });
     });
 

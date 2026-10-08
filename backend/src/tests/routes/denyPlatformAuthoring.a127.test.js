@@ -188,14 +188,17 @@ const http = (mount, method, url, body = {}) =>
     );
   });
 
-const asMember = () => {
-  mockState.user = { id: MEMBER, tenantId: HOSPITAL, role: { name: "TECHNICIAN" } };
+// P20-06 (spec P18-01-02 § 4.3): the record void is rbac([TENANT_ADMIN]) before this guard — its
+// member is the tenant's administrator, so the request reaches the guard (and then the handler).
+const MEMBER_ROLE_FOR = { voidCalibrationRecord: { name: "HEALTHCARE ADMIN", roleLevel: 8 } };
+const asMember = (handler) => {
+  mockState.user = { id: MEMBER, tenantId: HOSPITAL, role: MEMBER_ROLE_FOR[handler] || { name: "TECHNICIAN" } };
   mockState.tenantId = HOSPITAL;
   mockState.impersonatorId = null;
 };
 /** A super admin impersonating the hospital member (impersonateUser's token). */
-const asImpersonated = () => {
-  asMember();
+const asImpersonated = (handler) => {
+  asMember(handler);
   mockState.impersonatorId = OPERATOR;
 };
 /** A super admin whose x-tenant-id override selected the hospital. */
@@ -258,8 +261,8 @@ describe("A-127 — the named behaviours", () => {
 });
 
 describe("A-127 — every Part 11 act, every refused principal", () => {
-  it.each(PART11_ACTS)("%s %s %s is refused while impersonating", async (mount, method, url) => {
-    asImpersonated();
+  it.each(PART11_ACTS)("%s %s %s is refused while impersonating", async (mount, method, url, handler) => {
+    asImpersonated(handler);
     const res = await http(mount, method, url);
     expect(res.status).toBe(403);
     expect(res.body.message).toBe(MESSAGES.IMPERSONATING);
@@ -278,7 +281,7 @@ describe("A-127 — every Part 11 act, every refused principal", () => {
   it.each(PART11_ACTS)(
     "%s %s %s still reaches its handler for an ordinary member",
     async (mount, method, url, handler) => {
-      asMember();
+      asMember(handler);
       const res = await http(mount, method, url);
       expect(res.status).toBe(200);
       expect(res.body.handler).toBe(handler);

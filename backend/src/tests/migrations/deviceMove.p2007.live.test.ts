@@ -208,7 +208,9 @@ live("P20-07 — a device move cascades along one path, as callibrator_app (Post
   });
 
   it("the schema: every migration applied; the cascade cannot borrow a grant the app role does not have", async () => {
-    expect(applied.slice(-7)).toEqual([
+    // The seven of P20-07, in order (later migrations — 0124, P20-06 — follow them).
+    const first = applied.indexOf("0117-client-facilities.js");
+    expect(applied.slice(first, first + 7)).toEqual([
       "0117-client-facilities.js", "0118-facility-devices.js", "0119-facility-calibration-records.js", "0120-facility-certificates.js",
       "0121-facility-work-orders.js", "0122-facility-iot-readings.js", "0123-facility-nullable.js",
     ]);

@@ -208,12 +208,15 @@ describe("ADR-102 — each seeded role's sidebar is what the API serves", () => 
 
   it("SUPERADMIN sees every page but Raise a Ticket (the service refuses it, BR-13)", async () => {
     const menu = await menuOf(ROLE_NAMES.SUPER_ADMIN);
+    // Every ACTIVE leaf: P20-06 seeds `ipm`, `ipm-templates`, `client-facilities` inactive until their
+    // pages ship (ADR-124 Am. 5 § 2) — they are in no sidebar, the super admin's included.
     const allLeaves = seed()
-      .menuGroups.filter((g) => !seed().menuGroups.some((c) => c.parentId === g.id))
+      .menuGroups.filter((g) => g.isActive && !seed().menuGroups.some((c) => c.parentId === g.id))
       .map((g) => g.slug)
       .filter((slug) => slug !== "tickets-raise");
     expect(menu).toEqual(paths(allLeaves));
     expect(menu).not.toContain("/dashboard/tickets/raise");
+    expect(menu).not.toEqual(expect.arrayContaining(["/dashboard/ipm"]));
   });
 
   it("no entry the old ancestor cascade showed and the API refuses (HEALTHCARE ADMIN)", async () => {

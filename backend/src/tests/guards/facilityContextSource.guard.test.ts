@@ -34,6 +34,10 @@ const FACILITY_BOUND_NAMERS = [
   "middlewares/facilityRouteGate.middleware.ts",
   "middlewares/tenantContext.middleware.ts",
   "routes/api/auth.openapi.ts",
+  // P21-09c (P18-03 § 13): `GET /menu-groups/my-permissions` answers `facilityBound` — a RESPONSE
+  // field derived from the loaded user row (effectivePermission#isBound), never a context.
+  "routes/api/menuGroups.openapi.ts",
+  "services/menuGroup.service.ts",
   "services/auth.service.ts",
   "services/calibrationDevices.service.ts",
   "services/clientFacilityAdmin.service.ts",
@@ -62,7 +66,7 @@ describe("G-16 — the facility context's writers", () => {
   it("only the writer and the socket build `facilityBound`; the rest only read it", () => {
     const namers = sources.filter((s) => /\bfacilityBound\b/.test(s.text)).map((s) => s.rel).sort();
     expect(namers.filter((n) => !FACILITY_BOUND_NAMERS.includes(n))).toEqual([]);
-    // auth.service and its contract name it as a RESPONSE field of "who am I" (from the user row), never a context.
+    // auth.service, menuGroup.service and their contracts name it as a RESPONSE field of "who am I" (from the user row), never a context.
     for (const reader of READERS) {
       const text = sources.find((s) => s.rel === reader)?.text ?? "";
       expect(text).not.toMatch(/facilityBound\s*:/);

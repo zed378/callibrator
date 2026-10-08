@@ -98,6 +98,9 @@ function getMenuGroupId(slug: string): string {
     "access-requests": "a0000000-0000-0000-0000-000000000237", // P10-07, migration 0101
     "upstream-import": "a0000000-0000-0000-0000-000000000238", // the rsync image import, migration 0115
     "upstream-sql-import": "a0000000-0000-0000-0000-000000000239", // P24-06, migration 0116
+    "ipm": "a0000000-0000-0000-0000-000000000307", // P20-06, migration 0124
+    "ipm-templates": "a0000000-0000-0000-0000-000000000308", // P20-06, migration 0124
+    "client-facilities": "a0000000-0000-0000-0000-000000000240", // P20-06, migration 0124
     "predictive-maintenance": "a0000000-0000-0000-0000-000000000306",
     // Management sub-group categories (level 2 of the 3-level sidebar)
     "mgmt-organization": "a0000000-0000-0000-0000-000000000250",
@@ -336,6 +339,16 @@ async function seedMenuGroups(): Promise<void> {
       icon: "DatabaseZap",
       sortOrder: 8,
       is_active: true,
+      parentSlug: "mgmt-organization",
+    },
+    // P20-06 (spec P18-03 § 7; migration 0124): the tenant's client facilities.
+    // Inactive until its page ships (P22) — ADR-124 Am. 5 § 2.
+    {
+      name: "Client Facilities",
+      slug: "client-facilities",
+      icon: "Building2",
+      sortOrder: 9,
+      is_active: false,
       parentSlug: "mgmt-organization",
     },
 
@@ -644,6 +657,26 @@ async function seedMenuGroups(): Promise<void> {
       is_active: true,
       parentSlug: "equipment",
     },
+    // P20-06 (spec P18-03 § 7; migration 0124): IPM sessions and the IPM
+    // checklists. Inactive until their pages ship (P22): the gates read the
+    // grant whatever the flag (roles.service#getRolePermissionsMatrix), the
+    // sidebar shows active entries only (ADR-124 Am. 5 § 2).
+    {
+      name: "IPM",
+      slug: "ipm",
+      icon: "ClipboardCheck",
+      sortOrder: 6,
+      is_active: false,
+      parentSlug: "equipment",
+    },
+    {
+      name: "IPM Checklists",
+      slug: "ipm-templates",
+      icon: "ClipboardList",
+      sortOrder: 7,
+      is_active: false,
+      parentSlug: "equipment",
+    },
 
     // Children under Security (parent slug: "security")
     {
@@ -850,6 +883,9 @@ async function seedRoleMenuPermissions(): Promise<void> {
         "access-requests", // P10-07 (migration 0101)
         "upstream-import", // the rsync image import (migration 0115)
         "upstream-sql-import", // P24-06 (migration 0116)
+        "ipm", // P20-06 (migration 0124)
+        "ipm-templates", // P20-06 (migration 0124)
+        "client-facilities", // P20-06 (migration 0124)
       ],
     },
     {

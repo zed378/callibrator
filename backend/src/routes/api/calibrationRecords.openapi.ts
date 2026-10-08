@@ -102,6 +102,8 @@ const recordIdParams = z.object({
 
 const read = { kind: "dynamicAccess", resource: "calibration", action: "read" } as const;
 const write = { kind: "dynamicAccess", resource: "calibration", action: "write" } as const;
+/** Void: `rbac([TENANT_ADMIN])` first, then the `calibration` write gate (P20-06, spec P18-01-02 § 4.3). */
+const tenantAdmin = { kind: "rbac", roles: ["TENANT_ADMIN"] } as const;
 const PLATFORM = "The platform tenant authors nothing here (403, A-127).";
 
 export default defineRouteDocs({
@@ -165,8 +167,8 @@ export default defineRouteDocs({
       operationId: "voidCalibrationRecord",
       summary: "Void a calibration record entered in error",
       description:
-        `The record is kept, hidden from ordinary reads, with the reason and who voided it. A void is final. An API key is refused (403): a person answers for a void (Q-51). ${PLATFORM}`,
-      permission: write,
+        `The record is kept, hidden from ordinary reads, with the reason and who voided it. A void is final. Tenant administrators only (rbac), who also need \`calibration\` write (dynamicAccess); a technician corrects instead (P20-06). An API key is refused (403): a person answers for a void (Q-51). ${PLATFORM}`,
+      permission: tenantAdmin,
       audited: true,
       params: recordIdParams,
       body: voidCalibrationRecordSchema,

@@ -72,12 +72,12 @@ describe("Calibration Records Routes", () => {
         (layer) => layer.route && layer.route.path === path && layer.route.methods.post,
       );
       expect(routes).toHaveLength(1);
-      // auth, [denyApiKey on void — Q-51], validateUuid, dynamicAccess("calibration", "write"),
-      // denyPlatformAuthoring, controller
+      // auth, [denyApiKey on void — Q-51], validateUuid, [rbac(TENANT_ADMIN) on void — P20-06],
+      // dynamicAccess("calibration", "write"), denyPlatformAuthoring, controller
       const names = routes[0].route.stack.map((l) => l.name);
       const voids = path.endsWith("/void");
-      expect(names).toHaveLength(voids ? 6 : 5);
-      expect(names[voids ? 4 : 3]).toBe("denyPlatformAuthoring");
+      expect(names).toHaveLength(voids ? 7 : 5);
+      expect(names[voids ? 5 : 3]).toBe("denyPlatformAuthoring");
       expect(routes[0].route.stack.some((l) => l.handle === denyApiKey)).toBe(voids);
     },
   );

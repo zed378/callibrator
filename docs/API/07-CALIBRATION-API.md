@@ -8,7 +8,7 @@ Domain rules: [`../PLAN/07-CALIBRATION-PROGRAM.md`](../PLAN/07-CALIBRATION-PROGR
 
 ## `/api/v1/calibration-records` — 5 endpoints
 
-As-built since P6-03 (2026-09-24, ADR-062). Source: `backend/src/routes/api/calibrationRecords.route.js`.
+As-built since P6-03 (2026-09-24, ADR-062). Source: `backend/src/routes/api/calibrationRecords.route.ts`.
 
 | Method | Path | Permission | Purpose |
 |---|---|---|---|
@@ -16,7 +16,7 @@ As-built since P6-03 (2026-09-24, ADR-062). Source: `backend/src/routes/api/cali
 | POST | `/` | `calibration` write | record a calibration |
 | GET | `/:calibrationRecordId` | `calibration` read | one record, superseded or not |
 | POST | `/:calibrationRecordId/corrections` | `calibration` write | **correct** — writes a NEW record that supersedes this one |
-| POST | `/:calibrationRecordId/void` | `calibration` write | **void** a record entered in error — final |
+| POST | `/:calibrationRecordId/void` | `rbac([TENANT_ADMIN])` + `calibration` write; no API key | **void** a record entered in error — final. A tenant administrator's act since P20-06 (2026-10-08, spec `MEMORY/specs/P18-01-02` § 4.3, ADR-124 Am. 5): the technicians hold `calibration` write (UD-4 (b)) and correct instead |
 
 There is **no `PUT` and no `DELETE`**. Both existed until P6-03 and were the mechanism by which BR-7 (append-only)
 could be broken.

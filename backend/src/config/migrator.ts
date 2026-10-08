@@ -203,6 +203,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0122-facility-iot-readings.js", require("../migrations/0122-facility-iot-readings")],
   // P20-07 M7: attachments (AM-7 deferred triggers), non_conformances, warehouses, users (binding and bound-role triggers).
   ["0123-facility-nullable.js", require("../migrations/0123-facility-nullable")],
+  // P20-06 (ADR-124 Am. 5): the ipm / ipm-templates / client-facilities menu entries and grants; UD-4 (b) calibration write for the technicians.
+  ["0124-ipm-menus-technician-calibration.js", require("../migrations/0124-ipm-menus-technician-calibration")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

@@ -179,6 +179,8 @@ const P2007_COLUMNS: readonly (readonly [string, string])[] = [
   ["users", "facility_binding_pending"],
 ];
 const NOT_NULL = ["calibration_devices", "calibration_records", "certificates", "maintenance_work_orders", "iot_readings"];
+/** The migrations after P20-07's, applied by C and reverted first by E1 (0124 — P20-06 — onward). */
+let later: string[] = [];
 const P2007_MIGRATIONS = [
   "0117-client-facilities.js",
   "0118-facility-devices.js",
@@ -317,8 +319,11 @@ live("P20-07 — migrations 0117 – 0123 on live PostgreSQL 18", () => {
   });
 
   it("C. 0117 – 0123 up: exactly the seven, in order, each recorded", async () => {
-    const applied = await g.migrator.up();
+    const applied = await g.migrator.up({ to: "0123-facility-nullable.js" });
     expect(applied.map((m) => m.name)).toEqual(P2007_MIGRATIONS);
+    // The migrations after P20-07's (0124, P20-06, onward) complete the boot path; E reverts them first.
+    later = (await g.migrator.up()).map((m) => m.name);
+    expect(later.every((name) => name > "0123-facility-nullable.js")).toBe(true);
     for (const row of await rows(g.db, "SELECT tenant_id, id FROM client_facilities WHERE is_self")) {
       self[String(row["tenant_id"])] = String(row["id"]);
     }
@@ -800,6 +805,11 @@ live("P20-07 — migrations 0117 – 0123 on live PostgreSQL 18", () => {
 
   it("E1. every down REFUSES while a facility beyond the self ones exists, and changes nothing", async () => {
     await g.db.query(`INSERT INTO client_facilities (id, tenant_id, name, code, created_at, updated_at) VALUES ('${F1}', '${T1}', 'Fasilitas Satu', 'F-0001', now(), now())`);
+    const [firstLater] = later;
+    if (firstLater !== undefined) {
+      const undone = await g.migrator.down({ to: firstLater });
+      expect(undone.map((m) => m.name)).toEqual([...later].reverse());
+    }
     await expect(g.migrator.down({ step: 1 })).rejects.toThrow(/0123 down: the database holds 1 client facility beyond the tenants' own/);
     // Clean up the one row (nothing references it: a hard delete — spec § 4.6).
     await g.db.query(`DELETE FROM client_facilities WHERE id = '${F1}'`);
@@ -825,7 +835,7 @@ live("P20-07 — migrations 0117 – 0123 on live PostgreSQL 18", () => {
       (SELECT count(*) FROM certificates)::int AS c, (SELECT count(*) FROM iot_readings)::int AS i, (SELECT count(*) FROM attachments)::int AS a`)).toEqual(before);
 
     const applied = await g.migrator.up();
-    expect(applied.map((m) => m.name)).toEqual(P2007_MIGRATIONS);
+    expect(applied.map((m) => m.name)).toEqual([...P2007_MIGRATIONS, ...later]);
     expect((await g.schemaVerify.verifySchema(g.db)).problems).toEqual([]);
     for (const table of NOT_NULL) {
       expect(await rows(g.db, `SELECT count(*)::int AS n FROM ${table} x JOIN client_facilities f ON f.id = x.client_facility_id AND f.tenant_id = x.tenant_id AND f.is_self`))

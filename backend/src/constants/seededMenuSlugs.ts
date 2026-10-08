@@ -10,8 +10,9 @@
  * `SeededMenuSlug` makes such a gate a COMPILE error in a TypeScript route.
  *
  * This is NOT `MENU_SLUGS` (constants/roleConstants): that is a known subset
- * of the seed (A-04 addendum, A-311) — `calibration`, `certificate`,
- * `maintenance`, `notifications` and `reports` gate routes and are not in it.
+ * of the seed (A-04 addendum, A-311) — `certificate`, `maintenance`,
+ * `notifications` and `reports` gate routes and are not in it (`calibration`
+ * joined it in P20-06, for the UD-4 (b) grant rows).
  *
  * `tests/constants/seededMenuSlugs.p919.test.ts` holds this list equal to the
  * slugs the seed source creates (read by `authorizationWiring#seededMenuSlugs`,
@@ -31,6 +32,7 @@ export const SEEDED_MENU_SLUGS = [
   "calibration-scheduler",
   "certificate",
   "change-password",
+  "client-facilities",
   "content",
   "custom-domains",
   "dashboard",
@@ -41,6 +43,8 @@ export const SEEDED_MENU_SLUGS = [
   "finance",
   "gdpr",
   "home",
+  "ipm",
+  "ipm-templates",
   "kanban",
   "maintenance",
   "management",

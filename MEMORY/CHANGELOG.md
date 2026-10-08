@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-08 — Technicians can register devices and record calibrations; the record void is an administrator's; the IPM and client-facility menus exist; client facilities can be administered through the API (P20-06, P21-09c; ADR-124 Am. 5) ([P20-06 record](./records/2026-10-08-p20-06-ipm-menus-ud4b.md), [P21-09c record](./records/2026-10-08-p21-09c-facility-routes-ceiling.md))
+- **Changed for every tenant (UD-4 (b)):** `TECHNICIAN` and `HEALTHCARE TECHNICIAN` hold `calibration` write — device create/edit/delete/bulk import, record and correct calibrations, predictive-maintenance analyse/approve. **Voiding a calibration record now needs a tenant administrator** (403 otherwise). Migration `0124`; flush `permissions:*` after deploying it.
+- **Added:** menu slugs `ipm`, `ipm-templates`, `client-facilities` with their grants (entries inactive until their pages ship); API-key scopes for them.
+- **Added:** `/api/v1/client-facilities` administration — list, options, read, create, edit, status (leaving active revokes the facility's bound sessions), delete (only an unreferenced facility), bound users. Not available to facility-bound accounts or API-key writes.
+- **Added:** the bound menu ceiling — a facility-bound account's permissions are capped (P18-03 Matrix B); `GET /menu-groups/my-permissions` answers `facilityBound`. `FACILITY_BINDING_ENABLED` stays off.
+
 ### 2026-10-08 — The facility dimension: bound accounts are confined by the hooks and the route layer; the binding route (P21-09a, P21-09b; ADR-124 Am. 4) ([record](./records/2026-10-08-p21-09-facility-dimension.md))
 - **Built:**
   - A second, deny-by-default scope in the global hooks for a facility-bound account: its facility's rows, its own facility/session/notification/consent rows, nothing else; a row's facility changes only through a move or a binding (AM-6), in every context.
