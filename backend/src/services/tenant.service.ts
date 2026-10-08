@@ -46,7 +46,7 @@ import {
   isRedactedSettingKey as loadedIsRedactedSettingKey,
   SECRET_SETTING_MASK as LOADED_SECRET_SETTING_MASK,
 } from "../constants/tenantSecretSettings";
-import { isTenantAdminSettingKey as loadedIsTenantAdminSettingKey } from "../constants/tenantAdminSettings";
+import { isTenantAdminSettingKey as loadedIsTenantAdminSettingKey, TENANT_ADMIN_INTEGER_SETTINGS } from "../constants/tenantAdminSettings";
 import { envOr } from "../config/env";
 import type { TenantId, UserId } from "../types/ids";
 import type { ModelInstance } from "../types/models";
@@ -276,6 +276,14 @@ const assertTenantAdminSettings = (entries: [string, unknown][]): void => {
     }
     if (value !== null && !["string", "number", "boolean"].includes(typeof value)) {
       throw new AppError(400, `Setting "${key}" must be a string, number, boolean or null`);
+    }
+    // P21-09e: an integer setting holds a whole number in its range, or nothing (cleared).
+    const range = (TENANT_ADMIN_INTEGER_SETTINGS as Readonly<Record<string, { min: number; max: number } | undefined>>)[key];
+    if (range && value !== null && value !== "") {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < range.min || n > range.max) {
+        throw new AppError(400, `Setting "${key}" must be a whole number from ${String(range.min)} to ${String(range.max)}`);
+      }
     }
     // A-176: a URL the server itself will call is checked when it is saved
     // (https in production, no internal/metadata host) — a clear 400 now,

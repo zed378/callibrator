@@ -94,7 +94,8 @@ describe("certificateController", () => {
           sortOrder: "DESC",
         }),
       );
-      expect(success).toHaveBeenCalledWith(res, [{ id: "c-1" }], { total: 1 }, "Success", 200);
+      // P21-09e (spec § 12): each row carries its people's displays (none here: no person ids).
+      expect(success).toHaveBeenCalledWith(res, [{ id: "c-1", calibratedByDisplay: null, approvedByDisplay: null, signedByDisplay: null }], { total: 1 }, "Success", 200);
     });
 
     it("should call error response when validation fails", async () => {

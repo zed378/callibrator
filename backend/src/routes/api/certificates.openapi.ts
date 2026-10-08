@@ -13,6 +13,7 @@
  * SIGNATURE_AUTH_FAILED audit row (A-126). Examples are synthetic.
  */
 import { z } from "zod";
+import { personDisplay } from "@callibrator/contracts/people";
 import {
   approveCertificateSchema,
   certificateIdSchema,
@@ -73,6 +74,9 @@ const Certificate = z
     calibratedByUser: CertificatePerson.nullable().optional(),
     approvedByUser: CertificatePerson.nullable().optional(),
     signedByUser: CertificatePerson.nullable().optional(),
+    calibratedByDisplay: personDisplay.nullable().optional().meta({ description: "P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail" }),
+    approvedByDisplay: personDisplay.nullable().optional().meta({ description: "P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail" }),
+    signedByDisplay: personDisplay.nullable().optional().meta({ description: "P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail" }),
     calibrationRecord: z
       .object({ id: z.guid(), calibrationDate: timestamp, isCompliant: z.boolean().nullable(), notes: z.string().nullable() })
       .nullable()

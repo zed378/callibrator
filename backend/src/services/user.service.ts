@@ -45,6 +45,49 @@ import type SessionServiceModule from "./session.service";
 import type MfaServiceModule from "./mfa.service";
 // N-01: the one super-admin predicate (both spellings).
 import { isSuperAdminRoleName, SUPER_ADMIN_ROLE_NAMES } from "../utils/role.util";
+import { tenantStorage } from "../middlewares/tenantContext.middleware";
+import { facilityBindingEnabled } from "../config/facility";
+import { FACILITY_BOUND_ROLES } from "../constants/facilityAccess";
+
+/**
+ * P21-09e (P19-04 spec § 10.2) — the facility an admin-created account is bound to, checked as the
+ * binding operation checks it (§ 10.1 step 3): the switch on, an unbound actor, a facility of the
+ * tenant (404), not its self facility and active (409), a role of the bound set (400).
+ *
+ * @returns the facility id, or null for an unbound account
+ */
+const resolveCreateBinding = async (
+  tenantId: string | null | undefined,
+  clientFacilityId: string | null | undefined,
+  roleName: string,
+  transaction: Transaction,
+): Promise<string | null> => {
+  if (!clientFacilityId) {
+    return null;
+  }
+  if (!facilityBindingEnabled()) {
+    throw { status: 409, message: "Facility-bound accounts are not enabled yet." };
+  }
+  if (tenantStorage.getStore()?.facilityBound === true) {
+    throw { status: 403, message: "Only an administrator who is not bound to a facility can bind users." };
+  }
+  const facility = tenantId
+    ? await models.ClientFacility.findOne({ where: { id: clientFacilityId, tenantId }, attributes: ["id", "isSelf", "status"], transaction })
+    : null;
+  if (!facility) {
+    throw { status: 404, message: "Client facility not found" };
+  }
+  if (facility.isSelf) {
+    throw { status: 409, message: "Users are not bound to the tenant's own facility — leave them unbound." };
+  }
+  if (facility.status !== "active") {
+    throw { status: 409, message: `Users cannot be bound to a facility that is ${facility.status}.` };
+  }
+  if (!(FACILITY_BOUND_ROLES as readonly string[]).includes(roleName)) {
+    throw { status: 400, message: `A facility-bound user must hold one of the roles: ${FACILITY_BOUND_ROLES.join(", ")}.` };
+  }
+  return facility.id;
+};
 
 const { Users, Roles } = models;
 const { checkAuthLockout, recordAuthFailure } = rateLimiter;
@@ -961,6 +1004,7 @@ const userCreate = async (input: MutationInput & { createdBy?: string | null }):
     roleId,
     status,
     createdBy,
+    clientFacilityId: requestedFacility,
   } = data;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- as built: `input || {}`
   const { actorIsSuperAdmin = false, actorTenantId = null } = input || {};
@@ -1025,6 +1069,8 @@ const userCreate = async (input: MutationInput & { createdBy?: string | null }):
       };
     }
 
+    const boundTo = await resolveCreateBinding(effectiveTenantId, requestedFacility, role.name, transaction);
+
     const hashedPassword = await hashPassword(password);
     // A-215: the administrator's password expires (TEMPORARY_PASSWORD_TTL_MS).
     const temporaryPasswordExpiresAt = temporaryPasswordExpiry();
@@ -1055,6 +1101,7 @@ const userCreate = async (input: MutationInput & { createdBy?: string | null }):
       // anything else (auth.middleware answers 403 until they do).
       mustChangePassword: true,
       temporaryPasswordExpiresAt,
+      ...(boundTo ? { clientFacilityId: boundTo } : {}),
     };
     // P10-16 (ADR-099 Amendment 1): the administrator's password signs in ONCE.
     const user = await Users.create(values as InferCreationAttributes<UserRow>, {
@@ -1080,6 +1127,8 @@ const userCreate = async (input: MutationInput & { createdBy?: string | null }):
           firstLoginChangeRequired: true,
           // A-215: when the administrator's password stops signing in.
           firstLoginChangeDeadline: temporaryPasswordExpiresAt.toISOString(),
+          // P21-09e (§ 10.2, § 16): a bound creation is audited as a bind.
+          ...(boundTo ? { clientFacilityId: boundTo, operation: "BIND_FACILITY" } : {}),
         },
       },
     });

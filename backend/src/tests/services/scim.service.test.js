@@ -16,6 +16,8 @@ jest.mock("../../models", () => ({
     update: jest.fn(),
     destroy: jest.fn(),
   },
+  // P21-09e (§ 10.6): provisioning asks whether the tenant serves a client facility (none here).
+  ClientFacility: { count: jest.fn().mockResolvedValue(0) },
 }));
 
 // A-278 (ADR-094): every user write runs in a transaction with its audit row.

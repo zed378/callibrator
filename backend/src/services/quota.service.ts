@@ -104,7 +104,15 @@ const getStorageUsageMb = async (tenantId: TenantId | null | undefined): Promise
   if (!Attachment || !tenantId) {
     return 0; // no central registry yet (File/Document module not installed)
   }
-  const bytes = await Attachment.sum("size", { where: { tenantId } });
+  // The hooks' aggregate wrapper reads the option (utils/tenantScope.util#scopeHooklessStatics);
+  // Sequelize's own AggregateOptions type does not declare it, so it is passed as a typed variable.
+  const options: { where: { tenantId: TenantId }; skipFacilityScope: true } = {
+    where: { tenantId },
+    // skipFacilityScope: the quota bounds the TENANT's bytes; a bound uploader must not see only
+    // its facility's share (fail open). Only a sum is read (P18-03 § 10.2).
+    skipFacilityScope: true,
+  };
+  const bytes = await Attachment.sum("size", options);
   return (bytes || 0) / BYTES_PER_MB;
 };
 

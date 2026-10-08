@@ -20,6 +20,7 @@ import { logger } from "../middlewares/activityLog.middleware";
 import auditService from "./audit.service";
 import type { ModelInstance } from "../types/models";
 import type { TenantId } from "../types/ids";
+import { tenantHasClientFacilities } from "./facilityProvisioning";
 
 const { Users, Role } = models;
 
@@ -302,6 +303,9 @@ const provisionUser = async (
           roleId: ROLE_IDS.USER, // Default to USER
           isEmailVerified: true,
           status: "ACTIVE",
+          // P21-09e (§ 10.6, AM-15): in a multi-facility tenant the account waits for an
+          // administrator to bind it or confirm it unbound (refused FACILITY_BINDING_PENDING).
+          facilityBindingPending: await tenantHasClientFacilities(tenantId, transaction),
         },
         { transaction },
       );

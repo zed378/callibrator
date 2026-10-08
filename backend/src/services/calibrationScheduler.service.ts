@@ -64,6 +64,7 @@ import {
 } from "../utils/auditPrincipal.util";
 // `db` from config, NOT from the models barrel (CLAUDE.md, traps).
 import { db as loadedDb } from "../config";
+import { recipientsFor } from "./notificationRecipients";
 import { env } from "../config/env";
 import type { ModelInstance } from "../types/models";
 
@@ -253,39 +254,49 @@ const scheduleChunk = async (tenantId: string, chunk: DueEntry[], actor: AuditAc
   try {
     await db.transaction(async (transaction) => {
       for (const { order, device, isOverdue, serialSuffix, dueLabel } of created) {
-        const notification = await notificationService.emitNotification(
-          {
-            tenantId,
-            userId: null,
-            type: "CALIBRATION",
-            title: isOverdue ? "Device calibration overdue" : "Device calibration due",
-            message: `${device.name}${serialSuffix} is ${isOverdue ? "overdue for" : "due for"} calibration (scheduled ${dueLabel}).`,
-            actionUrl: `/dashboard/devices/${device.id}`,
-          },
+        // P21-09d (spec § 9.6): the tenant broadcast reaches the unbound users; the users BOUND to
+        // the device's facility (never another facility's) who hold `calibration` read are each
+        // addressed — a bound user never sees a broadcast.
+        const audience = await recipientsFor(
+          { tenantId, clientFacilityId: (device as { clientFacilityId?: string | null }).clientFacilityId ?? null },
+          "calibration",
           { transaction },
         );
-        await auditService.logAction(
-          {
-            tenantId,
-            // A-282 (ADR-100): the requesting user, an API key
-            // (system:api-key, its id in changes) or the scan itself.
-            ...auditEntryActor(actor),
-            action: "CREATE",
-            resourceType: "Notification",
-            // With a transaction emitNotification re-throws rather than
-            // resolving null, so the row is there.
-            resourceId: (notification as { id: string }).id,
-            changes: {
-              operation: "CALIBRATION_REMINDER",
-              audience: "tenant",
-              deviceId: device.id,
-              workOrderId: order.id,
-              overdue: isOverdue,
-              ...actorChanges(actor),
+        for (const userId of [null, ...audience.boundUserIds]) {
+          const notification = await notificationService.emitNotification(
+            {
+              tenantId,
+              userId,
+              type: "CALIBRATION",
+              title: isOverdue ? "Device calibration overdue" : "Device calibration due",
+              message: `${device.name}${serialSuffix} is ${isOverdue ? "overdue for" : "due for"} calibration (scheduled ${dueLabel}).`,
+              actionUrl: `/dashboard/devices/${device.id}`,
             },
-          },
-          { transaction },
-        );
+            { transaction },
+          );
+          await auditService.logAction(
+            {
+              tenantId,
+              // A-282 (ADR-100): the requesting user, an API key
+              // (system:api-key, its id in changes) or the scan itself.
+              ...auditEntryActor(actor),
+              action: "CREATE",
+              resourceType: "Notification",
+              // With a transaction emitNotification re-throws rather than
+              // resolving null, so the row is there.
+              resourceId: (notification as { id: string }).id,
+              changes: {
+                operation: "CALIBRATION_REMINDER",
+                audience: userId === null ? "tenant" : "facility-user",
+                deviceId: device.id,
+                workOrderId: order.id,
+                overdue: isOverdue,
+                ...actorChanges(actor),
+              },
+            },
+            { transaction },
+          );
+        }
       }
     });
     summary.notificationsCreated += created.length;
@@ -358,7 +369,7 @@ const runCalibrationScan = async ({
         where: where as WhereOptions,
         order: [["id", "ASC"]],
         limit: batchSize,
-        attributes: ["id", "tenantId", "name", "serialNumber", "nextCalibrationDate"],
+        attributes: ["id", "tenantId", "clientFacilityId", "name", "serialNumber", "nextCalibrationDate"],
       });
       return {
         devices: page,

@@ -10,6 +10,7 @@
  * Examples are synthetic.
  */
 import { z } from "zod";
+import { personDisplay } from "@callibrator/contracts/people";
 import {
   calibrationRecordIdSchema,
   correctCalibrationRecordSchema,
@@ -28,6 +29,7 @@ const CalibrationRecord = z
     tenantId: z.guid(),
     deviceId: z.guid(),
     performedBy: z.guid().nullable(),
+    performerDisplay: personDisplay.nullable().optional().meta({ description: "P21-09e (P19-04 § 12): how the person is shown — a name, role, organisation, or redacted; never an id or e-mail" }),
     apiKeyId: z.guid().nullable(),
     calibrationDate: timestamp,
     dueDate: timestamp.nullable(),

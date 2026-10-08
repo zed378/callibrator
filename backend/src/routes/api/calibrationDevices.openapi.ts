@@ -18,6 +18,7 @@ import {
   updateCalibrationDeviceSchema,
 } from "../../validators/calibrationDevices.validator";
 import { reinstateCalibrationDeviceSchema } from "../../validators/calibrationDeviceReinstate.validator";
+import { deviceMove, DEVICE_MOVE_COUNT_KEYS } from "@callibrator/contracts/clientFacilities";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 
 const timestamp = z.iso.datetime();
@@ -99,6 +100,33 @@ const deviceIdParams = z.object({
     example: "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
   }),
 });
+
+/** P21-09d: the body of a move (the contract validates params and body together). */
+const moveBody = deviceMove.omit({ calibrationDeviceId: true });
+const moveCounts = z.object(Object.fromEntries(DEVICE_MOVE_COUNT_KEYS.map((k) => [k, z.number().int()])) as Record<(typeof DEVICE_MOVE_COUNT_KEYS)[number], z.ZodNumber>);
+const DeviceMoveResult = z
+  .object({
+    moveId: z.guid(),
+    calibrationDeviceId: z.guid(),
+    fromClientFacilityId: z.guid(),
+    toClientFacilityId: z.guid(),
+    locationId: z.guid().nullable(),
+    counts: moveCounts,
+  })
+  .meta({ id: "DeviceMoveResult" });
+const DeviceMove = z
+  .object({
+    id: z.guid(),
+    from: z.object({ id: z.guid(), name: z.string() }),
+    to: z.object({ id: z.guid(), name: z.string() }),
+    reason: z.string(),
+    movedBy: z.guid(),
+    counts: z.record(z.string(), z.number().int()),
+    createdAt: timestamp,
+    completedAt: timestamp,
+  })
+  .meta({ id: "DeviceMove" });
+const UNMARKED_MOVE = "Not facility-accessible: a facility-bound principal is refused 403 `FACILITY_ROUTE_REFUSED` before a parameter is read.";
 
 const read = { kind: "dynamicAccess", resource: "calibration", action: "read" } as const;
 const write = { kind: "dynamicAccess", resource: "calibration", action: "write" } as const;
@@ -195,6 +223,34 @@ export default defineRouteDocs({
       body: reinstateCalibrationDeviceSchema,
       conflict: "The device is not retired: there is nothing to reinstate.",
       success: { status: 200, description: "The reinstated device", data: CalibrationDevice },
+    },
+    {
+      method: "post",
+      path: "/:calibrationDeviceId/move",
+      operationId: "moveCalibrationDevice",
+      summary: "Move a device, and its whole history, to another client facility",
+      description:
+        `${ADMIN_THEN_WRITE} API keys are refused. The device's records, certificates, work orders, IoT readings, non-conformances and files follow it ` +
+        "(P19-04 § 11); the move is recorded with two audit rows, one in each facility. A room of the old facility is cleared unless `targetLocationId` names a room of the target or a provider store. " +
+        UNMARKED_MOVE,
+      permission: tenantAdmin,
+      audited: true,
+      params: deviceIdParams,
+      body: moveBody,
+      conflict:
+        "The device is already in the target; the target is not active; the device is retired; a certificate of the device is not yet signed or revoked; the target already holds the serial number; the location belongs to another facility.",
+      success: { status: 200, description: "The move", data: DeviceMoveResult },
+    },
+    {
+      method: "get",
+      path: "/:calibrationDeviceId/moves",
+      operationId: "listCalibrationDeviceMoves",
+      summary: "A device's moves between client facilities",
+      description: `\`calibration\` read, newest first. ${UNMARKED_MOVE}`,
+      permission: read,
+      audited: false,
+      params: deviceIdParams,
+      success: { status: 200, description: "The completed moves", data: z.array(DeviceMove) },
     },
     {
       method: "post",

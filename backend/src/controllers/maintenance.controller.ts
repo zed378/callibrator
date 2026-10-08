@@ -11,6 +11,10 @@
  */
 import type { Request, Response } from "express";
 import maintenanceService from "../services/maintenance.service";
+import { withDisplay, withDisplays } from "../services/personDisplay.service";
+
+/** P21-09e (spec § 12): the assignee shown beside each work order, for every viewer. */
+const ORDER_PEOPLE = { assigneeDisplay: "assignedTo" } as const;
 import { asyncHandler as loadedAsyncHandler } from "../utils/controllerWrapper.util";
 import { success as loadedSuccess } from "../utils/response.util";
 // A-282 (ADR-100): an API key (maintenance scopes) is audited as system:api-key.
@@ -48,7 +52,7 @@ export const fetchWorkOrders = asyncHandler(async (req: Request, res: Response) 
     deviceId,
   });
 
-  success(res, result.data.rows, result.data.meta, result.message, result.status);
+  success(res, await withDisplays(result.data.rows, ORDER_PEOPLE), result.data.meta, result.message, result.status);
 });
 
 export const getWorkOrderById = asyncHandler(async (req: Request, res: Response) => {
@@ -56,7 +60,8 @@ export const getWorkOrderById = asyncHandler(async (req: Request, res: Response)
   const { orderId } = req.params;
 
   const result = await maintenanceService.getWorkOrderById(tenantId, orderId);
-  success(res, result.data, null, result.message, result.status);
+  // The service throws 404 for a missing order: `data` is always the row here.
+  success(res, await withDisplay(result.data, ORDER_PEOPLE), null, result.message, result.status);
 });
 
 export const createWorkOrder = asyncHandler(async (req: Request, res: Response) => {

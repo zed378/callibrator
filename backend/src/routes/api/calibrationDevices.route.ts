@@ -7,7 +7,7 @@
  * (P9-25, ADR-103); the `@swagger` JSDoc this file carried is gone.
  */
 import { Router } from "express";
-import { auth } from "../../middlewares/auth.middleware";
+import { auth, denyApiKey } from "../../middlewares/auth.middleware";
 import { dynamicAccess } from "../../middlewares/dynamicAccess.middleware";
 import { validateUuid } from "../../middlewares/validateUuid.middleware";
 import { rbac } from "../../middlewares/rbac.middleware";
@@ -15,6 +15,9 @@ import { ROLE_NAMES } from "../../constants";
 import { upload } from "../../utils/upload.util";
 import calibrationDevicesController from "../../controllers/calibrationDevices.controller";
 import reinstateController from "../../controllers/calibrationDeviceReinstate.controller";
+import { validate } from "../../middlewares/validation.middleware";
+import { deviceMove, deviceMovesParams } from "@callibrator/contracts/clientFacilities";
+import { move as moveDevice, moves as listDeviceMoves } from "../../controllers/deviceMove.controller";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -75,6 +78,30 @@ router.post(
   rbac([ROLE_NAMES.TENANT_ADMIN]),
   dynamicAccess("calibration", "write"),
   reinstateController.reinstateCalibrationDevice,
+);
+
+// P21-09d (P19-04 spec § 11.2): a tenant administrator moves a device — and its whole history —
+// to another client facility of the tenant. Unmarked: a facility-bound principal is refused (403
+// FACILITY_ROUTE_REFUSED) before a parameter is read; the service re-checks it is unbound.
+router.post(
+  "/:calibrationDeviceId/move",
+  auth,
+  denyApiKey,
+  validateUuid("calibrationDeviceId"),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  dynamicAccess("calibration", "write"),
+  validate(deviceMove, { from: ["params", "body"] }),
+  moveDevice,
+);
+
+// The device's moves, for provider staff (a move names another client: unmarked).
+router.get(
+  "/:calibrationDeviceId/moves",
+  auth,
+  validateUuid("calibrationDeviceId"),
+  dynamicAccess("calibration", "read"),
+  validate(deviceMovesParams, { from: ["params"] }),
+  listDeviceMoves,
 );
 
 router.post(

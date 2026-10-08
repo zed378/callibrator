@@ -8,6 +8,7 @@
  */
 import { Router } from "express";
 import { auth } from "../../middlewares/auth.middleware";
+import { boundUploadGate } from "../../middlewares/boundUploadGate.middleware";
 import { dynamicAccess } from "../../middlewares/dynamicAccess.middleware";
 import { MENU_SLUGS, ROLE_NAMES } from "../../constants";
 import { rbac } from "../../middlewares/rbac.middleware";
@@ -95,6 +96,8 @@ router.post(
     // virus-scanned it; the service moves it into uploads/attachments.
     holdInQuarantine: true,
   }),
+  // P21-09e (P18-03 § 8.2 A-5): a facility-bound uploader attaches device photos only.
+  boundUploadGate,
   attachmentController.upload,
 );
 

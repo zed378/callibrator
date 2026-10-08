@@ -29,7 +29,7 @@ export interface FakeObject {
 export interface FakeScoped {
   tenantId: string | null;
   provider: string;
-  buildKey(input: { domain: string; name: string }): string;
+  buildKey(input: { domain: string; name: string; clientFacilityId?: string | null }): string;
   put(key: unknown, body: Buffer | Readable, options?: { contentType?: string | null }): Promise<{ key: string; size: number }>;
   get(key: unknown, range?: { start: number; end: number } | null): Promise<Readable>;
   stat(key: unknown): Promise<{ key: string; size: number; modifiedAt: Date; etag: null; contentType: string | null }>;
@@ -74,7 +74,7 @@ export const createFakeStorage = (): FakeStorageModule => {
     return {
       tenantId,
       provider: "fake",
-      buildKey: ({ domain, name }) => keys.buildKey({ tenantId, domain, name }),
+      buildKey: ({ domain, name, clientFacilityId = null }) => keys.buildKey({ tenantId, clientFacilityId, domain, name }),
       put: jest.fn(async (key: unknown, body: Buffer | Readable, options: { contentType?: string | null } = {}) => {
         const k = guard(key);
         if (failNext.put) {

@@ -132,6 +132,18 @@ export const FACILITY_SCOPE_SKIPS: Readonly<Record<string, string>> = Object.fre
     "the username/e-mail unique index is global (A-128): a bound user's own profile edit must meet every holder; only `id` is read, never returned",
   "services/gdpr.service.ts#assertEmailFree":
     "the e-mail unique index is global: a bound subject's rectification must meet every holder; only `id` is read, never returned",
+  "services/certificateDocument.service.ts#DOCUMENT_INCLUDES":
+    "P21-09e (spec § 12 rule 6): the people of a facility's certificate document are provider staff; their printed names (id, first and last name) are read for a bound viewer too, so its document and content hash equal the provider's",
+  "services/gdpr.service.ts#pagesOf":
+    "P21-09e (P18-03 § 10.2, S-4): an Article 15 export reads the SUBJECT's own rows — every caller's `where` names the tenant and the subject — and a bound subject's export must not silently omit the rows the facility deny hides (UU PDP, GDPR Art. 15)",
+  "services/storage/config.service.ts#getTenantConfig":
+    "P21-09e (P18-03 § 10.2, A-5 / A-6): the tenant's storage driver settings for a bound user's own upload or download; without it a bring-your-own-bucket tenant's files are looked for in the platform store. Never returned to the caller",
+  "services/quota.service.ts#getStorageUsageMb":
+    "P21-09e (P18-03 § 10.2, A-5 / S-7): the storage quota bounds the tenant's bytes; scoped to the uploader's facility it would under-count and fail open. A sum only",
+  "services/auth.service.ts#passwordManagedBy":
+    "P21-09e (P18-03 § 10.2, S-1): names the identity provider in a federated bound user's password-change refusal; the user's own tenant, two settings keys, no row returned",
+  "services/personDisplay.service.ts#displayPeople":
+    "P21-09e (spec § 12): the author of a facility's record is provider staff or a person of another facility; the tenant predicate stays, and a bound viewer gets a redacted display for another facility's people — never an id, e-mail or username",
 });
 
 /** What a bound principal may do on a marked route (P18-03 § 9). */
@@ -171,13 +183,44 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
     "POST /logout-all": { kind: "self", reason: "S-1: sign out everywhere" },
     "POST /socket-token": { kind: "self", reason: "S-1: the socket token; the handshake joins the facility room only (AM-19)" },
     "POST /impersonate/exit": { kind: "self", reason: "S-1: end an impersonation (the logout handler)" },
+    // P21-09e: the MFA and password self routes, with the reviewed reads of P18-03 § 10.2.
+    "POST /pass-is-valid": { kind: "self", reason: "S-1: check the caller's own current password (its own row, in its facility)" },
+    "POST /just-update-password": { kind: "self", reason: "S-1: change the caller's own password; the IdP label is a reviewed skip (passwordManagedBy)" },
+    "POST /mfa/setup": { kind: "self", reason: "S-1: start the caller's own second factor" },
+    "POST /mfa/verify": { kind: "self", reason: "S-1: confirm the caller's own second factor" },
+    "POST /mfa/disable": { kind: "self", reason: "S-1: turn off the caller's own second factor (re-authenticated)" },
   },
   "api/session.route.ts": {
     "GET /mine": { kind: "self", reason: "S-2: own sessions — Session is FACILITY_READABLE by user_id" },
+    "POST /mine/:id/revoke": { kind: "self", reason: "S-2: revoke one own session; another user's (of any facility) is the same 404" },
   },
   "api/notifications.route.ts": {
     "GET /": { kind: "self", reason: "S-5: own notifications — Notification is FACILITY_READABLE by userId; tenant broadcasts are hidden" },
     "PATCH /read-all": { kind: "self", reason: "S-5: mark own notifications read (the readable rule bounds the bulk update)" },
+    "PATCH /:notificationId/read": { kind: "self", reason: "S-5: one own notification; a broadcast or another user's is the same 404" },
+    "DELETE /all": { kind: "self", reason: "S-5: remove own notifications (the readable rule bounds it)" },
+    "DELETE /bulk": { kind: "self", reason: "S-5: remove some own notifications (ids outside the rule are not found)" },
+    "DELETE /:notificationId": { kind: "self", reason: "S-5: remove one own notification; another's is the same 404" },
+  },
+  "api/webauthn.route.ts": {
+    "GET /status": { kind: "self", reason: "S-3: the caller's own passkey status (webauthn_credentials is keyed by user, C-9)" },
+    "POST /registration-options": { kind: "self", reason: "S-3: register a passkey for the caller" },
+    "POST /verify-registration": { kind: "self", reason: "S-3: confirm the caller's new passkey" },
+    "POST /disable": { kind: "self", reason: "S-3: remove every own passkey (re-authenticated)" },
+    "GET /credentials": { kind: "self", reason: "S-3: the caller's own passkeys" },
+    "PATCH /credentials/:id": { kind: "self", reason: "S-3: rename an own passkey; another user's is the same 404" },
+    "DELETE /credentials/:id": { kind: "self", reason: "S-3: delete an own passkey (re-authenticated); another user's is the same 404" },
+  },
+  "api/gdpr.route.ts": {
+    "POST /export": { kind: "self", reason: "S-4: the subject's own Article 15 export — complete, through the reviewed pagesOf skip (P18-03 § 10.2)" },
+    "GET /exports/:exportId/download": { kind: "self", reason: "S-4: the caller's own export; its manifest must name the caller, else 404" },
+    "POST /erasure": { kind: "self", reason: "S-4: the subject's own erasure request (DsarRequest is FACILITY_READABLE by userId)" },
+    "GET /erasure/:requestId": { kind: "self", reason: "S-4: one own erasure request; another's is the same 404" },
+    "PUT /consent": { kind: "self", reason: "S-4: the subject's own consent (ConsentRecord, own-user rule)" },
+    "GET /consent/history": { kind: "self", reason: "S-4: the subject's own consent history" },
+    "GET /processing": { kind: "self", reason: "S-4: the processing register as it applies to the caller (static)" },
+    "PUT /rectify": { kind: "self", reason: "S-4: rectify the subject's own profile field; the e-mail check is a reviewed skip (assertEmailFree)" },
+    "POST /restrict": { kind: "self", reason: "S-4: the subject's own restriction request" },
   },
   "api/menuGroups.route.ts": {
     "GET /my-permissions": { kind: "self", reason: "S-6: own effective permissions" },
@@ -191,8 +234,94 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
       selfParam: "userId",
       reason: "S-7: own profile only — the strict contract has no clientFacilityId, roleId, tenantId or status (AM-14)",
     },
+    "POST /:userId/avatar": {
+      kind: "self",
+      selfParam: "userId",
+      reason: "S-7: own avatar only (another id is refused before the handler); the quota read is a reviewed skip (getStorageUsageMb)",
+    },
+    "DELETE /:userId/avatar": { kind: "self", selfParam: "userId", reason: "S-7: remove the caller's own avatar" },
   },
   "api/clientFacilities.route.ts": {
     "GET /mine": { kind: "self", reason: "S-8: the caller's own facility (ClientFacility is FACILITY_READABLE by id = own)" },
+  },
+  // P21-09e — the domain rows of P18-03 § 8.2, each with its two-facility suite (G-07).
+  "api/calibrationDevices.route.ts": {
+    "GET /": { kind: "read", reason: "A-1: the facility's inventory (the hooks force the facility predicate)" },
+    "GET /:calibrationDeviceId": { kind: "read", reason: "A-1: one device of the facility; another facility's is the same 404 as a missing one" },
+    "POST /": { kind: "write", reason: "A-2: HEALTHCARE TECHNICIAN (UD-4 (b)) registers a device in its own facility — stamped, another facility refused (404)" },
+    "PUT /:calibrationDeviceId": { kind: "write", reason: "A-3: edit a device of the facility; a bound writer cannot change its status or point it at a location it cannot read" },
+  },
+  "api/calibrationRecords.route.ts": {
+    "GET /": { kind: "read", reason: "A-4: the facility's calibration records, with the performer display (A-90)" },
+    "GET /:calibrationRecordId": { kind: "read", reason: "A-4: one record of the facility, with the performer display" },
+  },
+  "api/attachments.route.ts": {
+    "POST /": {
+      kind: "write",
+      reason: "A-5: a device photo of the facility, with calibration write (C-4: standalone and other types refused)",
+      boundGate: "boundUploadGate",
+    },
+    "GET /": { kind: "read", reason: "A-6: the facility's files, with the uploader display" },
+    "GET /:id": { kind: "read", reason: "A-6: one file of the facility" },
+    "GET /:id/download": { kind: "read", reason: "A-6: the bytes, after the row is loaded in context and its key checked (FT-77)" },
+    "POST /:id/signed-url": { kind: "read", reason: "A-6: a v3 link (bound issuer, the row's facility), TTL capped (AM-22)" },
+  },
+  "api/certificates.route.ts": {
+    "GET /": { kind: "read", reason: "A-7: the facility's certificates, with the people's displays" },
+    "GET /:certificateId": { kind: "read", reason: "A-7: one certificate of the facility" },
+    "GET /:certificateId/document": { kind: "read", reason: "A-7: its document data (signed: the snapshot; unsigned: the printed names)" },
+    "GET /:certificateId/pdf": { kind: "read", reason: "A-7: a stored PDF of the facility's certificate" },
+  },
+  "api/maintenance.route.ts": {
+    "GET /": { kind: "read", reason: "A-8: the facility's work orders (vendor and assignee includes are LEFT, provider-internal)" },
+    "GET /:orderId": { kind: "read", reason: "A-8: one work order of the facility, with the assignee display" },
+  },
+});
+
+/** One raw statement over a facility-scoped table that a bound principal cannot reach. */
+export interface RawSqlUnreachableEntry {
+  readonly reason: string;
+  /**
+   * Where the statement runs from: `"<route file> <METHOD> <path>"` (each must be UNMARKED —
+   * tests/utils/rawSqlFacilityPredicate.d05twin checks it against FACILITY_ACCESSIBLE_ROUTES) or
+   * `"system: <what>"` for a job, a boot step or a CLI.
+   */
+  readonly reachableFrom: readonly string[];
+}
+
+/**
+ * P21-09d — G-14 (spec § 8): raw statements naming a facility-scoped table WITHOUT
+ * `facilityClause(`, keyed `"<file under src>#<table>"`. Each is reachable only from routes a bound
+ * principal is refused (FACILITY_ROUTE_REFUSED) or from system work; marking one of those routes
+ * makes the twin guard fail until the statement binds the clause and gains a live twin.
+ */
+export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreachableEntry>> = Object.freeze({
+  "services/attachment.service.ts#attachments": {
+    reason: "the orphan list (A-115): tenant-administrator housekeeping, `rbac([TENANT_ADMIN])`, never a facility read",
+    reachableFrom: ["api/attachments.route.ts GET /orphans"],
+  },
+  "services/audit.service.ts#audit_logs": {
+    reason: "the audit trail's capped count: the audit route is provider administration (P18-03 § 8.2, not marked)",
+    reachableFrom: ["api/audit.route.ts GET /"],
+  },
+  "services/keyRotation.service.ts#${table}": {
+    reason: "the operator's KMS key rotation (S-08) across every tenant's envelope tables; no request context",
+    reachableFrom: ["system: npm run keys:rotate (operator CLI)"],
+  },
+  "services/qms.service.ts#${table}": {
+    reason: "NC / CAPA numbering (`non_conformances`, `capas`): QMS is provider-internal (P18-03 § 8.2, not marked)",
+    reachableFrom: ["api/qms.route.ts POST /nc", "api/qms.route.ts POST /capa"],
+  },
+  "services/search.service.ts#${table}": {
+    reason: "global search (`calibration_devices`, `certificates`): search is not offered to bound principals (ADR-124 § 9, P18-03 § 16)",
+    reachableFrom: ["api/search.route.ts GET /"],
+  },
+  "services/upstreamImport/stagingLoader.ts#${table}": {
+    reason: "the SQL-dump import's staging schema (`upstream_import`), the import role's own tables; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump import worker (P24-06)"],
+  },
+  "utils/kmsVerify.util.ts#${table}": {
+    reason: "the boot-time KMS key check over every tenant's envelopes (ADR-078); reads key ids and counts only",
+    reachableFrom: ["system: boot (ADR-078)"],
   },
 });

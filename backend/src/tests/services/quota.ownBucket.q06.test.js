@@ -81,7 +81,8 @@ describe("Q-06 (ADR-084): an own bucket does not lift limitStorageMb while the p
 
     const status = await quota.checkStorageQuota(TENANT_ID, 20 * MB);
 
-    expect(Attachment.sum).toHaveBeenCalledWith("size", { where: { tenantId: TENANT_ID } });
+    // P21-09e (P18-03 § 10.2): the tenant's whole sum, whoever asks — a bound uploader included.
+    expect(Attachment.sum).toHaveBeenCalledWith("size", { where: { tenantId: TENANT_ID }, skipFacilityScope: true });
     expect(status).toMatchObject({ allowed: false, usedMb: 90, limitMb: 100, ownStorage: true });
   });
 

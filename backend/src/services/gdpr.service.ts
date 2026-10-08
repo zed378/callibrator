@@ -435,6 +435,9 @@ async function* pagesOf(
       order: [["id", "ASC"]],
       limit: EXPORT_PAGE_SIZE,
       raw: true,
+      // skipFacilityScope: an Article 15 export is the subject's OWN rows (every caller's `where`
+      // names the tenant AND the subject); the facility deny must not omit any (P18-03 § 10.2).
+      skipFacilityScope: true,
     })) as RawRow[];
     if (rows.length > 0) {
       yield rows;

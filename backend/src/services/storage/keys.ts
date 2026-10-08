@@ -5,8 +5,10 @@
  *
  * Every object lives under a key whose FIRST segments encode ownership:
  *
- *   t/<tenantId>/<domain>/<name>     tenant-owned
- *   global/<domain>/<name>           platform-owned
+ *   t/<tenantId>/<domain>/<name>                 tenant-owned (provider-internal, or a legacy file)
+ *   t/<tenantId>/f/<facilityId>/<domain>/<name>  owned by one client facility (P21-09d, spec
+ *                                                P19-04 § 9.3: `attachments`, `branding` only)
+ *   global/<domain>/<name>                       platform-owned
  *
  * This is the tenant-isolation boundary for storage, and it is enforced here
  * rather than in each driver: a driver only ever receives a key that has
@@ -86,22 +88,49 @@ const normalizeKey = (key: unknown): string => {
 
 interface BuildKeyInput {
   tenantId?: TenantRef;
+  /** P21-09d: the client facility that owns the object — a UUID, only for FACILITY_DOMAINS. */
+  clientFacilityId?: string | null;
   domain: string;
   name: string;
 }
+
+/** The facility segment (`f`), and the domains a facility-owned object may live in (spec § 9.3). */
+const FACILITY_SEGMENT = "f";
+const FACILITY_DOMAINS: readonly string[] = Object.freeze(["attachments", "branding"]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Build a key for a tenant (or the platform when `tenantId` is null).
  * `name` must already be a server-generated, sanitized filename.
  */
-const buildKey = ({ tenantId = null, domain, name }: BuildKeyInput): string => {
+const buildKey = ({ tenantId = null, clientFacilityId = null, domain, name }: BuildKeyInput): string => {
   if (!DOMAINS.includes(domain)) {
     throw new AppError(400, `Unknown storage domain: ${domain}`);
   }
   const prefix = tenantId
     ? tenantPrefix(normalizeKey(String(tenantId)))
     : globalPrefix();
+  if (clientFacilityId) {
+    // A facility segment only under a tenant, only as a UUID, only for a facility-owned domain.
+    if (!tenantId || !UUID_RE.test(clientFacilityId) || !FACILITY_DOMAINS.includes(domain)) {
+      throw new AppError(400, "Invalid facility storage key");
+    }
+    return normalizeKey(`${prefix}${FACILITY_SEGMENT}/${clientFacilityId}/${domain}/${name}`);
+  }
   return normalizeKey(`${prefix}${domain}/${name}`);
+};
+
+/**
+ * P21-09d — the facility segment of a tenant key (`t/<tenant>/f/<facility>/…`), or null for a key
+ * without one (a provider-internal or legacy object, a global key). Never throws on a malformed
+ * key: it answers null, and the caller's integrity check refuses what it cannot place.
+ */
+const facilityOfKey = (key: unknown): string | null => {
+  if (typeof key !== "string") {return null;}
+  const segments = key.split("/");
+  if (segments[0] !== TENANT_SEGMENT || segments[2] !== FACILITY_SEGMENT) {return null;}
+  const facility = segments[3] ?? "";
+  return UUID_RE.test(facility) && segments.length >= 6 ? facility : null;
 };
 
 /**
@@ -132,7 +161,9 @@ const scopePrefix = (tenantId: TenantRef, domain: string | null = null): string 
 
 export = {
   DOMAINS,
+  FACILITY_DOMAINS,
   buildKey,
+  facilityOfKey,
   normalizeKey,
   assertKeyForTenant,
   tenantPrefix,

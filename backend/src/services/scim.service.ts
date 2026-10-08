@@ -21,6 +21,7 @@ import type { AuditAction } from "../constants/auditActions";
 import type { ModelInstance } from "../types/models";
 // N-01: the one super-admin predicate (both spellings).
 import { isSuperAdminRoleName } from "../utils/role.util";
+import { assertBoundRole, assertNoFacilityAttribute, tenantHasClientFacilities } from "./facilityProvisioning";
 
 const { Users, Role, ScimGroup, RoleMenuPermission } = models;
 const { checkAuthLockout, recordAuthFailure } = rateLimiter;
@@ -740,6 +741,8 @@ const createUser = async (tenantId: string, scimData: ScimUserInput, actor: Scim
   if (!email) {
     throw new AppError(400, "Email/userName is required");
   }
+  // P21-09e (§ 10.6, AM-15): an identity provider never names a facility.
+  assertNoFacilityAttribute(scimData);
 
   // A-37: global, budgeted and audited — one 409 whoever holds the address.
   await assertProvisionable(tenantId, actor, email, { action: "CREATE" });
@@ -766,6 +769,8 @@ const createUser = async (tenantId: string, scimData: ScimUserInput, actor: Scim
         isActive: scimData.active !== false,
         status: scimData.active === false ? "SUSPENDED" : "ACTIVE",
         isEmailVerified: true,
+        // P21-09e (§ 10.6): in a multi-facility tenant the account waits for an administrator.
+        facilityBindingPending: await tenantHasClientFacilities(tenantId, transaction),
       };
       // The tenant is the credential's own (a string from the controller).
       const created = await Users.create(values as InferCreationAttributes<UserRow>, { transaction });
@@ -802,6 +807,7 @@ const updateUser = async (tenantId: string, userId: string, scimData: ScimUserIn
     throw new AppError(404, "User not found");
   }
 
+  assertNoFacilityAttribute(scimData);
   const updates: UserUpdates = {};
   if (scimData.name?.givenName) {
     updates.firstName = scimData.name.givenName;
@@ -817,6 +823,7 @@ const updateUser = async (tenantId: string, userId: string, scimData: ScimUserIn
     updates.isActive = scimData.active;
     updates.status = scimData.active ? "ACTIVE" : "SUSPENDED";
   }
+  await assertBoundRole(user, updates.roleId);
 
   await updateAudited(tenantId, actor, user, updates, "SCIM_USER_REPLACE");
   return formatScimUser(user);
@@ -832,6 +839,9 @@ const patchUser = async (tenantId: string, userId: string, patchOps: readonly Sc
 
   for (const op of patchOps) {
     const operation = assertOp(op);
+    // P21-09e (§ 10.6): neither a path nor a value object may name a facility.
+    assertNoFacilityAttribute(op.path ?? "");
+    assertNoFacilityAttribute(op.value);
 
     if (operation === "remove") {
       // RFC 7644 § 3.5.2 makes `path` REQUIRED on a remove. The pre-A-33 code
@@ -853,6 +863,8 @@ const patchUser = async (tenantId: string, userId: string, patchOps: readonly Sc
       throw new AppError(400, "SCIM operation requires a path or an object value");
     }
   }
+
+  await assertBoundRole(user, updates.roleId);
 
   // A-37: a userName change is the same probe as a create — global, budgeted
   // and audited. Keeping the user's own address is not a change.

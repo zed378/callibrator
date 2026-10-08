@@ -170,6 +170,7 @@ data:
   UPSTREAM_SQL_IMPORT_SWEEP_SCHEDULER: "disabled"
   WEBHOOK_DELIVERY_PURGE_SCHEDULER: "disabled"
   ATTACHMENT_FILE_SWEEP_SCHEDULER: "disabled"
+  BOUND_ACCOUNT_DEACTIVATION_SCHEDULER: "disabled"
   # The watchdog alerts on the scheduler pod; one per release is enough.
   JOB_WATCHDOG_SCHEDULER: "disabled"
   {{- end }}

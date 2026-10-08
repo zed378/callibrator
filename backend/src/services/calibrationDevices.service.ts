@@ -440,6 +440,39 @@ const resolveCreateFacility = async (tenantId: TenantId, requested: string | nul
 };
 
 /**
+ * P21-09e (P18-03 § 8.2 A-2 / A-3) — what a facility-BOUND writer may not do to a device: change
+ * its status on an edit (retirement and reinstatement are provider acts), or point it at a
+ * location its context cannot read (another facility's room, a provider store — the facility hooks
+ * filter Warehouse, so such a location is the same 404 as a missing one). Its facility is forced
+ * (the create resolves its own; the edit contract carries none). Unbound callers: no change.
+ *
+ * @param tenantId - the caller's tenant
+ * @param validated - the validated body
+ * @param update - an edit (status refused) or a create
+ * @returns the refusal to send, or null
+ */
+const boundWriteRefusal = async (
+  tenantId: TenantId,
+  validated: { status?: unknown; locationId?: unknown },
+  update: boolean,
+): Promise<Outcome<null> | null> => {
+  const ctx = tenantStorage.getStore();
+  if (ctx?.facilityBound !== true) {
+    return null;
+  }
+  if (update && validated.status !== undefined) {
+    return { success: false, status: 400, message: "A facility user cannot change a device's status.", data: null };
+  }
+  if (typeof validated.locationId === "string" && validated.locationId !== "") {
+    const location = await models.Warehouse.findOne({ where: { id: validated.locationId, tenantId }, attributes: ["id"] });
+    if (!location) {
+      return { success: false, status: 404, message: "Location not found", data: null };
+    }
+  }
+  return null;
+};
+
+/**
  * Create a new calibration device
  */
 const createCalibrationDevice = async (
@@ -455,6 +488,11 @@ const createCalibrationDevice = async (
     );
 
     normaliseSerial(validated);
+
+    const refused = await boundWriteRefusal(tenantId, validated, false);
+    if (refused) {
+      return refused;
+    }
 
     // P21-09 (G-F1): the facility, before the serial check that is per facility.
     const facility = await resolveCreateFacility(tenantId, validated.clientFacilityId);
@@ -528,6 +566,11 @@ const updateCalibrationDevice = async (
       deviceSchemas()
         .updateCalibrationDeviceSchema,
     );
+
+    const refused = await boundWriteRefusal(tenantId, validated, true);
+    if (refused) {
+      return refused;
+    }
 
     const device = await CalibrationDevice.findOne({
       where: { id: calibrationDeviceId, tenantId },

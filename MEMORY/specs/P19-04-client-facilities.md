@@ -386,6 +386,8 @@ export const facilityClause = (column: FacilityColumn, position: number): { clau
 - No `IS NULL OR` form exists; `d05`'s twin rule rejects `client_facility_id IS NULL OR` anywhere (FT-35).
 - **`rawSqlTenantPredicate.d05` twin rule:** a `sql()` call whose text names a facility-scoped table (derived from the real models declaring `clientFacilityId`) must build its text with `facilityClause(` **or** be listed in `RAW_SQL_UNREACHABLE_BY_BOUND` with a reason checked against the marker list. Initial entries (statements naming a facility-scoped table today): `search.service` (`calibration_devices`, `certificates` — search unmarked, ADR-124 § 9); `audit.service` count (`audit_logs` — audit route unmarked); `attachment.service#listOrphans` (`rbac([TENANT_ADMIN])`, unmarked); `calibrationDeviceReinstate.service` (rbac, unmarked); `qms.service` (`non_conformances`, unmarked); `meteredBilling.service` (system task). Each later marked route with raw SQL needs a live twin (`rawSqlFacility.live.test.ts`) — memoryDb refuses raw SQL (F-9).
 
+> **As built (P21-09d, ADR-124 Am. 6 § 1):** `facilityClause` as above; the twin rule is `tests/utils/rawSqlFacilityPredicate.d05twin` (a stronger scanner than d05) with `RAW_SQL_UNREACHABLE_BY_BOUND` (seven statements, each reachable only from unmarked routes or system work). No marked route runs raw SQL over a facility table today; `literal()` subqueries are forbidden (G-15).
+
 ---
 
 ## 9. Sockets, Caches, Storage Keys, Signed Links, Notifications, Jobs
@@ -417,6 +419,8 @@ A-365 (in flight, another agent) caps the lifetime and binds tenant + issuer. P2
 
 - `recipientsFor(row, menuSlug)` (services/notificationRecipients.ts): unbound users of the row's tenant holding the menu, plus bound users **of the row's facility** holding it; never another facility's users. Jobs never build a per-tenant recipient list for facility data; digests for bound users are built per facility. P21-09 sweeps today's device reminders (`calibrationScheduler` / `system:calibration-scan`) onto it.
 - `runForTenant(tenantId, fn, scope?: { clientFacilityId: ClientFacilityId })` — a job **started by** a bound principal passes its facility (`facilityBound: true`); none exists in this group (exports are browser-rendered).
+
+> **As built (P21-09d, ADR-124 Am. 6 §§ 2 – 6):** `emitForRow` in `services/realtime.ts`; `recipientsFor` answers the tenant broadcast (unbound users, unchanged) plus the bound users of the row's facility addressed one by one; `dashboard:metrics:v2` with `:all:` / `:f:<id>:` from the context; key segment for `attachments` / `branding`, the upload carrying its record's facility; the re-key job runs after the move's commit (no periodic sweep yet); the v3 token is `<exp>.<tenant>.<issuer>.<facility | ->.<sig>`, a bound issuer `b<id>`.
 
 ---
 
@@ -456,6 +460,8 @@ Every bind, unbind, move-binding and confirm-unbound writes its audit row(s) ins
 
 In a tenant that has any non-self facility, a user created by **SSO JIT** (`sso.service`) or **SCIM** (`scim.service`) is created with `facility_binding_pending = true` and is refused at `auth` with `FACILITY_BINDING_PENDING` until an unbound administrator binds it or confirms it unbound (§ 10.1 step 4). A tenant with only its self facility is unchanged. SCIM cannot set or clear the facility (an extension attribute naming it → 400) and cannot give a bound user a role outside the bound set (400; the DB trigger also holds). The OIDC provider emits no facility claim.
 
+> **As built (P21-09e, ADR-124 Am. 6 §§ 11 – 12):** JIT and SCIM create pending accounts in a multi-facility tenant; SCIM refuses any facility attribute and a non-bound role for a bound user (400); `POST /users/create` accepts `clientFacilityId` under § 10.1 step 3. The mass-assignment test is `routes/userBinding.massAssignment`.
+
 ---
 
 ## 11. Moving a Device Between Facilities (OQ-5, OQ-12 — decided here, G-F2)
@@ -480,6 +486,8 @@ In a tenant that has any non-self facility, a user created by **SSO JIT** (`sso.
 
 It does not move audit rows (each keeps the facility where its act happened — that is the breach-scoping record); it does not change any snapshot (a signed certificate keeps the customer it was issued for); it does not move users. PWA outbox items captured for the device in the old facility replay into a 404 and stay "needs attention" (FT-93).
 
+> **As built (P21-09d, ADR-124 Am. 6 § 7):** `POST …/move` and `GET …/moves` (gates `rbac` first, then `calibration` write); `targetLocationId` null clears, omitted clears a room of the old facility and keeps a store; files of the device and of its records, certificates and work orders follow, flagged. **Not built:** the open-IPM-draft 409 (P20-04 / P21-03 add it with the sessions).
+
 ---
 
 ## 12. The A-90 Sweep and How People Are Shown (G-F5)
@@ -496,6 +504,8 @@ It does not move audit rows (each keeps the facility where its act happened — 
 6. The certificate document of an **unsigned** certificate, for a bound viewer, takes its people from `displayPeople`; a signed one from its snapshot.
 
 Swept lists (the P18-03 Matrix D reads): A-1 devices, A-4 records, A-6 attachments, A-7 certificates (list, get, document, PDF link), A-8 work orders, N-2 IPM sessions — each with an `includes.a90.facility.test.ts` case: the facility's own records, authored by provider staff, are **present** in its own staff's lists, with a non-redacted display.
+
+> **As built (P21-09e, ADR-124 Am. 6 §§ 8 – 10):** `services/personDisplay` and `@callibrator/contracts/people`; the displays are added by the A-4/A-6/A-7/A-8 controllers for every viewer. **Deviation from rule 6:** an unsigned certificate's document reads its people's printed names through a reviewed include-level skip (the same document and hash as the provider's). A-1 … A-8 and the self routes S-1 … S-7 are marked with their two-facility suites.
 
 ---
 
