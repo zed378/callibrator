@@ -18,6 +18,12 @@ export interface Permissions {
   loaded: boolean;
   /** The platform super admin: passes every menu gate. */
   superAdmin: boolean;
+  /**
+   * P18-03 § 13 (G-P8): the account is bound to one client facility. Its `permissions` are already
+   * capped by the server; a page also hides an action whose ROUTE refuses a bound account (403
+   * FACILITY_ROUTE_REFUSED) even though the slug is granted. Absent from the server reads as unbound.
+   */
+  facilityBound: boolean;
   canRead: (slug: string) => boolean;
   canWrite: (slug: string) => boolean;
 }
@@ -43,6 +49,7 @@ export function usePermissions(): Permissions {
   return {
     loaded: effective !== null,
     superAdmin: effective?.superAdmin === true,
+    facilityBound: effective?.facilityBound === true,
     canRead,
     canWrite,
   };

@@ -341,6 +341,28 @@ export const STATUS_REGISTRY = {
     failed: e("alarm", "Failed"),
     cancelled: e("draft", "Cancelled"),
   },
+  /**
+   * P22-01 — the inspection catalogue (dashboard/ipm-templates): a device type, a library item or
+   * a checklist is active or retired (retired is a decision, never an alarm).
+   */
+  catalogueLifecycle: {
+    active: e("current", "Active"),
+    retired: e("draft", "Retired"),
+  },
+  /** P22-01 — a checklist version: the published one is current; an open draft is a draft; the rest are history. */
+  templateVersion: {
+    draft: e("draft", "Draft"),
+    published: e("current", "Published"),
+    retired: e("info", "Retired"),
+    discarded: e("draft", "Discarded"),
+  },
+  /** P22-01 — a catalogue proposal: one awaiting the operator needs attention; a rejection is a decision, not an alarm. */
+  templateProposal: {
+    submitted: e("attention", "Submitted"),
+    accepted: e("current", "Accepted"),
+    rejected: e("draft", "Rejected"),
+    withdrawn: e("draft", "Withdrawn"),
+  },
 } satisfies Record<string, Domain>;
 
 export type StatusDomain = keyof typeof STATUS_REGISTRY;
