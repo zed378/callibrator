@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 6 TODO (**P22-02** — unblocked by P21-02b, **P22-06** — unblocked by P21-06, 2026-10-09; P22-01 — unblocked by P21-01, 2026-10-09; **P22-03, P22-04** — unblocked by P21-04, 2026-10-09; **P22-05** — unblocked by P21-05, 2026-10-09) · 4 BLOCKED |
+| **Status** | 1 DONE in code (**P22-01**, 2026-10-09 — menu activation and the live browser suites open) · 5 TODO (**P22-02** — unblocked by P21-02b, **P22-06** — unblocked by P21-06, 2026-10-09; **P22-03, P22-04** — unblocked by P21-04, 2026-10-09; **P22-05** — unblocked by P21-05, 2026-10-09) · 4 BLOCKED |
 | **Goal** | Pages, PWA field capture with offline mode |
 | **Depends on** | Phase 21 |
 | **Size** | L |
@@ -28,7 +28,7 @@ page notes · docs/FRONTEND/00 · docs/UI-UX/08 · ADR-122 · ADR-071/090 · P19
 
 | Card | Title | Features | Status | Depends on |
 |---|---|---|---|---|
-| P22-01 | Catalogue and template admin (`dashboard/ipm-templates`) | F-22 | **TODO** (unblocked 2026-10-09: P21-01 DONE) | P21-01 |
+| P22-01 | Catalogue and template admin (`dashboard/ipm-templates`) | F-22 | **DONE in code** 2026-10-09 ([record](../MEMORY/records/2026-10-09-p22-01-catalogue-admin-ui.md)) — the operator's checklists, draft editor, library, device types and proposal queue; the published catalogue for readers; tenant proposals; `usePermissions().facilityBound` (G-P8). **Open:** the `ipm-templates` menu entry is still inactive (backend: seed + migration, ADR-124 Am. 5); live browser, accessibility (light + dark) and responsive suites not run | P21-01 |
 | P22-02 | Device form and list: QR, type picker, mandatory photos, condition, thumbnails | F-23 … F-31 | **TODO** (unblocked 2026-10-09: P21-02a — the form's and list's API; P21-02b — `POST/DELETE …/photos`, thumbnails via `signed-url { variant: "thumb" }`; HEIC must be converted to JPEG in the browser, ADR-132 Am. 3) | P21-02 |
 | P22-03 | IPM capture: mobile-first stepper, camera QR scan, autosave draft | F-35 … F-53 | **TODO** (unblocked 2026-10-09: P21-03 drafts + P21-04 submit) | P21-03 |
 | P22-04 | IPM history, corrections and void; device "IPM" tab | F-54 … F-57 | **TODO** (unblocked 2026-10-09: P21-04 the correction's submit and the void) | P21-03 |

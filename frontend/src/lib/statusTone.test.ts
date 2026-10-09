@@ -23,6 +23,17 @@ const EXPECTED: [StatusDomain, string, StatusTone][] = [
   ["upstreamSqlImport", "loaded", "current"],
   ["upstreamSqlImport", "failed", "alarm"],
   ["upstreamSqlImport", "cancelled", "draft"],
+  // P22-01 — the catalogue: retired and rejected are decisions, never alarms; a waiting proposal needs attention
+  ["catalogueLifecycle", "active", "current"],
+  ["catalogueLifecycle", "retired", "draft"],
+  ["templateVersion", "published", "current"],
+  ["templateVersion", "draft", "draft"],
+  ["templateVersion", "retired", "info"],
+  ["templateVersion", "discarded", "draft"],
+  ["templateProposal", "submitted", "attention"],
+  ["templateProposal", "accepted", "current"],
+  ["templateProposal", "rejected", "draft"],
+  ["templateProposal", "withdrawn", "draft"],
   // device — maintenance is attention, never alarm (doc 08); retired is not an alarm
   ["device", "active", "current"],
   ["device", "inactive", "draft"],
