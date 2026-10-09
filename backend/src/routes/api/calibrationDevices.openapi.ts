@@ -21,6 +21,16 @@ import { reinstateCalibrationDeviceSchema } from "../../validators/calibrationDe
 import { deviceMove, DEVICE_MOVE_COUNT_KEYS } from "@callibrator/contracts/clientFacilities";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 import { deviceIpmSessionsQuery } from "@callibrator/contracts/inspectionSessions";
+import { deviceQrParams } from "@callibrator/contracts/calibrationDevices";
+import { calibrationDateEntry } from "@callibrator/contracts/calibrationRecords";
+import {
+  CALIBRATION_DUE_STATES,
+  CALIBRATION_ENTRY_KINDS,
+  DEVICE_CONDITIONS,
+  FIELD_DEVICE_SUMMARY_KEYS,
+  NEXT_CALIBRATION_DATE_SOURCES,
+  WAREHOUSE_KINDS,
+} from "@callibrator/contracts/deviceValues";
 import { IpmSessionSummary } from "../../docs/openapi/ipmSessionSchemas";
 
 const timestamp = z.iso.datetime();
@@ -46,8 +56,50 @@ const CalibrationDevice = z
     isDeleted: z.boolean(),
     createdAt: timestamp,
     updatedAt: timestamp,
-    // warehouses.code is NOT NULL (warehouse.model).
-    warehouse: z.object({ id: z.guid(), name: z.string(), code: z.string() }).nullable().optional(),
+    // warehouses.code is NOT NULL (warehouse.model). P21-02a: a room's floor and the kind; NULL for a
+    // bound reader when the location is a provider store.
+    warehouse: z.object({ id: z.guid(), name: z.string(), code: z.string(), floor: z.string().nullable().optional(), kind: z.enum(WAREHOUSE_KINDS).optional() }).nullable().optional(),
+    // P21-02a (P19-03 § 8.3): the register's fields and the read's facts.
+    qrCode: z.string().nullable().optional(),
+    deviceTypeId: z.guid().nullable().optional(),
+    deviceType: z.object({ id: z.guid(), name: z.string() }).nullable().optional(),
+    clientFacilityId: z.guid().optional(),
+    clientFacility: z.object({ id: z.guid(), name: z.string(), code: z.string().nullable() }).nullable().optional(),
+    inventoriedOn: z.iso.date().nullable().optional(),
+    accessoriesComplete: z.boolean().nullable().optional(),
+    condition: z.enum(DEVICE_CONDITIONS).nullable().optional(),
+    conditionChangedAt: timestamp.nullable().optional(),
+    ipmIntervalMonths: z.number().int().nullable().optional(),
+    nextCalibrationDateSource: z.enum(NEXT_CALIBRATION_DATE_SOURCES).nullable().optional(),
+    calibrationRequestedAt: timestamp.nullable().optional(),
+    calibrationRequestedBySessionId: z.guid().nullable().optional(),
+    calibrationVendorId: z.guid().nullable().optional().meta({ description: "Provider staff only; a facility reader gets `calibrationVendorDisplay`." }),
+    calibrationVendorDisplay: z.object({ name: z.string() }).nullable().optional(),
+    registrantDisplay: z.object({ name: z.string(), role: z.string().nullable(), organisation: z.string().nullable() }).nullable().optional(),
+    ipmDue: z.record(z.string(), z.unknown()).optional().meta({ description: "`computeIpmDue` (P19-02 § 11)." }),
+    lastIpm: z.object({ performedAt: timestamp, visitNumber: z.number().int().nullable() }).nullable().optional(),
+    openIpmDraftId: z.guid().nullable().optional().meta({ description: "The caller's own open IPM draft of the device." }),
+    photosComplete: z.boolean().optional(),
+    frontPhotoAttachmentId: z.guid().nullable().optional(),
+    serialPlatePhotoAttachmentId: z.guid().nullable().optional(),
+    calibrationDue: z
+      .object({
+        state: z.enum(CALIBRATION_DUE_STATES),
+        nextCalibrationDate: z.iso.date().nullable(),
+        source: z.enum(NEXT_CALIBRATION_DATE_SOURCES).nullable(),
+        requestedBySessionId: z.guid().nullable(),
+      })
+      .optional(),
+    lastCalibration: z
+      .object({
+        recordId: z.guid(),
+        date: z.iso.date(),
+        entryKind: z.enum(CALIBRATION_ENTRY_KINDS),
+        externalLabName: z.string().nullable(),
+        performerDisplay: z.record(z.string(), z.unknown()).nullable(),
+      })
+      .nullable()
+      .optional(),
     calibrationRecords: z.array(z.record(z.string(), z.unknown())).optional().meta({ description: "The 10 latest records (detail read only)." }),
   })
   .loose()
@@ -130,6 +182,27 @@ const DeviceMove = z
   .meta({ id: "DeviceMove" });
 const UNMARKED_MOVE = "Not facility-accessible: a facility-bound principal is refused 403 `FACILITY_ROUTE_REFUSED` before a parameter is read.";
 
+/** P21-02a (P19-08 § 7.2): one row of `?view=field`, exactly these keys. */
+const FieldDeviceSummary = z
+  .object(Object.fromEntries(FIELD_DEVICE_SUMMARY_KEYS.map((k) => [k, z.unknown()])) as Record<(typeof FIELD_DEVICE_SUMMARY_KEYS)[number], z.ZodUnknown>)
+  .meta({ id: "FieldDeviceSummary", description: "The PWA working set's row: no registrant, vendor, notes, documents or photos." });
+
+/** P21-05: the quick entry's body (the contract validates params and body together). */
+const calibrationDateBody = z.object(calibrationDateEntry.shape).omit({ calibrationDeviceId: true });
+const ExternalCalibration = z
+  .object({
+    id: z.guid(),
+    deviceId: z.guid(),
+    entryKind: z.literal("external_date"),
+    calibrationDate: timestamp,
+    dueDate: timestamp.nullable(),
+    externalLabName: z.string().nullable(),
+    device: z.object({ id: z.guid(), nextCalibrationDate: timestamp.nullable(), nextCalibrationDateSource: z.enum(NEXT_CALIBRATION_DATE_SOURCES).nullable(), calibrationRequestedAt: timestamp.nullable() }),
+    notices: z.array(z.string()),
+  })
+  .loose()
+  .meta({ id: "ExternalCalibrationRecord" });
+
 const read = { kind: "dynamicAccess", resource: "calibration", action: "read" } as const;
 const write = { kind: "dynamicAccess", resource: "calibration", action: "write" } as const;
 /** Restore and reinstate: `rbac([TENANT_ADMIN])` first, then the `calibration` write gate. */
@@ -149,21 +222,41 @@ export default defineRouteDocs({
       path: "/",
       operationId: "listCalibrationDevices",
       summary: "List calibration devices",
-      description: "By name; `find` matches name, serial number or manufacturer (case-insensitive).",
+      description:
+        "By name (or `sort=id`); `find` matches name, serial number or manufacturer (case-insensitive). P21-02a: filters `qrCode` (normalised), " +
+        "`deviceTypeId`, `condition`, `locationId`, `clientFacilityId`; P21-05: `calibrationDue` (`overdue`, `due_soon`, `requested`, the tenant zone's days). " +
+        "`view=field` answers the narrow `FieldDeviceSummary` rows (P19-08 § 7.2); a selection above the tenant's working-set cap is a 400 " +
+        "`FIELD_WORKING_SET_TOO_LARGE` (narrow by `locationId`). Each full row carries `ipmDue`, `calibrationDue`, `lastCalibration`, `photosComplete` and the displays.",
       permission: read,
       audited: false,
       query: getCalibrationDevicesQuery,
-      success: { status: 200, description: "A page of devices; pagination in the top-level `meta`", list: CalibrationDevice },
+      success: { status: 200, description: "A page of devices (or `FieldDeviceSummary` rows); pagination in the top-level `meta`", list: z.union([CalibrationDevice, FieldDeviceSummary]) },
+    },
+    {
+      method: "get",
+      path: "/by-qr/:qrCode",
+      operationId: "getCalibrationDeviceByQr",
+      summary: "Find a device by its QR sticker",
+      description:
+        "P21-02a (P19-03 § 8.2): the sticker is normalised with the tenant's prefix and digits, then looked up IN THE CALLER'S CONTEXT. " +
+        "Unknown, deleted, another facility's and another tenant's QR answer the same 404; a value that is no QR is a 400. Reachable by a facility-bound account.",
+      permission: read,
+      audited: false,
+      params: z.object({ qrCode: deviceQrParams.shape.qrCode.meta({ description: "The sticker as scanned or typed", example: "TST000042" }) }),
+      success: { status: 200, description: "The device, as `GET /:calibrationDeviceId` answers it", data: CalibrationDevice },
     },
     {
       method: "post",
       path: "/",
       operationId: "createCalibrationDevice",
       summary: "Register a calibration device",
+      description:
+        "P21-02a: a facility-bound technician's body has no `qrCode`, `status` or `calibrationVendorId` (strict: 400). `room` finds or creates a room " +
+        "of the device's facility. `clientRef` with the same creator answers its device (200). `Idempotency-Key` replays a create.",
       permission: write,
       audited: true,
       body: createCalibrationDeviceSchema,
-      conflict: SERIAL,
+      conflict: `${SERIAL} A QR code is unique per tenant, deleted devices included: \`DEVICE_QR_TAKEN\` names the holder.`,
       success: { status: 201, description: "The registered device", data: CalibrationDevice },
     },
     {
@@ -184,9 +277,10 @@ export default defineRouteDocs({
       summary: "Edit a calibration device",
       permission: write,
       audited: true,
+      description: "P21-02a: the facility never changes here (400 — move the device). A date typed here is `manual` (ADR-133 Am. 1); a new interval re-derives a `record` date.",
       params: deviceIdParams,
       body: updateCalibrationDeviceSchema,
-      conflict: `${SERIAL} A retired device stays retired: leaving \`retired\` is the audited reinstatement, never an edit (Q-02).`,
+      conflict: `${SERIAL} \`DEVICE_QR_TAKEN\` for a QR another device holds. A retired device stays retired: leaving \`retired\` is the audited reinstatement, never an edit (Q-02).`,
       success: { status: 200, description: "The edited device", data: CalibrationDevice },
     },
     {
@@ -268,6 +362,23 @@ export default defineRouteDocs({
       params: deviceIdParams,
       query: z.object({ page: deviceIpmSessionsQuery.shape.page, limit: deviceIpmSessionsQuery.shape.limit }),
       success: { status: 200, description: "A page of sessions; pagination in the top-level `meta`", list: IpmSessionSummary },
+    },
+    {
+      method: "post",
+      path: "/:calibrationDeviceId/calibration-dates",
+      operationId: "recordExternalCalibrationDate",
+      summary: "Record an outside laboratory's calibration by its date",
+      description:
+        "P21-05 (ADR-133 § 2): the date and key data of a calibration an outside laboratory performed: no file, no results. A person names the " +
+        "laboratory (`calibrationVendorId` and/or `externalLabName`); an API key may not. History is kept: a second entry on the same day is " +
+        "accepted with a notice. The device's next due date is re-derived from its latest effective record; an IPM's calibration request " +
+        "is cleared. Not facility-accessible (N-10). `Idempotency-Key` replays the entry.",
+      permission: write,
+      audited: true,
+      params: deviceIdParams,
+      body: calibrationDateBody,
+      conflict: "`CALIBRATION_DEVICE_RETIRED`: the device is retired. `CALIBRATION_FACILITY_ENDED`: its facility has ended.",
+      success: { status: 201, description: "The record, the device's derived date and any notices", data: ExternalCalibration },
     },
     {
       method: "post",

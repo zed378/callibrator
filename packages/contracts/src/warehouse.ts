@@ -11,6 +11,7 @@
  */
 import { z } from "zod";
 import { booleanish, caseless, nullableText, numeric, optionalText, uuid } from "./fields";
+import { WAREHOUSE_KINDS } from "./deviceValues";
 
 const WAREHOUSE_STATUSES = ["active", "inactive"] as const;
 
@@ -23,6 +24,8 @@ const getWarehousesQuery = z.object({
   limit: numeric(z.number().int().min(1).max(100)).default(20),
   find: nullableText(),
   status: caseless(WAREHOUSE_STATUSES, "lower").or(z.literal("")).nullable().optional(),
+  // P21-02a (UD-10; P19-03 § 6.4): stores (stock pickers) or rooms (device forms); unset = both.
+  kind: z.enum(WAREHOUSE_KINDS).optional(),
 });
 
 const warehouseIdSchema = z.object({

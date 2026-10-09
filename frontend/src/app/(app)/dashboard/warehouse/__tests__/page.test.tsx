@@ -106,7 +106,7 @@ describe("Warehouse page — list", () => {
   it("lists depots with status and address; asks for page 1 of 10", async () => {
     const { container } = await renderPage();
     expect(await screen.findByText("Central Depot")).toBeInTheDocument();
-    expect(get).toHaveBeenCalledWith("/api/v1/warehouses", { params: { page: 1, limit: 10, find: "" } });
+    expect(get).toHaveBeenCalledWith("/api/v1/warehouses", { params: { page: 1, limit: 10, find: "", kind: "store" } });
     expect(screen.getByText("Block B")).toBeInTheDocument();
     expect(screen.getByText("INACTIVE")).toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);
@@ -146,7 +146,7 @@ describe("Warehouse page — list", () => {
     await renderPage();
     fireEvent.change(screen.getByPlaceholderText("Search warehouses by name or code..."), { target: { value: "annex" } });
     await waitFor(() =>
-      expect(get).toHaveBeenLastCalledWith("/api/v1/warehouses", { params: { page: 1, limit: 10, find: "annex" } }),
+      expect(get).toHaveBeenLastCalledWith("/api/v1/warehouses", { params: { page: 1, limit: 10, find: "annex", kind: "store" } }),
     );
   });
 

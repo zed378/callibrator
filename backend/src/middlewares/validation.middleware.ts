@@ -24,6 +24,7 @@ import type { Request, RequestHandler } from "express";
 import type { z } from "zod";
 import { error } from "../utils/response.util";
 import { fieldErrors } from "../validators/input";
+import { facilityContextOf } from "./tenantContext.middleware";
 
 /** Where a request schema reads its input. */
 export type RequestSource = "body" | "params" | "query";
@@ -83,6 +84,30 @@ export const validate = (schema: z.ZodType, options: ValidateOptions = {}): Requ
       req.body = result.data;
     }
     next();
+  };
+};
+
+/** The two contracts of one route: provider staff's, and a facility-bound principal's (stricter). */
+export interface ScopedSchemas {
+  readonly unbound: z.ZodType;
+  readonly bound: z.ZodType;
+}
+
+/**
+ * P21-02a (spec P19-03 § 5): `validate()` with the contract chosen by the principal's facility
+ * binding: from its CONTEXT (`facilityContextOf`, the binding `auth` resolved), never the body. A
+ * bound principal's contract has no facility, QR, status or vendor (strict: each is a 400).
+ *
+ * @param schemas - the unbound and bound schemas
+ * @param options - as `validate`
+ * @returns the middleware
+ */
+export const validateScoped = (schemas: ScopedSchemas, options: ValidateOptions = {}): RequestHandler => {
+  const unbound = validate(schemas.unbound, options);
+  const bound = validate(schemas.bound, options);
+  return (req, res, next) => {
+    const principal = req.user as Parameters<typeof facilityContextOf>[0];
+    (facilityContextOf(principal).facilityBound ? bound : unbound)(req, res, next);
   };
 };
 

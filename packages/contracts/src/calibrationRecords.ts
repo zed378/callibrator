@@ -9,6 +9,7 @@
  */
 import { z } from "zod";
 import { booleanish, dateLike, jsonObject, numeric, optionalText, uuid } from "./fields";
+import { dayText, roomInput } from "./calibrationDevices";
 
 // ==========================================
 // QUERY / PARAMS
@@ -84,6 +85,38 @@ const voidCalibrationRecordSchema = z.object({
   reason: lifecycleReason,
 });
 
+// ==========================================
+// P21-05: THE QUICK EXTERNAL-CALIBRATION ENTRY (ADR-133 § 2; spec P19-05 § 7.2)
+// ==========================================
+
+/**
+ * `POST /calibration-devices/:calibrationDeviceId/calibration-dates`: an outside laboratory's
+ * calibration, recorded by its date and key data, with NO file (G-C3). Strict. The laboratory is a
+ * vendor of the tenant and/or its name as printed; a person must name one (the service's 400; an
+ * API key may not). The dates are days of the tenant's zone.
+ */
+const calibrationDateEntry = z
+  .strictObject({
+    calibrationDeviceId: uuid(),
+    calibrationDate: dayText(),
+    calibrationVendorId: uuid().optional(),
+    externalLabName: z.string().trim().min(1).max(255).optional(),
+    certificateNumber: z.string().trim().min(1).max(100).optional(),
+    dueDate: dayText().optional(),
+    isCompliant: z.boolean().optional(),
+    locationId: uuid().optional(),
+    room: roomInput.optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .refine((body) => body.dueDate === undefined || body.dueDate > body.calibrationDate, {
+    error: "The next calibration date must be after the calibration date.",
+    path: ["dueDate"],
+  })
+  .refine((body) => body.locationId === undefined || body.room === undefined, {
+    error: "Give a locationId or a room, not both",
+    path: ["room"],
+  });
+
 export {
   getCalibrationRecordsQuery,
   calibrationRecordIdSchema,
@@ -91,7 +124,11 @@ export {
   createCalibrationRecordSchema,
   correctCalibrationRecordSchema,
   voidCalibrationRecordSchema,
+  calibrationDateEntry,
 };
+
+/** The quick entry's validated input. */
+export type CalibrationDateEntry = z.output<typeof calibrationDateEntry>;
 
 // The client-side (input) and handler-side (output) types of each schema.
 export type GetCalibrationRecordsQueryInput = z.input<typeof getCalibrationRecordsQuery>;

@@ -19,6 +19,13 @@ jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue({}),
 }));
 
+// P21-05 (ADR-133 § 1): the next due date is re-derived by calibrationDates.service, whose own
+// suites (calibrationRecords.nextDate.p2105, calibrationDates.p2105) prove the rule; here the call.
+jest.mock("../../services/calibrationDates.service", () => ({
+  rederiveNextCalibrationDate: jest.fn().mockResolvedValue(null),
+  performerSnapshotFor: jest.fn().mockResolvedValue({ name: "Teknisi Sintetis", role: "TECHNICIAN", organisation: "Lab Sintetis" }),
+}));
+
 jest.mock("../../models", () => ({
   CalibrationRecord: {
     // U-06 (ADR-119): the list is a count and a page, no longer one call.
@@ -274,7 +281,11 @@ describe("calibrationRecords.service", () => {
       expect(result.status).toBe(201);
     });
 
-    it("should create record and update nextCalibrationDate if validation info exists", async () => {
+    // P21-05 (G-11, ADR-133 § 1): re-baselined. The create no longer sets the date from THIS
+    // record (+ interval) — an older record moved it backward; it re-derives it from the device's
+    // latest effective record, in the record's transaction.
+    it("should create record and re-derive the device's nextCalibrationDate in the transaction", async () => {
+      const { rederiveNextCalibrationDate } = require("../../services/calibrationDates.service");
       const inputVal = {
         deviceId: DEVICE_1,
         calibrationDate: "2026-06-01",
@@ -291,11 +302,12 @@ describe("calibrationRecords.service", () => {
       const result = await createCalibrationRecord("tenant-1", "user-1", inputVal);
 
       expect(result.success).toBe(true);
-      expect(mockDevice.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          nextCalibrationDate: expect.any(Date),
-        }),
-        { transaction: "TX" },
+      expect(rederiveNextCalibrationDate).toHaveBeenCalledWith(
+        "tenant-1",
+        DEVICE_1,
+        { recordId: "record-1", newRecord: true },
+        expect.objectContaining({ userId: "user-1" }),
+        "TX",
       );
     });
 

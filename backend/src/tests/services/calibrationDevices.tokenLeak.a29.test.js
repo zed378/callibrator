@@ -109,7 +109,8 @@ describe("A-29 — no device response carries the ingest token or its hash", () 
 
     expect(status).toBe(200);
     expect(body.data).toHaveLength(1);
-    expect(body.data[0].toJSON()).toMatchObject({ id: DEVICE, iotEnabled: true });
+    // P21-02a: a list row is the presented device (its JSON plus the read's facts), no longer the instance.
+    expect(body.data[0]).toMatchObject({ id: DEVICE, iotEnabled: true });
     const serialized = JSON.stringify(body);
     expect(serialized).not.toContain(TOKEN);
     expect(serialized).not.toContain(HASH);

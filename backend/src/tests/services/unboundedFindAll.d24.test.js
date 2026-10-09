@@ -188,6 +188,14 @@ const REVIEWED = Object.freeze({
   "ipmReport.service.ts::reportResults::models.InspectionResult": [1, PARENT],
   "ipmReport.service.ts::issuedDocument::models.InspectionSessionSignature": [1, PARENT],
   "ipmSettings.service.ts::ipmSettingsOf::models.TenantSettings": [1, KEYS],
+  // P21-02a / P21-05 (ADR-132 Am. 2 § 4): a device read's facts, keyed by ONE page's device ids
+  // (limit ≤ 200): its sessions (the submitted ones and the caller's drafts), its two photo purposes,
+  // its effective records; the page's laboratories by id; five keys of one tenant's settings.
+  "deviceReads.service.ts::deviceFacts::models.InspectionSession": [2, IDS],
+  "deviceReads.service.ts::deviceFacts::models.Attachment": [1, IDS],
+  "deviceReads.service.ts::deviceFacts::models.CalibrationRecord": [1, IDS],
+  "deviceReads.service.ts::labNames::models.Vendor": [1, IDS],
+  "deviceSettings.service.ts::deviceSettingsOf::models.TenantSettings": [1, KEYS],
   "ipmSignature.service.ts::notifyCountersigners::models.User": [1, IDS],
   "ipmSignature.service.ts::signReport::models.InspectionSessionSignature": [1, PARENT],
   "ipmSubmit.service.ts::nextReportNumber::models.InspectionSession": [1, PARENT],

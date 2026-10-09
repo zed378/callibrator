@@ -33,6 +33,23 @@ import type { ClientFacilityId, TenantId } from "../types/ids";
 import type { ModelInstance } from "../types/models";
 import { tenantStorage } from "../middlewares/tenantContext.middleware";
 import { deviceTypeAssignmentRefusal } from "./deviceType.service";
+import { AppError } from "../utils/appError.util";
+import { CodedError } from "../utils/codedError.util";
+import { UniqueConstraintError } from "sequelize";
+import {
+  assertNotFuture,
+  isQrUniqueViolation,
+  loadVendor,
+  normaliseQrFor,
+  personSnapshotOf,
+  qrConflict,
+  resolveLocation,
+} from "./deviceRegister.service";
+import { deviceFacts, fieldSummary, labNames, presentDevice, viewerIsBound } from "./deviceReads.service";
+import { deviceSettingsOf } from "./deviceSettings.service";
+import { completeIdempotentRequest } from "./idempotency.service";
+import { rederiveNextCalibrationDate } from "./calibrationDates.service";
+import { calibrationDueWindow, DEVICE_CONFLICT_CODES } from "@callibrator/contracts/deviceValues";
 
 const Op = LoadedOp;
 const { CalibrationDevice } = models;
@@ -52,7 +69,15 @@ interface Outcome<T> {
   status: number;
   message: string;
   data: T;
+  /** A refusal's top-level `code` (P21-02a), when it has one. */
+  code?: string;
 }
+
+/** An expected refusal (4xx) is answered, not logged as a failure. */
+const isRefusal = (error: unknown): boolean => error instanceof AppError;
+
+/** The idempotency store's resource name for a device create (P21-02a; ADR-127 § 7). */
+const DEVICE_RESOURCE = "CalibrationDevice";
 
 /** A caught value's `message`, read exactly as the `.js` read it (a thrown `null` still throws here). */
 const messageOf = (error: unknown): unknown => (error as { message?: unknown }).message;
@@ -262,68 +287,131 @@ interface DeviceListQuery {
   limit?: number | string | undefined;
   status?: string | null | undefined;
   category?: string | null | undefined;
+  // P21-02a / P21-05 (P19-03 § 8.3; P19-05 § 6; P19-08 § 7.2)
+  qrCode?: string | undefined;
+  deviceTypeId?: string | undefined;
+  condition?: string | undefined;
+  locationId?: string | undefined;
+  clientFacilityId?: string | undefined;
+  calibrationDue?: "overdue" | "due_soon" | "requested" | undefined;
+  view?: "full" | "field" | undefined;
+  sort?: "name" | "id" | undefined;
+  /** The person reading (its own open IPM draft per device). */
+  callerUserId?: string | null | undefined;
 }
 
 interface DeviceListData {
-  rows: DeviceRow[];
+  rows: Record<string, unknown>[];
   count: number;
   meta: { total: number; page: number; limit: number; totalPages: number };
 }
 
 /**
+ * The includes of a device read (P19-03 § 8.3): every one LEFT (`required: false`, the first
+ * trap). The location (`warehouse`) and the vendor are paranoid with a defaultScope; a bound
+ * reader's store and vendor are NULL (the facility hooks deny them per include, AM-5).
+ */
+const READ_INCLUDES = (): Record<string, unknown>[] => [
+  {
+    association: "warehouse",
+    attributes: ["id", "name", "code", "floor", "kind"],
+    // LEFT JOIN (A-90) — a device may have no warehouse. Warehouse has a
+    // defaultScope `where`, so without this the list dropped every such
+    // device, and every device whose warehouse was soft-deleted.
+    required: false,
+  },
+  { association: "deviceType", attributes: ["id", "name"], required: false },
+  { association: "clientFacility", attributes: ["id", "name", "code"], required: false },
+  { association: "calibrationVendor", attributes: ["id", "name"], required: false },
+];
+
+/**
+ * The list's `where` for the register's filters (P21-02a) and "calibration due" (P21-05). A QR is
+ * normalised first (a 400 for a malformed one); the due windows are the tenant zone's days.
+ */
+const listWhere = async (query: DeviceListQuery): Promise<Record<string | symbol, unknown>> => {
+  const { tenantId, find, status, category } = query;
+  const whereClause: Record<string | symbol, unknown> = { tenantId };
+  if (find) {
+    const searchTerm = `%${find.toLowerCase()}%`;
+    whereClause[Op.or] = [
+      { name: { [Op.iLike]: searchTerm } },
+      { serialNumber: { [Op.iLike]: searchTerm } },
+      { manufacturer: { [Op.iLike]: searchTerm } },
+    ];
+  }
+  if (status) {
+    whereClause["status"] = status.toLowerCase();
+  }
+  if (category) {
+    whereClause["category"] = category;
+  }
+  if (query.qrCode) {
+    whereClause["qrCode"] = await normaliseQrFor(tenantId, query.qrCode);
+  }
+  for (const key of ["deviceTypeId", "condition", "locationId", "clientFacilityId"] as const) {
+    if (query[key]) {
+      whereClause[key] = query[key];
+    }
+  }
+  if (query.calibrationDue) {
+    const settings = await deviceSettingsOf(tenantId);
+    const { todayStart, soonEnd } = calibrationDueWindow(new Date(), settings.timeZone, settings.dueSoonDays);
+    whereClause["status"] = status ? status.toLowerCase() : { [Op.notIn]: ["retired", "inactive"] };
+    if (query.calibrationDue === "requested") {
+      whereClause["calibrationRequestedAt"] = { [Op.ne]: null };
+    } else {
+      whereClause["calibrationRequestedAt"] = null;
+      whereClause["nextCalibrationDate"] = query.calibrationDue === "overdue" ? { [Op.lt]: todayStart } : { [Op.gte]: todayStart, [Op.lt]: soonEnd };
+    }
+  }
+  return whereClause;
+};
+
+/** The list's leading sort (P21-02a: `sort=id` drops it); every order ends in the id. */
+const BY_NAME: [string, string][] = [["name", "ASC"]];
+
+/**
  * Fetch all calibration devices for a tenant with pagination and filtering
  */
-const fetchCalibrationDevices = async ({
-  tenantId,
-  find,
-  page = 1,
-  limit = DEFAULT_LIMIT,
-  status,
-  category,
-}: DeviceListQuery): Promise<Outcome<DeviceListData>> => {
+const fetchCalibrationDevices = async (query: DeviceListQuery): Promise<Outcome<DeviceListData | null>> => {
+  const { tenantId, page = 1, limit = DEFAULT_LIMIT } = query;
   try {
-    const whereClause: Record<string | symbol, unknown> = { tenantId };
-
-    if (find) {
-      const searchTerm = `%${find.toLowerCase()}%`;
-      whereClause[Op.or] = [
-        { name: { [Op.iLike]: searchTerm } },
-        { serialNumber: { [Op.iLike]: searchTerm } },
-        { manufacturer: { [Op.iLike]: searchTerm } },
-      ];
-    }
-
-    if (status) {
-      whereClause["status"] = status.toLowerCase();
-    }
-
-    if (category) {
-      whereClause["category"] = category;
-    }
-
+    const whereClause = await listWhere(query);
+    const field = query.view === "field";
     const { rows, count } = await CalibrationDevice.findAndCountAll({
       where: whereClause as WhereOptions,
-      order: [["name", "ASC"], ["id", "ASC"]],
+      order: [...(query.sort === "id" ? [] : BY_NAME), ["id", "ASC"]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
-      include: [
-        {
-          association: "warehouse",
-          attributes: ["id", "name", "code"],
-          // LEFT JOIN (A-90) — a device may have no warehouse. Warehouse has a
-          // defaultScope `where`, so without this the list dropped every such
-          // device, and every device whose warehouse was soft-deleted.
-          required: false,
-        },
-      ],
+      // The field view carries no include (P19-08 § 7.2: ids only).
+      include: field ? [] : READ_INCLUDES(),
     });
 
+    // P19-08 § 7.2: the working set states its size first, and a facility above the tenant's cap
+    // is narrowed by room (`locationId`) rather than downloaded.
+    if (field) {
+      const cap = (await deviceSettingsOf(tenantId)).workingSetMax;
+      if (count > cap) {
+        return {
+          success: false,
+          status: 400,
+          code: DEVICE_CONFLICT_CODES.workingSetTooLarge,
+          message: `This selection has ${String(count)} devices, more than the working set's ${String(cap)}; choose rooms to narrow it.`,
+          data: null,
+        };
+      }
+    }
+
+    const facts = await deviceFacts(tenantId, rows, query.callerUserId ?? null);
+    const bound = viewerIsBound();
+    const labs = field ? new Map<string, string>() : await labNames(rows.map((r) => r.calibrationVendorId));
     return {
       success: true,
       status: 200,
       message: "Fetch calibration devices successful",
       data: {
-        rows,
+        rows: rows.map((row) => (field ? fieldSummary(row, facts.get(row.id)) : presentDevice(row, facts.get(row.id), labs, bound))),
         count,
         meta: {
           total: count,
@@ -334,12 +422,31 @@ const fetchCalibrationDevices = async ({
       },
     };
   } catch (error) {
-    logger.error("Error fetching calibration devices", {
-      error: messageOf(error),
-    });
+    if (!isRefusal(error)) {
+      logger.error("Error fetching calibration devices", {
+        error: messageOf(error),
+      });
+    }
     throw error;
   }
 };
+
+/** One device as a single read answers it: the row with its last ten records, facts and displays. */
+const presentOne = async (tenantId: TenantId, device: DeviceRow, callerUserId: string | null): Promise<Record<string, unknown>> => {
+  const facts = await deviceFacts(tenantId, [device], callerUserId);
+  return presentDevice(device, facts.get(device.id), await labNames([device.calibrationVendorId]), viewerIsBound());
+};
+
+const ONE_INCLUDES = (): Record<string, unknown>[] => [
+  ...READ_INCLUDES(),
+  {
+    association: "calibrationRecords",
+    separate: true, // avoid a limit-in-join that can drop the parent row
+    order: [["calibrationDate", "DESC"], ["id", "DESC"]],
+    limit: 10,
+    attributes: { exclude: ["results"] },
+  },
+];
 
 /**
  * Fetch a specific calibration device by ID
@@ -347,24 +454,12 @@ const fetchCalibrationDevices = async ({
 const fetchSpecificCalibrationDevice = async (
   tenantId: TenantId,
   calibrationDeviceId: string,
-): Promise<Outcome<DeviceRow | null>> => {
+  callerUserId: string | null = null,
+): Promise<Outcome<Record<string, unknown> | null>> => {
   try {
     const device = await CalibrationDevice.findOne({
       where: { id: calibrationDeviceId, tenantId },
-      include: [
-        {
-          association: "warehouse",
-          attributes: ["id", "name", "code"],
-          required: false, // LEFT JOIN — a device may have no warehouse
-        },
-        {
-          association: "calibrationRecords",
-          separate: true, // avoid a limit-in-join that can drop the parent row
-          order: [["calibrationDate", "DESC"], ["id", "DESC"]],
-          limit: 10,
-          attributes: { exclude: ["results"] },
-        },
-      ],
+      include: ONE_INCLUDES(),
     });
 
     if (!device) {
@@ -380,7 +475,7 @@ const fetchSpecificCalibrationDevice = async (
       success: true,
       status: 200,
       message: "Fetch calibration device successful",
-      data: device,
+      data: await presentOne(tenantId, device, callerUserId),
     };
   } catch (error) {
     logger.error("Error fetching specific calibration device", {
@@ -389,6 +484,29 @@ const fetchSpecificCalibrationDevice = async (
     });
     throw error;
   }
+};
+
+/** The QR lookup's one answer for every device the caller cannot have (PT-31: identical bodies). */
+const QR_NOT_FOUND = "No device with this QR code.";
+
+/**
+ * P21-02a (spec P19-03 § 8.2; N-13, A-12, C-11): the device holding a QR sticker, IN THE CALLER'S
+ * CONTEXT (FT-107, AM-17: never loaded unscoped and compared). Unknown, deleted, another
+ * facility's and another tenant's QR are the same 404; a value that is no QR after normalisation
+ * is a 400 (it carries no existence information).
+ *
+ * @param tenantId - the caller's tenant
+ * @param rawQr - the path's value
+ * @param callerUserId - the person reading
+ * @returns the device as `GET /:id` answers it, or the 404
+ */
+const fetchCalibrationDeviceByQr = async (tenantId: TenantId, rawQr: string, callerUserId: string | null = null): Promise<Outcome<Record<string, unknown> | null>> => {
+  const qrCode = await normaliseQrFor(tenantId, rawQr);
+  const device = qrCode ? await CalibrationDevice.findOne({ where: { tenantId, qrCode }, include: ONE_INCLUDES() }) : null;
+  if (!device) {
+    return { success: false, status: 404, message: QR_NOT_FOUND, data: null };
+  }
+  return { success: true, status: 200, message: "Fetch calibration device successful", data: await presentOne(tenantId, device, callerUserId) };
 };
 
 /** Where `resolveCreateFacility` sends a create: a facility, or an answer instead of the create. */
@@ -429,6 +547,7 @@ const resolveCreateFacility = async (tenantId: TenantId, requested: string | nul
         outcome: {
           success: false,
           status: 409,
+          code: DEVICE_CONFLICT_CODES.facilityEnded,
           message: `${facility.name} has ended; new records cannot be added. Reinstate it first.`,
           data: null,
         },
@@ -442,21 +561,16 @@ const resolveCreateFacility = async (tenantId: TenantId, requested: string | nul
 
 /**
  * P21-09e (P18-03 § 8.2 A-2 / A-3) — what a facility-BOUND writer may not do to a device: change
- * its status on an edit (retirement and reinstatement are provider acts), or point it at a
- * location its context cannot read (another facility's room, a provider store — the facility hooks
- * filter Warehouse, so such a location is the same 404 as a missing one). Its facility is forced
- * (the create resolves its own; the edit contract carries none). Unbound callers: no change.
+ * its status on an edit (retirement and reinstatement are provider acts). Pointing it at a
+ * location its context cannot read (another facility's room, a provider store) is the same 404 as
+ * a missing one: `resolveLocation` loads every location in context (P21-02a). Its facility is
+ * forced (the create resolves its own; the edit cannot change it). Unbound callers: no change.
  *
- * @param tenantId - the caller's tenant
  * @param validated - the validated body
  * @param update - an edit (status refused) or a create
  * @returns the refusal to send, or null
  */
-const boundWriteRefusal = async (
-  tenantId: TenantId,
-  validated: { status?: unknown; locationId?: unknown },
-  update: boolean,
-): Promise<Outcome<null> | null> => {
+const boundWriteRefusal = (validated: { status?: unknown }, update: boolean): Outcome<null> | null => {
   const ctx = tenantStorage.getStore();
   if (ctx?.facilityBound !== true) {
     return null;
@@ -464,14 +578,61 @@ const boundWriteRefusal = async (
   if (update && validated.status !== undefined) {
     return { success: false, status: 400, message: "A facility user cannot change a device's status.", data: null };
   }
-  if (typeof validated.locationId === "string" && validated.locationId !== "") {
-    const location = await models.Warehouse.findOne({ where: { id: validated.locationId, tenantId }, attributes: ["id"] });
-    if (!location) {
-      return { success: false, status: 404, message: "Location not found", data: null };
-    }
-  }
   return null;
 };
+
+/** The register fields a write stores, from the validated body (P21-02a; spec § 4.1, § 4.4). */
+interface RegisterBody {
+  qrCode?: string | null | undefined;
+  inventoriedOn?: string | null | undefined;
+  calibrationVendorId?: string | null | undefined;
+  condition?: string | null | undefined;
+  room?: unknown;
+  clientRef?: string | undefined;
+  clientFacilityId?: string | undefined;
+  nextCalibrationDate?: Date | string | null | undefined;
+}
+
+/**
+ * The checks every register write makes before its transaction (spec § 4.1 – § 4.3): the QR
+ * normalised and free, the laboratory a vendor of the tenant, the inventory date not in the
+ * future. Throws its refusal.
+ *
+ * @param tenantId - the caller's tenant
+ * @param validated - the validated body
+ * @param device - the device being edited (null on create)
+ * @returns the normalised QR (`undefined`: not sent)
+ */
+const registerChecks = async (tenantId: TenantId, validated: RegisterBody, device: DeviceRow | null): Promise<string | null | undefined> => {
+  const qrCode = await normaliseQrFor(tenantId, validated.qrCode);
+  if (qrCode && qrCode !== device?.qrCode) {
+    const taken = await qrConflict(tenantId, qrCode, device?.id ?? null);
+    if (taken) {
+      throw taken;
+    }
+  }
+  if (validated.calibrationVendorId) {
+    await loadVendor(validated.calibrationVendorId);
+  }
+  if (validated.inventoriedOn) {
+    assertNotFuture(validated.inventoriedOn, (await deviceSettingsOf(tenantId)).timeZone, "An inventory date cannot be in the future.");
+  }
+  return qrCode;
+};
+
+/** A body's stored values: the room is resolved separately, the QR normalised. */
+const storedValues = (validated: RegisterBody, qrCode: string | null | undefined): Record<string, unknown> => {
+  const values: Record<string, unknown> = { ...validated };
+  delete values["room"];
+  if (qrCode !== undefined) {
+    values["qrCode"] = qrCode;
+  }
+  return values;
+};
+
+/** A `client_ref` unique violation: the creator's reference held by a device it can no longer read. */
+const isClientRefCollision = (error: unknown): boolean =>
+  error instanceof UniqueConstraintError && JSON.stringify(error.fields).includes("client_ref");
 
 /**
  * P21-01 (ADR-125; spec P19-01 § 4.7) — the 400 for GIVING a device a type that does not exist
@@ -491,6 +652,12 @@ const typeRefusal = async (deviceTypeId: string | null | undefined, current: str
 
 /**
  * Create a new calibration device
+ *
+ * P21-02a (spec P19-03 § 4 – § 6, § 8.1): the QR (normalised, unique per tenant), the laboratory,
+ * the inventory date, the room found or created in the device's facility, the condition's source
+ * (`registration`), the registrant and its snapshot; a replayed offline registration (`clientRef`,
+ * the same creator) answers its device with 200. Inside the transaction the idempotency key is
+ * completed with the row.
  */
 const createCalibrationDevice = async (
   tenantId: TenantId,
@@ -506,7 +673,19 @@ const createCalibrationDevice = async (
 
     normaliseSerial(validated);
 
-    const refused = (await boundWriteRefusal(tenantId, validated, false)) ?? (await typeRefusal(validated.deviceTypeId, null));
+    const userId = actor.userId ?? null;
+    if (validated.clientRef && !userId) {
+      return { success: false, status: 400, message: "A registration reference (clientRef) needs a signed-in person.", data: null };
+    }
+    if (validated.clientRef) {
+      // ADR-127 § 7: the offline queue replays a create; the creator's own device answers it.
+      const replay = await CalibrationDevice.findOne({ where: { tenantId, createdBy: userId, clientRef: validated.clientRef } });
+      if (replay) {
+        return { success: true, status: 200, message: "Calibration device already registered", data: replay };
+      }
+    }
+
+    const refused = boundWriteRefusal(validated, false) ?? (await typeRefusal(validated.deviceTypeId, null));
     if (refused) {
       return refused;
     }
@@ -517,6 +696,8 @@ const createCalibrationDevice = async (
       return facility.outcome;
     }
     const { clientFacilityId } = facility;
+
+    const qrCode = await registerChecks(tenantId, validated, null);
 
     // Check for a duplicate serial number (only when one is supplied — a null
     // serialNumber must not be used as a WHERE parameter). Deleted devices
@@ -529,20 +710,49 @@ const createCalibrationDevice = async (
       return serialConflict(validated.serialNumber, holder);
     }
 
+    const registrantSnapshot = await personSnapshotOf(userId);
+
     let device;
     try {
       device = await db.transaction(async (transaction) => {
-        const values: Record<string, unknown> = { ...validated, tenantId };
+        const values = storedValues(validated, qrCode);
+        values["tenantId"] = tenantId;
         if (clientFacilityId) {
           values["clientFacilityId"] = clientFacilityId;
         } else {
           delete values["clientFacilityId"];
         }
+        const location = await resolveLocation(tenantId, clientFacilityId, validated, actor, transaction, null);
+        if (location.locationId !== undefined) {
+          values["locationId"] = location.locationId;
+        }
+        if (userId) {
+          values["createdBy"] = userId;
+          values["registrantSnapshot"] = registrantSnapshot;
+        }
+        if (validated.condition) {
+          values["conditionSource"] = "registration";
+          values["conditionChangedAt"] = new Date();
+        }
+        // ADR-133 Am. 1: a date written through the form is `manual`, named explicitly (P21-05).
+        if (validated.nextCalibrationDate) {
+          values["nextCalibrationDateSource"] = "manual";
+        }
         const created = await CalibrationDevice.create(
           values as CreationAttributes<DeviceRow>,
           { transaction },
         );
-        await auditDevice(transaction, tenantId, created.id, "CREATE", { before: {}, after: validated }, actor);
+        const after: Record<string, unknown> = { ...validated };
+        delete after["room"];
+        await auditDevice(
+          transaction,
+          tenantId,
+          created.id,
+          "CREATE",
+          { before: {}, after: { ...after, ...(qrCode !== undefined ? { qrCode } : {}), locationId: created.locationId ?? null, roomCreated: location.createdRoomId } },
+          actor,
+        );
+        await completeIdempotentRequest(transaction, 201, DEVICE_RESOURCE, created.id);
         return created;
       });
     } catch (error) {
@@ -552,6 +762,12 @@ const createCalibrationDevice = async (
           validated.serialNumber,
           await findSerialHolder(tenantId, clientFacilityId, validated.serialNumber),
         );
+      }
+      if (qrCode && isQrUniqueViolation(error)) {
+        throw (await qrConflict(tenantId, qrCode)) ?? error;
+      }
+      if (isClientRefCollision(error)) {
+        throw new CodedError(409, "DEVICE_CLIENT_REF_REUSED", "This registration reference was already used.");
       }
       throw error;
     }
@@ -563,13 +779,20 @@ const createCalibrationDevice = async (
       data: device,
     };
   } catch (error) {
-    logger.error("Error creating calibration device", { error: messageOf(error) });
+    if (!isRefusal(error)) {
+      logger.error("Error creating calibration device", { error: messageOf(error) });
+    }
     throw error;
   }
 };
 
 /**
  * Update an existing calibration device
+ *
+ * P21-02a: the facility never changes here (400; the move is the only path, AM-6); the QR, the
+ * laboratory and the inventory date are checked as on create; the room is found or created in the
+ * device's facility; a changed condition records `manual` and when; a date typed through the form
+ * is `manual` (ADR-133 Am. 1).
  */
 const updateCalibrationDevice = async (
   tenantId: TenantId,
@@ -584,7 +807,7 @@ const updateCalibrationDevice = async (
         .updateCalibrationDeviceSchema,
     );
 
-    const refused = await boundWriteRefusal(tenantId, validated, true);
+    const refused = boundWriteRefusal(validated, true);
     if (refused) {
       return refused;
     }
@@ -608,12 +831,19 @@ const updateCalibrationDevice = async (
       return retirement.retirementConflict(device);
     }
 
+    if (validated.clientFacilityId !== undefined && validated.clientFacilityId !== device.clientFacilityId) {
+      return { success: false, status: 400, message: "A device changes facility only through a move. Move the device instead.", data: null };
+    }
+    delete validated.clientFacilityId;
+
     const typeRefused = await typeRefusal(validated.deviceTypeId, device.deviceTypeId);
     if (typeRefused) {
       return typeRefused;
     }
 
     normaliseSerial(validated);
+
+    const qrCode = await registerChecks(tenantId, validated, device);
 
     // A serial another device of the tenant holds — live or deleted — is a
     // 409, not a 500 from the unique index (A-92). Keeping the device's own
@@ -628,10 +858,31 @@ const updateCalibrationDevice = async (
     }
 
     try {
-      const before = beforeOf(device, validated);
       await db.transaction(async (transaction) => {
-        await device.update(validated as Parameters<DeviceRow["update"]>[0], { transaction });
-        await auditDevice(transaction, tenantId, device.id, "UPDATE", { before, after: validated }, actor);
+        const changes = storedValues(validated, qrCode);
+        const location = await resolveLocation(tenantId, device.clientFacilityId, validated, actor, transaction, device.id);
+        if (location.locationId !== undefined) {
+          changes["locationId"] = location.locationId;
+        }
+        if (validated.condition !== undefined && validated.condition !== device.condition) {
+          changes["conditionSource"] = validated.condition ? "manual" : null;
+          changes["conditionChangedAt"] = validated.condition ? new Date() : null;
+        }
+        if (validated.nextCalibrationDate !== undefined) {
+          changes["nextCalibrationDateSource"] = validated.nextCalibrationDate ? "manual" : null;
+        }
+        const before = beforeOf(device, changes);
+        const rederive =
+          validated.nextCalibrationDate === undefined &&
+          validated.calibrationIntervalDays !== undefined &&
+          validated.calibrationIntervalDays !== device.calibrationIntervalDays &&
+          device.nextCalibrationDateSource === "record";
+        await device.update(changes as Parameters<DeviceRow["update"]>[0], { transaction });
+        await auditDevice(transaction, tenantId, device.id, "UPDATE", { before, after: { ...changes, roomCreated: location.createdRoomId } }, actor);
+        // P21-05 (spec P19-05 § 5): a new interval re-derives a date its record derived.
+        if (rederive) {
+          await rederiveNextCalibrationDate(tenantId, device.id, { recordId: null, newRecord: false }, actor, transaction);
+        }
       });
     } catch (error) {
       // A concurrent request took the serial after the check above.
@@ -640,6 +891,9 @@ const updateCalibrationDevice = async (
           validated.serialNumber,
           await findSerialHolder(tenantId, device.clientFacilityId, validated.serialNumber),
         );
+      }
+      if (qrCode && isQrUniqueViolation(error)) {
+        throw (await qrConflict(tenantId, qrCode, device.id)) ?? error;
       }
       // Q-02: retired by a concurrent request after the check above — the
       // 0089 trigger refused the write.
@@ -656,7 +910,9 @@ const updateCalibrationDevice = async (
       data: device,
     };
   } catch (error) {
-    logger.error("Error updating calibration device", { error: messageOf(error) });
+    if (!isRefusal(error)) {
+      logger.error("Error updating calibration device", { error: messageOf(error) });
+    }
     throw error;
   }
 };
@@ -1117,6 +1373,7 @@ const bulkImportCalibrationDevices = async (
 export = {
   fetchCalibrationDevices,
   fetchSpecificCalibrationDevice,
+  fetchCalibrationDeviceByQr,
   createCalibrationDevice,
   updateCalibrationDevice,
   deleteCalibrationDevice,

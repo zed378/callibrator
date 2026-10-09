@@ -453,6 +453,20 @@ const defineModel: DefineCalibrationDevice = (db, DataTypes) => {
       as: "clientFacility",
       constraints: false,
     });
+    // P21-02a (ADR-132 Am. 1 § 4): the laboratory and the registrant. Their keys live in migration
+    // 0128 (SET NULL / RESTRICT), so the associations declare no constraint. Vendor and User are
+    // paranoid with a defaultScope: every include says `required: false` (the first trap); a bound
+    // reader's vendor include is NULL (provider-internal, AM-5).
+    CalibrationDevice.belongsTo(models.Vendor, {
+      foreignKey: "calibrationVendorId",
+      as: "calibrationVendor",
+      constraints: false,
+    });
+    CalibrationDevice.belongsTo(models.User, {
+      foreignKey: "createdBy",
+      as: "creator",
+      constraints: false,
+    });
     // CalibrationDevice -> CalibrationRecord (hasMany)
     CalibrationDevice.hasMany(models.CalibrationRecord, {
       foreignKey: "deviceId",

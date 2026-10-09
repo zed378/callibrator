@@ -57,6 +57,10 @@ const FACILITY_BOUND_NAMERS = [
   // P21-04: the void (unbound administrators only) and the countersignature (an unbound IPSRS only for the self facility).
   "services/ipmSignature.service.ts",
   "services/ipmSubmit.service.ts",
+  // P21-02a: the contract chosen by the principal's binding (validateScoped) and the device reads'
+  // provider-only keys (deviceReads#viewerIsBound) — both read the flag, never build a context.
+  "middlewares/validation.middleware.ts",
+  "services/deviceReads.service.ts",
 ];
 /** The readers among them: they read the context's flag and never build one. */
 const READERS = [
@@ -75,6 +79,8 @@ const READERS = [
   "services/ipmSession.service.ts",
   "services/ipmSignature.service.ts",
   "services/ipmSubmit.service.ts",
+  "middlewares/validation.middleware.ts",
+  "services/deviceReads.service.ts",
 ];
 
 const writersIn = (sources: { rel: string; text: string }[]): string[] =>

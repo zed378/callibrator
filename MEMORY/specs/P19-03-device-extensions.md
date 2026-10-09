@@ -219,6 +219,8 @@ The lookup runs **in the caller's context** (FT-107); it never loads unscoped an
 
 Rows gain: `qrCode`, `deviceTypeId` + `deviceType { id, name }` (LEFT include), `inventoriedOn`, `accessoriesComplete`, `condition`, `conditionChangedAt`, `location { id, name, floor, kind }` (LEFT; NULL for a bound reader when it is a store), `calibrationVendorDisplay`, `registrantDisplay` (snapshot), `photosComplete`, the two photo ids, `ipmDue` (P19-02 § 11), `calibrationDue` and `lastCalibration` (P19-05 § 6), `clientFacility { id, name, code }` for unbound readers (P19-04 § 13.1). Filters: `qrCode`, `deviceTypeId`, `condition`, `locationId`, `floor`, `clientFacilityId` (convenience for unbound), `photosComplete`, `ipmDue`, `calibrationDue`, `inventoriedFrom/To`; sorts end in `id`; `limit` ≤ 200. No `legacyId` anywhere (FT-104).
 
+*As built (ADR-132 Am. 2, P21-02a, 2026-10-09):* the card is split — P21-02a built § 4.2, § 4.3, § 5, § 6.3, § 6.4, § 8 and `?view=field`; the photo routes of § 7.2 are **P21-02b** (TODO). Deviations: the bound create keeps `clientFacilityId` (its own facility, another one the 404 — P21-09e's answer); the edit refuses only a CHANGE of facility; the settings are `device_qr_code_prefix` / `device_qr_code_digits`; a room created on the fly is coded `R-<8 hex of its id>` and a concurrent duplicate is 409 `ROOM_CREATED_CONCURRENTLY`; the reads' facts are model reads per page (no raw SQL); `?ipmDue=` is `GET /ipm/due`'s; the working set's cap is a 400 `FIELD_WORKING_SET_TOO_LARGE`; `GET /warehouses` lists both kinds unless `kind` is given (the frontend's stock screens send `kind=store`).
+
 ---
 
 ## 9. The Device Move — What This Card Adds (G-D9)

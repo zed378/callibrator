@@ -283,8 +283,11 @@ describe("calibrationScheduler.service", () => {
     const where = CalibrationDevice.findAll.mock.calls[0][0].where;
     expect(where).not.toHaveProperty("tenantId");
     expect(where.status).toBe("active");
-    expect(where.nextCalibrationDate[Op.ne]).toBeNull();
-    expect(where.nextCalibrationDate[Op.lte]).toBeInstanceOf(Date);
+    // P21-05 (ADR-133 § 4): due by date, OR flagged by an IPM visit (`calibration_requested_at`).
+    const [byDate, requested] = where[Op.or];
+    expect(byDate.nextCalibrationDate[Op.ne]).toBeNull();
+    expect(byDate.nextCalibrationDate[Op.lte]).toBeInstanceOf(Date);
+    expect(requested.calibrationRequestedAt[Op.ne]).toBeNull();
   });
 
   it("accepts a non-Date `now` and a non-numeric leadDays", async () => {
@@ -294,7 +297,7 @@ describe("calibrationScheduler.service", () => {
 
     // leadDays is not finite -> falls back to the default lead of 0 days.
     const where = CalibrationDevice.findAll.mock.calls[0][0].where;
-    expect(where.nextCalibrationDate[Op.lte]).toEqual(new Date("2025-01-01T00:00:00Z"));
+    expect(where[Op.or][0].nextCalibrationDate[Op.lte]).toEqual(new Date("2025-01-01T00:00:00Z"));
   });
 
   describe("getDueDevices", () => {

@@ -267,6 +267,19 @@ const fetchSpecificStock = async (tenantId: TenantId, stockId: string): Promise<
  * @param input - validated by createStockSchema
  * @param actor - auditPrincipal(req): userId, apiKeyId, ipAddress, userAgent
  */
+/**
+ * P21-02a (UD-10; spec P19-03 § 6.3): a room is a facility's ward, where devices stand; stock is
+ * kept in stores only. A stock write naming a room is a 400.
+ *
+ * @param warehouse - the warehouse a stock write names
+ * @throws AppError 400 for a room
+ */
+const refuseRoom = (warehouse: { kind?: string | null }): void => {
+  if (warehouse.kind === "room") {
+    throw new AppError(400, "Rooms hold devices, not stock.");
+  }
+};
+
 const createStock = async (tenantId: TenantId, input: unknown, actor: AuditActorInput = {}): Promise<ServiceResult<StockRow>> => {
   const data = validate(input, createStockSchema);
   const transaction = await db.transaction();
@@ -280,6 +293,7 @@ const createStock = async (tenantId: TenantId, input: unknown, actor: AuditActor
     if (!warehouse) {
       throw new AppError(404, "Warehouse not found");
     }
+    refuseRoom(warehouse);
 
     // Verify location if provided
     if (data.locationId) {
@@ -686,6 +700,7 @@ const createTransfer = async (
     if (!fromWarehouse) {
       throw new AppError(404, "Source warehouse not found");
     }
+    refuseRoom(fromWarehouse);
 
     // Verify destination warehouse
     const toWarehouse = await Warehouse.findOne({
@@ -695,6 +710,7 @@ const createTransfer = async (
     if (!toWarehouse) {
       throw new AppError(404, "Destination warehouse not found");
     }
+    refuseRoom(toWarehouse);
 
     // Verify stock exists and quantity is sufficient in source warehouse
     const stock = await Stock.findOne({
@@ -1011,6 +1027,7 @@ const createOpname = async (tenantId: TenantId, input: unknown, userId: UserId, 
     if (!warehouse) {
       throw new AppError(404, "Warehouse not found");
     }
+    refuseRoom(warehouse);
 
     const opname = await StockOpname.create(
       {

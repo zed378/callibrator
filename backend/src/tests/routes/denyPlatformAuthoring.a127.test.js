@@ -383,6 +383,8 @@ const candidates = () => {
 //  - workflow instance action: an approval or rejection; the final approval
 //    stamps the certificate / transfer / work order as approved by the caller.
 const GUARDED = [
+  // P21-05 (ADR-133 § 2): the quick entry writes a calibration record (an outside laboratory's date).
+  "calibrationDevices.route.ts POST /:calibrationDeviceId/calibration-dates",
   "calibrationRecords.route.ts POST /",
   "calibrationRecords.route.ts POST /:calibrationRecordId/corrections", // P6-03
   "calibrationRecords.route.ts POST /:calibrationRecordId/void", // P6-03

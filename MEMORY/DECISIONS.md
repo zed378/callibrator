@@ -11157,6 +11157,39 @@ Upstream identifies every device by a QR sticker number that every IPM row point
 
 **`docs/` amended:** the P19-03 spec § 4.3, § 6.2, § 7.1 and the P19-02 spec § 12 (as-built notes referencing this amendment).
 
+
+### ADR-132 Amendment 2 (2026-10-09, P21-02a): the register API as built — the card split, the bound contract's facility key, the reads' facts through the models, rooms coded from their id, the warehouse reads marked
+
+**Date:** 2026-10-09 · **Status:** Accepted, **built** (no migration). Decided by the implementing agent under the owner's standing delegation (decide by best practice, record it) · **Card:** P21-02a (P21-02 split; P21-02b is the photo pipeline) · **Spec:** [`P19-03`](./specs/P19-03-device-extensions.md) § 4.2 – § 8 (as-built notes added) · **Record:** `MEMORY/records/2026-10-09-p21-02a-device-register-api.md`
+
+**Decision.**
+1. **P21-02 is split.** **P21-02a** (built): `normaliseQrCode` and the register's contracts (bound and unbound), the QR 409 `DEVICE_QR_TAKEN` (holder and facility named; a deleted holder said so; the unique-index race is the same 409), the laboratory loaded in context, the inventory date, the condition's source, the registrant's snapshot, rooms found or created in the device's facility, `clientRef` and `Idempotency-Key` on the create, the facility unchangeable by an edit, the reads' facts and displays, the register's filters, `GET /calibration-devices/by-qr/:qrCode`, `?view=field`, the warehouse reads marked (A-9) with a `kind` filter, stock refusing rooms. **P21-02b** (TODO): the photo routes and their pipeline (content sniffing, ClamAV, EXIF strip, HEIC → JPEG, thumbnails). The backend holds **no image library today** and the common prebuilt `sharp` does not decode HEIC without a libheif build — that dependency choice is P21-02b's and needs its own record.
+2. **The bound create keeps `clientFacilityId`** (the P21-09e behaviour: its own facility accepted, another one the 404 of a missing one). Spec § 5 makes it absent (strict 400); both answers carry no existence information, and keeping it leaves A-2's tested contract unchanged. The bound contracts are otherwise strict: `qrCode`, `status`, `calibrationVendorId` and any unknown key are a 400 (FT-50 stays closed: a bound user provokes no QR 409). The contract is chosen by `validateScoped` (validation.middleware) from the principal's binding, never the body.
+3. **The edit accepts `clientFacilityId` only to refuse a change** (400 "Move the device instead."); naming the device's own facility is no change (a form that echoes it keeps working). Spec § 8.1 refused the key outright.
+4. **The reads' facts are read through the models, one batch per kind per page** (`deviceReads.service`: sessions, the caller's drafts, the two photo purposes, the effective records, the laboratories' names), not the spec's batched `sql()` (P19-05 § 6). The tenant and facility hooks scope every one, so a bound reader's facts are its facility's by construction and no raw statement needs a bound facility clause (G-14 has nothing new to prove). `?calibrationDue=` is a `where` on the device's own columns over the tenant zone's day windows. Bounded by the page (`limit` ≤ 200 for every list caller now). **Bad:** the sessions read returns every effective session of the page's devices, not only the newest (≈ 12 a device-year at the upstream's monthly cadence); a LATERAL `sql()` read replaces it if P21-10's smoke measures it slow.
+5. **A room created on the fly is coded `R-` + the first 8 hex digits of its own id**, not a per-tenant sequence (no counter to race on; the ETL numbers its imported rooms itself). A concurrent create of the same room meets `warehouses_room_name_unique` and answers 409 `ROOM_CREATED_CONCURRENTLY` ("save again"). Room names are matched literally (`%`, `_` escaped) after trimming and collapsing spaces, case-insensitively, per floor.
+6. **The settings are snake_case keys of the A-176 allow-list**: `device_qr_code_prefix` (1 – 8 upper-case letters, a new pattern check), `device_qr_code_digits` (4 – 12, default 6), `field_working_set_max_devices` (1 – 5,000, default 2,000), `calibration_due_soon_days` (1 – 365, default 30; P21-05). Spec § 4.2 named them `devices.qrCodePrefix` / `devices.qrCodeDigits`. Read through the reviewed skip `deviceSettingsOf`.
+7. **The working set's cap is a 400 `FIELD_WORKING_SET_TOO_LARGE`** (narrow by `locationId`), checked after the count so the message states the size.
+8. **A facility reader never gets the laboratory's id or row, nor the registrant's user id or raw snapshot**; it gets `calibrationVendorDisplay { name }` (the reviewed skip `deviceReads#labNames`) and `registrantDisplay` (the snapshot's name, role, organisation).
+9. **`GET /warehouses` lists both kinds unless `kind` is given**; the frontend's warehouse and stock screens now send `kind=store` (they showed stores before rooms existed), and every stock write refuses a room (400 "Rooms hold devices, not stock.").
+10. **`?ipmDue=` is not a device-list filter**: `GET /ipm/due` (P21-04) is that filtered list; the device reads carry `ipmDue` and `lastIpm`. A `month` parameter stays with P21-07.
+
+**Alternatives considered.**
+| Alternative | Why not |
+|---|---|
+| Build the photo pipeline in this card | a new native dependency (HEIC) chosen under time pressure; the register API is useful without it and P21-06 waits on it |
+| Strict 400 for a bound `clientFacilityId` (the spec) | changes P21-09e's tested A-2 answer for no security gain (both are id-independent) |
+| The spec's batched `sql()` for the facts | memoryDb refuses raw SQL, so every existing device route suite would need a query double; the hooks give the facility scope for free; raw SQL adds a d05/G-14 review item |
+| A per-tenant room sequence | a counter row or a max()+1 under a lock for a cosmetic code |
+| Default `GET /warehouses` to stores | the device form needs rooms from the same route; a default that hides rows is a trap for the next reader |
+
+**Implications, including the bad ones.**
+- A bound technician can create `warehouses` rows (rooms of its facility only), bounded by the per-facility name unique and audited (`CREATE_ROOM_FROM_DEVICE`) — as ADR-132 foresaw.
+- Device list responses are now presented objects (the row's JSON plus facts), not model instances; three legacy suites' assertions were re-based on that (named in the record).
+- Photos cannot be uploaded through the device routes until P21-02b; `photosComplete` already reads `attachments.purpose`.
+
+**`docs/` amended:** the P19-03 spec § 4.2, § 5, § 6.3, § 7.2, § 8 (as-built notes referencing this amendment).
+
 ---
 
 ## ADR-133: Calibration Dates — the Next Due Date Is Derived From the Latest Effective Record on Create, Correction and Void; an External Calibration Is Recorded by Its Date and Key Data on a Narrow Route, With No File; a Performer Snapshot Is Written at Insert; Imported Dates Name the Person, or the Import Key
@@ -11222,6 +11255,37 @@ Today `createCalibrationRecord` sets the device's `nextCalibrationDate` from whi
 - A source set to `record` stays `record` when a later write changes only the date; after P21-05 the device form must send `manual` explicitly.
 
 **`docs/` amended:** the P19-05 spec § 4.1, § 4.2 (as-built notes referencing this amendment).
+
+
+### ADR-133 Amendment 2 (2026-10-09, P21-05): the derivation and the quick entry as built — the source trigger stays a backstop, the effective-record index is not added (measured), a correction keeps what its record took at insert
+
+**Date:** 2026-10-09 · **Status:** Accepted, **built** (no migration). Decided by the implementing agent under the owner's standing delegation · **Card:** P21-05 · **Spec:** [`P19-05`](./specs/P19-05-calibration-dates.md) § 4 – § 7 (as-built notes added) · **Record:** `MEMORY/records/2026-10-09-p21-05-calibration-dates.md` · **Fixes:** BACKLOG G-11
+
+**Decision.**
+1. **One derivation, `calibrationDates.service#rederiveNextCalibrationDate`**, called after the record write inside its transaction under `SELECT … FOR UPDATE` on the device: by the full record's create, correction (both devices when a correction names another) and void, by the quick entry, and by an interval change of a `record` date. It writes the source **explicitly** (`record`, or NULL with the date when the last effective record is gone); the device form writes `manual` explicitly on create and edit. Audited `DERIVE_NEXT_CALIBRATION_DATE` only when the value changes. G-11's fail-before is recorded in `calibrationRecords.nextDate.p2105.test.ts` (8 of 9 cases failed on `71ddf27`).
+2. **`calibration_devices_next_date_source` STAYS** as a backstop: it only fills a source nobody named (a raw writer, the P24 ETL, a script). Every service writer now names one, so it no longer decides anything for the API. Dropping it would need a migration and would leave raw writers to the CHECK's 23514.
+3. **`calibration_records_effective_device` is NOT added.** Measured on PostgreSQL 18 (`deviceRegister.p2105.live`, 20,000 records over 2,000 devices, 2026-10-09): the per-device latest read is an Index Scan on 0119's `calibration_records_tenant_facility_device` (tenant, device; PG 18 skip scan), 16 buffers, 0.10 – 0.12 ms; the page read (200 devices, a literal id list as Sequelize sends it) is a Bitmap Index Scan on `calibration_records_device_id`, 50 buffers, 1.9 ms. A partial index would buy nothing measurable and cost every insert.
+4. **A correction keeps what its record took at insert**: `entry_kind`, the laboratory (`calibration_vendor_id`, `external_lab_name`), the room and floor snapshots and the performer's snapshot (only the values the original holds). A correction that would give an `external_date` record a standard, results or an uncertainty is a 400 (its CHECK would otherwise be a 500).
+5. **Every new full record writes `performer_snapshot`** (ADR-133 § 3 applies to every insert, not only the quick entry); a key-recorded record has none.
+6. **The quick entry**: the laboratory is a service 400 for a person ("Name the laboratory…") and optional for an API key (the CHECK admits key-recorded rows); the date is 00:00 of the tenant zone's day; before 1990-01-01 or after today is a 400; the retired 409 says "retired" without a date (no retirement date column exists); the performer's snapshot is read only after the device is found in context (an unknown or foreign device reads nothing else).
+7. **An IPM's request is cleared** by a new effective record dated on or after the request's day **in the tenant's zone** (the spec's `::date` used the session's zone).
+8. **The calibration scan** (`buildDueWhere`) includes a requested device whatever its date; one with no date is "Calibration requested", not overdue; 0060's one-open-order guard still runs first.
+9. **OA-7 stays the owner's.** The working rule (UD-8) is what the code does: a record's `calibration_date` is the day the laboratory calibrated; nothing is derived for a device with no interval and no stated due date (the imported devices).
+
+**Alternatives considered.**
+| Alternative | Why not |
+|---|---|
+| Drop the source trigger now | a migration for no API benefit; raw writers would meet the CHECK instead |
+| Build the partial index as the spec drew it | measured: the existing indexes answer in 0.1 – 2 ms |
+| Leave a correction's kind to the default (`full_record`) | a corrected outside-lab date would become a "full record" with no results — the CHECK would accept it and the recap would lie |
+| Refuse an API key's entry without a laboratory | the import key (P24-04) records upstream dates with no laboratory by design |
+
+**Implications, including the bad ones.**
+- **A behaviour change for every tenant:** the first record written after the release re-derives the date from the latest effective record; an older certificate typed in no longer moves it backward; a void or correction now moves it. The release notes must say so.
+- A device whose date was typed by hand keeps it until the next record that states a due date or has an interval to add.
+- Three legacy suites' expectations of the old behaviour were re-based (named in the record).
+
+**`docs/` amended:** the P19-05 spec § 4.1, § 5, § 6, § 7.3 (as-built notes referencing this amendment); BACKLOG G-11 closed.
 
 ---
 

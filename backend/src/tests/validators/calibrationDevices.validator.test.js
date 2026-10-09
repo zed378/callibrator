@@ -39,10 +39,11 @@ describe("Calibration Device Validators", () => {
       expect(checkInput({}, getCalibrationDevicesQuery)).toEqual({ ok: true, value: { page: 1, limit: 20 } });
     });
 
-    it("refuses a page below 1 and a limit above 100", () => {
-      expect(checkInput({ page: "0", limit: "101" }, getCalibrationDevicesQuery).errors).toEqual([
+    // P21-02a (P19-03 § 8.3, P19-08 § 7.2): a page holds up to 200 devices (it was 100).
+    it("refuses a page below 1 and a limit above 200", () => {
+      expect(checkInput({ page: "0", limit: "201" }, getCalibrationDevicesQuery).errors).toEqual([
         { field: "page", message: "Too small: expected number to be >=1" },
-        { field: "limit", message: "Too big: expected number to be <=100" },
+        { field: "limit", message: "Too big: expected number to be <=200" },
       ]);
     });
 

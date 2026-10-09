@@ -51,6 +51,7 @@ import {
   TENANT_ADMIN_BOOLEAN_SETTINGS,
   TENANT_ADMIN_INTEGER_SETTINGS,
   TENANT_ADMIN_TIME_ZONE_SETTINGS,
+  TENANT_ADMIN_PATTERN_SETTINGS,
 } from "../constants/tenantAdminSettings";
 import { isTimeZone } from "@callibrator/contracts/inspectionValues";
 import { envOr } from "../config/env";
@@ -299,6 +300,11 @@ const assertTenantAdminSettings = (entries: [string, unknown][]): void => {
     }
     if (!cleared && TENANT_ADMIN_TIME_ZONE_SETTINGS.includes(key) && !(typeof value === "string" && isTimeZone(value))) {
       throw new AppError(400, `Setting "${key}" must be an IANA time zone, e.g. Asia/Jakarta`);
+    }
+    // P21-02a: a patterned setting (the QR prefix) holds its pattern, or nothing.
+    const shape = TENANT_ADMIN_PATTERN_SETTINGS[key];
+    if (!cleared && shape && !(typeof value === "string" && new RegExp(shape.pattern).test(value))) {
+      throw new AppError(400, `Setting "${key}" must be ${shape.wording}`);
     }
     // A-176: a URL the server itself will call is checked when it is saved
     // (https in production, no internal/metadata host) — a clear 400 now,

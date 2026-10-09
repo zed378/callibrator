@@ -23,6 +23,8 @@ import {
   updateCalibrationDeviceSchema as loadedUpdateSchema,
 } from "../validators/calibrationDevices.validator";
 import { validateInput } from "../validators/input";
+import { validated as validatedInput } from "../middlewares/validation.middleware";
+import { deviceQrParams } from "@callibrator/contracts/calibrationDevices";
 import type * as Fs from "fs";
 import type { TenantId } from "../types/ids";
 
@@ -42,6 +44,8 @@ interface ServiceResult {
   status: number;
   message: string;
   data: unknown;
+  /** P21-02a: a refusal's top-level `code`. */
+  code?: string;
 }
 
 /**
@@ -56,8 +60,14 @@ interface ServiceResult {
  */
 const send = (res: Response, result: ServiceResult): Response =>
   result.status >= 400
-    ? error(res, result.message, result.status)
+    ? error(res, result.message, result.status, null, result.code ? { code: result.code } : null)
     : success(res, result.data, null, result.message, result.status);
+
+/** The person reading (its own open IPM draft per device); an API key is none. */
+const readerOf = (req: Request): string | null => {
+  const user = req.user as { id?: string; isApiKey?: boolean } | undefined;
+  return user?.id && user.isApiKey !== true ? user.id : null;
+};
 
 /** The caller's tenant: the one `auth` resolved (a super admin's override), else the user's. */
 const tenantOf = (req: Request): TenantId =>
@@ -74,8 +84,21 @@ const getAllCalibrationDevices = asyncHandler(async (req: Request, res: Response
     limit: validated.limit,
     status: validated.status,
     category: validated.category,
+    qrCode: validated.qrCode,
+    deviceTypeId: validated.deviceTypeId,
+    condition: validated.condition,
+    locationId: validated.locationId,
+    clientFacilityId: validated.clientFacilityId,
+    calibrationDue: validated.calibrationDue,
+    view: validated.view,
+    sort: validated.sort,
+    callerUserId: readerOf(req),
   });
 
+  if (!result.data) {
+    send(res, result);
+    return;
+  }
   success(
     res,
     result.data.rows,
@@ -94,9 +117,16 @@ const getSpecificCalibrationDevice = asyncHandler(async (req: Request, res: Resp
   const result = await calibrationDevicesService.fetchSpecificCalibrationDevice(
     tenantId,
     calibrationDeviceId,
+    readerOf(req),
   );
 
   send(res, result);
+});
+
+// P21-02a (spec P19-03 § 8.2): the QR lookup — `validate(deviceQrParams, { from: "params" })` ran.
+const getCalibrationDeviceByQr = asyncHandler(async (req: Request, res: Response) => {
+  const { qrCode } = validatedInput(req, deviceQrParams);
+  send(res, await calibrationDevicesService.fetchCalibrationDeviceByQr(tenantOf(req), qrCode, readerOf(req)));
 });
 
 const createCalibrationDevice = asyncHandler(async (req: Request, res: Response) => {
@@ -199,6 +229,7 @@ const bulkImportCalibrationDevices = asyncHandler(async (req: Request, res: Resp
 export = {
   getAllCalibrationDevices,
   getSpecificCalibrationDevice,
+  getCalibrationDeviceByQr,
   createCalibrationDevice,
   updateCalibrationDevice,
   deleteCalibrationDevice,
