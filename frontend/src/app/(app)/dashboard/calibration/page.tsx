@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { Button, Alert } from "@/components/ui";
-import { Plus } from "lucide-react";
+import { CalendarCheck, Plus } from "lucide-react";
 import { useCalibration } from "./hooks/useCalibration";
 import CalibrationStats from "./components/CalibrationStats";
 import {
@@ -94,15 +95,25 @@ export default function CalibrationPage() {
               digital certificates.
             </p>
           </div>
-          {canWriteRecords && (
-            <Button
-              onClick={() => setIsRecordModalOpen(true)}
-              className="flex items-center gap-2"
+          <div className="flex flex-wrap gap-2">
+            {/* P22-05: an outside laboratory's date by the device's QR sticker, and the latest per device. */}
+            <Link
+              href="/dashboard/calibration-dates"
+              className="inline-flex min-h-9 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
             >
-              <Plus className="h-4 w-4" />
-              Record Calibration
-            </Button>
-          )}
+              <CalendarCheck className="h-4 w-4" aria-hidden="true" />
+              Calibration dates
+            </Link>
+            {canWriteRecords && (
+              <Button
+                onClick={() => setIsRecordModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Record Calibration
+              </Button>
+            )}
+          </div>
         </div>
 
         {calibError && <Alert variant="error">{calibError}</Alert>}

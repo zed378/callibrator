@@ -8,6 +8,14 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-09 — The calibration-date page: an outside lab's date by QR sticker, and the calibration list (P22-05) ([record](./records/2026-10-09-p22-05-calibration-dates-ui.md))
+- **Added:** `dashboard/calibration-dates`, in Indonesian and English, linked from the calibration page. A technician with `calibration` write types or scans a device's QR sticker, sees the device, its last calibration and its room, and records an outside laboratory's calibration date (laboratory, certificate number, stated next date, verdict, room confirmed or changed). No file is stored; a same-day entry is warned about and kept; the new next date is shown. Every `calibration` reader gets the calibration list: latest per device by default, filtered by sticker, kind, a date range on the calibration or input date, and (provider staff only) the facility. Facility-bound accounts and the platform operator read the list but do not record.
+- **Not yet in the sidebar:** the page has no menu entry of its own (a backend seed, if wanted); it is reached from `/dashboard/calibration`.
+
+### 2026-10-09 — The IPM checklist catalogue page (P22-01) ([record](./records/2026-10-09-p22-01-catalogue-admin-ui.md))
+- **Added:** `dashboard/ipm-templates`, in Indonesian and English. The platform operator maintains the global catalogue there — checklists and their drafts (add from the library, order, required, save at a revision, publish with a change note; publishing the base republishes every type checklist), the item library (with a live preview of how a limit is read), the device types, and the tenants' proposal queue (accept / reject). Everyone with a catalogue read sees the published checklists read-only; tenant users with `ipm-templates` propose changes and withdraw them. A facility-bound account sees no proposals.
+- **Not yet visible in the menu:** the `ipm-templates` entry stays inactive until the backend turns it on (seed + migration, ADR-124 Am. 5).
+
 ### 2026-10-09 — Calibration recaps and the inventory export: paged reads for the browser (P21-06; ADR-133 Am. 3) ([record](./records/2026-10-09-p21-06-export-reads.md))
 - **Added:** `GET /api/v1/calibration-records` takes `dateField` (`calibration` | `created`), `fromDay` / `toDay` (inclusive days of the tenant's time zone), `latestOnly` (one row per device), `entryKind`, `clientFacilityId`, `qrCode`, `sort`; `limit` up to 200. Rows add the device's QR, the room as confirmed at entry ("—" when none), `effective`, and the facility for provider staff.
 - **Fixed:** a facility-bound user filtering a device or calibration list by ANOTHER facility got their own facility's rows back; they now get an empty list. No other facility's data was ever returned.
