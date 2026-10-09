@@ -156,6 +156,11 @@ export const FACILITY_SCOPE_SKIPS: Readonly<Record<string, string>> = Object.fre
     "P21-04 (P19-06 § 5): the report-number sequence counts the tenant's numbers of one facility code and day — a device moved to another facility keeps its numbers, so a bound reader's facility predicate would re-issue one (23505); only the numbers are read, under the advisory lock",
   "services/ipmReport.service.ts#verifyReport":
     "P21-04 (P19-06 § 9.2): the public verification has no principal; the session is resolved by its 192-bit token alone (global unique, random — no oracle, ADR-100), then the superseding report's number in the token's own tenant",
+  // P21-02a / P21-05 (ADR-132 Am. 2, ADR-133 Am. 2):
+  "services/deviceSettings.service.ts#deviceSettingsOf":
+    "P21-02a (P18-03 § 10.2, G-13): the tenant's device policy (QR prefix and digits, the working set's cap, the due-soon window, the zone) for a bound technician's register reads and writes; five keys of the user's own tenant, parsed, never returned",
+  "services/deviceReads.service.ts#labNames":
+    "P21-02a (P19-03 § 4.1, AM-5): a device's calibration laboratory is a provider vendor (denied to a bound reader per include); its NAME alone is read for the facility's device display; the vendor's id and row are never returned to it",
   "services/personDisplay.service.ts#displayPeople":
     "P21-09e (spec § 12): the author of a facility's record is provider staff or a person of another facility; the tenant predicate stays, and a bound viewer gets a redacted display for another facility's people — never an id, e-mail or username",
 });
@@ -264,6 +269,10 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
     "GET /:calibrationDeviceId": { kind: "read", reason: "A-1: one device of the facility; another facility's is the same 404 as a missing one" },
     "POST /": { kind: "write", reason: "A-2: HEALTHCARE TECHNICIAN (UD-4 (b)) registers a device in its own facility — stamped, another facility refused (404)" },
     "PUT /:calibrationDeviceId": { kind: "write", reason: "A-3: edit a device of the facility; a bound writer cannot change its status or point it at a location it cannot read" },
+    "GET /by-qr/:qrCode": {
+      kind: "read",
+      reason: "N-13 (P21-02a, A-12 / C-11): the QR lookup in context; unknown, deleted, another facility's and another tenant's QR are the same 404",
+    },
     "GET /:calibrationDeviceId/ipm-sessions": {
       kind: "read",
       reason: "A-10 (P21-03, N-2): a device's IPM history — the device is read in context first, another facility's is the 404",
@@ -291,6 +300,12 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
   // P21-04 (P19-02 § 11): "due" — the raw read carries facilityClause (G-14) for a bound principal.
   "api/ipmReports.route.ts": {
     "GET /due": { kind: "read", reason: "C-13 (N-9): the facility's devices whose IPM is due; the raw read binds the facility (facilityClause)" },
+  },
+  // P21-02a (UD-10, P19-03 § 6.4, A-9): rooms are facility rows; a bound reader sees its facility's
+  // rooms only (provider stores have no facility, so the hooks never return them).
+  "api/warehouse.route.ts": {
+    "GET /": { kind: "read", reason: "A-9: the facility's rooms (the hooks force the facility predicate; stores are never listed for it)" },
+    "GET /:warehouseId": { kind: "read", reason: "A-9: one room of the facility; another facility's room and every store are the same 404" },
   },
   "api/calibrationRecords.route.ts": {
     "GET /": { kind: "read", reason: "A-4: the facility's calibration records, with the performer display (A-90)" },

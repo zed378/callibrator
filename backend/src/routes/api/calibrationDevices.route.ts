@@ -20,9 +20,40 @@ import { deviceMove, deviceMovesParams } from "@callibrator/contracts/clientFaci
 import { move as moveDevice, moves as listDeviceMoves } from "../../controllers/deviceMove.controller";
 import { deviceIpmSessionsQuery } from "@callibrator/contracts/inspectionSessions";
 import { deviceHistory as ipmDeviceHistory } from "../../controllers/ipmSession.controller";
+import { validateScoped } from "../../middlewares/validation.middleware";
+import { idempotency } from "../../middlewares/idempotency.middleware";
+import calibrationDevicesService from "../../services/calibrationDevices.service";
+import { AppError } from "../../utils/appError.util";
+import type { TenantId } from "../../types/ids";
+import { denyPlatformAuthoring } from "../../middlewares/denyPlatformAuthoring.middleware";
+import { calibrationDateEntry } from "@callibrator/contracts/calibrationRecords";
+import { recordDate } from "../../controllers/calibrationDates.controller";
+import { readCalibrationRecord } from "../../services/calibrationDates.service";
+import {
+  createCalibrationDeviceBoundSchema,
+  createCalibrationDeviceSchema,
+  deviceQrParams,
+  updateCalibrationDeviceBoundSchema,
+  updateCalibrationDeviceSchema,
+} from "@callibrator/contracts/calibrationDevices";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
+
+/**
+ * P21-02a (ADR-127 § 7; P19-02 § 9.2): a replayed create answers the device RE-READ in the
+ * current context (gone from view: 404).
+ */
+const replayCreate = idempotency({
+  slug: "calibration",
+  read: async (id, req) => {
+    const result = await calibrationDevicesService.fetchSpecificCalibrationDevice(req.tenantId as TenantId, id);
+    if (!result.data) {
+      throw new AppError(404, result.message);
+    }
+    return result.data;
+  },
+});
 
 router.get(
   "/",
@@ -31,11 +62,26 @@ router.get(
   calibrationDevicesController.getAllCalibrationDevices,
 );
 
+// P21-02a (spec P19-03 § 5, § 8.1): the contract is chosen by the principal's binding: a bound
+// technician's has no QR, status or vendor (strict). `Idempotency-Key` replays an offline create.
 router.post(
   "/",
   auth,
   dynamicAccess("calibration", "write"),
+  validateScoped({ unbound: createCalibrationDeviceSchema, bound: createCalibrationDeviceBoundSchema }),
+  replayCreate,
   calibrationDevicesController.createCalibrationDevice,
+);
+
+// P21-02a (spec P19-03 § 8.2; N-13, A-12, C-11): the QR lookup — registered BEFORE `/:calibrationDeviceId`.
+// Marked (every bound role reads its facility's devices); unknown, deleted, another facility's and
+// another tenant's QR answer the same 404.
+router.get(
+  "/by-qr/:qrCode",
+  auth,
+  dynamicAccess("calibration", "read"),
+  validate(deviceQrParams, { from: "params" }),
+  calibrationDevicesController.getCalibrationDeviceByQr,
 );
 
 router.get(
@@ -51,6 +97,7 @@ router.put(
   auth,
   validateUuid("calibrationDeviceId"),
   dynamicAccess("calibration", "write"),
+  validateScoped({ unbound: updateCalibrationDeviceSchema, bound: updateCalibrationDeviceBoundSchema }),
   calibrationDevicesController.updateCalibrationDevice,
 );
 
@@ -114,6 +161,20 @@ router.get(
   dynamicAccess("ipm", "read"),
   validate(deviceIpmSessionsQuery, { from: ["params", "query"] }),
   ipmDeviceHistory,
+);
+
+// P21-05 (ADR-133 § 2; spec P19-05 § 7.2): an outside laboratory's calibration by its date and key
+// data, NO file. `calibration` write; API keys allowed (a laboratory's system may post dates, Q-51);
+// NOT facility-accessible (N-10: laboratory work — a bound principal is refused before a parameter
+// is read, C-14). `Idempotency-Key` replays the record re-read in context.
+router.post(
+  "/:calibrationDeviceId/calibration-dates",
+  auth,
+  dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
+  validate(calibrationDateEntry, { from: ["params", "body"] }),
+  idempotency({ slug: "calibration", read: (id) => readCalibrationRecord(id) }),
+  recordDate,
 );
 
 router.post(

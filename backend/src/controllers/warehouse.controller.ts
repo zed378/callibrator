@@ -52,6 +52,7 @@ export const getAllWarehouses = asyncHandler(async (req: Request, res: Response)
   const result = await warehouseService.fetchWarehouses({
     tenantId,
     find: validated.find,
+    kind: validated.kind,
     page: validated.page,
     limit: validated.limit,
   });

@@ -176,6 +176,8 @@ Scan or type the QR → `GET /calibration-devices/by-qr/:qrCode` (P19-03 § 8.2)
 
 It stores **no file** (G-C3): no certificate PDF is uploaded through it; the certificate's number, laboratory, stated next date and verdict are the record. The existing generic attachment upload against a device or a record is unchanged (F-32, not this card's scope). It issues no certificate of ours (a certificate is a laboratory's own document; issuing stays with the full record and the certificate pipeline). It is not offline-capable in this group (ADR-127 § 1 limits offline to lookup, registration and IPM capture).
 
+*As built (ADR-133 Am. 2, P21-05, 2026-10-09):* § 5 runs in `calibrationDates.service#rederiveNextCalibrationDate` (create, correction — both devices —, void, quick entry, an interval change of a `record` date) and names the source explicitly; the 0128 source trigger stays as a backstop for raw writers. `calibration_records_effective_device` is **not** added: measured on PG 18 over 20,000 records, the per-device read is an index scan on 0119's index (≈ 0.1 ms) and a 200-device page a bitmap scan on `calibration_records_device_id` (≈ 2 ms). § 6's facts and the `calibrationDue` filter are model reads per page and a `where` on the device's columns (tenant zone's days), not a batched `sql()`. A correction keeps its record's kind, laboratory and snapshots, and cannot add results to an external date (400). Every new full record writes `performer_snapshot`. The request is cleared by a record dated on or after the request's day in the tenant's zone.
+
 ---
 
 ## 8. Reads for the Recaps and Lists (P21-06; `09` § 4)

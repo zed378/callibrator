@@ -11,6 +11,18 @@ const { createLedger } = require("../fixtures/auditLedger");
 
 const mockRef = { ledger: null, record: null, device: null };
 
+// P21-05 (ADR-133 § 1): the next due date is re-derived by calibrationDates.service (its own
+// suites prove the rule). Here it writes the device IN THE RECORD'S TRANSACTION, as the real one
+// does, so the rollback cases below still cover the device's date.
+jest.mock("../../services/calibrationDates.service", () => ({
+  performerSnapshotFor: async () => null,
+  rederiveNextCalibrationDate: async (_tenantId, _deviceId, _cause, _actor, transaction) => {
+    const { CalibrationDevice } = require("../../models");
+    const device = await CalibrationDevice.findOne();
+    await device.update({ nextCalibrationDate: new Date("2027-09-01T00:00:00Z"), nextCalibrationDateSource: "record" }, { transaction });
+    return device;
+  },
+}));
 jest.mock("../../models", () => ({
   CalibrationRecord: {
     findOne: jest.fn(async () => mockRef.record),

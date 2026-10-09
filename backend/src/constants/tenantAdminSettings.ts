@@ -67,17 +67,34 @@ export const TENANT_ADMIN_SETTING_KEYS = Object.freeze([
   "ipm_interval_months",
   "ipm_countersign_enabled",
   "ipm_recommendation_side_effects",
+  // P21-02a / P21-05 (ADR-132 Am. 2, ADR-133 Am. 2): the QR prefix and digits of a bare sticker number,
+  // the PWA working set's cap, and the "calibration due soon" window (services/deviceSettings).
+  "device_qr_code_prefix",
+  "device_qr_code_digits",
+  "field_working_set_max_devices",
+  "calibration_due_soon_days",
 ] as const);
 
 /** P21-09e: the integer settings above, with their allowed range (an empty value clears one). */
 export type TenantAdminIntegerSettingKey =
   | "client_facilities_bound_user_deactivation_days"
   | "client_facilities_ended_retention_years"
-  | "ipm_interval_months";
+  | "ipm_interval_months"
+  | "device_qr_code_digits"
+  | "field_working_set_max_devices"
+  | "calibration_due_soon_days";
 export const TENANT_ADMIN_INTEGER_SETTINGS: Readonly<Record<TenantAdminIntegerSettingKey, { readonly min: number; readonly max: number }>> = Object.freeze({
   client_facilities_bound_user_deactivation_days: { min: 1, max: 3650 },
   client_facilities_ended_retention_years: { min: 1, max: 100 },
   ipm_interval_months: { min: 1, max: 60 },
+  device_qr_code_digits: { min: 4, max: 12 },
+  field_working_set_max_devices: { min: 1, max: 5000 },
+  calibration_due_soon_days: { min: 1, max: 365 },
+});
+
+/** P21-02a: the settings held to a pattern (the source of a RegExp), with the 400's wording. */
+export const TENANT_ADMIN_PATTERN_SETTINGS: Readonly<Record<string, { readonly pattern: string; readonly wording: string }>> = Object.freeze({
+  device_qr_code_prefix: { pattern: "^[A-Z]{1,8}$", wording: "1 to 8 upper-case letters" },
 });
 
 /** P21-04: the boolean settings above — `true` / `false` (a string or a JSON boolean), or nothing (cleared). */

@@ -117,6 +117,7 @@ interface FetchWarehousesQuery {
   // `| undefined`: the controller passes the validated query's `find` as it is,
   // absent or not (P9-20; a type-only widening, nothing emitted changes).
   find?: string | null | undefined;
+  kind?: "store" | "room" | undefined;
   page?: number | string;
   limit?: number | string;
 }
@@ -131,9 +132,13 @@ const messageOf = (error: unknown): unknown => (error as { message?: unknown }).
 // WAREHOUSE SERVICE METHODS
 // ==========================================
 
-const fetchWarehouses = async ({ tenantId, find, page = 1, limit = DEFAULT_LIMIT }: FetchWarehousesQuery): Promise<ServiceResult<WarehouseListData>> => {
+const fetchWarehouses = async ({ tenantId, find, kind, page = 1, limit = DEFAULT_LIMIT }: FetchWarehousesQuery): Promise<ServiceResult<WarehouseListData>> => {
   try {
     const whereClause: Record<string | symbol, unknown> = { tenantId, isDeleted: false };
+    // P21-02a (UD-10): a stock picker asks for stores, a device form for rooms.
+    if (kind) {
+      whereClause["kind"] = kind;
+    }
 
     if (find) {
       // A-320: ILIKE on the term as typed. It was lower-cased and matched with a

@@ -27,7 +27,12 @@ import { validateInput } from "../validators/input";
 import type * as CalibrationRecordsValidator from "../validators/calibrationRecords.validator";
 import type { AuditAction } from "../constants/auditActions";
 import type { TenantId, UserId } from "../types/ids";
+import type * as CalibrationDatesService from "./calibrationDates.service";
 import type { ModelInstance } from "../types/models";
+
+// P21-05 (ADR-133 § 1, G-11): the next due date is re-derived from the latest effective record.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded at call time: calibrationDates.service loads the models barrel this module's callers mock
+const calibrationDates = (): typeof CalibrationDatesService => require("./calibrationDates.service") as typeof CalibrationDatesService;
 
 const Op = LoadedOp;
 const Transaction = LoadedTransaction;
@@ -330,17 +335,15 @@ const createCalibrationRecord = async (
         performedBy: rowActor(actor, userId).userId,
         apiKeyId: rowActor(actor, userId).apiKeyId,
       };
+      // P21-05 (ADR-133 § 3): the performer as recorded at insert (a person; a key records none).
+      const performer = rowActor(actor, userId).userId;
+      values["performerSnapshot"] = performer ? await calibrationDates().performerSnapshotFor(performer) : null;
       const created = await CalibrationRecord.create(values as CreationAttributes<RecordRow>, { transaction });
 
-      // Update the device's nextCalibrationDate based on the record — in the
-      // same transaction, so the due date never moves for a record that
-      // did not commit.
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- as built: the .js tested both (ADR-038 rule 3)
-      if (validated.calibrationDate && device.calibrationIntervalDays) {
-        const nextDate = new Date(validated.calibrationDate);
-        nextDate.setDate(nextDate.getDate() + device.calibrationIntervalDays);
-        await device.update({ nextCalibrationDate: nextDate }, { transaction });
-      }
+      // P21-05 (ADR-133 § 1, G-11): the device's next due date from its latest EFFECTIVE record,
+      // in the same transaction, so it never moves for a record that did not commit — and an
+      // older record entered today no longer moves it backward.
+      await calibrationDates().rederiveNextCalibrationDate(tenantId, device.id, { recordId: created.id, newRecord: true }, { ...actor, userId }, transaction);
 
       await auditRecord(transaction, tenantId, created.id, "CREATE", {}, validated, {
         ...actor,
@@ -443,6 +446,13 @@ const lifecycleConflict = (record: RecordRow, operation: "correct" | "void"): Ou
   return null;
 };
 
+/** The facts a record took at insert that its correction carries (P21-05; only those it holds). */
+const INSERT_FACTS = Object.freeze(["entryKind", "calibrationVendorId", "externalLabName", "roomSnapshot", "floorSnapshot", "performerSnapshot"] as const);
+const insertFacts = (original: RecordRow): Record<string, unknown> =>
+  Object.fromEntries(
+    INSERT_FACTS.map((key): [string, unknown] => [key, (original as unknown as Record<string, unknown>)[key]]).filter(([, value]) => value !== null && value !== undefined),
+  );
+
 /**
  * Correct a calibration record: write a new record that supersedes it.
  *
@@ -498,8 +508,21 @@ const correctCalibrationRecord = async (
           Object.hasOwn(changed, field) ? changed[field] : (original as unknown as Record<string, unknown>)[field],
         ]),
       );
+      // P21-05 (ADR-133 § 2): an outside laboratory's date carries no results (CHECK
+      // calibration_records_external_no_results) — its correction cannot add them.
+      if (original.entryKind === "external_date" && ["standard", "results", "measurementUncertainty"].some((k) => changed[k] !== undefined && changed[k] !== null && changed[k] !== "")) {
+        return {
+          success: false,
+          status: 400,
+          message: "This record is an outside laboratory's calibration date; it carries no standard, results or uncertainty. Record a full calibration instead.",
+          data: null,
+        };
+      }
       const correctionValues: Record<string, unknown> = {
         ...content,
+        // P21-05: what the original recorded at insert stays the correction's: its kind, laboratory,
+        // room and performer (the person who performed it does not change with a correction).
+        ...insertFacts(original),
         tenantId,
         // Who PERFORMED the calibration does not change because someone
         // corrected its record; who corrected it is the audit row's actor.
@@ -533,6 +556,11 @@ const correctCalibrationRecord = async (
         { supersededById: correction.id, supersededAt, correctionReason: reason, changed: Object.keys(changes) },
         actorWithUser,
       );
+      // P21-05 (G-11): the date follows the correction — on the original's device and, when the
+      // correction names another device, on that one too.
+      for (const deviceId of new Set([original.deviceId, correction.deviceId])) {
+        await calibrationDates().rederiveNextCalibrationDate(tenantId, deviceId, { recordId: correction.id, newRecord: deviceId === correction.deviceId }, actorWithUser, transaction);
+      }
 
       return {
         success: true,
@@ -599,6 +627,8 @@ const voidCalibrationRecord = async (
         voided,
         { ...actor, userId },
       );
+      // P21-05 (G-11): voiding the record that set the date falls back to the previous one.
+      await calibrationDates().rederiveNextCalibrationDate(tenantId, record.deviceId, { recordId: record.id, newRecord: false }, { ...actor, userId }, transaction);
 
       return {
         success: true,

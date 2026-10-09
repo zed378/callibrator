@@ -111,9 +111,11 @@ describe("calibrationDevicesController", () => {
 
       await calibrationDevicesController.getSpecificCalibrationDevice(req, res);
 
+      // P21-02a: the reader's id (its own open IPM draft per device) is passed too.
       expect(calibrationDevicesService.fetchSpecificCalibrationDevice).toHaveBeenCalledWith(
         "tenant-1",
         DEVICE_ID,
+        expect.anything(),
       );
       expect(success).toHaveBeenCalled();
     });

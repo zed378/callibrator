@@ -1483,13 +1483,15 @@ export interface paths {
         };
         /**
          * List calibration devices
-         * @description By name; `find` matches name, serial number or manufacturer (case-insensitive).
+         * @description By name (or `sort=id`); `find` matches name, serial number or manufacturer (case-insensitive). P21-02a: filters `qrCode` (normalised), `deviceTypeId`, `condition`, `locationId`, `clientFacilityId`; P21-05: `calibrationDue` (`overdue`, `due_soon`, `requested`, the tenant zone's days). `view=field` answers the narrow `FieldDeviceSummary` rows (P19-08 § 7.2); a selection above the tenant's working-set cap is a 400 `FIELD_WORKING_SET_TOO_LARGE` (narrow by `locationId`). Each full row carries `ipmDue`, `calibrationDue`, `lastCalibration`, `photosComplete` and the displays.
          */
         get: operations["listCalibrationDevices"];
         put?: never;
         /**
          * Register a calibration device
-         * @description **409** — A serial number is unique per tenant, deleted devices included (A-92): a serial another device holds is a 409 that names the holder.
+         * @description P21-02a: a facility-bound technician's body has no `qrCode`, `status` or `calibrationVendorId` (strict: 400). `room` finds or creates a room of the device's facility. `clientRef` with the same creator answers its device (200). `Idempotency-Key` replays a create.
+         *
+         *     **409** — A serial number is unique per tenant, deleted devices included (A-92): a serial another device holds is a 409 that names the holder. A QR code is unique per tenant, deleted devices included: `DEVICE_QR_TAKEN` names the holder.
          */
         post: operations["createCalibrationDevice"];
         delete?: never;
@@ -1514,9 +1516,11 @@ export interface paths {
         get: operations["getCalibrationDevice"];
         /**
          * Edit a calibration device
-         * @description Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         * @description P21-02a: the facility never changes here (400 — move the device). A date typed here is `manual` (ADR-133 Am. 1); a new interval re-derives a `record` date.
          *
-         *     **409** — A serial number is unique per tenant, deleted devices included (A-92): a serial another device holds is a 409 that names the holder. A retired device stays retired: leaving `retired` is the audited reinstatement, never an edit (Q-02).
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — A serial number is unique per tenant, deleted devices included (A-92): a serial another device holds is a 409 that names the holder. `DEVICE_QR_TAKEN` for a QR another device holds. A retired device stays retired: leaving `retired` is the audited reinstatement, never an edit (Q-02).
          */
         put: operations["updateCalibrationDevice"];
         post?: never;
@@ -1527,6 +1531,30 @@ export interface paths {
          *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
          */
         delete: operations["deleteCalibrationDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calibration-devices/{calibrationDeviceId}/calibration-dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record an outside laboratory's calibration by its date
+         * @description P21-05 (ADR-133 § 2): the date and key data of a calibration an outside laboratory performed: no file, no results. A person names the laboratory (`calibrationVendorId` and/or `externalLabName`); an API key may not. History is kept: a second entry on the same day is accepted with a notice. The device's next due date is re-derived from its latest effective record; an IPM's calibration request is cleared. Not facility-accessible (N-10). `Idempotency-Key` replays the entry.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `CALIBRATION_DEVICE_RETIRED`: the device is retired. `CALIBRATION_FACILITY_ENDED`: its facility has ended.
+         */
+        post: operations["recordExternalCalibrationDate"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1664,6 +1692,28 @@ export interface paths {
          *     **409** — A serial number in the file was registered while the import ran: nothing was imported; upload the file again.
          */
         post: operations["bulkImportCalibrationDevices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calibration-devices/by-qr/{qrCode}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find a device by its QR sticker
+         * @description P21-02a (P19-03 § 8.2): the sticker is normalised with the tenant's prefix and digits, then looked up IN THE CALLER'S CONTEXT. Unknown, deleted, another facility's and another tenant's QR answer the same 404; a value that is no QR is a 400. Reachable by a facility-bound account.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["getCalibrationDeviceByQr"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9505,6 +9555,75 @@ export interface components {
                 id: string;
                 name: string;
                 code: string;
+                floor?: string | null;
+                /** @enum {string} */
+                kind?: "store" | "room";
+            } | null;
+            qrCode?: string | null;
+            deviceTypeId?: string | null;
+            deviceType?: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            } | null;
+            /** Format: uuid */
+            clientFacilityId?: string;
+            clientFacility?: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                code: string | null;
+            } | null;
+            inventoriedOn?: string | null;
+            accessoriesComplete?: boolean | null;
+            condition?: ("good" | "not_good" | "broken") | null;
+            conditionChangedAt?: string | null;
+            ipmIntervalMonths?: number | null;
+            nextCalibrationDateSource?: ("manual" | "record") | null;
+            calibrationRequestedAt?: string | null;
+            calibrationRequestedBySessionId?: string | null;
+            /** @description Provider staff only; a facility reader gets `calibrationVendorDisplay`. */
+            calibrationVendorId?: string | null;
+            calibrationVendorDisplay?: {
+                name: string;
+            } | null;
+            registrantDisplay?: {
+                name: string;
+                role: string | null;
+                organisation: string | null;
+            } | null;
+            /** @description `computeIpmDue` (P19-02 § 11). */
+            ipmDue?: {
+                [key: string]: unknown;
+            };
+            lastIpm?: {
+                /** Format: date-time */
+                performedAt: string;
+                visitNumber: number | null;
+            } | null;
+            /** @description The caller's own open IPM draft of the device. */
+            openIpmDraftId?: string | null;
+            photosComplete?: boolean;
+            frontPhotoAttachmentId?: string | null;
+            serialPlatePhotoAttachmentId?: string | null;
+            calibrationDue?: {
+                /** @enum {string} */
+                state: "not_scheduled" | "requested" | "overdue" | "due_soon" | "ok";
+                nextCalibrationDate: string | null;
+                source: ("manual" | "record") | null;
+                requestedBySessionId: string | null;
+            };
+            lastCalibration?: {
+                /** Format: uuid */
+                recordId: string;
+                /** Format: date */
+                date: string;
+                /** @enum {string} */
+                entryKind: "full_record" | "external_date";
+                externalLabName: string | null;
+                performerDisplay: {
+                    [key: string]: unknown;
+                } | null;
             } | null;
             /** @description The 10 latest records (detail read only). */
             calibrationRecords?: {
@@ -10707,6 +10826,49 @@ export interface components {
             publicKey: string;
             /** Format: date-time */
             createdAt: string;
+        };
+        ExternalCalibrationRecord: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            deviceId: string;
+            /** @constant */
+            entryKind: "external_date";
+            /** Format: date-time */
+            calibrationDate: string;
+            dueDate: string | null;
+            externalLabName: string | null;
+            device: {
+                /** Format: uuid */
+                id: string;
+                nextCalibrationDate: string | null;
+                nextCalibrationDateSource: ("manual" | "record") | null;
+                calibrationRequestedAt: string | null;
+            };
+            notices: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description The PWA working set's row: no registrant, vendor, notes, documents or photos. */
+        FieldDeviceSummary: {
+            id: unknown;
+            clientFacilityId: unknown;
+            name: unknown;
+            manufacturer: unknown;
+            model: unknown;
+            serialNumber: unknown;
+            qrCode: unknown;
+            deviceTypeId: unknown;
+            status: unknown;
+            condition: unknown;
+            locationId: unknown;
+            ipmIntervalMonths: unknown;
+            ipmDue: unknown;
+            lastIpm: unknown;
+            calibrationDue: unknown;
+            photosComplete: unknown;
+            openIpmDraftId: unknown;
+            updatedAt: unknown;
         };
         /**
          * @description A recorded wipe of another user's offline data on a phone — counts only
@@ -18062,6 +18224,14 @@ export interface operations {
                 find?: string | null;
                 status?: (string | "") | null;
                 category?: string | null;
+                qrCode?: string;
+                deviceTypeId?: string;
+                condition?: "good" | "not_good" | "broken";
+                locationId?: string;
+                clientFacilityId?: string;
+                calibrationDue?: "overdue" | "due_soon" | "requested";
+                view?: "full" | "field";
+                sort?: "name" | "id";
             };
             header?: never;
             path?: never;
@@ -18069,7 +18239,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description A page of devices; pagination in the top-level `meta` */
+            /** @description A page of devices (or `FieldDeviceSummary` rows); pagination in the top-level `meta` */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -18081,7 +18251,7 @@ export interface operations {
                         /** @description The HTTP status, repeated in the body */
                         status: number;
                         message: string;
-                        data: components["schemas"]["CalibrationDevice"][];
+                        data: (components["schemas"]["CalibrationDevice"] | components["schemas"]["FieldDeviceSummary"])[];
                         meta: components["schemas"]["PaginationMeta"];
                     };
                 };
@@ -18116,6 +18286,18 @@ export interface operations {
                     /** Format: uuid */
                     clientFacilityId?: string;
                     deviceTypeId?: string | null;
+                    qrCode?: string | null;
+                    inventoriedOn?: string | null;
+                    accessoriesComplete?: boolean | null;
+                    condition?: ("good" | "not_good" | "broken") | null;
+                    calibrationVendorId?: string | null;
+                    ipmIntervalMonths?: number | null;
+                    room?: {
+                        name: string;
+                        floor?: string | null;
+                    };
+                    /** Format: uuid */
+                    clientRef?: string;
                 };
             };
         };
@@ -18203,6 +18385,18 @@ export interface operations {
                     calibrationIntervalDays?: (number | "") | null;
                     remarks?: string | null;
                     deviceTypeId?: string | null;
+                    qrCode?: string | null;
+                    inventoriedOn?: string | null;
+                    accessoriesComplete?: boolean | null;
+                    condition?: ("good" | "not_good" | "broken") | null;
+                    calibrationVendorId?: string | null;
+                    ipmIntervalMonths?: number | null;
+                    room?: {
+                        name: string;
+                        floor?: string | null;
+                    };
+                    /** Format: uuid */
+                    clientFacilityId?: string;
                 };
             };
         };
@@ -18263,6 +18457,61 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    recordExternalCalibrationDate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration device's id */
+                calibrationDeviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    calibrationDate: string;
+                    /** Format: uuid */
+                    calibrationVendorId?: string;
+                    externalLabName?: string;
+                    certificateNumber?: string;
+                    dueDate?: string;
+                    isCompliant?: boolean;
+                    /** Format: uuid */
+                    locationId?: string;
+                    room?: {
+                        name: string;
+                        floor?: string | null;
+                    };
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The record, the device's derived date and any notices */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["ExternalCalibrationRecord"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -18503,6 +18752,41 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getCalibrationDeviceByQr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The sticker as scanned or typed */
+                qrCode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The device, as `GET /:calibrationDeviceId` answers it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["CalibrationDevice"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -35871,6 +36155,7 @@ export interface operations {
                 limit?: number;
                 find?: string | null;
                 status?: (string | "") | null;
+                kind?: "store" | "room";
             };
             header?: never;
             path?: never;

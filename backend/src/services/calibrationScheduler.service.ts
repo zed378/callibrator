@@ -107,10 +107,12 @@ const toDateLabel = (date: Date | string | null | undefined): string =>
 
 // Builds the WHERE clause for "due" devices: active, not soft-deleted (default
 // scope), with a nextCalibrationDate at or before the due threshold.
-const buildDueWhere = (tenantId: string | null, dueThreshold: Date): Record<string, unknown> => {
-  const where: Record<string, unknown> = {
+const buildDueWhere = (tenantId: string | null, dueThreshold: Date): Record<string | symbol, unknown> => {
+  // P21-05 (ADR-133 § 4; spec P19-05 § 6): a device an IPM flagged `needs_calibration` is due
+  // whatever its date says (the flag never edits the date the certificate stated).
+  const where: Record<string | symbol, unknown> = {
     status: "active",
-    nextCalibrationDate: { [Op.ne]: null, [Op.lte]: dueThreshold },
+    [Op.or]: [{ nextCalibrationDate: { [Op.ne]: null, [Op.lte]: dueThreshold } }, { calibrationRequestedAt: { [Op.ne]: null } }],
   };
   if (tenantId) {
     where["tenantId"] = tenantId;
@@ -157,13 +159,17 @@ const describeDevice = (
   const serialSuffix = device.serialNumber ? ` (S/N ${device.serialNumber})` : "";
   const dueLabel = toDateLabel(device.nextCalibrationDate);
   const verb = isOverdue ? "overdue for" : "due for";
+  // P21-05: a device an IPM visit flagged says so, rather than a date it may not have.
+  const requested = device.calibrationRequestedAt && !isOverdue;
   return {
     serialSuffix,
     dueLabel,
     item: {
       deviceId: device.id,
-      title: `${isOverdue ? "Overdue calibration" : "Calibration due"}: ${device.name}`,
-      description: `Auto-scheduled by the calibration scheduler. Device "${device.name}"${serialSuffix} is ${verb} calibration (scheduled ${dueLabel}).`,
+      title: `${isOverdue ? "Overdue calibration" : requested ? "Calibration requested" : "Calibration due"}: ${device.name}`,
+      description: requested
+        ? `Auto-scheduled by the calibration scheduler. Device "${device.name}"${serialSuffix} was flagged for calibration by an IPM visit.`
+        : `Auto-scheduled by the calibration scheduler. Device "${device.name}"${serialSuffix} is ${verb} calibration (scheduled ${dueLabel}).`,
       priority: isOverdue ? "Critical" : "High",
     },
   };
@@ -369,7 +375,7 @@ const runCalibrationScan = async ({
         where: where as WhereOptions,
         order: [["id", "ASC"]],
         limit: batchSize,
-        attributes: ["id", "tenantId", "clientFacilityId", "name", "serialNumber", "nextCalibrationDate"],
+        attributes: ["id", "tenantId", "clientFacilityId", "name", "serialNumber", "nextCalibrationDate", "calibrationRequestedAt"],
       });
       return {
         devices: page,
@@ -380,7 +386,7 @@ const runCalibrationScan = async ({
     const byTenant = new Map<string, DueEntry[]>();
     for (const device of devices) {
       summary.scanned++;
-      const isOverdue = new Date(device.nextCalibrationDate as Date) < reference;
+      const isOverdue = device.nextCalibrationDate ? new Date(device.nextCalibrationDate) < reference : false;
       if (isOverdue) {
         summary.overdue++;
       }
@@ -464,7 +470,7 @@ const getDueDevices = async ({
     tenantId: d.tenantId,
     nextCalibrationDate: d.nextCalibrationDate,
     calibrationIntervalDays: d.calibrationIntervalDays,
-    overdue: new Date(d.nextCalibrationDate as Date) < reference,
+    overdue: d.nextCalibrationDate ? new Date(d.nextCalibrationDate) < reference : false,
   }));
 };
 

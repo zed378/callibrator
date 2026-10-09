@@ -31,7 +31,7 @@ describe("warehouseService", () => {
       mockedApi.get.mockResolvedValueOnce(envelope([{ id: "w1" }], meta));
       const res = await warehouseService.getAll(1, 25, "north");
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
-        params: { page: 1, limit: 25, find: "north" },
+        params: { page: 1, limit: 25, find: "north", kind: "store" },
       });
       expect(res.data).toHaveLength(1);
       expect(res.meta).toEqual(meta);
@@ -41,7 +41,7 @@ describe("warehouseService", () => {
       mockedApi.get.mockResolvedValueOnce(envelope([], { total: 0, page: 1, limit: 25, totalPages: 0 }));
       await warehouseService.getAll();
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
-        params: { page: 1, limit: 25, find: undefined },
+        params: { page: 1, limit: 25, find: undefined, kind: "store" },
       });
     });
   });

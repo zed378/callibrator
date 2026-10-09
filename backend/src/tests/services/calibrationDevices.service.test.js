@@ -4,6 +4,19 @@
 
 // D-22 (ADR-070): a parent's delete soft-deletes its attachments through
 // attachment.service, in the parent's transaction.
+// P21-02a: a read's facts and displays are deviceReads' own suites' (calibrationDevices.reads.p2102);
+// here the device rows pass through as they are.
+jest.mock("../../services/deviceReads.service", () => ({
+  deviceFacts: jest.fn(async () => new Map()),
+  labNames: jest.fn(async () => new Map()),
+  presentDevice: jest.fn((row) => row),
+  fieldSummary: jest.fn((row) => row),
+  viewerIsBound: jest.fn(() => false),
+}));
+// P21-02a: the registrant's snapshot reads the person display (its own suite: personDisplay).
+jest.mock("../../services/personDisplay.service", () => ({
+  displayPeople: jest.fn(async (ids) => new Map(ids.filter(Boolean).map((id) => [id, { name: "Teknisi Sintetis", role: "TECHNICIAN", organisation: "Lab Sintetis", redacted: false }]))),
+}));
 jest.mock("../../services/attachment.service", () => ({
   softDeleteForResource: jest.fn().mockResolvedValue([]),
 }));
@@ -88,7 +101,9 @@ describe("calibrationDevices.service", () => {
 
       expect(result.data.rows).toEqual([homeless]);
       const { include } = CalibrationDevice.findAndCountAll.mock.calls[0][0];
-      expect(include).toEqual([expect.objectContaining({ association: "warehouse", required: false })]);
+      // P21-02a: the type, facility and laboratory are included too, every one LEFT.
+      expect(include).toEqual(expect.arrayContaining([expect.objectContaining({ association: "warehouse", required: false })]));
+      expect(include.every((i) => i.required === false)).toBe(true);
     });
 
     it("should fetch calibration devices successfully without query params", async () => {

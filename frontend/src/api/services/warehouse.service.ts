@@ -26,7 +26,9 @@ export const warehouseService = {
     search?: string
   ): Promise<PaginatedResponse<Warehouse>> => {
     const response = await typedApi
-      .GET("/api/v1/warehouses", { params: { query: { page, limit, find: search } } })
+      // P21-02a (UD-10, ADR-132 Am. 2): the warehouse and stock screens list STORES; a facility's rooms
+      // share the table and are picked on the device form (P22-02).
+      .GET("/api/v1/warehouses", { params: { query: { page, limit, find: search, kind: "store" } } })
       .then(unwrap);
 
     return {
