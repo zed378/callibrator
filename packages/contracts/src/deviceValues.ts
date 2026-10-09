@@ -36,6 +36,42 @@ export type AttachmentPurpose = (typeof ATTACHMENT_PURPOSES)[number];
 /** The purposes a device holds at most ONE live photo of (the partial unique index of migration 0129). */
 export const SINGLE_DEVICE_PHOTO_PURPOSES = Object.freeze(["device_front", "device_serial_plate"] as const);
 
+// ------------------------------------------------------------------
+// P21-02b (ADR-132 Am. 3; spec P19-03 § 7.2; docs/UPSTREAM/08-FILE-POLICY.md § 3, § 4.1): the
+// device photo routes' vocabulary.
+// ------------------------------------------------------------------
+
+/** The purposes `POST /calibration-devices/:id/photos` accepts (`ipm_evidence` is an IPM session's). */
+export const DEVICE_PHOTO_PURPOSES = Object.freeze(["device_front", "device_serial_plate", "device_other"] as const);
+export type DevicePhotoPurpose = (typeof DEVICE_PHOTO_PURPOSES)[number];
+
+/**
+ * The photo types the server takes, by their CONTENT (magic bytes). HEIC/HEIF is converted to
+ * JPEG on the client (browser canvas, the camera's own JPEG) — the server has no HEVC decoder.
+ */
+export const DEVICE_PHOTO_TYPES = Object.freeze(["image/jpeg", "image/png"] as const);
+
+/** One photo's size limit in bytes (08 § 3: 10 MB, the ingest's limit). */
+export const DEVICE_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+
+/** The derivatives' longest side in pixels (08 § 4.1). */
+export const DEVICE_PHOTO_DISPLAY_PX = 1600;
+export const DEVICE_PHOTO_THUMB_PX = 320;
+
+/** Which stored form of a photo a signed link opens: the original, or a metadata-free derivative. */
+export const ATTACHMENT_VARIANTS = Object.freeze(["original", "display", "thumb"] as const);
+export type AttachmentVariant = (typeof ATTACHMENT_VARIANTS)[number];
+
+/** The photo routes' refusals, each a top-level `code` (the offline outbox explains by it, ADR-127 § 8). */
+export const DEVICE_PHOTO_CODES = Object.freeze({
+  fileRequired: "PHOTO_FILE_REQUIRED",
+  heicUnsupported: "PHOTO_HEIC_UNSUPPORTED",
+  typeUnsupported: "PHOTO_TYPE_UNSUPPORTED",
+  undecodable: "PHOTO_UNDECODABLE",
+  imageTooLarge: "PHOTO_IMAGE_TOO_LARGE",
+  rejectedByScan: "PHOTO_REJECTED_BY_SCAN",
+} as const);
+
 /**
  * A normalised QR code (spec § 4.2 step 3): 3 – 32 upper-case letters, digits or hyphens, not
  * starting with a hyphen. The source of a RegExp and of migration 0128's CHECK, so the database

@@ -62,6 +62,7 @@ import models from "../models";
 import { db as loadedDb } from "../config";
 import auditService from "./audit.service";
 import storage from "./storage";
+import { derivativeKeysOf, hasDerivatives } from "./devicePhoto/derivativeKeys";
 import attachmentService from "./attachment.service";
 import { runForTenant as loadedRunForTenant } from "../utils/jobContext.util";
 import { SYSTEM_ACTORS as LOADED_SYSTEM_ACTORS } from "../constants/systemActors";
@@ -108,6 +109,7 @@ const ATTRIBUTES = Object.freeze([
   "folder",
   "fileName",
   "storageKey",
+  "purpose",
   "originalName",
   "checksum",
   "isDeleted",
@@ -156,6 +158,12 @@ const removeBytes = async (row: AttachmentRow): Promise<{ file: string; storageO
   if (row.storageKey) {
     const scoped = await storage.getTenantStorage(row.tenantId);
     await scoped.delete(row.storageKey);
+    // P21-02b: a device photo's derivatives go with the original (08 § 4.1).
+    if (hasDerivatives(row.purpose)) {
+      for (const key of derivativeKeysOf(row.storageKey)) {
+        await scoped.delete(key);
+      }
+    }
   }
   return { file, storageObject: Boolean(row.storageKey) };
 };

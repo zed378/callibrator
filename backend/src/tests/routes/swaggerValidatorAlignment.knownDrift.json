@@ -1,5 +1,8 @@
 {
   "GET /api/v1/ipm/template-versions": [
     "no documented JSON body; the validator requires templateId"
+  ],
+  "POST /api/v1/calibration-devices/:calibrationDeviceId/photos": [
+    "no documented JSON body; the validator requires purpose"
   ]
 }

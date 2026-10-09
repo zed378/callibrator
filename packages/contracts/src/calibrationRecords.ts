@@ -10,20 +10,42 @@
 import { z } from "zod";
 import { booleanish, dateLike, jsonObject, numeric, optionalText, uuid } from "./fields";
 import { dayText, roomInput } from "./calibrationDevices";
+import { CALIBRATION_ENTRY_KINDS } from "./deviceValues";
 
 // ==========================================
 // QUERY / PARAMS
 // ==========================================
 
+/** P21-06 (spec P19-05 § 8): which date a recap's range reads — the calibration's, or the input's. */
+export const RECAP_DATE_FIELDS = Object.freeze(["calibration", "created"] as const);
+/** P21-06: a recap's order (descending, ending in `id`). */
+export const RECAP_SORTS = Object.freeze(["calibrationDate", "createdAt"] as const);
+
 const getCalibrationRecordsQuery = z.object({
   page: numeric(z.number().int().min(1)).default(1),
-  limit: numeric(z.number().int().min(1).max(100)).default(20),
+  // P21-06: a page of a recap is at most 200 rows (every list caller's bound, P21-02a).
+  limit: numeric(z.number().int().min(1).max(200)).default(20),
   deviceId: uuid().or(z.literal("")).nullable().optional(),
   isCompliant: booleanish().nullable().optional(),
+  // Instants (inclusive), on the `dateField` column.
   from: dateLike().or(z.literal("")).nullable().optional(),
   to: dateLike().or(z.literal("")).nullable().optional(),
   // P6-03: include records a correction has superseded (the history).
   includeSuperseded: booleanish().default(false),
+  // P21-06 (spec P19-05 § 8; ADR-133 Am. 3): the recap reads the browser renders (ADR-126 § 8).
+  dateField: z.enum(RECAP_DATE_FIELDS).default("calibration"),
+  /** Inclusive DAYS of the tenant's time zone, on the `dateField` column ("harian", "rentang"). */
+  fromDay: dayText().optional(),
+  toDay: dayText().optional(),
+  /** One row per device: its latest EFFECTIVE record within the filters (F-63, F-69). */
+  latestOnly: booleanish().default(false),
+  entryKind: z.enum(CALIBRATION_ENTRY_KINDS).optional(),
+  /** A convenience for provider staff; a bound reader naming another facility reads nothing. */
+  clientFacilityId: uuid().optional(),
+  /** A sticker as scanned or typed, normalised with the tenant's prefix and digits. */
+  qrCode: z.string().trim().min(1).max(64).optional(),
+  /** The order (descending, ending in id); by default the `dateField`'s column. */
+  sort: z.enum(RECAP_SORTS).optional(),
 });
 
 const calibrationRecordIdSchema = z.object({

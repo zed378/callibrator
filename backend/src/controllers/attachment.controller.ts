@@ -121,12 +121,13 @@ const download = asyncHandler(async (req: Request, res: Response) => {
 // A-365: the body passed validate(createSignedUrlSchema) on the route (the
 // lifetime is bounded), and the link is bound to the principal minting it.
 const createSignedUrl = asyncHandler(async (req: Request, res: Response) => {
-  const { expiresInSec } = validated(req, createSignedUrlSchema);
+  const { expiresInSec, variant } = validated(req, createSignedUrlSchema);
   const principal = auditPrincipal(req);
   const data = await attachmentService.generateSignedUrl(tenantOf(req), req.params["id"] as string, {
     baseUrl: baseUrlOf(req),
     expiresInSec,
     issuer: { userId: principal.userId, apiKeyId: principal.apiKeyId },
+    variant,
   });
   success(res, data, null, "Signed URL generated", 200);
 });
@@ -136,7 +137,8 @@ const downloadSigned = asyncHandler(async (req: Request, res: Response) => {
   await sendAttachment(
     req,
     res,
-    await attachmentService.getSignedDownload(req.params["id"] as string, req.query["token"]),
+    // P21-02b: `variant` (display | thumb) opens a device photo's derivative; it is part of the signature.
+    await attachmentService.getSignedDownload(req.params["id"] as string, req.query["token"], req.query["variant"]),
   );
 });
 

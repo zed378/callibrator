@@ -277,6 +277,15 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
       kind: "read",
       reason: "A-10 (P21-03, N-2): a device's IPM history — the device is read in context first, another facility's is the 404",
     },
+    // P21-02b (spec P19-03 § 7.2, N-6; A-13 / C-10): the register photos of a device of the facility.
+    "POST /:calibrationDeviceId/photos": {
+      kind: "write",
+      reason: "N-6 (P21-02b): a photo of a device of the facility — the device is read in context before the file is read; another facility's is the 404 and nothing is stored",
+    },
+    "DELETE /:calibrationDeviceId/photos/:attachmentId": {
+      kind: "write",
+      reason: "N-6 (P21-02b): soft-delete a photo of a device of the facility; a photo of another device, facility or tenant is the same 404",
+    },
   },
   // P21-03 (spec P19-02 § 10.1): IPM sessions — reads N-2, draft writes N-3 (within the bound ceiling only HEALTHCARE
   // TECHNICIAN holds `ipm` write). The void (N-4, P21-04) stays unmarked.

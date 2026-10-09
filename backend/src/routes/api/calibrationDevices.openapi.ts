@@ -21,7 +21,8 @@ import { reinstateCalibrationDeviceSchema } from "../../validators/calibrationDe
 import { deviceMove, DEVICE_MOVE_COUNT_KEYS } from "@callibrator/contracts/clientFacilities";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 import { deviceIpmSessionsQuery } from "@callibrator/contracts/inspectionSessions";
-import { deviceQrParams } from "@callibrator/contracts/calibrationDevices";
+import { deviceQrParams, devicePhotoParams, devicePhotoUpload } from "@callibrator/contracts/calibrationDevices";
+import { DEVICE_PHOTO_CODES, DEVICE_PHOTO_PURPOSES } from "@callibrator/contracts/deviceValues";
 import { calibrationDateEntry } from "@callibrator/contracts/calibrationRecords";
 import {
   CALIBRATION_DUE_STATES,
@@ -203,6 +204,27 @@ const ExternalCalibration = z
   .loose()
   .meta({ id: "ExternalCalibrationRecord" });
 
+/** P21-02b: a device photo as the photo routes answer it — ids and facts, never a key or a file name. */
+const DevicePhoto = z
+  .object({
+    id: z.guid(),
+    calibrationDeviceId: z.guid(),
+    purpose: z.enum(DEVICE_PHOTO_PURPOSES),
+    mimeType: z.enum(["image/jpeg", "image/png"]),
+    size: z.number().int(),
+    checksum: z.string().meta({ description: "SHA-256 of the stored original (location metadata removed)" }),
+    width: z.number().int(),
+    height: z.number().int(),
+    variants: z.array(z.enum(["original", "display", "thumb"])),
+    replacedAttachmentId: z.guid().nullable().meta({ description: "The live photo of the same single purpose this one replaced, if any" }),
+    createdAt: timestamp,
+  })
+  .meta({ id: "DevicePhoto" });
+const PHOTO_REFUSALS =
+  `415 \`${DEVICE_PHOTO_CODES.heicUnsupported}\` (HEIC/HEIF: convert to JPEG on the client) or \`${DEVICE_PHOTO_CODES.typeUnsupported}\` (not JPEG/PNG by content); ` +
+  `422 \`${DEVICE_PHOTO_CODES.undecodable}\`, \`${DEVICE_PHOTO_CODES.imageTooLarge}\` (over 50 megapixels or 12,000 px a side) or \`${DEVICE_PHOTO_CODES.rejectedByScan}\`; ` +
+  `400 \`${DEVICE_PHOTO_CODES.fileRequired}\` without a file. 10 MB at most.`;
+
 const read = { kind: "dynamicAccess", resource: "calibration", action: "read" } as const;
 const write = { kind: "dynamicAccess", resource: "calibration", action: "write" } as const;
 /** Restore and reinstate: `rbac([TENANT_ADMIN])` first, then the `calibration` write gate. */
@@ -379,6 +401,41 @@ export default defineRouteDocs({
       body: calibrationDateBody,
       conflict: "`CALIBRATION_DEVICE_RETIRED`: the device is retired. `CALIBRATION_FACILITY_ENDED`: its facility has ended.",
       success: { status: 201, description: "The record, the device's derived date and any notices", data: ExternalCalibration },
+    },
+    {
+      method: "post",
+      path: "/:calibrationDeviceId/photos",
+      operationId: "uploadCalibrationDevicePhoto",
+      summary: "Upload or replace a device photo (multipart, field `file`)",
+      description:
+        "P21-02b (P19-03 § 7.2, ADR-132 Am. 3): the device is read in the caller's context first (another tenant's or facility's: 404, nothing stored). " +
+        "The file is checked by its content, its location metadata removed, virus-scanned (fail-closed), fully decoded, and stored with a display (1,600 px) " +
+        "and a thumbnail (320 px) derivative carrying no metadata — open them with `POST /attachments/:id/signed-url` `{ variant }`. A `device_front` or " +
+        `\`device_serial_plate\` replaces the live one in the same transaction. ${PHOTO_REFUSALS} Counts against the storage quota. ` +
+        "Reachable by a facility-bound account (N-6). `Idempotency-Key` replays the upload.",
+      permission: write,
+      audited: true,
+      params: deviceIdParams,
+      bodyMediaType: "multipart/form-data",
+      body: z.object({
+        file: z.string().meta({ format: "binary", description: "The photo: JPEG or PNG by content" }),
+        purpose: devicePhotoUpload.shape.purpose,
+      }),
+      errors: [415, 422],
+      success: { status: 201, description: "The stored photo", data: DevicePhoto },
+    },
+    {
+      method: "delete",
+      path: "/:calibrationDeviceId/photos/:attachmentId",
+      operationId: "deleteCalibrationDevicePhoto",
+      summary: "Delete a device photo",
+      description:
+        "P21-02b: a soft delete, audited (a register photo is not Part 11 evidence); its bytes and derivatives are removed by the deleted-file sweep after " +
+        "the retention window. A photo of another device, facility or tenant is the same 404. Reachable by a facility-bound account (N-6).",
+      permission: write,
+      audited: true,
+      params: devicePhotoParams,
+      success: { status: 200, description: "The deleted photo's id", data: z.object({ id: z.guid() }) },
     },
     {
       method: "post",

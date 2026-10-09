@@ -312,7 +312,7 @@ describe("attachment Controller", () => {
 
       await attachmentController.downloadSigned(req, res, next);
 
-      expect(attachmentService.getSignedDownload).toHaveBeenCalledWith(VALID_ATTACHMENT_ID, "abc123");
+      expect(attachmentService.getSignedDownload).toHaveBeenCalledWith(VALID_ATTACHMENT_ID, "abc123", undefined); // P21-02b: the variant (none here)
       expect(sendStoredFile).toHaveBeenCalledWith(res, "/uploads/file.pdf", {
         contentType: "image/png",
         fileName: "file.pdf",

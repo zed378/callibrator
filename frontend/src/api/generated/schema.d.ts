@@ -1628,6 +1628,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calibration-devices/{calibrationDeviceId}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload or replace a device photo (multipart, field `file`)
+         * @description P21-02b (P19-03 § 7.2, ADR-132 Am. 3): the device is read in the caller's context first (another tenant's or facility's: 404, nothing stored). The file is checked by its content, its location metadata removed, virus-scanned (fail-closed), fully decoded, and stored with a display (1,600 px) and a thumbnail (320 px) derivative carrying no metadata — open them with `POST /attachments/:id/signed-url` `{ variant }`. A `device_front` or `device_serial_plate` replaces the live one in the same transaction. 415 `PHOTO_HEIC_UNSUPPORTED` (HEIC/HEIF: convert to JPEG on the client) or `PHOTO_TYPE_UNSUPPORTED` (not JPEG/PNG by content); 422 `PHOTO_UNDECODABLE`, `PHOTO_IMAGE_TOO_LARGE` (over 50 megapixels or 12,000 px a side) or `PHOTO_REJECTED_BY_SCAN`; 400 `PHOTO_FILE_REQUIRED` without a file. 10 MB at most. Counts against the storage quota. Reachable by a facility-bound account (N-6). `Idempotency-Key` replays the upload.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        post: operations["uploadCalibrationDevicePhoto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calibration-devices/{calibrationDeviceId}/photos/{attachmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a device photo
+         * @description P21-02b: a soft delete, audited (a register photo is not Part 11 evidence); its bytes and derivatives are removed by the deleted-file sweep after the retention window. A photo of another device, facility or tenant is the same 404. Reachable by a facility-bound account (N-6).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        delete: operations["deleteCalibrationDevicePhoto"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calibration-devices/{calibrationDeviceId}/reinstate": {
         parameters: {
             query?: never;
@@ -1729,7 +1773,7 @@ export interface paths {
         };
         /**
          * List calibration records
-         * @description Newest calibration first. The list shows the record in force: a record a correction superseded is left out unless includeSuperseded=true; a voided record is never listed.
+         * @description Newest calibration first. The list shows the record in force: a record a correction superseded is left out unless includeSuperseded=true; a voided record is never listed. P21-06 (P19-05 § 8): the recap reads the browser renders (no backend file, ADR-126 § 8) — `dateField` (calibration | created) with `from`/`to` (instants) or `fromDay`/`toDay` (inclusive days of the tenant's zone); `latestOnly` = one row per device, its latest effective record within the filters; `entryKind`, `clientFacilityId`, `qrCode` (normalised; a sticker in no device of the caller's view is an empty page); `sort`; `limit` ≤ 200. Reachable by a facility-bound account (A-4): its facility's records only.
          */
         get: operations["listCalibrationRecords"];
         put?: never;
@@ -9759,6 +9803,24 @@ export interface components {
                 serialNumber: string | null;
                 manufacturer: string | null;
                 model: string | null;
+                qrCode?: string | null;
+            } | null;
+            /** @enum {string} */
+            entryKind?: "full_record" | "external_date";
+            externalLabName?: string | null;
+            /** @description P21-06: the room and floor CONFIRMED AT ENTRY (the snapshot), "—" when none — never the device's current room */
+            room?: {
+                name: string;
+                floor: string;
+            };
+            /** @description P21-06: not superseded by a correction (a voided record is never listed) */
+            effective?: boolean;
+            /** @description P21-06: the record's facility — for provider staff only (P19-04 § 13.1) */
+            clientFacility?: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                code: string | null;
             } | null;
             performer?: ({
                 /** Format: uuid */
@@ -10726,6 +10788,26 @@ export interface components {
                 non_conformances: number;
                 attachments_rekey: number;
             };
+        };
+        DevicePhoto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            calibrationDeviceId: string;
+            /** @enum {string} */
+            purpose: "device_front" | "device_serial_plate" | "device_other";
+            /** @enum {string} */
+            mimeType: "image/jpeg" | "image/png";
+            size: number;
+            /** @description SHA-256 of the stored original (location metadata removed) */
+            checksum: string;
+            width: number;
+            height: number;
+            variants: ("original" | "display" | "thumb")[];
+            /** @description The live photo of the same single purpose this one replaced, if any */
+            replacedAttachmentId: string | null;
+            /** Format: date-time */
+            createdAt: string;
         };
         /**
          * @description A device type of the global inspection catalogue (ADR-125)
@@ -14858,6 +14940,40 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
+        /** @description The uploaded file has an accepted type but cannot be used (it does not decode, exceeds a pixel limit, or was refused by the virus scan); the top-level `code` says which. */
+        UnprocessableContent: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "status": 422,
+                 *       "message": "The file could not be processed",
+                 *       "data": null
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+        /** @description The uploaded file's CONTENT (its magic bytes, not its name or declared type) is not a type this route takes; the top-level `code` says which refusal. */
+        UnsupportedMediaType: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "success": false,
+                 *       "status": 415,
+                 *       "message": "Unsupported file type",
+                 *       "data": null
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
         /** @description The request failed validation. `details` names each field (outside production). */
         ValidationError: {
             headers: {
@@ -16620,6 +16736,12 @@ export interface operations {
                      * @example 300
                      */
                     expiresInSec?: number;
+                    /**
+                     * @description P21-02b: which stored form the link opens — `original` (default), or a device photo's metadata-free `display` (1,600 px) or `thumb` (320 px) derivative. A derivative of a file that has none: 404
+                     * @example thumb
+                     * @enum {string}
+                     */
+                    variant?: "original" | "display" | "thumb";
                 };
             };
         };
@@ -18634,6 +18756,93 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    uploadCalibrationDevicePhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration device's id */
+                calibrationDeviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The photo: JPEG or PNG by content
+                     */
+                    file: string;
+                    /** @enum {string} */
+                    purpose: "device_front" | "device_serial_plate" | "device_other";
+                };
+            };
+        };
+        responses: {
+            /** @description The stored photo */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["DevicePhoto"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableContent"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    deleteCalibrationDevicePhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                calibrationDeviceId: string;
+                attachmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The deleted photo's id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            /** Format: uuid */
+                            id: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     reinstateCalibrationDevice: {
         parameters: {
             query?: never;
@@ -18800,6 +19009,14 @@ export interface operations {
                 from?: (string | "") | null;
                 to?: (string | "") | null;
                 includeSuperseded?: boolean;
+                dateField?: "calibration" | "created";
+                fromDay?: string;
+                toDay?: string;
+                latestOnly?: boolean;
+                entryKind?: "full_record" | "external_date";
+                clientFacilityId?: string;
+                qrCode?: string;
+                sort?: "calibrationDate" | "createdAt";
             };
             header?: never;
             path?: never;

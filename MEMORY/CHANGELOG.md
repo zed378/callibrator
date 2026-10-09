@@ -8,6 +8,15 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-09 — Calibration recaps and the inventory export: paged reads for the browser (P21-06; ADR-133 Am. 3) ([record](./records/2026-10-09-p21-06-export-reads.md))
+- **Added:** `GET /api/v1/calibration-records` takes `dateField` (`calibration` | `created`), `fromDay` / `toDay` (inclusive days of the tenant's time zone), `latestOnly` (one row per device), `entryKind`, `clientFacilityId`, `qrCode`, `sort`; `limit` up to 200. Rows add the device's QR, the room as confirmed at entry ("—" when none), `effective`, and the facility for provider staff.
+- **Fixed:** a facility-bound user filtering a device or calibration list by ANOTHER facility got their own facility's rows back; they now get an empty list. No other facility's data was ever returned.
+
+### 2026-10-09 — Device photos: upload, replace and delete, with metadata-free thumbnails (P21-02b; ADR-132 Am. 3) ([record](./records/2026-10-09-p21-02b-device-photos.md))
+- **Added:** `POST /api/v1/calibration-devices/:id/photos` (front, serial plate, other; a new front or serial-plate photo replaces the old one) and `DELETE …/photos/:attachmentId`; reachable by facility-bound technicians for their facility's devices. Each photo gets a display (1,600 px) and a thumbnail (320 px) copy without any metadata; `POST /attachments/:id/signed-url` takes `variant: "display" | "thumb"`.
+- **Changed:** photos are checked by their content; **HEIC/HEIF photos are refused (415 `PHOTO_HEIC_UNSUPPORTED`) and must be converted to JPEG by the app or browser**. Location (GPS) metadata is removed from the stored original.
+- **Dependencies:** `jpeg-js` 0.4.4, `pngjs` 7.0.0 (pure JavaScript; no native module in the image).
+
 ### 2026-10-09 — Calibration dates: an outside lab's date by QR, and the next due date that no longer moves backward (P21-05; ADR-133 Am. 2) ([record](./records/2026-10-09-p21-05-calibration-dates.md))
 - **Added:** `POST /api/v1/calibration-devices/:calibrationDeviceId/calibration-dates` — an outside laboratory's calibration by its date and key data (laboratory, certificate number, stated next date, verdict), **no file**; a same-day entry is kept with a notice; API keys allowed; not reachable by facility-bound accounts.
 - **Changed (every tenant — a defect fix, BACKLOG G-11):** a device's next calibration date is now derived from its **latest effective record** on create, correction and void. An older certificate typed in today no longer moves the date backward; voiding or correcting the record that set it moves it back to the previous record (or clears it). A date typed on the device form is `manual` and stays until the next record. Existing dates change at the first record written after the release.

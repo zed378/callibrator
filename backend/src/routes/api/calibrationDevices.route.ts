@@ -29,8 +29,15 @@ import { denyPlatformAuthoring } from "../../middlewares/denyPlatformAuthoring.m
 import { calibrationDateEntry } from "@callibrator/contracts/calibrationRecords";
 import { recordDate } from "../../controllers/calibrationDates.controller";
 import { readCalibrationRecord } from "../../services/calibrationDates.service";
+import { enforceStorageQuota } from "../../middlewares/enforceQuota.middleware";
+import { releaseHeldUpload } from "../../middlewares/releaseHeldUpload.middleware";
+import { deletePhoto, uploadPhoto } from "../../controllers/devicePhoto.controller";
+import { readDevicePhoto } from "../../services/devicePhoto.service";
+import { DEVICE_PHOTO_MAX_BYTES } from "@callibrator/contracts/deviceValues";
 import {
   createCalibrationDeviceBoundSchema,
+  devicePhotoParams,
+  devicePhotoUpload,
   createCalibrationDeviceSchema,
   deviceQrParams,
   updateCalibrationDeviceBoundSchema,
@@ -175,6 +182,41 @@ router.post(
   validate(calibrationDateEntry, { from: ["params", "body"] }),
   idempotency({ slug: "calibration", read: (id) => readCalibrationRecord(id) }),
   recordDate,
+);
+
+/**
+ * P21-02b (spec P19-03 § 7.2; ADR-132 Am. 3): a device's register photos. multer only parses the
+ * part and holds it in the quarantine (the declared type is a first filter — HEIC is let through so
+ * the service answers its coded 415); the CONTENT is checked by the service, and the quarantine copy
+ * is removed when the response ends, whatever ended it.
+ */
+router.post(
+  "/:calibrationDeviceId/photos",
+  auth,
+  dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
+  enforceStorageQuota(),
+  upload({
+    folder: "uploads/attachments",
+    allowedMimes: ["image/jpeg", "image/png", "image/heic", "image/heif"],
+    allowedExtensions: [".jpg", ".jpeg", ".png", ".heic", ".heif"],
+    maxFileSize: DEVICE_PHOTO_MAX_BYTES,
+    validateMagicBytes: false,
+    holdInQuarantine: true,
+  }),
+  releaseHeldUpload,
+  validate(devicePhotoUpload, { from: ["params", "body"] }),
+  idempotency({ slug: "calibration", read: (id) => readDevicePhoto(id) }),
+  uploadPhoto,
+);
+
+router.delete(
+  "/:calibrationDeviceId/photos/:attachmentId",
+  auth,
+  dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
+  validate(devicePhotoParams, { from: "params" }),
+  deletePhoto,
 );
 
 router.post(
