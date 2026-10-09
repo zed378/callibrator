@@ -48,6 +48,10 @@ const EXPECTED: [StatusDomain, string, StatusTone][] = [
   ["calibrationDue", "overdue", "alarm"],
   ["calibrationDue", "due_soon", "attention"],
   ["calibrationDue", "current", "current"],
+  // P22-05: P19-05 § 6's states — requested needs action, ok is current, nothing scheduled is a draft
+  ["calibrationDue", "requested", "attention"],
+  ["calibrationDue", "ok", "current"],
+  ["calibrationDue", "not_scheduled", "draft"],
   // work order
   ["workOrder", "InProgress", "attention"],
   ["workOrder", "Completed", "current"],

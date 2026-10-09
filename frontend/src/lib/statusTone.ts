@@ -47,6 +47,11 @@ export const STATUS_REGISTRY = {
     overdue: e("alarm", "Overdue"),
     due_soon: e("attention", "Due soon"),
     current: e("current", "Current"),
+    // P22-05: the device read's `calibrationDue.state` (P19-05 § 6) — a request from an IPM visit
+    // needs action (attention); "ok" is current; nothing scheduled is a draft, never an alarm.
+    requested: e("attention", "Calibration requested"),
+    ok: e("current", "Current"),
+    not_scheduled: e("draft", "Not scheduled"),
   },
   workOrder: {
     Open: e("info", "Open"),

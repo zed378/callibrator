@@ -208,6 +208,8 @@ describe("calibration page — permissions (ADR-102)", () => {
     grant({ calibration: "read", certificate: "read" });
     await renderPage();
 
+    // P22-05: the calibration-date page is reachable from here (its list is a read).
+    expect(screen.getByRole("link", { name: "Calibration dates" })).toHaveAttribute("href", "/dashboard/calibration-dates");
     expect(screen.queryByRole("button", { name: /Record Calibration/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Certify/ })).not.toBeInTheDocument();
   });

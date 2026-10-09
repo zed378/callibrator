@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 1 DONE in code (**P22-01**, 2026-10-09 — menu activation and the live browser suites open) · 5 TODO (**P22-02** — unblocked by P21-02b, **P22-06** — unblocked by P21-06, 2026-10-09; **P22-03, P22-04** — unblocked by P21-04, 2026-10-09; **P22-05** — unblocked by P21-05, 2026-10-09) · 4 BLOCKED |
+| **Status** | 2 DONE in code (**P22-01**, 2026-10-09 — menu activation and the live browser suites open; **P22-05**, 2026-10-09 — an optional sidebar entry and the live browser suites open) · 4 TODO (**P22-02** — unblocked by P21-02b, **P22-06** — unblocked by P21-06, 2026-10-09; **P22-03, P22-04** — unblocked by P21-04, 2026-10-09) · 4 BLOCKED |
 | **Goal** | Pages, PWA field capture with offline mode |
 | **Depends on** | Phase 21 |
 | **Size** | L |
@@ -32,7 +32,7 @@ page notes · docs/FRONTEND/00 · docs/UI-UX/08 · ADR-122 · ADR-071/090 · P19
 | P22-02 | Device form and list: QR, type picker, mandatory photos, condition, thumbnails | F-23 … F-31 | **TODO** (unblocked 2026-10-09: P21-02a — the form's and list's API; P21-02b — `POST/DELETE …/photos`, thumbnails via `signed-url { variant: "thumb" }`; HEIC must be converted to JPEG in the browser, ADR-132 Am. 3) | P21-02 |
 | P22-03 | IPM capture: mobile-first stepper, camera QR scan, autosave draft | F-35 … F-53 | **TODO** (unblocked 2026-10-09: P21-03 drafts + P21-04 submit) | P21-03 |
 | P22-04 | IPM history, corrections and void; device "IPM" tab | F-54 … F-57 | **TODO** (unblocked 2026-10-09: P21-04 the correction's submit and the void) | P21-03 |
-| P22-05 | Calibration-date quick entry and list | F-62 … F-64 | **TODO** (unblocked 2026-10-09: P21-05 DONE; the QR lookup by P21-02a) | P21-05 |
+| P22-05 | Calibration-date quick entry and list | F-62 … F-64 | **DONE in code** 2026-10-09 ([record](../MEMORY/records/2026-10-09-p22-05-calibration-dates-ui.md)) — `dashboard/calibration-dates`: the quick entry by QR sticker (typed or a handheld scanner; the camera is P22-03's) and the calibration list; reached from `/dashboard/calibration`. **Open:** no sidebar entry of its own (backend, optional); live browser, accessibility (light + dark) and responsive suites not run | P21-05 |
 | P22-06 | Exports rendered **in the browser** (PDF and XLSX) from paged reads, with progress and size shown first | F-65 … F-69 | **TODO** (unblocked 2026-10-09: P21-06 DONE — `GET /calibration-records` recap parameters, ADR-133 Am. 3) | P21-06 |
 | P22-07 | Dashboard condition widgets and technician activity | F-70 … F-73 | BLOCKED | P21-07 |
 | P22-08 | Public device page `d/[token]` | F-74, F-75 | BLOCKED | P21-08 |
