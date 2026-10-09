@@ -18810,7 +18810,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The calibration device's id */
                 calibrationDeviceId: string;
+                /** @description The photo's attachment id */
                 attachmentId: string;
             };
             cookie?: never;

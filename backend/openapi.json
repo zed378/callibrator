@@ -11638,9 +11638,12 @@
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The calibration device's id",
+              "example": "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
             },
-            "required": true
+            "required": true,
+            "description": "The calibration device's id"
           },
           {
             "in": "path",
@@ -11648,9 +11651,12 @@
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The photo's attachment id",
+              "example": "7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d"
             },
-            "required": true
+            "required": true,
+            "description": "The photo's attachment id"
           }
         ],
         "responses": {
