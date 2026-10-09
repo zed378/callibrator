@@ -156,6 +156,18 @@ const deviceIdParams = z.object({
   }),
 });
 
+/** `:calibrationDeviceId` + `:attachmentId` (P21-02b), the contract's fields with synthetic examples. */
+const photoParams = z.object({
+  calibrationDeviceId: devicePhotoParams.shape.calibrationDeviceId.meta({
+    description: "The calibration device's id",
+    example: "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+  }),
+  attachmentId: devicePhotoParams.shape.attachmentId.meta({
+    description: "The photo's attachment id",
+    example: "7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d",
+  }),
+});
+
 /** P21-09d: the body of a move (the contract validates params and body together). */
 const moveBody = deviceMove.omit({ calibrationDeviceId: true });
 const moveCounts = z.object(Object.fromEntries(DEVICE_MOVE_COUNT_KEYS.map((k) => [k, z.number().int()])) as Record<(typeof DEVICE_MOVE_COUNT_KEYS)[number], z.ZodNumber>);
@@ -434,7 +446,7 @@ export default defineRouteDocs({
         "the retention window. A photo of another device, facility or tenant is the same 404. Reachable by a facility-bound account (N-6).",
       permission: write,
       audited: true,
-      params: devicePhotoParams,
+      params: photoParams,
       success: { status: 200, description: "The deleted photo's id", data: z.object({ id: z.guid() }) },
     },
     {

@@ -22,14 +22,32 @@ describe("releaseHeldUpload", () => {
     fs.mkdirSync(quarantinePath(), { recursive: true });
     const file = path.join(quarantinePath(), `p2102b-${String(Math.random()).slice(2)}.jpg`);
     fs.writeFileSync(file, "x");
-    const res = new EventEmitter();
-    const next = jest.fn<undefined, []>();
-    releaseHeldUpload({ file: { path: file } } as unknown as Request, res as unknown as Response, next);
-    expect([next.mock.calls.length, fs.existsSync(file)]).toEqual([1, true]);
-    res.emit("finish");
-    res.emit("close");
-    await waitGone(file);
-    expect(fs.existsSync(file)).toBe(false);
+    // The removal's completion callback is awaited, not raced: polling for the file alone let the
+    // test end before the callback ran, and the coverage run counted it as never called (CI, 139b9c4).
+    const realRm = fs.rm.bind(fs);
+    let done: () => void = () => undefined;
+    const removed = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+    const rm = jest.spyOn(fs, "rm").mockImplementation(((target: fs.PathLike, options: fs.RmOptions, callback: fs.NoParamCallback) => {
+      realRm(target, options, (err) => {
+        callback(err);
+        done();
+      });
+    }));
+    try {
+      const res = new EventEmitter();
+      const next = jest.fn<undefined, []>();
+      releaseHeldUpload({ file: { path: file } } as unknown as Request, res as unknown as Response, next);
+      expect([next.mock.calls.length, fs.existsSync(file)]).toEqual([1, true]);
+      res.emit("finish");
+      res.emit("close");
+      await removed;
+      await waitGone(file);
+      expect([fs.existsSync(file), rm.mock.calls.length]).toEqual([false, 1]);
+    } finally {
+      rm.mockRestore();
+    }
   });
 
   it("a request without a file passes on; a file outside the quarantine is refused (500)", () => {

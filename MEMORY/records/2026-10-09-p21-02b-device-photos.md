@@ -38,7 +38,7 @@
 
 ## Gates
 
-See the P21-06 record — one quiet tree, one run for both cards.
+See the P21-06 record — one tree, one run for both cards. The WIP commit `139b9c4` (agent halted mid-ADR) was RED in CI on two jobs; both fixed by the finishing agent and recorded there: the `releaseHeldUpload` test now awaits `fs.rm`'s callback (coverage 16/17 → 100%), and the photo delete's path parameters carry synthetic examples (Spectral `cf-path-parameter-example`, 2 new errors → 0). The ADR-132 Am. 3 and ADR-133 Am. 3 texts left by the halted agent were checked complete and coherent; no change.
 
 ## Not done / open
 
