@@ -89,9 +89,25 @@ describe("calibrationRecordsController", () => {
         from: undefined,
         to: undefined,
         includeSuperseded: false,
+        // P21-06 (spec P19-05 § 8): the recap parameters, passed on (their defaults here).
+        dateField: "calibration",
+        fromDay: undefined,
+        toDay: undefined,
+        latestOnly: false,
+        entryKind: undefined,
+        clientFacilityId: undefined,
+        qrCode: undefined,
+        sort: undefined,
       });
       // P21-09e (spec § 12): each row carries its performer's display (none here: no person id).
-      expect(success).toHaveBeenCalledWith(res, [{ id: "rec-1", performerDisplay: null }], { total: 1 }, "Success", 200);
+      // P21-06: and its recap facts (the room snapshot, `effective`, the facility for provider staff).
+      expect(success).toHaveBeenCalledWith(
+        res,
+        [{ id: "rec-1", performerDisplay: null, room: { name: "—", floor: "—" }, effective: true, clientFacility: null }],
+        { total: 1 },
+        "Success",
+        200,
+      );
     });
 
     it("converts query strings the way the schema names them", async () => {
@@ -114,6 +130,15 @@ describe("calibrationRecordsController", () => {
         from: undefined,
         to: undefined,
         includeSuperseded: true,
+        // P21-06 (spec P19-05 § 8): the recap parameters, passed on (their defaults here).
+        dateField: "calibration",
+        fromDay: undefined,
+        toDay: undefined,
+        latestOnly: false,
+        entryKind: undefined,
+        clientFacilityId: undefined,
+        qrCode: undefined,
+        sort: undefined,
       });
     });
 

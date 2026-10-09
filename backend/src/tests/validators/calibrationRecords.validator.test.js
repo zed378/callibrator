@@ -40,6 +40,9 @@ describe("Calibration Record Validators", () => {
         from: new Date("2026-01-01"),
         to: new Date("2026-06-30"),
         includeSuperseded: false,
+        // P21-06 (ADR-133 Am. 3): the recap parameters' defaults.
+        dateField: "calibration",
+        latestOnly: false,
       });
     });
 

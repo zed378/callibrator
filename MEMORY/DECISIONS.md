@@ -11192,6 +11192,41 @@ Upstream identifies every device by a QR sticker number that every IPM row point
 
 ---
 
+### ADR-132 Amendment 3 (2026-10-09, P21-02b): the device photos as built — HEIC converted on the client, a pure-JavaScript derivative pipeline, derivatives keyed beside the original, signed links bound to their variant
+
+**Date:** 2026-10-09 · **Status:** Accepted, **built** (no migration). Decided by the implementing agent under the owner's standing delegation and package rule (swaps allowed when proven by tests and an image boot) · **Card:** P21-02b · **Spec:** [`P19-03`](./specs/P19-03-device-extensions.md) § 7.2 (as-built note added); `docs/UPSTREAM/08-FILE-POLICY.md` § 3, § 4.1 · **Record:** `MEMORY/records/2026-10-09-p21-02b-device-photos.md`
+
+**The dependency decision.** The backend ships as a `pkg` binary (yao-pkg, `node26-linux-x64`) built on Alpine (musl) and run on Debian bookworm-slim (glibc) inside the ADR-123 image. 08 § 4.1 needs a decoder and an encoder for the derivatives; 08 § 3 named HEIC as accepted.
+
+1. **HEIC/HEIF is refused by the server — 415 `PHOTO_HEIC_UNSUPPORTED` — and converted on the client** (the PWA through a canvas; the mobile camera already writes JPEG, ADR-135). The server takes JPEG and PNG by CONTENT (`DEVICE_PHOTO_TYPES`); anything else is 415 `PHOTO_TYPE_UNSUPPORTED`. (The brief's option (a) named WebP too; 08 § 3's allow-list excludes it and no decoder of the same weight exists — not taken.)
+2. **The derivatives are built in pure JavaScript: `jpeg-js` 0.4.4 and `pngjs` 7.0.0** (MIT, no dependencies of their own; dev `@types/pngjs` 6.0.5). A full STRICT decode is the polyglot guard (`tolerantDecoding: false`); the decoder's own resolution (50 MP) and memory caps fence behind the header check (`imageInspect`); the EXIF orientation is applied; transparency is flattened onto white; `jpeg-js` writes a JFIF header and the scan only — **no EXIF, GPS, XMP, IPTC or ICC in a derivative, by construction**. Display 1,600 px q80, thumbnail 320 px q75, area-averaged, never upscaled.
+3. **The original keeps its bytes except its location metadata**, removed losslessly (GPS IFD emptied, XMP/IPTC/comments dropped; PNG text and `eXIf` chunks dropped) — the rsync import's rule (08 § 11), reusing its `imageInspect`. `checksum` is the stored bytes' SHA-256.
+4. **Derivative keys are derived, never stored**: `<uuid>.display.jpg` and `<uuid>.thumb.jpg` beside `<uuid>.<ext>` under the DEVICE's facility (`services/devicePhoto/derivativeKeys`). The generic delete, the deleted-file sweep and the device move's re-key move or remove them with the original; the storage usage counts them (same prefix).
+5. **A signed link is bound to its variant**: `POST /attachments/:id/signed-url { variant: "display" | "thumb" }` signs `<id>~<variant>` and the URL carries `&variant=`; any other variant fails the signature (403, before a row is read). An original's link is byte-for-byte what it was. A variant of a file without derivatives is 404.
+6. **Routes** (both marked N-6): `POST /calibration-devices/:id/photos` — `calibration` write, `denyPlatformAuthoring`, the storage quota, multer holding the part in the quarantine (its declared-type filter lets HEIC through so the service can answer the code), `releaseHeldUpload` (the quarantine copy removed when the response ends, whatever ended it), `validate(devicePhotoUpload, { from: ["params", "body"] })`, `Idempotency-Key`. The device is read IN CONTEXT before the file is read or scanned (a foreign probe stores and scans nothing). One transaction under a lock on the device row: a front / serial-plate predecessor soft-deleted, the new row with its purpose and the device's facility, audit rows `UPLOAD_DEVICE_PHOTO` (+ `REPLACE_DEVICE_PHOTO` on the old row and on the device), the idempotency key completed; any failure removes the three objects. `DELETE …/photos/:attachmentId` — a soft delete audited `DELETE_DEVICE_PHOTO`; a missing device and a missing photo are one 404 from one place. Replaced and deleted bytes stay for the sweep (ADR-083), as § 7.2 says. The row's `resourceType` is `device` (the generic route's key) and its `originalName` is `<purpose>.<ext>` — never the client's file name (07 R-14).
+7. **Every refusal carries a top-level code**: 400 `PHOTO_FILE_REQUIRED`; 415 `PHOTO_HEIC_UNSUPPORTED` / `PHOTO_TYPE_UNSUPPORTED`; 422 `PHOTO_UNDECODABLE` (also a file under 1 KB) / `PHOTO_IMAGE_TOO_LARGE` / `PHOTO_REJECTED_BY_SCAN`. The OpenAPI contract gains 415 and 422 error components.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| `sharp` (prebuilt libvips) | its prebuilt libvips reads HEIF/AVIF but NOT HEVC-coded HEIC (excluded for patent reasons), so it does not meet 08's HEIC need either; its `.node` addon finds `libvips-cpp.so` by an `$ORIGIN`-relative RPATH that breaks when pkg extracts the addon to its cache; the musl builder installs `@img/sharp-linuxmusl-x64` while the runtime is glibc. Making it work means shipping both libraries beside the binary from a second, glibc install — for a speed the field does not need (clients downscale) |
+| A server HEVC decoder (`heic-convert` / `libheif-js`, WASM or asm.js) | ships an HEVC decoder (patent-pool exposure for a commercial SaaS), ~10 MB, seconds per photo on the event loop; the clients already produce JPEG |
+| `jimp` | pure JS too, but ~30 packages around the same `jpeg-js`/`pngjs` cores |
+| Derivatives made by the client | the server could not vouch for their metadata, and the derivative is what pages show (08 § 4.1) |
+| Derivative keys in columns | a migration and three more places to keep in step; the naming convention is total and tested |
+
+**Implications, including the bad ones.**
+- **The decode holds the event loop** (synchronous; measured 1.98 – 2.02 s for a synthetic 12-megapixel, 7 MB JPEG on the workstation, three runs): concurrent full-size uploads queue behind each other and delay other requests on that instance. The PWA and the app should downscale before upload (P22-02, ADR-135); a worker thread is the fix if P21-10's smoke measures it.
+- **The 897 upstream HEIC photos** stay quarantined `heic_converter_unavailable` by the rsync import (08 § 11): the ETL (P24-03) converts them OUTSIDE the application (its throwaway environment, e.g. `heif-convert`) and re-ingests JPEGs. Open item for P24, recorded in 08 § 11.
+- A JPEG only a tolerant decoder reads (a truncated scan) is refused 422; the user re-takes or re-saves it.
+- Two production dependencies added; `scripts/ci/npm-audit-gate.js`: production tree 0 advisories.
+- **Image proof** (the backend image built from this tree, the modules loaded inside the pkg binary): in the record.
+
+**`docs/` amended:** the P19-03 spec § 7.2 (as-built note); `docs/UPSTREAM/08-FILE-POLICY.md` § 3, § 4.1, § 11 (as-built rows).
+
+---
+
 ## ADR-133: Calibration Dates — the Next Due Date Is Derived From the Latest Effective Record on Create, Correction and Void; an External Calibration Is Recorded by Its Date and Key Data on a Narrow Route, With No File; a Performer Snapshot Is Written at Insert; Imported Dates Name the Person, or the Import Key
 
 **Date:** 2026-10-08 · **Status:** Accepted as the **TARGET — nothing here is built.** Decided by the P19-05 spec agent under the owner's standing delegation (decide by best practice, record it); UD-8's interim rule is a working decision of 2026-10-08 and its meaning (OA-7) stays the owner's/SME's fact · **Card:** P19-05 · **Spec:** [`MEMORY/specs/P19-05-calibration-dates.md`](./specs/P19-05-calibration-dates.md) (gaps G-C1 … G-C9, § 2) · **Record:** `MEMORY/records/2026-10-08-p19-02-03-05-specs.md` · **Builds in:** P20-02, P21-04, P21-05, P21-06, P22-05, P24-02, P24-04 · **Works with:** ADR-062 (append-only), 0105 (one recording actor), ADR-094, ADR-124 Am. 2 § 7 (narrowed here), ADR-126 § 6 / § 8, UD-17
@@ -11286,6 +11321,36 @@ Today `createCalibrationRecord` sets the device's `nextCalibrationDate` from whi
 - Three legacy suites' expectations of the old behaviour were re-based (named in the record).
 
 **`docs/` amended:** the P19-05 spec § 4.1, § 5, § 6, § 7.3 (as-built notes referencing this amendment); BACKLOG G-11 closed.
+
+---
+
+### ADR-133 Amendment 3 (2026-10-09, P21-06): the recap reads as built — day bounds under new names, the latest-per-device pick filtered first, a facility filter that can only narrow
+
+**Date:** 2026-10-09 · **Status:** Accepted, **built** (no migration). Decided by the implementing agent under the owner's standing delegation · **Card:** P21-06 · **Spec:** [`P19-05`](./specs/P19-05-calibration-dates.md) § 8 (as-built note added); `docs/UPSTREAM/09-REPORT-LAYOUTS.md` § 4.3, § 5 · **Record:** `MEMORY/records/2026-10-09-p21-06-export-reads.md`
+
+**Decision.**
+1. **`GET /calibration-records` is the recap read** (no new route, no backend file, ADR-126 § 8): `dateField` (`calibration` default, `created` = the input date), `latestOnly`, `entryKind`, `clientFacilityId`, `qrCode` (normalised with the tenant's settings, looked up in context — a sticker out of view is an EMPTY PAGE, not a 404), `sort` (`calibrationDate` | `createdAt`, descending, ending in `id`), `limit` ≤ 200 (was 100). Each row adds `device.qrCode`, `room { name, floor }` from the SNAPSHOT ("—" when none), `effective`, and `clientFacility { id, name, code }` for provider staff only; `performerDisplay`, `externalLabName` and `entryKind` were already there.
+2. **Day bounds are `fromDay` / `toDay`** (inclusive days of the tenant's zone; the upper bound is the next day's start, exclusive), beside the existing `from` / `to` instants, which keep their meaning on the `dateField` column. Spec § 8 gave the days to `from` / `to`: that would change the meaning of a parameter the frontend already sends. When both lower bounds are given the later wins.
+3. **`latestOnly` is one `sql()` read** — `DISTINCT ON (device_id)` in the order `latestEffectiveRecord` uses (calibration date, input, id), the tenant predicate bound (`$1`), `facilityClause` for a bound reader (G-14), and every filter applied BEFORE the pick (the latest record within the filters: "full records only" answers each device's latest full record, not "devices whose latest is a full record"). It answers the page's ids and the total; the rows are then read through the models (scoped a second time by the hooks) so both modes answer one shape.
+4. **A `clientFacilityId` filter is ANDed beside the facility hook's predicate (`Op.and`), on the record list and on the device list.** As a plain key the hook REPLACED it: a bound F1 reader naming F2 got its own facility's rows back instead of an empty page (found by G-22's test on the device list P21-02a built; no other facility's row was exposed). Now it reads nothing.
+5. **The inventory export reads the device list as built by P21-02a** (its photo ids, `lastCalibration`, `registrantDisplay`); its thumbnails are P21-02b's derivatives through signed links (`variant: "thumb"`). No device-list change beyond item 4.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Days in `from` / `to` (the spec) | silently changes a parameter in use; an instant caller would lose up to a day |
+| A separate `GET /reports/calibrations` | a second read of the same rows to keep in step; the list already has the paging, the scope and the displays |
+| `latestOnly` through the models (a correlated subquery literal) | still raw SQL, without `sql()`'s bound parameters and the d05 review |
+| Filters after the pick | "the latest record if it matches" drops devices whose latest is another kind — not what the recaps (09 § 4.2) select |
+| A bound reader's foreign `clientFacilityId` as a 404 | the filter is a convenience, not an id; an empty page says nothing and matches the unbound answer for an empty facility |
+
+**Implications, including the bad ones.**
+- `latestOnly` pages through a raw read memoryDb cannot run: its unit suite answers the statement; the SQL itself is proved only by the live twin (`calibrationRecap.p2106.live`).
+- The record list's rows are plain objects with three more keys; two legacy controller suites' assertions were re-based (named in the record).
+- The count of a `latestOnly` page comes from the raw read; if the model read ever hid a row the read counted, the page would show fewer rows than `meta.total` says (none known: both read the same tenant and facility).
+
+**`docs/` amended:** the P19-05 spec § 8 (as-built note); `docs/SECURITY/15` § 11 G-22 (built).
 
 ---
 

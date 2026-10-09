@@ -43,6 +43,8 @@ export interface TwoFacilityRoute<C extends FacilitySuiteContext = FacilitySuite
   readonly foreignId: (ctx: C) => string;
   readonly body?: unknown;
   readonly query?: Record<string, unknown>;
+  /** P21-02b: a multipart route's `req.file` (multer doubled), made fresh for each request. */
+  readonly file?: () => unknown;
   readonly ownStatus?: number;
   /** Tables the positive control must write (a mutation). */
   readonly writes?: readonly string[];
@@ -82,13 +84,13 @@ export const twoFacilitySuite = <C extends FacilitySuiteContext>({
   routes = [],
   lists = [],
 }: TwoFacilityOptions<C>): void => {
-  const send = (method: string, url: string, body: unknown, query: Record<string, unknown>): Promise<RouteResponse> =>
-    call(router, method, url, { body, query, routeFile, ...(baseUrl ? { baseUrl } : {}) });
+  const send = (method: string, url: string, body: unknown, query: Record<string, unknown>, file?: unknown): Promise<RouteResponse> =>
+    call(router, method, url, { body, query, routeFile, ...(baseUrl ? { baseUrl } : {}), ...(file === undefined ? {} : { file }) });
 
   if (routes.length > 0) {
     describe.each(routes.map((r) => [r.key, r] as const))(`${module} %s — two facilities`, (_key, route) => {
       const request = (id: string): Promise<RouteResponse> =>
-        send(route.method, route.path(id), typeof route.body === "function" ? (route.body as () => unknown)() : (route.body ?? {}), route.query ?? {});
+        send(route.method, route.path(id), typeof route.body === "function" ? (route.body as () => unknown)() : (route.body ?? {}), route.query ?? {}, route.file?.());
 
       it("another facility's record answers 404, identical to one that does not exist, and nothing is written", async () => {
         const ctx = context();

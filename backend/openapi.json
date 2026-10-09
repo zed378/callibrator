@@ -5463,6 +5463,16 @@
                     "type": "integer",
                     "minimum": 30,
                     "maximum": 3600
+                  },
+                  "variant": {
+                    "description": "P21-02b: which stored form the link opens — `original` (default), or a device photo's metadata-free `display` (1,600 px) or `thumb` (320 px) derivative. A derivative of a file that has none: 404",
+                    "example": "thumb",
+                    "type": "string",
+                    "enum": [
+                      "original",
+                      "display",
+                      "thumb"
+                    ]
                   }
                 },
                 "description": "Optional; an empty body takes the default lifetime"
@@ -11457,6 +11467,257 @@
         }
       }
     },
+    "/api/v1/calibration-devices/{calibrationDeviceId}/photos": {
+      "post": {
+        "operationId": "uploadCalibrationDevicePhoto",
+        "summary": "Upload or replace a device photo (multipart, field `file`)",
+        "tags": [
+          "CalibrationDevices"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/calibrationDevices.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "calibration",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "P21-02b (P19-03 § 7.2, ADR-132 Am. 3): the device is read in the caller's context first (another tenant's or facility's: 404, nothing stored). The file is checked by its content, its location metadata removed, virus-scanned (fail-closed), fully decoded, and stored with a display (1,600 px) and a thumbnail (320 px) derivative carrying no metadata — open them with `POST /attachments/:id/signed-url` `{ variant }`. A `device_front` or `device_serial_plate` replaces the live one in the same transaction. 415 `PHOTO_HEIC_UNSUPPORTED` (HEIC/HEIF: convert to JPEG on the client) or `PHOTO_TYPE_UNSUPPORTED` (not JPEG/PNG by content); 422 `PHOTO_UNDECODABLE`, `PHOTO_IMAGE_TOO_LARGE` (over 50 megapixels or 12,000 px a side) or `PHOTO_REJECTED_BY_SCAN`; 400 `PHOTO_FILE_REQUIRED` without a file. 10 MB at most. Counts against the storage quota. Reachable by a facility-bound account (N-6). `Idempotency-Key` replays the upload.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "calibrationDeviceId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The calibration device's id",
+              "example": "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+            },
+            "required": true,
+            "description": "The calibration device's id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The photo: JPEG or PNG by content"
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "device_front",
+                      "device_serial_plate",
+                      "device_other"
+                    ]
+                  }
+                },
+                "required": [
+                  "file",
+                  "purpose"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored photo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/DevicePhoto"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/calibration-devices/{calibrationDeviceId}/photos/{attachmentId}": {
+      "delete": {
+        "operationId": "deleteCalibrationDevicePhoto",
+        "summary": "Delete a device photo",
+        "tags": [
+          "CalibrationDevices"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/calibrationDevices.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "calibration",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "P21-02b: a soft delete, audited (a register photo is not Part 11 evidence); its bytes and derivatives are removed by the deleted-file sweep after the retention window. A photo of another device, facility or tenant is the same 404. Reachable by a facility-bound account (N-6).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "calibrationDeviceId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "attachmentId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deleted photo's id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/calibration-devices/{calibrationDeviceId}/reinstate": {
       "post": {
         "operationId": "reinstateCalibrationDevice",
@@ -11923,7 +12184,7 @@
           "action": "read",
           "superAdmin": "bypasses"
         },
-        "description": "Newest calibration first. The list shows the record in force: a record a correction superseded is left out unless includeSuperseded=true; a voided record is never listed.",
+        "description": "Newest calibration first. The list shows the record in force: a record a correction superseded is left out unless includeSuperseded=true; a voided record is never listed. P21-06 (P19-05 § 8): the recap reads the browser renders (no backend file, ADR-126 § 8) — `dateField` (calibration | created) with `from`/`to` (instants) or `fromDay`/`toDay` (inclusive days of the tenant's zone); `latestOnly` = one row per device, its latest effective record within the filters; `entryKind`, `clientFacilityId`, `qrCode` (normalised; a sticker in no device of the caller's view is an empty page); `sort`; `limit` ≤ 200. Reachable by a facility-bound account (A-4): its facility's records only.",
         "parameters": [
           {
             "in": "query",
@@ -11940,7 +12201,7 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 100
+              "maximum": 200
             }
           },
           {
@@ -12026,6 +12287,81 @@
             "name": "includeSuperseded",
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateField",
+            "schema": {
+              "default": "calibration",
+              "type": "string",
+              "enum": [
+                "calibration",
+                "created"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "fromDay",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "toDay",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "latestOnly",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entryKind",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full_record",
+                "external_date"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "clientFacilityId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "qrCode",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "calibrationDate",
+                "createdAt"
+              ]
             }
           }
         ],
@@ -72431,6 +72767,38 @@
           }
         }
       },
+      "UnprocessableContent": {
+        "description": "The uploaded file has an accepted type but cannot be used (it does not decode, exceeds a pixel limit, or was refused by the virus scan); the top-level `code` says which.",
+        "content": {
+          "application/json": {
+            "example": {
+              "success": false,
+              "status": 422,
+              "message": "The file could not be processed",
+              "data": null
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "The uploaded file's CONTENT (its magic bytes, not its name or declared type) is not a type this route takes; the top-level `code` says which refusal.",
+        "content": {
+          "application/json": {
+            "example": {
+              "success": false,
+              "status": 415,
+              "message": "Unsupported file type",
+              "data": null
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
       "ValidationError": {
         "description": "The request failed validation. `details` names each field (outside production).",
         "content": {
@@ -74696,6 +75064,12 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "qrCode": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   }
                 },
                 "required": [
@@ -74704,6 +75078,73 @@
                   "serialNumber",
                   "manufacturer",
                   "model"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entryKind": {
+            "type": "string",
+            "enum": [
+              "full_record",
+              "external_date"
+            ]
+          },
+          "externalLabName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "room": {
+            "description": "P21-06: the room and floor CONFIRMED AT ENTRY (the snapshot), \"—\" when none — never the device's current room",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "floor": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "floor"
+            ],
+            "additionalProperties": false
+          },
+          "effective": {
+            "description": "P21-06: not superseded by a correction (a voided record is never listed)",
+            "type": "boolean"
+          },
+          "clientFacility": {
+            "description": "P21-06: the record's facility — for provider staff only (P19-04 § 13.1)",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "code"
                 ],
                 "additionalProperties": false
               },
@@ -78314,6 +78755,98 @@
           "toClientFacilityId",
           "locationId",
           "counts"
+        ],
+        "additionalProperties": false
+      },
+      "DevicePhoto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "calibrationDeviceId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "device_front",
+              "device_serial_plate",
+              "device_other"
+            ]
+          },
+          "mimeType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "checksum": {
+            "type": "string",
+            "description": "SHA-256 of the stored original (location metadata removed)"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "height": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "original",
+                "display",
+                "thumb"
+              ]
+            }
+          },
+          "replacedAttachmentId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The live photo of the same single purpose this one replaced, if any"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "calibrationDeviceId",
+          "purpose",
+          "mimeType",
+          "size",
+          "checksum",
+          "width",
+          "height",
+          "variants",
+          "replacedAttachmentId",
+          "createdAt"
         ],
         "additionalProperties": false
       },

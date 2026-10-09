@@ -103,6 +103,8 @@ const uploadsAfterGate = () => {
 const REVIEWED = {
   "ai.route.ts POST /ocr": "no checkTenant; tenant from req.user.tenantId (A-94)",
   "attachments.route.ts POST /": "no checkTenant; tenant from req.user.tenantId",
+  // P21-02b (ADR-132 Am. 3): the device is read in the caller's context before the held file is read.
+  "calibrationDevices.route.ts POST /:calibrationDeviceId/photos": "no checkTenant; tenant from the principal, the device read in context (devicePhoto.service)",
   "calibrationDevices.route.ts POST /bulk-import": "no checkTenant; tenant from the principal",
   // ADR-042 step 3 (S-01): CMS images are platform content (posts carry no
   // tenant), written to the PUBLIC class; the actor is audited.

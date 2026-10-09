@@ -57,9 +57,23 @@ const CalibrationRecord = z
         serialNumber: z.string().nullable(),
         manufacturer: z.string().nullable(),
         model: z.string().nullable(),
+        qrCode: z.string().nullable().optional(),
       })
       .nullable()
       .optional(),
+    // P21-06 (P19-05 § 8): the recap facts the list adds.
+    entryKind: z.enum(["full_record", "external_date"]).optional(),
+    externalLabName: z.string().nullable().optional(),
+    room: z
+      .object({ name: z.string(), floor: z.string() })
+      .optional()
+      .meta({ description: "P21-06: the room and floor CONFIRMED AT ENTRY (the snapshot), \"—\" when none — never the device's current room" }),
+    effective: z.boolean().optional().meta({ description: "P21-06: not superseded by a correction (a voided record is never listed)" }),
+    clientFacility: z
+      .object({ id: z.guid(), name: z.string(), code: z.string().nullable() })
+      .nullable()
+      .optional()
+      .meta({ description: "P21-06: the record's facility — for provider staff only (P19-04 § 13.1)" }),
     performer: z.object({ id: z.guid(), firstName: z.string(), lastName: z.string() }).loose().nullable().optional(),
     apiKey: z.object({ id: z.guid(), name: z.string(), keyPrefix: z.string() }).nullable().optional(),
   })
@@ -120,7 +134,10 @@ export default defineRouteDocs({
       operationId: "listCalibrationRecords",
       summary: "List calibration records",
       description:
-        "Newest calibration first. The list shows the record in force: a record a correction superseded is left out unless includeSuperseded=true; a voided record is never listed.",
+        "Newest calibration first. The list shows the record in force: a record a correction superseded is left out unless includeSuperseded=true; a voided record is never listed. " +
+        "P21-06 (P19-05 § 8): the recap reads the browser renders (no backend file, ADR-126 § 8) — `dateField` (calibration | created) with `from`/`to` (instants) or " +
+        "`fromDay`/`toDay` (inclusive days of the tenant's zone); `latestOnly` = one row per device, its latest effective record within the filters; `entryKind`, " +
+        "`clientFacilityId`, `qrCode` (normalised; a sticker in no device of the caller's view is an empty page); `sort`; `limit` ≤ 200. Reachable by a facility-bound account (A-4): its facility's records only.",
       permission: read,
       audited: false,
       query: getCalibrationRecordsQuery,

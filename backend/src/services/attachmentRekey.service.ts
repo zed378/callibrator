@@ -21,6 +21,7 @@
  * Named exports only.
  */
 import path from "path";
+import { DERIVATIVE_VARIANTS, derivativeKeyOf, hasDerivatives } from "./devicePhoto/derivativeKeys";
 import models from "../models";
 import { db } from "../config";
 import storage from "./storage";
@@ -48,6 +49,8 @@ interface PendingRow {
   storageKey: string | null;
   clientFacilityId: string | null;
   mimeType: string | null;
+  /** P21-02b: a device photo's derivatives move with it. */
+  purpose: string | null;
 }
 
 /** Switch the key and clear the flag, with its audit row, if the row is still as read. */
@@ -86,7 +89,7 @@ export const rekeyTenantAttachments = async (tenantId: string): Promise<RekeySum
   runForTenant(tenantId, async () => {
     const rows = (await models.Attachment.findAll({
       where: { tenantId, rekeyPending: true },
-      attributes: ["id", "tenantId", "storageKey", "clientFacilityId", "mimeType"],
+      attributes: ["id", "tenantId", "storageKey", "clientFacilityId", "mimeType", "purpose"],
       order: [["id", "ASC"]],
       limit: REKEY_BATCH,
     })) as unknown as PendingRow[];
@@ -105,13 +108,23 @@ export const rekeyTenantAttachments = async (tenantId: string): Promise<RekeySum
           cleared += (await switchKey(row, null)) ? 1 : 0;
           continue;
         }
-        const bytes = await storedFile.readObject(scoped, row.storageKey);
-        await scoped.put(newKey, bytes, { contentType: row.mimeType });
+        // P21-02b: the original, then a device photo's derivatives, each copied before the switch.
+        const moves: { from: string; to: string; contentType: string | null }[] = [{ from: row.storageKey, to: newKey, contentType: row.mimeType }];
+        if (hasDerivatives(row.purpose)) {
+          for (const variant of DERIVATIVE_VARIANTS) {
+            moves.push({ from: derivativeKeyOf(row.storageKey, variant), to: derivativeKeyOf(newKey, variant), contentType: "image/jpeg" });
+          }
+        }
+        for (const move of moves) {
+          await scoped.put(move.to, await storedFile.readObject(scoped, move.from), { contentType: move.contentType });
+        }
         if (await switchKey(row, newKey)) {
           rekeyed += 1;
-          await storedFile.removeObject(scoped, row.storageKey).catch((err: unknown) => {
-            logger.warn("Attachment re-key: the old object was not removed", { attachmentId: row.id, error: String(err) });
-          });
+          for (const move of moves) {
+            await storedFile.removeObject(scoped, move.from).catch((err: unknown) => {
+              logger.warn("Attachment re-key: the old object was not removed", { attachmentId: row.id, error: String(err) });
+            });
+          }
         }
       } catch (err) {
         failed += 1;

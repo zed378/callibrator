@@ -67,6 +67,8 @@ import {
   ATTACHMENT_RESOURCE_TYPES as loadedAttachmentResourceTypes,
   isAttachmentResourceType as loadedIsAttachmentResourceType,
 } from "../constants/attachmentResources";
+import { derivativeKeyOf, derivativeKeysOf, hasDerivatives } from "./devicePhoto/derivativeKeys";
+import type { DerivativeVariant } from "./devicePhoto/derivativeKeys";
 
 const Op = loadedOp;
 const fn = loadedFn;
@@ -125,6 +127,8 @@ interface AttachmentRow {
   clientFacilityId?: string | null;
   /** P21-09d: the key's facility segment lags a device move until the re-key job runs (§ 9.4). */
   rekeyPending?: boolean;
+  /** P20-08: what a photo shows; a device photo (P21-02b) has display and thumbnail derivatives. */
+  purpose?: string | null;
   uploadedBy: string | null;
   isDeleted?: boolean;
   createdAt: Date;
@@ -919,14 +923,16 @@ const assertKeyIntegrity = async (attachment: AttachmentRow): Promise<void> => {
  *
  * @throws {AppError} 410 when the bytes are gone
  */
-const openAttachmentFile = async (attachment: AttachmentRow): Promise<StoredDownload> => {
-  const fileName = attachment.originalName;
-  const { mimeType } = attachment;
+const openAttachmentFile = async (attachment: AttachmentRow, variant: DerivativeVariant | null = null): Promise<StoredDownload> => {
+  // P21-02b: a derivative is a metadata-free JPEG beside the original (devicePhoto/derivativeKeys).
+  const fileName = variant ? `${attachment.id}.${variant}.jpg` : attachment.originalName;
+  const mimeType = variant ? "image/jpeg" : attachment.mimeType;
   if (attachment.storageKey) {
     await assertKeyIntegrity(attachment);
     const scoped = await storage.getTenantStorage(attachment.tenantId);
+    const key = variant ? derivativeKeyOf(attachment.storageKey, variant) : attachment.storageKey;
     try {
-      return { object: await storedFile.openObject(scoped, attachment.storageKey), fileName, mimeType };
+      return { object: await storedFile.openObject(scoped, key), fileName, mimeType };
     } catch (err) {
       if (storedFile.isMissing(err)) {
         throw new AppError(410, "Attachment file is no longer available");
@@ -974,7 +980,14 @@ const unlinkAttachmentFile = async (attachment: AttachmentRow): Promise<boolean>
   try {
     if (attachment.storageKey) {
       // P8-01: the object, in the row's own tenant's storage.
-      await storedFile.removeObject(await storage.getTenantStorage(attachment.tenantId), attachment.storageKey);
+      const scoped = await storage.getTenantStorage(attachment.tenantId);
+      await storedFile.removeObject(scoped, attachment.storageKey);
+      // P21-02b: a device photo's derivatives go with it (08 § 4.1).
+      if (hasDerivatives(attachment.purpose)) {
+        for (const key of derivativeKeysOf(attachment.storageKey)) {
+          await storedFile.removeObject(scoped, key);
+        }
+      }
     } else {
       await fs.promises.rm(resolveAbsPath(attachment), { force: true });
     }
@@ -1112,6 +1125,20 @@ const NO_FACILITY_SEGMENT = "-";
 const signedLinkMessage = (id: string, tenantId: string, facility: string, issuer: string, exp: number): string =>
   `attachment-link/v3|${id}|${tenantId}|${facility}|${issuer}|${String(exp)}`;
 
+/**
+ * P21-02b: what a link opens — the attachment's id, or `<id>~<variant>` for a derivative, so a
+ * thumbnail's link never opens the original (or the reverse). An original's message is unchanged.
+ */
+const linkSubject = (id: string, variant: DerivativeVariant | null): string => (variant ? `${id}~${variant}` : id);
+
+/** A requested variant: null for the original; a derivative's name; undefined when it names neither. */
+const variantOf = (value: unknown): DerivativeVariant | null | undefined => {
+  if (value === undefined || value === "original") {
+    return null;
+  }
+  return value === "display" || value === "thumb" ? value : undefined;
+};
+
 const signLink = (id: string, tenantId: string, facility: string, issuer: string, exp: number): string =>
   crypto.createHmac("sha256", SIGNING_KEY).update(signedLinkMessage(id, tenantId, facility, issuer, exp)).digest("hex");
 
@@ -1168,15 +1195,24 @@ const linkTtl = (expiresInSec: unknown): number => {
 const generateSignedUrl = async (
   tenantId: string,
   id: string,
-  { baseUrl, expiresInSec, issuer }: { baseUrl?: string | undefined; expiresInSec?: unknown; issuer?: LinkIssuer } = {},
+  { baseUrl, expiresInSec, issuer, variant: requested }: { baseUrl?: string | undefined; expiresInSec?: unknown; issuer?: LinkIssuer; variant?: unknown } = {},
 ): Promise<{ url: string; token: string; expiresAt: Date; expiresInSec: number }> => {
   const tag = issuerTag(issuer);
   const ttl = linkTtl(expiresInSec);
+  const variant = variantOf(requested);
+  if (variant === undefined) {
+    throw new AppError(400, "variant must be original, display or thumb");
+  }
   const attachment = await loadOwned(tenantId, id);
+  // P21-02b: only a device photo has derivatives; asking another file for one is a 404 (the caller
+  // can read the row, so this says nothing it could not learn).
+  if (variant && !(attachment.storageKey && hasDerivatives(attachment.purpose))) {
+    throw new AppError(404, "This attachment has no such variant");
+  }
   await assertKeyIntegrity(attachment);
   const exp = Math.floor(Date.now() / 1000) + ttl;
   const facility = attachment.clientFacilityId ?? NO_FACILITY_SEGMENT;
-  const token = `${String(exp)}.${attachment.tenantId}.${tag}.${facility}.${signLink(attachment.id, attachment.tenantId, facility, tag, exp)}`;
+  const token = `${String(exp)}.${attachment.tenantId}.${tag}.${facility}.${signLink(linkSubject(attachment.id, variant), attachment.tenantId, facility, tag, exp)}`;
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty base URL falls through
   const base = (baseUrl || env("PUBLIC_BASE_URL") || "http://localhost:5000").replace(/\/$/, "");
   logger.info("Attachment download link minted", {
@@ -1186,7 +1222,7 @@ const generateSignedUrl = async (
     expiresInSec: ttl,
   });
   return {
-    url: `${base}/api/v1/attachments/${attachment.id}/signed?token=${token}`,
+    url: `${base}/api/v1/attachments/${attachment.id}/signed?token=${token}${variant ? `&variant=${variant}` : ""}`,
     token,
     expiresAt: new Date(exp * 1000),
     expiresInSec: ttl,
@@ -1267,9 +1303,12 @@ const issuerIsLive = async (tenantId: string, issuer: string, facility: string):
 };
 
 // Resolve a download from a signed token (no tenant/session required).
-const getSignedDownload = async (id: string, token: unknown): Promise<StoredDownload> => {
-  const claims = readSignedToken(id, token);
-  if (!claims) {
+const getSignedDownload = async (id: string, token: unknown, requested?: unknown): Promise<StoredDownload> => {
+  // P21-02b: the variant is part of what was signed; a variant the link was not made for fails the
+  // signature like any other tampering (403, before any row is read).
+  const variant = variantOf(requested);
+  const claims = variant === undefined ? null : readSignedToken(linkSubject(id, variant), token);
+  if (!claims || variant === undefined) {
     throw new AppError(403, "Invalid or expired download link");
   }
   // The public route runs with no tenant context, so the predicate is written
@@ -1285,7 +1324,7 @@ const getSignedDownload = async (id: string, token: unknown): Promise<StoredDown
   ) {
     throw new AppError(404, "Attachment not found");
   }
-  return openAttachmentFile(attachment);
+  return openAttachmentFile(attachment, variant);
 };
 
 // The exported object, its keys in the JavaScript's order (`exports.x = …`).

@@ -195,6 +195,10 @@ const REVIEWED = Object.freeze({
   "deviceReads.service.ts::deviceFacts::models.Attachment": [1, IDS],
   "deviceReads.service.ts::deviceFacts::models.CalibrationRecord": [1, IDS],
   "deviceReads.service.ts::labNames::models.Vendor": [1, IDS],
+  // P21-06 (ADR-133 Am. 3): the facilities of one page's rows (≤ 200 ids); the latest-per-device
+  // page's records by the ids the raw read answered (≤ `limit`, itself ≤ 200).
+  "calibrationRecap.service.ts::recapFacts::models.ClientFacility": [1, IDS],
+  "calibrationRecords.service.ts::fetchCalibrationRecords::CalibrationRecord": [1, IDS],
   "deviceSettings.service.ts::deviceSettingsOf::models.TenantSettings": [1, KEYS],
   "ipmSignature.service.ts::notifyCountersigners::models.User": [1, IDS],
   "ipmSignature.service.ts::signReport::models.InspectionSessionSignature": [1, PARENT],

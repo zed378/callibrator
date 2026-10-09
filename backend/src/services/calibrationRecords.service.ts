@@ -28,6 +28,7 @@ import type * as CalibrationRecordsValidator from "../validators/calibrationReco
 import type { AuditAction } from "../constants/auditActions";
 import type { TenantId, UserId } from "../types/ids";
 import type * as CalibrationDatesService from "./calibrationDates.service";
+import { latestRecordPage, qrDeviceId, recapRange } from "./calibrationRecap.service";
 import type { ModelInstance } from "../types/models";
 
 // P21-05 (ADR-133 § 1, G-11): the next due date is re-derived from the latest effective record.
@@ -126,6 +127,15 @@ interface RecordListQuery {
   from?: string | Date | null | undefined;
   to?: string | Date | null | undefined;
   includeSuperseded?: boolean | undefined;
+  // P21-06 (spec P19-05 § 8): the recap reads.
+  dateField?: "calibration" | "created" | undefined;
+  fromDay?: string | undefined;
+  toDay?: string | undefined;
+  latestOnly?: boolean | undefined;
+  entryKind?: string | undefined;
+  clientFacilityId?: string | undefined;
+  qrCode?: string | undefined;
+  sort?: "calibrationDate" | "createdAt" | undefined;
 }
 
 interface RecordListData {
@@ -136,6 +146,14 @@ interface RecordListData {
 
 /** A caught value's `message`, read exactly as the `.js` read it (a thrown `null` still throws here). */
 const messageOf = (error: unknown): unknown => (error as { message?: unknown }).message;
+
+/** An empty page (a sticker that names no device in context). */
+const emptyPage = (page: number | string, limit: number | string): Outcome<RecordListData> => ({
+  success: true,
+  status: 200,
+  message: "Fetch calibration records successful",
+  data: { rows: [], count: 0, meta: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 } },
+});
 
 /**
  * Fetch all calibration records for a tenant with pagination and filtering
@@ -149,9 +167,43 @@ const fetchCalibrationRecords = async ({
   from,
   to,
   includeSuperseded = false,
+  dateField,
+  fromDay,
+  toDay,
+  latestOnly = false,
+  entryKind,
+  clientFacilityId,
+  qrCode,
+  sort,
 }: RecordListQuery): Promise<Outcome<RecordListData>> => {
   try {
     const whereClause: Record<string, unknown> = { tenantId };
+    // P21-06: a sticker names one device in the caller's context — or none (an empty page).
+    let byQr: string | null | undefined;
+    if (qrCode !== undefined) {
+      byQr = await qrDeviceId(tenantId, qrCode);
+    }
+    const range = await recapRange(tenantId, { dateField, from, to, fromDay, toDay });
+    const order = sort ?? range.column;
+    if (byQr === null || (byQr !== undefined && deviceId && deviceId !== byQr)) {
+      return emptyPage(page, limit);
+    }
+    const device = byQr ?? deviceId;
+    // P21-06: one row per device — the page's ids and the total from ONE raw read (G-14).
+    let latest: { ids: string[]; total: number } | null = null;
+    if (latestOnly) {
+      latest = await latestRecordPage(tenantId, {
+        deviceId: device ?? null,
+        entryKind: entryKind ?? null,
+        clientFacilityId: clientFacilityId ?? null,
+        isCompliant: isCompliant ?? null,
+        range,
+        sort: order,
+        page: Number(page),
+        limit: Number(limit),
+      });
+      whereClause["id"] = latest.ids;
+    }
 
     // P6-03: a corrected record stays, but the list shows the record in force
     // — the latest correction — unless the caller asks for the history too.
@@ -159,19 +211,29 @@ const fetchCalibrationRecords = async ({
       whereClause["supersededById"] = null;
     }
 
-    if (deviceId) {
-      whereClause["deviceId"] = deviceId;
+    if (device) {
+      whereClause["deviceId"] = device;
+    }
+    if (entryKind) {
+      whereClause["entryKind"] = entryKind;
+    }
+    if (clientFacilityId) {
+      // Under Op.and, beside (not instead of) the facility hook's own predicate: a bound reader
+      // naming another facility reads NOTHING (G-22), never its own rows.
+      Object.assign(whereClause, { [Op.and]: [{ clientFacilityId }] });
     }
 
     if (isCompliant !== null && isCompliant !== undefined) {
       whereClause["isCompliant"] = isCompliant;
     }
 
-    if (from || to) {
-      const range: Record<symbol, unknown> = {};
-      whereClause["calibrationDate"] = range;
-      if (from) {range[Op.gte] = from;}
-      if (to) {range[Op.lte] = to;}
+    // P21-06: the range is on the `dateField` column, its bounds instants and/or zone days.
+    if (range.gte || range.lte || range.lt) {
+      const bounds: Record<symbol, unknown> = {};
+      whereClause[range.column] = bounds;
+      if (range.gte) {bounds[Op.gte] = range.gte;}
+      if (range.lte) {bounds[Op.lte] = range.lte;}
+      if (range.lt) {bounds[Op.lt] = range.lt;}
     }
 
     // U-06 (ADR-119): the count and the page are two statements, as
@@ -187,12 +249,12 @@ const fetchCalibrationRecords = async ({
     const countWhere: WhereOptions = { ...whereClause };
     const pageWhere: WhereOptions = { ...whereClause };
     const [count, found] = await Promise.all([
-      CalibrationRecord.count({ where: countWhere }),
+      latest ? Promise.resolve(latest.total) : CalibrationRecord.count({ where: countWhere }),
       CalibrationRecord.findAll({
         where: pageWhere,
-        order: [["calibrationDate", "DESC"], ["id", "DESC"]],
-        limit: Number(limit),
-        offset: (Number(page) - 1) * Number(limit),
+        order: [[order, "DESC"], ["id", "DESC"]],
+        // The latest-per-device page is already the page (its ids); the list pages itself.
+        ...(latest ? {} : { limit: Number(limit), offset: (Number(page) - 1) * Number(limit) }),
         subQuery: true,
         include: [
           // LEFT JOINs (A-90): User and CalibrationDevice have a defaultScope
@@ -202,7 +264,7 @@ const fetchCalibrationRecords = async ({
           // inside a tenant). The relation reads as null instead.
           {
             association: "device",
-            attributes: ["id", "name", "serialNumber", "manufacturer", "model"],
+            attributes: ["id", "name", "serialNumber", "manufacturer", "model", "qrCode"],
             required: false,
           },
           {

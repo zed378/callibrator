@@ -61,6 +61,8 @@ const FACILITY_BOUND_NAMERS = [
   // provider-only keys (deviceReads#viewerIsBound) — both read the flag, never build a context.
   "middlewares/validation.middleware.ts",
   "services/deviceReads.service.ts",
+  // P21-06: the recap facts name the facility for provider staff only (calibrationRecap#recapFacts).
+  "services/calibrationRecap.service.ts",
 ];
 /** The readers among them: they read the context's flag and never build one. */
 const READERS = [
@@ -81,6 +83,7 @@ const READERS = [
   "services/ipmSubmit.service.ts",
   "middlewares/validation.middleware.ts",
   "services/deviceReads.service.ts",
+  "services/calibrationRecap.service.ts",
 ];
 
 const writersIn = (sources: { rel: string; text: string }[]): string[] =>

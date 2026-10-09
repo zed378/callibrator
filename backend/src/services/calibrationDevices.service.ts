@@ -349,10 +349,16 @@ const listWhere = async (query: DeviceListQuery): Promise<Record<string | symbol
   if (query.qrCode) {
     whereClause["qrCode"] = await normaliseQrFor(tenantId, query.qrCode);
   }
-  for (const key of ["deviceTypeId", "condition", "locationId", "clientFacilityId"] as const) {
+  for (const key of ["deviceTypeId", "condition", "locationId"] as const) {
     if (query[key]) {
       whereClause[key] = query[key];
     }
+  }
+  if (query.clientFacilityId) {
+    // P21-06 (G-22): under Op.and, beside (not instead of) the facility hook's own predicate — a
+    // bound reader naming another facility reads NOTHING. As a plain key the hook REPLACED it, and
+    // the bound reader got its own facility's devices back.
+    Object.assign(whereClause, { [Op.and]: [{ clientFacilityId: query.clientFacilityId }] });
   }
   if (query.calibrationDue) {
     const settings = await deviceSettingsOf(tenantId);

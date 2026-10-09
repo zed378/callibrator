@@ -61,7 +61,7 @@ source file (read-only)                                     manifest: source pat
 |---|---|---|---|
 | JPEG | `FF D8 FF` at 0 | yes | in `utils/fileValidation.util.ts` |
 | PNG | `89 50 4E 47 0D 0A 1A 0A` at 0 | yes | in `fileValidation.util.ts` |
-| HEIC / HEIF | ISO-BMFF `ftyp` box at offset 4 with a major or compatible brand in `heic heix hevc hevx heim heis mif1 msf1` | yes — **original kept, JPEG derivative generated** | **not in `fileValidation.util.ts` today**: P21-02 adds it (with a test that an AVIF/MP4 `ftyp` is refused) |
+| HEIC / HEIF | ISO-BMFF `ftyp` box at offset 4 with a major or compatible brand in `heic heix hevc hevx heim heis mif1 msf1` | ~~yes — original kept, JPEG derivative generated~~ **no, in the application (ADR-132 Am. 3, 2026-10-09): 415 `PHOTO_HEIC_UNSUPPORTED`; converted to JPEG on the client** | detected (`upstreamFileImport/imageInspect#detectImageType`) only to refuse it with its own code; the upstream HEIC files are converted by the ETL outside the application (§ 11) |
 | SVG, AVIF, GIF, WebP, anything else (incl. the `.sh` and `.txt`) | — | **no** → quarantine | SVG is script-capable; AVIF is outside the allow-list (1 file — the operator may convert it by hand) |
 | PDF | `%PDF-` | **not into application storage** | archive path only (§ 6) |
 
@@ -90,6 +90,8 @@ HEIC originals always get both (browsers do not render HEIC). Requirement for P2
 erasing an attachment deletes its derivatives too, and the storage `usage()` counts them.
 **Dependency:** the backend has no image library today (no `sharp`, no HEIC decoder); P21-02
 adds one under the owner's package rule (proved by tests and an image boot).
+
+*As built (P21-02b, ADR-132 Am. 3, 2026-10-09):* both derivatives are JPEG, built in pure JavaScript (`jpeg-js`, `pngjs`, no native module — the pkg binary carries them): a strict full decode, the EXIF orientation applied, transparency flattened, **no metadata by construction** (JFIF header and scan only); display 1,600 px q80, thumbnail 320 px q75. The keys are derived from the original's (`…/<uuid>.display.jpg`, `…/<uuid>.thumb.jpg`); the delete, the deleted-file sweep and the device move's re-key carry them; `usage()` counts them (same prefix). HEIC is not decoded by the server (§ 3).
 
 ### 4.2 Originals ⚖
 
@@ -212,8 +214,8 @@ from §§ 2–7 above, so neither is read as the other.
 | § | This policy | As built (2026-10-07) | Until |
 |---|---|---|---|
 | 2 step 4 | SHA-256 against a source-side manifest | SHA-256 on arrival (rsync's transfer checksums guard the copy); no command runs on the source | P24-05 (by hand, on the source) |
-| 3 | HEIC accepted, JPEG derivative generated | HEIC **quarantined** (`heic_converter_unavailable`) and counted: no HEIC decoder in the backend | P21-02, then a re-run |
-| 4.1 | display and thumbnail derivatives | none | P21-02 |
+| 3 | HEIC accepted, JPEG derivative generated | HEIC **quarantined** (`heic_converter_unavailable`) and counted: no HEIC decoder in the backend — **and none is coming** (ADR-132 Am. 3: the application takes JPEG/PNG, the client converts) | **P24-03: the ETL converts the 897 HEIC files to JPEG in its throwaway environment (e.g. `heif-convert`), outside the application, then ingests the JPEGs** |
+| 4.1 | display and thumbnail derivatives | none for the import (the manifest only) | the ETL's insert (P24-03) builds them with the application's pipeline (`devicePhoto/imageDerivatives`, P21-02b) |
 | 4.2 ⚖ | originals byte-exact by default | **GPS removed losslessly before the put** (EXIF GPS IFD emptied, XMP/IPTC/comment segments and PNG text/eXIf chunks dropped; orientation and image data untouched); source and stored SHA-256 both in the manifest | counsel's ruling (06 ⚖) |
 | 5 | ClamAV fail-closed | as specified (`virusScan.service`; a scanner error is `scan_failed`) | — |
 | 7 | `t/<tenant>/f/<faskes>/attachments/<uuid>.<ext>` | `t/<tenant>/attachments/<uuid>.<ext>` — the tenant's own scope; no source name in a key | P24-03 re-keys from the manifest |

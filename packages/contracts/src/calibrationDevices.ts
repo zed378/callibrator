@@ -10,7 +10,7 @@
  */
 import { z } from "zod";
 import { booleanish, caseless, dateLike, numeric, optionalText, uuid } from "./fields";
-import { CALIBRATION_DUE_FILTERS, DEVICE_CONDITIONS, INVENTORIED_ON_MIN, IPM_INTERVAL_MONTHS_MAX } from "./deviceValues";
+import { CALIBRATION_DUE_FILTERS, DEVICE_CONDITIONS, DEVICE_PHOTO_PURPOSES, INVENTORIED_ON_MIN, IPM_INTERVAL_MONTHS_MAX } from "./deviceValues";
 
 const DEVICE_STATUSES = ["active", "inactive", "maintenance", "retired"] as const;
 
@@ -56,6 +56,21 @@ const deviceQrParams = z.object({
 
 const calibrationDeviceIdSchema = z.object({
   calibrationDeviceId: uuid(),
+});
+
+/**
+ * P21-02b (spec P19-03 § 7.2): the photo upload's fields (multipart, beside `file`) with the path's
+ * device. `ipm_evidence` is refused here (an IPM session's photo, P19-02 § 12).
+ */
+const devicePhotoUpload = z.strictObject({
+  calibrationDeviceId: uuid(),
+  purpose: z.enum(DEVICE_PHOTO_PURPOSES),
+});
+
+/** P21-02b: a device photo's path — the attachment must be a photo OF this device (else 404). */
+const devicePhotoParams = z.strictObject({
+  calibrationDeviceId: uuid(),
+  attachmentId: uuid(),
 });
 
 // ==========================================
@@ -151,6 +166,8 @@ export {
   getCalibrationDevicesQuery,
   calibrationDeviceIdSchema,
   deviceQrParams,
+  devicePhotoUpload,
+  devicePhotoParams,
   createCalibrationDeviceSchema,
   updateCalibrationDeviceSchema,
   createCalibrationDeviceBoundSchema,
@@ -175,3 +192,7 @@ export type UpdateCalibrationDeviceBody = z.output<typeof updateCalibrationDevic
 export type GetCalibrationDevicesQueryBody = z.output<typeof getCalibrationDevicesQuery>;
 /** A room named on the device form. */
 export type RoomInput = z.output<typeof roomInput>;
+/** P21-02b: the photo upload's validated fields. */
+export type DevicePhotoUpload = z.output<typeof devicePhotoUpload>;
+/** P21-02b: a device photo's validated path. */
+export type DevicePhotoParams = z.output<typeof devicePhotoParams>;

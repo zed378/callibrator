@@ -37,6 +37,8 @@ export interface TwoTenantRoute<C extends SuiteContext = SuiteContext> {
   readonly body?: unknown;
   readonly query?: Record<string, unknown>;
   readonly headers?: Record<string, string>;
+  /** P21-02b: a multipart route's `req.file` (multer doubled), made fresh for each request. */
+  readonly file?: () => unknown;
   readonly writes?: readonly string[];
   readonly ownerStatus?: number;
   readonly principal?: (ctx: C) => Principal;
@@ -61,6 +63,7 @@ export const twoTenantSuite = <C extends SuiteContext>({ module, router, mdb, co
         body: typeof route.body === "function" ? (route.body as () => unknown)() : (route.body ?? {}),
         query: route.query ?? {},
         headers: route.headers ?? {},
+        ...(route.file ? { file: route.file() } : {}),
       });
 
     it("another tenant's record answers 404, identical to one that does not exist, and nothing is written", async () => {

@@ -68,6 +68,16 @@ export const errorResponses = {
     description: "The record's current state does not allow this action; `message` says which state and why.",
     content: errorContent(409, "This record is in a state that does not allow this action"),
   },
+  415: {
+    id: "UnsupportedMediaType",
+    description: "The uploaded file's CONTENT (its magic bytes, not its name or declared type) is not a type this route takes; the top-level `code` says which refusal.",
+    content: errorContent(415, "Unsupported file type"),
+  },
+  422: {
+    id: "UnprocessableContent",
+    description: "The uploaded file has an accepted type but cannot be used (it does not decode, exceeds a pixel limit, or was refused by the virus scan); the top-level `code` says which.",
+    content: errorContent(422, "The file could not be processed"),
+  },
   429: {
     id: "RateLimited",
     description:

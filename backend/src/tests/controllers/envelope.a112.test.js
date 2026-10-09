@@ -191,7 +191,8 @@ describe("A-112 — calibrationRecords controller: a non-2xx result is an error 
       success: true,
       status: 200,
       message: "Fetch calibration records successful",
-      data: [{ id: RECORD_ID, performerDisplay: null }], // P21-09e
+      // P21-09e; P21-06: the recap facts (the room snapshot, `effective`, the facility for provider staff).
+      data: [{ id: RECORD_ID, performerDisplay: null, room: { name: "—", floor: "—" }, effective: true, clientFacility: null }],
       meta,
     });
   });

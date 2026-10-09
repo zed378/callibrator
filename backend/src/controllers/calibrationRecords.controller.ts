@@ -29,6 +29,7 @@ import {
 import { validateInput } from "../validators/input";
 import type { TenantId, UserId } from "../types/ids";
 import { withDisplay, withDisplays } from "../services/personDisplay.service";
+import { recapFacts } from "../services/calibrationRecap.service";
 
 /** P21-09e (spec § 12): the performer shown beside each record, for every viewer. */
 const RECORD_PEOPLE = { performerDisplay: "performedBy" } as const;
@@ -62,13 +63,23 @@ const getAllCalibrationRecords = asyncHandler(async (req: Request, res: Response
     from: validated.from,
     to: validated.to,
     includeSuperseded: validated.includeSuperseded,
+    // P21-06 (spec P19-05 § 8): the recap reads.
+    dateField: validated.dateField,
+    fromDay: validated.fromDay,
+    toDay: validated.toDay,
+    latestOnly: validated.latestOnly,
+    entryKind: validated.entryKind,
+    clientFacilityId: validated.clientFacilityId,
+    qrCode: validated.qrCode,
+    sort: validated.sort,
   });
 
   // Rows in `data`, pagination in a top-level `meta`. A failed result carries
   // no rows; sendResult sends it down the error path and ignores the meta.
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- as built: a failed result has no page (ADR-038 rule 3)
   const page: Partial<typeof result.data> = result.data || {};
-  const rows = page.rows ? await withDisplays(page.rows, RECORD_PEOPLE) : page.rows;
+  // P21-06: each row's recap facts (the room snapshot, `effective`, the facility for provider staff).
+  const rows = page.rows ? await recapFacts(await withDisplays(page.rows, RECORD_PEOPLE)) : page.rows;
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built (ADR-038 rule 3)
   sendResult(res, { ...result, data: rows }, page.meta || null);
 });
