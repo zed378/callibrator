@@ -128,9 +128,10 @@ const CREDENTIAL_ENDPOINTS = [
   "/api/v1/access-requests",
 ];
 
+// P23-02 (G-R12): + the one parametrised path, an IPM report signature (a 401 is a wrong credential).
 const isCredentialEndpoint = (url: string | undefined): boolean => {
-  const path = (url || "").split("?")[0];
-  return CREDENTIAL_ENDPOINTS.includes(path);
+  const path = (url || "").split("?")[0] ?? "";
+  return CREDENTIAL_ENDPOINTS.includes(path) || /^\/api\/v1\/ipm\/sessions\/[^/]+\/signatures$/.test(path);
 };
 
 /** Pages behind the session — the ones proxy.ts guards. */

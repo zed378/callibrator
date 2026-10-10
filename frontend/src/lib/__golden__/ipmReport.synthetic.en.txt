@@ -1,0 +1,64 @@
+# P23-02 golden file — the synthetic report of tests/support/ipmReportFixtures.ts rendered in English
+# with the Helvetica fallback (no font fetched; "—" folds to "-", "≤" to "?"), read back as the PDF's
+# text runs. Written BY HAND from P19-06 § 11 (block order, labels, the L-1 … L-8 fixes), not
+# generated from the renderer: every line must appear, in this order. One run per line.
+IPM - Inspection and Preventive Maintenance
+SYNTHETIC INFUSION PUMP
+Synthetic Calibration Co
+Jalan Contoh 1, Jakarta, 10110, Indonesia
+Hospital / clinic
+Synthetic Clinic
+IPM date
+10 Oct 2026
+Room · floor
+ICU · 2
+Inventory no. (QR)
+QR-000123
+Make
+Synthetic Make
+S/N
+SN-0001
+Model / type
+SP-1 · Infusion pump
+Last calibration
+1 Mar 2026
+Next calibration
+1 Mar 2027
+Report no.
+IPM-SC-20261010-007
+Visit
+007
+Environment
+Room temperature
+22.5 °C
+Physical inspection
+Main unit
+Minor damage
+Dirty
+Electrical safety
+Chassis leakage
+Good (computed)
+45 µA (? 100 µA)
+Performance checks
+Reading 1
+Reading 2
+Flow rate
+10 mL/h
+12 mL/h
+10 ± 1
+Maintenance tasks
+Part replaced
+Fuse
+Inspection result
+Good
+Maintenance result
+Good
+Recommendation
+The device must be repaired
+Notes
+Synthetic note
+Technical performer
+IPSRS
+Awaiting electronic countersignature
+IPM-SC-20261010-007 · Page 1 / 1 · Generated 10 Oct 2026, 11:00 (Asia/Jakarta) by Synthetic Reader
+Integrity (ipm-report-v1, SHA-256): 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

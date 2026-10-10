@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 1 DONE · 2 DONE in code (**P23-03**, **P23-04** — built by P22-06, 2026-10-10; parity sign-off is P23-05) · 1 TODO (**P23-02**, unblocked by P21-04, 2026-10-09) · 1 BLOCKED |
+| **Status** | 1 DONE · 3 DONE in code (**P23-02**, 2026-10-10 — the `/` budget question open; **P23-03**, **P23-04** — built by P22-06, 2026-10-10; parity sign-off is P23-05) · 0 TODO · 1 BLOCKED |
 | **Goal** | IPM report, inventory PDF/XLSX, 5 calibration recaps: field parity plus our numbering, QR verification, signatures |
 | **Depends on** | Phase 21 |
 | **Size** | M |
@@ -29,7 +29,7 @@ verification and signatures. **Spec refs:** 00 § 7 · 02 F-58 … F-69 · M08, 
 | Card | Title | Status | Depends on |
 |---|---|---|---|
 | P23-01 | Structure-only reference of the upstream layouts (sections, field order, page size, signature blocks) from the views — no data | **DONE 2026-10-07** — `docs/UPSTREAM/09-REPORT-LAYOUTS.md` (targets: frontend jsPDF / client-side XLSX, no stored files); [record](../MEMORY/records/2026-10-07-upstream-privacy-and-reports.md) | — |
-| P23-02 | IPM report as a frontend renderer (ADR-126 § 8; no stored PDF); golden-file test on synthetic data — **specified 2026-10-08 by P19-06** ([spec](../MEMORY/specs/P19-06-ipm-report-document.md) § 9 – § 12, § 16; ADR-126 Am. 2): `lib/pdf/` shared primitives, `lib/ipmReportPdf.ts`, the on-screen report page, the signature dialog, `/verify/ipm/[reportNumber]` (≤ 120 KB brotli) | **TODO** (unblocked 2026-10-09: P21-04 built the document, the signature and the verification routes; the G-P2 `/dashboard/esignature` leaf is this card's — ADR-126 Am. 5 § 9) | P21-03, P21-04, P19-06 |
+| P23-02 | IPM report as a frontend renderer (ADR-126 § 8; no stored PDF); golden-file test on synthetic data — specified by P19-06 | **DONE in code** 2026-10-10 ([record](../MEMORY/records/2026-10-10-p23-02-ipm-report-renderer.md)) — `lib/ipmReportPdf.ts` (§ 11 layout, golden file written by hand — it found the µ → "?" fallback defect, fixed), `/dashboard/ipm/sessions/<id>/report` (accessible report, PDF from a fresh audited read, Sign / Countersign dialog), the signature path a credential endpoint, `/verify/ipm/[reportNumber]` (hash recomputed in the browser; 118.7 / 120 KB brotli). **Open:** `/` gzip 150.0 / 150 (Turbopack module ids widened — record), `lib/pdf/` not moved, evidence photos | P21-03, P21-04, P19-06 |
 | P23-03 | Inventory PDF (with/without photos) and the facility variant | **DONE in code** 2026-10-10 by P22-06 ([record](../MEMORY/records/2026-10-10-p22-06-browser-exports.md)) — 09 § 3.3 layouts and fixes; **open:** the photo row threshold measured on the dry-run size (provisional 1,000), the D3 address line (no address in the facility read) | P21-06 |
 | P23-04 | Inventory XLSX and the five calibration recaps: column parity | **DONE in code** 2026-10-10 by P22-06 ([record](../MEMORY/records/2026-10-10-p22-06-browser-exports.md)) — 09 § 4.3 columns with the fixes (date cells, separate inventory date, performer snapshot, no photo URL, frozen header, autofilter), the upstream file names | P21-06 |
 | P23-05 | Side-by-side sign-off by the provider (dry-run data on a throwaway stack) | BLOCKED | P23-02 … 04, P24-05 |

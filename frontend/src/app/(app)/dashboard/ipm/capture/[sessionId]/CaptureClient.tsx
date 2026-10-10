@@ -350,6 +350,12 @@ function Capture({ loaded, languageForm, autosaveMs, onReload }: { loaded: Loade
           </div>
         )}
         <div className="flex flex-wrap gap-3">
+          {/* P23-02 (P19-06 § 7.2): online, the signature follows the submit. */}
+          {submitted && (
+            <Link href={`/dashboard/ipm/sessions/${submitted.id}/report`} className="font-semibold text-primary underline underline-offset-2">
+              {t("ipm.capture.signReport")}
+            </Link>
+          )}
           <Link href="/dashboard/ipm/new" className="text-primary underline underline-offset-2">
             {t("ipm.capture.another")}
           </Link>
