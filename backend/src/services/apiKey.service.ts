@@ -15,6 +15,7 @@ import { AppError } from "../utils/appError.util";
 import { db } from "../config";
 import auditService from "./audit.service";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "../constants";
+import { IMPORT_KEY_NAME, isReservedImportKeyName } from "../constants/upstreamImportKey";
 import type { TenantId, UserId } from "../types/ids";
 import type { ModelInstance } from "../types/models";
 
@@ -147,6 +148,10 @@ const createApiKey = async (
 ): Promise<PublicApiKey & { key: string }> => {
   if (!name) {
     throw new AppError(400, "name is required");
+  }
+  // P24-04 (ADR-133 Am. 4): the import key is provisioned by the import alone, its key never shown.
+  if (isReservedImportKeyName(name)) {
+    throw new AppError(400, `"${IMPORT_KEY_NAME}" is reserved for the upstream import's own key; choose another name`);
   }
   assertScopes(scopes);
   // assertScopes refused anything but a non-empty array.

@@ -226,6 +226,8 @@ Each row carries, besides the record: `device { id, name, manufacturer, model, q
 - The audit row of every imported record (UD-13) names `system:upstream-import` (`SYSTEM_ACTORS`, added by P24-02) with `changes { source: "skp_ipm", legacy_table, legacy_id }`.
 - The ETL writes through the calibration-record **service** functions with that actor (never a bulk `INSERT` around them), so § 5 and the audit run as for any record; the key is never used over HTTP by the ETL.
 
+> **As built (P24-04, ADR-133 Am. 4, 2026-10-10):** the key is provisioned by `services/upstreamImport/importKey.ts#provisionImportKey`, **not** through the key route — its secret is discarded at creation, so it cannot be used over HTTP at all; the name `upstream-import` is reserved (the key route refuses it). A NULL upstream user's snapshot is `{ name: "Upstream import", role: "import", organisation: <tenant> }` (§ 9.1's `name: null` fails the D-27 shape). A mapped user not found in the tenant is a 409 `IMPORT_PERFORMER_NOT_FOUND`, never the key. A run declared real is refused while `UPSTREAM_REAL_DATA_ALLOWED` is off. Revocation at cutover: `revokeImportKeys`, checked by `importKeyRevoked`.
+
 ---
 
 ## 10. Audit Events

@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — The upstream import's own key records calibration dates with no resolvable person (P24-04) ([record](./records/2026-10-10-p24-04-import-key.md))
+- **Added:** a per-tenant import key (`calibration:write` only, expiring at the sign-off + 90 days) created by the import itself, whose secret nobody ever holds; it is the actor of imported calibration dates whose upstream user is NULL or deleted, and is revoked at cutover. A run declared real is refused while the DPIA gate is off (ADR-133 Am. 4).
+- **Changed:** creating an API key named `upstream-import` through the key route is refused (400): the name is reserved for the import.
+
 ### 2026-10-10 — The IPM capture: start by QR sticker, fill in the checklist step by step, submit (P22-03; ADR-127 Am. 2) ([record](./records/2026-10-10-p22-03-ipm-capture-ui.md))
 - **Added:** `dashboard/ipm/new`: find a device by its QR sticker — typed, with a handheld scanner, or with the phone's camera where the browser can read QR codes — and start its IPM; an open draft is offered to continue. `dashboard/ipm/capture/<id>`: the device's checklist one section at a time, with the readings checked as they are typed (a value outside the possible range is said at once; a result computed from a limit is shown), rows added on site, the outcome, recommendation and room, saved automatically; the review lists what is still missing, and the submit shows the visit number and what the system did (a repair order, a calibration request).
 - **Changed:** the start page alone may use the camera (`Permissions-Policy: camera=(self)` on that path; every other page keeps the camera off).
