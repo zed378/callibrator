@@ -90,6 +90,7 @@ export const SUITES: readonly Suite[] = Object.freeze([
   { id: "p804", file: "src/tests/services/queryCount.p804.live.test.ts", env: { P804_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "w34", file: "src/tests/services/tenantHookless.w34.live.test.js", env: { W34_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p2406", file: "src/tests/services/upstreamSqlImport.p2406.live.test.ts", env: { P2406_PG_LIVE_TEST: "1" }, db: "scratch" },
+  { id: "p2401", file: "src/tests/migrations/upstreamImportGrants.p2401.live.test.ts", env: { P2401_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p803", file: "src/tests/utils/migrationLock.p803.live.test.js", env: { MIGRATION_LOCK_LIVE_TEST: "1" }, db: "scratch" },
   { id: "w03", file: "src/tests/services/calibrationScheduler.w03.live.test.js", env: { CALIBRATION_PG_LIVE_TEST: "1" }, db: "own" },
   { id: "w07", file: "src/tests/services/batchJob.w07.live.test.js", env: { BATCHJOB_PG_LIVE_TEST: "1" }, db: "own" },

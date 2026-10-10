@@ -66,7 +66,11 @@ jest.mock("../../services/upstreamImport/importPipeline", () => ({
 const mdb = jest.requireActual<typeof MemoryDbModule>("../fixtures/memoryDb").memoryDb();
 const service = jest.requireActual<typeof ServiceModule>("../../services/upstreamSqlImport.service");
 /** What the service registered with the batch-job runner when it loaded (before any clearAllMocks). */
-const [registeredType, registeredHandler] = registerHandler.mock.calls[0] as [string, (job: { id: string }) => Promise<unknown>];
+// P24-01: the transform's service (imported by this one) registers its own type too; this is the import's.
+const [registeredType, registeredHandler] = (registerHandler.mock.calls as unknown[][]).find((call) => call[0] === "upstream-sql-import") as [
+  string,
+  (job: { id: string }) => Promise<unknown>,
+];
 const { ImportFailure, ImportCancelled } = jest.requireActual<typeof PipelineModule>("../../services/upstreamImport/importPipeline");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- the real barrel, loaded after the config mock
 const models = require("../../models") as { UpstreamSqlImport: { update: (...a: unknown[]) => Promise<[number]>; create: (...a: unknown[]) => Promise<unknown>; findOne: (...a: unknown[]) => Promise<unknown> } };
@@ -498,7 +502,7 @@ describe("P24-06 the sweep and the reconciliation", () => {
   it("deletes a failed run's file past its retention (audited), and an orphan file once it is an hour old", async () => {
     const dir = path.join(TMP, "upstream-sql");
     fs.rmSync(dir, { recursive: true, force: true });
-    expect(await service.sweepUpstreamSqlImports()).toEqual({ interrupted: 0, purged: 0, orphans: 0 });
+    expect(await service.sweepUpstreamSqlImports()).toEqual({ interrupted: 0, interruptedTransforms: 0, purged: 0, orphans: 0 });
     fs.mkdirSync(path.join(dir, "a-directory"), { recursive: true });
     const expired = path.join(dir, "expired.dump");
     const kept = path.join(dir, "kept.dump");
@@ -511,7 +515,7 @@ describe("P24-06 the sweep and the reconciliation", () => {
     fs.utimesSync(orphan, hourAgo, hourAgo);
     seedRun("a2406000-0000-4000-8000-000000000f11", { status: "failed", errorCode: "TRUNCATED_INPUT", filePath: expired, fileRetainUntil: new Date(Date.now() - 1000) });
     seedRun("a2406000-0000-4000-8000-000000000f12", { status: "failed", errorCode: "TRUNCATED_INPUT", filePath: kept, fileRetainUntil: new Date(Date.now() + 86_400_000) });
-    expect(await service.sweepUpstreamSqlImports()).toEqual({ interrupted: 0, purged: 1, orphans: 1 });
+    expect(await service.sweepUpstreamSqlImports()).toEqual({ interrupted: 0, interruptedTransforms: 0, purged: 1, orphans: 1 });
     expect(fs.readdirSync(dir).sort()).toEqual(["a-directory", "kept.dump", "young.dump"]);
     expect(run("a2406000-0000-4000-8000-000000000f11")).toMatchObject({ filePath: null });
     expect((audits("a2406000-0000-4000-8000-000000000f11")[0]?.["changes"] as { operation: string }).operation).toBe("UPSTREAM_SQL_IMPORT_FILE_PURGED");

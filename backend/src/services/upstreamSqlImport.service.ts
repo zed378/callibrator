@@ -7,8 +7,9 @@
  * and loads the rows of the tables the minimisation policy allows into the
  * `upstream_import` staging schema, through a connection that runs as the import
  * role (the application role cannot read that schema). Stage 2 — the transform
- * from staging into the application's tables — needs the Phase 20 tables and is
- * not built: every run reports `transformStatus: "not_available"`.
+ * from staging into the application's tables — is upstreamSqlTransform.service.ts
+ * (P24-01); a run's view carries its transform state, and the hourly sweep here
+ * also reconciles an interrupted transform.
  *
  *   uploaded ──► scanning ──► parsing ──► loaded
  *       │            │            │
@@ -60,6 +61,7 @@ import notificationService from "./notification.service";
 import virusScan from "./virusScan.service";
 import { ImportCancelled, ImportFailure, runPipeline, type PipelineResult, type TableReport } from "./upstreamImport/importPipeline";
 import { beginStaging, purgeRun } from "./upstreamImport/stagingLoader";
+import { isTransformRequestable, reconcileInterruptedTransforms, transformAvailable } from "./upstreamSqlTransform.service";
 import type { SqlRunner } from "../utils/sql.util";
 import type { ModelInstance } from "../types/models";
 
@@ -138,6 +140,13 @@ export interface RunView {
   errorCode: string | null;
   errorSummary: string | null;
   transformStatus: string;
+  /** P24-01: the transform's failure code, its times and its counts. */
+  transformErrorCode: string | null;
+  transformRequestable: boolean;
+  transformRequestedAt: string | null;
+  transformStartedAt: string | null;
+  transformFinishedAt: string | null;
+  transformSummary: Run["transformSummary"];
   attempt: number;
   fileRetained: boolean;
   fileRetainUntil: string | null;
@@ -186,6 +195,12 @@ const view = (run: Run, names: ReadonlyMap<string, string | null>): RunView => {
     errorCode: run.errorCode ?? null,
     errorSummary: run.errorCode ? FAILURE_TEXT[run.errorCode as UpstreamSqlImportErrorCode] : null,
     transformStatus: run.transformStatus,
+    transformErrorCode: run.transformErrorCode ?? null,
+    transformRequestable: isTransformRequestable(run),
+    transformRequestedAt: iso(run.transformRequestedAt),
+    transformStartedAt: iso(run.transformStartedAt),
+    transformFinishedAt: iso(run.transformFinishedAt),
+    transformSummary: run.transformSummary ?? null,
     attempt: run.attempt,
     fileRetained: Boolean(run.filePath),
     fileRetainUntil: iso(run.fileRetainUntil),
@@ -411,7 +426,7 @@ export const getSettings = (): {
     maxUncompressedBytes: settings.maxUncompressedBytes,
     failedRetentionDays: settings.failedRetentionDays,
     realDataAllowed: upstreamRealDataAllowed(),
-    transformAvailable: false,
+    transformAvailable: transformAvailable(),
   };
 };
 
@@ -869,6 +884,8 @@ export const reconcileInterrupted = async (now: Date = new Date()): Promise<numb
 /** What one sweep did. */
 export interface SweepSummary {
   interrupted: number;
+  /** P24-01: transforms whose job ended without moving them. */
+  interruptedTransforms: number;
   purged: number;
   orphans: number;
 }
@@ -880,6 +897,7 @@ export interface SweepSummary {
 export const sweepUpstreamSqlImports = (now: Date = new Date()): Promise<SweepSummary> =>
   runForTenant(PLATFORM_TENANT_ID, async () => {
     const interrupted = await reconcileInterrupted(now);
+    const interruptedTransforms = await reconcileInterruptedTransforms(now);
     const expired = await UpstreamSqlImport.findAll({
       where: { status: "failed", filePath: { [Op.ne]: null }, fileRetainUntil: { [Op.lt]: now } },
     });
@@ -909,7 +927,7 @@ export const sweepUpstreamSqlImports = (now: Date = new Date()): Promise<SweepSu
         orphans += 1;
       }
     }
-    return { interrupted, purged, orphans };
+    return { interrupted, interruptedTransforms, purged, orphans };
   });
 
 /** The statuses, re-exported for the controller's schema checks. */

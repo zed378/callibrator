@@ -134,6 +134,28 @@ const sqlImportTable = z
 const upstreamSqlImportTables = z
   .record(z.string().regex(/^(#invalid|[a-z_][a-z0-9_]{0,62})$/), sqlImportTable)
   .refine((tables) => Object.keys(tables).length <= 1001, { error: "At most 1,001 tables" });
+/*
+ * P24-01 — the transform's summary: per step (05 § 3.1 order) and per staged source table, how
+ * many rows were staged, mapped by this run, left unchanged (same source_row_hash as an earlier
+ * run), and quarantined by reason. Counts and codes only.
+ */
+const transformSource = z
+  .object({
+    table: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/),
+    staged: count,
+    mapped: count,
+    unchanged: count,
+    quarantined: z.record(sqlCode, count),
+  })
+  .strict();
+const upstreamSqlImportTransformSummary = z
+  .object({
+    durationMs: count,
+    steps: z
+      .array(z.object({ step: sqlCode, durationMs: count, sources: z.array(transformSource).max(50) }).strict())
+      .max(50),
+  })
+  .strict();
 const upstreamSqlImportParseSummary = z
   .object({
     statements: z.record(sqlCode, count),
@@ -310,6 +332,7 @@ export type UpstreamImportSummary = z.infer<typeof upstreamImportSummary>;
 /** `UpstreamSqlImport.tables` / `.parseSummary` (the SQL-dump import): counts and codes only. */
 export type UpstreamSqlImportTables = z.infer<typeof upstreamSqlImportTables>;
 export type UpstreamSqlImportParseSummary = z.infer<typeof upstreamSqlImportParseSummary>;
+export type UpstreamSqlImportTransformSummary = z.infer<typeof upstreamSqlImportTransformSummary>;
 
 /** `InspectionSession.performerSnapshot`, `InspectionSessionSignature.signerSnapshot` (P20-04): a person as printed. */
 export type IpmPersonSnapshot = z.infer<typeof personSnapshot>;
@@ -349,6 +372,7 @@ const JSON_SHAPES: Readonly<Record<string, z.ZodType | undefined>> = Object.free
   "UpstreamFileImport.summary": upstreamImportSummary,
   "UpstreamSqlImport.tables": upstreamSqlImportTables,
   "UpstreamSqlImport.parseSummary": upstreamSqlImportParseSummary,
+  "UpstreamSqlImport.transformSummary": upstreamSqlImportTransformSummary,
   "ClientFacilityMove.counts": clientFacilityMoveCounts,
   "InspectionSession.performerSnapshot": personSnapshot,
   "InspectionSession.deviceSnapshot": ipmDeviceSnapshot,

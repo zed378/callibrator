@@ -43,7 +43,8 @@ describe("P24-06 @callibrator/contracts/upstreamSqlImport", () => {
     expect([...UPSTREAM_SQL_IMPORT_STATUSES]).toEqual(["uploaded", "scanning", "parsing", "loaded", "failed", "cancelled"]);
     expect([...UPSTREAM_SQL_IMPORT_DATA_CLASSES]).toEqual(["synthetic", "real"]);
     expect([...UPSTREAM_SQL_IMPORT_COMPRESSIONS]).toEqual(["none", "gzip"]);
-    expect([...UPSTREAM_SQL_IMPORT_TRANSFORM_STATUSES]).toEqual(["not_available"]);
+    // P24-01 widened the transform lifecycle (upstreamSqlImport.p2401.test.ts pins it).
+    expect(UPSTREAM_SQL_IMPORT_TRANSFORM_STATUSES[0]).toBe("not_available");
     for (const list of [UPSTREAM_SQL_IMPORT_ROW_REJECTIONS, UPSTREAM_SQL_IMPORT_TABLE_REASONS]) {
       expect(new Set(list).size).toBe(list.length);
       expect(list.every((code) => /^[a-z][a-z0-9_]{0,39}$/.test(code))).toBe(true);

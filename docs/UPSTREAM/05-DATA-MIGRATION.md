@@ -100,6 +100,12 @@ confirms with 3–5 events whose real local time is known. Pure `date` columns a
 `file_missing` (162), `file_type_refused` (§ 6), `value_out_of_range` (kept but flagged), …
 Quarantine is reviewed by the operator before sign-off (Phase 25, draft UP-DB-7).
 
+> **As built (P24-01, ADR-129 Am. 1, 2026-10-10):** `upstream_import.quarantine (import_run_id,
+> source_table, source_row_number, legacy_id, reason, created_at)`, one row per (run, table, staged
+> row, reason), codes only; the reasons are `@callibrator/contracts` `UPSTREAM_IMPORT_QUARANTINE_REASONS`
+> (a CHECK) — `device_not_found` above is spelled `no_device`. A re-run of a run's transform replaces
+> that run's quarantine.
+
 ## 4. Id Mapping
 
 `upstream_import.id_map (source_table, legacy_id) PRIMARY KEY → target_table, target_id,
@@ -117,6 +123,12 @@ tenant_id, client_facility_id, batch_id, source_row_hash, source_values jsonb, i
   **never** populated for `users`;
 - the schema is not granted to `callibrator_app` (proven in 04 § 10) and is archived and dropped at
   decommission (Phase 31, draft UP-DB-9).
+
+> **As built (P24-01, ADR-129 Am. 1, 2026-10-10):** migration 0133. `legacy_id` is **text** (a
+> session's `legacy_key` fits); `batch_id` is the run's `import_run_id`; `source_row_hash` is
+> computed by PostgreSQL over the staged row's JSONB without NULLs; CHECKs refuse `source_values` for
+> `users` and a facility without a tenant. Written only by the transform role `callibrator_transform`
+> (no DELETE); `callibrator_app` cannot read it (G-29, `upstreamImportGrants.p2401.live`).
 
 ## 5. Users and Passwords
 

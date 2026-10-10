@@ -14,6 +14,7 @@ import { actorIdOf, requestOriginOf } from "../utils/requestOrigin.util";
 import { upstreamImportSettings } from "../config/upstreamImport";
 import { listUpstreamSqlImportsSchema, upstreamSqlImportIdSchema } from "../validators/upstreamSqlImport.validator";
 import { cancelRun, getRun, getSettings, listRuns, retryRun, uploadDump, type Actor } from "../services/upstreamSqlImport.service";
+import { requestTransform } from "../services/upstreamSqlTransform.service";
 
 /** The super admin acting. */
 const actorOf = (req: Request): Actor => {
@@ -83,4 +84,11 @@ export const cancel = asyncHandler(async (req: Request, res: Response) => {
 export const retry = asyncHandler(async (req: Request, res: Response) => {
   const { id } = validated(req, upstreamSqlImportIdSchema);
   success(res, await retryRun(id, actorOf(req)), "Upstream SQL import queued again", 200);
+});
+
+/** POST /admin/upstream-sql-imports/:id/transform — queue stage 2 for a loaded run (P24-01). */
+export const transform = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = validated(req, upstreamSqlImportIdSchema);
+  await requestTransform(id, actorOf(req));
+  success(res, await getRun(id), "Upstream SQL import transform queued", 200);
 });

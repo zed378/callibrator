@@ -221,6 +221,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0131-ipm-menu-active.js", require("../migrations/0131-ipm-menu-active")],
   // P22-09 landed (ADR-124 Am. 5 § 2): the `client-facilities` menu entry (the facility administration) is turned on.
   ["0132-client-facilities-menu-active.js", require("../migrations/0132-client-facilities-menu-active")],
+  // P24-01 (ADR-129 Am. 1): the transform's role, upstream_import.id_map and .quarantine, the run's transform columns.
+  ["0133-upstream-import-transform.js", require("../migrations/0133-upstream-import-transform")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

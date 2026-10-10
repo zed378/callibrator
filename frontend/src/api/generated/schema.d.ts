@@ -495,6 +495,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/upstream-sql-imports/{id}/transform": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transform a loaded SQL-dump import run into the application's tables
+         * @description P24-01 (ADR-129 Am. 1): queues stage 2 for a LOADED run. A background job reads the run's staged rows on the transform role's connection and runs the steps of docs/UPSTREAM/05 § 3.1 in ONE transaction; every staged row ends in the id map or in quarantine, or nothing is kept. A transformed or failed run may be transformed again (idempotent by row hash). Audited. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `TRANSFORM_NOT_AVAILABLE`, `RUN_NOT_LOADED`, `TRANSFORM_IN_PROGRESS`; 403 `REAL_DATA_NOT_ALLOWED` (a run declared real while UPSTREAM_REAL_DATA_ALLOWED is off).
+         *
+         *     **409** — The steps are not built on this server (`TRANSFORM_NOT_AVAILABLE`), the run is not loaded (`RUN_NOT_LOADED`), or a transform is in progress (`TRANSFORM_IN_PROGRESS`).
+         */
+        post: operations["adminTransformUpstreamSqlImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/upstream-sql-imports/settings": {
         parameters: {
             query?: never;
@@ -14258,10 +14280,43 @@ export interface components {
             errorCode: ("FILE_MISSING" | "INTEGRITY_MISMATCH" | "INFECTED" | "SCAN_FAILED" | "REAL_DATA_NOT_ALLOWED" | "TRUNCATED_INPUT" | "DECOMPRESSED_TOO_LARGE" | "CORRUPT_COMPRESSION" | "STAGING_ROLE_INVALID" | "STAGING_FAILED" | "INTERRUPTED") | null;
             errorSummary: string | null;
             /**
-             * @description Stage 2 (staging to the application's tables) is not built yet
+             * @description Stage 2 (P24-01): `not_available` until a transform is requested; then requested, transforming, transformed or failed
              * @enum {string}
              */
-            transformStatus: "not_available";
+            transformStatus: "not_available" | "transform_requested" | "transforming" | "transformed" | "transform_failed";
+            transformErrorCode: ("REAL_DATA_NOT_ALLOWED" | "TRANSFORM_NOT_BUILT" | "TRANSFORM_ROLE_INVALID" | "TRANSFORM_INCOMPLETE" | "TRANSFORM_FAILED" | "INTERRUPTED") | null;
+            /** @description Whether `POST …/:id/transform` would be accepted now (the steps are built and the run is loaded and idle) */
+            transformRequestable: boolean;
+            transformRequestedAt: string | null;
+            transformStartedAt: string | null;
+            transformFinishedAt: string | null;
+            /** @description Counts per step and staged source table: every staged row is mapped or quarantined */
+            transformSummary: {
+                durationMs: number;
+                steps: {
+                    /** @example calibration_devices */
+                    step: string;
+                    durationMs: number;
+                    sources: {
+                        /** @example trx_inventory */
+                        table: string;
+                        staged: number;
+                        /** @description Rows this run wrote to the id map */
+                        mapped: number;
+                        /** @description Rows mapped by an earlier run with the same row hash (skipped) */
+                        unchanged: number;
+                        /**
+                         * @description Quarantined rows by reason
+                         * @example {
+                         *       "no_device": 3
+                         *     }
+                         */
+                        quarantined: {
+                            [key: string]: number;
+                        };
+                    }[];
+                }[];
+            } | null;
             attempt: number;
             fileRetained: boolean;
             fileRetainUntil: string | null;
@@ -16226,6 +16281,42 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The run, queued again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["UpstreamSqlImportRun"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminTransformUpstreamSqlImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The import run's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run, its transform requested */
             200: {
                 headers: {
                     [name: string]: unknown;

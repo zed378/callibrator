@@ -51,8 +51,9 @@ describe("D-27 — every JSON column is declared", () => {
   // P20-04 (ADR-126 Am. 1–2) adds six, strict snapshots: InspectionSession.performerSnapshot,
   // .deviceSnapshot, .facilitySnapshot, .sideEffects, .issuerSnapshot, InspectionSessionSignature.signerSnapshot.
   // P20-02 adds CalibrationDevice.registrantSnapshot and CalibrationRecord.performerSnapshot (migration 0128).
-  it("finds the thirty-one JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's two, P20-07's move counts, P20-04's six IPM snapshots, P20-02's two)", () => {
-    expect(jsonAttributes()).toHaveLength(31);
+  // P24-01 adds UpstreamSqlImport.transformSummary, counts and codes only (migration 0133).
+  it("finds the thirty-two JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's three, P20-07's move counts, P20-04's six IPM snapshots, P20-02's two)", () => {
+    expect(jsonAttributes()).toHaveLength(32);
   });
 
   it("each JSON attribute validates against its OWN declared shape", () => {
@@ -143,6 +144,15 @@ const GOOD = {
   "UpstreamSqlImport.parseSummary": [
     null,
     { statements: { create_table: 2, insert: 5, set: 3 }, comments: 9, conditionalComments: 4, delimiterRegions: 0, truncated: false, completionMarker: true },
+  ],
+  // P24-01: the transform's counts per step and staged source table; null until it has run.
+  "UpstreamSqlImport.transformSummary": [
+    null,
+    { durationMs: 0, steps: [] },
+    {
+      durationMs: 1200,
+      steps: [{ step: "client_facilities", durationMs: 40, sources: [{ table: "mst_faskes", staged: 118, mapped: 117, unchanged: 0, quarantined: { duplicate_header: 1 } }] }],
+    },
   ],
   // P20-07: a device move's counts per table (and attachments flagged); null while in progress.
   "ClientFacilityMove.counts": [
@@ -258,6 +268,13 @@ const BAD = {
   "UpstreamSqlImport.parseSummary": [
     { comments: 1 },
     { statements: {}, comments: 0, conditionalComments: 0, delimiterRegions: 0, truncated: false, completionMarker: false, firstRow: "x" },
+  ],
+  // P24-01: a value smuggled in, a name that is not a table identifier, a negative count, a reason that is not a code.
+  "UpstreamSqlImport.transformSummary": [
+    { durationMs: 0, steps: [], sample: "Synthetic Name" },
+    { durationMs: 0, steps: [{ step: "s", durationMs: 0, sources: [{ table: "mst; DROP", staged: 0, mapped: 0, unchanged: 0, quarantined: {} }] }] },
+    { durationMs: 0, steps: [{ step: "s", durationMs: 0, sources: [{ table: "t", staged: -1, mapped: 0, unchanged: 0, quarantined: {} }] }] },
+    { durationMs: 0, steps: [{ step: "s", durationMs: 0, sources: [{ table: "t", staged: 0, mapped: 0, unchanged: 0, quarantined: { "Synthetic Name": 1 } }] }] },
   ],
   // P20-07: a negative or fractional count, a name that is not a table identifier, a value smuggled in.
   "ClientFacilityMove.counts": [

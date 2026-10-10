@@ -31,6 +31,7 @@ import {
   UPSTREAM_SQL_IMPORT_COMPRESSIONS,
   UPSTREAM_SQL_IMPORT_DATA_CLASSES,
   UPSTREAM_SQL_IMPORT_ERROR_CODES,
+  UPSTREAM_SQL_IMPORT_TRANSFORM_ERROR_CODES,
   UPSTREAM_SQL_IMPORT_TRANSFORM_STATUSES,
   listUpstreamSqlImportsSchema,
   uploadUpstreamSqlImportSchema,
@@ -143,7 +144,35 @@ const sqlImportRun = z
       .meta({ description: "The parser's statement counts (every statement but CREATE TABLE and INSERT is counted and discarded)" }),
     errorCode: z.enum(UPSTREAM_SQL_IMPORT_ERROR_CODES).nullable(),
     errorSummary: z.string().nullable(),
-    transformStatus: z.enum(UPSTREAM_SQL_IMPORT_TRANSFORM_STATUSES).meta({ description: "Stage 2 (staging to the application's tables) is not built yet" }),
+    transformStatus: z.enum(UPSTREAM_SQL_IMPORT_TRANSFORM_STATUSES).meta({
+      description: "Stage 2 (P24-01): `not_available` until a transform is requested; then requested, transforming, transformed or failed",
+    }),
+    transformErrorCode: z.enum(UPSTREAM_SQL_IMPORT_TRANSFORM_ERROR_CODES).nullable(),
+    transformRequestable: z.boolean().meta({ description: "Whether `POST …/:id/transform` would be accepted now (the steps are built and the run is loaded and idle)" }),
+    transformRequestedAt: z.iso.datetime().nullable(),
+    transformStartedAt: z.iso.datetime().nullable(),
+    transformFinishedAt: z.iso.datetime().nullable(),
+    transformSummary: z
+      .object({
+        durationMs: count,
+        steps: z.array(
+          z.object({
+            step: z.string().meta({ example: "calibration_devices" }),
+            durationMs: count,
+            sources: z.array(
+              z.object({
+                table: z.string().meta({ example: "trx_inventory" }),
+                staged: count,
+                mapped: count.meta({ description: "Rows this run wrote to the id map" }),
+                unchanged: count.meta({ description: "Rows mapped by an earlier run with the same row hash (skipped)" }),
+                quarantined: codeCounts.meta({ description: "Quarantined rows by reason", example: { no_device: 3 } }),
+              }),
+            ),
+          }),
+        ),
+      })
+      .nullable()
+      .meta({ description: "Counts per step and staged source table: every staged row is mapped or quarantined" }),
     attempt: z.number().int().min(1),
     fileRetained: z.boolean(),
     fileRetainUntil: z.iso.datetime().nullable(),
@@ -433,6 +462,23 @@ export default defineRouteDocs({
       params: sqlImportParams,
       success: { status: 200, description: "The run, queued again", data: sqlImportRun },
       conflict: "The run is not failed, its file was deleted, or another import is active. (A run declared real while UPSTREAM_REAL_DATA_ALLOWED is off is a 403.)",
+    },
+    {
+      method: "post",
+      path: "/upstream-sql-imports/:id/transform",
+      operationId: "adminTransformUpstreamSqlImport",
+      summary: "Transform a loaded SQL-dump import run into the application's tables",
+      description:
+        "P24-01 (ADR-129 Am. 1): queues stage 2 for a LOADED run. A background job reads the run's staged rows on the transform role's " +
+        "connection and runs the steps of docs/UPSTREAM/05 § 3.1 in ONE transaction; every staged row ends in the id map or in " +
+        "quarantine, or nothing is kept. A transformed or failed run may be transformed again (idempotent by row hash). Audited. " +
+        "Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `TRANSFORM_NOT_AVAILABLE`, `RUN_NOT_LOADED`, " +
+        "`TRANSFORM_IN_PROGRESS`; 403 `REAL_DATA_NOT_ALLOWED` (a run declared real while UPSTREAM_REAL_DATA_ALLOWED is off).",
+      permission: superAdmin,
+      audited: true,
+      params: sqlImportParams,
+      success: { status: 200, description: "The run, its transform requested", data: sqlImportRun },
+      conflict: "The steps are not built on this server (`TRANSFORM_NOT_AVAILABLE`), the run is not loaded (`RUN_NOT_LOADED`), or a transform is in progress (`TRANSFORM_IN_PROGRESS`).",
     },
     {
       method: "get",

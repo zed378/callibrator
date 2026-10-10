@@ -166,7 +166,9 @@ const SYSTEM_ACTORS = Object.freeze({
    * P24-06 — the SQL-dump import's worker (services/upstreamSqlImport.service.ts):
    * every scanning / parsing / loaded / failed / cancelled transition it makes,
    * the interrupted-run reconciliation and the expired-file purge, under the
-   * PLATFORM tenant. The super admin who uploaded, cancelled or retried is the
+   * PLATFORM tenant. P24-01: also the transform worker's transitions
+   * (transforming / transformed / transform_failed) and the interrupted-transform
+   * reconciliation (services/upstreamSqlTransform.service.ts). The super admin who uploaded, cancelled or retried is the
    * actor of those transitions instead.
    */
   UPSTREAM_SQL_IMPORT: "system:upstream-sql-import",

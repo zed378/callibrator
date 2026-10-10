@@ -109,6 +109,8 @@ interface Graph {
   loader: Loader;
   stagingDb: { createStagingDb(): LiveDb & { transaction(): Promise<LiveTx> } };
   m0114: Migration;
+  /** P24-01: 0133 builds on 0114 (the run table, the schema); it is taken down first and put back last. */
+  m0133: Migration;
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph is loaded per "process" with jest.isolateModules; typed by the members used */
@@ -129,6 +131,7 @@ const load = (): Graph => {
     loader: require("../../services/upstreamImport/stagingLoader") as Loader,
     stagingDb: require("../../config/upstreamImport") as Graph["stagingDb"],
     m0114: require("../../migrations/0114-upstream-sql-imports") as Migration,
+    m0133: require("../../migrations/0133-upstream-import-transform") as Migration,
   };
 };
 
@@ -275,10 +278,12 @@ live("P24-06 — the SQL-dump import on live PostgreSQL 18", () => {
         `s:upstream_import:${IMPORT_ROLE}`,
       ]),
     );
+    await owner.m0133.down({ context: owner.db.getQueryInterface() });
     await owner.m0114.down({ context: owner.db.getQueryInterface() });
     expect(await rows("SELECT to_regclass('upstream_sql_imports') AS t, to_regnamespace('upstream_import') AS s")).toEqual([{ t: null, s: null }]);
     await owner.m0114.up({ context: owner.db.getQueryInterface() });
     await owner.m0114.up({ context: owner.db.getQueryInterface() });
+    await owner.m0133.up({ context: owner.db.getQueryInterface() });
     expect(await objects()).toEqual(before);
   });
 

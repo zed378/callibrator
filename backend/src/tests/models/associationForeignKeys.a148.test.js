@@ -111,6 +111,9 @@ const UNCHANGED = Object.freeze({
   "upstream_sql_imports.uploaded_by": "users SET NULL",
   "upstream_sql_imports.cancelled_by": "users SET NULL",
   "upstream_sql_imports.batch_job_id": "batch_jobs SET NULL",
+  // P24-01 (migration 0133): the transform's requester and its job — the same reasoning.
+  "upstream_sql_imports.transform_requested_by": "users SET NULL",
+  "upstream_sql_imports.transform_batch_job_id": "batch_jobs SET NULL",
 
   // Added by concurrent work (2026-09-24), each with its own migration; they
   // are that work's decisions, recorded here so this list stays complete.
