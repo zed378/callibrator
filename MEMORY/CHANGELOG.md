@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — The offline sync engine's core (P22-10a; not yet in any page) ([record](./records/2026-10-10-p22-10a-sync-engine-core.md))
+- **Added (internal):** the engine that will sync IPM captures and device registrations made offline: every request is fixed (its key and exact content) before it is first sent, so a retry can never create a duplicate or a different record; conflicts stop only the capture concerned and wait for the technician's decision; nothing is ever dropped without a confirmed action; and the downloaded device list is purged after 72 hours, on a lost access or a changed scope, while unsynced work is kept. The phone screens that use it follow (P22-10b, P22-10c).
+
 ### 2026-10-10 — The client facilities page and the binding of facility accounts (P22-09) ([record](./records/2026-10-10-p22-09-client-facilities-ui.md))
 - **Added:** `dashboard/client-facilities`, in Indonesian and English, now in the sidebar for tenant administrators and engineering managers (migration 0132; a running deployment shows it after the menu cache expires). The hospitals, clinics and other facilities a company serves: add, edit, change the status with a reason (leaving Active signs the facility's accounts out), delete; and each facility's accounts, with binding and unbinding (with a reason; the role an unbound account keeps). Binding stays refused until facility accounts are switched on.
 
