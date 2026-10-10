@@ -52,6 +52,10 @@ const EXPECTED: [StatusDomain, string, StatusTone][] = [
   ["calibrationDue", "requested", "attention"],
   ["calibrationDue", "ok", "current"],
   ["calibrationDue", "not_scheduled", "draft"],
+  // P22-02: a device's condition — not good and broken need attention (alarm is reserved)
+  ["deviceCondition", "good", "current"],
+  ["deviceCondition", "not_good", "attention"],
+  ["deviceCondition", "broken", "attention"],
   // work order
   ["workOrder", "InProgress", "attention"],
   ["workOrder", "Completed", "current"],

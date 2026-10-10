@@ -27,7 +27,9 @@ import { Alert } from "./Alert";
 import { Card, CardHeader } from "./Card";
 import { Select } from "./Select";
 import { PasswordLoginForm } from "@/app/(public)/login/components/PasswordLoginForm";
-import { DevicesTable } from "@/app/(app)/dashboard/devices/components/DevicesTable";
+import { DeviceTable } from "@/app/(app)/dashboard/devices/components/DeviceTable";
+import { MessagesProvider } from "@/i18n/MessagesProvider";
+import { en } from "@/i18n/messages/en";
 import { TenantCard } from "@/app/(app)/dashboard/tenants/components/TenantCard";
 import type { Tenant } from "@/types";
 
@@ -351,48 +353,47 @@ describe("Icon-only controls carry a name (ADR-090 sweep)", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  it("DevicesTable: edit and delete are named after the device", async () => {
+  it("DeviceTable (P22-02): every row action is named after the device", async () => {
     const onEdit = jest.fn();
     const onDelete = jest.fn();
+    const device = {
+      id: "d1",
+      tenantId: "t1",
+      name: "Fluke 5522A",
+      serialNumber: null,
+      manufacturer: null,
+      model: null,
+      category: null,
+      status: "active" as const,
+      locationId: null,
+      installationDate: null,
+      nextCalibrationDate: null,
+      calibrationIntervalDays: null,
+      remarks: null,
+      iotEnabled: false,
+      isDeleted: false,
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-01",
+    };
     const { container } = render(
-      <DevicesTable
-        devices={{
-          success: true,
-          data: [
-            {
-              id: "d1",
-              tenantId: "t1",
-              name: "Fluke 5522A",
-              serialNumber: null,
-              manufacturer: null,
-              model: null,
-              category: null,
-              status: "active",
-              locationId: null,
-              installationDate: null,
-              nextCalibrationDate: null,
-              calibrationIntervalDays: null,
-              remarks: null,
-              iotEnabled: false,
-              isDeleted: false,
-              createdAt: "2026-01-01",
-              updatedAt: "2026-01-01",
-            },
-          ],
-          meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
-        }}
-        isDevicesLoading={false}
-        pageSize={10}
-        setCurrentPage={() => {}}
-        hasWriteAccess
-        openEditModal={onEdit}
-        handleDeleteClick={onDelete}
-      />,
+      <MessagesProvider locale="en" messages={en}>
+        <DeviceTable
+          rows={[device]}
+          showFacility
+          actions={{ photos: true, edit: true, remove: true, iot: true }}
+          onPhotos={() => {}}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onIot={() => {}}
+        />
+      </MessagesProvider>,
     );
+    expect(screen.getByRole("button", { name: "Photos of Fluke 5522A" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "IoT ingest for Fluke 5522A" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit Fluke 5522A" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete Fluke 5522A" }));
-    expect(onEdit).toHaveBeenCalled();
-    expect(onDelete).toHaveBeenCalledWith("d1");
+    expect(onEdit).toHaveBeenCalledWith(device);
+    expect(onDelete).toHaveBeenCalledWith(device);
     expect(await axeViolations(container)).toEqual([]);
   });
 

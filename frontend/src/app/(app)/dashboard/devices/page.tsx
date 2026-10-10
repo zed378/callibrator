@@ -1,237 +1,56 @@
-// src/app/dashboard/devices/page.tsx
-"use client";
-
-import React, { useRef, useState } from "react";
-import DashboardLayout from "@/components/layouts/DashboardLayout";
-import {
-  Button,
-  Input,
-  Select,
-  Card,
-  CardContent,
-  Alert,
-} from "@/components/ui";
-import { Plus, Search, Upload } from "lucide-react";
-import { useDevices } from "./hooks/useDevices";
-import DeviceModal from "./components/DeviceModal";
-import DeleteDeviceModal from "./components/DeleteDeviceModal";
-import DevicesTable from "./components/DevicesTable";
-import IotDeviceModal from "./components/IotDeviceModal";
-import { Device, type BulkImportResult } from "@/api/services/device.service";
-
 /**
- * A-358: a rejected import row's `errors` is a message (an empty CSV) or a
- * list of `{ field, message }` (calibrationDevices.service
- * #bulkImportCalibrationDevices). Rendered as text, the list made React throw;
- * each field error is shown as "field: message".
+ * P22-02 — the device register (/dashboard/devices): the list with photos' thumbnails, the
+ * register / edit form (QR, type, condition, room, laboratory) and the two required photos
+ * (F-23 … F-31).
+ *
+ * A server component for one reason, as the IPM checklist page (P22-01): the page is bilingual
+ * (Indonesian default, English); the dictionary is read on the server from the `locale` cookie and
+ * handed to the client island as only its own namespace (P10-02, pickMessages). The language toggle
+ * is a plain form posting to the `setLocale` Server Action. The dashboard's `<html lang>` stays
+ * English (ADR-098 §4), so the island carries its own `lang`.
  */
-const rowErrorText = (errors: BulkImportResult["errors"][number]["errors"]) =>
-  typeof errors === "string"
-    ? errors
-    : errors.map((e) => `${e.field}: ${e.message}`).join("; ");
+import React from "react";
+import { getServerI18n } from "@/i18n/server";
+import { pickMessages } from "@/i18n";
+import { setLocale } from "@/i18n/actions";
+import { MessagesProvider } from "@/i18n/MessagesProvider";
+import { LOCALES } from "@/i18n/config";
+import { DevicesClient } from "./DevicesClient";
 
-export default function DevicesPage() {
-  const {
-    devices,
-    isDevicesLoading,
-    devicesError,
-    warehouses,
-    searchTerm,
-    statusFilter,
-    categoryFilter,
-    setCurrentPage,
-    pageSize,
-    isDeviceModalOpen,
-    setIsDeviceModalOpen,
-    modalType,
-    isDeleteConfirmOpen,
-    setIsDeleteConfirmOpen,
-    form,
-    setForm,
-    hasWriteAccess,
-    handleSearchChange,
-    handleStatusChange,
-    handleCategoryChange,
-    openCreateModal,
-    openEditModal,
-    handleFormSubmit,
-    handleDeleteClick,
-    confirmDelete,
-    isImporting,
-    importResult,
-    handleImportFile,
-    clearImportResult,
-  } = useDevices();
+export async function generateMetadata() {
+  const { t } = await getServerI18n();
+  return { title: t("devices.meta.title") };
+}
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  // A-29 / A-46: the device whose IoT ingest dialog is open.
-  const [iotDevice, setIotDevice] = useState<Device | null>(null);
+const LANGUAGE_NAMES = { id: "Bahasa Indonesia", en: "English" } as const;
 
-  const onImportFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleImportFile(file);
-    e.target.value = "";
-  };
-
+export default async function DevicesPage() {
+  const { locale, messages, t } = await getServerI18n();
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Calibration Devices
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Manage medical instrumentation and calibration equipment.
-            </p>
-          </div>
-          {hasWriteAccess && (
-            <div className="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={onImportFileSelected}
-              />
-              <Button
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isImporting}
-                className="flex items-center gap-2"
-              >
-                <Upload className="h-4 w-4" />
-                {isImporting ? "Importing..." : "Import CSV"}
-              </Button>
-              <Button
-                onClick={openCreateModal}
-                className="flex items-center gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Add Device
-              </Button>
+    <MessagesProvider locale={locale} messages={pickMessages(messages, ["devices."])}>
+      <DevicesClient
+        languageForm={
+          <form action={setLocale}>
+            <div role="group" aria-label={t("devices.language")} className="inline-flex rounded-md border border-border p-0.5">
+              {LOCALES.map((option) => (
+                <button
+                  key={option}
+                  type="submit"
+                  name="locale"
+                  value={option}
+                  lang={option}
+                  aria-current={option === locale ? "true" : undefined}
+                  className={`min-h-9 rounded px-2.5 text-xs font-medium ${
+                    option === locale ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {LANGUAGE_NAMES[option]}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
-
-        {devicesError && <Alert variant="error">{devicesError}</Alert>}
-
-        {importResult && (
-          <Alert
-            variant={importResult.failedCount > 0 ? "warning" : "success"}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p>
-                  CSV import finished: {importResult.successCount} of{" "}
-                  {importResult.totalCount} device(s) imported
-                  {importResult.failedCount > 0 &&
-                    `, ${importResult.failedCount} failed`}
-                  .
-                </p>
-                {importResult.errors?.length > 0 && (
-                  <ul className="mt-2 list-disc pl-5 text-sm">
-                    {importResult.errors.slice(0, 5).map((err, i) => (
-                      <li key={i}>
-                        Row {err.row}: {rowErrorText(err.errors)}
-                      </li>
-                    ))}
-                    {importResult.errors.length > 5 && (
-                      <li>…and {importResult.errors.length - 5} more</li>
-                    )}
-                  </ul>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={clearImportResult}
-                className="text-sm underline shrink-0"
-              >
-                Dismiss
-              </button>
-            </div>
-          </Alert>
-        )}
-
-        {/* Filters */}
-        <Card className="bg-card/50 backdrop-blur-sm border-border">
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search name, serial number, manufacturer..."
-                  value={searchTerm}
-                  onChange={handleSearchChange}
-                  className="pl-9"
-                />
-              </div>
-
-              <div>
-                <Input
-                  placeholder="Filter by category (e.g. Temperature)"
-                  value={categoryFilter}
-                  onChange={handleCategoryChange}
-                />
-              </div>
-
-              <div>
-                <Select
-                  value={statusFilter}
-                  onChange={handleStatusChange}
-                  options={[
-                    { value: "", label: "All Statuses" },
-                    { value: "active", label: "Active" },
-                    { value: "inactive", label: "Inactive" },
-                    { value: "maintenance", label: "Maintenance" },
-                    { value: "retired", label: "Retired" },
-                  ]}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Devices Table */}
-        <DevicesTable
-          devices={devices}
-          isDevicesLoading={isDevicesLoading}
-          pageSize={pageSize}
-          setCurrentPage={setCurrentPage}
-          hasWriteAccess={hasWriteAccess}
-          openEditModal={openEditModal}
-          handleDeleteClick={handleDeleteClick}
-          openIotModal={setIotDevice}
-          loadFailed={!!devicesError && !devices}
-        />
-
-        {iotDevice && (
-          <IotDeviceModal
-            key={iotDevice.id}
-            device={iotDevice}
-            onClose={() => setIotDevice(null)}
-            hasWriteAccess={hasWriteAccess}
-          />
-        )}
-
-        <DeviceModal
-          isOpen={isDeviceModalOpen}
-          onClose={() => setIsDeviceModalOpen(false)}
-          modalType={modalType}
-          isLoading={isDevicesLoading}
-          form={form}
-          setForm={setForm}
-          warehousesData={warehouses?.data || []}
-          onSubmit={handleFormSubmit}
-        />
-
-        <DeleteDeviceModal
-          isOpen={isDeleteConfirmOpen}
-          onClose={() => setIsDeleteConfirmOpen(false)}
-          onConfirm={confirmDelete}
-          isLoading={isDevicesLoading}
-        />
-      </div>
-    </DashboardLayout>
+          </form>
+        }
+      />
+    </MessagesProvider>
   );
 }
