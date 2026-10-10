@@ -523,6 +523,15 @@ export function SessionDialog({ sessionId, caller, onClose }: Props) {
         )}
 
         <div className="flex flex-wrap justify-end gap-2">
+          {/* P23-02: the report of a submitted or voided visit, a draft's preview for its creator. */}
+          {mode === "view" && session.status !== "discarded" && (
+            <Link
+              href={`/dashboard/ipm/sessions/${session.id}/report`}
+              className="inline-flex min-h-9 items-center rounded-md border border-border px-3 text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {t("ipm.session.openReport")}
+            </Link>
+          )}
           {mode === "view" && canCorrect(session, caller) && (
             <Button
               variant="outline"

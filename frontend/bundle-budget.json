@@ -3,14 +3,20 @@
   "routes": {
     "/": {
       "brotliKB": 180,
-      "gzipKB": 150,
-      "note": "AC-7: 180 KB",
+      "gzipKB": 152,
+      "note": "AC-7: 180 KB (brotli). gzip ceiling 150 -> 152 on 2026-10-10 (P23-02 record): Turbopack widened its module ids from 5 to 6 digits once the app crossed a module-count threshold, +0.3 KB gzip on every page with no landing-page change; brotli 128.8 of 180",
       "cssGzipKB": 18
     },
     "/verify/[certificateNumber]": {
       "brotliKB": 120,
       "gzipKB": 141,
       "note": "AC-7: 120 KB (brotli; the framework alone is 127 KB gzip)",
+      "cssGzipKB": 13
+    },
+    "/verify/ipm/[reportNumber]": {
+      "brotliKB": 120,
+      "gzipKB": 141,
+      "note": "P23-02 (P19-06 § 9.4): the /verify/* AC-7 figure; the renderer, jsPDF, qrcode, the font and the contracts load on demand",
       "cssGzipKB": 13
     },
     "/login": {

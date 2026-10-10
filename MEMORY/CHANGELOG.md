@@ -8,6 +8,11 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — The IPM report: on screen, as a PDF made in the browser, signed, and verifiable by its QR (P23-02) ([record](./records/2026-10-10-p23-02-ipm-report-renderer.md))
+- **Added:** `dashboard/ipm/sessions/<id>/report`: the IPM report on screen (the accessible version) and as a PDF in Indonesian or English, made in the browser from a fresh read; the technician signs it and the facility's IPSRS countersigns it with their password or authenticator code. Reached from the IPM history and right after a submit.
+- **Added:** `/verify/ipm/<number>`: the public page the report's QR opens — whether the report is issued, superseded or voided, who signed it, and its hash recomputed in the reader's own browser; the PDF can be downloaded there.
+- **Fixed:** in a PDF printed without the Unicode font, "µA" no longer prints as "?A".
+
 ### 2026-10-10 — The dashboard shows device condition, IPM figures and technician activity (P22-07) ([record](./records/2026-10-10-p22-07-dashboard-condition-activity.md))
 - **Added:** on the dashboard, in Indonesian and English: devices by condition with their shares and a donut, each condition linking to the device register filtered by it; IPM visits of the last 30 days and this month's due counts; the latest submitted IPM visits with search and "only my visits".
 - **Changed:** a facility-bound user no longer sees the warehouse, stock and transfer cards (always 0 for them). The device register accepts `?condition=` in its address.
