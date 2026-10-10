@@ -217,6 +217,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0129-attachment-purpose.js", require("../migrations/0129-attachment-purpose")],
   // P22-01 landed (ADR-124 Am. 5 § 2, ADR-126 Am. 6 § 8): the `ipm-templates` menu entry is turned on.
   ["0130-ipm-templates-menu-active.js", require("../migrations/0130-ipm-templates-menu-active")],
+  // P22-04 landed (ADR-124 Am. 5 § 2): the `ipm` menu entry (the IPM history page) is turned on.
+  ["0131-ipm-menu-active.js", require("../migrations/0131-ipm-menu-active")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

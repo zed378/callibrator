@@ -380,7 +380,7 @@ describe("Icon-only controls carry a name (ADR-090 sweep)", () => {
         <DeviceTable
           rows={[device]}
           showFacility
-          actions={{ photos: true, edit: true, remove: true, iot: true }}
+          actions={{ photos: true, ipm: true, edit: true, remove: true, iot: true }}
           onPhotos={() => {}}
           onEdit={onEdit}
           onDelete={onDelete}
@@ -390,6 +390,8 @@ describe("Icon-only controls carry a name (ADR-090 sweep)", () => {
     );
     expect(screen.getByRole("button", { name: "Photos of Fluke 5522A" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "IoT ingest for Fluke 5522A" })).toBeInTheDocument();
+    // P22-04 (F-57): the device's IPM history is a link to the history narrowed to it.
+    expect(screen.getByRole("link", { name: "IPM history of Fluke 5522A" })).toHaveAttribute("href", "/dashboard/ipm?deviceId=d1");
     fireEvent.click(screen.getByRole("button", { name: "Edit Fluke 5522A" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete Fluke 5522A" }));
     expect(onEdit).toHaveBeenCalledWith(device);

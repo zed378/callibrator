@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — The IPM history page and its menu entry (P22-04) ([record](./records/2026-10-10-p22-04-ipm-history-ui.md))
+- **Added:** `dashboard/ipm`, in Indonesian and English, now in the sidebar (migration 0131; a running deployment shows it after the menu cache expires). Every IPM visit by date, device, facility, room, technician, recommendation and record state; one visit opens with its results by checklist section and the versions it corrects or was corrected by. A facility account sees its facility's visits only.
+- **Added:** correcting a visit (with a reason; the original stays readable until the correction is submitted), voiding one (tenant administrators outside a facility; final), and a draft's date, outcomes, recommendation and notes, then submit or discard. Each device in the register links to its own IPM history.
+
 ### 2026-10-10 — The device register page: QR, type, condition, room and the two required photos (P22-02) ([record](./records/2026-10-10-p22-02-device-register-ui.md))
 - **Changed:** `dashboard/devices` is rebuilt, in Indonesian and English. The list filters by QR sticker, type, condition, status, calibration due and (provider staff) facility, and shows each device's front-photo thumbnail, room and floor, condition and next calibration. The form registers or edits a device with its QR sticker, type (searched), room (typed; found or created in the device's facility), condition, accessories, inventory date, laboratory and IPM interval; a facility-bound technician sees only the fields their account may set.
 - **Added:** after registering a device, its front and serial-plate photos are asked for (camera on a phone) before "Finish"; photos can be replaced or deleted later. Every photo is shrunk and converted to JPEG in the browser before upload, which also removes its location data. A HEIC photo the browser cannot convert is explained (set the camera to JPEG).

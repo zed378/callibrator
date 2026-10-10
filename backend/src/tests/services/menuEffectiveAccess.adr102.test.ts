@@ -157,7 +157,8 @@ const paths = (slugs: readonly string[]): string[] =>
 
 const ACCOUNT = ["change-password", "profile-page", "notifications"];
 // P22-01 landed (migration 0130, ADR-126 Am. 6 § 8): `ipm-templates` is active — every role holding the equipment group sees it.
-const EQUIPMENT = ["calibration", "certificate", "maintenance", "calibration-scheduler", "reports", "predictive-maintenance", "ipm-templates"];
+// P22-04 landed (migration 0131): `ipm` (the IPM history page) is active too, for the same roles.
+const EQUIPMENT = ["calibration", "certificate", "maintenance", "calibration-scheduler", "reports", "predictive-maintenance", "ipm-templates", "ipm"];
 const TOP = ["home", "warehouse", "stock"];
 
 /** The claim: what each seeded role can open without a 403 (route gates by hand). */
@@ -210,15 +211,16 @@ describe("ADR-102 — each seeded role's sidebar is what the API serves", () => 
   it("SUPERADMIN sees every page but Raise a Ticket (the service refuses it, BR-13)", async () => {
     const menu = await menuOf(ROLE_NAMES.SUPER_ADMIN);
     // Every ACTIVE leaf: P20-06 seeds `ipm`, `ipm-templates`, `client-facilities` inactive until their
-    // pages ship (ADR-124 Am. 5 § 2) — `ipm-templates` is active since P22-01 (0130); the other two are in
-    // no sidebar, the super admin's included.
+    // pages ship (ADR-124 Am. 5 § 2) — `ipm-templates` is active since P22-01 (0130), `ipm` since P22-04
+    // (0131); `client-facilities` is in no sidebar, the super admin's included.
     const allLeaves = seed()
       .menuGroups.filter((g) => g.isActive && !seed().menuGroups.some((c) => c.parentId === g.id))
       .map((g) => g.slug)
       .filter((slug) => slug !== "tickets-raise");
     expect(menu).toEqual(paths(allLeaves));
     expect(menu).not.toContain("/dashboard/tickets/raise");
-    expect(menu).not.toEqual(expect.arrayContaining(["/dashboard/ipm"]));
+    expect(menu).toContain("/dashboard/ipm");
+    expect(menu).not.toContain("/dashboard/client-facilities");
   });
 
   it("no entry the old ancestor cascade showed and the API refuses (HEALTHCARE ADMIN)", async () => {
