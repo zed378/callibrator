@@ -9,6 +9,8 @@
 
 import {
   PAGE_SECURITY_HEADERS,
+  CAMERA_PAGES,
+  CAMERA_PERMISSIONS_POLICY,
   buildContentSecurityPolicy,
   generateNonce,
 } from "./securityHeaders";
@@ -152,5 +154,14 @@ describe("PAGE_SECURITY_HEADERS", () => {
     });
     // nginx (deploy/compose/nginx/*.conf) adds exactly one header: HSTS.
     expect(Object.keys(byKey)).not.toContain("Strict-Transport-Security");
+  });
+});
+
+describe("P22-03 (ADR-127 Am. 2) — the camera on the QR-scanning page only", () => {
+  it("every page keeps camera=(); the scanning page alone gets camera=(self), the rest of the policy unchanged", () => {
+    const page = PAGE_SECURITY_HEADERS.find((h) => h.key === "Permissions-Policy")?.value ?? "";
+    expect(page).toContain("camera=()");
+    expect(CAMERA_PAGES).toEqual(["/dashboard/ipm/new"]);
+    expect(CAMERA_PERMISSIONS_POLICY).toBe(page.replace("camera=()", "camera=(self)"));
   });
 });

@@ -87,7 +87,7 @@ frame-ancestors  'none'
 - **Other page headers** (set in `frontend/next.config.ts`, not on `/api/` or `/uploads/public/`, which relay the backend's own):
   - `X-Content-Type-Options: nosniff`
   - `Referrer-Policy: strict-origin-when-cross-origin`
-  - `Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=(), usb=(), browsing-topics=()`
+  - `Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=(), usb=(), browsing-topics=()` — except `/dashboard/ipm/new`, the QR-scanning page, which sends `camera=(self)` (ADR-127 Am. 2, P22-03, 2026-10-10)
   - `X-Powered-By` is off.
   - nginx adds only HSTS.
 

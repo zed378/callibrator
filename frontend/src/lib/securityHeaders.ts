@@ -141,3 +141,13 @@ export const PAGE_SECURITY_HEADERS: ReadonlyArray<{ key: string; value: string }
     value: "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), browsing-topics=()",
   },
 ];
+
+/**
+ * P22-03 (ADR-127 Am. 2): the pages that scan a QR sticker with the camera (`getUserMedia` +
+ * `BarcodeDetector`) get `camera=(self)`; every other page keeps `camera=()`. Am. 1 allowed the
+ * camera on `/field` only; until the field app exists (P22-10) the online IPM start page scans,
+ * so it is the one other path. next.config.ts sets it AFTER the page headers (the last header of a
+ * key wins on a path both match).
+ */
+export const CAMERA_PAGES: readonly string[] = ["/dashboard/ipm/new"];
+export const CAMERA_PERMISSIONS_POLICY = "camera=(self), microphone=(), geolocation=(self), payment=(), usb=(), browsing-topics=()";

@@ -139,7 +139,18 @@ function History({ caller, deviceId, canReadDevices, languageForm }: HistoryProp
           </h1>
           <p className="text-sm text-muted-foreground max-w-3xl">{caller.bound ? t("ipm.leadBound") : t("ipm.lead")}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">{languageForm}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {languageForm}
+          {/* P22-03: the capture starts from the device's QR sticker. */}
+          {caller.write && !caller.superAdmin && (
+            <Link
+              href="/dashboard/ipm/new"
+              className="inline-flex min-h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {t("ipm.startNew")}
+            </Link>
+          )}
+        </div>
       </div>
 
       {deviceId && (
