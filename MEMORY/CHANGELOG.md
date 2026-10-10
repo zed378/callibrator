@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — Exports made in the browser: the inventory list and the calibration recaps (P22-06; P23-03, P23-04) ([record](./records/2026-10-10-p22-06-browser-exports.md))
+- **Added:** `dashboard/exports`, in Indonesian and English, linked from the device register and the reports page. The inventory list of one facility as a PDF to print and sign (provider layout with technician, inventory date, optional photo thumbnails and two signature blocks; or the facility layout), or of one or every facility as a spreadsheet; the calibration recaps as a spreadsheet by calibration or input date over a day or a range, or the latest calibration of every device. The size is shown before anything is built, the progress while it is, and an export can be cancelled. Files are made in the browser and nothing is uploaded or stored; a facility account exports only its facility.
+
 ### 2026-10-10 — The IPM history page and its menu entry (P22-04) ([record](./records/2026-10-10-p22-04-ipm-history-ui.md))
 - **Added:** `dashboard/ipm`, in Indonesian and English, now in the sidebar (migration 0131; a running deployment shows it after the menu cache expires). Every IPM visit by date, device, facility, room, technician, recommendation and record state; one visit opens with its results by checklist section and the versions it corrects or was corrected by. A facility account sees its facility's visits only.
 - **Added:** correcting a visit (with a reason; the original stays readable until the correction is submitted), voiding one (tenant administrators outside a facility; final), and a draft's date, outcomes, recommendation and notes, then submit or discard. Each device in the register links to its own IPM history.

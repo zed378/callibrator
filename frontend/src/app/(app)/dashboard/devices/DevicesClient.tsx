@@ -20,7 +20,8 @@
  * this island.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { HardDrive, Plus, Search, Shield, Upload } from "lucide-react";
+import Link from "next/link";
+import { FileDown, HardDrive, Plus, Search, Shield, Upload } from "lucide-react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { Alert, Button, Card, CardContent, ConfirmDialog, ErrorState } from "@/components/ui";
 import { describeApiError } from "@/api/client";
@@ -234,6 +235,14 @@ function Register({ access, bound, canPickLab, languageForm }: RegisterProps) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {languageForm}
+          {/* P22-06: the inventory list as PDF or XLSX, built in the browser. */}
+          <Link
+            href="/dashboard/exports"
+            className="inline-flex min-h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <FileDown className="h-4 w-4" aria-hidden="true" />
+            {t("devices.export")}
+          </Link>
           {access.importCsv && (
             <>
               <input

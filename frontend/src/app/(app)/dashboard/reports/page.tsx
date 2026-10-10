@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { Alert, CardSkeleton, Skeleton } from "@/components/ui";
 import { useReports, ReportsTab } from "./hooks/useReports";
@@ -58,6 +59,12 @@ export default function ReportsPage() {
           <p className="text-muted-foreground mt-1">
             Compliance, calibration workload, overdue devices and inventory
             insights.
+          </p>
+          {/* P22-06: the inventory PDF / XLSX and the calibration recaps are built in the browser there. */}
+          <p className="text-sm mt-2">
+            <Link href="/dashboard/exports" className="text-primary underline underline-offset-2">
+              Inventory list and calibration recap exports (PDF, XLSX)
+            </Link>
           </p>
         </div>
 
