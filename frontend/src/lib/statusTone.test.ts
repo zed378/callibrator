@@ -57,6 +57,8 @@ const EXPECTED: [StatusDomain, string, StatusTone][] = [
   ["deviceCondition", "not_good", "attention"],
   ["deviceCondition", "broken", "attention"],
   // P22-04: an IPM session — current, superseded (info), the final states as drafts; a recommendation needing action
+  ["clientFacility", "active", "current"],
+  ["clientFacility", "ended", "draft"],
   ["ipmSession", "effective", "current"],
   ["ipmSession", "superseded", "info"],
   ["ipmSession", "voided", "draft"],

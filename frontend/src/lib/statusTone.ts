@@ -390,6 +390,12 @@ export const STATUS_REGISTRY = {
     voided: e("draft", "Voided"),
     discarded: e("draft", "Discarded"),
   },
+  /** P22-09 — a client facility: active is current; inactive and ended are not errors (ended is final, its reason says why). */
+  clientFacility: {
+    active: e("current", "Active"),
+    inactive: e("draft", "Inactive"),
+    ended: e("draft", "Ended"),
+  },
   /** P22-04 — the visit's recommendation (F-51): anything but fit for use needs action; alarm stays reserved. */
   ipmRecommendation: {
     fit_for_use: e("current", "Fit for use"),

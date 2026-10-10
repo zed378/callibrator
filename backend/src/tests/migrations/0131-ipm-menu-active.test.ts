@@ -44,7 +44,7 @@ describe("migration 0131 — the ipm menu entry on", () => {
   it("only ipm: client-facilities stays inactive in the seed; ipm and ipm-templates are active there", () => {
     const seed = fs.readFileSync(path.join(SRC, "utils/seedMenuGroups.util.ts"), "utf8");
     const flag = (slug: string): string | undefined => new RegExp(`slug: "${slug}",[\\s\\S]*?is_active: (true|false)`).exec(seed)?.[1];
-    expect([flag("ipm-templates"), flag("ipm"), flag("client-facilities")]).toEqual(["true", "true", "false"]);
+    expect([flag("ipm-templates"), flag("ipm"), flag("client-facilities")]).toEqual(["true", "true", "true"]) /* `client-facilities` since 0132 (P22-09) */;
     expect(m0131.SLUG).toBe("ipm");
   });
 

@@ -170,6 +170,7 @@ const EXPECTED: Readonly<Record<string, readonly string[]>> = {
     "qms", "sop", "risk", "audit", "data-retention", "esignature", "ai-assistant",
     "billing", "finance", "metered-billing", "vendors", "supplier-scorecard",
     "api-keys", "webhooks", "feature-flags", "attachments", "storage",
+    "client-facilities", // P22-09 (migration 0132)
     // `scim` is not here: its API serves only the super admin and SCIM keys.
     "oidc", "webauthn", "network-security", "gdpr", "custom-domains",
   ],
@@ -180,6 +181,7 @@ const EXPECTED: Readonly<Record<string, readonly string[]>> = {
     "qms", "sop", "risk", "audit", "data-retention", "esignature", "ai-assistant",
     "billing", "finance", "metered-billing", "vendors", "supplier-scorecard",
     "api-keys", "webhooks", "feature-flags", "attachments", "storage",
+    "client-facilities", // P22-09 (migration 0132)
   ],
   [ROLE_NAMES.ENGINEERING_MANAGER]: [
     ...TOP, ...ACCOUNT, ...EQUIPMENT,
@@ -187,6 +189,7 @@ const EXPECTED: Readonly<Record<string, readonly string[]>> = {
     "kanban", "workflows", "tickets-raise", "tickets-response",
     "qms", "sop", "risk", "esignature", "ai-assistant",
     "finance", "vendors", "supplier-scorecard", "attachments",
+    "client-facilities", // P22-09 (migration 0132): read
   ],
   [ROLE_NAMES.SUPERVISOR]: [...TOP, ...ACCOUNT, ...EQUIPMENT, "kanban", "tickets-raise", "tickets-response", "esignature"],
   [ROLE_NAMES.TECHNICIAN]: [...TOP, "profile-page", ...EQUIPMENT, "kanban", "tickets-raise", "esignature"],
@@ -212,7 +215,7 @@ describe("ADR-102 — each seeded role's sidebar is what the API serves", () => 
     const menu = await menuOf(ROLE_NAMES.SUPER_ADMIN);
     // Every ACTIVE leaf: P20-06 seeds `ipm`, `ipm-templates`, `client-facilities` inactive until their
     // pages ship (ADR-124 Am. 5 § 2) — `ipm-templates` is active since P22-01 (0130), `ipm` since P22-04
-    // (0131); `client-facilities` is in no sidebar, the super admin's included.
+    // (0131), `client-facilities` since P22-09 (0132).
     const allLeaves = seed()
       .menuGroups.filter((g) => g.isActive && !seed().menuGroups.some((c) => c.parentId === g.id))
       .map((g) => g.slug)
@@ -220,7 +223,7 @@ describe("ADR-102 — each seeded role's sidebar is what the API serves", () => 
     expect(menu).toEqual(paths(allLeaves));
     expect(menu).not.toContain("/dashboard/tickets/raise");
     expect(menu).toContain("/dashboard/ipm");
-    expect(menu).not.toContain("/dashboard/client-facilities");
+    expect(menu).toContain("/dashboard/client-facilities"); // P22-09 (0132): all three P20-06 entries active
   });
 
   it("no entry the old ancestor cascade showed and the API refuses (HEALTHCARE ADMIN)", async () => {
