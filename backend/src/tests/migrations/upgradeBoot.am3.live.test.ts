@@ -39,17 +39,19 @@
  *
  *   docker run -d --name am3-pg18 -e POSTGRES_PASSWORD=am3pass \
  *     -p 127.0.0.1:55983:5432 pgvector/pgvector:pg18
- *   AM3_UPGRADE_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55983 DB_NAME=am3_scratch \
+ *   DB_HOST=127.0.0.1 DB_PORT=55983 DB_NAME=am3_scratch \
  *     DB_USER=postgres DB_PASS=am3pass \
- *     npm test -- src/tests/migrations/upgradeBoot.am3.live --coverage=false
+ *     npm run test:live:jest -- src/tests/migrations/upgradeBoot.am3.live
  *   docker rm -f am3-pg18
  *
  * Options:
  *  - AM3_UPGRADE_BASE — the base revision (default ce74932).
  *  - AM3_BASE_NODE_MODULES — a node_modules directory for packages the base
- *    tree needs and the current tree no longer installs. ce74932 needs `joi`
- *    (removed from the backend since that release):
- *      npm install --prefix <dir> joi@18.2.9
+ *    tree needs and the current tree no longer installs. ce74932 needs
+ *    `cls-hooked`, `joi` and `swagger-jsdoc` (removed since that release).
+ *    `npm run test:live -- --with=upgrade` installs them itself (from the
+ *    base's package.json, scripts/live-suites.ts); by hand:
+ *      npm install --prefix <dir> cls-hooked@^4.2.2 joi@^18.2.9 swagger-jsdoc@^6.3.0
  *      AM3_BASE_NODE_MODULES=<dir>/node_modules
  *    The base resolves every other package from the repository's node_modules.
  *
@@ -67,8 +69,6 @@ import path from "path";
 import { QueryTypes, Sequelize } from "sequelize";
 
 import { env, environment } from "../../config/env";
-
-const live = env("AM3_UPGRADE_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const BASE = env("AM3_UPGRADE_BASE") ?? "ce74932";
 const REPO = path.join(__dirname, "../../../..");
@@ -138,7 +138,7 @@ const run = (command: string, args: string[], cwd: string): void => {
   }
 };
 
-live("AM-3 — the current tree boots on a database the previous release built (PostgreSQL 18)", () => {
+describe("AM-3 — the current tree boots on a database the previous release built (PostgreSQL 18)", () => {
   let work: string;
   let baseBackend: string;
   let runner: string;

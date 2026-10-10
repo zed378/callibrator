@@ -18,16 +18,19 @@
  *   - not exactly one <main> and one <h1>, or no lang on <html>.
  *
  * Environment: FRONTEND_URL (default http://localhost:3001), CHROME_PATH,
- * RESPONSIVE_SHOTS=<dir> to also write full-page WebP captures, RESPONSIVE_MODES
- * (comma list, default all five), RESPONSIVE_EXPECT_CLOSED=1 when the stack has no
+ * RESPONSIVE_SHOTS=<dir> to also write full-page WebP captures, RESPONSIVE_EXPECT_CLOSED=1 when the stack has no
  * PRIVACY_NOTICE_URL (ADR-113: /request-access is then the "not open yet" state).
  * RESPONSIVE_SELFTEST=1 plants a clipped line and two overlapping lines on every page
  * and passes only if every page-mode pair reports them (the check proves it can fail).
- * RESPONSIVE_PATHS="name=/path,…" replaces the page list (e.g. a valid verification
+ * RESPONSIVE_PATHS="name=/path,…" ADDS pages to the list (e.g. a valid verification
  * link: "verify-valid=/verify/CERT-DEMO-0003?t=<token>").
  *
- * The verification demo (landing #verifikasi; P10-17 fix, 2026-10-06): when the page
- * list includes "/", a second sweep loads the landing in ID and EN, light and dark,
+ * Nothing is skipped (2026-10-10, owner rule "no test may be skipped"): every page in
+ * every mode and the verification-demo sweep run on every run. RESPONSIVE_MODES,
+ * RESPONSIVE_QR=0 and RESPONSIVE_QR_ONLY=1 (subset switches) are gone, and
+ * RESPONSIVE_PATHS can no longer replace the default page list, only extend it.
+ *
+ * The verification demo (landing #verifikasi; P10-17 fix, 2026-10-06): a second sweep loads the landing in ID and EN, light and dark,
  * with reduced motion (plus two passes without it), at every width in
  * RESPONSIVE_QR_WIDTHS (default 360 ... 1536, 15 widths), in the idle AND the verified
  * state, and fails on:
@@ -42,7 +45,7 @@
  *   - the verdict extending past the phone's screen, or an empty live region;
  *   - the certificate or the phone changing size between idle and verified (layout shift);
  *   - without reduced motion, a verdict that appears at once (no scan).
- * RESPONSIVE_QR=0 skips it; RESPONSIVE_QR_ONLY=1 runs only it. RESPONSIVE_QR_SHOTS=<dir>
+ * RESPONSIVE_QR_SHOTS=<dir>
  * writes WebP crops of the demo (verified state, EN, reduced motion) at 768/773/820/1024
  * in both themes, named p1017-fix-qr-<RESPONSIVE_QR_SHOT_TAG, default "after">-<theme>-<width>.webp.
  * Under RESPONSIVE_SELFTEST=1 it plants an overlap, a squeezed number and a squeezed
@@ -55,9 +58,7 @@ const puppeteer = require("puppeteer-core");
 
 const origin = (process.env.FRONTEND_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const out = process.env.RESPONSIVE_SHOTS ?? "";
-const PAGES = process.env.RESPONSIVE_PATHS
-  ? process.env.RESPONSIVE_PATHS.split(",").map((pair) => [pair.slice(0, pair.indexOf("=")).trim(), pair.slice(pair.indexOf("=") + 1).trim()])
-  : [
+const PAGES = [
   ["landing", "/"],
   ["login", "/login"],
   [process.env.RESPONSIVE_EXPECT_CLOSED ? "request-access-closed" : "request-access", "/request-access"],
@@ -67,12 +68,13 @@ const PAGES = process.env.RESPONSIVE_PATHS
   ["news", "/news"],
   ["verify", "/verify"],
   ["verify-not-found", "/verify/CERT-NOPE-1"],
+  ...(process.env.RESPONSIVE_PATHS
+    ? process.env.RESPONSIVE_PATHS.split(",").map((pair) => [pair.slice(0, pair.indexOf("=")).trim(), pair.slice(pair.indexOf("=") + 1).trim()])
+    : []),
 ];
 /** RESPONSIVE_SELFTEST=1: plant a defect on every page; the run passes only if EVERY pair reports it. */
 const SELFTEST = process.env.RESPONSIVE_SELFTEST === "1";
-const MODES = (process.env.RESPONSIVE_MODES ?? "w375,w1024,w1440,zoom200,text200").split(",");
-const QR_ON = process.env.RESPONSIVE_QR !== "0" && PAGES.some(([, route]) => route === "/");
-const QR_ONLY = process.env.RESPONSIVE_QR_ONLY === "1";
+const MODES = ["w375", "w1024", "w1440", "zoom200", "text200"];
 const QR_WIDTHS = (process.env.RESPONSIVE_QR_WIDTHS ?? "360,390,480,600,640,700,768,773,820,900,960,1024,1100,1280,1536").split(",").map(Number);
 const QR_SHOTS = process.env.RESPONSIVE_QR_SHOTS ?? "";
 const QR_SHOT_TAG = process.env.RESPONSIVE_QR_SHOT_TAG ?? "after";
@@ -359,8 +361,8 @@ async function qrSweep(browser) {
   const rows = [];
   let qr = { rows: [], failed: 0 };
   try {
-    if (QR_ON) qr = await qrSweep(browser);
-    for (const [name, route] of QR_ONLY ? [] : PAGES) {
+    qr = await qrSweep(browser);
+    for (const [name, route] of PAGES) {
       for (const mode of MODES) {
         const page = await browser.newPage();
         const cdp = await page.createCDPSession();
@@ -446,7 +448,7 @@ async function qrSweep(browser) {
     for (const o of r.overlaps) console.log("     OVERLAP " + o);
     if (r.overflow) for (const w of r.wide) console.log("     WIDE " + w);
   }
-  if (!QR_ONLY) console.log(SELFTEST ? `${rows.length - failed}/${rows.length} pairs detected the planted defect` : `${rows.length - failed}/${rows.length} page-mode pairs clean`);
-  if (QR_ON) console.log(SELFTEST ? `${qr.rows.length - qr.failed}/${qr.rows.length} demo rows detected the planted defects` : `${qr.rows.length - qr.failed}/${qr.rows.length} demo rows clean`);
+  console.log(SELFTEST ? `${rows.length - failed}/${rows.length} pairs detected the planted defect` : `${rows.length - failed}/${rows.length} page-mode pairs clean`);
+  console.log(SELFTEST ? `${qr.rows.length - qr.failed}/${qr.rows.length} demo rows detected the planted defects` : `${qr.rows.length - qr.failed}/${qr.rows.length} demo rows clean`);
   if (failed > 0 || qr.failed > 0) process.exit(1);
 })().catch((e) => { console.error(e); process.exit(1); });

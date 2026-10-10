@@ -8,17 +8,15 @@
  * the way two replicas each load their own. Both run runSchemaSetup — the
  * function backend/index.js boots through — at the same moment.
  *
- * OPT-IN — needs a scratch database the connecting role owns; its `public`
+ * NEEDS a scratch database the connecting role owns; its `public`
  * schema is DROPPED and recreated, so the name must contain "scratch":
  *
- *   MIGRATION_LOCK_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=31432 \
+ *   DB_HOST=127.0.0.1 DB_PORT=31432 \
  *     DB_NAME=callibrator_p8_scratch DB_USER=postgres DB_PASS=p8pass \
- *     npm test -- src/tests/utils/migrationLock.p803.live --coverage=false
+ *     npm run test:live:jest -- src/tests/utils/migrationLock.p803.live
  *
  * Run on pgvector/pgvector:pg18 (PostgreSQL 18).
  */
-
-const live = process.env.MIGRATION_LOCK_LIVE_TEST === "1" ? describe : describe.skip;
 
 const startInstance = (label, messages) => {
   let graph;
@@ -43,7 +41,7 @@ const startInstance = (label, messages) => {
   return graph;
 };
 
-live("P8-03 schema lock — two instances, real PostgreSQL", () => {
+describe("P8-03 schema lock — two instances, real PostgreSQL", () => {
   jest.setTimeout(300000);
   const messages = [];
   let a;
@@ -51,7 +49,7 @@ live("P8-03 schema lock — two instances, real PostgreSQL", () => {
 
   beforeAll(async () => {
     if (!/scratch/.test(process.env.DB_NAME || "")) {
-      throw new Error("MIGRATION_LOCK_LIVE_TEST needs a DB_NAME containing 'scratch'");
+      throw new Error("this suite needs a DB_NAME containing 'scratch'");
     }
     a = startInstance("A", messages);
     b = startInstance("B", messages);

@@ -31,10 +31,23 @@
  * E2E_OPERATOR_PASSWORD (+ E2E_BOOTSTRAP_PASSWORD on a fresh stack),
  * CHROME_PATH, HEADFUL=1, P10_ARTIFACTS=<dir> (failure screenshots), and for
  * the in-browser SSO check P10_MOCK_IDP_HOST (the host name the backend
- * reaches this machine by, e.g. host.docker.internal) + P10_MOCK_IDP_PORT
- * (default 27139). That check needs a NON-production backend whose
- * SSRF_DEV_ALLOW_HOSTS names the host: a production backend refuses a
- * private or http identity provider (it is reported as skipped without it).
+ * reaches this machine by; default host.docker.internal, which the e2e overlay
+ * maps on Linux too) + P10_MOCK_IDP_PORT (default 27139).
+ *
+ * NOTHING IS SKIPPED (2026-10-10, owner rule "no test may be skipped"). Mail is
+ * mandatory: the run refuses to start without a reachable Mailpit. The SSO
+ * check always runs, against the mock IdP this process always starts, and
+ * asserts what the stack under test must do:
+ *   - a PRODUCTION backend (the e2e default) must refuse the private http IdP
+ *     when it is saved — 400 naming https — and never contact it (the A-176
+ *     SSRF guard, utils/ssrf.util.ts);
+ *   - a NON-production backend (E2E_NODE_ENV=development, SSRF_DEV_ALLOW_HOSTS
+ *     naming P10_MOCK_IDP_HOST) must complete the whole OIDC sign-in.
+ * The mode is detected the way backend/src/tests/e2e/p10Live.ts detects it
+ * (an empty POST /auth/register is the absent-route 404 only in production),
+ * or stated by E2E_STACK_MODE=production|non-production. Each mode is a check
+ * that runs; a mismatch fails (a production backend accepting the IdP, or a
+ * development one without the allow-list, cannot pass either branch).
  *
  * Exit status 0 only when every check passed. Not part of `make verify`.
  */
@@ -59,12 +72,12 @@ const MAILPIT = (process.env["E2E_MAILPIT_URL"] ?? "").replace(/\/$/, "");
 /**
  * The in-browser SSO check's mock OIDC identity provider (an HTTP server in
  * THIS process). P10_MOCK_IDP_HOST is the host name the BACKEND reaches this
- * machine by (`host.docker.internal` for a compose stack); unset, the check is
- * skipped by name. The backend reaches a non-public IdP only when it is NOT in
+ * machine by (default `host.docker.internal`, the compose stack's name for the
+ * host). The backend reaches a non-public IdP only when it is NOT in
  * production and the host is on SSRF_DEV_ALLOW_HOSTS (utils/ssrf.util.ts): in
  * production a private or http IdP is refused, correctly.
  */
-const MOCK_IDP_HOST = process.env["P10_MOCK_IDP_HOST"] ?? "";
+const MOCK_IDP_HOST = process.env["P10_MOCK_IDP_HOST"] || "host.docker.internal";
 const MOCK_IDP_PORT = Number(process.env["P10_MOCK_IDP_PORT"] ?? "27139");
 const MOCK_IDP_ORIGIN = `http://localhost:${String(MOCK_IDP_PORT)}`;
 const STEP_TIMEOUT = 30000;
@@ -133,6 +146,21 @@ const call = async (method: string, route: string, body?: unknown, token?: strin
   return { status: res.status, body: json };
 };
 const dataOf = (r: Reply): Record<string, unknown> => obj(obj(r.body)["data"]);
+
+/**
+ * Whether the backend runs with PRODUCTION configuration — the same probe as
+ * backend/src/tests/e2e/p10Live.ts `stackMode` (E2E_STACK_MODE says it;
+ * otherwise an empty POST /auth/register is the app's absent-route 404 only
+ * when self-registration is off, the production default). It picks which SSO
+ * assertion runs, never whether one runs.
+ */
+const stackMode = async (): Promise<"production" | "non-production"> => {
+  const told = process.env["E2E_STACK_MODE"];
+  if (told === "production" || told === "non-production") return told;
+  const address = `198.${String(18 + (randomBytes(1)[0] ?? 0) % 2)}.${String(randomBytes(1)[0] ?? 0)}.${String(((randomBytes(1)[0] ?? 0) % 254) + 1)}`;
+  const probe = await call("POST", "/auth/register", {}, undefined, { "X-Forwarded-For": address });
+  return probe.status === 404 && /route not found/i.test(str(obj(probe.body)["message"])) ? "production" : "non-production";
+};
 
 const chromePath = (): string => {
   const candidates = [
@@ -224,7 +252,7 @@ const instrument = async (page: Page): Promise<void> => {
     if (!/^https?:/.test(url)) return;
     const origin = new URL(url).origin;
     // The mock IdP is local (this process), and only the SSO check navigates to it.
-    if (origin !== new URL(FRONTEND_URL).origin && origin !== BACKEND_ORIGIN && !(MOCK_IDP_HOST !== "" && origin === MOCK_IDP_ORIGIN)) {
+    if (origin !== new URL(FRONTEND_URL).origin && origin !== BACKEND_ORIGIN && origin !== MOCK_IDP_ORIGIN) {
       log.thirdParty.push(`${req.method()} ${url} (on ${page.url()})`);
     }
   });
@@ -625,6 +653,14 @@ const startMockIdp = async (): Promise<MockIdp> => {
 const main = async (): Promise<void> => {
   const started = Date.now();
   console.log(`P10 browser suite — frontend ${FRONTEND_URL}, API ${BACKEND_ORIGIN}, mail ${MAILPIT || "(none)"}`);
+  // Mail is mandatory: the invitation link and the reset code exist only in an email.
+  if (MAILPIT === "") throw new Error("E2E_MAILPIT_URL is not set — Mailpit is mandatory (deploy/compose/docker-compose.e2e.yml runs it)");
+  const mailInfo = await fetch(`${MAILPIT}/api/v1/info`, { signal: AbortSignal.timeout(10000) }).catch((err: unknown) => err);
+  if (!(mailInfo instanceof Response) || mailInfo.status !== 200) {
+    throw new Error(`Mailpit at ${MAILPIT} is not reachable (${mailInfo instanceof Response ? String(mailInfo.status) : String(mailInfo)}) — it is mandatory`);
+  }
+  const mode = await stackMode();
+  console.log(`  stack mode: ${mode}`);
 
   const signIn = await api.httpPost("/auth/login", { user: api.OPERATOR, password: api.OPERATOR_PASSWORD });
   const operator = api.extractToken(signIn.body);
@@ -907,9 +943,44 @@ const main = async (): Promise<void> => {
     await c5.close();
 
     // ---- identifier-first SSO through a real redirect (OIDC, the mock IdP in this process)
-    const ssoName = "sso: identifier-first, a claimed domain → the IdP (OIDC, code + PKCE) → back signed in on /dashboard; the callback is single-use";
-    if (MOCK_IDP_HOST === "") {
-      console.log(`  SKIP  ${ssoName} — P10_MOCK_IDP_HOST is not set (a non-production stack whose SSRF_DEV_ALLOW_HOSTS names that host)`);
+    const ssoName = "sso (non-production backend): identifier-first, a claimed domain → the IdP (OIDC, code + PKCE) → back signed in on /dashboard; the callback is single-use";
+    if (mode === "production") {
+      const idp = await startMockIdp();
+      try {
+        await check(
+          "sso (production backend): a private http OIDC IdP is refused when saved — 400 naming https — and the IdP is never contacted",
+          async () => {
+            const code = `P10BRSSOP${stamp}`.toUpperCase().slice(0, 40);
+            const created = await call("POST", "/tenants/create", { name: `SSO Prod Browser ${stamp}`, code, email: `it@sso-prod-${stamp}.example.com` }, operator);
+            if (created.status !== 201) throw new Error(`tenant create ${String(created.status)}: ${str(obj(created.body)["message"])}`);
+            const tenantId = str(dataOf(created)["id"]);
+            const settings = await call(
+              "PATCH",
+              "/tenants/settings",
+              {
+                tenantId,
+                settings: {
+                  sso_enabled: "true",
+                  oidc_client_id: idp.clientId,
+                  oidc_client_secret: idp.clientSecret,
+                  oidc_authority: idp.issuer,
+                  oidc_redirect_uri: `${FRONTEND_URL}/api/v1/auth/sso/oidc/callback/${code}`,
+                },
+              },
+              operator,
+            );
+            const message = str(obj(settings.body)["message"]);
+            if (settings.status !== 400 || !/oidc_authority must use https/.test(message)) {
+              throw new Error(`a production backend answered ${String(settings.status)} (${message}) to an http IdP at ${idp.issuer}; expected 400 "oidc_authority must use https"`);
+            }
+            const contacted = idp.seen.discovery + idp.seen.authorize + idp.seen.token + idp.seen.jwks;
+            if (contacted !== 0) throw new Error(`the refused IdP was contacted ${String(contacted)} time(s)`);
+            return `400 "${message}"; the IdP saw 0 requests`;
+          },
+        );
+      } finally {
+        await idp.close();
+      }
     } else {
       const idp = await startMockIdp();
       const c6 = await browser.createBrowserContext();

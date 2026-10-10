@@ -50,9 +50,9 @@
  *
  *   docker run -d --name p2009-pg18 -e POSTGRES_PASSWORD=p2009pass \
  *     -p 127.0.0.1:55221:5432 pgvector/pgvector:pg18
- *   P2009_UPGRADE_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55221 DB_NAME=p2009_scratch \
+ *   DB_HOST=127.0.0.1 DB_PORT=55221 DB_NAME=p2009_scratch \
  *     DB_USER=postgres DB_PASS=p2009pass \
- *     npm test -- src/tests/migrations/upgradeBoot.p2009.live --coverage=false
+ *     npm run test:live:jest -- src/tests/migrations/upgradeBoot.p2009.live
  *   docker rm -f p2009-pg18
  *
  * Options:
@@ -75,8 +75,6 @@ import path from "path";
 import { QueryTypes, Sequelize } from "sequelize";
 
 import { env, environment } from "../../config/env";
-
-const live = env("P2009_UPGRADE_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const BASE = env("P2009_UPGRADE_BASE") ?? "3e91413";
 const REPO = path.join(__dirname, "../../../..");
@@ -316,7 +314,7 @@ const run = (command: string, args: string[], cwd: string): void => {
   }
 };
 
-live("P20-09 — Phase 20 as an upgrade boot on production-shaped data (PostgreSQL 18)", () => {
+describe("P20-09 — Phase 20 as an upgrade boot on production-shaped data (PostgreSQL 18)", () => {
   const name = env("DB_NAME") ?? "";
   const freshName = `${name}_fresh`;
   let work: string;

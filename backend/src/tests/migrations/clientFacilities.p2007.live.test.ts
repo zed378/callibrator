@@ -44,14 +44,12 @@
  *     up × 7: the data intact, the same objects, the back-fill reconciled again.
  *
  *   docker run -d --name p2007-pg18 -e POSTGRES_PASSWORD=p2007pass -p 127.0.0.1:55207:5432 pgvector/pgvector:pg18
- *   P2007_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55207 DB_NAME=p2007_scratch DB_USER=postgres DB_PASS=p2007pass \
- *     npm test -- src/tests/migrations/clientFacilities.p2007.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55207 DB_NAME=p2007_scratch DB_USER=postgres DB_PASS=p2007pass \
+ *     npm run test:live:jest -- src/tests/migrations/clientFacilities.p2007.live
  *   docker rm -f p2007-pg18
  */
 import { Sequelize } from "sequelize";
 import { env } from "../../config/env";
-
-const live = env("P2007_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const APP_ROLE = "callibrator_app";
 const PLATFORM = "00000000-0000-4000-8000-000000000001";
@@ -263,7 +261,7 @@ const EXPECTED_PER_TENANT: Readonly<Record<string, number>> = {
 
 jest.setTimeout(900000);
 
-live("P20-07 — migrations 0117 – 0123 on live PostgreSQL 18", () => {
+describe("P20-07 — migrations 0117 – 0123 on live PostgreSQL 18", () => {
   let g: Graph;
   let admin: Sequelize;
   const self: Record<string, string> = {};

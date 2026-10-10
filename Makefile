@@ -321,7 +321,7 @@ test: ## Unit and integration tests
 .PHONY: test-e2e
 test-e2e: ## the live E2E specs (count: find backend/src/tests/e2e -name '*.test.[jt]s') against a RUNNING server
 	@echo -e "$(C_DIM)Env: BASE_URL, E2E_OPERATOR_PASSWORD (+ E2E_BOOTSTRAP_PASSWORD on a fresh stack), and$(C_OFF)"
-	@echo -e "$(C_DIM)E2E_MAILPIT_URL for the P10 mailed-secret tests (invitation, reset) — skipped by name without it.$(C_OFF)"
+	@echo -e "$(C_DIM)E2E_MAILPIT_URL — MANDATORY: the run refuses to start without a reachable Mailpit (no test is skipped).$(C_OFF)"
 	@echo -e "$(C_WARN)Two rules for this suite:$(C_OFF)"
 	@echo -e "$(C_DIM)  1. Never suspend the default tenant — it suspends the super-admin living in$(C_OFF)"
 	@echo -e "$(C_DIM)     it and 403s every later request. Create a disposable tenant.$(C_OFF)"
@@ -329,6 +329,12 @@ test-e2e: ## the live E2E specs (count: find backend/src/tests/e2e -name '*.test
 	@echo -e "$(C_DIM)     produced failures unrelated to the code under test.$(C_OFF)"
 	@echo ""
 	cd backend && npm run test:e2e
+
+.PHONY: test-contract
+test-contract: ## the live CONTRACT smoke: every route + every frontend service call against a RUNNING non-production, demo-seeded stack
+	@echo -e "$(C_DIM)Env: LIVE_CONTRACT_BASE_URL (or BASE_URL), E2E_OPERATOR_PASSWORD. The stack runs with E2E_NODE_ENV=development$(C_OFF)"
+	@echo -e "$(C_DIM)and SEED_DEMO=true, seeded with /migration/seeding then /migration/seed-demo (refused in production). It WRITES.$(C_OFF)"
+	cd backend && npm run test:contract
 
 .PHONY: test-browser
 test-browser: ## Browser suite against a RUNNING stack: the smoke (ADR-077), then axe/dialogs/zoom/motion (ADR-090)
@@ -343,12 +349,14 @@ test-browser: ## Browser suite against a RUNNING stack: the smoke (ADR-077), the
 	@echo -e "$(C_DIM)P10 (P10-13): landing, identifier-first sign-in, one-time password, request access,$(C_OFF)"
 	@echo -e "$(C_DIM)invitation, forgot/reset, verify, passkeys on a WebAuthn virtual authenticator. Needs$(C_OFF)"
 	@echo -e "$(C_DIM)E2E_MAILPIT_URL, and FRONTEND_URL = the backend's WEBAUTHN_ORIGIN (http://localhost:<port>).$(C_OFF)"
-	@echo -e "$(C_DIM)In-browser SSO (OIDC, a mock IdP in-process): P10_MOCK_IDP_HOST on a NON-production backend$(C_OFF)"
-	@echo -e "$(C_DIM)with SSRF_DEV_ALLOW_HOSTS naming it; skipped by name otherwise. Stack: deploy/compose/docker-compose.e2e.yml.$(C_OFF)"
+	@echo -e "$(C_DIM)In-browser SSO (OIDC, a mock IdP in-process, always started): a production backend must refuse it (400, https);$(C_OFF)"
+	@echo -e "$(C_DIM)a non-production one with SSRF_DEV_ALLOW_HOSTS=host.docker.internal must complete the sign-in. Never skipped.$(C_OFF)"
+	@echo -e "$(C_DIM)P11: theme continuity, states, shots (to a temp dir unless P11_SHOTS), axe. Stack: deploy/compose/docker-compose.e2e.yml.$(C_OFF)"
 	node automate/smoke.browser.js
 	node automate/a11y.browser.js
 	node automate/responsive.browser.js
 	node automate/p10.browser.mts
+	node automate/p11.browser.mts
 
 .PHONY: build
 build: ## Build both workspaces

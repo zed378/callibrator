@@ -18,10 +18,10 @@
  *      both keys (the rollback is: keep the previous key);
  *   6. 0058 down restores the legacy form the pre-0058 code reads.
  *
- * OPT-IN, needs an empty scratch database (see dataIntegrity.p6.live.test.js):
+ * NEEDS an empty scratch database (see dataIntegrity.p6.live.test.js):
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=54335 DB_NAME=callibrator_keys_p6 \
- *     DB_USER=cal_owner DB_PASS=owner npm test -- src/tests/services/keyRotation.s08.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=54335 DB_NAME=callibrator_keys_p6 \
+ *     DB_USER=cal_owner DB_PASS=owner npm run test:live:jest -- src/tests/services/keyRotation.s08.live
  *
  * Rehearsed on PostgreSQL 16 against SEEDED data, not a copy of production:
  * that rehearsal is still owed before the first real rotation (the runbook
@@ -30,8 +30,6 @@
 const crypto = require("crypto");
 const { encryptPrivateKeyForTest } = require("../utils/esignatureKey.utils");
 const { keyIdOf } = require("../../utils/keyring.util");
-
-const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const KEY_A = "a7".repeat(32);
 const KEY_B = "b8".repeat(32);
@@ -75,7 +73,7 @@ const boot = (env) => {
 
 const { LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 
-live("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
+describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
   const pems = {};
   const secrets = {};
   let owner;

@@ -16,20 +16,17 @@
  *
  *   docker run -d --name p2101-pg18 -e POSTGRES_PASSWORD=p2101pass \
  *     -p 127.0.0.1:55211:5432 pgvector/pgvector:pg18
- *   P2101_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55211 DB_NAME=p2101_scratch \
- *     DB_USER=postgres DB_PASS=p2101pass npm test -- src/tests/migrations/inspectionCatalogue.p2101.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55211 DB_NAME=p2101_scratch \
+ *     DB_USER=postgres DB_PASS=p2101pass npm run test:live:jest -- src/tests/migrations/inspectionCatalogue.p2101.live
  *   docker rm -f p2101-pg18
  * (or `npm run test:live -- --only=p2101`)
  */
 import { createHash } from "node:crypto";
 import { canonicalTemplateVersion, type CanonicalTemplateItemInput } from "@callibrator/contracts/inspectionValues";
-import { env } from "../../config/env";
 import type * as DeviceTypeService from "../../services/deviceType.service";
 import type * as DefinitionService from "../../services/inspectionItemDefinition.service";
 import type * as TemplateService from "../../services/inspectionTemplate.service";
 import type * as TenantContext from "../../middlewares/tenantContext.middleware";
-
-const live = env("P2101_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const BASE_TEMPLATE = "5eedca7a-0000-4000-8000-000000000001";
 const SEED = { systemActor: "system:catalogue-seed" } as const;
@@ -122,7 +119,7 @@ const storedItems = async (db: LiveDb, versionId: string): Promise<CanonicalTemp
     sortOrder: Number(r["sort_order"]),
   }));
 
-live("P21-01 — the catalogue services on PostgreSQL 18 (0111, 0112, 0125)", () => {
+describe("P21-01 — the catalogue services on PostgreSQL 18 (0111, 0112, 0125)", () => {
   let g: Graph;
   let typeTemplateId = "";
   let typeV1 = "";

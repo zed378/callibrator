@@ -21,13 +21,11 @@
  *    (append-only);
  *  - down REFUSES while a key-authored row exists, and changes nothing.
  *
- *   Q51_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55951 DB_NAME=q51_scratch \
- *     DB_USER=postgres DB_PASS=... npm test -- src/tests/migrations/apiKeyActor.q51.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55951 DB_NAME=q51_scratch \
+ *     DB_USER=postgres DB_PASS=... npm run test:live:jest -- src/tests/migrations/apiKeyActor.q51.live
  */
 import { env } from "../../config/env";
 import { SELF_FACILITIES_SQL } from "../fixtures/selfFacility";
-
-const live = env("Q51_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const APP_ROLE = "callibrator_app";
 const TENANT = "a5151515-0000-4000-8000-000000000001";
@@ -142,7 +140,7 @@ const asUser: Principal = { userId: USER, apiKeyId: null, ipAddress: "10.51.0.2"
 
 jest.setTimeout(900000);
 
-live("Q-51 — migration 0105 on live PostgreSQL 18", () => {
+describe("Q-51 — migration 0105 on live PostgreSQL 18", () => {
   let g: Graph;
 
   beforeAll(async () => {

@@ -15,13 +15,10 @@
  *         (compared row by row with the seed's own), and a second "up"
  *         changes nothing.
  *
- *   UIFIX_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55961 DB_NAME=callibrator_uifix \
- *     DB_USER=postgres DB_PASS=... npm test -- src/tests/migrations/uiCorrectness.adr101adr102.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55961 DB_NAME=callibrator_uifix \
+ *     DB_USER=postgres DB_PASS=... npm run test:live:jest -- src/tests/migrations/uiCorrectness.adr101adr102.live
  */
-import { env } from "../../config/env";
 import { SELF_FACILITIES_SQL } from "../fixtures/selfFacility";
-
-const live = env("UIFIX_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 type Row = Record<string, unknown>;
 interface LiveDb {
@@ -36,7 +33,7 @@ interface Migration {
 
 jest.setTimeout(900000);
 
-live("ADR-101 / ADR-102 migrations on PostgreSQL 18", () => {
+describe("ADR-101 / ADR-102 migrations on PostgreSQL 18", () => {
   /* eslint-disable @typescript-eslint/no-require-imports -- the JavaScript boot graph, typed by the members used */
   const { db } = require("../../config") as { db: LiveDb };
   const { migrator } = require("../../config/migrator") as { migrator: { up(): Promise<{ name: string }[]> } };

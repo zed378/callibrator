@@ -12,16 +12,14 @@
  * Two services, one of each kind: warehouse.service (TypeScript, an unmanaged
  * transaction) and kanban.service (JavaScript, a managed one).
  *
- *   P611_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55611 \
+ *   DB_HOST=127.0.0.1 DB_PORT=55611 \
  *     DB_NAME=callibrator_scratch_p611 DB_USER=postgres DB_PASS=... \
- *     npm test -- src/tests/services/auditRollback.p611.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/auditRollback.p611.live
  *
  * The database must be an EMPTY scratch database: the schema is built here
  * (runSchemaSetup — sync and every migration, the boot path).
  */
 import { env } from "../../config/env";
-
-const live = env("P611_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const APP_ROLE = "callibrator_app";
 const TENANT = "a6a6a6a6-0000-4000-8000-000000000611";
@@ -91,7 +89,7 @@ const one = async (db: LiveDb, sql: string, options: object = {}): Promise<Row> 
 
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
-live("P6-11 — audit row and mutation commit or roll back together, on live PostgreSQL 18 as callibrator_app", () => {
+describe("P6-11 — audit row and mutation commit or roll back together, on live PostgreSQL 18 as callibrator_app", () => {
   let owner: Graph;
   let app: Graph;
   let adminId = "";

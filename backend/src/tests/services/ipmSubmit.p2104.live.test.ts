@@ -22,14 +22,13 @@
  *
  *   docker run -d --name p2104-pg18 -e POSTGRES_PASSWORD=p2104pass \
  *     -p 127.0.0.1:55214:5432 pgvector/pgvector:pg18
- *   P2104_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55214 DB_NAME=p2104_scratch \
- *     DB_USER=postgres DB_PASS=p2104pass npm test -- src/tests/services/ipmSubmit.p2104.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55214 DB_NAME=p2104_scratch \
+ *     DB_USER=postgres DB_PASS=p2104pass npm run test:live:jest -- src/tests/services/ipmSubmit.p2104.live
  *   docker rm -f p2104-pg18
  * (or `npm run test:live -- --only=p2104`)
  *
  * Synthetic values only.
  */
-import { env } from "../../config/env";
 import { BASE_VERSION, rows, seedSql, type LiveDb, type Row } from "../fixtures/ipmLive";
 import type * as SessionService from "../../services/ipmSession.service";
 import type * as SubmitService from "../../services/ipmSubmit.service";
@@ -41,8 +40,6 @@ import type * as TenantContext from "../../middlewares/tenantContext.middleware"
 import type * as LiveBoot from "../fixtures/liveBoot";
 import type { IpmResultsReplace, IpmSessionHeaderUpdate } from "@callibrator/contracts/inspectionSessions";
 import type { ClientFacilityId, TenantId } from "../../types/ids";
-
-const live = env("P2104_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const T = "c2104000-0000-4000-8000-000000000001";
 const ROLE = "c2104000-0000-4000-8000-000000000002";
@@ -122,7 +119,7 @@ const answer = (item: Row): Record<string, unknown> => {
   }
 };
 
-live("P21-04 — submit, correction, void, signatures, verification and due on PostgreSQL 18, as callibrator_app", () => {
+describe("P21-04 — submit, correction, void, signatures, verification and due on PostgreSQL 18, as callibrator_app", () => {
   let g: Graph;
   let results: Record<string, unknown>[] = [];
   let root = "";

@@ -12,11 +12,11 @@
  *    device — Sequelize's positional RETURNING mapping would not;
  *  - the commit count is two per chunk.
  *
- * OPT-IN — needs a database built by db.sync() of the current models plus
+ * NEEDS a database built by db.sync() of the current models plus
  * every migration (migrator.up()):
  *
- *   CALIBRATION_BATCH_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
- *     npm test -- src/tests/services/calibrationScheduler.batch.w17.live --coverage=false
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
+ *     npm run test:live:jest -- src/tests/services/calibrationScheduler.batch.w17.live
  *
  * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
  * DB_NAME is not used), builds it as the backend boots (db.sync() + every
@@ -29,15 +29,13 @@ const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
-const live = process.env.CALIBRATION_BATCH_PG_LIVE_TEST === "1" ? describe : describe.skip;
-
 const A = "a17a17a1-0000-4000-8000-0000000000a1";
 const B = "b17b17b1-0000-4000-8000-0000000000b1";
 const dev = (n) => `d17d17d1-0000-4000-8000-00000000000${n}`;
 const A_DEVICES = [1, 2, 3, 4, 5].map(dev);
 const B_DEVICE = dev(9);
 
-live("calibration scan — batched transactions on live PostgreSQL (W-17)", () => {
+describe("calibration scan — batched transactions on live PostgreSQL (W-17)", () => {
   jest.setTimeout(60000);
   let db;
   let scratch;

@@ -44,9 +44,11 @@
  *
  * Environment: FRONTEND_URL, BASE_URL, CHROME_PATH, E2E_OPERATOR,
  * E2E_OPERATOR_PASSWORD, HEADFUL — as for the smoke; and
- *   A11Y_ONLY=axe,dialogs,reflow,motion,brand   run a subset
  *   A11Y_STRICT=1                         best-practice findings fail too
  *   A11Y_ARTIFACTS=<dir>                  where failure screenshots go (default: the OS temp dir)
+ * Every check group (axe, dialogs, reflow, motion, brand) runs on every run
+ * (2026-10-10, owner rule "no test may be skipped"): the A11Y_ONLY subset
+ * switch is gone.
  *
  * Exit status 0 only when every check passed. Not part of `make verify`.
  * How to bring up a local stack for it: MEMORY/records/2026-09-29-feauto-a11y-f05-brand.md.
@@ -69,7 +71,6 @@ const OPERATOR = process.env.E2E_OPERATOR || "sys@mail.com";
 const OPERATOR_PASSWORD = api.OPERATOR_PASSWORD;
 const STEP_TIMEOUT = 30000;
 const ARTIFACTS = process.env.A11Y_ARTIFACTS || os.tmpdir();
-const ONLY = (process.env.A11Y_ONLY || "axe,dialogs,reflow,motion,brand").split(",").map((s) => s.trim());
 
 /** Signed-out pages. */
 const PUBLIC_PAGES = ["/", "/login", "/register", "/activation", "/blog", "/news"];
@@ -435,7 +436,9 @@ async function dialogContract(browser, theme, user) {
         const opener = await page
           .waitForFunction(
             () => {
-              const re = /^\s*(add|new|create|register|raise|upload)\b/i;
+              // "Tambah" (ID, "add"): a page translated through the i18n dictionaries opens in the
+              // default locale, Indonesian — the device register (P22-02) says "Tambah alat".
+              const re = /^\s*(add|new|create|register|raise|upload|tambah)\b/i;
               const buttons = [...document.querySelectorAll("main button")].filter((b) => {
                 const r = b.getBoundingClientRect();
                 return re.test(b.textContent || "") && !b.disabled && r.width > 0 && r.height > 0;
@@ -652,7 +655,7 @@ async function brandColour(browser, user, adminAtStart, tenantId, freshAdmin) {
 
 async function main() {
   const started = Date.now();
-  console.log(`Browser a11y — frontend ${FRONTEND_URL}, API ${process.env.BASE_URL}; checks: ${ONLY.join(", ")}`);
+  console.log(`Browser a11y — frontend ${FRONTEND_URL}, API ${process.env.BASE_URL}; checks: axe, dialogs, reflow, motion, brand`);
 
   const signIn = await api.httpPost("/auth/login", { user: OPERATOR, password: OPERATOR_PASSWORD });
   const adminToken = api.extractToken(signIn.body);
@@ -721,12 +724,12 @@ async function main() {
       args: ["--no-first-run", "--no-default-browser-check"],
     });
     for (const theme of ["light", "dark"]) {
-      if (ONLY.includes("axe")) await axeSweep(browser, theme, user);
-      if (ONLY.includes("dialogs")) await dialogContract(browser, theme, user);
+      await axeSweep(browser, theme, user);
+      await dialogContract(browser, theme, user);
     }
-    if (ONLY.includes("reflow")) await reflowAt200(browser, user);
-    if (ONLY.includes("motion")) await reducedMotion(browser, user);
-    if (ONLY.includes("brand")) await brandColour(browser, user, await freshAdmin(), tenantId, freshAdmin);
+    await reflowAt200(browser, user);
+    await reducedMotion(browser, user);
+    await brandColour(browser, user, await freshAdmin(), tenantId, freshAdmin);
   } finally {
     if (browser) await browser.close();
     await freshAdmin().catch(() => {});

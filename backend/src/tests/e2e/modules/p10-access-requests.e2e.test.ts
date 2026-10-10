@@ -8,8 +8,8 @@
  * Spec: MEMORY/specs/P10-05-request-access.md · ADR-098 §6 · ADR-108.
  *
  * Env: BASE_URL, E2E_OPERATOR_PASSWORD (+ E2E_BOOTSTRAP_PASSWORD on a fresh
- * stack), E2E_MAILPIT_URL for the invitation mail (without it the invitation
- * and sign-in tests are SKIPPED, by name).
+ * stack), E2E_MAILPIT_URL for the invitation mail (mandatory: the e2e
+ * runner's globalSetup refuses to start without a reachable Mailpit).
  *
  * The SERVER must have PRIVACY_NOTICE_URL set (Q-42, ADR-113): without a
  * published notice the intake is absent (404). The disposable stack sets it
@@ -22,7 +22,6 @@ import {
   envelope,
   stackMode,
   invitationTokenFor,
-  mailAvailable,
   messageOf,
   newClientAddress,
   obj,
@@ -36,8 +35,6 @@ import {
   submitAndFind,
   tenantCodeFor,
 } from "../p10Live";
-
-const withMail = mailAvailable() ? test : test.skip;
 
 const stamp = runStamp();
 const address = (label: string): string => `p10-${label}-${stamp}@rs-p10-${stamp}.example.com`;
@@ -233,7 +230,7 @@ describe("P10 the super admin's queue (live)", () => {
 });
 
 describe("P10 the invitation (live, mailed link)", () => {
-  withMail("the invitation link sets the password once: a second use and a forged token get the same 400", async () => {
+  test("the invitation link sets the password once: a second use and a forged token get the same 400", async () => {
     const token = await invitationTokenFor(admin.email, approvedAt);
     expect(token.length).toBeGreaterThanOrEqual(20);
 
@@ -254,7 +251,7 @@ describe("P10 the invitation (live, mailed link)", () => {
     expect(envelope(forged)).toEqual(envelope(reused));
   });
 
-  withMail("the new administrator signs in with the password they chose: a full session in their own tenant, no password change asked", async () => {
+  test("the new administrator signs in with the password they chose: a full session in their own tenant, no password change asked", async () => {
     const reply = await signIn(admin.email, admin.password);
     expect(reply.status).toBe(200);
     const data = dataOf(reply);
@@ -266,11 +263,11 @@ describe("P10 the invitation (live, mailed link)", () => {
     expect((await call("POST", "/auth/verify", { token: admin.token })).status).toBe(200);
   });
 
-  withMail("the new administrator is refused the platform queue (403 inside their own tenant)", async () => {
+  test("the new administrator is refused the platform queue (403 inside their own tenant)", async () => {
     expect((await call("GET", "/admin/access-requests", { token: admin.token })).status).toBe(403);
   });
 
-  withMail("an accepted invitation cannot be re-sent (409 state explanation)", async () => {
+  test("an accepted invitation cannot be re-sent (409 state explanation)", async () => {
     const reply = await call("POST", `/admin/access-requests/${admin.requestId}/resend-invitation`, { token: operator });
     expect(reply.status).toBe(409);
     expect(messageOf(reply)).toMatch(/already accepted/i);

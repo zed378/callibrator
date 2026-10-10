@@ -11,7 +11,7 @@ How tests are written here, and the specific ways tests in this repository have 
 | unit / route | `backend/src/tests/**` (excl. `e2e/`) | a function's logic, or a real router's chain, with its dependencies doubled | **700 of 724 suites, 13,272 tests, 100/100/100/100** (`npm run test:coverage -- --ci --forceExit`, 2026-09-29, ADR-087 Amendment 12); the 24 skipped suites are the env-gated live ones |
 | guard | `backend/src/tests/guards/**` and the named guards elsewhere (below) | a whole-tree rule holds over the real source or the real route tree | part of the unit run |
 | validation contract | `backend/src/tests/contracts/validation/` | the exact 400 body of `validate(schema)` for every validator, byte for byte over real HTTP, in production and outside it | 41 suites (P9-11) |
-| live PostgreSQL | `backend/src/tests/**/*.live.test.*` | SQL, triggers, grants and hooks against a real PostgreSQL 18 | 41 files (2026-10-08): 35 need only PostgreSQL (one of them, `upgradeBoot.am3`, also an older revision's checkout), one MQTT as well, five Redis, RabbitMQ or S3; each skipped unless its own variable is set (below). `npm run test:live` runs 35 of the files (36 runs: `auditLogAppendOnly.q34` in both modes), CI job `live-db` (A-367) |
+| live (PostgreSQL and brokers) | `backend/src/tests/**/*.live.test.*` | SQL, triggers, grants and hooks against a real PostgreSQL 18; Redis, RabbitMQ, MQTT, S3 and ClamAV for real | 54 files (2026-10-10), 55 runs (`auditLogAppendOnly.q34` in both modes). **None can skip**: the unit configuration never loads them (`jest.config.js` ignores `*.live.test.*`), `jest.live.config.js` loads only them, and `npm run test:live` runs every one (below); `liveSuites.a367.guard` holds all three |
 | frontend unit | `frontend/src/**/*.test.ts(x)` | components, stores, API clients | 155 suites, 1,380 tests (ADR-076, 2026-09-28) |
 | frontend service contract | `frontend/src/api/services/*.test.ts` | the client sends what it believes the API accepts | **a belief, not a guarantee** until `packages/contracts` (P9-22) |
 | live E2E | `backend/src/tests/e2e/` | real HTTP against a real server and PostgreSQL | 53 specs + the opt-in `liveContract.smoke`; **green twice in a row** on a disposable compose stack (ADR-077; the P9-00 baseline, below) |
@@ -101,11 +101,23 @@ A **guard** is a test that asserts a rule over the whole tree rather than one un
 
 ### 8. Live PostgreSQL tests run as the application role
 
-Mocks cannot see grants, triggers or SQL the database rejects. A `*.live.test.*` suite runs against a disposable PostgreSQL 18 and is **skipped unless its variable is set** (e.g. `DATA_PG_LIVE_TEST=1`, `Q34_PG_LIVE_TEST=1`; each suite's header gives its command). Run it on a scratch database and remove the container and its volume afterwards.
+Mocks cannot see grants, triggers or SQL the database rejects. A `*.live.test.*` suite runs against a disposable PostgreSQL 18 (and, where it needs one, a real broker or server). **Since 2026-10-10 a live suite never skips** ([record](../../MEMORY/records/2026-10-10-no-skip-live-suites.md)): it has no opt-in gate (the `X_LIVE_TEST=1 ? describe : describe.skip` lines are gone), the unit configuration does not load it — so `npm test` reports no skipped live suite — and under the live configuration it RUNS and FAILS, naming what is missing, when its service is absent. Run it on a scratch database and remove the containers afterwards, by name.
 
-**Since 2026-10-08 (A-367) `npm run test:live` runs them all** (`backend/scripts/live-suites.ts`: DB_HOST/DB_PORT/DB_USER/DB_PASS of a role with CREATEDB and CREATEROLE; a fresh database per suite; `--only=<id>`, `--with=mqtt`, `--list`), and CI's `live-db` job runs it on every push. A new live suite goes into the runner's manifest — or, with its reason, into its by-hand list — or `liveSuites.a367.guard` fails. **A live suite builds the state it needs**: a suite that assumed a database someone had already booted failed on a fresh one with no message (four did); call `fixtures/liveBoot#bootSchema` as the owner first. **Never record a migration as executed without running it** (`dataIntegrity.p6` did, for 0003 and 0034, and broke when 0110 and 0112 came to depend on them).
+**`npm run test:live` runs them** (`backend/scripts/live-suites.ts`, jest `--config jest.live.config.js`): DB_HOST/DB_PORT/DB_USER/DB_PASS of a role with CREATEDB and CREATEROLE; a fresh `live_<id>_scratch` database per suite; `--only=<id>`, `--list`, and `--with=` for the suites that need more than PostgreSQL:
 
-**A test of a grant, a trigger or an isolation property runs as `callibrator_app`**, the role the backend switches to at boot (ADR-062) — as the owner it passes whether the grant exists or not. `auditLogAppendOnly.q34.live.test.ts`, `dataIntegrity.p6.live.test.js` and `dataLayer.dbC`/`dbD` show the pattern. *As-built:* the convention is not applied uniformly — most live suites connect as the owner, and each has its own variable — recorded as AUDIT A-283.
+| `--with=` | Suites | Variables (the runner refuses to start without them) |
+|---|---|---|
+| `mqtt` | `iot.sharedSubscription.w14` | `MQTT_LIVE_HOST`, `MQTT_LIVE_PORT` (`eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf`) |
+| `redis` | `rateLimiter.redis`, `socket.redisAdapter`, `rateLimiter.fixedWindow.am5` | `REDIS_LIVE_URL` (a throwaway `redis:7-alpine`) |
+| `rabbitmq` | `rabbitmq.w06` | `RABBITMQ_LIVE_URL`, `RABBITMQ_LIVE_CONTAINER` (the container it restarts; `rabbitmq:4-alpine`) |
+| `s3` | `storage.s3.u09` | `S3_LIVE_ENDPOINT`, `S3_LIVE_ACCESS_KEY`, `S3_LIVE_SECRET_KEY`, `S3_LIVE_DEV_HOST` (a name, not `localhost`, that resolves to a private address reaching the server: `localtest.me`, or an `/etc/hosts` alias of 127.0.0.1) — SeaweedFS with an identities file |
+| `clamav` | `upstreamSqlImport.p2406` | `CLAMAV_LIVE_HOST`, `CLAMAV_LIVE_PORT` (`clamav/clamav:stable`) |
+| `upgrade` | `upgradeBoot.am3`, `upgradeBoot.p2009` | none: git (full history — the bases are `ce74932` and `3e91413`) and tar; the runner installs the dependencies am3's base declares and the tree no longer has (for `ce74932`: `cls-hooked`, `joi`, `swagger-jsdoc`) into the system temp directory unless `AM3_BASE_NODE_MODULES` is set. About ten minutes together |
+| `all` | every one of the above | all of the above |
+
+A suite whose service is not named is **not selected**, and the summary lists each one, so a partial run is never mistaken for a full one. The runner fails a suite that skipped or todo'd a test, or ran none. One file by hand: `npm run test:live:jest -- <file>` with the suite's variables. CI's `live-db` job runs it on every push. A new live suite goes into the runner's manifest or `liveSuites.a367.guard` fails; the guard also fails on any skip shape in a live file. **A live suite builds the state it needs**: a suite that assumed a database someone had already booted failed on a fresh one with no message (four did); call `fixtures/liveBoot#bootSchema` as the owner first. **Never record a migration as executed without running it** (`dataIntegrity.p6` did, for 0003 and 0034, and broke when 0110 and 0112 came to depend on them).
+
+**A test of a grant, a trigger or an isolation property runs as `callibrator_app`**, the role the backend switches to at boot (ADR-062) — as the owner it passes whether the grant exists or not. `auditLogAppendOnly.q34.live.test.ts`, `dataIntegrity.p6.live.test.js` and `dataLayer.dbC`/`dbD` show the pattern. *As-built:* the convention is not applied uniformly — most live suites connect as the owner — recorded as AUDIT A-283.
 
 ### 9. The validation contract is pinned byte for byte
 
@@ -114,6 +126,10 @@ Mocks cannot see grants, triggers or SQL the database rejects. A `*.live.test.*`
 ### 10. The P9-00 baseline is the behaviour oracle for a conversion
 
 The live E2E set recorded in `MEMORY/records/P9-00.md` (53 of 53 specs, 392 tests, against the JavaScript tree at `35ebd76`, ADR-092) is re-run against an image **built from the branch** by every conversion card. A spec that leaves the set, a changed per-spec pass count, a new 429 or a new 5xx in the access log is a behaviour change. Two traps it recorded: leave `E2E_MFA_STATE_FILE` unset for a multi-identifier run, and space consecutive runs for the `tenantCreate` budget.
+
+### 11. No test is skipped
+
+**Owner rule, 2026-10-10: no test may be skipped**: no `describe.skip`, `it.skip`, `test.skip` (`.each` too), `xit`, `xdescribe`, `xtest`, `.todo`, `.fixme` or `skipIf`, and no conditional selection of one (`cond ? describe : describe.skip`). A test that needs a service runs where the service is provided, and fails loudly where it is not. `backend/src/tests/guards/noSkippedTests.guard.test.ts` parses every file under `backend/src`, `backend/__tests__`, `frontend/src`, `packages/contracts` and `automate/` and fails the backend unit job on any of them ([record](../../MEMORY/records/2026-10-10-no-skip-frontend-guard.md)).
 
 ## Where Mocks Cannot Help
 

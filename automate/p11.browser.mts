@@ -21,8 +21,14 @@
  *               panel (D2), the notification panel (D7), a create dialog —
  *               axe-clean in both themes.
  *   shots       WebP screenshots of the key pages in both themes into
- *               P11_SHOTS (default docs/UI-UX/research/screens), named
- *               `p11-<P11_SHOT_TAG>-<page>-<theme>-<width>.webp`.
+ *               P11_SHOTS (default <os tmpdir>/p11-shots; to refresh the
+ *               documented screens set P11_SHOTS=docs/UI-UX/research/screens),
+ *               named `p11-<P11_SHOT_TAG>-<page>-<theme>-<width>.webp`.
+ *
+ * Every group runs on every run (2026-10-10, owner rule "no test may be
+ * skipped"): the P11_ONLY subset switch is gone, and the shots, which used to
+ * be opt-in because they wrote into docs/, now run too and write to a
+ * temporary directory unless told otherwise.
  *
  * TypeScript, run by Node itself (type stripping): `node automate/p11.browser.mts`,
  * checked by automate/tsconfig.json. Dependencies are the repository's own
@@ -36,8 +42,7 @@
  *   FRONTEND_URL=http://localhost:27186 BASE_URL=http://127.0.0.1:27185 \
  *   E2E_OPERATOR_PASSWORD=… node automate/p11.browser.mts
  *
- * Environment: P11_ONLY=continuity,axe,states,shots (default: all but shots),
- * P11_SHOTS=<dir>, P11_SHOT_TAG=<tag> (default "after"), CHROME_PATH,
+ * Environment: P11_SHOTS=<dir>, P11_SHOT_TAG=<tag> (default "after"), CHROME_PATH,
  * HEADFUL=1, P11_ARTIFACTS=<dir> (failure screenshots).
  *
  * Exit status 0 only when every check passed. Not part of `make verify`.
@@ -56,9 +61,7 @@ const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z
 const FRONTEND_URL = (process.env["FRONTEND_URL"] ?? "http://localhost:3001").replace(/\/$/, "");
 process.env["BASE_URL"] = process.env["BASE_URL"] ?? "http://localhost:3000";
 const STEP_TIMEOUT = 30000;
-const ONLY = (process.env["P11_ONLY"] ?? "continuity,axe,states").split(",").map((s) => s.trim());
-const SHOTS_ON = ONLY.includes("shots");
-const SHOTS = process.env["P11_SHOTS"] ?? path.join(here, "../docs/UI-UX/research/screens");
+const SHOTS = process.env["P11_SHOTS"] ?? path.join(os.tmpdir(), "p11-shots");
 const SHOT_TAG = process.env["P11_SHOT_TAG"] ?? "after";
 const ARTIFACTS = process.env["P11_ARTIFACTS"] ?? os.tmpdir();
 const STORAGE_KEY = "hdc-theme-preference";
@@ -466,7 +469,7 @@ const states = async (browser: Browser, tenantId: string): Promise<void> => {
         await clickButton(page, /create backup/i);
         await dialogOpen(page);
         await sleep(500);
-        if (SHOTS_ON) await shot(page, "backup-create-dialog", theme, 1280);
+        await shot(page, "backup-create-dialog", theme, 1280);
         const detail = await axe(page, `${theme} backup dialog`, '[role="dialog"]');
         await page.keyboard.press("Escape");
         return detail;
@@ -476,7 +479,7 @@ const states = async (browser: Browser, tenantId: string): Promise<void> => {
         await clickButton(page, /configure saml sso/i);
         await dialogOpen(page);
         await sleep(500);
-        if (SHOTS_ON) await shot(page, "sso-panel", theme, 1280);
+        await shot(page, "sso-panel", theme, 1280);
         const detail = await axe(page, `${theme} SSO panel`, '[role="dialog"]');
         await page.keyboard.press("Escape");
         return detail;
@@ -485,15 +488,16 @@ const states = async (browser: Browser, tenantId: string): Promise<void> => {
         await go(page, "/dashboard");
         await clickButton(page, /notification/i, "header");
         await sleep(600);
-        if (SHOTS_ON) await shot(page, "notifications-open", theme, 1280);
+        await shot(page, "notifications-open", theme, 1280);
         return axe(page, `${theme} notifications open`);
       });
       await check(`states [${theme}] a create dialog: add a device`, async () => {
         await go(page, "/dashboard/devices");
-        await clickButton(page, /^(add|new|create|register)\b/i);
+        // "Tambah alat" (ID): the device register (P22-02) opens in the default locale, Indonesian.
+        await clickButton(page, /^(add|new|create|register|tambah)\b/i);
         await dialogOpen(page);
         await sleep(500);
-        if (SHOTS_ON) await shot(page, "devices-create-dialog", theme, 1280);
+        await shot(page, "devices-create-dialog", theme, 1280);
         const detail = await axe(page, `${theme} add device`, '[role="dialog"]');
         await page.keyboard.press("Escape");
         return detail;
@@ -551,7 +555,7 @@ const shots = async (browser: Browser): Promise<void> => {
 
 const main = async (): Promise<void> => {
   const started = Date.now();
-  console.log(`P11 browser suite — ${FRONTEND_URL} (${ONLY.join(", ")})`);
+  console.log(`P11 browser suite — ${FRONTEND_URL} (continuity, states, shots → ${SHOTS}, axe)`);
   const login = await api.httpPost("/auth/login", { user: api.OPERATOR, password: api.OPERATOR_PASSWORD });
   const token = api.extractToken(login.body);
   if (login.status !== 200 || !token) throw new Error(`the operator could not sign in (${String(login.status)})`);
@@ -583,10 +587,10 @@ const main = async (): Promise<void> => {
     await first.setViewport({ width: 1280, height: 900 });
     await signIn(first);
     await first.close();
-    if (ONLY.includes("continuity")) await continuity(browser);
-    if (ONLY.includes("states") || SHOTS_ON) await states(browser, tenantId);
-    if (SHOTS_ON) await shots(browser);
-    if (ONLY.includes("axe")) await axeSweep(browser);
+    await continuity(browser);
+    await states(browser, tenantId);
+    await shots(browser);
+    await axeSweep(browser);
   } finally {
     await browser.close();
     for (const id of deviceIds) await api.httpDelete(`/calibration-devices/${id}`, admin).catch(() => undefined);

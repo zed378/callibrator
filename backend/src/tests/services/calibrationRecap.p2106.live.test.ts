@@ -12,21 +12,18 @@
  *
  *   docker run -d --name p2106-pg18 -e POSTGRES_PASSWORD=p2106pass \
  *     -p 127.0.0.1:55217:5432 pgvector/pgvector:pg18
- *   P2106_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55217 DB_NAME=p2106_scratch \
- *     DB_USER=postgres DB_PASS=p2106pass npm test -- src/tests/services/calibrationRecap.p2106.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55217 DB_NAME=p2106_scratch \
+ *     DB_USER=postgres DB_PASS=p2106pass npm run test:live:jest -- src/tests/services/calibrationRecap.p2106.live
  *   docker rm -f p2106-pg18
  * (or `npm run test:live -- --only=p2106`)
  *
  * Synthetic values only.
  */
-import { env } from "../../config/env";
 import { seedSql, type LiveDb } from "../fixtures/ipmLive";
 import type RecordService from "../../services/calibrationRecords.service";
 import type * as TenantContext from "../../middlewares/tenantContext.middleware";
 import type * as LiveBoot from "../fixtures/liveBoot";
 import type { ClientFacilityId, TenantId } from "../../types/ids";
-
-const live = env("P2106_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const T = "c2106000-0000-4000-8000-000000000001";
 const ROLE = "c2106000-0000-4000-8000-000000000002";
@@ -73,7 +70,7 @@ const startProcess = (): Graph => {
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-live("P21-06 — the recap's latest-per-device read on PostgreSQL 18, as callibrator_app", () => {
+describe("P21-06 — the recap's latest-per-device read on PostgreSQL 18, as callibrator_app", () => {
   let g: Graph;
   const as = <R>(bound: boolean, work: () => Promise<R>): Promise<R> =>
     g.tenantStorage.run(

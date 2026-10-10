@@ -12,10 +12,10 @@
  *  - a running job's heartbeat moves `updated_at`, and the abandoned-job sweep
  *    fails a PROCESSING row whose heartbeat stopped, but not a live one.
  *
- * OPT-IN — needs a PostgreSQL server where DB_USER may CREATE DATABASE:
+ * NEEDS a PostgreSQL server where DB_USER may CREATE DATABASE:
  *
- *   BATCHJOB_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
- *     npm test -- src/tests/services/batchJob.w07.live --coverage=false
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
+ *     npm run test:live:jest -- src/tests/services/batchJob.w07.live
  *
  * ADR-095 follow-up (O-2): the suite builds its OWN database the way the
  * backend boots (db.sync() + every migration, 0091's append-only audit_logs
@@ -27,12 +27,10 @@
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
 
-const live = process.env.BATCHJOB_PG_LIVE_TEST === "1" ? describe : describe.skip;
-
 const TENANT = "b7b7b7b7-0000-4000-8000-0000000000b7";
 const OTHER = "b8b8b8b8-0000-4000-8000-0000000000b8";
 
-live("batch jobs — the row is the claim, live PostgreSQL (W-07, W-12)", () => {
+describe("batch jobs — the row is the claim, live PostgreSQL (W-07, W-12)", () => {
   jest.setTimeout(60000);
   let db;
   let svc;

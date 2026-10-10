@@ -13,7 +13,7 @@
  *    rows and recent ones, and writes a system-actor audit row per tenant that
  *    satisfies migration 0033's actor CHECK.
  *
- * OPT-IN — needs a scratch database (its name contains "scratch") and
+ * NEEDS a scratch database (its name contains "scratch") and
  * DB_APP_ROLE naming the application role. The suite boots the schema the way
  * backend/index.js does (fixtures/liveBoot#bootSchema: db.sync(), then every
  * migration — 0057 creates and grants DB_APP_ROLE) as the owner before it
@@ -21,16 +21,14 @@
  * to ASSUME a booted database: on a fresh one every case failed in beforeAll
  * with no message — 2026-10-08, the live-suites repair.)
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55611 DB_NAME=dbc_fresh_scratch \
+ *   DB_HOST=127.0.0.1 DB_PORT=55611 DB_NAME=dbc_fresh_scratch \
  *     DB_USER=postgres DB_PASS=x DB_APP_ROLE=callibrator_app \
- *     npm test -- src/tests/services/dataLayer.dbC.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/dataLayer.dbC.live
  *
  * Every run creates its own tenants, so it can be re-run on the same database.
  */
 
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
-
-const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 jest.setTimeout(120000);
 
@@ -53,7 +51,7 @@ const startProcess = () => {
   };
 };
 
-live("dbC — D-22 cascade + orphan report, webhook delivery purge — live PostgreSQL, as the application role", () => {
+describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live PostgreSQL, as the application role", () => {
   const { randomUUID, randomBytes } = require("crypto");
   let g;
   const A = randomUUID();

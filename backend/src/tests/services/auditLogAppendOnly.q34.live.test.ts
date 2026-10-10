@@ -16,13 +16,12 @@
  *                     the rest of the migrations (0091) run over those rows.
  *   Q34_MODE=fresh    the boot path: runSchemaSetup (sync + every migration).
  *
- *   Q34_PG_LIVE_TEST=1 Q34_MODE=upgrade DB_HOST=127.0.0.1 DB_PORT=55934 \
+ *   Q34_MODE=upgrade DB_HOST=127.0.0.1 DB_PORT=55934 \
  *     DB_NAME=callibrator_scratch_q34u DB_USER=postgres DB_PASS=... \
- *     npm test -- src/tests/services/auditLogAppendOnly.q34.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/auditLogAppendOnly.q34.live
  */
 import { env } from "../../config/env";
 
-const live = env("Q34_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 const MODE = env("Q34_MODE") === "fresh" ? "fresh" : "upgrade";
 
 const APP_ROLE = "callibrator_app";
@@ -121,7 +120,7 @@ const inRolledBack = async <T>(db: LiveDb, work: (t: LiveTx) => Promise<T>): Pro
   }
 };
 
-live(`Q-34 — audit_logs append-only on live PostgreSQL 18 (${MODE})`, () => {
+describe(`Q-34 — audit_logs append-only on live PostgreSQL 18 (${MODE})`, () => {
   let g: Graph;
   const ids = { subject: "", admin: "", actedBySubject: "", aboutSubject: "", other: "" };
 

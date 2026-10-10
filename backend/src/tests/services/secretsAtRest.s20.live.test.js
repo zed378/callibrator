@@ -23,17 +23,15 @@
  *    delete (which failed on PostgreSQL while it wrote `deleting`) succeeds
  *    with its DELETE audit row.
  *
- * OPT-IN — needs an EMPTY scratch database the connecting role owns (it is
+ * NEEDS an EMPTY scratch database the connecting role owns (it is
  * rebuilt with db.sync({ force: true })), whose name contains "scratch":
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=56020 DB_NAME=callibrator_s20_scratch \
+ *   DB_HOST=127.0.0.1 DB_PORT=56020 DB_NAME=callibrator_s20_scratch \
  *     DB_USER=cal_owner DB_PASS=owner DB_APP_ROLE=callibrator_app \
- *     npm test -- src/tests/services/secretsAtRest.s20.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/secretsAtRest.s20.live
  *
  * Run on PostgreSQL 18 (pgvector/pgvector:pg18) on 2026-09-27.
  */
-
-const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const APP_ROLE = process.env.DB_APP_ROLE || "callibrator_app";
 const DAY = 24 * 60 * 60 * 1000;
@@ -69,7 +67,7 @@ const startProcess = () => {
   return graph;
 };
 
-live("S-20 / S-32 — live PostgreSQL", () => {
+describe("S-20 / S-32 — live PostgreSQL", () => {
   let g;
   const ids = {};
 

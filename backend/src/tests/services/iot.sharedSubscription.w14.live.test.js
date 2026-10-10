@@ -9,11 +9,11 @@
  * tenant-wide alerts). With the shared subscription (`$share/<group>/...`)
  * the broker delivers each message to one of them.
  *
- * OPT-IN — a broker and a database built by db.sync() + migrator.up():
+ * NEEDS — a broker and a database built by db.sync() + migrator.up():
  *
- *   W14_MQTT_LIVE_TEST=1 MQTT_LIVE_HOST=127.0.0.1 MQTT_LIVE_PORT=1883 \
+ *   MQTT_LIVE_HOST=127.0.0.1 MQTT_LIVE_PORT=1883 \
  *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
- *     npm test -- src/tests/services/iot.sharedSubscription.w14.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/iot.sharedSubscription.w14.live
  *
  * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
  * DB_NAME is not used), builds it as the backend boots (db.sync() + every
@@ -26,12 +26,10 @@ const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
-const live = process.env.W14_MQTT_LIVE_TEST === "1" ? describe : describe.skip;
-
 const T = "14141414-0000-4000-8000-0000000000a1";
 const DEVICE = "14141414-0000-4000-8000-0000000000d1";
 
-live("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", () => {
+describe("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", () => {
   jest.setTimeout(60000);
   let db;
   let scratch;

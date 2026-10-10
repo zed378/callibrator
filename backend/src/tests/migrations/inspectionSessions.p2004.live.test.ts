@@ -24,8 +24,8 @@
  *    migrations' own createTable path: the same objects, and schemaVerify passes.
  *
  *   docker run -d --name p2004-pg18 -e POSTGRES_PASSWORD=p2004pass -p 127.0.0.1:55204:5432 pgvector/pgvector:pg18
- *   P2004_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55204 DB_NAME=p2004_scratch DB_USER=postgres DB_PASS=p2004pass \
- *     npm test -- src/tests/migrations/inspectionSessions.p2004.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55204 DB_NAME=p2004_scratch DB_USER=postgres DB_PASS=p2004pass \
+ *     npm run test:live:jest -- src/tests/migrations/inspectionSessions.p2004.live
  *   docker rm -f p2004-pg18
  */
 import { Sequelize } from "sequelize";
@@ -45,8 +45,6 @@ import {
   type LiveTx,
   type Row,
 } from "../fixtures/ipmLive";
-
-const live = env("P2004_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const T = "d2004000-0000-4000-8000-000000000001";
 const ROLE = "d2004000-0000-4000-8000-000000000002";
@@ -132,7 +130,7 @@ const ipmTriggers = async (db: LiveDb): Promise<string[]> =>
 
 jest.setTimeout(900000);
 
-live("P20-04 — migration 0126 on live PostgreSQL 18 (with 0127, as the boot applies it)", () => {
+describe("P20-04 — migration 0126 on live PostgreSQL 18 (with 0127, as the boot applies it)", () => {
   let g: Graph;
   let admin: Sequelize;
   let applied: string[] = [];

@@ -22,20 +22,18 @@
  * checks the stored bytes through that storage (`getTenantStorage`), and asserts
  * a download carries the object and no legacy `absPath`.
  *
- * OPT-IN — an EMPTY or already-built SCRATCH database (the name must contain
+ * NEEDS — an EMPTY or already-built SCRATCH database (the name must contain
  * "scratch"); it leaves audit rows (append-only). Files it writes under
  * uploads/ are removed in afterAll.
  *
- *   P918_ATT_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55919 \
+ *   DB_HOST=127.0.0.1 DB_PORT=55919 \
  *     DB_NAME=callibrator_scratch_p918att DB_USER=postgres DB_PASS=... \
- *     CERT_SIGNING_SECRET=... npm test -- src/tests/services/attachmentService.p918.live --coverage=false
+ *     CERT_SIGNING_SECRET=... npm run test:live:jest -- src/tests/services/attachmentService.p918.live
  */
 import fs from "fs";
 import path from "path";
 import { env } from "../../config/env";
 import { SELF_FACILITIES_SQL } from "../fixtures/selfFacility";
-
-const live = env("P918_ATT_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const APP_ROLE = "callibrator_app";
 const TENANT_A = "a9180000-0000-4000-8000-0000000000a1";
@@ -113,7 +111,7 @@ const startProcess = (): Graph => {
 
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
-live("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", () => {
+describe("P9-18 — attachment.service on live PostgreSQL 18 as callibrator_app", () => {
   jest.setTimeout(240000);
   let owner: Graph;
   let app: Graph;

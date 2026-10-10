@@ -13,10 +13,10 @@
  * A "replica" here is a separately loaded copy of the module graph: its own
  * in-process Map and its own ioredis connection, exactly like a second pod.
  *
- * OPT-IN — this suite needs a reachable Redis, so it is skipped unless you ask
- * for it:
+ * NEEDS a reachable Redis (REDIS_URL). It is never skipped: without one it fails.
+ * `npm run test:live -- --with=redis` runs it (REDIS_LIVE_URL), or by hand:
  *
- *   REDIS_LIVE_TEST=1 npx jest src/tests/services/rateLimiter.redis.live --coverage=false
+ *   REDIS_URL=redis://127.0.0.1:56379 npm run test:live:jest -- src/tests/services/rateLimiter.redis.live
  *
  * It is not part of the coverage gate; the mocked suite covers the branches.
  */
@@ -38,9 +38,7 @@ jest.mock("../../utils/session.util", () => ({
 
 jest.mock("../../utils/jwt.util", () => ({ verifyAccessToken: jest.fn() }));
 
-const liveDescribe = process.env.REDIS_LIVE_TEST === "1" ? describe : describe.skip;
-
-liveDescribe("rateLimiter.redis.service — live Redis (A-30)", () => {
+describe("rateLimiter.redis.service — live Redis (A-30)", () => {
   const replicas = [];
 
   /**

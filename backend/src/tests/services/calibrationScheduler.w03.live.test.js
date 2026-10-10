@@ -12,22 +12,20 @@
  * "open work orders" read until both have made it, so the race is forced on
  * every run rather than left to timing.
  *
- * OPT-IN — needs a PostgreSQL server where DB_USER may CREATE DATABASE; the
+ * NEEDS a PostgreSQL server where DB_USER may CREATE DATABASE; the
  * suite creates, migrates and drops its own (fixtures/disposableDatabase.ts,
  * ADR-095 O-2), and runs as `callibrator_app`. DB_NAME is not used:
  *
  * W-04 (ADR-069): the winner's tenant-wide notification carries its own audit
  * row, by the same system actor.
  *
- *   CALIBRATION_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
- *     npm test -- src/tests/services/calibrationScheduler.w03.live --coverage=false
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
+ *     npm run test:live:jest -- src/tests/services/calibrationScheduler.w03.live
  */
 
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchema, enterAppRole } = require("../fixtures/liveBoot");
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
-
-const live = process.env.CALIBRATION_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const TENANT = "c3c3c3c3-0000-4000-8000-0000000000c3";
 const DEVICE = "d4d4d4d4-0000-4000-8000-0000000000d4";
@@ -63,7 +61,7 @@ const barrier = (n) => {
   };
 };
 
-live("calibration scan — two concurrent scans, live PostgreSQL (W-03)", () => {
+describe("calibration scan — two concurrent scans, live PostgreSQL (W-03)", () => {
   let p1;
   let p2;
 

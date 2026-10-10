@@ -17,8 +17,8 @@
  * Synthetic values only (`P2401 Facility n`); nothing from upstream.
  *
  *   docker run -d --name p2401-pg18 -e POSTGRES_PASSWORD=p2401pass -p 127.0.0.1:55221:5432 pgvector/pgvector:pg18
- *   P2401_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55221 DB_NAME=p2401_scratch DB_USER=postgres DB_PASS=p2401pass \
- *     npm test -- src/tests/migrations/upstreamImportGrants.p2401.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55221 DB_NAME=p2401_scratch DB_USER=postgres DB_PASS=p2401pass \
+ *     npm run test:live:jest -- src/tests/migrations/upstreamImportGrants.p2401.live
  *   docker rm -f p2401-pg18
  */
 import { randomUUID } from "crypto";
@@ -28,8 +28,6 @@ import type { StepContext, TransformStep } from "../../services/upstreamImport/t
 import type * as LedgerModule from "../../services/upstreamImport/transform/ledger";
 import type * as RunnerModule from "../../services/upstreamImport/transform/runner";
 import type * as ConfigModule from "../../config/upstreamImport";
-
-const live = env("P2401_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const APP_ROLE = "callibrator_app";
 const IMPORT_ROLE = "callibrator_import";
@@ -68,7 +66,7 @@ const load = () => ({
 });
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-live("P24-01 — the transform's grants, bookkeeping and runner on live PostgreSQL 18", () => {
+describe("P24-01 — the transform's grants, bookkeeping and runner on live PostgreSQL 18", () => {
   jest.setTimeout(300_000);
   let g: ReturnType<typeof load>;
   let transformDb: LiveDb;

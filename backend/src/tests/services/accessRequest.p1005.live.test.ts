@@ -15,14 +15,12 @@
  *    the other waits, then answers the 409 state explanation.
  *  - A taken tenant code rolls the whole approval back on a real transaction.
  *
- * Opt-in, on an EMPTY scratch database it rebuilds:
+ * Needs an EMPTY scratch database it rebuilds:
  *
- *   P1005_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55105 DB_NAME=callibrator_scratch_p1005 \
- *     DB_USER=postgres DB_PASS=... npm test -- src/tests/services/accessRequest.p1005.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55105 DB_NAME=callibrator_scratch_p1005 \
+ *     DB_USER=postgres DB_PASS=... npm run test:live:jest -- src/tests/services/accessRequest.p1005.live
  */
 import { env } from "../../config/env";
-
-const live = env("P1005_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 type Row = Record<string, unknown>;
 interface LiveDb {
@@ -89,7 +87,7 @@ const INPUT = {
   website: "",
 };
 
-live("P10-05 on live PostgreSQL 18", () => {
+describe("P10-05 on live PostgreSQL 18", () => {
   let g: Graph;
 
   const rows = async (sql: string, replacements: object = {}): Promise<Row[]> => (await g.db.query(sql, { replacements }))[0];

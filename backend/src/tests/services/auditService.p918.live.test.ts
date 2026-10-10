@@ -18,17 +18,15 @@
  *    (user_id NULL — the LEFT join of `required: false`), and its bounded raw
  *    count, with its enum casts, runs for the application role.
  *
- * OPT-IN — an EMPTY or already-built SCRATCH database (the name must contain
+ * NEEDS — an EMPTY or already-built SCRATCH database (the name must contain
  * "scratch"); the schema is built here (runSchemaSetup, the boot path). It
  * leaves audit rows behind: they are append-only.
  *
- *   P918_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55918 \
+ *   DB_HOST=127.0.0.1 DB_PORT=55918 \
  *     DB_NAME=callibrator_scratch_p918 DB_USER=postgres DB_PASS=... \
- *     npm test -- src/tests/services/auditService.p918.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/auditService.p918.live
  */
 import { env } from "../../config/env";
-
-const live = env("P918_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const APP_ROLE = "callibrator_app";
 const TENANT = "a9180000-0000-4000-8000-000000000001";
@@ -86,7 +84,7 @@ const startProcess = (): Graph => {
 
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
-live("P9-18 — audit.service on live PostgreSQL 18 as callibrator_app", () => {
+describe("P9-18 — audit.service on live PostgreSQL 18 as callibrator_app", () => {
   let owner: Graph;
   let app: Graph;
   let tenantUser = "";

@@ -12,11 +12,11 @@
  * The export directory is a temporary one (storagePath is redirected); the
  * database is real.
  *
- * OPT-IN — needs a database built by db.sync() of the current models plus
+ * NEEDS a database built by db.sync() of the current models plus
  * every migration (migrator.up()):
  *
- *   W15W16_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
- *     npm test -- src/tests/services/retentionExports.w15w16.live --coverage=false
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
+ *     npm run test:live:jest -- src/tests/services/retentionExports.w15w16.live
  *
  * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
  * DB_NAME is not used), builds it as the backend boots (db.sync() + every
@@ -35,13 +35,11 @@ jest.mock("../../utils/storagePath.util", () => (...parts) => require("path").jo
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
 
-const live = process.env.W15W16_PG_LIVE_TEST === "1" ? describe : describe.skip;
-
 const A = "15161516-0000-4000-8000-0000000000a1"; // the malformed setting
 const B = "15161516-0000-4000-8000-0000000000b1"; // a well-formed neighbour
 const USER_A = "15161516-0000-4000-8000-0000000000e1";
 
-live("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
+describe("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
   jest.setTimeout(120000);
   let db;
   let scratch;
