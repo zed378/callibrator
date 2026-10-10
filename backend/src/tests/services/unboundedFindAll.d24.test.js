@@ -266,6 +266,15 @@ const REVIEWED = Object.freeze({
   "upstreamSqlImport.service.ts::namesOf::User": [1, IDS],
   "upstreamSqlImport.service.ts::reconcileInterrupted::UpstreamSqlImport": [1, CLOSED], // at most one active run
   "upstreamSqlImport.service.ts::sweepUpstreamSqlImports::UpstreamSqlImport": [2, CLOSED], // runs still holding a file
+  // P24-01 (ADR-129 Am. 1): the transforms in progress — at most ONE, by the partial unique index
+  // upstream_sql_imports_one_transforming (migration 0133, WHERE transform_status IN
+  // ('transform_requested', 'transforming')). The boot reconcile must see it, so it is not paged.
+  "upstreamSqlTransform.service.ts::reconcileInterruptedTransforms::UpstreamSqlImport": [1, CLOSED],
+  // P24-04: one tenant's import keys not yet revoked. Cap: a key is provisioned only when the
+  // tenant has no usable one, and one lives 90 days past its sign-off day — so at most one usable
+  // key plus the expired-unrevoked ones of earlier sign-offs (a handful over the import's life).
+  // The cutover's revocation must see EVERY one, so it is not paged on purpose.
+  "upstreamImport/importKey.ts::liveImportKeys::models.ApiKey": [1, CLOSED],
   // P10-04: the super admin's SSO email-domain claims — one settings key.
   "loginDiscovery.service.ts::claimantOf::TenantSettings": [1, CLOSED],
   "loginDiscovery.service.ts::setSsoEmailDomains::TenantSettings": [1, CLOSED],

@@ -62,6 +62,7 @@ const setUserPermission = asyncHandler(async (req: Request, res: Response) => {
       success: false,
       status: 400,
       message: "menuGroupId and permissionType are required",
+      data: null,
     });
   }
 

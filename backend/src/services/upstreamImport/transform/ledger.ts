@@ -5,8 +5,10 @@
  *
  * Every statement goes through `sql()` on the transform connection, inside the run's one
  * transaction, with every VALUE bound. Identifiers cannot be bound: the schema is a constant,
- * a source table must match `^[a-z_][a-z0-9_]{0,62}$` and is double-quoted, and a legacy-key
- * expression comes from steps.ts (code, never input).
+ * a staged table is interpolated ONLY when it is on the staging allow-list (tablePolicy.ts
+ * STAGED_TABLES, which the step registry covers exactly — `transformSteps.p2401`), and is
+ * double-quoted besides; a legacy-key expression comes from steps.ts (code, never input).
+ * That is why D-05 and G-14 list this file as reviewed (ADR-129 Am. 2).
  *
  * THE ROW HASH (05 § 4, § 8). `source_row_hash` is the SHA-256 of the staged row's canonical
  * text, computed by PostgreSQL: the row as JSONB without `import_run_id` and
@@ -18,7 +20,7 @@
 import type { UpstreamImportQuarantineReason } from "@callibrator/contracts/upstreamSqlImport";
 import { sql, type BindValue } from "../../../utils/sql.util";
 import { STAGING_SCHEMA } from "../../../config/upstreamImport";
-import { stagingTableOf } from "../tablePolicy";
+import { STAGED_TABLES, stagingTableOf } from "../tablePolicy";
 import type { StepContext, TransformSource } from "./steps";
 
 const NAME = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -43,8 +45,18 @@ export const checkedName = (name: string): string => {
   return name;
 };
 
-/** `upstream_import."stg_<table>"`. */
-export const stagedTable = (table: string): string => `${STAGING_SCHEMA}."${stagingTableOf(checkedName(table))}"`;
+const STAGED: ReadonlySet<string> = new Set(STAGED_TABLES);
+
+/**
+ * `upstream_import."stg_<table>"` — the only way a staged table's name reaches a statement's text.
+ * @throws {Error} when `table` is not on the staging allow-list (tablePolicy.ts STAGED_TABLES)
+ */
+export const stagedTable = (table: string): string => {
+  if (!STAGED.has(checkedName(table))) {
+    throw new Error(`upstream transform: "${table}" is not a staged table (tablePolicy.ts)`);
+  }
+  return `${STAGING_SCHEMA}."${stagingTableOf(table)}"`;
+};
 
 /**
  * The SQL expression of a staged row's `source_row_hash` (lower-case hex SHA-256).

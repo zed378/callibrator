@@ -10,7 +10,7 @@ import type { Request, Response } from "express";
 
 import oidcProviderService from "../services/oidcProvider.service";
 import { asyncHandler as loadedAsyncHandler } from "../utils/controllerWrapper.util";
-import { success as loadedSuccess } from "../utils/response.util";
+import { error as loadedError, success as loadedSuccess } from "../utils/response.util";
 import { oidcClientSchema as loadedOidcClientSchema } from "../validators/oidc.validator";
 import { validateInput as loadedValidate } from "../validators/input";
 import { auditActor as loadedAuditActor } from "../utils/auditActor.util";
@@ -18,6 +18,7 @@ import type { TenantId } from "../types/ids";
 
 const asyncHandler = loadedAsyncHandler;
 const success = loadedSuccess;
+const sendError = loadedError;
 const oidcClientSchema = loadedOidcClientSchema;
 const validate = loadedValidate;
 const auditActor = loadedAuditActor;
@@ -83,7 +84,8 @@ const getAuthRequest = asyncHandler(async (req: Request, res: Response) => {
   // tenant's is the same 404 as one that does not exist.
   const data = await oidcProviderService.getAuthRequest((req.params as OidcParams).requestId, req.user as Caller | undefined);
   if (!data) {
-    return success(res, null, null, "Authorization request not found", 404);
+    // 2026-10-11 (ADR-137): a 404 is `success: false` (it went through success() and said true).
+    return sendError(res, "Authorization request not found", 404);
   }
   success(res, data, null, "Authorization request");
   return undefined;

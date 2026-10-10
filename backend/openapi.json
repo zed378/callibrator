@@ -43748,11 +43748,11 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
-            "description": "No such request, or not one this user may decide. As built, answered through success(): `success: true`, `status: 404`.",
+            "description": "No such request, or not one this user may decide (`success: false` since 2026-10-11, ADR-137; it said `true` before).",
             "content": {
               "application/json": {
                 "example": {
-                  "success": true,
+                  "success": false,
                   "status": 404,
                   "message": "Authorization request not found",
                   "data": null
@@ -43762,7 +43762,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "const": true
+                      "const": false
                     },
                     "status": {
                       "type": "number",
@@ -47461,7 +47461,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`{ success, data, meta }` — a page of roles",
+            "description": "`{ success, status, message, data, meta }` — a page of roles",
             "content": {
               "application/json": {
                 "schema": {
@@ -47470,6 +47470,14 @@
                     "success": {
                       "type": "boolean",
                       "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "message": {
+                      "type": "string"
                     },
                     "data": {
                       "type": "array",
@@ -47483,6 +47491,8 @@
                   },
                   "required": [
                     "success",
+                    "status",
+                    "message",
                     "data",
                     "meta"
                   ],
@@ -47592,7 +47602,7 @@
         },
         "responses": {
           "201": {
-            "description": "`{ success, data }` — the created role with its permissions",
+            "description": "`{ success, status, message, data }` — the created role with its permissions",
             "content": {
               "application/json": {
                 "schema": {
@@ -47602,12 +47612,22 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "message": {
+                      "type": "string"
+                    },
                     "data": {
                       "$ref": "#/components/schemas/RoleDetail"
                     }
                   },
                   "required": [
                     "success",
+                    "status",
+                    "message",
                     "data"
                   ],
                   "additionalProperties": false
@@ -47678,7 +47698,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`{ success, data }` — the role with its permissions",
+            "description": "`{ success, status, message, data }` — the role with its permissions",
             "content": {
               "application/json": {
                 "schema": {
@@ -47688,12 +47708,22 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "message": {
+                      "type": "string"
+                    },
                     "data": {
                       "$ref": "#/components/schemas/RoleDetail"
                     }
                   },
                   "required": [
                     "success",
+                    "status",
+                    "message",
                     "data"
                   ],
                   "additionalProperties": false
@@ -47711,12 +47741,14 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
-            "description": "Not found — the handler's own shape, `{ success: false, message }`",
+            "description": "Not found — `{ success: false, status: 404, message, data: null }`",
             "content": {
               "application/json": {
                 "example": {
                   "success": false,
-                  "message": "Role not found"
+                  "status": 404,
+                  "message": "Role not found",
+                  "data": null
                 },
                 "schema": {
                   "type": "object",
@@ -47725,13 +47757,23 @@
                       "type": "boolean",
                       "const": false
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "message": {
                       "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
                     }
                   },
                   "required": [
                     "success",
-                    "message"
+                    "status",
+                    "message",
+                    "data"
                   ],
                   "additionalProperties": false
                 }
@@ -47843,7 +47885,7 @@
         },
         "responses": {
           "200": {
-            "description": "`{ success, data }` — the updated role",
+            "description": "`{ success, status, message, data }` — the updated role",
             "content": {
               "application/json": {
                 "schema": {
@@ -47853,12 +47895,22 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "message": {
+                      "type": "string"
+                    },
                     "data": {
                       "$ref": "#/components/schemas/RoleRow"
                     }
                   },
                   "required": [
                     "success",
+                    "status",
+                    "message",
                     "data"
                   ],
                   "additionalProperties": false
@@ -47930,7 +47982,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`{ success, message }`",
+            "description": "`{ success, status, message, data: null }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -47940,13 +47992,23 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "message": {
                       "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
                     }
                   },
                   "required": [
                     "success",
-                    "message"
+                    "status",
+                    "message",
+                    "data"
                   ],
                   "additionalProperties": false
                 }
@@ -48039,7 +48101,7 @@
         },
         "responses": {
           "201": {
-            "description": "`{ success, message, data }` — the permission row",
+            "description": "`{ success, status, message, data }` — the permission row",
             "content": {
               "application/json": {
                 "schema": {
@@ -48048,6 +48110,11 @@
                     "success": {
                       "type": "boolean",
                       "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
                     },
                     "message": {
                       "type": "string"
@@ -48058,6 +48125,7 @@
                   },
                   "required": [
                     "success",
+                    "status",
                     "message",
                     "data"
                   ],
@@ -48141,7 +48209,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`{ success, message }`",
+            "description": "`{ success, status, message, data: null }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -48151,13 +48219,23 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "message": {
                       "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
                     }
                   },
                   "required": [
                     "success",
-                    "message"
+                    "status",
+                    "message",
+                    "data"
                   ],
                   "additionalProperties": false
                 }
@@ -48238,7 +48316,7 @@
         },
         "responses": {
           "200": {
-            "description": "`{ success, data }` — the user",
+            "description": "`{ success, status, message, data }` — the user",
             "content": {
               "application/json": {
                 "schema": {
@@ -48248,12 +48326,22 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "message": {
+                      "type": "string"
+                    },
                     "data": {
                       "$ref": "#/components/schemas/RoleAssignedUser"
                     }
                   },
                   "required": [
                     "success",
+                    "status",
+                    "message",
                     "data"
                   ],
                   "additionalProperties": false
@@ -48322,7 +48410,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`{ success, message }`",
+            "description": "`{ success, status, message, data: null }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -48332,13 +48420,23 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "message": {
                       "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
                     }
                   },
                   "required": [
                     "success",
-                    "message"
+                    "status",
+                    "message",
+                    "data"
                   ],
                   "additionalProperties": false
                 }
@@ -48427,7 +48525,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`{ success, data, meta }` — a page of menu groups, each with its direct children",
+            "description": "`{ success, status, message, data, meta }` — a page of menu groups, each with its direct children",
             "content": {
               "application/json": {
                 "schema": {
@@ -48436,6 +48534,14 @@
                     "success": {
                       "type": "boolean",
                       "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "message": {
+                      "type": "string"
                     },
                     "data": {
                       "type": "array",
@@ -48449,6 +48555,8 @@
                   },
                   "required": [
                     "success",
+                    "status",
+                    "message",
                     "data",
                     "meta"
                   ],
@@ -48508,7 +48616,16 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  }
+                },
+                "required": [
+                  "name"
+                ],
                 "additionalProperties": {}
               }
             }
@@ -48516,7 +48633,7 @@
         },
         "responses": {
           "201": {
-            "description": "`{ success, data }` — the created menu group",
+            "description": "`{ success, status, message, data }` — the created menu group",
             "content": {
               "application/json": {
                 "schema": {
@@ -48526,12 +48643,22 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "message": {
+                      "type": "string"
+                    },
                     "data": {
                       "$ref": "#/components/schemas/MenuGroupRow"
                     }
                   },
                   "required": [
                     "success",
+                    "status",
+                    "message",
                     "data"
                   ],
                   "additionalProperties": false
@@ -48602,7 +48729,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`{ success, data }` — the menu group with its direct children",
+            "description": "`{ success, status, message, data }` — the menu group with its direct children",
             "content": {
               "application/json": {
                 "schema": {
@@ -48612,12 +48739,22 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "message": {
+                      "type": "string"
+                    },
                     "data": {
                       "$ref": "#/components/schemas/MenuGroupWithChildren"
                     }
                   },
                   "required": [
                     "success",
+                    "status",
+                    "message",
                     "data"
                   ],
                   "additionalProperties": false
@@ -48635,12 +48772,14 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
-            "description": "Not found — the handler's own shape, `{ success: false, message }`",
+            "description": "Not found — `{ success: false, status: 404, message, data: null }`",
             "content": {
               "application/json": {
                 "example": {
                   "success": false,
-                  "message": "Menu group not found"
+                  "status": 404,
+                  "message": "Menu group not found",
+                  "data": null
                 },
                 "schema": {
                   "type": "object",
@@ -48649,13 +48788,23 @@
                       "type": "boolean",
                       "const": false
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "message": {
                       "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
                     }
                   },
                   "required": [
                     "success",
-                    "message"
+                    "status",
+                    "message",
+                    "data"
                   ],
                   "additionalProperties": false
                 }
@@ -48755,7 +48904,7 @@
         },
         "responses": {
           "200": {
-            "description": "`{ success, data }` — the updated menu group",
+            "description": "`{ success, status, message, data }` — the updated menu group",
             "content": {
               "application/json": {
                 "schema": {
@@ -48765,12 +48914,22 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "message": {
+                      "type": "string"
+                    },
                     "data": {
                       "$ref": "#/components/schemas/MenuGroupRow"
                     }
                   },
                   "required": [
                     "success",
+                    "status",
+                    "message",
                     "data"
                   ],
                   "additionalProperties": false
@@ -48842,7 +49001,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`{ success, message }`",
+            "description": "`{ success, status, message, data: null }`",
             "content": {
               "application/json": {
                 "schema": {
@@ -48852,13 +49011,23 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
                     "message": {
                       "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
                     }
                   },
                   "required": [
                     "success",
-                    "message"
+                    "status",
+                    "message",
+                    "data"
                   ],
                   "additionalProperties": false
                 }
@@ -71510,11 +71679,11 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "404": {
-            "description": "No such request, or not one this user may decide. As built, answered through success(): `success: true`, `status: 404`.",
+            "description": "No such request, or not one this user may decide (`success: false` since 2026-10-11, ADR-137; it said `true` before).",
             "content": {
               "application/json": {
                 "example": {
-                  "success": true,
+                  "success": false,
                   "status": 404,
                   "message": "Authorization request not found",
                   "data": null
@@ -71524,7 +71693,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "const": true
+                      "const": false
                     },
                     "status": {
                       "type": "number",

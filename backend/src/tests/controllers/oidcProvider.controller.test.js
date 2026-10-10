@@ -28,7 +28,7 @@ jest.mock("../../utils/response.util", () => ({
 
 const oidcProviderService = require("../../services/oidcProvider.service");
 const oidcProviderController = require("../../controllers/oidcProvider.controller");
-const { success } = require("../../utils/response.util");
+const { success, error: sendError } = require("../../utils/response.util");
 
 const VALID_TENANT_ID = "550e8400-e29b-41d4-a716-446655440002";
 
@@ -117,15 +117,15 @@ describe("oidcProvider Controller", () => {
       );
     });
 
-    it("should 404 when the request is missing or expired", async () => {
+    // 2026-10-11 (ADR-137): the 404 went through success() and said `success: true`.
+    it("should 404 (success: false, the error envelope) when the request is missing or expired", async () => {
       req.params.requestId = "gone";
       oidcProviderService.getAuthRequest.mockResolvedValue(null);
 
       await oidcProviderController.getAuthRequest(req, res, next);
 
-      expect(success).toHaveBeenCalledWith(
-        expect.anything(), null, null, "Authorization request not found", 404,
-      );
+      expect(sendError).toHaveBeenCalledWith(expect.anything(), "Authorization request not found", 404);
+      expect(success).not.toHaveBeenCalled();
     });
   });
 

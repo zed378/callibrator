@@ -189,9 +189,9 @@ export default defineRouteDocs({
       },
       errorBodies: {
         404: {
-          description: "No such request, or not one this user may decide. As built, answered through success(): `success: true`, `status: 404`.",
-          body: z.object({ success: z.literal(true), status: z.literal(404), message: z.string(), data: z.null() }),
-          example: { success: true, status: 404, message: "Authorization request not found", data: null },
+          description: "No such request, or not one this user may decide (`success: false` since 2026-10-11, ADR-137; it said `true` before).",
+          body: z.object({ success: z.literal(false), status: z.literal(404), message: z.string(), data: z.null() }),
+          example: { success: false, status: 404, message: "Authorization request not found", data: null },
         },
       },
     },

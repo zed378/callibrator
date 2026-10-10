@@ -99,7 +99,7 @@ export const handleStripeWebhook = async (req: Request, res: Response): Promise<
     return res
       .status(400)
       // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- as built
-      .json({ success: false, message: `Webhook Error: ${(err as Thrown).message}` });
+      .json({ success: false, status: 400, message: `Webhook Error: ${(err as Thrown).message}`, data: null });
   }
 
   try {

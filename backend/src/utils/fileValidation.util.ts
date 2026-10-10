@@ -45,6 +45,8 @@ export interface SanitizedError {
   success: false;
   status: number;
   message: string;
+  /** The house envelope (CLAUDE.md): an error carries `data: null` (2026-10-11, ADR-137). */
+  data: null;
   errors?: unknown;
   stack?: string;
   name?: string;
@@ -554,6 +556,7 @@ const sanitizeError = (
     success: false,
     status,
     message: exportedPublicErrorMessage(err, status, isProduction),
+    data: null,
   };
 
   // Field-level validation errors, wherever the message itself may be shown.

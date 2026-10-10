@@ -705,15 +705,39 @@ function applyComplaint(body, { field, message }, ids) {
 // 4. ENVELOPE RULES
 // ============================================================
 
-/** Paths whose wire format is a protocol, not the envelope. */
+/**
+ * Paths whose wire format is a protocol, not the envelope. 2026-10-11 (ADR-137):
+ * `POST /api/v1/billing/webhook` too — its 2xx answers Stripe (which reads only the
+ * status), not a client of this API; its refusal (400) is the envelope.
+ */
 const PROTOCOL_PATH = /^\/(oidc\/|api\/v1\/oidc\/(\.well-known|token|userinfo|authorize$)|api\/v1\/scim\/|health$|live$|ready$|api\/v1\/health\/metrics)/;
+const PROTOCOL_SUCCESS = { "POST /api/v1/billing/webhook": "Stripe's webhook acknowledgement (only the status is read)" };
 
-const REPORT_DOCUMENT_PATH = /^\/api\/v1\/reports\/(overdue-devices|inventory)$/;
+/**
+ * ONE document in `data` — not a list — that holds an array of its own, by route
+ * and by key. Any other array under rows/items/records/results/list/data is flagged.
+ *  - A-343 (closed as designed, 2026-10-02): the two report documents may hold `data.rows`.
+ *  - ADR-137 (2026-10-11), each published in its route's OpenAPI and read so by the frontend:
+ *    the depreciation report `{ asOf, count, rows, totals }` (a report document; `count` is
+ *    its row count, not a findAndCountAll); the global search answer `{ query, total,
+ *    results, byType }` (one answer, unpaged); an IPM session view (a session with its
+ *    `results`); a template version with its `items`.
+ */
+const DOCUMENT_ARRAYS = {
+  "GET /api/v1/reports/overdue-devices": ["rows"],
+  "GET /api/v1/reports/inventory": ["rows"],
+  "GET /api/v1/finance/reports/depreciation": ["rows"],
+  "GET /api/v1/search": ["results"],
+  "POST /api/v1/ipm/sessions": ["results"],
+  "POST /api/v1/ipm/sessions/:sessionId/discard": ["results"],
+  "POST /api/v1/ipm/templates/:templateId/versions": ["items"],
+};
 
 function envelopeViolations(route, res) {
   const v = [];
   if (!res.contentType.includes("json") || !res.body || typeof res.body !== "object") {return v;}
   if (PROTOCOL_PATH.test(route.path.replace(/^\//, "/"))) {return v;}
+  if (PROTOCOL_SUCCESS[`${route.method} ${route.path}`] && res.status < 400) {return v;}
   const b = res.body;
   if (typeof b.success !== "boolean") {v.push("no boolean `success`");}
   if (!("data" in b)) {v.push("no `data` key");}
@@ -721,18 +745,17 @@ function envelopeViolations(route, res) {
   if ("status" in b && b.status !== res.status) {v.push(`body status ${b.status} != HTTP ${res.status}`);}
   if (typeof b.success === "boolean" && b.success !== (res.status < 400)) {v.push(`success=${b.success} on HTTP ${res.status}`);}
   const d = b.data;
-  // A-343 (closed as designed, 2026-10-02; CLAUDE.md § The Response Envelope): a
-  // single report DOCUMENT is one object in `data` that may hold arrays of its own
-  // (`data.rows`) and has no paging. Only these two, by name; any other `data.rows` is flagged.
-  const reportDocument = REPORT_DOCUMENT_PATH.test(route.path);
+  // A single DOCUMENT is one object in `data` that may hold arrays of its own and has
+  // no paging (CLAUDE.md § The Response Envelope). Only DOCUMENT_ARRAYS, by route and key.
+  const documentKeys = DOCUMENT_ARRAYS[`${route.method} ${route.path}`] || [];
   if (d && typeof d === "object" && !Array.isArray(d)) {
     for (const key of ["rows", "items", "records", "results", "list", "data"]) {
-      if (reportDocument && key === "rows") {continue;}
+      if (documentKeys.includes(key)) {continue;}
       if (Array.isArray(d[key])) {v.push(`list rows in data.${key} (must be data[])`);}
     }
     if (d.meta && typeof d.meta === "object") {v.push("pagination in data.meta (must be top-level meta)");}
     if (d.pagination && typeof d.pagination === "object") {v.push("pagination in data.pagination (must be top-level meta)");}
-    if (typeof d.count === "number" && Array.isArray(d.rows)) {v.push("raw findAndCountAll {count, rows} in data");}
+    if (typeof d.count === "number" && Array.isArray(d.rows) && !documentKeys.includes("rows")) {v.push("raw findAndCountAll {count, rows} in data");}
   }
   if (b.pagination) {v.push("top-level `pagination` (must be `meta`)");}
   return v;

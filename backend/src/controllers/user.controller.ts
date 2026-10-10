@@ -127,6 +127,7 @@ const getAllUsers = asyncHandler(async (req: Request, res: Response) => {
       success: false,
       status: 400,
       message: "Validation failed",
+      data: null,
       errors: checked.errors,
     });
   }
@@ -303,6 +304,7 @@ const deleteUser = asyncHandler(async (req: Request, res: Response) => {
       status: 400,
       message:
         "Validation failed - userId is required and must be a valid UUID",
+      data: null,
       errors: checked.errors,
     });
   }

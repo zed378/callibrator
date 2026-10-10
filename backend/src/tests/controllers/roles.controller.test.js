@@ -74,6 +74,8 @@ describe("roles Controller", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
+        status: 200, // ADR-137: the house envelope
+        message: expect.any(String),
         data: expect.objectContaining({
           rows: expect.any(Array),
         }),
@@ -131,6 +133,8 @@ describe("roles Controller", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
+        status: 200,
+        message: "Role retrieved",
         data: { id: "role-1", name: "ADMIN" },
       });
     });
@@ -144,7 +148,9 @@ describe("roles Controller", () => {
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
+        status: 404,
         message: "Role not found",
+        data: null,
       });
     });
   });
@@ -211,7 +217,9 @@ describe("roles Controller", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
+        status: 200,
         message: "Role deleted",
+        data: null,
       });
     });
   });
@@ -335,6 +343,8 @@ describe("roles Controller", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
+        status: 200, // ADR-137: the house envelope
+        message: expect.any(String),
         data: expect.objectContaining({
           rows: expect.any(Array),
         }),
@@ -392,6 +402,8 @@ describe("roles Controller", () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
+        status: 200,
+        message: "Menu group retrieved",
         data: { id: "mg-1", name: "Dashboard" },
       });
     });
@@ -405,7 +417,9 @@ describe("roles Controller", () => {
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
+        status: 404,
         message: "Menu group not found",
+        data: null,
       });
     });
   });
@@ -426,6 +440,8 @@ describe("roles Controller", () => {
       expect(res.status).toHaveBeenCalledWith(201);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
+        status: 201,
+        message: "Menu group created",
         data: expect.objectContaining({
           id: "mg-new",
           name: "Reports",
@@ -449,6 +465,8 @@ describe("roles Controller", () => {
       expect(rolesService.updateMenu).toHaveBeenCalledWith("mg-1", req.body, ACTOR);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
+        status: 200,
+        message: "Menu group updated",
         data: expect.objectContaining({
           id: "mg-1",
         }),
@@ -466,7 +484,9 @@ describe("roles Controller", () => {
       expect(rolesService.deleteMenu).toHaveBeenCalledWith("mg-1", ACTOR);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
+        status: 200,
         message: expect.stringContaining("deleted"),
+        data: null,
       });
     });
   });

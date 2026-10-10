@@ -78,6 +78,20 @@ describe("Role Validators", () => {
       expect(checkInput({ name: "Menu", anything: 1 }, createMenuSchema).value).toEqual({ name: "Menu", anything: 1 });
       expect(checkInput({ name: "Menu", anything: 1 }, updateMenuSchema).value).toEqual({ name: "Menu", anything: 1 });
     });
+
+    // 2026-10-11 (the live contract smoke): POST /roles/menus without a `name` reached
+    // RolesService.createMenu's `data.name.trim()` and answered 500 ("Cannot read
+    // properties of undefined (reading 'trim')"). The create declares its one required
+    // field, so the same body is a 400 naming it, before the handler runs.
+    it("a menu create requires a non-blank name of at most 255 characters (it 500'd without one)", () => {
+      for (const body of [{}, { name: "   " }, { name: 7 }, { name: null }, { name: "x".repeat(256) }, { slug: "only-a-slug" }]) {
+        const result = checkInput(body, createMenuSchema);
+        expect({ body, ok: result.ok, fields: (result.errors || []).map((e) => e.field) }).toEqual({ body, ok: false, fields: ["name"] });
+      }
+      expect(checkInput({ name: "  Reports  ", icon: "chart" }, createMenuSchema).value).toEqual({ name: "Reports", icon: "chart" });
+      // The update stays undeclared (it reads `name` only when given).
+      expect(checkInput({}, updateMenuSchema).ok).toBe(true);
+    });
   });
 
   describe("assignRoleSchema", () => {
