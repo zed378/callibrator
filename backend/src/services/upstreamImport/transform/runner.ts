@@ -13,6 +13,9 @@
  *     the transform `TRANSFORM_INCOMPLETE` (05 § 1.2: "dropped silently" does not exist);
  *  4. a staged table of this run that no step accounts for fails it the same way.
  *
+ * A staged table's name reaches a statement only through ledger.ts#stagedTable, which refuses
+ * anything off the staging allow-list (ADR-129 Am. 2; reviewed in D-05 and G-14).
+ *
  * Any failure rolls back EVERYTHING the steps wrote — the application's rows, `id_map`,
  * quarantine — so a failed transform leaves the database as it was. Counts and codes only: the
  * summary, the error and the log never carry a staged value.
@@ -22,6 +25,7 @@ import type { UpstreamSqlImportTransformErrorCode } from "@callibrator/contracts
 import { sql, type SqlRunner } from "../../../utils/sql.util";
 import { STAGING_SCHEMA } from "../../../config/upstreamImport";
 import type { UpstreamSqlImportTransformSummary } from "../../../utils/jsonShape.util";
+import { STAGED_TABLES, stagingTableOf } from "../tablePolicy";
 import { ID_MAP, QUARANTINE, checkedName, stagedTable } from "./ledger";
 import { isBuilt, type StepContext, type TransformSource, type TransformStep } from "./steps";
 
@@ -96,7 +100,7 @@ const stagedExists = async (context: StepContext, table: string): Promise<boolea
   const [row] = await sql<{ present: boolean }>(
     context.runner,
     "SELECT to_regclass($1) IS NOT NULL AS present",
-    [`${STAGING_SCHEMA}.stg_${checkedName(table)}`],
+    [`${STAGING_SCHEMA}.${stagingTableOf(checkedName(table))}`],
     { transaction: context.transaction },
   );
   return row?.present === true;
@@ -105,6 +109,8 @@ const stagedExists = async (context: StepContext, table: string): Promise<boolea
 /** One source's counts after its step. */
 const countSource = async (context: StepContext, source: TransformSource): Promise<SourceSummary & { unaccounted: number }> => {
   const table = checkedName(source.table);
+  // Refuses a source off the staging allow-list before any statement names it.
+  const staged = stagedTable(table);
   // runTransform ran isBuilt() first: every source has its legacy key.
   const legacyId = source.legacyId as string;
   const quarantined: Record<string, number> = {};
@@ -119,7 +125,7 @@ const countSource = async (context: StepContext, source: TransformSource): Promi
             count(*) FILTER (WHERE m.legacy_id IS NULL AND NOT EXISTS (
               SELECT 1 FROM ${QUARANTINE} q
                WHERE q.import_run_id = $1 AND q.source_table = $2 AND q.source_row_number = s.source_row_number))::int AS unaccounted
-       FROM ${stagedTable(table)} s
+       FROM ${staged} s
        LEFT JOIN ${ID_MAP} m ON m.source_table = $2 AND m.legacy_id = (${legacyId})
       WHERE s.import_run_id = $1`,
     [context.runId, table],
@@ -144,25 +150,34 @@ const countSource = async (context: StepContext, source: TransformSource): Promi
   };
 };
 
-/** Step 4: a staged table holding rows of this run that no step accounts for. */
+/**
+ * Step 4: a staged table holding rows of this run that no step accounts for. The candidates are
+ * the allow-listed tables (tablePolicy.ts STAGED_TABLES) no step claims; the catalogue only says
+ * which of them exist, and a name reaches the statement through `stagedTable` (the allow-list),
+ * never from the catalogue's text. A `stg_` table OUTSIDE the allow-list cannot hold a row of
+ * this run: the load purges the run's rows from every staging table (stagingLoader.ts#purgeRun)
+ * and then stages only allow-listed tables (importPipeline.ts, decideTable).
+ */
 const unclaimedTables = async (context: StepContext, steps: readonly TransformStep[]): Promise<string[]> => {
-  const claimed = new Set(steps.flatMap((s) => s.sources.map((source) => `stg_${source.table}`)));
-  const tables = await sql<{ name: string }>(
+  const claimed = new Set(steps.flatMap((s) => s.sources.map((source) => source.table)));
+  const candidates = [...STAGED_TABLES].filter((table) => !claimed.has(table)).sort();
+  const present = await sql<{ name: string }>(
     context.runner,
-    "SELECT tablename AS name FROM pg_tables WHERE schemaname = $1 AND tablename LIKE 'stg\\_%' ORDER BY tablename",
-    [STAGING_SCHEMA],
+    "SELECT tablename AS name FROM pg_tables WHERE schemaname = $1 AND tablename = ANY($2::text[])",
+    [STAGING_SCHEMA, candidates.map(stagingTableOf)],
     { transaction: context.transaction },
   );
+  const existing = new Set(present.map((t) => t.name));
   const unclaimed: string[] = [];
-  for (const { name } of tables.filter((t) => !claimed.has(t.name))) {
+  for (const table of candidates.filter((t) => existing.has(stagingTableOf(t)))) {
     const [row] = await sql<{ present: boolean }>(
       context.runner,
-      `SELECT EXISTS (SELECT 1 FROM ${STAGING_SCHEMA}."${checkedName(name)}" WHERE import_run_id = $1) AS present`,
+      `SELECT EXISTS (SELECT 1 FROM ${stagedTable(table)} WHERE import_run_id = $1) AS present`,
       [context.runId],
       { transaction: context.transaction },
     );
     if (row?.present === true) {
-      unclaimed.push(name.slice("stg_".length));
+      unclaimed.push(table);
     }
   }
   return unclaimed;

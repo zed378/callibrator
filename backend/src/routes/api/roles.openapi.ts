@@ -8,10 +8,11 @@
  * update, role assignment and permission grant bodies are read RAW by the
  * handler (no schema on the chain) and documented as the handler reads them.
  *
- * Answers: roles.controller answers its OWN shape, `{ success, data }` (and a
- * top-level `meta` on the two lists), not the house envelope. Documented as
- * it is (`Success.body`); the two not-found answers of GET `/:id` and
- * GET `/menus/:id` are `{ success: false, message }`. Examples are synthetic.
+ * Answers: since 2026-10-11 (ADR-137) roles.controller answers the house
+ * envelope `{ success, status, message, data }` (a top-level `meta` on the two
+ * lists; `data: null` on a removal and on the not-found of GET `/:id` and
+ * GET `/menus/:id`). It was `{ success, data }` and `{ success, message }`;
+ * every success `data` is unchanged. Examples are synthetic.
  */
 import { z } from "zod";
 import { createMenuSchema, createRoleSchema, updateRoleSchema } from "../../validators/roles.validator";
@@ -85,9 +86,9 @@ const assignedUser = z
 
 const notFound = (message: string) => ({
   404: {
-    description: "Not found — the handler's own shape, `{ success: false, message }`",
+    description: "Not found — `{ success: false, status: 404, message, data: null }`",
     body: rolesNotFoundAnswer,
-    example: { success: false, message },
+    example: { success: false, status: 404, message, data: null },
   },
 });
 
@@ -105,7 +106,7 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: false,
       query: listQuery,
-      success: { status: 200, description: "`{ success, data, meta }` — a page of roles", body: rolesListAnswer(roleResponse) },
+      success: { status: 200, description: "`{ success, status, message, data, meta }` — a page of roles", body: rolesListAnswer(roleResponse) },
     },
     {
       method: "get",
@@ -117,7 +118,7 @@ export default defineRouteDocs({
       query: listQuery,
       success: {
         status: 200,
-        description: "`{ success, data, meta }` — a page of menu groups, each with its direct children",
+        description: "`{ success, status, message, data, meta }` — a page of menu groups, each with its direct children",
         body: rolesListAnswer(menuGroupWithChildrenResponse),
       },
     },
@@ -129,7 +130,7 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: false,
       params: idParams("role", ROLE_ID),
-      success: { status: 200, description: "`{ success, data }` — the role with its permissions", body: rolesAnswer(roleDetailResponse) },
+      success: { status: 200, description: "`{ success, status, message, data }` — the role with its permissions", body: rolesAnswer(roleDetailResponse) },
       errorBodies: notFound("Role not found"),
     },
     {
@@ -142,7 +143,7 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: true,
       body: createRoleSchema,
-      success: { status: 201, description: "`{ success, data }` — the created role with its permissions", body: rolesAnswer(roleDetailResponse) },
+      success: { status: 201, description: "`{ success, status, message, data }` — the created role with its permissions", body: rolesAnswer(roleDetailResponse) },
     },
     {
       method: "patch",
@@ -154,7 +155,7 @@ export default defineRouteDocs({
       audited: true,
       params: idParams("role", ROLE_ID),
       body: updateRoleSchema,
-      success: { status: 200, description: "`{ success, data }` — the updated role", body: rolesAnswer(roleResponse) },
+      success: { status: 200, description: "`{ success, status, message, data }` — the updated role", body: rolesAnswer(roleResponse) },
     },
     {
       method: "delete",
@@ -164,7 +165,7 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: true,
       params: idParams("role", ROLE_ID),
-      success: { status: 200, description: "`{ success, message }`", body: rolesMessageAnswer },
+      success: { status: 200, description: "`{ success, status, message, data: null }`", body: rolesMessageAnswer },
     },
     {
       method: "get",
@@ -176,7 +177,7 @@ export default defineRouteDocs({
       params: idParams("menu group", MENU_ID),
       success: {
         status: 200,
-        description: "`{ success, data }` — the menu group with its direct children",
+        description: "`{ success, status, message, data }` — the menu group with its direct children",
         body: rolesAnswer(menuGroupWithChildrenResponse),
       },
       errorBodies: notFound("Menu group not found"),
@@ -190,7 +191,7 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: true,
       body: createMenuSchema,
-      success: { status: 201, description: "`{ success, data }` — the created menu group", body: rolesAnswer(menuGroupResponse) },
+      success: { status: 201, description: "`{ success, status, message, data }` — the created menu group", body: rolesAnswer(menuGroupResponse) },
     },
     {
       method: "patch",
@@ -202,7 +203,7 @@ export default defineRouteDocs({
       audited: true,
       params: idParams("menu group", MENU_ID),
       body: menuUpdateBody,
-      success: { status: 200, description: "`{ success, data }` — the updated menu group", body: rolesAnswer(menuGroupResponse) },
+      success: { status: 200, description: "`{ success, status, message, data }` — the updated menu group", body: rolesAnswer(menuGroupResponse) },
     },
     {
       method: "delete",
@@ -212,7 +213,7 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: true,
       params: idParams("menu group", MENU_ID),
-      success: { status: 200, description: "`{ success, message }`", body: rolesMessageAnswer },
+      success: { status: 200, description: "`{ success, status, message, data: null }`", body: rolesMessageAnswer },
     },
     {
       method: "post",
@@ -226,8 +227,8 @@ export default defineRouteDocs({
       body: grantBody,
       success: {
         status: 201,
-        description: "`{ success, message, data }` — the permission row",
-        body: z.object({ success: z.literal(true), message: z.string(), data: rolePermissionResponse }),
+        description: "`{ success, status, message, data }` — the permission row",
+        body: rolesAnswer(rolePermissionResponse),
       },
     },
     {
@@ -238,7 +239,7 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: true,
       params: z.object({ roleId: rawId("role", ROLE_ID), menuGroupId: rawId("menu group", MENU_ID) }),
-      success: { status: 200, description: "`{ success, message }`", body: rolesMessageAnswer },
+      success: { status: 200, description: "`{ success, status, message, data: null }`", body: rolesMessageAnswer },
     },
     {
       method: "post",
@@ -251,7 +252,7 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: true,
       body: assignBody,
-      success: { status: 200, description: "`{ success, data }` — the user", body: rolesAnswer(assignedUser) },
+      success: { status: 200, description: "`{ success, status, message, data }` — the user", body: rolesAnswer(assignedUser) },
     },
     {
       method: "delete",
@@ -261,7 +262,7 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: true,
       params: z.object({ userId: rawId("user", USER_ID) }),
-      success: { status: 200, description: "`{ success, message }`", body: rolesMessageAnswer },
+      success: { status: 200, description: "`{ success, status, message, data: null }`", body: rolesMessageAnswer },
     },
   ],
 });

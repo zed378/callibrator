@@ -649,7 +649,9 @@ const hasDynamicPermission = async (req: Request, res: Response): Promise<Respon
     if (!menuGroup || !permissionType) {
       return res.status(400).json({
         success: false,
+        status: 400,
         message: "menuGroup and permissionType are required",
+        data: null,
       });
     }
 
@@ -658,7 +660,9 @@ const hasDynamicPermission = async (req: Request, res: Response): Promise<Respon
     if (!user || !user.role) {
       return res.status(401).json({
         success: false,
+        status: 401,
         message: "Unauthorized",
+        data: null,
       });
     }
 
@@ -691,7 +695,9 @@ const hasDynamicPermission = async (req: Request, res: Response): Promise<Respon
     }
     return res.status(500).json({
       success: false,
+      status: 500,
       message: "Internal Server Error",
+      data: null,
     });
   }
 };

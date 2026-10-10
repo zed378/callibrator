@@ -41,8 +41,13 @@ const updateRoleSchema = z.object({
 
 // The menu bodies were never declared (an open object before P9-11): every
 // key passes through to roles.service, which picks the columns it writes.
-// Kept as it was; declaring them is a change of its own (P9-11 record).
-const createMenuSchema = z.looseObject({});
+// Kept open, with ONE declared field (2026-10-11, the live contract smoke;
+// MEMORY/records/2026-10-11-fix-guards-contract.md): a create's `name`, which RolesService.createMenu trims and the
+// NOT NULL `menu_groups.name` (255) needs. Undeclared, a body without it
+// reached `data.name.trim()` and answered 500; now it is a 400 naming the field.
+const createMenuSchema = z.looseObject({
+  name: z.string().trim().min(1).max(255),
+});
 
 const updateMenuSchema = z.looseObject({});
 
@@ -151,21 +156,34 @@ const menuGroupWithChildrenResponse = z
   })
   .meta({ id: "MenuGroupWithChildren", description: "A menu group with its direct children (id, name, slug, icon, order)." });
 
-/** `{ success: true, data }` — the roles controller's own success shape. */
-const rolesAnswer = <T extends z.ZodType>(data: T): z.ZodObject<{ success: z.ZodLiteral<true>; data: T }> =>
-  z.object({ success: z.literal(true), data });
+// 2026-10-11 (ADR-137): the roles controller answers the house envelope —
+// `{ success, status, message, data }`, the lists with a top-level `meta`, a
+// removal and a not-found with `data: null`. It was `{ success, data }`, and
+// `{ success, message }` on a removal and a not-found; every `data` is unchanged.
+const answerStatus = z.number().int();
 
-/** A list: `{ success: true, data: [...], meta }`, `meta` a top-level sibling. */
+/** `{ success: true, status, message, data }`. */
+const rolesAnswer = <T extends z.ZodType>(
+  data: T,
+): z.ZodObject<{ success: z.ZodLiteral<true>; status: typeof answerStatus; message: z.ZodString; data: T }> =>
+  z.object({ success: z.literal(true), status: answerStatus, message: z.string(), data });
+
+/** A list: `{ success: true, status, message, data: [...], meta }`, `meta` a top-level sibling. */
 const rolesListAnswer = <T extends z.ZodType>(
   row: T,
-): z.ZodObject<{ success: z.ZodLiteral<true>; data: z.ZodArray<T>; meta: typeof PaginationMeta }> =>
-  z.object({ success: z.literal(true), data: z.array(row), meta: PaginationMeta });
+): z.ZodObject<{
+  success: z.ZodLiteral<true>;
+  status: typeof answerStatus;
+  message: z.ZodString;
+  data: z.ZodArray<T>;
+  meta: typeof PaginationMeta;
+}> => z.object({ success: z.literal(true), status: answerStatus, message: z.string(), data: z.array(row), meta: PaginationMeta });
 
-/** A delete / removal: `{ success: true, message }` (the service's `{ message }`, spread). */
-const rolesMessageAnswer = z.object({ success: z.literal(true), message: z.string() });
+/** A delete / removal: `{ success: true, status, message, data: null }` (the service's message). */
+const rolesMessageAnswer = z.object({ success: z.literal(true), status: answerStatus, message: z.string(), data: z.null() });
 
-/** The not-found answer of GET /roles/:id and GET /roles/menus/:id: `{ success: false, message }`. */
-const rolesNotFoundAnswer = z.object({ success: z.literal(false), message: z.string() });
+/** The not-found answer of GET /roles/:id and GET /roles/menus/:id: `{ success: false, status: 404, message, data: null }`. */
+const rolesNotFoundAnswer = z.object({ success: z.literal(false), status: answerStatus, message: z.string(), data: z.null() });
 
 export {
   roleResponse,

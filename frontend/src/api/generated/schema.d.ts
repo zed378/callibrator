@@ -28905,7 +28905,7 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
-            /** @description No such request, or not one this user may decide. As built, answered through success(): `success: true`, `status: 404`. */
+            /** @description No such request, or not one this user may decide (`success: false` since 2026-10-11, ADR-137; it said `true` before). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -28913,7 +28913,7 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "success": true,
+                     *       "success": false,
                      *       "status": 404,
                      *       "message": "Authorization request not found",
                      *       "data": null
@@ -28921,7 +28921,7 @@ export interface operations {
                      */
                     "application/json": {
                         /** @constant */
-                        success: true;
+                        success: false;
                         /** @constant */
                         status: 404;
                         message: string;
@@ -30199,7 +30199,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description `{ success, data, meta }` — a page of roles */
+            /** @description `{ success, status, message, data, meta }` — a page of roles */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30208,6 +30208,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
+                        message: string;
                         data: components["schemas"]["RoleRow"][];
                         meta: components["schemas"]["PaginationMeta"];
                     };
@@ -30239,7 +30241,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description `{ success, data }` — the created role with its permissions */
+            /** @description `{ success, status, message, data }` — the created role with its permissions */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -30248,6 +30250,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
+                        message: string;
                         data: components["schemas"]["RoleDetail"];
                     };
                 };
@@ -30270,7 +30274,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description `{ success, data }` — the role with its permissions */
+            /** @description `{ success, status, message, data }` — the role with its permissions */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30279,6 +30283,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
+                        message: string;
                         data: components["schemas"]["RoleDetail"];
                     };
                 };
@@ -30286,7 +30292,7 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
-            /** @description Not found — the handler's own shape, `{ success: false, message }` */
+            /** @description Not found — `{ success: false, status: 404, message, data: null }` */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -30295,13 +30301,17 @@ export interface operations {
                     /**
                      * @example {
                      *       "success": false,
-                     *       "message": "Role not found"
+                     *       "status": 404,
+                     *       "message": "Role not found",
+                     *       "data": null
                      *     }
                      */
                     "application/json": {
                         /** @constant */
                         success: false;
+                        status: number;
                         message: string;
+                        data: null;
                     };
                 };
             };
@@ -30320,7 +30330,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description `{ success, message }` */
+            /** @description `{ success, status, message, data: null }` */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30329,7 +30339,9 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
                         message: string;
+                        data: null;
                     };
                 };
             };
@@ -30363,7 +30375,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description `{ success, data }` — the updated role */
+            /** @description `{ success, status, message, data }` — the updated role */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30372,6 +30384,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
+                        message: string;
                         data: components["schemas"]["RoleRow"];
                     };
                 };
@@ -30402,7 +30416,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description `{ success, message, data }` — the permission row */
+            /** @description `{ success, status, message, data }` — the permission row */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -30411,6 +30425,7 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
                         message: string;
                         data: components["schemas"]["RoleMenuPermissionRow"];
                     };
@@ -30437,7 +30452,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description `{ success, message }` */
+            /** @description `{ success, status, message, data: null }` */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30446,7 +30461,9 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
                         message: string;
+                        data: null;
                     };
                 };
             };
@@ -30473,7 +30490,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description `{ success, data }` — the user */
+            /** @description `{ success, status, message, data }` — the user */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30482,6 +30499,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
+                        message: string;
                         data: components["schemas"]["RoleAssignedUser"];
                     };
                 };
@@ -30504,7 +30523,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description `{ success, message }` */
+            /** @description `{ success, status, message, data: null }` */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30513,7 +30532,9 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
                         message: string;
+                        data: null;
                     };
                 };
             };
@@ -30540,7 +30561,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description `{ success, data, meta }` — a page of menu groups, each with its direct children */
+            /** @description `{ success, status, message, data, meta }` — a page of menu groups, each with its direct children */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30549,6 +30570,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
+                        message: string;
                         data: components["schemas"]["MenuGroupWithChildren"][];
                         meta: components["schemas"]["PaginationMeta"];
                     };
@@ -30570,12 +30593,14 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    name: string;
+                } & {
                     [key: string]: unknown;
                 };
             };
         };
         responses: {
-            /** @description `{ success, data }` — the created menu group */
+            /** @description `{ success, status, message, data }` — the created menu group */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -30584,6 +30609,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
+                        message: string;
                         data: components["schemas"]["MenuGroupRow"];
                     };
                 };
@@ -30606,7 +30633,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description `{ success, data }` — the menu group with its direct children */
+            /** @description `{ success, status, message, data }` — the menu group with its direct children */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30615,6 +30642,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
+                        message: string;
                         data: components["schemas"]["MenuGroupWithChildren"];
                     };
                 };
@@ -30622,7 +30651,7 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
-            /** @description Not found — the handler's own shape, `{ success: false, message }` */
+            /** @description Not found — `{ success: false, status: 404, message, data: null }` */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -30631,13 +30660,17 @@ export interface operations {
                     /**
                      * @example {
                      *       "success": false,
-                     *       "message": "Menu group not found"
+                     *       "status": 404,
+                     *       "message": "Menu group not found",
+                     *       "data": null
                      *     }
                      */
                     "application/json": {
                         /** @constant */
                         success: false;
+                        status: number;
                         message: string;
+                        data: null;
                     };
                 };
             };
@@ -30656,7 +30689,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description `{ success, message }` */
+            /** @description `{ success, status, message, data: null }` */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30665,7 +30698,9 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
                         message: string;
+                        data: null;
                     };
                 };
             };
@@ -30701,7 +30736,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description `{ success, data }` — the updated menu group */
+            /** @description `{ success, status, message, data }` — the updated menu group */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -30710,6 +30745,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
+                        status: number;
+                        message: string;
                         data: components["schemas"]["MenuGroupRow"];
                     };
                 };
@@ -38047,7 +38084,7 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
-            /** @description No such request, or not one this user may decide. As built, answered through success(): `success: true`, `status: 404`. */
+            /** @description No such request, or not one this user may decide (`success: false` since 2026-10-11, ADR-137; it said `true` before). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -38055,7 +38092,7 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "success": true,
+                     *       "success": false,
                      *       "status": 404,
                      *       "message": "Authorization request not found",
                      *       "data": null
@@ -38063,7 +38100,7 @@ export interface operations {
                      */
                     "application/json": {
                         /** @constant */
-                        success: true;
+                        success: false;
                         /** @constant */
                         status: 404;
                         message: string;

@@ -60,6 +60,17 @@ const CROSS_TENANT = {
   // with <t> from the staging allow-list (tablePolicy.ts) — and every value is bound.
   "services/upstreamImport/stagingLoader.ts#${table}":
     "the SQL-dump import's staging schema (upstream_import), the import role's own tables; no tenant-scoped table is named",
+  // P24-01 (ADR-129 Am. 1, Am. 2): the transform's bookkeeping and runner. Every statement runs on
+  // the TRANSFORM connection (callibrator_transform, migration 0133), a worker with no request
+  // context, and reads or writes only `upstream_import`: `id_map` and `quarantine` (constant
+  // names, ledger.ts ID_MAP / QUARANTINE) and `upstream_import."stg_<t>"`, whose <t> reaches the
+  // text only through ledger.ts#stagedTable, which refuses anything off the staging allow-list
+  // (tablePolicy.ts STAGED_TABLES). Every value — the run id, a table name compared — is bound.
+  // It spans tenants on purpose: one dump is one provider's data, its tenant decided per row.
+  "services/upstreamImport/transform/ledger.ts#${table}":
+    "the transform's id_map / quarantine / allow-listed staging tables in upstream_import; no tenant-scoped table is named",
+  "services/upstreamImport/transform/runner.ts#${table}":
+    "the transform's id_map / quarantine / allow-listed staging tables in upstream_import; no tenant-scoped table is named",
 };
 
 const tenantScopedTables = () => {

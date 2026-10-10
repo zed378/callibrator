@@ -91,7 +91,18 @@ describe("P24-01 the bookkeeping", () => {
     expect(checkedName("trx_inventory")).toBe("trx_inventory");
     for (const bad of ['x"; DROP TABLE y; --', "Upper", "", "1abc", "a".repeat(64)]) {
       expect(() => checkedName(bad)).toThrow("is not a plain lower-case table name");
+      expect(() => stagedTable(bad)).toThrow("is not a plain lower-case table name");
     }
+  });
+
+  it("ADR-129 Am. 2: a staged table reaches SQL text only from the staging allow-list — a plain name off it is refused", () => {
+    for (const table of STAGED_TABLES) {
+      expect(stagedTable(table)).toBe(`upstream_import."stg_${table}"`);
+    }
+    for (const off of ["t", "orphan", "id_map", "quarantine", "migrations", "auth_permissions"]) {
+      expect(() => stagedTable(off)).toThrow(`"${off}" is not a staged table (tablePolicy.ts)`);
+    }
+    expect(() => classifiedSql({ table: "orphan", legacyId: 's."id"::text' })).toThrow("is not a staged table");
   });
 
   it("the row hash: SHA-256 hex over the row's JSONB, run id and row number removed, NULL members stripped; a bad alias is refused", () => {
@@ -193,7 +204,7 @@ describe("P24-01 the runner", () => {
     ["no row at all", []],
   ])("refuses %s as the connection (TRANSFORM_ROLE_INVALID), after the lock, before any step", async (_label, answer) => {
     const runner = double([[/current_user/, () => answer]]);
-    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("a", "t")] }).catch((e: unknown) => e)) as TransformFailure;
+    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("a", "mst_faskes")] }).catch((e: unknown) => e)) as TransformFailure;
     expect(err.code).toBe("TRANSFORM_ROLE_INVALID");
     expect(runner.calls.map((c) => c.text.split("(")[0]?.trim())).toEqual(["SELECT pg_advisory_xact_lock", "SELECT current_user AS \"currentUser\", r.rolsuper AS \"superuser\",\n            has_table_privilege"]);
     expect(runner.calls[0]?.bind).toEqual(["upstream_import.transform"]);
@@ -203,34 +214,40 @@ describe("P24-01 the runner", () => {
   it("runs every step in order in one transaction, purges the run's old quarantine first, and counts each source", async () => {
     const runner = double([
       [/current_user/, okRole],
-      [/to_regclass/, (c) => [{ present: c.bind[0] !== "upstream_import.stg_absent" }]],
+      [/to_regclass/, (c) => [{ present: c.bind[0] !== "upstream_import.stg_trx_inventory" }]],
       [/count\(\*\)::int AS staged/, () => [{ staged: 4, mapped: 2, unchanged: 1, unaccounted: 0 }]],
       [/GROUP BY reason/, () => [{ reason: "no_device", n: 1 }]],
-      [/FROM pg_tables/, () => [{ name: "stg_t" }, { name: "stg_absent" }, { name: "stg_empty_elsewhere" }]],
-      [/stg_empty_elsewhere/, () => [{ present: false }]],
+      [/FROM pg_tables/, () => [{ name: "stg_trx_kalibrasi" }]],
+      [/stg_trx_kalibrasi/, () => [{ present: false }]],
     ]);
     const summary = await runTransform({
       runId: RUN,
       db,
       runner,
       role: ROLE,
-      steps: [builtStep("first", "t"), builtStep("derived", null), builtStep("last", "absent")],
+      steps: [builtStep("first", "mst_faskes"), builtStep("derived", null), builtStep("last", "trx_inventory")],
       now: clock(),
     });
     expect(order).toEqual([`first:${RUN}`, `derived:${RUN}`, `last:${RUN}`]);
     expect(summary).toEqual({
       durationMs: 35,
       steps: [
-        { step: "first", durationMs: 5, sources: [{ table: "t", staged: 4, mapped: 2, unchanged: 1, quarantined: { no_device: 1 } }] },
+        { step: "first", durationMs: 5, sources: [{ table: "mst_faskes", staged: 4, mapped: 2, unchanged: 1, quarantined: { no_device: 1 } }] },
         { step: "derived", durationMs: 5, sources: [] },
-        { step: "last", durationMs: 5, sources: [{ table: "absent", staged: 0, mapped: 0, unchanged: 0, quarantined: {} }] },
+        { step: "last", durationMs: 5, sources: [{ table: "trx_inventory", staged: 0, mapped: 0, unchanged: 0, quarantined: {} }] },
       ],
     });
     const purge = runner.calls.find((c) => c.text.startsWith(`DELETE FROM ${QUARANTINE}`));
     expect(purge?.bind).toEqual([RUN]);
     expect(runner.calls.indexOf(purge as Call)).toBe(2);
     const count = runner.calls.find((c) => c.text.includes("AS staged"));
-    expect(count?.bind).toEqual([RUN, "t"]);
+    expect(count?.bind).toEqual([RUN, "mst_faskes"]);
+    expect(count?.text).toContain('FROM upstream_import."stg_mst_faskes" s');
+    // Step 4 asks the catalogue only about the allow-listed tables no step claims (bound), sorted.
+    const catalogue = runner.calls.find((c) => c.text.includes("FROM pg_tables"));
+    const unclaimed = [...STAGED_TABLES].filter((t) => t !== "mst_faskes" && t !== "trx_inventory").sort();
+    expect(catalogue?.bind).toEqual(["upstream_import", unclaimed.map((t) => `stg_${t}`)]);
+    expect(runner.calls.find((c) => c.text.includes('"stg_trx_kalibrasi"'))?.bind).toEqual([RUN]);
     expect(count?.text).toContain('LEFT JOIN upstream_import.id_map m ON m.source_table = $2 AND m.legacy_id = (s."id"::text)');
     expect(runner.calls.every((c) => c.transaction === TX)).toBe(true);
   });
@@ -240,8 +257,8 @@ describe("P24-01 the runner", () => {
       [/current_user/, okRole],
       [/to_regclass/, () => [{ present: true }]],
     ]);
-    const summary = await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("only", "t")] });
-    expect(summary.steps[0]?.sources[0]).toEqual({ table: "t", staged: 0, mapped: 0, unchanged: 0, quarantined: {} });
+    const summary = await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("only", "mst_faskes")] });
+    expect(summary.steps[0]?.sources[0]).toEqual({ table: "mst_faskes", staged: 0, mapped: 0, unchanged: 0, quarantined: {} });
     expect(summary.durationMs).toBeGreaterThanOrEqual(0);
   });
 
@@ -251,24 +268,41 @@ describe("P24-01 the runner", () => {
       [/to_regclass/, () => [{ present: true }]],
       [/AS staged/, () => [{ staged: 3, mapped: 1, unchanged: 0, unaccounted: 2 }]],
     ]);
-    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("first", "t"), builtStep("second", "u")] }).catch(
+    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("first", "mst_faskes"), builtStep("second", "trx_kalibrasi")] }).catch(
       (e: unknown) => e,
     )) as TransformFailure;
     expect(err.code).toBe("TRANSFORM_INCOMPLETE");
-    expect(err.message).toBe("step first: 2 staged row(s) of t are neither mapped nor quarantined");
+    expect(err.message).toBe("step first: 2 staged row(s) of mst_faskes are neither mapped nor quarantined");
     expect(order).toEqual([`first:${RUN}`]);
   });
 
   it("a staged table holding rows of this run that no step accounts for fails it TRANSFORM_INCOMPLETE, naming the table", async () => {
     const runner = double([
       [/current_user/, okRole],
-      [/FROM pg_tables/, () => [{ name: "stg_orphan" }]],
-      [/stg_orphan/, () => [{ present: true }]],
+      [/FROM pg_tables/, () => [{ name: "stg_trx_kalibrasi" }, { name: "stg_trx_catatan" }]],
+      [/stg_trx_kalibrasi/, () => [{ present: true }]],
+      [/stg_trx_catatan/, () => [{ present: false }]],
     ]);
     const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("derived", null)] }).catch((e: unknown) => e)) as TransformFailure;
     expect(err.code).toBe("TRANSFORM_INCOMPLETE");
-    expect(err.message).toBe("no step accounts for the staged table(s) orphan");
-    expect(runner.calls.find((c) => c.text.includes('"stg_orphan"'))?.bind).toEqual([RUN]);
+    expect(err.message).toBe("no step accounts for the staged table(s) trx_kalibrasi");
+    expect(runner.calls.find((c) => c.text.includes('"stg_trx_kalibrasi"'))?.bind).toEqual([RUN]);
+  });
+
+  it("ADR-129 Am. 2: a catalogue name off the allow-list never reaches a statement; a step source off it is refused before its count", async () => {
+    const runner = double([
+      [/current_user/, okRole],
+      [/FROM pg_tables/, () => [{ name: 'stg_x"; DROP TABLE y; --' }, { name: "stg_orphan" }]],
+    ]);
+    const summary = await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("derived", null)] });
+    expect(summary.steps).toEqual([{ step: "derived", durationMs: expect.any(Number) as number, sources: [] }]);
+    expect(runner.calls.filter((c) => /orphan|DROP/.test(c.text))).toEqual([]);
+
+    const refused = double([[/current_user/, okRole]]);
+    await expect(runTransform({ runId: RUN, db, runner: refused, role: ROLE, steps: [builtStep("off", "orphan")] })).rejects.toThrow(
+      '"orphan" is not a staged table (tablePolicy.ts)',
+    );
+    expect(refused.calls.some((c) => c.text.includes("to_regclass"))).toBe(false);
   });
 
   it("a step's own error propagates unchanged (the transaction rolls back)", async () => {

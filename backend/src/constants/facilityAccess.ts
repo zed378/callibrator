@@ -409,6 +409,16 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
     reason: "the SQL-dump import's staging schema (`upstream_import`), the import role's own tables; a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump import worker (P24-06)"],
   },
+  "services/upstreamImport/transform/ledger.ts#${table}": {
+    reason:
+      "the upstream transform's `upstream_import` bookkeeping (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-01)"],
+  },
+  "services/upstreamImport/transform/runner.ts#${table}": {
+    reason:
+      "the upstream transform's counts over `upstream_import` (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-01)"],
+  },
   "utils/kmsVerify.util.ts#${table}": {
     reason: "the boot-time KMS key check over every tenant's envelopes (ADR-078); reads key ids and counts only",
     reachableFrom: ["system: boot (ADR-078)"],

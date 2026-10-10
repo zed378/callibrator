@@ -128,9 +128,12 @@ describe("dynamicAccess without a logger", () => {
     await hasDynamicPermission(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(500);
+    // ADR-137 (2026-10-11): the house envelope — status and `data: null` too.
     expect(res.json).toHaveBeenCalledWith({
       success: false,
+      status: 500,
       message: "Internal Server Error",
+      data: null,
     });
   });
 });

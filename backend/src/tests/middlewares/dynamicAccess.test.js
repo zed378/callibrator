@@ -994,6 +994,7 @@ describe("dynamicAccess — remaining branches", () => {
         success: false,
         status: 500,
         message: "An unexpected error occurred. Please try again later.",
+        data: null, // ADR-137: the error envelope carries `data: null`
         requestId: "req-a13",
       });
       expect(JSON.stringify(body)).not.toContain("role_menu_permissions");

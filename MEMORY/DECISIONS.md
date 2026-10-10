@@ -11129,6 +11129,39 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 
 **`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.5 and § 4 (as-built notes referencing this amendment).
 
+### ADR-129 Amendment 2 (2026-10-11): a staged table's name reaches the transform's SQL only from the staging allow-list; D-05 and G-14 list the two transform files as reviewed
+
+**Why an amendment.** P24-01 left three unit guards red on the full run. D-05 (`rawSqlTenantPredicate.d05`) and G-14 (`rawSqlFacilityPredicate.d05twin`) flagged 6 statements in `transform/ledger.ts` and `transform/runner.ts` that interpolate a table (`${stagedTable(…)}`, `${ID_MAP}`, `${QUARANTINE}`). D-24 flagged two unbounded `findAll`s. Identifiers cannot be bound, so these statements cannot meet the guards' general rule (bind the tenant predicate, or use `facilityClause`). They name `upstream_import` tables, which hold no tenant- or facility-scoped model. They run on the transform role's connection, outside any request.
+
+**Decision.**
+
+1. **The name comes from a fixed allow-list, never from input or the catalogue.**
+   - `ledger.ts#stagedTable` refuses any table that is not in `tablePolicy.ts STAGED_TABLES`, after the identifier pattern. The step registry covers that list exactly (`transformSteps.p2401`). It is the only way a staged table's name reaches statement text.
+   - `runner.ts#countSource` calls it before any statement for a source.
+   - Step 4 of the runner (unclaimed tables) no longer interpolates names read from `pg_tables`. It asks the catalogue which allow-listed unclaimed tables exist, with the names BOUND (`tablename = ANY($2)`), and interpolates only the allow-list entry.
+   - A `stg_` table outside the allow-list cannot hold a row of the run. The load purges the run's rows from every staging table, then stages only allow-listed tables. So step 4 does not read it.
+2. **Reviewed entries, not a weaker guard.** `services/upstreamImport/transform/ledger.ts#${table}` and `…/runner.ts#${table}` join D-05's `CROSS_TENANT` and `RAW_SQL_UNREACHABLE_BY_BOUND` (as system work: the transform worker), each with its reason. The guards' rules are unchanged.
+3. **D-24.** Both reads are CLOSED, each with a written cap:
+   - `upstreamSqlTransform.service.ts::reconcileInterruptedTransforms` reads at most one row, by the partial unique index `upstream_sql_imports_one_transforming`.
+   - `upstreamImport/importKey.ts::liveImportKeys` reads few rows. A tenant has one usable key at a time, and a new one is issued only after the last expires, 90 days past its sign-off. Revocation must see every key, so the read is not paged.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Build the statement text somewhere the guards' patterns miss | hides the statement from review instead of reviewing it |
+| Teach the guards to skip the `upstream_import` schema | weakens a general rule for every future file |
+| `format('%I')` and `EXECUTE` in PL/pgSQL | moves the same interpolation into the database, where neither guard reviews it |
+| Keep the catalogue scan in step 4 | a name read from `pg_tables` would still reach the text, even pattern-checked |
+
+**Implications, including the bad ones.**
+
+- A step source off the allow-list now throws (a programming error) instead of counting zero.
+- Step 4 no longer inspects a `stg_` table left behind by an older policy. Such a table cannot hold this run's rows (see 1).
+- The live suite `upstreamImportGrants.p2401.live` uses allow-listed tables only. It was not re-run for this change.
+
+**Record:** `MEMORY/records/2026-10-11-fix-guards-contract.md`.
+
 ---
 
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
@@ -11850,6 +11883,58 @@ Any second engine would have to reverse-engineer all of it from Node.
 ### Status
 
 **Accepted 2026-10-08 as the plan. Not built.** `docs/` written as target: `docs/CONTRACT/00` … `07`, `90`. Amended by reference (deviation protocol): ADR-089 and ADR-103 status lines; `TASKS/PHASE-999` (re-plan block); `docs/MOBILE/00`, `01` (one mobile plan); ADR-135 § 13. `docs/API/00`, `docs/API/14`, `docs/ARCHITECTURE/11` and `docs/BACKEND/12` carry an **ADR-136 banner** since 2026-10-08 (deviation protocol); their full rewrites belong to P32-06 and Phase 999's first card.
+
+---
+
+## ADR-137: Every JSON Answer Is the House Envelope — an Error Carries `data: null` From the Shared Error Path, the Roles Module Joins the Envelope, a 404 Is Never `success: true`; Single Documents That Hold an Array Are Named, by Route and Key
+
+**Date:** 2026-10-11 · **Decided by** the backend fixer under the owner's standing delegation (decide by best practice, record it) · **Record:** `MEMORY/records/2026-10-11-fix-guards-contract.md` · **Works with:** CLAUDE.md § The Response Envelope, A-343, ADR-093 (validation), ADR-103 (the code-first contract)
+
+**Context.** The live contract smoke (`npm run test:contract`) failed on 1 × 500 and 46 envelope findings (`MEMORY/records/2026-10-10-no-skip-e2e-browser.md`).
+
+- **Errors without `data`.** The global error handler (`errorHandlers.middleware.ts`) answers with `sanitizeError()`'s object, which had no `data`. So every refusal that goes through `next(err)` lacked it: `rbac()`'s 403s, thrown `AppError`s, the IoT ingest 401, a 409.
+- **The roles controller** answered its own `{ success, data }` and `{ success, message }`.
+- **A 404 that said `success: true`.** The OIDC consent read answered its 404 through `success()`.
+- **Hand-written refusals.** A few handlers wrote `{ success: false, message }` themselves.
+
+**Decision.**
+
+1. **The shared error path carries `data: null`.** The global error handler and `createSanitizedErrorHandler` both use `fileValidation.util#sanitizeError`, which now returns `{ success: false, status, message, data: null, … }`. The published `ErrorEnvelope` already said so. The hand-written refusals get `status` and `data: null`:
+   - `dynamicAccess` (400, 401, 500);
+   - `userPermission.controller` (400);
+   - `user.controller` (two 400s);
+   - the Stripe webhook's 400.
+2. **The roles controller answers the house envelope:** `{ success, status, message, data }`. The lists keep their top-level `meta`, and a removal or a not-found has `data: null`. Every success `data` is unchanged. The answer schemas in `@callibrator/contracts/roles` and in `roles.openapi.ts` follow.
+3. **A 404 is `success: false`.** `GET /oidc/authorize/request/:requestId` answers it through `error()`.
+4. **`POST /roles/menus` declares its required `name`** (non-blank, at most 255 characters). Without it, the service's `data.name.trim()` was a 500.
+5. **Documents that hold an array are named, by route and key.** The contract smoke's `DOCUMENT_ARRAYS` used to hold only A-343's two report paths. It now also names:
+   - the depreciation report (`rows`; its `count` is the row count, not a `findAndCountAll`);
+   - the global search answer (`results`);
+   - an IPM session view (`results`, on create and on discard);
+   - a template version (`items`).
+
+   Each is one object, unpaged, published that way in its OpenAPI and read that way by the frontend. `POST /billing/webhook`'s 2xx answers Stripe, so it is a protocol answer (`PROTOCOL_SUCCESS`). Its 400 is the envelope.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Fix each of the 32 routes | they share one cause; a per-route fix leaves the next refusal wrong |
+| Reshape search, IPM and depreciation into `data: []` plus `meta` | changes success data that the frontend and the published contract rely on; these are documents, not lists |
+| Keep the roles module's own shape and exempt it in the smoke | the envelope is the house rule, and the change is additive for every client |
+| Leave `name` undeclared and refuse it in the service | a body's contract lives in the validation layer (ADR-093), and the 400 names the field |
+
+**Implications, including the bad ones.**
+
+- **`openapi:breaking` (oasdiff 1.32.1) reports 3 errors against `HEAD`. This ADR is their deprecation note:**
+  - `new-required-request-property`: `POST /api/v1/roles/menus` now requires `name`;
+  - `response-property-const-changed`: `success` goes from `true` to `false` on the 404 of `GET /api/v1/oidc/authorize/request/{requestId}`, and on the same route under its `/oidc/…` mount.
+
+  Both correct a defect: a body without `name` never succeeded (it was a 500), and the 404's `true` was wrong. No working request changes outcome. A direct push to `main` passes the CI check, and a pull request fails it unless this note is accepted.
+- Error bodies grow by one key (`data: null`). A client that compares an error body exactly will see it.
+- The smoke's document list is a reviewed allowance. A new document with an array needs an entry and a reason, as A-343's did.
+
+**`docs/` amended:** none. CLAUDE.md § The Response Envelope already states the rule, and its A-343 note stays accurate.
 
 ---
 

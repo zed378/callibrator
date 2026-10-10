@@ -8,6 +8,13 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-11 — The unit guards, the menu 500 and the response envelope are green ([record](./records/2026-10-11-fix-guards-contract.md); ADR-129 Am. 2, ADR-137)
+- **Fixed:** `POST /api/v1/roles/menus` without a `name` is a 400 that names the field. It was a 500.
+- **Changed (API, additive):** every error answer carries `data: null`, including those from the global error handler (403s, 401s, 409s). The roles routes answer the house envelope `{ success, status, message, data }`, with the same `data` as before.
+- **Fixed (API):** `GET /oidc/authorize/request/:requestId` answers its 404 with `success: false`. It said `true`.
+- **Changed (API, recorded break):** `openapi:breaking` reports 3 changes, the required menu `name` and the OIDC 404's `success`. Both correct defects; ADR-137 is their deprecation note.
+- **Changed (internal):** the upstream transform interpolates a staged table's name only from the staging allow-list. D-05, G-14 and D-24 pass with reviewed entries.
+
 ### 2026-10-10 — No skipped e2e or browser check; the live contract has its own runner ([record](./records/2026-10-10-no-skip-e2e-browser.md))
 - **Changed (tests):** `npm run test:e2e` refuses to start without a reachable Mailpit (`E2E_MAILPIT_URL`) instead of skipping the five mailed-secret tests.
 - **Added:** `npm run test:contract` / `make test-contract` (`backend/jest.contract.config.js`). The live contract smoke runs there, always; it was `LIVE_CONTRACT=1`, skipped by default. It now **fails** on real findings: `POST /roles/menus` 500, and 46 envelope deviations.

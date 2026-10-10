@@ -9,6 +9,12 @@
  * others are read raw), and fall back the same way (`|| 20`, `|| {}`,
  * `|| "read"`). Everything the JavaScript destructured at load is still
  * captured at load.
+ *
+ * 2026-10-11 (ADR-137): every answer is the house envelope `{ success, status,
+ * message, data }` (plus the top-level `meta` of the two lists). It was
+ * `{ success, data }`, `{ success, message }` on a removal and on a not-found;
+ * `data` itself is unchanged on every success, and is `null` on a removal and
+ * a not-found.
  */
 import type { Request, Response } from "express";
 import rolesService from "../services/roles.service";
@@ -89,6 +95,27 @@ const roleActor = (req: Request): ReturnType<typeof auditActor> & { roleLevel: n
   roleLevel: (req.user as { role?: { roleLevel?: number | null } } | undefined)?.role?.roleLevel ?? null,
 });
 
+/** Pagination, the top-level sibling of `data` on the two lists. */
+interface ListMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+/**
+ * Answer with the house envelope (CLAUDE.md, ADR-137): `success` follows the status.
+ *
+ * @param res - the response
+ * @param status - the HTTP status, repeated in the body
+ * @param message - what happened
+ * @param data - the answer's data (`null` when there is none)
+ * @param meta - a list's pagination
+ * @returns the response
+ */
+const answer = (res: Response, status: number, message: string, data: unknown, meta?: ListMeta): Response =>
+  res.status(status).json({ success: status < 400, status, message, data, ...(meta === undefined ? {} : { meta }) });
+
 // ==========================================
 //                     ROLES
 // ==========================================
@@ -102,16 +129,12 @@ export const getAllRoles = asyncHandler(async (req: Request, res: Response) => {
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: "" and absent both read as ""
     search: search || "",
   });
-  return res.status(200).json({
-    success: true,
-    data: result.data,
-    // F-19: the house envelope — pagination is a top-level `meta` (CLAUDE.md).
-    meta: {
-      total: result.count,
-      page: result.page,
-      limit: result.limit,
-      totalPages: Math.max(1, Math.ceil(result.count / result.limit)),
-    },
+  // F-19: the house envelope — pagination is a top-level `meta` (CLAUDE.md).
+  return answer(res, 200, "Roles retrieved", result.data, {
+    total: result.count,
+    page: result.page,
+    limit: result.limit,
+    totalPages: Math.max(1, Math.ceil(result.count / result.limit)),
   });
 });
 
@@ -119,12 +142,9 @@ export const getRoleById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = paramsOf(req);
   const role = await rolesService.getRoleById(id);
   if (!role) {
-    return res.status(404).json({
-      success: false,
-      message: "Role not found",
-    });
+    return answer(res, 404, "Role not found", null);
   }
-  return res.status(200).json({ success: true, data: role });
+  return answer(res, 200, "Role retrieved", role);
 });
 
 export const createRole = asyncHandler(async (req: Request, res: Response) => {
@@ -139,7 +159,7 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
     roleActor(req),
   );
   const fullRole = await rolesService.getRoleById(role.id);
-  return res.status(201).json({ success: true, data: fullRole });
+  return answer(res, 201, "Role created", fullRole);
 });
 
 export const updateRole = asyncHandler(async (req: Request, res: Response) => {
@@ -152,13 +172,13 @@ export const updateRole = asyncHandler(async (req: Request, res: Response) => {
     { name, nameToShow, description, roleLevel, status },
     roleActor(req),
   );
-  return res.status(200).json({ success: true, data: role });
+  return answer(res, 200, "Role updated", role);
 });
 
 export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
   const { id } = paramsOf(req);
   const result = await rolesService.deleteRole(id, auditActor(req));
-  return res.status(200).json({ success: true, ...result });
+  return answer(res, 200, result.message, null);
 });
 
 // ==========================================
@@ -174,16 +194,12 @@ export const getAllMenus = asyncHandler(async (req: Request, res: Response) => {
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: "" and absent both read as ""
     search: search || "",
   });
-  return res.status(200).json({
-    success: true,
-    data: result.data,
-    // F-19: the house envelope — pagination is a top-level `meta` (CLAUDE.md).
-    meta: {
-      total: result.count,
-      page: result.page,
-      limit: result.limit,
-      totalPages: Math.max(1, Math.ceil(result.count / result.limit)),
-    },
+  // F-19: the house envelope — pagination is a top-level `meta` (CLAUDE.md).
+  return answer(res, 200, "Menu groups retrieved", result.data, {
+    total: result.count,
+    page: result.page,
+    limit: result.limit,
+    totalPages: Math.max(1, Math.ceil(result.count / result.limit)),
   });
 });
 
@@ -191,29 +207,26 @@ export const getMenuById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = paramsOf(req);
   const menu = await rolesService.getMenuById(id);
   if (!menu) {
-    return res.status(404).json({
-      success: false,
-      message: "Menu group not found",
-    });
+    return answer(res, 404, "Menu group not found", null);
   }
-  return res.status(200).json({ success: true, data: menu });
+  return answer(res, 200, "Menu group retrieved", menu);
 });
 
 export const createMenu = asyncHandler(async (req: Request, res: Response) => {
   const menu = await rolesService.createMenu(bodyOrEmpty<MenuBody>(req) as MenuBody, auditActor(req));
-  return res.status(201).json({ success: true, data: menu });
+  return answer(res, 201, "Menu group created", menu);
 });
 
 export const updateMenu = asyncHandler(async (req: Request, res: Response) => {
   const { id } = paramsOf(req);
   const menu = await rolesService.updateMenu(id, bodyOrEmpty<MenuBody>(req), auditActor(req));
-  return res.status(200).json({ success: true, data: menu });
+  return answer(res, 200, "Menu group updated", menu);
 });
 
 export const deleteMenu = asyncHandler(async (req: Request, res: Response) => {
   const { id } = paramsOf(req);
   const result = await rolesService.deleteMenu(id, auditActor(req));
-  return res.status(200).json({ success: true, ...result });
+  return answer(res, 200, result.message, null);
 });
 
 // ==========================================
@@ -223,13 +236,13 @@ export const deleteMenu = asyncHandler(async (req: Request, res: Response) => {
 export const assignRoleToUser = asyncHandler(async (req: Request, res: Response) => {
   const { userId, roleId } = bodyOrEmpty<{ userId: string; roleId: string }>(req);
   const user = await rolesService.assignRoleToUser(userId as string, roleId as string, auditActor(req));
-  return res.status(200).json({ success: true, data: user });
+  return answer(res, 200, "Role assigned to user", user);
 });
 
 export const removeRoleFromUser = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = paramsOf(req);
   const result = await rolesService.removeRoleFromUser(userId, auditActor(req));
-  return res.status(200).json({ success: true, ...result });
+  return answer(res, 200, result.message, null);
 });
 
 // ==========================================
@@ -246,15 +259,11 @@ export const assignPermissionToRole = asyncHandler(async (req: Request, res: Res
     permissionType || "read",
     auditActor(req),
   );
-  return res.status(201).json({
-    success: true,
-    message: "Permission assigned successfully",
-    data: permission,
-  });
+  return answer(res, 201, "Permission assigned successfully", permission);
 });
 
 export const removePermissionFromRole = asyncHandler(async (req: Request, res: Response) => {
   const { roleId, menuGroupId } = paramsOf(req);
   const result = await rolesService.removeMenuFromRole(roleId, menuGroupId, auditActor(req));
-  return res.status(200).json({ success: true, ...result });
+  return answer(res, 200, result.message, null);
 });
