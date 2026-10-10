@@ -219,6 +219,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0130-ipm-templates-menu-active.js", require("../migrations/0130-ipm-templates-menu-active")],
   // P22-04 landed (ADR-124 Am. 5 § 2): the `ipm` menu entry (the IPM history page) is turned on.
   ["0131-ipm-menu-active.js", require("../migrations/0131-ipm-menu-active")],
+  // P22-09 landed (ADR-124 Am. 5 § 2): the `client-facilities` menu entry (the facility administration) is turned on.
+  ["0132-client-facilities-menu-active.js", require("../migrations/0132-client-facilities-menu-active")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

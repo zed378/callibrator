@@ -348,7 +348,7 @@ async function seedMenuGroups(): Promise<void> {
       slug: "client-facilities",
       icon: "Building2",
       sortOrder: 9,
-      is_active: false,
+      is_active: true, // P22-09 (migration 0132)
       parentSlug: "mgmt-organization",
     },
 
