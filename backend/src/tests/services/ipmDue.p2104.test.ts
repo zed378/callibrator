@@ -100,14 +100,15 @@ describe("GET /ipm/due", () => {
     const [query] = seen;
     expect(query?.statement).toMatch(/x\.tenant_id = \$1/);
     expect(query?.statement).toMatch(/d\.tenant_id = \$1/);
-    expect(query?.statement).not.toMatch(/\$8/);
-    expect(query?.bind).toEqual([world.tenantA, 1, "all_scheduled", "UTC", 10, 10, null]);
+    // P21-07: $8 is the reference month (null = the current one); an unbound caller has no $9.
+    expect(query?.statement).not.toMatch(/\$9/);
+    expect(query?.bind).toEqual([world.tenantA, 1, "all_scheduled", "UTC", 10, 10, null, null]);
   });
 
   it("defaults: state due, page 1, the zone Asia/Jakarta, no tenant interval; an empty page is total 0", async () => {
     const res = await due(world.staff, { clientFacilityId: IPM.F2 });
     expect([res.status, res.body.data, res.body.meta]).toEqual([200, [], { total: 0, page: 1, limit: 25, totalPages: 0 }]);
-    expect(seen[0]?.bind).toEqual([world.tenantA, null, "due", "Asia/Jakarta", 25, 0, IPM.F2]);
+    expect(seen[0]?.bind).toEqual([world.tenantA, null, "due", "Asia/Jakarta", 25, 0, IPM.F2, null]);
   });
 
   /**
@@ -118,8 +119,8 @@ describe("GET /ipm/due", () => {
   it("a facility-bound caller: the facility clause binds its own facility, whatever filter it sends", async () => {
     await due(world.bound, { clientFacilityId: IPM.F2 });
     const [query] = seen;
-    expect(query?.statement).toMatch(/AND d\.client_facility_id = \$8/);
-    expect(query?.bind).toEqual([world.tenantA, null, "due", "Asia/Jakarta", 25, 0, IPM.F2, IPM.F1]);
+    expect(query?.statement).toMatch(/AND d\.client_facility_id = \$9/);
+    expect(query?.bind).toEqual([world.tenantA, null, "due", "Asia/Jakarta", 25, 0, IPM.F2, null, IPM.F1]);
   });
 
   it("a filter outside the vocabulary → 400, nothing read", async () => {

@@ -189,7 +189,10 @@ describe("P8-04 dashboard — bounded fan-out", () => {
       StockTransfer: model(),
       StockOpname: model(),
       MaintenanceWorkOrder: model(),
+      // P21-07: the IPM figures (one more pooled count) and the due counts (a raw read after the pool).
+      InspectionSession: model(),
     }));
+    jest.doMock("../../services/ipmDue.service", () => ({ countDue: tracked({ scheduled: 0, due: 0, neverInspected: 0 }) }));
     return require("../../services/dashboard.service") as ReturnType<typeof load>;
   };
 
@@ -199,12 +202,13 @@ describe("P8-04 dashboard — bounded fan-out", () => {
     calls = 0;
   });
 
-  it("never holds more than DASHBOARD_CONCURRENCY connections, and still runs all 20 queries", async () => {
+  it("never holds more than DASHBOARD_CONCURRENCY connections, and still runs all 23 queries", async () => {
     const svc = load();
 
     const res = await svc.getDashboardMetrics("tenant-1");
 
-    expect(calls).toBe(20);
+    // 20 (P8-04) + the condition count and the IPM visit count (P21-07) in the pool, + countDue after it.
+    expect(calls).toBe(23);
     expect(svc.DASHBOARD_CONCURRENCY).toBeLessThan(20);
     expect(peak).toBeLessThanOrEqual(svc.DASHBOARD_CONCURRENCY);
     expect(peak).toBeGreaterThan(1);

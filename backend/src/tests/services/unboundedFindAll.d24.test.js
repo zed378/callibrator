@@ -198,6 +198,10 @@ const REVIEWED = Object.freeze({
   // P21-06 (ADR-133 Am. 3): the facilities of one page's rows (≤ 200 ids); the latest-per-device
   // page's records by the ids the raw read answered (≤ `limit`, itself ≤ 200).
   "calibrationRecap.service.ts::recapFacts::models.ClientFacility": [1, IDS],
+  // P21-07 (ADR-126 Am. 6): the devices per condition (one row per GROUP BY value, the vocabulary
+  // and null); the tenant names of ONE queue page's rows (the ids the page holds, ≤ its limit).
+  "dashboard.service.ts::countByCondition::CalibrationDevice": [1, GROUPED],
+  "inspectionProposal.service.ts::listProposalQueue::models.Tenant": [1, IDS],
   "calibrationRecords.service.ts::fetchCalibrationRecords::CalibrationRecord": [1, IDS],
   "deviceSettings.service.ts::deviceSettingsOf::models.TenantSettings": [1, KEYS],
   "ipmSignature.service.ts::notifyCountersigners::models.User": [1, IDS],

@@ -215,6 +215,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0128-device-extensions.js", require("../migrations/0128-device-extensions")],
   // P20-08 (ADR-132 § 6, P19-02 § 12): attachments.purpose, one live device photo per purpose, the inspectionsession attachment type (AM-7).
   ["0129-attachment-purpose.js", require("../migrations/0129-attachment-purpose")],
+  // P22-01 landed (ADR-124 Am. 5 § 2, ADR-126 Am. 6 § 8): the `ipm-templates` menu entry is turned on.
+  ["0130-ipm-templates-menu-active.js", require("../migrations/0130-ipm-templates-menu-active")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

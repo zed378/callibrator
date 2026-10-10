@@ -18852,7 +18852,7 @@
           "action": "read",
           "superAdmin": "bypasses"
         },
-        "description": "A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`. The figures are cached for 30 seconds per scope (never shared between tenants); `generatedAt` says when they were computed.",
+        "description": "A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored); a facility-bound account gets its facility's only (P21-07, A-10: provider-internal figures read 0). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`. The figures are cached for 30 seconds per scope (never shared between tenants); `generatedAt` says when they were computed.",
         "parameters": [
           {
             "in": "query",
@@ -24658,7 +24658,7 @@
           "action": "read",
           "superAdmin": "bypasses"
         },
-        "description": "`ipm` read. `state=due` (default): devices whose last effective IPM month + interval is this month or earlier in the tenant's time zone, and scheduled devices never inspected; `never_inspected`; `all_scheduled`. The interval is the device's `ipmIntervalMonths` (0 = not under IPM), else the tenant's `ipm_interval_months` (unset: nothing is scheduled). Retired and inactive devices are never scheduled. Ordered by name, then id. A facility-bound account sees its facility's devices only.",
+        "description": "`ipm` read. `state=due` (default): devices whose last effective IPM month + interval is this month or earlier in the tenant's time zone, and scheduled devices never inspected; `never_inspected`; `all_scheduled`. The interval is the device's `ipmIntervalMonths` (0 = not under IPM), else the tenant's `ipm_interval_months` (unset: nothing is scheduled). Retired and inactive devices are never scheduled. Ordered by name, then id. A facility-bound account sees its facility's devices only. P21-07: `month=YYYY-MM` sets the reference month (\"due by the end of that month\") instead of the current one — from the current month to 24 months ahead in the tenant's zone, else 400 with the top-level code `IPM_DUE_MONTH_OUT_OF_RANGE`; each row's `ipmDue` is computed for that month.",
         "parameters": [
           {
             "in": "query",
@@ -24698,6 +24698,14 @@
                 "never_inspected",
                 "all_scheduled"
               ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
             }
           }
         ],
@@ -78007,13 +78015,47 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              "byCondition": {
+                "type": "object",
+                "properties": {
+                  "good": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "not_good": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "broken": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "unset": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "good",
+                  "not_good",
+                  "broken",
+                  "unset"
+                ],
+                "additionalProperties": false,
+                "description": "P21-07 (F-70): devices per physical condition (upstream \"fit\" is stored as `good`, D-03); no condition = `unset`"
               }
             },
             "required": [
               "total",
               "byStatus",
               "dueSoon",
-              "overdue"
+              "overdue",
+              "byCondition"
             ],
             "additionalProperties": false
           },
@@ -78132,6 +78174,59 @@
               "openWorkOrders"
             ],
             "additionalProperties": false
+          },
+          "ipm": {
+            "type": "object",
+            "properties": {
+              "sessionsLast30Days": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "IPM visits submitted (performed) in the last 30 days"
+              },
+              "due": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "scheduled": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991,
+                        "description": "Devices under an IPM schedule"
+                      },
+                      "due": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991,
+                        "description": "Due this month in the tenant's zone, never-inspected devices included (`GET /ipm/due`'s rule)"
+                      },
+                      "neverInspected": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "scheduled",
+                      "due",
+                      "neverInspected"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "A tenant view only (the interval and zone are the tenant's); null in the global view"
+              }
+            },
+            "required": [
+              "sessionsLast30Days",
+              "due"
+            ],
+            "additionalProperties": false,
+            "description": "P21-07 (F-70, F-73, N-9): the IPM figures"
           },
           "trends": {
             "type": "object",
@@ -78300,6 +78395,7 @@
           "certificates",
           "inventory",
           "maintenance",
+          "ipm",
           "trends"
         ],
         "additionalProperties": false,
@@ -78318,7 +78414,13 @@
               "retired": 20
             },
             "dueSoon": 14,
-            "overdue": 3
+            "overdue": 3,
+            "byCondition": {
+              "good": 280,
+              "not_good": 12,
+              "broken": 8,
+              "unset": 10
+            }
           },
           "calibrations": {
             "total": 1820,
@@ -78343,6 +78445,14 @@
           },
           "maintenance": {
             "openWorkOrders": 7
+          },
+          "ipm": {
+            "sessionsLast30Days": 41,
+            "due": {
+              "scheduled": 290,
+              "due": 37,
+              "neverInspected": 5
+            }
           },
           "trends": {
             "calibrations": [
@@ -80400,6 +80510,13 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "tenantName": {
+            "description": "The tenant's display name only (null when the tenant row is gone)",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -80418,7 +80535,8 @@
           "withdrawnAt",
           "createdAt",
           "updatedAt",
-          "tenantId"
+          "tenantId",
+          "tenantName"
         ],
         "additionalProperties": false,
         "description": "A proposal in the operator's queue, with its tenant"
@@ -86860,6 +86978,13 @@
                         "null"
                       ]
                     },
+                    "qrCode": {
+                      "description": "P21-07 (F-72): matched exactly (upper-cased) and ranked first (rank 1)",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "manufacturer": {
                       "type": [
                         "string",
@@ -86888,6 +87013,7 @@
                     "id",
                     "name",
                     "serialNumber",
+                    "qrCode",
                     "manufacturer",
                     "model",
                     "category",
@@ -87016,6 +87142,7 @@
               "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
               "name": "Infusion pump",
               "serialNumber": "SN-0001",
+              "qrCode": "TST000001",
               "manufacturer": "Acme",
               "model": "IP-2",
               "category": "Infusion",
@@ -87029,6 +87156,7 @@
                 "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
                 "name": "Infusion pump",
                 "serialNumber": "SN-0001",
+                "qrCode": "TST000001",
                 "manufacturer": "Acme",
                 "model": "IP-2",
                 "category": "Infusion",
@@ -87056,6 +87184,13 @@
                 "type": "string"
               },
               "serialNumber": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "qrCode": {
+                "description": "P21-07 (F-72): matched exactly (upper-cased) and ranked first (rank 1)",
                 "type": [
                   "string",
                   "null"
@@ -87089,6 +87224,7 @@
               "id",
               "name",
               "serialNumber",
+              "qrCode",
               "manufacturer",
               "model",
               "category",

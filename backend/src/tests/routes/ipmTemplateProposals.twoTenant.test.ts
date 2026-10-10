@@ -169,8 +169,24 @@ describe("the operator's queue and decisions", () => {
     const queue = await adminCall(operator, "GET", "/ipm/template-proposals", {}, { status: "submitted" });
     expect(queue.status).toBe(200);
     expect((queue.body.data as unknown as { tenantId: string }[]).map((r) => r.tenantId).sort()).toEqual([tenantA, tenantA, tenantA, tenantB].sort());
+    // P22-01 follow-up: each row names its tenant by display name only (no other tenant field).
+    const rows = queue.body.data as unknown as { tenantId: string; tenantName: string | null }[];
+    expect(rows.every((r) => typeof r.tenantName === "string" && r.tenantName.length > 0)).toBe(true);
+    expect(new Set(rows.map((r) => `${r.tenantId}:${String(r.tenantName)}`)).size).toBe(2);
+    expect(Object.keys(rows[0] ?? {}).filter((k) => k.startsWith("tenant")).sort()).toEqual(["tenantId", "tenantName"]);
     expect((await adminCall(ctx.owner, "GET", "/ipm/template-proposals")).status).toBe(403);
     expect((await adminCall(ctx.owner, "POST", `/ipm/template-proposals/${P_A}/accept`, {})).status).toBe(403);
+  });
+
+  it("the tenant name: null when the tenant row is gone; an empty page reads no tenant", async () => {
+    const spy = jest.spyOn(models.Tenant, "findAll").mockResolvedValueOnce([]);
+    const queue = await adminCall(operator, "GET", "/ipm/template-proposals", {}, { status: "submitted" });
+    expect((queue.body.data as unknown as { tenantName: unknown }[]).map((r) => r.tenantName)).toEqual([null, null, null, null]);
+    spy.mockClear();
+    const empty = await adminCall(operator, "GET", "/ipm/template-proposals", {}, { status: "accepted" });
+    expect([empty.status, empty.body.data]).toEqual([200, []]);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it("accept opens a draft (creating the checklist when none), links an open one, copies nothing; audited in the proposal's tenant; the submitter notified", async () => {

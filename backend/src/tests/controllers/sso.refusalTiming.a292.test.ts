@@ -7,9 +7,11 @@
  * same measurement shows the gap.
  *
  * The real sso.controller handlers run; the tenant lookup and the settings
- * read are doubled, the settings read taking a deliberate 250 ms. The bound
- * (150 ms) is wide enough for a loaded machine's timer jitter and still well
- * under the 250 ms gap the control measures without the floor.
+ * read are doubled, the settings read taking a deliberate 250 ms. The two
+ * paths are compared on jest's fake clock (2026-10-09, after a CI flake on
+ * `d0fea5c`: wall-clock medians of three differed by 340 ms on a loaded
+ * runner): they must answer at the same virtual instant, the floor, and not
+ * before it. The `withSsoRefusalFloor` cases below keep REAL-clock floor checks.
  */
 import type { Request, Response } from "express";
 import { environment } from "../../config/env";
@@ -43,8 +45,6 @@ const sso = require("../../controllers/sso.controller") as {
 
 const SETTINGS_MS = 250;
 const FLOOR_MS = 600;
-/** The bound on the difference: timer and scheduling jitter on a loaded machine. */
-const BOUND_MS = 150;
 
 jest.setTimeout(30000);
 
@@ -61,63 +61,88 @@ const slowSettings = (): Promise<unknown> =>
     }, SETTINGS_MS),
   );
 
-/** Milliseconds a handler takes to answer, and the status it answered. */
-const timed = (handler: Handler, tenantCode: string): Promise<{ ms: number; status: number }> =>
-  new Promise((resolve) => {
-    const started = Date.now();
-    const res = {
-      statusCode: 200,
-      status(code: number) {
-        res.statusCode = code;
-        return res;
-      },
-      json() {
-        resolve({ ms: Date.now() - started, status: res.statusCode });
-        return res;
-      },
-      setHeader() {
-        return res;
-      },
-    };
-    void handler({ body: { tenantCode }, headers: {} } as unknown as Request, res as unknown as Response, () => undefined);
-  });
+/** One handler call on the clock in force: when it answered (ms after it started; null = not yet) and with what. */
+interface Answer {
+  ms: number | null;
+  status: number | null;
+}
 
-/** Median of three runs of each path. */
-const gap = async (handler: Handler): Promise<{ unknown: number; disabled: number; statuses: number[] }> => {
-  const unknownRuns: number[] = [];
-  const disabledRuns: number[] = [];
-  const statuses: number[] = [];
-  for (let i = 0; i < 3; i += 1) {
-    Tenants.findOne.mockResolvedValueOnce(null);
-    const u = await timed(handler, "nope");
-    Tenants.findOne.mockResolvedValueOnce({ id: "t1", code: "acme" });
-    tenantService.getTenantSettings.mockImplementationOnce(slowSettings);
-    const d = await timed(handler, "acme");
-    unknownRuns.push(u.ms);
-    disabledRuns.push(d.ms);
-    statuses.push(u.status, d.status);
-  }
-  const median = (xs: number[]): number => [...xs].sort((a, b) => a - b)[1] ?? 0;
-  return { unknown: median(unknownRuns), disabled: median(disabledRuns), statuses };
+const start = (handler: Handler, tenantCode: string): Answer => {
+  const answer: Answer = { ms: null, status: null };
+  const started = Date.now();
+  const res = {
+    statusCode: 200,
+    status(code: number) {
+      res.statusCode = code;
+      return res;
+    },
+    json() {
+      answer.ms = Date.now() - started;
+      answer.status = res.statusCode;
+      return res;
+    },
+    setHeader() {
+      return res;
+    },
+  };
+  void handler({ body: { tenantCode }, headers: {} } as unknown as Request, res as unknown as Response, () => undefined);
+  return answer;
+};
+
+/**
+ * A-292 on a FAKE clock (jest's modern timers fake `Date.now` and `setTimeout` alike): the measure is the
+ * controller's own arithmetic, not the runner's scheduling. Wall-clock medians compared within a
+ * tolerance flaked on a loaded CI runner (340 ms against a 150 ms bound on `d0fea5c`) with the code
+ * unchanged; on a fake clock the two refusals must answer at the SAME instant, and not one tick before
+ * the floor — a stronger claim than "within 150 ms".
+ *
+ * @param handler - the controller handler under test
+ * @param before - virtual ms to run before the first look
+ * @returns each path's answer after `before` virtual ms, and once every timer has run
+ */
+const onFakeClock = async (handler: Handler, before: number): Promise<{ early: Answer[]; done: Answer[] }> => {
+  Tenants.findOne.mockResolvedValueOnce(null);
+  const unknownCode = start(handler, "nope");
+  Tenants.findOne.mockResolvedValueOnce({ id: "t1", code: "acme" });
+  tenantService.getTenantSettings.mockImplementationOnce(slowSettings);
+  const knownWithoutSso = start(handler, "acme");
+  await jest.advanceTimersByTimeAsync(before);
+  const early = [{ ...unknownCode }, { ...knownWithoutSso }];
+  await jest.advanceTimersByTimeAsync(FLOOR_MS + SETTINGS_MS);
+  return { early, done: [unknownCode, knownWithoutSso] };
 };
 
 describe.each([
   ["POST /sso/login", (): Handler => sso.ssoLogin],
   ["POST /sso/oidc/login", (): Handler => sso.oidcLogin],
 ])("%s", (_name, handlerOf) => {
-  it(`an unknown code and a known code without SSO answer within ${String(BOUND_MS)} ms of each other, both at or after the floor`, async () => {
-    env["SSO_REFUSAL_FLOOR_MS"] = String(FLOOR_MS);
-    const { unknown, disabled, statuses } = await gap(handlerOf());
-    expect(new Set(statuses)).toEqual(new Set([404]));
-    expect(unknown).toBeGreaterThanOrEqual(FLOOR_MS - 5);
-    expect(disabled).toBeGreaterThanOrEqual(FLOOR_MS - 5);
-    expect(Math.abs(disabled - unknown)).toBeLessThan(BOUND_MS);
+  beforeEach(() => {
+    jest.useFakeTimers({ now: new Date("2030-01-15T09:00:00Z") });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
-  it("control: with no floor (the behaviour before), the extra query shows", async () => {
+  it("an unknown code and a known code without SSO answer at the same instant: exactly the floor, nothing before it", async () => {
+    env["SSO_REFUSAL_FLOOR_MS"] = String(FLOOR_MS);
+    const { early, done } = await onFakeClock(handlerOf(), FLOOR_MS - 1);
+    // One tick before the floor, neither has answered: the floor holds both.
+    expect(early.map((a) => a.ms)).toEqual([null, null]);
+    expect(done).toEqual([
+      { ms: FLOOR_MS, status: 404 },
+      { ms: FLOOR_MS, status: 404 },
+    ]);
+  });
+
+  it("control: with no floor (the behaviour before), the extra query shows as exactly its own time", async () => {
     env["SSO_REFUSAL_FLOOR_MS"] = "0";
-    const { unknown, disabled } = await gap(handlerOf());
-    expect(disabled - unknown).toBeGreaterThanOrEqual(SETTINGS_MS - 30);
+    const { early, done } = await onFakeClock(handlerOf(), 0);
+    // The unknown code answers at once; the known one only after the settings read.
+    expect(early.map((a) => a.ms)).toEqual([0, null]);
+    expect(done).toEqual([
+      { ms: 0, status: 404 },
+      { ms: SETTINGS_MS, status: 404 },
+    ]);
   });
 });
 

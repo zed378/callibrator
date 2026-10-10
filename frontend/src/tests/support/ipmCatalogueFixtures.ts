@@ -176,7 +176,7 @@ export const proposal = (over: Partial<Proposal> = {}): Proposal => ({
   ...over,
 });
 
-export const queueRow = (over: Partial<ProposalQueueRow> = {}): ProposalQueueRow => ({ ...proposal(), tenantId: IDS.tenant, ...over });
+export const queueRow = (over: Partial<ProposalQueueRow> = {}): ProposalQueueRow => ({ ...proposal(), tenantId: IDS.tenant, tenantName: null, ...over });
 
 type Handler = (path: string, config?: { params?: Record<string, unknown> }) => unknown;
 

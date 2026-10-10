@@ -152,12 +152,22 @@ export type IpmSessionVoid = z.output<typeof ipmSessionVoid>;
 /** The "due" list's filters (P19-02 spec § 11; `GET /ipm/due`). */
 export const IPM_DUE_FILTERS = Object.freeze(["due", "never_inspected", "all_scheduled"] as const);
 
-/** `GET /ipm/due` — devices whose IPM is due this month (tenant zone), never inspected, or every scheduled one. */
+/** A calendar month, `YYYY-MM` (the "due" reference month, P21-07). */
+export const IPM_DUE_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * `GET /ipm/due` — devices whose IPM is due this month (tenant zone), never inspected, or every
+ * scheduled one. P21-07 (ADR-126 Am. 6): `month` (`YYYY-MM`) moves the reference month — "due by the
+ * end of that month" — from the current month (tenant zone) up to `IPM_DUE_MONTH_HORIZON` months
+ * ahead; a past or farther month is the service's 400 `IPM_DUE_MONTH_OUT_OF_RANGE` (it needs the
+ * tenant's zone, so the shape cannot decide it).
+ */
 export const ipmDueQuery = z.strictObject({
   page,
   limit,
   clientFacilityId: uuid().optional(),
   state: z.enum(IPM_DUE_FILTERS).default("due"),
+  month: z.string().regex(IPM_DUE_MONTH_PATTERN, "month must be YYYY-MM").optional(),
 });
 export type IpmDueQuery = z.output<typeof ipmDueQuery>;
 

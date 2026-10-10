@@ -52,8 +52,8 @@ const leaves = (items: Item[]): string[] => items.flatMap((i) => (i.items && i.i
 const sidebar = async (key: Key, bound = true): Promise<string[]> =>
   leaves(await menuService.getRoleMenuAssignments(ROLE_IDS[key], requester(key, bound))).sort();
 
-/** The sidebar every bound role sees today (Matrix B ∩ the seed; the IPM entries are inactive until P22). */
-const BASE = ["/dashboard", "/dashboard/calibration", "/dashboard/devices", "/dashboard/maintenance", "/dashboard/profile", "/dashboard/warehouses"];
+/** The sidebar every bound role sees today (Matrix B ∩ the seed; `ipm` stays inactive until P22-03; `ipm-templates` is on since P22-01, 0130). */
+const BASE = ["/dashboard", "/dashboard/calibration", "/dashboard/devices", "/dashboard/ipm-templates", "/dashboard/maintenance", "/dashboard/profile", "/dashboard/warehouses"];
 /** Per role: the base, plus what that role's seed grants inside its ceiling (HA: `account` → Change Password; HT, FM: `esignature`). */
 const BOUND_SIDEBARS: Readonly<Record<Key, readonly string[]>> = {
   HEALTCARE_ADMIN: [...BASE, "/dashboard/change-password"].sort(),
@@ -74,12 +74,14 @@ const LOAD_ROUTE: Readonly<Record<string, readonly [string, string]>> = {
   "/dashboard/profile": ["api/menuGroups.route.ts", "GET /my-permissions"],
   "/dashboard/change-password": ["api/auth.route.ts", "POST /just-update-password"],
   "/dashboard/esignature": ["api/esignature.route.ts", "GET /my-workflows"],
+  // P22-01: a bound caller's only tab is "published" (IpmTemplatesClient#tabsFor), loaded from the global published read.
+  "/dashboard/ipm-templates": ["api/ipm.route.ts", "GET /templates/published"],
 };
 
 /** Leaves whose load route is not marked yet, with the card that marks it (ADR-124 Am. 5 § 4). */
 const PENDING_LOAD: Readonly<Record<string, string>> = {
-  // ADR-124 Am. 6 § 6: re-assigned from P21-09e to the cards P18-03 names for them.
-  "/dashboard": "P21-07 — A-10 (OQ-8): marked only with dashboard.twoFacility and G-20 green",
+  // P21-07 (ADR-126 Am. 6): `GET /dashboard/metrics` is marked (A-10, OQ-8) with dashboard.twoFacility and G-20 —
+  // the leaf's pending entry is cleared.
   // P21-02a (ADR-132 Am. 2): `GET /warehouses` is marked (A-9) — the leaf's pending entry is cleared.
   // P21-04 (ADR-126 Am. 5 § 9): N-5 is marked, but the leaf's load route `/esignature/my-workflows` stays unmarked by
   // design (P19-06 § 8.2) — a bound signer signs on the IPM report page. Re-assigned to the frontend card.

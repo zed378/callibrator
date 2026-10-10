@@ -1122,6 +1122,33 @@ export type IpmDue =
 const monthIndex = (d: ZonedDay): number => d.year * 12 + (d.month - 1);
 const monthText = (index: number): string => `${String(Math.floor(index / 12))}-${String((index % 12) + 1).padStart(2, "0")}`;
 
+/** P21-07 — how many months ahead a "due" reference month may be (`GET /ipm/due?month=`). */
+export const IPM_DUE_MONTH_HORIZON = 24;
+
+/** P21-07 — the coded 400 of a reference month outside [current month, + horizon] (top-level `code`). */
+export const IPM_DUE_MONTH_OUT_OF_RANGE = "IPM_DUE_MONTH_OUT_OF_RANGE";
+
+/**
+ * P21-07 — a reference month (`YYYY-MM`) as the `today` that `computeIpmDue` reads: the 15th, 12:00
+ * UTC, which is inside that month in every zone (offsets are within ±14 h). Null when the month is
+ * before the current month in `timeZone` or more than `IPM_DUE_MONTH_HORIZON` months after it.
+ *
+ * @param month - `YYYY-MM` (already shaped by the query schema)
+ * @param today - now
+ * @param timeZone - the tenant's zone
+ * @returns the reference instant, or null when out of range
+ */
+export const ipmDueReference = (month: string, today: Date, timeZone: string): Date | null => {
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  const requested = year * 12 + (monthNumber - 1);
+  const current = monthIndex(zonedDay(today, timeZone));
+  if (requested < current || requested > current + IPM_DUE_MONTH_HORIZON) {
+    return null;
+  }
+  return new Date(Date.UTC(year, monthNumber - 1, 15, 12));
+};
+
 /**
  * "Due" (ADR-126 § 6; P19-02 spec § 11): computed at read, never enforced. A device is due in the
  * month of its last effective IPM (tenant zone) plus its interval; a device never inspected under

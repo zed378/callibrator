@@ -35,8 +35,13 @@ jest.mock("../../models", () => {
     StockTransfer: model("StockTransfer"),
     StockOpname: model("StockOpname"),
     MaintenanceWorkOrder: model("MaintenanceWorkOrder"),
+    InspectionSession: model("InspectionSession"),
   };
 });
+// P21-07: the due counts are a raw read (their own suites); here a fixed answer.
+jest.mock("../../services/ipmDue.service", () => ({
+  countDue: () => Promise.resolve({ scheduled: 0, due: 0, neverInspected: 0 }),
+}));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factory above
 const dashboard = require("../../services/dashboard.service") as {

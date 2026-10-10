@@ -16,6 +16,8 @@
  */
 
 import models from "../models";
+import { countDue, type IpmDueCounts } from "./ipmDue.service";
+import type { DEVICE_CONDITIONS } from "@callibrator/contracts/deviceValues";
 
 /** The surface of a model the dashboard's aggregates use. */
 interface AggregateModel {
@@ -41,6 +43,7 @@ const Warehouse = agg(models.Warehouse);
 const StockTransfer = agg(models.StockTransfer);
 const StockOpname = agg(models.StockOpname);
 const MaintenanceWorkOrder = agg(models.MaintenanceWorkOrder);
+const InspectionSession = agg(models.InspectionSession);
 
 type Where = Record<string | symbol, unknown>;
 
@@ -103,6 +106,31 @@ const countByStatus = async (
     acc[row["status"] as string] = parseInt(row["count"] as string, 10);
     return acc;
   }, {});
+};
+
+/** P21-07 (F-70) — devices per physical condition; a device with none counts as `unset`. */
+type ConditionCounts = Record<(typeof DEVICE_CONDITIONS)[number] | "unset", number>;
+
+/**
+ * P21-07 (F-70, D-03: upstream "Laik" — fit — is stored as `good`) — the devices per condition, by
+ * one grouped count: `{ good, not_good, broken, unset }`, every key present. Through the hooked
+ * model, so a facility-bound caller counts its facility's devices only (A-10).
+ */
+const countByCondition = async (tenantId: string | null | undefined): Promise<ConditionCounts> => {
+  const rows = await CalibrationDevice.findAll({
+    where: scoped(tenantId),
+    attributes: ["condition", [Sequelize.fn("COUNT", Sequelize.col("id")), "count"]],
+    group: ["condition"],
+    raw: true,
+  });
+  const counts: ConditionCounts = { good: 0, not_good: 0, broken: 0, unset: 0 };
+  for (const row of rows) {
+    const condition = row["condition"];
+    const key = typeof condition === "string" && Object.hasOwn(counts, condition) ? (condition as keyof ConditionCounts) : "unset";
+    // COUNT is a bigint: pg returns it as a string (D-21).
+    counts[key] += parseInt(row["count"] as string, 10);
+  }
+  return counts;
 };
 
 /** "+07:00" -> 420; anything else -> 0 (UTC). */
@@ -198,6 +226,8 @@ const getDashboardMetrics = async (
     pendingTransfers,
     openOpnames,
     openWorkOrders,
+    devicesByCondition,
+    ipmSessionsLast30Days,
   ] = await runBounded<unknown>([
     () => User.count({ where: scoped(tenantId) }),
     () => User.count({ where: scoped(tenantId, { isEmailVerified: true }) }),
@@ -254,11 +284,19 @@ const getDashboardMetrics = async (
         status: { [Op.in]: ["Open", "InProgress"] },
       }),
     }),
+
+    // P21-07 (F-70, F-73): the condition cards and the IPM activity of the last 30 days.
+    () => countByCondition(tenantId),
+    () => InspectionSession.count({
+      where: scoped(tenantId, { status: "submitted", performedAt: { [Op.gte]: last30Days } }),
+    }),
   ], DASHBOARD_CONCURRENCY) as [
     number, number, number, Record<string, number>, number, number, number, number, number,
     { month: string; count: number }[], number, Record<string, number>, { month: string; count: number }[],
-    number, number | null, number, number, number, number, number,
+    number, number | null, number, number, number, number, number, ConditionCounts, number,
   ];
+  // P21-07 (N-9): the due counts need the tenant's interval and zone — a tenant view only.
+  const ipmDue: IpmDueCounts | null = tenantId ? await countDue(tenantId) : null;
 
   const metrics: Record<string, unknown> = {
     scope: tenantId ? "tenant" : "global",
@@ -272,6 +310,7 @@ const getDashboardMetrics = async (
       byStatus: devicesByStatus,
       dueSoon: devicesDueSoon,
       overdue: devicesOverdue,
+      byCondition: devicesByCondition,
     },
     calibrations: {
       total: totalCalibrations,
@@ -297,6 +336,10 @@ const getDashboardMetrics = async (
     },
     maintenance: {
       openWorkOrders,
+    },
+    ipm: {
+      sessionsLast30Days: ipmSessionsLast30Days,
+      due: ipmDue,
     },
     trends: {
       calibrations: calibrationTrend,

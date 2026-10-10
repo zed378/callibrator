@@ -58,8 +58,8 @@ export interface ProposalView {
   readonly updatedAt: Date;
 }
 
-/** The operator's queue row: the view and the tenant it came from. */
-export type ProposalQueueRow = ProposalView & { readonly tenantId: string };
+/** The operator's queue row: the view and the tenant it came from (its display name only — P22-01's request). */
+export type ProposalQueueRow = ProposalView & { readonly tenantId: string; readonly tenantName: string | null };
 
 const NOT_FOUND = "Proposal not found";
 
@@ -227,7 +227,14 @@ export const withdrawProposal = async (id: InspectionTemplateProposalId, actor: 
  */
 export const listProposalQueue = async (query: ListProposalsQueryInput): Promise<Page<ProposalQueueRow>> => {
   const { rows, count } = await pageOf(query, "ASC");
-  return { rows: rows.map((r) => ({ ...proposalView(r), tenantId: r.tenantId })), meta: pageMeta(count, query.page, query.limit) };
+  // P21-07 batch (the P22-01 follow-up): the tenant's display NAME beside its id — one read per page, the name only.
+  const tenantIds = [...new Set(rows.map((r) => r.tenantId))];
+  const tenants = tenantIds.length > 0 ? await models.Tenant.findAll({ where: { id: tenantIds }, attributes: ["id", "name"] }) : [];
+  const names = new Map(tenants.map((t) => [t.id as string, t.name]));
+  return {
+    rows: rows.map((r) => ({ ...proposalView(r), tenantId: r.tenantId, tenantName: names.get(r.tenantId) ?? null })),
+    meta: pageMeta(count, query.page, query.limit),
+  };
 };
 
 /** The 409 of a proposal that is no longer `submitted`. */

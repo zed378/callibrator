@@ -8,6 +8,14 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — A flaky SSO timing test made deterministic (A-292) ([record](./records/2026-10-10-a292-sso-timing-flake.md))
+- **Fixed (tests only):** the proof that an unknown tenant code and a tenant without SSO refuse in the same time no longer depends on the CI machine's load; it now checks both answer at exactly the floor on a fake clock. No behaviour change.
+
+### 2026-10-09 — The home page's device-condition and IPM figures, for facility users too; "due" for a chosen month; search by QR; the IPM checklist menu entry (P21-07; ADR-126 Am. 6) ([record](./records/2026-10-09-p21-07-dashboard-ipm-due.md))
+- **Added:** `GET /api/v1/dashboard/metrics` returns the devices per condition (`good`, `not_good`, `broken`, `unset`) and the IPM figures (visits of the last 30 days; scheduled, due this month and never-inspected devices, in a tenant view). A facility-bound account can now open the home page and gets its own facility's figures only (cached per facility).
+- **Added:** `GET /api/v1/ipm/due?month=YYYY-MM` lists what is due by the end of a month from the current one up to 24 months ahead; other months answer 400 `IPM_DUE_MONTH_OUT_OF_RANGE`. The quick search finds a device by its QR code, in any case, ranked first. The operator's proposal queue shows each tenant's name.
+- **Changed:** the **IPM Checklists** entry (`/dashboard/ipm-templates`) is now in the sidebar (migration 0130; a running deployment shows it after the menu cache expires).
+
 ### 2026-10-09 — The calibration-date page: an outside lab's date by QR sticker, and the calibration list (P22-05) ([record](./records/2026-10-09-p22-05-calibration-dates-ui.md))
 - **Added:** `dashboard/calibration-dates`, in Indonesian and English, linked from the calibration page. A technician with `calibration` write types or scans a device's QR sticker, sees the device, its last calibration and its room, and records an outside laboratory's calibration date (laboratory, certificate number, stated next date, verdict, room confirmed or changed). No file is stored; a same-day entry is warned about and kept; the new next date is shown. Every `calibration` reader gets the calibration list: latest per device by default, filtered by sticker, kind, a date range on the calibration or input date, and (provider staff only) the facility. Facility-bound accounts and the platform operator read the list but do not record.
 - **Not yet in the sidebar:** the page has no menu entry of its own (a backend seed, if wanted); it is reached from `/dashboard/calibration`.
