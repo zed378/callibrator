@@ -14,6 +14,10 @@ import { typedApi, unwrap, type JsonBody, type Op, type QueryOf, type components
  *  - `PATCH …/:id { revision, … }` — a draft's header (a date change is a correction).
  *  - `POST …/submit { revision }`, `POST …/discard { reason? }` — the draft's end.
  *  - `POST …/void { reason }` — final; an unbound tenant administrator only (the server decides).
+ *  - P22-03, the capture: `POST /ipm/sessions { deviceId, clientRef }` (a draft, prefilled; the
+ *    same `clientRef` answers the same draft, AM-16), `PUT …/results { revision, results }` (the
+ *    draft's rows replaced wholesale), `GET /ipm/template-versions/:id` (the pinned checklist) and
+ *    `GET /warehouses?kind=room&find=` (a room to confirm, F-53).
  *
  * Every conflict is a 409 with a top-level `code` and the server's explanation, which the page
  * shows as written.
@@ -27,6 +31,9 @@ export type IpmSessionSummary = S["IpmSessionSummary"];
 export type IpmResult = S["IpmResult"];
 export type IpmSessionListQuery = QueryOf<Op<"/api/v1/ipm/sessions", "get">>;
 export type IpmHeaderBody = JsonBody<Op<ById, "patch">>;
+export type IpmResultsBody = JsonBody<Op<"/api/v1/ipm/sessions/{sessionId}/results", "put">>;
+export type TemplateVersion = S["InspectionTemplateVersion"];
+export type Room = S["Warehouse"] & { floor?: string | null };
 export type PageMeta = S["PaginationMeta"];
 
 /** One page of a list: the rows, and the paging the envelope carried beside them. */
@@ -62,4 +69,16 @@ export const ipmHistoryService = {
 
   voidSession: async (sessionId: string, reason: string): Promise<IpmSession> =>
     (await typedApi.POST("/api/v1/ipm/sessions/{sessionId}/void", { ...path(sessionId), body: { reason } }).then(unwrap)).data,
+
+  create: async (deviceId: string, clientRef: string): Promise<IpmSession> =>
+    (await typedApi.POST("/api/v1/ipm/sessions", { body: { deviceId, clientRef } }).then(unwrap)).data,
+
+  saveResults: async (sessionId: string, body: IpmResultsBody): Promise<IpmSession> =>
+    (await typedApi.PUT("/api/v1/ipm/sessions/{sessionId}/results", { ...path(sessionId), body }).then(unwrap)).data,
+
+  templateVersion: async (versionId: string): Promise<TemplateVersion> =>
+    (await typedApi.GET("/api/v1/ipm/template-versions/{versionId}", { params: { path: { versionId } } }).then(unwrap)).data,
+
+  rooms: async (find: string): Promise<Room[]> =>
+    ((await typedApi.GET("/api/v1/warehouses", { params: { query: { kind: "room", page: 1, limit: 20, ...(find ? { find } : {}) } } }).then(unwrap)).data ?? []) as Room[],
 };

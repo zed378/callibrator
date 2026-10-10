@@ -10908,6 +10908,34 @@ The frontend today has no service worker, no web manifest and no IndexedDB use. 
 
 **`docs/` amended (as target):** `FRONTEND/00-FRONTEND-STANDARDS.md` § Content Security Policy (scope `/field`, camera on `/field`, one document); `UPSTREAM/02-FEATURES.md` § L note (`client_ref` per creator, scope); `docs/SECURITY/15` AM-1, AM-23, AM-24, AM-26 rows and § 13.1 OQ-10 (adopted).
 
+
+### ADR-127 Amendment 2 (2026-10-10, P22-03): the online IPM capture before the field app — the camera on the QR-scanning page only, no JavaScript QR decoder, autosave as serialised revisioned writes
+
+**Date:** 2026-10-10 · **Status:** Accepted, **built** (frontend only). Decided by the implementing agent under the owner's standing delegation · **Card:** P22-03 · **Record:** `MEMORY/records/2026-10-10-p22-03-ipm-capture-ui.md`
+
+**Context.** Am. 1 allowed the camera on `/field` only: the offline field app (P22-10). P22-03 builds the ONLINE capture first (`/dashboard/ipm/new`, `/dashboard/ipm/capture/<id>`), and F-35 asks for the device's QR to be scanned with the camera. The page header `Permissions-Policy: camera=()` refuses `getUserMedia` everywhere.
+
+**Decision.**
+1. **`camera=(self)` on `/dashboard/ipm/new` only** (`CAMERA_PAGES`, `lib/securityHeaders.ts`; set by `next.config.ts` after the page headers — the last header of a key wins on a path both match). Every other page keeps `camera=()`. The capture page itself never scans. P22-10 adds `/field` to the same list.
+2. **The browser's `BarcodeDetector` only — no JavaScript decoder shipped.** Where it is missing (desktop Firefox, some WebViews) or the camera is refused, the page says so and the typed field stays, which a handheld scanner fills. A decoder (e.g. a WASM ZXing build) is about 100–300 KB and would sit on the budgeted dashboard chunk.
+3. **Autosave = one writer at a time.** A pause after the last change sends ONE `PUT …/results` (the whole draft's rows) and/or ONE `PATCH` of the header fields that changed, each at the revision the previous write answered; a refused write stays visible and is retried only after the next change (no loop); `IPM_REVISION_CONFLICT` stops the autosave and offers a reload. Answers the server would refuse (`normaliseResult` from the contracts) are not sent.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| `camera=(self)` on every page | Am. 1's least privilege: a page that does not scan does not need the camera |
+| Wait for `/field` (P22-10) to scan | F-35 is the capture's first step; the online page is usable today on Chrome / Edge / Safari on a phone |
+| A JS QR decoder fallback | budget and CSP weight for desktop browsers, where a handheld scanner or typing is the norm |
+| Save per field (PATCH-like result updates) | the contract replaces results wholesale (`PUT`, spec § 9.4); per-field writes multiply revisions and conflicts |
+
+**Implications, including the bad ones.**
+- Browsers without `BarcodeDetector` (Firefox desktop and Android) cannot scan; they type or use a scanner.
+- A long checklist sends its full result set on each save (≤ 400 rows, small JSON); acceptable online, and the offline engine (P22-10) queues the same body.
+- Two tabs on one draft conflict by design (the revision); the second reloads.
+
+**`docs/` amended:** `FRONTEND/00-FRONTEND-STANDARDS.md` § Content Security Policy (the camera on the QR-scanning page, with a reference to this amendment).
+
 ---
 
 ## ADR-128: A Signed Attachment Link Lives at Most a Configured Cap (Default 15 Minutes, Never Above One Hour), Is Bound to Its Tenant and the Principal That Minted It, and Is Re-Checked at Redemption
@@ -11388,6 +11416,34 @@ Today `createCalibrationRecord` sets the device's `nextCalibrationDate` from whi
 - The count of a `latestOnly` page comes from the raw read; if the model read ever hid a row the read counted, the page would show fewer rows than `meta.total` says (none known: both read the same tenant and facility).
 
 **`docs/` amended:** the P19-05 spec § 8 (as-built note); `docs/SECURITY/15` § 11 G-22 (built).
+
+---
+
+### ADR-133 Amendment 4 (2026-10-10, P24-04): the import key as built — provisioned by the import with its secret discarded, the name reserved, a mapped user never replaced by the key, a NULL user's snapshot named "Upstream import"
+
+**Date:** 2026-10-10 · **Status:** Accepted, **built** (no migration, no route). Decided by the implementing agent under the owner's standing delegation · **Card:** P24-04 · **Spec:** [`P19-05`](./specs/P19-05-calibration-dates.md) § 9.1, § 9.2 (as-built notes added) · **Record:** `MEMORY/records/2026-10-10-p24-04-import-key.md`
+
+**Decision.**
+1. **`services/upstreamImport/importKey.ts#provisionImportKey` creates the key**, not the operator through `POST /api-keys` (§ 9.2 said the existing route): name `upstream-import`, scopes `["calibration:write"]` only, `expiresAt` = the planned sign-off day + 90 days (a malformed day or an expiry already past is a 400), audited `IMPORT_KEY_CREATE` in its transaction, `createdBy` the operator. **The secret is generated, hashed and discarded**: no one ever holds it, so the key cannot be presented over HTTP at all (§ 9.2's "never used over HTTP" is now a property, not a promise). A second call while a usable key exists returns it and writes nothing.
+2. **The name is reserved:** `apiKey.service#createApiKey` refuses `upstream-import` in any case or padding (400), so the key the import looks up is always one it provisioned. Listing and revoking it through the existing key routes still work.
+3. **`importKeyActor`** resolves the tenant's usable key (active, unexpired, exactly `calibration:write`) as `{ apiKeyId }`, else 409 `IMPORT_KEY_MISSING`; **`importCalibrationPerformer`** returns the person (`performed_by`, their snapshot + `source: "upstream-import"`) when the upstream user maps to a user **found in the tenant**, else the key: a deleted upstream user → `Former upstream user #<n>` (the per-migration sequence, 07 § 3), a NULL one → `{ name: "Upstream import", role: "import", organisation: <tenant name> }`. **A mapped user not found in the tenant (another tenant's, or deleted here) is a 409 `IMPORT_PERFORMER_NOT_FOUND`, never silently the key** — it is a mapping defect, and attributing it would hide it.
+4. **The DPIA gate holds here too:** a run declared `real` while `UPSTREAM_REAL_DATA_ALLOWED` is off cannot provision the key or resolve it (403 `UPSTREAM_REAL_DATA_REFUSED`).
+5. **Cutover (P30, FT-101):** `revokeImportKeys` revokes every live import key of the tenant through `apiKey.service#revokeApiKey` (audited `API_KEY_REVOKE`); `importKeyRevoked` is the runbook check.
+
+**Alternatives considered.**
+| Alternative | Why not |
+|---|---|
+| The operator creates the key through `POST /api-keys` (§ 9.2) | the route shows the secret once to a person: a `calibration:write` credential for every facility of the provider tenant would exist outside the server for up to sign-off + 90 days |
+| A NULL user's snapshot `{ name: null, … }` (§ 9.1) | the D-27 shape requires a name (1 – 255); the row would be refused on write |
+| A mapped-but-missing user falls back to the key | the spec gives the key only to NULL and deleted upstream users; a fallback would turn a mapping defect into a plausible attribution |
+| A new route or CLI to provision and revoke | the ETL runner (P24-01/02) is blocked; the service is what it calls, and the existing key routes already list and revoke |
+
+**Implications, including the bad ones.**
+- The import key's `lastUsedAt` never moves (it is never verified over HTTP); its use is visible in the records' `api_key_id` and the audit rows' `apiKeyId`.
+- A tenant that already has a key named `upstream-import` from before this change keeps it; the import uses it only if it is active, unexpired and exactly `calibration:write`, else provisions its own.
+- Wiring the actor and snapshot into the record write (with `source`, `created_at`, the audit's `system:upstream-import`) is P24-02's — this card proves the key records through `recordExternalCalibration`.
+
+**`docs/` amended:** the P19-05 spec § 9.1, § 9.2 (as-built notes referencing this amendment).
 
 ---
 

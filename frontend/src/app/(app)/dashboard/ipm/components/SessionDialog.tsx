@@ -16,6 +16,7 @@
  * what was typed.
  */
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { Alert, Button, Dialog, StatusBadge } from "@/components/ui";
 import { describeApiError } from "@/api/client";
 import { ipmHistoryService, type IpmHeaderBody, type IpmSession } from "@/api/services/ipmHistory.service";
@@ -381,6 +382,10 @@ export function SessionDialog({ sessionId, caller, onClose }: Props) {
               {t("ipm.draft.heading")}
             </h3>
             <p className="text-sm text-muted-foreground">{t("ipm.draft.lead")}</p>
+            {/* P22-03: the checklist's results are the capture's. */}
+            <Link href={`/dashboard/ipm/capture/${session.id}`} className="inline-block text-sm text-primary underline underline-offset-2">
+              {t("ipm.capture.continue")}
+            </Link>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field id="ipm-performed" label={t("ipm.draft.performedAt")}>
                 <input

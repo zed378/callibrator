@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { NextConfig } from "next";
-import { PAGE_SECURITY_HEADERS } from "./src/lib/securityHeaders";
+import { CAMERA_PAGES, CAMERA_PERMISSIONS_POLICY, PAGE_SECURITY_HEADERS } from "./src/lib/securityHeaders";
 import { PAGE_REDIRECTS } from "./src/lib/redirects";
 
 const isProd =
@@ -28,6 +28,8 @@ const nextConfig: NextConfig = {
         source: "/((?!api/|uploads/public/).*)",
         headers: [...PAGE_SECURITY_HEADERS],
       },
+      // P22-03 (ADR-127 Am. 2): the QR-scanning page alone may use the camera.
+      ...CAMERA_PAGES.map((source) => ({ source, headers: [{ key: "Permissions-Policy", value: CAMERA_PERMISSIONS_POLICY }] })),
       // P10-08 (doc 20 §10): the verification page is never indexed. The page
       // also sets robots metadata; the header covers crawlers that read only headers.
       {

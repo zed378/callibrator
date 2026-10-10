@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — The IPM capture: start by QR sticker, fill in the checklist step by step, submit (P22-03; ADR-127 Am. 2) ([record](./records/2026-10-10-p22-03-ipm-capture-ui.md))
+- **Added:** `dashboard/ipm/new`: find a device by its QR sticker — typed, with a handheld scanner, or with the phone's camera where the browser can read QR codes — and start its IPM; an open draft is offered to continue. `dashboard/ipm/capture/<id>`: the device's checklist one section at a time, with the readings checked as they are typed (a value outside the possible range is said at once; a result computed from a limit is shown), rows added on site, the outcome, recommendation and room, saved automatically; the review lists what is still missing, and the submit shows the visit number and what the system did (a repair order, a calibration request).
+- **Changed:** the start page alone may use the camera (`Permissions-Policy: camera=(self)` on that path; every other page keeps the camera off).
+
 ### 2026-10-10 — Exports made in the browser: the inventory list and the calibration recaps (P22-06; P23-03, P23-04) ([record](./records/2026-10-10-p22-06-browser-exports.md))
 - **Added:** `dashboard/exports`, in Indonesian and English, linked from the device register and the reports page. The inventory list of one facility as a PDF to print and sign (provider layout with technician, inventory date, optional photo thumbnails and two signature blocks; or the facility layout), or of one or every facility as a spreadsheet; the calibration recaps as a spreadsheet by calibration or input date over a day or a range, or the latest calibration of every device. The size is shown before anything is built, the progress while it is, and an export can be cancelled. Files are made in the browser and nothing is uploaded or stored; a facility account exports only its facility.
 
