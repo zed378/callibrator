@@ -240,7 +240,7 @@ function History({ caller, deviceId, canReadDevices, languageForm }: HistoryProp
             </div>
           )}
           {!list.loading && list.error === null && list.rows.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">{t("ipm.list.caption")}</caption>
                 <thead className="text-left">

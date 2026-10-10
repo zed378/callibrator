@@ -170,7 +170,7 @@ export const AuditTable: React.FC<AuditTableProps> = ({
   return (
     <Card className="border-border">
       <CardContent className="p-0">
-        <div className="overflow-x-auto w-full rounded-2xl bg-card shadow-xs">
+        <div className="relative overflow-x-auto w-full rounded-2xl bg-card shadow-xs">
           <table className="w-full border-collapse">
             <thead className="bg-muted border-b border-border">
               <tr>

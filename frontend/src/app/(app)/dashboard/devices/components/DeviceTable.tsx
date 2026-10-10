@@ -44,7 +44,11 @@ export function DeviceTable({ rows, showFacility, actions, onPhotos, onEdit, onD
   const text = useDeviceText();
   const { t } = text;
   return (
-    <div className="overflow-x-auto">
+    // `relative` (2026-10-11): the sr-only caption and header labels are absolutely positioned. In a
+    // scroller that is not their containing block they escape it, and the actions header's label sat
+    // at the table's right edge: the page laid out 823 px wide in a 683 px viewport (WCAG 1.4.10,
+    // automate/a11y.browser.js reflow at 200% zoom).
+    <div className="relative overflow-x-auto">
       <table className="w-full text-sm">
         <caption className="sr-only">{t("devices.list.caption")}</caption>
         <thead className="text-left">

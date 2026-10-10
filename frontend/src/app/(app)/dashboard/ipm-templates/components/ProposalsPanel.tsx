@@ -127,7 +127,7 @@ export function ProposalsPanel({ canWrite }: { canWrite: boolean }) {
             <p className="py-6 text-center text-sm text-muted-foreground">{t("ipmCatalogue.proposals.empty")}</p>
           )}
           {!list.loading && list.error === null && list.rows.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">{t("ipmCatalogue.proposals.heading")}</caption>
                 <thead className="text-left">
