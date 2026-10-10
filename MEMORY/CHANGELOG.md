@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-11 — Device register reflows at 200% zoom; tables no longer overlap on phones ([record](./records/2026-10-11-fix-reflow-contrast.md))
+- **Fixed:** at 200% zoom, `/dashboard/devices` no longer scrolls sideways (WCAG 1.4.10). The table's screen-reader labels escaped its scroll region. All 15 table scroll regions that hold such labels are now positioned.
+- **Fixed:** below the `lg` breakpoint, tables (the shared `Table`, users, roles) size to their content and scroll inside their own region. Before, they squeezed their columns, and the text ran over the next cell: on `/dashboard/calibration` at 360 px it ran over a red status badge (axe colour contrast). Desktop layout is unchanged.
+
 ### 2026-10-11 — The unit guards, the menu 500 and the response envelope are green ([record](./records/2026-10-11-fix-guards-contract.md); ADR-129 Am. 2, ADR-137)
 - **Fixed:** `POST /api/v1/roles/menus` without a `name` is a 400 that names the field. It was a 500.
 - **Changed (API, additive):** every error answer carries `data: null`, including those from the global error handler (403s, 401s, 409s). The roles routes answer the house envelope `{ success, status, message, data }`, with the same `data` as before.

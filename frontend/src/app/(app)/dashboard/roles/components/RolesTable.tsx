@@ -16,7 +16,7 @@ export const RolesTable: React.FC<RolesTableProps> = ({
   onDelete,
 }) => (
   <div className="overflow-x-auto overflow-y-hidden">
-    <table className="w-full table-fixed">
+    <table className="w-full table-auto lg:table-fixed">
       <thead className="bg-muted">
         <tr>
           <th className="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-0">

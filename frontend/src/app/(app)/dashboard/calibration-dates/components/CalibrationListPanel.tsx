@@ -168,7 +168,7 @@ function RecordsTable({ rows, showFacility }: { rows: CalibrationRecord[]; showF
   const text = useDatesText();
   const { t } = text;
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full text-sm">
         <caption className="sr-only">{t("calibrationDates.list.heading")}</caption>
         <thead className="text-left">

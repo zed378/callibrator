@@ -162,7 +162,7 @@ export function ItemLibraryPanel() {
             <p className="py-6 text-center text-sm text-muted-foreground">{t("ipmCatalogue.library.empty")}</p>
           )}
           {!list.loading && list.error === null && list.rows.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">{t("ipmCatalogue.library.heading")}</caption>
                 <thead className="text-left">

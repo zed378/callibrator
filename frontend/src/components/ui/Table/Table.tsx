@@ -42,8 +42,18 @@ export const Table: React.FC<TableProps> = ({
     // P11-07: at 360 px the table scrolls sideways; a keyboard user must be
     // able to reach and scroll it even when no cell holds a control (axe
     // scrollable-region-focusable, WCAG 2.1.1 — found by automate/p11.browser.mts).
-    <div tabIndex={0} className="overflow-x-auto w-full rounded-2xl bg-card shadow-xs">
-      <table className="w-full table-fixed border-collapse">
+    //
+    // Below `lg` the layout is `auto`, not `fixed` (2026-10-11): a fixed table
+    // at w-full divides a 360 px card evenly between its columns, and the
+    // `whitespace-nowrap` cells then spill over their neighbours — text was
+    // read by axe against the next cell's red status badge (2.32:1 light,
+    // 1.84:1 dark, /dashboard/calibration). Auto layout sizes the table to its
+    // content and this region scrolls; from `lg` the fixed layout (and the
+    // columns' explicit widths) is kept. `relative` makes this region the
+    // containing block of the sr-only header labels, which would otherwise
+    // escape it and widen the page (WCAG 1.4.10).
+    <div tabIndex={0} className="relative overflow-x-auto w-full rounded-2xl bg-card shadow-xs">
+      <table className="w-full table-auto lg:table-fixed border-collapse">
         <thead className="bg-muted border-b border-border">
           <tr>
             {columns.map((column) => (

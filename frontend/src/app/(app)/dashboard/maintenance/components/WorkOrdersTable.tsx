@@ -77,7 +77,7 @@ export const WorkOrdersTable: React.FC<WorkOrdersTableProps> = ({
 return <StatusBadge domain="workOrder" state={status} />;
   };
 
-  // The shared Table uses `table-fixed` + `whitespace-nowrap`, so the title
+  // The shared Table uses `table-fixed` (from `lg`) + `whitespace-nowrap`, so the title
   // column needs an explicit width and its content must truncate — otherwise
   // long titles overflow into the Type column.
   const columns = [

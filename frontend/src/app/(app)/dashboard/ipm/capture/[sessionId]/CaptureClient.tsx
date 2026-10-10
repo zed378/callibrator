@@ -416,7 +416,7 @@ function Capture({ loaded, languageForm, autosaveMs, onReload }: { loaded: Loade
         </div>
       )}
 
-      <nav aria-label={t("ipm.capture.steps")} className="overflow-x-auto">
+      <nav aria-label={t("ipm.capture.steps")} className="relative overflow-x-auto">
         <ol className="flex gap-2">
           {steps.map((s, i) => (
             <li key={s.kind === "section" ? s.section : s.kind}>

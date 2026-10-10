@@ -430,7 +430,7 @@ export function TemplateEditor({ template, name, onBack, onChanged }: Props) {
             <p className="text-sm text-muted-foreground">{t("ipmCatalogue.editor.noHistory")}</p>
           )}
           {!history.loading && history.error === null && history.rows.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">{t("ipmCatalogue.editor.history")}</caption>
                 <thead className="text-left">

@@ -173,7 +173,7 @@ function Facilities({ write, canBind, languageForm }: { write: boolean; canBind:
             </div>
           )}
           {!list.loading && list.error === null && list.rows.length > 0 && (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">{t("facilities.title")}</caption>
                 <thead className="text-left">

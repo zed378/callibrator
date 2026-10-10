@@ -127,7 +127,7 @@ export function TechnicianActivity({ userId }: Props) {
         )}
         {state === "ready" && rows.length === 0 && <p className="text-sm text-muted-foreground">{t("dashboard.activity.empty")}</p>}
         {state === "ready" && rows.length > 0 && (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-left text-sm">
               <caption className="sr-only">{t("dashboard.activity.title")}</caption>
               <thead className="text-xs text-muted-foreground">

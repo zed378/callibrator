@@ -249,7 +249,7 @@ function Report({ sessionId, pdfMessages, languageForm, canSign }: ReportClientP
         </section>
 
         {doc.sections.map(({ section, items }) => (
-          <section key={section} aria-labelledby={`report-${section}`} className="overflow-x-auto">
+          <section key={section} aria-labelledby={`report-${section}`} className="relative overflow-x-auto">
             <h2 id={`report-${section}`} className="text-base font-semibold">
               {t(`ipmCatalogue.section.${section}` as keyof Messages)}
             </h2>
