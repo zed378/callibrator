@@ -12,13 +12,19 @@
  *
  * The interval is the device's `ipm_interval_months` (0 = not under IPM), else the tenant's
  * `ipm_interval_months` setting (unset = not scheduled); the month is the tenant's time zone's.
+ *
+ * P21-07 (ADR-126 Am. 6): `?month=YYYY-MM` moves the reference month ("due by the end of that
+ * month") from the current one up to `IPM_DUE_MONTH_HORIZON` months ahead — the SQL compares with
+ * that month and `computeIpmDue` reads `ipmDueReference`'s instant, so they still agree; and
+ * `countDue` gives the dashboard its counts by the same rule (one raw read, the same predicates).
  * Named exports only.
  */
 import { db } from "../config";
 import { sql, type SqlRunner } from "../utils/sql.util";
 import { facilityClause } from "../utils/facilityPredicate.util";
 import { ipmSettingsOf } from "./ipmSettings.service";
-import { computeIpmDue, type IpmDue } from "@callibrator/contracts/inspectionValues";
+import { CodedError } from "../utils/codedError.util";
+import { IPM_DUE_MONTH_HORIZON, IPM_DUE_MONTH_OUT_OF_RANGE, computeIpmDue, ipmDueReference, type IpmDue } from "@callibrator/contracts/inspectionValues";
 import type { IpmDueQuery } from "@callibrator/contracts/inspectionSessions";
 
 /** One row of the raw read. */
@@ -49,7 +55,16 @@ export interface IpmDuePage {
  */
 export const listDue = async (tenantId: string, query: IpmDueQuery): Promise<IpmDuePage> => {
   const settings = await ipmSettingsOf(tenantId);
-  const facility = facilityClause("d.client_facility_id", 8);
+  const now = new Date();
+  const reference = query.month === undefined ? null : ipmDueReference(query.month, now, settings.timeZone);
+  if (query.month !== undefined && reference === null) {
+    throw new CodedError(
+      400,
+      IPM_DUE_MONTH_OUT_OF_RANGE,
+      `The month must be between the current month and ${String(IPM_DUE_MONTH_HORIZON)} months ahead (in the tenant's time zone).`,
+    );
+  }
+  const facility = facilityClause("d.client_facility_id", 9);
   const rows = await sql<DueRow>(
     db as unknown as SqlRunner,
     `WITH scheduled AS (
@@ -77,12 +92,22 @@ export const listDue = async (tenantId: string, query: IpmDueQuery): Promise<Ipm
          OR ($3 = 'never_inspected' AND "lastPerformedAt" IS NULL)
          OR ($3 = 'due' AND ("lastPerformedAt" IS NULL
               OR date_trunc('month', "lastPerformedAt" AT TIME ZONE $4) + make_interval(months => interval_months)
-                 <= date_trunc('month', now() AT TIME ZONE $4)))
+                 <= date_trunc('month', COALESCE($8::timestamp, now() AT TIME ZONE $4))))
       ORDER BY name, id
       LIMIT $5 OFFSET $6`,
-    [tenantId, settings.intervalMonths, query.state, settings.timeZone, query.limit, (query.page - 1) * query.limit, query.clientFacilityId ?? null, ...facility.bind],
+    [
+      tenantId,
+      settings.intervalMonths,
+      query.state,
+      settings.timeZone,
+      query.limit,
+      (query.page - 1) * query.limit,
+      query.clientFacilityId ?? null,
+      query.month === undefined ? null : `${query.month}-01`,
+      ...facility.bind,
+    ],
   );
-  const today = new Date();
+  const today = reference ?? now;
   const total = rows.length ? Number(rows[0]?.total) : 0;
   return {
     rows: rows.map((r) => {
@@ -107,4 +132,54 @@ export const listDue = async (tenantId: string, query: IpmDueQuery): Promise<Ipm
     }),
     meta: { total, page: query.page, limit: query.limit, totalPages: Math.ceil(total / query.limit) },
   };
+};
+
+/** The dashboard's IPM counts (P21-07, N-9). */
+export interface IpmDueCounts {
+  /** Devices under an IPM schedule (interval > 0, not retired or inactive). */
+  readonly scheduled: number;
+  /** Due this month (tenant zone) — never-inspected devices included, as the list counts them. */
+  readonly due: number;
+  /** Scheduled and never inspected (a subset of `due`). */
+  readonly neverInspected: number;
+}
+
+interface CountRow {
+  scheduled: string | number;
+  due: string | number;
+  neverInspected: string | number;
+}
+
+/**
+ * The dashboard's "due" counts (P21-07; P18-03 N-9): `listDue`'s predicates and month arithmetic,
+ * counted in one raw read — the tenant bound on both tables, `facilityClause` for a bound caller
+ * (G-14), so a bound user's counts are its facility's only. The dashboard caches them per scope
+ * (AM-18, G-20).
+ *
+ * @param tenantId - the tenant whose devices are counted (bound into both tables' predicates)
+ * @returns the counts
+ */
+export const countDue = async (tenantId: string): Promise<IpmDueCounts> => {
+  const settings = await ipmSettingsOf(tenantId);
+  const facility = facilityClause("d.client_facility_id", 4);
+  const [row] = await sql<CountRow>(
+    db as unknown as SqlRunner,
+    `SELECT COUNT(*) AS scheduled,
+            COUNT(*) FILTER (WHERE s.performed_at IS NULL
+              OR date_trunc('month', s.performed_at AT TIME ZONE $3) + make_interval(months => COALESCE(d.ipm_interval_months, $2::int))
+                 <= date_trunc('month', now() AT TIME ZONE $3)) AS due,
+            COUNT(*) FILTER (WHERE s.performed_at IS NULL) AS "neverInspected"
+       FROM calibration_devices d
+       LEFT JOIN LATERAL (
+         SELECT x.performed_at FROM inspection_sessions x
+          WHERE x.tenant_id = $1 AND x.device_id = d.id AND x.status = 'submitted' AND x.superseded_by_id IS NULL
+          ORDER BY x.performed_at DESC, x.id DESC
+          LIMIT 1
+       ) s ON TRUE
+      WHERE d.tenant_id = $1 AND d.is_deleted = false
+        AND COALESCE(d.status::text, 'active') NOT IN ('retired', 'inactive')
+        AND COALESCE(d.ipm_interval_months, $2::int) > 0${facility.clause}`,
+    [tenantId, settings.intervalMonths, settings.timeZone, ...facility.bind],
+  );
+  return { scheduled: Number(row?.scheduled ?? 0), due: Number(row?.due ?? 0), neverInspected: Number(row?.neverInspected ?? 0) };
 };

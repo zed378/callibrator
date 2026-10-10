@@ -306,6 +306,16 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
       reason: "A-11 (N-5): the performer signs its report; the facility's own IPSRS countersigns — never the submitter, never for another facility (404)",
     },
   },
+  // P21-07 (OQ-8, A-10 of P18-03 § 8.2; ADR-126 Am. 6): the home page's figures. Every aggregate runs through a
+  // hooked model (the facility predicate forced; provider-internal models deny) or `countDue`'s raw read with
+  // facilityClause; the cache key carries the facility segment from the context (G-20). Proved by
+  // routes/dashboard.twoFacility and the live twin services/dashboard.twoFacility.p2107.live.
+  "api/dashboard.route.ts": {
+    "GET /metrics": {
+      kind: "read",
+      reason: "A-10 (OQ-8): the facility's figures only — hooked counts, countDue's facilityClause, the cache key per facility (G-20)",
+    },
+  },
   // P21-04 (P19-02 § 11): "due" — the raw read carries facilityClause (G-14) for a bound principal.
   "api/ipmReports.route.ts": {
     "GET /due": { kind: "read", reason: "C-13 (N-9): the facility's devices whose IPM is due; the raw read binds the facility (facilityClause)" },

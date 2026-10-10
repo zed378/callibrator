@@ -21,6 +21,7 @@ const DeviceRow = z.object({
   id: z.guid(),
   name: z.string(),
   serialNumber: z.string().nullable(),
+  qrCode: z.string().nullable().meta({ description: "P21-07 (F-72): matched exactly (upper-cased) and ranked first (rank 1)" }),
   manufacturer: z.string().nullable(),
   model: z.string().nullable(),
   category: z.string().nullable(),
@@ -60,8 +61,8 @@ const SearchResults = z
     example: {
       query: "infusion",
       total: 1,
-      results: [{ type: "device", id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f", name: "Infusion pump", serialNumber: "SN-0001", manufacturer: "Acme", model: "IP-2", category: "Infusion", rank: 0.61 }],
-      byType: { device: [{ type: "device", id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f", name: "Infusion pump", serialNumber: "SN-0001", manufacturer: "Acme", model: "IP-2", category: "Infusion", rank: 0.61 }] },
+      results: [{ type: "device", id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f", name: "Infusion pump", serialNumber: "SN-0001", qrCode: "TST000001", manufacturer: "Acme", model: "IP-2", category: "Infusion", rank: 0.61 }],
+      byType: { device: [{ type: "device", id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f", name: "Infusion pump", serialNumber: "SN-0001", qrCode: "TST000001", manufacturer: "Acme", model: "IP-2", category: "Infusion", rank: 0.61 }] },
     },
   });
 

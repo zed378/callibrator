@@ -158,5 +158,9 @@ export const TemplateProposal = z
   .meta({ id: "InspectionTemplateProposal", description: "A tenant's proposal for the catalogue (its own tenant's only)" });
 
 export const TemplateProposalQueueRow = z
-  .object({ ...proposalFields, tenantId: z.guid() })
+  .object({
+    ...proposalFields,
+    tenantId: z.guid(),
+    tenantName: z.string().nullable().meta({ description: "The tenant's display name only (null when the tenant row is gone)" }),
+  })
   .meta({ id: "InspectionTemplateProposalQueueRow", description: "A proposal in the operator's queue, with its tenant" });

@@ -42,7 +42,10 @@ export default defineRouteDocs({
         "`ipm` read. `state=due` (default): devices whose last effective IPM month + interval is this month or earlier in the tenant's " +
         "time zone, and scheduled devices never inspected; `never_inspected`; `all_scheduled`. The interval is the device's " +
         "`ipmIntervalMonths` (0 = not under IPM), else the tenant's `ipm_interval_months` (unset: nothing is scheduled). Retired and " +
-        "inactive devices are never scheduled. Ordered by name, then id. A facility-bound account sees its facility's devices only.",
+        "inactive devices are never scheduled. Ordered by name, then id. A facility-bound account sees its facility's devices only. " +
+        "P21-07: `month=YYYY-MM` sets the reference month (\"due by the end of that month\") instead of the current one — from the " +
+        "current month to 24 months ahead in the tenant's zone, else 400 with the top-level code `IPM_DUE_MONTH_OUT_OF_RANGE`; " +
+        "each row's `ipmDue` is computed for that month.",
       permission: { kind: "dynamicAccess", resource: "ipm", action: "read" },
       audited: false,
       query: ipmDueQuery,

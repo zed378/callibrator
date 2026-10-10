@@ -2614,7 +2614,7 @@ export interface paths {
         };
         /**
          * The home page's metrics
-         * @description A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`. The figures are cached for 30 seconds per scope (never shared between tenants); `generatedAt` says when they were computed.
+         * @description A non-super-admin always gets their own tenant's numbers (`tenantId` is ignored); a facility-bound account gets its facility's only (P21-07, A-10: provider-internal figures read 0). A super admin gets the global view with a per-tenant breakdown, or one tenant's with `tenantId`. The figures are cached for 30 seconds per scope (never shared between tenants); `generatedAt` says when they were computed.
          */
         get: operations["getDashboardMetrics"];
         put?: never;
@@ -3472,7 +3472,7 @@ export interface paths {
         };
         /**
          * Devices whose IPM is due
-         * @description `ipm` read. `state=due` (default): devices whose last effective IPM month + interval is this month or earlier in the tenant's time zone, and scheduled devices never inspected; `never_inspected`; `all_scheduled`. The interval is the device's `ipmIntervalMonths` (0 = not under IPM), else the tenant's `ipm_interval_months` (unset: nothing is scheduled). Retired and inactive devices are never scheduled. Ordered by name, then id. A facility-bound account sees its facility's devices only.
+         * @description `ipm` read. `state=due` (default): devices whose last effective IPM month + interval is this month or earlier in the tenant's time zone, and scheduled devices never inspected; `never_inspected`; `all_scheduled`. The interval is the device's `ipmIntervalMonths` (0 = not under IPM), else the tenant's `ipm_interval_months` (unset: nothing is scheduled). Retired and inactive devices are never scheduled. Ordered by name, then id. A facility-bound account sees its facility's devices only. P21-07: `month=YYYY-MM` sets the reference month ("due by the end of that month") instead of the current one — from the current month to 24 months ahead in the tenant's zone, else 400 with the top-level code `IPM_DUE_MONTH_OUT_OF_RANGE`; each row's `ipmDue` is computed for that month.
          */
         get: operations["listIpmDue"];
         put?: never;
@@ -10540,7 +10540,13 @@ export interface components {
          *           "retired": 20
          *         },
          *         "dueSoon": 14,
-         *         "overdue": 3
+         *         "overdue": 3,
+         *         "byCondition": {
+         *           "good": 280,
+         *           "not_good": 12,
+         *           "broken": 8,
+         *           "unset": 10
+         *         }
          *       },
          *       "calibrations": {
          *         "total": 1820,
@@ -10565,6 +10571,14 @@ export interface components {
          *       },
          *       "maintenance": {
          *         "openWorkOrders": 7
+         *       },
+         *       "ipm": {
+         *         "sessionsLast30Days": 41,
+         *         "due": {
+         *           "scheduled": 290,
+         *           "due": 37,
+         *           "neverInspected": 5
+         *         }
          *       },
          *       "trends": {
          *         "calibrations": [
@@ -10607,6 +10621,13 @@ export interface components {
                 };
                 dueSoon: number;
                 overdue: number;
+                /** @description P21-07 (F-70): devices per physical condition (upstream "fit" is stored as `good`, D-03); no condition = `unset` */
+                byCondition: {
+                    good: number;
+                    not_good: number;
+                    broken: number;
+                    unset: number;
+                };
             };
             calibrations: {
                 total: number;
@@ -10631,6 +10652,19 @@ export interface components {
             };
             maintenance: {
                 openWorkOrders: number;
+            };
+            /** @description P21-07 (F-70, F-73, N-9): the IPM figures */
+            ipm: {
+                /** @description IPM visits submitted (performed) in the last 30 days */
+                sessionsLast30Days: number;
+                /** @description A tenant view only (the interval and zone are the tenant's); null in the global view */
+                due: {
+                    /** @description Devices under an IPM schedule */
+                    scheduled: number;
+                    /** @description Due this month in the tenant's zone, never-inspected devices included (`GET /ipm/due`'s rule) */
+                    due: number;
+                    neverInspected: number;
+                } | null;
             };
             trends: {
                 calibrations: {
@@ -11241,6 +11275,8 @@ export interface components {
             updatedAt: string;
             /** Format: uuid */
             tenantId: string;
+            /** @description The tenant's display name only (null when the tenant row is gone) */
+            tenantName: string | null;
         };
         /** @description A checklist version with its items in read order */
         InspectionTemplateVersion: {
@@ -12818,6 +12854,7 @@ export interface components {
          *           "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
          *           "name": "Infusion pump",
          *           "serialNumber": "SN-0001",
+         *           "qrCode": "TST000001",
          *           "manufacturer": "Acme",
          *           "model": "IP-2",
          *           "category": "Infusion",
@@ -12831,6 +12868,7 @@ export interface components {
          *             "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
          *             "name": "Infusion pump",
          *             "serialNumber": "SN-0001",
+         *             "qrCode": "TST000001",
          *             "manufacturer": "Acme",
          *             "model": "IP-2",
          *             "category": "Infusion",
@@ -12852,6 +12890,8 @@ export interface components {
                     id: string;
                     name: string;
                     serialNumber: string | null;
+                    /** @description P21-07 (F-72): matched exactly (upper-cased) and ranked first (rank 1) */
+                    qrCode: string | null;
                     manufacturer: string | null;
                     model: string | null;
                     category: string | null;
@@ -12892,6 +12932,8 @@ export interface components {
             id: string;
             name: string;
             serialNumber: string | null;
+            /** @description P21-07 (F-72): matched exactly (upper-cased) and ranked first (rank 1) */
+            qrCode: string | null;
             manufacturer: string | null;
             model: string | null;
             category: string | null;
@@ -23059,6 +23101,7 @@ export interface operations {
                 limit?: number;
                 clientFacilityId?: string;
                 state?: "due" | "never_inspected" | "all_scheduled";
+                month?: string;
             };
             header?: never;
             path?: never;

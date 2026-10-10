@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 2 DONE in code (**P22-01**, 2026-10-09 — menu activation and the live browser suites open; **P22-05**, 2026-10-09 — an optional sidebar entry and the live browser suites open) · 4 TODO (**P22-02** — unblocked by P21-02b, **P22-06** — unblocked by P21-06, 2026-10-09; **P22-03, P22-04** — unblocked by P21-04, 2026-10-09) · 4 BLOCKED |
+| **Status** | 2 DONE in code (**P22-01**, 2026-10-09 — menu activation and the live browser suites open; **P22-05**, 2026-10-09 — an optional sidebar entry and the live browser suites open) · 5 TODO (**P22-02** — unblocked by P21-02b, **P22-06** — unblocked by P21-06, 2026-10-09; **P22-03, P22-04** — unblocked by P21-04, 2026-10-09; **P22-07** — unblocked by P21-07, 2026-10-09) · 3 BLOCKED |
 | **Goal** | Pages, PWA field capture with offline mode |
 | **Depends on** | Phase 21 |
 | **Size** | L |
@@ -34,7 +34,7 @@ page notes · docs/FRONTEND/00 · docs/UI-UX/08 · ADR-122 · ADR-071/090 · P19
 | P22-04 | IPM history, corrections and void; device "IPM" tab | F-54 … F-57 | **TODO** (unblocked 2026-10-09: P21-04 the correction's submit and the void) | P21-03 |
 | P22-05 | Calibration-date quick entry and list | F-62 … F-64 | **DONE in code** 2026-10-09 ([record](../MEMORY/records/2026-10-09-p22-05-calibration-dates-ui.md)) — `dashboard/calibration-dates`: the quick entry by QR sticker (typed or a handheld scanner; the camera is P22-03's) and the calibration list; reached from `/dashboard/calibration`. **Open:** no sidebar entry of its own (backend, optional); live browser, accessibility (light + dark) and responsive suites not run | P21-05 |
 | P22-06 | Exports rendered **in the browser** (PDF and XLSX) from paged reads, with progress and size shown first | F-65 … F-69 | **TODO** (unblocked 2026-10-09: P21-06 DONE — `GET /calibration-records` recap parameters, ADR-133 Am. 3) | P21-06 |
-| P22-07 | Dashboard condition widgets and technician activity | F-70 … F-73 | BLOCKED | P21-07 |
+| P22-07 | Dashboard condition widgets and technician activity | F-70 … F-73 | TODO (unblocked 2026-10-09 by P21-07 — ADR-126 Am. 6: hide the provider-internal cards for a bound user; `unset` has no drill-down filter) | P21-07 |
 | P22-08 | Public device page `d/[token]` | F-74, F-75 | BLOCKED | P21-08 |
 | P22-09 | Client-facility management and facility-bound users for the tenant administrator; a facility filter (convenience, not a boundary) for provider staff; the facility user's restricted navigation | F-13 … F-17 | BLOCKED | P21-09 |
 | P22-10 | PWA offline mode: service worker, IndexedDB queue of drafts and photos, background sync, conflict display — **specified 2026-10-08 by P19-08** ([spec](../MEMORY/specs/P19-08-offline-field-capture.md); ADR-127 Am. 1: the `/field` one-document app, worker scope `/field`, frozen sync ops, purge rules, AM-23 wipe, real-device script § 16.5). **Planning note (2026-10-08, ADR-134):** build the sync engine (planner, runner, classification, purge) behind the port boundary of [`docs/SHARED/06-SYNC-ENGINE.md`](../docs/SHARED/06-SYNC-ENGINE.md) § 11 — no direct IndexedDB, WebCrypto or `window` calls inside it — so that P35-07 is a move into `@callibrator/sync-engine`, not a refactor | F-78, F-79 | BLOCKED (P19-08 DONE as spec 2026-10-08; still waits on P22-03, and on the server pieces of P19-08 § 9.5 in P21-02/03/09) | P22-03, P19-08 |

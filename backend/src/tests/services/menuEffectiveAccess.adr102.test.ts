@@ -156,7 +156,8 @@ const paths = (slugs: readonly string[]): string[] =>
   [...new Set(slugs.map((s) => menuGroupService.mapSlugToPath(s)))].sort();
 
 const ACCOUNT = ["change-password", "profile-page", "notifications"];
-const EQUIPMENT = ["calibration", "certificate", "maintenance", "calibration-scheduler", "reports", "predictive-maintenance"];
+// P22-01 landed (migration 0130, ADR-126 Am. 6 § 8): `ipm-templates` is active — every role holding the equipment group sees it.
+const EQUIPMENT = ["calibration", "certificate", "maintenance", "calibration-scheduler", "reports", "predictive-maintenance", "ipm-templates"];
 const TOP = ["home", "warehouse", "stock"];
 
 /** The claim: what each seeded role can open without a 403 (route gates by hand). */
@@ -209,7 +210,8 @@ describe("ADR-102 — each seeded role's sidebar is what the API serves", () => 
   it("SUPERADMIN sees every page but Raise a Ticket (the service refuses it, BR-13)", async () => {
     const menu = await menuOf(ROLE_NAMES.SUPER_ADMIN);
     // Every ACTIVE leaf: P20-06 seeds `ipm`, `ipm-templates`, `client-facilities` inactive until their
-    // pages ship (ADR-124 Am. 5 § 2) — they are in no sidebar, the super admin's included.
+    // pages ship (ADR-124 Am. 5 § 2) — `ipm-templates` is active since P22-01 (0130); the other two are in
+    // no sidebar, the super admin's included.
     const allLeaves = seed()
       .menuGroups.filter((g) => g.isActive && !seed().menuGroups.some((c) => c.parentId === g.id))
       .map((g) => g.slug)

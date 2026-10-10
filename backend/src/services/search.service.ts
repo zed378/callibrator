@@ -36,6 +36,11 @@ interface SearchTypeConfig {
   cols: string[];
   select: string;
   softDelete: string;
+  /**
+   * P21-07 (F-72): a code column matched EXACTLY (upper-cased) beside the full-text match, ranked
+   * first — a QR code is one token the English text search would not match as typed.
+   */
+  exact?: string;
 }
 
 /** A row as a statement returns it (its columns depend on the type). */
@@ -63,9 +68,10 @@ const TYPES: Record<string, SearchTypeConfig> = {
   device: {
     menu: "calibration",
     table: "calibration_devices",
-    cols: ["name", "serial_number", "manufacturer", "model", "category"],
-    select: "id, name, serial_number AS \"serialNumber\", manufacturer, model, category",
+    cols: ["name", "serial_number", "manufacturer", "model", "category", "qr_code"],
+    select: "id, name, serial_number AS \"serialNumber\", qr_code AS \"qrCode\", manufacturer, model, category",
     softDelete: "is_deleted = false",
+    exact: "qr_code",
   },
   stock: {
     menu: "warehouse",
@@ -84,11 +90,15 @@ const TYPES: Record<string, SearchTypeConfig> = {
 };
 
 const ftsSearch = async (cfg: SearchTypeConfig, tenantId: TenantId, q: string, limit: number): Promise<SearchRow[]> => {
+  const textRank = "ts_rank(\"search_vector\", plainto_tsquery('english', $1))";
+  const textMatch = "\"search_vector\" @@ plainto_tsquery('english', $1)";
+  const rank = cfg.exact ? "CASE WHEN \"" + cfg.exact + "\" = upper($1) THEN 1 ELSE " + textRank + " END" : textRank;
+  const match = cfg.exact ? "(" + textMatch + " OR \"" + cfg.exact + "\" = upper($1))" : textMatch;
   const statement =
-    `SELECT ${cfg.select}, ts_rank("search_vector", plainto_tsquery('english', $1)) AS rank ` +
+    `SELECT ${cfg.select}, ${rank} AS rank ` +
     `FROM "${cfg.table}" ` +
     `WHERE tenant_id = $2 AND ${cfg.softDelete} ` +
-    "AND \"search_vector\" @@ plainto_tsquery('english', $1) " +
+    `AND ${match} ` +
     "ORDER BY rank DESC LIMIT $3";
   return sql<SearchRow>(dbRunner, statement, [q, tenantId, limit]);
 };

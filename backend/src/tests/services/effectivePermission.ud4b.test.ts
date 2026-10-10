@@ -76,13 +76,14 @@ describe("spec P18-01-02 § 3.1 on the seeded matrix", () => {
     expect(await access("TECHNICIAN", "calibration", OVERRIDDEN)).toBe("read");
   });
 
-  it("the three new menu groups are seeded inactive, under their parents", () => {
+  // P22-01 landed (ADR-126 Am. 6 § 7, migration 0130): `ipm-templates` is seeded active; the other two stay off.
+  it("the three new menu groups are seeded under their parents; only ipm-templates is active", () => {
     const groups = mdb.rows("MenuGroup");
     const bySlug = (slug: string): Record<string, unknown> | undefined => groups.find((g) => g["slug"] === slug);
     const parentSlug = (slug: string): unknown => bySlug(String(groups.find((g) => g["id"] === bySlug(slug)?.["parentId"])?.["slug"]))?.["slug"];
     expect(["ipm", "ipm-templates", "client-facilities"].map((s) => [s, bySlug(s)?.["isActive"], parentSlug(s)])).toEqual([
       ["ipm", false, "equipment"],
-      ["ipm-templates", false, "equipment"],
+      ["ipm-templates", true, "equipment"],
       ["client-facilities", false, "mgmt-organization"],
     ]);
   });

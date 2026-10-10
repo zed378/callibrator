@@ -660,7 +660,8 @@ async function seedMenuGroups(): Promise<void> {
     // P20-06 (spec P18-03 § 7; migration 0124): IPM sessions and the IPM
     // checklists. Inactive until their pages ship (P22): the gates read the
     // grant whatever the flag (roles.service#getRolePermissionsMatrix), the
-    // sidebar shows active entries only (ADR-124 Am. 5 § 2).
+    // sidebar shows active entries only (ADR-124 Am. 5 § 2). `ipm-templates`
+    // is active since its page shipped (P22-01; migration 0130).
     {
       name: "IPM",
       slug: "ipm",
@@ -674,7 +675,7 @@ async function seedMenuGroups(): Promise<void> {
       slug: "ipm-templates",
       icon: "ClipboardList",
       sortOrder: 7,
-      is_active: false,
+      is_active: true,
       parentSlug: "equipment",
     },
 

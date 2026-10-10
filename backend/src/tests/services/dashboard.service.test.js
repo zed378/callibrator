@@ -47,6 +47,13 @@ jest.mock("../../models", () => ({
   MaintenanceWorkOrder: {
     count: jest.fn(),
   },
+  // P21-07: the IPM figures (their own suite: dashboard.p2107).
+  InspectionSession: {
+    count: jest.fn(),
+  },
+}));
+jest.mock("../../services/ipmDue.service", () => ({
+  countDue: jest.fn(() => Promise.resolve({ scheduled: 0, due: 0, neverInspected: 0 })),
 }));
 
 const {

@@ -76,6 +76,7 @@ export const SUITES: readonly Suite[] = Object.freeze([
   { id: "p2105", file: "src/tests/services/deviceRegister.p2105.live.test.ts", env: { P2105_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p2102b", file: "src/tests/services/devicePhoto.p2102b.live.test.ts", env: { P2102B_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p2106", file: "src/tests/services/calibrationRecap.p2106.live.test.ts", env: { P2106_PG_LIVE_TEST: "1" }, db: "scratch" },
+  { id: "p2107", file: "src/tests/services/dashboard.twoFacility.p2107.live.test.ts", env: { P2107_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "uifix", file: "src/tests/migrations/uiCorrectness.adr101adr102.live.test.ts", env: { UIFIX_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p1005", file: "src/tests/services/accessRequest.p1005.live.test.ts", env: { P1005_PG_LIVE_TEST: "1" }, db: "scratch" },
   { id: "p918att", file: "src/tests/services/attachmentService.p918.live.test.ts", env: { P918_ATT_PG_LIVE_TEST: "1" }, db: "scratch" },
