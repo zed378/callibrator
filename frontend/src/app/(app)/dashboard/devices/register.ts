@@ -12,6 +12,10 @@
 import type { DeviceCreateBody, DeviceUpdateBody, RegisterDevice } from "@/api/services/deviceRegister.service";
 
 export type Condition = "" | "good" | "not_good" | "broken";
+
+/** P22-07 (F-71): a `?condition=` value the list can filter by, else none (`unset` has no filter). */
+export const conditionOf = (value: string | string[] | undefined): Condition =>
+  value === "good" || value === "not_good" || value === "broken" ? value : "";
 export type Accessories = "" | "yes" | "no";
 export type Status = "active" | "inactive" | "maintenance" | "retired";
 /** Where the device stands: a room of its facility (found or created by name), a store, or nowhere. */

@@ -16,6 +16,7 @@ import { setLocale } from "@/i18n/actions";
 import { MessagesProvider } from "@/i18n/MessagesProvider";
 import { LOCALES } from "@/i18n/config";
 import { DevicesClient } from "./DevicesClient";
+import { conditionOf } from "./register";
 
 export async function generateMetadata() {
   const { t } = await getServerI18n();
@@ -24,11 +25,14 @@ export async function generateMetadata() {
 
 const LANGUAGE_NAMES = { id: "Bahasa Indonesia", en: "English" } as const;
 
-export default async function DevicesPage() {
+export default async function DevicesPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> } = {}) {
   const { locale, messages, t } = await getServerI18n();
+  // P22-07 (F-71): the dashboard's condition drill-down, `?condition=good|not_good|broken`.
+  const initialCondition = conditionOf(((await searchParams) ?? {})["condition"]);
   return (
     <MessagesProvider locale={locale} messages={pickMessages(messages, ["devices."])}>
       <DevicesClient
+        initialCondition={initialCondition}
         languageForm={
           <form action={setLocale}>
             <div role="group" aria-label={t("devices.language")} className="inline-flex rounded-md border border-border p-0.5">

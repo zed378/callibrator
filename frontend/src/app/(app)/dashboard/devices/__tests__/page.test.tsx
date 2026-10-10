@@ -45,6 +45,7 @@ import { MessagesProvider } from "@/i18n/MessagesProvider";
 import { en } from "@/i18n/messages/en";
 import { id as idMessages } from "@/i18n/messages/id";
 import { DevicesClient, accessFor, listQuery, INITIAL_FILTERS } from "../DevicesClient";
+import { conditionOf } from "../register";
 import { clearPhotoLinks } from "../components/PhotoThumb";
 import type { RegisterDevice } from "@/api/services/deviceRegister.service";
 
@@ -606,5 +607,26 @@ describe("P22-02 — language", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Alat" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tambah alat" })).toBeInTheDocument();
     expect(await screen.findByText("Baik")).toBeInTheDocument();
+  });
+});
+
+describe("P22-07 — the dashboard's condition drill-down (F-71)", () => {
+  it("opens with `?condition=` applied: the first read is filtered and the select shows it", async () => {
+    grantPermissions({ calibration: "read" });
+    render(
+      <MessagesProvider locale="en" messages={en}>
+        <DevicesClient initialCondition="broken" />
+      </MessagesProvider>,
+    );
+    await screen.findByRole("table");
+    expect(lastListQuery()).toEqual({ page: 1, limit: 20, condition: "broken" });
+    expect(screen.getByLabelText("Condition")).toHaveValue("broken");
+  });
+
+  it("conditionOf takes only a value the list can filter by", () => {
+    expect(conditionOf("not_good")).toBe("not_good");
+    expect(conditionOf("unset")).toBe("");
+    expect(conditionOf(["good"])).toBe("");
+    expect(conditionOf(undefined)).toBe("");
   });
 });

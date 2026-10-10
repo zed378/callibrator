@@ -20,7 +20,16 @@ import type { DashboardMetrics } from "@/api/services/dashboard.service";
 interface DashboardStatsProps {
   metrics: DashboardMetrics;
   isSuperAdmin: boolean;
+  /**
+   * P22-07 (ADR-126 Am. 6): a facility-bound user. The provider-internal figures (warehouses,
+   * stock, transfers, opnames) always read 0 for one — their models deny a bound caller — so their
+   * cards are hidden rather than shown as zeros.
+   */
+  facilityBound?: boolean;
 }
+
+/** The cards that count provider-internal records (hidden for a bound user). */
+const PROVIDER_INTERNAL = new Set(["Warehouses", "Low Stock", "Pending Transfers"]);
 
 interface StatDef {
   title: string;
@@ -35,6 +44,7 @@ interface StatDef {
 export const DashboardStats: React.FC<DashboardStatsProps> = ({
   metrics,
   isSuperAdmin,
+  facilityBound = false,
 }) => {
   const activeDevices = metrics.devices.byStatus?.active ?? 0;
   const complianceValue =
@@ -171,9 +181,11 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
         },
   );
 
+  const shown = facilityBound ? stats.filter((s) => !PROVIDER_INTERNAL.has(s.title)) : stats;
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 relative">
-      {stats.map((stat, i) => (
+      {shown.map((stat, i) => (
         <StatCard
           key={stat.title}
           title={stat.title}

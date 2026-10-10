@@ -10777,6 +10777,27 @@ Our calibration records already solve the same problem (ADR-062): append-only in
 
 **`docs/` amended:** `docs/SECURITY/15-FASKES-SCOPE-THREAT-MODEL.md` § 11 (G-20: built and green); `TASKS/PHASE-21-UPSTREAM-BACKEND.md` (P21-07 DONE); `TASKS/PHASE-22-UPSTREAM-FRONTEND.md` (P22-07 unblocked).
 
+
+### ADR-126 Amendment 7 (2026-10-10, P22-07): the dashboard's condition panel, IPM figures and technician activity as built
+
+**Date:** 2026-10-10 · **Status:** Accepted, **built** (frontend only, no API change). Decided by the implementing agent under the owner's standing delegation · **Card:** P22-07 (F-70 … F-73) · **Record:** `MEMORY/records/2026-10-10-p22-07-dashboard-condition-activity.md`
+
+**Decision.**
+1. **`/dashboard` becomes a server page handing a client island (`DashboardClient`) the `dashboard.` and `devices.condition.` strings** in the request's language (the P22-02 pattern); only the new panels are bilingual, the older cards stay English.
+2. **The condition panel** shows each of `good`, `not_good`, `broken`, `unset` with its share and a bar, a donut (SVG, theme tokens), and drills down to `/dashboard/devices?condition=` for a `calibration` reader; the register page now reads `?condition=` (only the three filterable values). **`unset` has no link** (Am. 6: no list filter) — its tile says so.
+3. **The IPM panel** prints `sessionsLast30Days` and, in a tenant view, `due` / `neverInspected` / `scheduled`; in the global view (`due: null`) a note replaces them, not zeros.
+4. **Technician activity** is the 5 latest submitted, effective visits from `GET /ipm/sessions` (`sort=performedAt`), searchable (`q`) and narrowable to the caller (`performedBy`), printed from the visit's snapshots; shown to an `ipm` reader in a **tenant** view only (the global view has no tenant's visits to show).
+5. **A bound user's provider-internal cards are hidden** (Warehouses, Low Stock, Pending Transfers), as Am. 6 asked.
+
+**Alternatives considered.**
+| Alternative | Why not |
+|---|---|
+| Keep the page a client component with English-only panels | the card asks for ID/EN; a client page has no dictionary in production |
+| A device-list filter for `unset` | a backend change outside this card (Am. 6 left it open); the tile states the count |
+| Show the bound user's zero cards | they read as facts ("0 warehouses") that are not true of the provider |
+
+**Implications, including the bad ones.** The dashboard's older cards are still English in an Indonesian session. The activity list shows 5 rows; the full list is the IPM history.
+
 ---
 
 ## ADR-127: Field Capture Is a Progressive Web App With an Offline Queue — IndexedDB Per User, Idempotent Replay Through the Normal API, Append-Only Makes Conflicts Rare and Each One a 409 With a Reason; the Service Worker Lives Under the Nonce CSP; No Native App

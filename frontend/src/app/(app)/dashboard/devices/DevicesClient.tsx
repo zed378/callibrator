@@ -97,7 +97,7 @@ export const accessFor = (p: Can) => {
 const rowErrorText = (errors: ImportReport["errors"][number]["errors"]): string =>
   typeof errors === "string" ? errors : errors.map((e) => `${e.field}: ${e.message}`).join("; ");
 
-export function DevicesClient({ languageForm }: { languageForm?: React.ReactNode }) {
+export function DevicesClient({ languageForm, initialCondition = "" }: { languageForm?: React.ReactNode; initialCondition?: Filters["condition"] }) {
   const { locale } = useI18n();
   const text = useDeviceText();
   const { t } = text;
@@ -131,7 +131,7 @@ export function DevicesClient({ languageForm }: { languageForm?: React.ReactNode
   return (
     <DashboardLayout>
       <div lang={locale}>
-        <Register access={access} bound={bound} canPickLab={!bound && permissions.canRead("vendors")} languageForm={languageForm} />
+        <Register access={access} bound={bound} canPickLab={!bound && permissions.canRead("vendors")} languageForm={languageForm} initialCondition={initialCondition} />
       </div>
     </DashboardLayout>
   );
@@ -142,14 +142,15 @@ interface RegisterProps {
   bound: boolean;
   canPickLab: boolean;
   languageForm?: React.ReactNode;
+  initialCondition: Filters["condition"];
 }
 
-function Register({ access, bound, canPickLab, languageForm }: RegisterProps) {
+function Register({ access, bound, canPickLab, languageForm, initialCondition }: RegisterProps) {
   const text = useDeviceText();
   const { t } = text;
   const addToast = useToastStore((s) => s.addToast);
   const handed = useSearchHandoff("device");
-  const [filters, setFilters] = useState<Filters>(() => ({ ...INITIAL_FILTERS, find: handed ?? "" }));
+  const [filters, setFilters] = useState<Filters>(() => ({ ...INITIAL_FILTERS, find: handed ?? "", condition: initialCondition }));
   const [facilities, setFacilities] = useState<ClientFacilityOption[]>([]);
   const [editing, setEditing] = useState<RegisterDevice | null | undefined>(undefined);
   const [photos, setPhotos] = useState<{ device: RegisterDevice; mode: "register" | "manage" } | null>(null);
