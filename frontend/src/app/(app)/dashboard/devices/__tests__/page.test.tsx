@@ -128,7 +128,7 @@ describe("P22-02 — access", () => {
       write: true,
       importCsv: true,
       photosWrite: true,
-      rows: { photos: true, edit: true, remove: true, iot: true },
+      rows: { photos: true, ipm: false, edit: true, remove: true, iot: true },
     });
     expect(accessFor({ ...base, facilityBound: true, canRead: can(["calibration"]), canWrite: can(["calibration"]) })).toMatchObject({
       importCsv: false,

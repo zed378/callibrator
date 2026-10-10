@@ -89,7 +89,7 @@ export const accessFor = (p: Can) => {
     write,
     importCsv: write && !p.facilityBound,
     photosWrite: write && !p.superAdmin,
-    rows: { photos: true, edit: write, remove: write && !p.facilityBound, iot: !p.facilityBound } satisfies RowActions,
+    rows: { photos: true, ipm: p.canRead("ipm"), edit: write, remove: write && !p.facilityBound, iot: !p.facilityBound } satisfies RowActions,
   };
 };
 

@@ -378,6 +378,25 @@ export const STATUS_REGISTRY = {
     rejected: e("draft", "Rejected"),
     withdrawn: e("draft", "Withdrawn"),
   },
+  /**
+   * P22-04 — an IPM session as the history shows it (P19-02 § 7): the visit's current record is
+   * current; a superseded version is informational (still readable); a draft is a draft; voided and
+   * discarded are final decisions, not alarms (the void's reason says why).
+   */
+  ipmSession: {
+    effective: e("current", "Current"),
+    superseded: e("info", "Superseded"),
+    draft: e("draft", "Draft"),
+    voided: e("draft", "Voided"),
+    discarded: e("draft", "Discarded"),
+  },
+  /** P22-04 — the visit's recommendation (F-51): anything but fit for use needs action; alarm stays reserved. */
+  ipmRecommendation: {
+    fit_for_use: e("current", "Fit for use"),
+    needs_calibration: e("attention", "Needs calibration"),
+    not_fit_for_use: e("attention", "Not fit for use"),
+    needs_repair: e("attention", "Needs repair"),
+  },
 } satisfies Record<string, Domain>;
 
 export type StatusDomain = keyof typeof STATUS_REGISTRY;

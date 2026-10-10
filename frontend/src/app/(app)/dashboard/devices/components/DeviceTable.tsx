@@ -7,7 +7,8 @@
  * calibration with its due state. Actions are named after their device.
  */
 import React from "react";
-import { Camera, Edit, ImageOff, Radio, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Camera, ClipboardCheck, Edit, ImageOff, Radio, Trash2 } from "lucide-react";
 import { Button, StatusBadge } from "@/components/ui";
 import type { RegisterDevice } from "@/api/services/deviceRegister.service";
 import { PhotoThumb } from "./PhotoThumb";
@@ -16,6 +17,8 @@ import { useDeviceText } from "./shared";
 export interface RowActions {
   /** Photos can be managed (`calibration` write, not the platform operator). */
   photos: boolean;
+  /** P22-04 (F-57): the device's IPM history (`ipm` read). */
+  ipm: boolean;
   edit: boolean;
   remove: boolean;
   iot: boolean;
@@ -123,6 +126,15 @@ export function DeviceTable({ rows, showFacility, actions, onPhotos, onEdit, onD
                       <Button variant="ghost" size="sm" aria-label={t("devices.action.photos", { name: d.name })} onClick={() => onPhotos(d)}>
                         <Camera className="h-4 w-4" aria-hidden="true" />
                       </Button>
+                    )}
+                    {actions.ipm && (
+                      <Link
+                        href={`/dashboard/ipm?deviceId=${encodeURIComponent(d.id)}`}
+                        aria-label={t("devices.action.ipm", { name: d.name })}
+                        className="inline-flex h-8 items-center justify-center rounded-md px-2 text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
+                      </Link>
                     )}
                     {actions.iot && (
                       <Button variant="ghost" size="sm" aria-label={t("devices.action.iot", { name: d.name })} onClick={() => onIot(d)}>
