@@ -29,7 +29,8 @@ jest.mock("@/api/client", () => ({
 }));
 
 import { api } from "@/api/client";
-import DashboardPage from "../page";
+// P22-07: the page is a server wrapper now; the island is what renders (re-based import only).
+import DashboardPage from "../DashboardClient";
 import { useAuthStore } from "@/stores/authStore";
 import { useUserStore } from "@/stores/userStore";
 import { useMenuStore } from "@/stores/menuStore";
@@ -48,11 +49,12 @@ const tenantMetrics = {
   generatedAt: "2026-09-29T00:00:00.000Z",
   tenant: { id: "t1", name: "RS Harapan", code: "rsh", status: "active" },
   users: { total: 14, verified: 12 },
-  devices: { total: 120, byStatus: { active: 110 }, dueSoon: 6, overdue: 2 },
+  devices: { total: 120, byStatus: { active: 110 }, dueSoon: 6, overdue: 2, byCondition: { good: 100, not_good: 10, broken: 5, unset: 5 } },
   calibrations: { total: 300, compliant: 291, complianceRate: 97, last30Days: 20 },
   certificates: { total: 80, byStatus: { approved: 70, draft: 10 } },
   inventory: { stockItems: 45, totalQuantity: 900, lowStockItems: 3, warehouses: 2, pendingTransfers: 1, openOpnames: 0 },
   maintenance: { openWorkOrders: 4 },
+  ipm: { sessionsLast30Days: 7, due: { scheduled: 90, due: 12, neverInspected: 4 } },
   trends: {
     calibrations: [
       { month: "2026-08", count: 40 },
@@ -69,6 +71,7 @@ const globalMetrics = {
   scope: "global",
   tenant: null,
   calibrations: { ...tenantMetrics.calibrations, complianceRate: null },
+  ipm: { sessionsLast30Days: 9, due: null },
   tenants: { total: 3, active: 2 },
   tenantBreakdown: [
     { id: "t1", name: "RS Harapan", code: "rsh", status: "active", users: 14, devices: 120 },

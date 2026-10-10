@@ -11,3 +11,6 @@ export { default as DashboardSystemHealth } from "./DashboardSystemHealth";
 export { default as DashboardCharts } from "./DashboardCharts";
 export { default as TenantBreakdown } from "./TenantBreakdown";
 export { default as DashboardUpdatedAt } from "./DashboardUpdatedAt";
+export { default as DeviceConditionPanel } from "./DeviceConditionPanel";
+export { default as IpmPanel } from "./IpmPanel";
+export { default as TechnicianActivity } from "./TechnicianActivity";

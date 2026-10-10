@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — The dashboard shows device condition, IPM figures and technician activity (P22-07) ([record](./records/2026-10-10-p22-07-dashboard-condition-activity.md))
+- **Added:** on the dashboard, in Indonesian and English: devices by condition with their shares and a donut, each condition linking to the device register filtered by it; IPM visits of the last 30 days and this month's due counts; the latest submitted IPM visits with search and "only my visits".
+- **Changed:** a facility-bound user no longer sees the warehouse, stock and transfer cards (always 0 for them). The device register accepts `?condition=` in its address.
+
 ### 2026-10-10 — The upstream import's own key records calibration dates with no resolvable person (P24-04) ([record](./records/2026-10-10-p24-04-import-key.md))
 - **Added:** a per-tenant import key (`calibration:write` only, expiring at the sign-off + 90 days) created by the import itself, whose secret nobody ever holds; it is the actor of imported calibration dates whose upstream user is NULL or deleted, and is revoked at cutover. A run declared real is refused while the DPIA gate is off (ADR-133 Am. 4).
 - **Changed:** creating an API key named `upstream-import` through the key route is refused (400): the name is reserved for the import.
