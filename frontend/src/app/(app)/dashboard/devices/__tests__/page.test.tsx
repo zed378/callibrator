@@ -1,499 +1,610 @@
 /** @jest-environment jsdom */
 /**
- * The calibration-devices screen, against the backend contract
- * (calibrationDevices.controller.js getAll → success(res, rows, meta)):
- * rows in `data`, pagination in a TOP-LEVEL `meta`.
+ * P22-02 — /dashboard/devices, the device register, by audience (ADR-102: the effective
+ * permissions, never a role name) and through its flows. Real: the island, its dialogs, the
+ * services and the typed client. Mocked: the HTTP client (`@/api/client`), the dashboard chrome and
+ * the browser's image codec (`lib/photoPrep#preparePhoto` — jsdom has no canvas).
  *
- * Real: the page, useDevices, the device and warehouse stores and services.
- * Mocked: the HTTP client (`@/api/client`) and the dashboard chrome.
+ * Pins: the list's three states (a failed read is never an empty register); rows from `data`, paging
+ * from the top-level `meta`; each filter's query; a bound account sees no facility, import, delete or
+ * IoT and its form has no QR / status / laboratory / store / facility; the operator never manages
+ * photos; register → the two required photos (Finish only with both); edit sends only the changes;
+ * a 409 is the server's explanation with the form kept; photo upload, replace, delete, HEIC refusal
+ * explained; CSV import report (A-358 field errors as text); delete with its failure kept; one h1;
+ * Indonesian; axe.
  */
 import React from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { AxiosError, AxiosHeaders } from "axios";
 import { axeViolations } from "@/tests/a11y/axe";
+import { httpError } from "@/tests/support/httpError";
+import { clearPermissions, grantPermissions, grantSuperAdmin } from "@/tests/support/permissions";
+import { CD_IDS, device, lab, meta, ok } from "@/tests/support/calibrationDatesFixtures";
 
-jest.mock("@/components/layouts/DashboardLayout", () => ({
-  __esModule: true,
-  default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
-}));
+jest.mock("@/components/layouts/DashboardLayout", () => {
+  return function DashboardLayout({ children }: { children: React.ReactNode }) {
+    return <main>{children}</main>;
+  };
+});
 
-jest.mock("@/api/client", () => ({
-  api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), patch: jest.fn(), delete: jest.fn() },
-}));
+jest.mock("@/api/client", () => {
+  const actual = jest.requireActual("@/api/client");
+  return { ...actual, api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), patch: jest.fn(), delete: jest.fn() } };
+});
+
+jest.mock("@/lib/photoPrep", () => {
+  const actual = jest.requireActual("@/lib/photoPrep");
+  return { ...actual, preparePhoto: jest.fn(async () => new File(["jpeg"], "prepared.jpg", { type: "image/jpeg" })) };
+});
 
 import { api } from "@/api/client";
-import DevicesPage from "../page";
-import { useAuthStore } from "@/stores/authStore";
-import { useDeviceStore } from "@/stores/deviceStore";
-import { useWarehouseStore } from "@/stores/warehouseStore";
+import { preparePhoto, PhotoPrepError } from "@/lib/photoPrep";
 import { useMenuStore } from "@/stores/menuStore";
-import type { User } from "@/types";
+import { useToastStore } from "@/stores/toastStore";
+import { useSearchHandoffStore } from "@/stores/searchHandoffStore";
+import { MessagesProvider } from "@/i18n/MessagesProvider";
+import { en } from "@/i18n/messages/en";
+import { id as idMessages } from "@/i18n/messages/id";
+import { DevicesClient, accessFor, listQuery, INITIAL_FILTERS } from "../DevicesClient";
+import { clearPhotoLinks } from "../components/PhotoThumb";
+import type { RegisterDevice } from "@/api/services/deviceRegister.service";
 
-// Whole-page renders with the real stores; findBy* waits up to 5 s (jest.setup.ts).
 jest.setTimeout(20000);
 
 const get = api.get as jest.Mock;
 const post = api.post as jest.Mock;
 const put = api.put as jest.Mock;
 const del = api.delete as jest.Mock;
+const prep = preparePhoto as jest.Mock;
 
-const envelope = (rows: unknown[], meta = { total: rows.length, page: 1, limit: 10, totalPages: 1 }) => ({
-  success: true,
-  status: 200,
-  message: "ok",
-  data: rows,
-  meta,
-});
+const FRONT = "8a000000-0000-4000-8000-000000000001";
+const PLATE = "8a000000-0000-4000-8000-000000000002";
+const NEW_PHOTO = "8a000000-0000-4000-8000-000000000003";
+const SELF = "8b000000-0000-4000-8000-000000000001";
 
-/** What the client interceptor rejects with: an AxiosError carrying the backend's message. */
-const httpError = (status: number, message: string) =>
-  new AxiosError(message, "ERR_BAD_REQUEST", undefined, undefined, {
-    status,
-    statusText: "",
-    data: { success: false, status, message },
-    headers: {},
-    config: { headers: new AxiosHeaders() },
-  });
-
-const device = (patch: Record<string, unknown> = {}) => ({
-  id: "dev-1",
-  name: "Fluke 714B",
-  serialNumber: "SN-1",
-  manufacturer: "Fluke",
-  model: "714B",
-  category: "Temperature",
-  status: "active",
-  locationId: "wh-1",
-  warehouse: { id: "wh-1", name: "Main", code: "WH1" },
-  installationDate: "2026-01-02T00:00:00.000Z",
-  nextCalibrationDate: "2026-12-01T00:00:00.000Z",
-  calibrationIntervalDays: 90,
-  remarks: "Lab bench",
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
-  ...patch,
-});
-
-const warehouse = { id: "wh-1", name: "Main", code: "WH1" };
-
-let deviceRows: unknown[] = [device()];
-
-const backend = () => {
-  get.mockImplementation(async (url: string) => {
-    if (url === "/api/v1/warehouses") return envelope([warehouse]);
-    if (url === "/api/v1/calibration-devices") return envelope(deviceRows);
-    throw new Error(`unexpected GET ${url}`);
-  });
+let rows: RegisterDevice[];
+let total: number;
+const routes = (path: string, config?: { params?: Record<string, unknown> }) => {
+  if (path === "/api/v1/calibration-devices") return Promise.resolve(ok(rows, meta(total, Number(config?.params?.page ?? 1), 20)));
+  if (path === "/api/v1/client-facilities/options")
+    return Promise.resolve(
+      ok([
+        { id: SELF, name: "Own organisation", code: "SELF", status: "active", isSelf: true },
+        { id: CD_IDS.facility, name: "Synthetic clinic", code: "SC", status: "active", isSelf: false },
+        { id: "ended", name: "Ended clinic", code: "EC", status: "ended", isSelf: false },
+      ]),
+    );
+  if (path === "/api/v1/warehouses") return Promise.resolve(ok([{ id: "store-1", name: "Depot", code: "DP" }]));
+  if (path === "/api/v1/vendors") return Promise.resolve(ok([lab(CD_IDS.vendor, "Synthetic Lab")]));
+  if (path === "/api/v1/device-types") return Promise.resolve(ok([{ id: "type-1", name: "Infusion pump", status: "active" }]));
+  if (path.startsWith("/api/v1/iot/devices/")) return Promise.reject(httpError(404, "No IoT config"));
+  return Promise.reject(new Error(`unexpected GET ${path}`));
 };
 
-const as = (roleName: string) =>
-  useAuthStore.setState({
-    user: { id: "u-1", username: "ada", email: "a@x.test", role: { id: "r", name: roleName } } as User,
-  });
+const postRoutes = (path: string, body?: unknown) => {
+  if (path.endsWith("/signed-url")) {
+    const id = path.split("/")[4];
+    return Promise.resolve(ok({ url: `https://x.invalid/api/v1/attachments/${String(id)}/signed?token=t`, token: "t", expiresAt: "x", expiresInSec: 300 }));
+  }
+  if (path === "/api/v1/calibration-devices") return Promise.resolve(ok(device({ id: "new-device", name: (body as { name: string }).name, frontPhotoAttachmentId: null, serialPlatePhotoAttachmentId: null })));
+  if (path.endsWith("/photos")) {
+    const purpose = (body as FormData).get("purpose");
+    return Promise.resolve({ data: { id: purpose === "device_front" ? NEW_PHOTO : PLATE, purpose } });
+  }
+  return Promise.reject(new Error(`unexpected POST ${path}`));
+};
 
-type Grants = Record<string, "read" | "write">;
-const grant = (permissions: Grants | null, superAdmin = false) =>
-  useMenuStore.setState({ effectivePermissions: permissions === null ? null : { superAdmin, permissions } });
+const renderPage = (locale: "en" | "id" = "en") =>
+  render(
+    <MessagesProvider locale={locale} messages={locale === "en" ? en : idMessages}>
+      <DevicesClient languageForm={<div>language</div>} />
+    </MessagesProvider>,
+  );
 
-const deviceListCalls = () => get.mock.calls.filter(([url]) => url === "/api/v1/calibration-devices");
+const lastListQuery = (): Record<string, unknown> => {
+  const calls = get.mock.calls.filter((c) => c[0] === "/api/v1/calibration-devices");
+  return (calls[calls.length - 1]?.[1] as { params: Record<string, unknown> }).params;
+};
 
-// Tailwind's `hidden` is display:none in the browser; jsdom loads no CSS, so
-// without this rule axe would inspect the picker's display:none file input.
-beforeAll(() => {
-  const style = document.createElement("style");
-  style.textContent = ".hidden { display: none; }";
-  document.head.appendChild(style);
-});
-
-/** An element's whole text, however many spans it is split across. */
-const fullText = (text: string) => (_: string, el: Element | null) =>
-  el?.textContent?.replace(/\s+/g, " ").trim() === text &&
-  Array.from(el.children).every((c) => c.textContent?.replace(/\s+/g, " ").trim() !== text);
+const bind = (permissions: Record<string, "read" | "write">) =>
+  useMenuStore.setState({ effectivePermissions: { superAdmin: false, facilityBound: true, permissions } });
 
 beforeEach(() => {
   jest.clearAllMocks();
-  deviceRows = [device()];
-  useDeviceStore.setState({ devices: null, isLoading: false, error: null, currentDevice: null });
-  useWarehouseStore.setState({ warehouses: null, isLoading: false, error: null });
-  as("HEALTHCARE ADMIN");
-  // ADR-102: write actions come from the caller's effective permissions
-  // (GET /menu-groups/my-permissions, held by the menu store); the device
-  // routes are gated on the `calibration` menu.
-  grant({ calibration: "write" });
-  backend();
+  clearPermissions();
+  clearPhotoLinks();
+  useToastStore.setState({ toasts: [] });
+  rows = [device({ frontPhotoAttachmentId: FRONT, serialPlatePhotoAttachmentId: PLATE, photosComplete: true, condition: "good" })];
+  total = 1;
+  get.mockImplementation(routes);
+  post.mockImplementation(postRoutes);
 });
 
-const renderPage = async () => {
-  const view = render(<DevicesPage />);
-  await screen.findByText("Fluke 714B");
-  return view;
-};
-
-describe("devices page — the list's three states", () => {
-  it("shows a loading skeleton, not the empty state, while the list is in flight", async () => {
-    get.mockImplementation(async (url: string) =>
-      url === "/api/v1/warehouses" ? envelope([]) : new Promise(() => undefined),
-    );
-    const { container } = render(<DevicesPage />);
-    await waitFor(() => expect(deviceListCalls()).toHaveLength(1));
-
-    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
-    expect(screen.queryByText("No devices found")).not.toBeInTheDocument();
+describe("P22-02 — access", () => {
+  it("accessFor: write unlocks the form; bound loses import, delete and IoT; the operator never manages photos", () => {
+    const can = (slugs: string[]) => (slug: string) => slugs.includes(slug);
+    const base = { superAdmin: false, facilityBound: false };
+    expect(accessFor({ ...base, canRead: can(["calibration"]), canWrite: can(["calibration"]) })).toEqual({
+      read: true,
+      write: true,
+      importCsv: true,
+      photosWrite: true,
+      rows: { photos: true, edit: true, remove: true, iot: true },
+    });
+    expect(accessFor({ ...base, facilityBound: true, canRead: can(["calibration"]), canWrite: can(["calibration"]) })).toMatchObject({
+      importCsv: false,
+      photosWrite: true,
+      rows: { remove: false, iot: false, edit: true },
+    });
+    expect(accessFor({ ...base, superAdmin: true, canRead: can(["calibration"]), canWrite: can(["calibration"]) }).photosWrite).toBe(false);
+    expect(accessFor({ ...base, canRead: can(["calibration"]), canWrite: can([]) })).toMatchObject({ write: false, rows: { edit: false, remove: false } });
   });
 
-  it("renders the rows from `data` and the pagination from the top-level `meta`", async () => {
-    deviceRows = [device()];
-    get.mockImplementation(async (url: string) =>
-      url === "/api/v1/warehouses"
-        ? envelope([warehouse])
-        : envelope(deviceRows, { total: 23, page: 1, limit: 10, totalPages: 3 }),
-    );
-    const { container } = await renderPage();
+  it("loading, then restricted: one h1 each, nothing loaded", () => {
+    const { unmount } = renderPage();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    unmount();
+    grantPermissions({ sop: "write" });
+    renderPage();
+    expect(screen.getByRole("heading", { level: 1, name: "Devices" })).toBeInTheDocument();
+    expect(screen.getByText("You do not have access to the device register.")).toBeInTheDocument();
+    expect(get).not.toHaveBeenCalled();
+  });
 
-    const row = screen.getByText("Fluke 714B").closest("tr") as HTMLElement;
-    expect(within(row).getByText("SN-1")).toBeInTheDocument();
-    expect(within(row).getByText("Active")).toBeInTheDocument();
-    expect(within(row).getByText("Main (WH1)")).toBeInTheDocument();
-    expect(screen.getByText(fullText("Showing 1 to 10 of 23 results"))).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
-    expect(deviceListCalls()[0][1]).toEqual({
-      params: { page: 1, limit: 10, find: undefined, status: undefined, category: undefined },
-    });
+  it("a reader sees the list and the photos, no write control; axe-clean", async () => {
+    grantPermissions({ calibration: "read" });
+    const { container } = renderPage();
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Synthetic infusion pump")).toBeInTheDocument();
+    expect(within(table).getByText("QR-000123")).toBeInTheDocument();
+    expect(within(table).getByText("Infusion pump")).toBeInTheDocument();
+    expect(within(table).getByText("Synthetic clinic")).toBeInTheDocument();
+    expect(within(table).getByText("Room 101 · 1")).toBeInTheDocument();
+    expect(within(table).getByText("Good")).toBeInTheDocument();
+    expect(await within(table).findByRole("img", { name: "Front photo of Synthetic infusion pump" })).toHaveAttribute(
+      "src",
+      `/api/v1/attachments/${FRONT}/signed?token=t`,
+    );
+    expect(post).toHaveBeenCalledWith(`/api/v1/attachments/${FRONT}/signed-url`, { variant: "thumb" });
+    expect(screen.queryByRole("button", { name: /Add device|Import CSV|Edit |Delete / })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "IoT ingest for Synthetic infusion pump" })).toBeInTheDocument();
+    await screen.findByRole("option", { name: "Synthetic clinic" });
     expect(await axeViolations(container)).toEqual([]);
-  });
 
-  it("renders the empty state when the list is genuinely empty", async () => {
-    deviceRows = [];
-    const { container } = render(<DevicesPage />);
-
-    expect(await screen.findByText("No devices found")).toBeInTheDocument();
-    expect(await axeViolations(container)).toEqual([]);
-  });
-
-  it("a FAILED load shows the backend's error, never the empty state", async () => {
-    get.mockImplementation(async (url: string) => {
-      if (url === "/api/v1/warehouses") return envelope([]);
-      throw httpError(500, "Database unavailable");
-    });
-    const { container } = render(<DevicesPage />);
-
-    expect(await screen.findByText("Database unavailable")).toBeInTheDocument();
-    expect(screen.queryByText("No devices found")).not.toBeInTheDocument();
-    expect(await axeViolations(container)).toEqual([]);
-  });
-});
-
-describe("devices page — permission-dependent controls (ADR-102)", () => {
-  const writeControlsAbsent = () => {
-    expect(screen.queryByRole("button", { name: /Add Device/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Import CSV/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Edit Fluke 714B" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete Fluke 714B" })).not.toBeInTheDocument();
-  };
-
-  it("read access on `calibration` gets no add, import, edit or delete control — only the IoT view", async () => {
-    grant({ calibration: "read" });
-    await renderPage();
-
-    writeControlsAbsent();
-    expect(screen.getByRole("button", { name: "IoT ingest for Fluke 714B" })).toBeInTheDocument();
-  });
-
-  it("permissions not loaded (or failed to load) offer no write control", async () => {
-    grant(null);
-    await renderPage();
-
-    writeControlsAbsent();
-  });
-
-  it("write on another menu only does not unlock device writes", async () => {
-    grant({ maintenance: "write" });
-    await renderPage();
-
-    writeControlsAbsent();
-  });
-
-  it("write access on `calibration` gets the write controls", async () => {
-    await renderPage();
-
-    expect(screen.getByRole("button", { name: /Add Device/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Import CSV/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit Fluke 714B" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete Fluke 714B" })).toBeInTheDocument();
-  });
-
-  it("the platform super admin gets the write controls whatever the grants", async () => {
-    grant({}, true);
-    await renderPage();
-
-    expect(screen.getByRole("button", { name: /Add Device/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete Fluke 714B" })).toBeInTheDocument();
-  });
-});
-
-describe("devices page — IoT ingest", () => {
-  it("the IoT button opens that device's ingest dialog, and Close dismisses it", async () => {
-    get.mockImplementation(async (url: string) => {
-      if (url === "/api/v1/warehouses") return envelope([warehouse]);
-      if (url === "/api/v1/calibration-devices") return envelope(deviceRows);
-      return {
-        success: true,
-        status: 200,
-        message: "ok",
-        data: { deviceId: "dev-1", name: "Fluke 714B", iotEnabled: false, readingTolerance: null, hasToken: false, tokenIssuedAt: null },
-      };
-    });
-    await renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "IoT ingest for Fluke 714B" }));
-    const dialog = await screen.findByRole("dialog", { name: "IoT ingest — Fluke 714B" });
-    await waitFor(() => expect(get).toHaveBeenCalledWith(expect.stringContaining("dev-1")));
-
-    fireEvent.click(within(dialog).getAllByRole("button", { name: /Close/ }).at(-1) as HTMLElement);
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  });
-});
-
-describe("devices page — filters", () => {
-  it("search, category and status each re-query from page 1 with the filter", async () => {
-    await renderPage();
-
-    fireEvent.change(screen.getByPlaceholderText(/Search name, serial number/), { target: { value: "fluke" } });
-    await waitFor(() =>
-      expect(deviceListCalls().at(-1)?.[1]).toEqual({
-        params: expect.objectContaining({ find: "fluke", page: 1 }),
-      }),
-    );
-
-    fireEvent.change(screen.getByPlaceholderText(/Filter by category/), { target: { value: "Pressure" } });
-    await waitFor(() =>
-      expect(deviceListCalls().at(-1)?.[1]).toEqual({
-        params: expect.objectContaining({ find: "fluke", category: "Pressure" }),
-      }),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "All Statuses" }));
-    fireEvent.click(screen.getByRole("option", { name: "Retired" }));
-    await waitFor(() =>
-      expect(deviceListCalls().at(-1)?.[1]).toEqual({
-        params: expect.objectContaining({ status: "retired", category: "Pressure" }),
-      }),
-    );
-  });
-});
-
-describe("devices page — create, edit, delete", () => {
-  it("creates a device: empty optional fields are omitted, the dialog closes and the list reloads", async () => {
-    post.mockResolvedValue({ success: true, status: 201, message: "created", data: device({ id: "dev-2" }) });
-    await renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: /Add Device/ }));
-    const dialog = screen.getByRole("dialog", { name: "Add Calibration Device" });
-    expect(await axeViolations(dialog)).toEqual([]);
-
-    fireEvent.change(within(dialog).getByLabelText(/Device Name/), { target: { value: "Druck DPI 620" } });
-    fireEvent.change(within(dialog).getByLabelText("Serial Number"), { target: { value: "SN-9" } });
-    fireEvent.change(within(dialog).getByLabelText("Manufacturer"), { target: { value: "Druck" } });
-    fireEvent.change(within(dialog).getByLabelText("Model"), { target: { value: "DPI 620" } });
-    fireEvent.change(within(dialog).getByLabelText("Category"), { target: { value: "Pressure" } });
-    fireEvent.change(within(dialog).getByLabelText("Next Calibration Date"), { target: { value: "2027-01-31" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: /Warehouse Assignment/ }));
-    fireEvent.click(within(dialog).getByRole("option", { name: "Main (WH1)" }));
-    const before = deviceListCalls().length;
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create Device" }));
-
-    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
-    expect(post).toHaveBeenCalledWith("/api/v1/calibration-devices", {
-      name: "Druck DPI 620",
-      serialNumber: "SN-9",
-      manufacturer: "Druck",
-      model: "DPI 620",
-      category: "Pressure",
-      status: "active",
-      locationId: "wh-1",
-      installationDate: undefined,
-      nextCalibrationDate: "2027-01-31",
-      calibrationIntervalDays: 180,
-      remarks: "",
-    });
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    await waitFor(() => expect(deviceListCalls().length).toBeGreaterThan(before));
-  });
-
-  it("a refused create (409) keeps the dialog open and shows the backend's explanation", async () => {
-    post.mockRejectedValue(httpError(409, "A device with serial number SN-1 already exists"));
-    await renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: /Add Device/ }));
-    const dialog = screen.getByRole("dialog", { name: "Add Calibration Device" });
-    fireEvent.change(within(dialog).getByLabelText(/Device Name/), { target: { value: "Dup" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create Device" }));
-
-    expect(await screen.findByText("A device with serial number SN-1 already exists")).toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Add Calibration Device" })).toBeInTheDocument();
-  });
-
-  it("edits a device: the form is prefilled (dates cut to YYYY-MM-DD) and saved with PUT on its id", async () => {
-    put.mockResolvedValue({ success: true, status: 200, message: "ok", data: device({ name: "Renamed" }) });
-    await renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit Fluke 714B" }));
-    const dialog = screen.getByRole("dialog", { name: "Edit Calibration Device" });
-    expect(within(dialog).getByLabelText(/Device Name/)).toHaveValue("Fluke 714B");
-    expect(within(dialog).getByLabelText("Installation Date")).toHaveValue("2026-01-02");
-    expect(within(dialog).getByLabelText("Interval Days")).toHaveValue(90);
-
-    fireEvent.change(within(dialog).getByLabelText(/Device Name/), { target: { value: "Renamed" } });
-    fireEvent.change(within(dialog).getByLabelText("Interval Days"), { target: { value: "30" } });
-    fireEvent.change(within(dialog).getByLabelText("Installation Date"), { target: { value: "2026-02-03" } });
-    fireEvent.change(within(dialog).getByLabelText("Remarks"), { target: { value: "moved" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: /Status/ }));
-    fireEvent.click(within(dialog).getByRole("option", { name: "Maintenance" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
-
-    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    expect(put).toHaveBeenCalledWith(
-      "/api/v1/calibration-devices/dev-1",
-      expect.objectContaining({
-        name: "Renamed",
-        calibrationIntervalDays: 30,
-        remarks: "moved",
-        status: "maintenance",
-        installationDate: "2026-02-03",
-        nextCalibrationDate: "2026-12-01",
-      }),
-    );
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  });
-
-  it("Cancel closes the device dialog without saving", async () => {
-    await renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /Add Device/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
+    fireEvent.click(screen.getByRole("button", { name: "Photos of Synthetic infusion pump" }));
+    const dialog = await screen.findByRole("dialog", { name: "Photos of Synthetic infusion pump" });
+    expect(within(dialog).queryByRole("button", { name: /Replace|Take or choose|Delete/ })).not.toBeInTheDocument();
+    expect(await within(dialog).findByRole("img", { name: "Serial-plate photo of Synthetic infusion pump" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(post).not.toHaveBeenCalled();
   });
 
-  it("deletes a device after confirmation and reloads the list", async () => {
-    del.mockResolvedValue({ success: true, status: 200, message: "deleted", data: null });
-    await renderPage();
+  it("a facility-bound technician: no facility column or filter, no import, delete or IoT; its form omits the provider fields", async () => {
+    bind({ calibration: "write" });
+    renderPage();
+    await screen.findByRole("table");
+    expect(screen.queryByRole("columnheader", { name: "Facility" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Facility")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Import CSV" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete |IoT ingest/ })).not.toBeInTheDocument();
+    expect(get).not.toHaveBeenCalledWith("/api/v1/client-facilities/options");
+    expect(screen.getByText(/The devices of your facility/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete Fluke 714B" }));
-    const dialog = screen.getByRole("dialog", { name: "Delete Device" });
-    expect(await axeViolations(dialog)).toEqual([]);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
-
-    await waitFor(() => expect(del).toHaveBeenCalledWith("/api/v1/calibration-devices/dev-1"));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  });
-
-  it("a failed delete (404 — gone, or another tenant's) keeps the dialog open with the message (F-64)", async () => {
-    del.mockRejectedValue(httpError(404, "Calibration device not found"));
-    await renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "Delete Fluke 714B" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Delete Device" })).getByRole("button", { name: "Delete" }));
-
-    expect(await screen.findByText("Calibration device not found")).toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Delete Device" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add device" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a device" });
+    for (const label of ["QR sticker", "Status", "Calibration laboratory", "Facility"]) expect(within(dialog).queryByLabelText(label)).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("A store")).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Bound pump" } });
+    fireEvent.change(within(dialog).getByLabelText("Room"), { target: { value: "Ward A" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add device" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/calibration-devices", { name: "Bound pump", room: { name: "Ward A", floor: null } }));
+    expect(get).not.toHaveBeenCalledWith("/api/v1/warehouses", expect.anything());
+    // A bound technician manages its devices' photos: the registration asks for them.
+    expect(await screen.findByRole("dialog", { name: "Add the photos of Bound pump" })).toBeInTheDocument();
   });
 });
 
-describe("devices page — CSV import", () => {
-  const importFile = (container: HTMLElement) => {
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(["name\nA"], "devices.csv", { type: "text/csv" });
-    fireEvent.change(input, { target: { files: [file] } });
-    return file;
-  };
-
-  it("uploads the file as multipart, reports the outcome with at most five row errors, and can be dismissed", async () => {
-    const errors = Array.from({ length: 7 }, (_, i) => ({ row: i + 2, errors: `bad row ${i + 2}` }));
-    post.mockResolvedValue({
-      success: true,
-      status: 200,
-      message: "ok",
-      data: { successCount: 3, failedCount: 7, totalCount: 10, errors },
-    });
-    const { container } = await renderPage();
-
-    importFile(container);
-
-    expect(await screen.findByText(/CSV import finished: 3 of\s*10 device\(s\) imported, 7 failed/)).toBeInTheDocument();
-    expect(post.mock.calls[0][0]).toBe("/api/v1/calibration-devices/bulk-import");
-    expect(post.mock.calls[0][1]).toBeInstanceOf(FormData);
-    expect(screen.getByText("Row 2: bad row 2")).toBeInTheDocument();
-    expect(screen.getByText("Row 6: bad row 6")).toBeInTheDocument();
-    expect(screen.queryByText("Row 7: bad row 7")).not.toBeInTheDocument();
-    expect(screen.getByText("…and 2 more")).toBeInTheDocument();
-    expect(await axeViolations(container)).toEqual([]);
-
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-    expect(screen.queryByText(/CSV import finished/)).not.toBeInTheDocument();
+describe("P22-02 — the list", () => {
+  it("a failed read is an error with a retry, never an empty register; empty says so", async () => {
+    grantPermissions({ calibration: "read" });
+    get.mockImplementation((path: string, config?: { params?: Record<string, unknown> }) =>
+      path === "/api/v1/calibration-devices" ? Promise.reject(httpError(500, "Boom")) : routes(path, config),
+    );
+    renderPage();
+    expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
+    expect(screen.queryByText("No device matches.")).not.toBeInTheDocument();
+    rows = [];
+    total = 0;
+    get.mockImplementation(routes);
+    fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
+    expect(await screen.findByText("No device matches.")).toBeInTheDocument();
   });
 
-  it("A-358: a row rejected with field errors lists them as text instead of crashing", async () => {
-    // calibrationDevices.service#bulkImportCalibrationDevices: a duplicate or a
-    // validation failure answers a list of { field, message }; an empty CSV a string.
-    post.mockResolvedValue({
-      success: true,
-      status: 200,
-      message: "ok",
-      data: {
-        successCount: 0,
-        failedCount: 2,
-        totalCount: 2,
-        errors: [
-          { row: 2, errors: [{ field: "serialNumber", message: "Duplicate serial number: SN-1" }] },
-          {
-            row: 3,
-            errors: [
-              { field: "name", message: "Required" },
-              { field: "status", message: "Invalid option" },
-            ],
-          },
-        ],
-      },
-    });
-    const { container } = await renderPage();
-    importFile(container);
+  it("rows without a photo, QR, type, condition or due date read as such; due states are badged; a failed link is a named placeholder", async () => {
+    grantPermissions({ calibration: "read" });
+    rows = [
+      device({
+        id: "d2",
+        name: "Bare device",
+        qrCode: null,
+        deviceType: null,
+        category: null,
+        manufacturer: null,
+        model: null,
+        warehouse: null,
+        clientFacility: null,
+        serialNumber: null,
+        photosComplete: false,
+        frontPhotoAttachmentId: null,
+        calibrationDue: { state: "overdue", nextCalibrationDate: "2026-01-01", source: "record", requestedBySessionId: null },
+      }),
+      device({ id: "d3", name: "Linked device", frontPhotoAttachmentId: "broken-link", status: null, calibrationDue: undefined, nextCalibrationDate: null }),
+    ];
+    total = 2;
+    post.mockImplementation((path: string, body?: unknown) =>
+      path.includes("broken-link") ? Promise.reject(httpError(404, "gone")) : postRoutes(path, body),
+    );
+    renderPage();
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("img", { name: "No photo of Bare device" })).toBeInTheDocument();
+    expect(within(table).getByText("No QR sticker yet")).toBeInTheDocument();
+    expect(within(table).getByText("Photos missing")).toBeInTheDocument();
+    expect(within(table).getAllByText("Not assessed")).toHaveLength(2);
+    expect(within(table).getByText("Overdue")).toBeInTheDocument();
+    expect(await within(table).findByRole("img", { name: "The photo cannot be shown right now" })).toBeInTheDocument();
+  });
 
-    expect(await screen.findByText("Row 2: serialNumber: Duplicate serial number: SN-1")).toBeInTheDocument();
-    expect(screen.getByText("Row 3: name: Required; status: Invalid option")).toBeInTheDocument();
+  it("each filter re-reads page 1 with its query; pages through the top-level meta", async () => {
+    grantPermissions({ calibration: "read" });
+    total = 45;
+    renderPage();
+    await screen.findByRole("table");
+    expect(lastListQuery()).toEqual({ page: 1, limit: 20 });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(lastListQuery()).toEqual({ page: 2, limit: 20 }));
+    expect(await screen.findByText("Page 2 of 3 · 45 devices")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    await waitFor(() => expect(lastListQuery()).toEqual({ page: 1, limit: 20 }));
+
+    await screen.findByRole("option", { name: "Synthetic clinic" });
+    fireEvent.change(screen.getByLabelText("Name, serial number or make"), { target: { value: "pump" } });
+    fireEvent.change(screen.getByLabelText("QR sticker"), { target: { value: "42" } });
+    fireEvent.change(screen.getByLabelText("Condition"), { target: { value: "broken" } });
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "retired" } });
+    fireEvent.change(screen.getByLabelText("Calibration due"), { target: { value: "overdue" } });
+    fireEvent.change(screen.getByLabelText("Facility"), { target: { value: CD_IDS.facility } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "Pumps" } });
+    await screen.findByRole("option", { name: "Infusion pump" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Device type" }), { target: { value: "type-1" } });
+    await waitFor(() =>
+      expect(lastListQuery()).toEqual({
+        page: 1,
+        limit: 20,
+        find: "pump",
+        qrCode: "42",
+        deviceTypeId: "type-1",
+        condition: "broken",
+        status: "retired",
+        calibrationDue: "overdue",
+        clientFacilityId: CD_IDS.facility,
+        category: "Pumps",
+      }),
+    );
+    expect(listQuery(INITIAL_FILTERS, 3)).toEqual({ page: 3, limit: 20 });
+  });
+
+  it("a global-search hand-off opens the list filtered to it", async () => {
+    grantPermissions({ calibration: "read" });
+    useSearchHandoffStore.getState().handOff("device", "SN-001");
+    renderPage();
+    await screen.findByRole("table");
+    expect(lastListQuery()).toEqual({ page: 1, limit: 20, find: "SN-001" });
+  });
+
+  it("the type search sends its text; a failed type read is said", async () => {
+    jest.useFakeTimers();
+    try {
+      grantPermissions({ calibration: "read" });
+      renderPage();
+      await act(async () => {
+        jest.advanceTimersByTime(10);
+      });
+      fireEvent.change(screen.getByRole("searchbox", { name: "Search Device type" }), { target: { value: "inf" } });
+      get.mockImplementation((path: string, config?: { params?: Record<string, unknown> }) =>
+        path === "/api/v1/device-types" ? Promise.reject(httpError(500, "Boom")) : routes(path, config),
+      );
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(get).toHaveBeenCalledWith("/api/v1/device-types", { params: { status: "active", page: 1, limit: 50, search: "inf" } });
+      expect(screen.getByText("The device types could not be loaded.")).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe("P22-02 — register and edit", () => {
+  it("registers a device for a chosen facility, then asks for the two photos; Finish only with both", async () => {
+    grantPermissions({ calibration: "write", vendors: "read" });
+    renderPage();
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("button", { name: "Add device" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a device" });
+    await within(dialog).findByRole("option", { name: "Synthetic Lab" });
+    expect(within(dialog).queryByRole("option", { name: "Ended clinic" })).not.toBeInTheDocument();
+    expect(await axeViolations(dialog)).toEqual([]);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add device" }));
+    const problems = await within(dialog).findByText("Check these fields");
+    expect(within(problems.closest("[role=alert]") as HTMLElement).getByText("Give the device a name of at least two characters.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Choose the facility this device belongs to.")).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalledWith("/api/v1/calibration-devices", expect.anything());
+
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "New pump" } });
+    fireEvent.change(within(dialog).getByLabelText("QR sticker"), { target: { value: "42" } });
+    fireEvent.change(within(dialog).getByLabelText("Facility"), { target: { value: CD_IDS.facility } });
+    fireEvent.change(within(dialog).getByLabelText("Condition"), { target: { value: "good" } });
+    fireEvent.change(within(dialog).getByLabelText("Accessories"), { target: { value: "yes" } });
+    fireEvent.change(within(dialog).getByLabelText("Calibration laboratory"), { target: { value: CD_IDS.vendor } });
+    fireEvent.change(within(dialog).getByLabelText("Room"), { target: { value: "Ward B" } });
+    fireEvent.change(within(dialog).getByLabelText("Floor"), { target: { value: "3" } });
+    await within(dialog).findByRole("option", { name: "Infusion pump" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Device type" }), { target: { value: "type-1" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add device" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/calibration-devices", {
+        name: "New pump",
+        qrCode: "42",
+        deviceTypeId: "type-1",
+        condition: "good",
+        accessoriesComplete: true,
+        room: { name: "Ward B", floor: "3" },
+        status: "active",
+        calibrationVendorId: CD_IDS.vendor,
+        clientFacilityId: CD_IDS.facility,
+      }),
+    );
+    expect(useToastStore.getState().toasts[0]).toMatchObject({ type: "success", title: "New pump added" });
+
+    const photos = await screen.findByRole("dialog", { name: "Add the photos of New pump" });
+    const finish = within(photos).getByRole("button", { name: "Finish" });
+    expect(finish).toBeDisabled();
+    expect(within(photos).getByText("A required photo is still missing.")).toBeInTheDocument();
+    const front = within(photos).getByLabelText("Take or choose: Front photo") as HTMLInputElement;
+    expect(front).toHaveAttribute("accept", "image/jpeg,image/png");
+    expect(front).toHaveAttribute("capture", "environment");
+    fireEvent.change(front, { target: { files: [new File(["heic"], "IMG.HEIC", { type: "image/heic" })] } });
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/calibration-devices/new-device/photos", expect.any(FormData)));
+    const sent = post.mock.calls.find((c) => c[0] === "/api/v1/calibration-devices/new-device/photos")?.[1] as FormData;
+    expect((sent.get("file") as File).type).toBe("image/jpeg");
+    expect(prep).toHaveBeenCalled();
+    fireEvent.change(within(photos).getByLabelText("Take or choose: Serial-plate photo"), {
+      target: { files: [new File(["png"], "plate.png", { type: "image/png" })] },
+    });
+    expect(await within(photos).findByText("Both required photos are present.")).toBeInTheDocument();
+    fireEvent.click(within(photos).getByRole("button", { name: "Finish" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("Finish later closes the registration's photo step", async () => {
+    grantPermissions({ calibration: "write" });
+    renderPage();
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("button", { name: "Add device" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a device" });
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Later pump" } });
+    fireEvent.change(await within(dialog).findByLabelText("Facility"), { target: { value: SELF } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add device" }));
+    const photos = await screen.findByRole("dialog", { name: "Add the photos of Later pump" });
+    fireEvent.click(within(photos).getByRole("button", { name: "Finish later" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("the operator registers without a photo step", async () => {
+    grantSuperAdmin();
+    renderPage();
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("button", { name: "Add device" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a device" });
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Operator pump" } });
+    fireEvent.change(await within(dialog).findByLabelText("Facility"), { target: { value: SELF } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add device" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/calibration-devices", expect.objectContaining({ name: "Operator pump" })));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("edits a device: prefilled, only the changes sent; a 409 is the server's explanation with the form kept; Cancel closes", async () => {
+    grantPermissions({ calibration: "write" });
+    put.mockRejectedValueOnce(httpError(409, "QR code TST000042 is already on device Other pump in Synthetic clinic.", "DEVICE_QR_TAKEN"));
+    put.mockResolvedValueOnce(ok(device({ name: "Synthetic infusion pump" })));
+    renderPage();
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Synthetic infusion pump" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit Synthetic infusion pump" });
+    expect(within(dialog).getByLabelText("QR sticker")).toHaveValue("QR-000123");
+    expect(within(dialog).getByLabelText("Room")).toHaveValue("Room 101");
+    expect(within(dialog).getByText("Synthetic clinic")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox", { name: "Facility" })).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("QR sticker"), { target: { value: "42" } });
+    fireEvent.change(within(dialog).getByLabelText("Condition"), { target: { value: "not_good" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    expect(await within(dialog).findByText("QR code TST000042 is already on device Other pump in Synthetic clinic.")).toBeInTheDocument();
+    expect(put).toHaveBeenLastCalledWith(`/api/v1/calibration-devices/${CD_IDS.device}`, { qrCode: "42", condition: "not_good" });
+    expect(within(dialog).getByLabelText("QR sticker")).toHaveValue("42");
+
+    fireEvent.click(within(dialog).getByLabelText("A store"));
+    fireEvent.change(await within(dialog).findByLabelText("Store"), { target: { value: "store-1" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(put).toHaveBeenLastCalledWith(`/api/v1/calibration-devices/${CD_IDS.device}`, { qrCode: "42", condition: "not_good", locationId: "store-1" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(useToastStore.getState().toasts[0]).toMatchObject({ title: "Synthetic infusion pump saved" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Synthetic infusion pump" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("a refusal without a message says it was not saved", async () => {
+    grantPermissions({ calibration: "write" });
+    put.mockRejectedValueOnce(new Error(""));
+    renderPage();
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Synthetic infusion pump" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    expect(await within(dialog).findByText("The device could not be saved.")).toBeInTheDocument();
+  });
+});
+
+describe("P22-02 — photos", () => {
+  const openPhotos = async () => {
+    grantPermissions({ calibration: "write" });
+    renderPage();
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("button", { name: "Photos of Synthetic infusion pump" }));
+    return screen.findByRole("dialog", { name: "Photos of Synthetic infusion pump" });
+  };
+
+  it("replaces a photo and deletes one after confirmation; the list reloads on close", async () => {
+    const dialog = await openPhotos();
+    expect(await within(dialog).findByRole("img", { name: "Front photo of Synthetic infusion pump" })).toHaveAttribute(
+      "src",
+      `/api/v1/attachments/${FRONT}/signed?token=t`,
+    );
+    expect(post).toHaveBeenCalledWith(`/api/v1/attachments/${FRONT}/signed-url`, { variant: "display" });
+    fireEvent.change(within(dialog).getByLabelText("Replace: Front photo"), { target: { files: [new File(["j"], "f.jpg", { type: "image/jpeg" })] } });
+    await waitFor(() => expect(post).toHaveBeenCalledWith(`/api/v1/calibration-devices/${CD_IDS.device}/photos`, expect.any(FormData)));
+    expect(await within(dialog).findByRole("img", { name: "Front photo of Synthetic infusion pump" })).toHaveAttribute(
+      "src",
+      `/api/v1/attachments/${NEW_PHOTO}/signed?token=t`,
+    );
+
+    del.mockResolvedValueOnce(ok({ id: PLATE }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete: Serial-plate photo" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete photo" }));
+    await waitFor(() => expect(del).toHaveBeenCalledWith(`/api/v1/calibration-devices/${CD_IDS.device}/photos/${PLATE}`));
+    expect(await within(dialog).findByText("A required photo is still missing.")).toBeInTheDocument();
+    const reads = get.mock.calls.filter((c) => c[0] === "/api/v1/calibration-devices").length;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(get.mock.calls.filter((c) => c[0] === "/api/v1/calibration-devices").length).toBe(reads + 1));
+  });
+
+  it("explains a HEIC the browser cannot convert, a server refusal and a failed delete", async () => {
+    const dialog = await openPhotos();
+    prep.mockRejectedValueOnce(new PhotoPrepError("heic_unreadable"));
+    fireEvent.change(within(dialog).getByLabelText("Replace: Front photo"), { target: { files: [new File(["h"], "a.heic", { type: "image/heic" })] } });
+    expect(await within(dialog).findByText(/This photo is in HEIC format/)).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalledWith(expect.stringMatching(/\/photos$/), expect.anything());
+
+    post.mockImplementationOnce(() => Promise.reject(httpError(422, "The photo could not be decoded.", "PHOTO_UNDECODABLE")));
+    fireEvent.change(within(dialog).getByLabelText("Replace: Serial-plate photo"), { target: { files: [new File(["j"], "p.jpg", { type: "image/jpeg" })] } });
+    expect(await within(dialog).findByText("The photo could not be decoded.")).toBeInTheDocument();
+
+    post.mockImplementationOnce(() => Promise.reject(new Error("")));
+    fireEvent.change(within(dialog).getByLabelText("Replace: Serial-plate photo"), { target: { files: [new File(["j"], "p.jpg", { type: "image/jpeg" })] } });
+    expect(await within(dialog).findByText("The photo could not be uploaded.")).toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Replace: Serial-plate photo"), { target: { files: [] } });
+
+    del.mockRejectedValueOnce(new Error(""));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete: Front photo" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete photo" }));
+    expect(await within(dialog).findByText("The photo could not be deleted.")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete: Front photo" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(within(dialog).getByRole("button", { name: "Delete: Front photo" })).toBeInTheDocument();
+  });
+
+  it("the take-or-choose button opens the file picker", async () => {
+    const dialog = await openPhotos();
+    const input = within(dialog).getByLabelText("Replace: Front photo") as HTMLInputElement;
+    const click = jest.spyOn(input, "click");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Replace: Front photo" }));
+    expect(click).toHaveBeenCalled();
+  });
+});
+
+describe("P22-02 — delete, import and IoT", () => {
+  it("deletes after confirmation; a failure stays in the dialog", async () => {
+    grantPermissions({ calibration: "write" });
+    del.mockRejectedValueOnce(httpError(404, "Device not found"));
+    del.mockResolvedValueOnce(ok({}));
+    renderPage();
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("button", { name: "Delete Synthetic infusion pump" }));
+    expect(await screen.findByText(/leaves the register/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete device" }));
+    expect(await screen.findByText("Device not found")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete device" }));
+    await waitFor(() => expect(useToastStore.getState().toasts[0]).toMatchObject({ title: "Synthetic infusion pump deleted" }));
+    expect(del).toHaveBeenLastCalledWith(`/api/v1/calibration-devices/${CD_IDS.device}`);
+
+    del.mockRejectedValueOnce(new Error(""));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Synthetic infusion pump" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete device" }));
+    expect(await screen.findByText("The device could not be deleted.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  });
+
+  it("imports a CSV: the report with at most five row errors (field errors as text), dismissible; a refusal is shown", async () => {
+    grantPermissions({ calibration: "write" });
+    renderPage();
+    await screen.findByRole("table");
+    const errors = [
+      { row: 2, errors: [{ field: "name", message: "required" }] },
+      ...[3, 4, 5, 6, 7].map((row) => ({ row, errors: "bad row" })),
+    ];
+    post.mockImplementationOnce(() => Promise.resolve({ data: { successCount: 1, failedCount: 6, totalCount: 7, errors } }));
+    const input = screen.getByLabelText("CSV file of devices") as HTMLInputElement;
+    const click = jest.spyOn(input, "click");
+    fireEvent.click(screen.getByRole("button", { name: "Import CSV" }));
+    expect(click).toHaveBeenCalled();
+    fireEvent.change(input, { target: { files: [new File(["name\nA"], "devices.csv", { type: "text/csv" })] } });
+    expect(await screen.findByText("1 of 7 devices imported, 6 refused.")).toBeInTheDocument();
+    expect(screen.getByText("Row 2: name: required")).toBeInTheDocument();
+    expect(screen.getByText("…and 1 more")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("CSV import finished")).not.toBeInTheDocument();
+
+    post.mockImplementationOnce(() => Promise.reject(httpError(400, "Only CSV files")));
+    fireEvent.change(input, { target: { files: [new File(["x"], "devices.csv", { type: "text/csv" })] } });
+    expect(await screen.findByText("Only CSV files")).toBeInTheDocument();
+    post.mockImplementationOnce(() => Promise.reject(new Error("")));
+    fireEvent.change(input, { target: { files: [new File(["x"], "devices.csv", { type: "text/csv" })] } });
+    expect(await screen.findByText("The CSV import failed.")).toBeInTheDocument();
+    fireEvent.change(input, { target: { files: [] } });
   });
 
   it("a clean import reports success with no error list", async () => {
-    post.mockResolvedValue({
-      success: true,
-      status: 200,
-      message: "ok",
-      data: { successCount: 2, failedCount: 0, totalCount: 2, errors: [] },
-    });
-    const { container } = await renderPage();
-    importFile(container);
-
-    expect(await screen.findByText(/CSV import finished: 2 of\s*2 device\(s\) imported\s*\./)).toBeInTheDocument();
-    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    grantPermissions({ calibration: "write" });
+    renderPage();
+    await screen.findByRole("table");
+    post.mockImplementationOnce(() => Promise.resolve({ data: { successCount: 2, failedCount: 0, totalCount: 2, errors: [] } }));
+    fireEvent.change(screen.getByLabelText("CSV file of devices"), { target: { files: [new File(["x"], "d.csv", { type: "text/csv" })] } });
+    expect(await screen.findByText("2 of 2 devices imported, 0 refused.")).toBeInTheDocument();
   });
 
-  it("a refused import shows the backend's message", async () => {
-    post.mockRejectedValue(httpError(400, "The file must be a CSV"));
-    const { container } = await renderPage();
-    importFile(container);
-
-    expect(await screen.findByText("The file must be a CSV")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Import CSV/ })).not.toBeDisabled();
+  it("opens the IoT dialog for a device", async () => {
+    grantPermissions({ calibration: "read" });
+    renderPage();
+    await screen.findByRole("table");
+    fireEvent.click(screen.getByRole("button", { name: "IoT ingest for Synthetic infusion pump" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: /Close/ })[0] as HTMLElement);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
+});
 
-  it("the Import CSV button opens the file picker", async () => {
-    const { container } = await renderPage();
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const click = jest.spyOn(input, "click").mockImplementation(() => undefined);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Import CSV/ }));
-    });
-    expect(click).toHaveBeenCalled();
+describe("P22-02 — language", () => {
+  it("speaks Indonesian", async () => {
+    grantPermissions({ calibration: "write" });
+    renderPage("id");
+    expect(screen.getByRole("heading", { level: 1, name: "Alat" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tambah alat" })).toBeInTheDocument();
+    expect(await screen.findByText("Baik")).toBeInTheDocument();
   });
 });

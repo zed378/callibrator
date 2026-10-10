@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 2 DONE in code (**P22-01**, 2026-10-09 — menu activation and the live browser suites open; **P22-05**, 2026-10-09 — an optional sidebar entry and the live browser suites open) · 5 TODO (**P22-02** — unblocked by P21-02b, **P22-06** — unblocked by P21-06, 2026-10-09; **P22-03, P22-04** — unblocked by P21-04, 2026-10-09; **P22-07** — unblocked by P21-07, 2026-10-09) · 3 BLOCKED |
+| **Status** | 3 DONE in code (**P22-02**, 2026-10-10 — live browser suites and a real phone open; **P22-01**, 2026-10-09 — the live browser suites open (its menu entry is on since P21-07, migration 0130); **P22-05**, 2026-10-09 — an optional sidebar entry and the live browser suites open) · 4 TODO (**P22-06** — unblocked by P21-06, 2026-10-09; **P22-03, P22-04** — unblocked by P21-04, 2026-10-09; **P22-07** — unblocked by P21-07, 2026-10-09) · 3 BLOCKED |
 | **Goal** | Pages, PWA field capture with offline mode |
 | **Depends on** | Phase 21 |
 | **Size** | L |
@@ -29,7 +29,7 @@ page notes · docs/FRONTEND/00 · docs/UI-UX/08 · ADR-122 · ADR-071/090 · P19
 | Card | Title | Features | Status | Depends on |
 |---|---|---|---|---|
 | P22-01 | Catalogue and template admin (`dashboard/ipm-templates`) | F-22 | **DONE in code** 2026-10-09 ([record](../MEMORY/records/2026-10-09-p22-01-catalogue-admin-ui.md)) — the operator's checklists, draft editor, library, device types and proposal queue; the published catalogue for readers; tenant proposals; `usePermissions().facilityBound` (G-P8). **Open:** the `ipm-templates` menu entry is still inactive (backend: seed + migration, ADR-124 Am. 5); live browser, accessibility (light + dark) and responsive suites not run | P21-01 |
-| P22-02 | Device form and list: QR, type picker, mandatory photos, condition, thumbnails | F-23 … F-31 | **TODO** (unblocked 2026-10-09: P21-02a — the form's and list's API; P21-02b — `POST/DELETE …/photos`, thumbnails via `signed-url { variant: "thumb" }`; HEIC must be converted to JPEG in the browser, ADR-132 Am. 3) | P21-02 |
+| P22-02 | Device form and list: QR, type picker, mandatory photos, condition, thumbnails | F-23 … F-31 | **DONE in code** 2026-10-10 ([record](../MEMORY/records/2026-10-10-p22-02-device-register-ui.md)) — `dashboard/devices` rebuilt on the generated client: filters (QR, type, condition, due, facility), thumbnails by signed `thumb` link, the form by the two contracts (bound: no QR/status/lab/store/facility; edit sends changes only), the two photos required in the register flow, every photo a ≤ 2,048 px JPEG made in the browser (HEIC converted where the browser decodes it, else explained — ADR-132 Am. 3). **Open:** live browser/a11y/responsive suites, a real phone | P21-02 |
 | P22-03 | IPM capture: mobile-first stepper, camera QR scan, autosave draft | F-35 … F-53 | **TODO** (unblocked 2026-10-09: P21-03 drafts + P21-04 submit) | P21-03 |
 | P22-04 | IPM history, corrections and void; device "IPM" tab | F-54 … F-57 | **TODO** (unblocked 2026-10-09: P21-04 the correction's submit and the void) | P21-03 |
 | P22-05 | Calibration-date quick entry and list | F-62 … F-64 | **DONE in code** 2026-10-09 ([record](../MEMORY/records/2026-10-09-p22-05-calibration-dates-ui.md)) — `dashboard/calibration-dates`: the quick entry by QR sticker (typed or a handheld scanner; the camera is P22-03's) and the calibration list; reached from `/dashboard/calibration`. **Open:** no sidebar entry of its own (backend, optional); live browser, accessibility (light + dark) and responsive suites not run | P21-05 |

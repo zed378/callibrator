@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — The device register page: QR, type, condition, room and the two required photos (P22-02) ([record](./records/2026-10-10-p22-02-device-register-ui.md))
+- **Changed:** `dashboard/devices` is rebuilt, in Indonesian and English. The list filters by QR sticker, type, condition, status, calibration due and (provider staff) facility, and shows each device's front-photo thumbnail, room and floor, condition and next calibration. The form registers or edits a device with its QR sticker, type (searched), room (typed; found or created in the device's facility), condition, accessories, inventory date, laboratory and IPM interval; a facility-bound technician sees only the fields their account may set.
+- **Added:** after registering a device, its front and serial-plate photos are asked for (camera on a phone) before "Finish"; photos can be replaced or deleted later. Every photo is shrunk and converted to JPEG in the browser before upload, which also removes its location data. A HEIC photo the browser cannot convert is explained (set the camera to JPEG).
+
 ### 2026-10-10 — A flaky SSO timing test made deterministic (A-292) ([record](./records/2026-10-10-a292-sso-timing-flake.md))
 - **Fixed (tests only):** the proof that an unknown tenant code and a tenant without SSO refuse in the same time no longer depends on the CI machine's load; it now checks both answer at exactly the floor on a fake clock. No behaviour change.
 

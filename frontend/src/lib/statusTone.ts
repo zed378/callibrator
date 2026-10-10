@@ -361,6 +361,16 @@ export const STATUS_REGISTRY = {
     retired: e("info", "Retired"),
     discarded: e("draft", "Discarded"),
   },
+  /**
+   * P22-02 — a device's physical condition (P19-03 § 4.4), separate from its status: not good and
+   * broken both need attention (alarm stays reserved for overdue / non-conformant / failed /
+   * revoked, P11-05); the label tells them apart. Good is current.
+   */
+  deviceCondition: {
+    good: e("current", "Good"),
+    not_good: e("attention", "Not good"),
+    broken: e("attention", "Broken"),
+  },
   /** P22-01 — a catalogue proposal: one awaiting the operator needs attention; a rejection is a decision, not an alarm. */
   templateProposal: {
     submitted: e("attention", "Submitted"),
