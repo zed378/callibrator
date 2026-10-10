@@ -12,6 +12,8 @@
  *                                                     (the app-wide one is 30 s)
  *   UPSTREAM_IMPORT_DB_ROLE                 callibrator_import — the role the worker's
  *                                                     staging connection switches to
+ *   UPSTREAM_TRANSFORM_DB_ROLE              callibrator_transform — the role the transform's
+ *                                                     connection switches to (P24-01, 0133)
  *
  * The DPIA gate (UPSTREAM_REAL_DATA_ALLOWED) is NOT read here: it has one definition,
  * `config/upstream.ts#upstreamRealDataAllowed`, shared with the rsync image import (ADR-130).
@@ -33,6 +35,9 @@ export const STAGING_SCHEMA = "upstream_import";
 
 /** The role the staging connection switches to when UPSTREAM_IMPORT_DB_ROLE is unset. */
 export const DEFAULT_IMPORT_ROLE = "callibrator_import";
+
+/** The role the transform's connection switches to when UPSTREAM_TRANSFORM_DB_ROLE is unset (P24-01). */
+export const DEFAULT_TRANSFORM_ROLE = "callibrator_transform";
 
 const ROLE_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/;
 
@@ -60,17 +65,28 @@ export const upstreamImportSettings = (): UpstreamImportSettings => ({
   uploadTimeoutMs: positiveIntOr("UPSTREAM_IMPORT_UPLOAD_TIMEOUT_MS", 15 * 60 * 1000),
 });
 
+/** A role name from `variable`'s value, or `fallback`; refused unless a plain lower-case identifier. */
+const roleFrom = (variable: string, raw: string | undefined, fallback: string): string => {
+  const name = raw === undefined || raw === "" ? fallback : raw;
+  if (!ROLE_PATTERN.test(name)) {
+    throw new Error(`${variable} "${name}" is not a plain lower-case identifier ([a-z_][a-z0-9_]*).`);
+  }
+  return name;
+};
+
 /**
  * The import role's name.
  * @throws {Error} when UPSTREAM_IMPORT_DB_ROLE is not a plain lower-case identifier (it is interpolated into SET ROLE and GRANT)
  */
-export const importRoleName = (raw: string | undefined = env("UPSTREAM_IMPORT_DB_ROLE")): string => {
-  const name = raw === undefined || raw === "" ? DEFAULT_IMPORT_ROLE : raw;
-  if (!ROLE_PATTERN.test(name)) {
-    throw new Error(`UPSTREAM_IMPORT_DB_ROLE "${name}" is not a plain lower-case identifier ([a-z_][a-z0-9_]*).`);
-  }
-  return name;
-};
+export const importRoleName = (raw: string | undefined = env("UPSTREAM_IMPORT_DB_ROLE")): string =>
+  roleFrom("UPSTREAM_IMPORT_DB_ROLE", raw, DEFAULT_IMPORT_ROLE);
+
+/**
+ * The transform role's name (P24-01).
+ * @throws {Error} when UPSTREAM_TRANSFORM_DB_ROLE is not a plain lower-case identifier
+ */
+export const transformRoleName = (raw: string | undefined = env("UPSTREAM_TRANSFORM_DB_ROLE")): string =>
+  roleFrom("UPSTREAM_TRANSFORM_DB_ROLE", raw, DEFAULT_TRANSFORM_ROLE);
 
 /** A pooled pg client, as the `afterPoolAcquire` hook receives it. */
 interface PoolConnection {
@@ -78,11 +94,10 @@ interface PoolConnection {
 }
 
 /**
- * A new staging connection (two pooled connections at most), every one of
- * them switched to the import role. The caller closes it when the run ends.
+ * A new connection (two pooled connections at most) on the application's database and login,
+ * every pooled connection switched to `role`. The caller closes it when the run ends.
  */
-export const createStagingDb = (): Sequelize => {
-  const role = importRoleName();
+const createRoleDb = (role: string): Sequelize => {
   const { database, username, password, host, port } = config.db.config;
   // The application's own connection settings (config/index.ts validated them at load).
   const staging = new Sequelize(database, username, password ?? "", {
@@ -98,3 +113,9 @@ export const createStagingDb = (): Sequelize => {
   });
   return staging;
 };
+
+/** A new staging connection, switched to the import role (stage 1). */
+export const createStagingDb = (): Sequelize => createRoleDb(importRoleName());
+
+/** A new transform connection, switched to the transform role (stage 2, P24-01). */
+export const createTransformDb = (): Sequelize => createRoleDb(transformRoleName());

@@ -8,6 +8,15 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — The upstream import's transform mechanism (P24-01) ([record](./records/2026-10-10-p24-01-transform-mechanism.md), ADR-129 Am. 1)
+- **Added:** migration 0133:
+  - a third database role, `callibrator_transform` (`UPSTREAM_TRANSFORM_DB_ROLE`);
+  - `upstream_import.id_map` and `upstream_import.quarantine`;
+  - transform columns on SQL-dump import runs.
+
+  **Deploy:** the migrating role needs CREATEROLE once, or an administrator creates the role (as for 0114).
+- **Added:** `POST /api/v1/admin/upstream-sql-imports/:id/transform` (super admin). It answers 409 `TRANSFORM_NOT_AVAILABLE` until the transforms are built in P24-02. A run's view carries `transformStatus`, `transformRequestable`, the transform's times, its error code and its counts per step.
+
 ### 2026-10-10 — The groundwork of offline field capture (P22-10b; no screen yet) ([record](./records/2026-10-10-p22-10b-field-web-platform.md))
 - **Added (internal):** the phone-side storage for offline work, encrypted record by record with a key that cannot be exported; the offline worker for the coming `/field` app (it keeps only the app's own page and files, never data); the install manifest and icons. `/field` now requires a sign-in, and only `/field` and the QR start page may use the camera. Nothing is active until the field app's screens ship (P22-10c).
 

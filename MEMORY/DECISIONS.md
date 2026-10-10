@@ -11027,7 +11027,7 @@ The frontend today has no service worker, no web manifest and no IndexedDB use. 
 
 ## ADR-129: An Uploaded Upstream SQL Dump Is Parsed, Never Executed — a Streaming Reader of `CREATE TABLE` and `INSERT … VALUES` Only, Loading the Tables 07-DATA-MINIMISATION Allows Into an `upstream_import` Staging Schema Owned by an Import Role the Application Role Cannot Read; a Super-Admin Background Job, Notified on Completion, Gated by `UPSTREAM_REAL_DATA_ALLOWED`
 
-**Date:** 2026-10-07 · **Status:** Accepted and **built (stage 1)**; stage 2 designed, not built · **Card:** P24-06 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the extract-and-stage half of P24-01) · **Source:** owner request 2026-10-07 ("modul untuk import file SQL dump ke Postgres: dump diunggah ke backend, worker menjalankannya di background, notifikasi saat selesai"); the coordinator's design brief of the same day; `docs/UPSTREAM/03-DATABASE.md`, `05-DATA-MIGRATION.md` § 2, § 4, § 8, `06-DPIA.md` § 5, `07-DATA-MINIMISATION.md` · **Record:** [`records/2026-10-07-sql-dump-import-module.md`](./records/2026-10-07-sql-dump-import-module.md)
+**Date:** 2026-10-07 · **Status:** Accepted and **built (stage 1)**; stage 2's mechanism built, its transforms not (Amendment 1, P24-01, 2026-10-10, below § Status) · **Card:** P24-06 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the extract-and-stage half of P24-01) · **Source:** owner request 2026-10-07 ("modul untuk import file SQL dump ke Postgres: dump diunggah ke backend, worker menjalankannya di background, notifikasi saat selesai"); the coordinator's design brief of the same day; `docs/UPSTREAM/03-DATABASE.md`, `05-DATA-MIGRATION.md` § 2, § 4, § 8, `06-DPIA.md` § 5, `07-DATA-MINIMISATION.md` · **Record:** [`records/2026-10-07-sql-dump-import-module.md`](./records/2026-10-07-sql-dump-import-module.md)
 
 ### Context
 
@@ -11074,6 +11074,60 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 ### Status
 
 **Accepted and built 2026-10-07 (stage 1).** `docs/` amended: `UPSTREAM/05-DATA-MIGRATION.md` § 2 (the staging schema), `backend/.env.example`, `deploy/compose/.env.example`, `deploy/compose/nginx/*.conf`, `deploy/helm/callibrator` (the sweep's schedule, off on API pods).
+
+### ADR-129 Amendment 1 (2026-10-10, P24-01): stage 2's mechanism is built (a third role, id_map, quarantine, the runner, the request route), its transforms are not; the ETL lives in the application, not in `scripts/upstream-import/`
+
+**Why an amendment.** § 10 left three choices to P24-01: who writes the target tables, where the tool lives, and what `transformStatus` becomes. The card's title still named a CLI directory (`backend/src/scripts/upstream-import/`, from 04 § 11) that ADR-129 had already superseded.
+
+**Decision.**
+
+1. **A third role, `callibrator_transform`.** It is set by `UPSTREAM_TRANSFORM_DB_ROLE` and created by migration 0133, NOLOGIN with no special attributes. It alone reads staging and writes the bookkeeping:
+   - USAGE on the schema;
+   - SELECT on every staging table, including tables created later (through the import role's default privileges);
+   - SELECT, INSERT and UPDATE on `id_map`, with no DELETE;
+   - SELECT, INSERT and DELETE on `quarantine`, with no UPDATE;
+   - **nothing in `public`.** Each P24-02 transform grants it exactly the target tables that transform writes, in its own migration.
+
+   The parser's role (`callibrator_import`) still owns the schema and writes no target table. The application role still sees nothing (G-29, proved as each role).
+2. **`upstream_import.id_map` and `upstream_import.quarantine`** follow 05 § 4 and § 3.5, with these changes:
+   - `legacy_id` is **text**, so a session's `legacy_key` fits.
+   - `batch_id` is the run's `import_run_id`.
+   - `client_facility_id` is the facility the transform decided (AM-28).
+   - CHECKs: no `source_values` for `users`, a facility only with a tenant, a hex hash, plain table names, and the reason vocabulary.
+   - The quarantine holds codes and staged row numbers, never values.
+   - There are no foreign keys to `public`: the import roles hold no REFERENCES privilege there. Reconciliation (P25) checks the targets instead.
+3. **The quarantine vocabulary** is `@callibrator/contracts` `UPSTREAM_IMPORT_QUARANTINE_REASONS`, 18 codes. It holds the row reasons of the P19 specs and P18-01-02, plus the file-refusal reasons of 08-FILE-POLICY. 05 § 3.5's `device_not_found` is spelled `no_device`, as in P19-02 and P19-05. A new reason needs a migration that widens the CHECK.
+4. **The row hash is computed by PostgreSQL**: SHA-256 of `jsonb_strip_nulls(to_jsonb(row) - 'import_run_id' - 'source_row_number')::text`. A later dump that adds an empty column changes no hash.
+5. **The runner** (`services/upstreamImport/transform/runner.ts`):
+   - It runs in ONE transaction, under an advisory lock, after a role check.
+   - It purges the run's earlier quarantine, then runs the steps in 05 § 3.1 order.
+   - After each step, a staged row of the run that is in neither `id_map` nor the quarantine fails it with `TRANSFORM_INCOMPLETE`. So does a staged table that no step claims. Any failure rolls back everything.
+   - The registry (`steps.ts`) gives each of the 41 staged tables to exactly one step, and a test guards this. Every `run` and every legacy key stays **null until P24-02**, so `transformAvailable` is false and a request gets 409 `TRANSFORM_NOT_AVAILABLE`.
+6. **The lifecycle.** `transformStatus` moves `not_available → transform_requested → transforming → transformed | transform_failed`. A transformed or failed run can be requested again.
+   - The request is `POST /admin/upstream-sql-imports/:id/transform`: super admin only, audited, error codes at the top level.
+   - A batch job, `upstream-sql-transform`, runs the transform.
+   - The hourly sweep fails an interrupted transform with `INTERRUPTED`.
+   - The DPIA gate is checked at the request (403) and again in the worker.
+7. **The ETL is not a CLI.** It runs inside the application, as ADR-129 built stage 1. `backend/src/scripts/upstream-import/` is not created.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Grant the target tables to `callibrator_import` | the role that parses untrusted dumps would also write business data |
+| Write targets through the application connection (services, hooks) | 05 § 1 is set-based. The app role cannot read staging, so every row would cross into Node and back, and the audit rows and id_map would span two connections |
+| Grant every 05 § 3.1 target table now | these would be grants with no code using them. P24-02 knows exactly what each transform writes |
+| A CLI under `scripts/upstream-import/` | stage 1 is an in-app job with audit, notification and the DPIA gate. A second path would bypass them |
+| `legacy_id` integer (05 § 4) | session keys are `qr|date` text (05 § 3.3) |
+
+**Implications, including the bad ones.**
+
+- Nothing reaches the application's tables yet. The route exists and answers 409 until P24-02.
+- The transform holds one transaction for the whole import, with about 384k staged rows and about 330k audit rows. That is a long lock on the targets, acceptable only before cutover (05 § 8).
+- There is no transform notification yet. The run's view carries the status and counts; a completion notification is P24-02's, with real counts.
+- The frontend page does not show the transform yet. The new fields are in the contract and the generated types.
+
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.5 and § 4 (as-built notes referencing this amendment).
 
 ---
 

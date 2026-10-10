@@ -28,6 +28,7 @@ import {
   list as listSqlImports,
   retry as retrySqlImport,
   settings as sqlImportSettings,
+  transform as transformSqlImport,
   upload as uploadSqlImport,
   uploadTimeBudget,
 } from "../../controllers/upstreamSqlImport.controller";
@@ -133,6 +134,8 @@ router.post("/upstream-sql-imports", superAdminOnly, uploadTimeBudget, dumpUploa
 router.get("/upstream-sql-imports/:id", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), getSqlImport);
 router.post("/upstream-sql-imports/:id/cancel", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), cancelSqlImport);
 router.post("/upstream-sql-imports/:id/retry", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), retrySqlImport);
+// P24-01 (ADR-129 Am. 1): stage 2, the transform of a loaded run into the application's tables.
+router.post("/upstream-sql-imports/:id/transform", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), transformSqlImport);
 
 // ---------------------------------------------------------------------------
 // P21-01 (ADR-125 § 5; spec P19-01 § 7.4, § 8.2) — the catalogue proposals' queue across tenants

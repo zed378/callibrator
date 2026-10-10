@@ -29,12 +29,19 @@ import { UPSTREAM_SQL_IMPORT_STATUSES, type UpstreamSqlImportStatus } from "@cal
 import {
   UPSTREAM_SQL_IMPORT_COMPRESSIONS,
   UPSTREAM_SQL_IMPORT_DATA_CLASSES,
+  UPSTREAM_SQL_IMPORT_TRANSFORM_ERROR_CODES,
   UPSTREAM_SQL_IMPORT_TRANSFORM_STATUSES,
   type UpstreamSqlImportCompression,
   type UpstreamSqlImportDataClass,
+  type UpstreamSqlImportTransformErrorCode,
   type UpstreamSqlImportTransformStatus,
 } from "@callibrator/contracts/upstreamSqlImport";
-import { jsonShape, type UpstreamSqlImportParseSummary, type UpstreamSqlImportTables } from "../utils/jsonShape.util";
+import {
+  jsonShape,
+  type UpstreamSqlImportParseSummary,
+  type UpstreamSqlImportTables,
+  type UpstreamSqlImportTransformSummary,
+} from "../utils/jsonShape.util";
 import type { Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
 
@@ -63,6 +70,15 @@ interface UpstreamSqlImport extends Model<InferAttributes<UpstreamSqlImport>, In
   /** A stable code when the run failed (never a raw message). */
   errorCode: CreationOptional<string | null>;
   transformStatus: CreationOptional<UpstreamSqlImportTransformStatus>;
+  /** P24-01: a stable code when the transform failed (never a raw message). */
+  transformErrorCode: CreationOptional<UpstreamSqlImportTransformErrorCode | null>;
+  transformRequestedAt: CreationOptional<Date | null>;
+  transformRequestedBy: CreationOptional<string | null>;
+  transformStartedAt: CreationOptional<Date | null>;
+  transformFinishedAt: CreationOptional<Date | null>;
+  transformBatchJobId: CreationOptional<string | null>;
+  /** P24-01: per step and source table, counts and reason codes only. */
+  transformSummary: CreationOptional<UpstreamSqlImportTransformSummary | null>;
   attempt: CreationOptional<number>;
   batchJobId: CreationOptional<string | null>;
   uploadedBy: string | null;
@@ -133,6 +149,27 @@ const defineModel: DefineUpstreamSqlImport = (db, DataTypes) => {
         allowNull: false,
         defaultValue: "not_available",
         validate: { isIn: [[...UPSTREAM_SQL_IMPORT_TRANSFORM_STATUSES]] },
+      },
+      // P24-01 (migration 0133 adds these on an existing table, with their CHECKs and indexes).
+      transformErrorCode: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+        validate: { isIn: [[...UPSTREAM_SQL_IMPORT_TRANSFORM_ERROR_CODES]] },
+      },
+      transformRequestedAt: { type: DataTypes.DATE, allowNull: true },
+      transformRequestedBy: userFk(),
+      transformStartedAt: { type: DataTypes.DATE, allowNull: true },
+      transformFinishedAt: { type: DataTypes.DATE, allowNull: true },
+      transformBatchJobId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "batch_jobs", key: "id" },
+        onDelete: "SET NULL",
+      },
+      transformSummary: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        validate: { shape: jsonShape("UpstreamSqlImport.transformSummary") },
       },
       attempt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
       batchJobId: {
