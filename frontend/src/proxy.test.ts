@@ -5,7 +5,7 @@
 // the backend still authorises every API call.
 
 import { NextRequest } from "next/server";
-import { proxy, config } from "./proxy";
+import { proxy, config, isProtectedRoute } from "./proxy";
 import { jwtExpiry, hasUsableSession } from "@/lib/sessionRouting";
 
 const b64url = (o: object) =>
@@ -102,6 +102,21 @@ describe("proxy (F-08: the only route guard)", () => {
     // Backend images carry the backend's own sandbox CSP.
     expect(re.test("/uploads/public/profile/a.png")).toBe(false);
     expect(re.test("/verify/CERT-1")).toBe(true);
+    // P22-10b: the field worker and the manifest get no page CSP.
+    expect(re.test("/sw.js")).toBe(false);
+    expect(re.test("/manifest.webmanifest")).toBe(false);
+    expect(re.test("/field")).toBe(true);
+    expect(re.test("/swajs")).toBe(true);
+  });
+
+  it("P22-10b: /field is protected like the dashboard; /fieldwork is not", () => {
+    const res = proxy(request("/field?view=home"));
+    expect(res.headers.get("location")).toBe("http://localhost/login?callbackUrl=%2Ffield");
+    expect(proxy(request("/field/x")).headers.get("location")).toContain("/login");
+    expect(proxy(request("/field", { auth_token: live })).headers.get("location")).toBeNull();
+    expect(proxy(request("/fieldwork")).headers.get("location")).toBeNull();
+    expect(isProtectedRoute("/dashboard/devices")).toBe(true);
+    expect(isProtectedRoute("/fielder")).toBe(false);
   });
 });
 

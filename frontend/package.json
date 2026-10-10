@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/build-sw.mjs && next build",
+    "sw:build": "node scripts/build-sw.mjs",
+    "sw:check": "node scripts/build-sw.mjs --check",
     "compile": "next-bun-compile --target=bun-linux-musl-x64 --outdir ./dist",
     "build:binary": "next build && next-bun-compile --target=bun-linux-musl-x64",
     "start": "next start",
@@ -54,6 +56,7 @@
     "axe-core": "^4.13.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.8",
+    "fake-indexeddb": "^6.2.5",
     "identity-obj-proxy": "^3.0.0",
     "jest": "^30.5.2",
     "jest-environment-jsdom": "^30.5.2",

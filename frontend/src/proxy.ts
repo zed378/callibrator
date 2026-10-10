@@ -67,12 +67,21 @@ const pass = (request: NextRequest, nonce: string, csp: string): NextResponse =>
   return response;
 };
 
+/**
+ * P22-10b (P19-08 § 3.1): the pages behind the session — the dashboard and the field app. `/field`
+ * is matched exactly or as a path prefix (`/field/…`), never as a word prefix (`/fieldwork`).
+ */
+export const PROTECTED_PREFIXES: readonly string[] = ["/dashboard", "/field"];
+
+export const isProtectedRoute = (pathname: string): boolean =>
+  PROTECTED_PREFIXES.some((prefix) => (prefix === "/dashboard" ? pathname.startsWith(prefix) : pathname === prefix || pathname.startsWith(`${prefix}/`)));
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasToken = Boolean(request.cookies.get(AUTH_TOKEN_COOKIE)?.value);
   const usable = hasUsableSession(request);
 
-  const isDashboardRoute = pathname.startsWith("/dashboard");
+  const isDashboardRoute = isProtectedRoute(pathname);
   const isAuthRoute =
     pathname === "/login" || pathname === "/register" || pathname === "/request-access" || pathname === "/forgot-password";
 
@@ -118,7 +127,9 @@ export const config = {
      * - favicon.ico (favicon file)
      * - uploads/public (backend images, relayed with the backend's own
      *   sandbox CSP — a page CSP on top would be a second, redundant policy)
+     * - sw.js and manifest.webmanifest (P22-10b: the field worker carries its
+     *   own worker CSP from next.config; neither may get a page CSP with a nonce)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|uploads/public/).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|uploads/public/|sw\\.js$|manifest\\.webmanifest$).*)",
   ],
 };
