@@ -184,7 +184,10 @@ live("P20-02 / P20-08 — migrations 0128 and 0129 on live PostgreSQL 18", () =>
   });
 
   it("0128 and 0129 are applied, last; their five triggers are ENABLE ALWAYS ('A'); existing warehouses are stores", async () => {
-    expect(applied.slice(-2)).toEqual(["0128-device-extensions.js", "0129-attachment-purpose.js"]);
+    // The adjacent pair, after 0127, not the tail: later migrations (0130 ... ) follow them.
+    const at = applied.indexOf("0128-device-extensions.js");
+    expect(at).toBeGreaterThan(applied.indexOf("0127-ipm-immutability.js"));
+    expect(applied.slice(at, at + 2)).toEqual(["0128-device-extensions.js", "0129-attachment-purpose.js"]);
     const triggers = await rows(
       g.db,
       `SELECT c.relname || ':' || t.tgname AS name, t.tgenabled::text AS state FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid

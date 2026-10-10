@@ -252,7 +252,7 @@ live("P8-04 — statements per service call, on live PostgreSQL 18", () => {
   it("the dashboard runs every aggregate holding at most DASHBOARD_CONCURRENCY connections", async () => {
     const res = await counted(() => s.dashboard.getDashboardMetrics(TENANT));
 
-    expect(res.statements).toBe(21); // 20 aggregates + the tenant row
+    expect(res.statements).toBe(25); // 24 aggregates (P21-07 added the condition and IPM figures) + the tenant row
     expect(res.peak).toBeLessThanOrEqual(s.dashboard.DASHBOARD_CONCURRENCY);
     expect((res.result.data["users"] as Row)["total"]).toBe(2);
   });
