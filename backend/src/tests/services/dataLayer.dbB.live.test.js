@@ -7,12 +7,12 @@
  * index exists and is used, and that pg hands back NUMERIC as a string that
  * the getter turns into a number.
  *
- * OPT-IN — needs an EMPTY scratch database the connecting role owns (it is
+ * NEEDS an EMPTY scratch database the connecting role owns (it is
  * rebuilt with db.sync({ force: true })) whose name contains "scratch":
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=/tmp DB_PORT=54338 DB_NAME=dbb_scratch \
+ *   DB_HOST=/tmp DB_PORT=54338 DB_NAME=dbb_scratch \
  *     DB_USER=postgres DB_PASS=x \
- *     npm test -- src/tests/services/dataLayer.dbB.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/dataLayer.dbB.live
  *
  * Run on PostgreSQL 16 in development (no pgvector needed); the deployment
  * target is 18.
@@ -26,8 +26,6 @@
 
 const { enterAppRole, grantAppRoleOnSyncedSchema, APP_ROLE } = require("../fixtures/liveBoot");
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
-
-const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 // sync({ force: true }) drops and recreates ~75 tables: well past the 10 s
 // default on a database that already holds them.
@@ -53,7 +51,7 @@ const startProcess = () => {
   return graph;
 };
 
-live("dbB data layer — live PostgreSQL (D-18, D-19, D-20, D-21)", () => {
+describe("dbB data layer — live PostgreSQL (D-18, D-19, D-20, D-21)", () => {
   let g;
   let qi;
   const ids = {};

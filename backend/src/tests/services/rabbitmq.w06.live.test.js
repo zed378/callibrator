@@ -11,11 +11,11 @@
  *    is a PRECONDITION_FAILED that the real broker raises and the fake only
  *    imitates; none is raised here.
  *
- * OPT-IN — needs a broker it may restart (a throwaway container):
+ * NEEDS a broker it may restart (a throwaway container):
  *
  *   docker run -d --name rmq-live -p 127.0.0.1:55672:5672 rabbitmq:4-alpine
- *   RABBITMQ_LIVE_TEST=1 RABBITMQ_URL=amqp://127.0.0.1:55672 RABBITMQ_LIVE_CONTAINER=rmq-live \
- *     npm test -- src/tests/services/rabbitmq.w06.live --coverage=false
+ *   RABBITMQ_URL=amqp://127.0.0.1:55672 RABBITMQ_LIVE_CONTAINER=rmq-live \
+ *     npm run test:live:jest -- src/tests/services/rabbitmq.w06.live
  *
  * It declares and purges its own queues and the email queues.
  */
@@ -39,8 +39,6 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-const live = process.env.RABBITMQ_LIVE_TEST === "1" ? describe : describe.skip;
-
 const waitFor = async (predicate, ms = 30000) => {
   const until = Date.now() + ms;
   for (;;) {
@@ -54,7 +52,7 @@ const waitFor = async (predicate, ms = 30000) => {
   }
 };
 
-live("RabbitMQ live (W-06, W-09, W-31)", () => {
+describe("RabbitMQ live (W-06, W-09, W-31)", () => {
   jest.setTimeout(120000);
   let rabbitmq;
   let emailQueue;
@@ -64,6 +62,9 @@ live("RabbitMQ live (W-06, W-09, W-31)", () => {
   const depth = async (queue) => (await (await rabbitmq.getChannel()).checkQueue(queue)).messageCount;
 
   beforeAll(() => {
+    if (!process.env.RABBITMQ_LIVE_CONTAINER) {
+      throw new Error("rabbitmq.w06.live needs RABBITMQ_LIVE_CONTAINER (the broker container it restarts) and RABBITMQ_URL");
+    }
     process.env.RABBITMQ_RECONNECT_BASE_MS = "100";
     process.env.RABBITMQ_RECONNECT_MAX_MS = "1000";
     process.env.EMAIL_RETRY_BASE_MS = "50";

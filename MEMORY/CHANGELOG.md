@@ -8,6 +8,23 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — No skipped e2e or browser check; the live contract has its own runner ([record](./records/2026-10-10-no-skip-e2e-browser.md))
+- **Changed (tests):** `npm run test:e2e` refuses to start without a reachable Mailpit (`E2E_MAILPIT_URL`) instead of skipping the five mailed-secret tests.
+- **Added:** `npm run test:contract` / `make test-contract` (`backend/jest.contract.config.js`). The live contract smoke runs there, always; it was `LIVE_CONTRACT=1`, skipped by default. It now **fails** on real findings: `POST /roles/menus` 500, and 46 envelope deviations.
+- **Changed (browser suites):**
+  - The p10 SSO check always runs: a production backend must refuse the private http IdP (400), and a non-production one must complete the OIDC sign-in.
+  - `A11Y_ONLY`, `P11_ONLY`, `RESPONSIVE_QR(_ONLY)` and `RESPONSIVE_MODES` are removed, and `make test-browser` runs p11 too.
+  - Open: a11y reflow on `/dashboard/devices` and p11 contrast on `/dashboard/calibration` at 360 px fail (frontend).
+
+### 2026-10-10 — No live suite can skip; `npm run test:live` runs all 54 for real ([record](./records/2026-10-10-no-skip-live-suites.md))
+- **Changed (tests):** `npm test` / `test:coverage` no longer load `*.live.test.*` (54 skipped suites → 0); `backend/jest.live.config.js` loads only them. Every opt-in gate (`*_LIVE_TEST=1`, `P2406_CLAMAV=1`) is gone: a live suite runs and fails when its service is missing. **Developers:** `npm run test:live -- --with=all` (mqtt, redis, rabbitmq, s3, clamav, upgrade; their `*_LIVE_*` variables in docs/ENGINEERING/09 § 8), or one file with `npm run test:live:jest -- <file>`. The seven by-hand suites are in the runner; ClamAV is no longer optional in `upstreamSqlImport.p2406`.
+
+### 2026-10-10 — No backend unit test is skipped any more ([record](./records/2026-10-10-no-skip-tool-tests.md))
+- **Changed (tests, CI):** the six skipped unit cases now run everywhere: the real-ClamAV, Helm-render and real-gitleaks cases fail when their tool is missing instead of skipping, and CI's backend unit job now provides all three (pinned). **Developers:** `npm test` in `backend/` needs a running clamd (`docker run -d --name clamd -p 127.0.0.1:13310:3310 clamav/clamav:1.4`, `CLAMAV_LIVE_PORT=13310`), helm on PATH and `bash scripts/git-hooks/install-gitleaks.sh`.
+
+### 2026-10-10 — No test may be skipped: the repository-wide guard, frontend and contracts ([record](./records/2026-10-10-no-skip-frontend-guard.md))
+- **Operational:** `noSkippedTests.guard` fails the backend unit job on any skipped, todo or conditionally selected test in `backend/`, `frontend/src`, `packages/contracts` or `automate/`. The field store's blocked-upgrade test is back, now deterministic; `idb.ts` is at 100 %.
+
 ### 2026-10-10 — The upstream import's transform mechanism (P24-01) ([record](./records/2026-10-10-p24-01-transform-mechanism.md), ADR-129 Am. 1)
 - **Added:** migration 0133:
   - a third database role, `callibrator_transform` (`UPSTREAM_TRANSFORM_DB_ROLE`);

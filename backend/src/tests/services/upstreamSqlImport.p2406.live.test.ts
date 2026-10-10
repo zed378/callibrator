@@ -20,13 +20,13 @@
  *  - gzip; a re-run of the same run id REPLACES its rows; a truncated dump
  *    fails with nothing staged and its file kept; a retry; a cancelled parse
  *    rolls back; the DPIA gate answers 403 and the single-active-run rule 409;
- *  - ClamAV (P2406_CLAMAV=1): an infected file fails INFECTED and is deleted;
+ *  - ClamAV (always; CLAMAV_LIVE_HOST/PORT): an infected file fails INFECTED and is deleted;
  *  - a reboot applies nothing and the schema check passes.
  *
  *   docker run -d --name p2406-sqlimport-pg18 -e POSTGRES_PASSWORD=p2406pass -p 127.0.0.1:55246:5432 pgvector/pgvector:pg18
- *   docker run -d --name p2406-sqlimport-clamav -p 127.0.0.1:53346:3310 clamav/clamav:stable   # optional
- *   P2406_PG_LIVE_TEST=1 P2406_CLAMAV=1 DB_HOST=127.0.0.1 DB_PORT=55246 DB_NAME=p2406_scratch \
- *     DB_USER=postgres DB_PASS=p2406pass npm test -- src/tests/services/upstreamSqlImport.p2406.live --coverage=false
+ *   docker run -d --name p2406-sqlimport-clamav -p 127.0.0.1:53346:3310 clamav/clamav:stable
+ *   CLAMAV_LIVE_HOST=127.0.0.1 CLAMAV_LIVE_PORT=53346 DB_HOST=127.0.0.1 DB_PORT=55246 DB_NAME=p2406_scratch \
+ *     DB_USER=postgres DB_PASS=p2406pass npm run test:live:jest -- src/tests/services/upstreamSqlImport.p2406.live
  *   docker rm -f p2406-sqlimport-pg18 p2406-sqlimport-clamav
  */
 import fs from "fs";
@@ -35,8 +35,12 @@ import { createHash } from "crypto";
 import { env, environment } from "../../config/env";
 import { gzipped, syntheticUpstreamDump, SYNTHETIC_HASH_MARKER, type ExpectedTable } from "../support/syntheticUpstreamDump";
 
-const live = env("P2406_PG_LIVE_TEST") === "1" ? describe : describe.skip;
-const withClamAv = env("P2406_CLAMAV") === "1";
+// ClamAV is not optional (2026-10-10, no skip): the suite runs against a real daemon, and fails at once without one.
+const CLAMAV_HOST = env("CLAMAV_LIVE_HOST") ?? "";
+const CLAMAV_PORT = env("CLAMAV_LIVE_PORT") ?? "";
+if (CLAMAV_HOST === "" || CLAMAV_PORT === "") {
+  throw new Error("upstreamSqlImport.p2406.live needs CLAMAV_LIVE_HOST and CLAMAV_LIVE_PORT (a ClamAV daemon; npm run test:live -- --with=clamav)");
+}
 
 const APP_ROLE = "callibrator_app";
 const IMPORT_ROLE = "callibrator_import";
@@ -158,7 +162,7 @@ const startProcess = (isolated = true): Graph => {
 
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
-live("P24-06 — the SQL-dump import on live PostgreSQL 18", () => {
+describe("P24-06 — the SQL-dump import on live PostgreSQL 18", () => {
   jest.setTimeout(600_000);
   let owner: Graph;
   let app: Graph;
@@ -221,13 +225,11 @@ live("P24-06 — the SQL-dump import on live PostgreSQL 18", () => {
     const vars = environment();
     vars["BATCH_JOBS_INLINE"] = "true";
     vars["UPSTREAM_REAL_DATA_ALLOWED"] = "false";
-    if (withClamAv) {
-      vars["VIRUS_SCAN_PROVIDER"] = "clamav";
-      vars["CLAMAV_ENABLED"] = "true";
-      vars["CLAMAV_HOST"] = env("P2406_CLAMAV_HOST") ?? "127.0.0.1";
-      vars["CLAMAV_PORT"] = env("P2406_CLAMAV_PORT") ?? "53346";
-      vars["CLAMAV_TIMEOUT"] = "60000";
-    }
+    vars["VIRUS_SCAN_PROVIDER"] = "clamav";
+    vars["CLAMAV_ENABLED"] = "true";
+    vars["CLAMAV_HOST"] = CLAMAV_HOST;
+    vars["CLAMAV_PORT"] = CLAMAV_PORT;
+    vars["CLAMAV_TIMEOUT"] = "60000";
     owner = startProcess();
     await owner.migrationLock.runSchemaSetup({ sequelize: owner.db, migrator: owner.migrator, logger });
     expect(await owner.migrator.pending()).toEqual([]);
@@ -488,7 +490,7 @@ live("P24-06 — the SQL-dump import on live PostgreSQL 18", () => {
     await expect(asSuperAdmin(() => app.service.cancelRun(String(id), actor))).rejects.toMatchObject({ status: 409 });
   });
 
-  (withClamAv ? it : it.skip)("ClamAV: an infected file fails INFECTED before it is parsed, and is deleted", async () => {
+  it("ClamAV: an infected file fails INFECTED before it is parsed, and is deleted", async () => {
     // Upload a clean dump, then — as an attacker with disk access would — swap the quarantined
     // bytes for the EICAR test file and the recorded checksum for its own (the scan, not the
     // checksum, must stop it).

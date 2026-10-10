@@ -27,8 +27,8 @@
  *  - schemaVerify sees every trigger.
  *
  *   docker run -d --name p2005-pg18 -e POSTGRES_PASSWORD=p2005pass -p 127.0.0.1:55205:5432 pgvector/pgvector:pg18
- *   P2005_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55205 DB_NAME=p2005_scratch DB_USER=postgres DB_PASS=p2005pass \
- *     npm test -- src/tests/migrations/inspectionImmutable.p2005.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55205 DB_NAME=p2005_scratch DB_USER=postgres DB_PASS=p2005pass \
+ *     npm run test:live:jest -- src/tests/migrations/inspectionImmutable.p2005.live
  *   docker rm -f p2005-pg18
  */
 import { Sequelize } from "sequelize";
@@ -49,8 +49,6 @@ import {
   type LiveDb,
   type LiveTx,
 } from "../fixtures/ipmLive";
-
-const live = env("P2005_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const T = "e2005000-0000-4000-8000-000000000001";
 const ROLE = "e2005000-0000-4000-8000-000000000002";
@@ -138,7 +136,7 @@ const sign = (session: string, kind: "performer" | "countersign", signer: string
 
 jest.setTimeout(900000);
 
-live("P20-05 — migration 0127's triggers on live PostgreSQL 18, as callibrator_app and as the owner", () => {
+describe("P20-05 — migration 0127's triggers on live PostgreSQL 18, as callibrator_app and as the owner", () => {
   let g: Graph;
   let admin: Sequelize;
 

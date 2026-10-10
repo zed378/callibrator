@@ -10,9 +10,9 @@
  *
  * The second case is the fallback: no Redis, one warning, in-memory adapter.
  *
- * OPT-IN — needs a reachable Redis (REDIS_URL / REDIS_HOST / REDIS_PORT):
+ * NEEDS a reachable Redis (REDIS_URL / REDIS_HOST / REDIS_PORT):
  *
- *   REDIS_LIVE_TEST=1 npm test -- src/tests/config/socket.redisAdapter.live --coverage=false
+ *   npm run test:live:jest -- src/tests/config/socket.redisAdapter.live
  *
  * socket.io-client is not a backend dependency; it resolves from the root
  * node_modules (the frontend workspace's copy, hoisted). The unit suite
@@ -49,10 +49,7 @@ jest.mock("../../services/kanban.service", () => ({
   assertAccess: jest.fn(async () => ({ project: {}, level: "viewer" })),
 }));
 
-const liveDescribe =
-  process.env.REDIS_LIVE_TEST === "1" ? describe : describe.skip;
-
-liveDescribe("Socket.IO Redis adapter — live Redis (A-54)", () => {
+describe("Socket.IO Redis adapter — live Redis (A-54)", () => {
   const { io: ioClient } = require("socket.io-client");
   const replicas = [];
   const clients = [];

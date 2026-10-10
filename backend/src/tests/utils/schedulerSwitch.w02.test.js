@@ -13,8 +13,8 @@
  *  3. the Helm ConfigMap's `cron.enabled: false` branch sets
  *     SCHEDULERS_ENABLED "false" and disables every singleton variable.
  *
- * Item 3 is read from the template text, not from `helm template` output: no
- * helm binary was available. It proves what the branch says, not a render.
+ * Item 3 is read from the template text here, and from the real `helm template`
+ * output in the last block (which needs helm on PATH, and fails without it).
  */
 const fs = require("fs");
 const path = require("path");
@@ -140,19 +140,22 @@ describe("W-02 — no scheduler escapes the switch", () => {
   });
 });
 
-// The DoD asks for the RENDERED ConfigMap, not the template text. `helm` is
-// not a dependency of the backend suite, so this runs where it is installed
-// (it was, for the 2026-09-25 verification) and says it was skipped otherwise.
-const helmAvailable = (() => {
-  try {
-    require("child_process").execFileSync("helm", ["version", "--short"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-})();
+// The DoD asks for the RENDERED ConfigMap, not the template text, so this block
+// needs `helm` on PATH wherever the suite runs: CI's backend-test job installs
+// the pinned v3.19.0 (azure/setup-helm, as deploy-config does). It used to be
+// skipped without helm; since 2026-10-10 (owner: no test is skipped) it FAILS,
+// naming what to install.
+describe("W-02 — the rendered chart (needs helm on PATH)", () => {
+  beforeAll(() => {
+    try {
+      require("child_process").execFileSync("helm", ["version", "--short"], { stdio: "ignore" });
+    } catch (err) {
+      throw new Error(
+        `helm is not on PATH (${err.code || err.message}): install Helm 3 (CI pins v3.19.0) — this block renders the real chart`,
+      );
+    }
+  });
 
-(helmAvailable ? describe : describe.skip)("W-02 — the rendered chart (needs helm on PATH)", () => {
   const render = (...extra) =>
     require("child_process").execFileSync(
       "helm",

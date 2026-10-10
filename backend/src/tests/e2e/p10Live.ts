@@ -24,8 +24,10 @@
  *
  * MAIL. The invitation link and the reset code exist only in an email. The
  * stack under test sends mail to an SMTP sink with an HTTP API (Mailpit;
- * E2E_MAILPIT_URL, e.g. http://127.0.0.1:27132). Without it the tests that
- * need a mailed secret are SKIPPED and say so (`mailAvailable`), never passed.
+ * E2E_MAILPIT_URL, e.g. http://127.0.0.1:27132). Mail is MANDATORY for the e2e
+ * runner (2026-10-10, owner rule "no test may be skipped"): the runner's
+ * globalSetup (requireMailpit.ts) refuses to start without a reachable Mailpit,
+ * and every mailed-secret test runs.
  */
 import { randomBytes } from "crypto";
 import { environment } from "../../config/env";
@@ -218,9 +220,6 @@ export const tenantCodeFor = (label: string): string => `P10${label}${runStamp()
 
 /** The Mailpit HTTP API, or "" when the stack under test has none. */
 export const mailpitUrl = (): string => (penv["E2E_MAILPIT_URL"] ?? "").replace(/\/$/, "");
-
-/** Whether a mailed secret can be read in this run. */
-export const mailAvailable = (): boolean => mailpitUrl() !== "";
 
 /** HTML entities as mustache writes them (`&#x2F;`, `&#x3D;`, `&amp;` …) decoded. */
 const decodeEntities = (html: string): string =>

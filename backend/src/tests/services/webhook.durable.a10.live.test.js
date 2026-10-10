@@ -17,11 +17,11 @@
  * A "replica" / "restarted process" is a separately loaded copy of the module
  * graph: its own Sequelize instance and connection pool.
  *
- * OPT-IN — needs a PostgreSQL server where DB_USER may CREATE DATABASE:
+ * NEEDS a PostgreSQL server where DB_USER may CREATE DATABASE:
  *
- *   WEBHOOK_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
  *     [LIVE_DB_TEMPLATE=<a booted database>] \
- *     npm test -- src/tests/services/webhook.durable.a10.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/webhook.durable.a10.live
  *
  * A-283 (2026-09-30): the suite creates its OWN database (ADR-095 O-2),
  * builds it the way the backend boots (db.sync() + every migration), and every
@@ -50,8 +50,6 @@ jest.mock("../../utils/ssrf.util", () => ({
 const { startReceiver } = require("../fixtures/webhookReceiver");
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchema, enterAppRole, APP_ROLE } = require("../fixtures/liveBoot");
-
-const live = process.env.WEBHOOK_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const TENANT_A = "a1a1a1a1-0000-4000-8000-00000000000a";
 const TENANT_B = "b2b2b2b2-0000-4000-8000-00000000000b";
@@ -95,7 +93,7 @@ const createHook = (p, tenantId, events = ["*"]) =>
 
 const settle = () => new Promise((r) => setTimeout(r, 300));
 
-live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
+describe("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
   jest.setTimeout(60000);
   let p1;
   const receivers = [];

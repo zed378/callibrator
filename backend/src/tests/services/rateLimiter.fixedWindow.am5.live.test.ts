@@ -6,11 +6,11 @@
  * control shows the failure counter's sliding script (storeIncr) DOES move it,
  * which is what the budgets used before.
  *
- * OPT-IN (needs a reachable Redis; never a shared one):
+ * NEEDS a reachable Redis, never a shared one (`npm run test:live -- --with=redis`), or:
  *
  *   docker run -d --name am5-redis -p 127.0.0.1:56379:6379 redis:7-alpine
- *   REDIS_LIVE_TEST=1 REDIS_URL=redis://127.0.0.1:56379 \
- *     npm test -- src/tests/services/rateLimiter.fixedWindow.am5.live --coverage=false
+ *   REDIS_URL=redis://127.0.0.1:56379 \
+ *     npm run test:live:jest -- src/tests/services/rateLimiter.fixedWindow.am5.live
  *   docker rm -f am5-redis
  */
 import * as crypto from "crypto";
@@ -25,14 +25,12 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 jest.mock("../../models", () => ({ Users: { update: jest.fn(() => Promise.resolve([1])) } }));
 
-const live = environment()["REDIS_LIVE_TEST"] === "1" ? describe : describe.skip;
-
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 
-live("fixed request windows — live Redis (ADR-100 Amendment 5)", () => {
+describe("fixed request windows — live Redis (ADR-100 Amendment 5)", () => {
   jest.setTimeout(30_000);
   const redisService = jest.requireActual<typeof RedisService>("../../services/redis.service");
   const limiter = jest.requireActual<typeof RateLimiter>("../../services/rateLimiter.redis.service");

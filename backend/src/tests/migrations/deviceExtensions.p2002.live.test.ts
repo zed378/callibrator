@@ -33,8 +33,8 @@
  *    then up ×2 gives the same objects.
  *
  *   docker run -d --name p2002-pg18 -e POSTGRES_PASSWORD=p2002pass -p 127.0.0.1:55202:5432 pgvector/pgvector:pg18
- *   P2002_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55202 DB_NAME=p2002_scratch DB_USER=postgres DB_PASS=p2002pass \
- *     npm test -- src/tests/migrations/deviceExtensions.p2002.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55202 DB_NAME=p2002_scratch DB_USER=postgres DB_PASS=p2002pass \
+ *     npm run test:live:jest -- src/tests/migrations/deviceExtensions.p2002.live
  *   docker rm -f p2002-pg18
  *
  * Synthetic values only ("Ruang 1", QR TST000001, "Lab Sintetis").
@@ -42,8 +42,6 @@
 import { Sequelize } from "sequelize";
 import { env } from "../../config/env";
 import { APP_ROLE, draftSql, errorOf, inRolledBack, rows, seedSql, type LiveDb, type LiveTx, type Row } from "../fixtures/ipmLive";
-
-const live = env("P2002_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const T = "d2002000-0000-4000-8000-000000000001";
 const T2 = "d2002000-0000-4000-8000-000000000011";
@@ -126,7 +124,7 @@ const photoSql = `INSERT INTO attachments (id, tenant_id, resource_type, resourc
 
 jest.setTimeout(900000);
 
-live("P20-02 / P20-08 — migrations 0128 and 0129 on live PostgreSQL 18", () => {
+describe("P20-02 / P20-08 — migrations 0128 and 0129 on live PostgreSQL 18", () => {
   let g: Graph;
   let admin: Sequelize;
   let applied: string[] = [];

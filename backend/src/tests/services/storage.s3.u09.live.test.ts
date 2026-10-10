@@ -30,17 +30,20 @@
  *    SSRF_DEV_ALLOW_HOSTS, the documented development allow-list — then the
  *    same driver works.
  *
- * OPT-IN — skipped unless S3_LIVE_ENDPOINT is set. The bucket is created by
+ * NEEDS S3_LIVE_ENDPOINT, S3_LIVE_ACCESS_KEY, S3_LIVE_SECRET_KEY and
+ * S3_LIVE_DEV_HOST; it fails, never skips, without them (`npm run test:live --
+ * --with=s3`). The bucket is created by
  * the suite (a fresh name per run) and emptied and removed in afterAll.
  *
  *   S3_LIVE_ENDPOINT=http://127.0.0.1:18333 S3_LIVE_ACCESS_KEY=... \
  *     S3_LIVE_SECRET_KEY=... [S3_LIVE_DEV_HOST=host.docker.internal] \
- *     npm test -- src/tests/services/storage.s3.u09.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/storage.s3.u09.live
  *
  * S3_LIVE_DEV_HOST names a host that reaches the same server but RESOLVES to
- * a private address (on Docker Desktop, host.docker.internal); without it the
- * allow-list case is skipped. scripts/storage/s3-live-check.sh starts a
- * server, runs this suite and removes the server.
+ * a private address, and is not `localhost` or an IP literal: `localtest.me`
+ * (public DNS, 127.0.0.1) for a server bound to 127.0.0.1, an /etc/hosts alias
+ * of 127.0.0.1 in CI, or host.docker.internal for a server Docker Desktop
+ * publishes on the LAN address.
  */
 import crypto from "crypto";
 import fs from "fs";
@@ -64,8 +67,13 @@ const SECRET = env("S3_LIVE_SECRET_KEY") ?? "";
 const REGION = env("S3_LIVE_REGION") ?? "us-east-1";
 const DEV_HOST = env("S3_LIVE_DEV_HOST") ?? "";
 
-const live = ENDPOINT === "" ? describe.skip : describe;
-const liveDevHost = ENDPOINT !== "" && DEV_HOST !== "" ? it : it.skip;
+// No skip (2026-10-10): every case runs, and the suite fails at once, naming what is missing.
+const MISSING = Object.entries({ S3_LIVE_ENDPOINT: ENDPOINT, S3_LIVE_ACCESS_KEY: ACCESS, S3_LIVE_SECRET_KEY: SECRET, S3_LIVE_DEV_HOST: DEV_HOST })
+  .filter(([, value]) => value === "")
+  .map(([name]) => name);
+if (MISSING.length > 0) {
+  throw new Error(`storage.s3.u09.live needs ${MISSING.join(", ")} (see the header; npm run test:live -- --with=s3)`);
+}
 
 const BUCKET = `u09-${crypto.randomBytes(4).toString("hex")}`;
 const TENANT_A = "a0900000-0000-4000-8000-0000000000a1";
@@ -104,7 +112,7 @@ const rejectionOf = async (promise: Promise<unknown>): Promise<{ status?: number
   throw new Error("expected a rejection");
 };
 
-live("U-09 — S3 driver against a live S3-compatible server", () => {
+describe("U-09 — S3 driver against a live S3-compatible server", () => {
   let driver: S3Driver;
   let admin: S3Client;
   let tmpDir: string;
@@ -337,7 +345,7 @@ live("U-09 — S3 driver against a live S3-compatible server", () => {
       expect(() => tenantDriver(loopback.toString())).toThrow(expect.objectContaining({ status: 400 }) as Error);
     });
 
-    liveDevHost("a hostname resolving to a private address is refused at connect, and works once on SSRF_DEV_ALLOW_HOSTS", async () => {
+    it("a hostname resolving to a private address is refused at connect, and works once on SSRF_DEV_ALLOW_HOSTS", async () => {
       const viaDevHost = new URL(ENDPOINT);
       viaDevHost.hostname = DEV_HOST;
       const vars = environment();

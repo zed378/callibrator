@@ -7,14 +7,14 @@
  * proves what PostgreSQL does with it: tenant A's calls see and change only
  * A's rows, with NO tenant in their own `where`.
  *
- * OPT-IN — the suite builds its database the way the backend boots
+ * NEEDS — the suite builds its database the way the backend boots
  * (fixtures/liveBoot#bootSchema: db.sync() of the current models plus every
  * migration) before it switches role; on a built database that applies
  * nothing. (It used to ASSUME a built database: on a fresh one every case
  * failed in beforeAll with no message — 2026-10-08, the live-suites repair.)
  *
- *   W34_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
- *     npm test -- src/tests/services/tenantHookless.w34.live --coverage=false
+ *   DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *     npm run test:live:jest -- src/tests/services/tenantHookless.w34.live
  *
  * It creates two tenants with fixed ids and removes everything it wrote.
  *
@@ -24,8 +24,6 @@
  * the cleanup DELETEs are ones the role may make.
  */
 const { bootSchema, enterAppRole, APP_ROLE } = require("../fixtures/liveBoot");
-
-const live = process.env.W34_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const A = "a34a34a3-0000-4000-8000-0000000000a1";
 const B = "b34b34b3-0000-4000-8000-0000000000b1";
@@ -37,7 +35,7 @@ const STOCK = {
   b2: "b34b34b3-0000-4000-8000-00000000c0b2",
 };
 
-live("W-34 — hookless statics on live PostgreSQL", () => {
+describe("W-34 — hookless statics on live PostgreSQL", () => {
   jest.setTimeout(60000);
   let db;
   let Stock;

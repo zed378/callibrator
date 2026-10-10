@@ -22,15 +22,13 @@
  *      its expiry, and writes a named-actor audit row in the same
  *      transaction; a url change clears the previous secret.
  *
- * OPT-IN — an EMPTY scratch database the connecting role owns (it is rebuilt
+ * NEEDS — an EMPTY scratch database the connecting role owns (it is rebuilt
  * with db.sync({ force: true })), whose name contains "scratch" or ends "_p6":
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=56613 DB_NAME=callibrator_p6 \
+ *   DB_HOST=127.0.0.1 DB_PORT=56613 DB_NAME=callibrator_p6 \
  *     DB_USER=cal_owner DB_PASS=owner \
- *     npm test -- src/tests/migrations/0090-webhook-secret-rotation-overlap.p613.live --coverage=false
+ *     npm run test:live:jest -- src/tests/migrations/0090-webhook-secret-rotation-overlap.p613.live
  */
-
-const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const TENANT = "a6130000-0000-4000-8000-00000000000a";
 const HOOK = "a6130000-0000-4000-8000-0000000000f1";
@@ -39,7 +37,7 @@ const COLUMNS = ["previous_secret", "previous_secret_expires_at"];
 const logger = { info: () => {}, warn: () => {}, error: () => {} };
 const { enterAppRole, APP_ROLE } = require("../fixtures/liveBoot");
 
-live("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () => {
+describe("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () => {
   let db;
   let migrator;
   let runSchemaSetup;

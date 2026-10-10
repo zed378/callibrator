@@ -12,10 +12,10 @@
  *    naming each retained table, while any regulated record remains, and
  *    writes its own audit row when it does run.
  *
- * OPT-IN — needs a PostgreSQL server where DB_USER may CREATE DATABASE:
+ * NEEDS a PostgreSQL server where DB_USER may CREATE DATABASE:
  *
- *   W20_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
- *     npm test -- src/tests/services/tenantHardDelete.w20.live --coverage=false
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
+ *     npm run test:live:jest -- src/tests/services/tenantHardDelete.w20.live
  *
  * ADR-095 O-2: the suite builds its own database as the backend boots
  * (db.sync() + every migration, 0091 included) and runs as `callibrator_app`.
@@ -26,11 +26,9 @@
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
 
-const live = process.env.W20_PG_LIVE_TEST === "1" ? describe : describe.skip;
-
 const T = "20202020-0000-4000-8000-0000000000a1";
 
-live("W-20 — the audit trail survives a tenant delete (live PostgreSQL)", () => {
+describe("W-20 — the audit trail survives a tenant delete (live PostgreSQL)", () => {
   jest.setTimeout(60000);
   let db;
 

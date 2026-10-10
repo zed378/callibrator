@@ -1,6 +1,8 @@
 /**
  * LIVE CONTRACT SMOKE — every API route and every frontend service call,
- * against a RUNNING backend. Opt-in: skipped unless LIVE_CONTRACT=1.
+ * against a RUNNING backend. Its own runner: `npm run test:contract`
+ * (jest.contract.config.js). Never skipped (2026-10-10, owner rule "no test may
+ * be skipped"): the e2e runner leaves it out, the contract runner always runs it.
  *
  * Why this exists: "A mock proves the client, not the contract. 3,863 tests
  * passed here while 13 endpoints were broken" (CLAUDE.md). This file mocks
@@ -29,8 +31,12 @@
  * Run it (the backend must be up, seeded with /migration/seeding and
  * /migration/seed-demo; see the report header for what else it needs):
  *
- *   LIVE_CONTRACT=1 LIVE_CONTRACT_BASE_URL=http://127.0.0.1:5000 \
- *     npx jest --config jest.e2e.config.js src/tests/e2e/liveContract.smoke.test.js
+ *   LIVE_CONTRACT_BASE_URL=http://127.0.0.1:5000 E2E_OPERATOR_PASSWORD=… \
+ *     npm run test:contract
+ *
+ * seed-demo is refused in production (P10-16), so the stack runs with
+ * E2E_NODE_ENV=development (deploy/compose/docker-compose.e2e.yml) and
+ * SEED_DEMO=true in its env file.
  *
  * The child process that dumps the routes loads the route modules, so it needs
  * the same env the server has (the jest e2e config loads backend/.env).
@@ -315,6 +321,25 @@ const readMfa = () => {
   }
 };
 const writeMfa = (state) => fs.writeFileSync(MFA_STATE_FILE, JSON.stringify(state), { mode: 0o600 });
+/**
+ * The secret the E2E harness (setup.js) enrolled for `who` on THIS stack, when
+ * the e2e run signed the operator in first — the order the runbook uses
+ * (test:e2e, then test:contract). Same file name as setup.js `mfaStateFile`:
+ * E2E_MFA_STATE_FILE, or the temp file keyed by the stack and the identifier.
+ */
+const harnessMfaSecret = (who) => {
+  const file =
+    process.env.E2E_MFA_STATE_FILE ||
+    path.join(
+      os.tmpdir(),
+      `callibrator-e2e-mfa-${crypto.createHash("sha256").update(`${BASE_URL}\n${String(who).toLowerCase()}`).digest("hex").slice(0, 16)}.json`,
+    );
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8")).secret;
+  } catch {
+    return undefined;
+  }
+};
 
 /** Password sign-in; enrols or answers TOTP when the account needs it. */
 async function signIn(credentials) {
@@ -334,7 +359,7 @@ async function signIn(credentials) {
     r = await http("POST", "/api/v1/auth/login", { body: credentials });
   }
   if (r.body?.data?.mfaRequired && r.body.token) {
-    const secret = process.env.LIVE_CONTRACT_OPERATOR_TOTP_SECRET || readMfa()[who];
+    const secret = process.env.LIVE_CONTRACT_OPERATOR_TOTP_SECRET || readMfa()[who] || harnessMfaSecret(who);
     if (!secret) {throw new Error(`${who} has MFA and no known secret (LIVE_CONTRACT_OPERATOR_TOTP_SECRET)`);}
     r = await http("POST", "/api/v1/auth/mfa/login", {
       body: { token: r.body.token, code: await totp(secret, who) },
@@ -683,6 +708,8 @@ function applyComplaint(body, { field, message }, ids) {
 /** Paths whose wire format is a protocol, not the envelope. */
 const PROTOCOL_PATH = /^\/(oidc\/|api\/v1\/oidc\/(\.well-known|token|userinfo|authorize$)|api\/v1\/scim\/|health$|live$|ready$|api\/v1\/health\/metrics)/;
 
+const REPORT_DOCUMENT_PATH = /^\/api\/v1\/reports\/(overdue-devices|inventory)$/;
+
 function envelopeViolations(route, res) {
   const v = [];
   if (!res.contentType.includes("json") || !res.body || typeof res.body !== "object") {return v;}
@@ -694,8 +721,13 @@ function envelopeViolations(route, res) {
   if ("status" in b && b.status !== res.status) {v.push(`body status ${b.status} != HTTP ${res.status}`);}
   if (typeof b.success === "boolean" && b.success !== (res.status < 400)) {v.push(`success=${b.success} on HTTP ${res.status}`);}
   const d = b.data;
+  // A-343 (closed as designed, 2026-10-02; CLAUDE.md § The Response Envelope): a
+  // single report DOCUMENT is one object in `data` that may hold arrays of its own
+  // (`data.rows`) and has no paging. Only these two, by name; any other `data.rows` is flagged.
+  const reportDocument = REPORT_DOCUMENT_PATH.test(route.path);
   if (d && typeof d === "object" && !Array.isArray(d)) {
     for (const key of ["rows", "items", "records", "results", "list", "data"]) {
+      if (reportDocument && key === "rows") {continue;}
       if (Array.isArray(d[key])) {v.push(`list rows in data.${key} (must be data[])`);}
     }
     if (d.meta && typeof d.meta === "object") {v.push("pagination in data.meta (must be top-level meta)");}
@@ -721,16 +753,30 @@ async function ensureUser(creator, spec) {
   if (created.status >= 300 && created.status !== 409) {
     throw new Error(`creating ${spec.email} (${JSON.stringify(spec)}): ${created.status} ${String(created.text).slice(0, 300)}`);
   }
-  const first = await http("POST", "/api/v1/auth/login", {
-    body: { user: spec.email, password: created.status === 409 ? PRINCIPAL_PASSWORD : TEMP_PASSWORD },
-  });
-  if (first.status === 200 && first.body?.data?.mustChangePassword) {
-    const changed = await http("POST", "/api/v1/auth/just-update-password", {
-      token: first.body.token,
-      body: { currentPassword: TEMP_PASSWORD, newPassword: PRINCIPAL_PASSWORD },
-    });
-    if (changed.status !== 200) {throw new Error(`password change of ${spec.email}: ${changed.status} ${changed.text}`);}
+  let oneTime = TEMP_PASSWORD;
+  if (created.status === 409) {
+    // A run before this one made the account. Already on the principal password: done.
+    const again = await http("POST", "/api/v1/auth/login", { body: { user: spec.email, password: PRINCIPAL_PASSWORD } });
+    if (again.status === 200) {return signIn({ user: spec.email, password: PRINCIPAL_PASSWORD });}
+    // Otherwise (an interrupted run consumed the one-time password and never chose one): the
+    // administrator-assisted reset (A-162) issues a new one-time password.
+    const found = rowsOf((await http("GET", `/api/v1/users/all?find=${encodeURIComponent(spec.username)}&limit=100`, { token: creator.token })).body)
+      .find((u) => String(u.email).toLowerCase() === spec.email);
+    if (!found) {throw new Error(`${spec.email} exists (409) but the operator cannot list it`);}
+    const reset = await http("POST", `/api/v1/users/${found.id}/password/reset`, { token: creator.token, body: {} });
+    oneTime = reset.body?.data?.temporaryPassword;
+    if (reset.status !== 200 || !oneTime) {throw new Error(`password reset of ${spec.email}: ${reset.status} ${String(reset.text).slice(0, 300)}`);}
   }
+  // P10-16 (ADR-099 Am. 1): an administrator's password signs in ONCE, answering
+  // passwordChangeRequired and a change token; the holder then chooses theirs.
+  const first = await http("POST", "/api/v1/auth/login", { body: { user: spec.email, password: oneTime } });
+  if (first.status !== 200 || first.body?.data?.passwordChangeRequired !== true || !first.body.token) {
+    throw new Error(`the one-time sign-in of ${spec.email}: ${first.status} ${String(first.text).slice(0, 300)}`);
+  }
+  const changed = await http("POST", "/api/v1/auth/first-sign-in/password", {
+    body: { token: first.body.token, newPassword: PRINCIPAL_PASSWORD },
+  });
+  if (changed.status !== 200) {throw new Error(`the first-sign-in change of ${spec.email}: ${changed.status} ${changed.text}`);}
   return signIn({ user: spec.email, password: PRINCIPAL_PASSWORD });
 }
 
@@ -1042,7 +1088,12 @@ async function runLiveContract() {
     if (!route.path.includes(":") || OPERATOR_ONLY.test(route.path)) {continue;}
     const url = concretise(route, "GET") + queryFor(route);
     const res = await http("GET", url, { token: P.adminB.token });
-    crossTenant.push({ path: route.path, url, status: res.status, message: res.body?.message });
+    // A route with no authenticating middleware in its chain is PUBLIC (a reviewed P6-04 exemption:
+    // constants/routeGateExemptions.ts — the verification page, the public posts,
+    // SAML metadata). It answers everyone alike, so tenant B's 2xx there is no
+    // tenant crossing; it is still probed and reported, as `public`.
+    const isPublic = !route.middlewares.some((m) => /^(auth|scimAuthShim|requireApiKeyOrAdmin|token)$/.test(m.name));
+    crossTenant.push({ path: route.path, url, status: res.status, message: res.body?.message, public: isPublic });
   }
   // Phase 2 creates/updates; 3 selfA's own identity; 4 destroys, revokes,
   // lifecycle (tenant C); 5 selfA's sign-outs; 6 network locks (disabled).
@@ -1193,7 +1244,7 @@ function verdict(run, frontend) {
     // /health and /ready answer 503 by design when a dependency is down.
     .filter((r) => !/^\/(health|ready)$|^\/api\/v1\/health$/.test(r.path));
   const envelope = run.results.concat(run.techResults).filter((r) => r.envelope && r.envelope.length);
-  const crossTenantLeaks = run.crossTenant.filter((r) => r.status >= 200 && r.status < 300);
+  const crossTenantLeaks = run.crossTenant.filter((r) => r.status >= 200 && r.status < 300 && !r.public);
   const crossTenant403 = run.crossTenant.filter((r) => r.status === 403);
   const frontendMissing = frontend.findings.filter((f) => f.kind === "no-such-route" || f.kind === "wrong-method");
   const frontendShape = frontend.findings.filter((f) => f.kind === "shape-mismatch");
@@ -1235,8 +1286,8 @@ module.exports = { main, dumpRoutes, extractFrontendCalls, envelopeViolations, c
 
 // P6-02: under Jest `require.main === module` is TRUE for the test file, so
 // the CLI branch used to run inside `npm run test:e2e` — main() ran with no
-// LIVE_CONTRACT opt-in and its process.exit(1) killed the whole suite after
-// ~20 s. JEST_WORKER_ID is set in every Jest worker, --runInBand included.
+// opt-in and its process.exit(1) killed the whole suite after ~20 s.
+// JEST_WORKER_ID is set in every Jest worker, --runInBand included.
 if (require.main === module && !process.env.JEST_WORKER_ID) {
   if (process.argv.includes("--dump-routes")) {
     try {
@@ -1256,8 +1307,7 @@ if (require.main === module && !process.env.JEST_WORKER_ID) {
     );
   }
 } else if (typeof describe === "function") {
-  const suite = process.env.LIVE_CONTRACT === "1" ? describe : describe.skip;
-  suite("live contract: every route and every frontend service call (LIVE_CONTRACT=1)", () => {
+  describe("live contract: every route and every frontend service call", () => {
     let report;
     beforeAll(async () => {
       report = await main();

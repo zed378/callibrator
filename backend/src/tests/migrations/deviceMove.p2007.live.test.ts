@@ -27,15 +27,13 @@
  *    signature triggers — the cascade passes all of them; nothing else of them changes.
  *
  *   docker run -d --name p2007-pg18b -e POSTGRES_PASSWORD=p2007pass -p 127.0.0.1:55208:5432 pgvector/pgvector:pg18
- *   P2007_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55208 DB_NAME=p2007move_scratch DB_USER=postgres DB_PASS=p2007pass \
- *     npm test -- src/tests/migrations/deviceMove.p2007.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55208 DB_NAME=p2007move_scratch DB_USER=postgres DB_PASS=p2007pass \
+ *     npm run test:live:jest -- src/tests/migrations/deviceMove.p2007.live
  *   docker rm -f p2007-pg18b
  */
 import { Sequelize, type Transaction } from "sequelize";
 import { env } from "../../config/env";
 import { HASH, draftSql, resultSql, signatureSql, submitSql } from "../fixtures/ipmLive";
-
-const live = env("P2007_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const APP_ROLE = "callibrator_app";
 const T = "c2007000-0000-4000-8000-000000000001";
@@ -60,7 +58,7 @@ type Row = Record<string, unknown>;
 
 jest.setTimeout(600000);
 
-live("P20-07 — a device move cascades along one path, as callibrator_app (PostgreSQL 18)", () => {
+describe("P20-07 — a device move cascades along one path, as callibrator_app (PostgreSQL 18)", () => {
   let admin: Sequelize;
   let db: Sequelize;
   let other: Sequelize;

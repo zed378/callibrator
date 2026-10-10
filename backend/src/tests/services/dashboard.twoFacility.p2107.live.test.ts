@@ -12,21 +12,18 @@
  *
  *   docker run -d --name p2107-pg18 -e POSTGRES_PASSWORD=p2107pass \
  *     -p 127.0.0.1:55217:5432 pgvector/pgvector:pg18
- *   P2107_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55217 DB_NAME=p2107_scratch \
- *     DB_USER=postgres DB_PASS=p2107pass npm test -- src/tests/services/dashboard.twoFacility.p2107.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55217 DB_NAME=p2107_scratch \
+ *     DB_USER=postgres DB_PASS=p2107pass npm run test:live:jest -- src/tests/services/dashboard.twoFacility.p2107.live
  *   docker rm -f p2107-pg18
  * (or `npm run test:live -- --only=p2107`)
  *
  * Synthetic values only.
  */
-import { env } from "../../config/env";
 import { draftSql, resultSql, rows, seedSql, submitSql, type LiveDb, type Row } from "../fixtures/ipmLive";
 import type * as DueService from "../../services/ipmDue.service";
 import type * as TenantContext from "../../middlewares/tenantContext.middleware";
 import type * as LiveBoot from "../fixtures/liveBoot";
 import type { ClientFacilityId, TenantId } from "../../types/ids";
-
-const live = env("P2107_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const T = "c2107000-0000-4000-8000-000000000001";
 const ROLE = "c2107000-0000-4000-8000-000000000002";
@@ -107,7 +104,7 @@ const jakartaMonth = (offset: number): string => {
   return `${String(d.getUTCFullYear())}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 };
 
-live("P21-07 — the dashboard per facility, due by month and the QR search on PostgreSQL 18, as callibrator_app", () => {
+describe("P21-07 — the dashboard per facility, due by month and the QR search on PostgreSQL 18, as callibrator_app", () => {
   let g: Graph;
 
   const ctx = <R>(work: () => Promise<R>, facility: string | null = null): Promise<R> =>

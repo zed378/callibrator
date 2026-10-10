@@ -32,7 +32,9 @@ module.exports = {
     "**/tests/**/*.spec.js",
     "**/tests/**/*.spec.ts",
   ],
-  testPathIgnorePatterns: ["src/tests/e2e/", "/node_modules/"],
+  // `*.live.test.*` need a real database or broker and run under jest.live.config.js
+  // (`npm run test:live`); a unit run never loads one, so none is reported as skipped.
+  testPathIgnorePatterns: ["src/tests/e2e/", "/node_modules/", "\\.live\\.test\\.(js|ts)$"],
   verbose: true,
   forceExit: false,
   clearMocks: true,

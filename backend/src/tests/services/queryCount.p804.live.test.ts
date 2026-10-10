@@ -18,7 +18,7 @@
  *  - dashboard: all 20 aggregates run, never more than DASHBOARD_CONCURRENCY
  *    of them in flight at once (it was 20 against a 20-connection pool).
  *
- * OPT-IN — needs a SCRATCH database (its name must contain "scratch"). The suite
+ * NEEDS a SCRATCH database (its name must contain "scratch"). The suite
  * builds it the way the backend boots (fixtures/liveBoot#bootSchema: db.sync()
  * of the current models plus every migration, under the schema lock) before it
  * switches to the application role; on an already-built database that applies
@@ -32,14 +32,12 @@
  * counted on the role that issues them in production, and the writes it
  * seeds are ones that role may make.
  *
- *   P804_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=... DB_NAME=callibrator_scratch_p804 \
- *     DB_USER=... DB_PASS=... npm test -- src/tests/services/queryCount.p804.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=... DB_NAME=callibrator_scratch_p804 \
+ *     DB_USER=... DB_PASS=... npm run test:live:jest -- src/tests/services/queryCount.p804.live
  */
 import { env } from "../../config/env";
 import { LIVE_BOOT_TIMEOUT_MS } from "../fixtures/disposableDatabase";
 import { bootSchema } from "../fixtures/liveBoot";
-
-const live = env("P804_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const TENANT = "a8040000-0000-4000-8000-000000000001";
 const USER = "a8040000-0000-4000-8000-0000000000e1";
@@ -93,7 +91,7 @@ const load = (): { db: LiveDb; s: Services; migrator: Parameters<typeof bootSche
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-live("P8-04 — statements per service call, on live PostgreSQL 18", () => {
+describe("P8-04 — statements per service call, on live PostgreSQL 18", () => {
   jest.setTimeout(120_000);
   let db: LiveDb;
   let s: Services;

@@ -19,15 +19,12 @@
  *    "up" again restores the groups.
  *
  *   docker run -d --name p2006-pg18 -e POSTGRES_PASSWORD=p2006pass -p 127.0.0.1:55206:5432 pgvector/pgvector:pg18
- *   P2006_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55206 DB_NAME=p2006_scratch DB_USER=postgres DB_PASS=p2006pass \
- *     npm test -- src/tests/migrations/menuGrants.p2006.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55206 DB_NAME=p2006_scratch DB_USER=postgres DB_PASS=p2006pass \
+ *     npm run test:live:jest -- src/tests/migrations/menuGrants.p2006.live
  *   docker rm -f p2006-pg18
  * or through the runner: npm run test:live -- --only=p2006
  */
-import { env } from "../../config/env";
 import { SELF_FACILITIES_SQL } from "../fixtures/selfFacility";
-
-const live = env("P2006_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 type Row = Record<string, unknown>;
 interface LiveTx {
@@ -52,7 +49,7 @@ const SLUGS = "('ipm','ipm-templates','client-facilities')";
 
 jest.setTimeout(900000);
 
-live("P20-06 migration 0124 on PostgreSQL 18", () => {
+describe("P20-06 migration 0124 on PostgreSQL 18", () => {
   /* eslint-disable @typescript-eslint/no-require-imports -- the boot graph, loaded after the env is set, typed by the members used */
   const { db } = require("../../config") as { db: LiveDb };
   const { migrator } = require("../../config/migrator") as { migrator: { up(): Promise<{ name: string }[]> } };

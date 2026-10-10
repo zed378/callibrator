@@ -23,14 +23,13 @@
  *
  *   docker run -d --name p2103-pg18 -e POSTGRES_PASSWORD=p2103pass \
  *     -p 127.0.0.1:55213:5432 pgvector/pgvector:pg18
- *   P2103_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55213 DB_NAME=p2103_scratch \
- *     DB_USER=postgres DB_PASS=p2103pass npm test -- src/tests/services/ipmSessions.p2103.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55213 DB_NAME=p2103_scratch \
+ *     DB_USER=postgres DB_PASS=p2103pass npm run test:live:jest -- src/tests/services/ipmSessions.p2103.live
  *   docker rm -f p2103-pg18
  * (or `npm run test:live -- --only=p2103`)
  *
  * Synthetic values only.
  */
-import { env } from "../../config/env";
 import { BASE_VERSION, HASH, rows, seedSql, type LiveDb, type Row } from "../fixtures/ipmLive";
 import type * as SessionService from "../../services/ipmSession.service";
 import type * as IdempotencyService from "../../services/idempotency.service";
@@ -38,8 +37,6 @@ import type * as MoveService from "../../services/deviceMove.service";
 import type * as TenantContext from "../../middlewares/tenantContext.middleware";
 import type * as LiveBoot from "../fixtures/liveBoot";
 import type { ClientFacilityId, TenantId } from "../../types/ids";
-
-const live = env("P2103_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const T = "c2103000-0000-4000-8000-000000000001";
 const ROLE = "c2103000-0000-4000-8000-000000000002";
@@ -86,7 +83,7 @@ const startProcess = (): Graph => {
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-live("P21-03 — the IPM session services on PostgreSQL 18, as callibrator_app", () => {
+describe("P21-03 — the IPM session services on PostgreSQL 18, as callibrator_app", () => {
   let g: Graph;
   let draft = "";
 

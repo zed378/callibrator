@@ -17,14 +17,13 @@
  *
  *   docker run -d --name p2105-pg18 -e POSTGRES_PASSWORD=p2105pass \
  *     -p 127.0.0.1:55215:5432 pgvector/pgvector:pg18
- *   P2105_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55215 DB_NAME=p2105_scratch \
- *     DB_USER=postgres DB_PASS=p2105pass npm test -- src/tests/services/deviceRegister.p2105.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55215 DB_NAME=p2105_scratch \
+ *     DB_USER=postgres DB_PASS=p2105pass npm run test:live:jest -- src/tests/services/deviceRegister.p2105.live
  *   docker rm -f p2105-pg18
  * (or `npm run test:live -- --only=p2105`)
  *
  * Synthetic values only (QR prefix `TST`).
  */
-import { env } from "../../config/env";
 import { rows, seedSql, type LiveDb, type Row } from "../fixtures/ipmLive";
 import type DeviceService from "../../services/calibrationDevices.service";
 import type RecordService from "../../services/calibrationRecords.service";
@@ -32,8 +31,6 @@ import type * as DatesService from "../../services/calibrationDates.service";
 import type * as TenantContext from "../../middlewares/tenantContext.middleware";
 import type * as LiveBoot from "../fixtures/liveBoot";
 import type { ClientFacilityId, TenantId, UserId } from "../../types/ids";
-
-const live = env("P2105_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const T = "c2105000-0000-4000-8000-000000000001";
 const ROLE = "c2105000-0000-4000-8000-000000000002";
@@ -78,7 +75,7 @@ const startProcess = (): Graph => {
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-live("P21-02a + P21-05 — the register and the calibration dates on PostgreSQL 18, as callibrator_app", () => {
+describe("P21-02a + P21-05 — the register and the calibration dates on PostgreSQL 18, as callibrator_app", () => {
   let g: Graph;
   const ctx = <R>(work: () => Promise<R>): Promise<R> =>
     g.tenantStorage.run({ tenantId: T as TenantId, isSuperAdmin: false, isSystemTask: false, userId: U1, clientFacilityId: null as ClientFacilityId | null, facilityBound: false }, work);

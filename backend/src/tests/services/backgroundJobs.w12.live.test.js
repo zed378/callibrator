@@ -18,11 +18,11 @@
  *  - the backup prune's composite keyset (tenant ASC, created_at DESC, id
  *    DESC) walks pages without skipping or repeating a row.
  *
- * OPT-IN — needs a database built by db.sync() of the current models plus
+ * NEEDS a database built by db.sync() of the current models plus
  * every migration (migrator.up()):
  *
- *   BACKGROUND_JOBS_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
- *     npm test -- src/tests/services/backgroundJobs.w12.live --coverage=false
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
+ *     npm run test:live:jest -- src/tests/services/backgroundJobs.w12.live
  *
  * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
  * DB_NAME is not used), builds it as the backend boots (db.sync() + every
@@ -35,15 +35,13 @@ const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
-const live = process.env.BACKGROUND_JOBS_PG_LIVE_TEST === "1" ? describe : describe.skip;
-
 const A = "a12a12a1-0000-4000-8000-0000000000a1";
 const B = "b12b12b1-0000-4000-8000-0000000000b1";
 const USER_A = "a12a12a1-0000-4000-8000-0000000000e1";
 const USER_B = "b12b12b1-0000-4000-8000-0000000000e2";
 const DEVICE_A = "a12a12a1-0000-4000-8000-0000000000d1";
 
-live("background jobs — tenant context, audit and bounds on live PostgreSQL (W-12, W-04, W-17)", () => {
+describe("background jobs — tenant context, audit and bounds on live PostgreSQL (W-12, W-04, W-17)", () => {
   jest.setTimeout(60000);
   let db;
   let scratch;

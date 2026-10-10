@@ -111,10 +111,21 @@ describe("the secret file", () => {
     expect(chmod).toHaveBeenCalledWith(FILE, 0o600);
   });
 
-  (process.platform === "win32" ? it.skip : it)("has mode 0600 on disk (POSIX)", () => {
+  // One case per OS, never a skip (2026-10-10). POSIX: the modes the code asks for are on disk.
+  // Windows has no POSIX permission bits: Node maps a mode only to the read-only attribute, so
+  // 0600 (owner-writable) lands as a writable file that stats as 0666, and a directory stats as
+  // 0666 too. There the owner-only protection is the storage directory's ACL, not the mode, and
+  // what the code must still guarantee is that the file is NOT read-only, so a later write
+  // replaces it and removal deletes it.
+  it(`has the right mode on disk for ${process.platform === "win32" ? "Windows (writable, no POSIX bits)" : "POSIX (0600 in 0700)"}`, () => {
     secret.writeBootstrapSecret("x");
-    expect(fs.statSync(FILE).mode & 0o777).toBe(0o600);
-    expect(fs.statSync(path.dirname(FILE)).mode & 0o777).toBe(0o700);
+    if (process.platform === "win32") {
+      expect(fs.statSync(FILE).mode & 0o777).toBe(0o666);
+      expect(fs.statSync(path.dirname(FILE)).mode & 0o777).toBe(0o666);
+    } else {
+      expect(fs.statSync(FILE).mode & 0o777).toBe(0o600);
+      expect(fs.statSync(path.dirname(FILE)).mode & 0o777).toBe(0o700);
+    }
   });
 
   it("replaces an earlier file rather than refusing or appending", () => {

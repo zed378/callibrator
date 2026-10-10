@@ -27,15 +27,12 @@
  * The schema is the models' own (db.sync), not the full migration chain: the
  * two tables involved are model tables, and the rotation runs as the owner.
  *
- * OPT-IN, a disposable database per run (fixtures/disposableDatabase):
+ * NEEDS a disposable database per run (fixtures/disposableDatabase):
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=... DB_USER=postgres DB_PASS=... \
- *     npm test -- src/tests/services/keyRotation.predicates.p918.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=... DB_USER=postgres DB_PASS=... \
+ *     npm run test:live:jest -- src/tests/services/keyRotation.predicates.p918.live
  */
-import { env } from "../../config/env";
 import type { DisposableDatabase, createDisposableDatabase as CreateDisposableDatabase } from "../fixtures/disposableDatabase";
-
-const live = env("DATA_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const A = "a9180000-0000-4000-8000-0000000000a1";
 const B = "a9180000-0000-4000-8000-0000000000b2";
@@ -60,7 +57,7 @@ interface Kms {
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports -- loaded after the disposable database exists: config reads DB_NAME when it loads */
-live("P9-18 — key rotation write predicates on live PostgreSQL", () => {
+describe("P9-18 — key rotation write predicates on live PostgreSQL", () => {
   let scratch: DisposableDatabase;
   let db: LiveDb;
   let rotation: Rotation;

@@ -28,8 +28,8 @@
  *
  *   docker run -d --name p2003-pg18 -e POSTGRES_PASSWORD=p2003pass \
  *     -p 127.0.0.1:55203:5432 pgvector/pgvector:pg18
- *   P2003_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55203 DB_NAME=p2003_scratch \
- *     DB_USER=postgres DB_PASS=p2003pass npm test -- src/tests/migrations/inspectionCatalogue.p2003.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55203 DB_NAME=p2003_scratch \
+ *     DB_USER=postgres DB_PASS=p2003pass npm run test:live:jest -- src/tests/migrations/inspectionCatalogue.p2003.live
  *   docker rm -f p2003-pg18
  */
 import { createHash } from "node:crypto";
@@ -39,8 +39,6 @@ import {
   type CanonicalTemplateItemInput,
 } from "@callibrator/contracts/inspectionValues";
 import { env } from "../../config/env";
-
-const live = env("P2003_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const APP_ROLE = "callibrator_app";
 const BASE_TEMPLATE = "5eedca7a-0000-4000-8000-000000000001";
@@ -234,7 +232,7 @@ const recomputedHash = async (db: LiveDb): Promise<string> =>
 
 jest.setTimeout(900000);
 
-live("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () => {
+describe("P20-01 / P20-03 — migrations 0111 and 0112 on live PostgreSQL 18", () => {
   let g: Graph;
   let admin: Sequelize;
 

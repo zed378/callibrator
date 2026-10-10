@@ -7,8 +7,9 @@
  * the invented `STANDBY` command, so they passed against a client no real
  * clamd could talk to. A mock proves the client, not the contract.
  *
- * The real-clamd block at the end runs when CLAMAV_LIVE_PORT names a running
- * clamd (e.g. `docker run -p 13310:3310 clamav/clamav:1.4`).
+ * The real-clamd block at the end needs CLAMAV_LIVE_PORT naming a running
+ * clamd (e.g. `docker run -p 127.0.0.1:13310:3310 clamav/clamav:1.4`), and
+ * fails without one; it is never skipped (2026-10-10).
  *
  * The unit tests never write the EICAR string to disk: a host antivirus
  * (Windows Defender here) detects it on write and refuses the open, so the
@@ -575,9 +576,20 @@ describe("configuration surface", () => {
 });
 
 const LIVE_PORT = process.env.CLAMAV_LIVE_PORT;
-(LIVE_PORT ? describe : describe.skip)(
+// Since 2026-10-10 (owner: no test is skipped) this block always runs and FAILS
+// without a clamd, naming what to start. CI's backend-test job runs a
+// digest-pinned clamav/clamav:1.4 service and sets CLAMAV_LIVE_PORT.
+describe(
   "S-04 — against a REAL clamd (CLAMAV_LIVE_PORT)",
   () => {
+    beforeAll(() => {
+      if (!LIVE_PORT) {
+        throw new Error(
+          "CLAMAV_LIVE_PORT is not set: start a clamd (docker run -d --name clamd -p 127.0.0.1:13310:3310 clamav/clamav:1.4) and set CLAMAV_LIVE_PORT=13310",
+        );
+      }
+    });
+
     const live = () =>
       load({ CLAMAV_PORT: LIVE_PORT, CLAMAV_HOST: process.env.CLAMAV_LIVE_HOST || "127.0.0.1", CLAMAV_TIMEOUT: "30000" });
 

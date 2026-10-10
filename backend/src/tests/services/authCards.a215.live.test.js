@@ -14,19 +14,17 @@
  *    anything — and the application role cannot drop a table, which is why
  *    the forced-sync reset helpers were removed.
  *
- * OPT-IN — needs an EMPTY scratch database the connecting role owns (it is
+ * NEEDS an EMPTY scratch database the connecting role owns (it is
  * rebuilt with db.sync({ force: true })), whose name contains "scratch":
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55478 DB_NAME=callibrator_a215scratch \
+ *   DB_HOST=127.0.0.1 DB_PORT=55478 DB_NAME=callibrator_a215scratch \
  *     DB_USER=cal_owner DB_PASS=owner \
- *     npm test -- src/tests/services/authCards.a215.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/authCards.a215.live
  *
  * Run on PostgreSQL 18.6 (pgvector/pgvector:pg18) on 2026-09-25.
  */
 
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
-
-const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const APP_ROLE = process.env.DB_APP_ROLE || "callibrator_app";
 const HOUR = 60 * 60 * 1000;
@@ -49,7 +47,7 @@ const startProcess = () => {
   return graph;
 };
 
-live("A-215 / A-259 — live PostgreSQL", () => {
+describe("A-215 / A-259 — live PostgreSQL", () => {
   let g;
   const ids = {};
 

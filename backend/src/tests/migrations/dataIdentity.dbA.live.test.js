@@ -6,13 +6,13 @@
  * the database then does: that an index is chosen, that a constraint bites,
  * that an erased row holds what the decision says, that a RESTRICT refuses.
  *
- * OPT-IN — needs an EMPTY scratch database the connecting role owns (it is
+ * NEEDS an EMPTY scratch database the connecting role owns (it is
  * rebuilt with db.sync({ force: true })), whose name contains "scratch" or
  * ends in "_dba", as a guard against pointing it at a real one:
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=54337 DB_NAME=callibrator_dba \
+ *   DB_HOST=127.0.0.1 DB_PORT=54337 DB_NAME=callibrator_dba \
  *     DB_USER=postgres DB_PASS=x \
- *     npm test -- src/tests/migrations/dataIdentity.dbA.live --coverage=false
+ *     npm run test:live:jest -- src/tests/migrations/dataIdentity.dbA.live
  *
  * Run on PostgreSQL 16.13 in development (no pgvector needed); the deployment
  * target is 18.
@@ -28,8 +28,6 @@
 const { enterAppRole, grantAppRoleOnSyncedSchema, APP_ROLE } = require("../fixtures/liveBoot");
 const { LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
-
-const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const TENANT_A = "da0a0a0a-0000-4000-8000-00000000000a";
 const TENANT_B = "db0b0b0b-0000-4000-8000-00000000000b";
@@ -67,7 +65,7 @@ const errorOf = async (db, sql, replacements = {}) => {
   }
 };
 
-live("batch-6 data identity and retention — real PostgreSQL", () => {
+describe("batch-6 data identity and retention — real PostgreSQL", () => {
   let g;
   /** A second process, as callibrator_app: the application's path (D-11, D-40). */
   let app;

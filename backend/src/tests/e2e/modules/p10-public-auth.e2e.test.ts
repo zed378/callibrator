@@ -14,7 +14,8 @@
  *  - forgot / reset              send-otp neutral for known and unknown; the
  *    mailed code resets once; the old password and a reused code are refused.
  *
- * Env: BASE_URL, E2E_OPERATOR_PASSWORD, E2E_MAILPIT_URL (reset only).
+ * Env: BASE_URL, E2E_OPERATOR_PASSWORD, E2E_MAILPIT_URL (mandatory; the reset
+ * code exists only in an email).
  */
 import {
   call,
@@ -22,7 +23,6 @@ import {
   dataOf,
   envelope,
   stackMode,
-  mailAvailable,
   newClientAddress,
   obj,
   operatorSession,
@@ -34,7 +34,6 @@ import {
   strongPassword,
 } from "../p10Live";
 
-const withMail = mailAvailable() ? test : test.skip;
 const stamp = runStamp();
 const ssoDomain = `sso-${stamp}.example.com`;
 const idpEntryPoint = `https://idp-${stamp}.example.com/saml/sso`;
@@ -173,7 +172,7 @@ describe("P10 forgot / reset password (live)", () => {
     expect(envelope(unknown)).toEqual(envelope(known));
   });
 
-  withMail("the mailed code resets the password once; a wrong code and a reused code are refused; the old password stops working", async () => {
+  test("the mailed code resets the password once; a wrong code and a reused code are refused; the old password stops working", async () => {
     const code = await resetCodeFor(user.email, sentAt);
     expect(code).toMatch(/^\d{6}$/);
     const wrongCode = code === "000000" ? "111111" : "000000";

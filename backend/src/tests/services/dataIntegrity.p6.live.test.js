@@ -12,19 +12,17 @@ const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
  * privilege and disables the trigger to show each assertion fails when its
  * control is absent.
  *
- * OPT-IN — needs an EMPTY scratch database the connecting role owns (it is
+ * NEEDS an EMPTY scratch database the connecting role owns (it is
  * rebuilt with db.sync({ force: true })), whose name contains "scratch" or
  * ends in "_p6" as a guard against pointing it at a real one:
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=54335 DB_NAME=callibrator_p6 \
+ *   DB_HOST=127.0.0.1 DB_PORT=54335 DB_NAME=callibrator_p6 \
  *     DB_USER=cal_owner DB_PASS=owner \
- *     npm test -- src/tests/services/dataIntegrity.p6.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/dataIntegrity.p6.live
  *
  * The connecting role plays the compose owner (a superuser there). Run on
  * PostgreSQL 16 in development; the deployment target is 18.
  */
-
-const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const TENANT_A = "a6a6a6a6-0000-4000-8000-00000000000a";
 const TENANT_B = "b6b6b6b6-0000-4000-8000-00000000000b";
@@ -86,7 +84,7 @@ const errorOf = async (db, t, sql, replacements = {}) => {
 
 const logger = { info: () => {}, warn: () => {}, error: () => {} };
 
-live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
+describe("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
   let g;
   const ids = {};
 

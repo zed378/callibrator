@@ -174,12 +174,36 @@ jobs:
     name: backend unit + coverage gate (100%)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # No unit test is skipped (owner, 2026-10-10; MEMORY/records/2026-10-10-no-skip-tool-tests.md).
+    # Three unit suites prove a REAL tool and fail without it, so this job provides each:
+    # a clamd (clamAv.service.test.js, S-04), helm (schedulerSwitch.w02.test.js renders the
+    # chart) and gitleaks (prePushHook.a19.test.js, the hook's real detection).
+    services:
+      clamav:
+        # The deployment's image, digest-pinned as in deploy/compose. The image's own
+        # healthcheck (clamdcheck.sh) passes once the signatures are loaded and clamd answers.
+        image: clamav/clamav:1.4@sha256:a5f03c12a79dbe9f6d8a527b6bb1ea053fa8dd061d3738a26897f055ee2d9303
+        ports: ["3310:3310"]
+        options: >-
+          --health-cmd "clamdcheck.sh"
+          --health-interval 10s --health-timeout 10s --health-retries 36
+    env:
+      CLAMAV_LIVE_PORT: "3310"
+      CLAMAV_LIVE_HOST: "127.0.0.1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+      # The version deploy-config renders the chart with.
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.19.0
+      # make hooks' own installer: gitleaks 8.30.1 into .tools/bin, sha256-verified against
+      # the same linux_x64 checksum the secret-scan job pins (prePushHook.a19 checks the two agree).
+      - name: gitleaks 8.30.1 into .tools/bin (checksum-verified)
+        run: bash scripts/git-hooks/install-gitleaks.sh
       - run: npm ci
       - name: Test environment (template + random secrets)
         # The suites read backend/.env through jest.config.js. The template's
@@ -429,18 +453,18 @@ jobs:
         run: tail -n 300 boot.log boot2.log 2>/dev/null || true
 
   # --------------------------------------------------------------------------
-  # Every live database suite (`*.live.test.*`) against a real PostgreSQL 18 and
-  # a real MQTT broker (A-367). The unit job skips them (each is opt-in and needs
-  # a database), so until this job four of them had been failing unnoticed, one
-  # for every case (MEMORY/records/2026-10-08-live-suites-repair.md).
-  # `npm run test:live` creates a fresh database per suite, runs it as its header
-  # says, and drops it; liveSuites.a367.guard (in backend-test) fails a new live
-  # suite that is in neither of its lists. The suites that need RabbitMQ, Redis,
-  # S3 or an older revision's checkout stay by hand (scripts/live-suites.ts).
+  # Every live suite (`*.live.test.*`, A-367) against real services: PostgreSQL 18,
+  # MQTT, Redis, RabbitMQ, S3 (SeaweedFS), ClamAV, and the two upgrade boots from
+  # older revisions. The unit job does not run them (each needs its services).
+  # `npm run test:live -- --with=all` creates a fresh database per suite, runs it as
+  # its header says, and drops it; a suite whose service is missing is NOT SELECTED,
+  # and since 2026-10-10 (owner: no test is skipped) none is: every service is here
+  # (MEMORY/records/2026-10-10-no-skip-tool-tests.md). liveSuites.a367.guard (in
+  # backend-test) fails a new live suite that is in neither of its lists.
   live-db:
-    name: live database suites (PostgreSQL 18 + MQTT)
+    name: live suites (PostgreSQL 18 · MQTT · Redis · RabbitMQ · S3 · ClamAV · upgrade)
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     services:
       postgres:
         # The deployment's image, digest-pinned in deploy/compose (P7-07).
@@ -453,6 +477,20 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U callibrator -d postgres"
           --health-interval 5s --health-timeout 5s --health-retries 20
+      clamav:
+        # The compose digest (as in backend-test); clamdcheck.sh passes once the
+        # signatures are loaded and clamd answers. Up to 6 minutes allowed.
+        image: clamav/clamav:1.4@sha256:a5f03c12a79dbe9f6d8a527b6bb1ea053fa8dd061d3738a26897f055ee2d9303
+        ports: ["3310:3310"]
+        options: >-
+          --health-cmd "clamdcheck.sh"
+          --health-interval 10s --health-timeout 10s --health-retries 36
+      redis:
+        image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       DB_HOST: localhost
       DB_PORT: "5432"
@@ -462,8 +500,20 @@ jobs:
       DB_SSL: "false"
       MQTT_LIVE_HOST: localhost
       MQTT_LIVE_PORT: "1883"
+      CLAMAV_LIVE_HOST: localhost
+      CLAMAV_LIVE_PORT: "3310"
+      REDIS_LIVE_URL: redis://localhost:6379
+      RABBITMQ_LIVE_URL: amqp://localhost:5672
+      RABBITMQ_LIVE_CONTAINER: rmq-live
+      S3_LIVE_ENDPOINT: http://127.0.0.1:8333
+      # An /etc/hosts alias of 127.0.0.1 (added below): a name that resolves to a
+      # private address and is neither localhost nor an IP literal (storage.s3.u09).
+      S3_LIVE_DEV_HOST: s3-live.internal
     steps:
+      # The upgrade suites `git archive` older revisions (ce74932, 3e91413): full history.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -491,9 +541,42 @@ jobs:
             sleep 1
           done
           docker logs mqtt; exit 1
-      - name: npm run test:live
+      # A step, not a service: rabbitmq.w06 restarts the broker by container name.
+      - name: RabbitMQ 4 (rmq-live, digest-pinned)
+        run: |
+          set -euo pipefail
+          docker run -d --name rmq-live -p 5672:5672 \
+            rabbitmq:4-alpine@sha256:2cb43283d8bbd3caa6c0f0dc00e96c8de772df33df7fd8af6aee4d605aeb8ada
+          for i in $(seq 1 90); do
+            if docker exec rmq-live rabbitmq-diagnostics -q check_port_connectivity >/dev/null 2>&1; then echo "broker up after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          docker logs rmq-live; exit 1
+      # A step, not a service: weed needs a command and the identities file. The keys
+      # are throwaway, generated here and masked.
+      - name: S3 (SeaweedFS 4.48, digest-pinned) and the s3-live.internal alias
+        run: |
+          set -euo pipefail
+          ak="$(openssl rand -hex 16)"; sk="$(openssl rand -hex 32)"
+          echo "::add-mask::$ak"; echo "::add-mask::$sk"
+          echo "S3_LIVE_ACCESS_KEY=$ak" >> "$GITHUB_ENV"
+          echo "S3_LIVE_SECRET_KEY=$sk" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/s3"
+          printf '{"identities":[{"name":"live","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}\n' \
+            "$ak" "$sk" > "$RUNNER_TEMP/s3/identities.json"
+          docker run -d --name s3-live -p 8333:8333 -v "$RUNNER_TEMP/s3:/etc/s3live:ro" \
+            chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d \
+            server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/s3live/identities.json
+          echo "127.0.0.1 s3-live.internal" | sudo tee -a /etc/hosts
+          for i in $(seq 1 90); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8333/ || true)"
+            if [ "$code" != "000" ]; then echo "s3 up after ${i}s (HTTP $code)"; exit 0; fi
+            sleep 1
+          done
+          docker logs s3-live; exit 1
+      - name: npm run test:live -- --with=all
         working-directory: backend
-        run: npm run test:live -- --with=mqtt
+        run: npm run test:live -- --with=all
 
   # --------------------------------------------------------------------------
   deploy-config:

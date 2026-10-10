@@ -126,7 +126,10 @@ describe("useBoard realtime over a real Socket.IO server (A-53)", () => {
     async () => {
       renderHook(() => useBoard("proj-53"));
 
-      await waitFor(async () => expect(await inRoom("proj-53")).toBe(1));
+      await waitFor(async () => expect(await inRoom("proj-53")).toBe(1), {
+        // The first connect + join under a full parallel run can exceed the 5 s default (2026-10-10).
+        timeout: 8000,
+      });
       expect(useKanbanStore.getState().board?.id).toBe("proj-53");
 
       // Drop the transport under the client. It reconnects on its own, as a
@@ -155,7 +158,7 @@ describe("useBoard realtime over a real Socket.IO server (A-53)", () => {
         ).toEqual(["card-after-reconnect"]),
       );
     },
-    15000,
+    30000,
   );
 
   it("A-53: a refused join surfaces as a board error instead of silence", async () => {
@@ -171,7 +174,7 @@ describe("useBoard realtime over a real Socket.IO server (A-53)", () => {
     "A-53: an unmounted board leaves its room and is not re-joined on reconnect",
     async () => {
       const { unmount } = renderHook(() => useBoard("proj-left"));
-      await waitFor(async () => expect(await inRoom("proj-left")).toBe(1));
+      await waitFor(async () => expect(await inRoom("proj-left")).toBe(1), { timeout: 8000 });
 
       unmount();
       await waitFor(async () => expect(await inRoom("proj-left")).toBe(0));
@@ -187,6 +190,6 @@ describe("useBoard realtime over a real Socket.IO server (A-53)", () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
       expect(await inRoom("proj-left")).toBe(0);
     },
-    15000,
+    30000,
   );
 });

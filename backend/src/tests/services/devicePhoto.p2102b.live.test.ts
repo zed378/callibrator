@@ -12,8 +12,8 @@
  *
  *   docker run -d --name p2102b-pg18 -e POSTGRES_PASSWORD=p2102bpass \
  *     -p 127.0.0.1:55216:5432 pgvector/pgvector:pg18
- *   P2102B_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55216 DB_NAME=p2102b_scratch \
- *     DB_USER=postgres DB_PASS=p2102bpass npm test -- src/tests/services/devicePhoto.p2102b.live --coverage=false
+ *   DB_HOST=127.0.0.1 DB_PORT=55216 DB_NAME=p2102b_scratch \
+ *     DB_USER=postgres DB_PASS=p2102bpass npm run test:live:jest -- src/tests/services/devicePhoto.p2102b.live
  *   docker rm -f p2102b-pg18
  * (or `npm run test:live -- --only=p2102b`)
  *
@@ -23,7 +23,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { env } from "../../config/env";
 import { rows, seedSql, type LiveDb, type Row } from "../fixtures/ipmLive";
 import type * as PhotoService from "../../services/devicePhoto.service";
 import type * as TenantContext from "../../middlewares/tenantContext.middleware";
@@ -35,8 +34,6 @@ jest.mock("../../services/storage", () =>
   jest.requireActual<{ createFakeStorage: () => unknown }>("../fixtures/fakeStorage").createFakeStorage(),
 );
 jest.mock("../../services/virusScan.service", () => ({ scanFile: jest.fn(() => Promise.resolve({ clean: true })) }));
-
-const live = env("P2102B_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const T = "c21b2000-0000-4000-8000-000000000001";
 const ROLE = "c21b2000-0000-4000-8000-000000000002";
@@ -75,7 +72,7 @@ const startProcess = (): Graph => {
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-live("P21-02b — the device photos on PostgreSQL 18, as callibrator_app", () => {
+describe("P21-02b — the device photos on PostgreSQL 18, as callibrator_app", () => {
   let g: Graph;
   let tmp = "";
   const ctx = <R>(work: () => Promise<R>): Promise<R> =>

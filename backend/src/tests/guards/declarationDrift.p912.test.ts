@@ -97,28 +97,57 @@ describe("P9-12 — declaration files match the JavaScript they describe", () =>
     expect([...names].sort()).toEqual([...onDisk].sort());
   });
 
-  const twins = declarationPairs().map((p) => [path.relative(SRC, p.dts).split(path.sep).join("/"), p] as const);
-  // P9-24 (2026-10-02): every twin is gone once its module converts, and jest refuses an empty
-  // `.each` table. With none left there is nothing to compare: the case is skipped, and the
-  // test above still fails on any twin that appears without its module, or beside a converted one.
-  (twins.length > 0 ? it.each(twins) : it.skip.each([["(no declaration twin left)", { dts: "", js: "" }] as const]))(
-    "%s declares exactly the module's exports",
-    (_name, { dts, js }) => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- the JavaScript module itself, as require() returns it
-      const mod = require(js) as object;
-      // A module that exports a class INSTANCE (mfa.service: `new MfaService()`)
-      // carries its methods on the prototype; they are part of what callers use.
-      const proto: object | null = Object.getPrototypeOf(mod) as object | null;
-      // A plain object's prototype IS Object.prototype, whose own prototype is null.
-      // Compared structurally: under Jest the module's realm is not this file's.
-      const isClassPrototype = proto !== null && Object.getPrototypeOf(proto) !== null && typeof mod !== "function";
-      const inherited = isClassPrototype
-        ? Object.getOwnPropertyNames(proto).filter((k) => k !== "constructor")
-        : [];
-      const actual = [...new Set([...Object.keys(mod), ...inherited])].sort();
-      expect(declaredKeys(dts).sort()).toEqual(actual);
-    },
-  );
+  /** null when the declaration names exactly the module's exports; otherwise both key lists. */
+  const driftOf = ({ dts, js }: { dts: string; js: string }): { declared: string[]; actual: string[] } | null => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the JavaScript module itself, as require() returns it
+    const mod = require(js) as object;
+    // A module that exports a class INSTANCE (mfa.service: `new MfaService()`)
+    // carries its methods on the prototype; they are part of what callers use.
+    const proto: object | null = Object.getPrototypeOf(mod) as object | null;
+    // A plain object's prototype IS Object.prototype, whose own prototype is null.
+    // Compared structurally: under Jest the module's realm is not this file's.
+    const isClassPrototype = proto !== null && Object.getPrototypeOf(proto) !== null && typeof mod !== "function";
+    const inherited = isClassPrototype
+      ? Object.getOwnPropertyNames(proto).filter((k) => k !== "constructor")
+      : [];
+    const actual = [...new Set([...Object.keys(mod), ...inherited])].sort();
+    const declared = declaredKeys(dts).sort();
+    return JSON.stringify(declared) === JSON.stringify(actual) ? null : { declared, actual };
+  };
+
+  // P9-24 (2026-10-02): every twin went once its module converted, and noSourceJs.p924 refuses
+  // a new source .js, so a twin can only reappear by mistake. The table used to fall back to an
+  // `it.skip.each` placeholder when empty (2026-10-10, owner: no test is skipped); the two cases
+  // below run always. A twin that reappears fails the first by name, and the second says how it
+  // differs from its module.
+  const twinNames = pairs.map((p) => path.relative(SRC, p.dts).split(path.sep).join("/"));
+
+  it("no declaration twin is left under src/ (every described module converted to TypeScript)", () => {
+    expect(twinNames).toEqual([]);
+  });
+
+  it("every declaration twin, if one exists, declares exactly its module's exports", () => {
+    const drift = pairs.flatMap((p) => {
+      const d = driftOf(p);
+      return d ? [{ dts: path.relative(SRC, p.dts), ...d }] : [];
+    });
+    expect(drift).toEqual([]);
+  });
+
+  it("bites: the export comparison reports a module whose declaration has drifted, and passes a matching one", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "p912-pair-"));
+    try {
+      const js = path.join(dir, "m.js");
+      const dts = path.join(dir, "m.d.ts");
+      fs.writeFileSync(js, "module.exports = { a() {}, b: 1 };\n");
+      fs.writeFileSync(dts, "declare const m: {\n  a: () => void;\n  b: number;\n};\nexport = m;\n");
+      expect(driftOf({ dts, js })).toBeNull();
+      fs.writeFileSync(dts, "declare const m: {\n  a: () => void;\n  gone: number;\n};\nexport = m;\n");
+      expect(driftOf({ dts, js })).toEqual({ declared: ["a", "gone"], actual: ["a", "b"] });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   it("bites: a declaration missing an export, or naming one that does not exist, differs", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "p912-"));

@@ -209,7 +209,7 @@ make dev           # local stack
 make verify        # lint · ts-ratchet · typecheck · test · build · load-check — by hand; CI runs the same stages
 cd backend && npm run load:check [-- --src]  # every module loads: dist/ under node, src/ under tsx (ADR-087 Am. 15)
 make test-e2e      # 57 live spec files, running server required (not in verify, not in CI)
-cd backend && npm run test:live   # every *.live.test.* DB suite, a fresh database each (DB_HOST/PORT/USER/PASS; --only=, --with=mqtt); CI job live-db (A-367)
+cd backend && npm run test:live -- --with=all   # every *.live.test.* suite (jest.live.config.js; the unit config never loads them, none can skip), a fresh database each (DB_HOST/PORT/USER/PASS; --with=mqtt,redis,rabbitmq,s3,clamav,upgrade|all and their *_LIVE_* vars, docs/ENGINEERING/09 § 8; --only=); CI job live-db (A-367)
 make migrate       # then: make migrate-verify — the log is not evidence
 make hooks         # opt in to the pre-push hook (gitleaks, lint ratchet, typecheck, ts-ratchet)
 

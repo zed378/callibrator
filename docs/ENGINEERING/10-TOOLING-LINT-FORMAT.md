@@ -18,7 +18,8 @@ The tools, their configuration as it actually is, and the target.
 | JavaScript ratchet | `npm run ratchet` (`tsx scripts/ts-ratchet.ts`) — fails on any `.js` path not listed in `backend/.ts-ratchet.json`; lowers the floor when files have gone. `-- --list` prints the counted files | — |
 | format check | `npm run prettier` — **not a gate, and not clean** (below) | — |
 | unit tests | `npm test`; gate: `npm run test:coverage` (100%, ADR-085 scope). Through the npm scripts, never bare `npx jest` (A-99) | `npm test` (= `jest --coverage`) |
-| live E2E | `npm run test:e2e` against a running server (`BASE_URL`) | — |
+| live E2E | `npm run test:e2e` against a running server (`BASE_URL`); **Mailpit mandatory** (`E2E_MAILPIT_URL`): the run refuses to start without it, nothing is skipped (2026-10-10, [record](../../MEMORY/records/2026-10-10-no-skip-e2e-browser.md)) | — |
+| live contract | `npm run test:contract` (`jest.contract.config.js`): every route and every frontend service call against a running **non-production, demo-seeded** stack (`LIVE_CONTRACT_BASE_URL`); writes, one run per fresh stack. Was `LIVE_CONTRACT=1` inside the e2e run, skipped by default | — |
 | build | `npm run build` = `openapi:check` (the committed `openapi.json` is current; P9-25, ADR-103 — was `swagger:generate`; **target, ADR-136:** replaced by `contract:check` over the generated validators and the bundle `contracts/dist/openapi.json`) → `build:dist` (`tsx scripts/build-dist.ts`: `.js` copied byte for byte, `.ts` compiled by TypeScript 7 under `tsconfig.build.json`) → `pkg` (`node26-linux-x64`, `node26-win-x64`) | `npm run build` (`next build`, which also type-checks with the TypeScript 6 API) |
 | everything | `make verify` = `lint ts-ratchet typecheck test build` — **manual**; CI runs the same stages. Not covered: `make test-e2e`, `make test-browser` | |
 

@@ -7,9 +7,12 @@
  * The hook's own logic is tested with a stub `gitleaks` placed in the scratch
  * repository's .tools/bin — which also proves the hook puts the copy that
  * `make hooks` installs first on its PATH. Detection itself is tested with the
- * REAL gitleaks when one is installed (make hooks puts it in .tools/bin); in a
- * checkout without it that one case is skipped by name, and CI's secret-scan
- * job remains the gate.
+ * REAL gitleaks, which every place that runs the suite must have: `make hooks`
+ * (scripts/git-hooks/install-gitleaks.sh) puts the pinned, checksum-verified
+ * binary in .tools/bin, and CI's backend-test job runs that installer. Without
+ * it that case FAILS, naming the command; it is never skipped (2026-10-10).
+ * The "no gitleaks anywhere" case removes every gitleaks from the hook's PATH
+ * itself, so it runs on a machine that has one installed too.
  *
  * The secret committed to the scratch repository is generated at run time, so
  * no secret-shaped string exists in this file for the repository scan to find.
@@ -36,12 +39,27 @@ const GIT_ENV = {
   GIT_CONFIG_NOSYSTEM: "1",
 };
 
-const run = (cmd, args, opts = {}) =>
-  spawnSync(cmd, args, {
-    encoding: "utf8",
-    ...opts,
-    env: { ...process.env, ...GIT_ENV, ...(opts.env || {}) },
-  });
+const run = (cmd, args, opts = {}) => {
+  const env = { ...process.env, ...GIT_ENV };
+  if (opts.env && "PATH" in opts.env) {
+    // Windows spells it Path: keep one spelling, or the child may read the other.
+    for (const key of Object.keys(env)) {
+      if (key.toUpperCase() === "PATH") {
+        delete env[key];
+      }
+    }
+  }
+  return spawnSync(cmd, args, { encoding: "utf8", ...opts, env: { ...env, ...(opts.env || {}) } });
+};
+
+/** This process's PATH without any directory that holds a gitleaks binary. */
+const pathWithoutGitleaks = () => {
+  const key = Object.keys(process.env).find((k) => k.toUpperCase() === "PATH");
+  return (key ? process.env[key] : "")
+    .split(path.delimiter)
+    .filter((dir) => dir && !["gitleaks", "gitleaks.exe"].some((name) => fs.existsSync(path.join(dir, name))))
+    .join(path.delimiter);
+};
 
 const git = (cwd, ...args) => {
   const r = run("git", args, { cwd });
@@ -161,22 +179,28 @@ describe("A-19: pre-push hook", () => {
     expect(fs.existsSync(path.join(repo, "gitleaks.args"))).toBe(false);
   });
 
-  const noGlobalGitleaks = run("bash", ["-c", "command -v gitleaks"]).status !== 0;
-  (noGlobalGitleaks ? it : it.skip)(
-    "with no gitleaks anywhere, SKIPS the secret scan loudly rather than passing silently",
-    () => {
-      const head = commitFile(repo, "notes.txt", "hello\n");
+  it("with no gitleaks anywhere, SKIPS the secret scan loudly rather than passing silently", () => {
+    // The hook's environment, not the machine's: every PATH directory holding a gitleaks
+    // is removed, and the scratch repository has no .tools/bin.
+    const env = { PATH: pathWithoutGitleaks() };
+    const probe = run("bash", ["-c", "command -v gitleaks; command -v git >/dev/null && echo git-ok"], { env });
+    expect(probe.stdout.trim()).toBe("git-ok");
+    const head = commitFile(repo, "notes.txt", "hello\n");
 
-      const r = runHook(repo, pushLine(head, base));
+    const r = runHook(repo, pushLine(head, base), env);
 
-      expect(r.status).toBe(0);
-      expect(r.stdout).toContain("SKIP secret scan: gitleaks is not installed");
-    },
-  );
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("SKIP secret scan: gitleaks is not installed");
+  });
 
-  (REAL_GITLEAKS ? it : it.skip)(
+  it(
     "with the real gitleaks: a pushed commit carrying an AWS access key is refused; the clean range before it is not",
     () => {
+      if (!REAL_GITLEAKS) {
+        throw new Error(
+          "gitleaks is not installed: run `bash scripts/git-hooks/install-gitleaks.sh` (or `make hooks`) from the repository root",
+        );
+      }
       const bin = path.join(repo, ".tools/bin");
       fs.mkdirSync(bin, { recursive: true });
       fs.copyFileSync(REAL_GITLEAKS, path.join(bin, path.basename(REAL_GITLEAKS)));

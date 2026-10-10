@@ -22,11 +22,11 @@
  * The super-admin-only routes are driven in a super-admin context. They pass
  * with and without the fix: that is the evidence they were NOT broken.
  *
- * OPT-IN — needs a database built by db.sync() of the current models plus
+ * NEEDS a database built by db.sync() of the current models plus
  * every migration (migrator.up()):
  *
- *   W33_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
- *     npm test -- src/tests/services/bulkDestroyRoutes.w33.live --coverage=false
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
+ *     npm run test:live:jest -- src/tests/services/bulkDestroyRoutes.w33.live
  *
  * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
  * DB_NAME is not used), builds it as the backend boots (db.sync() + every
@@ -38,8 +38,6 @@
 const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
 
-const live = process.env.W33_PG_LIVE_TEST === "1" ? describe : describe.skip;
-
 const A = "a33a33a3-0000-4000-8000-0000000000a1";
 const B = "b33b33b3-0000-4000-8000-0000000000b1";
 const USER_A = "a33a33a3-0000-4000-8000-0000000000e1";
@@ -47,7 +45,7 @@ const USER_B = "b33b33b3-0000-4000-8000-0000000000e2";
 const PROJECT_A = "a33a33a3-0000-4000-8000-0000000000c1";
 const PROJECT_B = "b33b33b3-0000-4000-8000-0000000000c2";
 
-live("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () => {
+describe("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () => {
   jest.setTimeout(60000);
   let db;
   let scratch;

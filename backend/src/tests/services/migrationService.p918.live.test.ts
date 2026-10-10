@@ -18,18 +18,16 @@
  *    records, which are append-only; nothing is removed;
  *  - the demo seed is refused in production before anything is written.
  *
- * OPT-IN — an EMPTY scratch database (the name must contain "scratch"); the
+ * NEEDS — an EMPTY scratch database (the name must contain "scratch"); the
  * demo rows it leaves cannot be removed (that is the point of A-259):
  *
- *   P918_SEED_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55918 \
+ *   DB_HOST=127.0.0.1 DB_PORT=55918 \
  *     DB_NAME=callibrator_scratch_p918seed DB_USER=postgres DB_PASS=... \
- *     npm test -- src/tests/services/migrationService.p918.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/migrationService.p918.live
  */
 import fs from "fs";
 import path from "path";
 import { env, environment } from "../../config/env";
-
-const live = env("P918_SEED_PG_LIVE_TEST") === "1" ? describe : describe.skip;
 
 const APP_ROLE = "callibrator_app";
 const PLATFORM = "00000000-0000-4000-8000-000000000001";
@@ -82,7 +80,7 @@ const startProcess = (): Graph => {
 
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
-live("P9-18 — migration.service on live PostgreSQL 18 as callibrator_app", () => {
+describe("P9-18 — migration.service on live PostgreSQL 18 as callibrator_app", () => {
   jest.setTimeout(240000);
   let owner: Graph;
   let app: Graph;

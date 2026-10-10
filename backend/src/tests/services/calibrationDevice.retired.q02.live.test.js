@@ -9,12 +9,12 @@
  * are written before the migration runs, as on a deployment that already has
  * retired devices, and the migration is then run twice and reversed.
  *
- * OPT-IN — needs an EMPTY scratch database the connecting role owns (it is
+ * NEEDS an EMPTY scratch database the connecting role owns (it is
  * rebuilt with db.sync({ force: true })), whose name contains "scratch":
  *
- *   Q84_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55884 DB_NAME=callibrator_scratch_q84 \
+ *   DB_HOST=127.0.0.1 DB_PORT=55884 DB_NAME=callibrator_scratch_q84 \
  *     DB_USER=cal_owner DB_PASS=owner \
- *     npm test -- src/tests/services/calibrationDevice.retired.q02.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/calibrationDevice.retired.q02.live
  *
  * A-283 (2026-09-30): the schema, the migrations and the trigger's owner-level
  * checks run as the OWNER — the trigger must hold even for it. Everything the
@@ -28,8 +28,6 @@
 const { enterAppRole, grantAppRoleOnSyncedSchema, APP_ROLE } = require("../fixtures/liveBoot");
 const { LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
-
-const live = process.env.Q84_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const TENANT_A = "a8a8a8a8-0000-4000-8000-00000000000a";
 const TENANT_B = "b8b8b8b8-0000-4000-8000-00000000000b";
@@ -74,7 +72,7 @@ const inRolledBack = async (db, work) => {
   }
 };
 
-live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => {
+describe("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => {
   let g;
   /** A second process, as callibrator_app: the application's path. */
   let app;

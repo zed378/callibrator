@@ -18,7 +18,7 @@
  *  - D-29: 0019's `up`, re-run against a table whose signing-key index exists
  *    only under ANOTHER name, does not create a second one.
  *
- * OPT-IN — needs a scratch database (its name contains "scratch") and
+ * NEEDS a scratch database (its name contains "scratch") and
  * DB_APP_ROLE naming the application role. The suite boots the schema the way
  * backend/index.js does (fixtures/liveBoot#bootSchema: db.sync(), then every
  * migration — 0057 creates and grants DB_APP_ROLE) as the owner before it
@@ -26,14 +26,12 @@
  * to ASSUME a booted database: on a fresh one every case failed in beforeAll
  * with no message — 2026-10-08, the live-suites repair.)
  *
- *   DATA_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55922 DB_NAME=dbd_fresh_scratch \
+ *   DB_HOST=127.0.0.1 DB_PORT=55922 DB_NAME=dbd_fresh_scratch \
  *     DB_USER=postgres DB_PASS=x DB_APP_ROLE=dbd_fresh_app \
- *     npm test -- src/tests/services/dataLayer.dbD.live --coverage=false
+ *     npm run test:live:jest -- src/tests/services/dataLayer.dbD.live
  *
  * Every run creates its own tenants, so it can be re-run on the same database.
  */
-
-const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 jest.setTimeout(120000);
 
@@ -53,7 +51,7 @@ const startProcess = () => {
   };
 };
 
-live("dbD — ADR-083 on live PostgreSQL 18, as the application role", () => {
+describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () => {
   const fs = require("fs");
   const path = require("path");
   const { randomUUID } = require("crypto");
