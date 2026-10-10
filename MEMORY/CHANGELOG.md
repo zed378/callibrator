@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — The groundwork of offline field capture (P22-10b; no screen yet) ([record](./records/2026-10-10-p22-10b-field-web-platform.md))
+- **Added (internal):** the phone-side storage for offline work, encrypted record by record with a key that cannot be exported; the offline worker for the coming `/field` app (it keeps only the app's own page and files, never data); the install manifest and icons. `/field` now requires a sign-in, and only `/field` and the QR start page may use the camera. Nothing is active until the field app's screens ship (P22-10c).
+
 ### 2026-10-10 — The offline sync engine's core (P22-10a; not yet in any page) ([record](./records/2026-10-10-p22-10a-sync-engine-core.md))
 - **Added (internal):** the engine that will sync IPM captures and device registrations made offline: every request is fixed (its key and exact content) before it is first sent, so a retry can never create a duplicate or a different record; conflicts stop only the capture concerned and wait for the technician's decision; nothing is ever dropped without a confirmed action; and the downloaded device list is purged after 72 hours, on a lost access or a changed scope, while unsynced work is kept. The phone screens that use it follow (P22-10b, P22-10c).
 

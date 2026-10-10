@@ -57,6 +57,13 @@ describe("buildContentSecurityPolicy (P7-08)", () => {
     expect(getScriptNonceFromHeader(header)).toBe(NONCE);
   });
 
+  it("P22-10b: worker-src and manifest-src 'self' on every page; no wasm-unsafe-eval (FT-88)", () => {
+    const text = buildContentSecurityPolicy({ nonce: "n", isDev: false, host: "app.example", apiBaseUrl: "https://api.example" });
+    expect(text).toContain("worker-src 'self'");
+    expect(text).toContain("manifest-src 'self'");
+    expect(text).not.toContain("wasm-unsafe-eval");
+  });
+
   it("the fixed directives: frame-ancestors, base-uri, form-action, object-src, default-src", () => {
     const csp = prod();
     expect(csp["frame-ancestors"]).toEqual(["'none'"]);
@@ -161,7 +168,7 @@ describe("P22-03 (ADR-127 Am. 2) — the camera on the QR-scanning page only", (
   it("every page keeps camera=(); the scanning page alone gets camera=(self), the rest of the policy unchanged", () => {
     const page = PAGE_SECURITY_HEADERS.find((h) => h.key === "Permissions-Policy")?.value ?? "";
     expect(page).toContain("camera=()");
-    expect(CAMERA_PAGES).toEqual(["/dashboard/ipm/new"]);
+    expect(CAMERA_PAGES).toEqual(["/dashboard/ipm/new", "/field"]);
     expect(CAMERA_PERMISSIONS_POLICY).toBe(page.replace("camera=()", "camera=(self)"));
   });
 });

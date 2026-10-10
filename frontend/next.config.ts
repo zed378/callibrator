@@ -28,6 +28,17 @@ const nextConfig: NextConfig = {
         source: "/((?!api/|uploads/public/).*)",
         headers: [...PAGE_SECURITY_HEADERS],
       },
+      // P22-10b (P19-08 § 4.2): the field worker — always revalidated, its own worker CSP (it fetches
+      // same-origin only and imports nothing). The proxy matcher excludes it from the page CSP.
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "text/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, max-age=0" },
+          { key: "Content-Security-Policy", value: "default-src 'none'; connect-src 'self'; script-src 'self'" },
+        ],
+      },
+      { source: "/manifest.webmanifest", headers: [{ key: "Content-Type", value: "application/manifest+json" }] },
       // P22-03 (ADR-127 Am. 2): the QR-scanning page alone may use the camera.
       ...CAMERA_PAGES.map((source) => ({ source, headers: [{ key: "Permissions-Policy", value: CAMERA_PERMISSIONS_POLICY }] })),
       // P10-08 (doc 20 §10): the verification page is never indexed. The page
