@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-10 — Phase 20's database upgrade proved on production-sized data (P20-09) ([record](./records/2026-10-10-p20-09-upgrade-boot-production-shaped.md), ADR-124 Am. 7)
+- **Operational:** upgrading from the deployed release (`3e91413`) to this tree takes about 2 minutes of boot-time migration for 100k devices and 1M IoT readings, well inside the 600 s schema-lock window. The readings back-fill dominates, at about 76 s per million. Deploy with Recreate (ADR-124 Am. 2 § 6.3). A deployment with more than about 4.5 million readings should split 0122 first.
+- **Added:** `upgradeBoot.p2009.live`, a by-hand suite. It upgrades a seeded copy, runs `migrate:verify`, and compares the upgraded catalogue against a fresh install's.
+
 ### 2026-10-10 — The IPM report: on screen, as a PDF made in the browser, signed, and verifiable by its QR (P23-02) ([record](./records/2026-10-10-p23-02-ipm-report-renderer.md))
 - **Added:** `dashboard/ipm/sessions/<id>/report`: the IPM report on screen (the accessible version) and as a PDF in Indonesian or English, made in the browser from a fresh read; the technician signs it and the facility's IPSRS countersigns it with their password or authenticator code. Reached from the IPM history and right after a submit.
 - **Added:** `/verify/ipm/<number>`: the public page the report's QR opens — whether the report is issued, superseded or voided, who signed it, and its hash recomputed in the reader's own browser; the PDF can be downloaded there.

@@ -257,6 +257,7 @@ The service stamps an attachment's facility **from its resource, loaded in conte
 - Each back-fill is **one set-based statement** (`UPDATE child c SET client_facility_id = d.client_facility_id FROM calibration_devices d WHERE d.id = c.device_id AND d.tenant_id = c.tenant_id AND c.client_facility_id IS NULL`). Batching inside a transaction would not shorten the lock (the rows stay locked until commit); batching across transactions would break "one transaction per migration".
 - `SET LOCAL lock_timeout = '10s'` (the 0111 precedent): a migration that cannot get its lock fails fast and is **not** recorded as applied.
 - **Volumes:** the reference deployment's volumes are fresh since 2026-10-02 (small); the upstream's ~330 k rows arrive **after** these migrations, written with their facility by the ETL. The back-fill touches today's data only. P20-09 measures M3/M6 on production-shaped data; if a table there takes longer than the upgrade window, that card splits it (batched, idempotent `WHERE client_facility_id IS NULL`, NOT NULL in a following migration) — recorded, not assumed.
+- **As measured (P20-09, ADR-124 Am. 7):** the window is `MIGRATION_LOCK_TIMEOUT_MS` (600 s). On production-shaped data (100k devices, 200k records, 1M readings), the whole upgrade schema step from `3e91413` takes 126 s, and 0122 takes 76 s. No back-fill is split. At about 4.5 times that volume, split 0122 (or 0119) first.
 
 ### 6.3 Upgrade-boot rule and deploy rule
 

@@ -24,6 +24,7 @@
  *
  * NOT here, each with its reason (run them by hand, as their headers say):
  *  - upgradeBoot.am3 — checks out and installs an older revision (git worktree + npm ci);
+ *  - upgradeBoot.p2009 — extracts the pre-Phase-20 release and seeds ~2 million rows (P20-09, ~5 min);
  *  - rabbitmq.w06 — stops and starts a named broker container;
  *  - storage.s3.u09 — needs an S3 endpoint and keys;
  *  - socket.redisAdapter, rateLimiter.redis, rateLimiter.fixedWindow.am5 — Redis, not a database.
@@ -104,6 +105,7 @@ export const SUITES: readonly Suite[] = Object.freeze([
 /** The live suites deliberately left to a by-hand run (the header says why). */
 export const NOT_RUN: readonly string[] = Object.freeze([
   "src/tests/migrations/upgradeBoot.am3.live.test.ts",
+  "src/tests/migrations/upgradeBoot.p2009.live.test.ts",
   "src/tests/services/rabbitmq.w06.live.test.js",
   "src/tests/services/storage.s3.u09.live.test.ts",
   "src/tests/config/socket.redisAdapter.live.test.js",

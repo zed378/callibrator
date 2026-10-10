@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 8 DONE (P20-01, P20-03 — 2026-10-07; P20-07, P20-06 — 2026-10-08; P20-04, P20-05, **P20-02, P20-08** — 2026-10-09) · 0 TODO · 1 BLOCKED (P20-09) |
+| **Status** | **9 DONE — phase complete** (P20-01, P20-03 — 2026-10-07; P20-07, P20-06 — 2026-10-08; P20-04, P20-05, P20-02, P20-08 — 2026-10-09; **P20-09** — 2026-10-10) · 0 TODO · 0 BLOCKED |
 | **Goal** | Models + forward migrations in our conventions |
 | **Depends on** | Phase 19 |
 | **Size** | M |
@@ -55,7 +55,7 @@ Tests:
 
 [Record](../MEMORY/records/2026-10-08-p20-07-client-facilities.md) (hand-offs to P21-09, P20-02, P20-04/05). | P19-04 |
 | P20-08 | next free number: **a DB-level list exists** (0123's CHECK `attachments_facility_kind` and the `facility_resource_*` functions): `attachments.purpose` with its CHECK and the one-live-device-photo partial unique (P19-03 spec § 7.1); the `inspectionsession` resource type in the widened CHECK and functions, and `inspection_sessions_attachments_follow_facility` (P19-02 spec § 12); no folder values (G-D4) | **DONE 2026-10-09** — migration `0129-attachment-purpose` (`purpose` + CHECKs `attachments_purpose_values`/`_resource`, `attachments_one_live_device_photo`; `inspectionsession` in the widened `attachments_facility_kind` and four functions — previous text byte for byte; `inspection_sessions_attachments_follow_facility`); the move carries session photos; `LINKABLE_RESOURCES` waits for P21-03 — [record](../MEMORY/records/2026-10-09-p20-02-08-device-extensions.md); ADR-132 Am. 1 | P19-02, P19-03, P20-04, P20-07 |
-| P20-09 | Upgrade boot and `make migrate-verify` on production-shaped data; columns inspected, not the log | BLOCKED | P20-01 … 08 |
+| P20-09 | Upgrade boot and `make migrate-verify` on production-shaped data; columns inspected, not the log | **DONE 2026-10-10** — `upgradeBoot.p2009.live` (new, by hand), PostgreSQL 18, **9/9**. It upgrades from `3e91413` (the deployed image, last migration 0110) over 100k devices, 200k records, 100k certificates, 50k work orders, 1M readings, 60k attachments and 330k audit rows. Results: 0111 – 0131 applied in **126 s** (0122 76 s) against the 600 s window, no back-fill split (ADR-124 Am. 7). `migrate:verify` gave exit 0. 18 Phase 20 columns were checked in `information_schema`, the back-fills checked row by row, and the upgraded `pg_catalog` equals a fresh install's (columns, constraints, indexes, triggers, functions, ENUMs, `callibrator_app` grants). Fail-before: a planted default fails it 8/1 — [record](../MEMORY/records/2026-10-10-p20-09-upgrade-boot-production-shaped.md) | P20-01 … 08 |
 
 **DoD (adds):** one transaction per migration, reversible `down`, no blanket try/catch, indexes and
 CHECKs in the migration only; every negative of 04 § 10 re-proved by a named test on the real migration.
