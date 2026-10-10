@@ -1,5 +1,8 @@
 # .gitignore
 
+# Local Claude Code slash commands (per workstation, not shared)
+.claude/commands/
+
 # Dependencies
 node_modules/
 
