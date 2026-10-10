@@ -171,8 +171,11 @@ live("P20-04 — migration 0126 on live PostgreSQL 18 (with 0127, as the boot ap
   });
 
   it("0126 and 0127 are applied (then 0128, 0129), and their sixteen triggers are ENABLE ALWAYS ('A')", async () => {
-    // 0128 and 0129 (P20-02 / P20-08) follow them in the manifest.
-    expect(applied.slice(-4, -2)).toEqual(["0126-ipm-sessions.js", "0127-ipm-immutability.js"]);
+    // Later migrations (0128 ... ) follow them in the manifest: assert the adjacent pair, not its
+    // position from the tail, which every new migration would break.
+    const at = applied.indexOf("0126-ipm-sessions.js");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(applied.slice(at, at + 2)).toEqual(["0126-ipm-sessions.js", "0127-ipm-immutability.js"]);
     const triggers = await ipmTriggers(g.db);
     expect(triggers).toHaveLength(16);
     expect(triggers.filter((x) => !x.endsWith(":A"))).toEqual([]);
