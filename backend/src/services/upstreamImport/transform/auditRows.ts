@@ -6,7 +6,9 @@
  * What "wrote" means: an `id_map` row of this run touched in THIS transaction (its `updated_at`
  * is the transaction's `now()`; `recordMappings` sets it on insert and on update). An unchanged
  * row the step skipped is not touched, so a re-run of the same dump writes no new audit row.
- * Several upstream rows merged into one target (duplicate names) are ONE audit row.
+ * Several upstream rows merged into one target (duplicate names) are ONE audit row. Only the
+ * tables a step WRITES are audited (RESOURCE_TYPES): a use-only row mapped to what it decided —
+ * an upstream group to its role (P24-02b) — writes no row, because nothing was created.
  *
  *  - `action` CREATE when a mapping of the target was first made in this transaction
  *    (`imported_at = now()`), UPDATE otherwise;
@@ -49,7 +51,7 @@ export const runAuditRows = async (context: StepContext): Promise<void> => {
     `INSERT INTO audit_logs (id, tenant_id, user_id, actor_type, actor_name, action, resource_type, resource_id,
                              client_facility_id, changes, created_at)
      SELECT gen_random_uuid(), coalesce(w.tenant_id, $3::uuid), NULL, 'system', $4,
-            w.action::"enum_audit_logs_action", coalesce(r.resource_type, w.target_table), w.target_id::text,
+            w.action::"enum_audit_logs_action", r.resource_type, w.target_id::text,
             w.client_facility_id,
             jsonb_build_object('operation', 'UPSTREAM_IMPORT', 'source', 'skp_ipm', 'importRunId', $1::text,
                                'sourceTable', w.source_table, 'targetTable', w.target_table),
@@ -59,7 +61,7 @@ export const runAuditRows = async (context: StepContext): Promise<void> => {
                FROM ${ID_MAP} m
               WHERE m.import_run_id = $1 AND m.updated_at = now() AND (m.tenant_id = $2 OR m.tenant_id IS NULL)
               GROUP BY m.target_table, m.target_id, m.tenant_id, m.client_facility_id) w
-       LEFT JOIN unnest($5::text[], $6::text[]) AS r(target_table, resource_type) ON r.target_table = w.target_table
+       JOIN unnest($5::text[], $6::text[]) AS r(target_table, resource_type) ON r.target_table = w.target_table
       ORDER BY w.target_table, w.target_id`,
     [
       context.runId,

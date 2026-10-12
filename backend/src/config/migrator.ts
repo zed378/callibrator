@@ -225,6 +225,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0133-upstream-import-transform.js", require("../migrations/0133-upstream-import-transform")],
   // P24-02a (ADR-129 Am. 3): the run's provider tenant, the facilities reason, the transform role's first public grants.
   ["0134-upstream-transform-facilities.js", require("../migrations/0134-upstream-transform-facilities")],
+  // P24-02b (ADR-129 Am. 4): the users step's reasons and the transform role's column grants on users and roles.
+  ["0135-upstream-transform-users.js", require("../migrations/0135-upstream-transform-users")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

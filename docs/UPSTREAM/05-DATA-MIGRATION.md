@@ -156,6 +156,13 @@ Shared institutional accounts (76 of 106 users have no full name; one client acc
 are not individual identities under 21 CFR Part 11 — the invitation step is also where the
 operator names the real person behind each account (D-3).
 
+> **As built (P24-02b, ADR-129 Am. 4, 2026-10-12):** the invitation option. Imported users get ONE
+> unusable bcrypt hash per run (a random secret, discarded), `must_change_password`, the e-mail
+> lower-cased and unverified. The roles and bindings follow P18-01-02 § 2.2. An e-mail another
+> account already holds is quarantined `email_in_use`; a taken username is suffixed. A re-run updates
+> names and the active flag only — never the e-mail, username, role or binding. The transform role's
+> grants on `users` are column-level and include no credential column.
+
 ## 6. File Migration
 
 ### 6.1 Volumes (measured on the owner's local copy, 2026-10-07; nothing opened or copied)

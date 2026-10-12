@@ -71,6 +71,15 @@ const CROSS_TENANT = {
     "the transform's id_map / quarantine / allow-listed staging tables in upstream_import; no tenant-scoped table is named",
   "services/upstreamImport/transform/runner.ts#${table}":
     "the transform's id_map / quarantine / allow-listed staging tables in upstream_import; no tenant-scoped table is named",
+  // P24-02b (ADR-129 Am. 4): the users step. Every write and the target read bind the provider
+  // tenant; two statements do not, on purpose: the collision check reads lower(username) and
+  // lower(email) of the CANDIDATES across all tenants (both are globally unique — a per-tenant
+  // check would let the INSERT fail), and the group / membership reads touch only allow-listed
+  // staging tables (via stagedTable). System work on the transform connection, no principal.
+  "services/upstreamImport/transform/users.ts#users":
+    "the users step's username / e-mail collision check over the candidates' keys, across tenants because both are globally unique",
+  "services/upstreamImport/transform/users.ts#${table}":
+    "the users step's reads of the allow-listed staging tables (auth_groups, auth_groups_users) in upstream_import",
 };
 
 const tenantScopedTables = () => {
