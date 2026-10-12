@@ -10983,6 +10983,43 @@ The frontend today has no service worker, no web manifest and no IndexedDB use. 
 
 **`docs/` amended:** `FRONTEND/00-FRONTEND-STANDARDS.md` § Content Security Policy (the camera on the QR-scanning page, with a reference to this amendment).
 
+### ADR-127 Amendment 3 (2026-10-12, P22-10c1): the field runtime as built — QR matched offline without the tenant's settings, an undecodable HEIC refused, the wipe deleted at once and retried from a pending list, the facility choice kept through a purge, the rooms read tenant-wide, the session-end purge awaited before leaving
+
+**Date:** 2026-10-12 · **Status:** Accepted, **built** (frontend only). Decided by the implementing agent under the owner's standing delegation · **Card:** P22-10c1 (P22-10c split into c1 the runtime, c2 the `/field` page, c3 the browser suite and the real-device script) · **Record:** `MEMORY/records/2026-10-12-p22-10c1-field-runtime.md`
+
+**Context.** P22-10c wires the engine (P22-10a) and the platform (P22-10b) into an app. Building the runtime against the code as it stands found six places where the spec (P19-08) and the code disagree or say nothing.
+
+**Decision.**
+1. **The split.** P22-10c is three cards: **c1** the runtime without a page (`frontend/src/field/app/`: the field reads, the working-set download, the purge triggers, the registry upkeep, the profile guard in the dashboard shell, the administrator wipe, photo admission); **c2** the `/field` document and its screens; **c3** the browser suite (P19-08 § 16.3) and the real-device script (§ 16.5).
+2. **Offline QR lookup without the tenant's QR settings.** No read gives a technician the tenant's prefix and padding. The working set's `qrCode` is already normalised by the server, so offline the typed text is spaced out and upper-cased; an exact match wins, and a bare number matches a stored code of letters followed by the same number, zero padding ignored. Online the by-QR read stays the authority.
+3. **An undecodable HEIC is refused, not queued as is.** § 8.1 step 4 assumed the server converts HEIC; ADR-132 Am. 3 made the server take JPEG and PNG only. Queuing the original would only move the refusal to the sync. Photos go through `lib/photoPrep.ts` (P22-02), plus the 25 MB and "phone almost full" refusals (under 50 MB or 10 % free).
+4. **The administrator wipe.** Following ADR-135, the wipe is recorded (`POST /field/wipes`, counts read from the other database without its key) **before** the database is deleted. If the server does not record it, nothing is deleted. If the deletion then fails, the key goes to a `localStorage` list of ids (`cf.field.wipePending`), and the profile guard retries it at the next launch.
+5. **What a purge keeps.** The downloaded facilities' names and counts are tenant data, so they live in the purgeable `rooms` store (key `_facilities`), never in `meta`. The chosen facility **ids** live in `meta` (opaque ids only), so a purge for a changed fingerprint can re-download the same choice. A working set that the profile guard dropped (it cannot rewrite the other user's encrypted `meta`) is reconciled from the registry row when that user next opens the app.
+6. **Rooms are read tenant-wide.** `GET /warehouses?kind=room` has no `clientFacilityId` filter in the contract (§ 7.2 assumed one). The runtime stores the room list once per download under `rooms/tenant`. The facility hooks still scope a bound user's read. A facility filter is a backend addition, reported to the coordinator rather than made here.
+7. **The catalogue read goes around the typed client.** `If-None-Match` and `ETag` / 304 are not exposed by `typedApi`, so that read uses the same axios instance (`apiClient`, the same interceptors), as the engine's transport does. Every other field read is typed.
+8. **The session-end purge runs before the browser leaves.** `client.ts` gains `onSessionEnd(hook)`. `endSession` awaits every hook, bounded at 3 s, and only then navigates to `/login`. `/field` joins the protected paths of `sessionExpiredRedirect`, as P22-10b did for `proxy.ts`.
+9. **`idb.ts` keeps the original error.** A request's error event reaches the transaction's `onerror` before the transaction's own `error` is set. `tx` now reads the failed request (the event's target), so a caller sees the `ConstraintError` / `QuotaExceededError` instead of a generic message.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| One P22-10c card | too large to gate as one: runtime, page and browser suite are each a day's work with their own evidence |
+| Read the tenant settings for QR offline | the settings read is an administrator's; a narrower technician read is a backend change for a cosmetic gain |
+| Queue a HEIC original (P19-08 § 8.1 as written) | the server refuses it (ADR-132 Am. 3); the technician would learn at sync time, possibly days later |
+| Delete first, then record the wipe (P19-08 § 11.3 as written) | superseded by ADR-135: evidence must not vanish without its audit row |
+| Keep the facility names in `meta` | `meta` survives a purge, so the names would survive it too |
+| Navigate at once on session end | the purge's IndexedDB transactions are cut by the unload; the working set could survive |
+
+**Implications, including the bad ones.**
+- Offline, two devices whose codes have different prefixes and the same number both match a bare number; the screen lists both.
+- A HEIC photo is unusable on a browser that cannot decode it (desktop Chrome / Firefox); iOS converts at pick time.
+- A wipe recorded but not yet deleted leaves the other user's encrypted data on the phone until the next launch. The audit row already says it was wiped.
+- An unbound user's room list is the tenant's, not the facility's: larger than needed, and still names only.
+- Signing out on an expired session may take up to 3 s longer while the purge finishes.
+
+**`docs/` amended:** none (the spec `MEMORY/specs/P19-08-offline-field-capture.md` carries a note referencing this amendment).
+
 ---
 
 ## ADR-128: A Signed Attachment Link Lives at Most a Configured Cap (Default 15 Minutes, Never Above One Hour), Is Bound to Its Tenant and the Principal That Minted It, and Is Re-Checked at Redemption

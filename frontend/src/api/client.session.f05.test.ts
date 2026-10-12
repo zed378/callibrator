@@ -15,6 +15,8 @@ import apiClient, {
   browserNavigation,
   describeApiError,
   sessionExpiredRedirect,
+  onSessionEnd,
+  SESSION_END_HOOK_TIMEOUT_MS,
   __resetSessionStateForTests,
 } from "./client";
 import { useAccessDeniedStore } from "@/stores/accessDeniedStore";
@@ -166,6 +168,50 @@ describe("F-05: a session that cannot be refreshed lands on /login once", () => 
     expect(sessionExpiredRedirect("/verify/CERT-1")).toBeNull();
     expect(sessionExpiredRedirect("/dashboardish")).toBeNull();
     expect(sessionExpiredRedirect("/dashboard")).toBe("/login?callbackUrl=%2Fdashboard");
+  });
+});
+
+describe("P22-10c1: the field app is protected, and its purge runs before the browser leaves", () => {
+  it("/field (and below it) is a protected page; /fieldwork is not", () => {
+    expect(sessionExpiredRedirect("/field", "?view=home")).toBe("/login?callbackUrl=%2Ffield%3Fview%3Dhome");
+    expect(sessionExpiredRedirect("/field/x")).toBe("/login?callbackUrl=%2Ffield%2Fx");
+    expect(sessionExpiredRedirect("/fieldwork")).toBeNull();
+  });
+
+  it("every session-end hook is awaited before the navigation; a failing hook does not stop it", async () => {
+    window.history.pushState({}, "", "/field?view=home");
+    const order: string[] = [];
+    const offA = onSessionEnd(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      order.push("purged");
+    });
+    const offB = onSessionEnd(() => Promise.reject(new Error("blocked")));
+    assign.mockImplementation(() => {
+      order.push("navigated");
+    });
+    handler = () => ({ status: 401, data: { success: false, message: "Session expired" } });
+    await Promise.allSettled([api.get("/api/v1/a")]);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(order).toEqual(["purged", "navigated"]);
+    expect(assign).toHaveBeenCalledWith("/login?callbackUrl=%2Ffield%3Fview%3Dhome");
+    offA();
+    offB();
+  });
+
+  it("a hook that hangs does not keep the user on the page past the bound", async () => {
+    jest.useFakeTimers();
+    try {
+      window.history.pushState({}, "", "/field");
+      const off = onSessionEnd(() => new Promise<void>(() => undefined));
+      handler = () => ({ status: 401, data: { success: false, message: "Session expired" } });
+      const pending = Promise.allSettled([api.get("/api/v1/a")]);
+      await jest.advanceTimersByTimeAsync(SESSION_END_HOOK_TIMEOUT_MS + 1);
+      await pending;
+      expect(assign).toHaveBeenCalledWith("/login?callbackUrl=%2Ffield");
+      off();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
