@@ -136,7 +136,7 @@ describe("P24-01 — the transform's grants, bookkeeping and runner on live Post
   });
 
   const transform = (runId: string, steps: TransformStep[], db: LiveDb = transformDb, role = TRANSFORM_ROLE) =>
-    g.runner.runTransform({ runId, db, runner: db, role, steps });
+    g.runner.runTransform({ runId, db, runner: db, role, steps, tenantId: TENANT, sourceZone: "Asia/Jakarta" });
 
   beforeAll(async () => {
     const name = env("DB_NAME") ?? "";
@@ -210,7 +210,8 @@ describe("P24-01 — the transform's grants, bookkeeping and runner on live Post
     expect(await errorAs(TRANSFORM_ROLE, "TRUNCATE upstream_import.id_map")).toMatch(/^42501/);
     expect(await errorAs(TRANSFORM_ROLE, "DELETE FROM upstream_import.quarantine")).toBeNull();
     expect(await errorAs(TRANSFORM_ROLE, "UPDATE upstream_import.quarantine SET reason = 'no_device'")).toMatch(/^42501 permission denied for table quarantine/);
-    for (const table of ["tenants", "users", "client_facilities", "calibration_devices", "audit_logs", "upstream_sql_imports"]) {
+    // client_facilities is readable since 0134 (P24-02a's grants, proved in upstreamTransform.p2402a.live); audit_logs stays INSERT-only.
+    for (const table of ["tenants", "users", "calibration_devices", "audit_logs", "upstream_sql_imports"]) {
       expect([table, await errorAs(TRANSFORM_ROLE, `SELECT 1 FROM ${table} LIMIT 1`)]).toEqual([table, expect.stringMatching(/^42501/)]);
     }
     const [role] = await rows(

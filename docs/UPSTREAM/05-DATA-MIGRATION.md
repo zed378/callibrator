@@ -72,6 +72,15 @@ transform step with a row id, not the bulk load.
 13 audit_logs         ← one row per loaded business row, same transaction as its batch
 ```
 
+> **As built (P24-02a, ADR-129 Am. 3, 2026-10-12):** the transform writes into a **provider tenant the
+> super admin names** with the request (`providerTenantId`; created beforehand through the onboarding —
+> the transform never creates a tenant). Step 1 proves it (one self facility; no other tenant in
+> `id_map`), then imports `mst_faskes` as `client_facilities` (names normalised, duplicates merged into
+> the lowest legacy id with a device, a group without devices quarantined `facility_without_devices`,
+> codes `F-0001…`, an operator-made facility of the same name adopted). Step 13 writes one audit row per
+> row written in the transaction (actor `system:upstream-transform`; no legacy id in `changes`). Steps
+> 2 … 12 follow in P24-02b ….
+
 ### 3.2 Normalisation
 
 `btrim` everything; empty string → NULL; collapse inner whitespace in names; case-insensitive

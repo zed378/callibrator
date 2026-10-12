@@ -12,7 +12,7 @@ import { AppError } from "../utils/appError.util";
 import { validated } from "../middlewares/validation.middleware";
 import { actorIdOf, requestOriginOf } from "../utils/requestOrigin.util";
 import { upstreamImportSettings } from "../config/upstreamImport";
-import { listUpstreamSqlImportsSchema, upstreamSqlImportIdSchema } from "../validators/upstreamSqlImport.validator";
+import { listUpstreamSqlImportsSchema, transformUpstreamSqlImportSchema, upstreamSqlImportIdSchema } from "../validators/upstreamSqlImport.validator";
 import { cancelRun, getRun, getSettings, listRuns, retryRun, uploadDump, type Actor } from "../services/upstreamSqlImport.service";
 import { requestTransform } from "../services/upstreamSqlTransform.service";
 
@@ -88,7 +88,7 @@ export const retry = asyncHandler(async (req: Request, res: Response) => {
 
 /** POST /admin/upstream-sql-imports/:id/transform — queue stage 2 for a loaded run (P24-01). */
 export const transform = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = validated(req, upstreamSqlImportIdSchema);
-  await requestTransform(id, actorOf(req));
+  const { id, providerTenantId } = validated(req, transformUpstreamSqlImportSchema);
+  await requestTransform(id, { providerTenantId }, actorOf(req));
   success(res, await getRun(id), "Upstream SQL import transform queued", 200);
 });

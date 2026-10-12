@@ -32,7 +32,7 @@ import {
   upload as uploadSqlImport,
   uploadTimeBudget,
 } from "../../controllers/upstreamSqlImport.controller";
-import { listUpstreamSqlImportsSchema, upstreamSqlImportIdSchema } from "../../validators/upstreamSqlImport.validator";
+import { listUpstreamSqlImportsSchema, transformUpstreamSqlImportSchema, upstreamSqlImportIdSchema } from "../../validators/upstreamSqlImport.validator";
 import { acceptProposal, listProposalsQuery, rejectProposal } from "@callibrator/contracts/inspectionCatalogue";
 import { accept as acceptCatalogueProposal, proposalQueue, reject as rejectCatalogueProposal } from "../../controllers/inspectionCatalogue.controller";
 
@@ -135,7 +135,12 @@ router.get("/upstream-sql-imports/:id", superAdminOnly, validate(upstreamSqlImpo
 router.post("/upstream-sql-imports/:id/cancel", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), cancelSqlImport);
 router.post("/upstream-sql-imports/:id/retry", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), retrySqlImport);
 // P24-01 (ADR-129 Am. 1): stage 2, the transform of a loaded run into the application's tables.
-router.post("/upstream-sql-imports/:id/transform", superAdminOnly, validate(upstreamSqlImportIdSchema, { from: "params" }), transformSqlImport);
+router.post(
+  "/upstream-sql-imports/:id/transform",
+  superAdminOnly,
+  validate(transformUpstreamSqlImportSchema, { from: ["params", "body"] }),
+  transformSqlImport,
+);
 
 // ---------------------------------------------------------------------------
 // P21-01 (ADR-125 § 5; spec P19-01 § 7.4, § 8.2) — the catalogue proposals' queue across tenants

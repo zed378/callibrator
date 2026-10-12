@@ -59,6 +59,21 @@ export const stagedTable = (table: string): string => {
 };
 
 /**
+ * Whether `table`'s staging table exists (a dump may lack a table; its steps then have nothing
+ * to read). The name is BOUND, never interpolated.
+ * @returns true when `upstream_import."stg_<table>"` exists
+ */
+export const stagedTableExists = async (context: StepContext, table: string): Promise<boolean> => {
+  const [row] = await sql<{ present: boolean }>(
+    context.runner,
+    "SELECT to_regclass($1) IS NOT NULL AS present",
+    [`${STAGING_SCHEMA}.${stagingTableOf(checkedName(table))}`],
+    { transaction: context.transaction },
+  );
+  return row?.present === true;
+};
+
+/**
  * The SQL expression of a staged row's `source_row_hash` (lower-case hex SHA-256).
  * @param alias - the staged row's alias in the statement
  */

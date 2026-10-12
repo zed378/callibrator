@@ -76,6 +76,7 @@ describe("A-124 — system actors", () => {
       "system:client-facility-backfill", // P20-07 (ADR-124 Am. 2): migration 0117's self facility per tenant, and seeds with no user
       "system:attachment-rekey", // P21-09d (ADR-124 Am. 6): a moved device's files copied under the new facility's key
       "system:bound-account-deactivation", // P21-09e (UD-18 (b)): an ended facility's bound accounts, after the period
+      "system:upstream-transform", // P24-02a (ADR-129 Am. 3): one audit row per row the upstream transform wrote
     ]);
     for (const name of SYSTEM_ACTOR_NAMES) {
       expect(name).toMatch(/^system:[a-z][a-z-]*$/);

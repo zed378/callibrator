@@ -506,9 +506,9 @@ export interface paths {
         put?: never;
         /**
          * Transform a loaded SQL-dump import run into the application's tables
-         * @description P24-01 (ADR-129 Am. 1): queues stage 2 for a LOADED run. A background job reads the run's staged rows on the transform role's connection and runs the steps of docs/UPSTREAM/05 § 3.1 in ONE transaction; every staged row ends in the id map or in quarantine, or nothing is kept. A transformed or failed run may be transformed again (idempotent by row hash). Audited. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `TRANSFORM_NOT_AVAILABLE`, `RUN_NOT_LOADED`, `TRANSFORM_IN_PROGRESS`; 403 `REAL_DATA_NOT_ALLOWED` (a run declared real while UPSTREAM_REAL_DATA_ALLOWED is off).
+         * @description P24-01 (ADR-129 Am. 1): queues stage 2 for a LOADED run. A background job reads the run's staged rows on the transform role's connection and runs the steps of docs/UPSTREAM/05 § 3.1 in ONE transaction; every staged row ends in the id map or in quarantine, or nothing is kept. A transformed or failed run may be transformed again (idempotent by row hash). Audited. P24-02a (ADR-129 Am. 3): the body names the PROVIDER tenant the rows land in — an active tenant created beforehand through the onboarding (the transform never creates one); the worker fails the transform `PROVIDER_TENANT_INVALID` when it has no self facility or the id map already holds another tenant's rows. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`, `PROVIDER_TENANT_NOT_FOUND`; 409 `TRANSFORM_NOT_AVAILABLE`, `RUN_NOT_LOADED`, `TRANSFORM_IN_PROGRESS`, `PROVIDER_TENANT_NOT_ACTIVE`; 403 `REAL_DATA_NOT_ALLOWED` (a run declared real while UPSTREAM_REAL_DATA_ALLOWED is off).
          *
-         *     **409** — The steps are not built on this server (`TRANSFORM_NOT_AVAILABLE`), the run is not loaded (`RUN_NOT_LOADED`), or a transform is in progress (`TRANSFORM_IN_PROGRESS`).
+         *     **409** — The steps are not built on this server (`TRANSFORM_NOT_AVAILABLE`), the run is not loaded (`RUN_NOT_LOADED`), a transform is in progress (`TRANSFORM_IN_PROGRESS`), or the provider tenant is not active (`PROVIDER_TENANT_NOT_ACTIVE`).
          */
         post: operations["adminTransformUpstreamSqlImport"];
         delete?: never;
@@ -14284,12 +14284,14 @@ export interface components {
              * @enum {string}
              */
             transformStatus: "not_available" | "transform_requested" | "transforming" | "transformed" | "transform_failed";
-            transformErrorCode: ("REAL_DATA_NOT_ALLOWED" | "TRANSFORM_NOT_BUILT" | "TRANSFORM_ROLE_INVALID" | "TRANSFORM_INCOMPLETE" | "TRANSFORM_FAILED" | "INTERRUPTED") | null;
+            transformErrorCode: ("REAL_DATA_NOT_ALLOWED" | "TRANSFORM_NOT_BUILT" | "TRANSFORM_ROLE_INVALID" | "TRANSFORM_INCOMPLETE" | "TRANSFORM_FAILED" | "INTERRUPTED" | "PROVIDER_TENANT_INVALID") | null;
             /** @description Whether `POST …/:id/transform` would be accepted now (the steps are built and the run is loaded and idle) */
             transformRequestable: boolean;
             transformRequestedAt: string | null;
             transformStartedAt: string | null;
             transformFinishedAt: string | null;
+            /** @description P24-02a: the provider tenant the transform writes into, named with the request */
+            transformTenantId: string | null;
             /** @description Counts per step and staged source table: every staged row is mapped or quarantined */
             transformSummary: {
                 durationMs: number;
@@ -16314,7 +16316,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerTenantId: string;
+                };
+            };
+        };
         responses: {
             /** @description The run, its transform requested */
             200: {

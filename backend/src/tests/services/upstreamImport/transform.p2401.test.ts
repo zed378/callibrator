@@ -23,6 +23,8 @@ import type { SqlQueryOptions, SqlRunner } from "../../../utils/sql.util";
 import type { Transaction } from "sequelize";
 
 const RUN = "a2401000-0000-4000-8000-0000000000f1";
+/** P24-02a: the provider tenant and source zone every run now carries. */
+const SCOPE = { tenantId: "a2401000-0000-4000-8000-0000000000a9", sourceZone: "Asia/Jakarta" } as const;
 const TX = { id: "tx" } as unknown as Transaction;
 
 interface Call {
@@ -45,7 +47,7 @@ const double = (rules: [RegExp, (call: Call) => object[]][] = []): SqlRunner & {
   };
 };
 
-const context = (runner: SqlRunner): StepContext => ({ runId: RUN, runner, transaction: TX });
+const context = (runner: SqlRunner): StepContext => ({ runId: RUN, runner, transaction: TX, ...SCOPE });
 
 describe("P24-01 the step registry (05 § 3.1)", () => {
   it("every staged table is the source of exactly one step — none unclaimed, none twice", () => {
@@ -191,7 +193,7 @@ describe("P24-01 the runner", () => {
 
   it("refuses steps that are not built before opening anything (TRANSFORM_NOT_BUILT)", async () => {
     const runner = double();
-    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, steps: TRANSFORM_STEPS }).catch((e: unknown) => e)) as TransformFailure;
+    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: TRANSFORM_STEPS }).catch((e: unknown) => e)) as TransformFailure;
     expect(err).toBeInstanceOf(TransformFailure);
     expect(err.code).toBe("TRANSFORM_NOT_BUILT");
     expect(runner.calls).toEqual([]);
@@ -204,7 +206,7 @@ describe("P24-01 the runner", () => {
     ["no row at all", []],
   ])("refuses %s as the connection (TRANSFORM_ROLE_INVALID), after the lock, before any step", async (_label, answer) => {
     const runner = double([[/current_user/, () => answer]]);
-    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("a", "mst_faskes")] }).catch((e: unknown) => e)) as TransformFailure;
+    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: [builtStep("a", "mst_faskes")] }).catch((e: unknown) => e)) as TransformFailure;
     expect(err.code).toBe("TRANSFORM_ROLE_INVALID");
     expect(runner.calls.map((c) => c.text.split("(")[0]?.trim())).toEqual(["SELECT pg_advisory_xact_lock", "SELECT current_user AS \"currentUser\", r.rolsuper AS \"superuser\",\n            has_table_privilege"]);
     expect(runner.calls[0]?.bind).toEqual(["upstream_import.transform"]);
@@ -225,6 +227,7 @@ describe("P24-01 the runner", () => {
       db,
       runner,
       role: ROLE,
+      ...SCOPE,
       steps: [builtStep("first", "mst_faskes"), builtStep("derived", null), builtStep("last", "trx_inventory")],
       now: clock(),
     });
@@ -257,7 +260,7 @@ describe("P24-01 the runner", () => {
       [/current_user/, okRole],
       [/to_regclass/, () => [{ present: true }]],
     ]);
-    const summary = await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("only", "mst_faskes")] });
+    const summary = await runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: [builtStep("only", "mst_faskes")] });
     expect(summary.steps[0]?.sources[0]).toEqual({ table: "mst_faskes", staged: 0, mapped: 0, unchanged: 0, quarantined: {} });
     expect(summary.durationMs).toBeGreaterThanOrEqual(0);
   });
@@ -268,7 +271,7 @@ describe("P24-01 the runner", () => {
       [/to_regclass/, () => [{ present: true }]],
       [/AS staged/, () => [{ staged: 3, mapped: 1, unchanged: 0, unaccounted: 2 }]],
     ]);
-    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("first", "mst_faskes"), builtStep("second", "trx_kalibrasi")] }).catch(
+    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: [builtStep("first", "mst_faskes"), builtStep("second", "trx_kalibrasi")] }).catch(
       (e: unknown) => e,
     )) as TransformFailure;
     expect(err.code).toBe("TRANSFORM_INCOMPLETE");
@@ -283,7 +286,7 @@ describe("P24-01 the runner", () => {
       [/stg_trx_kalibrasi/, () => [{ present: true }]],
       [/stg_trx_catatan/, () => [{ present: false }]],
     ]);
-    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("derived", null)] }).catch((e: unknown) => e)) as TransformFailure;
+    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: [builtStep("derived", null)] }).catch((e: unknown) => e)) as TransformFailure;
     expect(err.code).toBe("TRANSFORM_INCOMPLETE");
     expect(err.message).toBe("no step accounts for the staged table(s) trx_kalibrasi");
     expect(runner.calls.find((c) => c.text.includes('"stg_trx_kalibrasi"'))?.bind).toEqual([RUN]);
@@ -294,12 +297,12 @@ describe("P24-01 the runner", () => {
       [/current_user/, okRole],
       [/FROM pg_tables/, () => [{ name: 'stg_x"; DROP TABLE y; --' }, { name: "stg_orphan" }]],
     ]);
-    const summary = await runTransform({ runId: RUN, db, runner, role: ROLE, steps: [builtStep("derived", null)] });
+    const summary = await runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: [builtStep("derived", null)] });
     expect(summary.steps).toEqual([{ step: "derived", durationMs: expect.any(Number) as number, sources: [] }]);
     expect(runner.calls.filter((c) => /orphan|DROP/.test(c.text))).toEqual([]);
 
     const refused = double([[/current_user/, okRole]]);
-    await expect(runTransform({ runId: RUN, db, runner: refused, role: ROLE, steps: [builtStep("off", "orphan")] })).rejects.toThrow(
+    await expect(runTransform({ runId: RUN, db, runner: refused, role: ROLE, ...SCOPE, steps: [builtStep("off", "orphan")] })).rejects.toThrow(
       '"orphan" is not a staged table (tablePolicy.ts)',
     );
     expect(refused.calls.some((c) => c.text.includes("to_regclass"))).toBe(false);
@@ -308,6 +311,6 @@ describe("P24-01 the runner", () => {
   it("a step's own error propagates unchanged (the transaction rolls back)", async () => {
     const runner = double([[/current_user/, okRole]]);
     const failing: TransformStep = { id: "boom", writes: ["x"], sources: [], run: () => Promise.reject(new Error("23503 violation")) };
-    await expect(runTransform({ runId: RUN, db, runner, role: ROLE, steps: [failing] })).rejects.toThrow("23503 violation");
+    await expect(runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: [failing] })).rejects.toThrow("23503 violation");
   });
 });

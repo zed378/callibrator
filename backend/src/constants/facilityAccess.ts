@@ -409,6 +409,21 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
     reason: "the SQL-dump import's staging schema (`upstream_import`), the import role's own tables; a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump import worker (P24-06)"],
   },
+  // P24-02a (ADR-129 Am. 3): the transform's step 1 and step 13 — on the transform role's connection, no principal.
+  "services/upstreamImport/transform/auditRows.ts#audit_logs": {
+    reason:
+      "the transform's audit rows: INSERT … SELECT over this transaction's id_map rows, the provider tenant bound, each row stamped with the facility the transform decided; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02a)"],
+  },
+  "services/upstreamImport/transform/auditRows.ts#${table}": {
+    reason: "reads `upstream_import.id_map` (the constant ID_MAP) for the audit rows above; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02a)"],
+  },
+  "services/upstreamImport/transform/clientFacilities.ts#${table}": {
+    reason:
+      "the facilities step: reads id_map and the allow-listed staging tables (mst_faskes, trx_inventory via stagedTable); writes only client_facilities (not facility-scoped), the provider tenant bound; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02a)"],
+  },
   "services/upstreamImport/transform/ledger.ts#${table}": {
     reason:
       "the upstream transform's `upstream_import` bookkeeping (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",

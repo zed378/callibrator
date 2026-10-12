@@ -192,6 +192,14 @@ const SYSTEM_ACTORS = Object.freeze({
    * facility-bound account deactivated 30 days after its facility ended. One UPDATE row per user.
    */
   BOUND_ACCOUNT_DEACTIVATION: "system:bound-account-deactivation",
+  /**
+   * P24-02a (ADR-129 Am. 3; 04 § 7, UD-13) — the upstream transform's last step
+   * (services/upstreamImport/transform/auditRows.ts): ONE CREATE or UPDATE row per application row
+   * the transform wrote, in that row's tenant (the PLATFORM tenant for the global catalogue) and
+   * facility, inside the transform's one transaction. `changes` carries the run and the source
+   * table, never a legacy id or a value (07 § 3: the legacy link lives only in `id_map`).
+   */
+  UPSTREAM_TRANSFORM: "system:upstream-transform",
 } as const);
 
 /** One system actor's name (`actor_name` of a `system` row). */

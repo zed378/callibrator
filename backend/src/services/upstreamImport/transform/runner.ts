@@ -21,24 +21,15 @@
  * summary, the error and the log never carry a staged value.
  */
 import type { Transaction } from "sequelize";
-import type { UpstreamSqlImportTransformErrorCode } from "@callibrator/contracts/upstreamSqlImport";
 import { sql, type SqlRunner } from "../../../utils/sql.util";
 import { STAGING_SCHEMA } from "../../../config/upstreamImport";
 import type { UpstreamSqlImportTransformSummary } from "../../../utils/jsonShape.util";
 import { STAGED_TABLES, stagingTableOf } from "../tablePolicy";
-import { ID_MAP, QUARANTINE, checkedName, stagedTable } from "./ledger";
+import { ID_MAP, QUARANTINE, checkedName, stagedTable, stagedTableExists } from "./ledger";
 import { isBuilt, type StepContext, type TransformSource, type TransformStep } from "./steps";
+import { TransformFailure } from "./failure";
 
-/** A transform that failed for a stated reason (its code goes on the run). */
-export class TransformFailure extends Error {
-  readonly code: UpstreamSqlImportTransformErrorCode;
-
-  constructor(code: UpstreamSqlImportTransformErrorCode, message: string) {
-    super(message);
-    this.name = "TransformFailure";
-    this.code = code;
-  }
-}
+export { TransformFailure };
 
 /** What the runner needs of the connection: a managed transaction (a Sequelize instance is one). */
 export interface TransactionSource {
@@ -53,6 +44,10 @@ export interface TransformOptions {
   readonly runner: SqlRunner;
   /** The role the connection must be (config/upstreamImport.ts#transformRoleName). */
   readonly role: string;
+  /** P24-02a: the provider tenant (StepContext.tenantId). */
+  readonly tenantId: string;
+  /** P24-02a: the source zone (StepContext.sourceZone; config/upstreamImport.ts#sourceTimeZone). */
+  readonly sourceZone: string;
   readonly steps: readonly TransformStep[];
   /** A clock, for the durations (tests pass their own). */
   readonly now?: () => number;
@@ -95,17 +90,6 @@ const begin = async (context: StepContext, role: string): Promise<void> => {
   }
 };
 
-/** Whether the run's staging table of `table` exists. */
-const stagedExists = async (context: StepContext, table: string): Promise<boolean> => {
-  const [row] = await sql<{ present: boolean }>(
-    context.runner,
-    "SELECT to_regclass($1) IS NOT NULL AS present",
-    [`${STAGING_SCHEMA}.${stagingTableOf(checkedName(table))}`],
-    { transaction: context.transaction },
-  );
-  return row?.present === true;
-};
-
 /** One source's counts after its step. */
 const countSource = async (context: StepContext, source: TransformSource): Promise<SourceSummary & { unaccounted: number }> => {
   const table = checkedName(source.table);
@@ -114,7 +98,7 @@ const countSource = async (context: StepContext, source: TransformSource): Promi
   // runTransform ran isBuilt() first: every source has its legacy key.
   const legacyId = source.legacyId as string;
   const quarantined: Record<string, number> = {};
-  if (!(await stagedExists(context, table))) {
+  if (!(await stagedTableExists(context, table))) {
     return { table, staged: 0, mapped: 0, unchanged: 0, quarantined, unaccounted: 0 };
   }
   const [counts] = await sql<SourceCounts>(
@@ -190,14 +174,14 @@ const unclaimedTables = async (context: StepContext, steps: readonly TransformSt
  *   any other error (a step's SQL) propagates, nothing written
  */
 export const runTransform = async (options: TransformOptions): Promise<UpstreamSqlImportTransformSummary> => {
-  const { runId, db, runner, role, steps } = options;
+  const { runId, db, runner, role, steps, tenantId, sourceZone } = options;
   const now = options.now ?? Date.now;
   if (!isBuilt(steps)) {
     throw new TransformFailure("TRANSFORM_NOT_BUILT", "the transform's steps are not built yet (P24-02)");
   }
   const started = now();
   return db.transaction(async (transaction: Transaction) => {
-    const context: StepContext = { runId, runner, transaction };
+    const context: StepContext = { runId, runner, transaction, tenantId, sourceZone };
     await begin(context, role);
     await sql(context.runner, `DELETE FROM ${QUARANTINE} WHERE import_run_id = $1`, [runId], { transaction });
     const summary: UpstreamSqlImportTransformSummary = { durationMs: 0, steps: [] };
