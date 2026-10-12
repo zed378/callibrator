@@ -178,6 +178,8 @@ const REVIEWED = Object.freeze({
   "ipmSession.service.ts::publishedVersions::models.InspectionTemplate": [1, CLOSED],
   "ipmSession.service.ts::publishedVersions::models.InspectionTemplateVersion": [1, CLOSED],
   "ipmSession.service.ts::sessionView::models.InspectionResult": [1, PARENT],
+  // `GET /ipm/sessions?unsigned`: one user's performer signatures (at most one per report it performed).
+  "ipmSession.service.ts::signatureFilter::models.InspectionSessionSignature": [1, PARENT],
   "ipmSession.service.ts::pinnedItems::models.InspectionTemplateItem": [1, PARENT],
   "ipmSession.service.ts::replaceResults::models.InspectionResult": [1, PARENT],
   "ipmSession.service.ts::createCorrection::models.InspectionResult": [1, PARENT],

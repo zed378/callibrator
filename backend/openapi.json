@@ -26748,6 +26748,13 @@
           },
           {
             "in": "query",
+            "name": "unsigned",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "recommendation",
             "schema": {
               "type": "string",
