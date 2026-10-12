@@ -10,7 +10,7 @@
  * (distinct laboratories, distinct rooms, the per-row audit rows) and own no source table.
  *
  * A step's `run` and each source's `legacyId` are P24-02's (built part by part: P24-02a the
- * facilities and the audit rows, P24-02b the users): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
+ * facilities and the audit rows, P24-02b the users, P24-02c the catalogue): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
  * the worker `TRANSFORM_NOT_BUILT`). `legacyId` is an SQL expression over the staged row,
  * aliased `s` — a constant of this module, never input — giving the text key the step writes
  * to `id_map.legacy_id` (usually `s."id"::text`; a session's `legacy_key`, 05 § 3.3).
@@ -20,6 +20,7 @@ import type { SqlRunner } from "../../../utils/sql.util";
 import { FACILITY_SOURCE, runClientFacilities } from "./clientFacilities";
 import { runAuditRows } from "./auditRows";
 import { USER_SOURCES, runUsers } from "./users";
+import { DEFINITION_SOURCES, DEVICE_TYPE_SOURCE, runDeviceTypes, runItemDefinitions } from "./catalogue";
 
 /** What a step's `run` receives: the run, and the transform connection's transaction. */
 export interface StepContext {
@@ -77,24 +78,9 @@ export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
     Object.freeze([USER_SOURCES.users, USER_SOURCES.groups, USER_SOURCES.memberships, USER_SOURCES.mappings]),
     runUsers,
   ),
-  step("device_types", ["device_types"], sources("mst_alat")),
-  step(
-    "inspection_item_definitions",
-    ["inspection_item_definitions"],
-    sources(
-      "mst_kelengkapan_alat",
-      "mst_pemeriksaan_fungsi_alat",
-      "mst_pemeriksaan_kinerja_alat",
-      "mst_alat_kerja_digunakan",
-      "mst_pemeriksaan_keamanan_listrik",
-      "mst_kondisi_kelistrikan",
-      "mst_pemeliharaan_alat",
-      "mst_kondisi_lingkungan",
-      "mst_pemeriksaan_fisik",
-      "mst_pemeriksaan_keamanan_lain",
-      "mst_rekomendasi_hasil_pekerjaan",
-    ),
-  ),
+  // P24-02c: the global catalogue — device types, then the item library (catalogue.ts).
+  step("device_types", ["device_types"], Object.freeze([DEVICE_TYPE_SOURCE]), runDeviceTypes),
+  step("inspection_item_definitions", ["inspection_item_definitions"], DEFINITION_SOURCES, runItemDefinitions),
   step(
     "inspection_templates",
     ["inspection_templates", "inspection_template_versions", "inspection_template_items"],

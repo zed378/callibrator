@@ -80,6 +80,12 @@ transform step with a row id, not the bulk load.
 > codes `F-0001…`, an operator-made facility of the same name adopted). Step 13 writes one audit row per
 > row written in the transaction (actor `system:upstream-transform`; no legacy id in `changes`). Steps
 > 2 … 12 follow in P24-02b ….
+>
+> **As built (P24-02c, ADR-129 Am. 5, 2026-10-12):** steps 3 and 4 write the GLOBAL `device_types`
+> (duplicates merged, an operator-made name adopted) and `inspection_item_definitions` directly on the
+> transform connection, the content built by the catalogue's own `inspectionContentOf` / `parseLimit`.
+> Base-section definitions are imported **retired** (the platform's neutral base version 1 stays the
+> live checklist); `mst_rekomendasi_hasil_pekerjaan` is quarantined `session_header_value`.
 
 ### 3.2 Normalisation
 

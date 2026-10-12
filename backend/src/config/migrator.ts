@@ -227,6 +227,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0134-upstream-transform-facilities.js", require("../migrations/0134-upstream-transform-facilities")],
   // P24-02b (ADR-129 Am. 4): the users step's reasons and the transform role's column grants on users and roles.
   ["0135-upstream-transform-users.js", require("../migrations/0135-upstream-transform-users")],
+  // P24-02c (ADR-129 Am. 5): the catalogue steps' reason and the transform role's grants on device_types and item definitions.
+  ["0136-upstream-transform-catalogue.js", require("../migrations/0136-upstream-transform-catalogue")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

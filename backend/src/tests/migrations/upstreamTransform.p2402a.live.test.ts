@@ -208,7 +208,7 @@ describe("P24-02a — the facilities and audit steps on live PostgreSQL 18, as t
         `SELECT 'c:' || conname || ':' || pg_get_constraintdef(oid) AS o FROM pg_constraint
           WHERE conname IN ('upstream_sql_imports_transform_tenant', 'quarantine_reason_vocabulary')
          UNION ALL SELECT 'g:' || table_name || ':' || privilege_type FROM information_schema.role_table_grants
-                    WHERE grantee = '${TRANSFORM_ROLE}' AND table_schema = 'public'
+                    WHERE grantee = '${TRANSFORM_ROLE}' AND table_schema = 'public' AND table_name IN ('client_facilities', 'audit_logs')
          UNION ALL SELECT 'col:' || column_name || ':' || data_type FROM information_schema.columns
                     WHERE table_name = 'upstream_sql_imports' AND column_name = 'transform_tenant_id'
          ORDER BY 1`,
@@ -225,7 +225,7 @@ describe("P24-02a — the facilities and audit steps on live PostgreSQL 18, as t
     ]);
     expect(String(before[0]?.["o"])).toContain("'facility_without_devices'");
     await g.m0134.down({ context: g.db.getQueryInterface() });
-    expect(await rows(`SELECT count(*)::int AS n FROM information_schema.role_table_grants WHERE grantee = '${TRANSFORM_ROLE}' AND table_schema = 'public'`)).toEqual([{ n: 0 }]);
+    expect(await rows(`SELECT count(*)::int AS n FROM information_schema.role_table_grants WHERE grantee = '${TRANSFORM_ROLE}' AND table_schema = 'public' AND table_name IN ('client_facilities', 'audit_logs')`)).toEqual([{ n: 0 }]);
     expect(await rows("SELECT pg_get_constraintdef(oid) LIKE '%facility_without_devices%' AS has FROM pg_constraint WHERE conname = 'quarantine_reason_vocabulary'")).toEqual([
       { has: false },
     ]);
