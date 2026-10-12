@@ -17,12 +17,14 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { TenantBrandingProvider } from "@/components/TenantBrandingProvider";
 import { AuthInitializer } from "@/components/AuthInitializer";
 import { ToastContainer } from "@/components/ui/ToastContainer";
+import { FieldProfileGuard } from "@/components/FieldProfileGuard";
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <TenantBrandingProvider>
         <AuthInitializer />
+        <FieldProfileGuard />
         <ToastContainer />
         {children}
       </TenantBrandingProvider>

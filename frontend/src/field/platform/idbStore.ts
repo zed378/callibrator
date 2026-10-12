@@ -45,12 +45,27 @@ export interface FieldStore extends CaptureStore {
   readRooms(facilityId: string): Promise<unknown[] | null>;
   putCatalogue(document: unknown, fetchedAt: number): Promise<void>;
   readCatalogue(): Promise<unknown | null>;
+  /**
+   * The downloaded facilities (id, name, code, count, when) — tenant data, so it lives in the
+   * `rooms` store under `"_facilities"` and goes with every purge (never in `meta`, which a purge keeps).
+   */
+  putFacilities(facilities: readonly unknown[], fetchedAt: number): Promise<void>;
+  readFacilities(): Promise<unknown[]>;
+  /**
+   * The facility IDS the user chose (opaque ids only), kept in `meta` so a purge for a changed scope
+   * fingerprint can re-download the same choice (P19-08 § 10, AM-26).
+   */
+  putChoice(facilityIds: readonly string[]): Promise<void>;
+  readChoice(): Promise<string[]>;
   close(): void;
 }
 
+/** The `rooms` key that holds the facilities list (no facility id can take it: ids are UUIDs). */
+export const FACILITIES_KEY = "_facilities";
+
 const upgrade = (db: IDBDatabase): void => {
-  for (const name of STORES) {
-    if (db.objectStoreNames.contains(name)) continue;
+  // An upgrade only ADDS what is missing (the outbox is never dropped).
+  for (const name of STORES.filter((n) => !db.objectStoreNames.contains(n))) {
     const store = db.createObjectStore(name, { keyPath: "k" });
     if (name === "ops") store.createIndex("localId", "localId", { unique: false });
   }
@@ -159,9 +174,62 @@ export async function openFieldStore(factory: IDBFactory, crypto: CryptoDeps, te
       const row = await get("catalogue", "published");
       return row ? openRow<unknown>("catalogue", row) : null;
     },
+    async putFacilities(facilities, fetchedAt) {
+      await put("rooms", await sealRow("rooms", FACILITIES_KEY, facilities, { fetchedAt }));
+    },
+    async readFacilities() {
+      const row = await get("rooms", FACILITIES_KEY);
+      return row ? openRow<unknown[]>("rooms", row) : [];
+    },
+    async putChoice(facilityIds) {
+      await put("meta", await sealRow("meta", "choice", [...facilityIds]));
+    },
+    async readChoice() {
+      const row = await get("meta", "choice");
+      return row ? openRow<string[]>("meta", row) : [];
+    },
     close() {
       db.close();
     },
   };
   return store;
 }
+
+/**
+ * ANOTHER user's database, touched WITHOUT its key (P19-08 § 11.2, § 11.3): nothing is decrypted.
+ * A database that does not exist is not created (it is deleted again at once) and reads as empty.
+ */
+const withForeign = async <T>(factory: IDBFactory, name: string, empty: T, work: (db: IDBDatabase) => Promise<T>): Promise<T> => {
+  let created = false;
+  const db = await openDb(factory, name, DB_VERSION, (d, oldVersion) => {
+    created = oldVersion === 0;
+    upgrade(d);
+  });
+  if (created) {
+    db.close();
+    await deleteDb(factory, name);
+    return empty;
+  }
+  try {
+    return await work(db);
+  } finally {
+    db.close();
+  }
+};
+
+/** Drops another user's working set (devices, rooms, catalogue); its outbox is left as it is. */
+export const dropForeignWorkingSet = (factory: IDBFactory, name: string): Promise<void> =>
+  withForeign(factory, name, undefined, (db) =>
+    tx(db, [...WORKING_SET], "readwrite", async (t) => {
+      for (const s of WORKING_SET) await done(t.objectStore(s).clear());
+    }),
+  );
+
+/** How many captures and photos another user's database holds (row counts only: the wipe's audit row). */
+export const countForeignOutbox = (factory: IDBFactory, name: string): Promise<{ captures: number; photos: number }> =>
+  withForeign(factory, name, { captures: 0, photos: 0 }, (db) =>
+    tx(db, ["captures", "photos"], "readonly", async (t) => ({
+      captures: await done(t.objectStore("captures").count()),
+      photos: await done(t.objectStore("photos").count()),
+    })),
+  );

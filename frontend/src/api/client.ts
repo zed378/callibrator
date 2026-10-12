@@ -136,7 +136,12 @@ const isCredentialEndpoint = (url: string | undefined): boolean => {
 
 /** Pages behind the session — the ones proxy.ts guards. */
 const isProtectedPath = (pathname: string): boolean =>
-  pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  pathname === "/dashboard" ||
+  pathname.startsWith("/dashboard/") ||
+  // P22-10c1: the field app is protected like the dashboard (proxy.ts,
+  // PROTECTED_PREFIXES); `/fieldwork` is not under it.
+  pathname === "/field" ||
+  pathname.startsWith("/field/");
 
 /**
  * F-05: where the browser goes when the session cannot be refreshed — the
@@ -224,6 +229,28 @@ const refreshSession = (): Promise<boolean | null> => {
   return refreshInFlight;
 };
 
+/**
+ * P22-10c1 (P19-08 § 10, G-O5): work that must run when the session is over —
+ * the field app purges its working set (the outbox stays). Only the refresh
+ * FAILING ends a session; a raw 401 or 403 never does. Each hook is awaited
+ * (bounded) before the browser leaves, so an IndexedDB purge is not cut off
+ * by the navigation.
+ */
+const sessionEndHooks = new Set<() => Promise<void>>();
+export const SESSION_END_HOOK_TIMEOUT_MS = 3000;
+export const onSessionEnd = (hook: () => Promise<void>): (() => void) => {
+  sessionEndHooks.add(hook);
+  return () => {
+    sessionEndHooks.delete(hook);
+  };
+};
+
+const runSessionEndHooks = (): Promise<unknown> =>
+  Promise.race([
+    Promise.allSettled([...sessionEndHooks].map((hook) => hook())),
+    new Promise((resolve) => setTimeout(resolve, SESSION_END_HOOK_TIMEOUT_MS)),
+  ]);
+
 /** F-05: navigate once, however many requests fail together. */
 let sessionEndNavigated = false;
 const endSession = () => {
@@ -234,7 +261,11 @@ const endSession = () => {
   );
   if (!target) return;
   sessionEndNavigated = true;
-  browserNavigation.go(target);
+  if (sessionEndHooks.size === 0) {
+    browserNavigation.go(target);
+    return;
+  }
+  void runSessionEndHooks().then(() => browserNavigation.go(target));
 };
 
 /** Test seam: reset the module's single-flight state between tests. */

@@ -16,7 +16,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { NOTHING_CONFIRMED, type Capture, type Op } from "../../engine/model";
 import { open, seal, slotOf, type CryptoDeps } from "../crypto";
 import { done, openDb, tx } from "../idb";
-import { dbName, openFieldStore } from "../idbStore";
+import { countForeignOutbox, dbName, dropForeignWorkingSet, openFieldStore } from "../idbStore";
 import { PRESENT_FLAG, fieldPresent, openRegistry } from "../registryStore";
 
 const crypto = webcrypto as unknown as CryptoDeps;
@@ -200,5 +200,40 @@ describe("P22-10b — the registry", () => {
     const none = await openRegistry(factory, null);
     await none.put({ key: "y", outboxCount: 0, workingSetPresent: false, lastSyncServerAt: null });
     none.close();
+  });
+});
+
+describe("P22-10c1 — the facilities list, the choice, and another user's database touched without its key", () => {
+  it("keeps the facilities with the working set (purged with it) and the chosen ids in meta (kept)", async () => {
+    const factory = new IDBFactory();
+    const store = await openFieldStore(factory, crypto, "t", "u");
+    expect(await store.readFacilities()).toEqual([]);
+    expect(await store.readChoice()).toEqual([]);
+    await store.putFacilities([{ id: "f1", name: "SECRET-RS" }], 9);
+    await store.putChoice(["f1"]);
+    expect(await store.readFacilities()).toEqual([{ id: "f1", name: "SECRET-RS" }]);
+    expect(JSON.stringify(await rawRows(factory, dbName("t", "u"), "rooms"))).not.toContain("SECRET-RS");
+    await store.dropWorkingSet();
+    expect(await store.readFacilities()).toEqual([]);
+    expect(await store.readChoice()).toEqual(["f1"]);
+    store.close();
+  });
+
+  it("drops another user's working set and counts their outbox without decrypting; a missing database stays missing", async () => {
+    const factory = new IDBFactory();
+    const store = await openFieldStore(factory, crypto, "t", "other");
+    await store.putWorkingSetPage("f1", 1, [{ id: "d" }], 1);
+    await store.putCapture(capture);
+    await store.putPhoto("p1", new Blob([new Uint8Array([1])]));
+    store.close();
+    const name = dbName("t", "other");
+    expect(await countForeignOutbox(factory, name)).toEqual({ captures: 1, photos: 1 });
+    await dropForeignWorkingSet(factory, name);
+    expect(await rawRows(factory, name, "workingSet")).toEqual([]);
+    expect(await rawRows(factory, name, "captures")).toHaveLength(1);
+
+    expect(await countForeignOutbox(factory, dbName("t", "nobody"))).toEqual({ captures: 0, photos: 0 });
+    await dropForeignWorkingSet(factory, dbName("t", "nobody"));
+    expect((await factory.databases()).map((d) => d.name)).not.toContain(dbName("t", "nobody"));
   });
 });

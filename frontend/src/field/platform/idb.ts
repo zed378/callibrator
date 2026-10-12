@@ -21,6 +21,12 @@ export const openDb = (factory: IDBFactory, name: string, version: number, upgra
     request.onblocked = () => reject(new Error("IndexedDB open blocked by another tab"));
   });
 
+/** The error of the request an error event came from, when it carries one. */
+const requestErrorOf = (event: Event | undefined): DOMException | null => {
+  const target = event?.target as { error?: unknown } | null | undefined;
+  return target?.error instanceof DOMException ? target.error : null;
+};
+
 /** Runs `work` in one transaction and resolves after the transaction COMMITTED (not merely after the requests). */
 export const tx = <T>(db: IDBDatabase, stores: string | string[], mode: IDBTransactionMode, work: (t: IDBTransaction) => Promise<T>): Promise<T> =>
   new Promise((resolve, reject) => {
@@ -28,7 +34,10 @@ export const tx = <T>(db: IDBDatabase, stores: string | string[], mode: IDBTrans
     let value: T;
     let failed: unknown = null;
     t.oncomplete = () => (failed === null ? resolve(value) : reject(failed));
-    t.onerror = () => reject(t.error ?? failed ?? new Error("IndexedDB transaction failed"));
+    // A failed request's error event bubbles here BEFORE the transaction's own `error` is set
+    // (IndexedDB 3 § 5.6): the request that failed is the event's target, and ITS error (a
+    // `ConstraintError`, a `QuotaExceededError`) is the one the caller must see.
+    t.onerror = (event?: Event) => reject(requestErrorOf(event) ?? t.error ?? failed ?? new Error("IndexedDB transaction failed"));
     t.onabort = () => reject(t.error ?? failed ?? new Error("IndexedDB transaction aborted"));
     work(t).then(
       (v) => {

@@ -10,6 +10,8 @@
 
 > **Deviation note (2026-10-08, ADR-136; `docs/CONTRACT/04`):** machine codes travel as a **top-level `code`** in the error envelope, not `data.code` — as built, `response.util.ts#error` spreads its `extra` at the top level and `data` is `null` (e.g. `auth.middleware.ts`'s `PASSWORD_CHANGE_REQUIRED` / `MFA_ENROLMENT_REQUIRED`). Every error's `data.code` / `data.<field>` below now reads top-level `code` / `<field>`.
 
+> **Deviation note (2026-10-12, ADR-127 Am. 3, P22-10c1):** as built — an undecodable HEIC is refused, not queued (§ 8.1 step 4; ADR-132 Am. 3); offline QR lookup matches without the tenant's QR settings; rooms are read tenant-wide (§ 7.2: the contract has no facility filter on `GET /warehouses`); the wipe follows ADR-135's order with a pending list for a failed deletion (§ 11.3).
+
 > **Privacy.** No upstream data value appears here. Every example is synthetic.
 
 ---

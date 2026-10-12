@@ -8,6 +8,11 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-12 — The offline field app's runtime (P22-10c1; no screen yet) ([record](./records/2026-10-12-p22-10c1-field-runtime.md); ADR-127 Am. 3)
+- **Added (internal):** the download of a phone's offline working set — sizes first, the cap refused with the server's message, pages of 200, all or nothing; the purge of that set when the session ends, when access is lost, after 72 hours; one field user per browser profile (another user's offline set is dropped when someone else signs in, without opening it); the administrator wipe, recorded on the server before anything is deleted.
+- **Changed:** when a session cannot be renewed on `/field`, the browser now waits (at most 3 s) for the offline purge before going to the sign-in page.
+- **Fixed (internal):** a failed IndexedDB write now reports its real cause (for example a duplicate key) instead of a generic message.
+
 ### 2026-10-11 — Device register reflows at 200% zoom; tables no longer overlap on phones ([record](./records/2026-10-11-fix-reflow-contrast.md))
 - **Fixed:** at 200% zoom, `/dashboard/devices` no longer scrolls sideways (WCAG 1.4.10). The table's screen-reader labels escaped its scroll region. All 15 table scroll regions that hold such labels are now positioned.
 - **Fixed:** below the `lg` breakpoint, tables (the shared `Table`, users, roles) size to their content and scroll inside their own region. Before, they squeezed their columns, and the text ran over the next cell: on `/dashboard/calibration` at 360 px it ran over a red status badge (axe colour contrast). Desktop layout is unchanged.

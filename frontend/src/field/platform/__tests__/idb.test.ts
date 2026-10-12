@@ -169,11 +169,12 @@ describe("idb — tx", () => {
     const factory = new IDBFactory();
     const db = await openDb(factory, "h", 1, createStore);
     await tx(db, STORE, "readwrite", (t) => done(t.objectStore(STORE).add(1, "dup")));
-    // The request's error event bubbles to the transaction's onerror BEFORE the transaction's own
-    // `error` is set (IndexedDB 3 § 5.6), so `tx` rejects with its generic message, not ConstraintError.
-    await expect(
-      tx(db, STORE, "readwrite", (t) => done(t.objectStore(STORE).add(2, "dup")).catch(() => "swallowed")),
-    ).rejects.toThrow("IndexedDB transaction failed");
+    // P22-10c: the request's error event bubbles to the transaction's onerror BEFORE the
+    // transaction's own `error` is set (IndexedDB 3 § 5.6); `tx` reads the failed request (the
+    // event's target), so the caller sees the ORIGINAL ConstraintError, not a generic message.
+    const refused = await tx(db, STORE, "readwrite", (t) => done(t.objectStore(STORE).add(2, "dup")).catch(() => "swallowed")).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(DOMException);
+    expect((refused as DOMException).name).toBe("ConstraintError");
     await expect(tx(db, STORE, "readonly", (t) => done(t.objectStore(STORE).get("dup")))).resolves.toBe(1);
     db.close();
   });
@@ -204,6 +205,24 @@ describe("idb — tx", () => {
     const bare = txDouble(false);
     const p3 = tx(dbOver(bare), STORE, "readwrite", () => new Promise<never>(() => undefined));
     bare.onerror?.();
+    await expect(p3).rejects.toThrow("IndexedDB transaction failed");
+  });
+
+  it("onerror: the failed request's own error comes first; a target without a DOMException falls through", async () => {
+    const constraint = new DOMException("dup", "ConstraintError");
+    const withRequest = txDouble(false, new DOMException("later", "AbortError"));
+    const p1 = tx(dbOver(withRequest), STORE, "readwrite", () => new Promise<never>(() => undefined));
+    (withRequest.onerror as unknown as (e: unknown) => void)({ target: { error: constraint } });
+    await expect(p1).rejects.toBe(constraint);
+
+    const plain = txDouble(false);
+    const p2 = tx(dbOver(plain), STORE, "readwrite", () => new Promise<never>(() => undefined));
+    (plain.onerror as unknown as (e: unknown) => void)({ target: { error: "not a DOMException" } });
+    await expect(p2).rejects.toThrow("IndexedDB transaction failed");
+
+    const noTarget = txDouble(false);
+    const p3 = tx(dbOver(noTarget), STORE, "readwrite", () => new Promise<never>(() => undefined));
+    (noTarget.onerror as unknown as (e: unknown) => void)({ target: null });
     await expect(p3).rejects.toThrow("IndexedDB transaction failed");
   });
 
