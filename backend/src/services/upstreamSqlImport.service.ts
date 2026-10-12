@@ -147,6 +147,8 @@ export interface RunView {
   transformStartedAt: string | null;
   transformFinishedAt: string | null;
   transformSummary: Run["transformSummary"];
+  /** P24-02a: the provider tenant the transform writes into, once requested. */
+  transformTenantId: string | null;
   attempt: number;
   fileRetained: boolean;
   fileRetainUntil: string | null;
@@ -201,6 +203,7 @@ const view = (run: Run, names: ReadonlyMap<string, string | null>): RunView => {
     transformStartedAt: iso(run.transformStartedAt),
     transformFinishedAt: iso(run.transformFinishedAt),
     transformSummary: run.transformSummary ?? null,
+    transformTenantId: run.transformTenantId ?? null,
     attempt: run.attempt,
     fileRetained: Boolean(run.filePath),
     fileRetainUntil: iso(run.fileRetainUntil),

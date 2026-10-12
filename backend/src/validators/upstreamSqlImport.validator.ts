@@ -10,9 +10,11 @@ export {
   uploadUpstreamSqlImportSchema,
   listUpstreamSqlImportsSchema,
   upstreamSqlImportIdSchema,
+  transformUpstreamSqlImportSchema,
 } from "@callibrator/contracts/upstreamSqlImport";
 export type {
   UploadUpstreamSqlImportInput,
   ListUpstreamSqlImportsInput,
   UpstreamSqlImportIdInput,
+  TransformUpstreamSqlImportInput,
 } from "@callibrator/contracts/upstreamSqlImport";

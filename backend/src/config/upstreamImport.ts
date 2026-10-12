@@ -14,6 +14,8 @@
  *                                                     staging connection switches to
  *   UPSTREAM_TRANSFORM_DB_ROLE              callibrator_transform — the role the transform's
  *                                                     connection switches to (P24-01, 0133)
+ *   UPSTREAM_SOURCE_TIMEZONE                Asia/Jakarta — the zone upstream's naive DATETIME
+ *                                                     values are read in (P24-02a, UD-7)
  *
  * The DPIA gate (UPSTREAM_REAL_DATA_ALLOWED) is NOT read here: it has one definition,
  * `config/upstream.ts#upstreamRealDataAllowed`, shared with the rsync image import (ADR-130).
@@ -119,3 +121,22 @@ export const createStagingDb = (): Sequelize => createRoleDb(importRoleName());
 
 /** A new transform connection, switched to the transform role (stage 2, P24-01). */
 export const createTransformDb = (): Sequelize => createRoleDb(transformRoleName());
+
+/** The zone upstream's naive DATETIME values are read in when UPSTREAM_SOURCE_TIMEZONE is unset (UD-7). */
+export const DEFAULT_SOURCE_TIME_ZONE = "Asia/Jakarta";
+
+/**
+ * The IANA zone the transform reads upstream's naive DATETIME values in (P24-02a; UD-7, 05 § 3.4):
+ * UPSTREAM_SOURCE_TIMEZONE, else Asia/Jakarta. Pure DATE columns are never shifted. Unlike the
+ * sizes above, a zone that is not one is REFUSED, not defaulted — a silent 7-hour shift would move
+ * sessions across dates (05 § 3.3).
+ * @throws {Error} when the value is not an IANA zone this runtime knows
+ */
+export const sourceTimeZone = (raw: string | undefined = env("UPSTREAM_SOURCE_TIMEZONE")): string => {
+  const zone = raw === undefined || raw === "" ? DEFAULT_SOURCE_TIME_ZONE : raw;
+  try {
+    return new Intl.DateTimeFormat("en", { timeZone: zone }).resolvedOptions().timeZone;
+  } catch {
+    throw new Error(`UPSTREAM_SOURCE_TIMEZONE "${zone}" is not an IANA time zone (e.g. Asia/Jakarta, UTC).`);
+  }
+};

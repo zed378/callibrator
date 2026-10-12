@@ -24,11 +24,15 @@
  * `TRANSFORM_NOT_AVAILABLE`: the mechanism is built, the transforms are not.
  */
 import { Op, type Transaction } from "sequelize";
-import type { UpstreamSqlImportTransformErrorCode, UpstreamSqlImportTransformStatus } from "@callibrator/contracts/upstreamSqlImport";
+import type {
+  RequestUpstreamSqlTransformInput,
+  UpstreamSqlImportTransformErrorCode,
+  UpstreamSqlImportTransformStatus,
+} from "@callibrator/contracts/upstreamSqlImport";
 import models from "../models";
 import { db } from "../config";
 import { upstreamRealDataAllowed } from "../config/upstream";
-import { createTransformDb, transformRoleName } from "../config/upstreamImport";
+import { createTransformDb, sourceTimeZone, transformRoleName } from "../config/upstreamImport";
 import { CodedError } from "../utils/codedError.util";
 import { logger } from "../middlewares/activityLog.middleware";
 import { PLATFORM_TENANT_ID } from "../constants/platformTenant";
@@ -40,7 +44,7 @@ import { TransformFailure, runTransform } from "./upstreamImport/transform/runne
 import type { ModelInstance } from "../types/models";
 import type { SqlRunner } from "../utils/sql.util";
 
-const { UpstreamSqlImport, BatchJob } = models;
+const { UpstreamSqlImport, BatchJob, Tenant } = models;
 
 type Run = ModelInstance<"UpstreamSqlImport">;
 
@@ -117,11 +121,30 @@ const transition = (
 const isUniqueViolation = (err: unknown): boolean => (err as { name?: unknown }).name === "SequelizeUniqueConstraintError";
 
 /**
- * POST /admin/upstream-sql-imports/:id/transform — queue the transform of a loaded run.
- * @throws {CodedError} 404 UPSTREAM_SQL_IMPORT_NOT_FOUND; 409 TRANSFORM_NOT_AVAILABLE (steps not built),
- *   RUN_NOT_LOADED, TRANSFORM_IN_PROGRESS (this run or another); 403 REAL_DATA_NOT_ALLOWED
+ * The provider tenant a transform may write into (P24-02a, ADR-129 Am. 3): an existing, live,
+ * ACTIVE tenant that is not the platform's own. The transform proves its self facility itself.
+ * @throws {CodedError} 404 PROVIDER_TENANT_NOT_FOUND; 409 PROVIDER_TENANT_NOT_ACTIVE
  */
-export const requestTransform = async (id: string, actor: TransformActor): Promise<void> => {
+const checkProviderTenant = async (tenantId: string): Promise<void> => {
+  const tenant = tenantId === PLATFORM_TENANT_ID ? null : await Tenant.findByPk(tenantId, { attributes: ["id", "status"] });
+  if (tenant === null) {
+    throw new CodedError(404, "PROVIDER_TENANT_NOT_FOUND", "Provider tenant not found");
+  }
+  if (tenant.status !== "active") {
+    throw new CodedError(409, "PROVIDER_TENANT_NOT_ACTIVE", `The provider tenant is ${String(tenant.status)}; only an active tenant receives an import.`, {
+      tenantStatus: String(tenant.status),
+    });
+  }
+};
+
+/**
+ * POST /admin/upstream-sql-imports/:id/transform — queue the transform of a loaded run into
+ * `providerTenantId` (P24-02a).
+ * @throws {CodedError} 404 UPSTREAM_SQL_IMPORT_NOT_FOUND, PROVIDER_TENANT_NOT_FOUND; 409 TRANSFORM_NOT_AVAILABLE
+ *   (steps not built), RUN_NOT_LOADED, TRANSFORM_IN_PROGRESS (this run or another), PROVIDER_TENANT_NOT_ACTIVE;
+ *   403 REAL_DATA_NOT_ALLOWED
+ */
+export const requestTransform = async (id: string, input: RequestUpstreamSqlTransformInput, actor: TransformActor): Promise<void> => {
   const run = await UpstreamSqlImport.findByPk(id);
   if (run === null) {
     throw new CodedError(404, "UPSTREAM_SQL_IMPORT_NOT_FOUND", "Import run not found");
@@ -148,6 +171,7 @@ export const requestTransform = async (id: string, actor: TransformActor): Promi
       "The run is declared real upstream data and UPSTREAM_REAL_DATA_ALLOWED is off (DPIA gates R-01, R-03, R-17).",
     );
   }
+  await checkProviderTenant(input.providerTenantId);
   const from = run.transformStatus;
   let moved: boolean;
   try {
@@ -162,8 +186,10 @@ export const requestTransform = async (id: string, actor: TransformActor): Promi
         transformFinishedAt: null,
         transformErrorCode: null,
         transformBatchJobId: null,
+        transformTenantId: input.providerTenantId,
       },
       actor,
+      { providerTenantId: input.providerTenantId },
     );
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -206,12 +232,19 @@ export const runTransformJob = async (job: { id: string }): Promise<{ processedI
     if (run.dataClass === "real" && !upstreamRealDataAllowed()) {
       throw new TransformFailure("REAL_DATA_NOT_ALLOWED", "UPSTREAM_REAL_DATA_ALLOWED is off");
     }
+    const tenantId = run.transformTenantId ?? null;
+    if (tenantId === null) {
+      // The 0134 CHECK refuses a requested run without it; a row written around it still fails here, not in a step.
+      throw new TransformFailure("PROVIDER_TENANT_INVALID", "the run names no provider tenant");
+    }
     const summary = await runTransform({
       runId: run.id,
       db: connection,
       // As stage 1 does (upstreamSqlImport.service#stage): the Sequelize instance is sql()'s runner.
       runner: connection as unknown as SqlRunner,
       role: transformRoleName(),
+      tenantId,
+      sourceZone: sourceTimeZone(),
       steps: TRANSFORM_STEPS,
     });
     await transition(run, "transforming", "transformed", { transformFinishedAt: new Date(), transformSummary: summary }, null, {

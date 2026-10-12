@@ -11201,6 +11201,52 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 
 ---
 
+### ADR-129 Amendment 3 (2026-10-12, P24-02a): the transform writes into a provider tenant the super admin names; step 1 (facilities) and step 13 (audit rows) are built; P24-02 is split into parts
+
+**Why an amendment.** P24-02 is 13 steps over 41 staged tables. It is built in parts (P24-02a, b, …), each one card. This first part needed three decisions that the docs leave open: where the provider tenant comes from, what happens to a facility with no devices, and what an import audit row holds.
+
+**Decision.**
+
+1. **The super admin names the provider tenant; the transform never creates one.** `POST /admin/upstream-sql-imports/:id/transform` takes the body `{ providerTenantId }`.
+   - The tenant is created first through the ordinary onboarding, so it has its self facility (P19-04 § 15 said "through `createTenant`"). The transform role holds no grant on `tenants`.
+   - The request refuses an unknown tenant or the platform tenant (404 `PROVIDER_TENANT_NOT_FOUND`) and a tenant that is not active (409 `PROVIDER_TENANT_NOT_ACTIVE`).
+   - The tenant is stored on the run as `transform_tenant_id` (migration 0134). It has no foreign key and is not named `tenant_id`, for `notify_tenant_id`'s reason. A CHECK requires it on every run past `not_available`.
+   - Step 1 fails the transform `PROVIDER_TENANT_INVALID` when the tenant does not have exactly one self facility, or when `id_map` already holds another tenant's rows. One upstream system is one provider's data.
+2. **Step 1, the facilities** (`transform/clientFacilities.ts`):
+   - **Names:** trimmed, inner whitespace collapsed, at most 255 characters. An empty name is quarantined `value_out_of_range`.
+   - **Duplicates:** one facility per case-insensitive name. The survivor is the lowest legacy id with a device. Members map to it, with `source_values.mergedIntoLegacyId`.
+   - **UD-11:** a name group with no device in the run's `trx_inventory` is quarantined `facility_without_devices`. This is a new reason; 0134 widens the CHECK. A facility imported earlier stays mapped.
+   - **Codes and fields:** new facilities get codes `F-0001…` after the highest existing code, kind `other` and status `active`. The source DATETIME is read in `UPSTREAM_SOURCE_TIMEZONE` (UD-7, default `Asia/Jakarta`; an invalid zone is refused, not defaulted).
+   - **Adoption:** a non-self facility the operator already created under the same name is adopted. Only its empty `legacy_id` is set.
+   - **Changes:** a changed row updates the facility's name, phone and address. An unchanged row is skipped.
+   - **Not imported:** `img_logo`, which belongs to the file pipeline.
+3. **Step 13, the audit rows** (`transform/auditRows.ts`, UD-13): one row per application row written in THIS transaction. That is an `id_map` row whose `updated_at` is the transaction's `now()`.
+   - The action is CREATE when the target is first mapped, UPDATE otherwise.
+   - The actor is `system:upstream-transform` (new). The row takes the target's tenant (the platform tenant for the global catalogue) and facility.
+   - `changes` holds `{ operation: "UPSTREAM_IMPORT", source: "skp_ipm", importRunId, sourceTable, targetTable }`. **No legacy id and no value** (07 § 3: the legacy link lives only in `id_map`). This deviates from 04 § 7, which proposed `legacy_id` in `changes`.
+   - A re-run of unchanged rows writes no audit row.
+4. **Grants (0134):** the transform role gets SELECT, INSERT and UPDATE on `client_facilities` (no DELETE) and INSERT only on `audit_logs`. Each later part grants its own tables in its own migration.
+5. **Guards:** every statement binds the provider tenant (`tenant_id = $n`), so D-05 passes without new entries. G-14 lists `auditRows.ts#audit_logs`, `auditRows.ts#${table}` and `clientFacilities.ts#${table}` as system work.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| The transform creates the provider tenant | it would need writes on `tenants`, roles, settings and the self-facility path. Onboarding already does all of that, with its own audit |
+| A provider tenant from an environment variable | not visible on the run or in its audit, and it cannot differ between environments sharing a configuration |
+| Import facilities without devices as `inactive` | UD-11 says only facilities with devices. Quarantine puts the decision in front of the operator before sign-off |
+| `legacy_id` in the audit `changes` (04 § 7) | the append-only trail would outlive the id map's planned destruction, against 07 § 3 minimisation |
+| One audit row per batch (D-11's alternative) | UD-13 chose one row per row |
+
+**Implications, including the bad ones.**
+
+- The transform is still not available: `isBuilt` stays false until every step is built, so the route answers 409 `TRANSFORM_NOT_AVAILABLE`. The new body is in the contract now.
+- **Name collisions are loud.** An upstream facility with the provider's own self-facility name, or a rename that collides with another facility, fails the whole transform on the unique index (`TRANSFORM_FAILED`, SQLSTATE in the log). The operator renames and runs it again.
+- A surviving facility that later becomes a merge member keeps its earlier facility row. That case is not reconciled here; P25's reconciliation lists it.
+- Adoption is by name only. A pre-made facility with the same name as a different upstream facility would be merged with it. The quarantine review and P25-02 are the check.
+
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note).
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)

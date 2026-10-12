@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-12 — The upstream transform's first steps: facilities and audit rows (P24-02a) ([record](./records/2026-10-12-p24-02a-facilities-audit-steps.md), ADR-129 Am. 3)
+- **Changed:** `POST /api/v1/admin/upstream-sql-imports/:id/transform` takes `{ providerTenantId }`, the tenant the import lands in. It must be an existing, active tenant other than the platform's: 404 `PROVIDER_TENANT_NOT_FOUND`, 409 `PROVIDER_TENANT_NOT_ACTIVE`. The run's view shows `transformTenantId`. The route still answers 409 `TRANSFORM_NOT_AVAILABLE` until every step is built.
+- **Added (internal):** the facilities step (upstream facilities → client facilities of the provider tenant) and the import's audit step, plus migration 0134 (the run's tenant column, a new quarantine reason, the transform role's grants on `client_facilities` and `audit_logs`). New optional setting: `UPSTREAM_SOURCE_TIMEZONE` (default `Asia/Jakarta`).
+
 ### 2026-10-12 — The offline field app's runtime (P22-10c1; no screen yet) ([record](./records/2026-10-12-p22-10c1-field-runtime.md); ADR-127 Am. 3)
 - **Added (internal):** the download of a phone's offline working set — sizes first, the cap refused with the server's message, pages of 200, all or nothing; the purge of that set when the session ends, when access is lost, after 72 hours; one field user per browser profile (another user's offline set is dropped when someone else signs in, without opening it); the administrator wipe, recorded on the server before anything is deleted.
 - **Changed:** when a session cannot be renewed on `/field`, the browser now waits (at most 3 s) for the offline purge before going to the sign-in page.

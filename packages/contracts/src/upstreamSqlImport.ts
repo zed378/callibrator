@@ -100,6 +100,9 @@ export const UPSTREAM_SQL_IMPORT_TRANSFORM_ERROR_CODES = Object.freeze([
   "TRANSFORM_INCOMPLETE",
   "TRANSFORM_FAILED",
   "INTERRUPTED",
+  // P24-02a (ADR-129 Am. 3): the requested provider tenant has no self facility, or the id map
+  // already holds another tenant's rows (one upstream system is one provider's data).
+  "PROVIDER_TENANT_INVALID",
 ] as const);
 export type UpstreamSqlImportTransformErrorCode = (typeof UPSTREAM_SQL_IMPORT_TRANSFORM_ERROR_CODES)[number];
 
@@ -118,6 +121,9 @@ export const UPSTREAM_IMPORT_QUARANTINE_REASONS = Object.freeze([
   "group_conflict",
   "qr_case_collision",
   "future_calibration_date",
+  // P24-02a (ADR-129 Am. 3; UD-11): a facility with no device in the run's register is not
+  // imported — the operator decides it before sign-off.
+  "facility_without_devices",
   // A photo row whose file did not pass 08-FILE-POLICY's ingest (the rsync import's refusal reasons).
   "file_missing",
   "file_type_refused",
@@ -150,6 +156,20 @@ export const listUpstreamSqlImportsSchema = z.object({
 });
 export type ListUpstreamSqlImportsInput = z.output<typeof listUpstreamSqlImportsSchema>;
 
+/**
+ * `POST /admin/upstream-sql-imports/:id/transform` — the body (P24-02a, ADR-129 Am. 3): the
+ * PROVIDER tenant the run's rows land in. The super admin creates it first through the ordinary
+ * onboarding (it gets its self facility); the transform never creates a tenant.
+ */
+export const requestUpstreamSqlTransformSchema = z.object({
+  providerTenantId: uuid(),
+});
+export type RequestUpstreamSqlTransformInput = z.output<typeof requestUpstreamSqlTransformSchema>;
+
 /** `:id` of the run routes (`POST …/:id/transform` included). */
 export const upstreamSqlImportIdSchema = z.object({ id: uuid() });
 export type UpstreamSqlImportIdInput = z.output<typeof upstreamSqlImportIdSchema>;
+
+/** The transform route's whole request — `:id` and the body — checked in one pass (P24-02a). */
+export const transformUpstreamSqlImportSchema = upstreamSqlImportIdSchema.extend(requestUpstreamSqlTransformSchema.shape);
+export type TransformUpstreamSqlImportInput = z.output<typeof transformUpstreamSqlImportSchema>;

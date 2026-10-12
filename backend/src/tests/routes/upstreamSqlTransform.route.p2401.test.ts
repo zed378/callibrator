@@ -61,8 +61,15 @@ beforeEach(() => {
   importService.getRun.mockResolvedValue(VIEW);
 });
 
-const post = async (id: string): Promise<{ status: number; body: Record<string, unknown> }> => {
-  const res = await fetch(`${base}/${id}/transform`, { method: "POST", headers: { "user-agent": "p2401-test" } });
+/** P24-02a: the provider tenant the body names (ADR-129 Am. 3). */
+const PROVIDER = "a2401000-0000-4000-8000-0000000000a9";
+
+const post = async (id: string, body: object = { providerTenantId: PROVIDER }): Promise<{ status: number; body: Record<string, unknown> }> => {
+  const res = await fetch(`${base}/${id}/transform`, {
+    method: "POST",
+    headers: { "user-agent": "p2401-test", "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 };
 
@@ -78,7 +85,11 @@ describe("P24-01 — POST /admin/upstream-sql-imports/:id/transform", () => {
 
   it("the super admin queues it: the service gets the id and the actor, the answer is the run (200, in `data`)", async () => {
     expect(await post(RUN)).toMatchObject({ status: 200, body: { success: true, data: VIEW } });
-    expect(transformService.requestTransform).toHaveBeenCalledWith(RUN, expect.objectContaining({ userId: fx.superAdmin.id, userAgent: "p2401-test" }));
+    expect(transformService.requestTransform).toHaveBeenCalledWith(
+      RUN,
+      { providerTenantId: PROVIDER },
+      expect.objectContaining({ userId: fx.superAdmin.id, userAgent: "p2401-test" }),
+    );
     expect(importService.getRun).toHaveBeenCalledWith(RUN);
   });
 
@@ -87,12 +98,22 @@ describe("P24-01 — POST /admin/upstream-sql-imports/:id/transform", () => {
     expect(transformService.requestTransform).not.toHaveBeenCalled();
   });
 
+  it("P24-02a: a missing or malformed providerTenantId is a 400 before the service; a body cannot replace the path's id", async () => {
+    expect((await post(RUN, {})).status).toBe(400);
+    expect((await post(RUN, { providerTenantId: "nope" })).status).toBe(400);
+    expect((await post(RUN, { providerTenantId: PROVIDER, id: "a2401000-0000-4000-8000-0000000000ff" })).status).toBe(200);
+    expect(transformService.requestTransform).toHaveBeenCalledTimes(1);
+    expect(transformService.requestTransform).toHaveBeenCalledWith(RUN, { providerTenantId: PROVIDER }, expect.anything());
+  });
+
   it.each([
     [404, "UPSTREAM_SQL_IMPORT_NOT_FOUND"],
     [409, "TRANSFORM_NOT_AVAILABLE"],
     [409, "RUN_NOT_LOADED"],
     [409, "TRANSFORM_IN_PROGRESS"],
     [403, "REAL_DATA_NOT_ALLOWED"],
+    [404, "PROVIDER_TENANT_NOT_FOUND"],
+    [409, "PROVIDER_TENANT_NOT_ACTIVE"],
   ])("a service refusal %i %s answers with its top-level code, and no run", async (status, code) => {
     transformService.requestTransform.mockRejectedValueOnce(new CodedError(status, code, `refused: ${code}`));
     expect(await post(RUN)).toMatchObject({ status, body: { code, message: `refused: ${code}` } });

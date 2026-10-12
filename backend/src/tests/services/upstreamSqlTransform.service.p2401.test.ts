@@ -94,9 +94,10 @@ const seedRun = (id: string, values: RunRow = {}): void => {
 };
 const row = (id: string): RunRow => mdb.rows("UpstreamSqlImport").find((r) => r["id"] === id) as RunRow;
 const audits = (id: string): RunRow[] => mdb.rows("AuditLog").filter((a) => a["resourceId"] === id);
-const request = (id = RUN): Promise<void> => asSuperAdmin(() => service.requestTransform(id, actor));
-const refusal = async (id = RUN): Promise<{ status: number; code: string }> => {
-  const err = (await request(id).then(
+const request = (id = RUN, providerTenantId = HOME): Promise<void> =>
+  asSuperAdmin(() => service.requestTransform(id, { providerTenantId }, actor));
+const refusal = async (id = RUN, providerTenantId = HOME): Promise<{ status: number; code: string }> => {
+  const err = (await request(id, providerTenantId).then(
     () => null,
     (e: unknown) => e,
   )) as CodedErrorModule.CodedError | null;
@@ -121,7 +122,13 @@ describe("P24-01 the transform request", () => {
   it("queues a loaded run: transform_requested, its requester and time, the audit row, the job remembered", async () => {
     seedRun(RUN);
     await request();
-    expect(row(RUN)).toMatchObject({ transformStatus: "transform_requested", transformRequestedBy: USER, transformBatchJobId: JOB, transformErrorCode: null });
+    expect(row(RUN)).toMatchObject({
+      transformStatus: "transform_requested",
+      transformRequestedBy: USER,
+      transformBatchJobId: JOB,
+      transformErrorCode: null,
+      transformTenantId: HOME,
+    });
     expect(row(RUN)["transformRequestedAt"]).toBeInstanceOf(Date);
     expect(createJob).toHaveBeenCalledWith(PLATFORM, USER, "upstream-sql-transform", 0);
     expect(audits(RUN)).toEqual([expect.objectContaining({ tenantId: PLATFORM, userId: USER, action: "UPDATE", resourceType: "UpstreamSqlImport", ipAddress: "203.0.113.47" })]);
@@ -129,6 +136,7 @@ describe("P24-01 the transform request", () => {
       operation: "UPSTREAM_SQL_IMPORT_TRANSFORM_STATE",
       before: { transformStatus: "not_available" },
       after: { transformStatus: "transform_requested" },
+      providerTenantId: HOME,
     });
   });
 
@@ -195,9 +203,11 @@ describe("P24-01 the worker", () => {
   });
 
   it("runs the transform on the transform connection: transforming, then transformed with its summary; the connection closed", async () => {
-    seedRun(RUN, { transformStatus: "transform_requested", transformBatchJobId: null, transformRequestedAt: new Date() });
+    seedRun(RUN, { transformStatus: "transform_requested", transformBatchJobId: null, transformRequestedAt: new Date(), transformTenantId: HOME });
     expect(await asPlatformJob(() => service.runTransformJob({ id: JOB }))).toEqual({ processedItems: 2 });
-    expect(runTransform).toHaveBeenCalledWith(expect.objectContaining({ runId: RUN, db: connection, runner: connection, role: "callibrator_transform", steps: [] }));
+    expect(runTransform).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: RUN, db: connection, runner: connection, role: "callibrator_transform", steps: [], tenantId: HOME, sourceZone: "Asia/Jakarta" }),
+    );
     expect(row(RUN)).toMatchObject({ transformStatus: "transformed", transformBatchJobId: JOB, transformSummary: SUMMARY });
     expect(row(RUN)["transformErrorCode"] ?? null).toBeNull();
     expect(row(RUN)["transformStartedAt"]).toBeInstanceOf(Date);
@@ -212,7 +222,7 @@ describe("P24-01 the worker", () => {
     ["any other error is TRANSFORM_FAILED (its SQLSTATE in the log only)", Object.assign(new Error("boom"), { parent: { code: "23503" } }), "TRANSFORM_FAILED"],
     ["an error with no SQLSTATE is TRANSFORM_FAILED too", new Error("plain"), "TRANSFORM_FAILED"],
   ])("%s: transform_failed, the job fails, the connection closed", async (_label, error, code) => {
-    seedRun(RUN, { transformStatus: "transform_requested", transformBatchJobId: JOB, transformRequestedAt: new Date() });
+    seedRun(RUN, { transformStatus: "transform_requested", transformBatchJobId: JOB, transformRequestedAt: new Date(), transformTenantId: HOME });
     runTransform.mockRejectedValueOnce(error);
     await expect(asPlatformJob(() => service.runTransformJob({ id: JOB }))).rejects.toThrow(`Upstream SQL transform ${RUN} failed: ${code}`);
     expect(row(RUN)).toMatchObject({ transformStatus: "transform_failed", transformErrorCode: code });
@@ -254,5 +264,32 @@ describe("P24-01 the interrupted transform", () => {
     ]);
     expect(audits("a2401000-0000-4000-8000-000000000f11")[0]?.["changes"]).toMatchObject({ transformErrorCode: "INTERRUPTED", jobStatus: "FAILED" });
     expect(audits("a2401000-0000-4000-8000-000000000f14")[0]?.["changes"]).toMatchObject({ jobStatus: null });
+  });
+});
+
+describe("P24-02a the provider tenant (ADR-129 Am. 3)", () => {
+  it("refuses an unknown tenant or the platform's own 404 PROVIDER_TENANT_NOT_FOUND, an inactive one 409; nothing moves", async () => {
+    seedRun(RUN);
+    expect(await refusal(RUN, "a2401000-0000-4000-8000-0000000000a7")).toEqual({ status: 404, code: "PROVIDER_TENANT_NOT_FOUND" });
+    expect(await refusal(RUN, PLATFORM)).toEqual({ status: 404, code: "PROVIDER_TENANT_NOT_FOUND" });
+    mdb.seed("Tenant", { id: "a2401000-0000-4000-8000-0000000000a8", name: "Paused", code: "PAUSED", status: "suspended" });
+    const err = (await request(RUN, "a2401000-0000-4000-8000-0000000000a8").catch((e: unknown) => e)) as CodedErrorModule.CodedError;
+    expect({ status: err.status, code: err.publicCode, message: err.message }).toEqual({
+      status: 409,
+      code: "PROVIDER_TENANT_NOT_ACTIVE",
+      message: "The provider tenant is suspended; only an active tenant receives an import.",
+    });
+    expect(row(RUN)).toMatchObject({ transformStatus: "not_available" });
+    expect(row(RUN)["transformTenantId"] ?? null).toBeNull();
+    expect(audits(RUN)).toEqual([]);
+    expect(createJob).not.toHaveBeenCalled();
+  });
+
+  it("the worker fails a requested run that names no tenant PROVIDER_TENANT_INVALID before the runner reads a row", async () => {
+    seedRun(RUN, { transformStatus: "transform_requested", transformBatchJobId: JOB, transformRequestedAt: new Date() });
+    await expect(asPlatformJob(() => service.runTransformJob({ id: JOB }))).rejects.toThrow("PROVIDER_TENANT_INVALID");
+    expect(runTransform).not.toHaveBeenCalled();
+    expect(row(RUN)["transformErrorCode"]).toBe("PROVIDER_TENANT_INVALID");
+    expect(close).toHaveBeenCalledTimes(1);
   });
 });

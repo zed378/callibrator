@@ -223,6 +223,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0132-client-facilities-menu-active.js", require("../migrations/0132-client-facilities-menu-active")],
   // P24-01 (ADR-129 Am. 1): the transform's role, upstream_import.id_map and .quarantine, the run's transform columns.
   ["0133-upstream-import-transform.js", require("../migrations/0133-upstream-import-transform")],
+  // P24-02a (ADR-129 Am. 3): the run's provider tenant, the facilities reason, the transform role's first public grants.
+  ["0134-upstream-transform-facilities.js", require("../migrations/0134-upstream-transform-facilities")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

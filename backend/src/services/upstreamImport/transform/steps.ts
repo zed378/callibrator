@@ -9,14 +9,16 @@
  * nothing dropped silently (05 § 1.2). Steps 6, 7 and 13 write rows DERIVED from other tables
  * (distinct laboratories, distinct rooms, the per-row audit rows) and own no source table.
  *
- * A step's `run` and each source's `legacyId` are P24-02's: until a step has both, it is not
- * built, and the transform is not available (`transformAvailable()` false, the request 409,
+ * A step's `run` and each source's `legacyId` are P24-02's (built part by part: P24-02a the
+ * facilities and the audit rows): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
  * the worker `TRANSFORM_NOT_BUILT`). `legacyId` is an SQL expression over the staged row,
  * aliased `s` — a constant of this module, never input — giving the text key the step writes
  * to `id_map.legacy_id` (usually `s."id"::text`; a session's `legacy_key`, 05 § 3.3).
  */
 import type { Transaction } from "sequelize";
 import type { SqlRunner } from "../../../utils/sql.util";
+import { FACILITY_SOURCE, runClientFacilities } from "./clientFacilities";
+import { runAuditRows } from "./auditRows";
 
 /** What a step's `run` receives: the run, and the transform connection's transaction. */
 export interface StepContext {
@@ -26,6 +28,10 @@ export interface StepContext {
   readonly runner: SqlRunner;
   /** The run's ONE transform transaction: a failure anywhere rolls every step back. */
   readonly transaction: Transaction;
+  /** P24-02a: the PROVIDER tenant every tenant-owned row lands in (the run's `transformTenantId`). Bound, never interpolated. */
+  readonly tenantId: string;
+  /** P24-02a (UD-7, 05 § 3.4): the IANA zone upstream's naive DATETIME values are read in. Bound, never interpolated. */
+  readonly sourceZone: string;
 }
 
 /** One staged table a step accounts for. */
@@ -52,12 +58,17 @@ const NOT_BUILT = null;
 const sources = (...tables: string[]): readonly TransformSource[] =>
   Object.freeze(tables.map((table) => Object.freeze({ table, legacyId: NOT_BUILT })));
 
-const step = (id: string, writes: readonly string[], from: readonly TransformSource[]): TransformStep =>
-  Object.freeze({ id, writes: Object.freeze([...writes]), sources: from, run: NOT_BUILT });
+const step = (
+  id: string,
+  writes: readonly string[],
+  from: readonly TransformSource[],
+  run: TransformStep["run"] = NOT_BUILT,
+): TransformStep => Object.freeze({ id, writes: Object.freeze([...writes]), sources: from, run });
 
 /** 05 § 3.1 as amended by P19-04 § 15 (the provider tenant first, then its client facilities). */
 export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
-  step("client_facilities", ["client_facilities"], sources("mst_faskes")),
+  // P24-02a: the provider tenant proved, then its client facilities (clientFacilities.ts).
+  step("client_facilities", ["client_facilities"], Object.freeze([FACILITY_SOURCE]), runClientFacilities),
   step("users", ["users"], sources("users", "auth_groups", "auth_groups_users", "trx_mapping_user_client")),
   step("device_types", ["device_types"], sources("mst_alat")),
   step(
@@ -109,7 +120,8 @@ export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
       "trx_rekomendasi_hasil_pekerjaan",
     ),
   ),
-  step("audit_logs", ["audit_logs"], sources()),
+  // P24-02a: one audit row per application row written in this transaction (auditRows.ts).
+  step("audit_logs", ["audit_logs"], sources(), runAuditRows),
 ]);
 
 /** Whether every step, and every source's legacy key, is written. */

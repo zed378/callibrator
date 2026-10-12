@@ -23,6 +23,8 @@ describe("P24-01 @callibrator/contracts/upstreamSqlImport — the transform", ()
       "TRANSFORM_INCOMPLETE",
       "TRANSFORM_FAILED",
       "INTERRUPTED",
+      // P24-02a (ADR-129 Am. 3): the provider tenant has no self facility, or another tenant is in the id map.
+      "PROVIDER_TENANT_INVALID",
     ]);
   });
 
@@ -46,11 +48,13 @@ describe("P24-01 @callibrator/contracts/upstreamSqlImport — the transform", ()
       "scan_failed",
       "storage_verify_failed",
       "ingest_failed",
+      // P24-02a (UD-11): a facility with no device in the register.
+      "facility_without_devices",
     ]) {
       expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toContain(reason);
     }
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).not.toContain("device_not_found");
-    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(18);
+    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(19);
     expect(new Set(UPSTREAM_IMPORT_QUARANTINE_REASONS).size).toBe(UPSTREAM_IMPORT_QUARANTINE_REASONS.length);
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS.every((r) => /^[a-z][a-z0-9_]{0,39}$/.test(r))).toBe(true);
     expect(Object.isFrozen(UPSTREAM_IMPORT_QUARANTINE_REASONS)).toBe(true);

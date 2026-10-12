@@ -79,6 +79,8 @@ interface UpstreamSqlImport extends Model<InferAttributes<UpstreamSqlImport>, In
   transformBatchJobId: CreationOptional<string | null>;
   /** P24-01: per step and source table, counts and reason codes only. */
   transformSummary: CreationOptional<UpstreamSqlImportTransformSummary | null>;
+  /** P24-02a: the PROVIDER tenant a requested transform writes into. Not a tenant scope (no `tenantId`). */
+  transformTenantId: CreationOptional<string | null>;
   attempt: CreationOptional<number>;
   batchJobId: CreationOptional<string | null>;
   uploadedBy: string | null;
@@ -171,6 +173,8 @@ const defineModel: DefineUpstreamSqlImport = (db, DataTypes) => {
         allowNull: true,
         validate: { shape: jsonShape("UpstreamSqlImport.transformSummary") },
       },
+      // P24-02a (migration 0134): no foreign key and not `tenantId`, as `notifyTenantId`.
+      transformTenantId: { type: DataTypes.UUID, allowNull: true },
       attempt: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
       batchJobId: {
         type: DataTypes.UUID,
