@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-12 — Rooms can be listed for one client facility ([record](./records/2026-10-12-warehouse-facility-filter.md))
+- **Added:** `GET /api/v1/warehouses?clientFacilityId=<uuid>` lists one facility's rooms and stores, e.g. `?kind=room&clientFacilityId=…` for the field app. Naming a facility the caller cannot see gives an empty list. A malformed id is a 400.
+
 ### 2026-10-12 — The upstream transform's first steps: facilities and audit rows (P24-02a) ([record](./records/2026-10-12-p24-02a-facilities-audit-steps.md), ADR-129 Am. 3)
 - **Changed:** `POST /api/v1/admin/upstream-sql-imports/:id/transform` takes `{ providerTenantId }`, the tenant the import lands in. It must be an existing, active tenant other than the platform's: 404 `PROVIDER_TENANT_NOT_FOUND`, 409 `PROVIDER_TENANT_NOT_ACTIVE`. The run's view shows `transformTenantId`. The route still answers 409 `TRANSFORM_NOT_AVAILABLE` until every step is built.
 - **Added (internal):** the facilities step (upstream facilities → client facilities of the provider tenant) and the import's audit step, plus migration 0134 (the run's tenant column, a new quarantine reason, the transform role's grants on `client_facilities` and `audit_logs`). New optional setting: `UPSTREAM_SOURCE_TIMEZONE` (default `Asia/Jakarta`).

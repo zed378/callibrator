@@ -118,6 +118,8 @@ interface FetchWarehousesQuery {
   // absent or not (P9-20; a type-only widening, nothing emitted changes).
   find?: string | null | undefined;
   kind?: "store" | "room" | undefined;
+  /** The rooms of one client facility; the facility hooks still force a bound principal's own. */
+  clientFacilityId?: string | undefined;
   page?: number | string;
   limit?: number | string;
 }
@@ -132,12 +134,26 @@ const messageOf = (error: unknown): unknown => (error as { message?: unknown }).
 // WAREHOUSE SERVICE METHODS
 // ==========================================
 
-const fetchWarehouses = async ({ tenantId, find, kind, page = 1, limit = DEFAULT_LIMIT }: FetchWarehousesQuery): Promise<ServiceResult<WarehouseListData>> => {
+const fetchWarehouses = async ({
+  tenantId,
+  find,
+  kind,
+  clientFacilityId,
+  page = 1,
+  limit = DEFAULT_LIMIT,
+}: FetchWarehousesQuery): Promise<ServiceResult<WarehouseListData>> => {
   try {
     const whereClause: Record<string | symbol, unknown> = { tenantId, isDeleted: false };
     // P21-02a (UD-10): a stock picker asks for stores, a device form for rooms.
     if (kind) {
       whereClause["kind"] = kind;
+    }
+    // One facility's rooms (the field app's working set). Under the tenant predicate, so another
+    // tenant's facility lists nothing. AND-ed, not a top-level key: the facility hook REPLACES a
+    // bound principal's top-level `clientFacilityId` with its own (FT-10), which would answer F1's
+    // rooms to a bound F1 user naming F2; AND-ed, that request lists nothing, as G-22 expects.
+    if (clientFacilityId) {
+      whereClause[Op.and] = [{ clientFacilityId }];
     }
 
     if (find) {

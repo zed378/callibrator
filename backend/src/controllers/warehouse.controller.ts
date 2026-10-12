@@ -53,6 +53,7 @@ export const getAllWarehouses = asyncHandler(async (req: Request, res: Response)
     tenantId,
     find: validated.find,
     kind: validated.kind,
+    clientFacilityId: validated.clientFacilityId,
     page: validated.page,
     limit: validated.limit,
   });

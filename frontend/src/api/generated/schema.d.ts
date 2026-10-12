@@ -36555,6 +36555,7 @@ export interface operations {
                 find?: string | null;
                 status?: (string | "") | null;
                 kind?: "store" | "room";
+                clientFacilityId?: string;
             };
             header?: never;
             path?: never;

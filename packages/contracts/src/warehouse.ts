@@ -26,6 +26,10 @@ const getWarehousesQuery = z.object({
   status: caseless(WAREHOUSE_STATUSES, "lower").or(z.literal("")).nullable().optional(),
   // P21-02a (UD-10; P19-03 § 6.4): stores (stock pickers) or rooms (device forms); unset = both.
   kind: z.enum(WAREHOUSE_KINDS).optional(),
+  // The rooms of ONE client facility (the field app's working set downloads a facility's rooms, not
+  // the tenant's). A narrowing filter: a bound principal's own facility is forced by the facility
+  // hooks whatever is named here, so another facility's id lists nothing (G-22).
+  clientFacilityId: uuid().optional(),
 });
 
 const warehouseIdSchema = z.object({
