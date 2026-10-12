@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-12 — The upstream transform's users step (P24-02b) ([record](./records/2026-10-12-p24-02b-users-step.md), ADR-129 Am. 4)
+- **Added (internal):** the upstream accounts step. Staff become unbound provider users. Facility accounts are bound to their facility, with one facility administrator each. No upstream password is carried over (each account must be set through the invitation). Migration 0135 gives the transform's database role column-level access to `users`, and no access to any credential.
+
 ### 2026-10-12 — The offline field app at `/field` (P22-10c2) ([record](./records/2026-10-12-p22-10c2-field-app.md); ADR-127 Am. 4)
 - **Added:** `/field`, the field app for technicians: prepare the phone for offline work (choose facilities, see their size, download), scan or type a QR code, see a device, register a device with two photos, capture an IPM step by step with evidence photos, and send it when back online. The outbox explains every refusal and offers what can be done; nothing is dropped without typing DISCARD. Indonesian and English.
 - **Added:** an administrator can wipe another user's offline data from a shared phone after typing WIPE; the wipe is recorded on the server first.

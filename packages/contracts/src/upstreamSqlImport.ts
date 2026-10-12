@@ -124,6 +124,14 @@ export const UPSTREAM_IMPORT_QUARANTINE_REASONS = Object.freeze([
   // P24-02a (ADR-129 Am. 3; UD-11): a facility with no device in the run's register is not
   // imported — the operator decides it before sign-off.
   "facility_without_devices",
+  // P24-02b (ADR-129 Am. 4; P18-01-02 § 2.2): an account in no known group; a facility account whose
+  // facility step 1 did not import; an e-mail another account already holds; a group that is none
+  // of the four; a membership or mapping row of a user that was not imported.
+  "user_without_group",
+  "facility_not_imported",
+  "email_in_use",
+  "unknown_group",
+  "user_not_imported",
   // A photo row whose file did not pass 08-FILE-POLICY's ingest (the rsync import's refusal reasons).
   "file_missing",
   "file_type_refused",

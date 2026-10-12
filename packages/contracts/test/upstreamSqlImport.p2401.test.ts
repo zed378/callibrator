@@ -50,11 +50,17 @@ describe("P24-01 @callibrator/contracts/upstreamSqlImport — the transform", ()
       "ingest_failed",
       // P24-02a (UD-11): a facility with no device in the register.
       "facility_without_devices",
+      // P24-02b (P18-01-02 § 2.2): the users step.
+      "user_without_group",
+      "facility_not_imported",
+      "email_in_use",
+      "unknown_group",
+      "user_not_imported",
     ]) {
       expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toContain(reason);
     }
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).not.toContain("device_not_found");
-    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(19);
+    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(24);
     expect(new Set(UPSTREAM_IMPORT_QUARANTINE_REASONS).size).toBe(UPSTREAM_IMPORT_QUARANTINE_REASONS.length);
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS.every((r) => /^[a-z][a-z0-9_]{0,39}$/.test(r))).toBe(true);
     expect(Object.isFrozen(UPSTREAM_IMPORT_QUARANTINE_REASONS)).toBe(true);

@@ -11319,7 +11319,7 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 |---|---|
 | Table-level grants on `users` | the transform could read every credential in the platform |
 | A distinct random hash per user | it costs about 25 s of bcrypt and protects nothing more: no secret is known either way |
-| A non-bcrypt sentinel (e.g. `!`) as the password | `comparePassword` on a malformed hash can throw, turning a login into a 500. A real bcrypt simply never matches |
+| A non-bcrypt sentinel (e.g. `!`) as the password | depending on the bcrypt library, `comparePassword` may throw on a malformed hash (a login 500) instead of answering false. This was not verified here. A real bcrypt simply never matches |
 | Merging into an account that already holds the e-mail | that is identity linking without the person. The quarantine sends it to the operator |
 | Re-runs re-apply roles and bindings | they would silently overwrite the operator's audited invitation-review changes (P18-01 rule 1's swap) |
 

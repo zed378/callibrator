@@ -424,6 +424,16 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
       "the facilities step: reads id_map and the allow-listed staging tables (mst_faskes, trx_inventory via stagedTable); writes only client_facilities (not facility-scoped), the provider tenant bound; a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02a)"],
   },
+  // P24-02b (ADR-129 Am. 4): the users step — on the transform role's connection, no principal.
+  "services/upstreamImport/transform/users.ts#users": {
+    reason:
+      "the users step: inserts and updates provider-tenant users (the tenant bound; the bound facility is the one step 1 decided) and checks the candidates' username / e-mail across tenants; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02b)"],
+  },
+  "services/upstreamImport/transform/users.ts#${table}": {
+    reason: "the users step's reads of id_map and the allow-listed staging tables (via stagedTable); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02b)"],
+  },
   "services/upstreamImport/transform/ledger.ts#${table}": {
     reason:
       "the upstream transform's `upstream_import` bookkeeping (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",

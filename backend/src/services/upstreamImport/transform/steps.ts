@@ -10,7 +10,7 @@
  * (distinct laboratories, distinct rooms, the per-row audit rows) and own no source table.
  *
  * A step's `run` and each source's `legacyId` are P24-02's (built part by part: P24-02a the
- * facilities and the audit rows): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
+ * facilities and the audit rows, P24-02b the users): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
  * the worker `TRANSFORM_NOT_BUILT`). `legacyId` is an SQL expression over the staged row,
  * aliased `s` — a constant of this module, never input — giving the text key the step writes
  * to `id_map.legacy_id` (usually `s."id"::text`; a session's `legacy_key`, 05 § 3.3).
@@ -19,6 +19,7 @@ import type { Transaction } from "sequelize";
 import type { SqlRunner } from "../../../utils/sql.util";
 import { FACILITY_SOURCE, runClientFacilities } from "./clientFacilities";
 import { runAuditRows } from "./auditRows";
+import { USER_SOURCES, runUsers } from "./users";
 
 /** What a step's `run` receives: the run, and the transform connection's transaction. */
 export interface StepContext {
@@ -69,7 +70,13 @@ const step = (
 export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
   // P24-02a: the provider tenant proved, then its client facilities (clientFacilities.ts).
   step("client_facilities", ["client_facilities"], Object.freeze([FACILITY_SOURCE]), runClientFacilities),
-  step("users", ["users"], sources("users", "auth_groups", "auth_groups_users", "trx_mapping_user_client")),
+  // P24-02b: users, their groups, memberships and facility mappings (users.ts).
+  step(
+    "users",
+    ["users"],
+    Object.freeze([USER_SOURCES.users, USER_SOURCES.groups, USER_SOURCES.memberships, USER_SOURCES.mappings]),
+    runUsers,
+  ),
   step("device_types", ["device_types"], sources("mst_alat")),
   step(
     "inspection_item_definitions",
