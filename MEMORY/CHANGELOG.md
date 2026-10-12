@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-12 — The upstream transform's catalogue steps (P24-02c) ([record](./records/2026-10-12-p24-02c-catalogue-steps.md), ADR-129 Am. 5)
+- **Added (internal):** the upstream device types and checklist items are imported into the global catalogue (duplicates merged; the items that the platform's base checklist already covers are kept for history only, not offered for new templates). Migration 0136 gives the transform's database role write access to those two catalogue tables.
+
 ### 2026-10-12 — Fixed: a refused offline replay could restart the API ([record](./records/2026-10-12-fix-idempotency-double-write.md), ADR-127 Am. 5)
 - **Fixed:** a request sent with an `Idempotency-Key` (the field app's offline outbox does this) that ended in an error, such as submitting an incomplete IPM, made the API answer twice and restart. It now answers once.
 

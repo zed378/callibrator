@@ -132,6 +132,9 @@ export const UPSTREAM_IMPORT_QUARANTINE_REASONS = Object.freeze([
   "email_in_use",
   "unknown_group",
   "user_not_imported",
+  // P24-02c (ADR-129 Am. 5): an upstream checklist row that is a session HEADER value (the
+  // recommendation's four answers), not a catalogue item.
+  "session_header_value",
   // A photo row whose file did not pass 08-FILE-POLICY's ingest (the rsync import's refusal reasons).
   "file_missing",
   "file_type_refused",

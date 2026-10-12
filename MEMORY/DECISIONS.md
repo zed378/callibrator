@@ -11397,6 +11397,47 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 
 **`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 5 (an as-built note).
 
+### ADR-129 Amendment 5 (2026-10-12, P24-02c): the catalogue steps write the global tables directly (not through the catalogue service), base-section definitions are imported retired, and the recommendation's answers are a session header value
+
+**Why an amendment.** The P19-01 spec § 12 says the ETL creates the catalogue "through the catalogue service, … never by bulk INSERT around it", and links base items "to the seeded base definitions by `legacy_*`". Both conflict with what is built, and the second cannot be done mechanically:
+
+- ADR-129 Am. 1 runs the transform on its own role and connection, and the application role cannot read staging. Going through the service would cross connections and lose the one-transaction rollback.
+- The seeded base definitions are platform-authored with no upstream text (§ 12). No mapping from an upstream `mst_*` row to a seeded definition exists, and inventing one would be a guess.
+
+**Decision.**
+
+1. **Direct, set-based writes on the transform connection** to `device_types` and `inspection_item_definitions`. Migration 0136 grants SELECT, INSERT and UPDATE; DELETE is refused by the tables' own triggers anyway. The service's rules are honoured by reusing its code, not its connection: each definition's content is built by `@callibrator/contracts` `inspectionContentOf` and `parseLimit`, the same functions the catalogue service uses. The 0112 CHECKs accept every row (proved live). Audit rows come from the audit step under the PLATFORM tenant, actor `system:upstream-transform` (not `system:upstream-import` as § 12 named it: one transform actor, ADR-129 Am. 3).
+2. **Device types (§ 4.1):**
+   - names normalised, with case/space duplicates merged into the lowest legacy id;
+   - an operator-made type of the same name (any status) adopted;
+   - an empty name quarantined `value_out_of_range`;
+   - a changed survivor renames its type.
+3. **Item definitions (§ 4.2, § 5):**
+   - Each `mst_*` table is one section, with its kind from the § 5.1 registry.
+   - The label comes from `description`; `symbol` is kept; `setting` is used for performance; the limit comes from `nilai_acuan` for the two limit kinds. An unparsed limit stays `text`, printed as written.
+   - The allowed outcomes come from the upstream code list through § 5.1's mapping, narrowed to the section's set. If the list names nothing the kind needs, the whole set is used.
+   - The upstream `notes` are kept operator-only.
+4. **Base-section definitions are imported `retired`** (environment, electrical supply, other safety, physical, maintenance tasks). The live base checklist stays the platform's neutral base version 1. The imported definitions exist so that imported results point at what was asked (04 § 4.4). Retired, they cannot be added to a draft, so operators never see two "Suhu" items to choose from. This replaces § 12's "linked to the seeded base definitions by `legacy_*`".
+5. **`mst_rekomendasi_hasil_pekerjaan` is quarantined `session_header_value`** (a new reason; contracts and 0136). The recommendation is a session header field, not a checklist item; the sessions step maps each session's code itself.
+6. **Electrical-safety limits:** `nilai_acuan` is used where the staged table has it. Where it does not, the item is imported without a limit (`measured_with_limit` allows none), and the technician chooses the outcome. Where upstream really keeps these limits (03 says "all ≤ N unit") is a dry-run check (P24-05), not decided from synthetic data.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Call the catalogue service from the worker | the app connection cannot read staging (G-29). Two connections break the one-transaction rollback, and per-row service calls defeat 05 § 1's set-based load |
+| Link base-section rows to the seeded definitions by label or position | a guess. Labels differ by design (the seed copies no upstream text), and a wrong link mislabels every imported result |
+| Import base-section definitions `active` | operators would see the upstream and the neutral items side by side and could build duplicate checks into templates |
+| Map the recommendation's rows to the session column now | sessions are a later step; until then the rows must still be accounted for |
+
+**Implications, including the bad ones.**
+
+- The catalogue service's own audit operations (`changes.operation` values of P21-01) are not used for imported rows. Imported rows carry `UPSTREAM_IMPORT`.
+- The operator's one-time review of the imported catalogue (07, § 12) happens on the imported rows; nothing is published by this step. Template versions are P24-02d.
+- Measured items imported without a unit cannot be added to a published version until the operator gives one: the publish refuses them, by design (§ 6.2).
+
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note). The P19-01 spec § 12's ETL bullet is superseded by this amendment, which is noted in the spec.
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)

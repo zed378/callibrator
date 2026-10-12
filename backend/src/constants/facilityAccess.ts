@@ -434,6 +434,12 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
     reason: "the users step's reads of id_map and the allow-listed staging tables (via stagedTable); a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02b)"],
   },
+  // P24-02c (ADR-129 Am. 5): the catalogue steps — global tables, the transform worker, no principal.
+  "services/upstreamImport/transform/catalogue.ts#${table}": {
+    reason:
+      "the catalogue steps' reads of id_map and allow-listed staging tables (via stagedTable); they write only the global catalogue; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02c)"],
+  },
   "services/upstreamImport/transform/ledger.ts#${table}": {
     reason:
       "the upstream transform's `upstream_import` bookkeeping (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",

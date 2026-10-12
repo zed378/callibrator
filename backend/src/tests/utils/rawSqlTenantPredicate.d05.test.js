@@ -80,6 +80,10 @@ const CROSS_TENANT = {
     "the users step's username / e-mail collision check over the candidates' keys, across tenants because both are globally unique",
   "services/upstreamImport/transform/users.ts#${table}":
     "the users step's reads of the allow-listed staging tables (auth_groups, auth_groups_users) in upstream_import",
+  // P24-02c (ADR-129 Am. 5): the catalogue steps read allow-listed staging tables (via stagedTable)
+  // and write the GLOBAL device_types / inspection_item_definitions — no tenant exists to bind.
+  "services/upstreamImport/transform/catalogue.ts#${table}":
+    "the catalogue steps' reads of allow-listed staging tables (mst_alat, the mst_* checklists); the targets are global",
 };
 
 const tenantScopedTables = () => {
