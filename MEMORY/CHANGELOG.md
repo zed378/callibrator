@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-12 — The IPM list can show only the reports still to sign ([record](./records/2026-10-12-ipm-sessions-unsigned-filter.md))
+- **Added:** `GET /api/v1/ipm/sessions?unsigned=true` lists the caller's own submitted, current reports that it has not signed yet; `unsigned=false` lists the ones it has signed. Any other value is a 400.
+
 ### 2026-10-12 — The upstream transform's users step (P24-02b) ([record](./records/2026-10-12-p24-02b-users-step.md), ADR-129 Am. 4)
 - **Added (internal):** the upstream accounts step. Staff become unbound provider users. Facility accounts are bound to their facility, with one facility administrator each. No upstream password is carried over (each account must be set through the invitation). Migration 0135 gives the transform's database role column-level access to `users`, and no access to any credential.
 

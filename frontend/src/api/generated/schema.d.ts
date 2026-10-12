@@ -23582,6 +23582,7 @@ export interface operations {
                 clientFacilityId?: string;
                 status?: "draft" | "submitted" | "voided" | "discarded";
                 effective?: boolean;
+                unsigned?: boolean;
                 recommendation?: "fit_for_use" | "needs_calibration" | "not_fit_for_use" | "needs_repair";
                 performedBy?: string;
                 from?: string | (string);

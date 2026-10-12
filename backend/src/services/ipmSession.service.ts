@@ -417,6 +417,32 @@ const defaultStatuses = (userId: string | null): WhereOptions => ({
 });
 
 /**
+ * The `unsigned` filter (the field app's "to sign" list): the caller's SIGNABLE reports — submitted,
+ * effective, not imported, performed by the caller (ipmSignature.service#assertSignable /
+ * #assertPerformer) — without (`true`) or with (`false`) the caller's performer signature. A
+ * performer signature is only ever the performer's, so the caller's own performer signatures are
+ * exactly the signed set. No caller (a system path) lists nothing.
+ *
+ * @param userId - the caller
+ * @param unsigned - true: awaiting the signature; false: signed
+ * @returns the conditions to AND
+ */
+const signatureFilter = async (userId: string | null, unsigned: boolean): Promise<WhereOptions[]> => {
+  if (!userId) {
+    return [{ id: null }];
+  }
+  // One user's performer signatures: the children of one parent (D-24 PARENT).
+  const signed = await models.InspectionSessionSignature.findAll({ where: { kind: "performer", signerId: userId }, attributes: ["sessionId"] });
+  const ids = signed.map((s) => s.sessionId);
+  const signable: WhereOptions = { status: "submitted", supersededById: null, legacyKey: null, performedBy: userId };
+  if (!unsigned) {
+    return [signable, { id: ids }];
+  }
+  // An empty NOT IN is spelled as no condition (never `NOT IN (NULL)`, which matches nothing).
+  return ids.length === 0 ? [signable] : [signable, { id: { [Op.notIn]: ids } }];
+};
+
+/**
  * `GET /ipm/sessions` — the sessions in the caller's context (the hooks add the tenant and, for a
  * bound caller, the facility predicate: a foreign `clientFacilityId` answers an empty page).
  *
@@ -428,6 +454,9 @@ export const listSessions = async (userId: string | null, query: IpmSessionListQ
   const and: WhereOptions[] = [query.status ? { status: query.status } : defaultStatuses(userId)];
   if (query.effective !== undefined) {
     and.push(query.effective ? { status: "submitted", supersededById: null } : { [Op.or]: [{ status: { [Op.ne]: "submitted" } }, { supersededById: { [Op.ne]: null } }] });
+  }
+  if (query.unsigned !== undefined) {
+    and.push(...(await signatureFilter(userId, query.unsigned)));
   }
   for (const key of ["deviceId", "clientFacilityId", "recommendation", "performedBy"] as const) {
     if (query[key] !== undefined) {

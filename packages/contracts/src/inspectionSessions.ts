@@ -63,7 +63,8 @@ export const IPM_SESSION_SORTS = Object.freeze(["performedAt", "visitNumber"] as
 
 /**
  * `GET /ipm/sessions` (spec § 10.2). `status` absent: the caller's drafts + submitted + voided
- * (`discarded` only on request); `effective` true: submitted and not superseded.
+ * (`discarded` only on request); `effective` true: submitted and not superseded; `unsigned` true:
+ * the caller's own signable reports still awaiting its performer signature.
  */
 export const ipmSessionListQuery = z.strictObject({
   page,
@@ -72,6 +73,10 @@ export const ipmSessionListQuery = z.strictObject({
   clientFacilityId: uuid().optional(),
   status: z.enum(INSPECTION_SESSION_STATUSES).optional(),
   effective: booleanish().optional(),
+  // The field app's "to sign" list: true — the CALLER's signable reports (submitted, effective, not
+  // imported, performed by the caller) that carry no performer signature; false — the same reports
+  // that do. Absent: no filter.
+  unsigned: booleanish().optional(),
   recommendation: z.enum(INSPECTION_RECOMMENDATIONS).optional(),
   performedBy: uuid().optional(),
   from: isoDate().optional(),
