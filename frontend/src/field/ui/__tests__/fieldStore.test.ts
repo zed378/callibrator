@@ -308,6 +308,49 @@ describe("captures, sync and turning off", () => {
   });
 });
 
+describe("a trigger during a running cycle (P22-10c3)", () => {
+  it("is not dropped: one more cycle runs when the running one ends", async () => {
+    const r = rig();
+    const s = createFieldStore(r.deps);
+    await s.getState().boot();
+    await s.getState().prepare(await sized(s, [F1]));
+    let verifies = 0;
+    let release: () => void = () => undefined;
+    const original = r.server.verify.bind(r.server);
+    r.server.verify = async () => {
+      verifies += 1;
+      if (verifies === 1) await new Promise<void>((resolve) => (release = resolve));
+      return original();
+    };
+    const first = s.getState().syncNow("slow");
+    await new Promise((res) => setTimeout(res, 10));
+    expect(await s.getState().syncNow("online")).toBeNull();
+    release();
+    await first;
+    await idle(s);
+    expect(verifies).toBe(2);
+    s.getState().close();
+  });
+});
+
+describe("rooms per facility (ADR-127 Am. 5)", () => {
+  it("reads each downloaded facility's rooms; a facility without a stored room list reads as none", async () => {
+    const r = rig();
+    const s = createFieldStore(r.deps);
+    await s.getState().boot();
+    await s.getState().prepare(await sized(s, [F1, F2]));
+    expect(r.api.roomsFor).toEqual([F1, F2]);
+    expect(s.getState().rooms).toHaveLength(2);
+    const raw = await openFieldStore(r.idb, crypto, TENANT, user().id);
+    await raw.dropWorkingSet();
+    await raw.putFacilities([{ id: F1, name: "RS Satu", code: "RS1", deviceCount: 0, downloadedAt: 0 }], 0);
+    raw.close();
+    await s.getState().createCapture({ kind: "device", device: { name: "x" } });
+    expect(s.getState().rooms).toEqual([]);
+    s.getState().close();
+  });
+});
+
 describe("the administrator wipe and the other users", () => {
   it("lists other users and wipes one (recorded first); a non-admin is refused", async () => {
     const r = rig();

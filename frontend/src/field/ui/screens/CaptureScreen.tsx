@@ -93,6 +93,10 @@ function Stepper({ capture, items }: { capture: Capture; items: CatalogueItem[] 
   const current = steps[step] ?? steps[0];
   const problems = problemsOf(items, state);
   const missing = missingOf(items, state);
+  // The server's own completeness rule (ipmSubmit.service assertComplete): the two results and the
+  // recommendation are required beside the items; said here so the outbox never carries a submit
+  // the server will refuse (P22-10c3, found by the browser suite).
+  const headerMissing = (["inspectionOutcome", "maintenanceOutcome", "recommendation"] as const).filter((k) => header[k] === "");
 
   // Every change is written through, one write after another (the store is the source of truth).
   const persist = (next: CaptureState, nextHeader: Header) => {
@@ -276,9 +280,18 @@ function Stepper({ capture, items }: { capture: Capture; items: CatalogueItem[] 
               ) : (
                 <p className="text-sm">{t("ipm.capture.complete")}</p>
               )}
-              {!header.recommendation && <p className="text-sm text-muted-foreground">{t("ipm.capture.noRecommendation")}</p>}
+              {headerMissing.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold">{t("field.capture.headerMissing")}</p>
+                  <ul className="list-disc pl-5 text-sm">
+                    {headerMissing.map((k) => (
+                      <li key={k}>{t(`field.capture.${k}`)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {editable && (
-                <Button onClick={() => void submit()} disabled={missing.length > 0 || Object.keys(problems).length > 0}>
+                <Button onClick={() => void submit()} disabled={missing.length > 0 || headerMissing.length > 0 || Object.keys(problems).length > 0}>
                   {t("field.capture.submit")}
                 </Button>
               )}

@@ -352,11 +352,13 @@ test-browser: ## Browser suite against a RUNNING stack: the smoke (ADR-077), the
 	@echo -e "$(C_DIM)In-browser SSO (OIDC, a mock IdP in-process, always started): a production backend must refuse it (400, https);$(C_OFF)"
 	@echo -e "$(C_DIM)a non-production one with SSRF_DEV_ALLOW_HOSTS=host.docker.internal must complete the sign-in. Never skipped.$(C_OFF)"
 	@echo -e "$(C_DIM)P11: theme continuity, states, shots (to a temp dir unless P11_SHOTS), axe. Stack: deploy/compose/docker-compose.e2e.yml.$(C_OFF)"
+	@echo -e "$(C_DIM)Field (P22-10c3): /field prepared, the worker, no /api cached, offline capture + registration, sync, AM-23, axe, 360-768 px.$(C_OFF)"
 	node automate/smoke.browser.js
 	node automate/a11y.browser.js
 	node automate/responsive.browser.js
 	node automate/p10.browser.mts
 	node automate/p11.browser.mts
+	node automate/field.browser.mts
 
 .PHONY: build
 build: ## Build both workspaces

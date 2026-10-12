@@ -8,7 +8,7 @@
 import axios, { AxiosError, type AxiosAdapter, type InternalAxiosRequestConfig } from "axios";
 import { SessionEnded } from "../../engine/ports";
 import type { FrozenRequest } from "../../engine/model";
-import { createTransport } from "../transport";
+import { createTransport, VERIFY_TIMEOUT_MS } from "../transport";
 
 const DATE = "Sat, 10 Oct 2026 02:00:00 GMT";
 let seen: InternalAxiosRequestConfig[] = [];
@@ -76,6 +76,8 @@ describe("P22-10b — the transport", () => {
     expect(await transport.verify()).toEqual({ scopeFingerprint: "fp", serverDate: Date.parse(DATE) });
     expect((await transport.read("/api/v1/ipm/sessions/s1")).data).toEqual({ revision: 4 });
     expect(seen.map((c) => c.method)).toEqual(["post", "get"]);
+    // P22-10c3: the verify is bounded on its own (a dead network must not hold a cycle for 35 s).
+    expect(seen[0]?.timeout).toBe(VERIFY_TIMEOUT_MS);
     reply = () => ({ status: 200, data: { data: {} } });
     await expect(transport.verify()).rejects.toThrow("verify failed");
     reply = () => ({ status: 200, data: null });

@@ -49,6 +49,13 @@ const toAnswer = (response: AxiosResponse): Answer => {
   };
 };
 
+/**
+ * P22-10c3: the verify that opens every cycle gives up after this long. Without it the client's
+ * 35 s timeout held a cycle started on a dead network for half a minute, and a reconnection during
+ * that time found the cycle still "running" (the browser suite on a reconnected phone).
+ */
+export const VERIFY_TIMEOUT_MS = 10000;
+
 const isAxiosError = (err: unknown): err is AxiosError => typeof err === "object" && err !== null && (err as { isAxiosError?: unknown }).isAxiosError === true;
 
 /** The engine's transport over an axios instance with the app's interceptors (the app passes `apiClient`). */
@@ -87,7 +94,7 @@ export function createTransport(client: AxiosInstance): Transport {
     },
 
     async verify() {
-      const answer = await call(() => client.request({ method: "POST", url: "/api/v1/auth/verify", headers: { "X-Field-Client": "1" } }));
+      const answer = await call(() => client.request({ method: "POST", url: "/api/v1/auth/verify", headers: { "X-Field-Client": "1" }, timeout: VERIFY_TIMEOUT_MS }));
       const data = answer.data !== null && typeof answer.data === "object" ? (answer.data as Record<string, unknown>) : {};
       if (answer.status !== 200 || typeof data["scopeFingerprint"] !== "string") throw new Error(answer.message || "verify failed");
       return { scopeFingerprint: data["scopeFingerprint"], serverDate: answer.serverDate };

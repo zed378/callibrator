@@ -1786,6 +1786,7 @@ export const en: Messages = {
   "field.capture.inspectionOutcome": "Inspection outcome",
   "field.capture.maintenanceOutcome": "Maintenance outcome",
   "field.capture.recommendation": "Recommendation",
+  "field.capture.headerMissing": "Still to fill in at the outcome and recommendation step:",
   "field.capture.notes": "Notes",
   "field.capture.submit": "Submit",
   "field.capture.submitLead": "Submitting locks the capture on the phone; it is sent to the server at the next sync.",
