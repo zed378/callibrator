@@ -11058,6 +11058,72 @@ The frontend today has no service worker, no web manifest and no IndexedDB use. 
 
 ---
 
+### ADR-127 Amendment 5 (2026-10-12): an `Idempotency-Key` request is answered exactly once and its middleware never rejects; the process still stops on an unhandled rejection
+
+**Why an amendment.** A keyed request that ended in an error crashed the API process. This was reproduced twice on a stack built from `de2e938`: `POST /ipm/sessions/:id/submit` on an incomplete draft, with a key. The sequence:
+
+1. The middleware's `res.json` wrapper settles the key first, so it sends a moment later.
+2. `asyncHandler` answered the 400 and then forwarded the error to `errorHandler`.
+3. `errorHandler` saw `headersSent` still false and answered again.
+4. The second deferred send threw `ERR_HTTP_HEADERS_SENT` inside the promise chain.
+5. The rejection was unhandled, and `index.ts` shut down.
+
+The offline outbox replays exactly such refused requests, so any client could take the API down.
+
+**Decision.**
+
+1. **One answer** (`idempotency.middleware#settleOnAnswer`). Only the FIRST `res.json` answers; a second call is dropped and logged. The key is settled with the first answer's status, and that status is sent even if a later writer called `res.status()`. The deferred send runs only while nothing has been sent. Its own failure is caught, and the answer becomes a bare 500 rather than a hang. The chain cannot reject. The settle-before-send order stays, so a client retrying at once does not meet its own request "in flight". A failed request still frees its key (ADR-126 Am. 4).
+2. **The process policy stays: an unhandled rejection or an uncaught exception shuts the process down** (`index.ts`), to be restarted by its orchestrator. A rejection nobody handled leaves the process in an unknown state: a transaction half done, a pool connection held, a key never settled. Node's own default since v15 is to crash on it. The fix belongs where the rejection starts, and code that a request can reach must not reject unhandled. This amendment makes that so for the idempotency middleware.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Log unhandled rejections and keep serving | it hides the next defect of this kind behind a process in an unknown state; a request-scoped bug becomes a slow leak instead of a visible restart |
+| Send at once and settle the key on `finish` | an immediate client retry would race its own unsettled key and get 409 `IDEMPOTENCY_IN_FLIGHT` |
+| Make `errorHandler` skip when the key is pending | it couples the global error handler to one middleware; any other second writer would still crash |
+
+**Implications, including the bad ones.**
+
+- The process still stops on the next unhandled rejection anywhere. That is the intent, and each one is a defect to fix at its source.
+- A handler that writes twice now loses its second answer silently, apart from a warning in the log. That was already a bug in the handler; it is now harmless and visible.
+
+**Tests:**
+
+- `middlewares/idempotency.doubleWrite.test.ts` runs over a real Express server. It covers 400, 409 and 500, each twice under the key; a double writer; a direct second writer; a settle failure; an unserialisable body; and a success.
+- It **fails 7 of 7 on the old middleware** ("Cannot set headers after they are sent to the client") and passes 7 of 7 after the fix.
+
+---
+
+### ADR-127 Amendment 6 (2026-10-12, P22-10c3): the field app against a real stack — rooms and the "to sign" list filtered by the server, a bounded verify, no reconnection lost, the submit's header checked on the phone; the real-device run is the owner's
+
+**Date:** 2026-10-12 · **Status:** Accepted, **built** (frontend + the browser suite). Decided by the implementing agent under the owner's standing delegation · **Card:** P22-10c3 · **Record:** `MEMORY/records/2026-10-12-p22-10c3-field-browser-suite.md`
+
+**Context.** The browser suite (§ 16.3) ran the field app against a production-mode stack for the first time. In the meantime the backend added the two filters Am. 3 § 6 and Am. 4 § 3 had reported as missing.
+
+**Decision.**
+1. **Rooms are read per facility** (`GET /warehouses?kind=room&clientFacilityId=`), stored per facility, and read back for every downloaded facility. This supersedes Am. 3 § 6.
+2. **The "to sign" list is `unsigned=true`** of the user's submitted visits. This supersedes Am. 4 § 3's gap.
+3. **The cycle's verify is bounded at 10 s.** A trigger that arrives during a cycle (the phone reconnecting, "Sync now") runs one more cycle after the running one; it is not dropped. "Sync now" stays enabled offline: `navigator.onLine` is a hint, and the cycle says whether the server answered.
+4. **The review checks the server's completeness rule** (`assertComplete`): the inspection result, the maintenance result and the recommendation, beside the required items. The outbox then never carries a submit the server will refuse.
+5. **The real-device run (§ 16.5) is a runbook the owner runs** (`TASKS/RUNBOOK-FIELD-REAL-DEVICE.md`). Until it passes on both phones, P22-10 is "done in code", not DONE.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Keep the 35 s client timeout for the verify | a dead network held a cycle for half a minute; a reconnection inside that window was lost and the app stayed "offline" |
+| Disable "Sync now" while `navigator.onLine` is false | the flag is wrong behind captive portals and under emulation; the button is how the user forces a check |
+| Let the server's 400 on submit reach the outbox as an attention | the technician would learn about it at sync time, possibly days later, for a field they could have set on the spot |
+
+**Implications, including the bad ones.**
+- A cycle on a slow but live network fails its verify after 10 s and retries at the next trigger.
+- **The suite found a backend defect:** a 400 on a request with an `Idempotency-Key` crashed the API (`ERR_HTTP_HEADERS_SENT` in the idempotency middleware). It was reported, and the backend line fixed it the same day (Am. 5).
+
+**`docs/` amended:** none.
+
+---
+
 ## ADR-128: A Signed Attachment Link Lives at Most a Configured Cap (Default 15 Minutes, Never Above One Hour), Is Bound to Its Tenant and the Principal That Minted It, and Is Re-Checked at Redemption
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Item:** A-365 (`TASKS/AUDIT-2026-09-REMEDIATION.md`) · **Source:** threat model `docs/SECURITY/15-FASKES-SCOPE-THREAT-MODEL.md` § 9 F-1, OQ-7, FT-75/FT-78 · **Record:** [`records/2026-10-07-f1-signed-url-ttl.md`](./records/2026-10-07-f1-signed-url-ttl.md)
@@ -12102,6 +12168,54 @@ Any second engine would have to reverse-engineer all of it from Node.
 - The smoke's document list is a reviewed allowance. A new document with an array needs an entry and a reason, as A-343's did.
 
 **`docs/` amended:** none. CLAUDE.md § The Response Envelope already states the rule, and its A-343 note stays accurate.
+
+---
+
+## ADR-138: The Public Device Page Is Reached Only by a Revocable 128-Bit Capability Token Printed on New Stickers — Stored as a Hash, One Exempted Read Route With Its Own Rate Limit, an Identical 404 for Every Failure, Minimal Fields Chosen by a Per-Tenant Setting That Is Off by Default, No Photo or Document Ever
+
+**Date:** 2026-10-12 · **Status:** Accepted as the **TARGET — nothing here is built.** "A capability-token page (≥ 128-bit, revocable), a per-tenant setting, showing by default identity, calibration status and the last IPM date; photos and documents off" is the working decision UD-15 (2026-10-08, `TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md` § 3); the mechanisms below are decided by the implementing agent under the owner's standing delegation (decide by best practice, record it) · **Card:** P12-06 · **Builds in:** P19-07 (spec), P21-08 (API), P22-08 (page), P27-03 (stickers) · **Works with:** ADR-128 (signed links: bound, short-lived, re-checked), ADR-126 Am. 2 (the IPM report's verification page and its token), ADR-131 (the public route group), ADR-132 (QR codes: the sticker's number stays a staff lookup), ADR-124 (facility scope), ADR-137 (the house envelope), P6-04 (`routeGateExemptions.ts`) · **Threat model:** `docs/SECURITY/15-FASKES-SCOPE-THREAT-MODEL.md` P16, EP-23 (FT-106), FT-31 · **Features:** F-74, F-75 (`docs/UPSTREAM/02-FEATURES.md`) · **Record:** [`records/2026-10-12-p12-06-public-device-page-adr.md`](./records/2026-10-12-p12-06-public-device-page-adr.md)
+
+**Context.** Upstream's public QR page (`FaskesController::readQr`) answered a sequential device number with the device, its facility, its photos and links to its documents and each IPM. Anyone could walk the numbers. UD-15 keeps a public page, because a patient, a visitor or a ward nurse scanning a sticker should be able to see that the device is calibrated, but it must answer nothing that can be guessed. Three things were left open: how the token lives and dies, how the one unauthenticated read gets past the permission gate and the tenant hooks safely, and exactly what the page shows.
+
+**Decision.**
+
+1. **The token.** 128 bits from a CSPRNG, written as 22 base64url characters on the sticker's URL: `https://<host>/d/<token>`. **Only its SHA-256 is stored**, in a new tenant-scoped table `public_device_tokens` (`id`, `tenant_id`, `device_id`, `token_hash` UNIQUE, `created_by`, `created_at`, `revoked_at`, `revoked_by`), like an API key: a database leak gives no working URL. A device has **at most one active token**. Issuing a new one (a re-sticker) revokes the previous one in the same transaction. A token is never shown again after it is issued; the sticker print (P27-03) is where it is read. Issuing and revoking are audited mutations, behind `dynamicAccess("equipment", "write")`, and **unbound staff only**: a facility-bound user never mints a public link (as the field wipe, ADR-127 Am. 1 § 9).
+2. **The read route.** `GET /api/v1/public/devices/:token`, unauthenticated. It is **one reviewed entry** in `constants/routeGateExemptions.ts` (reason: "public capability page, UD-15 / ADR-138"). The route hashes the token, loads the token row with a **reviewed `skipTenantScope`** (the only cross-tenant step), then reads the device in **that row's tenant context**. No request field names a tenant or a facility. The token's `UNIQUE` index is global; this is a reviewed exception to the "no global uniqueness" trap: a 256-bit hash of a 128-bit random value cannot be enumerated, so it is no existence oracle.
+3. **One answer for every failure.** Unknown token, revoked token, deleted device, a facility that is `ended`, a suspended or deleted tenant, and the tenant's page turned off all answer the **same 404** with the same body and the same timing class. A retired device is **shown** as retired: the person scanning should know not to use it.
+4. **Its own rate limit.** A `publicDevicePage` budget in `rateLimitConstants.ts`, the shape of `certificateVerifyToken`: per client IP plus a global ceiling, a 429 with `Retry-After`. Failed lookups count double, so a scanner of random tokens is slowed first.
+5. **What it shows: a per-tenant setting, OFF by default.** The tenant setting `public_device_page` takes one of:
+   - `off` (the default; the route answers the 404 of § 3);
+   - `minimal`: the device's name, type, manufacturer and model, its facility's name, the calibration status (current / due soon / overdue / retired) with the next due date, and the date of the last IPM;
+   - `minimal_with_report`: `minimal` plus a link to the last issued IPM report's **verification page** (`/verify/ipm/<number>?t=<token>`, ADR-126 Am. 2). That page has its own token and shows only what verification shows.
+
+   **Never shown:** the serial number, the QR number, the room, photos, documents, people's names, any internal id (device, tenant, facility or session UUID). Changing the setting is a tenant administrator's audited act. There is no per-device override: one rule per tenant, so it can be checked.
+6. **The answer.** The house envelope (ADR-137), rows in `data`. `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer`. The access log records `sha256(token)[0..8]`, never the token. No audit row per view: it is a public read. A coarse per-token counter (per day) may be kept for the tenant's report.
+7. **The page.** `/d/[token]` in the `(public)` route group (ADR-131): rendered per request under the nonce CSP; Indonesian by default with the language switch; readable without JavaScript; within the `/verify/*` budget (≤ 120 KB brotli first load); one `<main>`, one `<h1>` (the device's name, or "Not found"). The 404 page says only that no device answers to this link.
+8. **Out of scope here: legacy stickers.** A sticker carrying upstream's number (or a URL on the old host) does **not** reach this page. It resolves by UD-16's branches, designed in P19-07 once OA-4 says what the stickers encode: an in-app lookup by QR for signed-in staff, which runs in the caller's context and is facility-scoped (FT-107), or a rate-limited redirect to this page **only for a device that already has a token**.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Keep upstream's page by device number | the enumeration UD-15 exists to end (S-06): every device and facility of every tenant, by counting |
+| The QR number (ADR-132) as the public key | it is unique per tenant, short and patterned (prefix + digits): guessable, and a cross-tenant collision |
+| A signed, expiring URL (ADR-128) on the sticker | a sticker lives for years; an expiring link breaks it, and a non-expiring signature cannot be revoked without rotating the key for every device |
+| A JWT carrying the device id | revocation needs a store anyway, and the id would be readable from the sticker |
+| Store the token itself, not its hash | a database dump would hand out every working sticker URL |
+| On by default with `minimal` | a tenant that never asked for a public page would have one the day stickers are printed; off by default makes publishing a decision with an audit row |
+| Per-device visibility | a setting nobody can review in bulk; one tenant rule is checkable |
+| Show photos (as upstream did) | photos show rooms, people and sometimes patients; UD-15 turned them off |
+| A 403 for a revoked token, a 410 for a retired device | each distinct answer tells a scanner something; one 404 tells nothing. A retired device is shown, which needs no distinct status |
+
+**Implications, including the bad ones.**
+- **A sticker is a bearer credential to minimal data.** Anyone who photographs it can open the page until it is revoked. Revocation means printing a new sticker (P27-03's re-stickering policy).
+- Every device needs a token row and a printed sticker before its page works. Until P27-03 runs, there is no public page at all: the default is off, and legacy stickers do not resolve here.
+- One global `UNIQUE` index over `token_hash`: a reviewed exception, recorded here, to the cross-tenant-oracle trap.
+- A ward behind one NAT address shares the per-IP budget; the global ceiling and generous per-IP numbers (set in P21-08 against the dry-run sticker count) mitigate it.
+- A tenant that turns the page on and later off breaks every printed sticker at once. That is the intended effect of the switch, and the 404 says nothing more.
+- The page shows the facility's name to anyone holding the sticker. That is the point of the page, but it differs from staff-only reads; the tenant setting is where a provider decides it.
+
+**`docs/` amended:** none yet. P19-07 writes the spec, and `docs/SECURITY/15` EP-23 changes from "UD-15 / P12-06 open" to this ADR when P21-08 builds it (FT-106's control is the one written here).
 
 ---
 

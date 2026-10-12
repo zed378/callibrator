@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-12 — Fixed: a refused offline replay could restart the API ([record](./records/2026-10-12-fix-idempotency-double-write.md), ADR-127 Am. 5)
+- **Fixed:** a request sent with an `Idempotency-Key` (the field app's offline outbox does this) that ended in an error, such as submitting an incomplete IPM, made the API answer twice and restart. It now answers once.
+
 ### 2026-10-12 — The public device page is decided (P12-06; nothing built) ([record](./records/2026-10-12-p12-06-public-device-page-adr.md); ADR-138)
 - **Decided (design):** a sticker's public page will open only through a long random link that can be revoked, never through a device number. It will show only the device's identity, its facility, its calibration status and the last IPM date, and only when the tenant turns the page on (off by default). Photos, documents, serial numbers and names are never shown. Built in P19-07 (spec), P21-08 (API) and P22-08 (page).
 
