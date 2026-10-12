@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-12 — The offline field app at `/field` (P22-10c2) ([record](./records/2026-10-12-p22-10c2-field-app.md); ADR-127 Am. 4)
+- **Added:** `/field`, the field app for technicians: prepare the phone for offline work (choose facilities, see their size, download), scan or type a QR code, see a device, register a device with two photos, capture an IPM step by step with evidence photos, and send it when back online. The outbox explains every refusal and offers what can be done; nothing is dropped without typing DISCARD. Indonesian and English.
+- **Added:** an administrator can wipe another user's offline data from a shared phone after typing WIPE; the wipe is recorded on the server first.
+- **Fixed:** in the offline engine, a photo or an edit made while a sync confirmed an answer could be lost; changes to one capture are now applied one at a time.
+- **Changed:** the installable field app is named "Device Calibrator — Lapangan" on the home screen.
+
 ### 2026-10-12 — Rooms can be listed for one client facility ([record](./records/2026-10-12-warehouse-facility-filter.md))
 - **Added:** `GET /api/v1/warehouses?clientFacilityId=<uuid>` lists one facility's rooms and stores, e.g. `?kind=room&clientFacilityId=…` for the field app. Naming a facility the caller cannot see gives an empty list. A malformed id is a 400.
 

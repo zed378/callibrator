@@ -137,6 +137,32 @@ describe("catalogue — If-None-Match / ETag (F-79)", () => {
   });
 });
 
+describe("byQr and submitted (P22-10c2)", () => {
+  it("byQr: the row cut to the field keys; the same 404 everywhere is null; another error is thrown", async () => {
+    handler = () => ({ status: 200, data: { success: true, data: { id: "d1", name: "Pump", registrant: "SECRET" } } });
+    const hit = await api.byQr("RS000001");
+    expect(hit).toMatchObject({ id: "d1", name: "Pump" });
+    expect(Object.keys(hit ?? {})).toEqual([...FIELD_DEVICE_SUMMARY_KEYS]);
+    expect(calls[0]?.url).toBe("/api/v1/calibration-devices/by-qr/RS000001");
+    handler = () => ({ status: 404, data: { success: false, message: "Device not found", data: null } });
+    expect(await api.byQr("NOPE")).toBeNull();
+    handler = () => ({ status: 500, data: { success: false, message: "boom", data: null } });
+    await expect(api.byQr("X")).rejects.toThrow();
+  });
+
+  it("submitted: the user's submitted visits, newest first", async () => {
+    handler = () => ({
+      status: 200,
+      data: { success: true, data: [{ id: "s1", deviceId: "d1", performedAt: "2026-10-12T00:00:00.000Z", visitNumber: 2 }, { id: "s2", deviceId: "d2", performedAt: null, visitNumber: null }], meta: { total: 2 } },
+    });
+    expect(await api.submitted("u1")).toEqual([
+      { id: "s1", deviceId: "d1", performedAt: "2026-10-12T00:00:00.000Z", visitNumber: 2 },
+      { id: "s2", deviceId: "d2", performedAt: null, visitNumber: null },
+    ]);
+    expect(calls[0]?.params).toEqual({ performedBy: "u1", status: "submitted", sort: "performedAt", page: 1, limit: 20 });
+  });
+});
+
 describe("recordWipe — POST /field/wipes", () => {
   it("sends the counts only", async () => {
     handler = () => ({ status: 201, data: { success: true, data: { wipedUserId: "u2", captures: 2, photos: 5, recordedAt: "2026-10-12T00:00:00.000Z" } } });

@@ -12,7 +12,7 @@
  *  - **sign-out / offline mode off:** refused with a non-empty outbox; otherwise the database and its
  *    row are deleted and the worker unregistered.
  */
-import { isScopeLossCode } from "@callibrator/contracts/clientFacilities";
+import { isScopeLossCode } from "@callibrator/contracts/scopeLoss";
 import { createSyncEngine, type SyncEngine } from "../engine/engine";
 import type { EngineConfig } from "../engine/config";
 import type { Transport } from "../engine/ports";

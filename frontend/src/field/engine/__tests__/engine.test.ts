@@ -383,3 +383,33 @@ describe("P22-10a — properties over random sequences", () => {
 
 void FakeServer;
 void ManualClock;
+
+describe("P22-10c2 — one read-modify-write at a time per capture (the lost-update fix)", () => {
+  it("a photo added and an edit made at the same moment both survive (fail-before: the later write dropped the other)", async () => {
+    r.network.up = false;
+    const id = await engine.createCapture({ kind: "ipm", deviceId: "dev-1", templateVersionId: "v1" });
+    await Promise.all([engine.addPhoto(id, photo(), "ipm_evidence"), engine.editCapture(id, { header: { notes: "n" } }), engine.addPhoto(id, photo(), "ipm_evidence")]);
+    const c = await r.store.getCapture(id);
+    expect(c?.photos).toHaveLength(2);
+    expect(c?.header).toMatchObject({ notes: "n" });
+  });
+
+  it("an answer confirmed while the user edits keeps the edit", async () => {
+    const id = await engine.createCapture({ kind: "ipm", deviceId: "dev-1", templateVersionId: "v1", header: { performedAt: header.performedAt } });
+    await engine.submitLocal(id).catch(() => undefined);
+    const id2 = await engine.createCapture({ kind: "ipm", deviceId: "dev-2", templateVersionId: "v1" });
+    await Promise.all([engine.runCycle("x"), engine.editCapture(id2, { header: { notes: "kept" } }), engine.addPhoto(id2, photo(), "ipm_evidence")]);
+    const c2 = await r.store.getCapture(id2);
+    expect(c2?.header).toMatchObject({ notes: "kept" });
+    expect(c2?.photos).toHaveLength(1);
+  });
+
+  it("a failing section does not block the next one on the same capture", async () => {
+    const id = await engine.createCapture({ kind: "ipm", deviceId: "dev-1", templateVersionId: "v1" });
+    await engine.submitLocal(id);
+    await expect(engine.editCapture(id, { header: { notes: "x" } })).rejects.toThrow("Only a capture being edited");
+    await expect(engine.removePhoto(id, "nope")).rejects.toThrow();
+    await engine.discardLocal(id);
+    expect(await r.store.getCapture(id)).toBeNull();
+  });
+});

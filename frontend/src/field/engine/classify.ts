@@ -11,7 +11,7 @@
  *
  * Nothing is dropped here: dropping needs a confirmed user action.
  */
-import { isScopeLossCode } from "@callibrator/contracts/clientFacilities";
+import { isScopeLossCode } from "@callibrator/contracts/scopeLoss";
 import type { Answer } from "./model";
 
 export type Outcome =

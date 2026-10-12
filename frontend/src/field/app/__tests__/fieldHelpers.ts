@@ -7,7 +7,7 @@ import { FIELD_DEVICE_SUMMARY_KEYS } from "@callibrator/contracts/deviceValues";
 import type { CryptoDeps } from "../../platform/crypto";
 import type { BrowserGlobals } from "../../platform/browserPorts";
 import type { FlagStorage } from "../../platform/registryStore";
-import type { CatalogueRead, FacilitySize, FieldApi, FieldDevice, FieldFacility, FieldRoom, FieldUser } from "../fieldApi";
+import type { CatalogueRead, FacilitySize, FieldApi, FieldDevice, FieldFacility, FieldRoom, FieldUser, SubmittedVisit } from "../fieldApi";
 
 export const crypto = webcrypto as unknown as CryptoDeps;
 
@@ -78,6 +78,16 @@ export class FakeFieldApi implements FieldApi {
     this.catalogueCalls.push(etag);
     if (this.alwaysNotModified || (etag !== null && etag === this.catalogueEtag)) return { notModified: true };
     return { notModified: false, etag: this.catalogueEtag, document: this.catalogueDoc };
+  }
+  qrHits = new Map<string, FieldDevice>();
+  submittedVisits: SubmittedVisit[] = [];
+  async byQr(code: string) {
+    return this.qrHits.get(code) ?? null;
+  }
+  submittedFor: string[] = [];
+  async submitted(userId: string) {
+    this.submittedFor.push(userId);
+    return this.submittedVisits;
   }
   async recordWipe(wipedUserId: string, captures: number, photos: number) {
     if (this.wipeFails) throw new Error("403");

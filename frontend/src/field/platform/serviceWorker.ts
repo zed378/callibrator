@@ -63,3 +63,31 @@ export const applyUpdate = (registration: ServiceWorkerRegistration): boolean =>
   registration.waiting.postMessage({ type: "SKIP_WAITING" });
   return true;
 };
+
+/**
+ * P22-10c2 — the warm-up (P19-08 § 4.3): once the worker controls the page, every static file the
+ * page has loaded — the lazily imported ones included — is fetched again THROUGH the worker, which
+ * keeps it (`/_next/static` is cache-first). A module loaded before the worker took control is
+ * otherwise missing offline: the browser's module cache does not ask the worker again.
+ *
+ * @returns how many files were fetched
+ */
+export const warmStatic = async (urls: readonly string[], fetchFile: (url: string) => Promise<unknown>): Promise<number> => {
+  const isStatic = (url: string): boolean => {
+    try {
+      return new URL(url, "https://field.invalid").pathname.startsWith("/_next/static/");
+    } catch {
+      return false;
+    }
+  };
+  let fetched = 0;
+  for (const url of [...new Set(urls.filter(isStatic))]) {
+    try {
+      await fetchFile(url);
+      fetched += 1;
+    } catch {
+      // Offline or evicted: the feature that needs it says "needs a connection".
+    }
+  }
+  return fetched;
+};

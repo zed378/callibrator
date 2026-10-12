@@ -40,6 +40,8 @@ describe("P22-10b — the field install's guards", () => {
   it("the manifest: in /field, standalone, Indonesian; colours from the light tokens; every icon present", () => {
     const manifest = JSON.parse(readFileSync(path.join(FRONTEND, "public/manifest.webmanifest"), "utf8")) as Record<string, unknown> & { icons: { src: string; sizes: string; purpose?: string }[] };
     expect(manifest).toMatchObject({ id: "/field", scope: "/field", start_url: "/field?view=home", display: "standalone", lang: "id" });
+    // Q-43: the name on the home screen is the product's, never the codename (P22-10c2).
+    expect(manifest).toMatchObject({ name: "Device Calibrator — Lapangan", short_name: "Calibrator" });
     const css = readFileSync(path.join(FRONTEND, "src/app/globals.css"), "utf8");
     const token = (name: string) => new RegExp(`^\\s*--${name}:\\s*(#[0-9a-fA-F]{6})`, "m").exec(css)?.[1]?.toLowerCase();
     expect(manifest["background_color"]).toBe(token("background"));

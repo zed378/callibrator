@@ -11020,6 +11020,42 @@ The frontend today has no service worker, no web manifest and no IndexedDB use. 
 
 **`docs/` amended:** none (the spec `MEMORY/specs/P19-08-offline-field-capture.md` carries a note referencing this amendment).
 
+### ADR-127 Amendment 4 (2026-10-12, P22-10c2): the field app as built — screens lazy-loaded and warmed through the worker, the scope-loss codes without zod, signing on the report page, synced captures removed once re-read, one read-modify-write per capture in the engine
+
+**Date:** 2026-10-12 · **Status:** Accepted, **built** (frontend, plus one zod-free contracts module). Decided by the implementing agent under the owner's standing delegation · **Card:** P22-10c2 · **Record:** `MEMORY/records/2026-10-12-p22-10c2-field-app.md`
+
+**Context.** The first build of `/field` loaded 254.5 KB brotli against the spec's 170 KB ceiling (P19-08 § 15). 71.7 KB of it was zod, reached through the contracts' `clientFacilities` module (the scope-loss codes the engine reads) and the IPM contracts (the capture). A component test also lost a photo under a header edit: the engine wrote captures back without serialisation.
+
+**Decision.**
+1. **Lazy screens, warmed through the worker.** Capture, Settings, Register, Outbox, Sign and the QR scanner load with `import()`. Home, Scan and Device stay in the first load. Once the worker controls the page, the warm-up (§ 4.3) imports every lazy module and **fetches every `/_next/static` file the page loaded again through the worker**. Re-importing alone would not reach the worker: the browser's module cache answers it. First load: **158.4 KB brotli**, ceiling 163.
+2. **`SCOPE_LOSS_CODES` in a zod-free module** (`@callibrator/contracts/scopeLoss`). `clientFacilities` re-exports it, so the backend's imports are unchanged.
+3. **Signing stays on the report page.** The "to sign" list holds the user's submitted visits, read at each sync (`performedBy` = me, `status=submitted`). Each opens `/dashboard/ipm/sessions/<id>/report` with a full navigation, online only, where P23-02's Sign dialog is. No credential ever reaches the field app. The `unsigned` filter of § 12 does not exist in the contract: a backend gap, reported.
+4. **A synced capture is removed after a successful cycle** (§ 9.1 "until the server state is re-read"). The cycle that synced it re-read the submitted list.
+5. **The engine serialises each capture's read-modify-write** (a per-capture lock). This fixes a P22-10a defect: an edit, a photo and the runner's confirmation each read and wrote the whole capture, so the later write dropped the earlier one. The network send stays outside the lock.
+6. **Offline boot.** The registry row that holds data names the user. Its encrypted `meta/profile` (role level, bound facility, fingerprint — no name) replaces `/auth/verify`.
+7. **After the profile guard, only another user's OUTBOX blocks enabling.** Their working set is already gone.
+8. **The store** is `field/ui/fieldStore.ts` (Zustand, vanilla, one per app instance with injected browser deps), not `stores/fieldStore.ts`. It holds the decrypted working set in memory and writes through the engine before it reflects anything (§ 3.3).
+
+**Not built here (recorded, not decided away):** the offline report preview (§ 12, the P19-06 renderer inside the field app); the `X-Field-Worker: disable` kill switch (§ 13); reconciling drafts started on another phone (§ 7.2) — the engine's `IPM_DRAFT_EXISTS` resolution covers it at sync time.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Raise the `/field` ceiling to the first build | the spec fixes 170 KB; 254 KB on a mid-range phone over a weak link is the cost the offline app exists to avoid |
+| Lazy-load the whole app behind a tiny shell | the shell must render the outbox count and Home offline at once; the store and engine are needed immediately |
+| Rely on the worker caching lazy chunks on first use | a chunk first loaded before the worker took control is never cached; offline, that screen would be missing |
+| Embed the P19-06 Sign dialog in the field app | it would bring the report renderer and jsPDF into the field bundle; signing is online-only anyway |
+| Keep synced captures until the user clears them | the outbox would fill with done work; § 9.1 removes them |
+| Serialise in the UI store only | the runner's confirmation also writes the capture; only the engine sees both |
+
+**Implications, including the bad ones.**
+- A screen whose chunk was evicted while offline shows its loading state and then fails. The warm-up runs at every online open, which narrows this.
+- The "to sign" list shows signed visits too until the backend adds `unsigned`. The report page shows the signature state.
+- The lock serialises edits to one capture behind any in-flight confirmation write: milliseconds, not the network.
+
+**`docs/` amended:** none (the spec carries the deviation note of Am. 3; this amendment is referenced from the record).
+
 ---
 
 ## ADR-128: A Signed Attachment Link Lives at Most a Configured Cap (Default 15 Minutes, Never Above One Hour), Is Bound to Its Tenant and the Principal That Minted It, and Is Re-Checked at Redemption
@@ -11246,6 +11282,54 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 - Adoption is by name only. A pre-made facility with the same name as a different upstream facility would be merged with it. The quarantine review and P25-02 are the check.
 
 **`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note).
+
+### ADR-129 Amendment 4 (2026-10-12, P24-02b): the users step — column-level grants on `users`, one unusable hash per run, five new quarantine reasons, and a re-run never changes an identity or a binding
+
+**Why an amendment.** P18-01-02 § 2.2 fixes the role rules. Building them needed five decisions that no document makes: what the transform role may touch on `users` (the table holds credentials), how an imported account gets a password, what happens on a collision with an existing account, which reasons the quarantine may record, and what a re-run may change.
+
+**Decision.**
+
+1. **Column-level grants (migration 0135).** `users` holds password hashes, MFA secrets, recovery codes and WebAuthn keys. The transform role gets:
+   - SELECT on `(id, tenant_id, username, email)`;
+   - INSERT on exactly the 19 columns the step writes;
+   - UPDATE on `(first_name, last_name, is_active, status, updated_at)`;
+   - SELECT on `roles (id, name)`, which the step and the 0117 bound-role trigger read.
+
+   It has no DELETE. It cannot read any credential, and it cannot change an e-mail, a username, a role or a binding (proved as the role, `upstreamTransform.p2402b.live`).
+2. **One unusable hash per run (UD-5).** Each run computes one bcrypt (cost 12) of 32 random bytes and discards the secret. Every account inserted in that run gets the hash, with `must_change_password` set and the e-mail unverified. A shared hash leaks nothing, because nobody knows its secret. One hash instead of 100 saves about 25 s of cost-12 work. The invitation (P30-04) is the only way in.
+3. **Collisions.**
+   - An e-mail already held by another account (case-insensitively; e-mail is globally unique) quarantines the user `email_in_use`. The operator decides whose account it is. The step never merges into an existing account.
+   - A taken username gets `_2`, `_3`, … appended.
+   - An empty username is derived from the e-mail's local part, else `upstream_<id>`.
+   - Both checks read only the candidates' lower-cased keys, across tenants on purpose. This is a reviewed D-05 `CROSS_TENANT` entry.
+4. **Five quarantine reasons** (contracts, CHECK rebuilt by 0135):
+   - `user_without_group`: rule 6's "no group";
+   - `facility_not_imported`: the user's one facility was quarantined by step 1;
+   - `email_in_use`;
+   - `unknown_group`: a group that is none of the four, and its memberships;
+   - `user_not_imported`: a membership or mapping row whose user was not imported. The user's own row carries the specific reason.
+
+   `group_conflict` and `facility_mapping_ambiguous` already existed.
+5. **A re-run changes profile fields only.** A changed user gets its names and active flag updated. Its e-mail, username, role and binding are never changed by a re-run. Identity has its own audited path (user management), and so does the binding (`PUT /users/:userId/client-facility`, whose guard trigger refuses any other writer anyway).
+6. **Use-only rows map to what they decided.** A membership or mapping maps to its user. A known group maps to its role (`target_table` `roles`). The audit step now audits only the tables in `RESOURCE_TYPES` (an inner join, where P24-02a used a left join), so no audit row ever says a role was created.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Table-level grants on `users` | the transform could read every credential in the platform |
+| A distinct random hash per user | it costs about 25 s of bcrypt and protects nothing more: no secret is known either way |
+| A non-bcrypt sentinel (e.g. `!`) as the password | `comparePassword` on a malformed hash can throw, turning a login into a 500. A real bcrypt simply never matches |
+| Merging into an account that already holds the e-mail | that is identity linking without the person. The quarantine sends it to the operator |
+| Re-runs re-apply roles and bindings | they would silently overwrite the operator's audited invitation-review changes (P18-01 rule 1's swap) |
+
+**Implications, including the bad ones.**
+
+- An operator who fixes an upstream user's e-mail upstream and re-runs the import does not change the imported account's e-mail. That change is made in the application.
+- Rule 1 is computed over the run's rows. If a later dump adds an earlier-created client to a facility, that client becomes `ROOM USER`, because the admin was already imported. The operator swaps them at the review.
+- The role seed must exist. A missing role fails the transform (`TRANSFORM_FAILED`) instead of silently dropping users.
+
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 5 (an as-built note).
 
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 

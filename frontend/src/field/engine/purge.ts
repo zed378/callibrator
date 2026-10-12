@@ -4,7 +4,7 @@
  * purged by these rules**; only a confirmed discard, a successful sync or the administrator wipe
  * removes a capture.
  */
-import { isScopeLossCode } from "@callibrator/contracts/clientFacilities";
+import { isScopeLossCode } from "@callibrator/contracts/scopeLoss";
 import type { EngineConfig } from "./config";
 
 export type PurgeReason = "device_clock_expired" | "server_clock_expired" | "session_ended" | "scope_lost" | "scope_changed";

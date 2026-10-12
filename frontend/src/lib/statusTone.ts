@@ -396,6 +396,24 @@ export const STATUS_REGISTRY = {
     inactive: e("draft", "Inactive"),
     ended: e("draft", "Ended"),
   },
+  /**
+   * P22-10c2 — a capture in the field app's outbox (P19-08 § 9.1): editing is a draft; saved and
+   * syncing are informational; synced is current; "needs attention" asks for an action (§ 9.6);
+   * a discarded capture is a final decision.
+   */
+  fieldCapture: {
+    editing: e("draft", "Editing"),
+    submitted_local: e("info", "Saved, waiting to sync"),
+    syncing: e("info", "Syncing"),
+    synced: e("current", "Synced"),
+    attention: e("attention", "Needs attention"),
+    discarded_local: e("draft", "Discarded"),
+  },
+  /** P22-10c2 — the field app's connection: offline is a state to notice, not an error. */
+  fieldConnection: {
+    online: e("current", "Online"),
+    offline: e("attention", "Offline"),
+  },
   /** P22-04 — the visit's recommendation (F-51): anything but fit for use needs action; alarm stays reserved. */
   ipmRecommendation: {
     fit_for_use: e("current", "Fit for use"),
