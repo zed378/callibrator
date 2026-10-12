@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-12 — The public device page is decided (P12-06; nothing built) ([record](./records/2026-10-12-p12-06-public-device-page-adr.md); ADR-138)
+- **Decided (design):** a sticker's public page will open only through a long random link that can be revoked, never through a device number. It will show only the device's identity, its facility, its calibration status and the last IPM date, and only when the tenant turns the page on (off by default). Photos, documents, serial numbers and names are never shown. Built in P19-07 (spec), P21-08 (API) and P22-08 (page).
+
 ### 2026-10-12 — The offline field app passes its browser suite; a reconnection is no longer lost (P22-10c3) ([record](./records/2026-10-12-p22-10c3-field-browser-suite.md); ADR-127 Am. 6)
 - **Added (tests):** `automate/field.browser.mts`, in `make test-browser`. It prepares a phone, works offline (the app served by its worker, nothing from the API cached), captures and registers, syncs, then checks accessibility and small screens. 14/14, twice.
 - **Fixed:** an IPM can no longer be submitted on the phone without the inspection result, the maintenance result and the recommendation. The server refuses those, and the technician learned it only at sync time.
