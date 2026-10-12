@@ -101,25 +101,25 @@ describe("the working set reads", () => {
     expect(toFieldDevice(null).id).toBeNull();
   });
 
-  it("rooms reads every page of kind=room", async () => {
+  it("rooms reads every page of one facility's rooms (kind=room&clientFacilityId)", async () => {
     let n = 0;
     handler = () => {
       n += 1;
       const data = Array.from({ length: n === 1 ? 100 : 3 }, (_, i) => ({ id: `r${String(n)}-${String(i)}`, name: `Room ${String(i)}`, code: "c" }));
       return { status: 200, data: { success: true, data, meta: { total: 103 } } };
     };
-    const rooms = await api.rooms();
+    const rooms = await api.rooms("f1");
     expect(rooms).toHaveLength(103);
     expect(rooms[0]).toEqual({ id: "r1-0", name: "Room 0" });
     expect(calls.map((c) => c.params)).toEqual([
-      { kind: "room", page: 1, limit: 100 },
-      { kind: "room", page: 2, limit: 100 },
+      { kind: "room", clientFacilityId: "f1", page: 1, limit: 100 },
+      { kind: "room", clientFacilityId: "f1", page: 2, limit: 100 },
     ]);
   });
 
   it("rooms stops at the total even when the page is full", async () => {
     handler = () => ({ status: 200, data: { success: true, data: Array.from({ length: 100 }, (_, i) => ({ id: String(i), name: "R" })), meta: { total: 100 } } });
-    expect(await api.rooms()).toHaveLength(100);
+    expect(await api.rooms("f1")).toHaveLength(100);
     expect(calls).toHaveLength(1);
   });
 });
@@ -159,7 +159,7 @@ describe("byQr and submitted (P22-10c2)", () => {
       { id: "s1", deviceId: "d1", performedAt: "2026-10-12T00:00:00.000Z", visitNumber: 2 },
       { id: "s2", deviceId: "d2", performedAt: null, visitNumber: null },
     ]);
-    expect(calls[0]?.params).toEqual({ performedBy: "u1", status: "submitted", sort: "performedAt", page: 1, limit: 20 });
+    expect(calls[0]?.params).toEqual({ performedBy: "u1", status: "submitted", unsigned: true, sort: "performedAt", page: 1, limit: 20 });
   });
 });
 

@@ -71,7 +71,9 @@ export class FakeFieldApi implements FieldApi {
     const all = this.devices.get(facilityId) ?? [];
     return { rows: all.slice((page - 1) * limit, page * limit), total: all.length };
   }
-  async rooms() {
+  roomsFor: string[] = [];
+  async rooms(facilityId: string) {
+    this.roomsFor.push(facilityId);
     return this.roomList;
   }
   async catalogue(etag: string | null): Promise<CatalogueRead> {

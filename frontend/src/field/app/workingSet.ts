@@ -111,9 +111,9 @@ export async function downloadWorkingSet(input: DownloadInput): Promise<{ device
         onProgress?.(fetched, expected);
         if (rows.length < PAGE_SIZE || count >= total) break;
       }
+      await store.putRooms(f.id, await api.rooms(f.id), deviceNow());
       downloaded.push({ id: f.id, name: f.name, code: f.code, deviceCount: count, downloadedAt: deviceNow() });
     }
-    await store.putRooms("tenant", await api.rooms(), deviceNow());
     await refreshCatalogue(api, store, deviceNow());
     await store.putFacilities(downloaded, deviceNow());
   } catch (err) {

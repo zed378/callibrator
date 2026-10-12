@@ -1801,6 +1801,7 @@ export const id = {
   "field.capture.inspectionOutcome": "Hasil pemeriksaan",
   "field.capture.maintenanceOutcome": "Hasil pemeliharaan",
   "field.capture.recommendation": "Rekomendasi",
+  "field.capture.headerMissing": "Masih perlu diisi di langkah hasil dan rekomendasi:",
   "field.capture.notes": "Catatan",
   "field.capture.submit": "Kirim",
   "field.capture.submitLead": "Kirim mengunci rekaman di ponsel; rekaman dikirim ke server saat sinkron.",

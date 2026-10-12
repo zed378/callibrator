@@ -86,7 +86,12 @@ describe("Home", () => {
     expect(screen.getByText("2 waiting to retry")).toBeInTheDocument();
     expect(screen.getByText(/Another user's unsynced captures remain on this phone \(4\)/)).toBeInTheDocument();
     expect(screen.getByText(en["field.home.openOnline"])).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: en["field.home.syncNow"] })).toBeDisabled();
+    // navigator.onLine is a hint, not a fact (an emulated or captive network): "Sync now" stays
+    // available and the cycle itself says whether the server answered.
+    expect(screen.getByRole("button", { name: en["field.home.syncNow"] })).toBeEnabled();
+    act(() => s.setState({ syncing: true }));
+    expect(screen.getByRole("button", { name: /Syncing|Sync now/ })).toBeDisabled();
+    act(() => s.setState({ syncing: false }));
     expect(screen.getByText(/purged in 72 h unless synced/)).toBeInTheDocument();
     act(() => s.setState({ facilities: [], lastSyncDeviceAt: null, status: null }));
     expect(screen.getByText(en["field.home.noSet"])).toBeInTheDocument();

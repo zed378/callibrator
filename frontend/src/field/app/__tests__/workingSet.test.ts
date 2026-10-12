@@ -73,7 +73,8 @@ describe("sizeUp + downloadWorkingSet", () => {
     expect(progress).toEqual([PAGE_SIZE, 400, 450, 451]);
     const all = (await store.readWorkingSet()) as { id: string }[];
     expect(all).toHaveLength(451);
-    expect(await store.readRooms("tenant")).toEqual(api.roomList);
+    expect(await store.readRooms(F1)).toEqual(api.roomList);
+    expect(api.roomsFor).toEqual([F1, F2]);
     expect(await store.readCatalogue()).toEqual({ etag: '"cat-1"', document: api.catalogueDoc });
     expect(await store.readFacilities()).toEqual([
       { id: F1, name: "RS Satu", code: "RS1", deviceCount: 450, downloadedAt: now() },

@@ -41,7 +41,8 @@ export function HomeScreen() {
           {report && !report.offline && report.waiting > 0 && <p className="text-sm text-muted-foreground">{t("field.home.waiting", { count: report.waiting })}</p>}
           {!online && (status?.outbox ?? 0) > 0 && <p className="text-sm">{t("field.home.openOnline")}</p>}
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button onClick={() => void api.getState().syncNow("button")} disabled={!online || syncing} isLoading={syncing}>
+            {/* Enabled offline too: `navigator.onLine` is only a hint; the cycle says whether the server answered. */}
+            <Button onClick={() => void api.getState().syncNow("button")} disabled={syncing} isLoading={syncing}>
               {syncing ? t("field.home.syncing") : t("field.home.syncNow")}
             </Button>
             <ScreenLink view="scan">{t("field.home.scan")}</ScreenLink>

@@ -145,6 +145,8 @@ export function createFieldStore(deps: StoreDeps): StoreApi<FieldStoreState> {
   let runtime: FieldRuntime | null = null;
   let unsubscribeEngine: (() => void) | null = null;
   let registration: ServiceWorkerRegistration | null = null;
+  /** A trigger that arrived while a cycle ran: one more cycle follows it (P22-10c3). */
+  let rerun = false;
   const cleanups: (() => void)[] = [];
 
   return createStore<FieldStoreState>()((set, get) => {
@@ -155,20 +157,21 @@ export function createFieldStore(deps: StoreDeps): StoreApi<FieldStoreState> {
     /** Everything the screens read, from the encrypted store into memory. */
     const reload = async (): Promise<void> => {
       const rt = runtime as FieldRuntime;
-      const [devices, facilities, catalogue, rooms, captures, status, meta] = await Promise.all([
+      const [devices, facilities, catalogue, captures, status, meta] = await Promise.all([
         rt.store.readWorkingSet(),
-        rt.store.readFacilities(),
+        rt.store.readFacilities() as Promise<DownloadedFacility[]>,
         rt.store.readCatalogue(),
-        rt.store.readRooms("tenant"),
         rt.store.listCaptures(),
         rt.engine.status(),
         rt.store.getMeta(),
       ]);
+      // Each downloaded facility's rooms (stored per facility since the backend filters them).
+      const rooms = (await Promise.all(facilities.map((f) => rt.store.readRooms(f.id)))).flatMap((list) => (list ?? []) as FieldRoom[]);
       set({
         index: indexWorkingSet(devices as FieldDevice[]),
-        facilities: facilities as DownloadedFacility[],
+        facilities,
         catalogue: ((catalogue as CatalogueCopy | null)?.document ?? null) as PublishedCatalogue | null,
-        rooms: (rooms ?? []) as FieldRoom[],
+        rooms,
         captures: [...captures].sort((a, b) => b.updatedAt - a.updatedAt),
         status,
         lastSyncDeviceAt: meta.workingSetPresent ? meta.lastSyncDeviceAt : null,
@@ -341,7 +344,13 @@ export function createFieldStore(deps: StoreDeps): StoreApi<FieldStoreState> {
 
       async syncNow(trigger) {
         const rt = runtime;
-        if (!rt || get().syncing) return null;
+        if (!rt) return null;
+        if (get().syncing) {
+          // The phone came back online (or the user asked) while a cycle started offline was still
+          // waiting: run again as soon as it ends, instead of dropping the trigger.
+          rerun = true;
+          return null;
+        }
         set({ syncing: true });
         try {
           const report = await rt.engine.runCycle(trigger);
@@ -369,6 +378,10 @@ export function createFieldStore(deps: StoreDeps): StoreApi<FieldStoreState> {
           return null;
         } finally {
           set({ syncing: false });
+          if (rerun) {
+            rerun = false;
+            void get().syncNow("rerun");
+          }
         }
       },
 

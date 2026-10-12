@@ -201,6 +201,13 @@ describe("scan → device → capture → outbox", () => {
     fireEvent.click(screen.getByRole("button", { name: /\d+\. Outcome and recommendation/ }));
     fireEvent.change(await screen.findByLabelText(en["field.capture.notes"]), { target: { value: "ok" } });
     fireEvent.change(screen.getByLabelText(en["field.capture.recommendation"]), { target: { value: "fit_for_use" } });
+    // The server refuses a submit without the two results (assertComplete): the review says so first.
+    fireEvent.click(screen.getByRole("button", { name: /\d+\. Check and submit/ }));
+    expect(await screen.findByText(en["field.capture.headerMissing"])).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: en["field.capture.submit"] })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /\d+\. Outcome and recommendation/ }));
+    fireEvent.change(await screen.findByLabelText(en["field.capture.inspectionOutcome"]), { target: { value: "pass" } });
+    fireEvent.change(screen.getByLabelText(en["field.capture.maintenanceOutcome"]), { target: { value: "pass" } });
     fireEvent.click(screen.getByRole("button", { name: en["field.capture.next"] }));
     await waitFor(() => expect(screen.getByRole("button", { name: en["field.capture.submit"] })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: en["field.capture.submit"] }));
@@ -208,7 +215,7 @@ describe("scan → device → capture → outbox", () => {
     await heading(en["field.outbox.title"]);
     await waitFor(() => expect([...r.server.sessions.values()].map((x) => x.status)).toEqual(["submitted"]));
     const session = [...r.server.sessions.values()][0];
-    expect(session?.header).toMatchObject({ notes: "ok", recommendation: "fit_for_use" });
+    expect(session?.header).toMatchObject({ notes: "ok", recommendation: "fit_for_use", inspectionOutcome: "pass", maintenanceOutcome: "pass" });
     expect(session?.results).toEqual([{ inputKind: "tri_state", templateItemId: id(1), outcome: "pass" }]);
   });
 

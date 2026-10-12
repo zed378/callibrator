@@ -79,11 +79,12 @@ export interface FieldApi {
   facilities(user: FieldUser): Promise<FieldFacility[]>;
   facilitySize(facilityId: string): Promise<FacilitySize>;
   devicePage(facilityId: string, page: number, limit: number): Promise<{ rows: FieldDevice[]; total: number }>;
-  rooms(): Promise<FieldRoom[]>;
+  /** A facility's rooms (`kind=room&clientFacilityId=`, ADR-127 Am. 5 — the filter the backend added). */
+  rooms(facilityId: string): Promise<FieldRoom[]>;
   catalogue(etag: string | null): Promise<CatalogueRead>;
   /** Online QR lookup (`GET /calibration-devices/by-qr/:qrCode`, the same 404 everywhere): the row cut to the field keys, or null. */
   byQr(code: string): Promise<FieldDevice | null>;
-  /** The user's submitted visits, newest first (the "to sign" list; signing itself is the report page's, online). */
+  /** The user's submitted visits still without the performer's signature, newest first (the "to sign" list; signing is the report page's, online). */
   submitted(userId: string): Promise<SubmittedVisit[]>;
   /** `POST /field/wipes`: the audit row of an administrator wipe (sent BEFORE the deletion, ADR-135). */
   recordWipe(wipedUserId: string, captures: number, photos: number): Promise<void>;
@@ -154,10 +155,10 @@ export function createFieldApi(client: AxiosInstance): FieldApi {
       return { rows: body.data.map(toFieldDevice), total: totalOf(body, body.data.length) };
     },
 
-    async rooms() {
+    async rooms(facilityId) {
       const rows: FieldRoom[] = [];
       for (let page = 1; ; page += 1) {
-        const body = await typedApi.GET("/api/v1/warehouses", { params: { query: { kind: "room", page, limit: 100 } } }).then(unwrap);
+        const body = await typedApi.GET("/api/v1/warehouses", { params: { query: { kind: "room", clientFacilityId: facilityId, page, limit: 100 } } }).then(unwrap);
         for (const w of body.data) rows.push({ id: w.id, name: w.name });
         if (body.data.length < 100 || rows.length >= totalOf(body, rows.length)) return rows;
       }
@@ -187,7 +188,7 @@ export function createFieldApi(client: AxiosInstance): FieldApi {
 
     async submitted(userId) {
       const body = await typedApi
-        .GET("/api/v1/ipm/sessions", { params: { query: { performedBy: userId, status: "submitted", sort: "performedAt", page: 1, limit: 20 } } })
+        .GET("/api/v1/ipm/sessions", { params: { query: { performedBy: userId, status: "submitted", unsigned: true, sort: "performedAt", page: 1, limit: 20 } } })
         .then(unwrap);
       return body.data.map((s) => {
         const r = rec(s);
