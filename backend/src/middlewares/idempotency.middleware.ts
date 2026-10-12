@@ -102,15 +102,51 @@ const refuse = (res: Response, status: number, message: string, code?: string): 
   res.status(status).json({ success: false, status, message, data: null, ...(code ? { code } : {}) });
 };
 
-/** Settle the key when the route answers: `res.json` is the one exit every handler and error path takes. */
-const settleOnAnswer = (res: Response, handle: IdempotencyHandle): void => {
+/**
+ * Settle the key when the route answers: `res.json` is the one exit every handler and error path
+ * takes. The key is settled BEFORE the answer leaves (a client retrying at once must not meet its
+ * own request "in flight"), so the answer is sent a moment after `res.json` returns — which is why
+ * this wrapper must be safe against a SECOND writer:
+ *
+ *  - only the FIRST `res.json` answers. `asyncHandler` answers an error and then forwards it to
+ *    `errorHandler` "to be logged"; `errorHandler` writes again unless `res.headersSent` — and
+ *    while the settle is pending nothing has been sent yet. A second call is dropped (logged);
+ *  - the deferred send happens only while nothing has been sent (another writer may have used
+ *    `res.send` / `res.end` meanwhile), and it can never throw out of the promise chain: an
+ *    unhandled rejection shuts the whole API down (index.ts), and a request must not be able to.
+ *
+ * The settle and the answer use the status of the FIRST answer.
+ */
+export const settleOnAnswer = (res: Response, handle: IdempotencyHandle): void => {
   const send = res.json.bind(res);
+  let answered = false;
   res.json = ((body: unknown) => {
-    void releaseIdempotentRequest(handle, res.statusCode)
+    if (answered) {
+      logger.warn("Idempotent request answered twice; the second answer was dropped", { status: res.statusCode });
+      return res;
+    }
+    answered = true;
+    // The first answer's status: a dropped second writer may have called res.status() since.
+    const status = res.statusCode;
+    void releaseIdempotentRequest(handle, status)
       .catch((err: unknown) => {
         logger.error("Idempotency key could not be settled", { error: String(err) });
       })
-      .finally(() => send(body));
+      .then(() => {
+        if (res.headersSent) {
+          logger.warn("Idempotent request's answer was already sent by another writer", { status: res.statusCode });
+          return;
+        }
+        try {
+          res.status(status);
+          send(body);
+        } catch (err) {
+          // e.g. a body JSON cannot serialise: the client still gets an answer, never a hang.
+          logger.error("Idempotent request's answer could not be sent", { error: String(err) });
+          // Neither call throws: a status after the headers is only a field, `end` on an ended answer a no-op.
+          res.status(500).end();
+        }
+      });
     return res;
   }) as Response["json"];
 };
