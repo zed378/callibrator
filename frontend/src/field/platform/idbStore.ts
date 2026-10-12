@@ -28,6 +28,17 @@ export const DB_VERSION = 1;
 export const STORES = ["keys", "meta", "catalogue", "workingSet", "rooms", "captures", "ops", "photos"] as const;
 const WORKING_SET = ["catalogue", "workingSet", "rooms"] as const;
 
+/** A blob's bytes (through a FileReader where `Blob#arrayBuffer` is missing, as in older WebViews). */
+export const blobBytes = (blob: Blob): Promise<ArrayBuffer> =>
+  typeof blob.arrayBuffer === "function"
+    ? blob.arrayBuffer()
+    : new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+        reader.readAsArrayBuffer(blob);
+      });
+
 export const dbName = (tenantId: string, userId: string): string => `callibrator-field-${tenantId}-${userId}`;
 
 const EMPTY_META: SyncMeta = { lastSyncDeviceAt: null, lastSyncServerAt: null, scopeFingerprint: null, workingSetPresent: false };
@@ -57,7 +68,21 @@ export interface FieldStore extends CaptureStore {
    */
   putChoice(facilityIds: readonly string[]): Promise<void>;
   readChoice(): Promise<string[]>;
+  /**
+   * Who this database belongs to, as the field app needs it OFFLINE (role level, bound facility —
+   * no name): `/auth/verify` cannot be asked without a network.
+   */
+  putProfile(profile: StoredProfile): Promise<void>;
+  readProfile(): Promise<StoredProfile | null>;
   close(): void;
+}
+
+/** The offline profile (`meta/profile`). */
+export interface StoredProfile {
+  readonly roleName: string | null;
+  readonly roleLevel: number;
+  readonly clientFacilityId: string | null;
+  readonly scopeFingerprint: string;
 }
 
 /** The `rooms` key that holds the facilities list (no facility id can take it: ids are UUIDs). */
@@ -131,7 +156,7 @@ export async function openFieldStore(factory: IDBFactory, crypto: CryptoDeps, te
       await put("ops", await sealRow("ops", op.opId, op, { localId: op.localId, seq: op.seq, state: op.state }));
     },
     async putPhoto(photoId, bytes) {
-      const sealed = await sealBytes(crypto, aes, slotOf("photos", photoId), await bytes.arrayBuffer());
+      const sealed = await sealBytes(crypto, aes, slotOf("photos", photoId), await blobBytes(bytes));
       await put("photos", { k: photoId, ...sealed });
     },
     async getPhoto(photoId) {
@@ -187,6 +212,13 @@ export async function openFieldStore(factory: IDBFactory, crypto: CryptoDeps, te
     async readChoice() {
       const row = await get("meta", "choice");
       return row ? openRow<string[]>("meta", row) : [];
+    },
+    async putProfile(profile) {
+      await put("meta", await sealRow("meta", "profile", profile));
+    },
+    async readProfile() {
+      const row = await get("meta", "profile");
+      return row ? openRow<StoredProfile>("meta", row) : null;
     },
     close() {
       db.close();

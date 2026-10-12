@@ -1,7 +1,7 @@
 {
   "id": "/field",
-  "name": "Callibrator — Lapangan",
-  "short_name": "Callibrator",
+  "name": "Device Calibrator — Lapangan",
+  "short_name": "Calibrator",
   "description": "Inspeksi dan registrasi alat di lapangan",
   "lang": "id",
   "start_url": "/field?view=home",

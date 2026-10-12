@@ -29,24 +29,9 @@ export const FACILITY_REFUSAL_CODES = Object.freeze([
 ] as const);
 export type FacilityRefusalCode = (typeof FACILITY_REFUSAL_CODES)[number];
 
-/**
- * The 403 codes on which an offline client purges its working set and signs out (AM-1; P19-08
- * § 10, G-O5). The account and tenant codes are sent by P21-03; the facility codes by P21-09.
- * `FACILITY_ROUTE_REFUSED` is NOT one: it refuses one action, the account keeps its scope.
- */
-export const SCOPE_LOSS_CODES = Object.freeze([
-  "ACCOUNT_INACTIVE",
-  "TENANT_SUSPENDED",
-  "TENANT_DELETED",
-  "FACILITY_INACTIVE",
-  "FACILITY_ENDED",
-  "FACILITY_BINDING_PENDING",
-] as const);
-export type ScopeLossCode = (typeof SCOPE_LOSS_CODES)[number];
-
-/** Whether a response's top-level `code` means the account lost its scope. */
-export const isScopeLossCode = (code: unknown): code is ScopeLossCode =>
-  typeof code === "string" && (SCOPE_LOSS_CODES as readonly string[]).includes(code);
+// The scope-loss codes live in a module without zod (the offline field app's first load reads
+// them: P22-10c2, ADR-127 Am. 4); re-exported here, so every import keeps working.
+export { SCOPE_LOSS_CODES, isScopeLossCode, type ScopeLossCode } from "./scopeLoss";
 
 /**
  * `single`: the tenant has only its own (self) facility — the frontend hides every facility

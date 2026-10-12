@@ -146,6 +146,27 @@ export function createSyncEngine(ports: EnginePorts, overrides: Partial<EngineCo
     await store.putCapture({ ...capture, updatedAt: clock.now() });
   };
 
+  /**
+   * One capture's read-modify-write at a time (P22-10c2 fix): a user's edit, a photo added and the
+   * runner confirming an answer each READ the capture and WRITE it back; interleaved, the later
+   * write lost the earlier one (a photo reference dropped by a header edit saved a moment later).
+   * Every such section runs under this per-capture lock; the network send stays outside it.
+   */
+  const locks = new Map<string, Promise<unknown>>();
+  const exclusive = <T>(localId: string, work: () => Promise<T>): Promise<T> => {
+    const previous = locks.get(localId) ?? Promise.resolve();
+    const next = previous.then(work, work);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    locks.set(localId, settled);
+    void settled.then(() => {
+      if (locks.get(localId) === settled) locks.delete(localId);
+    });
+    return next;
+  };
+
   /** Online and editing: plan as server autosave, a pause after the last change (P19-08 § 9.2). */
   const debounce = (): void => {
     if (!network.online()) return;
@@ -224,7 +245,12 @@ export function createSyncEngine(ports: EnginePorts, overrides: Partial<EngineCo
         if (next === "blocked") return { ...result, waiting: true };
         if (next === null) {
           if (capture.state === "discarded_local") await store.deleteCapture(localId);
-          else if (capture.kind === "device" && capture.state !== "editing" && capture.confirmed.id !== null) await save({ ...capture, state: "synced" });
+          else if (capture.kind === "device" && capture.state !== "editing" && capture.confirmed.id !== null) {
+            await exclusive(localId, async () => {
+              const latest = (await store.getCapture(localId)) ?? capture;
+              await save({ ...latest, state: "synced" });
+            });
+          }
           return result;
         }
         const ops = await store.listOps(localId);
@@ -234,7 +260,10 @@ export function createSyncEngine(ports: EnginePorts, overrides: Partial<EngineCo
       if (op.nextAttemptAt > clock.now()) return { ...result, waiting: true };
       const flying: Op = { ...op, state: "in_flight", attempts: op.attempts + 1 };
       await store.putOp(flying);
-      if (capture.state === "submitted_local") await save({ ...capture, state: "syncing" });
+      await exclusive(localId, async () => {
+        const latest = await store.getCapture(localId);
+        if (latest?.state === "submitted_local") await save({ ...latest, state: "syncing" });
+      });
       const photo = op.request.photo ? await store.getPhoto(op.request.photo.photoId) : null;
       let answer: Answer | null = null;
       try {
@@ -251,36 +280,41 @@ export function createSyncEngine(ports: EnginePorts, overrides: Partial<EngineCo
         const reason = await engine.checkClock(answer.serverDate);
         if (reason) return { ...result, stopAll: "scope" };
       }
-      const current = (await store.getCapture(localId)) ?? capture;
-      switch (outcome.kind) {
-        case "success": {
-          await store.putOp({ ...flying, state: "done" });
-          const updated = await confirm(current, flying, answer as Answer);
-          if (updated === null) await store.deleteCapture(localId);
-          else await save(updated);
-          result.succeeded += 1;
-          continue;
-        }
-        case "retry":
-          await store.putOp({ ...flying, state: "planned", nextAttemptAt: clock.now() + backoffMs(config, flying.attempts, unit(), outcome.retryAfterSec) });
-          return { ...result, waiting: true, offline: answer === null };
-        case "replan":
-          await store.putOp({ ...flying, state: "failed" });
-          if (current.keyReplanned) {
+      const step = await exclusive(localId, async (): Promise<"continue" | LaneResult> => {
+        const current = (await store.getCapture(localId)) ?? capture;
+        switch (outcome.kind) {
+          case "success": {
+            await store.putOp({ ...flying, state: "done" });
+            const updated = await confirm(current, flying, answer as Answer);
+            if (updated === null) await store.deleteCapture(localId);
+            else await save(updated);
+            result.succeeded += 1;
+            return "continue";
+          }
+          case "retry":
+            await store.putOp({ ...flying, state: "planned", nextAttemptAt: clock.now() + backoffMs(config, flying.attempts, unit(), outcome.retryAfterSec) });
+            return { ...result, waiting: true, offline: answer === null };
+          case "replan":
+            await store.putOp({ ...flying, state: "failed" });
+            if (current.keyReplanned) {
+              await save(attention(current, flying, answer as Answer));
+              return { ...result, attention: true };
+            }
+            await save({ ...current, keyReplanned: true });
+            return "continue";
+          case "scope_lost":
+            await store.putOp({ ...flying, state: "planned" });
+            await save(attention(current, flying, answer as Answer));
+            return { ...result, attention: true, stopAll: "scope" };
+          case "attention":
+            await store.putOp({ ...flying, state: "failed" });
             await save(attention(current, flying, answer as Answer));
             return { ...result, attention: true };
-          }
-          await save({ ...current, keyReplanned: true });
-          continue;
-        case "scope_lost":
-          await store.putOp({ ...flying, state: "planned" });
-          await save(attention(current, flying, answer as Answer));
-          await purge("scope_lost");
-          return { ...result, attention: true, stopAll: "scope" };
-        case "attention":
-          await store.putOp({ ...flying, state: "failed" });
-          await save(attention(current, flying, answer as Answer));
-          return { ...result, attention: true };
+        }
+      });
+      if (step !== "continue") {
+        if (outcome.kind === "scope_lost") await purge("scope_lost");
+        return step;
       }
     }
     return result;
@@ -315,76 +349,91 @@ export function createSyncEngine(ports: EnginePorts, overrides: Partial<EngineCo
     },
 
     async editCapture(localId, patch) {
-      const capture = await mustGet(localId);
-      if (capture.state !== "editing") throw new Error("Only a capture being edited can change");
-      await save({
-        ...capture,
-        header: patch.header ? { ...capture.header, ...patch.header } : capture.header,
-        results: patch.results ?? capture.results,
-        device: patch.device ? { ...(capture.device ?? {}), ...patch.device } : capture.device,
+      await exclusive(localId, async () => {
+        const capture = await mustGet(localId);
+        if (capture.state !== "editing") throw new Error("Only a capture being edited can change");
+        await save({
+          ...capture,
+          header: patch.header ? { ...capture.header, ...patch.header } : capture.header,
+          results: patch.results ?? capture.results,
+          device: patch.device ? { ...(capture.device ?? {}), ...patch.device } : capture.device,
+        });
       });
       debounce();
     },
 
     async addPhoto(localId, bytes, purpose) {
-      const capture = await mustGet(localId);
-      if (capture.state !== "editing" || capture.confirmed.submitted) throw new Error("A photo is added before the submit");
-      const photoId = uuid();
-      await store.putPhoto(photoId, bytes);
-      await save({ ...capture, photos: [...capture.photos, { photoId, purpose, uploaded: false }] });
+      const photoId = await exclusive(localId, async () => {
+        const capture = await mustGet(localId);
+        if (capture.state !== "editing" || capture.confirmed.submitted) throw new Error("A photo is added before the submit");
+        const id = uuid();
+        await store.putPhoto(id, bytes);
+        await save({ ...capture, photos: [...capture.photos, { photoId: id, purpose, uploaded: false }] });
+        return id;
+      });
       debounce();
       return photoId;
     },
 
     async removePhoto(localId, photoId) {
-      const capture = await mustGet(localId);
-      const photo = capture.photos.find((p) => p.photoId === photoId);
-      if (!photo || photo.uploaded) throw new Error("Only a photo not yet uploaded can be removed here");
-      await store.deletePhoto(photoId);
-      await save({ ...capture, photos: capture.photos.filter((p) => p.photoId !== photoId) });
+      await exclusive(localId, async () => {
+        const capture = await mustGet(localId);
+        const photo = capture.photos.find((p) => p.photoId === photoId);
+        if (!photo || photo.uploaded) throw new Error("Only a photo not yet uploaded can be removed here");
+        await store.deletePhoto(photoId);
+        await save({ ...capture, photos: capture.photos.filter((p) => p.photoId !== photoId) });
+      });
     },
 
     async submitLocal(localId) {
-      const capture = await mustGet(localId);
-      if (capture.state !== "editing") throw new Error("Only a capture being edited can be submitted");
-      await save({ ...capture, state: "submitted_local" });
+      await exclusive(localId, async () => {
+        const capture = await mustGet(localId);
+        if (capture.state !== "editing") throw new Error("Only a capture being edited can be submitted");
+        await save({ ...capture, state: "submitted_local" });
+      });
       await notify();
       debounce();
     },
 
     async discardLocal(localId) {
-      const capture = await mustGet(localId);
-      await dropPending(localId);
-      if (capture.confirmed.id === null || capture.kind === "device" || capture.confirmed.submitted) {
-        await store.deleteCapture(localId);
-      } else {
-        await save({ ...capture, state: "discarded_local", attention: null });
-      }
+      await exclusive(localId, async () => {
+        const capture = await mustGet(localId);
+        await dropPending(localId);
+        if (capture.confirmed.id === null || capture.kind === "device" || capture.confirmed.submitted) {
+          await store.deleteCapture(localId);
+        } else {
+          await save({ ...capture, state: "discarded_local", attention: null });
+        }
+      });
       await notify();
     },
 
     async resolveAttention(localId, action) {
-      const capture = await mustGet(localId);
-      if (capture.state !== "attention" || !capture.attention) throw new Error("The capture needs no attention");
+      const needed = await mustGet(localId);
+      if (needed.state !== "attention" || !needed.attention) throw new Error("The capture needs no attention");
       if (action === "discard") {
         await engine.discardLocal(localId);
         return;
       }
-      await dropPending(localId);
-      const back: CaptureState = capture.attention.previousState === "syncing" ? "submitted_local" : capture.attention.previousState;
-      if (action === "retry") {
-        await save({ ...capture, state: back, attention: null, keyReplanned: false });
-      } else if (action === "edit") {
-        await save({ ...capture, state: "editing", attention: null, keyReplanned: false });
-      } else {
-        const id = action === "use_server_draft" ? capture.attention.draftId : capture.confirmed.id;
-        if (!id) throw new Error("No server draft to adopt");
-        const answer = await transport.read(`/api/v1/ipm/sessions/${id}`);
-        if (answer.status < 200 || answer.status >= 300) throw new Error(answer.message || "The draft could not be read");
-        const data = record(answer.data);
-        // Re-send this phone's whole state onto the server draft: nothing counts as confirmed but its id and revision.
-        await save({ ...capture, state: back, attention: null, keyReplanned: false, confirmed: { ...NOTHING_CONFIRMED, id, revision: num(data["revision"], 0) } });
-      }
+      await exclusive(localId, async () => {
+        const capture = await mustGet(localId);
+        if (capture.state !== "attention" || !capture.attention) throw new Error("The capture needs no attention");
+        await dropPending(localId);
+        const back: CaptureState = capture.attention.previousState === "syncing" ? "submitted_local" : capture.attention.previousState;
+        if (action === "retry") {
+          await save({ ...capture, state: back, attention: null, keyReplanned: false });
+        } else if (action === "edit") {
+          await save({ ...capture, state: "editing", attention: null, keyReplanned: false });
+        } else {
+          const id = action === "use_server_draft" ? capture.attention.draftId : capture.confirmed.id;
+          if (!id) throw new Error("No server draft to adopt");
+          const answer = await transport.read(`/api/v1/ipm/sessions/${id}`);
+          if (answer.status < 200 || answer.status >= 300) throw new Error(answer.message || "The draft could not be read");
+          const data = record(answer.data);
+          // Re-send this phone's whole state onto the server draft: nothing counts as confirmed but its id and revision.
+          await save({ ...capture, state: back, attention: null, keyReplanned: false, confirmed: { ...NOTHING_CONFIRMED, id, revision: num(data["revision"], 0) } });
+        }
+      });
       await notify();
       debounce();
     },

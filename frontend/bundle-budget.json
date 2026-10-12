@@ -58,6 +58,18 @@
       "brotliKB": 124,
       "gzipKB": 144,
       "cssGzipKB": 13
+    },
+    "/field": {
+      "brotliKB": 163,
+      "gzipKB": 188,
+      "note": "P22-10c2 (P19-08 § 15, ADR-127 Am. 4): the offline field app; ceiling = first build (158.4 brotli / 182.9 gzip, 2026-10-12) + 5, never above 170 brotli. Capture, settings, register, outbox, sign and the QR scanner load on demand (the capture reaches zod through the IPM contracts) and are warmed through the worker",
+      "cssGzipKB": 32
+    },
+    "/dashboard": {
+      "brotliKB": 191,
+      "gzipKB": 220,
+      "note": "P22-10c2 (P19-08 § 15): the dashboard home, measured at 188.9 brotli / 218.0 gzip on 2026-10-12 with the field profile guard in its shell (an import() behind a localStorage check); + 2 KB so the guard cannot grow silently",
+      "cssGzipKB": 32
     }
   }
 }

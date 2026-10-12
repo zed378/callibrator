@@ -61,6 +61,13 @@ export interface FieldRoom {
   readonly name: string;
 }
 
+export interface SubmittedVisit {
+  readonly id: string;
+  readonly deviceId: string;
+  readonly performedAt: string | null;
+  readonly visitNumber: number | null;
+}
+
 /** The size of a facility's working set, read BEFORE downloading it. */
 export type FacilitySize = { readonly ok: true; readonly total: number } | { readonly ok: false; readonly tooLarge: true; readonly message: string };
 
@@ -74,6 +81,10 @@ export interface FieldApi {
   devicePage(facilityId: string, page: number, limit: number): Promise<{ rows: FieldDevice[]; total: number }>;
   rooms(): Promise<FieldRoom[]>;
   catalogue(etag: string | null): Promise<CatalogueRead>;
+  /** Online QR lookup (`GET /calibration-devices/by-qr/:qrCode`, the same 404 everywhere): the row cut to the field keys, or null. */
+  byQr(code: string): Promise<FieldDevice | null>;
+  /** The user's submitted visits, newest first (the "to sign" list; signing itself is the report page's, online). */
+  submitted(userId: string): Promise<SubmittedVisit[]>;
   /** `POST /field/wipes`: the audit row of an administrator wipe (sent BEFORE the deletion, ADR-135). */
   recordWipe(wipedUserId: string, captures: number, photos: number): Promise<void>;
 }
@@ -162,6 +173,26 @@ export function createFieldApi(client: AxiosInstance): FieldApi {
       if (response.status === 304) return { notModified: true };
       const h = rec(response.headers);
       return { notModified: false, etag: str(h["etag"]), document: rec(response.data)["data"] ?? null };
+    },
+
+    async byQr(code) {
+      try {
+        const body = await typedApi.GET("/api/v1/calibration-devices/by-qr/{qrCode}", { params: { path: { qrCode: code } } }).then(unwrap);
+        return toFieldDevice(body.data);
+      } catch (err) {
+        if (describeApiError(err).status === 404) return null;
+        throw err;
+      }
+    },
+
+    async submitted(userId) {
+      const body = await typedApi
+        .GET("/api/v1/ipm/sessions", { params: { query: { performedBy: userId, status: "submitted", sort: "performedAt", page: 1, limit: 20 } } })
+        .then(unwrap);
+      return body.data.map((s) => {
+        const r = rec(s);
+        return { id: String(r["id"]), deviceId: String(r["deviceId"]), performedAt: str(r["performedAt"]), visitNumber: typeof r["visitNumber"] === "number" ? r["visitNumber"] : null };
+      });
     },
 
     async recordWipe(wipedUserId, captures, photos) {
