@@ -256,6 +256,25 @@ const API_ENDPOINTS = {
     windowMs: WINDOW.FIFTEEN_MIN,
     description: "IPM report signing",
   },
+  // P21-08 (ADR-138 § 4, Am. 1 § 8; P19-07 § 7): the public device page — every request per address
+  // (120), every 404 per address again (30: a failed lookup counts double, so a scanner of random
+  // tokens is slowed first), and every request of every address (3 000, the database's ceiling
+  // under a distributed scan; counted with `perAddress: false` under one key).
+  publicDevicePage: {
+    maxRequests: 120,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "The public device page",
+  },
+  publicDevicePageMiss: {
+    maxRequests: 30,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "The public device page",
+  },
+  publicDevicePageGlobal: {
+    maxRequests: 3000,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "The public device page",
+  },
   // ---------------------------------------------------------------------
   // Phase 10 (ADR-098) — the public ways in, per client address.
   // ---------------------------------------------------------------------

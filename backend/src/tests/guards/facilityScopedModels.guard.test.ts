@@ -71,6 +71,8 @@ const FACILITY_SCOPED: Readonly<Record<string, { databaseNotNull: boolean; why: 
 const PROVIDER_INTERNAL: Readonly<Record<string, string>> = Object.freeze({
   AssetFinance: "finance is the provider's business, not the client facility's (spec § 5.1)",
   ClientFacilityMove: "the move log names the facility the device left — another client (spec § 5.5)",
+  PublicDeviceToken:
+    "P21-08 (ADR-138; P19-07 § 5): a device's public link, read only by unbound staff (its routes are not facility-accessible) and by the public page's reviewed hash lookup",
 });
 
 const FACILITY_KEYS = new Set(["clientFacilityId", "client_facility_id"]);

@@ -383,6 +383,8 @@ const candidates = () => {
 //  - workflow instance action: an approval or rejection; the final approval
 //    stamps the certificate / transfer / work order as approved by the caller.
 const GUARDED = [
+  // P21-08 (ADR-138 Am. 1 § 1): revoking a device's public link is the tenant's act on its sticker (the scan catches the revoke; issue and rotate carry the guard too).
+  "calibrationDevices.route.ts DELETE /:calibrationDeviceId/public-token",
   // P21-05 (ADR-133 § 2): the quick entry writes a calibration record (an outside laboratory's date).
   "calibrationDevices.route.ts POST /:calibrationDeviceId/calibration-dates",
   "calibrationRecords.route.ts POST /",

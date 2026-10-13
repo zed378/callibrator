@@ -71,6 +71,8 @@ jest.mock("../../models", () => {
     },
   });
   return {
+    // P21-08 (ADR-138 Am. 1 § 7): a delete revokes the device's public link — none here.
+    PublicDeviceToken: { findOne: jest.fn(async () => null) },
     CalibrationDevice: {
       create: jest.fn(async (values, options) => {
         const row = { id: nextId(), ...values };

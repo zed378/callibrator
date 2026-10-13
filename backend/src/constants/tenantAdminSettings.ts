@@ -73,6 +73,8 @@ export const TENANT_ADMIN_SETTING_KEYS = Object.freeze([
   "device_qr_code_digits",
   "field_working_set_max_devices",
   "calibration_due_soon_days",
+  // P21-08 (ADR-138 § 5; P19-07 § 9): the public device page — off (unset) / minimal / minimal_with_report.
+  "public_device_page",
 ] as const);
 
 /** P21-09e: the integer settings above, with their allowed range (an empty value clears one). */
@@ -95,6 +97,8 @@ export const TENANT_ADMIN_INTEGER_SETTINGS: Readonly<Record<TenantAdminIntegerSe
 /** P21-02a: the settings held to a pattern (the source of a RegExp), with the 400's wording. */
 export const TENANT_ADMIN_PATTERN_SETTINGS: Readonly<Record<string, { readonly pattern: string; readonly wording: string }>> = Object.freeze({
   device_qr_code_prefix: { pattern: "^[A-Z]{1,8}$", wording: "1 to 8 upper-case letters" },
+  // P21-08 (ADR-138 § 5): PUBLIC_DEVICE_PAGE_MODES (an empty value clears it: off).
+  public_device_page: { pattern: "^(off|minimal|minimal_with_report)$", wording: "off, minimal or minimal_with_report" },
 });
 
 /** P21-04: the boolean settings above — `true` / `false` (a string or a JSON boolean), or nothing (cleared). */

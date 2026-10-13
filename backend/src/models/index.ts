@@ -78,6 +78,7 @@ import defineInspectionSession from "./inspectionSession.model";
 import defineInspectionResult from "./inspectionResult.model";
 import defineInspectionSessionSignature from "./inspectionSessionSignature.model";
 import defineIdempotencyKey from "./idempotencyKey.model";
+import definePublicDeviceToken from "./publicDeviceToken.model";
 import defineApiKey from "./apiKey.model";
 import defineAssetFinance from "./assetFinance.model";
 import defineAttachment from "./attachment.model";
@@ -264,6 +265,8 @@ const models: Models = {
   InspectionResult: define(defineInspectionResult),
   InspectionSessionSignature: define(defineInspectionSessionSignature),
   IdempotencyKey: define(defineIdempotencyKey),
+  // P21-08 (ADR-138): a device's public link (tenant-scoped; the hash only) — last, as above.
+  PublicDeviceToken: define(definePublicDeviceToken),
 };
 
 // Association Mapping: Iterate models, execute associate method if exists.
@@ -503,6 +506,9 @@ const barrel = Object.assign(database, {
   InspectionSessionSignatures: models.InspectionSessionSignature,
   IdempotencyKey: models.IdempotencyKey,
   IdempotencyKeys: models.IdempotencyKey,
+  // P21-08 (ADR-138): the public device links (tenant-scoped).
+  PublicDeviceToken: models.PublicDeviceToken,
+  PublicDeviceTokens: models.PublicDeviceToken,
 });
 
 // A pure `export =` module, like every model file: no other export may sit beside it (a

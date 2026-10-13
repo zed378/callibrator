@@ -49,6 +49,7 @@ import { deviceFacts, fieldSummary, labNames, presentDevice, viewerIsBound } fro
 import { deviceSettingsOf } from "./deviceSettings.service";
 import { completeIdempotentRequest } from "./idempotency.service";
 import { rederiveNextCalibrationDate } from "./calibrationDates.service";
+import { revokeLinkOfDeletedDevice } from "./publicDeviceToken.service";
 import { calibrationDueWindow, DEVICE_CONFLICT_CODES } from "@callibrator/contracts/deviceValues";
 
 const Op = LoadedOp;
@@ -949,6 +950,8 @@ const deleteCalibrationDevice = async (
     // Sequelize CLS (config/index.js `useCLS`), as certificate.approve() does.
     await db.transaction(async (transaction) => {
       await device.softDelete();
+      // P21-08 (ADR-138 Am. 1 § 7): its public link stops working with it, in this transaction.
+      await revokeLinkOfDeletedDevice(tenantId, device, actor, transaction);
       // D-22 (ADR-070): its attachments go with it, in this transaction.
       await attachmentService().softDeleteForResource(
         tenantId,

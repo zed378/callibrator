@@ -41,6 +41,8 @@ export const SECRET_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = Ob
   TenantKey: Object.freeze(["privateKey"]),
   AccessRequest: Object.freeze(["invitationTokenHash", "sourceIpHash"]),
   CalibrationDevice: Object.freeze(["iotTokenHash"]),
+  // P21-08 (ADR-138): a public device link's token hash — never serialised, though no route returns the row.
+  PublicDeviceToken: Object.freeze(["tokenHash"]),
   // The rsync image import: the SSH password or key envelope, erased when the import ends.
   UpstreamFileImport: Object.freeze(["secretCiphertext"]),
 });

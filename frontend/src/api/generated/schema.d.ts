@@ -1694,6 +1694,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calibration-devices/{calibrationDeviceId}/public-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The device's public link: active or not, and the tenant's page setting
+         * @description P21-08 (ADR-138): whether the device has an active public link, when and by whom it was issued, when the last one was revoked, and the tenant's `public_device_page` setting. Never the token or its hash. A person only (no API key); not facility-accessible.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["getCalibrationDevicePublicLink"];
+        put?: never;
+        /**
+         * Issue the device's public link (the token is shown once)
+         * @description P21-08 (ADR-138 § 1, Am. 1 § 6): mints a 128-bit token (22 base64url characters) and stores only its SHA-256. The answer is the ONLY time the token is shown: print the sticker from it. Allowed while the tenant's page is off. A person only (no API key); not facility-accessible; one audit row (the hash prefix, never the token). `Cache-Control: no-store`.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `PUBLIC_TOKEN_ACTIVE`: the device already has a public link — rotate it to print a new sticker (the printed one stops working).
+         */
+        post: operations["issueCalibrationDevicePublicLink"];
+        /**
+         * Revoke the device's public link
+         * @description P21-08 (ADR-138 § 1): the printed sticker answers the public page's 404 from now on. One audit row.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `PUBLIC_TOKEN_NONE`: the device has no active public link.
+         */
+        delete: operations["revokeCalibrationDevicePublicLink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/calibration-devices/{calibrationDeviceId}/public-token/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the device's public link (the printed sticker stops working)
+         * @description P21-08 (ADR-138 § 1, Am. 1 § 6): revokes the active link and issues a new one in one transaction; the new token is shown once. One audit row.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `PUBLIC_TOKEN_NONE`: the device has no active public link — issue one.
+         */
+        post: operations["rotateCalibrationDevicePublicLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calibration-devices/{calibrationDeviceId}/reinstate": {
         parameters: {
             query?: never;
@@ -6011,6 +6073,28 @@ export interface paths {
          *     **409** — The device has no pending recommendation.
          */
         post: operations["approveCalibrationRecommendation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/devices/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The public page of a device, by its sticker's token (no auth)
+         * @description The target of a sticker's link. Shows the device's name, type, manufacturer and model, its facility's name, the calibration status (`current`, `due_soon`, `overdue`, `retired`, `not_scheduled`) with the next due date, and the last IPM date; under the tenant's `minimal_with_report` setting also the link to the last IPM report's verification page. Never a serial or QR number, a room, a photo, a document, a person's name or an id. A malformed, unknown or revoked token, a deleted device, an ended facility, a suspended or deleted tenant, or a tenant whose page is off all answer the same 404 with the top-level code `PUBLIC_DEVICE_NOT_FOUND`. Every answer carries `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: no-referrer`. Per client address every request counts against 120 per 15 minutes and every 404 also against 30; all addresses together against 3,000; beyond any, 429 with Retry-After.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["readPublicDevice"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -18987,6 +19071,171 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    getCalibrationDevicePublicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration device's id */
+                calibrationDeviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link's state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            active: boolean;
+                            issuedAt: string | null;
+                            issuedBy: {
+                                name: string | null;
+                                role: string | null;
+                                organisation: string | null;
+                                redacted: boolean;
+                            } | null;
+                            lastRevokedAt: string | null;
+                            /** @enum {string} */
+                            setting: "off" | "minimal" | "minimal_with_report";
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    issueCalibrationDevicePublicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration device's id */
+                calibrationDeviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token, its link and the time */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            token: string;
+                            url: string;
+                            issuedAt: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    revokeCalibrationDevicePublicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration device's id */
+                calibrationDeviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description When it was revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            revokedAt: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    rotateCalibrationDevicePublicLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration device's id */
+                calibrationDeviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new token, its link and the time */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            token: string;
+                            url: string;
+                            issuedAt: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     reinstateCalibrationDevice: {
         parameters: {
             query?: never;
@@ -29513,6 +29762,58 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    readPublicDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The sticker's token (22 base64url characters) */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page's data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            device: {
+                                name: string;
+                                type: string | null;
+                                manufacturer: string | null;
+                                model: string | null;
+                            };
+                            facility: {
+                                name: string;
+                            };
+                            calibration: {
+                                /** @enum {string} */
+                                status: "current" | "due_soon" | "overdue" | "retired" | "not_scheduled";
+                                nextDueDate: string | null;
+                            };
+                            lastIpmDate: string | null;
+                            report: {
+                                verifyUrl: string;
+                            } | null;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["RateLimited"];
         };
     };

@@ -211,6 +211,11 @@ const UNCHANGED = Object.freeze({
   "calibration_devices.calibration_vendor_id": "vendors SET NULL",
   "calibration_devices.created_by": "users RESTRICT",
   "calibration_records.calibration_vendor_id": "vendors SET NULL",
+  // P21-08 (migration 0137; ADR-138 § 1): a device's public link — its device, who issued it and who
+  // revoked it are history (the table is append-mostly; nothing is deleted): RESTRICT.
+  "public_device_tokens.device_id": "calibration_devices RESTRICT",
+  "public_device_tokens.created_by": "users RESTRICT",
+  "public_device_tokens.revoked_by": "users RESTRICT",
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */
