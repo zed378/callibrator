@@ -10,7 +10,7 @@
  * (distinct laboratories, distinct rooms, the per-row audit rows) and own no source table.
  *
  * A step's `run` and each source's `legacyId` are P24-02's (built part by part: P24-02a the
- * facilities and the audit rows, P24-02b the users, P24-02c the catalogue, P24-02d the templates, P24-02e the register): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
+ * facilities and the audit rows, P24-02b the users, P24-02c the catalogue, P24-02d the templates, P24-02e the register, P24-02f the calibration dates): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
  * the worker `TRANSFORM_NOT_BUILT`). `legacyId` is an SQL expression over the staged row,
  * aliased `s` — a constant of this module, never input — giving the text key the step writes
  * to `id_map.legacy_id` (usually `s."id"::text`; a session's `legacy_key`, 05 § 3.3).
@@ -23,6 +23,7 @@ import { USER_SOURCES, runUsers } from "./users";
 import { DEFINITION_SOURCES, DEVICE_TYPE_SOURCE, runDeviceTypes, runItemDefinitions } from "./catalogue";
 import { TEMPLATE_SOURCES, runTemplates } from "./templates";
 import { DEVICE_SOURCE, runDevices, runRooms, runVendors } from "./inventory";
+import { CALIBRATION_SOURCE, runCalibrations } from "./calibrations";
 
 /** What a step's `run` receives: the run, and the transform connection's transaction. */
 export interface StepContext {
@@ -95,7 +96,8 @@ export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
   step("warehouses", ["warehouses"], sources(), runRooms),
   step("calibration_devices", ["calibration_devices"], Object.freeze([DEVICE_SOURCE]), runDevices),
   step("attachments", ["attachments"], sources("trx_inventory_file")),
-  step("calibration_records", ["calibration_records"], sources("trx_kalibrasi")),
+  // P24-02f: the calibration dates (calibrations.ts).
+  step("calibration_records", ["calibration_records"], Object.freeze([CALIBRATION_SOURCE]), runCalibrations),
   step("inspection_sessions", ["inspection_sessions"], sources("trx_hasil_pemeriksaan")),
   step(
     "inspection_results",

@@ -465,13 +465,34 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
     reason: "the devices step's reads, inserts and updates in the provider tenant (bound), each device's facility decided from its upstream facility (never moved); a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
   },
-  "services/upstreamImport/transform/inventory.ts#users": {
-    reason: "the registrant's printed name, role and facility, read in the provider tenant (bound); a worker, no principal",
-    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
-  },
   "services/upstreamImport/transform/inventory.ts#warehouses": {
     reason: "the rooms step's reads and inserts in the provider tenant (bound), each room in its device's facility; a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
+  },
+  // P24-02e/f (ADR-129 Am. 7, Am. 8): the shared people reads (people.ts) and the calibrations step — the provider tenant bound.
+  "services/upstreamImport/transform/people.ts#${table}": {
+    reason: "the people reads of id_map and upstream_import.former_users (constant names); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
+  },
+  "services/upstreamImport/transform/people.ts#users": {
+    reason: "the registrant's or performer's printed name, role and facility, read in the provider tenant (bound); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
+  },
+  "services/upstreamImport/transform/calibrations.ts#${table}": {
+    reason: "the calibrations step's reads of id_map and the allow-listed staging table trx_kalibrasi (via stagedTable); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02f)"],
+  },
+  "services/upstreamImport/transform/calibrations.ts#audit_logs": {
+    reason: "the calibrations step's CREATE / UPDATE rows, each stamped with the record's facility; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02f)"],
+  },
+  "services/upstreamImport/transform/calibrations.ts#calibration_devices": {
+    reason: "the devices behind the imported dates, read in the provider tenant (bound) for their facility; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02f)"],
+  },
+  "services/upstreamImport/transform/calibrations.ts#calibration_records": {
+    reason: "the imported dates: inserted in the provider tenant (bound) with their device's facility, and a superseded one closed; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02f)"],
   },
   "services/upstreamImport/transform/ledger.ts#${table}": {
     reason:

@@ -48,13 +48,12 @@
 import { randomUUID } from "crypto";
 import { normaliseQrCode, type QrCodeSettings, type DeviceCondition } from "@callibrator/contracts/deviceValues";
 import { sql, type BindValue } from "../../../utils/sql.util";
-import { STAGING_SCHEMA } from "../../../config/upstreamImport";
 import { qrSettingsOf, DEVICE_SETTING_KEYS } from "../../deviceSettings.service";
-import { UNNAMED_PERSON } from "../../deviceRegister.service";
 import { RESOURCE_TYPES } from "./auditRows";
 import { cleanText } from "./catalogue";
 import { ID_MAP, classifiedSql, quarantineRows, recordMappings, stagedTable, stagedTableExists, type Mapping, type QuarantineEntry } from "./ledger";
 import type { StepContext, TransformSource } from "./steps";
+import { FORMER_USERS, formerSnapshot, formerUsersOf, mappedTargets, numberFormerUsers, peopleOf, recordFormerUsers, type PersonSnapshotValue } from "./people";
 
 type Decision = "new" | "unchanged" | "changed";
 type Raw = Readonly<Record<string, unknown>>;
@@ -62,13 +61,12 @@ type Raw = Readonly<Record<string, unknown>>;
 /** `trx_inventory`, keyed by its id. */
 export const DEVICE_SOURCE: TransformSource = Object.freeze({ table: "trx_inventory", legacyId: 's."id"::text' });
 
-/** `upstream_import.former_users` (migration 0139): the per-migration numbers of departed registrants. */
-export const FORMER_USERS = `${STAGING_SCHEMA}.former_users`;
+/** `upstream_import.former_users` (migration 0139): the per-migration numbers of departed registrants (people.ts). */
+export { FORMER_USERS };
 
 const NAME_MAX = 255;
 const FLOOR_MAX = 50;
 const INVENTORIED_ON_MIN = "1990-01-01";
-const FORMER_USER = "Former upstream user";
 
 /** Serial placeholders (03 Q-17): never a serial. */
 const SERIAL_PLACEHOLDERS: ReadonlySet<string> = new Set(["none", "null", "nil", "n/a", "na", "tidak ada", "tidak", "kosong", "unknown", "tanpa sn", "no sn"]);
@@ -151,11 +149,7 @@ export const inventoryDateOf = (raw: string | null): string | null => {
 };
 
 /** A person as the register prints them (jsonShape `personSnapshot`). */
-export interface RegistrantSnapshot {
-  name: string;
-  role: string | null;
-  organisation: string | null;
-}
+export type RegistrantSnapshot = PersonSnapshotValue;
 
 /** A staged device row: its classification, its columns, and its earlier device. */
 export interface StagedDeviceRow {
@@ -239,15 +233,11 @@ export const planDevices = (input: DeviceInput): DevicePlan => {
   };
 
   // Departed registrants: numbered once, in legacy id order, after those already numbered.
-  const former = new Map(input.formerUsers);
-  let next = Math.max(0, ...former.values());
-  const departed = [...new Set(rows.map((r) => textOf(r.row, "id_user")).filter((id): id is string => id !== null && !input.users.has(id) && !former.has(id)))]
-    .sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
-  for (const legacyId of departed) {
-    next += 1;
-    former.set(legacyId, next);
-    plan.formerUsers.push({ legacyId, number: next });
-  }
+  const { numbers: former, added } = numberFormerUsers(
+    input.formerUsers,
+    rows.map((r) => textOf(r.row, "id_user")).filter((id): id is string => id !== null && !input.users.has(id)),
+  );
+  plan.formerUsers.push(...added);
 
   const seenQr = new Set<string>();
   const seenSerial = new Set<string>();
@@ -357,7 +347,7 @@ export const planDevices = (input: DeviceInput): DevicePlan => {
       vendorId: vendor === null ? null : (input.vendors.get(vendor.key) ?? null),
       createdBy: user === undefined ? null : user.id,
       registrantSnapshot:
-        user !== undefined ? user.snapshot : formerNumber === undefined ? null : { name: `${FORMER_USER} #${String(formerNumber)}`, role: null, organisation: null },
+        user !== undefined ? user.snapshot : formerNumber === undefined ? null : formerSnapshot(formerNumber),
     };
     (update ? plan.update : plan.insert).push(values);
     plan.mappings.push({
@@ -537,20 +527,6 @@ const readDevices = (context: StepContext): Promise<StagedDeviceRow[]> =>
     { transaction: context.transaction },
   );
 
-/** The current mappings of `table`'s keys (legacy id → target id), in the tenant or global. */
-const mapped = async (context: StepContext, table: string, keys: readonly string[]): Promise<Map<string, string>> =>
-  new Map(
-    (
-      await sql<{ legacyId: string; targetId: string }>(
-        context.runner,
-        `SELECT legacy_id AS "legacyId", target_id AS "targetId" FROM ${ID_MAP}
-          WHERE source_table = $1 AND legacy_id = ANY($2::text[]) AND (tenant_id = $3 OR tenant_id IS NULL)`,
-        [table, [...keys], context.tenantId],
-        { transaction: context.transaction },
-      )
-    ).map((r) => [r.legacyId, r.targetId]),
-  );
-
 const keysOf = (rows: readonly StagedDeviceRow[], key: string): string[] =>
   [...new Set(rows.map((r) => textOf(r.row, key)).filter((k): k is string => k !== null))];
 
@@ -571,7 +547,7 @@ export const runDevices = async (context: StepContext): Promise<void> => {
       )
     ).map((r) => [r.key, r.value ?? undefined]),
   );
-  const facilityIds = await mapped(context, "mst_faskes", keysOf(rows, "id_client"));
+  const facilityIds = await mappedTargets(context, "mst_faskes", keysOf(rows, "id_client"));
   const present = new Set(
     (
       await sql<{ id: string }>(runner, "SELECT id FROM client_facilities WHERE tenant_id = $1 AND id = ANY($2::uuid[])", [tenantId, [...new Set(facilityIds.values())]], {
@@ -580,7 +556,7 @@ export const runDevices = async (context: StepContext): Promise<void> => {
     ).map((f) => f.id),
   );
   const facilities = new Map([...facilityIds].filter(([, id]) => present.has(id)));
-  const typeIds = await mapped(context, "mst_alat", keysOf(rows, "id_alat"));
+  const typeIds = await mappedTargets(context, "mst_alat", keysOf(rows, "id_alat"));
   const typeNames = new Map(
     (await sql<{ id: string; name: string }>(runner, "SELECT id, name FROM device_types WHERE id = ANY($1::uuid[])", [[...new Set(typeIds.values())]], { transaction })).map((t) => [
       t.id,
@@ -593,33 +569,8 @@ export const runDevices = async (context: StepContext): Promise<void> => {
       return name === undefined ? [] : [[legacy, { id, name }] as const];
     }),
   );
-  const userIds = await mapped(context, "users", keysOf(rows, "id_user"));
-  const people = await sql<{ id: string; firstName: string | null; lastName: string | null; role: string | null; organisation: string | null }>(
-    runner,
-    `SELECT u.id, u.first_name AS "firstName", u.last_name AS "lastName", r.name AS role, coalesce(f.name, t.name) AS organisation
-       FROM users u
-       LEFT JOIN roles r ON r.id = u.role_id
-       LEFT JOIN client_facilities f ON f.id = u.client_facility_id
-       LEFT JOIN tenants t ON t.id = u.tenant_id
-      WHERE u.tenant_id = $1 AND u.id = ANY($2::uuid[])`,
-    [tenantId, [...new Set(userIds.values())]],
-    { transaction },
-  );
-  const personOf = new Map(
-    people.map((p) => {
-      const name = [p.firstName, p.lastName].filter((n): n is string => n !== null && n.trim() !== "").join(" ").trim();
-      return [p.id, { name: name === "" ? UNNAMED_PERSON : name, role: p.role, organisation: p.organisation }] as const;
-    }),
-  );
-  const users = new Map(
-    [...userIds].flatMap(([legacy, id]) => {
-      const snapshot = personOf.get(id);
-      return snapshot === undefined ? [] : [[legacy, { id, snapshot }] as const];
-    }),
-  );
-  const formerUsers = new Map(
-    (await sql<{ legacyId: string; number: number }>(runner, `SELECT legacy_user_id AS "legacyId", number FROM ${FORMER_USERS}`, [], { transaction })).map((f) => [f.legacyId, f.number]),
-  );
+  const { users } = await peopleOf(context, keysOf(rows, "id_user"));
+  const formerUsers = await formerUsersOf(context);
   const vendorKeys = [...new Set(keysOf(rows, "lab_kalibrasi").map((raw) => vendorKeyOf(raw)?.key).filter((k): k is string => k !== undefined))];
   const vendors = await laboratories(context, vendorKeys);
   const rooms = await roomsOf(context, [...new Set(facilities.values())]);
@@ -649,14 +600,7 @@ export const runDevices = async (context: StepContext): Promise<void> => {
   );
 
   const plan = planDevices({ rows, tenantId, qr, facilities, types, users, formerUsers, vendors, rooms, takenQr, takenSerial, newId: randomUUID });
-  if (plan.formerUsers.length > 0) {
-    await sql(
-      runner,
-      `INSERT INTO ${FORMER_USERS} (legacy_user_id, number, first_import_run_id) SELECT v.legacy, v.n, $1 FROM unnest($2::text[], $3::int[]) AS v(legacy, n)`,
-      [context.runId, plan.formerUsers.map((f) => f.legacyId), plan.formerUsers.map((f) => f.number)],
-      { transaction },
-    );
-  }
+  await recordFormerUsers(context, plan.formerUsers);
   await writeDevices(context, plan);
   await quarantineRows(context, plan.quarantine);
   await recordMappings(context, plan.mappings);

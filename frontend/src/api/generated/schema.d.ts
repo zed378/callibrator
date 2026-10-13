@@ -14368,7 +14368,7 @@ export interface components {
              * @enum {string}
              */
             transformStatus: "not_available" | "transform_requested" | "transforming" | "transformed" | "transform_failed";
-            transformErrorCode: ("REAL_DATA_NOT_ALLOWED" | "TRANSFORM_NOT_BUILT" | "TRANSFORM_ROLE_INVALID" | "TRANSFORM_INCOMPLETE" | "TRANSFORM_FAILED" | "INTERRUPTED" | "PROVIDER_TENANT_INVALID") | null;
+            transformErrorCode: ("REAL_DATA_NOT_ALLOWED" | "TRANSFORM_NOT_BUILT" | "TRANSFORM_ROLE_INVALID" | "TRANSFORM_INCOMPLETE" | "TRANSFORM_FAILED" | "INTERRUPTED" | "PROVIDER_TENANT_INVALID" | "IMPORT_KEY_MISSING") | null;
             /** @description Whether `POST …/:id/transform` would be accepted now (the steps are built and the run is loaded and idle) */
             transformRequestable: boolean;
             transformRequestedAt: string | null;

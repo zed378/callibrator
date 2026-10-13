@@ -90,8 +90,18 @@ const viewOf = (key: ApiKeyRow): ImportKeyView => ({
   isActive: key.isActive,
 });
 
-/** Whether a key is the import key and may still record: active, unexpired, `calibration:write` alone. */
-const usable = (key: ApiKeyRow, now: number): boolean =>
+/** The fields `usableImportKey` reads (a model row, or a row the transform reads on its own connection). */
+export interface ImportKeyState {
+  readonly isActive: boolean;
+  readonly expiresAt: Date | string | null;
+  readonly scopes: readonly string[];
+}
+
+/**
+ * Whether a key is the import key and may still record: active, unexpired, `calibration:write` alone.
+ * Exported for the calibrations step of the transform (P24-02f), which reads the key itself.
+ */
+export const usableImportKey = (key: ImportKeyState, now: number): boolean =>
   key.isActive &&
   key.expiresAt !== null &&
   new Date(key.expiresAt).getTime() > now &&
@@ -140,7 +150,7 @@ export const provisionImportKey = async (
   assertImportDataAllowed(input.dataClass);
   const now = Date.now();
   const expiresAt = expiryOf(input.signOffDate, now);
-  const existing = (await liveImportKeys(tenantId)).find((k) => usable(k, now));
+  const existing = (await liveImportKeys(tenantId)).find((k) => usableImportKey(k, now));
   if (existing) {
     return { key: viewOf(existing), created: false };
   }
@@ -190,7 +200,7 @@ export const provisionImportKey = async (
  */
 export const importKeyActor = async (tenantId: TenantId, dataClass: UpstreamSqlImportDataClass): Promise<AuditActorInput> => {
   assertImportDataAllowed(dataClass);
-  const key = (await liveImportKeys(tenantId)).find((k) => usable(k, Date.now()));
+  const key = (await liveImportKeys(tenantId)).find((k) => usableImportKey(k, Date.now()));
   if (!key) {
     throw new CodedError(
       409,

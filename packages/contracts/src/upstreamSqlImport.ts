@@ -103,6 +103,9 @@ export const UPSTREAM_SQL_IMPORT_TRANSFORM_ERROR_CODES = Object.freeze([
   // P24-02a (ADR-129 Am. 3): the requested provider tenant has no self facility, or the id map
   // already holds another tenant's rows (one upstream system is one provider's data).
   "PROVIDER_TENANT_INVALID",
+  // P24-02f (ADR-129 Am. 8; P19-05 § 9.2): a calibration date with no resolvable person needs the
+  // tenant's import key, and none is usable — the operator provisions it before the load.
+  "IMPORT_KEY_MISSING",
 ] as const);
 export type UpstreamSqlImportTransformErrorCode = (typeof UPSTREAM_SQL_IMPORT_TRANSFORM_ERROR_CODES)[number];
 
@@ -148,6 +151,9 @@ export const UPSTREAM_IMPORT_QUARANTINE_REASONS = Object.freeze([
   // A device whose facility upstream differs from the imported device's: a move, which only the
   // operator's move function makes (P19-04 § 10).
   "facility_changed",
+  // P24-02f (ADR-129 Am. 8; ADR-133 Am. 4): a calibration date whose upstream user maps to nobody of
+  // the tenant any more — never attributed to the import key in their place.
+  "performer_not_found",
   // A photo row whose file did not pass 08-FILE-POLICY's ingest (the rsync import's refusal reasons).
   "file_missing",
   "file_type_refused",

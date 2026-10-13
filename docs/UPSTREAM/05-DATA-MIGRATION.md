@@ -106,6 +106,14 @@ transform step with a row id, not the bulk load.
 > `facility_not_imported`, `value_out_of_range`, `qr_case_collision`, `qr_in_use` (a sticker the register
 > already holds) and `facility_changed` (an upstream move — the import never moves a device).
 
+> **As built (P24-02f, ADR-129 Am. 8, 2026-10-13):** step 10 writes `external_date` records directly
+> on the transform connection: the device's facility, 00:00 in the source zone, the room snapshot, no
+> laboratory or result; the performer a mapped user, else the tenant's import key with "Former upstream
+> user #<n>" or "Upstream import" (`source: upstream-import`). Quarantined: `no_device`,
+> `value_out_of_range`, `future_calibration_date`, `performer_not_found`. No usable key while a row
+> needs it fails the transform `IMPORT_KEY_MISSING`. A changed upstream date is an import correction
+> (`supersedes_id`; the old record closed), never an UPDATE.
+
 ### 3.2 Normalisation
 
 `btrim` everything; empty string → NULL; collapse inner whitespace in names; case-insensitive
