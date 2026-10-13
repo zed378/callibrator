@@ -57,6 +57,20 @@ const inRange = (raw: string | undefined, key: keyof typeof TENANT_ADMIN_INTEGER
 };
 
 /**
+ * The QR settings from the two stored values (spec § 4.2): an invalid prefix is no prefix, an
+ * out-of-range digit count the default. Pure — the upstream transform reads the same two keys on its
+ * own connection (P24-02e) and parses them here.
+ *
+ * @param prefix - `device_qr_code_prefix`, if stored
+ * @param digits - `device_qr_code_digits`, if stored
+ * @returns the settings `normaliseQrCode` takes
+ */
+export const qrSettingsOf = (prefix: string | undefined, digits: string | undefined): QrCodeSettings => ({
+  prefix: prefix !== undefined && PREFIX.test(prefix) ? prefix : null,
+  digits: inRange(digits, DEVICE_SETTING_KEYS.qrDigits, QR_CODE_DIGITS_DEFAULT),
+});
+
+/**
  * The tenant's device settings (one read).
  *
  * @param tenantId - the tenant
@@ -72,13 +86,9 @@ export const deviceSettingsOf = async (tenantId: string, { transaction }: { tran
     ...(transaction ? { transaction } : {}),
   });
   const value = new Map(rows.map((r) => [r.key, r.value ?? undefined]));
-  const prefix = value.get(DEVICE_SETTING_KEYS.qrPrefix);
   const zone = value.get(DEVICE_SETTING_KEYS.timeZone);
   return {
-    qr: {
-      prefix: prefix !== undefined && PREFIX.test(prefix) ? prefix : null,
-      digits: inRange(value.get(DEVICE_SETTING_KEYS.qrDigits), DEVICE_SETTING_KEYS.qrDigits, QR_CODE_DIGITS_DEFAULT),
-    },
+    qr: qrSettingsOf(value.get(DEVICE_SETTING_KEYS.qrPrefix), value.get(DEVICE_SETTING_KEYS.qrDigits)),
     workingSetMax: inRange(value.get(DEVICE_SETTING_KEYS.workingSetMax), DEVICE_SETTING_KEYS.workingSetMax, FIELD_WORKING_SET_DEFAULT_MAX),
     dueSoonDays: inRange(value.get(DEVICE_SETTING_KEYS.dueSoonDays), DEVICE_SETTING_KEYS.dueSoonDays, CALIBRATION_DUE_SOON_DAYS_DEFAULT),
     timeZone: zone !== undefined && isTimeZone(zone) ? zone : DEFAULT_TIME_ZONE,

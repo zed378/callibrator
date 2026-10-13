@@ -10,6 +10,7 @@ import type * as MemoryDbModule from "../fixtures/memoryDb";
 import type * as TenantService from "../../services/tenant.service";
 import type * as DeviceSettings from "../../services/deviceSettings.service";
 import type { TenantId } from "../../types/ids";
+import type { Transaction } from "sequelize";
 
 jest.mock("../../config", () => ({
   db: jest.requireActual<typeof MemoryDbModule>("../fixtures/memoryDb").memoryDb().sequelize,
@@ -24,7 +25,7 @@ jest.mock("../../services/redis.service", () => ({
 
 const mdb = jest.requireActual<typeof MemoryDbModule>("../fixtures/memoryDb").memoryDb();
 const tenantService = jest.requireActual<typeof TenantService>("../../services/tenant.service");
-const { deviceSettingsOf } = jest.requireActual<typeof DeviceSettings>("../../services/deviceSettings.service");
+const { deviceSettingsOf, qrSettingsOf } = jest.requireActual<typeof DeviceSettings>("../../services/deviceSettings.service");
 const T = "aaaaaaaa-0000-4000-8000-000000000001" as TenantId;
 const ADMIN = "cccccccc-0000-4000-8000-000000000001";
 
@@ -81,5 +82,21 @@ describe("deviceSettingsOf", () => {
     mdb.reset();
     seed({ device_qr_code_prefix: "tst", device_qr_code_digits: "99", field_working_set_max_devices: "", calibration_due_soon_days: null, tenant_time_zone: "Mars/Olympus" });
     await expect(deviceSettingsOf(T)).resolves.toEqual({ qr: { prefix: null, digits: 6 }, workingSetMax: 2000, dueSoonDays: 30, timeZone: "Asia/Jakarta" });
+  });
+
+  it("reads inside the caller's transaction when given one", async () => {
+    seed({ device_qr_code_prefix: "ABC" });
+    const transaction = { id: "tx" } as unknown as Transaction;
+    await expect(deviceSettingsOf(T, { transaction })).resolves.toMatchObject({ qr: { prefix: "ABC", digits: 6 } });
+  });
+});
+
+describe("qrSettingsOf (P24-02e: the transform parses the two stored values the same way)", () => {
+  it("a valid prefix and digit count; anything else the defaults", () => {
+    expect(qrSettingsOf("TST", "8")).toEqual({ prefix: "TST", digits: 8 });
+    expect(qrSettingsOf(undefined, undefined)).toEqual({ prefix: null, digits: 6 });
+    expect(qrSettingsOf("tst", "")).toEqual({ prefix: null, digits: 6 });
+    expect(qrSettingsOf("TST", "6.5")).toEqual({ prefix: "TST", digits: 6 });
+    expect(qrSettingsOf("TST", "3")).toEqual({ prefix: "TST", digits: 6 });
   });
 });

@@ -142,6 +142,12 @@ export const UPSTREAM_IMPORT_QUARANTINE_REASONS = Object.freeze([
   "reference_unresolved",
   "template_operator_managed",
   "item_content_incomplete",
+  // P24-02e (ADR-129 Am. 7): a device whose QR code another device of the tenant (one the import did
+  // not make) already holds — the QR is unique per tenant over every row; the operator decides.
+  "qr_in_use",
+  // A device whose facility upstream differs from the imported device's: a move, which only the
+  // operator's move function makes (P19-04 § 10).
+  "facility_changed",
   // A photo row whose file did not pass 08-FILE-POLICY's ingest (the rsync import's refusal reasons).
   "file_missing",
   "file_type_refused",

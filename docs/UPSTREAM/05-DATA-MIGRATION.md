@@ -97,6 +97,15 @@ transform step with a row id, not the bulk load.
 > the catalogue's publish would refuse), `template_operator_managed` (the operator owns the checklist).
 > The step writes its own CREATE / APPROVE audit rows; step 13 skips the template tables.
 
+> **As built (P24-02e, ADR-129 Am. 7, 2026-10-13):** steps 6 and 7 derive the provider tenant's
+> calibration laboratories (by cleaned, case-folded name) and rooms (by facility, name and floor;
+> `R-0001…`) from `trx_inventory`, adopting live rows of the same key, with their own CREATE audit rows.
+> Step 8 writes the devices by P19-03 § 10 (QR by the tenant's settings, condition / status /
+> accessories / inventory date, facility-duplicate serials NULL on the newer rows, the registrant's
+> snapshot or "Former upstream user #<n>" numbered once in `upstream_import.former_users`). Quarantined:
+> `facility_not_imported`, `value_out_of_range`, `qr_case_collision`, `qr_in_use` (a sticker the register
+> already holds) and `facility_changed` (an upstream move — the import never moves a device).
+
 ### 3.2 Normalisation
 
 `btrim` everything; empty string → NULL; collapse inner whitespace in names; case-insensitive

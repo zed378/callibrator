@@ -240,11 +240,22 @@ describe("P24-02b — the users step on live PostgreSQL 18, as the transform rol
       "users:UPDATE:status",
       "users:UPDATE:updated_at",
     ]);
-    expect(grants.filter((o) => o.startsWith("users:SELECT:"))).toEqual(["users:SELECT:email", "users:SELECT:id", "users:SELECT:tenant_id", "users:SELECT:username"]);
+    // 0135's four, plus the registrant's printed name, role and facility that 0139 grants (P24-02e).
+    expect(grants.filter((o) => o.startsWith("users:SELECT:"))).toEqual([
+      "users:SELECT:client_facility_id",
+      "users:SELECT:email",
+      "users:SELECT:first_name",
+      "users:SELECT:id",
+      "users:SELECT:last_name",
+      "users:SELECT:role_id",
+      "users:SELECT:tenant_id",
+      "users:SELECT:username",
+    ]);
     expect(String(before.find((r) => String(r["o"]).startsWith("c:"))?.["o"])).toContain("'user_not_imported'");
     await g.m0135.down({ context: g.db.getQueryInterface() });
+    // Only 0139's four SELECT columns on users remain (P24-02e); 0135's own grants are gone.
     expect(await rows(`SELECT count(*)::int AS n FROM information_schema.column_privileges WHERE grantee = '${TRANSFORM_ROLE}' AND table_name IN ('users', 'roles')`)).toEqual([
-      { n: 0 },
+      { n: 4 },
     ]);
     await g.m0135.up({ context: g.db.getQueryInterface() });
     await g.m0135.up({ context: g.db.getQueryInterface() });

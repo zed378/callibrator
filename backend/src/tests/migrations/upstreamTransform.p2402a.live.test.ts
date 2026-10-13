@@ -240,9 +240,13 @@ describe("P24-02a — the facilities and audit steps on live PostgreSQL 18, as t
     expect(await errorAs(TRANSFORM_ROLE, `DELETE FROM client_facilities WHERE id = '${PRE_MADE}'`)).toMatch(/^42501 permission denied for table client_facilities/);
     expect(await errorAs(TRANSFORM_ROLE, "SELECT 1 FROM audit_logs LIMIT 1")).toMatch(/^42501 permission denied for table audit_logs/);
     expect(await errorAs(TRANSFORM_ROLE, "UPDATE audit_logs SET action = action")).toMatch(/^42501/);
-    // users holds column grants since 0135 (P24-02b, proved column by column in upstreamTransform.p2402b.live).
-    for (const table of ["tenants", "calibration_devices", "calibration_records", "upstream_sql_imports"]) {
+    // users holds column grants since 0135 (P24-02b, proved column by column in upstreamTransform.p2402b.live);
+    // tenants and calibration_devices since 0139 (P24-02e, upstreamTransform.p2402e.live): a column outside them stays closed.
+    for (const table of ["calibration_records", "upstream_sql_imports"]) {
       expect([table, await errorAs(TRANSFORM_ROLE, `SELECT 1 FROM ${table} LIMIT 1`)]).toEqual([table, expect.stringMatching(/^42501/)]);
+    }
+    for (const [table, column] of [["tenants", "subdomain"], ["calibration_devices", "iot_token_hash"]] as const) {
+      expect([table, await errorAs(TRANSFORM_ROLE, `SELECT ${column} FROM ${table} LIMIT 1`)]).toEqual([table, expect.stringMatching(/^42501/)]);
     }
     expect(await errorAs(APP_ROLE, "SELECT 1 FROM upstream_import.id_map")).toMatch(/^42501/);
   });

@@ -165,7 +165,8 @@ describe("P24-01 — the transform's grants, bookkeeping and runner on live Post
         `SELECT 'c:' || conname AS o FROM pg_constraint WHERE conrelid IN ('upstream_sql_imports'::regclass, 'upstream_import.id_map'::regclass, 'upstream_import.quarantine'::regclass)
          UNION ALL SELECT 'i:' || indexname FROM pg_indexes WHERE tablename IN ('upstream_sql_imports', 'id_map', 'quarantine')
          UNION ALL SELECT 'g:' || table_name || ':' || privilege_type FROM information_schema.role_table_grants
-                    WHERE grantee = '${TRANSFORM_ROLE}' AND table_schema = 'upstream_import'
+                    -- former_users is 0139's (P24-02e): its INSERT is 0139's grant, proved in upstreamTransform.p2402e.live.
+                    WHERE grantee = '${TRANSFORM_ROLE}' AND table_schema = 'upstream_import' AND table_name <> 'former_users'
          UNION ALL SELECT 'col:' || column_name FROM information_schema.columns WHERE table_name = 'upstream_sql_imports' AND column_name LIKE 'transform%'
          ORDER BY 1`,
       );
@@ -211,9 +212,13 @@ describe("P24-01 — the transform's grants, bookkeeping and runner on live Post
     expect(await errorAs(TRANSFORM_ROLE, "DELETE FROM upstream_import.quarantine")).toBeNull();
     expect(await errorAs(TRANSFORM_ROLE, "UPDATE upstream_import.quarantine SET reason = 'no_device'")).toMatch(/^42501 permission denied for table quarantine/);
     // client_facilities is readable since 0134 (P24-02a, upstreamTransform.p2402a.live); users holds column grants since 0135
-    // (P24-02b, upstreamTransform.p2402b.live); audit_logs stays INSERT-only.
-    for (const table of ["tenants", "calibration_devices", "audit_logs", "upstream_sql_imports"]) {
+    // (P24-02b, upstreamTransform.p2402b.live); audit_logs stays INSERT-only. tenants and calibration_devices hold column
+    // grants since 0139 (P24-02e, upstreamTransform.p2402e.live): a column outside them stays closed.
+    for (const table of ["audit_logs", "upstream_sql_imports"]) {
       expect([table, await errorAs(TRANSFORM_ROLE, `SELECT 1 FROM ${table} LIMIT 1`)]).toEqual([table, expect.stringMatching(/^42501/)]);
+    }
+    for (const [table, column] of [["tenants", "subdomain"], ["calibration_devices", "iot_token_hash"]] as const) {
+      expect([table, await errorAs(TRANSFORM_ROLE, `SELECT ${column} FROM ${table} LIMIT 1`)]).toEqual([table, expect.stringMatching(/^42501/)]);
     }
     const [role] = await rows(
       `SELECT rolsuper OR rolcreaterole OR rolcreatedb OR rolcanlogin OR rolbypassrls AS powerful FROM pg_roles WHERE rolname = '${TRANSFORM_ROLE}'`,

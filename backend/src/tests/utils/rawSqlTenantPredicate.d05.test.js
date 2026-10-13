@@ -91,6 +91,17 @@ const CROSS_TENANT = {
     "the templates step's reads of id_map and allow-listed staging tables (the five mapping_*); the targets are global",
   "services/upstreamImport/transform/templates.ts#audit_logs":
     "the templates step's CREATE / APPROVE rows for the global templates it wrote, under the PLATFORM tenant (bound)",
+  // P24-02e (ADR-129 Am. 7): the register steps. Every read of a tenant table binds the provider
+  // tenant (tenant_id = $n); the INSERTs below write the provider tenant (bound) into the column,
+  // and the staging / id_map reads name only allow-listed upstream_import tables (via stagedTable).
+  "services/upstreamImport/transform/inventory.ts#${table}":
+    "the register steps' reads of id_map and the allow-listed staging table trx_inventory; tenant tables joined bind the provider tenant",
+  "services/upstreamImport/transform/inventory.ts#audit_logs":
+    "the register steps' CREATE rows for the laboratories and rooms they wrote, in the provider tenant (bound)",
+  "services/upstreamImport/transform/inventory.ts#vendors":
+    "the laboratories INSERT writes the provider tenant (bound) into tenant_id; the reads bind it",
+  "services/upstreamImport/transform/inventory.ts#warehouses":
+    "the rooms INSERT writes the provider tenant (bound) into tenant_id; the reads bind it",
 };
 
 const tenantScopedTables = () => {

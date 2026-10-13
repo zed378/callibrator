@@ -62,11 +62,14 @@ describe("P24-01 @callibrator/contracts/upstreamSqlImport — the transform", ()
       "reference_unresolved",
       "template_operator_managed",
       "item_content_incomplete",
+      // P24-02e: the devices step.
+      "qr_in_use",
+      "facility_changed",
     ]) {
       expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toContain(reason);
     }
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).not.toContain("device_not_found");
-    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(28);
+    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(30);
     expect(new Set(UPSTREAM_IMPORT_QUARANTINE_REASONS).size).toBe(UPSTREAM_IMPORT_QUARANTINE_REASONS.length);
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS.every((r) => /^[a-z][a-z0-9_]{0,39}$/.test(r))).toBe(true);
     expect(Object.isFrozen(UPSTREAM_IMPORT_QUARANTINE_REASONS)).toBe(true);
