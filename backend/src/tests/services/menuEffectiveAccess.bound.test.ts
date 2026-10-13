@@ -53,7 +53,11 @@ const sidebar = async (key: Key, bound = true): Promise<string[]> =>
   leaves(await menuService.getRoleMenuAssignments(ROLE_IDS[key], requester(key, bound))).sort();
 
 /** The sidebar every bound role sees today (Matrix B ∩ the seed; `ipm-templates` is on since P22-01, 0130; `ipm` since P22-04, 0131). */
-const BASE = ["/dashboard", "/dashboard/calibration", "/dashboard/devices", "/dashboard/ipm", "/dashboard/ipm-templates", "/dashboard/maintenance", "/dashboard/profile", "/dashboard/warehouses"];
+// UAT C-3 (migration 0142): calibration dates and exports, read through `calibration` (in every bound ceiling).
+const BASE = [
+  "/dashboard", "/dashboard/calibration", "/dashboard/calibration-dates", "/dashboard/devices", "/dashboard/exports", "/dashboard/ipm",
+  "/dashboard/ipm-templates", "/dashboard/maintenance", "/dashboard/profile", "/dashboard/warehouses",
+];
 /** Per role: the base, plus what that role's seed grants inside its ceiling (HA: `account` → Change Password; HT, FM: `esignature`). */
 const BOUND_SIDEBARS: Readonly<Record<Key, readonly string[]>> = {
   HEALTCARE_ADMIN: [...BASE, "/dashboard/change-password"].sort(),
@@ -78,6 +82,9 @@ const LOAD_ROUTE: Readonly<Record<string, readonly [string, string]>> = {
   "/dashboard/ipm-templates": ["api/ipm.route.ts", "GET /templates/published"],
   // P22-04: the IPM history page loads the session list (N-2, marked by P21-03).
   "/dashboard/ipm": ["api/ipmSessions.route.ts", "GET /"],
+  // UAT C-3: the calibration-dates list (calibrationDates.service#listRecords) and the exports page's first load (the register).
+  "/dashboard/calibration-dates": ["api/calibrationRecords.route.ts", "GET /"],
+  "/dashboard/exports": ["api/calibrationDevices.route.ts", "GET /"],
 };
 
 /** Leaves whose load route is not marked yet, with the card that marks it (ADR-124 Am. 5 § 4). */
