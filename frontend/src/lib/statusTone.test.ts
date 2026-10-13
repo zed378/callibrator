@@ -23,6 +23,11 @@ const EXPECTED: [StatusDomain, string, StatusTone][] = [
   ["upstreamSqlImport", "loaded", "current"],
   ["upstreamSqlImport", "failed", "alarm"],
   ["upstreamSqlImport", "cancelled", "draft"],
+  ["upstreamSqlTransform", "not_available", "draft"],
+  ["upstreamSqlTransform", "transform_requested", "attention"],
+  ["upstreamSqlTransform", "transforming", "attention"],
+  ["upstreamSqlTransform", "transformed", "current"],
+  ["upstreamSqlTransform", "transform_failed", "alarm"],
   // P22-01 — the catalogue: retired and rejected are decisions, never alarms; a waiting proposal needs attention
   ["catalogueLifecycle", "active", "current"],
   ["catalogueLifecycle", "retired", "draft"],
@@ -185,6 +190,8 @@ const ALARM_ALLOWED = new Set([
   "upstreamImport.failed",
   // P24-06: a failed SQL-dump import is a failure.
   "upstreamSqlImport.failed",
+  // C-4: a failed stage-2 transform is a failure.
+  "upstreamSqlTransform.transform_failed",
 ]);
 
 describe("statusTone registry (P11-05)", () => {

@@ -347,6 +347,17 @@ export const STATUS_REGISTRY = {
     cancelled: e("draft", "Cancelled"),
   },
   /**
+   * C-4 (P24-01) — stage 2 of an SQL-dump import run: not yet requested is a draft, requested or
+   * running needs attention, transformed is current, a failed transform is the alarm.
+   */
+  upstreamSqlTransform: {
+    not_available: e("draft", "Not requested"),
+    transform_requested: e("attention", "Requested"),
+    transforming: e("attention", "Transforming"),
+    transformed: e("current", "Transformed"),
+    transform_failed: e("alarm", "Failed"),
+  },
+  /**
    * P22-01 — the inspection catalogue (dashboard/ipm-templates): a device type, a library item or
    * a checklist is active or retired (retired is a decision, never an alarm).
    */

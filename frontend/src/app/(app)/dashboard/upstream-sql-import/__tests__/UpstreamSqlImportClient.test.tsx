@@ -106,6 +106,8 @@ beforeEach(() => {
     if (url === `${BASE}/settings`) return ok(settings);
     if (url === BASE) return ok(rows, { total: rows.length, page: 1, limit: 20, totalPages: 1 });
     if (url === `${BASE}/${RUN}`) return ok(detail);
+    // C-4: stage 2's provider-tenant choice.
+    if (url === "/api/v1/tenants/all") return ok([], { total: 0, page: 1, limit: 50, totalPages: 1 });
     throw new Error(`unexpected GET ${url}`);
   });
 });
@@ -209,7 +211,8 @@ describe("P24-06 — the SQL-dump import page", () => {
     const { container } = render(<UpstreamSqlImportClient />);
     fireEvent.click(await screen.findByRole("button", { name: /Open the import of/ }));
     expect(await screen.findByText("Loaded into staging", { selector: "span *, span" })).toBeInTheDocument();
-    expect(await screen.findByText("Stage 2 (the transform into the application's tables) is not available yet: the rows stay in staging.")).toBeInTheDocument();
+    // C-4 (2026-10-13): the stale "not available yet" notice became stage 2's own section.
+    expect(await screen.findByRole("region", { name: "Stage 2: transform" })).toBeInTheDocument();
     expect(screen.getByText("The file has been deleted from the server.")).toBeInTheDocument();
     expect(screen.getByRole("rowheader", { name: "trx_inventory" })).toBeInTheDocument();
     expect(screen.getByText("invalid_date 2")).toBeInTheDocument();

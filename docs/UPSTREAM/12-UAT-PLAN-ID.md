@@ -10,10 +10,10 @@
 > real-phone run of `/field` (P22-10), the dry run with real data (P24-05 → P25-04), what legacy
 > stickers encode (OA-4 / UD-16), and the pre-invitation gate that keeps facility-bound accounts off
 > (`FACILITY_BINDING_ENABLED`). § 9 lists the gaps the plan found against the code (C-1, no screen for
-> four tenant settings, was closed the same day by M-18). The run itself is
+> four tenant settings, and C-4, the SQL-import page's stale stage-2 text, were closed the same day). The run itself is
 > **P26-02**; triage and sign-off **P26-03**. No real data, name or facility appears here.
 
-**Status:** rencana dan skrip, 2026-10-13 (P26-01). **Belum dijalankan.** Diperbarui 2026-10-13: C-1 selesai (M-18), label layar diselaraskan dengan `id.ts`. Pelaksanaan = P26-02 (di
+**Status:** rencana dan skrip, 2026-10-13 (P26-01). **Belum dijalankan.** Diperbarui 2026-10-13: C-1 (M-18) dan C-4 selesai, label layar diselaraskan dengan `id.ts`. Pelaksanaan = P26-02 (di
 *staging* dengan data *dry run*), triase dan pengesahan = P26-03. Istilah layar dikutip dari kamus
 aplikasi (`frontend/src/i18n/messages/id.ts`) per 2026-10-13.
 
@@ -144,7 +144,7 @@ keputusan pemilik untuk menyalakan sakelar di staging.
 | ID | Persona | Langkah | Hasil yang diharapkan | Siap? |
 |---|---|---|---|---|
 | OP-01 | OP | **Daftar periksa IPM**: tambah tipe alat; buat daftar periksa → **draf kosong** → tambah butir pustaka → **Simpan butir** → catatan perubahan → **Terbitkan**. | "Versi 1 terbit"; katalog terbit menawarkan tipe dan butirnya. | ✅ |
-| OP-02 | OP | **Impor dump SQL**: unggah dump **sintetis**. | Dipindai, diurai (tidak pernah dieksekusi), dimuat ke *staging*; notifikasi dengan jumlah saja. Halaman menyatakan **tahap 2 (transformasi) belum tersedia di layar**. | ✅ sintetis; ⏳ data nyata (gerbang DPIA, P24-05) |
+| OP-02 | OP | **Impor dump SQL**: unggah dump **sintetis**; buka run yang dimuat → bagian **Tahap 2: transformasi** → pilih **Tenant penyedia** → **Transformasi ke …**. | Dipindai, diurai (tidak pernah dieksekusi), dimuat ke *staging*; notifikasi dengan jumlah saja. Tahap 2 menampilkan statusnya; selama langkah transformasi belum lengkap di server, permintaan dijawab **"Transformasi tidak dimulai"** dengan penjelasan server (409 `TRANSFORM_NOT_AVAILABLE`) — itu yang benar. | ✅ tahap 1 sintetis; ⏳ tahap 2 sampai langkah transformasi lengkap (P24-02 / P24-03); ⏳ data nyata (gerbang DPIA, P24-05) |
 | OP-03 | OP | **Impor gambar** (rsync): **Periksa koneksi** ke server uji, konfirmasi sidik jari kunci host, jalankan. | Foto depan dan pelat seri masuk karantina lalu ke penyimpanan tenant; berkas yang ditolak tercatat dengan alasannya. | ✅ server uji; ⏳ server lama yang nyata (gerbang DPIA) |
 | PU-01 | PU | Pindai stiker baru (atau buka `/d/<tautan>`) tanpa masuk. | Nama alat sebagai judul; tipe, merek, model, faskes, status kalibrasi dalam kata-kata, tanggal kalibrasi berikut, IPM terakhir. **Tidak pernah**: nomor seri, nomor QR, ruang, foto, dokumen, nama orang. | ✅ setelah AP-08 |
 | PU-02 | PU | Buka tautan yang sudah dicabut atau salah ketik. | "Tidak ada perangkat yang menjawab tautan ini." — tanpa data apa pun. | ✅ |
@@ -167,7 +167,7 @@ dengan kartu yang menutupnya — bukan diabaikan.
 | **C-1** | ~~Empat pengaturan tenant (`public_device_page`, `ipm_countersign_enabled`, `ipm_interval_months`, `tenant_time_zone`) tidak punya layar~~ — **SELESAI 2026-10-13 (M-18):** panel **Pengaturan IPM dan halaman publik** pada kartu tenant di `/dashboard/tenants`, untuk administrator tenant ([catatan](../../MEMORY/records/2026-10-13-m18-tenant-ipm-settings.md)). | AP-06, AP-08, AP-09, IP-01, PU-01 kini disiapkan oleh AP sendiri. | — |
 | **C-2** | **Foto bukti IPM** hanya ada di aplikasi lapangan `/field`; daftar periksa di dasbor belum menerimanya (catatan terbuka P22-03). | TP-07 di dasbor tanpa foto bukti; TP-13 di `/field` dengan foto. | Tambahkan ke daftar periksa dasbor, atau tetapkan `/field` sebagai satu-satunya tempat foto bukti. |
 | **C-3** | **Tanggal kalibrasi** dan **Ekspor** tidak punya entri menu sendiri (hanya tautan dari halaman Kalibrasi dan Alat). | Pengguna bisa tidak menemukannya; fasilitator menunjukkan jalannya dan mencatat. | Entri menu (seed + migrasi backend) bila UAT memintanya. |
-| **C-4** | Halaman **Impor dump SQL** menyatakan tahap 2 "belum tersedia", walau rute transformasi (`POST /admin/upstream-sql-imports/:id/transform`) sudah ada dan langkah-langkahnya sedang dibangun (P24-02). | OP-02 menerima tahap 1 saja. | Tombol transformasi di halaman setelah P24-02 selesai. |
+| **C-4** | ~~Halaman **Impor dump SQL** menyatakan tahap 2 "belum tersedia"~~ — **SELESAI 2026-10-13:** bagian **Tahap 2: transformasi** dengan pilihan tenant penyedia, status transformasi, ringkasan per langkah, dan jawaban server apa adanya ([catatan](../../MEMORY/records/2026-10-13-c4-sql-import-transform.md)). | OP-02 kini menguji tahap 2 sejauh server mengizinkannya. | — |
 
 ## 10. Sumber
 
