@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — The Phase 22 pages are covered in a real browser; a capture contrast defect fixed ([record](./records/2026-10-13-p22-browser-coverage.md))
+- **Added (tests):** `automate/p22.browser.mts`, in `make test-browser`, drives the facility, checklist, device-register (with photos), IPM capture, history and report, calibration-date, export and dashboard pages end to end against a running stack, with accessibility checks in both themes and a layout check from phone width to 200 % zoom. The browser accessibility suite (also run in CI) now includes six of these pages.
+- **Fixed:** on the IPM capture, the answered count on the current step was below the contrast minimum; it is now legible.
+
 ### 2026-10-13 — Verified live: the idempotency crash fix and the "to sign" filter ([record](./records/2026-10-13-live-verification-debt.md))
 - **Verified (no change in behaviour):** on a disposable production-mode stack, refused requests replayed under the same `Idempotency-Key` (400 and 409, each twice) no longer restart the API. The field app's "to sign" list filter (`GET /ipm/sessions?unsigned=`) is now covered by a live PostgreSQL 18 test.
 

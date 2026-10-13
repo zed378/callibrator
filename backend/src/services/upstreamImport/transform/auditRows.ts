@@ -18,6 +18,10 @@
  *  - `changes`: `{ operation: "UPSTREAM_IMPORT", source: "skp_ipm", importRunId, sourceTable,
  *    targetTable }` — never a legacy id or a value (07 § 3: the legacy link lives only in
  *    `id_map`, archived and dropped at decommission).
+ *
+ * P24-02d (ADR-129 Am. 6): the template tables are STEP_AUDITED — step 5 writes the catalogue
+ * service's own rows (CREATE per template, APPROVE per published version) and this step skips them,
+ * so an item of a new version is never audited as an UPDATE of a row it never was.
  */
 import { sql } from "../../../utils/sql.util";
 import { PLATFORM_TENANT_ID } from "../../../constants/platformTenant";
@@ -43,9 +47,12 @@ export const RESOURCE_TYPES: Readonly<Record<string, string>> = Object.freeze({
   inspection_results: "InspectionResult",
 });
 
+/** The tables whose step writes its own audit rows (templates.ts); step 13 leaves them alone. */
+export const STEP_AUDITED: ReadonlySet<string> = new Set(["inspection_templates", "inspection_template_versions", "inspection_template_items"]);
+
 /** Step 13's `run`: the audit rows of everything this transaction wrote. */
 export const runAuditRows = async (context: StepContext): Promise<void> => {
-  const tables = Object.keys(RESOURCE_TYPES);
+  const tables = Object.keys(RESOURCE_TYPES).filter((table) => !STEP_AUDITED.has(table));
   await sql(
     context.runner,
     `INSERT INTO audit_logs (id, tenant_id, user_id, actor_type, actor_name, action, resource_type, resource_id,

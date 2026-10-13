@@ -84,6 +84,13 @@ const CROSS_TENANT = {
   // and write the GLOBAL device_types / inspection_item_definitions — no tenant exists to bind.
   "services/upstreamImport/transform/catalogue.ts#${table}":
     "the catalogue steps' reads of allow-listed staging tables (mst_alat, the mst_* checklists); the targets are global",
+  // P24-02d (ADR-129 Am. 6): the templates step reads id_map and the allow-listed mapping_* staging
+  // tables (via stagedTable), writes the GLOBAL template tables, and audits them under the PLATFORM
+  // tenant (bound) — no provider tenant applies to platform reference data.
+  "services/upstreamImport/transform/templates.ts#${table}":
+    "the templates step's reads of id_map and allow-listed staging tables (the five mapping_*); the targets are global",
+  "services/upstreamImport/transform/templates.ts#audit_logs":
+    "the templates step's CREATE / APPROVE rows for the global templates it wrote, under the PLATFORM tenant (bound)",
 };
 
 const tenantScopedTables = () => {

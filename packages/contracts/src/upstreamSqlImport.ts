@@ -135,6 +135,13 @@ export const UPSTREAM_IMPORT_QUARANTINE_REASONS = Object.freeze([
   // P24-02c (ADR-129 Am. 5): an upstream checklist row that is a session HEADER value (the
   // recommendation's four answers), not a catalogue item.
   "session_header_value",
+  // P24-02d (ADR-129 Am. 6): a mapping row whose device type or item was not imported (or whose
+  // item is no longer active); a device type whose checklist the operator manages (a retired
+  // template, an open draft, or a version the operator authored) — the import never replaces it;
+  // a mapping row whose item the catalogue's publish would refuse (a measured item without its unit).
+  "reference_unresolved",
+  "template_operator_managed",
+  "item_content_incomplete",
   // A photo row whose file did not pass 08-FILE-POLICY's ingest (the rsync import's refusal reasons).
   "file_missing",
   "file_type_refused",

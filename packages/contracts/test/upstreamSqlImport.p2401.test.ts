@@ -58,11 +58,15 @@ describe("P24-01 @callibrator/contracts/upstreamSqlImport — the transform", ()
       "user_not_imported",
       // P24-02c: the recommendation's answers are a session header value.
       "session_header_value",
+      // P24-02d: the templates step.
+      "reference_unresolved",
+      "template_operator_managed",
+      "item_content_incomplete",
     ]) {
       expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toContain(reason);
     }
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).not.toContain("device_not_found");
-    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(25);
+    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(28);
     expect(new Set(UPSTREAM_IMPORT_QUARANTINE_REASONS).size).toBe(UPSTREAM_IMPORT_QUARANTINE_REASONS.length);
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS.every((r) => /^[a-z][a-z0-9_]{0,39}$/.test(r))).toBe(true);
     expect(Object.isFrozen(UPSTREAM_IMPORT_QUARANTINE_REASONS)).toBe(true);

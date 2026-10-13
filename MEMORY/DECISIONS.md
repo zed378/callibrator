@@ -11466,6 +11466,38 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 
 **`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note). The P19-01 spec § 12's ETL bullet is superseded by this amendment, which is noted in the spec.
 
+### ADR-129 Amendment 6 (2026-10-13, P24-02d): the templates step publishes one version per device type directly, by the catalogue's own rules and hash; it never replaces the operator's checklist and audits its versions itself
+
+**Why an amendment.** The P19-01 spec § 12 has the ETL create "version 1 of each type template … through the catalogue service". Amendment 5 already moved the catalogue steps onto the transform connection for the same reasons (the application role cannot read staging; one transaction). The templates add three questions the spec does not answer: what a re-run does to a published (immutable) version, what happens when the operator already owns a type's checklist, and how the audit step (one row per `id_map` target) describes items of a version that is new while their `id_map` keys are old.
+
+**Decision.**
+
+1. **Direct writes, the service's rules.** Step 5 inserts the template (when absent), a draft (the items trigger of 0112 accepts items only into a draft), the type's items copied from their definitions and the base's PUBLISHED items materialised (`origin = base`, `base_version_id`), retires the previous published version, then publishes the draft with `published_by_system = system:upstream-transform` and `content_hash` = SHA-256 of `@callibrator/contracts` `canonicalTemplateVersion` — the function the service uses, so the stored hash equals one recomputed from the stored rows (proved live). Items are ordered per section by upstream mapping id. Migration **0138** grants SELECT, INSERT, UPDATE on the three tables (UPDATE on versions is also what the items trigger's `FOR SHARE` read needs); DELETE stays refused by 0112's triggers.
+2. **References.** A mapping row names its type by `id_alat` and its item by its ONE `id_*` column besides `id_alat` (the five tables' item columns are named after their catalogue; the exact names are a dry-run check, P24-05). Both resolve through the current `id_map` of step 3 / step 4, the target still present and, for an item, active. Unresolved → quarantine **`reference_unresolved`**. Duplicate (type, item) pairs are one item; the lowest legacy id survives and the others map to it (`mergedIntoLegacyId`).
+3. **The publish's own content check applies.** A row whose definition fails `inspectionContentProblems` (the check `publishVersion` runs — a measured item without its unit, an outcome outside the section) is quarantined **`item_content_incomplete`** and the version is published without it. A quarantined row is decided again on every run, so once the operator completes the definition, the next run publishes the next version with the item.
+4. **Re-runs compare a fingerprint, not hashes.** The type's would-be content and its published version's are compared as the canonical form with every item id replaced by its definition id and version number 0. Equal → nothing is written (the rows' targets are the published version's items). Different (an item added, removed or relabelled upstream; the base republished) → the next version is published and the previous one retired. A type with no mapping row in the run is not touched.
+5. **The operator's checklist is never replaced.** A type whose template is retired, has an open operator draft, or whose latest *authored* version (a base rebase is not authoring, § 7.3) was published by anyone but the transform has every row quarantined **`template_operator_managed`**.
+6. **The step audits its own rows, in the service's shape:** CREATE per template, APPROVE per published version (`PUBLISH_TEMPLATE_VERSION`, with the version number, hash, base version, retired version and item count), PLATFORM tenant, no facility, no legacy id. Step 13 skips the three template tables (`auditRows.ts` `STEP_AUDITED`); the items are the version's frozen content, covered by its APPROVE row, as in the service.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Call `publishVersion` from the worker | the app connection cannot read staging and two connections break the one-transaction rollback (Am. 5); it also requires an operator revision and a draft API per type |
+| Insert the version directly as `published` (no draft) | the items trigger refuses items on a non-draft version; the draft-then-publish order is the service's own |
+| Re-publish on every changed `id_map` row hash | a row's hash changes with its timestamps; versions would multiply without a content change. The fingerprint changes only when what a technician sees changes |
+| Replace an operator-published checklist with the upstream one | silently overwrites the operator's decision; the reverse (quarantine) is visible and reversible |
+| Let step 13 audit each item | the `id_map` keys outlive versions, so every item of version 2 would be audited as an UPDATE of a row that was just created; the service audits a publish once, on the version |
+| Publish a version that includes items the publish would refuse | the catalogue would hold content the operator could never have published (e.g. a measured item with no unit, which the session cannot evaluate) |
+
+**Implications, including the bad ones.**
+
+- On real data, performance items whose reference value carries no unit will be quarantined `item_content_incomplete` until the operator gives each definition its unit; until then those types' versions lack them. The dry run (P24-05) counts them.
+- An upstream mapping removed from every later dump leaves the type's last imported version published; the operator retires it if wanted.
+- Three quarantine reasons were added (contracts and 0138; 0138 `down` refuses while any is in use).
+
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note for step 5). The P19-01 spec § 12 ETL bullet was already superseded by Am. 5; this amendment covers the templates.
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)

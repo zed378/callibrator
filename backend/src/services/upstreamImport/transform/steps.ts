@@ -10,7 +10,7 @@
  * (distinct laboratories, distinct rooms, the per-row audit rows) and own no source table.
  *
  * A step's `run` and each source's `legacyId` are P24-02's (built part by part: P24-02a the
- * facilities and the audit rows, P24-02b the users, P24-02c the catalogue): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
+ * facilities and the audit rows, P24-02b the users, P24-02c the catalogue, P24-02d the templates): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
  * the worker `TRANSFORM_NOT_BUILT`). `legacyId` is an SQL expression over the staged row,
  * aliased `s` — a constant of this module, never input — giving the text key the step writes
  * to `id_map.legacy_id` (usually `s."id"::text`; a session's `legacy_key`, 05 § 3.3).
@@ -21,6 +21,7 @@ import { FACILITY_SOURCE, runClientFacilities } from "./clientFacilities";
 import { runAuditRows } from "./auditRows";
 import { USER_SOURCES, runUsers } from "./users";
 import { DEFINITION_SOURCES, DEVICE_TYPE_SOURCE, runDeviceTypes, runItemDefinitions } from "./catalogue";
+import { TEMPLATE_SOURCES, runTemplates } from "./templates";
 
 /** What a step's `run` receives: the run, and the transform connection's transaction. */
 export interface StepContext {
@@ -81,10 +82,12 @@ export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
   // P24-02c: the global catalogue — device types, then the item library (catalogue.ts).
   step("device_types", ["device_types"], Object.freeze([DEVICE_TYPE_SOURCE]), runDeviceTypes),
   step("inspection_item_definitions", ["inspection_item_definitions"], DEFINITION_SOURCES, runItemDefinitions),
+  // P24-02d: one published version per device type from the five mapping tables (templates.ts).
   step(
     "inspection_templates",
     ["inspection_templates", "inspection_template_versions", "inspection_template_items"],
-    sources("mapping_fugsi_alat", "mapping_alat_kerja_digunakan", "mapping_keamanan_listrik", "mapping_kelengkapan_alat", "mapping_kinerja_alat"),
+    TEMPLATE_SOURCES,
+    runTemplates,
   ),
   step("vendors", ["vendors"], sources()),
   step("warehouses", ["warehouses"], sources()),
