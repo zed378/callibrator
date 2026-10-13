@@ -154,6 +154,11 @@ export const UPSTREAM_IMPORT_QUARANTINE_REASONS = Object.freeze([
   // P24-02f (ADR-129 Am. 8; ADR-133 Am. 4): a calibration date whose upstream user maps to nobody of
   // the tenant any more — never attributed to the import key in their place.
   "performer_not_found",
+  // P24-02g (ADR-129 Am. 9): an IPM row whose session was not imported (its key was quarantined in
+  // step 11); a row of an already-imported session that no longer describes it (an imported session is
+  // append-only — the operator corrects or voids it in the application).
+  "session_not_imported",
+  "session_changed_upstream",
   // A photo row whose file did not pass 08-FILE-POLICY's ingest (the rsync import's refusal reasons).
   "file_missing",
   "file_type_refused",

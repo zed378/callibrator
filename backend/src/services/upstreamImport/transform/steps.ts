@@ -10,7 +10,7 @@
  * (distinct laboratories, distinct rooms, the per-row audit rows) and own no source table.
  *
  * A step's `run` and each source's `legacyId` are P24-02's (built part by part: P24-02a the
- * facilities and the audit rows, P24-02b the users, P24-02c the catalogue, P24-02d the templates, P24-02e the register, P24-02f the calibration dates): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
+ * facilities and the audit rows, P24-02b the users, P24-02c the catalogue, P24-02d the templates, P24-02e the register, P24-02f the calibration dates, P24-02g the IPM sessions and results): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
  * the worker `TRANSFORM_NOT_BUILT`). `legacyId` is an SQL expression over the staged row,
  * aliased `s` — a constant of this module, never input — giving the text key the step writes
  * to `id_map.legacy_id` (usually `s."id"::text`; a session's `legacy_key`, 05 § 3.3).
@@ -24,6 +24,9 @@ import { DEFINITION_SOURCES, DEVICE_TYPE_SOURCE, runDeviceTypes, runItemDefiniti
 import { TEMPLATE_SOURCES, runTemplates } from "./templates";
 import { DEVICE_SOURCE, runDevices, runRooms, runVendors } from "./inventory";
 import { CALIBRATION_SOURCE, runCalibrations } from "./calibrations";
+import { RESULT_SOURCES, SESSION_SOURCES } from "./ipm";
+import { runIpmSessions } from "./ipmSessions";
+import { runIpmResults } from "./ipmResults";
 
 /** What a step's `run` receives: the run, and the transform connection's transaction. */
 export interface StepContext {
@@ -98,28 +101,9 @@ export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
   step("attachments", ["attachments"], sources("trx_inventory_file")),
   // P24-02f: the calibration dates (calibrations.ts).
   step("calibration_records", ["calibration_records"], Object.freeze([CALIBRATION_SOURCE]), runCalibrations),
-  step("inspection_sessions", ["inspection_sessions"], sources("trx_hasil_pemeriksaan")),
-  step(
-    "inspection_results",
-    ["inspection_results"],
-    sources(
-      "trx_alat_kerja_digunakan",
-      "trx_battery",
-      "trx_catatan",
-      "trx_fungsi_alat",
-      "trx_hasil_maintenance",
-      "trx_keamanan_listrik",
-      "trx_kelengkapan_alat",
-      "trx_kinerja_alat",
-      "trx_kondisi_kelistrikan",
-      "trx_kondisi_lingkungan",
-      "trx_konsumabel",
-      "trx_pemeliharaan_alat",
-      "trx_pemeriksaan_fisik",
-      "trx_pemeriksaan_keamanan_lain",
-      "trx_rekomendasi_hasil_pekerjaan",
-    ),
-  ),
+  // P24-02g: the IPM visits as drafts, then their results and the issue of each report (ipmSessions.ts, ipmResults.ts).
+  step("inspection_sessions", ["inspection_sessions"], SESSION_SOURCES, runIpmSessions),
+  step("inspection_results", ["inspection_results", "inspection_sessions"], RESULT_SOURCES, runIpmResults),
   // P24-02a: one audit row per application row written in this transaction (auditRows.ts).
   step("audit_logs", ["audit_logs"], sources(), runAuditRows),
 ]);

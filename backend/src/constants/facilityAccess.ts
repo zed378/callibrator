@@ -494,6 +494,43 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
     reason: "the imported dates: inserted in the provider tenant (bound) with their device's facility, and a superseded one closed; a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02f)"],
   },
+  // P24-02g (ADR-129 Am. 9): the IPM steps — the provider tenant bound, each session in its device's facility, the transform worker, no principal.
+  "services/upstreamImport/transform/ipm.ts#${table}": {
+    reason: "the IPM steps' reads of id_map and the allow-listed staging tables (via stagedTable); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
+  },
+  "services/upstreamImport/transform/ipmSessions.ts#${table}": {
+    reason: "the sessions step's reads of the allow-listed staging tables trx_inventory and the result tables (via stagedTable); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
+  },
+  "services/upstreamImport/transform/ipmSessions.ts#inspection_sessions": {
+    reason: "the imported drafts: read and inserted in the provider tenant (bound), each in its device's facility (the composite key holds it); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
+  },
+  "services/upstreamImport/transform/ipmSessions.ts#calibration_devices": {
+    reason: "the devices behind the imported sessions, read in the provider tenant (bound) for their facility and snapshot; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
+  },
+  "services/upstreamImport/transform/ipmSessions.ts#calibration_records": {
+    reason: "a device's last calibration date for its snapshot, read in the provider tenant (bound); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
+  },
+  "services/upstreamImport/transform/ipmSessions.ts#warehouses": {
+    reason: "a device's room and floor for the snapshot, read in the provider tenant (bound); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
+  },
+  "services/upstreamImport/transform/ipmResults.ts#inspection_sessions": {
+    reason: "the imported sessions read in the provider tenant (bound) and the issue of this transaction's drafts; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
+  },
+  "services/upstreamImport/transform/ipmResults.ts#inspection_results": {
+    reason: "the imported results: read and inserted in the provider tenant (bound), each with its session's facility (the composite key holds it); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
+  },
+  "services/upstreamImport/transform/ipmResults.ts#audit_logs": {
+    reason: "the IPM steps' CREATE rows, each stamped with the session's facility; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
+  },
   "services/upstreamImport/transform/ledger.ts#${table}": {
     reason:
       "the upstream transform's `upstream_import` bookkeeping (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",

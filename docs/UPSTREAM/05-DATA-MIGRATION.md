@@ -114,6 +114,16 @@ transform step with a row id, not the bulk load.
 > needs it fails the transform `IMPORT_KEY_MISSING`. A changed upstream date is an import correction
 > (`supersedes_id`; the old record closed), never an UPDATE.
 
+> **As built (P24-02g, ADR-129 Am. 9, 2026-10-13):** step 11 writes each imported session as a DRAFT
+> from the four per-session tables (the highest id of a key wins, the rest `duplicate_header`; a key
+> with result rows only is a header-less session); step 12 writes the twelve result tables' rows into
+> those drafts and then issues each one (report number per facility and day, token, issuer,
+> `ipm-report-v1` hash over the stored results — the application's `checkIntegrity` recomputes it).
+> The performer by Am. 8's rule without a key; visits recomputed per device, the upstream one kept.
+> Quarantined: `duplicate_header`, `no_device`, `performer_not_found`, `value_out_of_range`,
+> `session_not_imported` (a row whose key has no session) and `session_changed_upstream` (a re-run whose
+> rows no longer match the issued session — never written; the operator corrects or voids it).
+
 ### 3.2 Normalisation
 
 `btrim` everything; empty string → NULL; collapse inner whitespace in names; case-insensitive
@@ -128,6 +138,10 @@ timezone conversion of § 3.4 (a 7-hour shift moves a date). The header is
 `trx_hasil_pemeriksaan` (8,166 keys); for the 16 keys with two header rows, keep the highest `id`
 and quarantine the other. Detail rows join on the same key; a detail key with no header (1 key in
 the maintenance table) becomes a header-less session with NULL outcomes rather than being lost.
+
+> **As built (P24-02g, ADR-129 Am. 9):** `created_at` is read in the source zone and the key's day is
+> taken in the tenant's IPM zone (`tenant_time_zone`, default Asia/Jakarta) — the zone its reports are
+> numbered in; with both Asia/Jakarta it is upstream's own `DATE(created_at)`.
 
 ### 3.4 Timezone (D-6)
 

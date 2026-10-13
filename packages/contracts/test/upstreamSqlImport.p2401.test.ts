@@ -69,11 +69,14 @@ describe("P24-01 @callibrator/contracts/upstreamSqlImport — the transform", ()
       "facility_changed",
       // P24-02f: the calibrations step.
       "performer_not_found",
+      // P24-02g: the IPM steps.
+      "session_not_imported",
+      "session_changed_upstream",
     ]) {
       expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toContain(reason);
     }
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).not.toContain("device_not_found");
-    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(31);
+    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(33);
     expect(new Set(UPSTREAM_IMPORT_QUARANTINE_REASONS).size).toBe(UPSTREAM_IMPORT_QUARANTINE_REASONS.length);
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS.every((r) => /^[a-z][a-z0-9_]{0,39}$/.test(r))).toBe(true);
     expect(Object.isFrozen(UPSTREAM_IMPORT_QUARANTINE_REASONS)).toBe(true);

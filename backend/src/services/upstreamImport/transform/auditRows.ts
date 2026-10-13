@@ -59,6 +59,10 @@ export const STEP_AUDITED: ReadonlySet<string> = new Set([
   // P24-02f (ADR-129 Am. 8): a calibration record is append-only — an import correction is a new
   // record plus the superseded one's close, audited as such (calibrations.ts).
   "calibration_records",
+  // P24-02g (ADR-129 Am. 9): an imported IPM session is audited when step 12 issues it (with its report
+  // number and hash), and each of its results as it is written (ipmResults.ts).
+  "inspection_sessions",
+  "inspection_results",
 ]);
 
 /** Step 13's `run`: the audit rows of everything this transaction wrote. */

@@ -237,6 +237,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0139-upstream-transform-register.js", require("../migrations/0139-upstream-transform-register")],
   // P24-02f (ADR-129 Am. 8): the calibrations step's reason and the transform role's column grants on calibration_records and api_keys.
   ["0140-upstream-transform-calibrations.js", require("../migrations/0140-upstream-transform-calibrations")],
+  // P24-02g (ADR-129 Am. 9): the IPM steps' reasons and the transform role's column grants on the two IPM tables.
+  ["0141-upstream-transform-ipm.js", require("../migrations/0141-upstream-transform-ipm")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 
