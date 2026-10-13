@@ -95,7 +95,7 @@ export const RolesTable: React.FC<RolesTableProps> = ({
                   size="sm"
                   leftIcon={<Trash2 className="h-4 w-4" />}
                   onClick={() => onDelete(role.id)}
-                  className="text-destructive hover:text-destructive/80"
+                  className="text-destructive hover:underline"
                 >
                   Delete
                 </Button>

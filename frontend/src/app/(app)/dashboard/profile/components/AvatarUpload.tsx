@@ -169,7 +169,7 @@ const AvatarUpload: React.FC<{
             variant="outline"
             size="sm"
             onClick={handleDeleteAvatar}
-            className="gap-2 text-destructive/80 hover:text-destructive border-destructive/20 hover:border-destructive/30"
+            className="gap-2 text-destructive border-destructive/20 hover:border-destructive/30"
             leftIcon={<Trash2 className="w-4 h-4" />}
           >
             Remove
