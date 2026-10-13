@@ -233,6 +233,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0137-public-device-tokens.js", require("../migrations/0137-public-device-tokens")],
   // P24-02d (ADR-129 Am. 6): the templates step's reasons and the transform role's grants on the three template tables.
   ["0138-upstream-transform-templates.js", require("../migrations/0138-upstream-transform-templates")],
+  // P24-02e (ADR-129 Am. 7): the register steps' reason, upstream_import.former_users, the transform role's column grants.
+  ["0139-upstream-transform-register.js", require("../migrations/0139-upstream-transform-register")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

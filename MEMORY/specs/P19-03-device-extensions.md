@@ -233,6 +233,8 @@ Rows gain: `qrCode`, `deviceTypeId` + `deviceType { id, name }` (LEFT include), 
 
 ## 10. Import (P24-02, P24-03) — What the ETL Must Write
 
+> *As built (P24-02e, ADR-129 Am. 7, 2026-10-13):* as below, plus: a QR another device already holds is quarantined `qr_in_use`; an upstream facility change is quarantined `facility_changed` (the import never moves a device); departed registrants are numbered once in `upstream_import.former_users`; the audit actor is `system:upstream-transform` with no legacy id (Am. 3). The room merge list is not built.
+
 | Upstream | Target | Rule |
 |---|---|---|
 | `no_qrcode` | `qr_code` | `normaliseQrCode` with the provider tenant's settings (`devices.qrCodePrefix` set by the operator before the load — never hard-coded); case collision → quarantine `qr_case_collision` |

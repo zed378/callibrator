@@ -452,6 +452,27 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
     reason: "the templates step's CREATE / APPROVE rows for the global templates, PLATFORM tenant, no facility; a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02d)"],
   },
+  // P24-02e (ADR-129 Am. 7): the register steps — the provider tenant bound, the transform worker, no principal.
+  "services/upstreamImport/transform/inventory.ts#${table}": {
+    reason: "the register steps' reads of id_map and the allow-listed staging table trx_inventory (via stagedTable); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
+  },
+  "services/upstreamImport/transform/inventory.ts#audit_logs": {
+    reason: "the register steps' CREATE rows for the laboratories and rooms, each stamped with the room's facility; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
+  },
+  "services/upstreamImport/transform/inventory.ts#calibration_devices": {
+    reason: "the devices step's reads, inserts and updates in the provider tenant (bound), each device's facility decided from its upstream facility (never moved); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
+  },
+  "services/upstreamImport/transform/inventory.ts#users": {
+    reason: "the registrant's printed name, role and facility, read in the provider tenant (bound); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
+  },
+  "services/upstreamImport/transform/inventory.ts#warehouses": {
+    reason: "the rooms step's reads and inserts in the provider tenant (bound), each room in its device's facility; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02e)"],
+  },
   "services/upstreamImport/transform/ledger.ts#${table}": {
     reason:
       "the upstream transform's `upstream_import` bookkeeping (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",

@@ -21,7 +21,8 @@
  *
  * P24-02d (ADR-129 Am. 6): the template tables are STEP_AUDITED — step 5 writes the catalogue
  * service's own rows (CREATE per template, APPROVE per published version) and this step skips them,
- * so an item of a new version is never audited as an UPDATE of a row it never was.
+ * so an item of a new version is never audited as an UPDATE of a row it never was. P24-02e
+ * (Am. 7): so are the laboratories and rooms, derived rows with no `id_map` row of their own.
  */
 import { sql } from "../../../utils/sql.util";
 import { PLATFORM_TENANT_ID } from "../../../constants/platformTenant";
@@ -48,7 +49,14 @@ export const RESOURCE_TYPES: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /** The tables whose step writes its own audit rows (templates.ts); step 13 leaves them alone. */
-export const STEP_AUDITED: ReadonlySet<string> = new Set(["inspection_templates", "inspection_template_versions", "inspection_template_items"]);
+export const STEP_AUDITED: ReadonlySet<string> = new Set([
+  "inspection_templates",
+  "inspection_template_versions",
+  "inspection_template_items",
+  // P24-02e (ADR-129 Am. 7): the derived laboratories and rooms (inventory.ts) — no id_map row of their own.
+  "vendors",
+  "warehouses",
+]);
 
 /** Step 13's `run`: the audit rows of everything this transaction wrote. */
 export const runAuditRows = async (context: StepContext): Promise<void> => {

@@ -11498,6 +11498,44 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 
 **`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note for step 5). The P19-01 spec § 12 ETL bullet was already superseded by Am. 5; this amendment covers the templates.
 
+### ADR-129 Amendment 7 (2026-10-13, P24-02e): the register steps — laboratories and rooms derived and adopted, devices by P19-03 § 10; the import never moves a device, never takes a sticker the register already holds, and numbers departed registrants in a table of its own
+
+**Why an amendment.** P19-03 § 10 says what each device column becomes. It does not say what a re-run does when upstream changes a device's facility, when a QR is already on a device the operator registered, how a "per-migration number" for a departed registrant stays stable across runs, or how derived rows (laboratories, rooms) with no source row of their own are audited and kept idempotent.
+
+**Decision.**
+
+1. **Laboratories (step 6) and rooms (step 7) are derived from `trx_inventory` and adopted by key.** A laboratory is a `CalibrationLab` of the provider tenant keyed by its cleaned, case-folded name; a room is keyed by `(facility, name, floor)` exactly as `warehouses_room_name_unique` compares. A live row of the key is adopted (nothing written); a new one takes the dump's first spelling, and a room the next `R-0001…` code of the tenant. Rooms are derived only from rows whose facility was imported and which are not an upstream move of an imported device. Both steps write their own CREATE audit rows (`STEP_AUDITED`; a room carries its facility), so a re-run writes nothing.
+2. **Devices (step 8) follow P19-03 § 10**, with these as-built rules:
+   - the QR is `normaliseQrCode` with the provider tenant's stored settings (`deviceSettings.service#qrSettingsOf`, the function the register uses);
+   - **`qr_in_use`** (new reason) when a device the import did not make holds the code, because the QR is unique per tenant over every row and the operator decides;
+   - a type that was not imported leaves `device_type_id` and `category` NULL and keeps the device;
+   - a serial duplicate in a facility keeps the serial on the lowest legacy id, and so does a serial the register already holds there;
+   - `tgl_kalibrasi` and every raw value the transform changed go to `source_values`.
+3. **The import never moves a device.** A re-run updates the register columns, but never `client_facility_id`. An upstream row whose facility differs from the imported device's is quarantined **`facility_changed`** (new reason). A move must carry the device's records and attachments (P19-04 § 10; the deferred `*_attachments_follow` triggers enforce it), and only the operator's move does that. The transform role holds no UPDATE on `client_facility_id`.
+4. **Departed registrants are numbered in `upstream_import.former_users`** (migration 0139, owned by the import role, closed to the application role). The first run that meets a departed `id_user` gives it the next number, and later runs reuse it, so "Former upstream user #<n>" is stable across re-runs and never carries the upstream id (07 § 3). An `id_user` mapped to no person of the tenant counts as departed; no `id_user` gives no registrant.
+5. **A device the operator deleted is never written again**; its mapping stays as it was.
+6. **Grants are column-level** (0139). The transform role reads and writes only the columns it uses. It gets nothing on `iot_token_hash` or any credential, and no DELETE. Its reads of `users` and `tenants` are limited to the printed name, role, facility and organisation name.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Update the facility on a re-run | silently splits a device's history from its attachments (the deferred follow triggers refuse it anyway); a move is an audited operator action with its own procedure |
+| Adopt the operator's device that holds the same QR | the same sticker may be on a wrongly registered device; merging two records silently is worse than a visible quarantine |
+| Number departed registrants by sorting the run's ids | a new departed id shifts every later number between runs; unchanged rows keep the old snapshot, so one person would carry two numbers |
+| Key departed registrants in `id_map` | `id_map` maps a source row to a target row; a pseudonym has no target |
+| Audit laboratories and rooms through step 13 | they have no source row, so no `id_map` row: the audit would need a fake key |
+| Table-level grants on `calibration_devices` | would expose the IoT token hash to the transform role |
+
+**Implications, including the bad ones.**
+
+- A device moved upstream after the first import stays where it was until the operator moves it. The quarantine lists it.
+- The operator's merge list for obvious room-name variants (P19-03 § 6.5) is not built. Every distinct cleaned spelling is a room, and the dry run (P24-05) lists near-duplicates.
+- A re-run overwrites the operator's edits to an imported device's register columns while upstream is the source of truth (until cutover).
+- `p2401` and `p2402a` live suites now probe `tenants` and `calibration_devices` by an ungranted column, and `p2402b` lists the four registrant columns 0139 adds on `users`.
+
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note for steps 6 – 8).
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)
@@ -12353,6 +12391,7 @@ Any second engine would have to reverse-engineer all of it from Node.
 **Alternatives considered.** A NOT NULL `revoked_by` with the platform's system user (rejected: a fabricated actor is worse than an honest NULL with a reason). Lock the link in the delete as well (rejected: the legacy unit doubles have no `LOCK`, and the device row's lock already serialises). Import the activity log's `sanitizeUrl` into the access log (rejected: it loads winston at the access log's load, which ran a legacy suite out of memory under its `fs` mock).
 
 **Implications, including the bad ones.** The access log still writes other query-string tokens (`?token=` of the verification links) as it did before this card. A system delete's revoke is attributable only through its audit row's system actor.
+
 
 ### ADR-138 Amendment 3 (2026-10-13, P22-08): what the page build decided — one HTTP status for every outcome, nginx's fixed marker, the sticker made in the browser, the panel in the register
 
