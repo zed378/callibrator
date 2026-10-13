@@ -12258,6 +12258,25 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 **`docs/` amended:** none yet. P19-07 writes the spec, and `docs/SECURITY/15` EP-23 changes from "UD-15 / P12-06 open" to this ADR when P21-08 builds it (FT-106's control is the one written here).
 
+### ADR-138 Amendment 1 (2026-10-13, P19-07): the gaps the spec found — the gate's slug, the legacy redirect that a hash cannot serve, the timing class, the public status vocabulary, explicit rotation, revoke on delete, the budget numbers, log redaction
+
+**Status:** Accepted as TARGET (nothing built) under the owner's standing delegation · **Card:** P19-07 · **Spec:** [`specs/P19-07-public-device-page.md`](./specs/P19-07-public-device-page.md) § 3 · **Record:** [`records/2026-10-13-p19-07-public-device-page-spec.md`](./records/2026-10-13-p19-07-public-device-page-spec.md)
+
+**Decision.**
+1. **Gate slug.** The staff token routes gate on `dynamicAccess("calibration", "write")` (§ 1 said `equipment`): every device write in `calibrationDevices.route.ts` gates on `calibration`; `equipment` is the attachments' menu. Who may edit the device may sticker it. Unbound only, by the facility route gate (not on `FACILITY_ACCESSIBLE_ROUTES`), plus `denyApiKey` and `denyPlatformAuthoring`.
+2. **Legacy branch (b) changes (§ 8; UD-16).** Only the token's hash is stored, so the server cannot build `/d/<token>` from a legacy number, and a number-keyed public view would revive the enumeration. A legacy URL on the old host answers a **static, rate-limited "this sticker has been replaced" notice** with a link to the signed-in app's QR lookup; no device data, the same page for every number. Branch (a), the in-app lookup by QR, is built (P21-02a). The owner may revise this; OA-4 still chooses the branch.
+3. **Timing class.** An unknown, malformed or revoked token costs one indexed lookup; a known token whose page is hidden costs more reads. Accepted: only a holder of a real sticker can observe it, and learns only that the page is unavailable. No artificial delay.
+4. **Public status vocabulary:** `current` · `due_soon` (also for an IPM's calibration request) · `overdue` · `retired` · `not_scheduled` (inactive, or no next date).
+5. **`minimal_with_report` discloses what the printed report discloses** (its verification page shows the serial, the QR number and the signers' names). The settings UI says so.
+6. **Explicit rotation.** Three routes — issue (409 `PUBLIC_TOKEN_ACTIVE` if one is active), rotate (409 `PUBLIC_TOKEN_NONE` if none), revoke (409 `PUBLIC_TOKEN_NONE`) — so a printed sticker is never voided by an "issue" click.
+7. **Revoke on delete.** Deleting a device revokes its active token in the delete's transaction (`device_deleted`); reinstating does not re-issue.
+8. **Budgets (production):** `publicDevicePage` 120 / 15 min per address (every request), `publicDevicePageMiss` 30 / 15 min per address (every 404 — "failures count double"), `publicDevicePageGlobal` 3 000 / 15 min over all addresses.
+9. **Log redaction.** The backend log and nginx's log for `/d/` and `/api/v1/public/devices/` write `~<sha256(token)[0..8]>` in place of the token.
+
+**Alternatives considered.** Keep `equipment` write (rejected: a second slug for one resource's writes; a role with `calibration` write but not `equipment` could edit a device and not sticker it). Store the token encrypted so a legacy redirect can rebuild the URL (rejected: a key compromise or a dump plus the key hands out every sticker; the redirect serves only old stickers, which the re-stickering replaces). A number-keyed minimal public view for legacy stickers (rejected: S-06's enumeration again). A response-time floor on every 404 (rejected: costs every scanner and protects only against a sticker holder). One "issue" route that rotates silently (rejected: G-6).
+
+**Implications, including the bad ones.** A legacy URL sticker no longer shows calibration status to the public at all, only a notice — until the device is re-stickered (P27-03). A tenant whose IPM requested a calibration shows `due_soon` even when the date is far away. The global ceiling can, under a distributed scan, deny honest scanners for up to 15 minutes; the numbers are production values to revisit against the dry-run sticker count.
+
 ---
 
 End of ADRs. Update this document as new decisions are made, and record a deviation as an ADR rather than editing a `docs/` document quietly.
