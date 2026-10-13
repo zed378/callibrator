@@ -11579,6 +11579,69 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 
 **`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note for step 10). The P19-05 spec § 9.2's "through the service functions" is superseded by this amendment, which is noted in the spec.
 
+### ADR-129 Amendment 9 (2026-10-13, P24-02g): the IPM steps write drafts, fill them with their results and issue them in the same transaction; the session key's day is taken in the tenant's IPM zone; an imported session is never changed by a re-run
+
+**Why an amendment.** P19-02 § 13 and P19-06 § 5 say what an imported session must hold, but not how a writer gets it past the database's own rules. 0127 refuses a result on any session that is not a draft. 0126's issued-fields CHECK needs a report number, a token, a content hash and the issuer on every submitted row. 05 § 3.3 says "DATE(created_at) after the timezone conversion" without naming the zone. 05 § 8 asks for re-runs by `legacy_key`, but an imported session is append-only, and `legacy_key` is unique per tenant, so an import correction cannot carry it. The docs leave each of these open.
+
+**Decision.**
+
+1. **Draft, fill, issue — one transaction.**
+   - Step 11 inserts each imported session as a **draft** (`template_version_id`, `created_by`, `submitted_by` NULL; `side_effects` `{}`; no work order).
+   - Step 12 inserts its results, then issues **every draft that carries a `legacy_key`**. Only this transaction's drafts can match, because no imported draft survives a commit.
+   - The issue is the one draft → submitted UPDATE that 0127 admits. It sets `submitted_at = performed_at`, the report number, a 192-bit token, the issuer (with the tenant's zone) and the `ipm-report-v1` hash.
+   - The hash is computed over the results **as stored**, by ipmReport.service's own `reportPayload` / `contentHash`. The live suite proves the application's `checkIntegrity` recomputes it.
+2. **The registry follows 05 § 3.1.** Step 11 owns the four per-session tables (`trx_hasil_pemeriksaan`, `trx_hasil_maintenance`, `trx_rekomendasi_hasil_pekerjaan`, `trx_catatan`). Step 12 owns the twelve result tables, the environment included (P19-02: environment is two results).
+3. **The key.**
+   - `legacy_key` = `<qr>|<day>`.
+   - `created_at` is read in the source zone (UD-7), and the **day is taken in the tenant's IPM zone** (`tenant_time_zone`, default Asia/Jakarta), the zone the reports are numbered in.
+   - With both zones Asia/Jakarta, this is upstream's own `DATE(created_at)`.
+4. **The session.**
+   - Per-session table, two rows for one key: the highest id wins, the rest are `duplicate_header`.
+   - A key with result rows only is a session with NULL outcomes.
+   - The device comes from the staged `trx_inventory` row of the QR through `id_map`. If there is none, the session's rows are `no_device`.
+   - The performer is the environment's `id_user`, else the header's, else any row's, by Am. 8's rule: the person, else "Former upstream user #<n>", else "Upstream import". There is no key here, because the session has no `api_key_id`. An unmapped person gives `performer_not_found`.
+   - An unknown outcome or recommendation code leaves the value NULL and quarantines the row `value_out_of_range`.
+   - Visits are recomputed per device after its highest, in `performed_at` order (G-S2). The upstream `visit` is kept in `legacy_visit_number`.
+5. **The results.**
+   - Values are mapped by section (P19-01 § 5.1). Readings go through `parseDecimal`; the text is kept in `raw_value` when a parse fails, and an unknown code is also kept there.
+   - An implausible environment reading (outside −20 to 80 °C or 0 to 100 %) is NULL, raw and `warn_flag`.
+   - Electrical safety gets `computed_outcome` from the matched definition's limit, and only then `outcome_source = computed`.
+   - `item_definition_id` is the definition of the upstream item id. Failing that, it is the section's one definition with that label (case-folded). Failing both, it is NULL.
+   - A row with no label or no integer id is `value_out_of_range`. A row whose key has no session is **`session_not_imported`** (a new reason).
+6. **Re-runs never write an issued session.**
+   - The rows of an existing key are compared with what was imported. Step 11 compares the header (device, `performed_at`, outcomes, recommendation, note, legacy visit). Step 12 compares the results (section, order, label, outcome, cleanliness, readings, raw, setting, reference, symbol). Neither compares ids, so upstream's delete-and-reinsert maps onto the same session.
+   - Equal: only new or moved rows are mapped.
+   - Different: the key's rows are quarantined **`session_changed_upstream`** (a new reason). The operator corrects or voids the session in the application (P19-02 § 7.2).
+7. **Report numbers** are numbered per facility code and day, after the highest taken, in `performed_at` order. There is **no advisory lock per day**: thousands of them in one transaction would exhaust the lock table. A concurrent capture that takes the same number fails the transform on the unique index, and the transform rolls back.
+8. **Audit (UD-13; `STEP_AUDITED`).**
+   - Each issued session gets a CREATE row with its report number, hash, scheme and result count.
+   - Each result gets its own CREATE row.
+   - Every row is stamped with the facility and carries no legacy id or value.
+9. **Grants (0141) are column-level.**
+   - Sessions: read the compared and hashed columns (never the token); insert the draft columns; update only the issue's columns. 0127 admits those only on a draft, and there is no grant on the void or supersession columns.
+   - Results: read and insert only.
+   - The snapshots' reads of devices, records and the tenant's letterhead.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Insert sessions as `submitted` directly | 0127 then refuses every result insert; disabling the trigger for the import breaks "ENABLE ALWAYS" for every role (0091 rule) |
+| One step writing sessions and results, step 12 a no-op | hides the 05 § 3.1 order and makes the per-step counts meaningless |
+| The key's day in the source zone | a source-zone `UTC` would number reports under one day and key them under another |
+| Correct a changed imported session by an import correction | `legacy_key` is unique per tenant and a captured correction needs a creator and a version (0126 CHECKs); an automatic void would also erase the evidence of what was printed |
+| A per-day advisory lock as the submit takes | one lock per facility-day for ~8,000 sessions in one transaction exceeds `max_locks_per_transaction` |
+| Label-only definition matching across device types | upstream labels are copied text; the section-unique rule matches only where it is unambiguous |
+
+**Implications, including the bad ones.**
+
+- A wrong real load is corrected only by voiding and re-capturing in the application, which makes the P24-05 dry run mandatory.
+- A changed session leaves its old content live until the operator acts. The quarantine lists it.
+- The tenant setting `ipm_interval_months = 1` that P19-02 § 2 attributes to the import is **not** written by the transform. The operator sets it during onboarding (recorded as left for P24-05).
+- The transform still answers 409 (`TRANSFORM_NOT_BUILT`): step 9 (attachments, P24-03) is the last step not built. The end-to-end synthetic proof of the whole transform stays **pending** until P24-03.
+
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 and § 3.3 (as-built notes for steps 11 and 12 and for the key's zone).
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)

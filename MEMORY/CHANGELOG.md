@@ -8,6 +8,13 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — Faded text removed where it failed contrast; a guard keeps it out ([record](./records/2026-10-13-contrast-text-opacity.md))
+- **Fixed:** on the access-request queue, the count on the selected status tab was faded below the contrast minimum; it is now full strength. The same kind of fade is gone from the "start a new IPM" link's hover, the avatar "Remove" button and two text buttons.
+- **Added (tests):** a guard fails the build on text faded with opacity or a translucent text colour; the browser accessibility suite now also checks the operator's access-request queue, in both themes.
+
+### 2026-10-13 — The upstream transform's IPM steps (P24-02g) ([record](./records/2026-10-13-p24-02g-ipm-steps.md), ADR-129 Am. 9)
+- **Added (internal):** the upstream IPM history is imported: every visit becomes a submitted IPM report of its device, with its checklist results, its outcomes, recommendation and note, credited to the technician who did it (or recorded as a former user or the import). Each report gets its own number, verification link and integrity hash, exactly as a report captured in the application does. A second load never changes an imported report: anything that changed upstream is held back for the operator to correct or void. Migration 0141 gives the transform's database role exactly the access it needs.
+
 ### 2026-10-13 — The upstream transform's calibrations step (P24-02f) ([record](./records/2026-10-13-p24-02f-calibrations-step.md), ADR-129 Am. 8)
 - **Added (internal):** the upstream calibration dates are imported as external calibration records of their devices, credited to the technician who did them, or recorded by the tenant's import key when that person is gone or unknown. No laboratory or result is invented. A date that changed upstream is imported as a correction that keeps the old record in the history, and the load refuses to start the calibrations without the import key. Migration 0140 gives the transform's database role exactly the access it needs.
 

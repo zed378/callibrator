@@ -110,6 +110,18 @@ const CROSS_TENANT = {
     "the calibrations step's reads of id_map and the allow-listed staging table trx_kalibrasi; tenant tables joined bind the provider tenant",
   "services/upstreamImport/transform/calibrations.ts#audit_logs":
     "the calibrations step's CREATE / UPDATE rows for the records it wrote, in the provider tenant (bound)",
+  // P24-02g (ADR-129 Am. 9): the IPM steps — staging read via stagedTable, the provider tenant bound in every read of a
+  // tenant table and written into tenant_id by the INSERTs.
+  "services/upstreamImport/transform/ipm.ts#${table}":
+    "the IPM steps' reads of id_map and the allow-listed staging tables (the sixteen trx_ IPM tables)",
+  "services/upstreamImport/transform/ipmSessions.ts#${table}":
+    "the sessions step's reads of the allow-listed staging tables trx_inventory and the result tables; tenant tables joined bind the provider tenant",
+  "services/upstreamImport/transform/ipmSessions.ts#inspection_sessions":
+    "the drafts INSERT writes the provider tenant (bound) into tenant_id; the reads bind it",
+  "services/upstreamImport/transform/ipmResults.ts#inspection_results":
+    "the results INSERT writes the provider tenant (bound) into tenant_id; the reads bind it",
+  "services/upstreamImport/transform/ipmResults.ts#audit_logs":
+    "the IPM steps' CREATE rows for the sessions and results they wrote, in the provider tenant (bound)",
 };
 
 const tenantScopedTables = () => {
