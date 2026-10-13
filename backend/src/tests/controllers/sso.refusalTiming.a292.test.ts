@@ -11,7 +11,13 @@
  * paths are compared on jest's fake clock (2026-10-09, after a CI flake on
  * `d0fea5c`: wall-clock medians of three differed by 340 ms on a loaded
  * runner): they must answer at the same virtual instant, the floor, and not
- * before it. The `withSsoRefusalFloor` cases below keep REAL-clock floor checks.
+ * before it.
+ *
+ * 2026-10-13 (line A card 3): the `withSsoRefusalFloor` cases ran on the REAL clock (a 400 ms and a
+ * 600 ms wait, and an upper bound of 300 ms on three settled promises), which still failed or timed
+ * out under heavy parallel load. They run on the fake clock now, with the same claims made exact:
+ * a refusal settles at the floor and not one tick before it; a success or another error schedules
+ * no timer at all and settles without the clock moving. Nothing in this file waits in real time.
  */
 import type { Request, Response } from "express";
 import { environment } from "../../config/env";
@@ -146,8 +152,30 @@ describe.each([
   });
 });
 
+/** A promise's state on the fake clock: whether it settled, and how. */
+const watch = <T>(promise: Promise<T>): { settled: boolean; error: unknown } => {
+  const state: { settled: boolean; error: unknown } = { settled: false, error: undefined };
+  promise.then(
+    () => {
+      state.settled = true;
+    },
+    (err: unknown) => {
+      state.settled = true;
+      state.error = err;
+    },
+  );
+  return state;
+};
+
 describe("withSsoRefusalFloor", () => {
-  it("does not delay a success or an error that is not the SSO refusal", async () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: new Date("2030-01-15T09:00:00Z") });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("does not delay a success or an error that is not the SSO refusal: no timer, no clock movement", async () => {
     env["SSO_REFUSAL_FLOOR_MS"] = String(FLOOR_MS);
     const started = Date.now();
     await expect(sso.withSsoRefusalFloor(() => Promise.resolve("ok"))()).resolves.toBe("ok");
@@ -155,23 +183,27 @@ describe("withSsoRefusalFloor", () => {
     // A thrown null (no message) is not the refusal either.
     // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- the null branch is what is tested
     await expect(sso.withSsoRefusalFloor(() => Promise.reject(null))()).rejects.toBeNull();
-    expect(Date.now() - started).toBeLessThan(FLOOR_MS / 2);
+    expect(jest.getTimerCount()).toBe(0);
+    expect(Date.now()).toBe(started);
   });
 
-  it("the floor defaults to 400 ms when unset", async () => {
+  it("the floor defaults to 400 ms when unset: the refusal settles at 400, not at 399", async () => {
     Reflect.deleteProperty(env, "SSO_REFUSAL_FLOOR_MS");
-    const started = Date.now();
-    await expect(
-      sso.withSsoRefusalFloor(() => Promise.reject(new Error(sso.SSO_UNAVAILABLE)))(),
-    ).rejects.toThrow(sso.SSO_UNAVAILABLE);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(395);
+    const refusal = watch(sso.withSsoRefusalFloor(() => Promise.reject(new Error(sso.SSO_UNAVAILABLE)))());
+    await jest.advanceTimersByTimeAsync(399);
+    expect(refusal.settled).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(refusal).toEqual({ settled: true, error: new Error(sso.SSO_UNAVAILABLE) });
   });
 
-  it("startSsoFor is floored too (the Phase 10 /auth/sso/start)", async () => {
+  it("startSsoFor is floored too (the Phase 10 /auth/sso/start): settles at the floor, not one tick before", async () => {
     env["SSO_REFUSAL_FLOOR_MS"] = String(FLOOR_MS);
     Tenants.findOne.mockResolvedValueOnce(null);
-    const started = Date.now();
-    await expect(sso.startSsoFor("nope", {})).rejects.toThrow(sso.SSO_UNAVAILABLE);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(FLOOR_MS - 5);
+    const refusal = watch(sso.startSsoFor("nope", {}));
+    await jest.advanceTimersByTimeAsync(FLOOR_MS - 1);
+    expect(refusal.settled).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(refusal.settled).toBe(true);
+    expect((refusal.error as Error).message).toBe(sso.SSO_UNAVAILABLE);
   });
 });

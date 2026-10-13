@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — The SSO timing test no longer waits in real time (A-292) ([record](./records/2026-10-13-a292-sso-timing-fake-clock.md))
+- **Fixed (tests only):** the last real-clock checks of the SSO refusal floor run on the fake clock, so the test cannot fail or time out on a busy machine. No behaviour change.
+
 ### 2026-10-13 — The user-acceptance test plan, in Indonesian (P26-01) ([record](./records/2026-10-13-p26-01-uat-plan.md))
 - **Added (documentation):** `docs/UPSTREAM/12-UAT-PLAN-ID.md`, the plan and step-by-step scripts for provider technicians and administrators, facility accounts, the IPSRS, the platform operator and the public. Each step says whether it can be accepted today or what it waits for (real phones, the dry run with real data, the old stickers' contents, facility accounts being switched on). Not run yet.
 
