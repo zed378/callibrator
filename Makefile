@@ -353,12 +353,16 @@ test-browser: ## Browser suite against a RUNNING stack: the smoke (ADR-077), the
 	@echo -e "$(C_DIM)a non-production one with SSRF_DEV_ALLOW_HOSTS=host.docker.internal must complete the sign-in. Never skipped.$(C_OFF)"
 	@echo -e "$(C_DIM)P11: theme continuity, states, shots (to a temp dir unless P11_SHOTS), axe. Stack: deploy/compose/docker-compose.e2e.yml.$(C_OFF)"
 	@echo -e "$(C_DIM)Field (P22-10c3): /field prepared, the worker, no /api cached, offline capture + registration, sync, AM-23, axe, 360-768 px.$(C_OFF)"
+	@echo -e "$(C_DIM)P22: facility, checklist publish, device + JPEG photos, IPM start/capture/submit, history + report PDF,$(C_OFF)"
+	@echo -e "$(C_DIM)calibration date, XLSX exports opened, dashboard widgets, public device page /d/<token> issued/shown/revoked;$(C_OFF)"
+	@echo -e "$(C_DIM)axe light+dark; 360/768/1280/200% layout.$(C_OFF)"
 	node automate/smoke.browser.js
 	node automate/a11y.browser.js
 	node automate/responsive.browser.js
 	node automate/p10.browser.mts
 	node automate/p11.browser.mts
 	node automate/field.browser.mts
+	node automate/p22.browser.mts
 
 .PHONY: build
 build: ## Build both workspaces
