@@ -427,7 +427,8 @@ function Capture({ loaded, languageForm, autosaveMs, onReload }: { loaded: Loade
                 onClick={() => setStep(i)}
               >
                 {stepLabel(s)}
-                {s.kind === "section" && items.some((it) => it.section === s.section) && <span className="ml-1 opacity-80">{sectionCount(s.section)}</span>}
+                {/* Full-strength text: at 80 % opacity the count on the current (primary) step measured 4.43:1 (axe, P22 browser suite). */}
+                {s.kind === "section" && items.some((it) => it.section === s.section) && <span className="ml-1 font-normal">{sectionCount(s.section)}</span>}
               </button>
             </li>
           ))}
