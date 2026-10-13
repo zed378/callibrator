@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — Tenant administrators can set the IPM and public-page options themselves (M-18) ([record](./records/2026-10-13-m18-tenant-ipm-settings.md))
+- **Added:** on the tenants page, a tenant administrator can now turn the public device page on (minimal, or minimal with the last IPM report) or off, switch the facility IPSRS's electronic countersignature on or off, and set the IPM interval and the tenant's time zone. Before this, those settings could only be changed through the API. In Indonesian and English.
+
 ### 2026-10-13 — The API reference names the "no organisation" refusals (A-369) ([record](./records/2026-10-13-a369-openapi-codes.md))
 - **Documented:** creating a user or changing a role without an organisation answers 400 with `code` `TENANT_REQUIRED`, and signing in to an account without one answers 403 with `code` `ACCOUNT_HAS_NO_TENANT`; the API reference and the generated frontend types now say so.
 
