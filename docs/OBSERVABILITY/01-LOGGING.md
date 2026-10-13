@@ -56,6 +56,7 @@ A scheduled-job failure, a missed run or a stuck batch job is logged at `error` 
 - redacts a 4–10 digit value under a generic `code`/`pin` key;
 - scrubs `Bearer …`/`Basic …` credentials and JWT-shaped strings appearing as **values** under innocent keys;
 - `sanitizeUrl` redacts sensitive query parameters (including OAuth `code` and `state`) in a URL that is about to be logged.
+- **Amended 2026-10-13 (ADR-138 Am. 5):** `sanitizeUrl` is `utils/logUrl.util.redactUrlForLog` plus the e-mail mask — the public device path token hashed; a query value redacted by its key (the list above, `code`/`pin`, `state`, `t`, `k`, `sig`, `signature`, `hmac`, `nonce`, `ticket`, `key`, `auth`, `jwt`) or by its value (24+ base64url/hex characters with a letter and a digit, not a UUID). `redactFormat` applies it to every field named `url`, `originalUrl`, `referer` or `referrer` (the error handler, the access refusals). Tests: `utils/logUrl.util`, `middlewares/activityLog.redaction.am5`, `middlewares/accessLog.redaction.am5`.
 
 Tests: `tests/middlewares/activityLog.test.js` and `tests/middlewares/activityLog.redaction.a228.test.js` (A-228 adds e-mail addresses and `*Link` keys; its expectations are written out literally, not derived from the redactor's own patterns — CLAUDE.md § Evidence).
 
@@ -72,10 +73,10 @@ The one that mattered — `audit.service#logAction` announcing a failed complian
 `accessLog.middleware.js` writes a **text** line per request to `log/access/<date>-access.log` (rotating-file-stream: daily, gzip, **`maxFiles: 30`** — the `history: "30d"` misreading was fixed by A-44). Format:
 
 ```
-:request-id :user-id :real-ip - :remote-user [:custom-date] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time[3] ms
+:request-id :user-id :real-ip - :remote-user [:custom-date] ":method :safe-url HTTP/:http-version" :status :res[content-length] ":safe-referrer" ":user-agent" :response-time[3] ms
 ```
 
-It is written **whatever `LOG_TO_FILE` says**, and its timestamps are `Asia/Jakarta`. It duplicates the JSON `request completed` line, which is the one to ship; the access log is a local fallback.
+`:safe-url` and `:safe-referrer` are the URL and the Referer through the same redaction as the activity log (ADR-138 Am. 2, Am. 5): no capability token in the path or the query. It is written **whatever `LOG_TO_FILE` says**, and its timestamps are `Asia/Jakarta`. It duplicates the JSON `request completed` line, which is the one to ship; the access log is a local fallback.
 
 ## Shipping (P7-03)
 

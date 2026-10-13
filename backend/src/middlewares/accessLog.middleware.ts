@@ -21,7 +21,7 @@ const rfs = require("rotating-file-stream") as typeof RfsModule;
 import moment from "moment-timezone";
 
 import type { Request, Response } from "express";
-import { redactPublicDevicePath } from "../utils/publicDevicePath.util";
+import { redactUrlForLog } from "../utils/logUrl.util";
 
 // ======================================================
 // LOG DIRECTORY
@@ -94,9 +94,18 @@ morgan.token<Request, Response>("real-ip", (req) => {
   return req.ip || req.socket?.remoteAddress || "-";
 });
 
-// P21-08 (ADR-138 Am. 1 § 9): the URL with the public device page's path token replaced by its
-// hash prefix (utils/publicDevicePath.util) — the access log never carries a sticker's token.
-morgan.token<Request, Response>("safe-url", (req) => redactPublicDevicePath(req.originalUrl || req.url));
+// P21-08 (ADR-138 Am. 1 § 9) and Am. 5: the URL with the public device page's path token replaced by
+// its hash prefix and every credential-like query value (`?token=`, `?t=`, a token-looking value)
+// redacted (utils/logUrl.util) — the access log never carries a capability token.
+morgan.token<Request, Response>("safe-url", (req) => redactUrlForLog(req.originalUrl || req.url));
+
+// ADR-138 Am. 5: the Referer is a URL too — a page opened from a verification or invitation link
+// sends its token in it on every request the page makes. Redacted the same way; absent → "-".
+morgan.token<Request, Response>("safe-referrer", (req) => {
+  const referrer = req.headers.referer ?? req.headers["referrer"];
+  const value = Array.isArray(referrer) ? referrer[0] : referrer;
+  return value ? redactUrlForLog(value) : "-";
+});
 
 // activate for the future
 // morgan.token("tenant-id", (req) => {
@@ -117,7 +126,7 @@ const customFormat = [
   '":method :safe-url HTTP/:http-version"',
   ":status",
   ":res[content-length]",
-  '":referrer"',
+  '":safe-referrer"',
   '":user-agent"',
   ":response-time[3] ms",
 ].join(" ");
