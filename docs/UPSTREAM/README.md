@@ -26,6 +26,7 @@ committed). **No real data value, credential or person/facility name appears in 
 | [`09-REPORT-LAYOUTS.md`](./09-REPORT-LAYOUTS.md) | **Report layouts (P23-01)**, structure only: IPM report, inventory PDFs, inventory XLSX, calibration recaps, public page; upstream defects not to copy; targets rendered in the frontend (jsPDF, browser XLSX), paged reads for large exports |
 | [`10-OWNER-CHECKLIST.md`](./10-OWNER-CHECKLIST.md) | **Owner checklist (Indonesian)** for OA-1…OA-3: secure the live upstream, check for a past breach, rotate secrets, encrypt and later delete the local copy |
 | [`11-WHAT-CHANGED-ID.md`](./11-WHAT-CHANGED-ID.md) | **"What changed" note (Indonesian, P29-02)** for facility and provider staff: one account per person by invitation, who sees what, IPM corrected never overwritten, reports rendered in the browser, new QR stickers and the public page (UD-15/16 caveats), the PWA replacing the APK, facility off-boarding — target text, checked at UAT |
+| [`12-UAT-PLAN-ID.md`](./12-UAT-PLAN-ID.md) | **UAT plan and scripts (Indonesian, P26-01)** per persona against what is built on 2026-10-13: each step ready or pending with its reason (real phones, the dry run, OA-4, the pre-invitation gate); the gaps found (no screen for four tenant settings) |
 
 **Plan:** [`../../TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`](../../TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md) —
 the index of the 20 phases, Phases 12 … 31 (one file per phase; old `UP-` ids mapped in its § 7), the consolidated owner decisions UD-1…UD-18 and the owner actions OA-1…OA-8.

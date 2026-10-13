@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — The user-acceptance test plan, in Indonesian (P26-01) ([record](./records/2026-10-13-p26-01-uat-plan.md))
+- **Added (documentation):** `docs/UPSTREAM/12-UAT-PLAN-ID.md`, the plan and step-by-step scripts for provider technicians and administrators, facility accounts, the IPSRS, the platform operator and the public. Each step says whether it can be accepted today or what it waits for (real phones, the dry run with real data, the old stickers' contents, facility accounts being switched on). Not run yet.
+
 ### 2026-10-13 — Logs never keep a link's token (ADR-138 Am. 5) ([record](./records/2026-10-13-log-url-redaction.md))
 - **Security:** the server's logs no longer write the secret part of a link: a verification, invitation, activation or attachment link (`?token=`, `?t=`), any value that looks like a token, and the same links in the page address a browser sends along. Error and refusal lines are cleaned the same way.
 
