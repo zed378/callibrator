@@ -41,6 +41,8 @@ jest.mock("../../models", () => ({
   // P21-09 (G-F1): a create resolves its client facility — none here, so the
   // device is created without one (the database's default trigger fills it).
   ClientFacility: { findOne: jest.fn(async () => null) },
+  // P21-08 (ADR-138 Am. 1 § 7): a delete revokes the device's public link — none here.
+  PublicDeviceToken: { findOne: jest.fn(async () => null) },
 }));
 
 // A-133: device writes run in a managed transaction with their audit row

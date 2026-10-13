@@ -125,6 +125,7 @@ export const SUITES: readonly Suite[] = Object.freeze([
   { id: "p2102b", file: "src/tests/services/devicePhoto.p2102b.live.test.ts", db: "scratch" },
   { id: "p2106", file: "src/tests/services/calibrationRecap.p2106.live.test.ts", db: "scratch" },
   { id: "p2107", file: "src/tests/services/dashboard.twoFacility.p2107.live.test.ts", db: "scratch" },
+  { id: "p2108", file: "src/tests/migrations/publicDeviceTokens.p2108.live.test.ts", db: "scratch" },
   { id: "uifix", file: "src/tests/migrations/uiCorrectness.adr101adr102.live.test.ts", db: "scratch" },
   { id: "p1005", file: "src/tests/services/accessRequest.p1005.live.test.ts", db: "scratch" },
   { id: "p918att", file: "src/tests/services/attachmentService.p918.live.test.ts", db: "scratch" },

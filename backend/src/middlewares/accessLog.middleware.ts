@@ -21,6 +21,7 @@ const rfs = require("rotating-file-stream") as typeof RfsModule;
 import moment from "moment-timezone";
 
 import type { Request, Response } from "express";
+import { redactPublicDevicePath } from "../utils/publicDevicePath.util";
 
 // ======================================================
 // LOG DIRECTORY
@@ -93,6 +94,10 @@ morgan.token<Request, Response>("real-ip", (req) => {
   return req.ip || req.socket?.remoteAddress || "-";
 });
 
+// P21-08 (ADR-138 Am. 1 § 9): the URL with the public device page's path token replaced by its
+// hash prefix (utils/publicDevicePath.util) — the access log never carries a sticker's token.
+morgan.token<Request, Response>("safe-url", (req) => redactPublicDevicePath(req.originalUrl || req.url));
+
 // activate for the future
 // morgan.token("tenant-id", (req) => {
 //   return req.user?.tenantId || "-";
@@ -109,7 +114,7 @@ const customFormat = [
   "-",
   ":remote-user",
   "[:custom-date]",
-  '":method :url HTTP/:http-version"',
+  '":method :safe-url HTTP/:http-version"',
   ":status",
   ":res[content-length]",
   '":referrer"',

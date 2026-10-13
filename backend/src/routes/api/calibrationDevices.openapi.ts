@@ -24,6 +24,7 @@ import { deviceIpmSessionsQuery } from "@callibrator/contracts/inspectionSession
 import { deviceQrParams, devicePhotoParams, devicePhotoUpload } from "@callibrator/contracts/calibrationDevices";
 import { DEVICE_PHOTO_CODES, DEVICE_PHOTO_PURPOSES } from "@callibrator/contracts/deviceValues";
 import { calibrationDateEntry } from "@callibrator/contracts/calibrationRecords";
+import { publicDeviceTokenIssued, publicDeviceTokenState } from "@callibrator/contracts/publicDevices";
 import {
   CALIBRATION_DUE_STATES,
   CALIBRATION_ENTRY_KINDS,
@@ -448,6 +449,59 @@ export default defineRouteDocs({
       audited: true,
       params: photoParams,
       success: { status: 200, description: "The deleted photo's id", data: z.object({ id: z.guid() }) },
+    },
+    {
+      method: "get",
+      path: "/:calibrationDeviceId/public-token",
+      operationId: "getCalibrationDevicePublicLink",
+      summary: "The device's public link: active or not, and the tenant's page setting",
+      description:
+        "P21-08 (ADR-138): whether the device has an active public link, when and by whom it was issued, when the last one was revoked, and the " +
+        "tenant's `public_device_page` setting. Never the token or its hash. A person only (no API key); not facility-accessible.",
+      permission: read,
+      audited: false,
+      params: deviceIdParams,
+      success: { status: 200, description: "The link's state", data: publicDeviceTokenState },
+    },
+    {
+      method: "post",
+      path: "/:calibrationDeviceId/public-token",
+      operationId: "issueCalibrationDevicePublicLink",
+      summary: "Issue the device's public link (the token is shown once)",
+      description:
+        "P21-08 (ADR-138 § 1, Am. 1 § 6): mints a 128-bit token (22 base64url characters) and stores only its SHA-256. The answer is the ONLY time the " +
+        "token is shown: print the sticker from it. Allowed while the tenant's page is off. A person only (no API key); not facility-accessible; " +
+        "one audit row (the hash prefix, never the token). `Cache-Control: no-store`.",
+      permission: write,
+      audited: true,
+      params: deviceIdParams,
+      conflict: "`PUBLIC_TOKEN_ACTIVE`: the device already has a public link — rotate it to print a new sticker (the printed one stops working).",
+      success: { status: 201, description: "The token, its link and the time", data: publicDeviceTokenIssued },
+    },
+    {
+      method: "post",
+      path: "/:calibrationDeviceId/public-token/rotate",
+      operationId: "rotateCalibrationDevicePublicLink",
+      summary: "Rotate the device's public link (the printed sticker stops working)",
+      description:
+        "P21-08 (ADR-138 § 1, Am. 1 § 6): revokes the active link and issues a new one in one transaction; the new token is shown once. One audit row.",
+      permission: write,
+      audited: true,
+      params: deviceIdParams,
+      conflict: "`PUBLIC_TOKEN_NONE`: the device has no active public link — issue one.",
+      success: { status: 201, description: "The new token, its link and the time", data: publicDeviceTokenIssued },
+    },
+    {
+      method: "delete",
+      path: "/:calibrationDeviceId/public-token",
+      operationId: "revokeCalibrationDevicePublicLink",
+      summary: "Revoke the device's public link",
+      description: "P21-08 (ADR-138 § 1): the printed sticker answers the public page's 404 from now on. One audit row.",
+      permission: write,
+      audited: true,
+      params: deviceIdParams,
+      conflict: "`PUBLIC_TOKEN_NONE`: the device has no active public link.",
+      success: { status: 200, description: "When it was revoked", data: z.object({ revokedAt: z.string() }) },
     },
     {
       method: "post",

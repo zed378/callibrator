@@ -111,7 +111,7 @@ Every principal's **tenant** dimension is unchanged from today. The facility col
 | P13 | **Background job** | `runForTenant(tenantId, fn)` / `runAsSystem(reason, fn)` (`utils/jobContext.util.ts`, closed `SYSTEM_TASKS` list) | the job's tenant / skip | **none** (unbound) | — | reminders and notifications about a facility's devices are composed here, unbound, and must pick recipients correctly (EP-15) |
 | P14 | **Offline PWA device** (a phone in field mode) | not a principal on its own: the signed-in user's httpOnly cookies through the Next proxy (ADR-059); offline, **nobody** — the app cannot tell who holds the phone (ADR-127 § 9) | the user's, when online | the user's, when online; **whatever is cached**, offline | the capture endpoints, on replay | the cached scope is a snapshot that a binding change, a deactivation or a facility `ended` does not reach until the next online contact (§ 7, S8) |
 | P15 | **The ETL** (`backend/src/scripts/upstream-import/`, P24-01) | a script; no request context → the hooks **skip**; the per-tenant import API key for calibration records (P24-04) | the provider tenant (by its own code) | **whatever the ETL writes** — no hook checks it | — | the most privileged writer of facility ids (§ 7, S10) |
-| P16 | **Anonymous visitor** of the public device page | capability token (UD-15, open) | the token's tenant | the token's device | one exempted route | not a facility principal; modelled at its edge (EP-23) |
+| P16 | **Anonymous visitor** of the public device page | capability token (ADR-138; built in P21-08) | the token's tenant | the token's device | one exempted route | not a facility principal; modelled at its edge (EP-23) |
 
 ## 4. Trust Boundaries and Data Flow
 
@@ -450,11 +450,11 @@ The ETL writes with no request context: **no hook checks anything it writes** (P
 | FT-104 (I) | Legacy ids (sequential) exposed to bound users let them correlate with the upstream's guessable URLs | 1×2=2 | `legacy_id` fields are not in facility-accessible contracts; UUIDs generated, never derived from legacy ids (05 § 4) | 1×2=2 | contract review in P21-09 |
 | FT-105 (I) | **Doc drift:** 05 § 3.1 step 1 read `tenants ← mst_faskes (+ the provider tenant)` — the superseded facility = tenant model — while ADR-124, 05 § 6.1/§ 10 and P24-02 say `client_facilities ← mst_faskes` | 2×4=8 if built from the stale line | **corrected 2026-10-07** (minimal edit, ADR-124 cited there) | — | — |
 
-### EP-23 — The public device page (edge only; UD-15 / P12-06 open)
+### EP-23 — The public device page (edge only; ADR-138 and Am. 1 – 2, built in P21-08 on 2026-10-13)
 
 | Id | Threat | L×I | Control | Residual | Proof |
 |---|---|---|---|---|---|
-| FT-106 (I) | The capability page loads with no context (both dimensions skip) and shows another facility's device by a guessed token | 1×3=3 | ≥ 128-bit revocable token, per-tenant setting, rate limit, minimal fields, exemption-list entry (UD-15 recommendation) | 1×3=3 | P21-08 tests |
+| FT-106 (I) | The capability page loads with no context (both dimensions skip) and shows another facility's device by a guessed token | 1×3=3 | **built (P21-08, ADR-138):** a 128-bit token stored as its SHA-256 (`public_device_tokens`, migration 0137), revocable, one active per device; the token row is the only cross-tenant read (reviewed `skipTenantScope` + `skipFacilityScope`), the rest in that tenant; per-tenant setting `public_device_page` (off by default); budgets 120 per address, 30 misses per address, 3 000 global per 15 min; one identical 404; an allow-list answer; the exemption entry; the token redacted in the logs | 1×2=2 | `routes/publicDevicePage.p2108`, `routes/publicDeviceTokens.p2108`, `migrations/publicDeviceTokens.p2108.live` |
 | FT-107 (I) | The legacy QR resolver for **signed-in** technicians resolves a sequential number across facilities (UD-16) | 2×3=6 | the in-app lookup by QR runs in the caller's context: a bound user's lookup of F2's QR → 404 | 1×3=3 | *proposed* `qrLookup.twoFacility.test.ts` |
 
 ### EP-24 — The global catalogue and proposals (ADR-125)

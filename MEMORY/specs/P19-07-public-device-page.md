@@ -39,7 +39,7 @@ ADR-138 § 1 – 8: 128-bit CSPRNG token, 22 base64url characters, `https://<hos
 
 - **Mint:** `randomBytes(16).toString("base64url")` — exactly 22 characters of `[A-Za-z0-9_-]`. Shape check: `^[A-Za-z0-9_-]{22}$` (contract `PUBLIC_DEVICE_TOKEN`). Never from a body; never logged; returned **once**, in the issue / rotate answer.
 - **Store:** `token_hash = sha256(token)` as 64 lower-case hex characters (`CHECK (token_hash ~ '^[0-9a-f]{64}$')`).
-- **URL:** from configuration only — `PUBLIC_DEVICE_BASE_URL` (e.g. `https://kalibrasi.example/d`), else `${PUBLIC_SITE_URL}/d`; never from the request's `Host` (ADR-100, as `ipmVerifyUrl`).
+- **URL:** from configuration only — `PUBLIC_DEVICE_BASE_URL` (e.g. `https://kalibrasi.example/d`), else `${FRONTEND_URL}/d`; never from the request's `Host` (ADR-100, as `ipmVerifyUrl`).
 - **Lookup:** hash the presented token, `findOne({ where: { tokenHash } , skipTenantScope: true, skipFacilityScope: true })`, then `timingSafeEqual` of the stored and computed hashes (defensive; the index lookup is the match).
 
 ## 5. The Table `public_device_tokens` (P21-08 migration — the next free number in `config/migrator.ts`)
@@ -54,7 +54,7 @@ ADR-138 § 1 – 8: 128-bit CSPRNG token, 22 base64url characters, `https://<hos
 | `created_at` | timestamptz NOT NULL | |
 | `revoked_at` | timestamptz NULL | |
 | `revoked_by` | uuid NULL | → users RESTRICT (on `device_deleted`, the user who deleted the device) |
-| `revoked_reason` | text NULL | `rotated` · `revoked` · `device_deleted`; CHECK: the three revoke columns are set together or not at all |
+| `revoked_reason` | text NULL | `rotated` · `revoked` · `device_deleted`; CHECK: the revoke columns are set together or not at all; `revoked_by` may stay NULL only for `device_deleted` (a delete with no user actor) |
 
 - **One active per device:** partial `UNIQUE (tenant_id, device_id) WHERE revoked_at IS NULL`. A race answers 23505 → 409 `PUBLIC_TOKEN_ACTIVE`.
 - **Append-mostly:** a trigger refuses every UPDATE except setting the three revoke columns from NULL, and refuses DELETE. No soft delete (history is the audit trail).
@@ -79,7 +79,7 @@ All under `/api/v1/calibration-devices/:calibrationDeviceId/public-token`, each 
 
 ## 7. The Public Route `GET /api/v1/public/devices/:token`
 
-New router `routes/api/publicDevices.route.ts`, mounted at `/api/v1/public/devices`. Chain: `requestBudget("publicDevicePage")`, `requestBudget("publicDevicePageGlobal", { perAddress: false, keyOf: () => "all" })`, `validate(publicDeviceParams, { from: "params" })` — but a malformed token must answer **the same 404**, not a 400: the param schema is a plain string ≤ 64; the shape check is in the service.
+New router `routes/api/publicDevices.route.ts`, mounted at `/api/v1/public/devices`. Chain: `requestBudget("publicDevicePage")`, `requestBudget("publicDevicePageGlobal", { perAddress: false, keyOf: () => "all" })`, `validate(publicDeviceParams, { from: "params" })` — but a malformed token must answer **the same 404**, not a 400: the param schema is a plain string ≤ 2 048 (what a URL path carries); the shape check is in the service.
 
 **Exemption** (`routeGateExemptions.ts`, `api/publicDevices.route.ts` → `GET /:token`): `kind: public`, reason "public capability page, UD-15 / ADR-138: a 128-bit token stored as its SHA-256 is the capability; one identical 404 for every failure; per-address and global request budgets; minimal fields by a per-tenant setting that is off by default". **Two-tenant guard:** the route is on `twoTenantRoutes.guard`'s reviewed allow-list as capability-token. **Skips:** `FACILITY_SCOPE_SKIPS["services/publicDevicePage.service.ts#resolveToken"]` with the reason, and the `skipTenantScope` named in the same comment.
 

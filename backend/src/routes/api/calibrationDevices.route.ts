@@ -34,6 +34,8 @@ import { releaseHeldUpload } from "../../middlewares/releaseHeldUpload.middlewar
 import { deletePhoto, uploadPhoto } from "../../controllers/devicePhoto.controller";
 import { readDevicePhoto } from "../../services/devicePhoto.service";
 import { DEVICE_PHOTO_MAX_BYTES } from "@callibrator/contracts/deviceValues";
+import { publicDeviceTokenParams } from "@callibrator/contracts/publicDevices";
+import { issue as issuePublicLink, revoke as revokePublicLink, rotate as rotatePublicLink, state as publicLinkState } from "../../controllers/publicDevice.controller";
 import {
   createCalibrationDeviceBoundSchema,
   devicePhotoParams,
@@ -217,6 +219,52 @@ router.delete(
   denyPlatformAuthoring,
   validate(devicePhotoParams, { from: "params" }),
   deletePhoto,
+);
+
+/**
+ * P21-08 (ADR-138 § 1, Am. 1 § 1, § 6; spec MEMORY/specs/P19-07-public-device-page.md § 6): the
+ * device's public link. `calibration` write (read for the state); a person only (`denyApiKey`);
+ * never the platform tenant's staff (`denyPlatformAuthoring`). NOT facility-accessible: a bound
+ * principal is refused (403 FACILITY_ROUTE_REFUSED) before a parameter is read — a facility account
+ * never mints or revokes a public link. Each mutation: one audit row in its transaction.
+ */
+router.get(
+  "/:calibrationDeviceId/public-token",
+  auth,
+  denyApiKey,
+  dynamicAccess("calibration", "read"),
+  validate(publicDeviceTokenParams, { from: "params" }),
+  publicLinkState,
+);
+
+router.post(
+  "/:calibrationDeviceId/public-token",
+  auth,
+  denyApiKey,
+  dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
+  validate(publicDeviceTokenParams, { from: "params" }),
+  issuePublicLink,
+);
+
+router.post(
+  "/:calibrationDeviceId/public-token/rotate",
+  auth,
+  denyApiKey,
+  dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
+  validate(publicDeviceTokenParams, { from: "params" }),
+  rotatePublicLink,
+);
+
+router.delete(
+  "/:calibrationDeviceId/public-token",
+  auth,
+  denyApiKey,
+  dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
+  validate(publicDeviceTokenParams, { from: "params" }),
+  revokePublicLink,
 );
 
 router.post(

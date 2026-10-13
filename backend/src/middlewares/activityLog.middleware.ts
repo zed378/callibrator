@@ -11,6 +11,7 @@ import { AsyncLocalStorage } from "async_hooks";
 import type { NextFunction, Request, Response } from "express";
 import type { TransformableInfo } from "logform";
 import { env, envOr, isProduction as isProductionNow } from "../config/env";
+import { redactPublicDevicePath } from "../utils/publicDevicePath.util";
 
 const { combine, timestamp, errors, json } = format;
 const logDir = storagePath("log/activity");
@@ -176,11 +177,13 @@ const sanitizeUrl = <T>(url: T): T | string => {
   if (typeof url !== "string") {
     return url;
   }
-  const q = url.indexOf("?");
+  // P21-08: the public device page's path token first (utils/publicDevicePath.util).
+  const path = redactPublicDevicePath(url);
+  const q = path.indexOf("?");
   if (q === -1) {
-    return scrubString(url);
+    return scrubString(path);
   }
-  const query = url
+  const query = path
     .slice(q + 1)
     .split("&")
     .map((pair) => {
@@ -200,7 +203,7 @@ const sanitizeUrl = <T>(url: T): T | string => {
         : pair;
     })
     .join("&");
-  return scrubString(`${url.slice(0, q)}?${query}`);
+  return scrubString(`${path.slice(0, q)}?${query}`);
 };
 
 /**

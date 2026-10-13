@@ -101,6 +101,9 @@ export type InspectionSessionSignatureId = Brand<string, "InspectionSessionSigna
 /** An idempotency key row's id (`idempotency_keys.id`, P20-04) — not the client's `Idempotency-Key`. */
 export type IdempotencyKeyId = Brand<string, "IdempotencyKeyId">;
 
+/** A public device link's row id (`public_device_tokens.id`, P21-08 / ADR-138) — never the token. */
+export type PublicDeviceTokenId = Brand<string, "PublicDeviceTokenId">;
+
 /** The constructors' shared check. */
 const assertUuid = (value: string, what: string): void => {
   if (!UUID_SHAPE.test(value)) {

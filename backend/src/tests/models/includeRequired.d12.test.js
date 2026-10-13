@@ -394,7 +394,8 @@ describe("D-12 — the phantom brand on converted models equals the runtime defa
     // with a defaultScope (an include of a facility must never be an INNER JOIN) — 83.
     // P20-04 (ADR-126 Am. 1, G-S4) adds InspectionSession, InspectionResult,
     // InspectionSessionSignature and IdempotencyKey, none paranoid nor with a defaultScope — 87.
-    expect(converted.length).toBe(87);
+    // P21-08 (ADR-138) adds PublicDeviceToken, neither paranoid nor default-scoped — 88.
+    expect(converted.length).toBe(88);
     expect(branded).toEqual([...DEFAULT_SCOPED]);
     const runtimeScoped = scopedModels.map((m) => m.name).filter((n) => converted.includes(n)).sort();
     expect(branded).toEqual(runtimeScoped);

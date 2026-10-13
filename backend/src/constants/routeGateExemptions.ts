@@ -162,6 +162,13 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
         "IPM report verification by capability token (ADR-126 Am. 2): the printed report's QR carries a 192-bit token; a malformed, unknown or mismatched link is one identical 404; per-address request budgets (ADR-100)",
     },
   },
+  "api/publicDevices.route.ts": {
+    "GET /:token": {
+      kind: PUBLIC,
+      reason:
+        "public capability page, UD-15 / ADR-138: a 128-bit token stored as its SHA-256 is the capability; one identical 404 for every failure; per-address, per-miss and global request budgets; minimal fields by a per-tenant setting that is off by default",
+    },
+  },
   "api/content.route.ts": {
     "GET /posts/public": { kind: PUBLIC, reason: "the public site; published rows only, read-only" },
     "GET /posts/public/:slug": { kind: PUBLIC, reason: "the public site; published rows only, read-only" },

@@ -154,6 +154,8 @@ export const FACILITY_SCOPE_SKIPS: Readonly<Record<string, string>> = Object.fre
     "P21-04 (P18-03 § 10.2, G-13): the tenant's IPM policy (time zone, interval, countersigning, the side-effects switch) for a bound technician's submit, report and signature — four keys of the user's own tenant, parsed, never returned",
   "services/ipmSubmit.service.ts#nextReportNumber":
     "P21-04 (P19-06 § 5): the report-number sequence counts the tenant's numbers of one facility code and day — a device moved to another facility keeps its numbers, so a bound reader's facility predicate would re-issue one (23505); only the numbers are read, under the advisory lock",
+  "services/publicDevicePage.service.ts#resolveToken":
+    "P21-08 (ADR-138 § 2; P19-07 § 7): the public device page has no principal; the link row is resolved by the SHA-256 of its 128-bit token alone (global unique, random — no oracle), with the reviewed skipTenantScope; every later read runs in that row's tenant (runForTenant)",
   "services/ipmReport.service.ts#verifyReport":
     "P21-04 (P19-06 § 9.2): the public verification has no principal; the session is resolved by its 192-bit token alone (global unique, random — no oracle, ADR-100), then the superseding report's number in the token's own tenant",
   // P21-02a / P21-05 (ADR-132 Am. 2, ADR-133 Am. 2):

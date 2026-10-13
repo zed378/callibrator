@@ -229,6 +229,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0135-upstream-transform-users.js", require("../migrations/0135-upstream-transform-users")],
   // P24-02c (ADR-129 Am. 5): the catalogue steps' reason and the transform role's grants on device_types and item definitions.
   ["0136-upstream-transform-catalogue.js", require("../migrations/0136-upstream-transform-catalogue")],
+  // P21-08 (ADR-138, Am. 1): public_device_tokens — a device's public link, the hash only; append-mostly; no DELETE grant.
+  ["0137-public-device-tokens.js", require("../migrations/0137-public-device-tokens")],
   // P24-02d (ADR-129 Am. 6): the templates step's reasons and the transform role's grants on the three template tables.
   ["0138-upstream-transform-templates.js", require("../migrations/0138-upstream-transform-templates")],
 ];

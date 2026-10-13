@@ -614,6 +614,11 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
     reason:
       "public IPM report verification (the QR on the printed report, P21-04): the 192-bit token is the capability; a malformed, unknown or mismatched link is one identical 404 (ipmReport.p2104)",
   },
+  "api/publicDevices.route GET /:token": {
+    kind: "public",
+    reason:
+      "the public device page (P21-08, ADR-138): the 128-bit sticker token is the capability, resolved by its hash across tenants on purpose; every failure is one identical 404 (publicDevicePage.p2108)",
+  },
   "api/content.route GET /posts/public/:slug": {
     kind: "public",
     reason: "the public site's published posts; posts are platform content with no tenant column",

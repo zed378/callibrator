@@ -18,6 +18,7 @@ import type defineClientFacilityMove from "../models/clientFacilityMove.model";
 import type defineInspectionSession from "../models/inspectionSession.model";
 import type defineInspectionResult from "../models/inspectionResult.model";
 import type defineInspectionSessionSignature from "../models/inspectionSessionSignature.model";
+import type definePublicDeviceToken from "../models/publicDeviceToken.model";
 import type defineIdempotencyKey from "../models/idempotencyKey.model";
 import type defineInspectionItemDefinition from "../models/inspectionItemDefinition.model";
 import type defineInspectionTemplate from "../models/inspectionTemplate.model";
@@ -203,6 +204,8 @@ export interface Models {
   InspectionResult: ReturnType<typeof defineInspectionResult>;
   InspectionSessionSignature: ReturnType<typeof defineInspectionSessionSignature>;
   IdempotencyKey: ReturnType<typeof defineIdempotencyKey>;
+  // P21-08 (ADR-138) — born TypeScript: a device's public link
+  PublicDeviceToken: ReturnType<typeof definePublicDeviceToken>;
 }
 
 /** An instance of the model registered under `K`. */

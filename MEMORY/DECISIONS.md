@@ -12337,6 +12337,23 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 **Implications, including the bad ones.** A legacy URL sticker no longer shows calibration status to the public at all, only a notice — until the device is re-stickered (P27-03). A tenant whose IPM requested a calibration shows `due_soon` even when the date is far away. The global ceiling can, under a distributed scan, deny honest scanners for up to 15 minutes; the numbers are production values to revisit against the dry-run sticker count.
 
+
+### ADR-138 Amendment 2 (2026-10-13, P21-08): what the build decided — the delete's revoke without its actor, the access log's redaction, the token hash as a secret attribute, a malformed token never a 400
+
+**Status:** Accepted, BUILT · **Card:** P21-08 · **Record:** [`records/2026-10-13-p21-08-public-device-page-api.md`](./records/2026-10-13-p21-08-public-device-page-api.md)
+
+**Decision.**
+1. **A delete with no user actor** (a system job) still revokes the link: `revoked_by` may be NULL only with `revoked_reason = 'device_deleted'` (0137's CHECK). Every other revoke names its person.
+2. **The delete reads the active link unlocked.** Its UPDATE of the device row already holds the row lock that issue, rotate and revoke take first, so they serialise on the device.
+3. **The access log's `:url` is replaced by `:safe-url`**, which hashes the public device token in the path (`utils/publicDevicePath.util`, shared with the activity log's `sanitizeUrl`). The access log's query strings are still written as they arrive (as before): their redaction is not this card's (noted, not changed).
+4. **`PublicDeviceToken.tokenHash` is in `SECRET_ATTRIBUTES`**: never serialised, although no route returns the row.
+5. **A malformed token is the 404, never a 400.** The path schema is a string ≤ 2 048 characters (what a URL carries); the shape check is the service's.
+6. **The staff routes:** `GET` gates on `calibration` read; issue, rotate and revoke on `calibration` write with `denyApiKey` and `denyPlatformAuthoring`. The revoke is on A-127's GUARDED list.
+
+**Alternatives considered.** A NOT NULL `revoked_by` with the platform's system user (rejected: a fabricated actor is worse than an honest NULL with a reason). Lock the link in the delete as well (rejected: the legacy unit doubles have no `LOCK`, and the device row's lock already serialises). Import the activity log's `sanitizeUrl` into the access log (rejected: it loads winston at the access log's load, which ran a legacy suite out of memory under its `fs` mock).
+
+**Implications, including the bad ones.** The access log still writes other query-string tokens (`?token=` of the verification links) as it did before this card. A system delete's revoke is attributable only through its audit row's system actor.
+
 ---
 
 End of ADRs. Update this document as new decisions are made, and record a deviation as an ADR rather than editing a `docs/` document quietly.
