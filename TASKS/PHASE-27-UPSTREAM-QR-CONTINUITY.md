@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | BLOCKED on OA-4 (scan a sticker) and UD-15 — 4 BLOCKED |
+| **Status** | 1 TODO (**P27-03**, unblocked 2026-10-13 by P22-08) · 3 BLOCKED (P27-01/02 on OA-4, the sticker scan; P27-04 on P27-02) — UD-15 is decided (ADR-138) |
 | **Goal** | Existing stickers keep resolving; new stickers carry a capability token |
 | **Depends on** | Phase 19, Phase 22 |
 | **Size** | S–M |
@@ -29,5 +29,5 @@ facility name, free text, file name, credential) enters the repository — in fu
 |---|---|---|---|
 | P27-01 | Establish what the stickers encode | BLOCKED (owner) | OA-4 |
 | P27-02 | Legacy resolver: in-app QR lookup for signed-in staff; redirect from the old host if stickers carry URLs (rate-limited, minimal view) | BLOCKED | P27-01, UD-16 |
-| P27-03 | New stickers with capability tokens: print layout, re-stickering policy | BLOCKED | P22-08 |
+| P27-03 | New stickers with capability tokens: print layout, re-stickering policy | **TODO** (unblocked 2026-10-13: P22-08 built the token issue and an interim in-browser sticker, ADR-138 Am. 3 § 3) | P22-08 |
 | P27-04 | Sticker-scan test with real phones, legacy and new | BLOCKED | P27-02, 03 |

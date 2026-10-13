@@ -34,6 +34,7 @@ src/app/
 | Landing, blog, news | none | marketing and content |
 | `/login`, `/request-access`, `/forgot-password`, `/invitation` | none | branded pre-auth for pinned builds; `/register` is a permanent (308) redirect to `/request-access` (ADR-098 §6, P10-06) |
 | **`/verify/[certificateNumber]`** | **none** | functionally load-bearing |
+| **`/d/[token]`** | **none** — the sticker's capability token (ADR-138, P22-08) | the public device page; server-rendered, readable without JavaScript |
 | `/dashboard/*` | required | everything else |
 
 `/verify` is the only public route that is a working tool rather than marketing. It must work without a session, without heavy client dependencies, and on an untested phone ([`../UI-UX/14-PUBLIC-SURFACES-UX.md`](../UI-UX/14-PUBLIC-SURFACES-UX.md)).
@@ -98,6 +99,7 @@ Which one a given service uses is decided in `src/api/client.ts` via `NEXT_PUBLI
 | Route | Segment |
 |---|---|
 | `/verify/[certificateNumber]` | the public identifier, not a UUID |
+| `/d/[token]` | a 128-bit capability token (22 base64url characters), never a device id (ADR-138) |
 | `/dashboard/tenants/[tenantId]` | UUID |
 | `/dashboard/kanban/[projectId]` | UUID |
 | `/dashboard/tickets/[ticketId]` | UUID |
@@ -118,6 +120,7 @@ A filtered device register is a message someone sends — "here is the overdue l
 |---|---|
 | Landing, blog, news | full, with Open Graph and structured data |
 | `/verify/[certificateNumber]` | **`noindex`** |
+| `/d/[token]` | **`noindex`**, `no-referrer`, `no-store`; disallowed in `robots.txt` (ADR-138 Am. 3) |
 | `/dashboard/*` | minimal, `noindex` |
 
 `/verify` must not be indexed: certificate numbers in a search index are an enumeration surface, and the page has no value to a search engine.

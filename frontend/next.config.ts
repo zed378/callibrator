@@ -47,6 +47,16 @@ const nextConfig: NextConfig = {
         source: "/verify/:path*",
         headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
       },
+      // P22-08 (ADR-138 § 6 – 7): the public device page — never indexed, never cached, and the
+      // sticker's token never leaves in a Referer (the page links the IPM verification).
+      {
+        source: "/d/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
     ];
   },
   // P10-06 (/register → /request-access) and ADR-102 (/dashboard/warehouse →
