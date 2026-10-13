@@ -23,6 +23,12 @@ export type SqlImportDataClass = SqlImportRun["dataClass"];
 /** The statuses a run can still move from (the page polls while one is shown). */
 export const ACTIVE_SQL_IMPORT_STATUSES: readonly SqlImportStatus[] = ["uploaded", "scanning", "parsing"];
 
+export type SqlTransformStatus = SqlImportRun["transformStatus"];
+export type SqlTransformSummary = NonNullable<SqlImportRun["transformSummary"]>;
+
+/** The transform states the page polls through. */
+export const ACTIVE_SQL_TRANSFORM_STATUSES: readonly SqlTransformStatus[] = ["transform_requested", "transforming"];
+
 export interface SqlImportPage {
   rows: SqlImportRun[];
   meta: { total: number; page: number; limit: number; totalPages: number };
@@ -68,4 +74,13 @@ export const upstreamSqlImportService = {
 
   retry: async (id: string): Promise<SqlImportRun> =>
     (await typedApi.POST("/api/v1/admin/upstream-sql-imports/{id}/retry", { ...byId(id), body: {} as never }).then(unwrap)).data,
+
+  /**
+   * P24-01 / C-4 — queue stage 2 (the transform into a provider tenant's tables) of a loaded run.
+   * 409 `TRANSFORM_NOT_AVAILABLE` while the server's transform steps are not all built (the run stays
+   * staged), `RUN_NOT_LOADED`, `TRANSFORM_IN_PROGRESS`, `PROVIDER_TENANT_NOT_ACTIVE`; 403
+   * `REAL_DATA_NOT_ALLOWED`; 404 for an unknown run or tenant. The page shows each as written.
+   */
+  transform: async (id: string, providerTenantId: string): Promise<SqlImportRun> =>
+    (await typedApi.POST("/api/v1/admin/upstream-sql-imports/{id}/transform", { ...byId(id), body: { providerTenantId } }).then(unwrap)).data,
 };

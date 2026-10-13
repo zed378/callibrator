@@ -19,6 +19,7 @@ import { DatabaseZap, Shield, X } from "lucide-react";
 import { describeApiError } from "@/api/client";
 import {
   ACTIVE_SQL_IMPORT_STATUSES,
+  ACTIVE_SQL_TRANSFORM_STATUSES,
   upstreamSqlImportService,
   type SqlImportDataClass,
   type SqlImportRun,
@@ -29,11 +30,15 @@ import { useToastStore } from "@/stores/toastStore";
 import { deferEffect } from "@/lib/deferEffect";
 import { useI18n } from "@/i18n/MessagesProvider";
 import type { MessageKey } from "@/i18n";
+import { TransformSection } from "./TransformSection";
 
 /** How often the page refreshes while an import is in flight. */
 export const POLL_MS = 3000;
 
 const isActive = (run: Pick<SqlImportRun, "status">): boolean => ACTIVE_SQL_IMPORT_STATUSES.includes(run.status);
+
+/** C-4: a run whose stage-2 transform is requested or running is polled too. */
+const isTransforming = (run: Pick<SqlImportRun, "transformStatus">): boolean => ACTIVE_SQL_TRANSFORM_STATUSES.includes(run.transformStatus);
 
 /** The message a failed action shows: a 409's state explanation as the backend wrote it. */
 const actionError = (err: unknown): string => describeApiError(err).message || "The action failed";
@@ -109,7 +114,7 @@ export function UpstreamSqlImportClient({ languageForm }: { languageForm?: React
   );
 
   // While an import is in flight, refresh the list and the open run.
-  const inFlight = runs.some(isActive) || (detail !== null && isActive(detail));
+  const inFlight = runs.some(isActive) || (detail !== null && (isActive(detail) || isTransforming(detail)));
   useEffect(() => {
     if (!inFlight) return undefined;
     const timer = setInterval(() => {
@@ -372,7 +377,17 @@ export function UpstreamSqlImportClient({ languageForm }: { languageForm?: React
                           ? t("sqlImport.detail.fileDeleted")
                           : null}
                     </p>
-                    {detail.status === "loaded" && <Alert variant="info">{t("sqlImport.detail.transform")}</Alert>}
+                    {/* C-4: stage 2 — the action, the run's transform state and the server's answer. */}
+                    {(detail.status === "loaded" || detail.transformStatus !== "not_available") && (
+                      <TransformSection
+                        run={detail}
+                        onRequested={(run) => {
+                          setDetail(run);
+                          addToast({ type: "success", title: t("sqlImport.transform.requested") });
+                          void load();
+                        }}
+                      />
+                    )}
 
                     <h3 className="text-sm font-semibold">{t("sqlImport.detail.tables")}</h3>
                     {detail.tables.length === 0 ? (
