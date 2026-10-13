@@ -11,7 +11,7 @@ import { AsyncLocalStorage } from "async_hooks";
 import type { NextFunction, Request, Response } from "express";
 import type { TransformableInfo } from "logform";
 import { env, envOr, isProduction as isProductionNow } from "../config/env";
-import { redactPublicDevicePath } from "../utils/publicDevicePath.util";
+import { CODE_KEY, REDACTED, isSensitiveKey, normaliseKey, redactUrlForLog, type LogKey } from "../utils/logUrl.util";
 
 const { combine, timestamp, errors, json } = format;
 const logDir = storagePath("log/activity");
@@ -47,23 +47,10 @@ const level = envOr("LOG_LEVEL", isProduction ? "info" : "debug");
 // REDACTION (A-14)
 // ======================================================
 
-const REDACTED = "[REDACTED]";
 const MAX_DEPTH = 8;
 
-/**
- * Key names whose value is never logged, matched at any depth after
- * lower-casing and removing `-` and `_` (so `set-cookie`, `api_key`,
- * `x-api-key`, `refreshToken` and `mfa_secret` all match).
- */
-const SENSITIVE_KEY =
-  /password|passwd|passphrase|^pass$|secret|token|authorization|cookie|apikey|privatekey|publickey|masterkey|encryptionkey|credential|^otp|otp$|^totp|mfacode|recoverycode|backupcode|sessionid|^sid$|link$/;
-// A-228 — `link$`: a generated link (`activationLink`, `resetLink`,
-// `verificationLink`, `inviteLink`, `magicLink`, ...) carries its capability
-// token in the URL, so the whole value is a credential. The template data
-// handed to the mailer is logged under exactly these keys.
+// The key list, the code key and `[REDACTED]` live in utils/logUrl.util (one definition for both logs).
 
-/** A one-time code under a generic key (`code`, `pin`): redacted when it looks like one. */
-const CODE_KEY = /^(code|pin|verificationcode)$/;
 const ONE_TIME_CODE = /^\s*\d{4,10}\s*$/;
 
 /** Credentials that show up as VALUES under unremarkable key names. */
@@ -80,13 +67,6 @@ const JWT = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g;
  * `user@host` fragments of stack traces and ids out of it.
  */
 const EMAIL = /\b([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b/g;
-
-/** A key as JavaScript callers may pass it: any property key. */
-type LogKey = PropertyKey;
-
-const normaliseKey = (key: LogKey): string => String(key).toLowerCase().replace(/[-_]/g, "");
-
-const isSensitiveKey = (key: LogKey): boolean => SENSITIVE_KEY.test(normaliseKey(key));
 
 const scrubString = (value: string): string => {
   const scrubbed = value.replace(BEARER, `$1 ${REDACTED}`).replace(JWT, REDACTED);
@@ -152,7 +132,16 @@ const redactValue = (value: unknown, seen: WeakSet<object>, depth: number): unkn
   return out;
 };
 
+/**
+ * ADR-138 Am. 5 — a URL under a URL's key (`url`, `originalUrl`, `referer`, `referrer`), wherever a
+ * caller logs one (the error handler, the access refusals): the same redaction as the request log.
+ */
+const URL_KEY = /^(url|originalurl|referer|referrer)$/;
+
 const redactEntry = (key: LogKey, value: unknown, seen: WeakSet<object>, depth: number): unknown => {
+  if (typeof value === "string" && URL_KEY.test(normaliseKey(key))) {
+    return sanitizeUrl(value);
+  }
   if (value !== undefined && value !== null && value !== "") {
     if (isSensitiveKey(key)) {
       return REDACTED;
@@ -169,41 +158,17 @@ const redactEntry = (key: LogKey, value: unknown, seen: WeakSet<object>, depth: 
 };
 
 /**
- * Redacts a query string's sensitive parameters (`?token=`, `?code=`, …) in a
- * URL that is about to be logged. Keeps the path and non-sensitive parameters.
+ * Redacts a query string's sensitive parameters (`?token=`, `?t=`, `?code=`, …)
+ * and any token-looking value in a URL that is about to be logged
+ * (utils/logUrl.util). Keeps the path and non-sensitive parameters.
  * A non-string is returned as it is.
  */
 const sanitizeUrl = <T>(url: T): T | string => {
   if (typeof url !== "string") {
     return url;
   }
-  // P21-08: the public device page's path token first (utils/publicDevicePath.util).
-  const path = redactPublicDevicePath(url);
-  const q = path.indexOf("?");
-  if (q === -1) {
-    return scrubString(path);
-  }
-  const query = path
-    .slice(q + 1)
-    .split("&")
-    .map((pair) => {
-      const eq = pair.indexOf("=");
-      if (eq === -1) {
-        return pair;
-      }
-      let key = pair.slice(0, eq);
-      try {
-        key = decodeURIComponent(key);
-      } catch {
-        /* keep the raw key */
-      }
-      const normalised = normaliseKey(key);
-      return isSensitiveKey(key) || CODE_KEY.test(normalised) || normalised === "state"
-        ? `${pair.slice(0, eq)}=${REDACTED}`
-        : pair;
-    })
-    .join("&");
-  return scrubString(`${path.slice(0, q)}?${query}`);
+  // P21-08 and ADR-138 Am. 5: the path token hashed, every credential-like query value redacted (utils/logUrl.util).
+  return scrubString(redactUrlForLog(url));
 };
 
 /**

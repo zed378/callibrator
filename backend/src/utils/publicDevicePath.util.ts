@@ -16,7 +16,11 @@ const PUBLIC_DEVICE_PATH = /(\/public\/devices\/)([^/?#]+)/;
  * @returns the URL with the public device token replaced by its hash prefix
  */
 export const redactPublicDevicePath = (url: string): string =>
-  url.replace(PUBLIC_DEVICE_PATH, (_m, prefix: string, token: string) => {
+  url.replace(PUBLIC_DEVICE_PATH, (match: string, prefix: string, token: string) => {
+    // Already redacted (`~` is outside the token's base64url alphabet): a log line sanitised twice keeps its prefix.
+    if (token.startsWith("~")) {
+      return match;
+    }
     let raw = token;
     try {
       raw = decodeURIComponent(token);

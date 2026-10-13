@@ -12513,6 +12513,7 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 **Implications, including the bad ones.** A monitoring check cannot tell a dead sticker from a live one by HTTP status; it must read the API. A print from a browser without print CSS support prints the whole dialog.
 
+
 ### ADR-138 Amendment 4 (2026-10-13, P27-03): the sticker's final layout and the re-stickering policy
 
 **Status:** Accepted, BUILT (frontend only) under the owner's standing delegation; the owner may revise the label size or its contents · **Card:** P27-03 · **Record:** [`records/2026-10-13-p27-03-sticker-layout.md`](./records/2026-10-13-p27-03-sticker-layout.md)
@@ -12562,7 +12563,7 @@ Any second engine would have to reverse-engineer all of it from Node.
 - UUIDs stay readable on purpose, so a UUID used as a capability somewhere would be logged. None is used that way today: the capability tokens are base64url.
 - nginx's own logs are unchanged (Am. 3 § 2 covers its path markers only).
 
-**`docs/` amended:** none. Logging redaction is described in this ADR and the A-14 / A-228 records.
+**`docs/` amended:** `OBSERVABILITY/01-LOGGING.md` (the redaction list and the access log's format, which still showed `:url` and `:referrer`).
 
 ---
 

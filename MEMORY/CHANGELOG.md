@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — Logs never keep a link's token (ADR-138 Am. 5) ([record](./records/2026-10-13-log-url-redaction.md))
+- **Security:** the server's logs no longer write the secret part of a link: a verification, invitation, activation or attachment link (`?token=`, `?t=`), any value that looks like a token, and the same links in the page address a browser sends along. Error and refusal lines are cleaned the same way.
+
 ### 2026-10-13 — The device sticker's final label and when to replace it (P27-03) ([record](./records/2026-10-13-p27-03-sticker-layout.md); ADR-138 Am. 4)
 - **Changed:** a device's sticker is now a finished 60 × 40 mm label: the QR, "Pindai untuk status kalibrasi / Scan for calibration status", the device's name, its QR number and the day it was issued. Print gives exactly one label on a label-sized page; Download gives the label as a 300 dpi image. It is still made in the browser and nothing is saved.
 - **Added:** the public-link panel says when a sticker should be replaced and when it should be kept, in Indonesian and English.
