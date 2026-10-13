@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — Fixed: an account created without an organisation could sign in but use nothing (A-369) ([record](./records/2026-10-13-a369-tenantless-accounts.md); ADR-075 Am. 1)
+- **Fixed:** a super admin creating a user without choosing an organisation produced an account whose every request failed with "Invalid session". Creating it is now refused (400, `code: "TENANT_REQUIRED"`), as is giving a tenant-less super admin a non-super-admin role. Such an existing account is refused at sign-in with a clear message (403, `code: "ACCOUNT_HAS_NO_TENANT"`) instead of a broken session. A super admin account may still have no organisation.
+
 ### 2026-10-13 — The public device page is specified (P19-07; nothing built) ([record](./records/2026-10-13-p19-07-public-device-page-spec.md); ADR-138 Am. 1)
 - **Decided (design):** staff will issue, rotate and revoke a device's public link as three separate actions, so printing a new sticker never silently voids the old one by accident; deleting a device revokes its link. An old sticker that carries a web address will show a "this sticker has been replaced" notice, not the device: the new links are stored only as fingerprints, so an old sticker cannot be forwarded to them.
 

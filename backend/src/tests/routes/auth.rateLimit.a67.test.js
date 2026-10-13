@@ -182,6 +182,9 @@ describe("A-67: the auth rate limiter records failures through the real router",
       isActive: true,
       status: "ACTIVE",
       mfaEnabled: true,
+      // A-369: an account needs a tenant to sign in.
+      tenantId: "22222222-2222-4222-8222-222222222222",
+      tenant: { id: "22222222-2222-4222-8222-222222222222", status: "active" },
       update: jest.fn().mockResolvedValue({}),
     });
     const ok = await drive(

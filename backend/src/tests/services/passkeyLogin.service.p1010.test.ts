@@ -394,6 +394,8 @@ describe("P10-10 — every failure before the account is proven is the one 401",
 
   it("a tenant-less account's counter regression is audited under PLATFORM; a zero stored count with a zero presented one is accepted", async () => {
     rowA["tenantId"] = null;
+    // A-369 (ADR-075 Am. 1): only a super admin signs in with no tenant.
+    rowA["roleId"] = ROLE_SUPER;
     pkA["signCount"] = 0;
     const { ceremonyId, challenge } = await start();
     // Stored 0 (null), presented 0: an authenticator that keeps no counter — accepted.

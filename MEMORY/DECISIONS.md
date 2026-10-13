@@ -4377,6 +4377,33 @@ The last open cards of the async audit:
 
 **Status:** Accepted, implemented 2026-09-27/28.
 
+### Amendment 1 (2026-10-13) — only a super admin account may have no tenant (A-369)
+
+**Authority:** working decision by line D under the owner's standing delegation (decide by best practice, record it). It awaits the owner's confirmation. **Record:** [`records/2026-10-13-a369-tenantless-accounts.md`](records/2026-10-13-a369-tenantless-accounts.md).
+
+**Context.** This ADR upheld Q-11 on the premise that a tenant-less account "signs in into nothing". The code did something worse. The tenant hooks (`utils/tenantScope.util#resolveScope`) skip scoping only for a super admin; any other principal without a tenant is denied every row, **its own user row included**. Such an account got a session (its LOGIN row skipped: "LOGIN not audited: the user has no tenant"), and then every request answered 401 "Invalid session", because `auth.service#verifyUserSession` could not find the user. `POST /users/create` by a super admin who named no `tenantId` made exactly that account for any role (`effectiveTenantId = actorIsSuperAdmin ? tenantId : actorTenantId`), and `POST /users/role-update` could make one by giving a tenant-less super admin a tenant role.
+
+**Decision.**
+1. **Creation and role change refuse it.** `userCreate` and `userRoleUpdate` refuse a non-super-admin role for an account with no tenant: **400, top-level `code: "TENANT_REQUIRED"`**, before anything is written (`utils/tenantRequired.util#assertTenantForRole`). In `userCreate` it runs after the facility binding, so a facility named without a tenant is still the G-17 404. A tenant-less **super admin** is still allowed: the hooks skip scoping for it.
+2. **Sign-in refuses an existing one.** `assertMaySignIn` (password and passkey) refuses a tenant-less non-super-admin account with **403, `code: "ACCOUNT_HAS_NO_TENANT"`**. It runs after the credential, so the answer says nothing to someone without the password. It also runs before the one-time password is spent, the MFA token, the session and the LOGIN row.
+3. "Platform" means the super admin role, by id or name (`isPlatformRole`). That is the same test the tenant context uses (`isSuperAdminRoleName`), so the two cannot disagree.
+4. Coded refusals pass through the two services' catch blocks unchanged. The catch used to rebuild every error as `{ status, message }`, and that dropped the `code`.
+
+**Alternatives considered.**
+| Alternative | Why not |
+|---|---|
+| Stamp the acting super admin's own tenant | the seeded operator's home is an ordinary hospital ("Default Hospital Tenant", A-125). The account would land silently in a customer it was never meant for |
+| Stamp the PLATFORM tenant | PLATFORM holds the platform audit trail and is nobody's workplace. `auth.middleware#tenantRefusal` already refuses a non-super-admin there |
+| Validate `tenantId` as required in `createUserSchema` | it would refuse the legitimate tenant-less super admin, and a tenant administrator's body never carries `tenantId` (it comes from the caller) |
+| Keep sign-in as is (Q-11's "into nothing") | it is not "nothing": it is a session that fails every request with a misleading 401, plus an unaudited LOGIN |
+| Let the hooks show a tenant-less principal its own row | that widens the deny-by-default rule (ADR-048) for an account that can still reach nothing else |
+
+**Consequences.**
+- Good: no new account can reach the dead state, and an existing one gets a clear refusal instead of a broken session. The "LOGIN not audited" branch is now reachable only for a tenant-less super admin.
+- Bad: an account already created tenant-less **cannot be repaired through the API**: `editUser` does not accept `tenantId`, and the role change refuses a tenant role. It must be deleted and recreated in its tenant, or fixed by a reviewed database update. Legacy self-registrations (ADR-098 retired the form) that sign in now get the 403 instead of the broken session. The Q-11 test `auth.emailVerificationPolicy.a60` was changed to match: the refusal is the same whether or not the address is verified.
+- The OpenAPI descriptions of `POST /users/create` and `/role-update` do not yet name `TENANT_REQUIRED`. `openapi.json` is shared with in-flight work, so that regeneration is left to the next card that touches `user.openapi.ts`.
+- Evidence: `backend/src/tests/services/tenantRequired.a369.test.ts` (14). Fail-before on `f2a2d70`: 5 of the 14 tests fail.
+
 ---
 
 ## ADR-076: Node 26 Is Pinned Everywhere; TypeScript 7 Runs Beside the TypeScript 6 API; No `console.*` Outside Terminal CLIs; the Pre-Push Hook Installs Its Own Gitleaks; Unused Dependencies Are Removed

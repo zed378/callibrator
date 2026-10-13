@@ -11,6 +11,7 @@
 /* eslint-disable @typescript-eslint/only-throw-error -- as built: parts of this service throw { status, message } objects, which the controllers and asyncHandler read */
 /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built: this service's `||` fallbacks treat "" and 0 as absent; a conversion changes no behaviour (ADR-038 rule 3) */
 import { AppError } from "../utils/appError.util";
+import { tenantlessSignInRefusal } from "../utils/tenantRequired.util";
 import crypto from "crypto";
 import { Op, type InferCreationAttributes, type Transaction } from "sequelize";
 import { db } from "../config";
@@ -820,6 +821,17 @@ const assertMaySignIn = async (
   const lockedUntil = dbUser.lockedUntil;
   if (lockedUntil && new Date(lockedUntil) > new Date()) {
     throw new AppError(423, "Account temporarily locked");
+  }
+
+  // A-369 (ADR-075 Am. 1): a non-platform account with no tenant is denied
+  // every row by the tenant hooks, its own user row included, so its session
+  // would answer 401 "Invalid session" on every request. Refused here, after
+  // the credential, before the one-time password is spent, the MFA token, the
+  // session and the LOGIN row.
+  const tenantless = tenantlessSignInRefusal(dbUser);
+  if (tenantless) {
+    logger.warn("Sign-in refused: the account has no tenant", { userId: dbUser.id, method });
+    throw tenantless;
   }
 
   // A-83: refused AFTER the credential, so the tenant's state is disclosed

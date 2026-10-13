@@ -144,12 +144,14 @@ describe("A-83: password login checks the tenant", () => {
     expect((await passwordLogin()).status).toBe(200);
   });
 
+  // A-369 (ADR-075 Am. 1): the tenant-less user that signs in is a super admin; any other is
+  // refused (tenantRequired.a369.test.ts).
   it("an active tenant and a tenant-less user both sign in", async () => {
     Users.findOne.mockResolvedValue(userRow());
     comparePassword.mockResolvedValue(true);
     expect((await passwordLogin()).status).toBe(200);
 
-    Users.findOne.mockResolvedValue(userRow({ tenantId: null, tenant: null }));
+    Users.findOne.mockResolvedValue(userRow({ tenantId: null, tenant: null, role: { id: "r-sa", name: "SUPERADMIN", roleLevel: 100 } }));
     expect((await passwordLogin()).status).toBe(200);
   });
 });
