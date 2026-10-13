@@ -25,6 +25,8 @@ describe("P24-01 @callibrator/contracts/upstreamSqlImport — the transform", ()
       "INTERRUPTED",
       // P24-02a (ADR-129 Am. 3): the provider tenant has no self facility, or another tenant is in the id map.
       "PROVIDER_TENANT_INVALID",
+      // P24-02f (ADR-129 Am. 8): a calibration date needs the import key and none is usable.
+      "IMPORT_KEY_MISSING",
     ]);
   });
 
@@ -65,11 +67,13 @@ describe("P24-01 @callibrator/contracts/upstreamSqlImport — the transform", ()
       // P24-02e: the devices step.
       "qr_in_use",
       "facility_changed",
+      // P24-02f: the calibrations step.
+      "performer_not_found",
     ]) {
       expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toContain(reason);
     }
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).not.toContain("device_not_found");
-    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(30);
+    expect(UPSTREAM_IMPORT_QUARANTINE_REASONS).toHaveLength(31);
     expect(new Set(UPSTREAM_IMPORT_QUARANTINE_REASONS).size).toBe(UPSTREAM_IMPORT_QUARANTINE_REASONS.length);
     expect(UPSTREAM_IMPORT_QUARANTINE_REASONS.every((r) => /^[a-z][a-z0-9_]{0,39}$/.test(r))).toBe(true);
     expect(Object.isFrozen(UPSTREAM_IMPORT_QUARANTINE_REASONS)).toBe(true);

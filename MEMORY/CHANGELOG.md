@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — The upstream transform's calibrations step (P24-02f) ([record](./records/2026-10-13-p24-02f-calibrations-step.md), ADR-129 Am. 8)
+- **Added (internal):** the upstream calibration dates are imported as external calibration records of their devices, credited to the technician who did them, or recorded by the tenant's import key when that person is gone or unknown. No laboratory or result is invented. A date that changed upstream is imported as a correction that keeps the old record in the history, and the load refuses to start the calibrations without the import key. Migration 0140 gives the transform's database role exactly the access it needs.
+
 ### 2026-10-13 — The upstream transform's register steps (P24-02e) ([record](./records/2026-10-13-p24-02e-register-steps.md), ADR-129 Am. 7)
 - **Added (internal):** the upstream device register is imported into the provider: its calibration laboratories, its rooms (one per facility, room and floor) and its devices, with the QR number in the provider's own format, the condition, the room, the laboratory and who registered each device. A sticker already on another device and a device that changed facility upstream are held back for the operator; the import never moves a device. Migration 0139 gives the transform's database role access to exactly the columns it needs.
 
@@ -17,7 +20,7 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 - **Changed (operations):** nginx no longer writes a sticker's link in its access log.
 
 ### 2026-10-13 — The Phase 22 pages are covered in a real browser; a capture contrast defect fixed ([record](./records/2026-10-13-p22-browser-coverage.md))
-- **Added (tests):** `automate/p22.browser.mts`, in `make test-browser`, drives the facility, checklist, device-register (with photos), IPM capture, history and report, calibration-date, export and dashboard pages end to end against a running stack, with accessibility checks in both themes and a layout check from phone width to 200 % zoom. The browser accessibility suite (also run in CI) now includes six of these pages.
+- **Added (tests):** `automate/p22.browser.mts`, in `make test-browser`, drives the facility, checklist, device-register (with photos), IPM capture, history and report, calibration-date, export and dashboard pages, and the public device page (a link issued, the page read signed out with only its minimal fields, then revoked), end to end against a running stack, with accessibility checks in both themes and a layout check from phone width to 200 % zoom. The browser accessibility suite (also run in CI) now includes six of these pages and the public device page.
 - **Fixed:** on the IPM capture, the answered count on the current step was below the contrast minimum; it is now legible.
 
 ### 2026-10-13 — Verified live: the idempotency crash fix and the "to sign" filter ([record](./records/2026-10-13-live-verification-debt.md))

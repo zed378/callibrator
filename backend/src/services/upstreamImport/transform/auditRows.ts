@@ -56,6 +56,9 @@ export const STEP_AUDITED: ReadonlySet<string> = new Set([
   // P24-02e (ADR-129 Am. 7): the derived laboratories and rooms (inventory.ts) — no id_map row of their own.
   "vendors",
   "warehouses",
+  // P24-02f (ADR-129 Am. 8): a calibration record is append-only — an import correction is a new
+  // record plus the superseded one's close, audited as such (calibrations.ts).
+  "calibration_records",
 ]);
 
 /** Step 13's `run`: the audit rows of everything this transaction wrote. */

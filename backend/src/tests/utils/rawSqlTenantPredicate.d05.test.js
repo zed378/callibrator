@@ -102,6 +102,14 @@ const CROSS_TENANT = {
     "the laboratories INSERT writes the provider tenant (bound) into tenant_id; the reads bind it",
   "services/upstreamImport/transform/inventory.ts#warehouses":
     "the rooms INSERT writes the provider tenant (bound) into tenant_id; the reads bind it",
+  "services/upstreamImport/transform/people.ts#${table}":
+    "the people reads of id_map (bound tenant or global) and upstream_import.former_users — no tenant-scoped table is interpolated",
+  // P24-02f (ADR-129 Am. 8): the calibrations step — staging read via stagedTable, the provider tenant bound in every
+  // read of a tenant table and written into tenant_id by the INSERTs.
+  "services/upstreamImport/transform/calibrations.ts#${table}":
+    "the calibrations step's reads of id_map and the allow-listed staging table trx_kalibrasi; tenant tables joined bind the provider tenant",
+  "services/upstreamImport/transform/calibrations.ts#audit_logs":
+    "the calibrations step's CREATE / UPDATE rows for the records it wrote, in the provider tenant (bound)",
 };
 
 const tenantScopedTables = () => {

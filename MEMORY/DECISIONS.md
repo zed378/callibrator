@@ -11536,6 +11536,49 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 
 **`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note for steps 6 – 8).
 
+### ADR-129 Amendment 8 (2026-10-13, P24-02f): the calibrations step writes external dates directly on the transform connection, by P19-05 § 9.1 and ADR-133 Am. 4; a changed upstream date is an import correction; a missing import key fails the transform
+
+**Why an amendment.** P19-05 § 9.2 says the ETL writes "through the calibration-record service functions with that actor (never a bulk INSERT around them)". As with Am. 5, the application connection cannot read staging and two connections break the one-transaction rollback. § 9 also leaves three questions open: what a re-run does with an append-only record whose upstream date changed, what happens when the key is missing, and how departed performers are numbered alongside the registrants of P24-02e.
+
+**Decision.**
+
+1. **Direct writes on the transform connection, with the service's rules.**
+   - Step 10 inserts `external_date` records: the device from step 8 and the device's facility; `calibration_date` at 00:00 in the source zone; `room_snapshot` from `nama_ruangan`.
+   - No result, standard, uncertainty, certificate, due date or laboratory is written.
+   - Every snapshot carries `source: "upstream-import"`, which is what admits a laboratory-less row under CHECK `calibration_records_external_has_lab`.
+   - Nothing is derived on the device (§ 9.1: the interim rule holds by construction).
+2. **The actor, as ADR-133 Am. 4 rules.**
+   - A mapped user of the tenant is `performed_by`, with their snapshot.
+   - A user who has left gets the import key and "Former upstream user #<n>", numbered in `upstream_import.former_users`, the same sequence as the registrants (people.ts).
+   - No `id_user` gets the key and "Upstream import" (`role: import`, the tenant's name).
+   - A mapping that names nobody of the tenant any more is quarantined **`performer_not_found`** (new reason) and is never the key in their place.
+   - The key is read on the transform connection and judged by the importKey service's own `usableImportKey`. If a row needs the key and none is usable, the transform fails **`IMPORT_KEY_MISSING`** (a new transform error code) and nothing is written. The operator provisions the key first (§ 9.2).
+3. **Quarantine:** `no_device` (no imported device); `value_out_of_range` (not a calendar day); `future_calibration_date` (after today in the source zone).
+4. **Re-runs respect append-only (0057).**
+   - An unchanged row is skipped.
+   - A changed row is an **import correction**: a new record with `supersedes_id` and a fixed `correction_reason`, and the old record closed with `superseded_by_id` / `superseded_at`. Those are the only columns the trigger lets change, and the only ones the transform role may update (0140).
+   - A record the operator already voided or corrected is never reopened.
+5. **The step audits itself** (`STEP_AUDITED`): CREATE per new record (`UPSTREAM_IMPORT`, or `UPSTREAM_IMPORT_CORRECTION` with `supersedesId`), and UPDATE of the superseded record (`UPSTREAM_IMPORT_SUPERSEDED`). Each row is stamped with the record's facility and carries no legacy id.
+6. **Grants (0140) are column-level.** `calibration_records`: read the keys; insert the imported columns; update only the three close columns. `api_keys`: read the state of the tenant's key, never `key_hash` or `key_prefix`.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Call `importCalibrationPerformer` and the record service from the worker | they run on the application connection, which cannot read staging; two connections lose the one-transaction rollback (Am. 1, Am. 5) |
+| Attribute a performer who is no longer mapped to the import key | hides a mapping defect behind an actor who did not do it (ADR-133 Am. 4) |
+| Void the old record and insert a new one on a changed date | a void says the date was wrong, but here it moved upstream. Correction keeps the chain readable and is the service's own lifecycle |
+| Quarantine rows when the key is missing | the load would look successful while every keyless date was missing; the spec makes the key a precondition |
+| Skip changed rows (append-only) | the platform would silently disagree with upstream until cutover |
+
+**Implications, including the bad ones.**
+
+- Every re-run that changes a date adds a record to the device's history: the chain is visible to auditors, and that is intended.
+- The transform still answers 409 (`TRANSFORM_NOT_BUILT`): step 9 (attachments, P24-03) and steps 11–12 (sessions and results, P24-02g) are not built. The end-to-end synthetic transform therefore waits for those cards.
+- The `p2402a` live suite now probes `calibration_records` by an ungranted column.
+
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 (an as-built note for step 10). The P19-05 spec § 9.2's "through the service functions" is superseded by this amendment, which is noted in the spec.
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)
