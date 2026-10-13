@@ -7979,8 +7979,34 @@ Several pages are served by a gate other than their own grant (rbac levels, anot
 - **Good.** No seeded role sees a sidebar entry whose page 403s (menuEffectiveAccess.adr102, per role, on the real seed and the real dynamicAccess); a per-user grant or revocation reaches the menu; write buttons match the API for every role; the Stock module and storage settings are reachable.
 - **Bad, or still open.** HEALTHCARE / CALIBRATOR ADMIN and ENGINEERING MANAGER lose menu entries that only 403'd (Roles, Menu Groups, Blog & News, …) — correct, but visible. The page-gate table is maintained by hand (the test catches a changed gate, not a new page with a new gate). Pages not in this change still hide nothing for read-only roles (audit §5.4 lists ~24); they should adopt `usePermissions` as they are touched. The permissions cache (1 h) still delays a grant change; flush `permissions:*` after migration 0097.
 
----
+### ADR-102 Amendment 1 (2026-10-13, UAT gap C-3): a menu entry for a page behind another menu's gate — calibration dates and exports
 
+**Why.** The calibration-dates page (P22-05) and the exports page (P22-07) shipped with no menu entry. Both read only through `calibration` (`dynamicAccess("calibration", "read")`). The sidebar draws an entry for a slug, so a page with no slug of its own cannot appear in it.
+
+**Decision.**
+
+1. **Two entries, active, under Equipment:** `calibration-dates` and `exports` (sort 8 and 9; fixed ids `…309`, `…310`). Migration 0142 adds them to an already-seeded database, and the seed adds them to a new one.
+2. **Each entry's page gate is `calibration` read** (`MENU_PAGE_GATES`). The entry shows only to someone the page will serve, which is the ADR's rule.
+3. **Grants.**
+   - `read` goes to every role that already reaches the pages, meaning a role holding a row on `calibration`, or on `equipment` (a parent grant cascades to its children in the matrix). In the seed, that is all eleven roles.
+   - A write on the entries is never needed. The calibration-dates entry tab asks `calibration` write.
+4. **Bound users:** both slugs are in the bound ceiling at `read`, since every bound role holds `calibration` at read or above.
+5. **API key scopes:** both slugs join `MENU_SLUGS` (the seed's typed keys require it) and therefore the scope contract (A-311: the contract is the superset). A key holding them reaches nothing, as with `upstream-sql-import`.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Point the existing `calibration` entry at a page with tabs | moves the device register, which the entry names today |
+| Links inside the devices page only | the UAT finding is that people look for these in the sidebar |
+| Grant to the explicit `calibration` holders only | roles that read calibration through the `equipment` cascade would reach the pages but never see them |
+
+**Implications, including the bad ones.**
+
+- Two more scopes appear in the API-key dialog that grant nothing on their own.
+- The menu cache needs a flush (or its TTL) after the migration runs.
+
+---
 
 ## ADR-103 — The API contract is generated code-first from Zod; Scalar behind sign-in replaces Swagger UI (reserved 2026-09-29, P9-25; full text at the end of this file)
 

@@ -16603,7 +16603,7 @@ export interface operations {
                      */
                     name: string;
                     /**
-                     * @description `<resource>:<read|write>` (an absent action is `write`); the resource is one of 53 menu slugs. A wildcard resource or action is refused.
+                     * @description `<resource>:<read|write>` (an absent action is `write`); the resource is one of 55 menu slugs. A wildcard resource or action is refused.
                      * @example [
                      *       "equipment:read",
                      *       "certificate:read"

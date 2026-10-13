@@ -56,6 +56,9 @@ const SHARED_CEILING = {
   maintenance: "read",
   "ipm-templates": "read",
   warehouse: "read",
+  // UAT C-3 (migration 0142): both pages read through `calibration`, which every bound role holds at read or above.
+  "calibration-dates": "read",
+  exports: "read",
 } as const satisfies Record<string, CeilingAccess>;
 
 export const BOUND_MENU_CEILING: Readonly<Record<FacilityBoundRole, Readonly<Record<string, CeilingAccess>>>> = Object.freeze({

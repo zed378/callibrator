@@ -81,6 +81,10 @@ export const MENU_PAGE_GATES: Readonly<Record<string, readonly PageGate[]>> = Ob
   "calibration-scheduler": [menu("maintenance")],
   // predictiveMaintenance.route.ts — GET /recommendations: dynamicAccess("calibration", "read")
   "predictive-maintenance": [menu("calibration")],
+  // UAT C-3 (migration 0142): calibrationRecords.route.ts — GET /calibration-records: dynamicAccess("calibration", "read");
+  // the exports page reads the same and the device register (calibrationDevices, "calibration" read).
+  "calibration-dates": [menu("calibration")],
+  exports: [menu("calibration")],
   // scim.route.js — requireApiKeyOrAdmin: a SCIM-scoped API key or the super
   // admin, for reads too; a tenant role holding `scim` read got 403.
   scim: [SUPER_ADMIN_ONLY],
@@ -116,6 +120,8 @@ export const MENU_PAGE_GATE_SOURCES: Readonly<Record<string, { readonly file: st
     attachments: { file: "attachments.route", text: 'router.get("/", auth, dynamicAccess(MENU_SLUGS.EQUIPMENT, "read")' },
     "calibration-scheduler": { file: "calibrationScheduler.route", text: '"maintenance", "read"' },
     "predictive-maintenance": { file: "predictiveMaintenance.route", text: '"calibration", "read"' },
+    "calibration-dates": { file: "calibrationRecords.route", text: 'dynamicAccess("calibration", "read")' },
+    exports: { file: "calibrationRecords.route", text: 'dynamicAccess("calibration", "read")' },
     stock: { file: "stock.route", text: '"warehouse", "read"' },
     scim: { file: "scim.route", text: "keyMayUseScim(req)) || isSuperAdmin(req.user)" },
     "access-requests": { file: "admin.route", text: 'rbac(["SUPER_ADMIN", "SUPERADMIN"])' },

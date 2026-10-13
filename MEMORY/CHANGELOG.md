@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — The SQL-dump import page offers the transform step (C-4) ([record](./records/2026-10-13-c4-sql-import-transform.md))
+- **Changed:** a loaded import no longer says the transform is "not available yet". The operator chooses the provider tenant and asks for the transform; the page shows the transform's state, why it failed, and its rows per step. While the server cannot transform yet, the page says so in the server's own words instead of failing.
+
+### 2026-10-13 — Calibration dates and exports in the menu (UAT C-3) ([record](./records/2026-10-13-c3-calibration-dates-exports-menu.md), ADR-102 Am. 1)
+- **Fixed:** the Calibration Dates and Exports pages now appear under Equipment in the sidebar for everyone who can open them, facility users included. Migration 0142 adds them to existing installations.
+
 ### 2026-10-13 — Tenant administrators can set the IPM and public-page options themselves (M-18) ([record](./records/2026-10-13-m18-tenant-ipm-settings.md))
 - **Added:** on the tenants page, a tenant administrator can now turn the public device page on (minimal, or minimal with the last IPM report) or off, switch the facility IPSRS's electronic countersignature on or off, and set the IPM interval and the tenant's time zone. Before this, those settings could only be changed through the API. In Indonesian and English.
 

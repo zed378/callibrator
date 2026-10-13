@@ -239,6 +239,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0140-upstream-transform-calibrations.js", require("../migrations/0140-upstream-transform-calibrations")],
   // P24-02g (ADR-129 Am. 9): the IPM steps' reasons and the transform role's column grants on the two IPM tables.
   ["0141-upstream-transform-ipm.js", require("../migrations/0141-upstream-transform-ipm")],
+  // UAT C-3: the calibration-dates and exports menu entries under Equipment, granted read to the roles that reach the pages.
+  ["0142-calibration-dates-exports-menu.js", require("../migrations/0142-calibration-dates-exports-menu")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

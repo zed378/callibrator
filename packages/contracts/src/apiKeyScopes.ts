@@ -77,6 +77,10 @@ export const API_KEY_SCOPE_RESOURCES = [
   "ipm",
   "ipm-templates",
   "client-facilities",
+  // UAT C-3 (migration 0142): sidebar entries only — their pages read through `calibration`, so a key
+  // holding them reaches nothing (the upstream-sql-import precedent); assignable because MENU_SLUGS names them.
+  "calibration-dates",
+  "exports",
   // A-311: gated by dynamicAccess, absent from MENU_SLUGS (`calibration` joined MENU_SLUGS in P20-06).
   "calibration",
   "certificate",

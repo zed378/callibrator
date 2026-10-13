@@ -158,7 +158,11 @@ const paths = (slugs: readonly string[]): string[] =>
 const ACCOUNT = ["change-password", "profile-page", "notifications"];
 // P22-01 landed (migration 0130, ADR-126 Am. 6 § 8): `ipm-templates` is active — every role holding the equipment group sees it.
 // P22-04 landed (migration 0131): `ipm` (the IPM history page) is active too, for the same roles.
-const EQUIPMENT = ["calibration", "certificate", "maintenance", "calibration-scheduler", "reports", "predictive-maintenance", "ipm-templates", "ipm"];
+// UAT C-3 (migration 0142): `calibration-dates` and `exports`, both behind `calibration` read, for the same roles.
+const EQUIPMENT = [
+  "calibration", "certificate", "maintenance", "calibration-scheduler", "reports", "predictive-maintenance", "ipm-templates", "ipm",
+  "calibration-dates", "exports",
+];
 const TOP = ["home", "warehouse", "stock"];
 
 /** The claim: what each seeded role can open without a 403 (route gates by hand). */

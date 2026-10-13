@@ -101,6 +101,8 @@ function getMenuGroupId(slug: string): string {
     "ipm": "a0000000-0000-0000-0000-000000000307", // P20-06, migration 0124
     "ipm-templates": "a0000000-0000-0000-0000-000000000308", // P20-06, migration 0124
     "client-facilities": "a0000000-0000-0000-0000-000000000240", // P20-06, migration 0124
+    "calibration-dates": "a0000000-0000-0000-0000-000000000309", // UAT C-3, migration 0142
+    exports: "a0000000-0000-0000-0000-000000000310", // UAT C-3, migration 0142
     "predictive-maintenance": "a0000000-0000-0000-0000-000000000306",
     // Management sub-group categories (level 2 of the 3-level sidebar)
     "mgmt-organization": "a0000000-0000-0000-0000-000000000250",
@@ -679,6 +681,24 @@ async function seedMenuGroups(): Promise<void> {
       is_active: true,
       parentSlug: "equipment",
     },
+    // UAT C-3 (migration 0142): the calibration-dates (P22-05) and exports (P22-07) pages, both
+    // behind the `calibration` read gate (constants/menuPageAccess).
+    {
+      name: "Calibration Dates",
+      slug: "calibration-dates",
+      icon: "Gauge",
+      sortOrder: 8,
+      is_active: true,
+      parentSlug: "equipment",
+    },
+    {
+      name: "Exports",
+      slug: "exports",
+      icon: "Table2",
+      sortOrder: 9,
+      is_active: true,
+      parentSlug: "equipment",
+    },
 
     // Children under Security (parent slug: "security")
     {
@@ -888,6 +908,8 @@ async function seedRoleMenuPermissions(): Promise<void> {
         "ipm", // P20-06 (migration 0124)
         "ipm-templates", // P20-06 (migration 0124)
         "client-facilities", // P20-06 (migration 0124)
+        "calibration-dates", // UAT C-3 (migration 0142)
+        "exports", // UAT C-3 (migration 0142)
       ],
     },
     {
@@ -909,6 +931,8 @@ async function seedRoleMenuPermissions(): Promise<void> {
         "billing",
         "audit", // Q-20
         "calibration",
+        "calibration-dates", // UAT C-3 (migration 0142)
+        "exports", // UAT C-3 (migration 0142)
         "certificate",
         "maintenance",
         "reports",
@@ -957,6 +981,8 @@ async function seedRoleMenuPermissions(): Promise<void> {
         "billing", // Q-20
         "audit", // Q-20
         "calibration",
+        "calibration-dates", // UAT C-3 (migration 0142)
+        "exports", // UAT C-3 (migration 0142)
         "certificate",
         "maintenance",
         "calibration-scheduler",
