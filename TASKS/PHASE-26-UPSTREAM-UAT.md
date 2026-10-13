@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | BLOCKED — 3 BLOCKED |
+| **Status** | 1 DONE (P26-01, 2026-10-13 — the plan and scripts; not run) · 2 BLOCKED |
 | **Goal** | Provider technicians in the field, facility admins, IPSRS |
 | **Depends on** | Phase 22, Phase 25 |
 | **Size** | M |
@@ -27,6 +27,6 @@ facility name, free text, file name, credential) enters the repository — in fu
 
 | Card | Title | Status | Depends on |
 |---|---|---|---|
-| P26-01 | UAT plan and scripts (Indonesian) per persona: provider technician, provider admin, facility admin, facility technician, IPSRS | BLOCKED | Phase 22 |
+| P26-01 | UAT plan and scripts (Indonesian) per persona: provider technician, provider admin, facility admin, facility technician, IPSRS | **DONE 2026-10-13** — [`docs/UPSTREAM/12-UAT-PLAN-ID.md`](../docs/UPSTREAM/12-UAT-PLAN-ID.md): 7 personas (+ operator, public), scripts against what is built, each step ✅ ready or ⏳ pending with its reason (the `/field` real-phone run, the dry run with real data, OA-4, the pre-invitation gate `FACILITY_BINDING_ENABLED`); 4 gaps found (C-1 → BACKLOG M-18: no screen for four tenant settings) — [record](../MEMORY/records/2026-10-13-p26-01-uat-plan.md) | Phase 22 |
 | P26-02 | Field UAT on phones with poor connectivity, offline capture included, on staging with dry-run data | BLOCKED | P26-01, P25-04 |
 | P26-03 | Defect triage and UAT sign-off | BLOCKED | P26-02 |
