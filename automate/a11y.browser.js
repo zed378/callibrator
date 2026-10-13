@@ -27,6 +27,9 @@
  *               busy indicator that says so (role="status" / aria-busy, or a
  *               spinner: `animate-spin`) — WCAG 2.3.3's intent, which the
  *               stylesheet's reduced-motion block (globals.css) promises.
+ *   6. public   (P22-08) the public device page /d/<token> of the run's device joins the signed-out
+ *               axe sweep, the reflow and the reduced-motion checks; the link is issued and the
+ *               tenant's page turned on for the run, and the setting restored afterwards.
  *   5. brand    with the tenant's brand colour set to one that fails the
  *               ADR-090 rule in the light theme (#ffff00, 1.07:1 on white),
  *               the dashboard shows a derived primary that passes, in both
@@ -97,11 +100,20 @@ const DASHBOARD_PAGES = [
   "/dashboard/session-management",
   "/dashboard/reports",
   "/dashboard/gdpr",
+  // Phase 22 (2026-10-13): the field-work pages. Their states with data (a capture, a report, the
+  // flows' dialogs) are swept by automate/p22.browser.mts, light and dark.
+  "/dashboard/ipm-templates",
+  "/dashboard/ipm",
+  "/dashboard/ipm/new",
+  "/dashboard/calibration-dates",
+  "/dashboard/exports",
+  "/dashboard/client-facilities",
 ];
 
 /** Pages whose first create button opens a dialog (ADR-090's sweep found 24; these are the key ones). */
 const DIALOG_PAGES = [
   "/dashboard/devices",
+  "/dashboard/client-facilities",
   "/dashboard/maintenance",
   "/dashboard/users",
   "/dashboard/vendors",
@@ -110,7 +122,11 @@ const DIALOG_PAGES = [
 ];
 
 /** Pages checked for reflow at 200% zoom and for reduced motion. */
-const LAYOUT_PAGES = ["/", "/login", "/dashboard", "/dashboard/devices", "/dashboard/users", "/dashboard/maintenance"];
+const LAYOUT_PAGES = [
+  "/", "/login", "/dashboard", "/dashboard/devices", "/dashboard/users", "/dashboard/maintenance",
+  // Phase 22 (2026-10-13): reflow at 200 % and reduced motion on the field-work pages.
+  "/dashboard/ipm", "/dashboard/ipm/new", "/dashboard/calibration-dates", "/dashboard/exports", "/dashboard/client-facilities",
+];
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
@@ -695,6 +711,16 @@ async function main() {
   const temporary = `Temp-${stamp}-Aa1!`;
   let userId = null;
   let deviceId = null;
+  let publicPageBefore = "";
+  let restoreSettings = null;
+  const patchSettings = async (body, headers) => {
+    const res = await fetch(`${api.API_BASE}/tenants/settings`, {
+      method: "PATCH",
+      headers: { ...api.defaultHeaders, ...headers },
+      body: JSON.stringify(body),
+    });
+    return res.status;
+  };
   const created = await api.httpPost(
     "/users/create",
     { tenantId, username: `ba11y${stamp}`.slice(0, 20), firstName: "Browser", lastName: "Accessibility",
@@ -718,6 +744,24 @@ async function main() {
     const changed = await replaceTemporaryPassword(user.email, temporary, user.password);
     if (changed !== 200) throw new Error(`setting the a11y user's password failed (${changed})`);
 
+    // P22-08 (ADR-138): the public device page, signed out — a link for the run's device, issued by
+    // the tenant administrator, and the tenant's page turned on ("minimal"); both undone afterwards.
+    const asUser = api.authHeader(api.extractToken((await api.httpPost("/auth/login", { user: user.email, password: user.password })).body));
+    // The settings routes take the tenant in the body (their gate checks it is the caller's own).
+    const settingsRead = await api.httpPost("/tenants/settings", { tenantId }, asUser);
+    if (settingsRead.status !== 200) throw new Error(`reading the tenant's settings failed (${settingsRead.status})`);
+    publicPageBefore = String(settingsRead.body?.data?.settings?.public_device_page ?? "");
+    const link = await api.httpPost(`/calibration-devices/${deviceId}/public-token`, {}, asUser);
+    const linkUrl = link.body?.data?.url;
+    if (link.status !== 201 && link.status !== 200) throw new Error(`issuing the device's public link failed (${link.status}: ${link.body?.message})`);
+    if (typeof linkUrl !== "string") throw new Error("the issued public link carries no url");
+    const turnedOn = await patchSettings({ tenantId, public_device_page: "minimal" }, asUser);
+    if (turnedOn !== 200) throw new Error(`turning the public device page on failed (${turnedOn})`);
+    restoreSettings = () => patchSettings({ tenantId, public_device_page: publicPageBefore }, asUser);
+    const publicRoute = new URL(linkUrl).pathname;
+    PUBLIC_PAGES.push(publicRoute);
+    LAYOUT_PAGES.splice(2, 0, publicRoute);
+
     browser = await puppeteer.launch({
       executablePath: chromePath(),
       headless: process.env.HEADFUL ? false : true,
@@ -733,6 +777,10 @@ async function main() {
   } finally {
     if (browser) await browser.close();
     await freshAdmin().catch(() => {});
+    if (restoreSettings) {
+      const restored = await restoreSettings().catch(() => 0);
+      if (restored !== 200) console.log(`  WARN  the tenant's public_device_page was not restored (${restored})`);
+    }
     if (deviceId) await api.httpDelete(`/calibration-devices/${deviceId}`, admin).catch(() => {});
     if (userId) await api.httpDelete(`/users/delete?userId=${userId}`, admin).catch(() => {});
   }
