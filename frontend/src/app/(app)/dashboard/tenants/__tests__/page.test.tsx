@@ -28,7 +28,7 @@ const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
 
 import { api } from "@/api/client";
-import TenantsPage from "../page";
+import TenantsPage from "../TenantsClient";
 import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
 import type { User } from "@/types";

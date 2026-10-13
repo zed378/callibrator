@@ -9,11 +9,11 @@
 > cannot be accepted yet is marked **⏳ pending** with its reason — never as passing: the owner's
 > real-phone run of `/field` (P22-10), the dry run with real data (P24-05 → P25-04), what legacy
 > stickers encode (OA-4 / UD-16), and the pre-invitation gate that keeps facility-bound accounts off
-> (`FACILITY_BINDING_ENABLED`). § 9 lists the gaps the plan found against the code (no screen yet for
-> four tenant settings, among them the public page and the IPSRS countersignature). The run itself is
+> (`FACILITY_BINDING_ENABLED`). § 9 lists the gaps the plan found against the code (C-1, no screen for
+> four tenant settings, was closed the same day by M-18). The run itself is
 > **P26-02**; triage and sign-off **P26-03**. No real data, name or facility appears here.
 
-**Status:** rencana dan skrip, 2026-10-13 (P26-01). **Belum dijalankan.** Pelaksanaan = P26-02 (di
+**Status:** rencana dan skrip, 2026-10-13 (P26-01). **Belum dijalankan.** Diperbarui 2026-10-13: C-1 selesai (M-18), label layar diselaraskan dengan `id.ts`. Pelaksanaan = P26-02 (di
 *staging* dengan data *dry run*), triase dan pengesahan = P26-03. Istilah layar dikutip dari kamus
 aplikasi (`frontend/src/i18n/messages/id.ts`) per 2026-10-13.
 
@@ -40,9 +40,9 @@ laporan berdampingan oleh penyedia (P23-05).
 | **AP** | Admin penyedia jasa (dulu grup `admin`) | `CALIBRATOR ADMIN` (administrator tenant) | seluruh tenant penyedia | ✅ |
 | **AF** | Admin faskes (dulu grup `client`) | `HEALTHCARE ADMIN`, **terikat** ke satu faskes | hanya faskesnya, **hanya baca** | ⏳ gerbang pra-undangan (§ 3.3) |
 | **TF** | Teknisi faskes (dulu `teknisi_client`) | `HEALTHCARE TECHNICIAN`, terikat | hanya faskesnya | ⏳ gerbang pra-undangan |
-| **IP** | IPSRS faskes (tidak punya akun di SKP IPM) | `FACILITY MAINTENANCE`, terikat | hanya faskesnya; menandatangani sebagai pemeriksa | ⏳ gerbang pra-undangan **dan** pengaturan tanpa layar (§ 9, C-1) |
+| **IP** | IPSRS faskes (tidak punya akun di SKP IPM) | `FACILITY MAINTENANCE`, terikat | hanya faskesnya; menandatangani sebagai pemeriksa | ⏳ gerbang pra-undangan (§ 3.3) |
 | **OP** | Operator platform | `SUPERADMIN` | katalog global, alat impor | ✅ (data sintetis); ⏳ data nyata (§ 3.2) |
-| **PU** | Publik (pasien, pengunjung, perawat) | tanpa akun | halaman publik alat | ✅ dengan catatan C-1 |
+| **PU** | Publik (pasien, pengunjung, perawat) | tanpa akun | halaman publik alat | ✅ (setelah AP-08) |
 
 Peran dan lingkup ini adalah matriks peran yang final di bawah keputusan kerja:
 [`MEMORY/specs/P18-01-02-role-matrix-and-grants.md`](../../MEMORY/specs/P18-01-02-role-matrix-and-grants.md) § 2.
@@ -71,9 +71,9 @@ bagian *cutover* (P30-04), bukan UAT.
 | Sakelar / pengaturan | Untuk | Cara menyalakan (hari ini) |
 |---|---|---|
 | `FACILITY_BINDING_ENABLED=true` | akun terikat (AF, TF, IP) | variabel lingkungan backend; **gerbang pra-undangan** (`docs/SECURITY/15` § 11, P17-07). Menyalakannya di staging adalah keputusan pemilik dan dicatat. Selama mati, mengikat akun ke faskes ditolak 409 "Facility-bound accounts are not enabled yet." |
-| `public_device_page` = `minimal` (atau `minimal_with_report`) | halaman publik (PU) | **tidak ada layar** — `PATCH /api/v1/tenants/settings` oleh administrator tenant (C-1) |
-| `ipm_countersign_enabled` = `true` | tanda tangan IPSRS (IP) | **tidak ada layar** — idem (C-1) |
-| `ipm_interval_months` | jatuh tempo IPM di dasbor | **tidak ada layar** — idem (C-1) |
+| `public_device_page` = `minimal` (atau `minimal_with_report`) | halaman publik (PU) | **Tenant** → kartu tenant → **Pengaturan IPM dan halaman publik** (administrator tenant; sejak M-18, C-1) |
+| `ipm_countersign_enabled` = `true` | tanda tangan IPSRS (IP) | **Tenant** → kartu tenant → **Pengaturan IPM dan halaman publik** (administrator tenant; sejak M-18, C-1) |
+| `ipm_interval_months` | jatuh tempo IPM di dasbor | **Tenant** → kartu tenant → **Pengaturan IPM dan halaman publik** (administrator tenant; sejak M-18, C-1) |
 
 ### 3.4 Aturan pelaksanaan
 - Satu fasilitator per sesi; pengguna mengerjakan sendiri, fasilitator hanya mencatat.
@@ -100,9 +100,9 @@ bagian *cutover* (P30-04), bukan UAT.
 | TP-07 | Langkah tinjauan → **Kirim**. | Tombol kirim mati selama ada butir wajib kosong; setelah lengkap, "Kunjungan IPM … terkirim" dan pemberitahuan efek samping (mis. perintah perbaikan dibuka). | ✅ |
 | TP-08 | Buka **Riwayat IPM** → kunjungan tadi → **Buka laporan IPM** → **Tandatangani laporan IPM …** (kata sandi atau kode autentikator) → **Unduh … sebagai PDF**. | Arti tanda tangan harus dicentang dulu; tanda tangan "Sah"; PDF terunduh, dibuat di peramban. | ✅ |
 | TP-09 | **Alat** → aksi baris **Tautan publik …** → **Terbitkan tautan** → **Cetak stiker** dan **Unduh stiker (PNG)**. | Label 60 × 40 mm: QR, "Pindai untuk status kalibrasi / Scan for calibration status", nama alat, "QR …" dan tanggal terbit. Pesan: tautan tidak akan ditampilkan lagi. Kebijakan "Kapan stiker diganti" terbaca. | ✅ (pindai di ponsel: ⏳ P27-04) |
-| TP-10 | **Tanggal kalibrasi** (tautan di halaman Kalibrasi): pindai/ketik QR, isi laboratorium dan nomor sertifikat, **Simpan tanggal kalibrasi**. | "Tanggal kalibrasi tercatat untuk …"; tab daftar menampilkannya. Tidak ada unggahan berkas sertifikat (aturan pemilik). | ✅ |
+| TP-10 | **Tanggal kalibrasi** (tautan di halaman Kalibrasi): pindai/ketik QR, isi laboratorium dan nomor sertifikat, **Simpan tanggal kalibrasi**. | "Tanggal kalibrasi dicatat untuk …"; tab daftar menampilkannya. Tidak ada unggahan berkas sertifikat (aturan pemilik). | ✅ |
 | TP-11 | Riwayat IPM → kunjungan terkirim → **Koreksi kunjungan ini** (alasan ≥ 3 karakter) → ubah di daftar periksa → kirim. | Versi asli tetap terbaca dan berstatus "digantikan" setelah koreksi dikirim; silsilah versi terlihat di kedua arah. | ✅ |
-| TP-12 | Aplikasi lapangan `/field` di ponsel: **Siapkan ponsel ini** → pilih faskes → **Periksa ukuran** → **Unduh untuk kerja offline**. | Unduhan dengan kemajuan; "Mode offline aktif"; data dihapus 72 jam setelah sinkron terakhir. | ⏳ ponsel nyata (P22-10, runbook pemilik) |
+| TP-12 | Aplikasi lapangan `/field` di ponsel: **Siapkan ponsel ini** → pilih faskes → **Periksa ukuran** → **Unduh untuk kerja luring**. | Unduhan dengan kemajuan; "Mode luring aktif"; data dihapus 72 jam setelah sinkron terakhir. | ⏳ ponsel nyata (P22-10, runbook pemilik) |
 | TP-13 | Mode pesawat → **Pindai** → alat → isi IPM + foto bukti → kirim; nyalakan jaringan → **Sinkronkan sekarang**. | Antrean bertambah saat offline, kosong setelah sinkron; kunjungan muncul di Riwayat IPM dengan tanda "diambil offline". | ⏳ ponsel nyata (P22-10) |
 | TP-14 | Ekspor (tautan **Ekspor** di halaman Alat): inventaris XLSX satu faskes → **Periksa ukuran** → **Buat dan unduh**. | Jumlah baris dan perkiraan ukuran tampil dulu; berkas dibuat di peramban. | ✅ |
 
@@ -115,11 +115,11 @@ bagian *cutover* (P30-04), bukan UAT.
 | AP-03 | **Pengguna** → buat akun TP dan akun calon AF/TF/IP. | Akun terbuat dengan kata sandi sekali pakai. | ✅ |
 | AP-04 | Fasilitas klien → akun → **ikat** akun calon AF ke faskes (alasan). | Terikat; sesi akun itu diakhiri. | ⏳ gerbang pra-undangan (§ 3.3); selama mati: 409 dengan penjelasan server — itu yang benar |
 | AP-05 | Riwayat IPM → kunjungan → **Batalkan kunjungan ini** (alasan). | Final; teks menjelaskan apa yang dibatalkan (perintah kerja preventif, permintaan kalibrasi) dan apa yang tidak. | ✅ |
-| AP-06 | Dasbor: panel kondisi → **Tampilkan alat …**; panel IPM; aktivitas teknisi (cari QR, "Hanya kunjungan saya"). | Tautan membuka daftar alat yang tersaring kondisinya. | ✅ (jatuh tempo bulan ini: ⏳ C-1, `ipm_interval_months` tanpa layar) |
+| AP-06 | Dasbor: panel kondisi → **Tampilkan alat …**; panel IPM; aktivitas teknisi (cari QR, "Hanya kunjungan saya"). | Tautan membuka daftar alat yang tersaring kondisinya; "jatuh tempo" mengikuti interval IPM (AP-08). | ✅ |
 | AP-07 | Ekspor: inventaris **PDF** penyedia (dengan foto) dan **rekap kalibrasi terakhir** XLSX. | PDF A3 lanskap, 14 kolom, blok tanda tangan; > 1.000 alat dibuat tanpa foto dan halaman memberi tahu dulu; XLSX dengan tanggal sebagai sel tanggal. | ✅ (batas 1.000: angka sementara, diukur di *dry run*) |
-| AP-08 | Nyalakan halaman publik tenant. | — | ⏳ **tidak ada layar** (C-1) |
-| AP-09 | Nyalakan tanda tangan elektronik IPSRS. | — | ⏳ **tidak ada layar** (C-1) |
-| AP-10 | Tautan publik alat: **Ganti tautan** (konfirmasi) dan **Cabut tautan** (konfirmasi). | Konfirmasi menyebut bahwa stiker tercetak berhenti bekerja; halaman publik tautan lama menjawab "tidak ada alat untuk tautan ini". | ✅ |
+| AP-08 | **Tenant** → kartu tenant → **Pengaturan IPM dan halaman publik**: halaman publik **Minimal**, interval IPM 6, zona waktu `Asia/Makassar` → **Simpan**. | "Pengaturan disimpan"; dibuka lagi, nilai yang sama terbaca. Interval 61 atau zona "Mars/Olympus" dijelaskan di kolomnya dan tidak dikirim. | ✅ |
+| AP-09 | Panel yang sama: centang **IPSRS faskes menandatangani laporan IPM secara elektronik** → **Simpan**. | Tersimpan; laporan IPM yang sudah ditandatangani teknisi kini menawarkan tanda tangan IPSRS (IP-01). | ✅ |
+| AP-10 | Tautan publik alat: **Ganti tautan** (konfirmasi) dan **Cabut tautan** (konfirmasi). | Konfirmasi menyebut bahwa stiker tercetak berhenti bekerja; halaman publik tautan lama menjawab "Tidak ada perangkat yang menjawab tautan ini.". | ✅ |
 
 ## 6. Skrip AF, TF, IP — Akun Faskes (terikat)
 
@@ -136,18 +136,18 @@ keputusan pemilik untuk menyalakan sakelar di staging.
 | TF-01 | TF | Tambah alat (dasbor atau `/field` → **Daftarkan alat**). | Tanpa kode QR dan tanpa pilihan faskes (faskesnya sendiri); ruang dipilih, tidak dibuat offline; dua foto. |
 | TF-02 | TF | Mulai IPM, isi, kirim. | Seperti TP-05 … TP-07, hanya untuk alat faskesnya. |
 | TF-03 | TF | Hapus alat, rekam tanggal kalibrasi. | Tidak ditawarkan (server menolak 403 untuk akun terikat). |
-| IP-01 | IP | Buka laporan IPM yang sudah ditandatangani teknisi → **Tandatangani sebagai IPSRS laporan IPM …**. | Hanya bila `ipm_countersign_enabled` menyala (⏳ C-1); teknisi pelaksana tidak dapat menandatangani sebagai IPSRS; staf penyedia tidak dapat menandatangani untuk faskes. |
-| IP-02 | IP | `/field` → **Untuk ditandatangani**. | Daftar kunjungan terkirim (dibaca saat sinkron terakhir); tanda tangan butuh jaringan. |
+| IP-01 | IP | Buka laporan IPM yang sudah ditandatangani teknisi → **Tandatangani sebagai IPSRS laporan IPM …**. | Hanya bila tanda tangan IPSRS dinyalakan (AP-09); teknisi pelaksana tidak dapat menandatangani sebagai IPSRS; staf penyedia tidak dapat menandatangani untuk faskes. |
+| IP-02 | IP | `/field` → **Menunggu tanda tangan**. | Daftar kunjungan terkirim (dibaca saat sinkron terakhir); tanda tangan butuh jaringan. |
 
 ## 7. Skrip OP dan PU
 
 | ID | Persona | Langkah | Hasil yang diharapkan | Siap? |
 |---|---|---|---|---|
-| OP-01 | OP | **Daftar periksa IPM**: tambah tipe alat; buat daftar periksa → **draf kosong** → tambah butir pustaka → **Simpan butir** → catatan perubahan → **Terbitkan**. | "Versi 1 diterbitkan"; katalog terbit menawarkan tipe dan butirnya. | ✅ |
+| OP-01 | OP | **Daftar periksa IPM**: tambah tipe alat; buat daftar periksa → **draf kosong** → tambah butir pustaka → **Simpan butir** → catatan perubahan → **Terbitkan**. | "Versi 1 terbit"; katalog terbit menawarkan tipe dan butirnya. | ✅ |
 | OP-02 | OP | **Impor dump SQL**: unggah dump **sintetis**. | Dipindai, diurai (tidak pernah dieksekusi), dimuat ke *staging*; notifikasi dengan jumlah saja. Halaman menyatakan **tahap 2 (transformasi) belum tersedia di layar**. | ✅ sintetis; ⏳ data nyata (gerbang DPIA, P24-05) |
 | OP-03 | OP | **Impor gambar** (rsync): **Periksa koneksi** ke server uji, konfirmasi sidik jari kunci host, jalankan. | Foto depan dan pelat seri masuk karantina lalu ke penyimpanan tenant; berkas yang ditolak tercatat dengan alasannya. | ✅ server uji; ⏳ server lama yang nyata (gerbang DPIA) |
-| PU-01 | PU | Pindai stiker baru (atau buka `/d/<tautan>`) tanpa masuk. | Nama alat sebagai judul; tipe, merek, model, faskes, status kalibrasi dalam kata-kata, tanggal kalibrasi berikut, IPM terakhir. **Tidak pernah**: nomor seri, nomor QR, ruang, foto, dokumen, nama orang. | ✅ setelah halaman dinyalakan (C-1) |
-| PU-02 | PU | Buka tautan yang sudah dicabut atau salah ketik. | "Tidak ada alat untuk tautan ini." — tanpa data apa pun. | ✅ |
+| PU-01 | PU | Pindai stiker baru (atau buka `/d/<tautan>`) tanpa masuk. | Nama alat sebagai judul; tipe, merek, model, faskes, status kalibrasi dalam kata-kata, tanggal kalibrasi berikut, IPM terakhir. **Tidak pernah**: nomor seri, nomor QR, ruang, foto, dokumen, nama orang. | ✅ setelah AP-08 |
+| PU-02 | PU | Buka tautan yang sudah dicabut atau salah ketik. | "Tidak ada perangkat yang menjawab tautan ini." — tanpa data apa pun. | ✅ |
 | PU-03 | PU | Pindai **stiker lama** SKP IPM. | — | ⏳ **OA-4 / UD-16** (isi stiker lama belum diketahui; P27-01/02) |
 
 ## 8. Log Pelaksanaan (diisi pada P26-02)
@@ -164,7 +164,7 @@ dengan kartu yang menutupnya — bukan diabaikan.
 
 | Kode | Celah | Dampak ke UAT | Penutup yang diusulkan |
 |---|---|---|---|
-| **C-1** | Empat pengaturan tenant (`public_device_page`, `ipm_countersign_enabled`, `ipm_interval_months`, `tenant_time_zone`) **tidak punya layar**; hanya `PATCH /api/v1/tenants/settings`. | AP-08, AP-09, IP-01, PU-01 dan "jatuh tempo" AP-06 butuh bantuan teknis untuk menyiapkan. | Kartu frontend baru: panel pengaturan IPM dan halaman publik untuk administrator tenant (BACKLOG). |
+| **C-1** | ~~Empat pengaturan tenant (`public_device_page`, `ipm_countersign_enabled`, `ipm_interval_months`, `tenant_time_zone`) tidak punya layar~~ — **SELESAI 2026-10-13 (M-18):** panel **Pengaturan IPM dan halaman publik** pada kartu tenant di `/dashboard/tenants`, untuk administrator tenant ([catatan](../../MEMORY/records/2026-10-13-m18-tenant-ipm-settings.md)). | AP-06, AP-08, AP-09, IP-01, PU-01 kini disiapkan oleh AP sendiri. | — |
 | **C-2** | **Foto bukti IPM** hanya ada di aplikasi lapangan `/field`; daftar periksa di dasbor belum menerimanya (catatan terbuka P22-03). | TP-07 di dasbor tanpa foto bukti; TP-13 di `/field` dengan foto. | Tambahkan ke daftar periksa dasbor, atau tetapkan `/field` sebagai satu-satunya tempat foto bukti. |
 | **C-3** | **Tanggal kalibrasi** dan **Ekspor** tidak punya entri menu sendiri (hanya tautan dari halaman Kalibrasi dan Alat). | Pengguna bisa tidak menemukannya; fasilitator menunjukkan jalannya dan mencatat. | Entri menu (seed + migrasi backend) bila UAT memintanya. |
 | **C-4** | Halaman **Impor dump SQL** menyatakan tahap 2 "belum tersedia", walau rute transformasi (`POST /admin/upstream-sql-imports/:id/transform`) sudah ada dan langkah-langkahnya sedang dibangun (P24-02). | OP-02 menerima tahap 1 saja. | Tombol transformasi di halaman setelah P24-02 selesai. |
