@@ -87,6 +87,16 @@ transform step with a row id, not the bulk load.
 > Base-section definitions are imported **retired** (the platform's neutral base version 1 stays the
 > live checklist); `mst_rekomendasi_hasil_pekerjaan` is quarantined `session_header_value`.
 
+> **As built (P24-02d, ADR-129 Am. 6, 2026-10-13):** step 5 publishes ONE version per device type from
+> the five `mapping_*` tables on the transform connection — draft, type items copied from their
+> definitions in upstream id order, the base's published items materialised, the previous version
+> retired, `content_hash` by the contracts' `canonicalTemplateVersion`, publisher
+> `system:upstream-transform`. Duplicate pairs collapse to the lowest id. A re-run publishes the next
+> version only when the content changed (a fingerprint over definitions, not row hashes). Quarantined:
+> `reference_unresolved` (type or item not imported / not active), `item_content_incomplete` (an item
+> the catalogue's publish would refuse), `template_operator_managed` (the operator owns the checklist).
+> The step writes its own CREATE / APPROVE audit rows; step 13 skips the template tables.
+
 ### 3.2 Normalisation
 
 `btrim` everything; empty string → NULL; collapse inner whitespace in names; case-insensitive

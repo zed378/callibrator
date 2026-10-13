@@ -16,7 +16,7 @@ import {
   planFacilities,
   runClientFacilities,
 } from "../../../services/upstreamImport/transform/clientFacilities";
-import { RESOURCE_TYPES, runAuditRows } from "../../../services/upstreamImport/transform/auditRows";
+import { RESOURCE_TYPES, STEP_AUDITED, runAuditRows } from "../../../services/upstreamImport/transform/auditRows";
 import { TransformFailure } from "../../../services/upstreamImport/transform/failure";
 import { TransformFailure as RunnerTransformFailure } from "../../../services/upstreamImport/transform/runner";
 import { stagedTableExists } from "../../../services/upstreamImport/transform/ledger";
@@ -310,7 +310,9 @@ describe("P24-02a the audit step", () => {
     expect(call?.text).toContain("WHERE m.import_run_id = $1 AND m.updated_at = now() AND (m.tenant_id = $2 OR m.tenant_id IS NULL)");
     expect(call?.text).toContain("CASE WHEN bool_or(m.imported_at = now()) THEN 'CREATE' ELSE 'UPDATE' END");
     expect(call?.text).not.toMatch(/legacy_id|source_values/);
-    const tables = Object.keys(RESOURCE_TYPES);
+    // P24-02d: the template tables write their own audit rows (templates.ts); step 13 skips them.
+    const tables = Object.keys(RESOURCE_TYPES).filter((t) => !STEP_AUDITED.has(t));
+    expect(tables).not.toContain("inspection_template_items");
     expect(call?.bind).toEqual([RUN, TENANT, PLATFORM_TENANT_ID, "system:upstream-transform", tables, tables.map((t) => RESOURCE_TYPES[t])]);
     expect(call?.transaction).toBe(TX);
   });
