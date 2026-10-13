@@ -45,6 +45,8 @@ import type SessionServiceModule from "./session.service";
 import type MfaServiceModule from "./mfa.service";
 // N-01: the one super-admin predicate (both spellings).
 import { isSuperAdminRoleName, SUPER_ADMIN_ROLE_NAMES } from "../utils/role.util";
+import { assertTenantForRole } from "../utils/tenantRequired.util";
+import { CodedError } from "../utils/codedError.util";
 import { tenantStorage } from "../middlewares/tenantContext.middleware";
 import { facilityBindingEnabled } from "../config/facility";
 import { FACILITY_BOUND_ROLES } from "../constants/facilityAccess";
@@ -916,6 +918,10 @@ const userRoleUpdate = async (input: MutationInput & { updatedBy?: string | null
       };
     }
 
+    // A-369 (ADR-075 Am. 1): a tenant-less account (a super admin) given any
+    // other role would sign in to a session no request accepts.
+    assertTenantForRole(user.tenantId, role);
+
     if (user.roleId === role.id) { // the attribute; `role_id` is gone (A-148)
       throw {
         status: 400,
@@ -978,6 +984,11 @@ const userRoleUpdate = async (input: MutationInput & { updatedBy?: string | null
       roleId,
       updatedBy,
     });
+
+    // A-369: a coded refusal keeps its `code` (controllerWrapper sends it top level).
+    if (caught instanceof CodedError) {
+      throw caught;
+    }
 
     throw {
       /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built: 0 / "" fall back */
@@ -1070,6 +1081,12 @@ const userCreate = async (input: MutationInput & { createdBy?: string | null }):
     }
 
     const boundTo = await resolveCreateBinding(effectiveTenantId, requestedFacility, role.name, transaction);
+
+    // A-369 (ADR-075 Am. 1): a super admin who names no tenant may create
+    // only another super admin. Any other tenant-less account signed in and
+    // then answered 401 "Invalid session" on every request. (After the
+    // binding: a facility named without a tenant stays the G-17 404.)
+    assertTenantForRole(effectiveTenantId, role);
 
     const hashedPassword = await hashPassword(password);
     // A-215: the administrator's password expires (TEMPORARY_PASSWORD_TTL_MS).
@@ -1206,6 +1223,11 @@ const userCreate = async (input: MutationInput & { createdBy?: string | null }):
       roleId,
       createdBy,
     });
+
+    // A-369: a coded refusal keeps its `code` (controllerWrapper sends it top level).
+    if (caught instanceof CodedError) {
+      throw caught;
+    }
 
     throw {
       /* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- as built: 0 / "" fall back */

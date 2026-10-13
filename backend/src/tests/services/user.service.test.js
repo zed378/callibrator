@@ -284,6 +284,8 @@ describe("user.service", () => {
   describe("userRoleUpdate", () => {
     const makeMockUser = (overrides = {}) => ({
       get: () => ({ id: U1, role_id: OLD_ROLE, ...overrides }),
+      // A-369: a tenant role needs a tenant (a tenant-less account is refused).
+      tenantId: "tenant-a369",
       update: jest.fn().mockResolvedValue({}),
     });
 
@@ -325,6 +327,7 @@ describe("user.service", () => {
       const mockUser = {
         get: () => ({ id: U1, roleId: SAME_ROLE }),
         roleId: SAME_ROLE, // the attribute; `role_id` is gone (A-148)
+        tenantId: "tenant-a369", // A-369
         update: jest.fn().mockResolvedValue({}),
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);

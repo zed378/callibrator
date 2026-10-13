@@ -189,8 +189,9 @@ describe("A-72: a successful login writes one LOGIN audit row", () => {
     ).rejects.toThrow("audit insert failed");
   });
 
+  // A-369 (ADR-075 Am. 1): the only account that signs in with no tenant is a super admin's.
   it("a user with no tenant logs in with an error log instead of a row (tenant_id is NOT NULL)", async () => {
-    Users.findOne.mockResolvedValue(userRow({ tenantId: null }));
+    Users.findOne.mockResolvedValue(userRow({ tenantId: null, role: { id: "r-sa", name: "SUPERADMIN", roleLevel: 100 } }));
     comparePassword.mockResolvedValue(true);
 
     const result = await authService.loginUser({ user: "ada", password: "Right-password-1" });

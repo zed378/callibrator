@@ -720,6 +720,9 @@ describe("auth.service (coverage)", () => {
         email: "ada@example.com",
         password: "hashed",
         isActive: true,
+        // A-369: a role-less account needs a tenant to sign in.
+        tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" },
         failedLoginAttempts: 0,
         lockedUntil: null,
         role: null,

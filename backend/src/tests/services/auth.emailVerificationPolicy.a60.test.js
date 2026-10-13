@@ -100,13 +100,13 @@ describe("A-60 / Q-11 — an unverified address does not gate sign-in (ADR-075)"
     );
   });
 
-  it("a self-registered account (no tenant) that never followed its link signs in — into nothing: no tenant, no audit trail to write", async () => {
-    Users.findOne.mockResolvedValue(userRow({ tenantId: null, tenant: null, role: { id: "r", name: "USER", roleLevel: 1 } }));
+  // A-369 (ADR-075 Am. 1): this case used to sign in "into nothing" — a session every
+  // request then refused with 401 "Invalid session". It is now refused at sign-in for having
+  // no tenant, verified or not: the address is still not what is checked.
+  it.each([false, true])("a self-registered account (no tenant) is refused for having no tenant, not for its address (verified: %s)", async (isEmailVerified) => {
+    Users.findOne.mockResolvedValue(userRow({ isEmailVerified, tenantId: null, tenant: null, role: { id: "r", name: "USER", roleLevel: 1 } }));
 
-    const result = await passwordLogin();
-
-    expect(result.status).toBe(200);
-    expect(result.data.tenantId).toBeNull();
+    await expect(passwordLogin()).rejects.toMatchObject({ status: 403, publicCode: "ACCOUNT_HAS_NO_TENANT" });
   });
 
   it("the answer is the same whether or not the address is verified — the flag is not disclosed at sign-in", async () => {
