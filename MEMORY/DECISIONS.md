@@ -11119,6 +11119,7 @@ The offline outbox replays exactly such refused requests, so any client could ta
 
 - `middlewares/idempotency.doubleWrite.test.ts` runs over a real Express server. It covers 400, 409 and 500, each twice under the key; a double writer; a direct second writer; a settle failure; an unserialisable body; and a success.
 - It **fails 7 of 7 on the old middleware** ("Cannot set headers after they are sent to the client") and passes 7 of 7 after the fix.
+- **Live (2026-10-13):** on a disposable production-mode stack built from `f2a2d70`, a 409 (duplicate serial), a 400 (incomplete submit) and a 409 `IPM_REVISION_CONFLICT`, each sent twice under one key, left the backend running with RestartCount 0 and no `ERR_HTTP_HEADERS_SENT` in its log ([record](records/2026-10-13-live-verification-debt.md)).
 
 ---
 

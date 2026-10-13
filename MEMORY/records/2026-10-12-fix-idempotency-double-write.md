@@ -50,7 +50,7 @@ No other double-write or rejection path was found.
   - `typecheck`: 0 errors
   - `ratchet`: 695
   - `load:check`: OK in dist and src
-- **Not done:** a live check on a throwaway compose stack that the container survives. This card ran no image build; the coordinator's stack is the place to re-run the reproduction.
+- **Not done:** a live check on a throwaway compose stack that the container survives. This card ran no image build; the coordinator's stack is the place to re-run the reproduction. **Done since, 2026-10-13:** [live verification record](./2026-10-13-live-verification-debt.md).
 
 ## Files
 
