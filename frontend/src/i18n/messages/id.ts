@@ -1914,6 +1914,13 @@ export const id = {
   "devices.publicLink.download": "Unduh stiker (PNG)",
   "devices.publicLink.qrFailed": "Kode QR tidak dapat dibuat di peramban ini. Salin tautannya.",
   "devices.publicLink.close": "Tutup",
+  "devices.sticker.policy.title": "Kapan stiker diganti",
+  "devices.sticker.policy.replace": "Ganti tautan dan cetak stiker baru bila stiker rusak, tidak terbaca atau hilang, atau bila tautannya mungkin tersebar di luar alat (foto yang dipublikasikan, penyalahgunaan).",
+  "devices.sticker.policy.keep": "Stiker tetap dipakai bila alat pindah ruangan atau fasilitas, atau kalibrasinya berubah: halaman membaca catatan alat yang terkini.",
+  "devices.sticker.policy.retired": "Stiker tetap dipasang pada alat yang sudah tidak dipakai: halamannya menyatakan alat itu tidak dipakai lagi dan tidak boleh digunakan.",
+  "devices.sticker.policy.deleted": "Menghapus alat mencabut tautannya; memulihkan alat tidak mengembalikan tautan, jadi alat perlu stiker baru.",
+  "devices.sticker.policy.remove": "Lepas stiker lama saat memasang yang baru: tautan yang sudah diganti menampilkan “tidak ditemukan”.",
+  "devices.sticker.policy.legacy": "Alat yang hanya memiliki stiker lama mendapat stiker baru pada kunjungan berikutnya; stiker lama dilepas saat itu.",
 } as const;
 
 /** Every key the public dictionaries carry. */

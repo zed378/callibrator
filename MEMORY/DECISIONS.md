@@ -12513,6 +12513,57 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 **Implications, including the bad ones.** A monitoring check cannot tell a dead sticker from a live one by HTTP status; it must read the API. A print from a browser without print CSS support prints the whole dialog.
 
+### ADR-138 Amendment 4 (2026-10-13, P27-03): the sticker's final layout and the re-stickering policy
+
+**Status:** Accepted, BUILT (frontend only) under the owner's standing delegation; the owner may revise the label size or its contents · **Card:** P27-03 · **Record:** [`records/2026-10-13-p27-03-sticker-layout.md`](./records/2026-10-13-p27-03-sticker-layout.md)
+
+**Decision.**
+1. **One label, 60 × 40 mm** (a common thermal-label size; one constant in `stickerLayout.ts` and the `@page sticker-label` rule change it). The QR (33 mm, error correction M, 2-module quiet zone; ~0.9 mm a module for a `/d/<token>` link) on the left; on the right the caption, the device's name (at most three lines, then cut with "…"), and a footer with the device's **QR number** and the **issue day** (`YYYY-MM-DD`).
+2. **The caption is bilingual on every label** ("Pindai untuk status kalibrasi" / "Scan for calibration status", Indonesian first), whatever the interface language: a sticker outlives the language of the person who printed it.
+3. **The QR number is printed as text** so staff can find the device in the app (ADR-132: the number stays a staff lookup). It is physically on the device, as the old sticker's was; no public page answers it, so it is no remote enumeration key. **The link is not printed as text**: the QR is the way in, and a typed-out token gives a reader nothing the QR does not.
+4. **The issue day** tells a current sticker from a replaced one without scanning it.
+5. **Made in the browser, nothing stored** (Am. 3 § 3 kept): the on-screen label is HTML in millimetres; **Print** renders it into a `.sticker-print-root` child of `<body>` and lays it alone on a named page of the label's size (margin 0); **Download** is the label drawn module by module on a canvas at **300 dpi** (709 × 472 px). Without a 2-D canvas the download is the plain QR, as before.
+6. **Paper and ink are tokens that do not flip with the theme** (`--label-paper`, `--label-ink`): the on-screen label is a picture of the physical one, black on white in both themes.
+7. **The re-stickering policy** (stated in the panel, ID/EN): replace the link and print a new sticker when the sticker is damaged, unreadable or lost, or its link may have been shared beyond the device; **keep** it when the device moves room or facility or its calibration changes (the page reads the current record), and on a **retired** device (its page says so); a **deleted** device's link is revoked and reinstating does not restore it; **remove the old sticker** when applying a new one; a device carrying only a **legacy sticker gets a new one at its next visit**.
+
+**Left open (owner):** what a legacy sticker encodes (**OA-4**) and so which legacy branch applies (**UD-16**, P27-01/02). Nothing here depends on either: the new sticker is the same whatever the old one carries. Not built: a **sheet of many labels** for a re-stickering campaign (a batch issue would mint many tokens in one act; recorded as a follow-up for when the campaign is planned, P27-04), and reading a `/d/` link in the staff app's QR lookup (P27-02's scanner entry).
+
+**Alternatives considered.** 50 × 30 mm (rejected: the text column falls to ~18 mm and the name to ~10 characters a line). The link printed under the QR (rejected: it is a bearer credential with no use as text, and it costs a line). The interface language only (rejected: a sticker cannot switch language). A server-rendered PDF label (rejected: the owner's no-stored-files rule, and the token would travel to the server again). Printing through `visibility` on the dialog (the P22-08 interim; rejected: the page keeps the app's size and margins, so a label printer feeds a whole sheet).
+
+**Implications, including the bad ones.** A browser without named-page support (`page:`) prints the label on its default page size. A name longer than three lines is cut on the label (the page shows it in full). Printing the QR number puts the staff key on the device, as before; anyone at the device can read it, and only a signed-in staff lookup answers it.
+
+### ADR-138 Amendment 5 (2026-10-13, Am. 2 § 3's open item): every logged URL loses its query tokens — one redaction for the access log, the activity log and any log record's URL field
+
+**Why an amendment.** Am. 2 § 3 changed only the public device path and left the access log writing query strings as they arrived. That covers the verification links (`?token=` on the API, `?t=` on the printed page), the invitation and activation links (`?token=`), and the signed attachment URLs. The Referer header carries the same tokens on every request a page opened from such a link makes. The activity log redacted sensitive query keys in its request lines, but not `?t=`, not a token under an innocuous key, and not the `url` field that the error handler and the access refusals log through winston.
+
+**Decision.**
+
+1. **One function, `utils/logUrl.util.redactUrlForLog`.** It depends on nothing but `crypto`, so the access log loads it without winston (Am. 2's out-of-memory reason). It does two things:
+   - It hashes the public device path token, as before.
+   - It replaces a query value with `[REDACTED]` when its **key** is sensitive or when its **value** looks like a token. A sensitive key is one of: the log's key list (`token`, `secret`, `password`, `…link`, …); `code` or `pin`; `state`; or a short capability key (`t`, `k`, `sig`, `signature`, `hmac`, `nonce`, `ticket`, `key`, `auth`, `jwt`). A token-looking value is 24 or more base64url or hex characters, containing a letter and a digit, and not a UUID.
+   - The key list, the code key and the marker move into the util. The activity log imports them, so there is one definition for both logs.
+2. **The access log** writes `:safe-url` and a new `:safe-referrer` (absent → `-`) instead of morgan's raw `:referrer`.
+3. **The activity log.** `sanitizeUrl` is the util, plus the e-mail mask (A-228). `redactFormat` now applies it to **any** record field named `url`, `originalUrl`, `referer` or `referrer`, which covers the error handler and the access refusals.
+4. **Idempotent.** A path segment already redacted (`~…`) is not hashed again, so a URL sanitised twice keeps its correlation prefix.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Key rules only | a token under an unforeseen key (`?ref=`, a bare `?<token>`) would still be written |
+| Value rule only | short tokens such as `?t=abc` and one-time codes fall below any safe length |
+| Redact every query value | the request log loses filters, pages and ids that diagnosis needs |
+| Hash query tokens as the path token is hashed | no request is correlated by a query token, and a hash of a short code can be brute-forced |
+| Leave the Referer raw | a page opened from a verification link leaks its token into every following line |
+
+**Implications, including the bad ones.**
+
+- A long alphanumeric search term (24 or more letters and digits, no space) is redacted in logs. The request still works; only its log line loses the value.
+- UUIDs stay readable on purpose, so a UUID used as a capability somewhere would be logged. None is used that way today: the capability tokens are base64url.
+- nginx's own logs are unchanged (Am. 3 § 2 covers its path markers only).
+
+**`docs/` amended:** none. Logging redaction is described in this ADR and the A-14 / A-228 records.
+
 ---
 
 End of ADRs. Update this document as new decisions are made, and record a deviation as an ADR rather than editing a `docs/` document quietly.

@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — The device sticker's final label and when to replace it (P27-03) ([record](./records/2026-10-13-p27-03-sticker-layout.md); ADR-138 Am. 4)
+- **Changed:** a device's sticker is now a finished 60 × 40 mm label: the QR, "Pindai untuk status kalibrasi / Scan for calibration status", the device's name, its QR number and the day it was issued. Print gives exactly one label on a label-sized page; Download gives the label as a 300 dpi image. It is still made in the browser and nothing is saved.
+- **Added:** the public-link panel says when a sticker should be replaced and when it should be kept, in Indonesian and English.
+
 ### 2026-10-13 — Faded text removed where it failed contrast; a guard keeps it out ([record](./records/2026-10-13-contrast-text-opacity.md))
 - **Fixed:** on the access-request queue, the count on the selected status tab was faded below the contrast minimum; it is now full strength. The same kind of fade is gone from the "start a new IPM" link's hover, the avatar "Remove" button and two text buttons.
 - **Added (tests):** a guard fails the build on text faded with opacity or a translucent text colour; the browser accessibility suite now also checks the operator's access-request queue, in both themes.
