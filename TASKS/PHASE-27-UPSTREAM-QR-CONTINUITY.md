@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 1 TODO (**P27-03**, unblocked 2026-10-13 by P22-08) · 3 BLOCKED (P27-01/02 on OA-4, the sticker scan; P27-04 on P27-02) — UD-15 is decided (ADR-138) |
+| **Status** | 1 DONE in code (**P27-03**, 2026-10-13, ADR-138 Am. 4) · 3 BLOCKED (P27-01/02 on OA-4, the sticker scan; P27-04 on P27-02) — UD-15 is decided (ADR-138) |
 | **Goal** | Existing stickers keep resolving; new stickers carry a capability token |
 | **Depends on** | Phase 19, Phase 22 |
 | **Size** | S–M |
@@ -29,5 +29,5 @@ facility name, free text, file name, credential) enters the repository — in fu
 |---|---|---|---|
 | P27-01 | Establish what the stickers encode | BLOCKED (owner) | OA-4 |
 | P27-02 | Legacy resolver: in-app QR lookup for signed-in staff; redirect from the old host if stickers carry URLs (rate-limited, minimal view) | BLOCKED | P27-01, UD-16 |
-| P27-03 | New stickers with capability tokens: print layout, re-stickering policy | **TODO** (unblocked 2026-10-13: P22-08 built the token issue and an interim in-browser sticker, ADR-138 Am. 3 § 3) | P22-08 |
+| P27-03 | New stickers with capability tokens: print layout, re-stickering policy | **DONE in code 2026-10-13** (ADR-138 Am. 4): the 60 × 40 mm label made in the browser (print on a label-sized page, 300 dpi PNG), bilingual caption, QR number + issue day; the re-stickering policy in the panel — [record](../MEMORY/records/2026-10-13-p27-03-sticker-layout.md). Open: OA-4 / UD-16 (P27-01/02), a batch label sheet, real-phone scans (P27-04) | P22-08 |
 | P27-04 | Sticker-scan test with real phones, legacy and new | BLOCKED | P27-02, 03 |

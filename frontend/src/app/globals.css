@@ -73,6 +73,8 @@
   --color-sidebar: var(--sidebar);
   --color-scrim: var(--scrim);
   --color-scrim-foreground: var(--scrim-foreground);
+  --color-label-paper: var(--label-paper);
+  --color-label-ink: var(--label-ink);
   --color-status-current: var(--status-current);
   --color-status-current-foreground: var(--status-current-foreground);
   --color-status-attention: var(--status-attention);
@@ -161,6 +163,10 @@
   /* Ink on a scrim laid over a user's photo (avatar / cover-image controls):
      the scrim is dark in both themes, so this is paper in both. */
   --scrim-foreground: #fffdf9;
+  /* P27-03 (ADR-138 Am. 4): the printed device sticker's paper and ink. Not redefined under .dark:
+     the on-screen sticker is a picture of the physical label, black on white in either theme. */
+  --label-paper: #ffffff;
+  --label-ink: #000000;
   --ring: var(--primary);
 }
 
@@ -764,19 +770,29 @@ body {
   }
 }
 
-/* P22-08 (ADR-138): printing a device's public-link sticker — only the sticker section prints
-   (PublicLinkDialog adds `sticker-print` to <body> around window.print()). */
+/* P22-08, P27-03 (ADR-138 Am. 3 § 3, Am. 4): printing a device's sticker. PublicLinkDialog renders
+   the label into a `.sticker-print-root` child of <body> and adds `sticker-print` to <body> around
+   window.print(): no other child of <body> prints, and the root is laid out on a named page the
+   size of the label (60 x 40 mm, margin 0), so a label printer gets exactly one label. */
+.sticker-print-root {
+  display: none;
+}
+@page sticker-label {
+  size: 60mm 40mm;
+  margin: 0;
+}
 @media print {
-  body.sticker-print * {
-    visibility: hidden;
+  body.sticker-print > :not(.sticker-print-root) {
+    display: none !important;
   }
-  body.sticker-print .sticker-printable,
-  body.sticker-print .sticker-printable * {
-    visibility: visible;
+  body.sticker-print > .sticker-print-root {
+    display: block;
+    page: sticker-label;
   }
-  body.sticker-print .sticker-printable {
-    position: fixed;
-    inset: 0;
+  body.sticker-print .sticker-label {
     border: none;
+    border-radius: 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }

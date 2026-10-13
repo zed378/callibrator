@@ -1899,4 +1899,11 @@ export const en: Messages = {
   "devices.publicLink.download": "Download the sticker (PNG)",
   "devices.publicLink.qrFailed": "The QR code cannot be made in this browser. Copy the link.",
   "devices.publicLink.close": "Close",
+  "devices.sticker.policy.title": "When to replace a sticker",
+  "devices.sticker.policy.replace": "Replace the link and print a new sticker when the sticker is damaged, unreadable or lost, or when its link may have been shared beyond the device (a published photo, misuse).",
+  "devices.sticker.policy.keep": "Keep the sticker when the device moves to another room or facility, or its calibration changes: the page reads the device’s current record.",
+  "devices.sticker.policy.retired": "Keep the sticker on a retired device: its page says it is retired and must not be used.",
+  "devices.sticker.policy.deleted": "Deleting a device revokes its link; reinstating it does not bring the link back, so it needs a new sticker.",
+  "devices.sticker.policy.remove": "Remove the old sticker when you apply a new one: a replaced link shows “not found”.",
+  "devices.sticker.policy.legacy": "A device that carries only an old sticker gets a new one at its next visit; the old sticker is removed then.",
 };
