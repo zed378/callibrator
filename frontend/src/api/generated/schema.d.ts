@@ -912,7 +912,7 @@ export interface paths {
         put?: never;
         /**
          * Sign in with a password
-         * @description With MFA, the answer is the MFA step: `data.mfaRequired` and an MFA `token` for POST /auth/mfa/login (no refresh token, no session). The tenant's sign-in policy (IP allowlist, geofence from `location`) refuses with a 403. Throttled (A-67) and budgeted (ADR-100): a spent budget or a locked-out caller is a 429.
+         * @description With MFA, the answer is the MFA step: `data.mfaRequired` and an MFA `token` for POST /auth/mfa/login (no refresh token, no session). The tenant's sign-in policy (IP allowlist, geofence from `location`) refuses with a 403; an account with no tenant is a 403 `ACCOUNT_HAS_NO_TENANT` (A-369). Throttled (A-67) and budgeted (ADR-100): a spent budget or a locked-out caller is a 429.
          */
         post: operations["login"];
         delete?: never;
@@ -1106,7 +1106,7 @@ export interface paths {
         put?: never;
         /**
          * Finish a passkey sign-in
-         * @description Public. The assertion must carry user verification; a user-verifying passkey counts as MFA (Q-46), so no TOTP step follows. Every failure before the account is proven is the one 401 `Invalid credentials`; a suspended account or tenant 403, a locked account 423, a paused one 429 — as the password sign-in.
+         * @description Public. The assertion must carry user verification; a user-verifying passkey counts as MFA (Q-46), so no TOTP step follows. Every failure before the account is proven is the one 401 `Invalid credentials`; a suspended account or tenant 403, an account with no tenant 403 `ACCOUNT_HAS_NO_TENANT` (A-369), a locked account 423, a paused one 429 — as the password sign-in.
          */
         post: operations["passkeySignIn"];
         delete?: never;
@@ -8301,7 +8301,7 @@ export interface paths {
         put?: never;
         /**
          * Create a user
-         * @description Never a SUPERADMIN account. Counts against the plan's seats (enforceSeatQuota). Audited (A-77).
+         * @description Never a SUPERADMIN account; a non-platform role needs a tenant (400 `TENANT_REQUIRED`, A-369). Counts against the plan's seats (enforceSeatQuota). Audited (A-77).
          *
          *     **409** — The username or email is already an account (a caller's conflicts are budgeted: past the budget, 429).
          */
@@ -8385,7 +8385,7 @@ export interface paths {
         put?: never;
         /**
          * Change a user's role
-         * @description Never to SUPERADMIN or an inactive role. Audited in the service's transaction (A-77).
+         * @description Never to SUPERADMIN or an inactive role; a non-platform role needs a tenant (400 `TENANT_REQUIRED`, A-369). Audited in the service's transaction (A-77).
          *
          *     **409** — The user already has this role.
          */
@@ -17379,7 +17379,44 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["Forbidden"];
+            /** @description Refused by the tenant's sign-in policy or a suspension, or (top-level `code` `ACCOUNT_HAS_NO_TENANT`, A-369) the account belongs to no tenant: refused after the credential, before any token, session or one-time password. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "status": 403,
+                     *       "message": "This account is not assigned to an organisation, so it cannot sign in. Ask an administrator to assign it.",
+                     *       "data": null,
+                     *       "code": "ACCOUNT_HAS_NO_TENANT"
+                     *     }
+                     */
+                    "application/json": {
+                        /** @constant */
+                        success: false;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: null;
+                        /** @description Field errors of a validation 400. Present outside production only. */
+                        details?: {
+                            /** @description The path of the offending field, joined by dots */
+                            field: string;
+                            message: string;
+                        }[];
+                        /** @description On a generic 500 in production: quote it to support; it is in the server log */
+                        requestId?: string;
+                        /**
+                         * @description `ACCOUNT_HAS_NO_TENANT` when the account belongs to no tenant; absent on the status's other refusals
+                         * @enum {string}
+                         */
+                        code?: "ACCOUNT_HAS_NO_TENANT";
+                    };
+                };
+            };
             429: components["responses"]["RateLimited"];
         };
     };
@@ -17776,7 +17813,44 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
-            403: components["responses"]["Forbidden"];
+            /** @description Refused by the tenant's sign-in policy or a suspension, or (top-level `code` `ACCOUNT_HAS_NO_TENANT`, A-369) the account belongs to no tenant: refused after the credential, before any token, session or one-time password. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "status": 403,
+                     *       "message": "This account is not assigned to an organisation, so it cannot sign in. Ask an administrator to assign it.",
+                     *       "data": null,
+                     *       "code": "ACCOUNT_HAS_NO_TENANT"
+                     *     }
+                     */
+                    "application/json": {
+                        /** @constant */
+                        success: false;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: null;
+                        /** @description Field errors of a validation 400. Present outside production only. */
+                        details?: {
+                            /** @description The path of the offending field, joined by dots */
+                            field: string;
+                            message: string;
+                        }[];
+                        /** @description On a generic 500 in production: quote it to support; it is in the server log */
+                        requestId?: string;
+                        /**
+                         * @description `ACCOUNT_HAS_NO_TENANT` when the account belongs to no tenant; absent on the status's other refusals
+                         * @enum {string}
+                         */
+                        code?: "ACCOUNT_HAS_NO_TENANT";
+                    };
+                };
+            };
             429: components["responses"]["RateLimited"];
         };
     };
@@ -36346,7 +36420,44 @@ export interface operations {
                     };
                 };
             };
-            400: components["responses"]["ValidationError"];
+            /** @description The request failed validation, or (top-level `code` `TENANT_REQUIRED`, A-369) the account would have a non-platform role and no tenant — only a super admin account exists without one. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "status": 400,
+                     *       "message": "Choose the organisation this account belongs to. Only a super admin account can exist without one.",
+                     *       "data": null,
+                     *       "code": "TENANT_REQUIRED"
+                     *     }
+                     */
+                    "application/json": {
+                        /** @constant */
+                        success: false;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: null;
+                        /** @description Field errors of a validation 400. Present outside production only. */
+                        details?: {
+                            /** @description The path of the offending field, joined by dots */
+                            field: string;
+                            message: string;
+                        }[];
+                        /** @description On a generic 500 in production: quote it to support; it is in the server log */
+                        requestId?: string;
+                        /**
+                         * @description `TENANT_REQUIRED` when the account would have a non-platform role and no tenant; absent on the status's other refusals
+                         * @enum {string}
+                         */
+                        code?: "TENANT_REQUIRED";
+                    };
+                };
+            };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -36542,7 +36653,44 @@ export interface operations {
                     };
                 };
             };
-            400: components["responses"]["ValidationError"];
+            /** @description The request failed validation, or (top-level `code` `TENANT_REQUIRED`, A-369) the account would have a non-platform role and no tenant — only a super admin account exists without one. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "success": false,
+                     *       "status": 400,
+                     *       "message": "Choose the organisation this account belongs to. Only a super admin account can exist without one.",
+                     *       "data": null,
+                     *       "code": "TENANT_REQUIRED"
+                     *     }
+                     */
+                    "application/json": {
+                        /** @constant */
+                        success: false;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: null;
+                        /** @description Field errors of a validation 400. Present outside production only. */
+                        details?: {
+                            /** @description The path of the offending field, joined by dots */
+                            field: string;
+                            message: string;
+                        }[];
+                        /** @description On a generic 500 in production: quote it to support; it is in the server log */
+                        requestId?: string;
+                        /**
+                         * @description `TENANT_REQUIRED` when the account would have a non-platform role and no tenant; absent on the status's other refusals
+                         * @enum {string}
+                         */
+                        code?: "TENANT_REQUIRED";
+                    };
+                };
+            };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

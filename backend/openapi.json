@@ -6681,7 +6681,7 @@
         },
         "x-source": "code-first: src/routes/api/auth.openapi.ts",
         "x-public": true,
-        "description": "With MFA, the answer is the MFA step: `data.mfaRequired` and an MFA `token` for POST /auth/mfa/login (no refresh token, no session). The tenant's sign-in policy (IP allowlist, geofence from `location`) refuses with a 403. Throttled (A-67) and budgeted (ADR-100): a spent budget or a locked-out caller is a 429.",
+        "description": "With MFA, the answer is the MFA step: `data.mfaRequired` and an MFA `token` for POST /auth/mfa/login (no refresh token, no session). The tenant's sign-in policy (IP allowlist, geofence from `location`) refuses with a 403; an account with no tenant is a 403 `ACCOUNT_HAS_NO_TENANT` (A-369). Throttled (A-67) and budgeted (ADR-100): a spent budget or a locked-out caller is a 429.",
         "requestBody": {
           "required": true,
           "content": {
@@ -6840,7 +6840,78 @@
             "$ref": "#/components/responses/Unauthenticated"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "Refused by the tenant's sign-in policy or a suspension, or (top-level `code` `ACCOUNT_HAS_NO_TENANT`, A-369) the account belongs to no tenant: refused after the credential, before any token, session or one-time password.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "status": 403,
+                  "message": "This account is not assigned to an organisation, so it cannot sign in. Ask an administrator to assign it.",
+                  "data": null,
+                  "code": "ACCOUNT_HAS_NO_TENANT"
+                },
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "details": {
+                      "description": "Field errors of a validation 400. Present outside production only.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "description": "The path of the offending field, joined by dots"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "requestId": {
+                      "description": "On a generic 500 in production: quote it to support; it is in the server log",
+                      "type": "string"
+                    },
+                    "code": {
+                      "description": "`ACCOUNT_HAS_NO_TENANT` when the account belongs to no tenant; absent on the status's other refusals",
+                      "type": "string",
+                      "enum": [
+                        "ACCOUNT_HAS_NO_TENANT"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7766,7 +7837,7 @@
         },
         "x-source": "code-first: src/routes/api/authPublic.openapi.ts",
         "x-public": true,
-        "description": "Public. The assertion must carry user verification; a user-verifying passkey counts as MFA (Q-46), so no TOTP step follows. Every failure before the account is proven is the one 401 `Invalid credentials`; a suspended account or tenant 403, a locked account 423, a paused one 429 — as the password sign-in.",
+        "description": "Public. The assertion must carry user verification; a user-verifying passkey counts as MFA (Q-46), so no TOTP step follows. Every failure before the account is proven is the one 401 `Invalid credentials`; a suspended account or tenant 403, an account with no tenant 403 `ACCOUNT_HAS_NO_TENANT` (A-369), a locked account 423, a paused one 429 — as the password sign-in.",
         "requestBody": {
           "required": true,
           "content": {
@@ -7907,7 +7978,78 @@
             "$ref": "#/components/responses/Unauthenticated"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "description": "Refused by the tenant's sign-in policy or a suspension, or (top-level `code` `ACCOUNT_HAS_NO_TENANT`, A-369) the account belongs to no tenant: refused after the credential, before any token, session or one-time password.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "status": 403,
+                  "message": "This account is not assigned to an organisation, so it cannot sign in. Ask an administrator to assign it.",
+                  "data": null,
+                  "code": "ACCOUNT_HAS_NO_TENANT"
+                },
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "details": {
+                      "description": "Field errors of a validation 400. Present outside production only.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "description": "The path of the offending field, joined by dots"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "requestId": {
+                      "description": "On a generic 500 in production: quote it to support; it is in the server log",
+                      "type": "string"
+                    },
+                    "code": {
+                      "description": "`ACCOUNT_HAS_NO_TENANT` when the account belongs to no tenant; absent on the status's other refusals",
+                      "type": "string",
+                      "enum": [
+                        "ACCOUNT_HAS_NO_TENANT"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -66286,7 +66428,7 @@
           "action": "create",
           "superAdmin": "bypasses"
         },
-        "description": "Never a SUPERADMIN account. Counts against the plan's seats (enforceSeatQuota). Audited (A-77).\n\n**409** — The username or email is already an account (a caller's conflicts are budgeted: past the budget, 429).",
+        "description": "Never a SUPERADMIN account; a non-platform role needs a tenant (400 `TENANT_REQUIRED`, A-369). Counts against the plan's seats (enforceSeatQuota). Audited (A-77).\n\n**409** — The username or email is already an account (a caller's conflicts are budgeted: past the budget, 429).",
         "requestBody": {
           "required": true,
           "content": {
@@ -66412,7 +66554,78 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/ValidationError"
+            "description": "The request failed validation, or (top-level `code` `TENANT_REQUIRED`, A-369) the account would have a non-platform role and no tenant — only a super admin account exists without one.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "status": 400,
+                  "message": "Choose the organisation this account belongs to. Only a super admin account can exist without one.",
+                  "data": null,
+                  "code": "TENANT_REQUIRED"
+                },
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "details": {
+                      "description": "Field errors of a validation 400. Present outside production only.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "description": "The path of the offending field, joined by dots"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "requestId": {
+                      "description": "On a generic 500 in production: quote it to support; it is in the server log",
+                      "type": "string"
+                    },
+                    "code": {
+                      "description": "`TENANT_REQUIRED` when the account would have a non-platform role and no tenant; absent on the status's other refusals",
+                      "type": "string",
+                      "enum": [
+                        "TENANT_REQUIRED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -66858,7 +67071,7 @@
           "action": "update",
           "superAdmin": "bypasses"
         },
-        "description": "Never to SUPERADMIN or an inactive role. Audited in the service's transaction (A-77).\n\n**409** — The user already has this role.",
+        "description": "Never to SUPERADMIN or an inactive role; a non-platform role needs a tenant (400 `TENANT_REQUIRED`, A-369). Audited in the service's transaction (A-77).\n\n**409** — The user already has this role.",
         "requestBody": {
           "required": true,
           "content": {
@@ -66924,7 +67137,78 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/ValidationError"
+            "description": "The request failed validation, or (top-level `code` `TENANT_REQUIRED`, A-369) the account would have a non-platform role and no tenant — only a super admin account exists without one.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "success": false,
+                  "status": 400,
+                  "message": "Choose the organisation this account belongs to. Only a super admin account can exist without one.",
+                  "data": null,
+                  "code": "TENANT_REQUIRED"
+                },
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "details": {
+                      "description": "Field errors of a validation 400. Present outside production only.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "description": "The path of the offending field, joined by dots"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "requestId": {
+                      "description": "On a generic 500 in production: quote it to support; it is in the server log",
+                      "type": "string"
+                    },
+                    "code": {
+                      "description": "`TENANT_REQUIRED` when the account would have a non-platform role and no tenant; absent on the status's other refusals",
+                      "type": "string",
+                      "enum": [
+                        "TENANT_REQUIRED"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"

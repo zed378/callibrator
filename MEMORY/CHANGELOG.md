@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — The API reference names the "no organisation" refusals (A-369) ([record](./records/2026-10-13-a369-openapi-codes.md))
+- **Documented:** creating a user or changing a role without an organisation answers 400 with `code` `TENANT_REQUIRED`, and signing in to an account without one answers 403 with `code` `ACCOUNT_HAS_NO_TENANT`; the API reference and the generated frontend types now say so.
+
 ### 2026-10-13 — The SSO timing test no longer waits in real time (A-292) ([record](./records/2026-10-13-a292-sso-timing-fake-clock.md))
 - **Fixed (tests only):** the last real-clock checks of the SSO refusal floor run on the fake clock, so the test cannot fail or time out on a busy machine. No behaviour change.
 

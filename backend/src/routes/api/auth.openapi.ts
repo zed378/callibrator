@@ -20,6 +20,7 @@ import { z } from "zod";
 import { forgotPasswordSchema, firstSignInPasswordSchema, loginSchema, registerSchema, resetPasswordSchema } from "../../validators/auth.validator";
 import { ssoExchangeSchema, ssoLoginSchema } from "../../validators/sso.validator";
 import { defineRouteDocs } from "../../docs/openapi/operation";
+import { accountHasNoTenant403 } from "../../docs/openapi/tenantRequiredErrors";
 import { FACILITY_MODES } from "@callibrator/contracts/clientFacilities";
 
 const own = { kind: "authenticated", reason: "the caller's own account and session" } as const;
@@ -107,12 +108,14 @@ export default defineRouteDocs({
       description:
         "With MFA, the answer is the MFA step: `data.mfaRequired` and an MFA `token` for POST /auth/mfa/login (no " +
         "refresh token, no session). The tenant's sign-in policy (IP allowlist, geofence from `location`) refuses with a " +
-        `403. ${THROTTLED}`,
+        "403; an account with no tenant is a 403 `ACCOUNT_HAS_NO_TENANT` (A-369). " +
+        THROTTLED,
       permission: null,
       audited: true,
       body: loginSchema,
       success: { status: 200, description: "Signed in, or the MFA step", body: signInAnswer(z.union([signedInUser, mfaPending])) },
       errors: [401, 403],
+      errorBodies: { 403: accountHasNoTenant403 },
     },
     {
       method: "post",
