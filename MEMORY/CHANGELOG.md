@@ -8,6 +8,14 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — The upstream transform's register steps (P24-02e) ([record](./records/2026-10-13-p24-02e-register-steps.md), ADR-129 Am. 7)
+- **Added (internal):** the upstream device register is imported into the provider: its calibration laboratories, its rooms (one per facility, room and floor) and its devices, with the QR number in the provider's own format, the condition, the room, the laboratory and who registered each device. A sticker already on another device and a device that changed facility upstream are held back for the operator; the import never moves a device. Migration 0139 gives the transform's database role access to exactly the columns it needs.
+
+### 2026-10-13 — A sticker opens the device's public page (P22-08) ([record](./records/2026-10-13-p22-08-public-device-page.md); ADR-138 Am. 3)
+- **Added:** `/d/<link>` shows a device's name, type, make and model, its facility, its calibration status (in words) and its last IPM date, in Indonesian or English, without needing JavaScript. A retired or overdue device says so plainly. Any link that does not work shows "no device answers to this link". The page is never indexed by search engines.
+- **Added:** in the device register, staff can issue, replace or revoke a device's public link and print or download its QR sticker straight from the browser. The link is shown only once, and nothing is saved on the server.
+- **Changed (operations):** nginx no longer writes a sticker's link in its access log.
+
 ### 2026-10-13 — The Phase 22 pages are covered in a real browser; a capture contrast defect fixed ([record](./records/2026-10-13-p22-browser-coverage.md))
 - **Added (tests):** `automate/p22.browser.mts`, in `make test-browser`, drives the facility, checklist, device-register (with photos), IPM capture, history and report, calibration-date, export and dashboard pages end to end against a running stack, with accessibility checks in both themes and a layout check from phone width to 200 % zoom. The browser accessibility suite (also run in CI) now includes six of these pages.
 - **Fixed:** on the IPM capture, the answered count on the current step was below the contrast minimum; it is now legible.

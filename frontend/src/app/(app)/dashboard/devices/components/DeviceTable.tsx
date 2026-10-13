@@ -8,7 +8,7 @@
  */
 import React from "react";
 import Link from "next/link";
-import { Camera, ClipboardCheck, Edit, ImageOff, Radio, Trash2 } from "lucide-react";
+import { Camera, ClipboardCheck, Edit, ImageOff, QrCode, Radio, Trash2 } from "lucide-react";
 import { Button, StatusBadge } from "@/components/ui";
 import type { RegisterDevice } from "@/api/services/deviceRegister.service";
 import { PhotoThumb } from "./PhotoThumb";
@@ -22,6 +22,8 @@ export interface RowActions {
   edit: boolean;
   remove: boolean;
   iot: boolean;
+  /** P22-08 (ADR-138): the device's public link — unbound staff with `calibration` write, never the platform operator. */
+  publicLink?: boolean;
 }
 
 interface Props {
@@ -32,6 +34,7 @@ interface Props {
   onEdit: (device: RegisterDevice) => void;
   onDelete: (device: RegisterDevice) => void;
   onIot: (device: RegisterDevice) => void;
+  onPublicLink?: (device: RegisterDevice) => void;
 }
 
 const where = (d: RegisterDevice): string => {
@@ -40,7 +43,7 @@ const where = (d: RegisterDevice): string => {
   return [w.name, w.floor].filter((v) => v !== null && v !== undefined && v !== "").join(" · ");
 };
 
-export function DeviceTable({ rows, showFacility, actions, onPhotos, onEdit, onDelete, onIot }: Props) {
+export function DeviceTable({ rows, showFacility, actions, onPhotos, onEdit, onDelete, onIot, onPublicLink }: Props) {
   const text = useDeviceText();
   const { t } = text;
   return (
@@ -139,6 +142,11 @@ export function DeviceTable({ rows, showFacility, actions, onPhotos, onEdit, onD
                       >
                         <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
                       </Link>
+                    )}
+                    {actions.publicLink && onPublicLink && (
+                      <Button variant="ghost" size="sm" aria-label={t("devices.action.publicLink", { name: d.name })} onClick={() => onPublicLink(d)}>
+                        <QrCode className="h-4 w-4" aria-hidden="true" />
+                      </Button>
                     )}
                     {actions.iot && (
                       <Button variant="ghost" size="sm" aria-label={t("devices.action.iot", { name: d.name })} onClick={() => onIot(d)}>

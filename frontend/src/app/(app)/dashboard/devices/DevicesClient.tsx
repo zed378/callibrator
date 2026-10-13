@@ -37,6 +37,7 @@ import IotDeviceModal from "./components/IotDeviceModal";
 import { DeviceFormDialog } from "./components/DeviceFormDialog";
 import { DeviceTable, type RowActions } from "./components/DeviceTable";
 import { PhotosDialog } from "./components/PhotosDialog";
+import { PublicLinkDialog } from "./components/PublicLinkDialog";
 import { TypePicker } from "./components/TypePicker";
 import { FIELD, Field, Pager, useDeviceText } from "./components/shared";
 
@@ -90,7 +91,15 @@ export const accessFor = (p: Can) => {
     write,
     importCsv: write && !p.facilityBound,
     photosWrite: write && !p.superAdmin,
-    rows: { photos: true, ipm: p.canRead("ipm"), edit: write, remove: write && !p.facilityBound, iot: !p.facilityBound } satisfies RowActions,
+    rows: {
+      photos: true,
+      ipm: p.canRead("ipm"),
+      edit: write,
+      remove: write && !p.facilityBound,
+      iot: !p.facilityBound,
+      // P22-08 (ADR-138 § 1, Am. 1 § 1): a public link is minted by unbound staff only, never the platform operator (A-127).
+      publicLink: write && !p.facilityBound && !p.superAdmin,
+    } satisfies RowActions,
   };
 };
 
@@ -154,6 +163,7 @@ function Register({ access, bound, canPickLab, languageForm, initialCondition }:
   const [facilities, setFacilities] = useState<ClientFacilityOption[]>([]);
   const [editing, setEditing] = useState<RegisterDevice | null | undefined>(undefined);
   const [photos, setPhotos] = useState<{ device: RegisterDevice; mode: "register" | "manage" } | null>(null);
+  const [publicLink, setPublicLink] = useState<RegisterDevice | null>(null);
   const [deleting, setDeleting] = useState<RegisterDevice | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -397,6 +407,7 @@ function Register({ access, bound, canPickLab, languageForm, initialCondition }:
                 setDeleting(device);
               }}
               onIot={setIot}
+              onPublicLink={setPublicLink}
             />
           )}
           <Pager meta={list.meta} onPage={setPage} label={t("devices.list.caption")} />
@@ -426,6 +437,8 @@ function Register({ access, bound, canPickLab, languageForm, initialCondition }:
           }}
         />
       )}
+
+      {publicLink && <PublicLinkDialog key={publicLink.id} device={publicLink} onClose={() => setPublicLink(null)} />}
 
       {iot && <IotDeviceModal key={iot.id} device={iot} onClose={() => setIot(null)} hasWriteAccess={access.write} />}
 

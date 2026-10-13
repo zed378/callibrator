@@ -13,6 +13,12 @@
       "note": "AC-7: 120 KB (brotli; the framework alone is 127 KB gzip)",
       "cssGzipKB": 13
     },
+    "/d/[token]": {
+      "brotliKB": 120,
+      "gzipKB": 141,
+      "note": "P22-08 (ADR-138 § 7): the /verify/* AC-7 figure; a server-rendered page with no island but the language form",
+      "cssGzipKB": 13
+    },
     "/verify/ipm/[reportNumber]": {
       "brotliKB": 120,
       "gzipKB": 141,

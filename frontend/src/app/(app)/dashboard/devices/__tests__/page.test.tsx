@@ -129,14 +129,17 @@ describe("P22-02 — access", () => {
       write: true,
       importCsv: true,
       photosWrite: true,
-      rows: { photos: true, ipm: false, edit: true, remove: true, iot: true },
+      rows: { photos: true, ipm: false, edit: true, remove: true, iot: true, publicLink: true },
     });
     expect(accessFor({ ...base, facilityBound: true, canRead: can(["calibration"]), canWrite: can(["calibration"]) })).toMatchObject({
       importCsv: false,
       photosWrite: true,
-      rows: { remove: false, iot: false, edit: true },
+      rows: { remove: false, iot: false, edit: true, publicLink: false },
     });
     expect(accessFor({ ...base, superAdmin: true, canRead: can(["calibration"]), canWrite: can(["calibration"]) }).photosWrite).toBe(false);
+    // P22-08: the public link is unbound staff's, never the operator's or a read-only caller's.
+    expect(accessFor({ ...base, superAdmin: true, canRead: can(["calibration"]), canWrite: can(["calibration"]) }).rows.publicLink).toBe(false);
+    expect(accessFor({ ...base, canRead: can(["calibration"]), canWrite: can([]) }).rows.publicLink).toBe(false);
     expect(accessFor({ ...base, canRead: can(["calibration"]), canWrite: can([]) })).toMatchObject({ write: false, rows: { edit: false, remove: false } });
   });
 

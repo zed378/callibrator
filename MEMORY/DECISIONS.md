@@ -12354,6 +12354,20 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 **Implications, including the bad ones.** The access log still writes other query-string tokens (`?token=` of the verification links) as it did before this card. A system delete's revoke is attributable only through its audit row's system actor.
 
+### ADR-138 Amendment 3 (2026-10-13, P22-08): what the page build decided — one HTTP status for every outcome, nginx's fixed marker, the sticker made in the browser, the panel in the register
+
+**Status:** Accepted, BUILT · **Card:** P22-08 · **Record:** [`records/2026-10-13-p22-08-public-device-page.md`](./records/2026-10-13-p22-08-public-device-page.md)
+
+**Decision.**
+1. **Every outcome of `/d/[token]` answers HTTP 200** (found, not found, rate-limited, failed), each with its own text, and the page is `noindex`. The spec's 404 / 429 / 503 cannot be sent: under Cache Components a dynamic route streams its shell before the read (Next 16 docs, not-found § status codes). A 404 would need the lookup in `proxy`, a second public read path, which is rejected. The API's own answer stays the one 404. One status for all outcomes is also the more uniform answer (§ 3).
+2. **nginx writes `~redacted`, not a hash prefix**, in place of the token on `/d/` and `/api/v1/public/devices/` (a `map` and the `redacted` log format in both `deploy/compose/nginx` files). nginx cannot hash. The backend's log keeps the 8-hex prefix, so requests can still be correlated.
+3. **The sticker is made in the browser**: `qrcode`, loaded on demand, renders a 512 px PNG data URL. Print uses a print stylesheet (a body class around `window.print()` makes only the sticker visible), and Download saves that PNG. Nothing is stored. The final sticker layout is still P27-03's.
+4. **The staff panel is a row action of the device register** (`/dashboard/devices`); the app has no separate device page. It is shown to unbound staff with `calibration` write, never to the platform operator.
+
+**Alternatives considered.** A real 404 through `proxy` (rejected: a second public read with its own budget, for a status that only crawlers read, and crawlers are told `noindex`). A hash computed in nginx through `njs` (rejected: a module the image does not load, for a log line). A server-rendered sticker PNG (rejected: the owner's no-stored-files rule, and the token would reach the server again).
+
+**Implications, including the bad ones.** A monitoring check cannot tell a dead sticker from a live one by HTTP status; it must read the API. A print from a browser without print CSS support prints the whole dialog.
+
 ---
 
 End of ADRs. Update this document as new decisions are made, and record a deviation as an ADR rather than editing a `docs/` document quietly.

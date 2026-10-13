@@ -763,3 +763,20 @@ body {
     stroke-dashoffset: 0;
   }
 }
+
+/* P22-08 (ADR-138): printing a device's public-link sticker — only the sticker section prints
+   (PublicLinkDialog adds `sticker-print` to <body> around window.print()). */
+@media print {
+  body.sticker-print * {
+    visibility: hidden;
+  }
+  body.sticker-print .sticker-printable,
+  body.sticker-print .sticker-printable * {
+    visibility: visible;
+  }
+  body.sticker-print .sticker-printable {
+    position: fixed;
+    inset: 0;
+    border: none;
+  }
+}
