@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — The public device page is specified (P19-07; nothing built) ([record](./records/2026-10-13-p19-07-public-device-page-spec.md); ADR-138 Am. 1)
+- **Decided (design):** staff will issue, rotate and revoke a device's public link as three separate actions, so printing a new sticker never silently voids the old one by accident; deleting a device revokes its link. An old sticker that carries a web address will show a "this sticker has been replaced" notice, not the device: the new links are stored only as fingerprints, so an old sticker cannot be forwarded to them.
+
 ### 2026-10-12 — The upstream transform's catalogue steps (P24-02c) ([record](./records/2026-10-12-p24-02c-catalogue-steps.md), ADR-129 Am. 5)
 - **Added (internal):** the upstream device types and checklist items are imported into the global catalogue (duplicates merged; the items that the platform's base checklist already covers are kept for history only, not offered for new templates). Migration 0136 gives the transform's database role write access to those two catalogue tables.
 
