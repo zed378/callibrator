@@ -8,6 +8,18 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-13 — Verified live: the idempotency crash fix and the "to sign" filter ([record](./records/2026-10-13-live-verification-debt.md))
+- **Verified (no change in behaviour):** on a disposable production-mode stack, refused requests replayed under the same `Idempotency-Key` (400 and 409, each twice) no longer restart the API. The field app's "to sign" list filter (`GET /ipm/sessions?unsigned=`) is now covered by a live PostgreSQL 18 test.
+
+### 2026-10-13 — A device can have a public link (P21-08; the page itself comes with P22-08) ([record](./records/2026-10-13-p21-08-public-device-page-api.md); ADR-138 Am. 2)
+- **Added:** staff can issue, rotate and revoke a device's public link. The link is shown once, for printing on the sticker; only a fingerprint of it is stored. Deleting a device turns its link off.
+- **Added:** `GET /api/v1/public/devices/:token` answers a sticker's link with the device's name, type, make and model, its facility, its calibration status and the last IPM date — only when the tenant has turned the page on (`public_device_page`, off by default). Any link that does not work gets the same "no device answers to this link" answer. Requests are rate-limited.
+- **Changed (operations):** the access log writes a public device link as a short fingerprint, never the link itself. New optional variable `PUBLIC_DEVICE_BASE_URL`.
+- **Database:** migration 0137 (new table `public_device_tokens`).
+
+### 2026-10-13 — The upstream transform's templates step (P24-02d) ([record](./records/2026-10-13-p24-02d-templates-step.md), ADR-129 Am. 6)
+- **Added (internal):** the upstream checklist for each device type is imported as a published version of that type's inspection template, with the platform's base checklist included and a content hash that the report verification recomputes. A checklist the operator already manages is never replaced; an item the operator could not publish either (for example, a measurement without a unit) is held back until its definition is completed. Migration 0138 gives the transform's database role write access to the three template tables.
+
 ### 2026-10-13 — Fixed: an account created without an organisation could sign in but use nothing (A-369) ([record](./records/2026-10-13-a369-tenantless-accounts.md); ADR-075 Am. 1)
 - **Fixed:** a super admin creating a user without choosing an organisation produced an account whose every request failed with "Invalid session". Creating it is now refused (400, `code: "TENANT_REQUIRED"`), as is giving a tenant-less super admin a non-super-admin role. Such an existing account is refused at sign-in with a clear message (403, `code: "ACCOUNT_HAS_NO_TENANT"`) instead of a broken session. A super admin account may still have no organisation.
 

@@ -328,4 +328,58 @@ describe("P21-04 — submit, correction, void, signatures, verification and due 
     expect([...new Set(bound.rows.map((r) => r["clientFacilityId"]))]).toEqual([F1]);
     expect(bound.meta.total).toBe(bound.rows.length);
   });
+
+  // 2026-10-12 `GET /ipm/sessions?unsigned=` (360cd0d) on the real schema, as callibrator_app: the
+  // record said "not run: a live PostgreSQL case" — memoryDb alone had exercised its IN / NOT IN.
+  it("the 'to sign' list: unsigned=true is the caller's effective submitted reports without its performer signature, false those with it; a bound caller sees its facility only", async () => {
+    jest.spyOn(g.certificates, "verifySignerCredentials").mockResolvedValue(undefined);
+    const signed = await draft(U1, D3);
+    await submitAs(U1, signed);
+    await ctx(U1, () =>
+      g.signatures.signReport(
+        T as TenantId,
+        { sessionId: signed, kind: "performer", authMethod: "password", authPayload: "x", meaningAcknowledged: true },
+        { userId: U1, ipAddress: "127.0.0.1", userAgent: "live" },
+      ),
+    );
+    const open = await draft(U1, D3);
+    await submitAs(U1, open);
+    const otherPerformer = await draft(U2, D3);
+    await submitAs(U2, otherPerformer);
+    const stillDraft = await draft(U1, D3);
+    const list = async (unsigned: boolean, facility: string | null = null): Promise<string[]> =>
+      (await ctx(U1, () => g.sessions.listSessions(U1, { page: 1, limit: 100, sort: "performedAt", unsigned }), facility)).rows.map((r) => String(r["id"]));
+
+    const toSign = await list(true);
+    const done = await list(false);
+    expect(toSign).toContain(open);
+    expect(toSign).not.toContain(signed);
+    expect(done).toContain(signed);
+    expect(done).not.toContain(open);
+    for (const never of [otherPerformer, stillDraft]) {
+      expect(toSign).not.toContain(never);
+      expect(done).not.toContain(never);
+    }
+    // Disjoint, and every row is the caller's effective submitted report — checked against the table.
+    expect(toSign.filter((id) => done.includes(id))).toEqual([]);
+    const shown = await rows(
+      g.db,
+      "SELECT DISTINCT status::text AS status, superseded_by_id IS NULL AS effective, performed_by = :u AS mine FROM inspection_sessions WHERE id IN (:ids)",
+      { u: U1, ids: [...toSign, ...done] },
+    );
+    expect(shown).toEqual([{ status: "submitted", effective: true, mine: true }]);
+    // The superseded original of the corrected chain (U1's first root) is in neither list.
+    const superseded = await rows(g.db, "SELECT id FROM inspection_sessions WHERE tenant_id = :t AND performed_by = :u AND superseded_by_id IS NOT NULL", { t: T, u: U1 });
+    expect(superseded.length).toBeGreaterThan(0);
+    for (const r of superseded) {
+      expect([...toSign, ...done]).not.toContain(String(r["id"]));
+    }
+    // A caller bound to F2 sees only F2's reports (D3 is F1's), so neither D3 report appears.
+    const boundToSign = await list(true, F2);
+    const boundDone = await list(false, F2);
+    expect([...boundToSign, ...boundDone]).not.toContain(open);
+    expect([...boundToSign, ...boundDone]).not.toContain(signed);
+    const facilities = await rows(g.db, "SELECT DISTINCT client_facility_id AS f FROM inspection_sessions WHERE id IN (:ids)", { ids: [...boundToSign, ...boundDone, "00000000-0000-4000-8000-000000000000"] });
+    expect(facilities.map((r) => r["f"]).filter((f) => f !== F2)).toEqual([]);
+  });
 });

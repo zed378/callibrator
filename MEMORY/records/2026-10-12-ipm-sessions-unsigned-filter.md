@@ -41,7 +41,7 @@ The field app's "to sign" list read `GET /api/v1/ipm/sessions`, so it showed eve
   - `openapi:check`: current
   - `openapi:lint`: no new error
   - `api:types:check`: OK
-- **Not run:** a live PostgreSQL case for the new filter. The SQL is Sequelize's standard `IN` / `NOT IN`, but only memoryDb exercised it here.
+- **Not run:** a live PostgreSQL case for the new filter. The SQL is Sequelize's standard `IN` / `NOT IN`, but only memoryDb exercised it here. **Run since, 2026-10-13:** `ipmSubmit.p2104.live` [live verification record](./2026-10-13-live-verification-debt.md).
 
 ## Files
 
