@@ -27,6 +27,9 @@
  *               busy indicator that says so (role="status" / aria-busy, or a
  *               spinner: `animate-spin`) — WCAG 2.3.3's intent, which the
  *               stylesheet's reduced-motion block (globals.css) promises.
+ *   7. operator (2026-10-13) the platform operator's pages (the access-request queue, whose
+ *               selected tab is a primary fill holding a count) in an operator session through the
+ *               form, light and dark; the TOTP step is answered from the E2E harness's MFA state.
  *   6. public   (P22-08) the public device page /d/<token> of the run's device joins the signed-out
  *               axe sweep, the reflow and the reduced-motion checks; the link is issued and the
  *               tenant's page turned on for the run, and the setting restored afterwards.
@@ -59,6 +62,7 @@
 "use strict";
 
 const fs = require("fs");
+const crypto = require("crypto");
 const os = require("os");
 const path = require("path");
 
@@ -109,6 +113,13 @@ const DASHBOARD_PAGES = [
   "/dashboard/exports",
   "/dashboard/client-facilities",
 ];
+
+/**
+ * Signed-in pages only the platform operator (super admin) opens. `/dashboard/access-requests`
+ * (P10-07): its selected status tab is a primary fill with a count in it — the pattern that measured
+ * 4.43:1 on the IPM capture (e076d1a) — so the selected tab is measured here in both themes.
+ */
+const OPERATOR_PAGES = ["/dashboard/access-requests"];
 
 /** Pages whose first create button opens a dialog (ADR-090's sweep found 24; these are the key ones). */
 const DIALOG_PAGES = [
@@ -320,6 +331,42 @@ const describeViolations = (violations) =>
     .map((v) => `[${v.wcag ? "WCAG" : "best-practice"}] ${v.id} × ${v.nodes.length}\n    ${v.nodes.slice(0, 4).join("\n    ")}`)
     .join("\n");
 
+// The E2E harness's MFA state file (backend/src/tests/e2e/setup.js, mfaStateFile): keyed by the
+// stack and the identifier; it holds the operator's TOTP secret once the harness has signed in.
+const mfaStateFile = (identifier) =>
+  path.join(
+    os.tmpdir(),
+    `callibrator-e2e-mfa-${crypto.createHash("sha256").update(`${api.BASE_URL}\n${String(identifier).toLowerCase()}`).digest("hex").slice(0, 16)}.json`,
+  );
+
+/** RFC 6238 (SHA-1, 30 s, 6 digits) for a step this account has not used (the state is shared with the harness). */
+async function nextTotp(identifier) {
+  const file = process.env.E2E_MFA_STATE_FILE || mfaStateFile(identifier);
+  for (;;) {
+    const state = JSON.parse(fs.readFileSync(file, "utf8"));
+    const secret = process.env.E2E_SUPERADMIN_TOTP_SECRET || state.secret;
+    if (!secret) throw new Error(`no TOTP secret for ${identifier} in ${file}`);
+    const now = Math.floor(Date.now() / 30000);
+    const last = Number.isInteger(state.lastStep) ? state.lastStep : -1;
+    const step = [now - 1, now, now + 1].find((x) => x > last);
+    if (step !== undefined) {
+      fs.writeFileSync(file, JSON.stringify({ ...state, secret, lastStep: step }), { mode: 0o600 });
+      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+      let bits = "";
+      for (const ch of secret.replace(/=+$/, "").toUpperCase()) bits += alphabet.indexOf(ch).toString(2).padStart(5, "0");
+      const bytes = [];
+      for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2));
+      const counter = Buffer.alloc(8);
+      counter.writeBigUInt64BE(BigInt(step));
+      const mac = crypto.createHmac("sha1", Buffer.from(bytes)).update(counter).digest();
+      const offset = mac[mac.length - 1] & 0xf;
+      const value = ((mac[offset] & 0x7f) << 24) | (mac[offset + 1] << 16) | (mac[offset + 2] << 8) | mac[offset + 3];
+      return String(value % 1000000).padStart(6, "0");
+    }
+    await new Promise((r) => setTimeout(r, 30000 - (Date.now() % 30000) + 50));
+  }
+}
+
 async function passwordSignIn(page, email, password) {
   await page.goto(`${FRONTEND_URL}/login`, { waitUntil: "networkidle2", timeout: STEP_TIMEOUT });
   await page.waitForSelector("#username", { timeout: STEP_TIMEOUT });
@@ -347,13 +394,26 @@ async function passwordSignIn(page, email, password) {
   // On a loaded machine the backend's own sign-in budget (30 s) can run out
   // and answer 408. That is the environment, not the page, so one retry.
   for (let attempt = 1; ; attempt++) {
-    const arrived = await Promise.all([
-      page.waitForFunction(() => location.pathname.startsWith("/dashboard"), { timeout: 60000 }),
+    // An account with MFA (the operator) is asked for its TOTP after the password.
+    const [next] = await Promise.all([
+      Promise.race([
+        page.waitForFunction(() => location.pathname.startsWith("/dashboard"), { timeout: 60000 }).then(() => "dashboard"),
+        page.waitForSelector('input[autocomplete="one-time-code"]', { visible: true, timeout: 60000 }).then(() => "mfa"),
+      ]).catch(() => "none"),
       page.click('form:has(#password) button[type="submit"]'),
-    ])
-      .then(() => true)
-      .catch(() => false);
-    if (arrived) return;
+    ]);
+    if (next === "mfa") {
+      await page.type('input[autocomplete="one-time-code"]', await nextTotp(email));
+      await page.click('form:has(input[autocomplete="one-time-code"]) button[type="submit"]');
+      const arrived = await page
+        .waitForFunction(() => location.pathname.startsWith("/dashboard"), { timeout: 60000 })
+        .then(() => true)
+        .catch(() => false);
+      if (arrived) return;
+      const text = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").slice(0, 300));
+      throw new Error(`the TOTP step did not reach /dashboard; the page says: ${text}`);
+    }
+    if (next === "dashboard") return;
     if (attempt >= 2 || !(await page.$("#password"))) {
       const text = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").slice(0, 300));
       throw new Error(`sign-in did not reach /dashboard; the page says: ${text}`);
@@ -433,6 +493,31 @@ async function axeSweep(browser, theme, user) {
           throw new Error(`redirected to ${page.url()} — the session was lost`);
         }
         return assertAxe(await runAxe(page), `${theme} ${url}`);
+      });
+    }
+  } finally {
+    await context.close();
+  }
+}
+
+/** The operator's own pages, signed in through the form (TOTP answered), in `theme`. */
+async function operatorSweep(browser, theme) {
+  const { context, page } = await newThemedPage(browser, theme);
+  try {
+    await passwordSignIn(page, OPERATOR, OPERATOR_PASSWORD);
+    for (const url of OPERATOR_PAGES) {
+      await check(`axe [${theme}] ${url} (operator)`, page, async () => {
+        await goto(page, url);
+        if (!new URL(page.url()).pathname.startsWith(url)) throw new Error(`redirected to ${page.url()}`);
+        // The selected status tab (a primary fill) must hold its count, or the pattern is not measured.
+        await page
+          .waitForFunction(() => /\(\d+\)/.test(document.querySelector('main [role="tab"][aria-selected="true"]')?.textContent || ""), {
+            timeout: 15000,
+          })
+          .catch(() => {
+            throw new Error("the selected status tab never showed its count");
+          });
+        return assertAxe(await runAxe(page), `${theme} ${url} (operator)`);
       });
     }
   } finally {
@@ -671,7 +756,7 @@ async function brandColour(browser, user, adminAtStart, tenantId, freshAdmin) {
 
 async function main() {
   const started = Date.now();
-  console.log(`Browser a11y — frontend ${FRONTEND_URL}, API ${process.env.BASE_URL}; checks: axe, dialogs, reflow, motion, brand`);
+  console.log(`Browser a11y — frontend ${FRONTEND_URL}, API ${process.env.BASE_URL}; checks: axe, operator, dialogs, reflow, motion, brand`);
 
   const signIn = await api.httpPost("/auth/login", { user: OPERATOR, password: OPERATOR_PASSWORD });
   const adminToken = api.extractToken(signIn.body);
@@ -769,6 +854,7 @@ async function main() {
     });
     for (const theme of ["light", "dark"]) {
       await axeSweep(browser, theme, user);
+      await operatorSweep(browser, theme);
       await dialogContract(browser, theme, user);
     }
     await reflowAt200(browser, user);

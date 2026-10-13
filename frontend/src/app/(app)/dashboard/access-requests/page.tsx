@@ -206,7 +206,8 @@ export default function AccessRequestsPage() {
               }`}
             >
               {STATUS_LABEL[s]}
-              {counts ? <span className="ml-1.5 opacity-80">({counts[s]})</span> : null}
+              {/* Full-strength text: a count faded to 80 % on the selected (primary) tab is the pattern that measured 4.43:1 on the IPM capture (e076d1a). */}
+              {counts ? <span className="ml-1.5 font-normal">({counts[s]})</span> : null}
             </button>
           ))}
         </div>

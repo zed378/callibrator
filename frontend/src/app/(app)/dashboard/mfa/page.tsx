@@ -401,7 +401,7 @@ export default function MfaPage() {
                     </div>
                     <button
                       type="button"
-                      className="text-sm text-primary hover:text-primary/80"
+                      className="text-sm text-primary hover:underline"
                       onClick={() => {
                         setDisableWithRecovery(!disableWithRecovery);
                         setDisableCode("");

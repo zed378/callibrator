@@ -145,7 +145,7 @@ function History({ caller, deviceId, canReadDevices, languageForm }: HistoryProp
           {caller.write && !caller.superAdmin && (
             <Link
               href="/dashboard/ipm/new"
-              className="inline-flex min-h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary"
+              className="inline-flex min-h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary"
             >
               {t("ipm.startNew")}
             </Link>
