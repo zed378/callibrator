@@ -24,6 +24,7 @@ import {
 } from "../../validators/user.validator";
 import { ErrorEnvelope } from "../../docs/openapi/envelope";
 import { defineRouteDocs } from "../../docs/openapi/operation";
+import { tenantRequired400 } from "../../docs/openapi/tenantRequiredErrors";
 import { userFacilityBinding } from "@callibrator/contracts/clientFacilities";
 
 const users = (action: "read" | "create" | "update" | "delete") => ({ kind: "dynamicAccess", resource: "users", action }) as const;
@@ -143,26 +144,28 @@ export default defineRouteDocs({
       path: "/role-update",
       operationId: "updateUserRole",
       summary: "Change a user's role",
-      description: "Never to SUPERADMIN or an inactive role. Audited in the service's transaction (A-77).",
+      description: "Never to SUPERADMIN or an inactive role; a non-platform role needs a tenant (400 `TENANT_REQUIRED`, A-369). Audited in the service's transaction (A-77).",
       permission: users("update"),
       audited: true,
       body: updateRoleSchema,
       success: { status: 200, description: "The change", data: z.looseObject({}) },
       conflict: "The user already has this role.",
       errors: [404],
+      errorBodies: { 400: tenantRequired400 },
     },
     {
       method: "post",
       path: "/create",
       operationId: "createUser",
       summary: "Create a user",
-      description: "Never a SUPERADMIN account. Counts against the plan's seats (enforceSeatQuota). Audited (A-77).",
+      description: "Never a SUPERADMIN account; a non-platform role needs a tenant (400 `TENANT_REQUIRED`, A-369). Counts against the plan's seats (enforceSeatQuota). Audited (A-77).",
       permission: users("create"),
       audited: true,
       body: createUserSchema,
       success: { status: 201, description: "The new user", data: user },
       conflict: IDENTITY_CONFLICT,
       errors: [404],
+      errorBodies: { 400: tenantRequired400 },
     },
     {
       method: "patch",

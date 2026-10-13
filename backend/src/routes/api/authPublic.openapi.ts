@@ -12,6 +12,7 @@ import {
   ssoStartSchema,
 } from "../../validators/publicAuth.validator";
 import { defineRouteDocs } from "../../docs/openapi/operation";
+import { accountHasNoTenant403 } from "../../docs/openapi/tenantRequiredErrors";
 
 const Discovery = z
   .union([
@@ -95,12 +96,14 @@ export default defineRouteDocs({
       description:
         "Public. The assertion must carry user verification; a user-verifying passkey counts as MFA (Q-46), so no " +
         "TOTP step follows. Every failure before the account is proven is the one 401 `Invalid credentials`; a " +
-        "suspended account or tenant 403, a locked account 423, a paused one 429 — as the password sign-in.",
+        "suspended account or tenant 403, an account with no tenant 403 `ACCOUNT_HAS_NO_TENANT` (A-369), a locked account 423, a " +
+        "paused one 429 — as the password sign-in.",
       permission: null,
       audited: true,
       body: passkeyVerifySchema,
       success: { status: 200, description: "Signed in", data: SignedIn },
       errors: [401, 403],
+      errorBodies: { 403: accountHasNoTenant403 },
     },
     {
       method: "post",

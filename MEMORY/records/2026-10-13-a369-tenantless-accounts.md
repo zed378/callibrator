@@ -64,4 +64,5 @@ A super admin with no tenant is still allowed to be created, to have its role ke
 
 - An account already created tenant-less cannot be repaired through the API. `editUser` does not take `tenantId`, and the role change now refuses. It has to be deleted and recreated, or fixed with a reviewed database update.
 - The descriptions in `user.openapi.ts` for `/create` and `/role-update` do not yet name `TENANT_REQUIRED`. `openapi.json` would have picked up line B's in-flight routes on regeneration, so it was not regenerated.
+  **Done 2026-10-13** ([record](./2026-10-13-a369-openapi-codes.md)): the four operations name their codes; `openapi.json` and `schema.d.ts` regenerated.
 - The frontend user-create form shows the message as it is. It does not branch on `code`.
