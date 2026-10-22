@@ -41,6 +41,7 @@ import type WebhookDeliverySchedulerMiddlewareModule from "./src/middlewares/web
 import type QuarantineSweepSchedulerMiddlewareModule from "./src/middlewares/quarantineSweepScheduler.middleware";
 import type * as UpstreamSqlImportSweepSchedulerModule from "./src/middlewares/upstreamSqlImportSweepScheduler.middleware";
 import type * as BoundAccountDeactivationSchedulerModule from "./src/middlewares/boundAccountDeactivationScheduler.middleware";
+import type * as UnclaimedInvitationSchedulerModule from "./src/middlewares/unclaimedInvitationScheduler.middleware";
 import type WebhookDeliveryPurgeSchedulerMiddlewareModule from "./src/middlewares/webhookDeliveryPurgeScheduler.middleware";
 import type * as IdempotencyKeyPurgeSchedulerModule from "./src/middlewares/idempotencyKeyPurgeScheduler.middleware";
 import type AttachmentFileSweepSchedulerMiddlewareModule from "./src/middlewares/attachmentFileSweepScheduler.middleware";
@@ -783,6 +784,8 @@ async function startServer() {
     initAttachmentFileSweep();
     // P21-09e (UD-18 (b)): bound accounts of client facilities ended past their period, nightly, audited.
     (require("./src/middlewares/boundAccountDeactivationScheduler.middleware") as typeof BoundAccountDeactivationSchedulerModule).initBoundAccountDeactivation();
+    // P24-09b (ADR-139 § 5): imported accounts whose first invitation is 30 days old and unclaimed, nightly, audited.
+    (require("./src/middlewares/unclaimedInvitationScheduler.middleware") as typeof UnclaimedInvitationSchedulerModule).initUnclaimedInvitation();
     // P7-02: every job above records its runs and alerts on failure; the
     // watchdog alerts on a run that did not happen and on stuck batch jobs.
     initJobWatchdog();

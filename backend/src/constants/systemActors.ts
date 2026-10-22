@@ -193,6 +193,12 @@ const SYSTEM_ACTORS = Object.freeze({
    */
   BOUND_ACCOUNT_DEACTIVATION: "system:bound-account-deactivation",
   /**
+   * P24-09b (ADR-139 § 5) — services/unclaimedInvitation.service.ts: an imported account still
+   * awaiting its invitation 30 days after the first one was issued, marked INACTIVE. One UPDATE row
+   * per account.
+   */
+  UNCLAIMED_INVITATION: "system:unclaimed-invitation",
+  /**
    * P24-02a (ADR-129 Am. 3; 04 § 7, UD-13) — the upstream transform's last step
    * (services/upstreamImport/transform/auditRows.ts): ONE CREATE or UPDATE row per application row
    * the transform wrote, in that row's tenant (the PLATFORM tenant for the global catalogue) and

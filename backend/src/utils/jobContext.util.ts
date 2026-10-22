@@ -70,6 +70,12 @@ const SYSTEM_TASKS = Object.freeze({
    * are then deactivated inside runForTenant(its own tenant).
    */
   BOUND_ACCOUNT_DEACTIVATION: "bound-account-deactivation: ended client facilities across every tenant",
+  /**
+   * P24-09b (ADR-139 § 5) — unclaimedInvitation.service: which active accounts still await an
+   * invitation, in every tenant (paged by id, bounded per run). Each is then judged and deactivated
+   * inside runForTenant(its own tenant).
+   */
+  UNCLAIMED_INVITATION: "unclaimed-invitation: accounts awaiting an invitation across every tenant",
 } as const);
 
 /** One reviewed cross-tenant opt-out reason. */

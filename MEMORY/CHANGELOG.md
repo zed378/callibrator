@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-23 — Unclaimed invitations expire the account after 30 days (P24-09b) ([record](./records/2026-10-23-p24-09b-unclaimed-invitations.md), ADR-139 § 5)
+- **Added (operations):** a nightly job (`UNCLAIMED_INVITATION_SCHEDULER`, default 03:47; off in Helm's API deployment like every singleton) marks an imported account inactive when it is still waiting 30 days after its first invitation. An administrator can reactivate it and invite again. Accounts never invited are not touched.
+
 ### 2026-10-22 — Administrators can invite imported upstream users (P24-09a) ([record](./records/2026-10-22-p24-09a-user-invitations.md), ADR-139 Am. 1)
 - **Added (API):** once the platform operator opens invitations for an organisation, a tenant administrator can send an imported user a single-use, 7-day invitation (and send it again, or withdraw it); a shared facility account must first be given the name of the person who will use it. The person sets their password from the link on the existing invitation page. No screen yet (P24-09c).
 
