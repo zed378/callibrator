@@ -66204,7 +66204,7 @@
           "action": "update",
           "superAdmin": "bypasses"
         },
-        "description": "A-162: a temporary password, shown once (`Cache-Control: no-store`). Also needs TENANT_ADMIN (an rbac after the users gate), and a target below the caller's role level.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "description": "A-162: a temporary password, shown once (`Cache-Control: no-store`). Also needs TENANT_ADMIN (an rbac after the users gate), and a target below the caller's role level.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — ADR-139 § 2 (P24-09c): the account was imported and is waiting for its invitation — send the invitation instead.",
         "parameters": [
           {
             "in": "path",
@@ -66300,6 +66300,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"

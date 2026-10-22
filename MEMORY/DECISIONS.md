@@ -12668,6 +12668,16 @@ Both paths bypass the pre-invitation gate (the facility scope proved before any 
 
 **Implications, including the bad ones.** The operator must open invitations per tenant with a flags call; until P24-09c there is no screen for issuing invitations, only the API. An invitation e-mail in two languages is longer.
 
+### ADR-139 Amendment 2 (2026-10-23, P24-09c): a third way in — the administrator's password reset — is closed too; an awaiting account offers only the invitation
+
+**Status:** Accepted, BUILT · **Card:** P24-09c · **Record:** [`records/2026-10-23-p24-09c-invitation-screen.md`](./records/2026-10-23-p24-09c-invitation-screen.md)
+
+**Decision.** § 2 listed the e-mail-code reset and single sign-on. Building the screen showed a third path: `POST /users/:userId/password/reset` (A-162) gives the account a temporary password, which opens it before the pre-invitation gate and without its person named. For an account awaiting its invitation the reset now answers 409, with the message "send the invitation instead", and writes nothing. On the users page, such a row offers the invitation **instead of** the credential resets.
+
+**Alternatives considered.** Let the reset clear `awaiting_invitation`: rejected, because it would bypass the operator's gate and the named-person rule, the two things the invitation exists for. Hide the button only: rejected, because the route would still open the account.
+
+**Implications.** An administrator cannot help an imported person in by a temporary password before cutover. That is intended. The 409's machine code is lost on this route's legacy error path (only the status and the message survive), so the page shows the message.
+
 ---
 
 End of ADRs. Update this document as new decisions are made, and record a deviation as an ADR rather than editing a `docs/` document quietly.

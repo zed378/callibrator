@@ -268,6 +268,16 @@ describe("issue", () => {
   });
 });
 
+describe("the administrator's password reset (P24-09c, ADR-139 § 2)", () => {
+  it("refuses an account awaiting its invitation (409), nothing written; still resets one that is not", async () => {
+    const before = mdb.dump();
+    const res = await send(ctx.owner, "POST", `/${NAMED}/password/reset`);
+    expect([res.status, res.body.message]).toEqual([409, "This account is waiting for its invitation. Send the invitation instead of resetting the password."]);
+    expect(mdb.dump()).toEqual(before);
+    expect((await send(ctx.owner, "POST", `/${ACCEPTED}/password/reset`)).status).toBe(200);
+  });
+});
+
 describe("revoke and state", () => {
   it("revokes the live invitation; without one, 409 INVITATION_NONE", async () => {
     await issue(NAMED);
