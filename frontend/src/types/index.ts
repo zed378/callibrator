@@ -37,6 +37,9 @@ export interface User {
   mfaRecoveryCodesRemaining?: number;
   // A-262: from the users list — the page offers "Remove passkey" only here.
   webauthnEnabled?: boolean;
+  // P24-09c (ADR-139 § 2): an imported account waiting for its invitation —
+  // the users list offers "Invite" only for these.
+  awaitingInvitation?: boolean;
   // A-123: an administrator set this account's password; it must be changed
   // before anything else (the backend answers 403 PASSWORD_CHANGE_REQUIRED).
   mustChangePassword?: boolean;

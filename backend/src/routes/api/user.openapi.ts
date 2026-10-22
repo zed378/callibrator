@@ -287,6 +287,7 @@ export default defineRouteDocs({
           sessionsRevoked: z.number().int().meta({ description: "The user's sessions signed out" }),
         }),
       },
+      conflict: "ADR-139 § 2 (P24-09c): the account was imported and is waiting for its invitation — send the invitation instead.",
     },
     {
       method: "put",

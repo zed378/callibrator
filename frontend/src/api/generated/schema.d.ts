@@ -8252,6 +8252,8 @@ export interface paths {
          * @description A-162: a temporary password, shown once (`Cache-Control: no-store`). Also needs TENANT_ADMIN (an rbac after the users gate), and a target below the caller's role level.
          *
          *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — ADR-139 § 2 (P24-09c): the account was imported and is waiting for its invitation — send the invitation instead.
          */
         post: operations["resetUserPassword"];
         delete?: never;
@@ -36384,6 +36386,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
         };
     };

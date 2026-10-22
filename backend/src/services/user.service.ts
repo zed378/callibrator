@@ -2153,6 +2153,11 @@ const resetUserPassword = async (input: ActorContext & { userId: string; resetBy
         "You cannot reset your own password here; change it on the change-password page",
       what: "password",
     });
+    // ADR-139 § 2 (P24-09c): an imported account is opened only by its invitation — a temporary
+    // password would open it before the pre-invitation gate and without its person named.
+    if (user.awaitingInvitation) {
+      throw new AppError(409, "This account is waiting for its invitation. Send the invitation instead of resetting the password.");
+    }
 
     const temporaryPassword = generateTemporaryPassword();
     const hashed = await hashPassword(temporaryPassword);

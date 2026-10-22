@@ -26,6 +26,15 @@ export type PasskeyResetResult = DataOf<Op<"/api/v1/users/{userId}/webauthn", "d
 /** A-162: POST /users/:userId/password/reset → data. The password is shown once. */
 export type PasswordResetResult = DataOf<Op<"/api/v1/users/{userId}/password/reset", "post">>;
 
+/** P24-09c (ADR-139 § 3): GET /users/:userId/invitation → data. Never the token. */
+export type UserInvitationState = DataOf<Op<"/api/v1/users/{userId}/invitation", "get">>;
+
+/** P24-09c: POST /users/:userId/invitation → data (when it expires, whether the e-mail was queued). */
+export type UserInvitationIssued = DataOf<Op<"/api/v1/users/{userId}/invitation", "post">>;
+
+/** P24-09c: the issue's body — the person behind a shared account, both names or neither. */
+export type UserInvitationPerson = JsonBody<Op<"/api/v1/users/{userId}/invitation", "post">>;
+
 type ListQuery = QueryOf<Op<"/api/v1/users/all", "get">>;
 
 /** A string field of the open user row (the legacy aliases and getters). */
@@ -64,6 +73,8 @@ const transformUser = (item: ApiUser): User => ({
   mfaEnabled: item.mfaEnabled === true,
   mustChangePassword: item.mustChangePassword === true,
   webauthnEnabled: item.webauthnEnabled === true,
+  // P24-09c (ADR-139 § 2): an imported account no one can open until its invitation is accepted.
+  awaitingInvitation: item["awaitingInvitation"] === true,
 });
 
 /**
@@ -101,6 +112,27 @@ export const userService = {
    */
   resetPassword: async (userId: string): Promise<PasswordResetResult> =>
     (await typedApi.POST("/api/v1/users/{userId}/password/reset", byUser(userId)).then(unwrap)).data,
+
+  /**
+   * P24-09c (ADR-139 § 3): an imported account's invitation — whether the
+   * operator has opened invitations, whether the issue must name the person
+   * (a shared account), and the live invitation. Never the token.
+   */
+  getInvitation: async (userId: string): Promise<UserInvitationState> =>
+    (await typedApi.GET("/api/v1/users/{userId}/invitation", byUser(userId)).then(unwrap)).data,
+
+  /**
+   * P24-09c: send the invitation (again — the live one stops working). 409
+   * `PRE_INVITATION_GATE_OPEN` until the operator opens the organisation, 409
+   * `INVITATION_NOT_APPLICABLE` for an account that does not await one, 400
+   * `INVITATION_PERSON_REQUIRED` for a shared account without names.
+   */
+  issueInvitation: async (userId: string, person: UserInvitationPerson = {}): Promise<UserInvitationIssued> =>
+    (await typedApi.POST("/api/v1/users/{userId}/invitation", { ...byUser(userId), body: person }).then(unwrap)).data,
+
+  /** P24-09c: withdraw the live invitation (409 `INVITATION_NONE` without one). */
+  revokeInvitation: async (userId: string): Promise<{ revokedAt: string }> =>
+    (await typedApi.DELETE("/api/v1/users/{userId}/invitation", byUser(userId)).then(unwrap)).data,
 
   getAll: async (
     page = 1,

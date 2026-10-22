@@ -12,6 +12,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import { useUserStore } from "@/stores/userStore";
 import { CredentialResetActions } from "./CredentialResetActions";
+import { InvitationActions } from "./InvitationActions";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { StatusTone } from "@/lib/statusTone";
 
@@ -150,7 +151,12 @@ export const UserRow: React.FC<UserRowProps> = ({
               <UserCog className="h-4 w-4" />
             </Button>
           )}
-          {canResetCredentials && (
+          {/* P24-09c (ADR-139 § 2): an imported account awaiting its invitation is opened only by
+              the invitation — no credential reset is offered (the backend refuses a password one). */}
+          {canResetCredentials && user.awaitingInvitation === true && (
+            <InvitationActions user={user} onChanged={() => void refetchUsers()} />
+          )}
+          {canResetCredentials && user.awaitingInvitation !== true && (
             <CredentialResetActions user={user} onReset={() => void refetchUsers()} />
           )}
           {mayWriteUsers && (
