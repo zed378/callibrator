@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-22 — How imported upstream users will get in (P12-05) ([record](./records/2026-10-22-p12-05-imported-identities-adr.md), ADR-139)
+- **Decided (no code change):** an imported user gets in only by an invitation the provider sends after the pre-invitation checks; a shared facility account must be given a named person first; an unclaimed account is disabled 30 days after its first invitation. The password-reset and single sign-on paths that would open an imported account today are to be closed first (P24-08); no deployment holds an imported account yet.
+
 ### 2026-10-13 — The SQL-dump import page offers the transform step (C-4) ([record](./records/2026-10-13-c4-sql-import-transform.md))
 - **Changed:** a loaded import no longer says the transform is "not available yet". The operator chooses the provider tenant and asks for the transform; the page shows the transform's state, why it failed, and its rows per step. While the server cannot transform yet, the page says so in the server's own words instead of failing.
 

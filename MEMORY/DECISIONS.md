@@ -12591,6 +12591,62 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 **`docs/` amended:** `OBSERVABILITY/01-LOGGING.md` (the redaction list and the access log's format, which still showed `:url` and `:referrer`).
 
+## ADR-139: An Imported User Gets In Only Through an Invitation — No Upstream Hash, an Account Marked "Awaiting Invitation" That No Reset or Single Sign-On Can Open, a Single-Use Hashed Token the Provider Issues After the Pre-Invitation Gate, the Person Behind a Shared Account Named at Issue, and Departed Performers Kept as Numbered Snapshots, Never as Accounts
+
+**Date:** 2026-10-22 · **Status:** Accepted. **§ 1 and § 6 are BUILT** (P24-02b, P24-02f, ADR-129 Am. 4 and Am. 8, ADR-133 Am. 4); **§ 2 … § 5 are the TARGET, nothing built.** UD-4 (a) and UD-5 are working decisions of 2026-10-07/08 (`TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md` § 3); the mechanisms are decided under the owner's standing delegation (decide by best practice, record it) · **Card:** P12-05 · **Builds in:** P24-08 (the marker and the closed paths), P24-09 (issue, accept, expire), P30-04 (the cutover batch) · **Works with:** ADR-129 (the transform), ADR-133 Am. 4 (imported performers and the import key), ADR-124 (facility binding), P10-15 / `services/invitation.service.ts` (the access-request invitation this one mirrors), ADR-099 (one-time passwords), ADR-051 Q-11 (a mailbox proof verifies the address) · **Threat model:** `docs/SECURITY/15` § 11 (the pre-invitation gate G-01 … G-31) · **Record:** [`records/2026-10-22-p12-05-imported-identities-adr.md`](./records/2026-10-22-p12-05-imported-identities-adr.md)
+
+**Context.** Upstream holds about 105 accounts, `myth/auth` bcrypt cost 10 over base64(SHA-384), 76 of them without a full name, one shared `client` account per facility (`docs/UPSTREAM/05` § 5). UD-5 chose: import no hash, give every account an unusable one, and let a single-use invitation be the only way in, so that no second password path enters `auth.service` and every person re-affirms their identity and e-mail. P24-02b built the import side, and its file comment says "the invitation … is the only way in". **The code does not hold that yet.** Two paths open an imported, active account without any invitation, and nothing tells the two kinds of account apart:
+
+- `POST /auth/send-otp` + `POST /auth/reset-password` (`auth.service#requestOTP`, `#processResetPassword`) look the account up by e-mail and check nothing else. The reset sets the password, verifies the e-mail and clears `must_change_password`.
+- `sso.service#provisionUser` links an asserted e-mail to the existing account of the tenant, once the provider tenant configures an identity provider.
+- No column marks an imported account as different from an administrator-created one with a temporary password, for which the reset is the intended way out (A-123).
+
+Both paths bypass the pre-invitation gate (the facility scope proved before any facility user signs in) and the naming of the person behind a shared account. **Latent today:** no deployment holds an imported user. The transform answers 409 `TRANSFORM_NOT_AVAILABLE` until P24-03, and real data waits on `UPSTREAM_REAL_DATA_ALLOWED`. It must be closed before either changes.
+
+**Decision.**
+
+1. **No upstream hash, as built** (UD-5; ADR-129 Am. 4). Every imported account gets one unusable bcrypt hash per run, of a random secret nobody keeps, `must_change_password = true`, `is_email_verified = false`. An account inactive upstream is imported inactive and is never invited. The transform role cannot read or write any credential column.
+2. **The marker.** A new column `users.awaiting_invitation boolean NOT NULL DEFAULT false`, set `true` by the transform for every account it **inserts** (never by a re-run's update), and cleared only by accepting an invitation (§ 4). While it is `true`:
+   - password sign-in fails with the ordinary wrong-credential answer (the hash already guarantees it; the flag makes it explicit and testable);
+   - `send-otp` sends nothing and gives its usual "If the account exists …" 200; `reset-password` gives its usual 400 `Invalid OTP`. **One answer each, so the reset path is no oracle for imported accounts;**
+   - single sign-on refuses to link, with the same refusal as an account the tenant does not provision; no JIT row is created beside it (the e-mail is taken);
+   - SCIM, passkey registration and MFA setup need a session and so cannot be reached.
+
+   The column is on no request schema; only the transform and the acceptance write it. The transform role gets INSERT on it (a column grant), not UPDATE.
+3. **Issuing an invitation.** A new tenant-scoped table `user_invitations` (`id`, `tenant_id`, `user_id`, `token_hash` UNIQUE, `issued_by`, `issued_at`, `expires_at`, `accepted_at`, `revoked_at`, `revoked_by`). The token is 256 random bits, base64url, and **only its SHA-256 is stored** (as P10-15). At most one live invitation per user; issuing again revokes the previous one in the same transaction.
+   - **Who issues:** an unbound user with `management` write in the tenant, or the platform operator during cutover. Never a facility-bound user (UD-4 (c)).
+   - **For whom:** an active account with `awaiting_invitation = true`. Any other answers 409 `INVITATION_NOT_APPLICABLE`.
+   - **When:** the route answers 409 `PRE_INVITATION_GATE_OPEN` until the tenant setting `upstream_invitations_open` is `true`. Only the platform operator sets it, as P30-04's act once the gate's evidence is recorded.
+   - **A shared account** (first name equal to the username, or no last name — the 76): the issuer must give the person's first and last name in the issue request. The names are written, and the audit row records the change. A wrong e-mail is corrected first by the ordinary audited user edit, never by the invitation.
+   - TTL 7 days (`INVITATION_TTL_MS`, the access request's). Issue and revoke are audited mutations; the e-mail goes through the existing queue.
+4. **Accepting.** The existing page and route that accept an access request's invitation accept this one too: the token is looked up in `user_invitations` first, then on `access_requests`. Every refusal (unknown, spent, revoked, expired, account inactive, suspended or erased) is the **one** 400 `INVITATION_INVALID`. In one transaction: the password set (an instance save, so ADR-099's hooks run), `is_email_verified = true` (the mailbox is proven), `must_change_password = false`, `awaiting_invitation = false`, the invitation spent, one audit row.
+5. **Unclaimed accounts.** A nightly job marks `INACTIVE` an account still awaiting its invitation 30 days after its **first** invitation was issued (system actor, one audit row each, the facility stamped). An administrator may reactivate it and issue again. An account never invited is untouched: the 30 days start at issue, not at import.
+6. **Departed performers are snapshots, never accounts — as built** (ADR-133 Am. 4, ADR-129 Am. 8). An upstream user who has left is **not** imported as a user. A record they performed is attributed to the tenant's import key with the snapshot "Former upstream user #<n>", numbered in `upstream_import.former_users`; a row with no user at all gets "Upstream import". A mapping that names nobody is quarantined `performer_not_found`, never silently given to the key. No upstream name of a departed person is copied into our tables.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Verify and rehash the upstream hash on first login (`05` § 5, option 2) | a second password path in `auth.service`, 106 foreign hashes kept until each person logs in, cost 10 under our 12, and a pre-hash whose 72-byte behaviour differs from ours; UD-5 refused it |
+| Let the e-mail-code reset be the invitation | that is the gap: no gate, no named person behind a shared account, a 5-minute code the operator does not send, and no record of who was invited when |
+| Refuse the reset for every account with `must_change_password` | breaks the administrator-created temporary-password accounts, for which the reset is the way out (A-123). The flag means "change it", not "not yours yet" |
+| Reuse the `access_requests` columns for the token | an access request onboards a tenant; one row per user invitation would make it a second user table |
+| Import departed upstream users as inactive accounts so records can point at them | personal data of people who left, in a table built for people who sign in; a username and an e-mail kept for nobody (07 § 2.1 minimisation) |
+| Copy the departed person's upstream name onto the snapshot | more personal data in more places, about a person no longer reachable to exercise their rights. The number keeps records distinguishable; the staging map keeps the link for the operator until staging is purged |
+| Open invitations automatically after the transform | the pre-invitation gate would be a convention; a setting only the operator sets makes opening it an audited act |
+| Disable unclaimed accounts N days after import | an import that waits weeks for cutover would disable every account before anyone was invited |
+
+**Implications, including the bad ones.**
+
+- Every imported person sets a password once (about 105 e-mails), and the 76 shared accounts need a named person before anyone can use them. A facility whose person is not known at cutover has no access until it is.
+- A person who tries "forgot password" before the invitation is told nothing useful, by design. The UAT facilitator script (P26) must say "wait for the invitation".
+- Single sign-on for the provider tenant does not work for an imported person until they accept, even though the IdP vouches for them. Accepted for the gate's sake.
+- The acceptance route looks in two tables. The refusal stays one answer; the two token spaces are independent 256-bit values.
+- A user invitation is a bearer credential for 7 days, as the access request's is.
+- `awaiting_invitation` is written by the transform and read by the application, so the transform role's column grants change with it (P24-08's migration, proved by its live suite as the transform role).
+
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 5 (a note naming this ADR, the open paths and the cards). `SECURITY/15` § 11 gains its gate item when P24-08 is built.
+
 ---
 
 End of ADRs. Update this document as new decisions are made, and record a deviation as an ADR rather than editing a `docs/` document quietly.
