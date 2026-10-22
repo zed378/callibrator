@@ -160,7 +160,7 @@ describe("P24-02b — the users step on live PostgreSQL 18, as the transform rol
   const imported = (): Promise<Row[]> =>
     rows(
       `SELECT u.username, u.email, u.first_name, u.last_name, r.name AS role, f.code AS facility, u.is_active, u.status,
-              u.must_change_password, u.is_email_verified, u.password LIKE '$2%' AS bcrypt, (u.created_at AT TIME ZONE 'UTC')::text AS created
+              u.must_change_password, u.is_email_verified, u.awaiting_invitation, u.password LIKE '$2%' AS bcrypt, (u.created_at AT TIME ZONE 'UTC')::text AS created
          FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN client_facilities f ON f.id = u.client_facility_id
         WHERE u.tenant_id = '${PROVIDER}' ORDER BY u.username`,
     );
@@ -253,9 +253,10 @@ describe("P24-02b — the users step on live PostgreSQL 18, as the transform rol
     ]);
     expect(String(before.find((r) => String(r["o"]).startsWith("c:"))?.["o"])).toContain("'user_not_imported'");
     await g.m0135.down({ context: g.db.getQueryInterface() });
-    // Only 0139's four SELECT columns on users remain (P24-02e); 0135's own grants are gone.
+    // Only 0139's four SELECT columns on users (P24-02e) and 0143's INSERT of awaiting_invitation
+    // (P24-08) remain; 0135's own grants are gone.
     expect(await rows(`SELECT count(*)::int AS n FROM information_schema.column_privileges WHERE grantee = '${TRANSFORM_ROLE}' AND table_name IN ('users', 'roles')`)).toEqual([
-      { n: 4 },
+      { n: 5 },
     ]);
     await g.m0135.up({ context: g.db.getQueryInterface() });
     await g.m0135.up({ context: g.db.getQueryInterface() });
@@ -266,7 +267,8 @@ describe("P24-02b — the users step on live PostgreSQL 18, as the transform rol
     for (const column of ["password", "mfa_secret", "mfa_recovery_codes", "otp_code", "webauthn_public_key"]) {
       expect([column, await errorAs(TRANSFORM_ROLE, `SELECT ${column} FROM users LIMIT 1`)]).toEqual([column, expect.stringMatching(/^42501 permission denied for table users/)]);
     }
-    for (const set of ["email = email", "username = username", "role_id = role_id", "client_facility_id = client_facility_id", "password = 'x'"]) {
+    // P24-08: nor reopen (or close) an account awaiting its invitation — INSERT on it, never UPDATE.
+    for (const set of ["email = email", "username = username", "role_id = role_id", "client_facility_id = client_facility_id", "password = 'x'", "awaiting_invitation = false"]) {
       expect([set, await errorAs(TRANSFORM_ROLE, `UPDATE users SET ${set} WHERE false`)]).toEqual([set, expect.stringMatching(/^42501/)]);
     }
     expect(await errorAs(TRANSFORM_ROLE, "DELETE FROM users WHERE false")).toMatch(/^42501/);
@@ -294,6 +296,8 @@ describe("P24-02b — the users step on live PostgreSQL 18, as the transform rol
       ["teknisi", "TECHNICIAN", null, true],
     ]);
     expect(users.every((u) => u["must_change_password"] === true && u["is_email_verified"] === false && u["bcrypt"] === true)).toBe(true);
+    // P24-08 (ADR-139 § 2): every imported account, active or not, awaits its invitation.
+    expect(users.map((u) => u["awaiting_invitation"])).toEqual(users.map(() => true));
     expect(users.find((u) => u["username"] === "admin.sintetis")).toMatchObject({ email: "admin@example.test", first_name: "Admin Sintetis", last_name: "Satu" });
     expect(users.find((u) => u["username"] === "teknisi")).toMatchObject({ first_name: "teknisi", last_name: "" });
     expect(users.find((u) => u["username"] === "rs1a")).toMatchObject({ status: "ACTIVE", created: "2024-01-01 02:00:00" });

@@ -12593,7 +12593,7 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 ## ADR-139: An Imported User Gets In Only Through an Invitation — No Upstream Hash, an Account Marked "Awaiting Invitation" That No Reset or Single Sign-On Can Open, a Single-Use Hashed Token the Provider Issues After the Pre-Invitation Gate, the Person Behind a Shared Account Named at Issue, and Departed Performers Kept as Numbered Snapshots, Never as Accounts
 
-**Date:** 2026-10-22 · **Status:** Accepted. **§ 1 and § 6 are BUILT** (P24-02b, P24-02f, ADR-129 Am. 4 and Am. 8, ADR-133 Am. 4); **§ 2 … § 5 are the TARGET, nothing built.** UD-4 (a) and UD-5 are working decisions of 2026-10-07/08 (`TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md` § 3); the mechanisms are decided under the owner's standing delegation (decide by best practice, record it) · **Card:** P12-05 · **Builds in:** P24-08 (the marker and the closed paths), P24-09 (issue, accept, expire), P30-04 (the cutover batch) · **Works with:** ADR-129 (the transform), ADR-133 Am. 4 (imported performers and the import key), ADR-124 (facility binding), P10-15 / `services/invitation.service.ts` (the access-request invitation this one mirrors), ADR-099 (one-time passwords), ADR-051 Q-11 (a mailbox proof verifies the address) · **Threat model:** `docs/SECURITY/15` § 11 (the pre-invitation gate G-01 … G-31) · **Record:** [`records/2026-10-22-p12-05-imported-identities-adr.md`](./records/2026-10-22-p12-05-imported-identities-adr.md)
+**Date:** 2026-10-22 · **Status:** Accepted. **§ 1 and § 6 are BUILT** (P24-02b, P24-02f, ADR-129 Am. 4 and Am. 8, ADR-133 Am. 4); **§ 2 is BUILT** (P24-08, 2026-10-22, migration 0143 — [record](./records/2026-10-22-p24-08-imported-accounts-closed.md)); **§ 3 … § 5 are the TARGET, nothing built.** UD-4 (a) and UD-5 are working decisions of 2026-10-07/08 (`TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md` § 3); the mechanisms are decided under the owner's standing delegation (decide by best practice, record it) · **Card:** P12-05 · **Builds in:** P24-08 (the marker and the closed paths), P24-09 (issue, accept, expire), P30-04 (the cutover batch) · **Works with:** ADR-129 (the transform), ADR-133 Am. 4 (imported performers and the import key), ADR-124 (facility binding), P10-15 / `services/invitation.service.ts` (the access-request invitation this one mirrors), ADR-099 (one-time passwords), ADR-051 Q-11 (a mailbox proof verifies the address) · **Threat model:** `docs/SECURITY/15` § 11 (the pre-invitation gate G-01 … G-31) · **Record:** [`records/2026-10-22-p12-05-imported-identities-adr.md`](./records/2026-10-22-p12-05-imported-identities-adr.md)
 
 **Context.** Upstream holds about 105 accounts, `myth/auth` bcrypt cost 10 over base64(SHA-384), 76 of them without a full name, one shared `client` account per facility (`docs/UPSTREAM/05` § 5). UD-5 chose: import no hash, give every account an unusable one, and let a single-use invitation be the only way in, so that no second password path enters `auth.service` and every person re-affirms their identity and e-mail. P24-02b built the import side, and its file comment says "the invitation … is the only way in". **The code does not hold that yet.** Two paths open an imported, active account without any invitation, and nothing tells the two kinds of account apart:
 
@@ -12607,9 +12607,9 @@ Both paths bypass the pre-invitation gate (the facility scope proved before any 
 
 1. **No upstream hash, as built** (UD-5; ADR-129 Am. 4). Every imported account gets one unusable bcrypt hash per run, of a random secret nobody keeps, `must_change_password = true`, `is_email_verified = false`. An account inactive upstream is imported inactive and is never invited. The transform role cannot read or write any credential column.
 2. **The marker.** A new column `users.awaiting_invitation boolean NOT NULL DEFAULT false`, set `true` by the transform for every account it **inserts** (never by a re-run's update), and cleared only by accepting an invitation (§ 4). While it is `true`:
-   - password sign-in fails with the ordinary wrong-credential answer (the hash already guarantees it; the flag makes it explicit and testable);
+   - password sign-in needs no change: the unusable hash fails like any wrong password, with the same answer and timing;
    - `send-otp` sends nothing and gives its usual "If the account exists …" 200; `reset-password` gives its usual 400 `Invalid OTP`. **One answer each, so the reset path is no oracle for imported accounts;**
-   - single sign-on refuses to link, with the same refusal as an account the tenant does not provision; no JIT row is created beside it (the e-mail is taken);
+   - single sign-on refuses to link: a 403 "This account is waiting for its invitation". The identity provider has already authenticated the person, so the reason is no oracle; no JIT row is created beside it (the e-mail is taken);
    - SCIM, passkey registration and MFA setup need a session and so cannot be reached.
 
    The column is on no request schema; only the transform and the acceptance write it. The transform role gets INSERT on it (a column grant), not UPDATE.
@@ -12645,7 +12645,7 @@ Both paths bypass the pre-invitation gate (the facility scope proved before any 
 - A user invitation is a bearer credential for 7 days, as the access request's is.
 - `awaiting_invitation` is written by the transform and read by the application, so the transform role's column grants change with it (P24-08's migration, proved by its live suite as the transform role).
 
-**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 5 (a note naming this ADR, the open paths and the cards). `SECURITY/15` § 11 gains its gate item when P24-08 is built.
+**`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 5 (a note naming this ADR, the open paths and the cards); `SECURITY/15` § 11 gate item G-32 (P24-08).
 
 ---
 

@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-22 — Imported upstream accounts cannot be opened by a password reset or single sign-on (P24-08) ([record](./records/2026-10-22-p24-08-imported-accounts-closed.md), ADR-139)
+- **Security:** an account brought in by the upstream import now waits for its invitation: "forgot password" sends it nothing and answers as for an unknown address, and single sign-on refuses it with a message to use the invitation. Migration 0143 adds the marker; existing accounts are unaffected.
+
 ### 2026-10-22 — How imported upstream users will get in (P12-05) ([record](./records/2026-10-22-p12-05-imported-identities-adr.md), ADR-139)
 - **Decided (no code change):** an imported user gets in only by an invitation the provider sends after the pre-invitation checks; a shared facility account must be given a named person first; an unclaimed account is disabled 30 days after its first invitation. The password-reset and single sign-on paths that would open an imported account today are to be closed first (P24-08); no deployment holds an imported account yet.
 

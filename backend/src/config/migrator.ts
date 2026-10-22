@@ -241,6 +241,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0141-upstream-transform-ipm.js", require("../migrations/0141-upstream-transform-ipm")],
   // UAT C-3: the calibration-dates and exports menu entries under Equipment, granted read to the roles that reach the pages.
   ["0142-calibration-dates-exports-menu.js", require("../migrations/0142-calibration-dates-exports-menu")],
+  // P24-08 (ADR-139 § 2): users.awaiting_invitation — an imported account no reset or SSO opens; the transform role INSERTs it.
+  ["0143-users-awaiting-invitation.js", require("../migrations/0143-users-awaiting-invitation")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

@@ -20,8 +20,9 @@
  *
  * THE ACCOUNT (UD-5, 05 § 5): no password hash is imported (staging never holds one). Every
  * imported user gets the SAME unusable bcrypt hash of a random secret generated for this run and
- * discarded, `must_change_password`, e-mail not verified — the invitation (P30-04, after the
- * pre-invitation gate) is the only way in. Inactive upstream accounts are imported inactive and
+ * discarded, `must_change_password`, e-mail not verified, `awaiting_invitation` (ADR-139 § 2: the
+ * e-mail-code reset and SSO refuse it) — the invitation (P24-09, P30-04, after the pre-invitation
+ * gate) is the only way in. Inactive upstream accounts are imported inactive and
  * never invited (rule 3). The e-mail is lower-cased (0063); a username already taken anywhere gets
  * `_2`, `_3` …; an empty one is derived from the e-mail's local part. `fullname` is split on its
  * last space (first ≤ 100, last ≤ 100); an empty name takes the username as first name.
@@ -370,11 +371,11 @@ export const runUsers = async (context: StepContext): Promise<void> => {
       runner,
       `INSERT INTO users (id, tenant_id, role_id, username, email, password, first_name, last_name, avatar_url, is_active, status,
                           is_email_verified, must_change_password, password_one_time, client_facility_id, facility_binding_pending,
-                          is_deleted, created_at, updated_at)
+                          awaiting_invitation, is_deleted, created_at, updated_at)
        SELECT v.id, $2::uuid, r.id, v.username, lower(btrim(s."email"::text)), $6,
               left(coalesce(nullif(n.first, ''), v.username), 100), left(coalesce(n.last, ''), 100), 'default.svg',
               coalesce(s."active"::int, 0) <> 0, CASE WHEN coalesce(s."active"::int, 0) <> 0 THEN 'ACTIVE' ELSE 'INACTIVE' END,
-              false, true, false, v.facility, false, false,
+              false, true, false, v.facility, false, true, false,
               coalesce(s."created_at"::timestamp AT TIME ZONE $7, now()),
               coalesce(s."updated_at"::timestamp AT TIME ZONE $7, s."created_at"::timestamp AT TIME ZONE $7, now())
          FROM unnest($3::uuid[], $4::bigint[], $5::text[], $8::text[], $9::uuid[]) AS v(id, rn, role, username, facility)
