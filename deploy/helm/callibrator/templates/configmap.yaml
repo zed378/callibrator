@@ -171,6 +171,7 @@ data:
   WEBHOOK_DELIVERY_PURGE_SCHEDULER: "disabled"
   ATTACHMENT_FILE_SWEEP_SCHEDULER: "disabled"
   BOUND_ACCOUNT_DEACTIVATION_SCHEDULER: "disabled"
+  UNCLAIMED_INVITATION_SCHEDULER: "disabled"
   # The watchdog alerts on the scheduler pod; one per release is enough.
   JOB_WATCHDOG_SCHEDULER: "disabled"
   {{- end }}
