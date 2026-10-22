@@ -104,6 +104,9 @@ export type IdempotencyKeyId = Brand<string, "IdempotencyKeyId">;
 /** A public device link's row id (`public_device_tokens.id`, P21-08 / ADR-138) — never the token. */
 export type PublicDeviceTokenId = Brand<string, "PublicDeviceTokenId">;
 
+/** An imported user's invitation row id (`user_invitations.id`, P24-09a / ADR-139) — never the token. */
+export type UserInvitationId = Brand<string, "UserInvitationId">;
+
 /** The constructors' shared check. */
 const assertUuid = (value: string, what: string): void => {
   if (!UUID_SHAPE.test(value)) {

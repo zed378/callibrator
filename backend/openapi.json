@@ -65603,6 +65603,454 @@
         }
       }
     },
+    "/api/v1/users/{userId}/invitation": {
+      "get": {
+        "operationId": "getUserInvitation",
+        "summary": "An imported user's invitation state",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/user.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "users",
+          "action": "read",
+          "superAdmin": "bypasses"
+        },
+        "description": "P24-09a (ADR-139 § 3): whether the account awaits its invitation, whether the platform operator has opened invitations for the tenant, whether an issue must name the person (a shared account), the live invitation (issued, expires, by whom), the first issue and the acceptance. Never the token or its hash. Tenant administrators; a person only (no API key); not available to facility accounts (403).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The user's id",
+              "example": "8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f"
+            },
+            "required": true,
+            "description": "The user's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The invitation state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "awaitingInvitation": {
+                          "type": "boolean"
+                        },
+                        "invitationsOpen": {
+                          "type": "boolean"
+                        },
+                        "personRequired": {
+                          "type": "boolean"
+                        },
+                        "live": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "issuedAt": {
+                                  "type": "string"
+                                },
+                                "expiresAt": {
+                                  "type": "string"
+                                },
+                                "expired": {
+                                  "type": "boolean"
+                                },
+                                "issuedBy": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "name": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "role": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "organisation": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        },
+                                        "redacted": {
+                                          "type": "boolean"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "role",
+                                        "organisation",
+                                        "redacted"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "issuedAt",
+                                "expiresAt",
+                                "expired",
+                                "issuedBy"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "firstIssuedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "acceptedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "awaitingInvitation",
+                        "invitationsOpen",
+                        "personRequired",
+                        "live",
+                        "firstIssuedAt",
+                        "acceptedAt"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "operationId": "issueUserInvitation",
+        "summary": "Invite an imported user (or invite again)",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/user.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "users",
+          "action": "update",
+          "superAdmin": "bypasses"
+        },
+        "description": "P24-09a (ADR-139 § 3): issues the single-use invitation (7 days) that is the only way into an imported account, and queues its e-mail; a live one is revoked (`reissued`). The token is in the e-mail only — never in this answer. A shared account (first name equal to the username, or no last name) needs `firstName` and `lastName` (400 `INVITATION_PERSON_REQUIRED`); the names are written and audited. Tenant administrators; a person only (no API key); not available to facility accounts (403).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `INVITATION_NOT_APPLICABLE`: the account does not await an invitation, or is inactive; `PRE_INVITATION_GATE_OPEN`: the platform operator has not opened invitations for this organisation (the `upstream_invitations_open` tenant flag).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The user's id",
+              "example": "8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f"
+            },
+            "required": true,
+            "description": "The user's id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "firstName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Issued: when it expires, and whether the e-mail was queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "issuedAt": {
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "type": "string"
+                        },
+                        "emailQueued": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "issuedAt",
+                        "expiresAt",
+                        "emailQueued"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "revokeUserInvitation",
+        "summary": "Revoke an imported user's live invitation",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/user.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "users",
+          "action": "update",
+          "superAdmin": "bypasses"
+        },
+        "description": "P24-09a (ADR-139 § 3): the link in the e-mail stops working. Tenant administrators; a person only (no API key); not available to facility accounts (403).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `INVITATION_NONE`: the account has no live invitation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The user's id",
+              "example": "8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f"
+            },
+            "required": true,
+            "description": "The user's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "revokedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revokedAt"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/users/{userId}/mfa/reset": {
       "post": {
         "operationId": "resetUserMfa",

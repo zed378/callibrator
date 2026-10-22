@@ -14,6 +14,7 @@
  * which. The password is set, the address marked verified (the mailbox is now
  * proven), the token spent and the audit row written in one transaction.
  */
+import type { Transaction } from "sequelize";
 import models from "../models";
 import { db } from "../config";
 import auditService from "./audit.service";
@@ -21,8 +22,9 @@ import { AppError } from "../utils/appError.util";
 import { logger } from "../middlewares/activityLog.middleware";
 import { hashPassword } from "../utils/password.util";
 import { invitationTokenHash } from "./accessRequest.service";
+import type { ModelInstance } from "../types/models";
 
-const { AccessRequest, User } = models;
+const { AccessRequest, User, UserInvitation } = models;
 
 /** The one answer to any invitation that cannot be accepted. */
 export const INVITATION_INVALID = "This invitation link is invalid or has expired";
@@ -37,7 +39,60 @@ export interface AcceptContext {
 }
 
 /**
- * Accept an invitation: set the administrator's password.
+ * P24-09a (ADR-139 § 4) — accept an imported user's invitation, in the caller's transaction: the
+ * password, the address verified, `must_change_password` and `awaiting_invitation` cleared, the
+ * invitation spent and one audit row. Null (the one refusal) when it is spent, revoked or expired, or
+ * the account no longer awaits it or is refused.
+ */
+const acceptUserInvitation = async (
+  invitation: ModelInstance<"UserInvitation">,
+  hashed: string,
+  context: AcceptContext,
+  transaction: Transaction,
+): Promise<string | null> => {
+  const now = new Date();
+  if (invitation.acceptedAt !== null || invitation.revokedAt !== null || invitation.expiresAt.getTime() <= now.getTime()) {
+    // Which of the reasons it was is visible from the invitation row itself.
+    logger.info("User invitation refused", { userInvitationId: invitation.id });
+    return null;
+  }
+  const user = await User.findByPk(invitation.userId, { transaction, lock: transaction.LOCK.UPDATE });
+  if (!user?.awaitingInvitation || !user.isActive || REFUSED_STATUSES.has(user.status)) {
+    logger.info("User invitation refused: the account is gone, refused or no longer awaiting", { userInvitationId: invitation.id });
+    return null;
+  }
+  user.set({
+    password: hashed,
+    isEmailVerified: true,
+    mustChangePassword: false,
+    temporaryPasswordExpiresAt: null,
+    passwordChangedAt: now,
+    passwordOneTime: false,
+    awaitingInvitation: false,
+  });
+  await user.save({ transaction });
+  invitation.acceptedAt = now;
+  await invitation.save({ transaction });
+  await auditService.logAction(
+    {
+      tenantId: user.tenantId,
+      userId: user.id,
+      action: "UPDATE",
+      resourceType: "User",
+      resourceId: user.id,
+      clientFacilityId: user.clientFacilityId ?? null,
+      // No secret: `operation` names the act (audit rows are permanent).
+      changes: { operation: "INVITATION_ACCEPTED", userInvitationId: invitation.id, emailVerified: true },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    },
+    { transaction },
+  );
+  return user.id;
+};
+
+/**
+ * Accept an invitation: set the administrator's password — or, since P24-09a, an imported user's.
  *
  * @param token - the token from the link
  * @param password - already checked against the password rule (validator)
@@ -49,6 +104,20 @@ export const acceptInvitation = async (token: string, password: string, context:
   const hashed = await hashPassword(password);
 
   const accepted = await db.transaction(async (transaction) => {
+    // P24-09a (ADR-139 § 4): an imported user's invitation first. Pre-authentication, so no tenant
+    // or facility to scope by: the 256-bit token is the capability, and its hash names one row.
+    const invitation = await UserInvitation.findOne({
+      where: { tokenHash: hash },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+      skipTenantScope: true,
+      // skipFacilityScope: as above — no principal yet; the row names its own user.
+      skipFacilityScope: true,
+    });
+    if (invitation) {
+      return acceptUserInvitation(invitation, hashed, context, transaction);
+    }
+
     const request = await AccessRequest.findOne({
       where: { invitationTokenHash: hash },
       transaction,

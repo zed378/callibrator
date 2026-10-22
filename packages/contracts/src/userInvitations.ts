@@ -42,16 +42,18 @@ export const userInvitationParams = z.strictObject({
 });
 export type UserInvitationParams = z.output<typeof userInvitationParams>;
 
+/** The issue's body: the person behind a shared account (both names or neither — `issueUserInvitation`). */
+export const issueUserInvitationBody = z.strictObject({
+  firstName: namePart.optional(),
+  lastName: namePart.optional(),
+});
+
 /**
  * `POST /users/:userId/invitation` — path and body together (`validate(schema, { from: ["params",
- * "body"] })`): the person behind a shared account, both names or neither.
+ * "body"] })`): both names or neither.
  */
-export const issueUserInvitation = z
-  .strictObject({
-    userId: z.uuid(),
-    firstName: namePart.optional(),
-    lastName: namePart.optional(),
-  })
+export const issueUserInvitation = issueUserInvitationBody
+  .extend({ userId: z.uuid() })
   .refine((body) => (body.firstName === undefined) === (body.lastName === undefined), {
     message: "Give both the first and the last name, or neither",
     path: ["lastName"],

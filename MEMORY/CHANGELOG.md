@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-22 — Administrators can invite imported upstream users (P24-09a) ([record](./records/2026-10-22-p24-09a-user-invitations.md), ADR-139 Am. 1)
+- **Added (API):** once the platform operator opens invitations for an organisation, a tenant administrator can send an imported user a single-use, 7-day invitation (and send it again, or withdraw it); a shared facility account must first be given the name of the person who will use it. The person sets their password from the link on the existing invitation page. No screen yet (P24-09c).
+
 ### 2026-10-22 — Imported upstream accounts cannot be opened by a password reset or single sign-on (P24-08) ([record](./records/2026-10-22-p24-08-imported-accounts-closed.md), ADR-139)
 - **Security:** an account brought in by the upstream import now waits for its invitation: "forgot password" sends it nothing and answers as for an unknown address, and single sign-on refuses it with a message to use the invitation. Migration 0143 adds the marker; existing accounts are unaffected.
 

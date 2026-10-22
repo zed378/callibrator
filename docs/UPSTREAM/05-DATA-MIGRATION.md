@@ -213,7 +213,7 @@ operator names the real person behind each account (D-3).
 > **ADR-139 (P12-05, 2026-10-22):** the e-mail-code reset (`/auth/send-otp`, `/auth/reset-password`)
 > and single sign-on linking by e-mail used to open an imported, active account (latent: no deployment
 > held one). **Closed by P24-08 (2026-10-22, migration 0143):** every inserted account is
-> `awaiting_invitation`, which both paths refuse; P24-09
+> `awaiting_invitation`, which both paths refuse. **P24-09a (2026-10-22, migration 0144)** builds the invitation: the operator opens a tenant with the `upstream_invitations_open` flag (`PATCH /admin/tenants/:id/flags`), an administrator issues it from `POST /users/:userId/invitation`, and the person accepts at `/invitation`; P24-09
 > builds `user_invitations` (hashed single-use token, 7 days, opened per tenant by the operator after
 > the pre-invitation gate, the person behind a shared account named at issue). "Unclaimed after N
 > days" is **30 days after the first invitation**, not after import. Departed performers stay numbered

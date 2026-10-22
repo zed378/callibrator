@@ -438,6 +438,8 @@ const NOT_GUARDED = {
   "session.route.ts POST /:id/revoke": "session revocation, not a record",
   "session.route.ts POST /mine/:id/revoke": "the caller ends one of their own sessions (Q-08, ADR-084), not a record",
   "session.route.ts POST /user/:userId/revoke-all": "session revocation, not a record",
+  "user.route.ts DELETE /:userId/invitation":
+    "P24-09a (ADR-139 § 3): an account's invitation (matched on its `revoke` handler), not a record; the platform operator may act on it at cutover — audited",
   "workflows.route.ts DELETE /:id": "workflow definition management, not a record",
   "webauthn.route.ts DELETE /credentials/:id":
     "ADR-108 Am. 1: the caller removes one of their OWN passkeys (matched on its `revoke` handler); re-authenticated and audited, not a Part 11 record",

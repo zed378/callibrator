@@ -19,6 +19,7 @@ import type defineInspectionSession from "../models/inspectionSession.model";
 import type defineInspectionResult from "../models/inspectionResult.model";
 import type defineInspectionSessionSignature from "../models/inspectionSessionSignature.model";
 import type definePublicDeviceToken from "../models/publicDeviceToken.model";
+import type defineUserInvitation from "../models/userInvitation.model";
 import type defineIdempotencyKey from "../models/idempotencyKey.model";
 import type defineInspectionItemDefinition from "../models/inspectionItemDefinition.model";
 import type defineInspectionTemplate from "../models/inspectionTemplate.model";
@@ -206,6 +207,8 @@ export interface Models {
   IdempotencyKey: ReturnType<typeof defineIdempotencyKey>;
   // P21-08 (ADR-138) — born TypeScript: a device's public link
   PublicDeviceToken: ReturnType<typeof definePublicDeviceToken>;
+  // P24-09a (ADR-139 § 3) — born TypeScript: an imported user's invitation
+  UserInvitation: ReturnType<typeof defineUserInvitation>;
 }
 
 /** An instance of the model registered under `K`. */

@@ -159,6 +159,8 @@ export const FACILITY_SCOPE_SKIPS: Readonly<Record<string, string>> = Object.fre
     "P21-04 (P19-06 § 5): the report-number sequence counts the tenant's numbers of one facility code and day — a device moved to another facility keeps its numbers, so a bound reader's facility predicate would re-issue one (23505); only the numbers are read, under the advisory lock",
   "services/publicDevicePage.service.ts#resolveToken":
     "P21-08 (ADR-138 § 2; P19-07 § 7): the public device page has no principal; the link row is resolved by the SHA-256 of its 128-bit token alone (global unique, random — no oracle), with the reviewed skipTenantScope; every later read runs in that row's tenant (runForTenant)",
+  "services/invitation.service.ts#acceptInvitation":
+    "P24-09a (ADR-139 § 4): the invitation acceptance has no principal; an imported user's invitation is resolved by the SHA-256 of its 256-bit token alone (global unique, random — no oracle), with the reviewed skipTenantScope; the row names its own user, whose password it sets",
   "services/ipmReport.service.ts#verifyReport":
     "P21-04 (P19-06 § 9.2): the public verification has no principal; the session is resolved by its 192-bit token alone (global unique, random — no oracle, ADR-100), then the superseding report's number in the token's own tenant",
   // P21-02a / P21-05 (ADR-132 Am. 2, ADR-133 Am. 2):

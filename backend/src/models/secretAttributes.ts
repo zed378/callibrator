@@ -43,6 +43,8 @@ export const SECRET_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = Ob
   CalibrationDevice: Object.freeze(["iotTokenHash"]),
   // P21-08 (ADR-138): a public device link's token hash — never serialised, though no route returns the row.
   PublicDeviceToken: Object.freeze(["tokenHash"]),
+  // P24-09a (ADR-139 § 3): an invitation's token hash — never serialised.
+  UserInvitation: Object.freeze(["tokenHash"]),
   // The rsync image import: the SSH password or key envelope, erased when the import ends.
   UpstreamFileImport: Object.freeze(["secretCiphertext"]),
 });

@@ -216,6 +216,11 @@ const UNCHANGED = Object.freeze({
   "public_device_tokens.device_id": "calibration_devices RESTRICT",
   "public_device_tokens.created_by": "users RESTRICT",
   "public_device_tokens.revoked_by": "users RESTRICT",
+  // P24-09a (migration 0144; ADR-139 § 3): an imported user's invitation — the user, who issued it
+  // and who revoked it are history (the table is append-mostly; nothing is deleted): RESTRICT.
+  "user_invitations.user_id": "users RESTRICT",
+  "user_invitations.issued_by": "users RESTRICT",
+  "user_invitations.revoked_by": "users RESTRICT",
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */

@@ -12593,7 +12593,7 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 ## ADR-139: An Imported User Gets In Only Through an Invitation — No Upstream Hash, an Account Marked "Awaiting Invitation" That No Reset or Single Sign-On Can Open, a Single-Use Hashed Token the Provider Issues After the Pre-Invitation Gate, the Person Behind a Shared Account Named at Issue, and Departed Performers Kept as Numbered Snapshots, Never as Accounts
 
-**Date:** 2026-10-22 · **Status:** Accepted. **§ 1 and § 6 are BUILT** (P24-02b, P24-02f, ADR-129 Am. 4 and Am. 8, ADR-133 Am. 4); **§ 2 is BUILT** (P24-08, 2026-10-22, migration 0143 — [record](./records/2026-10-22-p24-08-imported-accounts-closed.md)); **§ 3 … § 5 are the TARGET, nothing built.** UD-4 (a) and UD-5 are working decisions of 2026-10-07/08 (`TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md` § 3); the mechanisms are decided under the owner's standing delegation (decide by best practice, record it) · **Card:** P12-05 · **Builds in:** P24-08 (the marker and the closed paths), P24-09 (issue, accept, expire), P30-04 (the cutover batch) · **Works with:** ADR-129 (the transform), ADR-133 Am. 4 (imported performers and the import key), ADR-124 (facility binding), P10-15 / `services/invitation.service.ts` (the access-request invitation this one mirrors), ADR-099 (one-time passwords), ADR-051 Q-11 (a mailbox proof verifies the address) · **Threat model:** `docs/SECURITY/15` § 11 (the pre-invitation gate G-01 … G-31) · **Record:** [`records/2026-10-22-p12-05-imported-identities-adr.md`](./records/2026-10-22-p12-05-imported-identities-adr.md)
+**Date:** 2026-10-22 · **Status:** Accepted. **§ 1 and § 6 are BUILT** (P24-02b, P24-02f, ADR-129 Am. 4 and Am. 8, ADR-133 Am. 4); **§ 2 is BUILT** (P24-08, 2026-10-22, migration 0143 — [record](./records/2026-10-22-p24-08-imported-accounts-closed.md)); **§ 3 and § 4 are BUILT** (P24-09a, 2026-10-22, migration 0144, Am. 1); **§ 5 is the TARGET** (P24-09b). UD-4 (a) and UD-5 are working decisions of 2026-10-07/08 (`TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md` § 3); the mechanisms are decided under the owner's standing delegation (decide by best practice, record it) · **Card:** P12-05 · **Builds in:** P24-08 (the marker and the closed paths), P24-09 (issue, accept, expire), P30-04 (the cutover batch) · **Works with:** ADR-129 (the transform), ADR-133 Am. 4 (imported performers and the import key), ADR-124 (facility binding), P10-15 / `services/invitation.service.ts` (the access-request invitation this one mirrors), ADR-099 (one-time passwords), ADR-051 Q-11 (a mailbox proof verifies the address) · **Threat model:** `docs/SECURITY/15` § 11 (the pre-invitation gate G-01 … G-31) · **Record:** [`records/2026-10-22-p12-05-imported-identities-adr.md`](./records/2026-10-22-p12-05-imported-identities-adr.md)
 
 **Context.** Upstream holds about 105 accounts, `myth/auth` bcrypt cost 10 over base64(SHA-384), 76 of them without a full name, one shared `client` account per facility (`docs/UPSTREAM/05` § 5). UD-5 chose: import no hash, give every account an unusable one, and let a single-use invitation be the only way in, so that no second password path enters `auth.service` and every person re-affirms their identity and e-mail. P24-02b built the import side, and its file comment says "the invitation … is the only way in". **The code does not hold that yet.** Two paths open an imported, active account without any invitation, and nothing tells the two kinds of account apart:
 
@@ -12646,6 +12646,27 @@ Both paths bypass the pre-invitation gate (the facility scope proved before any 
 - `awaiting_invitation` is written by the transform and read by the application, so the transform role's column grants change with it (P24-08's migration, proved by its live suite as the transform role).
 
 **`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 5 (a note naming this ADR, the open paths and the cards); `SECURITY/15` § 11 gate item G-32 (P24-08).
+
+### ADR-139 Amendment 1 (2026-10-22, P24-09a): what the build settled — the operator's switch is a tenant flag on the existing operator route, a missing name is a 400, the acceptance route is shared, the expiry runs on one clock
+
+**Status:** Accepted, BUILT (§ 3 and § 4; § 5, the unclaimed rule, is P24-09b) · **Card:** P24-09a · **Record:** [`records/2026-10-22-p24-09a-user-invitations.md`](./records/2026-10-22-p24-09a-user-invitations.md)
+
+**Decision.**
+1. **The switch is a tenant flag, not a `tenant_settings` row.** `upstream_invitations_open` lives in `tenants.settings` and is written by the existing `PATCH /admin/tenants/:id/flags`. That route is super-admin only (the admin router's rbac), validated as scalar flags (A-174) and audited `UPDATE_TENANT_FLAGS` under the platform and the tenant (A-165). No tenant route writes `tenants.settings`: `PATCH /tenants/settings` writes the `tenant_settings` table through the A-176 allow-list, which does not name the flag. Only a JSON `true` opens; `"true"`, `false` and absent stay closed.
+2. **A shared account without the person's name is 400 `INVITATION_PERSON_REQUIRED`**, not a 409: the request lacks content the account's state requires. Both names or neither (the schema); trimmed, 1 – 100 characters.
+3. **Routes:** `GET`, `POST` and `DELETE /users/:userId/invitation`, gated `auth`, `denyApiKey`, `dynamicAccess("users", read|update, { checkTenant })`, `rbac([TENANT_ADMIN])`. They are not facility-accessible. A-127 reviewed: an invitation is not a Part 11 record, so the operator may act at cutover (`NOT_GUARDED`, with its reason).
+4. **One acceptance route.** `POST /auth/invitation/accept` looks the token up in `user_invitations` first, with a reviewed `skipTenantScope` and `skipFacilityScope` (FACILITY_SCOPE_SKIPS), then on `access_requests`. Every refusal stays the one 400.
+5. **The e-mail is bilingual (Indonesian / English):** an imported account has no language of its own. It names the organisation, and goes out after the commit; a queue failure leaves a valid invitation (`emailQueued: false`), which can be issued again.
+6. **One clock:** `created_at` and `expires_at` are set from the same instant, so the expiry is exactly 7 days after the issue. 0144's CHECK `expires_at > created_at` holds by construction.
+7. **Migration 0144** follows 0137's shape:
+   - the hash UNIQUE globally (ADR-138 § 2's reviewed exception), and one live invitation per user (partial UNIQUE);
+   - append-mostly triggers ENABLE ALWAYS: a spent row never changes; otherwise only `accepted_at` or the three revoke columns;
+   - the user of the row's tenant (trigger);
+   - the app role SELECT, INSERT and UPDATE of those four columns only.
+
+**Alternatives considered.** A new operator endpoint for the switch: rejected, because the flags route already is the audited operator act and a second one would split the review. A `tenant_settings` key: rejected, because that table's writer is the tenant administrator, so the switch would need its own deny rule there. A 409 for the missing name: rejected, because nothing about the account's state changes when the name arrives.
+
+**Implications, including the bad ones.** The operator must open invitations per tenant with a flags call; until P24-09c there is no screen for issuing invitations, only the API. An invitation e-mail in two languages is longer.
 
 ---
 
