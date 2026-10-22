@@ -10,10 +10,10 @@
 > real-phone run of `/field` (P22-10), the dry run with real data (P24-05 → P25-04), what legacy
 > stickers encode (OA-4 / UD-16), and the pre-invitation gate that keeps facility-bound accounts off
 > (`FACILITY_BINDING_ENABLED`). § 9 lists the gaps the plan found against the code (C-1, no screen for
-> four tenant settings, and C-4, the SQL-import page's stale stage-2 text, were closed the same day). The run itself is
+> four tenant settings, C-3, the menu entries, and C-4, the SQL-import page's stale stage-2 text, were closed the same day; C-2 waits on a decision). The run itself is
 > **P26-02**; triage and sign-off **P26-03**. No real data, name or facility appears here.
 
-**Status:** rencana dan skrip, 2026-10-13 (P26-01). **Belum dijalankan.** Diperbarui 2026-10-13: C-1 (M-18) dan C-4 selesai, label layar diselaraskan dengan `id.ts`. Pelaksanaan = P26-02 (di
+**Status:** rencana dan skrip, 2026-10-13 (P26-01). **Belum dijalankan.** Diperbarui 2026-10-13: C-1 (M-18), C-3 (migrasi 0142) dan C-4 selesai, label layar diselaraskan dengan `id.ts`. Pelaksanaan = P26-02 (di
 *staging* dengan data *dry run*), triase dan pengesahan = P26-03. Istilah layar dikutip dari kamus
 aplikasi (`frontend/src/i18n/messages/id.ts`) per 2026-10-13.
 
@@ -166,7 +166,7 @@ dengan kartu yang menutupnya — bukan diabaikan.
 |---|---|---|---|
 | **C-1** | ~~Empat pengaturan tenant (`public_device_page`, `ipm_countersign_enabled`, `ipm_interval_months`, `tenant_time_zone`) tidak punya layar~~ — **SELESAI 2026-10-13 (M-18):** panel **Pengaturan IPM dan halaman publik** pada kartu tenant di `/dashboard/tenants`, untuk administrator tenant ([catatan](../../MEMORY/records/2026-10-13-m18-tenant-ipm-settings.md)). | AP-06, AP-08, AP-09, IP-01, PU-01 kini disiapkan oleh AP sendiri. | — |
 | **C-2** | **Foto bukti IPM** hanya ada di aplikasi lapangan `/field`; daftar periksa di dasbor belum menerimanya (catatan terbuka P22-03). | TP-07 di dasbor tanpa foto bukti; TP-13 di `/field` dengan foto. | Tambahkan ke daftar periksa dasbor, atau tetapkan `/field` sebagai satu-satunya tempat foto bukti. |
-| **C-3** | **Tanggal kalibrasi** dan **Ekspor** tidak punya entri menu sendiri (hanya tautan dari halaman Kalibrasi dan Alat). | Pengguna bisa tidak menemukannya; fasilitator menunjukkan jalannya dan mencatat. | Entri menu (seed + migrasi backend) bila UAT memintanya. |
+| **C-3** | ~~**Tanggal kalibrasi** dan **Ekspor** tidak punya entri menu sendiri~~ — **SELESAI 2026-10-13:** entri menu di bawah Peralatan, migrasi 0142 ([catatan](../../MEMORY/records/2026-10-13-c3-calibration-dates-exports-menu.md)). | Pengguna menemukannya di menu samping. | — |
 | **C-4** | ~~Halaman **Impor dump SQL** menyatakan tahap 2 "belum tersedia"~~ — **SELESAI 2026-10-13:** bagian **Tahap 2: transformasi** dengan pilihan tenant penyedia, status transformasi, ringkasan per langkah, dan jawaban server apa adanya ([catatan](../../MEMORY/records/2026-10-13-c4-sql-import-transform.md)). | OP-02 kini menguji tahap 2 sejauh server mengizinkannya. | — |
 
 ## 10. Sumber
