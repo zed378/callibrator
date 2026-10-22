@@ -18,6 +18,7 @@ import { EditTenantModal } from "./components/EditTenantModal";
 import { SsoSettingsPanel } from "./components/SsoSettingsPanel";
 import { MfaPolicyPanel } from "./components/MfaPolicyPanel";
 import { IpmSettingsPanel } from "./components/IpmSettingsPanel";
+import { UpstreamInvitationsPanel } from "./components/UpstreamInvitationsPanel";
 import { DeleteTenantModal } from "./components/DeleteTenantModal";
 import { useTenants } from "./hooks/useTenants";
 
@@ -76,6 +77,8 @@ export function TenantsClient() {
   // (management write); never offered to the platform operator (A-127: the operator does not author
   // a tenant's operational choices).
   const [ipmSettingsTenant, setIpmSettingsTenant] = useState<Tenant | null>(null);
+  // P24-09d (ADR-139 Am. 1): the tenant whose imported-user invitations the operator opens or closes.
+  const [invitationsTenant, setInvitationsTenant] = useState<Tenant | null>(null);
 
   return (
     <DashboardLayout>
@@ -130,6 +133,7 @@ export function TenantsClient() {
                     onSsoConfig={canEditTenant ? handleSsoClick : undefined}
                     onMfaPolicy={canEditTenant ? setMfaPolicyTenant : undefined}
                     onIpmSettings={canEditTenant && !canManagePlatform ? setIpmSettingsTenant : undefined}
+                    onUpstreamInvitations={canManagePlatform ? setInvitationsTenant : undefined}
                     canManageBackups={canEditTenant}
                     onDelete={canManagePlatform ? handleDeleteRequest : undefined}
                   />
@@ -219,6 +223,7 @@ export function TenantsClient() {
         <MfaPolicyPanel tenant={mfaPolicyTenant} onClose={() => setMfaPolicyTenant(null)} />
       )}
       {ipmSettingsTenant && <IpmSettingsPanel tenant={ipmSettingsTenant} onClose={() => setIpmSettingsTenant(null)} />}
+      {invitationsTenant && <UpstreamInvitationsPanel tenant={invitationsTenant} onClose={() => setInvitationsTenant(null)} />}
       <DeleteTenantModal
         isOpen={!!showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(null)}

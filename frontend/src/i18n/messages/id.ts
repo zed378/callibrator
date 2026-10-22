@@ -2006,6 +2006,23 @@ export const id = {
   "users.invitation.expires": "Berlaku sampai {date}.",
   "users.invitation.withdrawn": "Undangan untuk {name} ditarik",
   "users.invitation.failed": "Undangan tidak dapat diubah.",
+  // P24-09d (ADR-139 Am. 1): the operator's switch for a tenant's imported-user invitations.
+  "tenantInvitations.button": "Undangan pengguna impor",
+  "tenantInvitations.buttonFor": "Undangan pengguna impor untuk {name}",
+  "tenantInvitations.title": "Undangan untuk pengguna impor {name}",
+  "tenantInvitations.lead": "Akun yang diimpor dari aplikasi lama tetap tertutup sampai setiap orang menerima undangan. Administrator organisasi ini hanya dapat mengirim undangan selama undangan dibuka di sini. Buka saat cutover, setelah pemeriksaan sebelum-undangan dicatat.",
+  "tenantInvitations.stateOpen": "Undangan dibuka.",
+  "tenantInvitations.stateClosed": "Undangan ditutup.",
+  "tenantInvitations.open": "Buka undangan",
+  "tenantInvitations.close": "Tutup undangan",
+  "tenantInvitations.dismiss": "Selesai",
+  "tenantInvitations.confirmOpenTitle": "Buka undangan untuk {name}?",
+  "tenantInvitations.confirmOpen": "Administrator organisasi ini akan dapat mengundang pengguna impornya, yang kemudian dapat masuk. Lakukan ini hanya setelah pemeriksaan sebelum-undangan dicatat. Tindakan ini dicatat di jejak audit.",
+  "tenantInvitations.confirmCloseTitle": "Tutup undangan untuk {name}?",
+  "tenantInvitations.confirmClose": "Tidak ada undangan baru yang dapat dikirim. Undangan yang sudah terkirim tetap berlaku sampai kedaluwarsa atau ditarik. Tindakan ini dicatat di jejak audit.",
+  "tenantInvitations.opened": "Undangan dibuka untuk {name}",
+  "tenantInvitations.closed": "Undangan ditutup untuk {name}",
+  "tenantInvitations.failed": "Undangan tidak dapat diubah.",
 } as const;
 
 /** Every key the public dictionaries carry. */

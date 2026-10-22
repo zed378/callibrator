@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-23 — The operator opens imported users' invitations from the tenants page (P24-09d) ([record](./records/2026-10-23-p24-09d-operator-invitations-switch.md))
+- **Added:** the platform operator sees an "Imported users' invitations" button on each tenant card, showing whether invitations are open and opening or closing them after a confirmation. In Indonesian and English.
+
 ### 2026-10-23 — Invite imported users from the users page (P24-09c) ([record](./records/2026-10-23-p24-09c-invitation-screen.md), ADR-139 Am. 2)
 - **Added:** on the users page, an imported account waiting for its invitation has an Invite button: it shows whether invitations are open, when one was sent and until when, asks who will use a shared account, and sends, re-sends or withdraws the invitation. In Indonesian and English.
 - **Security:** an administrator can no longer reset the password of an imported account that is waiting for its invitation (409, "send the invitation instead"); that reset would have opened it before the pre-invitation checks.
