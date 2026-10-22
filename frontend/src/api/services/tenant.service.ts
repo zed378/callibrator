@@ -195,6 +195,21 @@ export const tenantService = {
    * `data`. This previously read a top-level `count`, which does not exist at
    * any level, so it always resolved to undefined.
    */
+  /**
+   * P24-09d (ADR-139 Am. 1): the platform operator opens (or closes) the
+   * invitations of a tenant's imported users — the `upstream_invitations_open`
+   * flag, through PATCH /admin/tenants/:id/flags (super admin only, audited).
+   * Answers the tenant with its settings.
+   */
+  setUpstreamInvitationsOpen: async (tenantId: string, open: boolean): Promise<Tenant> =>
+    asTenant(
+      (
+        await typedApi
+          .PATCH("/api/v1/admin/tenants/{id}/flags", { params: { path: { id: tenantId } }, body: { flags: { upstream_invitations_open: open } } })
+          .then(unwrap)
+      ).data,
+    ),
+
   getUserCount: async (tenantId: string): Promise<TenantUserCount> =>
     (await typedApi.POST("/api/v1/tenants/user-count", { body: { tenantId } }).then(unwrap)).data,
 

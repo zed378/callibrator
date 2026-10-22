@@ -3,7 +3,7 @@ import type { Tenant } from "@/types";
 import { Badge, Card } from "@/components/ui";
 import { Avatar } from "@/components/ui";
 import { Button } from "@/components/ui";
-import { HardDrive, Edit2, Trash2, Shield, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { HardDrive, Edit2, Trash2, Shield, ShieldCheck, SlidersHorizontal, MailCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toneOf } from "@/lib/statusTone";
 import { useI18n } from "@/i18n/MessagesProvider";
@@ -19,6 +19,8 @@ interface TenantCardProps {
   onMfaPolicy?: (tenant: Tenant) => void;
   /** M-18: open the IPM and public-page settings (a tenant administrator's, never the operator's). */
   onIpmSettings?: (tenant: Tenant) => void;
+  /** P24-09d: the operator's switch for the tenant's imported users' invitations (super admin only). */
+  onUpstreamInvitations?: (tenant: Tenant) => void;
   /** Omitted for anyone but a super admin: deleting a tenant is a platform operation (A-76). */
   onDelete?: (id: string) => void;
 }
@@ -35,6 +37,7 @@ export const TenantCard: React.FC<TenantCardProps> = ({
   onSsoConfig,
   onMfaPolicy,
   onIpmSettings,
+  onUpstreamInvitations,
   onDelete,
   canManageBackups = false,
 }) => {
@@ -129,6 +132,17 @@ export const TenantCard: React.FC<TenantCardProps> = ({
               aria-label={t("tenantSettings.openFor", { name: tenant.name })}
             >
               <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
+          {onUpstreamInvitations && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onUpstreamInvitations(tenant)}
+              title={t("tenantInvitations.button")}
+              aria-label={t("tenantInvitations.buttonFor", { name: tenant.name })}
+            >
+              <MailCheck className="h-4 w-4" aria-hidden="true" />
             </Button>
           )}
           {onEdit && (
