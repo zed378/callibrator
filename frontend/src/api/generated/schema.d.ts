@@ -8176,6 +8176,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{userId}/invitation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An imported user's invitation state
+         * @description P24-09a (ADR-139 § 3): whether the account awaits its invitation, whether the platform operator has opened invitations for the tenant, whether an issue must name the person (a shared account), the live invitation (issued, expires, by whom), the first issue and the acceptance. Never the token or its hash. Tenant administrators; a person only (no API key); not available to facility accounts (403).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["getUserInvitation"];
+        put?: never;
+        /**
+         * Invite an imported user (or invite again)
+         * @description P24-09a (ADR-139 § 3): issues the single-use invitation (7 days) that is the only way into an imported account, and queues its e-mail; a live one is revoked (`reissued`). The token is in the e-mail only — never in this answer. A shared account (first name equal to the username, or no last name) needs `firstName` and `lastName` (400 `INVITATION_PERSON_REQUIRED`); the names are written and audited. Tenant administrators; a person only (no API key); not available to facility accounts (403).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `INVITATION_NOT_APPLICABLE`: the account does not await an invitation, or is inactive; `PRE_INVITATION_GATE_OPEN`: the platform operator has not opened invitations for this organisation (the `upstream_invitations_open` tenant flag).
+         */
+        post: operations["issueUserInvitation"];
+        /**
+         * Revoke an imported user's live invitation
+         * @description P24-09a (ADR-139 § 3): the link in the e-mail stops working. Tenant administrators; a person only (no API key); not available to facility accounts (403).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `INVITATION_NONE`: the account has no live invitation.
+         */
+        delete: operations["revokeUserInvitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{userId}/mfa/reset": {
         parameters: {
             query?: never;
@@ -36113,6 +36151,143 @@ export interface operations {
                             /** @enum {string} */
                             operation: "BIND_FACILITY" | "UNBIND_FACILITY" | "REBIND_FACILITY" | "CONFIRM_UNBOUND";
                             sessionsRevoked: number;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getUserInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user's id */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitation state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            awaitingInvitation: boolean;
+                            invitationsOpen: boolean;
+                            personRequired: boolean;
+                            live: {
+                                issuedAt: string;
+                                expiresAt: string;
+                                expired: boolean;
+                                issuedBy: {
+                                    name: string | null;
+                                    role: string | null;
+                                    organisation: string | null;
+                                    redacted: boolean;
+                                } | null;
+                            } | null;
+                            firstIssuedAt: string | null;
+                            acceptedAt: string | null;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    issueUserInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user's id */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    firstName?: string;
+                    lastName?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Issued: when it expires, and whether the e-mail was queued */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            issuedAt: string;
+                            expiresAt: string;
+                            emailQueued: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    revokeUserInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user's id */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            revokedAt: string;
                         };
                     };
                 };

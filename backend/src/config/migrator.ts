@@ -243,6 +243,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0142-calibration-dates-exports-menu.js", require("../migrations/0142-calibration-dates-exports-menu")],
   // P24-08 (ADR-139 § 2): users.awaiting_invitation — an imported account no reset or SSO opens; the transform role INSERTs it.
   ["0143-users-awaiting-invitation.js", require("../migrations/0143-users-awaiting-invitation")],
+  // P24-09a (ADR-139 § 3): user_invitations — an imported user's single-use invitation, the hash only; append-mostly; no DELETE grant.
+  ["0144-user-invitations.js", require("../migrations/0144-user-invitations")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

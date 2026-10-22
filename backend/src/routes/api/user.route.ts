@@ -19,6 +19,8 @@ import { enforceSeatQuota, enforceStorageQuota } from "../../middlewares/enforce
 import userController from "../../controllers/user.controller";
 import { bindUser } from "../../controllers/clientFacility.controller";
 import { userFacilityBinding } from "@callibrator/contracts/clientFacilities";
+import { issueUserInvitation, userInvitationParams } from "@callibrator/contracts/userInvitations";
+import { issue as issueUserInvitationHandler, revoke as revokeUserInvitationHandler, state as userInvitationState } from "../../controllers/userInvitation.controller";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -199,6 +201,45 @@ router.put(
   rbac([ROLE_NAMES.TENANT_ADMIN]),
   validate(userFacilityBinding, { from: ["params", "body"] }),
   bindUser,
+);
+
+/* ------------------------------------------------------------------ */
+/* IMPORTED USER'S INVITATION (P24-09a, ADR-139 § 3)                  */
+/* ------------------------------------------------------------------ */
+// The state, issue (again) and revoke of the single-use invitation that is
+// the only way into an imported account. NOT facility-accessible; a person
+// only (no API key). Issue is refused (409) until the platform operator opens
+// invitations for the tenant (the `upstream_invitations_open` flag). Audited
+// inside userInvitation.service's transactions; the token goes out by e-mail
+// only, never in an answer.
+router.get(
+  "/:userId/invitation",
+  auth,
+  denyApiKey,
+  dynamicAccess("users", "read", { checkTenant: true }),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  validate(userInvitationParams, { from: "params" }),
+  userInvitationState,
+);
+
+router.post(
+  "/:userId/invitation",
+  auth,
+  denyApiKey,
+  dynamicAccess("users", "update", { checkTenant: true }),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  validate(issueUserInvitation, { from: ["params", "body"] }),
+  issueUserInvitationHandler,
+);
+
+router.delete(
+  "/:userId/invitation",
+  auth,
+  denyApiKey,
+  dynamicAccess("users", "update", { checkTenant: true }),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  validate(userInvitationParams, { from: "params" }),
+  revokeUserInvitationHandler,
 );
 
 export = router;

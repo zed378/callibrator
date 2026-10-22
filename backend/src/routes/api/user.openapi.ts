@@ -26,6 +26,7 @@ import { ErrorEnvelope } from "../../docs/openapi/envelope";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 import { tenantRequired400 } from "../../docs/openapi/tenantRequiredErrors";
 import { userFacilityBinding } from "@callibrator/contracts/clientFacilities";
+import { issueUserInvitationBody, userInvitationIssued, userInvitationState } from "@callibrator/contracts/userInvitations";
 
 const users = (action: "read" | "create" | "update" | "delete") => ({ kind: "dynamicAccess", resource: "users", action }) as const;
 
@@ -316,6 +317,55 @@ export default defineRouteDocs({
       conflict:
         "Facility-bound accounts are not enabled yet; the facility is the tenant's own or not active; the user is already bound " +
         "this way, or not bound at all.",
+    },
+    {
+      method: "get",
+      path: "/:userId/invitation",
+      operationId: "getUserInvitation",
+      summary: "An imported user's invitation state",
+      description:
+        "P24-09a (ADR-139 § 3): whether the account awaits its invitation, whether the platform operator has opened invitations " +
+        "for the tenant, whether an issue must name the person (a shared account), the live invitation (issued, expires, by whom), " +
+        "the first issue and the acceptance. Never the token or its hash. Tenant administrators; a person only (no API key); not " +
+        "available to facility accounts (403).",
+      permission: users("read"),
+      audited: false,
+      params: userParams,
+      success: { status: 200, description: "The invitation state", data: userInvitationState },
+    },
+    {
+      method: "post",
+      path: "/:userId/invitation",
+      operationId: "issueUserInvitation",
+      summary: "Invite an imported user (or invite again)",
+      description:
+        "P24-09a (ADR-139 § 3): issues the single-use invitation (7 days) that is the only way into an imported account, and " +
+        "queues its e-mail; a live one is revoked (`reissued`). The token is in the e-mail only — never in this answer. A shared " +
+        "account (first name equal to the username, or no last name) needs `firstName` and `lastName` (400 " +
+        "`INVITATION_PERSON_REQUIRED`); the names are written and audited. Tenant administrators; a person only (no API key); not " +
+        "available to facility accounts (403).",
+      permission: users("update"),
+      audited: true,
+      params: userParams,
+      body: issueUserInvitationBody,
+      success: { status: 201, description: "Issued: when it expires, and whether the e-mail was queued", data: userInvitationIssued },
+      conflict:
+        "`INVITATION_NOT_APPLICABLE`: the account does not await an invitation, or is inactive; `PRE_INVITATION_GATE_OPEN`: " +
+        "the platform operator has not opened invitations for this organisation (the `upstream_invitations_open` tenant flag).",
+    },
+    {
+      method: "delete",
+      path: "/:userId/invitation",
+      operationId: "revokeUserInvitation",
+      summary: "Revoke an imported user's live invitation",
+      description:
+        "P24-09a (ADR-139 § 3): the link in the e-mail stops working. Tenant administrators; a person only (no API key); not " +
+        "available to facility accounts (403).",
+      permission: users("update"),
+      audited: true,
+      params: userParams,
+      success: { status: 200, description: "Revoked", data: z.object({ revokedAt: z.string() }) },
+      conflict: "`INVITATION_NONE`: the account has no live invitation.",
     },
   ],
 });
