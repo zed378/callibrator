@@ -210,10 +210,10 @@ operator names the real person behind each account (D-3).
 > names and the active flag only — never the e-mail, username, role or binding. The transform role's
 > grants on `users` are column-level and include no credential column.
 
-> **ADR-139 (P12-05, 2026-10-22):** the invitation is **not yet** the only way in. The e-mail-code
-> reset (`/auth/send-otp`, `/auth/reset-password`) and single sign-on linking by e-mail both open an
-> imported, active account today — latent, since no deployment holds one (the transform is 409 until
-> P24-03). P24-08 marks every inserted account `awaiting_invitation` and closes both paths; P24-09
+> **ADR-139 (P12-05, 2026-10-22):** the e-mail-code reset (`/auth/send-otp`, `/auth/reset-password`)
+> and single sign-on linking by e-mail used to open an imported, active account (latent: no deployment
+> held one). **Closed by P24-08 (2026-10-22, migration 0143):** every inserted account is
+> `awaiting_invitation`, which both paths refuse; P24-09
 > builds `user_invitations` (hashed single-use token, 7 days, opened per tenant by the operator after
 > the pre-invitation gate, the person behind a shared account named at issue). "Unclaimed after N
 > days" is **30 days after the first invitation**, not after import. Departed performers stay numbered

@@ -948,7 +948,9 @@ const requestOTP = async (input: Record<string, unknown>): Promise<AuthServiceRe
   const { email } = validate(input, forgotPasswordSchema);
 
   const user = await Users.findOne({ where: { email } });
-  if (!user) {
+  // ADR-139 § 2 (P24-08): an imported account awaiting its invitation is answered as an unknown
+  // one — no code is sent, so the reset is neither a way in before the invitation nor an oracle.
+  if (!user || user.awaitingInvitation) {
     return {
       success: true,
       status: 200,
@@ -1004,7 +1006,9 @@ const processResetPassword = async (input: Record<string, unknown>): Promise<Aut
   const user = await Users.findOne({ where: { email } });
   // Never reveal whether the account exists — an unknown email returns the
   // same generic error as a wrong code, preventing user enumeration on reset.
-  if (!user) {
+  // ADR-139 § 2 (P24-08): nor whether it awaits its invitation, which only
+  // the invitation opens.
+  if (!user || user.awaitingInvitation) {
     throw new AppError(400, "Invalid OTP");
   }
 

@@ -82,6 +82,8 @@ interface User extends Model<
   clientFacilityId: CreationOptional<ClientFacilityId | null>;
   /** P20-07 (G-F6, AM-15): a JIT/SCIM user waiting for an administrator to bind it, or confirm it unbound. */
   facilityBindingPending: CreationOptional<boolean>;
+  /** P24-08 (ADR-139 § 2): an imported account no e-mail-code reset or SSO opens until its invitation is accepted. */
+  awaitingInvitation: CreationOptional<boolean>;
   isDeleted: CreationOptional<boolean>;
   createdAt: CreationOptional<Date>;
   updatedAt: CreationOptional<Date>;
@@ -291,6 +293,13 @@ const defineModel: DefineUser = (db, DataTypes) => {
         allowNull: true,
       },
       facilityBindingPending: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      // P24-08 (ADR-139 § 2): set by the upstream transform on insert, cleared only by accepting an
+      // invitation (P24-09). Migration 0143.
+      awaitingInvitation: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: false,

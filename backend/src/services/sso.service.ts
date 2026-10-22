@@ -279,6 +279,13 @@ const provisionUser = async (
     );
   }
 
+  // ADR-139 § 2 (P24-08): an imported account is opened only by its invitation, after the
+  // pre-invitation gate and with the person behind a shared account named. The identity provider
+  // has already authenticated this person, so saying why is no oracle.
+  if (user?.awaitingInvitation) {
+    throw new AppError(403, "This account is waiting for its invitation. Use the link in the invitation e-mail.");
+  }
+
   if (!user) {
     // The model's own instance: every model is initialised on one.
     const transaction = await (Users.sequelize as Sequelize).transaction();

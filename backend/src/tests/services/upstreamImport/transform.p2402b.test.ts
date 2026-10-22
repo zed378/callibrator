@@ -340,8 +340,12 @@ describe("P24-02b the users step", () => {
     expect(await comparePassword("", hash)).toBe(false);
     expect(insert?.text).toContain("WHERE NOT EXISTS (SELECT 1 FROM users e WHERE e.tenant_id = $2 AND e.id = v.id)");
     expect(insert?.text).not.toMatch(/mfa|recovery|otp/);
+    // P24-08 (ADR-139 § 2): every inserted account awaits its invitation — column and value aligned.
+    expect(insert?.text).toMatch(/client_facility_id, facility_binding_pending,\s+awaiting_invitation, is_deleted, created_at/);
+    expect(insert?.text).toContain("false, true, false, v.facility, false, true, false,");
     const update = runner.calls.find((c) => c.text.startsWith("UPDATE users"));
     expect(update?.bind).toEqual([RUN, TENANT, ["a2402000-0000-4000-8000-0000000000d3"], ["103"]]);
+    expect(update?.text).not.toContain("awaiting_invitation");
     expect(update?.text).not.toMatch(/SET[^]*\b(email|username|role_id|client_facility_id|password)\s*=/);
     expect(texts.filter((t) => t.includes("INSERT INTO upstream_import.id_map"))).toHaveLength(1);
     expect(runner.calls.every((c) => c.transaction === TX)).toBe(true);
