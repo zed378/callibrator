@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-22T16:16:27.731Z",
+  "last_updated": "2026-10-22T17:21:37.005Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -283,7 +283,11 @@
     "MEMORY\\records\\2026-10-22-p12-05-imported-identities-adr.md",
     "MEMORY\\MEMORY-INDEX.md",
     "MEMORY\\CHANGELOG.md",
-    "MEMORY\\records\\2026-10-22-p24-08-imported-accounts-closed.md"
+    "MEMORY\\records\\2026-10-22-p24-08-imported-accounts-closed.md",
+    "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+    "MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
+    "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+    "MEMORY\\records\\2026-10-23-p24-09d-operator-invitations-switch.md"
   ],
   "entities": [
     {
@@ -68883,6 +68887,249 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-22 — Imported upstream accounts cannot be opened by a password reset or single sign-on (P24-08) ([record](./records/2026-10-22-p24-08-imported-accou"
+    },
+    {
+      "id": "sec_adr_139_amendment_1_2026_10_22_p24_09a_what_the_build_settled_the_operator_s_switch_is_a_tenant_flag_on_the_existing_operator_route_a_missing_name_is_a_400_the_acceptance_route_is_shared_the_expiry_runs_on_one_clock",
+      "name": "ADR-139 Amendment 1 (2026-10-22, P24-09a): what the build settled — the operator's switch is a tenant flag on the existing operator route, a missing name is a 400, the acceptance route is shared, the expiry runs on one clock",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 12650,
+      "evidence": "### ADR-139 Amendment 1 (2026-10-22, P24-09a): what the build settled — the operator's switch is a tenant flag on the existing operator route, a missing name is"
+    },
+    {
+      "id": "api_patch_admin_tenants_id_flags",
+      "name": "PATCH /admin/tenants/:id/flags",
+      "type": "API_Endpoint",
+      "description": "1. **The switch is a tenant flag, not a `tenant_settings` row.** `upstream_invitations_open` lives in `tenants.settings` and is written by the existing `PATCH /admin/tenants/:id/flags`. That route is super-admin only (the admin router's rbac), validated as scalar flags (A-174) and audited `UPDATE_TENANT_FLAGS` under the platform and the tenant (A-165). No tenant route writes `tenants.settings`: `PATCH /tenants/settings` writes the `tenant_settings` table through the A-176 allow-list, which does not name the flag. Only a JSON `true` opens; `\"true\"`, `false` and absent stay closed.",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 12655,
+      "evidence": "1. **The switch is a tenant flag, not a `tenant_settings` row.** `upstream_invitations_open` lives in `tenants.settings` and is written by the existing `PATCH /"
+    },
+    {
+      "id": "api_delete_users_userid_invitation",
+      "name": "DELETE /users/:userId/invitation",
+      "type": "API_Endpoint",
+      "description": "3. **Routes:** `GET`, `POST` and `DELETE /users/:userId/invitation`, gated `auth`, `denyApiKey`, `dynamicAccess(\"users\", read|update, { checkTenant })`, `rbac([TENANT_ADMIN])`. They are not facility-accessible. A-127 reviewed: an invitation is not a Part 11 record, so the operator may act at cutover (`NOT_GUARDED`, with its reason).",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 12657,
+      "evidence": "3. **Routes:** `GET`, `POST` and `DELETE /users/:userId/invitation`, gated `auth`, `denyApiKey`, `dynamicAccess(\"users\", read|update, { checkTenant })`, `rbac(["
+    },
+    {
+      "id": "sec_p24_09a_the_invitation_of_an_imported_user_issue_revoke_accept_",
+      "name": "P24-09a: the invitation of an imported user (issue, revoke, accept)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "source": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 1,
+      "evidence": "# P24-09a: the invitation of an imported user (issue, revoke, accept)"
+    },
+    {
+      "id": "api_delete_userid_invitation",
+      "name": "DELETE /:userId/invitation",
+      "type": "API_Endpoint",
+      "description": "| Registries | `FACILITY_SCOPE_SKIPS` (`invitation.service.ts#acceptInvitation`); A-148 FK review (three `user_invitations` keys, RESTRICT); D-12 model count 89; A-127 `NOT_GUARDED` (`DELETE /:userId/invitation`, with reason); live manifest `p2409a` |",
+      "source": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 15,
+      "evidence": "| Registries | `FACILITY_SCOPE_SKIPS` (`invitation.service.ts#acceptInvitation`); A-148 FK review (three `user_invitations` keys, RESTRICT); D-12 model count 89"
+    },
+    {
+      "id": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "name": "Tests (named; scoped — the full suite was not run)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "source": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 17,
+      "evidence": "## Tests (named; scoped — the full suite was not run)"
+    },
+    {
+      "id": "ent_guards_touched_",
+      "name": "Guards touched:",
+      "type": "Component/Requirement",
+      "description": "`skipFacilityScope.guard`, `associationForeignKeys.a148`, `includeRequired.d12`, `facilityScopedModels.guard`, `twoTenantRoutes.guard` (806 tests), and `denyPlatformAuthoring.a127`.",
+      "source": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 33,
+      "evidence": "- **Guards touched:** `skipFacilityScope.guard`, `associationForeignKeys.a148`, `includeRequired.d12`, `facilityScopedModels.guard`, `twoTenantRoutes.guard` (80"
+    },
+    {
+      "id": "ent_coverage_of_the_new_files_",
+      "name": "Coverage of the new files:",
+      "type": "Component/Requirement",
+      "description": "`userInvitation.service.ts`, `userInvitation.controller.ts`, `invitation.service.ts` and `0144-user-invitations.ts` are all at 100 / 100 / 100 / 100.",
+      "source": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 34,
+      "evidence": "- **Coverage of the new files:** `userInvitation.service.ts`, `userInvitation.controller.ts`, `invitation.service.ts` and `0144-user-invitations.ts` are all at "
+    },
+    {
+      "id": "ent_flake_found_and_fixed_",
+      "name": "Flake found and fixed:",
+      "type": "Component/Requirement",
+      "description": "the 7-day assertion failed 1 run in 4, because `createdAt` was stamped on a different clock read. The issue now sets `createdAt` from the same instant as the expiry. After the fix the suite passed 6 r",
+      "source": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 35,
+      "evidence": "- **Flake found and fixed:** the 7-day assertion failed 1 run in 4, because `createdAt` was stamped on a different clock read. The issue now sets `createdAt` fr"
+    },
+    {
+      "id": "ent_p24_09b_",
+      "name": "P24-09b:",
+      "type": "Component/Requirement",
+      "description": "the nightly job that marks `INACTIVE` an account still awaiting its invitation 30 days after its first one (ADR-139 § 5).",
+      "source": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 47,
+      "evidence": "- **P24-09b:** the nightly job that marks `INACTIVE` an account still awaiting its invitation 30 days after its first one (ADR-139 § 5)."
+    },
+    {
+      "id": "ent_p24_09c_",
+      "name": "P24-09c:",
+      "type": "Component/Requirement",
+      "description": "the issue / revoke screen on the users page, and the operator's switch shown on the tenant console.",
+      "source": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 48,
+      "evidence": "- **P24-09c:** the issue / revoke screen on the users page, and the operator's switch shown on the tenant console."
+    },
+    {
+      "id": "ent_p30_04_",
+      "name": "P30-04:",
+      "type": "Component/Requirement",
+      "description": "the cutover batch (open the flag, then issue invitations).",
+      "source": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 49,
+      "evidence": "- **P30-04:** the cutover batch (open the flag, then issue invitations)."
+    },
+    {
+      "id": "sec_2026_10_22_administrators_can_invite_imported_upstream_users_p24_09a_record_records_2026_10_22_p24_09a_user_invitations_md_adr_139_am_1_",
+      "name": "2026-10-22 — Administrators can invite imported upstream users (P24-09a) ([record](./records/2026-10-22-p24-09a-user-invitations.md), ADR-139 Am. 1)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-22 — Administrators can invite imported upstream users (P24-09a) ([record](./records/2026-10-22-p24-09a-user-invitations.md), ADR-139 Am. 1)"
+    },
+    {
+      "id": "ent_added_api_",
+      "name": "Added (API):",
+      "type": "Component/Requirement",
+      "description": "once the platform operator opens invitations for an organisation, a tenant administrator can send an imported user a single-use, 7-day invitation (and send it again, or withdraw it); a shared facility",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 12,
+      "evidence": "- **Added (API):** once the platform operator opens invitations for an organisation, a tenant administrator can send an imported user a single-use, 7-day invita"
+    },
+    {
+      "id": "sec_2026_10_23_unclaimed_invitations_expire_the_account_after_30_days_p24_09b_record_records_2026_10_23_p24_09b_unclaimed_invitations_md_adr_139_5_",
+      "name": "2026-10-23 — Unclaimed invitations expire the account after 30 days (P24-09b) ([record](./records/2026-10-23-p24-09b-unclaimed-invitations.md), ADR-139 § 5)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-23 — Unclaimed invitations expire the account after 30 days (P24-09b) ([record](./records/2026-10-23-p24-09b-unclaimed-invitations.md), ADR-139 § 5)"
+    },
+    {
+      "id": "ent_added_operations_",
+      "name": "Added (operations):",
+      "type": "Component/Requirement",
+      "description": "a nightly job (`UNCLAIMED_INVITATION_SCHEDULER`, default 03:47; off in Helm's API deployment like every singleton) marks an imported account inactive when it is still waiting 30 days after its first i",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 12,
+      "evidence": "- **Added (operations):** a nightly job (`UNCLAIMED_INVITATION_SCHEDULER`, default 03:47; off in Helm's API deployment like every singleton) marks an imported a"
+    },
+    {
+      "id": "sec_p24_09b_an_unclaimed_invitation_deactivates_its_account_after_30_days",
+      "name": "P24-09b: an unclaimed invitation deactivates its account after 30 days",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
+      "source": "MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
+      "line": 1,
+      "evidence": "# P24-09b: an unclaimed invitation deactivates its account after 30 days"
+    },
+    {
+      "id": "ent_not_run_here_",
+      "name": "Not run here:",
+      "type": "Component/Requirement",
+      "description": "the W-02 Helm render (`schedulerSwitch.w02`). Its two helm-rendering cases fail because `helm` is not on this workstation's PATH; its other 12 cases pass.",
+      "source": "MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
+      "line": 26,
+      "evidence": "- **Not run here:** the W-02 Helm render (`schedulerSwitch.w02`). Its two helm-rendering cases fail because `helm` is not on this workstation's PATH; its other "
+    },
+    {
+      "id": "sec_p24_09c_the_invitation_on_the_users_page_and_the_admin_password_reset_closed_for_imported_accounts",
+      "name": "P24-09c: the invitation on the users page, and the admin password reset closed for imported accounts",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "source": "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "line": 1,
+      "evidence": "# P24-09c: the invitation on the users page, and the admin password reset closed for imported accounts"
+    },
+    {
+      "id": "sec_tests_named_scoped_the_full_suites_were_not_run_",
+      "name": "Tests (named; scoped — the full suites were not run)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "source": "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "line": 14,
+      "evidence": "## Tests (named; scoped — the full suites were not run)"
+    },
+    {
+      "id": "ent_not_run_",
+      "name": "Not run:",
+      "type": "Component/Requirement",
+      "description": "`next build` and the browser suites.",
+      "source": "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "line": 23,
+      "evidence": "- **Not run:** `next build` and the browser suites."
+    },
+    {
+      "id": "ent_p24_09d_",
+      "name": "P24-09d:",
+      "type": "Component/Requirement",
+      "description": "the operator's switch (`upstream_invitations_open`) on a screen. Today it is the API only (`PATCH /admin/tenants/:id/flags`).",
+      "source": "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "line": 27,
+      "evidence": "- **P24-09d:** the operator's switch (`upstream_invitations_open`) on a screen. Today it is the API only (`PATCH /admin/tenants/:id/flags`)."
+    },
+    {
+      "id": "sec_adr_139_amendment_2_2026_10_23_p24_09c_a_third_way_in_the_administrator_s_password_reset_is_closed_too_an_awaiting_account_offers_only_the_invitation",
+      "name": "ADR-139 Amendment 2 (2026-10-23, P24-09c): a third way in — the administrator's password reset — is closed too; an awaiting account offers only the invitation",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 12671,
+      "evidence": "### ADR-139 Amendment 2 (2026-10-23, P24-09c): a third way in — the administrator's password reset — is closed too; an awaiting account offers only the invitati"
+    },
+    {
+      "id": "sec_2026_10_23_invite_imported_users_from_the_users_page_p24_09c_record_records_2026_10_23_p24_09c_invitation_screen_md_adr_139_am_2_",
+      "name": "2026-10-23 — Invite imported users from the users page (P24-09c) ([record](./records/2026-10-23-p24-09c-invitation-screen.md), ADR-139 Am. 2)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-23 — Invite imported users from the users page (P24-09c) ([record](./records/2026-10-23-p24-09c-invitation-screen.md), ADR-139 Am. 2)"
+    },
+    {
+      "id": "sec_p24_09d_the_operator_s_invitations_switch_on_the_tenants_page",
+      "name": "P24-09d: the operator's invitations switch on the tenants page",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p24-09d-operator-invitations-switch.md",
+      "source": "MEMORY\\records\\2026-10-23-p24-09d-operator-invitations-switch.md",
+      "line": 1,
+      "evidence": "# P24-09d: the operator's invitations switch on the tenants page"
+    },
+    {
+      "id": "ent_with_the_existing_suites_",
+      "name": "With the existing suites:",
+      "type": "Component/Requirement",
+      "description": "the tenants page, 17 suites and 125 tests; the tenant service and i18n, 24 tests. All passed.",
+      "source": "MEMORY\\records\\2026-10-23-p24-09d-operator-invitations-switch.md",
+      "line": 23,
+      "evidence": "- **With the existing suites:** the tenants page, 17 suites and 125 tests; the tenant service and i18n, 24 tests. All passed."
+    },
+    {
+      "id": "sec_2026_10_23_the_operator_opens_imported_users_invitations_from_the_tenants_page_p24_09d_record_records_2026_10_23_p24_09d_operator_invitations_switch_md_",
+      "name": "2026-10-23 — The operator opens imported users' invitations from the tenants page (P24-09d) ([record](./records/2026-10-23-p24-09d-operator-invitations-switch.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-23 — The operator opens imported users' invitations from the tenants page (P24-09d) ([record](./records/2026-10-23-p24-09d-operator-invitations-swit"
     }
   ],
   "relations": [
@@ -101989,12 +102236,276 @@
       "evidence": "- **Security:** an account brought in by the upstream import now waits for its invitation: \"forgot password\" sends it nothing and answers as for an unknown addr",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_adr_139_amendment_1_2026_10_22_p24_09a_what_the_build_settled_the_operator_s_switch_is_a_tenant_flag_on_the_existing_operator_route_a_missing_name_is_a_400_the_acceptance_route_is_shared_the_expiry_runs_on_one_clock",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_patch_admin_tenants_id_flags",
+      "evidence": "1. **The switch is a tenant flag, not a `tenant_settings` row.** `upstream_invitations_open` lives in `tenants.settings` and is written by the existing `PATCH /",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 12655
+    },
+    {
+      "source": "sec_adr_139_amendment_1_2026_10_22_p24_09a_what_the_build_settled_the_operator_s_switch_is_a_tenant_flag_on_the_existing_operator_route_a_missing_name_is_a_400_the_acceptance_route_is_shared_the_expiry_runs_on_one_clock",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_delete_users_userid_invitation",
+      "evidence": "3. **Routes:** `GET`, `POST` and `DELETE /users/:userId/invitation`, gated `auth`, `denyApiKey`, `dynamicAccess(\"users\", read|update, { checkTenant })`, `rbac([",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 12657
+    },
+    {
+      "source": "sec_adr_139_amendment_1_2026_10_22_p24_09a_what_the_build_settled_the_operator_s_switch_is_a_tenant_flag_on_the_existing_operator_route_a_missing_name_is_a_400_the_acceptance_route_is_shared_the_expiry_runs_on_one_clock",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_auth_invitation_accept",
+      "evidence": "4. **One acceptance route.** `POST /auth/invitation/accept` looks the token up in `user_invitations` first, with a reviewed `skipTenantScope` and `skipFacilityS",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 12658
+    },
+    {
+      "source": "sec_what_was_built",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_delete_users_userid_invitation",
+      "evidence": "| Routes | `GET`, `POST` and `DELETE /users/:userId/invitation` (`user.route.ts`), documented in `user.openapi.ts`; `openapi.json` regenerated (561 operations);",
+      "source_file": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 14
+    },
+    {
+      "source": "sec_what_was_built",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_delete_userid_invitation",
+      "evidence": "| Registries | `FACILITY_SCOPE_SKIPS` (`invitation.service.ts#acceptInvitation`); A-148 FK review (three `user_invitations` keys, RESTRICT); D-12 model count 89",
+      "source_file": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 15
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_live_postgresql_18",
+      "evidence": "- **Live, PostgreSQL 18** (`npm run test:live -- --only=p2409a,p2402b,p2108`): **3/3 suites, 24 tests**. `p2409a` 10/10:",
+      "source_file": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 28
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_guards_touched_",
+      "evidence": "- **Guards touched:** `skipFacilityScope.guard`, `associationForeignKeys.a148`, `includeRequired.d12`, `facilityScopedModels.guard`, `twoTenantRoutes.guard` (80",
+      "source_file": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 33
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_coverage_of_the_new_files_",
+      "evidence": "- **Coverage of the new files:** `userInvitation.service.ts`, `userInvitation.controller.ts`, `invitation.service.ts` and `0144-user-invitations.ts` are all at ",
+      "source_file": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 34
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_flake_found_and_fixed_",
+      "evidence": "- **Flake found and fixed:** the 7-day assertion failed 1 run in 4, because `createdAt` was stamped on a different clock read. The issue now sets `createdAt` fr",
+      "source_file": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 35
+    },
+    {
+      "source": "sec_left_for_later",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_p24_09b_",
+      "evidence": "- **P24-09b:** the nightly job that marks `INACTIVE` an account still awaiting its invitation 30 days after its first one (ADR-139 § 5).",
+      "source_file": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 47
+    },
+    {
+      "source": "sec_left_for_later",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_p24_09c_",
+      "evidence": "- **P24-09c:** the issue / revoke screen on the users page, and the operator's switch shown on the tenant console.",
+      "source_file": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 48
+    },
+    {
+      "source": "sec_left_for_later",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_p30_04_",
+      "evidence": "- **P30-04:** the cutover batch (open the flag, then issue invitations).",
+      "source_file": "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
+      "line": 49
+    },
+    {
+      "source": "sec_2026_10_22_administrators_can_invite_imported_upstream_users_p24_09a_record_records_2026_10_22_p24_09a_user_invitations_md_adr_139_am_1_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_api_",
+      "evidence": "- **Added (API):** once the platform operator opens invitations for an organisation, a tenant administrator can send an imported user a single-use, 7-day invita",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_phases_12_31_upstream_php_feature_adoption_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_delete_users_userid_invitation",
+      "evidence": "| [24 — Data ETL (incl. ~91 GB of Photos)](./PHASE-24-UPSTREAM-DATA-ETL.md) | 9 | 5 DONE (P24-02: parts **a** … **g**) · **P24-08, P24-09a DONE 2026-10-22** · *",
+      "source_file": "TASKS\\PROGRESS.md",
+      "line": 413
+    },
+    {
+      "source": "sec_5_users_and_passwords",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_patch_admin_tenants_id_flags",
+      "evidence": "> `awaiting_invitation`, which both paths refuse. **P24-09a (2026-10-22, migration 0144)** builds the invitation: the operator opens a tenant with the `upstream",
+      "source_file": "docs\\UPSTREAM\\05-DATA-MIGRATION.md",
+      "line": 216
+    },
+    {
+      "source": "sec_2026_10_23_unclaimed_invitations_expire_the_account_after_30_days_p24_09b_record_records_2026_10_23_p24_09b_unclaimed_invitations_md_adr_139_5_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_operations_",
+      "evidence": "- **Added (operations):** a nightly job (`UNCLAIMED_INVITATION_SCHEDULER`, default 03:47; off in Helm's API deployment like every singleton) marks an imported a",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_new_",
+      "evidence": "- **New:** `services/unclaimedInvitation.p2409b`, 9 tests:",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
+      "line": 15
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_changed_",
+      "evidence": "- **Changed:** `utils/jobContext.w12` and `constants/systemActors.a124` (the new task and actor). These two plus the new suite: 25/25.",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
+      "line": 24
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_coverage_",
+      "evidence": "- **Coverage:** both new files at 100 / 100 / 100 / 100.",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
+      "line": 25
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_not_run_here_",
+      "evidence": "- **Not run here:** the W-02 Helm render (`schedulerSwitch.w02`). Its two helm-rendering cases fail because `helm` is not on this workstation's PATH; its other ",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
+      "line": 26
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_gates_",
+      "evidence": "- **Gates:** typecheck 0 errors; eslint on the changed files clean.",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
+      "line": 27
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suites_were_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_backend_",
+      "evidence": "- **Backend:** `routes/userInvitation.p2409a`, now 26/26. The new case: the reset of an awaiting account is 409 with nothing written, and the reset of an accept",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "line": 16
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suites_were_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_coverage_",
+      "evidence": "- **Coverage:** `InvitationActions.tsx` 100% of lines and functions, 96.25% of branches.",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "line": 21
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suites_were_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_gates_",
+      "evidence": "- **Gates:** typecheck 0 errors (backend and frontend); eslint on the changed files clean; `openapi:check` current; `openapi:lint` no new error.",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "line": 22
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suites_were_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_not_run_",
+      "evidence": "- **Not run:** `next build` and the browser suites.",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "line": 23
+    },
+    {
+      "source": "sec_left_for_later",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_p24_09d_",
+      "evidence": "- **P24-09d:** the operator's switch (`upstream_invitations_open`) on a screen. Today it is the API only (`PATCH /admin/tenants/:id/flags`).",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
+      "line": 27
+    },
+    {
+      "source": "sec_adr_139_amendment_2_2026_10_23_p24_09c_a_third_way_in_the_administrator_s_password_reset_is_closed_too_an_awaiting_account_offers_only_the_invitation",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_users_userid_password_reset",
+      "evidence": "**Decision.** § 2 listed the e-mail-code reset and single sign-on. Building the screen showed a third path: `POST /users/:userId/password/reset` (A-162) gives t",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 12675
+    },
+    {
+      "source": "sec_2026_10_23_invite_imported_users_from_the_users_page_p24_09c_record_records_2026_10_23_p24_09c_invitation_screen_md_adr_139_am_2_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_",
+      "evidence": "- **Added:** on the users page, an imported account waiting for its invitation has an Invite button: it shows whether invitations are open, when one was sent an",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_23_invite_imported_users_from_the_users_page_p24_09c_record_records_2026_10_23_p24_09c_invitation_screen_md_adr_139_am_2_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_security_",
+      "evidence": "- **Security:** an administrator can no longer reset the password of an imported account that is waiting for its invitation (409, \"send the invitation instead\")",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 13
+    },
+    {
+      "source": "sec_what_was_built",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_patch_admin_tenants_id_flags",
+      "evidence": "| `tenant.service.ts` (frontend) | `setUpstreamInvitationsOpen(tenantId, open)` calls `PATCH /admin/tenants/:id/flags` with `{ flags: { upstream_invitations_ope",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09d-operator-invitations-switch.md",
+      "line": 11
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suites_were_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_with_the_existing_suites_",
+      "evidence": "- **With the existing suites:** the tenants page, 17 suites and 125 tests; the tenant service and i18n, 24 tests. All passed.",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-09d-operator-invitations-switch.md",
+      "line": 23
+    },
+    {
+      "source": "sec_2026_10_23_the_operator_opens_imported_users_invitations_from_the_tenants_page_p24_09d_record_records_2026_10_23_p24_09d_operator_invitations_switch_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_",
+      "evidence": "- **Added:** the platform operator sees an \"Imported users' invitations\" button on each tenant card, showing whether invitations are open and opening or closing",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_records",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_patch_admin_tenants_id_flags",
+      "evidence": "| 2026-10-23 | P24-09d; ADR-139 Am. 1 | [The operator's invitations switch on the tenants page](./records/2026-10-23-p24-09d-operator-invitations-switch.md) | *",
+      "source_file": "MEMORY\\MEMORY-INDEX.md",
+      "line": 13
     }
   ],
   "stats": {
-    "total_sources": 282,
-    "total_entities": 7622,
-    "total_relations": 4138,
+    "total_sources": 286,
+    "total_entities": 7649,
+    "total_relations": 4171,
     "token_savings_estimate": "85-95%"
   }
 }
