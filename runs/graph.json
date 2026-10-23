@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-23T13:52:44.797Z",
+  "last_updated": "2026-10-23T15:35:25.648Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -290,7 +290,10 @@
     "MEMORY\\records\\2026-10-23-p24-09d-operator-invitations-switch.md",
     "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
     "TASKS\\PHASE-22-UPSTREAM-FRONTEND.md",
-    "TASKS\\PHASE-23-UPSTREAM-REPORTS.md"
+    "TASKS\\PHASE-23-UPSTREAM-REPORTS.md",
+    "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+    "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+    "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md"
   ],
   "entities": [
     {
@@ -69250,6 +69253,285 @@
       "source": "TASKS\\PHASE-23-UPSTREAM-REPORTS.md",
       "line": 1,
       "evidence": "# Phase 23 — Upstream: Report & PDF Parity"
+    },
+    {
+      "id": "sec_adr_129_amendment_10_2026_10_23_p24_03_step_9_the_device_photos_come_from_the_image_imports_manifests_are_re_keyed_under_their_device_s_facility_with_both_derivatives_and_are_accounted_per_folder_the_certificate_index_is_archive_only_every_step_is_built_and_the_transform_is_available",
+      "name": "ADR-129 Amendment 10 (2026-10-23, P24-03): step 9 — the device photos come from the image imports' manifests, are re-keyed under their device's facility with both derivatives, and are accounted per folder; the certificate index is archive-only; every step is built and the transform is available",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11671,
+      "evidence": "### ADR-129 Amendment 10 (2026-10-23, P24-03): step 9 — the device photos come from the image imports' manifests, are re-keyed under their device's facility wit"
+    },
+    {
+      "id": "sec_p24_03_transform_step_9_the_device_photos_and_the_whole_transform_proved_end_to_end",
+      "name": "P24-03: transform step 9, the device photos — and the whole transform proved end to end",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "source": "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "line": 1,
+      "evidence": "# P24-03: transform step 9, the device photos — and the whole transform proved end to end"
+    },
+    {
+      "id": "sec_the_end_to_end_synthetic_proof_the_card_s_acceptance_",
+      "name": "The end-to-end synthetic proof (the card's acceptance)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "source": "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "line": 19,
+      "evidence": "## The end-to-end synthetic proof (the card's acceptance)"
+    },
+    {
+      "id": "sec_tests_named_scoped_",
+      "name": "Tests (named; scoped)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "source": "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "line": 27,
+      "evidence": "## Tests (named; scoped)"
+    },
+    {
+      "id": "ent_scoped_unit_run_",
+      "name": "Scoped unit run:",
+      "type": "Component/Requirement",
+      "description": "20 suites / 406 tests passed. Changed files at 100 / 100 / 100 / 100: attachments, photoFiles, transformFiles, runner, steps, auditRows, the service, 0145.",
+      "source": "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "line": 39,
+      "evidence": "- **Scoped unit run:** 20 suites / 406 tests passed. Changed files at 100 / 100 / 100 / 100: attachments, photoFiles, transformFiles, runner, steps, auditRows, "
+    },
+    {
+      "id": "sec_2026_10_23_the_upstream_transform_is_complete_device_photos_are_imported_p24_03_record_records_2026_10_23_p24_03_device_photo_step_md_adr_129_am_10_",
+      "name": "2026-10-23 — The upstream transform is complete: device photos are imported (P24-03) ([record](./records/2026-10-23-p24-03-device-photo-step.md), ADR-129 Am. 10)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-23 — The upstream transform is complete: device photos are imported (P24-03) ([record](./records/2026-10-23-p24-03-device-photo-step.md), ADR-129 Am"
+    },
+    {
+      "id": "sec_phase_21_upstream_backend_implementation",
+      "name": "Phase 21 — Upstream: Backend Implementation",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "source": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 1,
+      "evidence": "# Phase 21 — Upstream: Backend Implementation"
+    },
+    {
+      "id": "api_delete_calibration_devices_id_public_token",
+      "name": "DELETE /calibration-devices/:id/public-token",
+      "type": "API_Endpoint",
+      "description": "| P21-08 | Public device page API (capability token, rate-limited, exemption list) | F-74, F-75 | **DONE 2026-10-13** — migration **0137** `public_device_tokens` (SHA-256 only, global UNIQUE hash, one active per device, append-mostly trigger, same-tenant trigger, no DELETE grant); staff `GET`/`POST`/`POST rotate`/`DELETE /calibration-devices/:id/public-token` (unbound only, audited, 409 `PUBLIC_TOKEN_ACTIVE` / `PUBLIC_TOKEN_NONE`; a device delete revokes); public `GET /api/v1/public/devices/:token` (reviewed exemption, budgets 120 / 30 misses / 3 000 global, one 404 `PUBLIC_DEVICE_NOT_FOUND`, allow-list answer, `no-store`/`noindex`/`no-referrer`, token hashed in the logs); setting `public_device_page`; ADR-138 Am. 2; [record](../MEMORY/records/2026-10-13-p21-08-public-device-page-api.md) | P12-06, P19-07 |",
+      "source": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 40,
+      "evidence": "| P21-08 | Public device page API (capability token, rate-limited, exemption list) | F-74, F-75 | **DONE 2026-10-13** — migration **0137** `public_device_tokens"
+    },
+    {
+      "id": "sec_p21_10_live_api_smoke_of_every_route_and_live_e2e_of_the_phase_21_24_flows",
+      "name": "P21-10: live API smoke of every route and live E2E of the Phase 21–24 flows",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 1,
+      "evidence": "# P21-10: live API smoke of every route and live E2E of the Phase 21–24 flows"
+    },
+    {
+      "id": "sec_the_stack",
+      "name": "The stack",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 5,
+      "evidence": "## The stack"
+    },
+    {
+      "id": "ent_mode_",
+      "name": "Mode:",
+      "type": "Component/Requirement",
+      "description": "`E2E_NODE_ENV=development`, because the contract smoke needs the demo seed, which production refuses.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 8,
+      "evidence": "- **Mode:** `E2E_NODE_ENV=development`, because the contract smoke needs the demo seed, which production refuses."
+    },
+    {
+      "id": "ent_env_file_",
+      "name": "Env file:",
+      "type": "Component/Requirement",
+      "description": "made by `scripts/ci/e2e-env.sh`, plus `SEED_DEMO=true`.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 9,
+      "evidence": "- **Env file:** made by `scripts/ci/e2e-env.sh`, plus `SEED_DEMO=true`."
+    },
+    {
+      "id": "ent_seeding_",
+      "name": "Seeding:",
+      "type": "Component/Requirement",
+      "description": "`/migration/seeding` then `/migration/seed-demo`, both 200.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 10,
+      "evidence": "- **Seeding:** `/migration/seeding` then `/migration/seed-demo`, both 200."
+    },
+    {
+      "id": "ent_fresh_state_",
+      "name": "Fresh state:",
+      "type": "Component/Requirement",
+      "description": "the stack was taken down with `down -v` and brought up again on fresh volumes for the final runs.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 11,
+      "evidence": "- **Fresh state:** the stack was taken down with `down -v` and brought up again on fresh volumes for the final runs."
+    },
+    {
+      "id": "sec_the_runs_final_on_the_fresh_volumes_",
+      "name": "The runs (final, on the fresh volumes)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 13,
+      "evidence": "## The runs (final, on the fresh volumes)"
+    },
+    {
+      "id": "ent_catalogue_",
+      "name": "Catalogue:",
+      "type": "Component/Requirement",
+      "description": "device type → item definition → template → draft → items → publish, by the operator. The tenant reads the published catalogue; a tenant writing it gets 403.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 17,
+      "evidence": "- **Catalogue:** device type → item definition → template → draft → items → publish, by the operator. The tenant reads the published catalogue; a tenant writing"
+    },
+    {
+      "id": "ent_register_",
+      "name": "Register:",
+      "type": "Component/Requirement",
+      "description": "a device in the client facility with a new room. `GET /warehouses?kind=room&clientFacilityId=` lists that facility's rooms only. Another tenant's device, QR lookup and facility filter answer 404 / not",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 18,
+      "evidence": "- **Register:** a device in the client facility with a new room. `GET /warehouses?kind=room&clientFacilityId=` lists that facility's rooms only. Another tenant'"
+    },
+    {
+      "id": "ent_public_device_page_",
+      "name": "Public device page:",
+      "type": "Component/Requirement",
+      "description": "a token is issued, 22 characters. While the tenant's setting is off, the token gets 404. With `minimal`, it answers the name, type and facility, and never the serial, the QR or the room. Revoke: tenan",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 26,
+      "evidence": "- **Public device page:** a token is issued, 22 characters. While the tenant's setting is off, the token gets 404. With `minimal`, it answers the name, type and"
+    },
+    {
+      "id": "ent_invitations_",
+      "name": "Invitations:",
+      "type": "Component/Requirement",
+      "description": "an imported account awaits its invitation. The issue answers 409 while the operator's switch is closed, and tenant A gets 404. The operator opens the switch through `PATCH /admin/tenants/:id/flags`. T",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 30,
+      "evidence": "- **Invitations:** an imported account awaits its invitation. The issue answers 409 while the operator's switch is closed, and tenant A gets 404. The operator o"
+    },
+    {
+      "id": "ent_561_routes_",
+      "name": "561 routes:",
+      "type": "Component/Requirement",
+      "description": "5xx/timeouts 0, envelope 0, cross-tenant 2xx 0, frontend missing 0, frontend shape 0.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 32,
+      "evidence": "- **561 routes:** 5xx/timeouts 0, envelope 0, cross-tenant 2xx 0, frontend missing 0, frontend shape 0."
+    },
+    {
+      "id": "ent_statuses_",
+      "name": "Statuses:",
+      "type": "Component/Requirement",
+      "description": "200 × 280, 201 × 39, 204 × 2, 302 × 6, 400 × 95, 401 × 16, 403 × 5, 404 × 90, 409 × 28.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 33,
+      "evidence": "- **Statuses:** 200 × 280, 201 × 39, 204 × 2, 302 × 6, 400 × 95, 401 × 16, 403 × 5, 404 × 90, 409 × 28."
+    },
+    {
+      "id": "ent_the_15_cross_tenant_403s",
+      "name": "The 15 cross-tenant 403s",
+      "type": "Component/Requirement",
+      "description": "are role gates that answer before any id is read (operator-only routes such as `ipm/item-definitions`, roles, sessions, SCIM, signed links). None is a tenant answer.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 35,
+      "evidence": "- **The 15 cross-tenant 403s** are role gates that answer before any id is read (operator-only routes such as `ipm/item-definitions`, roles, sessions, SCIM, sig"
+    },
+    {
+      "id": "sec_defect_found_and_fixed",
+      "name": "Defect found and fixed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 37,
+      "evidence": "## Defect found and fixed"
+    },
+    {
+      "id": "ent_the_smoke_reported_the_global_catalogue_as_a_cross_tenant_leak_",
+      "name": "The smoke reported the global catalogue as a cross-tenant leak:",
+      "type": "Component/Requirement",
+      "description": "`GET /device-types/:id` answered 200 to tenant B. Device types, item definitions and templates are the platform's (ADR-125), read by every tenant.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 39,
+      "evidence": "- **The smoke reported the global catalogue as a cross-tenant leak:** `GET /device-types/:id` answered 200 to tenant B. Device types, item definitions and templ"
+    },
+    {
+      "id": "ent_fix_",
+      "name": "Fix:",
+      "type": "Component/Requirement",
+      "description": "`liveContract.smoke.test.js` now reads the route docs that declare `tenantScoped: false` (ADR-103) and reports their GETs as `global`, as it already did for `public`. A new global module needs no edit",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 40,
+      "evidence": "- **Fix:** `liveContract.smoke.test.js` now reads the route docs that declare `tenantScoped: false` (ADR-103) and reports their GETs as `global`, as it already "
+    },
+    {
+      "id": "sec_observed_not_changed_outside_the_card_s_routes_",
+      "name": "Observed, not changed (outside the card's routes)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 42,
+      "evidence": "## Observed, not changed (outside the card's routes)"
+    },
+    {
+      "id": "ent__get_admin_tenants_",
+      "name": "`GET /admin/tenants`",
+      "type": "Component/Requirement",
+      "description": "(before Phase 21) answers `data: { tenants, total, page, … }`, not rows in `data` with a top-level `meta`. The smoke does not flag it, because the frontend reads `data.tenants`. It is left as built an",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 44,
+      "evidence": "- **`GET /admin/tenants`** (before Phase 21) answers `data: { tenants, total, page, … }`, not rows in `data` with a top-level `meta`. The smoke does not flag it"
+    },
+    {
+      "id": "ent_error_bodies_on_this_development_mode_stack",
+      "name": "Error bodies on this development-mode stack",
+      "type": "Component/Requirement",
+      "description": "carry `details` / `stack`. That is non-production behaviour, and production mode was not run here.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 45,
+      "evidence": "- **Error bodies on this development-mode stack** carry `details` / `stack`. That is non-production behaviour, and production mode was not run here."
+    },
+    {
+      "id": "ent_running_order_",
+      "name": "Running order:",
+      "type": "Component/Requirement",
+      "description": "the contract smoke is destructive (it deletes `demo-beta`) and refuses a re-run on the same stack. Run the flows spec before it, at least 30 s apart, because the operator's TOTP code is single-use.",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 46,
+      "evidence": "- **Running order:** the contract smoke is destructive (it deletes `demo-beta`) and refuses a re-run on the same stack. Run the flows spec before it, at least 3"
+    },
+    {
+      "id": "sec_gates",
+      "name": "Gates",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "source": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 48,
+      "evidence": "## Gates"
+    },
+    {
+      "id": "sec_2026_10_23_live_end_to_end_checks_of_the_phase_21_24_flows_p21_10_record_records_2026_10_23_p21_10_live_smoke_and_e2e_md_",
+      "name": "2026-10-23 — Live end-to-end checks of the Phase 21–24 flows (P21-10) ([record](./records/2026-10-23-p21-10-live-smoke-and-e2e.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-23 — Live end-to-end checks of the Phase 21–24 flows (P21-10) ([record](./records/2026-10-23-p21-10-live-smoke-and-e2e.md))"
     }
   ],
   "relations": [
@@ -102716,12 +102998,324 @@
       "evidence": "- **Added:** while an IPM is a draft, a technician can attach evidence photos to it on the dashboard's review step, and remove one after a confirmation — before",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_tests_named_scoped_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_scoped_unit_run_",
+      "evidence": "- **Scoped unit run:** 20 suites / 406 tests passed. Changed files at 100 / 100 / 100 / 100: attachments, photoFiles, transformFiles, runner, steps, auditRows, ",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "line": 39
+    },
+    {
+      "source": "sec_tests_named_scoped_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_guards_",
+      "evidence": "- **Guards:** `src/tests/guards`, `utils/rawSql*` and `services/unboundedFindAll`: 44 suites / 335 tests passed.",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "line": 40
+    },
+    {
+      "source": "sec_tests_named_scoped_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_live_",
+      "evidence": "- **Live:** p2403 3/3, then p2004 15/15, p2002 21/21, uifix 3/3, p2401 8/8, and p2402a … g 7 + 4 + 3 + 3 + 3 + 4 + 5, all passed (11 of 11 suites, 76 tests).",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "line": 41
+    },
+    {
+      "source": "sec_tests_named_scoped_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_gates_",
+      "evidence": "- **Gates:** eslint on the changed files clean; ratchet 0 errors, baseline 0; ts-ratchet 695 `.js`, at the floor; typecheck 0 errors in backend, contracts and f",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "line": 42
+    },
+    {
+      "source": "sec_tests_named_scoped_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_not_run_",
+      "evidence": "- **Not run:** the full suites (owner rule: at the end of Phase 31). Routes did not change, so `openapi:*` and `api:types:check` were not run.",
+      "source_file": "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
+      "line": 43
+    },
+    {
+      "source": "sec_2026_10_23_the_upstream_transform_is_complete_device_photos_are_imported_p24_03_record_records_2026_10_23_p24_03_device_photo_step_md_adr_129_am_10_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_operations_",
+      "evidence": "- **Added (operations):** the super admin's \"transform\" of a loaded upstream SQL dump is now available; before this it answered 409 `TRANSFORM_NOT_AVAILABLE`. I",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_calibration_devices",
+      "evidence": "| P21-02 | Device extensions: QR lookup, type, photos (sniffing, HEIC → JPEG, EXIF strip, thumbnails, ClamAV), photo replace; **+ `GET /calibration-devices?view",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 32
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_calibration_devices_by_qr_qrcode",
+      "evidence": "| P21-02a | The register API: `normaliseQrCode` + the bound/unbound contracts (`validateScoped`), the QR 409 `DEVICE_QR_TAKEN`, the laboratory, inventory date, ",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 33
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_calibration_devices_id_photos",
+      "evidence": "| P21-02b | The device photos: `POST /calibration-devices/:id/photos` (replace in one transaction) and `DELETE …/photos/:attachmentId` (N-6, A-13, C-10), throug",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 34
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_attachments",
+      "evidence": "| P21-03 | IPM sessions: prefill, draft, submit, correction, void, list/history; idempotency keys for offline sync; **+ for the PWA (P19-08 spec § 9.5, 2026-10-",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 35
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_ipm_due",
+      "evidence": "| P21-04 | IPM side effects in the submit transaction: work order, device status, scheduler flag, \"due\" flag; **+ the IPM report's issuance in the submit (numbe",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 36
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_calibration_devices_id_calibration_dates",
+      "evidence": "| P21-05 | Quick calibration-date entry by QR ~~with certificate attachment~~ — **no file** (owner rule; P19-05 spec § 7, ADR-133): `POST /calibration-devices/:",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 37
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_calibration_records",
+      "evidence": "| P21-06 | Export **reads** (owner rule 2026-10-07, ADR-126 § 8): paginated API reads behind the inventory and calibration recaps — **no backend PDF/XLSX, no ex",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 38
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_dashboard_metrics",
+      "evidence": "| P21-07 | Dashboard condition metrics and technician activity list | F-70 … F-73 | **DONE** 2026-10-09 (ADR-126 Am. 6; [record](../MEMORY/records/2026-10-09-p2",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 39
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_delete_calibration_devices_id_public_token",
+      "evidence": "| P21-08 | Public device page API (capability token, rate-limited, exemption list) | F-74, F-75 | **DONE 2026-10-13** — migration **0137** `public_device_tokens",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 40
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_auth_verify",
+      "evidence": "| P21-09 | Client facilities and facility-bound users: facility CRUD, binding users, the facility dimension in the hooks and the route layer (ADR-124; **+ for t",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 41
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_client_facilities_mine",
+      "evidence": "| P21-09b | The route layer: `FACILITY_ACCESSIBLE_ROUTES` + `facilityRouteGate` from `tenantContextMiddleware` over the route index (parity proved), G-09, G-10;",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 43
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_menu_groups_my_permissions",
+      "evidence": "| P21-09c | The facility administration **routes** (`GET /`, `/options`, `/:clientFacilityId`, create, edit, status, delete, `/:clientFacilityId/users`) + OpenA",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 44
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_calibration_devices_id_move",
+      "evidence": "| P21-09d | Device move (`POST /calibration-devices/:id/move`, `GET …/moves`, § 11), storage keys with the facility segment, `rekey_pending` + re-key job (§ 9.3",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 45
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_users",
+      "evidence": "| P21-09e | The A-90 sweep — `personDisplay`, redaction for bound viewers (§ 12, G-24); the domain routes A-1 … A-8 and the remaining self routes (S-2 revoke, S",
+      "source_file": "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
+      "line": 46
+    },
+    {
+      "source": "sec_the_stack",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_build_",
+      "evidence": "- **Build:** a disposable compose stack, project `s1p2110`, `BUILD_TAG=s1p2110`, from `docker-compose.yml` + `docker-compose.build.yml` + `docker-compose.e2e.ym",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 7
+    },
+    {
+      "source": "sec_the_stack",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_mode_",
+      "evidence": "- **Mode:** `E2E_NODE_ENV=development`, because the contract smoke needs the demo seed, which production refuses.",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 8
+    },
+    {
+      "source": "sec_the_stack",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_env_file_",
+      "evidence": "- **Env file:** made by `scripts/ci/e2e-env.sh`, plus `SEED_DEMO=true`.",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 9
+    },
+    {
+      "source": "sec_the_stack",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_seeding_",
+      "evidence": "- **Seeding:** `/migration/seeding` then `/migration/seed-demo`, both 200.",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 10
+    },
+    {
+      "source": "sec_the_stack",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fresh_state_",
+      "evidence": "- **Fresh state:** the stack was taken down with `down -v` and brought up again on fresh volumes for the final runs.",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 11
+    },
+    {
+      "source": "sec_the_runs_final_on_the_fresh_volumes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_facility_scope_",
+      "evidence": "- **Facility scope:** the self facility; a client facility added; `/mine` and `/options`. Another tenant's facility, and its users list, answer 404.",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 16
+    },
+    {
+      "source": "sec_the_runs_final_on_the_fresh_volumes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_catalogue_",
+      "evidence": "- **Catalogue:** device type → item definition → template → draft → items → publish, by the operator. The tenant reads the published catalogue; a tenant writing",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 17
+    },
+    {
+      "source": "sec_the_runs_final_on_the_fresh_volumes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_register_",
+      "evidence": "- **Register:** a device in the client facility with a new room. `GET /warehouses?kind=room&clientFacilityId=` lists that facility's rooms only. Another tenant'",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 18
+    },
+    {
+      "source": "sec_the_runs_final_on_the_fresh_volumes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_public_device_page_",
+      "evidence": "- **Public device page:** a token is issued, 22 characters. While the tenant's setting is off, the token gets 404. With `minimal`, it answers the name, type and",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 26
+    },
+    {
+      "source": "sec_the_runs_final_on_the_fresh_volumes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_invitations_",
+      "evidence": "- **Invitations:** an imported account awaits its invitation. The issue answers 409 while the operator's switch is closed, and tenant A gets 404. The operator o",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 30
+    },
+    {
+      "source": "sec_the_runs_final_on_the_fresh_volumes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_561_routes_",
+      "evidence": "- **561 routes:** 5xx/timeouts 0, envelope 0, cross-tenant 2xx 0, frontend missing 0, frontend shape 0.",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 32
+    },
+    {
+      "source": "sec_the_runs_final_on_the_fresh_volumes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_statuses_",
+      "evidence": "- **Statuses:** 200 × 280, 201 × 39, 204 × 2, 302 × 6, 400 × 95, 401 × 16, 403 × 5, 404 × 90, 409 × 28.",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 33
+    },
+    {
+      "source": "sec_the_runs_final_on_the_fresh_volumes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_15_cross_tenant_403s",
+      "evidence": "- **The 15 cross-tenant 403s** are role gates that answer before any id is read (operator-only routes such as `ipm/item-definitions`, roles, sessions, SCIM, sig",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 35
+    },
+    {
+      "source": "sec_defect_found_and_fixed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_smoke_reported_the_global_catalogue_as_a_cross_tenant_leak_",
+      "evidence": "- **The smoke reported the global catalogue as a cross-tenant leak:** `GET /device-types/:id` answered 200 to tenant B. Device types, item definitions and templ",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 39
+    },
+    {
+      "source": "sec_defect_found_and_fixed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fix_",
+      "evidence": "- **Fix:** `liveContract.smoke.test.js` now reads the route docs that declare `tenantScoped: false` (ADR-103) and reports their GETs as `global`, as it already ",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 40
+    },
+    {
+      "source": "sec_observed_not_changed_outside_the_card_s_routes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent__get_admin_tenants_",
+      "evidence": "- **`GET /admin/tenants`** (before Phase 21) answers `data: { tenants, total, page, … }`, not rows in `data` with a top-level `meta`. The smoke does not flag it",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 44
+    },
+    {
+      "source": "sec_observed_not_changed_outside_the_card_s_routes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_error_bodies_on_this_development_mode_stack",
+      "evidence": "- **Error bodies on this development-mode stack** carry `details` / `stack`. That is non-production behaviour, and production mode was not run here.",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 45
+    },
+    {
+      "source": "sec_observed_not_changed_outside_the_card_s_routes_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_running_order_",
+      "evidence": "- **Running order:** the contract smoke is destructive (it deletes `demo-beta`) and refuses a re-run on the same stack. Run the flows spec before it, at least 3",
+      "source_file": "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+      "line": 46
+    },
+    {
+      "source": "sec_2026_10_23_live_end_to_end_checks_of_the_phase_21_24_flows_p21_10_record_records_2026_10_23_p21_10_live_smoke_and_e2e_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_tests_",
+      "evidence": "- **Added (tests):** a live end-to-end spec drives a disposable stack through these flows:",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
     }
   ],
   "stats": {
-    "total_sources": 289,
-    "total_entities": 7662,
-    "total_relations": 4183,
+    "total_sources": 292,
+    "total_entities": 7693,
+    "total_relations": 4222,
     "token_savings_estimate": "85-95%"
   }
 }
