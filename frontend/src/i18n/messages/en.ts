@@ -1446,6 +1446,8 @@ export const en: Messages = {
   "ipm.evidence.deleteFailed": "The photo could not be removed.",
   "ipm.evidence.loadFailed": "The photos could not be loaded.",
   "ipm.evidence.retry": "Try again",
+  "ipm.evidence.reportIssued": "The evidence photos of this IPM. They are part of its record and are not printed in the PDF.",
+  "ipm.evidence.reportPreview": "The evidence photos of this draft. The report shows them once the IPM is submitted.",
   "ipmReport.title": "IPM — Inspection and Preventive Maintenance",
   "ipmReport.field.facility": "Hospital / clinic",
   "ipmReport.field.performedAt": "IPM date",

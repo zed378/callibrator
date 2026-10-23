@@ -15,7 +15,7 @@
  * refusal is shown in its words). A submitted IPM's photos are part of its record and cannot be
  * deleted (409 `IPM_NOT_DRAFT`).
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ImageOff, Paperclip, Plus, Trash2 } from "lucide-react";
 import { Alert, Button, ConfirmDialog } from "@/components/ui";
 import { describeApiError } from "@/api/client";
@@ -32,9 +32,15 @@ interface Props {
     sessionId: string;
     /** The draft is the caller's own (the server's rule; another user's is 403). */
     editable: boolean;
+    /**
+     * What a read-only view says instead of the draft hint. The report passes its own line: an issued
+     * report's photos are its record, but the same page also previews a draft (P19-06 § 12), where
+     * "submitted" would be wrong.
+     */
+    readOnlyNote?: string;
 }
 
-export function EvidencePhotos({ sessionId, editable }: Props) {
+export function EvidencePhotos({ sessionId, editable, readOnlyNote }: Props) {
     const { t } = useI18n();
     const [photos, setPhotos] = useState<Attachment[] | null>(null);
     const [loadFailed, setLoadFailed] = useState(false);
@@ -43,22 +49,23 @@ export function EvidencePhotos({ sessionId, editable }: Props) {
     const [confirmDelete, setConfirmDelete] = useState<Attachment | null>(null);
     const input = useRef<HTMLInputElement | null>(null);
 
-    const load = async (): Promise<void> => {
+    const load = useCallback(async (): Promise<void> => {
         setLoadFailed(false);
         try {
             setPhotos(await attachmentService.listForResource(IPM_EVIDENCE_RESOURCE_TYPE, sessionId));
         } catch {
+            // A failed read is a FAILED state, never an empty list (FRONTEND/00: three states).
             setPhotos([]);
             setLoadFailed(true);
         }
-    };
+    }, [sessionId]);
 
     useEffect(
         () =>
             deferEffect(async () => {
                 await load();
             }),
-        [sessionId],
+        [load],
     );
 
     const add = async (file: File) => {
@@ -131,7 +138,7 @@ export function EvidencePhotos({ sessionId, editable }: Props) {
                 )}
             </div>
 
-            <p className="text-xs text-muted-foreground">{editable ? t("ipm.evidence.leadDraft") : t("ipm.evidence.leadReadOnly")}</p>
+            <p className="text-xs text-muted-foreground">{editable ? t("ipm.evidence.leadDraft") : (readOnlyNote ?? t("ipm.evidence.leadReadOnly"))}</p>
 
             {error && (
                 <div role="alert">

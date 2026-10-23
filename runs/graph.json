@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-22T17:21:37.005Z",
+  "last_updated": "2026-10-23T13:52:44.797Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -287,7 +287,10 @@
     "MEMORY\\records\\2026-10-22-p24-09a-user-invitations.md",
     "MEMORY\\records\\2026-10-23-p24-09b-unclaimed-invitations.md",
     "MEMORY\\records\\2026-10-23-p24-09c-invitation-screen.md",
-    "MEMORY\\records\\2026-10-23-p24-09d-operator-invitations-switch.md"
+    "MEMORY\\records\\2026-10-23-p24-09d-operator-invitations-switch.md",
+    "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+    "TASKS\\PHASE-22-UPSTREAM-FRONTEND.md",
+    "TASKS\\PHASE-23-UPSTREAM-REPORTS.md"
   ],
   "entities": [
     {
@@ -69130,6 +69133,123 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-23 — The operator opens imported users' invitations from the tenants page (P24-09d) ([record](./records/2026-10-23-p24-09d-operator-invitations-swit"
+    },
+    {
+      "id": "sec_c_2_the_ipm_evidence_photos_on_the_dashboard_checklist",
+      "name": "C-2: the IPM evidence photos on the dashboard checklist",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "source": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 1,
+      "evidence": "# C-2: the IPM evidence photos on the dashboard checklist"
+    },
+    {
+      "id": "sec_why_this_shape",
+      "name": "Why this shape",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "source": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 19,
+      "evidence": "## Why this shape"
+    },
+    {
+      "id": "ent_a_step_of_its_own_in_the_stepper_",
+      "name": "A step of its own in the stepper.",
+      "type": "Component/Requirement",
+      "description": "Rejected: `stepsOf` derives steps from `INSPECTION_SECTIONS`; a non-checklist step there would be a second source of truth for the capture's order.",
+      "source": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 25,
+      "evidence": "- **A step of its own in the stepper.** Rejected: `stepsOf` derives steps from `INSPECTION_SECTIONS`; a non-checklist step there would be a second source of tru"
+    },
+    {
+      "id": "ent_a_metadata_free_derivative_for_ipm_evidence_",
+      "name": "A metadata-free derivative for `ipm_evidence`.",
+      "type": "Component/Requirement",
+      "description": "Rejected here: `hasDerivatives` deliberately excludes `ipm_evidence` (P21-02b), and changing it is a storage decision with its own cost, not a screen's.",
+      "source": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 26,
+      "evidence": "- **A metadata-free derivative for `ipm_evidence`.** Rejected here: `hasDerivatives` deliberately excludes `ipm_evidence` (P21-02b), and changing it is a storag"
+    },
+    {
+      "id": "ent_reusing_deviceregisterservice_photolink_",
+      "name": "Reusing `deviceRegisterService.photoLink`.",
+      "type": "Component/Requirement",
+      "description": "Rejected: it always sends a `variant`, and the server answers 404 for a variant of a file with no derivative. `signedLink` asks for the original.",
+      "source": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 27,
+      "evidence": "- **Reusing `deviceRegisterService.photoLink`.** Rejected: it always sends a `variant`, and the server answers 404 for a variant of a file with no derivative. `"
+    },
+    {
+      "id": "api_get_attachments",
+      "name": "GET /attachments",
+      "type": "API_Endpoint",
+      "description": "Adding the component made the existing capture suite fail for a reason that was invisible in the product: `CaptureClient.test.tsx`'s `routes()` rejected any unexpected GET, so the new `GET /attachments` turned into a second \"Try again\" button and `getByRole(\"button\", { name: \"Try again\" })` matched two. The fix is in the harness (the mock now answers the new call with an empty page), not in the page. Worth knowing for the next component added to that screen.",
+      "source": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 31,
+      "evidence": "Adding the component made the existing capture suite fail for a reason that was invisible in the product: `CaptureClient.test.tsx`'s `routes()` rejected any une"
+    },
+    {
+      "id": "sec_2026_10_23_ipm_evidence_photos_on_the_dashboard_checklist_c_2_record_records_2026_10_23_c2_ipm_evidence_photos_md_",
+      "name": "2026-10-23 — IPM evidence photos on the dashboard checklist (C-2) ([record](./records/2026-10-23-c2-ipm-evidence-photos.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-23 — IPM evidence photos on the dashboard checklist (C-2) ([record](./records/2026-10-23-c2-ipm-evidence-photos.md))"
+    },
+    {
+      "id": "sec_phase_22_upstream_frontend_implementation",
+      "name": "Phase 22 — Upstream: Frontend Implementation",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\PHASE-22-UPSTREAM-FRONTEND.md",
+      "source": "TASKS\\PHASE-22-UPSTREAM-FRONTEND.md",
+      "line": 1,
+      "evidence": "# Phase 22 — Upstream: Frontend Implementation"
+    },
+    {
+      "id": "sec_c_2_the_ipm_evidence_photos_on_the_dashboard_checklist_and_in_the_report",
+      "name": "C-2: the IPM evidence photos on the dashboard checklist and in the report",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "source": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 1,
+      "evidence": "# C-2: the IPM evidence photos on the dashboard checklist and in the report"
+    },
+    {
+      "id": "ent_embedding_the_photos_in_the_pdf_",
+      "name": "Embedding the photos in the PDF.",
+      "type": "Component/Requirement",
+      "description": "Rejected by the spec itself (P19-06 § 12): upstream parity, and a PDF that embeds tenant evidence would be a second copy outside the storage layer's delete and re-key paths.",
+      "source": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 28,
+      "evidence": "- **Embedding the photos in the PDF.** Rejected by the spec itself (P19-06 § 12): upstream parity, and a PDF that embeds tenant evidence would be a second copy "
+    },
+    {
+      "id": "ent_new_report_half_",
+      "name": "New (report half):",
+      "type": "Component/Requirement",
+      "description": "`ipm/__tests__/ReportClient.test`, 2 more: the issued report lists the photos with the \"not printed in the PDF\" note and offers no add/remove; a preview says the report shows them once submitted.",
+      "source": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 43,
+      "evidence": "- **New (report half):** `ipm/__tests__/ReportClient.test`, 2 more: the issued report lists the photos with the \"not printed in the PDF\" note and offers no add/"
+    },
+    {
+      "id": "sec_2026_10_23_ipm_evidence_photos_on_the_dashboard_checklist_and_in_the_report_c_2_p19_06_12_record_records_2026_10_23_c2_ipm_evidence_photos_md_",
+      "name": "2026-10-23 — IPM evidence photos on the dashboard checklist and in the report (C-2, P19-06 § 12) ([record](./records/2026-10-23-c2-ipm-evidence-photos.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-23 — IPM evidence photos on the dashboard checklist and in the report (C-2, P19-06 § 12) ([record](./records/2026-10-23-c2-ipm-evidence-photos.md))"
+    },
+    {
+      "id": "sec_phase_23_upstream_report_pdf_parity",
+      "name": "Phase 23 — Upstream: Report & PDF Parity",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\PHASE-23-UPSTREAM-REPORTS.md",
+      "source": "TASKS\\PHASE-23-UPSTREAM-REPORTS.md",
+      "line": 1,
+      "evidence": "# Phase 23 — Upstream: Report & PDF Parity"
     }
   ],
   "relations": [
@@ -102500,12 +102620,108 @@
       "evidence": "| 2026-10-23 | P24-09d; ADR-139 Am. 1 | [The operator's invitations switch on the tenants page](./records/2026-10-23-p24-09d-operator-invitations-switch.md) | *",
       "source_file": "MEMORY\\MEMORY-INDEX.md",
       "line": 13
+    },
+    {
+      "source": "sec_hook",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_attachments",
+      "evidence": "The dashboard could fill in an IPM but not attach a photo to it. The server had accepted IPM evidence photos since P21-03 (`POST /attachments` with `resourceTyp",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 7
+    },
+    {
+      "source": "sec_what_was_built",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_attachments",
+      "evidence": "No backend change: `POST /attachments` already sets `purpose = ipm_evidence` from the resource type, refuses a non-draft session (409 `IPM_NOT_DRAFT`), refuses ",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 17
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_a_step_of_its_own_in_the_stepper_",
+      "evidence": "- **A step of its own in the stepper.** Rejected: `stepsOf` derives steps from `INSPECTION_SECTIONS`; a non-checklist step there would be a second source of tru",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 25
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_a_metadata_free_derivative_for_ipm_evidence_",
+      "evidence": "- **A metadata-free derivative for `ipm_evidence`.** Rejected here: `hasDerivatives` deliberately excludes `ipm_evidence` (P21-02b), and changing it is a storag",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 26
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_reusing_deviceregisterservice_photolink_",
+      "evidence": "- **Reusing `deviceRegisterService.photoLink`.** Rejected: it always sends a `variant`, and the server answers 404 for a variant of a file with no derivative. `",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 27
+    },
+    {
+      "source": "sec_what_surprised_me",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_attachments",
+      "evidence": "Adding the component made the existing capture suite fail for a reason that was invisible in the product: `CaptureClient.test.tsx`'s `routes()` rejected any une",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 31
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_with_the_existing_suites_",
+      "evidence": "- **With the existing suites:** `dashboard/ipm` + `dashboard/ipm-templates` + the attachment service, **16 suites / 149 tests**, all passed.",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 40
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_not_run_",
+      "evidence": "- **Not run:** the browser suites (`automate/p22.browser.mts`), `next build`, and the full jest tree.",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 42
+    },
+    {
+      "source": "sec_2026_10_23_ipm_evidence_photos_on_the_dashboard_checklist_c_2_record_records_2026_10_23_c2_ipm_evidence_photos_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_",
+      "evidence": "- **Added:** while an IPM is a draft, a technician can attach evidence photos to it on the dashboard's review step, and remove one after a confirmation — before",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_embedding_the_photos_in_the_pdf_",
+      "evidence": "- **Embedding the photos in the PDF.** Rejected by the spec itself (P19-06 § 12): upstream parity, and a PDF that embeds tenant evidence would be a second copy ",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 28
+    },
+    {
+      "source": "sec_tests_named_scoped_the_full_suite_was_not_run_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_new_report_half_",
+      "evidence": "- **New (report half):** `ipm/__tests__/ReportClient.test`, 2 more: the issued report lists the photos with the \"not printed in the PDF\" note and offers no add/",
+      "source_file": "MEMORY\\records\\2026-10-23-c2-ipm-evidence-photos.md",
+      "line": 43
+    },
+    {
+      "source": "sec_2026_10_23_ipm_evidence_photos_on_the_dashboard_checklist_and_in_the_report_c_2_p19_06_12_record_records_2026_10_23_c2_ipm_evidence_photos_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_",
+      "evidence": "- **Added:** while an IPM is a draft, a technician can attach evidence photos to it on the dashboard's review step, and remove one after a confirmation — before",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
     }
   ],
   "stats": {
-    "total_sources": 286,
-    "total_entities": 7649,
-    "total_relations": 4171,
+    "total_sources": 289,
+    "total_entities": 7662,
+    "total_relations": 4183,
     "token_savings_estimate": "85-95%"
   }
 }

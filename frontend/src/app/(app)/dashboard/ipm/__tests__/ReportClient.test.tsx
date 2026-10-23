@@ -56,13 +56,32 @@ const renderPage = () =>
     </MessagesProvider>,
   );
 
+/** An IPM evidence photo, as `GET /attachments` answers it (P19-02 § 12). */
+const evidencePhoto = (id: string) => ({
+  id,
+  tenantId: "t1",
+  resourceType: "inspectionsession",
+  resourceId: S,
+  fileName: `${id}.jpg`,
+  originalName: "evidence.jpg",
+  mimeType: "image/jpeg",
+  size: 1200,
+  checksum: "abc",
+  uploadedBy: "u1",
+  url: `/api/v1/attachments/${id}/download`,
+  createdAt: "2026-10-10T02:00:00.000Z",
+});
+
+const EMPTY_ATTACHMENTS = { ...ok([]), meta: { total: 0, page: 1, limit: 50, totalPages: 1 } };
+
 beforeEach(() => {
   jest.clearAllMocks();
   clearPermissions();
   useToastStore.setState({ toasts: [] });
   useAuthStore.setState({ user: { firstName: "Synthetic", lastName: "Reader", username: "reader" } as never });
   doc = ipmReportDoc();
-  get.mockImplementation(async () => ok(doc));
+  // The report page also reads the session's evidence photos (P19-06 § 12); by default none.
+  get.mockImplementation(async (path: string) => (path === "/api/v1/attachments" ? EMPTY_ATTACHMENTS : ok(doc)));
 });
 
 describe("P23-02 — the on-screen report", () => {
@@ -100,6 +119,29 @@ describe("P23-02 — the on-screen report", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  it("lists the session's evidence photos (P19-06 § 12) — never in the PDF — with the issued note", async () => {
+    grantPermissions({ ipm: "read" });
+    const photo = "a7000000-0000-4000-8000-0000000000f1";
+    get.mockImplementation(async (path: string) => {
+      if (path === "/api/v1/attachments") return { ...ok([evidencePhoto(photo)]), meta: { total: 1, page: 1, limit: 50, totalPages: 1 } };
+      if (path.endsWith("/signed-url")) return ok({ url: "https://api.example.invalid/api/v1/attachments/x/signed?token=t", token: "t", expiresAt: "x", expiresInSec: 300 });
+      return ok(doc);
+    });
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "Evidence photos (1)" })).toBeInTheDocument();
+    expect(screen.getByText(/They are part of its record and are not printed in the PDF\./)).toBeInTheDocument();
+    // Read-only: the report never offers to add or remove one.
+    expect(screen.queryByRole("button", { name: "Add an evidence photo" })).not.toBeInTheDocument();
+  });
+
+  it("a preview says the report shows the photos once submitted", async () => {
+    grantPermissions({ ipm: "read" });
+    doc = ipmReportDoc({ kind: "preview" });
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "Evidence photos (0)" })).toBeInTheDocument();
+    expect(screen.getByText(/The report shows them once the IPM is submitted\./)).toBeInTheDocument();
+  });
+
   it("the PDF: a fresh render=pdf read in the language chosen, with the reader's name; a failure said", async () => {
     grantPermissions({ ipm: "read" });
     renderPage();
@@ -107,7 +149,9 @@ describe("P23-02 — the on-screen report", () => {
     fireEvent.change(screen.getByLabelText("Language of the PDF"), { target: { value: "id" } });
     fireEvent.click(screen.getByRole("button", { name: "Download IPM report IPM-SC-20261010-007 as PDF" }));
     await waitFor(() => expect(download).toHaveBeenCalled());
-    expect(get).toHaveBeenLastCalledWith(`/api/v1/ipm/sessions/${S}/report-document`, { params: { render: "pdf", lang: "id" } });
+    // A fresh `render=pdf` read happened. Not "the last call": the report also reads the session's
+    // evidence photos (P19-06 § 12), whose own read may land after this one.
+    expect(get).toHaveBeenCalledWith(`/api/v1/ipm/sessions/${S}/report-document`, { params: { render: "pdf", lang: "id" } });
     expect(download.mock.calls[0]?.[1]).toMatchObject({ language: "id", readerName: "Synthetic Reader", messages: id });
     get.mockRejectedValueOnce(httpError(500, "Audit write failed"));
     fireEvent.click(screen.getByRole("button", { name: "Download IPM report IPM-SC-20261010-007 as PDF" }));

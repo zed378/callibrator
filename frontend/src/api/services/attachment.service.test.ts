@@ -149,7 +149,7 @@ describe("attachmentService", () => {
 
       const clickSpy = jest
         .spyOn(HTMLAnchorElement.prototype, "click")
-        .mockImplementation(() => {});
+        .mockImplementation(() => { });
 
       await attachmentService.downloadToDevice("a1", "myfile.pdf");
 
@@ -189,6 +189,43 @@ describe("attachmentService", () => {
         `${BASE}/a1/signed-url`,
         {},
       );
+    });
+  });
+
+  // C-2 (P19-02 § 12): an IPM's evidence photo, and the same-origin link the page shows it by.
+  describe("IPM evidence (C-2)", () => {
+    it("uploads against the session; the server sets the purpose", async () => {
+      const file = new File(["jpeg"], "photo.jpg", { type: "image/jpeg" });
+      mockedApi.post.mockResolvedValueOnce({ data: { id: "a1" } });
+
+      const res = await attachmentService.uploadIpmEvidence("s1", file);
+
+      expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}`, expect.any(FormData));
+      const form = mockedApi.post.mock.calls[0]?.[1] as FormData;
+      expect(form.get("resourceType")).toBe("inspectionsession");
+      expect(form.get("resourceId")).toBe("s1");
+      expect((form.get("file") as File).name).toBe("photo.jpg");
+      expect(res).toEqual({ id: "a1" });
+    });
+
+    it("lists a record's photos with both filters, rows in data", async () => {
+      mockedApi.get.mockResolvedValueOnce(
+        envelope([{ id: "a1" }], { total: 1, page: 1, limit: 50, totalPages: 1 }),
+      );
+
+      expect(await attachmentService.listForResource("inspectionsession", "s1")).toEqual([{ id: "a1" }]);
+      expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}`, {
+        params: { resourceType: "inspectionsession", resourceId: "s1", page: 1, limit: 50 },
+      });
+    });
+
+    it("signedLink answers a same-origin path, without a variant (no derivative exists)", async () => {
+      mockedApi.post.mockResolvedValueOnce(
+        envelope({ url: "https://api.example.invalid/api/v1/attachments/a1/signed?token=t", token: "t", expiresAt: "x", expiresInSec: 300 }),
+      );
+
+      expect(await attachmentService.signedLink("a1")).toBe("/api/v1/attachments/a1/signed?token=t");
+      expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/a1/signed-url`, {});
     });
   });
 
