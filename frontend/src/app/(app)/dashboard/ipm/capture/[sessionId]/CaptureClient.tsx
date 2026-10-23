@@ -50,6 +50,7 @@ import {
 } from "../../capture";
 import { localInput, noticesOf, visitLabel, type Recommendation } from "../../history";
 import { ItemField } from "../../components/ItemField";
+import { EvidencePhotos } from "../../components/EvidencePhotos";
 import { FIELD, Field, useIpmText } from "../../components/shared";
 
 /** The pause after the last change before it is saved. */
@@ -526,6 +527,8 @@ function Capture({ loaded, languageForm, autosaveMs, onReload }: { loaded: Loade
 
           {current.kind === "review" && (
             <div className="space-y-4">
+              {/* C-2 (P19-02 § 12): the evidence photos, on the checklist where the visit is reviewed. */}
+              <EvidencePhotos sessionId={session.id} editable />
               {missing.length > 0 ? (
                 <div>
                   <p className="text-sm font-semibold">{t("ipm.capture.missing", { count: missing.length })}</p>

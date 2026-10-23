@@ -166,6 +166,8 @@ const routes = (path: string) => {
   if (path === `/api/v1/ipm/template-versions/${V}`) return Promise.resolve(ok({ id: V, items: ITEMS }));
   if (path === `/api/v1/calibration-devices/${DEVICE}`) return Promise.resolve(ok({ id: DEVICE, name: "Synthetic pump", warehouse: { id: "w", name: "ICU", code: "I", floor: "2" } }));
   if (path === "/api/v1/warehouses") return Promise.resolve(ok([{ id: "w2", name: "Ward B", code: "WB", floor: "3" }]));
+  // C-2: the review step lists the draft's evidence photos (none in this fixture).
+  if (path === "/api/v1/attachments") return Promise.resolve({ ...ok([]), meta: { total: 0, page: 1, limit: 50, totalPages: 1 } });
   return Promise.reject(new Error(`unexpected GET ${path}`));
 };
 

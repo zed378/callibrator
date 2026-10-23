@@ -75,6 +75,19 @@ export const attachmentService = {
     return response.data;
   },
 
+  /**
+   * C-2 (P22-03, P19-02 § 12): a photo of an IPM capture. The server sets its purpose
+   * (`ipm_evidence`) from the resource type, accepts it only while the session is the caller's
+   * own draft (403 / 409 `IPM_NOT_DRAFT`), and stamps the session's facility. The browser has
+   * already made the file a JPEG (`lib/photoPrep`).
+   */
+  uploadIpmEvidence: async (sessionId: string, file: File): Promise<Attachment> =>
+    attachmentService.upload({ file, resourceType: "inspectionsession", resourceId: sessionId }),
+
+  /** The photos already attached to one record (`GET /attachments?resourceType=&resourceId=`). */
+  listForResource: async (resourceType: string, resourceId: string): Promise<Attachment[]> =>
+    (await attachmentService.getAll(1, 50, { resourceType, resourceId })).data,
+
   /** GET /api/v1/attachments/:id — fetch a single attachment's metadata. */
   getById: async (id: string): Promise<Attachment> => {
     return (await typedApi.GET("/api/v1/attachments/{id}", byId(id)).then(unwrap)).data;
@@ -101,6 +114,17 @@ export const attachmentService = {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  },
+
+  /**
+   * C-2: a short-lived link to an attachment's ORIGINAL file, as a same-origin path (the CSP's
+   * `img-src 'self'` loads it through the `/api` proxy). An IPM evidence photo has no
+   * metadata-free derivative (`hasDerivatives` excludes `ipm_evidence`), so a `variant` would 404.
+   */
+  signedLink: async (id: string): Promise<string> => {
+    const { url } = await attachmentService.getSignedUrl(id);
+    const parsed = new URL(url, "http://same-origin.invalid");
+    return `${parsed.pathname}${parsed.search}`;
   },
 
   /** Mint a short-lived signed URL for downloading without a session. */
