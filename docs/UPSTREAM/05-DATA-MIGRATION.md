@@ -65,7 +65,7 @@ transform step with a row id, not the bulk load.
 6  vendors            ← DISTINCT (tenant, lab_kalibrasi)
 7  warehouses         ← DISTINCT (tenant, normalised room, floor)        (D-8)
 8  calibration_devices← trx_inventory                                  (D-5 serial rule)
-9  attachments        ← foto_depan, foto_sn, trx_inventory_file         (after the file copy, § 6)
+9  attachments        ← foto_depan, foto_sn, trx_inventory_file         (after the file copy, § 6; as built ADR-129 Am. 10: photos from the image imports' manifests, accounted per folder; trx_inventory_file quarantined certificate_archived_offline)
 10 calibration_records← trx_kalibrasi                                   (import API key per tenant)
 11 inspection_sessions← (qr, date) keys of the 5 per-session tables     (D-6 zone)
 12 inspection_results ← the 11 detail tables

@@ -80,7 +80,7 @@ describe("P24-02a the registry", () => {
     expect(facilities?.sources).toEqual([FACILITY_SOURCE]);
     expect(FACILITY_SOURCE).toEqual({ table: "mst_faskes", legacyId: 's."id"::text' });
     expect(audit?.run).toBe(runAuditRows);
-    expect(isBuilt(TRANSFORM_STEPS)).toBe(false);
+    expect(isBuilt(TRANSFORM_STEPS)).toBe(true);
   });
 
   it("every table a step writes has an audit resource type", () => {

@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-23 — The upstream transform is complete: device photos are imported (P24-03) ([record](./records/2026-10-23-p24-03-device-photo-step.md), ADR-129 Am. 10)
+- **Added (operations):** the super admin's "transform" of a loaded upstream SQL dump is now available; before this it answered 409 `TRANSFORM_NOT_AVAILABLE`. Its last step attaches each imported device's front and serial-plate photos. The photos come from the completed image imports, each stored under its device's facility with its display and thumbnail copies. A photo that cannot be attached is counted with its reason (missing, refused by the ingest, device not imported, or one the operator already set, which is never replaced). Upstream certificate PDFs are counted as archived offline and never stored. Migration 0145. Real upstream data stays off (`UPSTREAM_REAL_DATA_ALLOWED`, UD-18).
+
 ### 2026-10-23 — IPM evidence photos on the dashboard checklist and in the report (C-2, P19-06 § 12) ([record](./records/2026-10-23-c2-ipm-evidence-photos.md))
 - **Added:** while an IPM is a draft, a technician can attach evidence photos to it on the dashboard's review step, and remove one after a confirmation — before this, only the offline field app could. Each photo is made a smaller JPEG in the browser first, so a phone photo uploads without its camera metadata. In Indonesian and English.
 - **Added:** the IPM report page lists the session's evidence photos read-only, so a signed report shows what was photographed. They are part of the record and are not printed in the PDF.

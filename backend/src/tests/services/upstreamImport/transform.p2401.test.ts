@@ -76,8 +76,8 @@ describe("P24-01 the step registry (05 § 3.1)", () => {
     expect(Object.isFrozen(TRANSFORM_STEPS) && TRANSFORM_STEPS.every((s) => Object.isFrozen(s))).toBe(true);
   });
 
-  it("nothing is built yet (P24-02): isBuilt is false; a step with a run and every legacy key is built", () => {
-    expect(isBuilt(TRANSFORM_STEPS)).toBe(false);
+  it("every step is built since P24-03: isBuilt is true; a step with a run and every legacy key is built", () => {
+    expect(isBuilt(TRANSFORM_STEPS)).toBe(true);
     const run = (): Promise<void> => Promise.resolve();
     expect(isBuilt([{ id: "a", writes: ["x"], sources: [{ table: "t", legacyId: 's."id"::text' }], run }])).toBe(true);
     expect(isBuilt([{ id: "a", writes: ["x"], sources: [{ table: "t", legacyId: null }], run }])).toBe(false);
@@ -193,7 +193,8 @@ describe("P24-01 the runner", () => {
 
   it("refuses steps that are not built before opening anything (TRANSFORM_NOT_BUILT)", async () => {
     const runner = double();
-    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: TRANSFORM_STEPS }).catch((e: unknown) => e)) as TransformFailure;
+    const unbuilt: TransformStep = { id: "a", writes: ["x"], sources: [], run: null };
+    const err = (await runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: [...TRANSFORM_STEPS, unbuilt] }).catch((e: unknown) => e)) as TransformFailure;
     expect(err).toBeInstanceOf(TransformFailure);
     expect(err.code).toBe("TRANSFORM_NOT_BUILT");
     expect(runner.calls).toEqual([]);

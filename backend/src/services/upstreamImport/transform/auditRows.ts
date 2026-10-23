@@ -63,6 +63,9 @@ export const STEP_AUDITED: ReadonlySet<string> = new Set([
   // number and hash), and each of its results as it is written (ipmResults.ts).
   "inspection_sessions",
   "inspection_results",
+  // P24-03 (ADR-129 Am. 10): a photo row is append-only — a changed upstream photo is a NEW row and the
+  // earlier one's soft delete, each audited as such (attachments.ts).
+  "attachments",
 ]);
 
 /** Step 13's `run`: the audit rows of everything this transaction wrote. */

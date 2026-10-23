@@ -44,6 +44,15 @@ jest.mock("../../services/upstreamImport/transform/runner", () => ({
   runTransform: (...a: unknown[]) => runTransform(...a) as unknown,
 }));
 
+// P24-03: step 9's files — loaded per transform, settled by its outcome (transformFiles.p2403 tests them).
+const FILES = { catalogue: new Map(), created: [], superseded: [] };
+const loadTransformFiles = jest.fn<Promise<typeof FILES>, [string]>(() => Promise.resolve(FILES));
+const settleTransformFiles = jest.fn<Promise<number>, [unknown, boolean]>(() => Promise.resolve(0));
+jest.mock("../../services/upstreamImport/transformFiles", () => ({
+  loadTransformFiles: (t: string) => loadTransformFiles(t),
+  settleTransformFiles: (f: unknown, c: boolean) => settleTransformFiles(f, c),
+}));
+
 const mdb = jest.requireActual<typeof MemoryDbModule>("../fixtures/memoryDb").memoryDb();
 const service = jest.requireActual<typeof ServiceModule>("../../services/upstreamSqlTransform.service");
 const [registeredType, registeredHandler] = registerHandler.mock.calls[0] as [string, (job: { id: string }) => Promise<unknown>];
@@ -206,8 +215,10 @@ describe("P24-01 the worker", () => {
     seedRun(RUN, { transformStatus: "transform_requested", transformBatchJobId: null, transformRequestedAt: new Date(), transformTenantId: HOME });
     expect(await asPlatformJob(() => service.runTransformJob({ id: JOB }))).toEqual({ processedItems: 2 });
     expect(runTransform).toHaveBeenCalledWith(
-      expect.objectContaining({ runId: RUN, db: connection, runner: connection, role: "callibrator_transform", steps: [], tenantId: HOME, sourceZone: "Asia/Jakarta" }),
+      expect.objectContaining({ runId: RUN, db: connection, runner: connection, role: "callibrator_transform", steps: [], tenantId: HOME, sourceZone: "Asia/Jakarta", files: FILES }),
     );
+    expect(loadTransformFiles).toHaveBeenCalledWith(HOME);
+    expect(settleTransformFiles.mock.calls).toEqual([[FILES, true]]);
     expect(row(RUN)).toMatchObject({ transformStatus: "transformed", transformBatchJobId: JOB, transformSummary: SUMMARY });
     expect(row(RUN)["transformErrorCode"] ?? null).toBeNull();
     expect(row(RUN)["transformStartedAt"]).toBeInstanceOf(Date);
@@ -227,6 +238,8 @@ describe("P24-01 the worker", () => {
     await expect(asPlatformJob(() => service.runTransformJob({ id: JOB }))).rejects.toThrow(`Upstream SQL transform ${RUN} failed: ${code}`);
     expect(row(RUN)).toMatchObject({ transformStatus: "transform_failed", transformErrorCode: code });
     expect(row(RUN)["transformSummary"] ?? null).toBeNull();
+    // P24-03: what step 9 wrote is removed with the rollback.
+    expect(settleTransformFiles.mock.calls).toEqual([[FILES, false]]);
     expect(close).toHaveBeenCalledTimes(1);
   });
 
@@ -234,6 +247,8 @@ describe("P24-01 the worker", () => {
     seedRun(RUN, { dataClass: "real", transformStatus: "transform_requested", transformBatchJobId: JOB, transformRequestedAt: new Date() });
     await expect(asPlatformJob(() => service.runTransformJob({ id: JOB }))).rejects.toThrow("REAL_DATA_NOT_ALLOWED");
     expect(runTransform).not.toHaveBeenCalled();
+    expect(loadTransformFiles).not.toHaveBeenCalled();
+    expect(settleTransformFiles).not.toHaveBeenCalled();
     expect(row(RUN)["transformErrorCode"]).toBe("REAL_DATA_NOT_ALLOWED");
   });
 });

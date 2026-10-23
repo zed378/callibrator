@@ -20,8 +20,8 @@
  * THE DPIA GATE: a run declared `real` is refused while UPSTREAM_REAL_DATA_ALLOWED is off — at
  * the request (403) and again by the worker before it reads a staged row.
  *
- * Until P24-02 builds the steps, `transformAvailable()` is false and a request is refused 409
- * `TRANSFORM_NOT_AVAILABLE`: the mechanism is built, the transforms are not.
+ * Every step is built since P24-03 (step 9, the photos — ADR-129 Am. 10), so `transformAvailable()`
+ * is true; the 409 `TRANSFORM_NOT_AVAILABLE` stays for a build whose registry is incomplete.
  */
 import { Op, type Transaction } from "sequelize";
 import type {
@@ -41,6 +41,8 @@ import auditService from "./audit.service";
 import batchJobService from "./batchJob.service";
 import { TRANSFORM_STEPS, isBuilt } from "./upstreamImport/transform/steps";
 import { TransformFailure, runTransform } from "./upstreamImport/transform/runner";
+import { loadTransformFiles, settleTransformFiles } from "./upstreamImport/transformFiles";
+import type { TransformFiles } from "./upstreamImport/transform/photoFiles";
 import type { ModelInstance } from "../types/models";
 import type { SqlRunner } from "../utils/sql.util";
 
@@ -228,6 +230,8 @@ export const runTransformJob = async (job: { id: string }): Promise<{ processedI
     return { processedItems: 0 };
   }
   const connection = createTransformDb();
+  // P24-03: step 9's photo catalogue and storage; settled after the outcome (rollback removes what it wrote).
+  let files: TransformFiles | null = null;
   try {
     if (run.dataClass === "real" && !upstreamRealDataAllowed()) {
       throw new TransformFailure("REAL_DATA_NOT_ALLOWED", "UPSTREAM_REAL_DATA_ALLOWED is off");
@@ -237,6 +241,7 @@ export const runTransformJob = async (job: { id: string }): Promise<{ processedI
       // The 0134 CHECK refuses a requested run without it; a row written around it still fails here, not in a step.
       throw new TransformFailure("PROVIDER_TENANT_INVALID", "the run names no provider tenant");
     }
+    files = await loadTransformFiles(tenantId);
     const summary = await runTransform({
       runId: run.id,
       db: connection,
@@ -245,13 +250,21 @@ export const runTransformJob = async (job: { id: string }): Promise<{ processedI
       role: transformRoleName(),
       tenantId,
       sourceZone: sourceTimeZone(),
+      files,
       steps: TRANSFORM_STEPS,
     });
+    // Committed: the step's objects are kept whatever happens next; the re-keyed originals go.
+    const committed = files;
+    files = null;
+    await settleTransformFiles(committed, true);
     await transition(run, "transforming", "transformed", { transformFinishedAt: new Date(), transformSummary: summary }, null, {
       steps: summary.steps.length,
     });
     return { processedItems: summary.steps.reduce((n, s) => n + s.sources.reduce((m, src) => m + src.mapped, 0), 0) };
   } catch (err) {
+    if (files !== null) {
+      await settleTransformFiles(files, false);
+    }
     const code = failureCodeOf(err);
     await transition(run, "transforming", "transform_failed", { transformFinishedAt: new Date(), transformErrorCode: code }, null, {
       transformErrorCode: code,

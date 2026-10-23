@@ -171,6 +171,11 @@ export const UPSTREAM_IMPORT_QUARANTINE_REASONS = Object.freeze([
   "scan_failed",
   "storage_verify_failed",
   "ingest_failed",
+  // P24-03 (ADR-129 Am. 10): a certificate-index row (`trx_inventory_file`) — the PDF goes to the
+  // offline archive, no file of it is stored (owner rule 2026-10-07); a device photo the operator set
+  // in the application — the import never replaces it.
+  "certificate_archived_offline",
+  "photo_operator_managed",
 ] as const);
 export type UpstreamImportQuarantineReason = (typeof UPSTREAM_IMPORT_QUARANTINE_REASONS)[number];
 

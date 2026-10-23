@@ -245,6 +245,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0143-users-awaiting-invitation.js", require("../migrations/0143-users-awaiting-invitation")],
   // P24-09a (ADR-139 § 3): user_invitations — an imported user's single-use invitation, the hash only; append-mostly; no DELETE grant.
   ["0144-user-invitations.js", require("../migrations/0144-user-invitations")],
+  // P24-03 (ADR-129 Am. 10): the photo step's reasons and the transform role's column grants on attachments.
+  ["0145-upstream-transform-attachments.js", require("../migrations/0145-upstream-transform-attachments")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

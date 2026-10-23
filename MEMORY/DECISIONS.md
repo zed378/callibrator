@@ -11664,9 +11664,54 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 - A wrong real load is corrected only by voiding and re-capturing in the application, which makes the P24-05 dry run mandatory.
 - A changed session leaves its old content live until the operator acts. The quarantine lists it.
 - The tenant setting `ipm_interval_months = 1` that P19-02 § 2 attributes to the import is **not** written by the transform. The operator sets it during onboarding (recorded as left for P24-05).
-- The transform still answers 409 (`TRANSFORM_NOT_BUILT`): step 9 (attachments, P24-03) is the last step not built. The end-to-end synthetic proof of the whole transform stays **pending** until P24-03.
+- The transform still answers 409 (`TRANSFORM_NOT_BUILT`): step 9 (attachments, P24-03) is the last step not built. The end-to-end synthetic proof of the whole transform stays **pending** until P24-03. *(Closed 2026-10-23 by Am. 10: every step is built; the end-to-end synthetic proof is `upstreamTransform.p2403.live`.)*
 
 **`docs/` amended:** `UPSTREAM/05-DATA-MIGRATION.md` § 3.1 and § 3.3 (as-built notes for steps 11 and 12 and for the key's zone).
+
+### ADR-129 Amendment 10 (2026-10-23, P24-03): step 9 — the device photos come from the image imports' manifests, are re-keyed under their device's facility with both derivatives, and are accounted per folder; the certificate index is archive-only; every step is built and the transform is available
+
+**Why an amendment.** 05 § 3.1 lists step 9 as "attachments ← foto_depan, foto_sn, trx_inventory_file". Three things in it no longer hold or were never decided. The owner rule of 2026-10-07 (07 § 2.3, F-CERT) stores no certificate file, so `trx_inventory_file` cannot become attachments. The photos are columns of `trx_inventory`, which step 8 already accounts for, so the runner's per-table proof (05 § 1.2) did not cover them. And P24-07 (ADR-130) put every photo under the tenant's own scope with a manifest, leaving the re-key, the derivatives and the rows to this step. The docs do not say how the transform reads the manifests, how a non-transactional object store fits the one-transaction rule, or what a re-run does to a photo.
+
+**Decision.**
+
+1. **The certificate index is archive-only.** Every `trx_inventory_file` row of the run is quarantined **`certificate_archived_offline`** (a new reason). The step owns that table, so it is accounted for and nothing is written. The PDFs go to the offline archive (P31-01).
+2. **The photos are accounted per folder.** A step may now declare `account` (steps.ts). The runner counts it after the step, puts it in the summary, and fails `TRANSFORM_INCOMPLETE` when a photo is unaccounted, exactly as for a staged table. Step 9 reports `foto_depan` and `foto_sn`: a device row of the run that names a file is a photo, mapped in `id_map` (source table = the folder, legacy id = the device's) or quarantined (source table = the folder, the device row's number). This is 05 R-8: referenced names per folder = attachments + quarantine.
+3. **The manifests are the file catalogue.** The worker reads the manifest of every COMPLETED image import into the provider tenant, oldest first (at most 1,000), before the transaction (`transformFiles.ts`). The latest line of a source path decides it. A `skipped_present` line resolves to the earlier ingest of the same source hash. A torn line, or a manifest that was removed, reads as missing.
+4. **HEIC (ADR-132 Am. 3).** The ETL converts a refused HEIC outside the application and runs a second image import of the JPEG **under the same source path**. Detection is by magic bytes, so the newer `ingested` line replaces the `heic_converter_unavailable` one. No mapping table is needed.
+5. **Per photo, in this order:**
+   - the last path segment of the value (URL or bare name, the host stripped);
+   - the device from step 8's mapping, live in the tenant; otherwise **`no_device`**;
+   - the manifest's decision; nothing there is **`file_missing`**, and an ingest refusal keeps its own reason (`virus_found`, `heic_converter_unavailable`, …);
+   - the hash: SHA-256 of `<folder>/<name>` and the stored SHA-256. The same hash as the mapping is **unchanged**, and nothing is written;
+   - a live photo of that purpose that the import did not write is **`photo_operator_managed`** (a new reason). The operator's photo is never replaced;
+   - the tenant-scope object is read and its SHA-256 checked. Unreadable is `file_missing`; a different hash is `storage_verify_failed`;
+   - P21-02b's full decode and the two derivatives. An undecodable image is `image_undecodable`;
+   - the original and both derivatives are put at `t/<tenant>/f/<device facility>/attachments/<new uuid>.<ext>` (ADR-124 § 9, 08 § 7);
+   - a changed photo **soft-deletes the import's own earlier row** (the replace, F-28) and inserts a new one. The row is the application's device-photo row: resource `device`, purpose `device_front` / `device_serial_plate`, shown name `<purpose>.<ext>`, checksum of the stored bytes, no uploader, the device's facility.
+6. **The object store and the one transaction.** The step writes objects inside the transaction and records them. On a rollback the worker removes every object the step wrote. After the commit it removes the re-keyed tenant-scope originals. Both are best effort and counted in the log: a leftover object has no row, so it is never served. A put that fails fails the transform. Nothing is quarantined for a storage outage.
+7. **Audit.** Step 9 audits itself (`STEP_AUDITED`). Each new row gets a CREATE and each replaced row a DELETE, under `system:upstream-transform`, stamped with the facility, with no legacy id or value. Step 13's grouping would have called a replacement row an UPDATE.
+8. **Grants (0145) are column-level.** `attachments`: read what a re-run compares, insert a photo row, update only `is_deleted` and `updated_at`. There is no DELETE, and never the key, checksum or facility of a row.
+9. **Every step is built.** `transformAvailable()` is true, and the request is no longer refused 409 `TRANSFORM_NOT_AVAILABLE`. The 409 stays in the code for a registry that is incomplete. Real data still waits on `UPSTREAM_REAL_DATA_ALLOWED` (UD-18).
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Certificate rows as `certificates-legacy` attachments (04 § 4.6 as written) | the owner rule stores no certificate file; a row without its object would be a broken attachment |
+| Leave the photos uncounted (step 8 accounts for the device row) | a missing or refused photo would vanish silently, breaking 05 § 1.2 and R-8 |
+| Keep the original key and add only rows (no re-key) | the key would carry no facility (ADR-124 § 9 / 08 § 7), and the device move's re-key would then treat every imported photo as pending |
+| Copy the objects after the commit | a committed row would point at an object not yet written; a crash in between leaves unreadable rows |
+| Read the manifests inside the transaction on the transform role | the role has no grant on `upstream_file_imports` and needs none; the manifests are files, not rows |
+| A mapping table for the converted HEIC files | the same-path re-import needs none, and keeps the manifest the one record |
+| Replace the operator's photo when upstream changes | upstream is older than the operator's work, and the import never overwrites what the operator decided (the same rule as `template_operator_managed`) |
+
+**Implications, including the bad ones.**
+
+- The whole transform holds ONE transaction while ~47,000 photos are decoded and written (08 § 1). The real load runs long, and its duration is measured only in the P24-05 dry run.
+- A rolled-back transform leaves objects if the store fails during the clean-up. They are unreachable and logged by count, but they use space until removed by hand.
+- The certificate index is visible only as quarantine counts. The per-device count of archived certificates that 07 § 4.1 suggests showing is not built.
+- `photo_operator_managed` keeps upstream's newer photo out of the application. The operator sees it in the quarantine.
+- Built and tested with synthetic files only. UD-18 (the owner's legal decision) gates real data.
 
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
