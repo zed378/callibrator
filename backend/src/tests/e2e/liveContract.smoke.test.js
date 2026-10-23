@@ -819,6 +819,25 @@ const CREATED_ONLY = /^\/api\/v1\/(roles|menu-groups|menu-group-roles|users|sess
 /** Operator-only surfaces. */
 const OPERATOR_ONLY = /^\/(api\/v1\/(admin|migration|health)\b)/;
 
+/**
+ * P21-10: the GET routes of the GLOBAL resources — the route docs that declare `tenantScoped: false`
+ * (ADR-103), e.g. the inspection catalogue (ADR-125: device types, item definitions and templates
+ * are the platform's, read by every tenant). Tenant B reading one is no tenant crossing; it is still
+ * probed and reported, as `global`. Read from the docs, so a new global module needs no edit here.
+ */
+const globalGetPaths = () => {
+  const dir = path.join(BACKEND_ROOT, "src", "routes", "api");
+  const found = new Set();
+  for (const file of fs.readdirSync(dir).filter((n) => n.endsWith(".openapi.ts"))) {
+    const docs = require(path.join(dir, file)).default;
+    if (!docs || docs.tenantScoped !== false) {continue;}
+    for (const op of docs.operations ?? []) {
+      if (op.method === "get") {found.add(`${docs.mount}${op.path === "/" ? "" : op.path}`);}
+    }
+  }
+  return found;
+};
+
 async function runLiveContract() {
   const started = Date.now();
   const { routes } = loadRoutes();
@@ -1107,6 +1126,7 @@ async function runLiveContract() {
   }
   // Phase 1c: cross-tenant — tenant B's admin asks for tenant A's objects.
   const crossTenant = [];
+  const globalGets = globalGetPaths();
   for (const route of gets) {
     if (!route.path.includes(":") || OPERATOR_ONLY.test(route.path)) {continue;}
     const url = concretise(route, "GET") + queryFor(route);
@@ -1116,7 +1136,7 @@ async function runLiveContract() {
     // SAML metadata). It answers everyone alike, so tenant B's 2xx there is no
     // tenant crossing; it is still probed and reported, as `public`.
     const isPublic = !route.middlewares.some((m) => /^(auth|scimAuthShim|requireApiKeyOrAdmin|token)$/.test(m.name));
-    crossTenant.push({ path: route.path, url, status: res.status, message: res.body?.message, public: isPublic });
+    crossTenant.push({ path: route.path, url, status: res.status, message: res.body?.message, public: isPublic, global: globalGets.has(route.path) });
   }
   // Phase 2 creates/updates; 3 selfA's own identity; 4 destroys, revokes,
   // lifecycle (tenant C); 5 selfA's sign-outs; 6 network locks (disabled).
@@ -1267,7 +1287,7 @@ function verdict(run, frontend) {
     // /health and /ready answer 503 by design when a dependency is down.
     .filter((r) => !/^\/(health|ready)$|^\/api\/v1\/health$/.test(r.path));
   const envelope = run.results.concat(run.techResults).filter((r) => r.envelope && r.envelope.length);
-  const crossTenantLeaks = run.crossTenant.filter((r) => r.status >= 200 && r.status < 300 && !r.public);
+  const crossTenantLeaks = run.crossTenant.filter((r) => r.status >= 200 && r.status < 300 && !r.public && !r.global);
   const crossTenant403 = run.crossTenant.filter((r) => r.status === 403);
   const frontendMissing = frontend.findings.filter((f) => f.kind === "no-such-route" || f.kind === "wrong-method");
   const frontendShape = frontend.findings.filter((f) => f.kind === "shape-mismatch");
