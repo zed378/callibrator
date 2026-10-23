@@ -8,6 +8,16 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-23 — Live end-to-end checks of the Phase 21–24 flows (P21-10) ([record](./records/2026-10-23-p21-10-live-smoke-and-e2e.md))
+- **Added (tests):** a live end-to-end spec drives a disposable stack through these flows:
+  - client facilities and the device register;
+  - the IPM checklist, from capture to signed report and its public verification;
+  - the public device page;
+  - an upstream SQL dump imported and transformed through the API;
+  - an imported user's invitation, from e-mail to first sign-in.
+
+  The live contract smoke now treats the platform's global catalogue as global, not as a tenant leak. No application change.
+
 ### 2026-10-23 — The upstream transform is complete: device photos are imported (P24-03) ([record](./records/2026-10-23-p24-03-device-photo-step.md), ADR-129 Am. 10)
 - **Added (operations):** the super admin's "transform" of a loaded upstream SQL dump is now available; before this it answered 409 `TRANSFORM_NOT_AVAILABLE`. Its last step attaches each imported device's front and serial-plate photos. The photos come from the completed image imports, each stored under its device's facility with its display and thumbnail copies. A photo that cannot be attached is counted with its reason (missing, refused by the ingest, device not imported, or one the operator already set, which is never replaced). Upstream certificate PDFs are counted as archived offline and never stored. Migration 0145. Real upstream data stays off (`UPSTREAM_REAL_DATA_ALLOWED`, UD-18).
 
