@@ -454,9 +454,9 @@ describe("P24-06 cancel, retry, list", () => {
     expect((await asSuperAdmin(() => service.listRuns({ status: "loaded", page: 1, limit: 20 }))).rows.map((r) => r.progress)).toEqual([1]);
   });
 
-  it("settings: the limits, the shared DPIA gate, and no stage 2", () => {
+  it("settings: the limits, the shared DPIA gate, and stage 2 available (P24-03)", () => {
     penv["UPSTREAM_IMPORT_MAX_BYTES"] = "1000";
-    expect(service.getSettings()).toEqual({ maxUploadBytes: 1000, maxUncompressedBytes: 2048 * 1024 * 1024, failedRetentionDays: 7, realDataAllowed: false, transformAvailable: false });
+    expect(service.getSettings()).toEqual({ maxUploadBytes: 1000, maxUncompressedBytes: 2048 * 1024 * 1024, failedRetentionDays: 7, realDataAllowed: false, transformAvailable: true });
     delete penv["UPSTREAM_IMPORT_MAX_BYTES"];
   });
 });

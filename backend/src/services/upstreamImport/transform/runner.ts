@@ -28,6 +28,7 @@ import { STAGED_TABLES, stagingTableOf } from "../tablePolicy";
 import { ID_MAP, QUARANTINE, checkedName, stagedTable, stagedTableExists } from "./ledger";
 import { isBuilt, type StepContext, type TransformSource, type TransformStep } from "./steps";
 import { TransformFailure } from "./failure";
+import type { TransformFiles } from "./photoFiles";
 
 export { TransformFailure };
 
@@ -48,6 +49,8 @@ export interface TransformOptions {
   readonly tenantId: string;
   /** P24-02a: the source zone (StepContext.sourceZone; config/upstreamImport.ts#sourceTimeZone). */
   readonly sourceZone: string;
+  /** P24-03: step 9's photo catalogue and storage (StepContext.files). */
+  readonly files?: TransformFiles;
   readonly steps: readonly TransformStep[];
   /** A clock, for the durations (tests pass their own). */
   readonly now?: () => number;
@@ -174,14 +177,14 @@ const unclaimedTables = async (context: StepContext, steps: readonly TransformSt
  *   any other error (a step's SQL) propagates, nothing written
  */
 export const runTransform = async (options: TransformOptions): Promise<UpstreamSqlImportTransformSummary> => {
-  const { runId, db, runner, role, steps, tenantId, sourceZone } = options;
+  const { runId, db, runner, role, steps, tenantId, sourceZone, files } = options;
   const now = options.now ?? Date.now;
   if (!isBuilt(steps)) {
     throw new TransformFailure("TRANSFORM_NOT_BUILT", "the transform's steps are not built yet (P24-02)");
   }
   const started = now();
   return db.transaction(async (transaction: Transaction) => {
-    const context: StepContext = { runId, runner, transaction, tenantId, sourceZone };
+    const context: StepContext = { runId, runner, transaction, tenantId, sourceZone, ...(files ? { files } : {}) };
     await begin(context, role);
     await sql(context.runner, `DELETE FROM ${QUARANTINE} WHERE import_run_id = $1`, [runId], { transaction });
     const summary: UpstreamSqlImportTransformSummary = { durationMs: 0, steps: [] };
@@ -190,12 +193,17 @@ export const runTransform = async (options: TransformOptions): Promise<UpstreamS
       // isBuilt() proved every run is set.
       await (step.run as (c: StepContext) => Promise<void>)(context);
       const counted: SourceSummary[] = [];
+      const accounted: (SourceSummary & { unaccounted: number })[] = [];
       for (const source of step.sources) {
-        const { unaccounted, ...counts } = await countSource(context, source);
+        accounted.push(await countSource(context, source));
+      }
+      // P24-03: what the step accounts for besides its staged sources (the photo folders).
+      accounted.push(...(step.account ? await step.account(context) : []));
+      for (const { unaccounted, ...counts } of accounted) {
         if (unaccounted > 0) {
           throw new TransformFailure(
             "TRANSFORM_INCOMPLETE",
-            `step ${step.id}: ${String(unaccounted)} staged row(s) of ${source.table} are neither mapped nor quarantined`,
+            `step ${step.id}: ${String(unaccounted)} staged row(s) of ${counts.table} are neither mapped nor quarantined`,
           );
         }
         counted.push(counts);

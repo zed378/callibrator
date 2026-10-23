@@ -536,6 +536,23 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
     reason: "the IPM steps' CREATE rows, each stamped with the session's facility; a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump transform worker (P24-02g)"],
   },
+  // P24-03 (ADR-129 Am. 10): the photo step — the provider tenant bound, each photo in its device's facility, the transform worker, no principal.
+  "services/upstreamImport/transform/attachments.ts#${table}": {
+    reason: "the photo step's reads of id_map, quarantine and the allow-listed staging tables trx_inventory and trx_inventory_file (via stagedTable); a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-03)"],
+  },
+  "services/upstreamImport/transform/attachments.ts#calibration_devices": {
+    reason: "the devices behind the photos, read in the provider tenant (bound) for their facility; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-03)"],
+  },
+  "services/upstreamImport/transform/attachments.ts#attachments": {
+    reason: "the imported device photos: read, inserted and soft-deleted (the import's own earlier photo) in the provider tenant (bound), each in its device's facility; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-03)"],
+  },
+  "services/upstreamImport/transform/attachments.ts#audit_logs": {
+    reason: "the photo step's CREATE / DELETE rows, each stamped with the device's facility; a worker, no principal",
+    reachableFrom: ["system: the upstream SQL-dump transform worker (P24-03)"],
+  },
   "services/upstreamImport/transform/ledger.ts#${table}": {
     reason:
       "the upstream transform's `upstream_import` bookkeeping (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",

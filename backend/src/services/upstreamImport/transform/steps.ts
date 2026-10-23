@@ -10,7 +10,7 @@
  * (distinct laboratories, distinct rooms, the per-row audit rows) and own no source table.
  *
  * A step's `run` and each source's `legacyId` are P24-02's (built part by part: P24-02a the
- * facilities and the audit rows, P24-02b the users, P24-02c the catalogue, P24-02d the templates, P24-02e the register, P24-02f the calibration dates, P24-02g the IPM sessions and results): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
+ * facilities and the audit rows, P24-02b the users, P24-02c the catalogue, P24-02d the templates, P24-02e the register, P24-02f the calibration dates, P24-02g the IPM sessions and results, P24-03 the photos and the certificate index): until EVERY step has both, the transform is not built, and the transform is not available (`transformAvailable()` false, the request 409,
  * the worker `TRANSFORM_NOT_BUILT`). `legacyId` is an SQL expression over the staged row,
  * aliased `s` — a constant of this module, never input — giving the text key the step writes
  * to `id_map.legacy_id` (usually `s."id"::text`; a session's `legacy_key`, 05 § 3.3).
@@ -27,6 +27,8 @@ import { CALIBRATION_SOURCE, runCalibrations } from "./calibrations";
 import { RESULT_SOURCES, SESSION_SOURCES } from "./ipm";
 import { runIpmSessions } from "./ipmSessions";
 import { runIpmResults } from "./ipmResults";
+import { CERTIFICATE_SOURCE, accountPhotos, runAttachments, type FolderCounts } from "./attachments";
+import type { TransformFiles } from "./photoFiles";
 
 /** What a step's `run` receives: the run, and the transform connection's transaction. */
 export interface StepContext {
@@ -40,6 +42,8 @@ export interface StepContext {
   readonly tenantId: string;
   /** P24-02a (UD-7, 05 § 3.4): the IANA zone upstream's naive DATETIME values are read in. Bound, never interpolated. */
   readonly sourceZone: string;
+  /** P24-03: the photo catalogue and the storage step 9 writes through (photoFiles.ts); absent when no step needs it. */
+  readonly files?: TransformFiles;
 }
 
 /** One staged table a step accounts for. */
@@ -59,19 +63,23 @@ export interface TransformStep {
   readonly sources: readonly TransformSource[];
   /** The step itself; null until P24-02 builds it. */
   readonly run: ((context: StepContext) => Promise<void>) | null;
+  /**
+   * P24-03: what the step accounts for BESIDES its staged sources (the photo folders, columns of
+   * step 8's table) — counted after its run into the summary, and fatal when unaccounted.
+   */
+  readonly account?: (context: StepContext) => Promise<FolderCounts[]>;
 }
 
-const NOT_BUILT = null;
-
-const sources = (...tables: string[]): readonly TransformSource[] =>
-  Object.freeze(tables.map((table) => Object.freeze({ table, legacyId: NOT_BUILT })));
+/** A step that writes DERIVED rows and owns no staged table (steps 6, 7 and 13). */
+const NO_SOURCES: readonly TransformSource[] = Object.freeze([]);
 
 const step = (
   id: string,
   writes: readonly string[],
   from: readonly TransformSource[],
-  run: TransformStep["run"] = NOT_BUILT,
-): TransformStep => Object.freeze({ id, writes: Object.freeze([...writes]), sources: from, run });
+  run: NonNullable<TransformStep["run"]>,
+  account?: TransformStep["account"],
+): TransformStep => Object.freeze({ id, writes: Object.freeze([...writes]), sources: from, run, ...(account ? { account } : {}) });
 
 /** 05 § 3.1 as amended by P19-04 § 15 (the provider tenant first, then its client facilities). */
 export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
@@ -95,17 +103,18 @@ export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
     runTemplates,
   ),
   // P24-02e: the device register — laboratories and rooms (derived), then the devices (inventory.ts).
-  step("vendors", ["vendors"], sources(), runVendors),
-  step("warehouses", ["warehouses"], sources(), runRooms),
+  step("vendors", ["vendors"], NO_SOURCES, runVendors),
+  step("warehouses", ["warehouses"], NO_SOURCES, runRooms),
   step("calibration_devices", ["calibration_devices"], Object.freeze([DEVICE_SOURCE]), runDevices),
-  step("attachments", ["attachments"], sources("trx_inventory_file")),
+  // P24-03: the device photos from the image imports' manifests, and the certificate index (attachments.ts).
+  step("attachments", ["attachments"], Object.freeze([CERTIFICATE_SOURCE]), runAttachments, accountPhotos),
   // P24-02f: the calibration dates (calibrations.ts).
   step("calibration_records", ["calibration_records"], Object.freeze([CALIBRATION_SOURCE]), runCalibrations),
   // P24-02g: the IPM visits as drafts, then their results and the issue of each report (ipmSessions.ts, ipmResults.ts).
   step("inspection_sessions", ["inspection_sessions"], SESSION_SOURCES, runIpmSessions),
   step("inspection_results", ["inspection_results", "inspection_sessions"], RESULT_SOURCES, runIpmResults),
   // P24-02a: one audit row per application row written in this transaction (auditRows.ts).
-  step("audit_logs", ["audit_logs"], sources(), runAuditRows),
+  step("audit_logs", ["audit_logs"], NO_SOURCES, runAuditRows),
 ]);
 
 /** Whether every step, and every source's legacy key, is written. */

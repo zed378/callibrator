@@ -151,8 +151,8 @@ describe("P24-02g the registry", () => {
     expect(tables.every((t) => STAGED_TABLES.includes(t))).toBe(true);
     expect([...SESSION_SOURCES, ...RESULT_SOURCES].every((s) => s.legacyId === 's."id"::text')).toBe(true);
     expect(STEP_AUDITED.has("inspection_sessions") && STEP_AUDITED.has("inspection_results")).toBe(true);
-    // Step 9 (attachments, P24-03) is the last one not built: the transform stays unavailable.
-    expect(TRANSFORM_STEPS.filter((s) => !isBuilt([s])).map((s) => s.id)).toEqual(["attachments"]);
+    // Step 9 (attachments) is built since P24-03: every step is, and the transform is available.
+    expect(TRANSFORM_STEPS.filter((s) => !isBuilt([s])).map((s) => s.id)).toEqual([]);
   });
 });
 
