@@ -31,6 +31,7 @@ import { useI18n } from "@/i18n/MessagesProvider";
 import type { Messages } from "@/i18n";
 import { resultCells, zonedText } from "@/lib/ipmReportPdf";
 import { SignReportDialog } from "../../../components/SignReportDialog";
+import { EvidencePhotos } from "../../../components/EvidencePhotos";
 import { FIELD } from "../../../components/shared";
 
 /** The document's status as a badge state of the registry (`ipmSession`). */
@@ -294,6 +295,9 @@ function Report({ sessionId, pdfMessages, languageForm, canSign }: ReportClientP
             </table>
           </section>
         ))}
+
+        {/* P19-06 § 12: the on-screen report lists the session's evidence photos (never in the PDF). */}
+        <EvidencePhotos sessionId={sessionId} editable={false} readOnlyNote={t(current ? "ipm.evidence.reportIssued" : "ipm.evidence.reportPreview")} />
 
         <section aria-labelledby="report-outcomes" className="space-y-2">
           <h2 id="report-outcomes" className="text-lg font-semibold">

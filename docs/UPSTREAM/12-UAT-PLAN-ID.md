@@ -10,7 +10,7 @@
 > real-phone run of `/field` (P22-10), the dry run with real data (P24-05 → P25-04), what legacy
 > stickers encode (OA-4 / UD-16), and the pre-invitation gate that keeps facility-bound accounts off
 > (`FACILITY_BINDING_ENABLED`). § 9 lists the gaps the plan found against the code (C-1, no screen for
-> four tenant settings, C-3, the menu entries, and C-4, the SQL-import page's stale stage-2 text, were closed the same day; C-2 waits on a decision). The run itself is
+> four tenant settings, C-3, the menu entries, and C-4, the SQL-import page's stale stage-2 text, were closed the same day; **C-2, the dashboard capture's evidence photos, closed 2026-10-23**). The run itself is
 > **P26-02**; triage and sign-off **P26-03**. No real data, name or facility appears here.
 
 **Status:** rencana dan skrip, 2026-10-13 (P26-01). **Belum dijalankan.** Diperbarui 2026-10-13: C-1 (M-18), C-3 (migrasi 0142) dan C-4 selesai, label layar diselaraskan dengan `id.ts`. Pelaksanaan = P26-02 (di
@@ -165,7 +165,7 @@ dengan kartu yang menutupnya — bukan diabaikan.
 | Kode | Celah | Dampak ke UAT | Penutup yang diusulkan |
 |---|---|---|---|
 | **C-1** | ~~Empat pengaturan tenant (`public_device_page`, `ipm_countersign_enabled`, `ipm_interval_months`, `tenant_time_zone`) tidak punya layar~~ — **SELESAI 2026-10-13 (M-18):** panel **Pengaturan IPM dan halaman publik** pada kartu tenant di `/dashboard/tenants`, untuk administrator tenant ([catatan](../../MEMORY/records/2026-10-13-m18-tenant-ipm-settings.md)). | AP-06, AP-08, AP-09, IP-01, PU-01 kini disiapkan oleh AP sendiri. | — |
-| **C-2** | **Foto bukti IPM** hanya ada di aplikasi lapangan `/field`; daftar periksa di dasbor belum menerimanya (catatan terbuka P22-03). | TP-07 di dasbor tanpa foto bukti; TP-13 di `/field` dengan foto. | Tambahkan ke daftar periksa dasbor, atau tetapkan `/field` sebagai satu-satunya tempat foto bukti. |
+| **C-2** | ~~**Foto bukti IPM** hanya ada di aplikasi lapangan `/field`; daftar periksa di dasbor belum menerimanya (catatan terbuka P22-03).~~ — **SELESAI 2026-10-23:** langkah **Periksa dan kirim** pada daftar periksa dasbor kini menampilkan, menambah, dan menghapus foto bukti draf (tautan bertanda tangan ke berkas aslinya; foto IPM tidak punya turunan tanpa metadata). Server memang sudah menerimanya sejak P21-03 ([catatan](../../MEMORY/records/2026-10-23-c2-ipm-evidence-photos.md)). | TP-07 di dasbor kini dapat memuat foto bukti; TP-13 di `/field` tetap. | — |
 | **C-3** | ~~**Tanggal kalibrasi** dan **Ekspor** tidak punya entri menu sendiri~~ — **SELESAI 2026-10-13:** entri menu di bawah Peralatan, migrasi 0142 ([catatan](../../MEMORY/records/2026-10-13-c3-calibration-dates-exports-menu.md)). | Pengguna menemukannya di menu samping. | — |
 | **C-4** | ~~Halaman **Impor dump SQL** menyatakan tahap 2 "belum tersedia"~~ — **SELESAI 2026-10-13:** bagian **Tahap 2: transformasi** dengan pilihan tenant penyedia, status transformasi, ringkasan per langkah, dan jawaban server apa adanya ([catatan](../../MEMORY/records/2026-10-13-c4-sql-import-transform.md)). | OP-02 kini menguji tahap 2 sejauh server mengizinkannya. | — |
 

@@ -1461,6 +1461,8 @@ export const id = {
   "ipm.evidence.deleteFailed": "Foto tidak dapat dihapus.",
   "ipm.evidence.loadFailed": "Foto tidak dapat dimuat.",
   "ipm.evidence.retry": "Coba lagi",
+  "ipm.evidence.reportIssued": "Foto bukti IPM ini. Foto adalah bagian dari rekamnya dan tidak dicetak di PDF.",
+  "ipm.evidence.reportPreview": "Foto bukti draf ini. Laporan menampilkannya setelah IPM dikirim.",
   "ipmReport.title": "IPM — Inspeksi dan Pemeliharaan Preventif",
   "ipmReport.field.facility": "Rumah Sakit",
   "ipmReport.field.performedAt": "Tanggal IPM",

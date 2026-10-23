@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-23 — IPM evidence photos on the dashboard checklist and in the report (C-2, P19-06 § 12) ([record](./records/2026-10-23-c2-ipm-evidence-photos.md))
+- **Added:** while an IPM is a draft, a technician can attach evidence photos to it on the dashboard's review step, and remove one after a confirmation — before this, only the offline field app could. Each photo is made a smaller JPEG in the browser first, so a phone photo uploads without its camera metadata. In Indonesian and English.
+- **Added:** the IPM report page lists the session's evidence photos read-only, so a signed report shows what was photographed. They are part of the record and are not printed in the PDF.
+
 ### 2026-10-23 — The operator opens imported users' invitations from the tenants page (P24-09d) ([record](./records/2026-10-23-p24-09d-operator-invitations-switch.md))
 - **Added:** the platform operator sees an "Imported users' invitations" button on each tenant card, showing whether invitations are open and opening or closing them after a confirmation. In Indonesian and English.
 
