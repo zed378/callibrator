@@ -1,11 +1,12 @@
 # Runbook — Upstream Cutover (P30-01)
 
-> **Status: DRAFT, 2026-10-23.** The card's dependency (Phase 25, reconciliation) needs **real
+> **Status: DRAFT, 2026-10-23; mechanisms P25-01/P25-02 DONE 2026-10-24.** The card's dependency (Phase 25, reconciliation) needs **real
 > upstream data**, which the owner's legal decision gates (**OA-5**, UD-18). This runbook is written
 > ahead of that on purpose — the same way `P29-02`'s "what changed" note was — so that the sequence,
 > the commands and the rollback are reviewed **before** a freeze window exists. Every command here
-> exists in the repository today. What is **not** proved: the timings against real volumes (the dry
-> run, P24-05), and every step marked ⏳ below.
+> exists in the repository today. The reconciliation mechanism (P25-01: `GET …/reconciliation`) and the
+> data-quality report (P25-02: `GET …/data-quality`) are built and tested on synthetic data. What is
+> **not** proved: the timings against real volumes (the dry run, P24-05), and every step marked ⏳ below.
 >
 > **No real data value appears in this file.** Counts and structure only.
 
@@ -74,10 +75,10 @@ Nothing below starts until each row is **named in a record**, not "looks fine".
 4. Run the transform: **Tahap 2: transformasi** → choose the provider tenant → **Transformasi ke …**.
    It answers either the summary (per step, per source: staged / mapped / unchanged / quarantined) or
    a named failure.
-5. Review the **quarantine** with the operator: every reason, every count. A reason nobody can explain
+5. Review the **quarantine** with the operator: `GET …/:id/data-quality` (P25-02) answers every quarantined row by source table and reason, per facility, with run-level totals — every reason, every count. A reason nobody can explain
    is a defect in the transform or in the data, not something to accept.
 6. Record the **durations** per step. They are the input to the freeze estimate (§ 7).
-7. Repeat until the reconciliation (P25-01 … R-1 … R-12) is green and the quarantine is explained.
+7. Repeat until the reconciliation (P25-01: `GET …/:id/reconciliation` — R-1/R-2/R-7 per facility, R-10/R-11/RC-F1 … RC-F5 at the run level) is green and the quarantine is explained.
 
 **Commands that help (read-only):**
 

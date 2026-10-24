@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-24T00:26:45.722Z",
+  "last_updated": "2026-10-24T02:50:40.460Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -301,7 +301,11 @@
     "MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
     "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
     "TASKS\\PHASE-30-UPSTREAM-CUTOVER.md",
-    "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md"
+    "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md",
+    "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+    "TASKS\\PHASE-25-UPSTREAM-RECONCILIATION.md",
+    "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+    "MEMORY\\records\\2026-10-24-p30-01-runbook-reconciliation-links.md"
   ],
   "entities": [
     {
@@ -70503,6 +70507,132 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 24,
       "evidence": "### 2026-10-23 — The cutover runbook, drafted ahead of the data (P30-01) ([record](./records/2026-10-23-p30-01-cutover-runbook.md))"
+    },
+    {
+      "id": "sec_p25_01_the_automated_reconciliation_r_1_r_12_per_tenant",
+      "name": "P25-01: the automated reconciliation, R-1 … R-12 per tenant",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 1,
+      "evidence": "# P25-01: the automated reconciliation, R-1 … R-12 per tenant"
+    },
+    {
+      "id": "api_get_admin_upstream_sql_imports_id_reconciliation",
+      "name": "GET /admin/upstream-sql-imports/:id/reconciliation",
+      "type": "API_Endpoint",
+      "description": "| [`backend/src/routes/api/admin.route.ts`](../../backend/src/routes/api/admin.route.ts) · [`backend/src/routes/api/admin.openapi.ts`](../../backend/src/routes/api/admin.openapi.ts) | `GET /admin/upstream-sql-imports/:id/reconciliation` (super admin only, audited false — a read; the code-first operation `adminReconcileUpstreamSqlImport`) |",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 23,
+      "evidence": "| [`backend/src/routes/api/admin.route.ts`](../../backend/src/routes/api/admin.route.ts) · [`backend/src/routes/api/admin.openapi.ts`](../../backend/src/routes/"
+    },
+    {
+      "id": "ent_waiting_for_p24_05_s_real_data_before_building_anything_",
+      "name": "Waiting for P24-05's real data before building anything.",
+      "type": "Component/Requirement",
+      "description": "Rejected: the dry run needs the",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 42,
+      "evidence": "- **Waiting for P24-05's real data before building anything.** Rejected: the dry run needs the"
+    },
+    {
+      "id": "ent_one_check_per_route_",
+      "name": "One check per route.",
+      "type": "Component/Requirement",
+      "description": "Rejected: the reconciliation is one question — \"does the target equal",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 45,
+      "evidence": "- **One check per route.** Rejected: the reconciliation is one question — \"does the target equal"
+    },
+    {
+      "id": "ent_computing_r_3_r_9_now_",
+      "name": "Computing R-3 … R-9 now.",
+      "type": "Component/Requirement",
+      "description": "Rejected as the *only* scope: R-3 needs per-section staged reads of",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 47,
+      "evidence": "- **Computing R-3 … R-9 now.** Rejected as the *only* scope: R-3 needs per-section staged reads of"
+    },
+    {
+      "id": "sec_phase_25_upstream_reconciliation_parity_verification",
+      "name": "Phase 25 — Upstream: Reconciliation & Parity Verification",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\PHASE-25-UPSTREAM-RECONCILIATION.md",
+      "source": "TASKS\\PHASE-25-UPSTREAM-RECONCILIATION.md",
+      "line": 1,
+      "evidence": "# Phase 25 — Upstream: Reconciliation & Parity Verification"
+    },
+    {
+      "id": "sec_2026_10_24_the_automated_reconciliation_of_a_transformed_upstream_run_p25_01_record_records_2026_10_24_p25_01_reconciliation_automated_md_",
+      "name": "2026-10-24 — The automated reconciliation of a transformed upstream run (P25-01) ([record](./records/2026-10-24-p25-01-reconciliation-automated.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — The automated reconciliation of a transformed upstream run (P25-01) ([record](./records/2026-10-24-p25-01-reconciliation-automated.md))"
+    },
+    {
+      "id": "sec_p25_02_the_quarantine_review_and_per_tenant_data_quality_report",
+      "name": "P25-02: the quarantine review and per-tenant data-quality report",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 1,
+      "evidence": "# P25-02: the quarantine review and per-tenant data-quality report"
+    },
+    {
+      "id": "api_get_admin_upstream_sql_imports_id_data_quality",
+      "name": "GET /admin/upstream-sql-imports/:id/data-quality",
+      "type": "API_Endpoint",
+      "description": "| [`backend/src/routes/api/admin.route.ts`](../../backend/src/routes/api/admin.route.ts) · [`backend/src/routes/api/admin.openapi.ts`](../../backend/src/routes/api/admin.openapi.ts) | `GET /admin/upstream-sql-imports/:id/data-quality` (super admin only, audited false — a read; the code-first operation `adminReportUpstreamDataQuality`) |",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 21,
+      "evidence": "| [`backend/src/routes/api/admin.route.ts`](../../backend/src/routes/api/admin.route.ts) · [`backend/src/routes/api/admin.openapi.ts`](../../backend/src/routes/"
+    },
+    {
+      "id": "ent_one_finding_per_route_",
+      "name": "One finding per route.",
+      "type": "Component/Requirement",
+      "description": "Rejected: the report is one question — \"what did the transform refuse,",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 44,
+      "evidence": "- **One finding per route.** Rejected: the report is one question — \"what did the transform refuse,"
+    },
+    {
+      "id": "ent_computing_q_19_same_serial_across_facilities_and_q_28_now_",
+      "name": "Computing Q-19 (same serial across facilities) and Q-28 now.",
+      "type": "Component/Requirement",
+      "description": "Rejected as the *only* scope:",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 47,
+      "evidence": "- **Computing Q-19 (same serial across facilities) and Q-28 now.** Rejected as the *only* scope:"
+    },
+    {
+      "id": "sec_2026_10_24_the_quarantine_review_and_per_tenant_data_quality_report_p25_02_record_records_2026_10_24_p25_02_data_quality_report_md_",
+      "name": "2026-10-24 — The quarantine review and per-tenant data-quality report (P25-02) ([record](./records/2026-10-24-p25-02-data-quality-report.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — The quarantine review and per-tenant data-quality report (P25-02) ([record](./records/2026-10-24-p25-02-data-quality-report.md))"
+    },
+    {
+      "id": "sec_p30_01_the_runbook_names_the_built_reconciliation_and_data_quality_routes",
+      "name": "P30-01: the runbook names the built reconciliation and data-quality routes",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p30-01-runbook-reconciliation-links.md",
+      "source": "MEMORY\\records\\2026-10-24-p30-01-runbook-reconciliation-links.md",
+      "line": 1,
+      "evidence": "# P30-01: the runbook names the built reconciliation and data-quality routes"
+    },
+    {
+      "id": "sec_2026_10_24_the_cutover_runbook_names_the_built_reconciliation_and_data_quality_routes_p30_01_record_records_2026_10_24_p30_01_runbook_reconciliation_links_md_",
+      "name": "2026-10-24 — The cutover runbook names the built reconciliation and data-quality routes (P30-01) ([record](./records/2026-10-24-p30-01-runbook-reconciliation-links.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — The cutover runbook names the built reconciliation and data-quality routes (P30-01) ([record](./records/2026-10-24-p30-01-runbook-reconciliatio"
     }
   ],
   "relations": [
@@ -104761,12 +104891,140 @@
       "evidence": "- **Documented:** the sequence for switching from the old app to this one, from two weeks before to thirty days after: the gates that must be green first, the f",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 25
+    },
+    {
+      "source": "sec_what_was_built",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_reconciliation",
+      "evidence": "| [`backend/src/routes/api/admin.route.ts`](../../backend/src/routes/api/admin.route.ts) · [`backend/src/routes/api/admin.openapi.ts`](../../backend/src/routes/",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 23
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_waiting_for_p24_05_s_real_data_before_building_anything_",
+      "evidence": "- **Waiting for P24-05's real data before building anything.** Rejected: the dry run needs the",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 42
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_one_check_per_route_",
+      "evidence": "- **One check per route.** Rejected: the reconciliation is one question — \"does the target equal",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 45
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_computing_r_3_r_9_now_",
+      "evidence": "- **Computing R-3 … R-9 now.** Rejected as the *only* scope: R-3 needs per-section staged reads of",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 47
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_reconciliation",
+      "evidence": "| P25-01 | Automated R-1 … R-12 per tenant, aggregates only | **DONE 2026-10-24** — [`GET /admin/upstream-sql-imports/:id/reconciliation`](../backend/src/routes",
+      "source_file": "TASKS\\PHASE-25-UPSTREAM-RECONCILIATION.md",
+      "line": 30
+    },
+    {
+      "source": "sec_phases_12_31_upstream_php_feature_adoption_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_reconciliation",
+      "evidence": "| [25 — Reconciliation & Parity Verification](./PHASE-25-UPSTREAM-RECONCILIATION.md) | 4 | **P25-01 DONE 2026-10-24** · 3 BLOCKED | **P25-01 DONE 2026-10-24** —",
+      "source_file": "TASKS\\PROGRESS.md",
+      "line": 414
+    },
+    {
+      "source": "sec_records",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_reconciliation",
+      "evidence": "| 2026-10-24 | P25-01 | [The automated reconciliation, R-1 ... R-12 per tenant](./records/2026-10-24-p25-01-reconciliation-automated.md) | **DONE.** `GET /admin",
+      "source_file": "MEMORY\\MEMORY-INDEX.md",
+      "line": 15
+    },
+    {
+      "source": "sec_2026_10_24_the_automated_reconciliation_of_a_transformed_upstream_run_p25_01_record_records_2026_10_24_p25_01_reconciliation_automated_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_operations_",
+      "evidence": "- **Added (operations):** the super admin's `GET /admin/upstream-sql-imports/:id/reconciliation` answers the automated R-1 … R-12 per tenant, aggregates only — ",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_what_was_built",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_data_quality",
+      "evidence": "| [`backend/src/routes/api/admin.route.ts`](../../backend/src/routes/api/admin.route.ts) · [`backend/src/routes/api/admin.openapi.ts`](../../backend/src/routes/",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 21
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_one_finding_per_route_",
+      "evidence": "- **One finding per route.** Rejected: the report is one question — \"what did the transform refuse,",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 44
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_computing_q_19_same_serial_across_facilities_and_q_28_now_",
+      "evidence": "- **Computing Q-19 (same serial across facilities) and Q-28 now.** Rejected as the *only* scope:",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 47
+    },
+    {
+      "source": "sec_cards",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_data_quality",
+      "evidence": "| P25-02 | Quarantine review and per-tenant data-quality report (duplicate serials, duplicate files, orphans, implausible dates) | **DONE 2026-10-24** — [`GET /",
+      "source_file": "TASKS\\PHASE-25-UPSTREAM-RECONCILIATION.md",
+      "line": 31
+    },
+    {
+      "source": "sec_phases_12_31_upstream_php_feature_adoption_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_data_quality",
+      "evidence": "| [25 — Reconciliation & Parity Verification](./PHASE-25-UPSTREAM-RECONCILIATION.md) | 4 | **P25-01 DONE 2026-10-24 · P25-02 DONE 2026-10-24** · 2 BLOCKED | **P",
+      "source_file": "TASKS\\PROGRESS.md",
+      "line": 414
+    },
+    {
+      "source": "sec_records",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_data_quality",
+      "evidence": "| 2026-10-24 | P25-02 | [The quarantine review and per-tenant data-quality report](./records/2026-10-24-p25-02-data-quality-report.md) | **DONE.** `GET /admin/u",
+      "source_file": "MEMORY\\MEMORY-INDEX.md",
+      "line": 15
+    },
+    {
+      "source": "sec_2026_10_24_the_quarantine_review_and_per_tenant_data_quality_report_p25_02_record_records_2026_10_24_p25_02_data_quality_report_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_added_operations_",
+      "evidence": "- **Added (operations):** the super admin's `GET /admin/upstream-sql-imports/:id/data-quality` answers the quarantine review and data-quality report per tenant ",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_the_cutover_runbook_names_the_built_reconciliation_and_data_quality_routes_p30_01_record_records_2026_10_24_p30_01_runbook_reconciliation_links_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_documented_",
+      "evidence": "- **Documented:** steps 5 and 7 of the cutover runbook now name the built routes — `GET …/:id/data-quality` (P25-02) and `GET …/:id/reconciliation` (P25-01) — w",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
     }
   ],
   "stats": {
-    "total_sources": 300,
-    "total_entities": 7800,
-    "total_relations": 4282,
+    "total_sources": 304,
+    "total_entities": 7814,
+    "total_relations": 4298,
     "token_savings_estimate": "85-95%"
   }
 }

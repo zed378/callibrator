@@ -29,6 +29,8 @@ import type * as RunnerModule from "../../services/upstreamImport/transform/runn
 import type * as ConfigModule from "../../config/upstreamImport";
 import type * as ReportModule from "../../services/ipmReport.service";
 import type * as JobContextModule from "../../utils/jobContext.util";
+import type * as ReconciliationModule from "../../services/upstreamReconciliation.service";
+import type * as DataQualityModule from "../../services/upstreamDataQuality.service";
 
 const IMPORT_ROLE = "callibrator_import";
 const TRANSFORM_ROLE = "callibrator_transform";
@@ -62,7 +64,7 @@ const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph is loaded after the environment is set; typed by the members used */
 const load = () => ({
   db: (require("../../config") as { db: LiveDb }).db,
-  models: require("../../models") as { InspectionSession: SessionModel },
+  models: require("../../models") as { InspectionSession: SessionModel; UpstreamSqlImport: { create(values: object): Promise<unknown> } },
   migrator: (require("../../config/migrator") as { migrator: { pending(): Promise<unknown[]> } }).migrator,
   migrationLock: require("../../utils/migrationLock.util") as { runSchemaSetup(options: object): Promise<unknown> },
   steps: require("../../services/upstreamImport/transform/steps") as typeof StepsModule,
@@ -71,6 +73,8 @@ const load = () => ({
   report: require("../../services/ipmReport.service") as typeof ReportModule,
   jobContext: require("../../utils/jobContext.util") as typeof JobContextModule,
   m0141: require("../../migrations/0141-upstream-transform-ipm") as Migration,
+  reconciliation: require("../../services/upstreamReconciliation.service") as typeof ReconciliationModule,
+  dataQuality: require("../../services/upstreamDataQuality.service") as typeof DataQualityModule,
 });
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -360,6 +364,80 @@ describe("P24-02g — the IPM steps on live PostgreSQL 18, as the transform role
       { type: "InspectionResult", n: 7, facility: true, operation: true },
       { type: "InspectionSession", n: 3, facility: true, operation: true },
     ]);
+  });
+
+  it("P25-01/P25-02 on the IPM world: the reconciliation passes on the transform role, the report counts the quarantine", async () => {
+    // RUN_1 was transformed by the test above; the run row the console reads is the platform's.
+    await g.models.UpstreamSqlImport.create({
+      id: RUN_1,
+      status: "loaded",
+      transformStatus: "transformed",
+      dataClass: "synthetic",
+      compression: "none",
+      sizeBytes: 1,
+      sha256: "e".repeat(64),
+      uploadedBy: null,
+      notifyTenantId: PROVIDER,
+      transformTenantId: PROVIDER,
+      transformSummary: { durationMs: 1, steps: [] },
+    });
+    const reconciliation = await g.reconciliation.reconcileRun(RUN_1);
+    expect(reconciliation.runChecks.filter((c) => c.status !== "manual").map((c) => [c.check, c.status])).toEqual([
+      ["R-10", "pass"],
+      ["R-11", "pass"],
+      ["RC-F1", "pass"],
+      ["RC-F2", "pass"],
+      ["RC-F3", "pass"],
+      ["RC-F5", "pass"],
+    ]);
+    const r10 = reconciliation.runChecks.find((c) => c.check === "R-10");
+    expect(r10?.expected).toBeGreaterThan(0);
+    expect(r10?.quarantined).toBeGreaterThan(0);
+    expect(reconciliation.facilities).toHaveLength(3);
+    const checks = reconciliation.facilities.flatMap((f) => f.checks);
+    expect(checks.every((c) => c.status === "pass")).toBe(true);
+    // Two devices and two session headers mapped, each in its facility.
+    expect(checks.filter((c) => c.check === "R-1").reduce((n, c) => n + c.actual, 0)).toBe(2);
+    expect(checks.filter((c) => c.check === "R-2").reduce((n, c) => n + c.actual, 0)).toBe(2);
+    // A device moved to another facility behind the transform's back is caught (RC-F1, R-1), then put back.
+    const [moved] = await rows(
+      `SELECT d.id, d.client_facility_id AS facility FROM calibration_devices d WHERE d.tenant_id = '${PROVIDER}' AND d.qr_code = 'QR-G102'`,
+    );
+    const t = await g.db.transaction();
+    try {
+      await g.db.query("SET LOCAL session_replication_role = replica", { transaction: t });
+      await g.db.query(`UPDATE calibration_devices SET client_facility_id = '${SELF}' WHERE id = '${String(moved?.id)}'`, { transaction: t });
+      await t.commit();
+      const broken = await g.reconciliation.reconcileRun(RUN_1);
+      expect(broken.runChecks.find((c) => c.check === "RC-F1")).toMatchObject({ status: "fail", actual: 1 });
+      expect(broken.facilities.flatMap((f) => f.checks).filter((c) => c.status === "fail").map((c) => c.check)).toEqual(["R-1", "R-1"]);
+    } finally {
+      await g.db.query(`UPDATE calibration_devices SET client_facility_id = '${String(moved?.facility)}' WHERE id = '${String(moved?.id)}'`);
+    }
+
+    const report = await g.dataQuality.reportDataQuality(RUN_1);
+    expect(report.facilities).toHaveLength(3);
+    expect(report.totals).toEqual(
+      expect.arrayContaining([
+        { sourceTable: "trx_hasil_pemeriksaan", reason: "duplicate_header", rows: 1 },
+        { sourceTable: "trx_hasil_pemeriksaan", reason: "no_device", rows: 1 },
+        { sourceTable: "trx_rekomendasi_hasil_pekerjaan", reason: "value_out_of_range", rows: 1 },
+        { sourceTable: "trx_fungsi_alat", reason: "session_not_imported", rows: 1 },
+      ]),
+    );
+    for (const row of report.facilities) {
+      expect(row.findings.filter((f) => f.status !== "manual").map((f) => [f.finding, f.status])).toEqual([
+        ["Q-18", "pass"],
+        ["Q-19", "pass"],
+        ["Q-12", "pass"],
+        ["Q-13", "pass"],
+      ]);
+    }
+    // Counts and codes only: no staged value reaches either answer.
+    const text = JSON.stringify([reconciliation, report]);
+    for (const value of ["QR-G101", "QR-G102", "Pompa", "Sintetis", "teknisi.g@example.test"]) {
+      expect(text).not.toContain(value);
+    }
   });
 
   it("an issued session is out of the transform role's reach; a result cannot be added to it", async () => {

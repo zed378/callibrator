@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | BLOCKED — 4 BLOCKED · **P30-01's runbook written 2026-10-23 (draft)**; the run itself waits on Phase 25 |
+| **Status** | BLOCKED — 4 BLOCKED · **P30-01's runbook written 2026-10-23 (draft), updated 2026-10-24 with the P25-01/P25-02 routes**; the run itself waits on Phase 25 |
 | **Goal** | Freeze, final delta, invitations, read-only upstream, go/no-go |
 | **Depends on** | Phase 25, Phase 26, Phase 27 |
 | **Size** | M |
@@ -27,7 +27,7 @@ facility name, free text, file name, credential) enters the repository — in fu
 
 | Card | Title | Status | Depends on |
 |---|---|---|---|
-| P30-01 | Cutover runbook in `TASKS/` (T-14 d … T+30 d, rollback = pre-import backup) | **DRAFT written 2026-10-23** — [`TASKS/RUNBOOK-UPSTREAM-CUTOVER.md`](./RUNBOOK-UPSTREAM-CUTOVER.md): the gate list (legal, pre-invitation, security, reconciliation, UAT, backups), T-14 d … T+30 d with the real `make` targets, the T-0 sequence as decision points, the freeze estimate, the rollback table (the backup, never a delete), and a "what this does not know yet" section. Written ahead of the data on purpose, the way P29-02 was. **The run is P30-02, and it waits on Phase 25** | Phase 25 |
+| P30-01 | Cutover runbook in `TASKS/` (T-14 d … T+30 d, rollback = pre-import backup) | **DRAFT written 2026-10-23, updated 2026-10-24** — [`TASKS/RUNBOOK-UPSTREAM-CUTOVER.md`](./RUNBOOK-UPSTREAM-CUTOVER.md): the gate list (legal, pre-invitation, security, reconciliation, UAT, backups), T-14 d … T+30 d with the real `make` targets, the T-0 sequence as decision points, the freeze estimate, the rollback table (the backup, never a delete), and a "what this does not know yet" section. Written ahead of the data on purpose, the way P29-02 was. **2026-10-24:** steps 5 and 7 now name the built routes — `GET …/:id/data-quality` (P25-02) and `GET …/:id/reconciliation` (P25-01) — with what each answers. **The run is P30-02, and it waits on Phase 25** — [record](../MEMORY/records/2026-10-24-p30-01-runbook-reconciliation-links.md) | Phase 25 |
 | P30-02 | Full rehearsal on a disposable stack, freeze timed | BLOCKED | P30-01 |
 | P30-03 | Go/no-go record: reconciliation signed, UAT signed, security review closed, invitations ready, owner actions done | BLOCKED | P25-04, P26-03, P17-07, P27-04 |
 | P30-04 | Cutover: freeze → final dump → delta load and files → reconciliation → invitations; upstream read-only | BLOCKED | P30-03 |

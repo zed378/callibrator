@@ -33,6 +33,10 @@ import {
   uploadTimeBudget,
 } from "../../controllers/upstreamSqlImport.controller";
 import { listUpstreamSqlImportsSchema, transformUpstreamSqlImportSchema, upstreamSqlImportIdSchema } from "../../validators/upstreamSqlImport.validator";
+import { reconciliation as reconcileSqlImport } from "../../controllers/upstreamReconciliation.controller";
+import { upstreamReconciliationIdSchema } from "../../validators/upstreamReconciliation.validator";
+import { dataQuality as dataQualitySqlImport } from "../../controllers/upstreamDataQuality.controller";
+import { upstreamDataQualityIdSchema } from "../../validators/upstreamDataQuality.validator";
 import { acceptProposal, listProposalsQuery, rejectProposal } from "@callibrator/contracts/inspectionCatalogue";
 import { accept as acceptCatalogueProposal, proposalQueue, reject as rejectCatalogueProposal } from "../../controllers/inspectionCatalogue.controller";
 
@@ -140,6 +144,20 @@ router.post(
   superAdminOnly,
   validate(transformUpstreamSqlImportSchema, { from: ["params", "body"] }),
   transformSqlImport,
+);
+// P25-01 (docs/UPSTREAM/05 § 7): the automated reconciliation of a transformed run, aggregates only.
+router.get(
+  "/upstream-sql-imports/:id/reconciliation",
+  superAdminOnly,
+  validate(upstreamReconciliationIdSchema, { from: "params" }),
+  reconcileSqlImport,
+);
+// P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and per-tenant data-quality report, aggregates only.
+router.get(
+  "/upstream-sql-imports/:id/data-quality",
+  superAdminOnly,
+  validate(upstreamDataQualityIdSchema, { from: "params" }),
+  dataQualitySqlImport,
 );
 
 // ---------------------------------------------------------------------------

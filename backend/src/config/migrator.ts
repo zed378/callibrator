@@ -247,6 +247,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0144-user-invitations.js", require("../migrations/0144-user-invitations")],
   // P24-03 (ADR-129 Am. 10): the photo step's reasons and the transform role's column grants on attachments.
   ["0145-upstream-transform-attachments.js", require("../migrations/0145-upstream-transform-attachments")],
+  // P25-01/P25-02 (ADR-129 Am. 11): the reconciliation's two read grants to the transform role.
+  ["0146-upstream-reconciliation-grants.js", require("../migrations/0146-upstream-reconciliation-grants")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

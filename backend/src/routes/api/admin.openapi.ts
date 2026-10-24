@@ -37,6 +37,8 @@ import {
   requestUpstreamSqlTransformSchema,
   uploadUpstreamSqlImportSchema,
 } from "@callibrator/contracts/upstreamSqlImport";
+import { upstreamReconciliationResult } from "@callibrator/contracts/upstreamReconciliation";
+import { upstreamDataQualityResult } from "@callibrator/contracts/upstreamDataQuality";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 import { acceptProposalBody, listProposalsQuery, proposalIdParams, rejectProposalBody } from "@callibrator/contracts/inspectionCatalogue";
 import { TemplateProposal, TemplateProposalQueueRow } from "../../docs/openapi/inspectionCatalogueSchemas";
@@ -488,6 +490,38 @@ export default defineRouteDocs({
       conflict:
         "The steps are not built on this server (`TRANSFORM_NOT_AVAILABLE`), the run is not loaded (`RUN_NOT_LOADED`), a transform is in " +
         "progress (`TRANSFORM_IN_PROGRESS`), or the provider tenant is not active (`PROVIDER_TENANT_NOT_ACTIVE`).",
+    },
+    {
+      method: "get",
+      path: "/upstream-sql-imports/:id/reconciliation",
+      operationId: "adminReconcileUpstreamSqlImport",
+      summary: "Reconcile a transformed SQL-dump import run, per facility",
+      description:
+        "P25-01 (docs/UPSTREAM/05 § 7): the reconciliation of a transformed run, aggregates only — counts and fixed codes, " +
+        "never a value from the dump. R-1, R-2 and R-7 are computed per facility; R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 " +
+        "at the run level; R-3 … R-6, R-8, R-9, RC-F4 and R-12 are not automated and answer `manual` (P25-04). " +
+        "Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.",
+      permission: superAdmin,
+      audited: false,
+      params: sqlImportParams,
+      success: { status: 200, description: "The reconciliation, per facility and at the run level", data: upstreamReconciliationResult },
+      conflict: "The run's transform is not `transformed`.",
+    },
+    {
+      method: "get",
+      path: "/upstream-sql-imports/:id/data-quality",
+      operationId: "adminReportUpstreamDataQuality",
+      summary: "Report the quarantine and data quality of a transformed run, per facility",
+      description:
+        "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine " +
+        "groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18 and Q-19; " +
+        "Q-4, Q-14 and Q-28 answer `manual` (P25-04). Counts and fixed codes, never a value from the dump. " +
+        "Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.",
+      permission: superAdmin,
+      audited: false,
+      params: sqlImportParams,
+      success: { status: 200, description: "The quarantine review and data-quality report, per facility", data: upstreamDataQualityResult },
+      conflict: "The run's transform is not `transformed`.",
     },
     {
       method: "get",
