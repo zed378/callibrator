@@ -1,6 +1,35 @@
 # P25-02: the quarantine review and per-tenant data-quality report
 
-**Date:** 2026-10-24 · **Card:** P25-02 · **Status:** DONE · **Spec refs:** `docs/UPSTREAM/05` § 7 (R-1 … R-12), `docs/UPSTREAM/03` § 7 (the Q-findings it names), threat model § 11 G-30 (RC-F5)
+**Date:** 2026-10-24 · **Card:** P25-02 · **Status:** PARTIAL (review correction; first recorded DONE) · **Spec refs:** `docs/UPSTREAM/05` § 7 (R-1 … R-12), `docs/UPSTREAM/03` § 7 (the Q-findings it names), threat model § 11 G-30 (RC-F5)
+
+## Review correction (2026-10-24, same day) — read this first
+
+Recorded DONE by another tool; reviewed as a pull request:
+
+- **Q-12 and Q-13 were tenant totals repeated in every facility row.** **Fixed:** they are counted
+  per facility. Q-13 now covers calibration dates as well as inventory dates (03 § 7 counts both).
+- **Q-18 could never be non-zero as described.** Exact duplicates are impossible: 0118 makes the
+  serial unique per facility, and the devices step NULLs a duplicate's serial (UD-9). The query
+  counts case-variant groups (0 expected), and the note says so. The "placeholders excluded" claim
+  is removed.
+- **Q-19** (the same serial across facilities) was claimed in the header but not computed. It is now.
+- **The quarantine per facility was mostly empty.** A quarantined row usually has no mapping, so
+  it has no facility yet. The run `totals` carry every group, and the header says so.
+- **The orphan, duplicate-file and user sections** named in the header and in
+  `UPSTREAM_DATA_QUALITY_SECTIONS` are **not built**. Q-4, Q-14 and Q-28 answer `manual` with
+  "NOT AUTOMATED". The contract's header now says they are the target.
+- **The SQL had never run.** On PostgreSQL 18, `inventoried_on` needed the grant in migration 0146
+  (ADR-129 Am. 11). The codes and the inlined statements are as in the P25-01 correction.
+
+**Tests after the review:** `services/upstreamDataQuality.p2502` was rewritten and passes 4/4. It
+covers the coded refusals, the role check, the clean path, and per-facility counts with the totals
+against the facility groups. The route test `upstreamDataQuality.route.p2502` passes 3/3. The
+changed files have 100% coverage. Live on PostgreSQL 18, `upstreamTransform.p2402g.live` checks
+the IPM world: the totals hold `duplicate_header`, `no_device`, `value_out_of_range` and
+`session_not_imported` at 1 each; Q-12, Q-13, Q-18 and Q-19 pass in all three facilities; no
+staged value reaches the answer. The guards and the typecheck are as in P25-01.
+
+The sections below are the original record. Read their claims through this correction.
 
 ## Hook
 
