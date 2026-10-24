@@ -8,6 +8,22 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — P9-26 batch 6: session, d27, w02 to TypeScript ([record](./records/2026-10-24-p9-26-batch-06-session-d27-w02.md))
+- **DONE:** 3 × `.js` to `.ts`, same 211 cases, eslint + typecheck clean, ratchet 685 to 682.
+
+### 2026-10-24 — P9-26 batch 5: admin.route, d24, a127 to TypeScript ([record](./records/2026-10-24-p9-26-batch-05-admin-d24-a127.md))
+- **DONE:** 3 × `.js` to `.ts`, same 86 cases, eslint + typecheck clean, ratchet 688 to 685.
+
+### 2026-10-24 — P30-01 runbook re-verified: three stale check-count claims fixed ([record](./records/2026-10-24-p30-01-runbook-stale-checks-fix.md))
+- **Fixed (docs only):** T-0 row 6, the § 7 freeze-window row and the § 8 dual-run line still said "R-1 … R-11" / "12 checks per facility". Now the PARTIAL split verbatim: R-1/R-2/R-7 per facility, R-10/R-11/RC-F1/RC-F2/RC-F3/RC-F5 at run level, 8 × `manual` in P25-04. Phases 26–31 re-read, no other drift. Still DRAFT; the run waits on real data.
+
+### 2026-10-24 — P9-26 batch 4: packaged + appPath to TypeScript ([record](./records/2026-10-24-p9-26-batch-04-path-utils.md))
+- **DONE:** 2 × `.js` to `.ts`, same 11 cases, eslint + typecheck clean, ratchet 690 to 688.
+
+### 2026-10-24 — Phase 24-25 audit: ETL + reconciliation vs spec, serial dedup fixed ([record](./records/2026-10-24-phase24-25-audit-fix.md))
+- **Fixed (B1):** device serial dedup was case-sensitive (`SN-DUP` vs `sn-dup` both kept); now case-insensitive per 05 § 3.2 / Q-18 — in-run key and register lookup both folded. Stored spelling unchanged. New regression test in `transform.p2402e.test.ts`.
+- **Audit:** 13 steps registered/built, every staged table claimed once, id_map + quarantine consistent, R-1/R-2/R-7 + R-10/R-11 + RC-F1/RC-F2/RC-F3/RC-F5 and Q-12/Q-13/Q-18/Q-19 computed (rest `manual` per ADR-129 Am. 11). Live PG18 `p2402g` 6/6 + `p2403` 3/3; unit 48/48. No phase status change; real-data dry run (P24-05) still BLOCKED on UD-18.
+
 ### 2026-10-24 — Phase 22-23 audit: frontend + reports vs spec, two display defects fixed ([record](./records/2026-10-24-phase22-23-audit-fix.md))
 - **Fixed (B1):** inventory PDF/XLSX "Type" column printed the device model; now the device type's name else the category — the same value as the register's Type column. `documents.test.ts` pins it.
 - **Fixed (B2):** on-screen IPM report printed raw ISO calibration dates (`2026-03-01`); now the PDF's `dayText` (`1 Mar 2026`), exported for the page. `ReportClient.test.tsx` pins it.

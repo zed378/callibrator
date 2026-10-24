@@ -24,12 +24,16 @@
  * The scanner is proven to bite on synthetic sources, so one that silently
  * finds nothing cannot pass.
  */
-const fs = require("fs");
-const path = require("path");
+import fs from "fs";
+import path from "path";
+import type * as TsEstreeModule from "@typescript-eslint/typescript-estree";
 
-const espree = require(
-  require.resolve("espree", { paths: [path.dirname(require.resolve("eslint/package.json"))] }),
-);
+interface EspreeModule {
+    parse(source: string, options: { ecmaVersion: string; sourceType: string }): unknown;
+}
+
+const espree = jest.requireActual("espree") as unknown as EspreeModule;
+const tsEstree = jest.requireActual<typeof TsEstreeModule>("@typescript-eslint/typescript-estree");
 
 const SRC = path.join(__dirname, "..", "..");
 const SERVICES = path.join(SRC, "services");
@@ -38,17 +42,54 @@ const SERVICES = path.join(SRC, "services");
 // The scanner
 // ------------------------------------------------------------------
 
-const keyOf = (property) => property && property.key && (property.key.name || property.key.value);
+/** An ESTree node: the parser's output, untyped by design. */
+type AstNode = Record<string, unknown>;
+
+const isNode = (value: unknown): value is AstNode & { type: string } =>
+  typeof value === "object" && value !== null && typeof (value as Record<string, unknown>)["type"] === "string";
+
+type NamedNode = AstNode & { type: string };
+
+const keyOf = (property: unknown): string | null => {
+  if (!isNode(property)) {
+    return null;
+  }
+  const key = property["key"];
+  if (!isNode(key)) {
+    return null;
+  }
+  const name = key["name"];
+  const value = key["value"];
+  if (typeof name === "string") {
+    return name;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return null;
+};
 
 /** A readable name for a callee's object: `Model`, `Attachment.unscoped()`, `this.x`. */
-const nameOf = (node) => {
+const nameOf = (node: unknown): string => {
+  if (!isNode(node)) {
+    return "unknown";
+  }
   switch (node.type) {
     case "Identifier":
-      return node.name;
-    case "MemberExpression":
-      return `${nameOf(node.object)}.${node.property.name || node.property.value}`;
+      return typeof node["name"] === "string" ? (node["name"]) : "unknown";
+    case "MemberExpression": {
+      const object = node["object"];
+      const property = isNode(node["property"]) ? node["property"] : null;
+      const propName =
+                property !== null && typeof property["name"] === "string"
+                  ? (property["name"])
+                  : property !== null && typeof property["value"] === "string"
+                    ? (property["value"])
+                    : "?";
+      return `${nameOf(object)}.${propName}`;
+    }
     case "CallExpression":
-      return `${nameOf(node.callee)}()`;
+      return `${nameOf(node["callee"])}()`;
     case "ThisExpression":
       return "this";
     default:
@@ -57,18 +98,20 @@ const nameOf = (node) => {
 };
 
 /** The name a function gets from where it is defined. */
-const functionName = (node, parent) => {
-  if (node.id && node.id.name) {
-    return node.id.name;
+const functionName = (node: NamedNode, parent: NamedNode | null): string | null => {
+  const id = isNode(node["id"]) ? node["id"] : null;
+  if (id !== null && typeof id["name"] === "string") {
+    return id["name"];
   }
-  if (!parent) {
+  if (parent === null) {
     return null;
   }
   if (parent.type === "VariableDeclarator") {
-    return parent.id.name;
+    const parentId = isNode(parent["id"]) ? parent["id"] : null;
+    return parentId !== null && typeof parentId["name"] === "string" ? (parentId["name"]) : null;
   }
   if (parent.type === "AssignmentExpression") {
-    return nameOf(parent.left).replace(/^(module\.)?exports\./, "");
+    return nameOf(parent["left"]).replace(/^(module\.)?exports\./, "");
   }
   if (parent.type === "Property" || parent.type === "MethodDefinition") {
     return keyOf(parent);
@@ -78,46 +121,52 @@ const functionName = (node, parent) => {
 
 /**
  * Every unbounded `findAll` in `source`, as `<function>::<receiver>`.
- * @param {string} source
- * @returns {string[]}
  */
 // ADR-087 Amendment 4: a converted (.ts) file is parsed with typescript-estree,
 // which yields the same ESTree node shapes espree does (plus TS-only nodes the
 // visitor walks past), so the rule reads converted files exactly as before.
-const tsEstree = require("@typescript-eslint/typescript-estree");
-const unboundedFindAlls = (source, file = "") => {
-  const ast = /\.ts$/.test(file)
-    ? tsEstree.parse(source)
-    : espree.parse(source, { ecmaVersion: "latest", sourceType: "script" });
-  const found = [];
-  const names = [];
-  const visit = (node, parent) => {
+const unboundedFindAlls = (source: string, file = ""): string[] => {
+  const ast = file.endsWith(".ts") ? tsEstree.parse(source) : espree.parse(source, { ecmaVersion: "latest", sourceType: "script" });
+  const found: string[] = [];
+  const names: string[] = [];
+  const visit = (node: unknown, parent: NamedNode | null): void => {
+    if (!isNode(node)) {
+      return;
+    }
+    const typed = node;
     let named = false;
-    if (/Function/.test(node.type)) {
-      const name = functionName(node, parent);
-      if (name) {
+    if ((typed.type).includes("Function")) {
+      const name = functionName(typed, parent);
+      if (name !== null) {
         names.push(name);
         named = true;
       }
     }
+    const callee = isNode(typed["callee"]) ? (typed["callee"]) : null;
     if (
-      node.type === "CallExpression" &&
-      node.callee.type === "MemberExpression" &&
-      node.callee.property.name === "findAll"
+      typed.type === "CallExpression" &&
+            callee !== null &&
+            callee.type === "MemberExpression" &&
+            isNode(callee["property"]) &&
+            (callee["property"])["name"] === "findAll"
     ) {
-      const [options] = node.arguments;
+      const args: unknown = typed["arguments"];
+      const options: unknown = Array.isArray(args) ? args[0] : undefined;
       const bounded =
-        options && options.type === "ObjectExpression" && options.properties.some((p) => keyOf(p) === "limit");
+                isNode(options) &&
+                (options).type === "ObjectExpression" &&
+                Array.isArray((options)["properties"]) &&
+                ((options)["properties"] as unknown[]).some((p) => keyOf(p) === "limit");
       if (!bounded) {
-        found.push(`${names[names.length - 1] || "<module>"}::${nameOf(node.callee.object)}`);
+        found.push(`${names[names.length - 1] ?? "<module>"}::${nameOf(callee["object"])}`);
       }
     }
-    for (const key of Object.keys(node)) {
-      const child = node[key];
+    for (const key of Object.keys(typed)) {
+      const child = typed[key];
       if (Array.isArray(child)) {
-        child.filter((c) => c && typeof c.type === "string").forEach((c) => visit(c, node));
-      } else if (child && typeof child.type === "string") {
-        visit(child, node);
+        child.filter(isNode).forEach((c) => { visit(c, typed); });
+      } else if (isNode(child)) {
+        visit(child, typed);
       }
     }
     if (named) {
@@ -129,9 +178,9 @@ const unboundedFindAlls = (source, file = "") => {
 };
 
 /** Every service file, relative to src/services, forward-slashed. */
-const serviceFiles = () => {
-  const out = [];
-  const walk = (dir) => {
+const serviceFiles = (): string[] => {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
     for (const name of fs.readdirSync(dir)) {
       const full = path.join(dir, name);
       if (fs.statSync(full).isDirectory()) {
@@ -146,13 +195,13 @@ const serviceFiles = () => {
 };
 
 /** `{ "<file>::<function>::<receiver>": count }` over every service. */
-const scanServices = () => {
-  const counts = {};
+const scanServices = (): Record<string, number> => {
+  const counts: Record<string, number> = {};
   for (const file of serviceFiles()) {
     const rel = path.relative(SERVICES, file).split(path.sep).join("/");
     for (const site of unboundedFindAlls(fs.readFileSync(file, "utf8"), file)) {
       const key = `${rel}::${site}`;
-      counts[key] = (counts[key] || 0) + 1;
+      counts[key] = (counts[key] ?? 0) + 1;
     }
   }
   return counts;
@@ -171,7 +220,7 @@ const SCRIPT = "an operator's seed/unseed/migration tool, not a request path";
 const OPEN = "OPEN — grows with the tenant, not paged yet (ADR-083 follow-up)";
 
 /** Each entry: [the most calls allowed under this key, why it is bounded]. */
-const REVIEWED = Object.freeze({
+const REVIEWED: Record<string, [number, string]> = Object.freeze({
   // P21-03 (ADR-126 Am. 4): an IPM session's results are bounded by the contract (≤ 400 per session,
   // one session's rows); the published versions and active templates are the global catalogue
   // (one published version per template); a pinned version's items ≤ 300 (P19-01 § 4.5).
@@ -257,23 +306,23 @@ const REVIEWED = Object.freeze({
   "webauthn.service.ts::listPasskeys::WebauthnCredential": [1, PARENT],
   // P10-05 (ADR-098 §6): the access-request queue. The retention sweep's two
   // reads are batched (RETENTION_BATCH); these read one address's requests.
-  "accessRequest.service.ts::duplicateCounts::AccessRequest": [1, IDS], // the addresses on the page being shown
-  "accessRequest.service.ts::getAccessRequest::AccessRequest": [1, PARENT], // the other requests of one address
-  "accessRequest.service.ts::eraseAccessRequestsByEmail::AccessRequest": [1, PARENT], // one address's requests
+  "accessRequest.service.ts::duplicateCounts::AccessRequest": [1, IDS],
+  "accessRequest.service.ts::getAccessRequest::AccessRequest": [1, PARENT],
+  "accessRequest.service.ts::eraseAccessRequestsByEmail::AccessRequest": [1, PARENT],
   // P24-06 (ADR-129): the SQL-dump import. The uploaders of one page of runs (≤ 100 ids); the
   // active runs — at most ONE (the partial unique index upstream_sql_imports_one_active); the runs
   // still holding a file — the active one and failed runs within their 7-day retention (uploads
   // are serialised, so a handful). The sweep's "referenced files" set must be complete, or a kept
   // dump would be taken for an orphan: it is not paged on purpose.
   "upstreamSqlImport.service.ts::namesOf::User": [1, IDS],
-  "upstreamSqlImport.service.ts::reconcileInterrupted::UpstreamSqlImport": [1, CLOSED], // at most one active run
-  "upstreamSqlImport.service.ts::sweepUpstreamSqlImports::UpstreamSqlImport": [2, CLOSED], // runs still holding a file
+  "upstreamSqlImport.service.ts::reconcileInterrupted::UpstreamSqlImport": [1, CLOSED],
+  "upstreamSqlImport.service.ts::sweepUpstreamSqlImports::UpstreamSqlImport": [2, CLOSED],
   // P24-01 (ADR-129 Am. 1): the transforms in progress — at most ONE, by the partial unique index
   // upstream_sql_imports_one_transforming (migration 0133, WHERE transform_status IN
   // ('transform_requested', 'transforming')). The boot reconcile must see it, so it is not paged.
   "upstreamSqlTransform.service.ts::reconcileInterruptedTransforms::UpstreamSqlImport": [1, CLOSED],
-  "upstreamReconciliation.service.ts::facilitiesOf::ClientFacility": [1, CLOSED], // one provider's facilities, id and code
-  "upstreamDataQuality.service.ts::facilitiesOf::ClientFacility": [1, CLOSED], // one provider's facilities, id and code
+  "upstreamReconciliation.service.ts::facilitiesOf::ClientFacility": [1, CLOSED],
+  "upstreamDataQuality.service.ts::facilitiesOf::ClientFacility": [1, CLOSED],
   // P24-04: one tenant's import keys not yet revoked. Cap: a key is provisioned only when the
   // tenant has no usable one, and one lives 90 days past its sign-off day — so at most one usable
   // key plus the expired-unrevoked ones of earlier sign-offs (a handful over the import's life).
@@ -295,16 +344,16 @@ const REVIEWED = Object.freeze({
   "calibrationScheduler.service.ts::getDueDevices::CalibrationDevice": [1, OPEN],
   "calibrationScheduler.service.ts::openWorkOrdersOf::MaintenanceWorkOrder": [1, IDS],
   "certificate.service.ts::getCertificateStats::Certificate": [1, GROUPED],
-  "content.service.ts::listCategories::Category": [1, CLOSED], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
-  "customDomains.service.ts::domainNotificationRecipients::User": [1, CLOSED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "customDomains.service.ts::getTenantDomains::CustomDomain": [1, CLOSED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "content.service.ts::listCategories::Category": [1, CLOSED],
+  "customDomains.service.ts::domainNotificationRecipients::User": [1, CLOSED],
+  "customDomains.service.ts::getTenantDomains::CustomDomain": [1, CLOSED],
   "dashboard.service.ts::countByStatus::Model": [1, GROUPED],
   "dashboard.service.ts::getDashboardMetrics::CalibrationDevice": [1, GROUPED],
   "dashboard.service.ts::getDashboardMetrics::Tenant": [1, OPEN],
   "dashboard.service.ts::getDashboardMetrics::User": [1, GROUPED],
   "dashboard.service.ts::monthlyTrend::Model": [1, GROUPED],
-  "dataRetention.service.ts::maskPII::User": [1, IDS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "dataRetention.service.ts::readRetentionPolicy::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "dataRetention.service.ts::maskPII::User": [1, IDS],
+  "dataRetention.service.ts::readRetentionPolicy::TenantSettings": [1, KEYS],
   "eSignature.service.ts::completeWorkflow::SignatureWorkflowStep": [1, PARENT],
   "eSignature.service.ts::getEligibleSigners::Role": [1, IDS],
   "eSignature.service.ts::getEligibleSigners::User": [1, OPEN],
@@ -313,8 +362,8 @@ const REVIEWED = Object.freeze({
   "eSignature.service.ts::getSignerWorkflows::SignatureWorkflowStep": [1, OPEN],
   "eSignature.service.ts::getWorkflows::SignatureWorkflow": [1, OPEN],
   "eSignature.service.ts::signDocument::SignatureWorkflowStep": [1, PARENT],
-  "featureFlag.service.ts::getTenantFlags::TenantSettings": [1, KEYS], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
-  "finance.service.ts::getDepreciationReport::AssetFinance": [1, OPEN], // P9-17: the file is TypeScript (re-keyed, ADR-087)
+  "featureFlag.service.ts::getTenantFlags::TenantSettings": [1, KEYS],
+  "finance.service.ts::getDepreciationReport::AssetFinance": [1, OPEN],
   "gdpr.service.ts::getConsentHistory::ConsentRecord": [1, PARENT],
   "kanban.service.ts::getMetrics::KanbanCard": [1, PARENT],
   "kanban.service.ts::getMetrics::KanbanColumn": [1, PARENT],
@@ -339,11 +388,11 @@ const REVIEWED = Object.freeze({
   "menuGroup.service.ts::deleteMenuGroup::MenuGroup": [1, PARENT],
   "menuGroup.service.ts::fetchActiveParentGroups::MenuGroup": [1, CLOSED],
   "menuGroup.service.ts::getAvailableRoles::Role": [1, CLOSED],
-  "menuGroup.service.ts::getMyPermissions::MenuGroup": [1, CLOSED], // ADR-102: the active menu slugs (the seeded tree)
+  "menuGroup.service.ts::getMyPermissions::MenuGroup": [1, CLOSED],
   "menuGroup.service.ts::listMenuGroups::RoleMenuPermission": [1, CLOSED],
-  "meteredBilling.service.ts::enforceQuotas::PlanQuota": [1, CLOSED], // P9-17: the file is TypeScript (re-keyed, ADR-087)
-  "meteredBilling.service.ts::getPlatformAnalytics::UsageMetric": [1, GROUPED], // P9-17: the file is TypeScript (re-keyed, ADR-087)
-  "meteredBilling.service.ts::getUsageAlerts::UsageAlert": [1, CLOSED], // P9-17: the file is TypeScript (re-keyed, ADR-087)
+  "meteredBilling.service.ts::enforceQuotas::PlanQuota": [1, CLOSED],
+  "meteredBilling.service.ts::getPlatformAnalytics::UsageMetric": [1, GROUPED],
+  "meteredBilling.service.ts::getUsageAlerts::UsageAlert": [1, CLOSED],
   "migration.service.ts::seedApplicationRoles::Roles": [1, SCRIPT],
   "migration.service.ts::seedDefaultRoles::Roles": [1, SCRIPT],
   "migration.service.ts::unseedDemoData::CalibrationDevice": [1, SCRIPT],
@@ -358,44 +407,44 @@ const REVIEWED = Object.freeze({
   "notification.service.ts::markAllAsRead::Notification": [1, OPEN],
   "notification.service.ts::setStateForMany::NotificationState": [1, IDS],
   "oidcProvider.service.ts::getClients::TenantSettings": [1, KEYS],
-  "reporting.service.ts::getCompliance::CalibrationRecord": [1, OPEN], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
-  "reporting.service.ts::getInventory::Stock": [1, OPEN], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
-  "reporting.service.ts::getOverdueDevices::CalibrationDevice": [1, OPEN], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
-  "reporting.service.ts::groupCount::Model": [1, GROUPED], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+  "reporting.service.ts::getCompliance::CalibrationRecord": [1, OPEN],
+  "reporting.service.ts::getInventory::Stock": [1, OPEN],
+  "reporting.service.ts::getOverdueDevices::CalibrationDevice": [1, OPEN],
+  "reporting.service.ts::groupCount::Model": [1, GROUPED],
   "roles.service.ts::getRoleMenus::RoleMenuPermission": [1, CLOSED],
   "roles.service.ts::getRolePermissionsMatrix::RoleMenuPermission": [1, CLOSED],
   "scim.service.ts::groupMembers::Users": [1, OPEN],
-  "session.service.ts::registerLivenessInvalidation::model.unscoped()": [1, IDS], // P9-12: the file is TypeScript (re-keyed, ADR-087 Am. 13)
-  "stock.service.ts::exportInventoryCsv::Stock": [1, OPEN], // P9-15: the file is TypeScript (re-keyed, ADR-087)
-  "stock.service.ts::getInventoryReport::Stock": [1, OPEN], // P9-15: the file is TypeScript (re-keyed, ADR-087)
-  "storage/config.service.ts::getTenantConfig::TenantSettings": [1, KEYS], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+  "session.service.ts::registerLivenessInvalidation::model.unscoped()": [1, IDS],
+  "stock.service.ts::exportInventoryCsv::Stock": [1, OPEN],
+  "stock.service.ts::getInventoryReport::Stock": [1, OPEN],
+  "storage/config.service.ts::getTenantConfig::TenantSettings": [1, KEYS],
   "storageMigration.service.ts::migrateAll::Attachment": [1, SCRIPT],
-  "tenant.service.ts::fetchTenants::Users": [1, GROUPED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenant.service.ts::getTenantSettings::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenant.service.ts::updateTenantSettings::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantBackup.service.ts::cleanupExpiredBackups::TenantBackup": [1, OPEN], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantBackup.service.ts::exportTenantData::Users": [1, OPEN], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantBackup.service.ts::getBackupStats::TenantBackup": [1, GROUPED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantHierarchy.service.ts::getDescendantTenants::TenantHierarchy": [1, PARENT], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantHierarchy.service.ts::getTenantTree::TenantHierarchy": [1, PARENT], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantHierarchy.service.ts::getUserRolesAcrossTenants::User": [1, IDS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantHierarchy.service.ts::moveTenant::TenantHierarchy": [1, PARENT], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantLifecycle.service.ts::exportTenantData::Invoice": [1, OPEN], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantLifecycle.service.ts::exportTenantData::Subscription": [1, PARENT], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantLifecycle.service.ts::exportTenantData::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
-  "tenantLifecycle.service.ts::exportTenantData::User": [1, OPEN], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenant.service.ts::fetchTenants::Users": [1, GROUPED],
+  "tenant.service.ts::getTenantSettings::TenantSettings": [1, KEYS],
+  "tenant.service.ts::updateTenantSettings::TenantSettings": [1, KEYS],
+  "tenantBackup.service.ts::cleanupExpiredBackups::TenantBackup": [1, OPEN],
+  "tenantBackup.service.ts::exportTenantData::Users": [1, OPEN],
+  "tenantBackup.service.ts::getBackupStats::TenantBackup": [1, GROUPED],
+  "tenantHierarchy.service.ts::getDescendantTenants::TenantHierarchy": [1, PARENT],
+  "tenantHierarchy.service.ts::getTenantTree::TenantHierarchy": [1, PARENT],
+  "tenantHierarchy.service.ts::getUserRolesAcrossTenants::User": [1, IDS],
+  "tenantHierarchy.service.ts::moveTenant::TenantHierarchy": [1, PARENT],
+  "tenantLifecycle.service.ts::exportTenantData::Invoice": [1, OPEN],
+  "tenantLifecycle.service.ts::exportTenantData::Subscription": [1, PARENT],
+  "tenantLifecycle.service.ts::exportTenantData::TenantSettings": [1, KEYS],
+  "tenantLifecycle.service.ts::exportTenantData::User": [1, OPEN],
   "ticket.service.ts::getMetrics::Ticket": [1, OPEN],
   "user.service.ts::fetchUsers::Users": [1, GROUPED],
   "userPermission.service.ts::getUserOverrideMatrix::UserMenuPermission": [1, CLOSED],
   "userPermission.service.ts::getUserPermissions::MenuGroup": [1, CLOSED],
   "userPermission.service.ts::getUserPermissions::RoleMenuPermission": [1, CLOSED],
   "userPermission.service.ts::getUserPermissions::UserMenuPermission": [1, CLOSED],
-  "warehouse.service.ts::fetchLocations::StorageLocation": [1, PARENT], // P9-15: the file is TypeScript (re-keyed, ADR-087)
+  "warehouse.service.ts::fetchLocations::StorageLocation": [1, PARENT],
   "webhook.service.ts::emitEvent::Webhook": [1, CLOSED],
-  "webhookDeliveryPurge.service.ts::purgeFinishedDeliveries::Tenant": [1, OPEN], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
-  "workflow.service.ts::getPendingTasks::WorkflowInstance": [1, OPEN], // P9-16: the file is TypeScript (re-keyed, ADR-087)
-  "workflow.service.ts::getWorkflows::Workflow": [1, CLOSED], // P9-16: the file is TypeScript (re-keyed, ADR-087)
-  "workflow.service.ts::updateWorkflow::WorkflowStep": [1, PARENT], // P9-16: the file is TypeScript (re-keyed, ADR-087)
+  "webhookDeliveryPurge.service.ts::purgeFinishedDeliveries::Tenant": [1, OPEN],
+  "workflow.service.ts::getPendingTasks::WorkflowInstance": [1, OPEN],
+  "workflow.service.ts::getWorkflows::Workflow": [1, CLOSED],
+  "workflow.service.ts::updateWorkflow::WorkflowStep": [1, PARENT],
 });
 
 // ------------------------------------------------------------------
@@ -444,14 +493,14 @@ describe("D-24 (ADR-083) — every unbounded findAll in src/services is reviewed
 
   it("no service adds an unbounded findAll that is not on the reviewed list (or more calls than it allows)", () => {
     const unreviewed = Object.entries(found)
-      .filter(([key, count]) => !REVIEWED[key] || count > REVIEWED[key][0])
-      .map(([key, count]) => `${key} (${count})`);
+      .filter(([key, count]) => REVIEWED[key] === undefined || count > (REVIEWED[key])[0])
+      .map(([key, count]) => `${key} (${String(count)})`);
     // Page it (`limit` + keyset), or add it to REVIEWED with why it cannot grow.
     expect(unreviewed).toEqual([]);
   });
 
   it("every reviewed entry still names a call — a removed one is taken off the list", () => {
-    const stale = Object.keys(REVIEWED).filter((key) => !found[key]);
+    const stale = Object.keys(REVIEWED).filter((key) => found[key] === undefined);
     expect(stale).toEqual([]);
   });
 
@@ -467,12 +516,12 @@ describe("D-24 (ADR-083) — every unbounded findAll in src/services is reviewed
   });
 
   it("the reads D-24 paged are keyset pages: each is a findAll the scanner sees, and none is unbounded", () => {
-    const paged = [
-      ["gdpr.service.ts", "pagesOf", "Model"], // the DSAR export (ADR-070)
-      ["sop.service.ts", "assignTraining", "User"], // the SOP fan-out (ADR-070); P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
-      ["dataRetention.service.ts", "maskAuditTrail", "AuditLog"], // ADR-083; P9-13: the file is TypeScript (re-keyed, ADR-087)
-      ["attachmentFileSweep.service.ts", "sweepBatch", "Attachment.unscoped()"], // ADR-083
-      ["kanban.service.ts", "deleteProject", "KanbanCard"], // ADR-083
+    const paged: [string, string, string][] = [
+      ["gdpr.service.ts", "pagesOf", "Model"],
+      ["sop.service.ts", "assignTraining", "User"],
+      ["dataRetention.service.ts", "maskAuditTrail", "AuditLog"],
+      ["attachmentFileSweep.service.ts", "sweepBatch", "Attachment.unscoped()"],
+      ["kanban.service.ts", "deleteProject", "KanbanCard"],
     ];
     for (const [file, fn, receiver] of paged) {
       const source = fs.readFileSync(path.join(SERVICES, file), "utf8");
@@ -483,7 +532,7 @@ describe("D-24 (ADR-083) — every unbounded findAll in src/services is reviewed
         present: true,
       });
       // … and it is not unbounded.
-      expect({ file, fn, unbounded: found[`${file}::${fn}::${receiver}`] || 0 }).toEqual({ file, fn, unbounded: 0 });
+      expect({ file, fn, unbounded: found[`${file}::${fn}::${receiver}`] ?? 0 }).toEqual({ file, fn, unbounded: 0 });
     }
   });
 });

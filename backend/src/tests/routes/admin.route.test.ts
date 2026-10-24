@@ -3,7 +3,18 @@
  *
  * Tests the admin route registrations and middleware chain.
  */
-const adminRoutes = require("../../routes/api/admin.route");
+
+interface AdminRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface AdminRouter {
+    handle: unknown;
+    stack: AdminRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const adminRoutes = require("../../routes/api/admin.route") as AdminRouter;
 
 describe("Admin Routes", () => {
   it("should export an Express router", () => {
@@ -23,33 +34,21 @@ describe("Admin Routes", () => {
 
   it("should have GET route for /tenants", () => {
     const getRoutes = adminRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/tenants" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/tenants" && layer.route.methods["get"] === true,
     );
     expect(getRoutes.length).toBe(1);
   });
 
   it("should have PATCH route for /tenants/:id/status", () => {
     const patchRoutes = adminRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/tenants/:id/status" &&
-        layer.route.methods &&
-        layer.route.methods.patch,
+      (layer) => layer.route?.path === "/tenants/:id/status" && layer.route.methods["patch"] === true,
     );
     expect(patchRoutes.length).toBe(1);
   });
 
   it("should have PATCH route for /tenants/:id/flags", () => {
     const patchRoutes = adminRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/tenants/:id/flags" &&
-        layer.route.methods &&
-        layer.route.methods.patch,
+      (layer) => layer.route?.path === "/tenants/:id/flags" && layer.route.methods["patch"] === true,
     );
     expect(patchRoutes.length).toBe(1);
   });
@@ -71,7 +70,7 @@ describe("Admin Routes", () => {
   it("should have only admin-specific routes", () => {
     const routePaths = adminRoutes.stack
       .filter((layer) => layer.route)
-      .map((layer) => layer.route.path);
+      .map((layer) => layer.route?.path);
 
     expect(routePaths).toContain("/tenants");
     expect(routePaths).toContain("/tenants/:id/status");
@@ -79,7 +78,7 @@ describe("Admin Routes", () => {
   });
 
   it("uses only the methods it serves: GET, PATCH, PUT (P10-04 domains) and POST (P10-05/07 queue actions)", () => {
-    const methods = new Set();
+    const methods = new Set<string>();
     adminRoutes.stack.forEach((layer) => {
       if (layer.route) {
         Object.keys(layer.route.methods).forEach((m) => methods.add(m));
@@ -90,8 +89,11 @@ describe("Admin Routes", () => {
 
   it("has exactly its 23 route endpoints: 3 tenant ones, 2 SSO-domain ones (P10-04), 6 access-request ones (P10-05/07), 9 SQL-dump import ones (P24-06, P24-01's transform, P25-01/02's reconciliation and report) and 3 catalogue-proposal ones (P21-01)", () => {
     const routes = adminRoutes.stack
-      .filter((layer) => layer.route)
-      .flatMap((layer) => Object.keys(layer.route.methods).map((m) => `${m.toUpperCase()} ${layer.route.path}`));
+      .filter((layer) => layer.route !== undefined)
+      .flatMap((layer) => {
+        const route = layer.route as { path: string; methods: Record<string, boolean> };
+        return Object.keys(route.methods).map((m) => `${m.toUpperCase()} ${route.path}`);
+      });
     expect(routes.sort()).toEqual(
       [
         "GET /tenants",

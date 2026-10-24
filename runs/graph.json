@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-24T10:53:02.367Z",
+  "last_updated": "2026-10-24T12:34:03.715Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -329,7 +329,12 @@
     "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-03-guard-scans.md",
     "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
-    "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md"
+    "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+    "MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+    "MEMORY\\records\\2026-10-24-p30-01-runbook-stale-checks-fix.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-04-path-utils.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-05-admin-d24-a127.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-06-session-d27-w02.md"
   ],
   "entities": [
     {
@@ -72268,6 +72273,177 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 13,
       "evidence": "- **Fixed (B2):** on-screen IPM report printed raw ISO calibration dates (`2026-03-01`); now the PDF's `dayText` (`1 Mar 2026`), exported for the page. `ReportC"
+    },
+    {
+      "id": "sec_phase_24_25_audit_etl_reconciliation_vs_spec_one_transform_defect_fixed",
+      "name": "Phase 24-25 audit: ETL + reconciliation vs spec — one transform defect fixed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "line": 1,
+      "evidence": "# Phase 24-25 audit: ETL + reconciliation vs spec — one transform defect fixed"
+    },
+    {
+      "id": "sec_verdict",
+      "name": "Verdict",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "line": 5,
+      "evidence": "## Verdict"
+    },
+    {
+      "id": "sec_audit_13_steps_vs_05_3_1",
+      "name": "Audit: 13 steps vs 05 § 3.1",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "line": 9,
+      "evidence": "## Audit: 13 steps vs 05 § 3.1"
+    },
+    {
+      "id": "sec_audit_idmap_quarantine_vs_05_4_5",
+      "name": "Audit: idmap + quarantine vs 05 § 4–5",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "line": 29,
+      "evidence": "## Audit: id_map + quarantine vs 05 § 4–5"
+    },
+    {
+      "id": "sec_audit_reconciliation_vs_05_7",
+      "name": "Audit: reconciliation vs 05 § 7",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "line": 35,
+      "evidence": "## Audit: reconciliation vs 05 § 7"
+    },
+    {
+      "id": "sec_bug_fixed_b1_serial_dedup_was_case_sensitive",
+      "name": "Bug fixed (B1): serial dedup was case-sensitive",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "line": 39,
+      "evidence": "## Bug fixed (B1): serial dedup was case-sensitive"
+    },
+    {
+      "id": "sec_suites_run_2026_10_24_this_session_",
+      "name": "Suites run (2026-10-24, this session)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "line": 49,
+      "evidence": "## Suites run (2026-10-24, this session)"
+    },
+    {
+      "id": "sec_still_needs_real_data_not_fixed_here_",
+      "name": "Still needs real data (not fixed here)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase24-25-audit-fix.md",
+      "line": 60,
+      "evidence": "## Still needs real data (not fixed here)"
+    },
+    {
+      "id": "sec_2026_10_24_phase_24_25_audit_etl_reconciliation_vs_spec_serial_dedup_fixed_record_records_2026_10_24_phase24_25_audit_fix_md_",
+      "name": "2026-10-24 — Phase 24-25 audit: ETL + reconciliation vs spec, serial dedup fixed ([record](./records/2026-10-24-phase24-25-audit-fix.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — Phase 24-25 audit: ETL + reconciliation vs spec, serial dedup fixed ([record](./records/2026-10-24-phase24-25-audit-fix.md))"
+    },
+    {
+      "id": "sec_p30_01_runbook_re_verified_three_stale_check_count_claims_fixed",
+      "name": "P30-01: runbook re-verified — three stale check-count claims fixed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p30-01-runbook-stale-checks-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-p30-01-runbook-stale-checks-fix.md",
+      "line": 1,
+      "evidence": "# P30-01: runbook re-verified — three stale check-count claims fixed"
+    },
+    {
+      "id": "sec_verification_no_real_data_",
+      "name": "Verification (no real data)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p30-01-runbook-stale-checks-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-p30-01-runbook-stale-checks-fix.md",
+      "line": 9,
+      "evidence": "## Verification (no real data)"
+    },
+    {
+      "id": "sec_p9_26_batch_4_packaged_apppath_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 4: packaged, appPath — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-04-path-utils.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-04-path-utils.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 4: packaged, appPath — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p30_01_runbook_re_verified_three_stale_check_count_claims_fixed_record_records_2026_10_24_p30_01_runbook_stale_checks_fix_md_",
+      "name": "2026-10-24 — P30-01 runbook re-verified: three stale check-count claims fixed ([record](./records/2026-10-24-p30-01-runbook-stale-checks-fix.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P30-01 runbook re-verified: three stale check-count claims fixed ([record](./records/2026-10-24-p30-01-runbook-stale-checks-fix.md))"
+    },
+    {
+      "id": "ent_fixed_docs_only_",
+      "name": "Fixed (docs only):",
+      "type": "Component/Requirement",
+      "description": "T-0 row 6, the § 7 freeze-window row and the § 8 dual-run line still said \"R-1 … R-11\" / \"12 checks per facility\". Now the PARTIAL split verbatim: R-1/R-2/R-7 per facility, R-10/R-11/RC-F1/RC-F2/RC-F3",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 12,
+      "evidence": "- **Fixed (docs only):** T-0 row 6, the § 7 freeze-window row and the § 8 dual-run line still said \"R-1 … R-11\" / \"12 checks per facility\". Now the PARTIAL spli"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_4_packaged_apppath_to_typescript_record_records_2026_10_24_p9_26_batch_04_path_utils_md_",
+      "name": "2026-10-24 — P9-26 batch 4: packaged + appPath to TypeScript ([record](./records/2026-10-24-p9-26-batch-04-path-utils.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 14,
+      "evidence": "### 2026-10-24 — P9-26 batch 4: packaged + appPath to TypeScript ([record](./records/2026-10-24-p9-26-batch-04-path-utils.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_5_admin_route_unboundedfindall_d24_denyplatformauthoring_a127_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 5: admin.route, unboundedFindAll.d24, denyPlatformAuthoring.a127 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-05-admin-d24-a127.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-05-admin-d24-a127.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 5: admin.route, unboundedFindAll.d24, denyPlatformAuthoring.a127 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_5_admin_route_d24_a127_to_typescript_record_records_2026_10_24_p9_26_batch_05_admin_d24_a127_md_",
+      "name": "2026-10-24 — P9-26 batch 5: admin.route, d24, a127 to TypeScript ([record](./records/2026-10-24-p9-26-batch-05-admin-d24-a127.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 5: admin.route, d24, a127 to TypeScript ([record](./records/2026-10-24-p9-26-batch-05-admin-d24-a127.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_6_session_jsonshape_d27_schedulerswitch_w02_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 6: session, jsonShape.d27, schedulerSwitch.w02 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-06-session-d27-w02.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-06-session-d27-w02.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 6: session, jsonShape.d27, schedulerSwitch.w02 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_6_session_d27_w02_to_typescript_record_records_2026_10_24_p9_26_batch_06_session_d27_w02_md_",
+      "name": "2026-10-24 — P9-26 batch 6: session, d27, w02 to TypeScript ([record](./records/2026-10-24-p9-26-batch-06-session-d27-w02.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 6: session, d27, w02 to TypeScript ([record](./records/2026-10-24-p9-26-batch-06-session-d27-w02.md))"
     }
   ],
   "relations": [
@@ -107342,12 +107518,60 @@
       "evidence": "- **Audit:** all 10 Phase 22 pages + `/field` + report/verify pages present on the generated client (rows in `data`, paging in top-level `meta`); D1/D2/D3/D4/D5",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 14
+    },
+    {
+      "source": "sec_2026_10_24_phase_24_25_audit_etl_reconciliation_vs_spec_serial_dedup_fixed_record_records_2026_10_24_phase24_25_audit_fix_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fixed_b1_",
+      "evidence": "- **Fixed (B1):** device serial dedup was case-sensitive (`SN-DUP` vs `sn-dup` both kept); now case-insensitive per 05 § 3.2 / Q-18 — in-run key and register lo",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_phase_24_25_audit_etl_reconciliation_vs_spec_serial_dedup_fixed_record_records_2026_10_24_phase24_25_audit_fix_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_audit_",
+      "evidence": "- **Audit:** 13 steps registered/built, every staged table claimed once, id_map + quarantine consistent, R-1/R-2/R-7 + R-10/R-11 + RC-F1/RC-F2/RC-F3/RC-F5 and Q",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 13
+    },
+    {
+      "source": "sec_2026_10_24_p30_01_runbook_re_verified_three_stale_check_count_claims_fixed_record_records_2026_10_24_p30_01_runbook_stale_checks_fix_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fixed_docs_only_",
+      "evidence": "- **Fixed (docs only):** T-0 row 6, the § 7 freeze-window row and the § 8 dual-run line still said \"R-1 … R-11\" / \"12 checks per facility\". Now the PARTIAL spli",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_4_packaged_apppath_to_typescript_record_records_2026_10_24_p9_26_batch_04_path_utils_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 2 × `.js` to `.ts`, same 11 cases, eslint + typecheck clean, ratchet 690 to 688.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 15
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_5_admin_route_d24_a127_to_typescript_record_records_2026_10_24_p9_26_batch_05_admin_d24_a127_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 86 cases, eslint + typecheck clean, ratchet 688 to 685.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_6_session_d27_w02_to_typescript_record_records_2026_10_24_p9_26_batch_06_session_d27_w02_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 211 cases, eslint + typecheck clean, ratchet 685 to 682.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
     }
   ],
   "stats": {
-    "total_sources": 328,
-    "total_entities": 7993,
-    "total_relations": 4384,
+    "total_sources": 333,
+    "total_entities": 8012,
+    "total_relations": 4390,
     "token_savings_estimate": "85-95%"
   }
 }
