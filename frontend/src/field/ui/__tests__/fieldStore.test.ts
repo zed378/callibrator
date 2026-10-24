@@ -239,6 +239,26 @@ describe("captures, sync and turning off", () => {
     s.getState().close();
   });
 
+  it("an offline event during a cycle wins over the cycle's late result (the FieldApp 'sign' flake)", async () => {
+    const r = rig();
+    const s = await ready(r);
+    const submitted = r.api.submitted.bind(r.api);
+    // The window's "offline" event arrives while the cycle is still finishing (after the visits are read).
+    r.api.submitted = async (userId: string) => {
+      s.getState().setOnline(false);
+      return submitted(userId);
+    };
+    const report = await s.getState().syncNow("x");
+    expect(report?.offline).toBe(false);
+    expect(s.getState().online).toBe(false);
+    // With no event during it, a cycle that reached the server still says online.
+    r.api.submitted = submitted;
+    s.setState({ online: false });
+    await s.getState().syncNow("y");
+    expect(s.getState().online).toBe(true);
+    s.getState().close();
+  });
+
   it("looks a QR up locally first, then online; an unanswered online lookup marks offline", async () => {
     const r = rig();
     const s = await ready(r);

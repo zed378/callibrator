@@ -147,6 +147,8 @@ export function createFieldStore(deps: StoreDeps): StoreApi<FieldStoreState> {
   let registration: ServiceWorkerRegistration | null = null;
   /** A trigger that arrived while a cycle ran: one more cycle follows it (P22-10c3). */
   let rerun = false;
+  /** Bumped by every online/offline event: a cycle's late result never overwrites a newer event. */
+  let networkEpoch = 0;
   const cleanups: (() => void)[] = [];
 
   return createStore<FieldStoreState>()((set, get) => {
@@ -277,6 +279,7 @@ export function createFieldStore(deps: StoreDeps): StoreApi<FieldStoreState> {
       },
 
       setOnline(online) {
+        networkEpoch += 1;
         set({ online });
         if (online && runtime) void get().syncNow("online");
       },
@@ -352,6 +355,7 @@ export function createFieldStore(deps: StoreDeps): StoreApi<FieldStoreState> {
           return null;
         }
         set({ syncing: true });
+        const epoch = networkEpoch;
         try {
           const report = await rt.engine.runCycle(trigger);
           if (!report.offline && !report.sessionEnded) {
@@ -371,7 +375,9 @@ export function createFieldStore(deps: StoreDeps): StoreApi<FieldStoreState> {
           }
           await rt.syncRegistry();
           await reload();
-          set({ lastReport: report, online: !report.offline });
+          // An online/offline event that arrived during the cycle is newer evidence than the cycle's
+          // own answer: keep it (otherwise a drop during the cycle's tail shows "online" and live links).
+          set(networkEpoch === epoch ? { lastReport: report, online: !report.offline } : { lastReport: report });
           return report;
         } catch (err) {
           fail("sync", err);

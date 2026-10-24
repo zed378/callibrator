@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-24T05:36:42.061Z",
+  "last_updated": "2026-10-24T07:56:12.679Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -315,7 +315,18 @@
     "MEMORY\\records\\2026-10-24-q52-vendor-notes-done.md",
     "MEMORY\\records\\2026-10-24-q55-work-order-schedule-cost-done.md",
     "MEMORY\\records\\2026-10-24-p17-07-gate-rows-green.md",
-    "TASKS\\PHASE-17-UPSTREAM-SECURITY-PRIVACY.md"
+    "TASKS\\PHASE-17-UPSTREAM-SECURITY-PRIVACY.md",
+    "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-01-system-actors.md",
+    "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+    "MEMORY\\records\\2026-10-24-p29-04-modules-doc-review.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-02-job-context.md",
+    "frontend\\public\\licenses\\OFL-Inter.txt",
+    "frontend\\public\\licenses\\OFL-JetBrainsMono.txt",
+    "frontend\\public\\licenses\\OFL-SpaceGrotesk.txt",
+    "frontend\\.next\\server\\app\\robots.txt",
+    "frontend\\.next\\standalone\\frontend\\.next\\server\\app\\robots.txt",
+    "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md"
   ],
   "entities": [
     {
@@ -71336,6 +71347,636 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 12,
       "evidence": "- **PARTIAL:** G-01/G-03/G-05/G-06/G-08/G-16/G-20/G-21/G-23: 68/68. Exit (live PT-01…PT-33 + two real phones) BLOCKED."
+    },
+    {
+      "id": "sec_adr_129_amendment_11_2026_10_24_p25_01_p25_02_the_reconciliation_and_the_data_quality_report_run_read_only_on_the_transform_connection_with_two_more_column_grants_migration_0146_only_part_of_05_7_is_automated",
+      "name": "ADR-129 Amendment 11 (2026-10-24, P25-01, P25-02): the reconciliation and the data-quality report run read-only on the transform connection, with two more column grants (migration 0146); only part of 05 § 7 is automated",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11716,
+      "evidence": "### ADR-129 Amendment 11 (2026-10-24, P25-01, P25-02): the reconciliation and the data-quality report run read-only on the transform connection, with two more c"
+    },
+    {
+      "id": "sec_p25_01_the_reconciliation_nine_of_r_1_r_12_rc_f1_rc_f5_automated",
+      "name": "P25-01: the reconciliation, nine of R-1 … R-12 / RC-F1 … RC-F5 automated",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 1,
+      "evidence": "# P25-01: the reconciliation, nine of R-1 … R-12 / RC-F1 … RC-F5 automated"
+    },
+    {
+      "id": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "name": "Review correction (2026-10-24, same day) — read this first",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 5,
+      "evidence": "## Review correction (2026-10-24, same day) — read this first"
+    },
+    {
+      "id": "ent_its_sql_had_never_run_",
+      "name": "Its SQL had never run.",
+      "type": "Component/Requirement",
+      "description": "The unit test mocked every statement. On PostgreSQL 18",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 10,
+      "evidence": "- **Its SQL had never run.** The unit test mocked every statement. On PostgreSQL 18"
+    },
+    {
+      "id": "ent_rc_f5",
+      "name": "RC-F5",
+      "type": "Component/Requirement",
+      "description": "counted every unbound imported user. An imported CALIBRATOR ADMIN or TECHNICIAN is",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 15,
+      "evidence": "- **RC-F5** counted every unbound imported user. An imported CALIBRATOR ADMIN or TECHNICIAN is"
+    },
+    {
+      "id": "ent_r_10",
+      "name": "R-10",
+      "type": "Component/Requirement",
+      "description": "walked a hand-written table list and joined on `s.\"id\"`. **Fixed:** it walks every",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 18,
+      "evidence": "- **R-10** walked a hand-written table list and joined on `s.\"id\"`. **Fixed:** it walks every"
+    },
+    {
+      "id": "ent_r_1_r_2_r_7",
+      "name": "R-1/R-2/R-7",
+      "type": "Component/Requirement",
+      "description": "counted every stored row of the tenant, not the rows the run imported. **Fixed:**",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 20,
+      "evidence": "- **R-1/R-2/R-7** counted every stored row of the tenant, not the rows the run imported. **Fixed:**"
+    },
+    {
+      "id": "ent_not_automated_and_the_title_no_longer_says_otherwise_",
+      "name": "Not automated, and the title no longer says otherwise:",
+      "type": "Component/Requirement",
+      "description": "R-3, R-4, R-5, R-6, R-8, R-9, RC-F4",
+      "source": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 28,
+      "evidence": "- **Not automated, and the title no longer says otherwise:** R-3, R-4, R-5, R-6, R-8, R-9, RC-F4"
+    },
+    {
+      "id": "ent_q_12_and_q_13_were_tenant_totals_repeated_in_every_facility_row_",
+      "name": "Q-12 and Q-13 were tenant totals repeated in every facility row.",
+      "type": "Component/Requirement",
+      "description": "**Fixed:** they are counted",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 9,
+      "evidence": "- **Q-12 and Q-13 were tenant totals repeated in every facility row.** **Fixed:** they are counted"
+    },
+    {
+      "id": "ent_q_18_could_never_be_non_zero_as_described_",
+      "name": "Q-18 could never be non-zero as described.",
+      "type": "Component/Requirement",
+      "description": "Exact duplicates are impossible: 0118 makes the",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 11,
+      "evidence": "- **Q-18 could never be non-zero as described.** Exact duplicates are impossible: 0118 makes the"
+    },
+    {
+      "id": "ent_q_19",
+      "name": "Q-19",
+      "type": "Component/Requirement",
+      "description": "(the same serial across facilities) was claimed in the header but not computed. It is now.",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 15,
+      "evidence": "- **Q-19** (the same serial across facilities) was claimed in the header but not computed. It is now."
+    },
+    {
+      "id": "ent_the_quarantine_per_facility_was_mostly_empty_",
+      "name": "The quarantine per facility was mostly empty.",
+      "type": "Component/Requirement",
+      "description": "A quarantined row usually has no mapping, so",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 16,
+      "evidence": "- **The quarantine per facility was mostly empty.** A quarantined row usually has no mapping, so"
+    },
+    {
+      "id": "ent_the_orphan_duplicate_file_and_user_sections",
+      "name": "The orphan, duplicate-file and user sections",
+      "type": "Component/Requirement",
+      "description": "named in the header and in",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 18,
+      "evidence": "- **The orphan, duplicate-file and user sections** named in the header and in"
+    },
+    {
+      "id": "ent_the_sql_had_never_run_",
+      "name": "The SQL had never run.",
+      "type": "Component/Requirement",
+      "description": "On PostgreSQL 18, `inventoried_on` needed the grant in migration 0146",
+      "source": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 21,
+      "evidence": "- **The SQL had never run.** On PostgreSQL 18, `inventoried_on` needed the grant in migration 0146"
+    },
+    {
+      "id": "sec_review_correction_2026_10_24_same_day_",
+      "name": "Review correction (2026-10-24, same day)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p30-01-runbook-reconciliation-links.md",
+      "source": "MEMORY\\records\\2026-10-24-p30-01-runbook-reconciliation-links.md",
+      "line": 14,
+      "evidence": "## Review correction (2026-10-24, same day)"
+    },
+    {
+      "id": "sec_2026_10_24_p25_01_p25_02_reviewed_partial_not_done_migration_0146_p25_01_records_2026_10_24_p25_01_reconciliation_automated_md_p25_02_records_2026_10_24_p25_02_data_quality_report_md_adr_129_am_11_",
+      "name": "2026-10-24 — P25-01 / P25-02 reviewed: PARTIAL, not DONE; migration 0146 ([P25-01](./records/2026-10-24-p25-01-reconciliation-automated.md), [P25-02](./records/2026-10-24-p25-02-data-quality-report.md), ADR-129 Am. 11)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P25-01 / P25-02 reviewed: PARTIAL, not DONE; migration 0146 ([P25-01](./records/2026-10-24-p25-01-reconciliation-automated.md), [P25-02](./reco"
+    },
+    {
+      "id": "sec_11_1_status_on_2026_10_24_p17_07_review_",
+      "name": "11.1 Status on 2026-10-24 (P17-07 review)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\SECURITY\\15-FASKES-SCOPE-THREAT-MODEL.md",
+      "source": "docs\\SECURITY\\15-FASKES-SCOPE-THREAT-MODEL.md",
+      "line": 604,
+      "evidence": "### 11.1 Status on 2026-10-24 (P17-07 review)"
+    },
+    {
+      "id": "sec_12_1_run_on_2026_10_24_p17_07_review_http_cases_",
+      "name": "12.1 Run on 2026-10-24 (P17-07 review, HTTP cases)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\SECURITY\\15-FASKES-SCOPE-THREAT-MODEL.md",
+      "source": "docs\\SECURITY\\15-FASKES-SCOPE-THREAT-MODEL.md",
+      "line": 679,
+      "evidence": "### 12.1 Run on 2026-10-24 (P17-07 review, HTTP cases)"
+    },
+    {
+      "id": "api_put_users_id_client_facility",
+      "name": "PUT /users/:id/client-facility",
+      "type": "API_Endpoint",
+      "description": "| F-P1707-01 | **High** (availability of a security control) | `PUT /users/:id/client-facility` answered 500 on every call. The user row was locked `FOR UPDATE` with a LEFT include of its role, and PostgreSQL refuses that (\"FOR UPDATE cannot be applied to the nullable side of an outer join\"). No account could be bound, re-bound or unbound. An administrator could therefore not take a facility away from a user, which is the facility scope's revocation path. Unit and memoryDb suites passed, because they send no SQL | `services/userFacilityBinding.service.ts`: lock the row without the include, and read the role on its own in the same transaction | `services/userFacilityBinding.p1707.live` (PG18): 0/2 with the include, 2/2 without it |",
+      "source": "docs\\SECURITY\\15-FASKES-SCOPE-THREAT-MODEL.md",
+      "line": 724,
+      "evidence": "| F-P1707-01 | **High** (availability of a security control) | `PUT /users/:id/client-facility` answered 500 on every call. The user row was locked `FOR UPDATE`"
+    },
+    {
+      "id": "sec_adr_124_amendment_8_2026_10_24_p17_07_a_binding_locks_the_user_row_without_an_include_an_ended_facility_s_token_in_hand_is_revoked_401_before_the_403_facilityended",
+      "name": "ADR-124 Amendment 8 (2026-10-24, P17-07): a binding locks the user row without an include; an ended facility's token in hand is revoked (401) before the 403 FACILITYENDED",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 10420,
+      "evidence": "### ADR-124 Amendment 8 (2026-10-24, P17-07): a binding locks the user row without an include; an ended facility's token in hand is revoked (401) before the 403"
+    },
+    {
+      "id": "sec_p17_07_the_live_facility_pentest_runs_and_it_found_that_no_account_could_be_bound",
+      "name": "P17-07: the live facility pentest runs, and it found that no account could be bound",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "source": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 1,
+      "evidence": "# P17-07: the live facility pentest runs, and it found that no account could be bound"
+    },
+    {
+      "id": "sec_finding_f_p1707_01_high_fixed",
+      "name": "Finding F-P1707-01 (High), fixed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "source": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 12,
+      "evidence": "## Finding F-P1707-01 (High), fixed"
+    },
+    {
+      "id": "sec_the_live_run",
+      "name": "The live run",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "source": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 28,
+      "evidence": "## The live run"
+    },
+    {
+      "id": "ent_log_redaction",
+      "name": "Log redaction",
+      "type": "Component/Requirement",
+      "description": "(1,225 lines): no e-mail, JWT, bearer or password appears. Signed-link tokens",
+      "source": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 40,
+      "evidence": "- **Log redaction** (1,225 lines): no e-mail, JWT, bearer or password appears. Signed-link tokens"
+    },
+    {
+      "id": "sec_the_gate_rows_11_1_",
+      "name": "The gate rows (§ 11.1)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "source": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 43,
+      "evidence": "## The gate rows (§ 11.1)"
+    },
+    {
+      "id": "sec_not_done_the_exit_stays_open_",
+      "name": "Not done (the exit stays open)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "source": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 52,
+      "evidence": "## Not done (the exit stays open)"
+    },
+    {
+      "id": "sec_2026_10_24_p17_07_live_facility_pentest_every_binding_was_a_500_fixed_record_records_2026_10_24_p17_07_live_pentest_md_adr_124_am_8_",
+      "name": "2026-10-24 — P17-07 live facility pentest: every binding was a 500, fixed ([record](./records/2026-10-24-p17-07-live-pentest.md), ADR-124 Am. 8)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P17-07 live facility pentest: every binding was a 500, fixed ([record](./records/2026-10-24-p17-07-live-pentest.md), ADR-124 Am. 8)"
+    },
+    {
+      "id": "ent_fixed_high_f_p1707_01_",
+      "name": "Fixed (High, F-P1707-01):",
+      "type": "Component/Requirement",
+      "description": "`PUT /users/:id/client-facility` locked the user `FOR UPDATE` with a LEFT include; PostgreSQL refused it on every call. Live `userFacilityBinding.p1707.live` 0/2 before, 2/2 after.",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 12,
+      "evidence": "- **Fixed (High, F-P1707-01):** `PUT /users/:id/client-facility` locked the user `FOR UPDATE` with a LEFT include; PostgreSQL refused it on every call. Live `us"
+    },
+    {
+      "id": "ent_ran_",
+      "name": "Ran:",
+      "type": "Component/Requirement",
+      "description": "`p1707-facility-pentest.e2e` 13/13 twice on a disposable production-mode stack; log redaction clean. Phones, sockets and browser cases still open.",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 13,
+      "evidence": "- **Ran:** `p1707-facility-pentest.e2e` 13/13 twice on a disposable production-mode stack; log redaction clean. Phones, sockets and browser cases still open."
+    },
+    {
+      "id": "sec_p9_26_batch_1_systemactors_a124_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 1: systemActors.a124 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-01-system-actors.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-01-system-actors.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 1: systemActors.a124 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_definition_of_done_p9_26_rules_",
+      "name": "Definition of Done (P9-26 rules)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-01-system-actors.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-01-system-actors.md",
+      "line": 28,
+      "evidence": "## Definition of Done (P9-26 rules)"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_1_systemactors_a124_to_typescript_record_records_2026_10_24_p9_26_batch_01_system_actors_md_",
+      "name": "2026-10-24 — P9-26 batch 1: systemActors.a124 to TypeScript ([record](./records/2026-10-24-p9-26-batch-01-system-actors.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 1: systemActors.a124 to TypeScript ([record](./records/2026-10-24-p9-26-batch-01-system-actors.md))"
+    },
+    {
+      "id": "sec_get_admin_tenants_follows_the_list_envelope_rows_in_data_paging_in_a_top_level_meta",
+      "name": "GET /admin/tenants follows the list envelope: rows in data, paging in a top-level meta",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "source": "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "line": 1,
+      "evidence": "# `GET /admin/tenants` follows the list envelope: rows in `data`, paging in a top-level `meta`"
+    },
+    {
+      "id": "api_get_api_v1_admin_tenants",
+      "name": "GET /api/v1/admin/tenants",
+      "type": "API_Endpoint",
+      "description": "`GET /api/v1/admin/tenants` was the one admin list that still answered",
+      "source": "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "line": 7,
+      "evidence": "`GET /api/v1/admin/tenants` was the one admin list that still answered"
+    },
+    {
+      "id": "api_get_tenants_all",
+      "name": "GET /tenants/all",
+      "type": "API_Endpoint",
+      "description": "| `frontend/src/api/generated/schema.d.ts` | regenerated. **No frontend code consumes this route**: the tenant screens read `GET /tenants/all`. Frontend typecheck: 0 errors |",
+      "source": "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "line": 19,
+      "evidence": "| `frontend/src/api/generated/schema.d.ts` | regenerated. **No frontend code consumes this route**: the tenant screens read `GET /tenants/all`. Frontend typeche"
+    },
+    {
+      "id": "sec_breaking_change_recorded_as_a_defect_fix",
+      "name": "Breaking change, recorded as a defect fix",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "source": "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "line": 22,
+      "evidence": "## Breaking change, recorded as a defect fix"
+    },
+    {
+      "id": "sec_2026_10_24_get_admin_tenants_answers_the_list_envelope_record_records_2026_10_24_admin_tenants_envelope_md_",
+      "name": "2026-10-24 — GET /admin/tenants answers the list envelope ([record](./records/2026-10-24-admin-tenants-envelope.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — `GET /admin/tenants` answers the list envelope ([record](./records/2026-10-24-admin-tenants-envelope.md))"
+    },
+    {
+      "id": "ent_fixed_breaking_recorded_",
+      "name": "Fixed (breaking, recorded):",
+      "type": "Component/Requirement",
+      "description": "rows in `data`, `{ total, page, limit, totalPages }` in a top-level `meta`; was a page object inside `data`. oasdiff: 9 errors, all this route; its two e2e consumers updated, 30/30 live.",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 12,
+      "evidence": "- **Fixed (breaking, recorded):** rows in `data`, `{ total, page, limit, totalPages }` in a top-level `meta`; was a page object inside `data`. oasdiff: 9 errors"
+    },
+    {
+      "id": "api_get_admin_tenants",
+      "name": "GET /admin/tenants",
+      "type": "API_Endpoint",
+      "description": "| 2026-10-24 | defect (envelope) | [`GET /admin/tenants` follows the list envelope](./records/2026-10-24-admin-tenants-envelope.md) | **DONE; breaking, recorded.** Rows in `data`, paging in top-level `meta`. oasdiff 9 errors, all this route; no frontend consumer; controller test fails before (1/9) and passes after; e2e p10 + p21 30/30 on a rebuilt stack |",
+      "source": "MEMORY\\MEMORY-INDEX.md",
+      "line": 13,
+      "evidence": "| 2026-10-24 | defect (envelope) | [`GET /admin/tenants` follows the list envelope](./records/2026-10-24-admin-tenants-envelope.md) | **DONE; breaking, recorded"
+    },
+    {
+      "id": "sec_10_1_reconciliation_and_the_data_quality_report_admin_route_ts_p25_01_p25_02_partial_",
+      "name": "10.1 Reconciliation and the data-quality report — admin.route.ts (P25-01, P25-02: PARTIAL)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 286,
+      "evidence": "### 10.1 Reconciliation and the data-quality report — `admin.route.ts` (P25-01, P25-02: PARTIAL)"
+    },
+    {
+      "id": "ent_computed_by_the_report_",
+      "name": "Computed by the report:",
+      "type": "Component/Requirement",
+      "description": "the quarantine groups in the run totals, plus Q-12, Q-13, Q-18 and",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 307,
+      "evidence": "- **Computed by the report:** the quarantine groups in the run totals, plus Q-12, Q-13, Q-18 and"
+    },
+    {
+      "id": "ent_not_automated_so_they_answer_manual_",
+      "name": "Not automated, so they answer `manual`:",
+      "type": "Component/Requirement",
+      "description": "R-3 … R-6, R-8, R-9, RC-F4, R-12, Q-4, Q-14 and Q-28,",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 309,
+      "evidence": "- **Not automated, so they answer `manual`:** R-3 … R-6, R-8, R-9, RC-F4, R-12, Q-4, Q-14 and Q-28,"
+    },
+    {
+      "id": "ent_the_facility_scope_security_gate_is_not_all_green_",
+      "name": "The facility-scope security gate is not all green.",
+      "type": "Component/Requirement",
+      "description": "`docs/SECURITY/15` § 11.1 (2026-10-24)",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 343,
+      "evidence": "- **The facility-scope security gate is not all green.** `docs/SECURITY/15` § 11.1 (2026-10-24)"
+    },
+    {
+      "id": "sec_p29_04_review_the_as_built_modules_doc_gains_phase_25_and_claude_md_s_stale_gate_rows_are_corrected",
+      "name": "P29-04 review: the as-built modules doc gains Phase 25, and CLAUDE.md's stale gate rows are corrected",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p29-04-modules-doc-review.md",
+      "source": "MEMORY\\records\\2026-10-24-p29-04-modules-doc-review.md",
+      "line": 1,
+      "evidence": "# P29-04 review: the as-built modules doc gains Phase 25, and CLAUDE.md's stale gate rows are corrected"
+    },
+    {
+      "id": "sec_how_the_claims_were_checked",
+      "name": "How the claims were checked",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p29-04-modules-doc-review.md",
+      "source": "MEMORY\\records\\2026-10-24-p29-04-modules-doc-review.md",
+      "line": 23,
+      "evidence": "## How the claims were checked"
+    },
+    {
+      "id": "sec_2026_10_24_as_built_modules_doc_gains_phase_25_claude_md_gate_rows_corrected_p29_04_record_records_2026_10_24_p29_04_modules_doc_review_md_",
+      "name": "2026-10-24 — As-built modules doc gains Phase 25; CLAUDE.md gate rows corrected (P29-04) ([record](./records/2026-10-24-p29-04-modules-doc-review.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — As-built modules doc gains Phase 25; CLAUDE.md gate rows corrected (P29-04) ([record](./records/2026-10-24-p29-04-modules-doc-review.md))"
+    },
+    {
+      "id": "ent_uji_di_ponsel_nyata_",
+      "name": "Uji di ponsel nyata.",
+      "type": "Component/Requirement",
+      "description": "Aplikasi lapangan (`/field`) sudah diuji dengan peramban otomatis,",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 342,
+      "evidence": "- **Uji di ponsel nyata.** Aplikasi lapangan (`/field`) sudah diuji dengan peramban otomatis,"
+    },
+    {
+      "id": "ent_stiker_qr_lama_",
+      "name": "Stiker QR lama.",
+      "type": "Component/Requirement",
+      "description": "Format stiker dari aplikasi lama belum diketahui (**OA-4**, keputusan",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 345,
+      "evidence": "- **Stiker QR lama.** Format stiker dari aplikasi lama belum diketahui (**OA-4**, keputusan"
+    },
+    {
+      "id": "ent_data_lama_",
+      "name": "Data lama.",
+      "type": "Component/Requirement",
+      "description": "Data dari aplikasi lama **belum dipindahkan**. Uji coba pemindahan dengan data",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 348,
+      "evidence": "- **Data lama.** Data dari aplikasi lama **belum dipindahkan**. Uji coba pemindahan dengan data"
+    },
+    {
+      "id": "sec_p9_26_batch_2_jobcontext_w12_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 2: jobContext.w12 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-02-job-context.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-02-job-context.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 2: jobContext.w12 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_2_jobcontext_w12_to_typescript_record_records_2026_10_24_p9_26_batch_02_job_context_md_",
+      "name": "2026-10-24 — P9-26 batch 2: jobContext.w12 to TypeScript ([record](./records/2026-10-24-p9-26-batch-02-job-context.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 2: jobContext.w12 to TypeScript ([record](./records/2026-10-24-p9-26-batch-02-job-context.md))"
+    },
+    {
+      "id": "sec_2026_10_24_the_indonesian_user_guides_one_row_per_facility_role_three_items_pending_p29_01_record_records_2026_10_24_p29_01_guides_review_md_",
+      "name": "2026-10-24 — The Indonesian user guides: one row per facility role, three items pending (P29-01) ([record](./records/2026-10-24-p29-01-guides-review.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 14,
+      "evidence": "### 2026-10-24 — The Indonesian user guides: one row per facility role, three items pending (P29-01) ([record](./records/2026-10-24-p29-01-guides-review.md))"
+    },
+    {
+      "id": "sec_spec_vs_as_built_analysis_phases_18_19_upstream_role_permission_mapping_domain_design_",
+      "name": "Spec vs As-Built Analysis — Phases 18 & 19 (Upstream Role/Permission Mapping & Domain Design)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 1,
+      "evidence": "# Spec vs As-Built Analysis — Phases 18 & 19 (Upstream Role/Permission Mapping & Domain Design)"
+    },
+    {
+      "id": "sec_executive_summary",
+      "name": "Executive Summary",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 9,
+      "evidence": "## Executive Summary"
+    },
+    {
+      "id": "sec_detailed_verification_by_spec",
+      "name": "Detailed Verification by Spec",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 17,
+      "evidence": "## Detailed Verification by Spec"
+    },
+    {
+      "id": "sec_p19_01_inspection_catalogue_adr_125_am_1_",
+      "name": "P19-01: Inspection Catalogue (ADR-125 + Am. 1)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 19,
+      "evidence": "### P19-01: Inspection Catalogue (ADR-125 + Am. 1)"
+    },
+    {
+      "id": "sec_p19_02_ipm_session_aggregate_adr_126_am_1_5_",
+      "name": "P19-02: IPM Session Aggregate (ADR-126 + Am. 1–5)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 38,
+      "evidence": "### P19-02: IPM Session Aggregate (ADR-126 + Am. 1–5)"
+    },
+    {
+      "id": "sec_p19_03_device_extensions_adr_132_",
+      "name": "P19-03: Device Extensions (ADR-132)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 61,
+      "evidence": "### P19-03: Device Extensions (ADR-132)"
+    },
+    {
+      "id": "api_get_by_qr_qrcode",
+      "name": "GET /by-qr/:qrCode",
+      "type": "API_Endpoint",
+      "description": "| QR lookup `GET /by-qr/:qrCode` before `/:id`, marked facility-accessible | ✅ Built | Route order + guard |",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 75,
+      "evidence": "| QR lookup `GET /by-qr/:qrCode` before `/:id`, marked facility-accessible | ✅ Built | Route order + guard |"
+    },
+    {
+      "id": "sec_p19_04_client_facilities_adr_124_am_1_2_",
+      "name": "P19-04: Client Facilities (ADR-124 + Am. 1–2)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 83,
+      "evidence": "### P19-04: Client Facilities (ADR-124 + Am. 1–2)"
+    },
+    {
+      "id": "sec_p19_05_calibration_dates_adr_133_",
+      "name": "P19-05: Calibration Dates (ADR-133)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 104,
+      "evidence": "### P19-05: Calibration Dates (ADR-133)"
+    },
+    {
+      "id": "sec_p19_06_ipm_report_document_adr_126_am_2_",
+      "name": "P19-06: IPM Report Document (ADR-126 Am. 2)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 123,
+      "evidence": "### P19-06: IPM Report Document (ADR-126 Am. 2)"
+    },
+    {
+      "id": "sec_p19_07_public_device_page_adr_138_am_1_",
+      "name": "P19-07: Public Device Page (ADR-138 + Am. 1)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 144,
+      "evidence": "### P19-07: Public Device Page (ADR-138 + Am. 1)"
+    },
+    {
+      "id": "api_get_public_devices_token",
+      "name": "GET /public/devices/:token",
+      "type": "API_Endpoint",
+      "description": "| Public route `GET /public/devices/:token` (no auth, one identical 404) | ✅ Built | Route + controller |",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 150,
+      "evidence": "| Public route `GET /public/devices/:token` (no auth, one identical 404) | ✅ Built | Route + controller |"
+    },
+    {
+      "id": "sec_p19_08_offline_field_capture_adr_127_am_1_",
+      "name": "P19-08: Offline Field Capture (ADR-127 + Am. 1)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 161,
+      "evidence": "### P19-08: Offline Field Capture (ADR-127 + Am. 1)"
+    },
+    {
+      "id": "sec_decisions_made_recorded_as_adr_amendments_",
+      "name": "Decisions Made (Recorded as ADR Amendments)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 186,
+      "evidence": "## Decisions Made (Recorded as ADR Amendments)"
+    },
+    {
+      "id": "api_get_by_qr",
+      "name": "GET /by-qr",
+      "type": "API_Endpoint",
+      "description": "| ADR-132 | — | QR normalised per-tenant prefix/digits; `GET /by-qr` before `/:id`; separate `condition` column; `attachments.purpose` with one live front/serial-plate; rooms = `warehouses` kind room + floor; find-or-create room; move clears/re-targets room; multi-facility create names facility; `created_by`+`registrant_snapshot` |",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 195,
+      "evidence": "| ADR-132 | — | QR normalised per-tenant prefix/digits; `GET /by-qr` before `/:id`; separate `condition` column; `attachments.purpose` with one live front/seria"
+    },
+    {
+      "id": "sec_open_questions_for_owner_sme_from_specs_none_block_migration_",
+      "name": "Open Questions for Owner/SME (from specs, none block migration)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 203,
+      "evidence": "## Open Questions for Owner/SME (from specs, none block migration)"
+    },
+    {
+      "id": "sec_traps_verified_all_checked_in_specs_",
+      "name": "Traps Verified (All Checked in Specs)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 223,
+      "evidence": "## Traps Verified (All Checked in Specs)"
+    },
+    {
+      "id": "sec_conclusion",
+      "name": "Conclusion",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 241,
+      "evidence": "## Conclusion"
     }
   ],
   "relations": [
@@ -105850,12 +106491,420 @@
       "evidence": "- **PARTIAL:** G-01/G-03/G-05/G-06/G-08/G-16/G-20/G-21/G-23: 68/68. Exit (live PT-01…PT-33 + two real phones) BLOCKED.",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_its_sql_had_never_run_",
+      "evidence": "- **Its SQL had never run.** The unit test mocked every statement. On PostgreSQL 18",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 10
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_rc_f5",
+      "evidence": "- **RC-F5** counted every unbound imported user. An imported CALIBRATOR ADMIN or TECHNICIAN is",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 15
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_r_10",
+      "evidence": "- **R-10** walked a hand-written table list and joined on `s.\"id\"`. **Fixed:** it walks every",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 18
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_r_1_r_2_r_7",
+      "evidence": "- **R-1/R-2/R-7** counted every stored row of the tenant, not the rows the run imported. **Fixed:**",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 20
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_not_automated_and_the_title_no_longer_says_otherwise_",
+      "evidence": "- **Not automated, and the title no longer says otherwise:** R-3, R-4, R-5, R-6, R-8, R-9, RC-F4",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-01-reconciliation-automated.md",
+      "line": 28
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_q_12_and_q_13_were_tenant_totals_repeated_in_every_facility_row_",
+      "evidence": "- **Q-12 and Q-13 were tenant totals repeated in every facility row.** **Fixed:** they are counted",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 9
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_q_18_could_never_be_non_zero_as_described_",
+      "evidence": "- **Q-18 could never be non-zero as described.** Exact duplicates are impossible: 0118 makes the",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 11
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_q_19",
+      "evidence": "- **Q-19** (the same serial across facilities) was claimed in the header but not computed. It is now.",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 15
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_quarantine_per_facility_was_mostly_empty_",
+      "evidence": "- **The quarantine per facility was mostly empty.** A quarantined row usually has no mapping, so",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 16
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_orphan_duplicate_file_and_user_sections",
+      "evidence": "- **The orphan, duplicate-file and user sections** named in the header and in",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 18
+    },
+    {
+      "source": "sec_review_correction_2026_10_24_same_day_read_this_first",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_sql_had_never_run_",
+      "evidence": "- **The SQL had never run.** On PostgreSQL 18, `inventoried_on` needed the grant in migration 0146",
+      "source_file": "MEMORY\\records\\2026-10-24-p25-02-data-quality-report.md",
+      "line": 21
+    },
+    {
+      "source": "sec_2026_10_24_p25_01_p25_02_reviewed_partial_not_done_migration_0146_p25_01_records_2026_10_24_p25_01_reconciliation_automated_md_p25_02_records_2026_10_24_p25_02_data_quality_report_md_adr_129_am_11_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fixed_",
+      "evidence": "- **Fixed:** the reconciliation's SQL had never run; live it failed `permission denied for table calibration_records`. Migration 0146 grants the transform role ",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p25_01_p25_02_reviewed_partial_not_done_migration_0146_p25_01_records_2026_10_24_p25_01_reconciliation_automated_md_p25_02_records_2026_10_24_p25_02_data_quality_report_md_adr_129_am_11_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_corrected_",
+      "evidence": "- **Corrected:** both cards PARTIAL — R-3…R-6, R-8, R-9, RC-F4, R-12, Q-4, Q-14, Q-28 are `manual`. The runbook (P30-01) says so. Live `upstreamTransform.p2402g",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 13
+    },
+    {
+      "source": "sec_7_validation_and_reconciliation",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_reconciliation",
+      "evidence": "> `GET /admin/upstream-sql-imports/:id/reconciliation` and `GET …/:id/data-quality`.",
+      "source_file": "docs\\UPSTREAM\\05-DATA-MIGRATION.md",
+      "line": 292
+    },
+    {
+      "source": "sec_12_1_run_on_2026_10_24_p17_07_review_http_cases_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_put_users_id_client_facility",
+      "evidence": "| F-P1707-01 | **High** (availability of a security control) | `PUT /users/:id/client-facility` answered 500 on every call. The user row was locked `FOR UPDATE`",
+      "source_file": "docs\\SECURITY\\15-FASKES-SCOPE-THREAT-MODEL.md",
+      "line": 724
+    },
+    {
+      "source": "sec_adr_124_amendment_8_2026_10_24_p17_07_a_binding_locks_the_user_row_without_an_include_an_ended_facility_s_token_in_hand_is_revoked_401_before_the_403_facilityended",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_put_users_id_client_facility",
+      "evidence": "- `PUT /users/:id/client-facility` answered 500 on every call (F-P1707-01). The binding locked the user row `FOR UPDATE` with a LEFT include of its role, and Po",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 10424
+    },
+    {
+      "source": "sec_finding_f_p1707_01_high_fixed",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_put_users_id_client_facility",
+      "evidence": "outer join\". As a result, every `PUT /users/:id/client-facility` (bind, re-bind, unbind, confirm",
+      "source_file": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 16
+    },
+    {
+      "source": "sec_the_live_run",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_stack_",
+      "evidence": "- **Stack:** `s1p1707`, a disposable production-mode compose stack. `FACILITY_BINDING_ENABLED=true`",
+      "source_file": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 30
+    },
+    {
+      "source": "sec_the_live_run",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_image_",
+      "evidence": "- **Image:** the backend was rebuilt from the working tree (`docker compose … build backend`, 4 min).",
+      "source_file": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 32
+    },
+    {
+      "source": "sec_the_live_run",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_result_",
+      "evidence": "- **Result:** `e2e/modules/p1707-facility-pentest.e2e.test.ts` passed **13/13 twice** back to back,",
+      "source_file": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 34
+    },
+    {
+      "source": "sec_the_live_run",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_log_redaction",
+      "evidence": "- **Log redaction** (1,225 lines): no e-mail, JWT, bearer or password appears. Signed-link tokens",
+      "source_file": "MEMORY\\records\\2026-10-24-p17-07-live-pentest.md",
+      "line": 40
+    },
+    {
+      "source": "sec_2026_10_24_p17_07_live_facility_pentest_every_binding_was_a_500_fixed_record_records_2026_10_24_p17_07_live_pentest_md_adr_124_am_8_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fixed_high_f_p1707_01_",
+      "evidence": "- **Fixed (High, F-P1707-01):** `PUT /users/:id/client-facility` locked the user `FOR UPDATE` with a LEFT include; PostgreSQL refused it on every call. Live `us",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p17_07_live_facility_pentest_every_binding_was_a_500_fixed_record_records_2026_10_24_p17_07_live_pentest_md_adr_124_am_8_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_ran_",
+      "evidence": "- **Ran:** `p1707-facility-pentest.e2e` 13/13 twice on a disposable production-mode stack; log redaction clean. Phones, sockets and browser cases still open.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 13
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_1_systemactors_a124_to_typescript_record_records_2026_10_24_p9_26_batch_01_system_actors_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** same 4 cases, lint clean, ratchet 694 to 693 `.js` test files.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_hook",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_api_v1_admin_tenants",
+      "evidence": "`GET /api/v1/admin/tenants` was the one admin list that still answered",
+      "source_file": "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "line": 7
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_tenants_all",
+      "evidence": "| `frontend/src/api/generated/schema.d.ts` | regenerated. **No frontend code consumes this route**: the tenant screens read `GET /tenants/all`. Frontend typeche",
+      "source_file": "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "line": 19
+    },
+    {
+      "source": "sec_breaking_change_recorded_as_a_defect_fix",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_api_v1_admin_tenants",
+      "evidence": "with the new one. It reports **9 errors, all `GET /api/v1/admin/tenants`**: `data` changed from an",
+      "source_file": "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "line": 25
+    },
+    {
+      "source": "sec_breaking_change_recorded_as_a_defect_fix",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_sop",
+      "evidence": "`main` passes, as with W-10's `POST /sop`. Locally, `npm run openapi:breaking` skips, because",
+      "source_file": "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "line": 29
+    },
+    {
+      "source": "sec_tests",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_live_",
+      "evidence": "- **Live:** the `s1p1707` stack backend was rebuilt from this tree. `e2e/modules/p10-access-requests` and `p21-upstream-flows` passed 30/30 against it, and both",
+      "source_file": "MEMORY\\records\\2026-10-24-admin-tenants-envelope.md",
+      "line": 37
+    },
+    {
+      "source": "sec_2026_10_24_get_admin_tenants_answers_the_list_envelope_record_records_2026_10_24_admin_tenants_envelope_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fixed_breaking_recorded_",
+      "evidence": "- **Fixed (breaking, recorded):** rows in `data`, `{ total, page, limit, totalPages }` in a top-level `meta`; was a page object inside `data`. oasdiff: 9 errors",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_records",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_tenants",
+      "evidence": "| 2026-10-24 | defect (envelope) | [`GET /admin/tenants` follows the list envelope](./records/2026-10-24-admin-tenants-envelope.md) | **DONE; breaking, recorded",
+      "source_file": "MEMORY\\MEMORY-INDEX.md",
+      "line": 13
+    },
+    {
+      "source": "sec_10_1_reconciliation_and_the_data_quality_report_admin_route_ts_p25_01_p25_02_partial_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_reconciliation",
+      "evidence": "- `GET /admin/upstream-sql-imports/:id/reconciliation`",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 294
+    },
+    {
+      "source": "sec_10_1_reconciliation_and_the_data_quality_report_admin_route_ts_p25_01_p25_02_partial_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_data_quality",
+      "evidence": "- `GET /admin/upstream-sql-imports/:id/data-quality`",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 295
+    },
+    {
+      "source": "sec_10_1_reconciliation_and_the_data_quality_report_admin_route_ts_p25_01_p25_02_partial_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_computed_by_the_report_",
+      "evidence": "- **Computed by the report:** the quarantine groups in the run totals, plus Q-12, Q-13, Q-18 and",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 307
+    },
+    {
+      "source": "sec_10_1_reconciliation_and_the_data_quality_report_admin_route_ts_p25_01_p25_02_partial_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_not_automated_so_they_answer_manual_",
+      "evidence": "- **Not automated, so they answer `manual`:** R-3 … R-6, R-8, R-9, RC-F4, R-12, Q-4, Q-14 and Q-28,",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 309
+    },
+    {
+      "source": "sec_12_what_is_not_done_so_nobody_reads_this_as_finished_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_facility_scope_security_gate_is_not_all_green_",
+      "evidence": "- **The facility-scope security gate is not all green.** `docs/SECURITY/15` § 11.1 (2026-10-24)",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 343
+    },
+    {
+      "source": "sec_2026_10_24_as_built_modules_doc_gains_phase_25_claude_md_gate_rows_corrected_p29_04_record_records_2026_10_24_p29_04_modules_doc_review_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_documented_",
+      "evidence": "- **Documented:** `docs/BACKEND/13` § 10.1 (reconciliation, data quality), § 6 (binding defect, nine routes). CLAUDE.md: 1,025 suites / 0 skipped (2026-10-11), ",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_6_batasan_dokumen_ini_agar_tidak_dilebihkan_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_uji_di_ponsel_nyata_",
+      "evidence": "- **Uji di ponsel nyata.** Aplikasi lapangan (`/field`) sudah diuji dengan peramban otomatis,",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 342
+    },
+    {
+      "source": "sec_6_batasan_dokumen_ini_agar_tidak_dilebihkan_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_stiker_qr_lama_",
+      "evidence": "- **Stiker QR lama.** Format stiker dari aplikasi lama belum diketahui (**OA-4**, keputusan",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 345
+    },
+    {
+      "source": "sec_6_batasan_dokumen_ini_agar_tidak_dilebihkan_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_data_lama_",
+      "evidence": "- **Data lama.** Data dari aplikasi lama **belum dipindahkan**. Uji coba pemindahan dengan data",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 348
+    },
+    {
+      "source": "sec_13_panduan_pengguna_bahasa_indonesia_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_calibration_devices_id_calibration_dates",
+      "evidence": "> *narrower* access, but it can record and correct IPM, and register and edit devices, in its facility. It cannot record calibration dates, because `POST /calib",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 14
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_2_jobcontext_w12_to_typescript_record_records_2026_10_24_p9_26_batch_02_job_context_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** same 12 cases, lint clean, ratchet 693 to 692 `.js` test files.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_the_indonesian_user_guides_one_row_per_facility_role_three_items_pending_p29_01_record_records_2026_10_24_p29_01_guides_review_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_corrected_",
+      "evidence": "- **Corrected:** the facility technician was described as narrower; it records IPM and registers devices in its facility (not calibration dates). Real-phone run",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 15
+    },
+    {
+      "source": "sec_p19_03_device_extensions_adr_132_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_by_qr_qrcode",
+      "evidence": "| QR lookup `GET /by-qr/:qrCode` before `/:id`, marked facility-accessible | ✅ Built | Route order + guard |",
+      "source_file": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 75
+    },
+    {
+      "source": "sec_p19_05_calibration_dates_adr_133_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_calibration_devices_id_calibration_dates",
+      "evidence": "| Quick entry `POST /calibration-devices/:id/calibration-dates` (no file) | ✅ Built | Route + controller |",
+      "source_file": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 113
+    },
+    {
+      "source": "sec_p19_06_ipm_report_document_adr_126_am_2_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_ipm_verify_reportnumber",
+      "evidence": "| Public verification `GET /ipm/verify/:reportNumber?token=` (one identical 404) | ✅ Built | Route + controller |",
+      "source_file": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 135
+    },
+    {
+      "source": "sec_p19_07_public_device_page_adr_138_am_1_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_public_devices_token",
+      "evidence": "| Public route `GET /public/devices/:token` (no auth, one identical 404) | ✅ Built | Route + controller |",
+      "source_file": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 150
+    },
+    {
+      "source": "sec_p19_08_offline_field_capture_adr_127_am_1_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_attachments",
+      "evidence": "| `POST /attachments` honours `Idempotency-Key` | ✅ Built | Middleware |",
+      "source_file": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 172
+    },
+    {
+      "source": "sec_p19_08_offline_field_capture_adr_127_am_1_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_field_wipes",
+      "evidence": "| Admin wipe `POST /field/wipes` (audited) | ✅ Built | Route + controller |",
+      "source_file": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 178
+    },
+    {
+      "source": "sec_decisions_made_recorded_as_adr_amendments_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_by_qr",
+      "evidence": "| ADR-132 | — | QR normalised per-tenant prefix/digits; `GET /by-qr` before `/:id`; separate `condition` column; `attachments.purpose` with one live front/seria",
+      "source_file": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 195
+    },
+    {
+      "source": "sec_decisions_made_recorded_as_adr_amendments_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_attachments",
+      "evidence": "| ADR-127 | Am. 1 | Worker scope `/field`; field app one document; `public/sw.js` generated pre-build; install pre-caches + warm lazy modules; purge on failed r",
+      "source_file": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+      "line": 199
     }
   ],
   "stats": {
-    "total_sources": 314,
-    "total_entities": 7891,
-    "total_relations": 4314,
+    "total_sources": 325,
+    "total_entities": 7961,
+    "total_relations": 4365,
     "token_savings_estimate": "85-95%"
   }
 }

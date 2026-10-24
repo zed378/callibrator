@@ -3,30 +3,30 @@
  * with the schema (model ENUM, migration 0033) and with every job that names
  * itself in the code.
  */
-const fs = require("fs");
-const path = require("path");
-const { Sequelize, DataTypes } = require("sequelize");
-const {
+import fs from "node:fs";
+import path from "node:path";
+import { Sequelize } from "sequelize";
+import {
   ACTOR_TYPES,
   ACTOR_TYPE_VALUES,
   SYSTEM_ACTORS,
   SYSTEM_ACTOR_NAMES,
   ACTOR_NAME_MAX_LENGTH,
-} = require("../../constants/systemActors");
-const migration = require("../../migrations/0033-audit-log-actor");
+} from "../../constants/systemActors";
+import migration from "../../migrations/0033-audit-log-actor";
+import defineAuditLog from "../../models/auditLog.model";
 
-const AuditLog = require("../../models/auditLog.model")(
-  new Sequelize({ dialect: "postgres", logging: false }),
-  DataTypes,
-);
+const AuditLog = defineAuditLog(new Sequelize({ dialect: "postgres", logging: false }));
 
 const SRC = path.join(__dirname, "../..");
 
 /** Every .js file under src/, except tests. */
-const sourceFiles = (dir = SRC) =>
+const sourceFiles = (dir: string = SRC): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {return entry.name === "tests" ? [] : sourceFiles(full);}
+    if (entry.isDirectory()) {
+      return entry.name === "tests" ? [] : sourceFiles(full);
+    }
     // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
     return /\.(js|ts)$/.test(entry.name) ? [full] : [];
   });
@@ -40,12 +40,12 @@ describe("A-124 — system actors", () => {
 
   it("the model ENUM and migration 0033's type both equal the constant", () => {
     const attrs = AuditLog.getAttributes();
-    expect([...attrs.actorType.type.values]).toEqual([...ACTOR_TYPE_VALUES]);
+    expect([...((attrs.actorType.type as unknown) as { values: string[] }).values]).toEqual([...ACTOR_TYPE_VALUES]);
     expect([...migration.ACTOR_TYPES]).toEqual([...ACTOR_TYPE_VALUES]);
     expect(attrs.actorType.allowNull).toBe(false);
     expect(attrs.actorType.field).toBe(migration.TYPE_COLUMN);
     expect(attrs.actorName.field).toBe(migration.NAME_COLUMN);
-    expect(attrs.actorName.type.options.length).toBe(ACTOR_NAME_MAX_LENGTH);
+    expect(((attrs.actorName.type as unknown) as { options: { length: number } }).options.length).toBe(ACTOR_NAME_MAX_LENGTH);
     expect(migration.NAME_LENGTH).toBe(ACTOR_NAME_MAX_LENGTH);
   });
 
@@ -86,11 +86,12 @@ describe("A-124 — system actors", () => {
   });
 
   it("no source file invents a 'system:' actor that is not on the list", () => {
-    const invented = [];
+    const invented: string[] = [];
     for (const file of sourceFiles()) {
       const text = fs.readFileSync(file, "utf8");
-      for (const [, name] of text.matchAll(/['"`](system:[a-z][a-z-]*)['"`]/g)) {
-        if (!SYSTEM_ACTOR_NAMES.includes(name)) {
+      for (const match of text.matchAll(/['"`](system:[a-z][a-z-]*)['"`]/g)) {
+        const name = match[1] as string;
+        if (!(SYSTEM_ACTOR_NAMES as readonly string[]).includes(name)) {
           invented.push(`${path.relative(SRC, file)}: ${name}`);
         }
       }
