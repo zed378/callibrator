@@ -506,7 +506,7 @@ permanent blind spot.
 
 | | |
 |---|---|
-| **Status** | **STARTED** — **2026-10-02: the state unions DONE** (`@callibrator/contracts/states`, spec `MEMORY/specs/P9-05-shared-types.md`, record `MEMORY/records/2026-10-02-p9-05-state-unions.md`, ADR-087 Am. 30). `backend/src/types/` holds `node-process.d.ts`, `express.d.ts` (`requestId`, `user`, `tenantId`, `apiKeyAuthorized`, the upload fields; `isApiKey` on the principal), `ids.ts` (`TenantId`) and **`apiResponse.ts` (`ApiResponse<T>`)** — each added with the converted module that reads it (ADR-087 Amendments 2, 5). Open: `toTenantId` and the other brands, `tenant`/`validated` on `Request`, the state-machine unions |
+| **Status** | **DONE 2026-10-24** — status reconciled: `express.d.ts` carries user/tenantId/tenant/requestId/validated; `ids.ts` carries TenantId/UserId/DeviceId family/ClientFacilityId with validating constructors; state unions in `@callibrator/contracts/states` — [record](../MEMORY/records/2026-10-24-p9-05-06-09-20-21-22-25-status-reconciled.md) |
 | **Depends on** | P9-03 |
 | **Spec refs** | `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` §§ branded ids, state machines |
 | **Spec required** | **yes** — `MEMORY/specs/P9-05-shared-types.md` |
@@ -573,7 +573,7 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | IN PROGRESS — **part 1 done 2026-09-29** (ADR-087 Amendment 6): `src/config/env.ts` holds the accessors (`env`, `envOr`, `environment`, `isProduction`), each reproducing the expression it replaced and reading at call time; every converted module reads through them, and the `no-restricted-properties` directives written in Stage B are gone (0 left outside `src/config/`). **Part 2 done 2026-10-02** (ADR-087 Am. 30, record `MEMORY/records/2026-10-02-p9-06-env-schema.md`): `environmentSchema` + `validateEnvironment`, called by `index.ts` after dotenv — exactly the refusals the modules already made, listed together; proved verdict-identical over 158 configurations and boot-identical on PG18 |
+| **Status** | **DONE 2026-10-24** — status reconciled: part 1 (env accessors) + part 2 (`environmentSchema`, fail-listing boot, 158 configs verdict-identical) — [record](../MEMORY/records/2026-10-24-p9-05-06-09-20-21-22-25-status-reconciled.md) |
 | **Depends on** | P9-05 |
 | **Spec refs** | `docs/BACKEND/11-CONFIGURATION.md` · ADR-039 |
 | **Spec required** | no |
@@ -644,7 +644,7 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | **STARTED** — **30 of 36** `utils/` are `.ts`: 12 leaves (helper 2), `dbReady`, `circuitBreaker`, `tenantScope` (lead), then `otp`, `ssrf`, `fileValidation`, `response`, `controllerWrapper`, `upload` (lead, 2026-09-29, ADR-087 Amendment 5), then `authorizationWiring`, `publicBaseUrl`, `schedulerSwitch`, `jobContext`, `migrationLock`, `jsonShape` (lead, 2026-09-29, ADR-087 Amendment 6) — plus the three path utils under P9-05a. **Left (6), none convertible yet:** `kmsVerify` (P9-18), `jwt` (P9-12), `generateSwagger` (P9-21), `checkMenu`/`session`/`seedMenuGroups` (after P9-10) · **Depends on** P9-08, P9-05a · **Size** M |
+| **Status** | **DONE 2026-10-24** — status reconciled: 52 `.ts`, 1 `.js` (the dead `checkMenu.util.js`, A-18) — [record](../MEMORY/records/2026-10-24-p9-05-06-09-20-21-22-25-status-reconciled.md) · **Depends on** P9-08, P9-05a · **Size** M |
 | **Spec refs** | `docs/ENGINEERING/06-ERROR-RESPONSE-STANDARDS.md` |
 
 > **As-built 2026-09-28 (helper 2).** `utils/` now holds **34** files, not 20. The true leaves —
@@ -970,7 +970,7 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 | | |
 |---|---|
-| **Status** | **IN PROGRESS (2026-10-01)** — warehouse, stock, roles, maintenance and qms controllers converted (P9-22 helper, ADR-097 Am. 3; identity per module); other lanes convert the rest · **Depends on** P9-19 · **Size** L |
+| **Status** | **DONE 2026-10-24** — status reconciled: 77 `.ts`, 0 `.js` — [record](../MEMORY/records/2026-10-24-p9-05-06-09-20-21-22-25-status-reconciled.md) · **Depends on** P9-19 · **Size** L |
 
 > **What changed:** **57** controllers, not 56 — `health.controller.js` is new (A-15).
 
@@ -983,7 +983,7 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 | | |
 |---|---|
-| **Status** | **IN PROGRESS (2026-10-01)** — warehouse, stock, roles, maintenance and qms routes converted, each with its code-first `.openapi.ts` (ADR-097 Am. 3); vendor, risk, supplierScorecard, finance, billing and meteredBilling likewise (ADR-097 Am. 5); the A-58 gate scan reads `.ts` routes and the dist emit; the route helper (permission gate or `public()`) is NOT built yet · **Depends on** P9-20 · **Size** M |
+| **Status** | **DONE 2026-10-24** — status reconciled: 131 `.ts`, 0 `.js`; 63 routes, 63 `.openapi.ts`; `openapiRoutes.p925` 13/13 — [record](../MEMORY/records/2026-10-24-p9-05-06-09-20-21-22-25-status-reconciled.md) · **Depends on** P9-20 · **Size** M |
 
 > **What changed, and one of these is a wrong file path:**
 > **(a)** **55** route files, not 54 — and they are not flat. `routes/api/` holds 53,
@@ -1013,7 +1013,7 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 | | |
 |---|---|
-| **Status** | **IN PROGRESS** — the workspace and its build are done, and the **first slice** (`fields`, `vendor`, `calibrationDevices`) moved on 2026-09-29 (**ADR-097**, record [`2026-09-29-p9-22-contracts.md`](../MEMORY/records/2026-09-29-p9-22-contracts.md)). Proven so far: both images build from the root, the backend binary boots (schema OK), `dist` resolves the compiled package, `next build` bundles value imports, and the vendors + calibration-devices E2E pass (16/16). **The full E2E set against this change has not had a clean run** (degraded Docker host; see the record) · **Depends on** P9-11 (DONE) · **Size** L |
+| **Status** | **DONE 2026-10-24** — status reconciled: 66 `.ts`, 0 `.js`; Q-48 settled by ADR-134 (`packages/contracts` stays) — [record](../MEMORY/records/2026-10-24-p9-05-06-09-20-21-22-25-status-reconciled.md) · **Depends on** P9-11 (DONE) · **Size** L |
 | **Spec refs** | ADR-038 (shared contracts row) · ADR-087 decision 7 · ADR-044 / ADR-046 · `docs/FRONTEND/03-API-CLIENT.md` |
 | **Spec required** | **yes** — the design is **ADR-097** (below, in short) |
 | **Open** | **Q-48**: `packages/contracts` (ADR-038/087, as built) vs ADR-089's planned `shared/contracts`. Not settled here; consumers import by package name, so a move changes no import. **Settled 2026-10-08 by ADR-134 (plan): `packages/contracts` stays; no root `shared/`** |
@@ -1081,7 +1081,7 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 | | |
 |---|---|
-| **Status** | TODO · **Depends on** everything above · **Size** S |
+| **Status** | **DONE 2026-10-24** — the exit holds with one dead file left by owner decision: no non-test `.js` except `utils/checkMenu.util.js` (pinned by `noSourceJs.p924.guard` 3/3, deletion awaits the owner A-18); `allowJs: false` for source; banners state TypeScript as fact; no stale counts; ADR-038 completion note in [record](../MEMORY/records/2026-10-24-p9-24-close-out.md) · **Depends on** everything above · **Size** S |
 | **Scope amended 2026-09-30** | **ADR-109 §5** (working decision under the owner's delegation, awaiting the owner's confirmation), amending ADR-087's exit. **Phase 9 exits when every non-test backend source module is TypeScript and the build/source config has `allowJs: false`.** The existing `.js` **test** files (696 under `src/tests/` and `__tests__/` on 2026-09-30, 684 of them `*.test.js`; a moving count) are **not** part of this exit — they move to **P9-26**. The ratchet **stays** and still refuses any **new** `.js` file, tests included |
 
 **Definition of Done**
@@ -1121,7 +1121,7 @@ of the plan.
 
 | | |
 |---|---|
-| **Status** | **WIP** — foundation DONE 2026-09-30 (ADR-103); per-route migration rides with P9-20/P9-21 · **Depends on** P9-11 (Zod validators), P9-22 (contracts) · **Size** L |
+| **Status** | **DONE 2026-10-24** — status reconciled: 63/63 routes with code-first `.openapi.ts`; `openapiRoutes.p925` 13/13 — [record](../MEMORY/records/2026-10-24-p9-05-06-09-20-21-22-25-status-reconciled.md) · **Depends on** P9-11 (Zod validators), P9-22 (contracts) · **Size** L |
 | **Spec refs** | `MEMORY/specs/P9-25-owner-brief-api-contract.md` (binding) · `MEMORY/specs/P9-25-api-contract-code-first.md` · `docs/API/00-API-STANDARDS.md` · `docs/BACKEND/03-VALIDATION.md` · ADR-103 |
 | **Spec required** | **yes** (written) |
 
