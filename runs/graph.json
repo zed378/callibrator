@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-23T15:35:25.648Z",
+  "last_updated": "2026-10-24T00:26:45.722Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -293,7 +293,15 @@
     "TASKS\\PHASE-23-UPSTREAM-REPORTS.md",
     "MEMORY\\records\\2026-10-23-p24-03-device-photo-step.md",
     "TASKS\\PHASE-21-UPSTREAM-BACKEND.md",
-    "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md"
+    "MEMORY\\records\\2026-10-23-p21-10-live-smoke-and-e2e.md",
+    "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+    "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+    "TASKS\\PHASE-29-UPSTREAM-TRAINING-DOCS.md",
+    "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+    "MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
+    "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+    "TASKS\\PHASE-30-UPSTREAM-CUTOVER.md",
+    "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md"
   ],
   "entities": [
     {
@@ -69532,6 +69540,969 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-23 — Live end-to-end checks of the Phase 21–24 flows (P21-10) ([record](./records/2026-10-23-p21-10-live-smoke-and-e2e.md))"
+    },
+    {
+      "id": "sec_13_panduan_pengguna_bahasa_indonesia_",
+      "name": "13 — Panduan Pengguna (Bahasa Indonesia)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 1,
+      "evidence": "# 13 — Panduan Pengguna (Bahasa Indonesia)"
+    },
+    {
+      "id": "sec_0_sebelum_mulai_tiga_hal_yang_berlaku_untuk_semua_peran",
+      "name": "0. Sebelum Mulai: Tiga Hal yang Berlaku untuk Semua Peran",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 23,
+      "evidence": "## 0. Sebelum Mulai: Tiga Hal yang Berlaku untuk Semua Peran"
+    },
+    {
+      "id": "sec_1_panduan_teknisi_penyedia_jasa",
+      "name": "1. Panduan Teknisi Penyedia Jasa",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 36,
+      "evidence": "## 1. Panduan Teknisi Penyedia Jasa"
+    },
+    {
+      "id": "sec_1_1_masuk_dan_menemukan_pekerjaan",
+      "name": "1.1 Masuk dan Menemukan Pekerjaan",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 41,
+      "evidence": "### 1.1 Masuk dan Menemukan Pekerjaan"
+    },
+    {
+      "id": "sec_1_2_merekam_ipm_di_dasbor_",
+      "name": "1.2 Merekam IPM (di Dasbor)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 55,
+      "evidence": "### 1.2 Merekam IPM (di Dasbor)"
+    },
+    {
+      "id": "sec_1_3_merekam_ipm_tanpa_jaringan_field_",
+      "name": "1.3 Merekam IPM Tanpa Jaringan (/field)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 84,
+      "evidence": "### 1.3 Merekam IPM Tanpa Jaringan (`/field`)"
+    },
+    {
+      "id": "sec_1_4_mengoreksi_ipm_yang_sudah_dikirim",
+      "name": "1.4 Mengoreksi IPM yang Sudah Dikirim",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 103,
+      "evidence": "### 1.4 Mengoreksi IPM yang Sudah Dikirim"
+    },
+    {
+      "id": "sec_1_5_mencatat_tanggal_kalibrasi_laboratorium_luar_",
+      "name": "1.5 Mencatat Tanggal Kalibrasi (Laboratorium Luar)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 109,
+      "evidence": "### 1.5 Mencatat Tanggal Kalibrasi (Laboratorium Luar)"
+    },
+    {
+      "id": "sec_1_6_ekspor",
+      "name": "1.6 Ekspor",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 124,
+      "evidence": "### 1.6 Ekspor"
+    },
+    {
+      "id": "ent_pdf_inventaris",
+      "name": "PDF inventaris",
+      "type": "Component/Requirement",
+      "description": "— tata letak **Penyedia** (A3, dengan kolom teknisi dan tanggal inventaris) atau",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 128,
+      "evidence": "- **PDF inventaris** — tata letak **Penyedia** (A3, dengan kolom teknisi dan tanggal inventaris) atau"
+    },
+    {
+      "id": "sec_1_7_yang_tidak_dapat_anda_lakukan",
+      "name": "1.7 Yang Tidak Dapat Anda Lakukan",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 134,
+      "evidence": "### 1.7 Yang Tidak Dapat Anda Lakukan"
+    },
+    {
+      "id": "sec_2_panduan_pengguna_faskes",
+      "name": "2. Panduan Pengguna Faskes",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 145,
+      "evidence": "## 2. Panduan Pengguna Faskes"
+    },
+    {
+      "id": "sec_2_1_apa_yang_anda_lihat",
+      "name": "2.1 Apa yang Anda Lihat",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 151,
+      "evidence": "### 2.1 Apa yang Anda Lihat"
+    },
+    {
+      "id": "sec_2_2_membaca_hasil_ipm_dan_laporan",
+      "name": "2.2 Membaca Hasil IPM dan Laporan",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 168,
+      "evidence": "### 2.2 Membaca Hasil IPM dan Laporan"
+    },
+    {
+      "id": "sec_2_3_yang_tidak_dapat_anda_lakukan",
+      "name": "2.3 Yang Tidak Dapat Anda Lakukan",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 180,
+      "evidence": "### 2.3 Yang Tidak Dapat Anda Lakukan"
+    },
+    {
+      "id": "sec_3_panduan_admin_penyedia_jasa",
+      "name": "3. Panduan Admin Penyedia Jasa",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 191,
+      "evidence": "## 3. Panduan Admin Penyedia Jasa"
+    },
+    {
+      "id": "sec_3_1_mengelola_fasilitas_klien",
+      "name": "3.1 Mengelola Fasilitas Klien",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 196,
+      "evidence": "### 3.1 Mengelola Fasilitas Klien"
+    },
+    {
+      "id": "ent_tambah_fasilitas",
+      "name": "Tambah fasilitas",
+      "type": "Component/Requirement",
+      "description": "— isi nama dan **kode**. Kode dipakai pada nomor laporan (mis.",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 200,
+      "evidence": "- **Tambah fasilitas** — isi nama dan **kode**. Kode dipakai pada nomor laporan (mis."
+    },
+    {
+      "id": "ent_ubah",
+      "name": "Ubah",
+      "type": "Component/Requirement",
+      "description": "— nama, alamat, narahubung, dan seterusnya.",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 202,
+      "evidence": "- **Ubah** — nama, alamat, narahubung, dan seterusnya."
+    },
+    {
+      "id": "ent_ubah_status",
+      "name": "Ubah status",
+      "type": "Component/Requirement",
+      "description": "— `Aktif` / `Nonaktif` / `Berakhir`. Meninggalkan `Aktif` akan **mengeluarkan semua",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 203,
+      "evidence": "- **Ubah status** — `Aktif` / `Nonaktif` / `Berakhir`. Meninggalkan `Aktif` akan **mengeluarkan semua"
+    },
+    {
+      "id": "sec_3_2_mengikat_akun_staf_faskes_ke_fasilitasnya",
+      "name": "3.2 Mengikat Akun Staf Faskes ke Fasilitasnya",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 209,
+      "evidence": "### 3.2 Mengikat Akun Staf Faskes ke Fasilitasnya"
+    },
+    {
+      "id": "sec_3_3_mengundang_pengguna_hasil_impor",
+      "name": "3.3 Mengundang Pengguna Hasil Impor",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 220,
+      "evidence": "### 3.3 Mengundang Pengguna Hasil Impor"
+    },
+    {
+      "id": "sec_3_4_memindahkan_alat_antar_fasilitas",
+      "name": "3.4 Memindahkan Alat Antar Fasilitas",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 237,
+      "evidence": "### 3.4 Memindahkan Alat Antar Fasilitas"
+    },
+    {
+      "id": "sec_3_5_pengaturan_tenant_termasuk_halaman_publik_alat_",
+      "name": "3.5 Pengaturan Tenant (termasuk Halaman Publik Alat)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 244,
+      "evidence": "### 3.5 Pengaturan Tenant (termasuk Halaman Publik Alat)"
+    },
+    {
+      "id": "ent_halaman_publik_alat",
+      "name": "Halaman publik alat",
+      "type": "Component/Requirement",
+      "description": "— `nonaktif` (bawaan), `minimal`, atau `minimal dengan laporan IPM",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 248,
+      "evidence": "- **Halaman publik alat** — `nonaktif` (bawaan), `minimal`, atau `minimal dengan laporan IPM"
+    },
+    {
+      "id": "ent_tanda_tangan_bersama_ipsrs",
+      "name": "Tanda tangan bersama IPSRS",
+      "type": "Component/Requirement",
+      "description": "— menyalakan kewajiban tanda tangan kedua oleh IPSRS faskes.",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 251,
+      "evidence": "- **Tanda tangan bersama IPSRS** — menyalakan kewajiban tanda tangan kedua oleh IPSRS faskes."
+    },
+    {
+      "id": "ent_interval_ipm",
+      "name": "Interval IPM",
+      "type": "Component/Requirement",
+      "description": "(1–60 bulan) dan **zona waktu tenant** — dipakai untuk menghitung jatuh tempo.",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 252,
+      "evidence": "- **Interval IPM** (1–60 bulan) dan **zona waktu tenant** — dipakai untuk menghitung jatuh tempo."
+    },
+    {
+      "id": "sec_3_6_yang_tidak_dapat_anda_lakukan",
+      "name": "3.6 Yang Tidak Dapat Anda Lakukan",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 254,
+      "evidence": "### 3.6 Yang Tidak Dapat Anda Lakukan"
+    },
+    {
+      "id": "sec_4_panduan_ipsrs_tanda_tangan_bersama_",
+      "name": "4. Panduan IPSRS (Tanda Tangan Bersama)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 264,
+      "evidence": "## 4. Panduan IPSRS (Tanda Tangan Bersama)"
+    },
+    {
+      "id": "sec_4_1_kapan_anda_diminta_menandatangani",
+      "name": "4.1 Kapan Anda Diminta Menandatangani",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 269,
+      "evidence": "### 4.1 Kapan Anda Diminta Menandatangani"
+    },
+    {
+      "id": "sec_4_2_caranya",
+      "name": "4.2 Caranya",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 275,
+      "evidence": "### 4.2 Caranya"
+    },
+    {
+      "id": "sec_4_3_yang_tidak_dapat_anda_lakukan",
+      "name": "4.3 Yang Tidak Dapat Anda Lakukan",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 283,
+      "evidence": "### 4.3 Yang Tidak Dapat Anda Lakukan"
+    },
+    {
+      "id": "sec_5_istilah_di_layar_ringkas_",
+      "name": "5. Istilah di Layar (Ringkas)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 298,
+      "evidence": "## 5. Istilah di Layar (Ringkas)"
+    },
+    {
+      "id": "sec_6_batasan_dokumen_ini_agar_tidak_dilebihkan_",
+      "name": "6. Batasan Dokumen Ini (agar tidak dilebihkan)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 313,
+      "evidence": "## 6. Batasan Dokumen Ini (agar tidak dilebihkan)"
+    },
+    {
+      "id": "ent_ini_draf_yang_belum_diuji_di_lapangan_",
+      "name": "Ini draf yang belum diuji di lapangan.",
+      "type": "Component/Requirement",
+      "description": "Layar sudah dibangun dan diuji dengan perangkat lunak,",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 315,
+      "evidence": "- **Ini draf yang belum diuji di lapangan.** Layar sudah dibangun dan diuji dengan perangkat lunak,"
+    },
+    {
+      "id": "ent_tidak_menggantikan_pelatihan_",
+      "name": "Tidak menggantikan pelatihan.",
+      "type": "Component/Requirement",
+      "description": "Untuk **pelatihan langsung dan video singkat**, lihat **P29-03**",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 318,
+      "evidence": "- **Tidak menggantikan pelatihan.** Untuk **pelatihan langsung dan video singkat**, lihat **P29-03**"
+    },
+    {
+      "id": "ent_beberapa_langkah_bergantung_pada_pengaturan_yang_mati_secara_bawaan_",
+      "name": "Beberapa langkah bergantung pada pengaturan yang mati secara bawaan:",
+      "type": "Component/Requirement",
+      "description": "undangan pengguna impor",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 320,
+      "evidence": "- **Beberapa langkah bergantung pada pengaturan yang mati secara bawaan:** undangan pengguna impor"
+    },
+    {
+      "id": "ent_bukan_dokumen_kepatuhan_",
+      "name": "Bukan dokumen kepatuhan.",
+      "type": "Component/Requirement",
+      "description": "Kewajiban hukum, dasar pemrosesan data, dan retensi ada di",
+      "source": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 324,
+      "evidence": "- **Bukan dokumen kepatuhan.** Kewajiban hukum, dasar pemrosesan data, dan retensi ada di"
+    },
+    {
+      "id": "sec_p29_01_the_indonesian_user_guides_written_against_the_built_screens",
+      "name": "P29-01: the Indonesian user guides, written against the built screens",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "source": "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "line": 1,
+      "evidence": "# P29-01: the Indonesian user guides, written against the built screens"
+    },
+    {
+      "id": "ent_one_guide_all_roles_",
+      "name": "One guide, all roles.",
+      "type": "Component/Requirement",
+      "description": "Rejected: a facility user and a provider technician share almost no",
+      "source": "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "line": 33,
+      "evidence": "- **One guide, all roles.** Rejected: a facility user and a provider technician share almost no"
+    },
+    {
+      "id": "ent_writing_it_before_phase_22_from_the_feature_research_",
+      "name": "Writing it before Phase 22, from the feature research.",
+      "type": "Component/Requirement",
+      "description": "Rejected for the reason in the Hook: it",
+      "source": "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "line": 37,
+      "evidence": "- **Writing it before Phase 22, from the feature research.** Rejected for the reason in the Hook: it"
+    },
+    {
+      "id": "ent_reusing_11_what_changed_id_md_",
+      "name": "Reusing `11-WHAT-CHANGED-ID.md`.",
+      "type": "Component/Requirement",
+      "description": "Kept as the separate \"what changed\" note it is, and linked at",
+      "source": "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "line": 40,
+      "evidence": "- **Reusing `11-WHAT-CHANGED-ID.md`.** Kept as the separate \"what changed\" note it is, and linked at"
+    },
+    {
+      "id": "sec_definition_of_done",
+      "name": "Definition of Done",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "source": "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "line": 78,
+      "evidence": "## Definition of Done"
+    },
+    {
+      "id": "sec_phase_29_upstream_training_documentation_in_indonesian",
+      "name": "Phase 29 — Upstream: Training & Documentation in Indonesian",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\PHASE-29-UPSTREAM-TRAINING-DOCS.md",
+      "source": "TASKS\\PHASE-29-UPSTREAM-TRAINING-DOCS.md",
+      "line": 1,
+      "evidence": "# Phase 29 — Upstream: Training & Documentation in Indonesian"
+    },
+    {
+      "id": "sec_2026_10_23_indonesian_user_guides_for_the_four_roles_p29_01_record_records_2026_10_23_p29_01_user_guides_id_md_",
+      "name": "2026-10-23 — Indonesian user guides for the four roles (P29-01) ([record](./records/2026-10-23-p29-01-user-guides-id.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 24,
+      "evidence": "### 2026-10-23 — Indonesian user guides for the four roles (P29-01) ([record](./records/2026-10-23-p29-01-user-guides-id.md))"
+    },
+    {
+      "id": "sec_13_upstream_adoption_modules_as_built",
+      "name": "13 — Upstream Adoption Modules, As Built",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 1,
+      "evidence": "# 13 — Upstream Adoption Modules, As Built"
+    },
+    {
+      "id": "sec_1_how_to_read_this",
+      "name": "1. How to read this",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 19,
+      "evidence": "## 1. How to read this"
+    },
+    {
+      "id": "sec_2_the_inspection_catalogue_devicetypes_route_ts_ipm_route_ts",
+      "name": "2. The Inspection Catalogue — deviceTypes.route.ts, ipm.route.ts",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 36,
+      "evidence": "## 2. The Inspection Catalogue — `deviceTypes.route.ts`, `ipm.route.ts`"
+    },
+    {
+      "id": "sec_3_the_device_register_calibrationdevices_route_ts",
+      "name": "3. The Device Register — calibrationDevices.route.ts",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 62,
+      "evidence": "## 3. The Device Register — `calibrationDevices.route.ts`"
+    },
+    {
+      "id": "ent_rooms",
+      "name": "Rooms",
+      "type": "Component/Requirement",
+      "description": "are `warehouses` of `kind = room`, owned by a facility, with a floor. A device's room is",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 72,
+      "evidence": "- **Rooms** are `warehouses` of `kind = room`, owned by a facility, with a floor. A device's room is"
+    },
+    {
+      "id": "ent_photos",
+      "name": "Photos",
+      "type": "Component/Requirement",
+      "description": "are `attachments` with a `purpose` (`device_front`, `device_serial_plate`,",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 74,
+      "evidence": "- **Photos** are `attachments` with a `purpose` (`device_front`, `device_serial_plate`,"
+    },
+    {
+      "id": "ent_qr_lookup",
+      "name": "QR lookup",
+      "type": "Component/Requirement",
+      "description": "`GET /calibration-devices/by-qr/:qrCode` is facility-accessible; another tenant's or",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 79,
+      "evidence": "- **QR lookup** `GET /calibration-devices/by-qr/:qrCode` is facility-accessible; another tenant's or"
+    },
+    {
+      "id": "ent_move",
+      "name": "Move",
+      "type": "Component/Requirement",
+      "description": "`POST /calibration-devices/:id/move` — one audited operation (ADR-124 Am. 2 § 2): the",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 81,
+      "evidence": "- **Move** `POST /calibration-devices/:id/move` — one audited operation (ADR-124 Am. 2 § 2): the"
+    },
+    {
+      "id": "ent_calibration_dates",
+      "name": "Calibration dates",
+      "type": "Component/Requirement",
+      "description": "`POST /calibration-devices/:id/calibration-dates` — records an external",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 85,
+      "evidence": "- **Calibration dates** `POST /calibration-devices/:id/calibration-dates` — records an external"
+    },
+    {
+      "id": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "name": "4. IPM Sessions — ipmSessions.route.ts",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 94,
+      "evidence": "## 4. IPM Sessions — `ipmSessions.route.ts`"
+    },
+    {
+      "id": "api_patch_sessionid",
+      "name": "PATCH /:sessionId",
+      "type": "API_Endpoint",
+      "description": "`GET/PATCH /:sessionId`, `PUT /:sessionId/results` (the rows replaced wholesale at a revision),",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 105,
+      "evidence": "`GET/PATCH /:sessionId`, `PUT /:sessionId/results` (the rows replaced wholesale at a revision),"
+    },
+    {
+      "id": "api_post_sessionid_discard",
+      "name": "POST /:sessionId/discard",
+      "type": "API_Endpoint",
+      "description": "`POST /:sessionId/discard`.",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 106,
+      "evidence": "`POST /:sessionId/discard`."
+    },
+    {
+      "id": "api_post_sessionid_submit",
+      "name": "POST /:sessionId/submit",
+      "type": "API_Endpoint",
+      "description": "- The end of the draft: `POST /:sessionId/submit`, `POST /:sessionId/corrections`,",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 107,
+      "evidence": "- The end of the draft: `POST /:sessionId/submit`, `POST /:sessionId/corrections`,"
+    },
+    {
+      "id": "api_post_sessionid_void",
+      "name": "POST /:sessionId/void",
+      "type": "API_Endpoint",
+      "description": "`POST /:sessionId/void`.",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 108,
+      "evidence": "`POST /:sessionId/void`."
+    },
+    {
+      "id": "ent_immutability_is_a_constraint_not_a_convention",
+      "name": "Immutability is a constraint, not a convention",
+      "type": "Component/Requirement",
+      "description": "(0127): an `ENABLE ALWAYS` trigger refuses",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 109,
+      "evidence": "- **Immutability is a constraint, not a convention** (0127): an `ENABLE ALWAYS` trigger refuses"
+    },
+    {
+      "id": "ent_revision_and_conflict_",
+      "name": "Revision and conflict:",
+      "type": "Component/Requirement",
+      "description": "every draft write carries `revision`; a stale one is **409",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 113,
+      "evidence": "- **Revision and conflict:** every draft write carries `revision`; a stale one is **409"
+    },
+    {
+      "id": "ent__idempotency_key_",
+      "name": "`Idempotency-Key`",
+      "type": "Component/Requirement",
+      "description": "(ADR-127 § 4) is honoured on every draft write and on `POST /attachments`;",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 115,
+      "evidence": "- **`Idempotency-Key`** (ADR-127 § 4) is honoured on every draft write and on `POST /attachments`;"
+    },
+    {
+      "id": "sec_5_the_ipm_report_and_its_signatures_ipmreports_route_ts",
+      "name": "5. The IPM Report and Its Signatures — ipmReports.route.ts",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 126,
+      "evidence": "## 5. The IPM Report and Its Signatures — `ipmReports.route.ts`"
+    },
+    {
+      "id": "api_post_ipm_sessions_id_signatures",
+      "name": "POST /ipm/sessions/:id/signatures",
+      "type": "API_Endpoint",
+      "description": "- `POST /ipm/sessions/:id/signatures` — the performer's signature, and the IPSRS **countersignature**",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 141,
+      "evidence": "- `POST /ipm/sessions/:id/signatures` — the performer's signature, and the IPSRS **countersignature**"
+    },
+    {
+      "id": "sec_6_client_facilities_and_facility_bound_users_clientfacilities_route_ts",
+      "name": "6. Client Facilities and Facility-Bound Users — clientFacilities.route.ts",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 152,
+      "evidence": "## 6. Client Facilities and Facility-Bound Users — `clientFacilities.route.ts`"
+    },
+    {
+      "id": "sec_7_the_public_device_page_publicdevices_route_ts",
+      "name": "7. The Public Device Page — publicDevices.route.ts",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 180,
+      "evidence": "## 7. The Public Device Page — `publicDevices.route.ts`"
+    },
+    {
+      "id": "sec_8_invitations_for_imported_users_the_users_surface",
+      "name": "8. Invitations for Imported Users — the users surface",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 201,
+      "evidence": "## 8. Invitations for Imported Users — the users surface"
+    },
+    {
+      "id": "sec_9_the_offline_field_app_s_backend_field_route_ts",
+      "name": "9. The Offline Field App's Backend — field.route.ts",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 224,
+      "evidence": "## 9. The Offline Field App's Backend — `field.route.ts`"
+    },
+    {
+      "id": "sec_10_the_upstream_etl_upstreamfileimports_route_ts_the_sql_dump_import_and_the_transform",
+      "name": "10. The Upstream ETL — upstreamFileImports.route.ts, the SQL-dump import, and the transform",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 245,
+      "evidence": "## 10. The Upstream ETL — `upstreamFileImports.route.ts`, the SQL-dump import, and the transform"
+    },
+    {
+      "id": "sec_11_what_holds_this_together_the_controls_named_",
+      "name": "11. What Holds This Together (the controls, named)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 283,
+      "evidence": "## 11. What Holds This Together (the controls, named)"
+    },
+    {
+      "id": "sec_12_what_is_not_done_so_nobody_reads_this_as_finished_",
+      "name": "12. What Is Not Done (so nobody reads this as finished)",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 298,
+      "evidence": "## 12. What Is Not Done (so nobody reads this as finished)"
+    },
+    {
+      "id": "ent_no_real_upstream_data_has_been_loaded_",
+      "name": "No real upstream data has been loaded.",
+      "type": "Component/Requirement",
+      "description": "`UPSTREAM_REAL_DATA_ALLOWED` is false; the legal basis",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 300,
+      "evidence": "- **No real upstream data has been loaded.** `UPSTREAM_REAL_DATA_ALLOWED` is false; the legal basis"
+    },
+    {
+      "id": "ent_the_legacy_qr_sticker_is_unread_",
+      "name": "The legacy QR sticker is unread.",
+      "type": "Component/Requirement",
+      "description": "**OA-4** decides whether a sticker is a bare number or a URL;",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 303,
+      "evidence": "- **The legacy QR sticker is unread.** **OA-4** decides whether a sticker is a bare number or a URL;"
+    },
+    {
+      "id": "ent_the_facility_scope_security_gate_is_not_green_",
+      "name": "The facility-scope security gate is not green.",
+      "type": "Component/Requirement",
+      "description": "`docs/SECURITY/15` § 11 has open rows (G-22,",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 305,
+      "evidence": "- **The facility-scope security gate is not green.** `docs/SECURITY/15` § 11 has open rows (G-22,"
+    },
+    {
+      "id": "ent_the_field_app_has_not_been_run_on_a_real_phone_by_a_real_person",
+      "name": "The field app has not been run on a real phone by a real person",
+      "type": "Component/Requirement",
+      "description": "(P26-02; the runbook is the",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 307,
+      "evidence": "- **The field app has not been run on a real phone by a real person** (P26-02; the runbook is the"
+    },
+    {
+      "id": "ent_this_document_is_a_map_not_a_second_source_of_truth_",
+      "name": "This document is a map, not a second source of truth.",
+      "type": "Component/Requirement",
+      "description": "Where it and the code disagree, the code",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 309,
+      "evidence": "- **This document is a map, not a second source of truth.** Where it and the code disagree, the code"
+    },
+    {
+      "id": "sec_13_references",
+      "name": "13. References",
+      "type": "Section/Module",
+      "description": "Specification section from docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 314,
+      "evidence": "## 13. References"
+    },
+    {
+      "id": "sec_p29_04_the_as_built_reference_for_the_upstream_adoption_modules",
+      "name": "P29-04: the as-built reference for the upstream-adoption modules",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
+      "source": "MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
+      "line": 1,
+      "evidence": "# P29-04: the as-built reference for the upstream-adoption modules"
+    },
+    {
+      "id": "ent_appending_eleven_modules_to_10_and_renumbering_",
+      "name": "Appending eleven modules to `10` and renumbering.",
+      "type": "Component/Requirement",
+      "description": "Rejected: `10`'s numbers are cited by other",
+      "source": "MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
+      "line": 35,
+      "evidence": "- **Appending eleven modules to `10` and renumbering.** Rejected: `10`'s numbers are cited by other"
+    },
+    {
+      "id": "ent_documenting_from_the_phase_files_",
+      "name": "Documenting from the phase files.",
+      "type": "Component/Requirement",
+      "description": "Rejected: the phase files are **plans** with status notes; a",
+      "source": "MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
+      "line": 38,
+      "evidence": "- **Documenting from the phase files.** Rejected: the phase files are **plans** with status notes; a"
+    },
+    {
+      "id": "ent_covering_the_frontend_screens_too_",
+      "name": "Covering the frontend screens too.",
+      "type": "Component/Requirement",
+      "description": "Rejected: `docs/FRONTEND/` and the P29-01 guide cover them;",
+      "source": "MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
+      "line": 41,
+      "evidence": "- **Covering the frontend screens too.** Rejected: `docs/FRONTEND/` and the P29-01 guide cover them;"
+    },
+    {
+      "id": "sec_2026_10_23_the_upstream_adoption_modules_have_an_as_built_reference_p29_04_record_records_2026_10_23_p29_04_upstream_modules_docs_md_",
+      "name": "2026-10-23 — The upstream-adoption modules have an as-built reference (P29-04) ([record](./records/2026-10-23-p29-04-upstream-modules-docs.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 24,
+      "evidence": "### 2026-10-23 — The upstream-adoption modules have an as-built reference (P29-04) ([record](./records/2026-10-23-p29-04-upstream-modules-docs.md))"
+    },
+    {
+      "id": "sec_runbook_upstream_cutover_p30_01_",
+      "name": "Runbook — Upstream Cutover (P30-01)",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 1,
+      "evidence": "# Runbook — Upstream Cutover (P30-01)"
+    },
+    {
+      "id": "sec_0_the_one_rule",
+      "name": "0. The One Rule",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 20,
+      "evidence": "## 0. The One Rule"
+    },
+    {
+      "id": "sec_1_roles",
+      "name": "1. Roles",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 35,
+      "evidence": "## 1. Roles"
+    },
+    {
+      "id": "sec_2_gates_that_must_be_green_before_t_14_d",
+      "name": "2. Gates That Must Be Green Before T-14 d",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 47,
+      "evidence": "## 2. Gates That Must Be Green Before T-14 d"
+    },
+    {
+      "id": "sec_3_t_14_d_dry_run_on_the_latest_dump",
+      "name": "3. T-14 d — Dry Run on the Latest Dump",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 67,
+      "evidence": "## 3. T-14 d — Dry Run on the Latest Dump"
+    },
+    {
+      "id": "sec_4_t_7_d_bulk_files_and_training",
+      "name": "4. T-7 d — Bulk Files and Training",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 92,
+      "evidence": "## 4. T-7 d — Bulk Files and Training"
+    },
+    {
+      "id": "sec_5_t_1_d_announce_the_window",
+      "name": "5. T-1 d — Announce the Window",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 106,
+      "evidence": "## 5. T-1 d — Announce the Window"
+    },
+    {
+      "id": "sec_6_t_0_the_cutover",
+      "name": "6. T-0 — The Cutover",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 118,
+      "evidence": "## 6. T-0 — The Cutover"
+    },
+    {
+      "id": "sec_7_the_freeze_window",
+      "name": "7. The Freeze Window",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 147,
+      "evidence": "## 7. The Freeze Window"
+    },
+    {
+      "id": "sec_8_t_0_t_30_d_dual_run",
+      "name": "8. T+0 … T+30 d — Dual Run",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 165,
+      "evidence": "## 8. T+0 … T+30 d — Dual Run"
+    },
+    {
+      "id": "ent_no_dual_writing_",
+      "name": "No dual writing.",
+      "type": "Component/Requirement",
+      "description": "A device's history written in two systems is two histories.",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 168,
+      "evidence": "- **No dual writing.** A device's history written in two systems is two histories."
+    },
+    {
+      "id": "ent_post_cutover_reconciliation",
+      "name": "Post-cutover reconciliation",
+      "type": "Component/Requirement",
+      "description": "runs again after the first week of real use: the same R-1 … R-11",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 169,
+      "evidence": "- **Post-cutover reconciliation** runs again after the first week of real use: the same R-1 … R-11"
+    },
+    {
+      "id": "sec_9_rollback",
+      "name": "9. Rollback",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 177,
+      "evidence": "## 9. Rollback"
+    },
+    {
+      "id": "sec_10_t_30_d_decommission_phase_31_not_this_card_",
+      "name": "10. T+30 d — Decommission (Phase 31, not this card)",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 190,
+      "evidence": "## 10. T+30 d — Decommission (Phase 31, not this card)"
+    },
+    {
+      "id": "sec_11_what_this_runbook_does_not_know_yet",
+      "name": "11. What This Runbook Does Not Know Yet",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 199,
+      "evidence": "## 11. What This Runbook Does Not Know Yet"
+    },
+    {
+      "id": "ent_the_real_timings_",
+      "name": "The real timings.",
+      "type": "Component/Requirement",
+      "description": "P24-05 measures them; § 7 is an estimate.",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 203,
+      "evidence": "- **The real timings.** P24-05 measures them; § 7 is an estimate."
+    },
+    {
+      "id": "ent_whether_the_freeze_is_one_hour_or_four_",
+      "name": "Whether the freeze is one hour or four.",
+      "type": "Component/Requirement",
+      "description": "Depends on the link speed for the delta and on the",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 204,
+      "evidence": "- **Whether the freeze is one hour or four.** Depends on the link speed for the delta and on the"
+    },
+    {
+      "id": "ent_the_sticker_format",
+      "name": "The sticker format",
+      "type": "Component/Requirement",
+      "description": "(OA-4), which decides whether staff scan an old sticker into the new app or",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 206,
+      "evidence": "- **The sticker format** (OA-4), which decides whether staff scan an old sticker into the new app or"
+    },
+    {
+      "id": "ent_whether_the_legal_basis_permits_the_transfer_at_all",
+      "name": "Whether the legal basis permits the transfer at all",
+      "type": "Component/Requirement",
+      "description": "(OA-5). If it does not, there is no cutover",
+      "source": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 208,
+      "evidence": "- **Whether the legal basis permits the transfer at all** (OA-5). If it does not, there is no cutover"
+    },
+    {
+      "id": "sec_phase_30_upstream_cutover_dual_run",
+      "name": "Phase 30 — Upstream: Cutover & Dual-Run",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\PHASE-30-UPSTREAM-CUTOVER.md",
+      "source": "TASKS\\PHASE-30-UPSTREAM-CUTOVER.md",
+      "line": 1,
+      "evidence": "# Phase 30 — Upstream: Cutover & Dual-Run"
+    },
+    {
+      "id": "sec_p30_01_the_cutover_runbook_written_before_the_data_exists",
+      "name": "P30-01: the cutover runbook, written before the data exists",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md",
+      "source": "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md",
+      "line": 1,
+      "evidence": "# P30-01: the cutover runbook, written before the data exists"
+    },
+    {
+      "id": "ent_writing_it_during_the_dry_run_when_the_timings_are_known_",
+      "name": "Writing it during the dry run, when the timings are known.",
+      "type": "Component/Requirement",
+      "description": "Rejected as the *only* option: the",
+      "source": "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md",
+      "line": 41,
+      "evidence": "- **Writing it during the dry run, when the timings are known.** Rejected as the *only* option: the"
+    },
+    {
+      "id": "ent_a_checklist_with_no_commands_",
+      "name": "A checklist with no commands.",
+      "type": "Component/Requirement",
+      "description": "Rejected: \"run the migration check\" is not runnable at 2 a.m. The",
+      "source": "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md",
+      "line": 44,
+      "evidence": "- **A checklist with no commands.** Rejected: \"run the migration check\" is not runnable at 2 a.m. The"
+    },
+    {
+      "id": "ent_marking_p30_01_done_",
+      "name": "Marking P30-01 DONE.",
+      "type": "Component/Requirement",
+      "description": "Rejected: the card's DoD is a runbook that has been **exercised**; only",
+      "source": "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md",
+      "line": 46,
+      "evidence": "- **Marking P30-01 DONE.** Rejected: the card's DoD is a runbook that has been **exercised**; only"
+    },
+    {
+      "id": "sec_2026_10_23_the_cutover_runbook_drafted_ahead_of_the_data_p30_01_record_records_2026_10_23_p30_01_cutover_runbook_md_",
+      "name": "2026-10-23 — The cutover runbook, drafted ahead of the data (P30-01) ([record](./records/2026-10-23-p30-01-cutover-runbook.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 24,
+      "evidence": "### 2026-10-23 — The cutover runbook, drafted ahead of the data (P30-01) ([record](./records/2026-10-23-p30-01-cutover-runbook.md))"
     }
   ],
   "relations": [
@@ -103310,12 +104281,492 @@
       "evidence": "- **Added (tests):** a live end-to-end spec drives a disposable stack through these flows:",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_1_6_ekspor",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_pdf_inventaris",
+      "evidence": "- **PDF inventaris** — tata letak **Penyedia** (A3, dengan kolom teknisi dan tanggal inventaris) atau",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 128
+    },
+    {
+      "source": "sec_3_1_mengelola_fasilitas_klien",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_tambah_fasilitas",
+      "evidence": "- **Tambah fasilitas** — isi nama dan **kode**. Kode dipakai pada nomor laporan (mis.",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 200
+    },
+    {
+      "source": "sec_3_1_mengelola_fasilitas_klien",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_ubah",
+      "evidence": "- **Ubah** — nama, alamat, narahubung, dan seterusnya.",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 202
+    },
+    {
+      "source": "sec_3_1_mengelola_fasilitas_klien",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_ubah_status",
+      "evidence": "- **Ubah status** — `Aktif` / `Nonaktif` / `Berakhir`. Meninggalkan `Aktif` akan **mengeluarkan semua",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 203
+    },
+    {
+      "source": "sec_3_1_mengelola_fasilitas_klien",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_hapus",
+      "evidence": "- **Hapus** — hanya bila fasilitas belum punya alat atau catatan. Fasilitas yang sudah punya catatan",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 206
+    },
+    {
+      "source": "sec_3_5_pengaturan_tenant_termasuk_halaman_publik_alat_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_halaman_publik_alat",
+      "evidence": "- **Halaman publik alat** — `nonaktif` (bawaan), `minimal`, atau `minimal dengan laporan IPM",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 248
+    },
+    {
+      "source": "sec_3_5_pengaturan_tenant_termasuk_halaman_publik_alat_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_tanda_tangan_bersama_ipsrs",
+      "evidence": "- **Tanda tangan bersama IPSRS** — menyalakan kewajiban tanda tangan kedua oleh IPSRS faskes.",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 251
+    },
+    {
+      "source": "sec_3_5_pengaturan_tenant_termasuk_halaman_publik_alat_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_interval_ipm",
+      "evidence": "- **Interval IPM** (1–60 bulan) dan **zona waktu tenant** — dipakai untuk menghitung jatuh tempo.",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 252
+    },
+    {
+      "source": "sec_6_batasan_dokumen_ini_agar_tidak_dilebihkan_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_ini_draf_yang_belum_diuji_di_lapangan_",
+      "evidence": "- **Ini draf yang belum diuji di lapangan.** Layar sudah dibangun dan diuji dengan perangkat lunak,",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 315
+    },
+    {
+      "source": "sec_6_batasan_dokumen_ini_agar_tidak_dilebihkan_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_tidak_menggantikan_pelatihan_",
+      "evidence": "- **Tidak menggantikan pelatihan.** Untuk **pelatihan langsung dan video singkat**, lihat **P29-03**",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 318
+    },
+    {
+      "source": "sec_6_batasan_dokumen_ini_agar_tidak_dilebihkan_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_beberapa_langkah_bergantung_pada_pengaturan_yang_mati_secara_bawaan_",
+      "evidence": "- **Beberapa langkah bergantung pada pengaturan yang mati secara bawaan:** undangan pengguna impor",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 320
+    },
+    {
+      "source": "sec_6_batasan_dokumen_ini_agar_tidak_dilebihkan_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_bukan_dokumen_kepatuhan_",
+      "evidence": "- **Bukan dokumen kepatuhan.** Kewajiban hukum, dasar pemrosesan data, dan retensi ada di",
+      "source_file": "docs\\UPSTREAM\\13-USER-GUIDES-ID.md",
+      "line": 324
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_one_guide_all_roles_",
+      "evidence": "- **One guide, all roles.** Rejected: a facility user and a provider technician share almost no",
+      "source_file": "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "line": 33
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_writing_it_before_phase_22_from_the_feature_research_",
+      "evidence": "- **Writing it before Phase 22, from the feature research.** Rejected for the reason in the Hook: it",
+      "source_file": "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "line": 37
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_reusing_11_what_changed_id_md_",
+      "evidence": "- **Reusing `11-WHAT-CHANGED-ID.md`.** Kept as the separate \"what changed\" note it is, and linked at",
+      "source_file": "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "line": 40
+    },
+    {
+      "source": "sec_tests",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_not_run_",
+      "evidence": "- **Not run:** nothing to run. No code, route, migration or test changed.",
+      "source_file": "MEMORY\\records\\2026-10-23-p29-01-user-guides-id.md",
+      "line": 76
+    },
+    {
+      "source": "sec_2026_10_23_indonesian_user_guides_for_the_four_roles_p29_01_record_records_2026_10_23_p29_01_user_guides_id_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_documented_",
+      "evidence": "- **Documented:** step-by-step guides in Indonesian for the provider technician (recording an IPM, working offline in the field app, correcting a submitted one)",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 25
+    },
+    {
+      "source": "sec_3_the_device_register_calibrationdevices_route_ts",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_rooms",
+      "evidence": "- **Rooms** are `warehouses` of `kind = room`, owned by a facility, with a floor. A device's room is",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 72
+    },
+    {
+      "source": "sec_3_the_device_register_calibrationdevices_route_ts",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_photos",
+      "evidence": "- **Photos** are `attachments` with a `purpose` (`device_front`, `device_serial_plate`,",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 74
+    },
+    {
+      "source": "sec_3_the_device_register_calibrationdevices_route_ts",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_qr_lookup",
+      "evidence": "- **QR lookup** `GET /calibration-devices/by-qr/:qrCode` is facility-accessible; another tenant's or",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 79
+    },
+    {
+      "source": "sec_3_the_device_register_calibrationdevices_route_ts",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_move",
+      "evidence": "- **Move** `POST /calibration-devices/:id/move` — one audited operation (ADR-124 Am. 2 § 2): the",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 81
+    },
+    {
+      "source": "sec_3_the_device_register_calibrationdevices_route_ts",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_calibration_dates",
+      "evidence": "- **Calibration dates** `POST /calibration-devices/:id/calibration-dates` — records an external",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 85
+    },
+    {
+      "source": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_ipm_sessions",
+      "evidence": "- Draft life: `POST /ipm/sessions` (prefill; a repeated `clientRef` answers the same draft),",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 104
+    },
+    {
+      "source": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_patch_sessionid",
+      "evidence": "`GET/PATCH /:sessionId`, `PUT /:sessionId/results` (the rows replaced wholesale at a revision),",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 105
+    },
+    {
+      "source": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_sessionid_discard",
+      "evidence": "`POST /:sessionId/discard`.",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 106
+    },
+    {
+      "source": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_sessionid_submit",
+      "evidence": "- The end of the draft: `POST /:sessionId/submit`, `POST /:sessionId/corrections`,",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 107
+    },
+    {
+      "source": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_sessionid_void",
+      "evidence": "`POST /:sessionId/void`.",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 108
+    },
+    {
+      "source": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_immutability_is_a_constraint_not_a_convention",
+      "evidence": "- **Immutability is a constraint, not a convention** (0127): an `ENABLE ALWAYS` trigger refuses",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 109
+    },
+    {
+      "source": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_revision_and_conflict_",
+      "evidence": "- **Revision and conflict:** every draft write carries `revision`; a stale one is **409",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 113
+    },
+    {
+      "source": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent__idempotency_key_",
+      "evidence": "- **`Idempotency-Key`** (ADR-127 § 4) is honoured on every draft write and on `POST /attachments`;",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 115
+    },
+    {
+      "source": "sec_4_ipm_sessions_ipmsessions_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_field_wipes",
+      "evidence": "- `POST /field/wipes` records an administrator's wipe of another user's field data (ADR-135, AM-23)",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 118
+    },
+    {
+      "source": "sec_5_the_ipm_report_and_its_signatures_ipmreports_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_ipm_sessions_id_report_document",
+      "evidence": "- `GET /ipm/sessions/:id/report-document` serves the data document. `?render=pdf` is the **audited**",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 138
+    },
+    {
+      "source": "sec_5_the_ipm_report_and_its_signatures_ipmreports_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_ipm_sessions_id_signatures",
+      "evidence": "- `POST /ipm/sessions/:id/signatures` — the performer's signature, and the IPSRS **countersignature**",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 141
+    },
+    {
+      "source": "sec_5_the_ipm_report_and_its_signatures_ipmreports_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_ipm_verify_reportnumber",
+      "evidence": "- `GET /ipm/verify/:reportNumber` is **public** and answers one 404 for every failure; the browser",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 144
+    },
+    {
+      "source": "sec_6_client_facilities_and_facility_bound_users_clientfacilities_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_put_users_userid_client_facility",
+      "evidence": "`PUT /users/:userId/client-facility` binds, re-binds, unbinds and confirms, behind the setting",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 163
+    },
+    {
+      "source": "sec_7_the_public_device_page_publicdevices_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_api_v1_public_devices_token",
+      "evidence": "The public read `GET /api/v1/public/devices/:token` is **the one exempted route**: a reviewed",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 188
+    },
+    {
+      "source": "sec_8_invitations_for_imported_users_the_users_surface",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_delete_users_userid_invitation",
+      "evidence": "- `GET/POST/DELETE /users/:userId/invitation` — issue, send again, withdraw, and read the state",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 209
+    },
+    {
+      "source": "sec_8_invitations_for_imported_users_the_users_surface",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_patch_admin_tenants_id_flags",
+      "evidence": "`PATCH /admin/tenants/:id/flags`).",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 214
+    },
+    {
+      "source": "sec_9_the_offline_field_app_s_backend_field_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_calibration_devices",
+      "evidence": "- `GET /calibration-devices?view=field` returns the narrow `fieldDeviceSummary` — the working set,",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 231
+    },
+    {
+      "source": "sec_9_the_offline_field_app_s_backend_field_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_attachments",
+      "evidence": "- `POST /attachments` honours `Idempotency-Key`; `resourceType: inspectionsession` with",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 233
+    },
+    {
+      "source": "sec_9_the_offline_field_app_s_backend_field_route_ts",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_field_wipes",
+      "evidence": "- `POST /field/wipes` is the audited administrator wipe.",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 238
+    },
+    {
+      "source": "sec_12_what_is_not_done_so_nobody_reads_this_as_finished_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_no_real_upstream_data_has_been_loaded_",
+      "evidence": "- **No real upstream data has been loaded.** `UPSTREAM_REAL_DATA_ALLOWED` is false; the legal basis",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 300
+    },
+    {
+      "source": "sec_12_what_is_not_done_so_nobody_reads_this_as_finished_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_legacy_qr_sticker_is_unread_",
+      "evidence": "- **The legacy QR sticker is unread.** **OA-4** decides whether a sticker is a bare number or a URL;",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 303
+    },
+    {
+      "source": "sec_12_what_is_not_done_so_nobody_reads_this_as_finished_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_facility_scope_security_gate_is_not_green_",
+      "evidence": "- **The facility-scope security gate is not green.** `docs/SECURITY/15` § 11 has open rows (G-22,",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 305
+    },
+    {
+      "source": "sec_12_what_is_not_done_so_nobody_reads_this_as_finished_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_field_app_has_not_been_run_on_a_real_phone_by_a_real_person",
+      "evidence": "- **The field app has not been run on a real phone by a real person** (P26-02; the runbook is the",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 307
+    },
+    {
+      "source": "sec_12_what_is_not_done_so_nobody_reads_this_as_finished_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_this_document_is_a_map_not_a_second_source_of_truth_",
+      "evidence": "- **This document is a map, not a second source of truth.** Where it and the code disagree, the code",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 309
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_appending_eleven_modules_to_10_and_renumbering_",
+      "evidence": "- **Appending eleven modules to `10` and renumbering.** Rejected: `10`'s numbers are cited by other",
+      "source_file": "MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
+      "line": 35
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_documenting_from_the_phase_files_",
+      "evidence": "- **Documenting from the phase files.** Rejected: the phase files are **plans** with status notes; a",
+      "source_file": "MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
+      "line": 38
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_covering_the_frontend_screens_too_",
+      "evidence": "- **Covering the frontend screens too.** Rejected: `docs/FRONTEND/` and the P29-01 guide cover them;",
+      "source_file": "MEMORY\\records\\2026-10-23-p29-04-upstream-modules-docs.md",
+      "line": 41
+    },
+    {
+      "source": "sec_2026_10_23_the_upstream_adoption_modules_have_an_as_built_reference_p29_04_record_records_2026_10_23_p29_04_upstream_modules_docs_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_documented_",
+      "evidence": "- **Documented:** a single English reference for the eleven backend modules the upstream adoption built — the inspection catalogue, the device register, IPM ses",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 25
+    },
+    {
+      "source": "sec_8_t_0_t_30_d_dual_run",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_no_dual_writing_",
+      "evidence": "- **No dual writing.** A device's history written in two systems is two histories.",
+      "source_file": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 168
+    },
+    {
+      "source": "sec_8_t_0_t_30_d_dual_run",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_post_cutover_reconciliation",
+      "evidence": "- **Post-cutover reconciliation** runs again after the first week of real use: the same R-1 … R-11",
+      "source_file": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 169
+    },
+    {
+      "source": "sec_11_what_this_runbook_does_not_know_yet",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_real_timings_",
+      "evidence": "- **The real timings.** P24-05 measures them; § 7 is an estimate.",
+      "source_file": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 203
+    },
+    {
+      "source": "sec_11_what_this_runbook_does_not_know_yet",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_whether_the_freeze_is_one_hour_or_four_",
+      "evidence": "- **Whether the freeze is one hour or four.** Depends on the link speed for the delta and on the",
+      "source_file": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 204
+    },
+    {
+      "source": "sec_11_what_this_runbook_does_not_know_yet",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_sticker_format",
+      "evidence": "- **The sticker format** (OA-4), which decides whether staff scan an old sticker into the new app or",
+      "source_file": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 206
+    },
+    {
+      "source": "sec_11_what_this_runbook_does_not_know_yet",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_whether_the_legal_basis_permits_the_transfer_at_all",
+      "evidence": "- **Whether the legal basis permits the transfer at all** (OA-5). If it does not, there is no cutover",
+      "source_file": "TASKS\\RUNBOOK-UPSTREAM-CUTOVER.md",
+      "line": 208
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_writing_it_during_the_dry_run_when_the_timings_are_known_",
+      "evidence": "- **Writing it during the dry run, when the timings are known.** Rejected as the *only* option: the",
+      "source_file": "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md",
+      "line": 41
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_a_checklist_with_no_commands_",
+      "evidence": "- **A checklist with no commands.** Rejected: \"run the migration check\" is not runnable at 2 a.m. The",
+      "source_file": "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md",
+      "line": 44
+    },
+    {
+      "source": "sec_alternatives_considered",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_marking_p30_01_done_",
+      "evidence": "- **Marking P30-01 DONE.** Rejected: the card's DoD is a runbook that has been **exercised**; only",
+      "source_file": "MEMORY\\records\\2026-10-23-p30-01-cutover-runbook.md",
+      "line": 46
+    },
+    {
+      "source": "sec_2026_10_23_the_cutover_runbook_drafted_ahead_of_the_data_p30_01_record_records_2026_10_23_p30_01_cutover_runbook_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_documented_",
+      "evidence": "- **Documented:** the sequence for switching from the old app to this one, from two weeks before to thirty days after: the gates that must be green first, the f",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 25
     }
   ],
   "stats": {
-    "total_sources": 292,
-    "total_entities": 7693,
-    "total_relations": 4222,
+    "total_sources": 300,
+    "total_entities": 7800,
+    "total_relations": 4282,
     "token_savings_estimate": "85-95%"
   }
 }
