@@ -9,6 +9,11 @@
 > (`frontend/src/i18n/messages/id.ts`), not a description of what it should say. Each guide ends
 > with what the role **cannot** do, and why.
 >
+> **Reviewed 2026-10-24:** § 2 now gives each facility-bound role its own row, taken from
+> `BOUND_MENU_CEILING` and migration 0124. The earlier text said the facility technician had
+> *narrower* access, but it can record and correct IPM, and register and edit devices, in its facility. It cannot record calibration dates, because `POST /calibration-devices/:id/calibration-dates` is not in `FACILITY_ACCESSIBLE_ROUTES`. § 6 now marks
+> three things as pending: the real-phone run, OA-4 and the real-data dry run.
+>
 > **Status:** draf 2026-10-23 (P29-01). The screens exist and are tested; the **field run with real
 > people has not happened** (P26-02), so this is a guide for a system that is built but not yet used
 > in anger. Where a step depends on a deployment setting that is off by default, it says so. No real
@@ -162,8 +167,22 @@ memang tidak ada bagi Anda.
 | **Sertifikat** fasilitas Anda | hanya baca |
 | **Ekspor** fasilitas Anda | PDF/Excel |
 
-**Admin faskes** dapat membaca semua di atas. **Pengguna ruangan** dan **teknisi faskes** memiliki
-akses yang lebih sempit sesuai perannya; yang pasti, semuanya terbatas pada fasilitas Anda.
+Apa yang boleh Anda **ubah** bergantung pada peran Anda. Batas atas tiap peran terikat ditetapkan
+di sistem (`BOUND_MENU_CEILING`), jadi tidak ada pengaturan yang dapat memberi akun terikat lebih
+dari batas ini:
+
+| Peran | IPM | Alat dan tanggal kalibrasi | Tanda tangan laporan |
+|---|---|---|---|
+| **Admin faskes** (`HEALTHCARE ADMIN`) | baca | baca | — |
+| **Pengguna ruangan** (`ROOM USER`) | baca | baca | — |
+| **Teknisi faskes** (`HEALTHCARE TECHNICIAN`) | **rekam, kirim dan koreksi**, di fasilitas Anda saja | **daftarkan dan ubah alat, serta fotonya**, di fasilitas Anda saja. Tanggal kalibrasi: baca saja | sebagai pelaksana |
+| **IPSRS** (`FACILITY MAINTENANCE`) | baca | baca | tanda tangan bersama (bagian 4) |
+
+Teknisi faskes mengikuti langkah **1.2 – 1.4**. Aplikasi luring `/field` hanya mengunduh alat
+fasilitas Anda. Bedanya, semua alat dan kunjungan yang Anda lihat dan rekam terbatas pada fasilitas
+Anda. Langkah 1.5 (mencatat tanggal kalibrasi) **tidak** dibuka untuk akun terikat: server
+menolaknya dengan 403. Alat atau stiker milik fasilitas lain dijawab "tidak
+ditemukan".
 
 ### 2.2 Membaca Hasil IPM dan Laporan
 
@@ -181,7 +200,7 @@ dapat ditebak; halaman itu menampilkan **data minimal** saja.
 
 | Tidak dapat | Mengapa |
 |---|---|
-| Mengubah data alat, mencatat kalibrasi, atau mengisi IPM (sebagai admin faskes) | Akun faskes bersifat **hanya baca** pada data teknis; pekerjaan itu milik teknisi penyedia |
+| Mengubah data alat, mencatat kalibrasi, atau mengisi IPM (admin faskes, pengguna ruangan, IPSRS) | Peran-peran ini **hanya baca** pada data teknis. Pekerjaan itu milik teknisi penyedia atau teknisi faskes |
 | Mengundang atau mengelola pengguna | Manajemen pengguna bukan tugas akun faskes |
 | Melihat fasilitas lain | Itu data klien lain |
 | Membatalkan IPM | Hanya administrator tenant penyedia |
@@ -321,5 +340,15 @@ pelaksana, bukan sebagai penggantinya.
   (dibuka operator), pengikatan akun faskes, tanda tangan bersama IPSRS, dan halaman publik alat.
   Bila sebuah tombol tidak muncul, pengaturannya belum dinyalakan — tanyakan administrator tenant
   atau operator platform.
+- **Belum terjadi, dan belum boleh dianggap sudah:**
+  - **Uji di ponsel nyata.** Aplikasi lapangan (`/field`) sudah diuji dengan peramban otomatis,
+    tetapi **belum dijalankan di dua ponsel nyata** (Android dan iOS; P22-10, P26-02). Langkah 1.3
+    belum terbukti di perangkat Anda.
+  - **Stiker QR lama.** Format stiker dari aplikasi lama belum diketahui (**OA-4**, keputusan
+    pemilik). Pemindaian stiker lama ke alat yang benar **belum dibangun** (P27-02). Gunakan stiker
+    baru atau ketik nomor alatnya.
+  - **Data lama.** Data dari aplikasi lama **belum dipindahkan**. Uji coba pemindahan dengan data
+    asli menunggu keputusan hukum pemilik (**OA-5**, UD-18). Selama itu, riwayat IPM dan alat dari
+    aplikasi lama tidak tampil di sini.
 - **Bukan dokumen kepatuhan.** Kewajiban hukum, dasar pemrosesan data, dan retensi ada di
   [`06-DPIA.md`](./06-DPIA.md) dan [`07-DATA-MINIMISATION.md`](./07-DATA-MINIMISATION.md).
