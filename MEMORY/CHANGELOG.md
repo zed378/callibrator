@@ -8,6 +8,15 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — The cutover runbook names the built reconciliation and data-quality routes (P30-01) ([record](./records/2026-10-24-p30-01-runbook-reconciliation-links.md))
+- **Documented:** steps 5 and 7 of the cutover runbook now name the built routes — `GET …/:id/data-quality` (P25-02) and `GET …/:id/reconciliation` (P25-01) — with what each answers. Still DRAFT: the run waits on real data.
+
+### 2026-10-24 — The quarantine review and per-tenant data-quality report (P25-02) ([record](./records/2026-10-24-p25-02-data-quality-report.md))
+- **Added (operations):** the super admin's `GET /admin/upstream-sql-imports/:id/data-quality` answers the quarantine review and data-quality report per tenant — quarantine groups by source table and reason with run-level totals, duplicate serial groups inside one facility (Q-18), future and implausibly old dates (Q-12, Q-13), the rest `manual` with where to review them in the operator's sign-off. Counts and fixed codes only; no value from the dump ever leaves the database. Exercised on real volumes: the dry run (P24-05), which waits on the owner's legal decision.
+
+### 2026-10-24 — The automated reconciliation of a transformed upstream run (P25-01) ([record](./records/2026-10-24-p25-01-reconciliation-automated.md))
+- **Added (operations):** the super admin's `GET /admin/upstream-sql-imports/:id/reconciliation` answers the automated R-1 … R-12 per tenant, aggregates only — R-1/R-2/R-7 per facility computed, R-10/R-11/RC-F1/RC-F2/RC-F3/RC-F5 at the run level, the rest `manual` with where to record them in the operator's sign-off. Counts and fixed codes only; no value from the dump ever leaves the database. Exercised on real volumes: the dry run (P24-05), which waits on the owner's legal decision.
+
 ### 2026-10-23 — Live end-to-end checks of the Phase 21–24 flows (P21-10) ([record](./records/2026-10-23-p21-10-live-smoke-and-e2e.md))
 - **Added (tests):** a live end-to-end spec drives a disposable stack through these flows:
   - client facilities and the device register;
