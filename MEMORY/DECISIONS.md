@@ -11713,6 +11713,44 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 - `photo_operator_managed` keeps upstream's newer photo out of the application. The operator sees it in the quarantine.
 - Built and tested with synthetic files only. UD-18 (the owner's legal decision) gates real data.
 
+### ADR-129 Amendment 11 (2026-10-24, P25-01, P25-02): the reconciliation and the data-quality report run read-only on the transform connection, with two more column grants (migration 0146); only part of 05 § 7 is automated
+
+**Context.** P25-01 and P25-02 were first written by another tool and reviewed as a pull request. The review found that their SQL had never run on PostgreSQL. A mock answered every statement. When it was run live (`upstreamTransform.p2402g.live`), the first reconciliation failed with `permission denied for table calibration_records`. The transform role's column grants (0135 … 0145) lack `calibration_records.client_facility_id` and `calibration_devices.inventoried_on`. The review found these other faults too:
+
+- RC-F5 counted every unbound imported user, so an imported CALIBRATOR ADMIN, who is unbound by design, would fail it.
+- R-10 used a hard-coded table list and `s."id"` as the key, not the step registry's own legacy keys.
+- Q-12 and Q-13 repeated tenant totals in every facility row.
+- The headers claimed checks that are not computed.
+
+**Decision.**
+
+1. Both services run on the transform connection inside one read-only transaction. They prove the role first. Only that role can read `upstream_import` (Am. 1), and the checks join `id_map` with the rows the transform wrote.
+2. Migration 0146 grants the transform role SELECT on exactly two columns: `calibration_records.client_facility_id` and `calibration_devices.inventoried_on`. Nothing else is granted.
+3. **Automated:**
+   - R-1, R-2 and R-7 per facility: mapped staged rows against the stored rows those mappings name.
+   - R-10 over every source of `TRANSFORM_STEPS`, each with its own legacy key.
+   - R-11, RC-F1, RC-F2 and RC-F3.
+   - RC-F5, limited to imported users holding a `FACILITY_BOUND_ROLES` role.
+   - Data quality per facility: Q-12, Q-13, Q-18 (case-variant duplicates, 0 expected under 0118/UD-9) and Q-19. Quarantine groups appear in the run totals.
+4. **Not automated:** R-3 … R-6, R-8, R-9, RC-F4 and R-12, and Q-4, Q-14 and Q-28. Each answers `manual` with "NOT AUTOMATED" and the P25-04 step where it lands. The orphan, file and user sections of the contract's `UPSTREAM_DATA_QUALITY_SECTIONS` are not built.
+5. Errors are coded: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`, and 409 `RUN_NOT_TRANSFORMED` (not transformed, or no provider tenant).
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Run on the application connection | it cannot read `upstream_import` (G-29) |
+| A third, read-only reconciliation role | one more role to provision and rotate, for two columns |
+| Grant SELECT on the whole tables | wider than the checks need; column grants are this ADR's rule |
+| Automate R-3 … R-9 now | each needs real volumes to shape; written blind they would be guesses |
+
+**Implications, including the bad ones.**
+
+- The transform role can now read two more columns of the provider's rows. This is read-only and inside the same tenant it already writes.
+- Per facility, a quarantined row appears only when it also has a mapping. A never-mapped row has no facility yet, so it is visible only in the run totals.
+- R-1, R-2 and R-7 catch a lost or moved row. They do not catch a row wrongly quarantined; the P25-02 quarantine review covers that.
+- Proven on synthetic data on PostgreSQL 18 only. The dry run on real data stays gated (UD-7, UD-18, `UPSTREAM_REAL_DATA_ALLOWED=false`).
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)

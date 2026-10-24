@@ -1,6 +1,48 @@
-# P25-01: the automated reconciliation, R-1 … R-12 per tenant
+# P25-01: the reconciliation, nine of R-1 … R-12 / RC-F1 … RC-F5 automated
 
-**Date:** 2026-10-24 · **Card:** P25-01 · **Status:** DONE · **Spec refs:** `docs/UPSTREAM/05` § 7 (R-1 … R-12), `docs/UPSTREAM/03` § 7 (the quality findings it asserts), threat model § 11 G-30 (RC-F1 … RC-F5), `docs/SECURITY/15` § 12 (PT scope, unchanged)
+**Date:** 2026-10-24 · **Card:** P25-01 · **Status:** PARTIAL (review correction; first recorded DONE) · **Spec refs:** `docs/UPSTREAM/05` § 7 (R-1 … R-12), `docs/UPSTREAM/03` § 7 (the quality findings it asserts), threat model § 11 G-30 (RC-F1 … RC-F5), `docs/SECURITY/15` § 12 (PT scope, unchanged)
+
+## Review correction (2026-10-24, same day) — read this first
+
+This card was written by another tool and recorded DONE. Reviewed as a pull request, it claimed
+more than it did (PR-4):
+
+- **Its SQL had never run.** The unit test mocked every statement. On PostgreSQL 18
+  (`upstreamTransform.p2402g.live`) the first call failed with `permission denied for table
+  calibration_records`. The transform role had no SELECT on `calibration_records.client_facility_id`
+  (or `calibration_devices.inventoried_on`, which P25-02 needs). **Fixed:** migration
+  `0146-upstream-reconciliation-grants` grants SELECT on those two columns only (ADR-129 Am. 11).
+- **RC-F5** counted every unbound imported user. An imported CALIBRATOR ADMIN or TECHNICIAN is
+  unbound by design and would have failed it. **Fixed:** it counts only `FACILITY_BOUND_ROLES`
+  roles among the users `id_map` names.
+- **R-10** walked a hand-written table list and joined on `s."id"`. **Fixed:** it walks every
+  source of `TRANSFORM_STEPS`, each with its own legacy key.
+- **R-1/R-2/R-7** counted every stored row of the tenant, not the rows the run imported. **Fixed:**
+  they count the stored rows the mappings name. The R-2 note claimed it added quarantine. It
+  did not, and the claim is removed.
+- The `?? -1` fallbacks violated the contract's `min(0)`. They are gone.
+- The 404/409 had no `code`, although the OpenAPI promised one. **Fixed:** 404
+  `UPSTREAM_SQL_IMPORT_NOT_FOUND`, 409 `RUN_NOT_TRANSFORMED`.
+- The statements were passed through helpers that D-05, G-14 and D-24 could not read. **Fixed:**
+  they are inlined and reviewed in the three lists.
+- **Not automated, and the title no longer says otherwise:** R-3, R-4, R-5, R-6, R-8, R-9, RC-F4
+  and R-12. Each answers `manual` with "NOT AUTOMATED" and the P25-04 step where it lands.
+
+**Tests after the review (2026-10-24):**
+
+| Suite | Result |
+|---|---|
+| `services/upstreamReconciliation.p2501` (rewritten) | 4/4: coded refusals, the role check, the pass path, a fail with its delta, R-10 over the registry |
+| `routes/upstreamReconciliation.route.p2501` | 3/3 |
+| `migrations/0146-upstream-reconciliation-grants.p2501` | 5/5 |
+| `routes/admin.route.test.js` | the route inventory, now 23 |
+| Changed files, coverage | 100/100/100/100 |
+| **Live, PG18:** `upstreamTransform.p2402g.live` "P25-01/P25-02 on the IPM world" | the six automated run-level checks pass as the transform role; a planted facility mismatch in `id_map` fails RC-F1 (1) and R-1 in two facilities; no staged value reaches the answer |
+| Live suites on the 0146 schema: `p2401`, `p2402a` … `p2402g`, `p2403`, `p2409a` | 10 of 10 suites, 51 tests |
+| Guards: `src/tests/guards`, `utils/rawSql*`, `services/unboundedFindAll` | 44 suites, 335 tests |
+| Typecheck, openapi | `npm run typecheck` 0 errors, the earlier p1707 error fixed with it; `openapi:check` current after `openapi:generate`; `openapi:lint` no new error; frontend `api:types:check` current |
+
+The sections below are the original record. Read their claims through this correction.
 
 ## Hook
 

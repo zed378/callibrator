@@ -473,6 +473,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/upstream-sql-imports/{id}/data-quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the quarantine and data quality of a transformed run, per facility
+         * @description P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18 and Q-19; Q-4, Q-14 and Q-28 answer `manual` (P25-04). Counts and fixed codes, never a value from the dump. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.
+         *
+         *     **409** — The run's transform is not `transformed`.
+         */
+        get: operations["adminReportUpstreamDataQuality"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upstream-sql-imports/{id}/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reconcile a transformed SQL-dump import run, per facility
+         * @description P25-01 (docs/UPSTREAM/05 § 7): the reconciliation of a transformed run, aggregates only — counts and fixed codes, never a value from the dump. R-1, R-2 and R-7 are computed per facility; R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 at the run level; R-3 … R-6, R-8, R-9, RC-F4 and R-12 are not automated and answer `manual` (P25-04). Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.
+         *
+         *     **409** — The run's transform is not `transformed`.
+         */
+        get: operations["adminReconcileUpstreamSqlImport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/upstream-sql-imports/{id}/retry": {
         parameters: {
             query?: never;
@@ -16383,6 +16427,141 @@ export interface operations {
                         status: number;
                         message: string;
                         data: components["schemas"]["UpstreamSqlImportRun"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminReportUpstreamDataQuality: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The import run's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quarantine review and data-quality report, per facility */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            /** Format: uuid */
+                            runId: string;
+                            /** Format: uuid */
+                            providerTenantId: string;
+                            facilities: {
+                                /** Format: uuid */
+                                clientFacilityId: string;
+                                facilityCode: string;
+                                quarantine: {
+                                    sourceTable: string;
+                                    reason: string;
+                                    rows: number;
+                                }[];
+                                findings: {
+                                    finding: string;
+                                    /** @enum {string} */
+                                    status: "pass" | "flagged" | "manual";
+                                    count: number;
+                                    note: string;
+                                }[];
+                            }[];
+                            totals: {
+                                sourceTable: string;
+                                reason: string;
+                                rows: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminReconcileUpstreamSqlImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The import run's id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The reconciliation, per facility and at the run level */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: {
+                            /** Format: uuid */
+                            runId: string;
+                            /** Format: uuid */
+                            providerTenantId: string;
+                            transformSummary: {
+                                durationMs: number;
+                                steps: number;
+                            } | null;
+                            facilities: {
+                                /** Format: uuid */
+                                clientFacilityId: string;
+                                facilityCode: string;
+                                checks: {
+                                    /** @enum {string} */
+                                    check: "R-1" | "R-2" | "R-3" | "R-4" | "R-5" | "R-6" | "R-7" | "R-8" | "R-9" | "R-10" | "R-11" | "RC-F1" | "RC-F2" | "RC-F3" | "RC-F4" | "RC-F5" | "R-12";
+                                    /** @enum {string} */
+                                    status: "pass" | "fail" | "manual";
+                                    expected: number;
+                                    actual: number;
+                                    delta: number;
+                                    quarantined: number;
+                                    note: string;
+                                }[];
+                            }[];
+                            runChecks: {
+                                /** @enum {string} */
+                                check: "R-1" | "R-2" | "R-3" | "R-4" | "R-5" | "R-6" | "R-7" | "R-8" | "R-9" | "R-10" | "R-11" | "RC-F1" | "RC-F2" | "RC-F3" | "RC-F4" | "RC-F5" | "R-12";
+                                /** @enum {string} */
+                                status: "pass" | "fail" | "manual";
+                                expected: number;
+                                actual: number;
+                                delta: number;
+                                quarantined: number;
+                                note: string;
+                            }[];
+                        };
                     };
                 };
             };

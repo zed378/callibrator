@@ -126,6 +126,13 @@ const CROSS_TENANT = {
   // tenant table and written into tenant_id by the INSERTs.
   "services/upstreamImport/transform/attachments.ts#${table}":
     "the photo step's reads of id_map, quarantine and the allow-listed staging tables trx_inventory and trx_inventory_file; tenant tables joined bind the provider tenant",
+  // P25-01 / P25-02 (ADR-129 Am. 11): the reconciliation and the data-quality report — read-only
+  // counts on the TRANSFORM connection over id_map, quarantine and the allow-listed staging tables
+  // (via stagedTable); every statement naming a tenant table binds the run's provider tenant.
+  "services/upstreamReconciliation.service.ts#${table}":
+    "read-only counts over id_map, quarantine and the allow-listed staging tables; tenant tables joined bind the provider tenant",
+  "services/upstreamDataQuality.service.ts#${table}":
+    "read-only counts over id_map and quarantine (constants); tenant tables bind the provider tenant",
 };
 
 const tenantScopedTables = () => {

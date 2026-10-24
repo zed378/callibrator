@@ -3856,6 +3856,577 @@
         }
       }
     },
+    "/api/v1/admin/upstream-sql-imports/{id}/data-quality": {
+      "get": {
+        "operationId": "adminReportUpstreamDataQuality",
+        "summary": "Report the quarantine and data quality of a transformed run, per facility",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/admin.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "SUPER_ADMIN",
+            "SUPERADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18 and Q-19; Q-4, Q-14 and Q-28 answer `manual` (P25-04). Counts and fixed codes, never a value from the dump. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The import run's id",
+              "example": "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b"
+            },
+            "required": true,
+            "description": "The import run's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The quarantine review and data-quality report, per facility",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "runId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                        },
+                        "providerTenantId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                        },
+                        "facilities": {
+                          "maxItems": 1000,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "clientFacilityId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                              },
+                              "facilityCode": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 16
+                              },
+                              "quarantine": {
+                                "maxItems": 200,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "sourceTable": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 64
+                                    },
+                                    "reason": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 64
+                                    },
+                                    "rows": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    }
+                                  },
+                                  "required": [
+                                    "sourceTable",
+                                    "reason",
+                                    "rows"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "findings": {
+                                "maxItems": 50,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "finding": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 16
+                                    },
+                                    "status": {
+                                      "type": "string",
+                                      "enum": [
+                                        "pass",
+                                        "flagged",
+                                        "manual"
+                                      ]
+                                    },
+                                    "count": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    },
+                                    "note": {
+                                      "type": "string",
+                                      "maxLength": 280
+                                    }
+                                  },
+                                  "required": [
+                                    "finding",
+                                    "status",
+                                    "count",
+                                    "note"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "clientFacilityId",
+                              "facilityCode",
+                              "quarantine",
+                              "findings"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "totals": {
+                          "maxItems": 200,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "sourceTable": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              },
+                              "reason": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 64
+                              },
+                              "rows": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "sourceTable",
+                              "reason",
+                              "rows"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "runId",
+                        "providerTenantId",
+                        "facilities",
+                        "totals"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-sql-imports/{id}/reconciliation": {
+      "get": {
+        "operationId": "adminReconcileUpstreamSqlImport",
+        "summary": "Reconcile a transformed SQL-dump import run, per facility",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/admin.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "SUPER_ADMIN",
+            "SUPERADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "P25-01 (docs/UPSTREAM/05 § 7): the reconciliation of a transformed run, aggregates only — counts and fixed codes, never a value from the dump. R-1, R-2 and R-7 are computed per facility; R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 at the run level; R-3 … R-6, R-8, R-9, RC-F4 and R-12 are not automated and answer `manual` (P25-04). Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The import run's id",
+              "example": "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b"
+            },
+            "required": true,
+            "description": "The import run's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reconciliation, per facility and at the run level",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "runId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                        },
+                        "providerTenantId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                        },
+                        "transformSummary": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "durationMs": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "steps": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "durationMs",
+                                "steps"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "facilities": {
+                          "maxItems": 1000,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "clientFacilityId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                              },
+                              "facilityCode": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 16
+                              },
+                              "checks": {
+                                "maxItems": 50,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "check": {
+                                      "type": "string",
+                                      "enum": [
+                                        "R-1",
+                                        "R-2",
+                                        "R-3",
+                                        "R-4",
+                                        "R-5",
+                                        "R-6",
+                                        "R-7",
+                                        "R-8",
+                                        "R-9",
+                                        "R-10",
+                                        "R-11",
+                                        "RC-F1",
+                                        "RC-F2",
+                                        "RC-F3",
+                                        "RC-F4",
+                                        "RC-F5",
+                                        "R-12"
+                                      ]
+                                    },
+                                    "status": {
+                                      "type": "string",
+                                      "enum": [
+                                        "pass",
+                                        "fail",
+                                        "manual"
+                                      ]
+                                    },
+                                    "expected": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    },
+                                    "actual": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    },
+                                    "delta": {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    "quarantined": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    },
+                                    "note": {
+                                      "type": "string",
+                                      "maxLength": 280
+                                    }
+                                  },
+                                  "required": [
+                                    "check",
+                                    "status",
+                                    "expected",
+                                    "actual",
+                                    "delta",
+                                    "quarantined",
+                                    "note"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              }
+                            },
+                            "required": [
+                              "clientFacilityId",
+                              "facilityCode",
+                              "checks"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "runChecks": {
+                          "maxItems": 50,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "check": {
+                                "type": "string",
+                                "enum": [
+                                  "R-1",
+                                  "R-2",
+                                  "R-3",
+                                  "R-4",
+                                  "R-5",
+                                  "R-6",
+                                  "R-7",
+                                  "R-8",
+                                  "R-9",
+                                  "R-10",
+                                  "R-11",
+                                  "RC-F1",
+                                  "RC-F2",
+                                  "RC-F3",
+                                  "RC-F4",
+                                  "RC-F5",
+                                  "R-12"
+                                ]
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pass",
+                                  "fail",
+                                  "manual"
+                                ]
+                              },
+                              "expected": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "actual": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "delta": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "quarantined": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "note": {
+                                "type": "string",
+                                "maxLength": 280
+                              }
+                            },
+                            "required": [
+                              "check",
+                              "status",
+                              "expected",
+                              "actual",
+                              "delta",
+                              "quarantined",
+                              "note"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "runId",
+                        "providerTenantId",
+                        "transformSummary",
+                        "facilities",
+                        "runChecks"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/admin/upstream-sql-imports/{id}/retry": {
       "post": {
         "operationId": "adminRetryUpstreamSqlImport",

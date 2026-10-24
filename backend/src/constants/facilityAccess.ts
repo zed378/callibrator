@@ -553,6 +553,46 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
     reason: "the photo step's CREATE / DELETE rows, each stamped with the device's facility; a worker, no principal",
     reachableFrom: ["system: the upstream SQL-dump transform worker (P24-03)"],
   },
+  "services/upstreamReconciliation.service.ts#${table}": {
+    reason: "P25-01 reconciliation: counts over `upstream_import` id_map, quarantine and the allow-listed staging tables (via stagedTable); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/reconciliation"],
+  },
+  "services/upstreamReconciliation.service.ts#calibration_devices": {
+    reason: "P25-01 reconciliation: per-facility counts and facility comparisons of the provider tenant's devices (bound); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/reconciliation"],
+  },
+  "services/upstreamReconciliation.service.ts#calibration_records": {
+    reason: "P25-01 reconciliation: per-facility counts and facility comparisons of the provider tenant's calibrations (bound); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/reconciliation"],
+  },
+  "services/upstreamReconciliation.service.ts#inspection_sessions": {
+    reason: "P25-01 reconciliation: per-facility counts and facility comparisons of the provider tenant's sessions (bound); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/reconciliation"],
+  },
+  "services/upstreamReconciliation.service.ts#inspection_results": {
+    reason: "P25-01 reconciliation: the facility chain of the provider tenant's results (bound); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/reconciliation"],
+  },
+  "services/upstreamReconciliation.service.ts#attachments": {
+    reason: "P25-01 reconciliation: the facility and key of the provider tenant's device photos (bound); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/reconciliation"],
+  },
+  "services/upstreamReconciliation.service.ts#users": {
+    reason: "P25-01 reconciliation: the provider tenant's imported facility accounts left unbound (bound); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/reconciliation"],
+  },
+  "services/upstreamDataQuality.service.ts#${table}": {
+    reason: "P25-02 data-quality report: quarantine groups over `upstream_import` quarantine and id_map (constants); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/data-quality"],
+  },
+  "services/upstreamDataQuality.service.ts#calibration_devices": {
+    reason: "P25-02 data-quality report: per-facility serial and date counts of the provider tenant's devices (bound); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/data-quality"],
+  },
+  "services/upstreamDataQuality.service.ts#calibration_records": {
+    reason: "P25-02 data-quality report: per-facility date counts of the provider tenant's calibrations (bound); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/data-quality"],
+  },
   "services/upstreamImport/transform/ledger.ts#${table}": {
     reason:
       "the upstream transform's `upstream_import` bookkeeping (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",
