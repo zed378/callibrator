@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — P17-07 live facility pentest: every binding was a 500, fixed ([record](./records/2026-10-24-p17-07-live-pentest.md), ADR-124 Am. 8)
+- **Fixed (High, F-P1707-01):** `PUT /users/:id/client-facility` locked the user `FOR UPDATE` with a LEFT include; PostgreSQL refused it on every call. Live `userFacilityBinding.p1707.live` 0/2 before, 2/2 after.
+- **Ran:** `p1707-facility-pentest.e2e` 13/13 twice on a disposable production-mode stack; log redaction clean. Phones, sockets and browser cases still open.
+
 ### 2026-10-24 — P25-01 / P25-02 reviewed: PARTIAL, not DONE; migration 0146 ([P25-01](./records/2026-10-24-p25-01-reconciliation-automated.md), [P25-02](./records/2026-10-24-p25-02-data-quality-report.md), ADR-129 Am. 11)
 - **Fixed:** the reconciliation's SQL had never run; live it failed `permission denied for table calibration_records`. Migration 0146 grants the transform role SELECT on `calibration_records.client_facility_id` and `calibration_devices.inventoried_on`. RC-F5 no longer fails an unbound admin, R-10 walks the step registry, Q-12/Q-13 are per facility, Q-19 added, coded 404/409.
 - **Corrected:** both cards PARTIAL — R-3…R-6, R-8, R-9, RC-F4, R-12, Q-4, Q-14, Q-28 are `manual`. The runbook (P30-01) says so. Live `upstreamTransform.p2402g` 6/6 on PG18.
