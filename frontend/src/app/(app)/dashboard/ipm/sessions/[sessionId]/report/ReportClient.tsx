@@ -29,7 +29,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import { useI18n } from "@/i18n/MessagesProvider";
 import type { Messages } from "@/i18n";
-import { resultCells, zonedText } from "@/lib/ipmReportPdf";
+import { dayText, resultCells, zonedText } from "@/lib/ipmReportPdf";
 import { SignReportDialog } from "../../../components/SignReportDialog";
 import { EvidencePhotos } from "../../../components/EvidencePhotos";
 import { FIELD } from "../../../components/shared";
@@ -158,8 +158,8 @@ function Report({ sessionId, pdfMessages, languageForm, canSign }: ReportClientP
     [t("ipmReport.field.make"), doc.device["manufacturer"] ?? "—"],
     [t("ipmReport.field.serial"), doc.device["serialNumber"] ?? "—"],
     [t("ipmReport.field.model"), [doc.device["model"], doc.device["deviceTypeName"]].filter(Boolean).join(" · ") || "—"],
-    [t("ipmReport.field.lastCalibration"), doc.device["lastCalibrationDate"] ?? "—"],
-    [t("ipmReport.field.nextCalibration"), doc.device["nextCalibrationDate"] ?? "—"],
+    [t("ipmReport.field.lastCalibration"), dayText(doc.device["lastCalibrationDate"] ?? null, tag)],
+    [t("ipmReport.field.nextCalibration"), dayText(doc.device["nextCalibrationDate"] ?? null, tag)],
     [t("ipmReport.field.reportNumber"), doc.reportNumber ?? "—"],
     [t("ipmReport.field.visit"), doc.visitNumber === null ? "—" : String(doc.visitNumber).padStart(3, "0")],
   ];

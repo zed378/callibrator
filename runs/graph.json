@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-24T08:41:38.750Z",
+  "last_updated": "2026-10-24T10:53:02.367Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -327,7 +327,9 @@
     "frontend\\.next\\server\\app\\robots.txt",
     "frontend\\.next\\standalone\\frontend\\.next\\server\\app\\robots.txt",
     "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-03-guard-scans.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-03-guard-scans.md",
+    "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+    "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md"
   ],
   "entities": [
     {
@@ -71996,6 +71998,276 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-24 — P9-26 batch 3: d05, a148, d12 guard scans to TypeScript ([record](./records/2026-10-24-p9-26-batch-03-guard-scans.md))"
+    },
+    {
+      "id": "sec_phase_20_21_audit_migration_model_service_route_vs_spec_no_blocking_defect_no_code_change",
+      "name": "Phase 20-21 audit (migration / model / service / route vs spec) — no blocking defect, no code change",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 1,
+      "evidence": "# Phase 20-21 audit (migration / model / service / route vs spec) — no blocking defect, no code change"
+    },
+    {
+      "id": "sec_migrations_0111_0146_all_present_manifest_order_correct",
+      "name": "Migrations 0111–0146 — all present, manifest order correct",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 9,
+      "evidence": "## Migrations 0111–0146 — all present, manifest order correct"
+    },
+    {
+      "id": "sec_models_tenant_facility_predicates_as_specified",
+      "name": "Models — tenant + facility predicates as specified",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 26,
+      "evidence": "## Models — tenant + facility predicates as specified"
+    },
+    {
+      "id": "sec_services_bound_correctly",
+      "name": "Services — bound correctly",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 33,
+      "evidence": "## Services — bound correctly"
+    },
+    {
+      "id": "sec_routes_gates_two_tenant_two_facility_tests",
+      "name": "Routes — gates + two-tenant / two-facility tests",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 40,
+      "evidence": "## Routes — gates + two-tenant / two-facility tests"
+    },
+    {
+      "id": "api_get_verify_reportnumber",
+      "name": "GET /verify/:reportNumber",
+      "type": "API_Endpoint",
+      "description": "- Public capability routes are reviewed exemptions: [`ipmReports.route.ts`](backend/src/routes/api/ipmReports.route.ts) `GET /verify/:reportNumber` and [`publicDevices.route.ts`](backend/src/routes/api/publicDevices.route.ts) `GET /:token` as `public` in the two-tenant guard.",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 44,
+      "evidence": "- Public capability routes are reviewed exemptions: [`ipmReports.route.ts`](backend/src/routes/api/ipmReports.route.ts) `GET /verify/:reportNumber` and [`public"
+    },
+    {
+      "id": "sec_guards_run_what_failed",
+      "name": "Guards run — what failed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 46,
+      "evidence": "## Guards run — what failed"
+    },
+    {
+      "id": "sec_bugs_fixed",
+      "name": "Bugs fixed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 51,
+      "evidence": "## Bugs fixed"
+    },
+    {
+      "id": "sec_phase_files_no_status_change",
+      "name": "Phase files — no status change",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 55,
+      "evidence": "## Phase files — no status change"
+    },
+    {
+      "id": "sec_still_needing_an_owner_not_this_audit_s_fix_",
+      "name": "Still needing an owner (not this audit's fix)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 60,
+      "evidence": "## Still needing an owner (not this audit's fix)"
+    },
+    {
+      "id": "sec_2026_10_24_phase_20_21_audit_migration_model_service_route_vs_spec_record_records_2026_10_24_phase20_21_audit_fix_md_",
+      "name": "2026-10-24 — Phase 20-21 audit: migration / model / service / route vs spec ([record](./records/2026-10-24-phase20-21-audit-fix.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — Phase 20-21 audit: migration / model / service / route vs spec ([record](./records/2026-10-24-phase20-21-audit-fix.md))"
+    },
+    {
+      "id": "ent_audit_only_no_code_changed_",
+      "name": "Audit only, no code changed:",
+      "type": "Component/Requirement",
+      "description": "migrations 0111–0146 present and ordered; every model carries its tenant + facility predicate; every service binds through `sql()` + `facilityClause()`; every route gated with two-tenant / two-facilit",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 12,
+      "evidence": "- **Audit only, no code changed:** migrations 0111–0146 present and ordered; every model carries its tenant + facility predicate; every service binds through `s"
+    },
+    {
+      "id": "ent_not_fixed_here_",
+      "name": "Not fixed here:",
+      "type": "Component/Requirement",
+      "description": "`prePushHook.a19` fails on Windows (shell + EPERM, out of scope, needs its owner); live PostgreSQL twins not re-run (no database in session).",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 13,
+      "evidence": "- **Not fixed here:** `prePushHook.a19` fails on Windows (shell + EPERM, out of scope, needs its owner); live PostgreSQL twins not re-run (no database in sessio"
+    },
+    {
+      "id": "sec_2026_10_24_backlog_q_54_q_56_debated_and_decided_record_records_2026_10_24_q54_q56_debate_decision_md_",
+      "name": "2026-10-24 — BACKLOG Q-54/Q-56 debated and decided ([record](./records/2026-10-24-q54-q56-debate-decision.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 15,
+      "evidence": "### 2026-10-24 — BACKLOG Q-54/Q-56 debated and decided ([record](./records/2026-10-24-q54-q56-debate-decision.md))"
+    },
+    {
+      "id": "ent_decided_q_54_",
+      "name": "DECIDED (Q-54):",
+      "type": "Component/Requirement",
+      "description": "no self-approval exception — separation of duties stays unconditional; a single-admin tenant grants a second user. No code changed.",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 16,
+      "evidence": "- **DECIDED (Q-54):** no self-approval exception — separation of duties stays unconditional; a single-admin tenant grants a second user. No code changed."
+    },
+    {
+      "id": "ent_done_q_56_",
+      "name": "DONE (Q-56):",
+      "type": "Component/Requirement",
+      "description": "`GET /kanban/projects` returns `code`; `GET /tenants/:tenantId/status` returns `suspensionReason` + `suspendedAt`. New `kanban.code.q56` + `tenantLifecycle.suspension.q56` 4/4 (fail-before 2/2 + 2/2 s",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 17,
+      "evidence": "- **DONE (Q-56):** `GET /kanban/projects` returns `code`; `GET /tenants/:tenantId/status` returns `suspensionReason` + `suspendedAt`. New `kanban.code.q56` + `t"
+    },
+    {
+      "id": "sec_phase_22_23_audit_frontend_reports_vs_spec_two_display_defects_fixed",
+      "name": "Phase 22-23 audit (frontend + reports vs spec) — two display defects fixed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 1,
+      "evidence": "# Phase 22-23 audit (frontend + reports vs spec) — two display defects fixed"
+    },
+    {
+      "id": "sec_pages_all_present_all_on_the_generated_client",
+      "name": "Pages — all present, all on the generated client",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 9,
+      "evidence": "## Pages — all present, all on the generated client"
+    },
+    {
+      "id": "sec_renderers_vs_09_conform",
+      "name": "Renderers vs 09 — conform",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 26,
+      "evidence": "## Renderers vs 09 — conform"
+    },
+    {
+      "id": "ent_d1_ipm_report",
+      "name": "D1 IPM report",
+      "type": "Component/Requirement",
+      "description": "([`ipmReportPdf.ts`](frontend/src/lib/ipmReportPdf.ts)): A4 landscape, § 2.2 section order, L-1 (device's own calibration dates), L-2 (session's inspection outcome), L-3 (condition/cleanliness apart),",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 28,
+      "evidence": "- **D1 IPM report** ([`ipmReportPdf.ts`](frontend/src/lib/ipmReportPdf.ts)): A4 landscape, § 2.2 section order, L-1 (device's own calibration dates), L-2 (sessi"
+    },
+    {
+      "id": "ent_d2_d3_inventory_pdf",
+      "name": "D2/D3 inventory PDF",
+      "type": "Component/Requirement",
+      "description": "provider A3 (14 cols, thumbnails, two signature blocks naming the document's facility) / facility A4 (9 cols); generation date + page numbers; header repeated.",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 29,
+      "evidence": "- **D2/D3 inventory PDF**: provider A3 (14 cols, thumbnails, two signature blocks naming the document's facility) / facility A4 (9 cols); generation date + page"
+    },
+    {
+      "id": "ent_d4_d5_xlsx",
+      "name": "D4/D5 XLSX",
+      "type": "Component/Requirement",
+      "description": "13-col inventory (calibration + inventory dates apart, real date cells, frozen header, autofilter, no photo URLs) + 12-col recap (room snapshot, input day in browser zone, performer/Redacted); upstrea",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 30,
+      "evidence": "- **D4/D5 XLSX**: 13-col inventory (calibration + inventory dates apart, real date cells, frozen header, autofilter, no photo URLs) + 12-col recap (room snapsho"
+    },
+    {
+      "id": "ent__5_large_export_rules",
+      "name": "§ 5 large-export rules",
+      "type": "Component/Requirement",
+      "description": "paged reads, progress + Cancel, photo threshold 1,000, rate-limit pacing — all in `ExportJob` + `pagedRead`.",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 31,
+      "evidence": "- **§ 5 large-export rules**: paged reads, progress + Cancel, photo threshold 1,000, rate-limit pacing — all in `ExportJob` + `pagedRead`."
+    },
+    {
+      "id": "sec_bugs_fixed_2_",
+      "name": "Bugs fixed (2)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 33,
+      "evidence": "## Bugs fixed (2)"
+    },
+    {
+      "id": "sec_b1_inventory_export_type_printed_the_model_the_register_prints_the_device_type_high_wrong_column_on_a_compliance_document_",
+      "name": "B1 — inventory export \"Type\" printed the model, the register prints the device type (High — wrong column on a compliance document)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 35,
+      "evidence": "### B1 — inventory export \"Type\" printed the model, the register prints the device type (High — wrong column on a compliance document)"
+    },
+    {
+      "id": "sec_b2_on_screen_ipm_report_printed_raw_iso_calibration_dates_medium_the_pdf_was_right_the_screen_was_not_",
+      "name": "B2 — on-screen IPM report printed raw ISO calibration dates (Medium — the PDF was right, the screen was not)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 41,
+      "evidence": "### B2 — on-screen IPM report printed raw ISO calibration dates (Medium — the PDF was right, the screen was not)"
+    },
+    {
+      "id": "sec_guards_run",
+      "name": "Guards run",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "source": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 47,
+      "evidence": "## Guards run"
+    },
+    {
+      "id": "sec_2026_10_24_phase_22_23_audit_frontend_reports_vs_spec_two_display_defects_fixed_record_records_2026_10_24_phase22_23_audit_fix_md_",
+      "name": "2026-10-24 — Phase 22-23 audit: frontend + reports vs spec, two display defects fixed ([record](./records/2026-10-24-phase22-23-audit-fix.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — Phase 22-23 audit: frontend + reports vs spec, two display defects fixed ([record](./records/2026-10-24-phase22-23-audit-fix.md))"
+    },
+    {
+      "id": "ent_fixed_b1_",
+      "name": "Fixed (B1):",
+      "type": "Component/Requirement",
+      "description": "inventory PDF/XLSX \"Type\" column printed the device model; now the device type's name else the category — the same value as the register's Type column. `documents.test.ts` pins it.",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 12,
+      "evidence": "- **Fixed (B1):** inventory PDF/XLSX \"Type\" column printed the device model; now the device type's name else the category — the same value as the register's Typ"
+    },
+    {
+      "id": "ent_fixed_b2_",
+      "name": "Fixed (B2):",
+      "type": "Component/Requirement",
+      "description": "on-screen IPM report printed raw ISO calibration dates (`2026-03-01`); now the PDF's `dayText` (`1 Mar 2026`), exported for the page. `ReportClient.test.tsx` pins it.",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 13,
+      "evidence": "- **Fixed (B2):** on-screen IPM report printed raw ISO calibration dates (`2026-03-01`); now the PDF's `dayText` (`1 Mar 2026`), exported for the page. `ReportC"
     }
   ],
   "relations": [
@@ -106926,12 +107198,156 @@
       "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 788 cases, lint + typecheck clean, ratchet 695 to 690 (with batch 1–2).",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_routes_gates_two_tenant_two_facility_tests",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_verify_reportnumber",
+      "evidence": "- Public capability routes are reviewed exemptions: [`ipmReports.route.ts`](backend/src/routes/api/ipmReports.route.ts) `GET /verify/:reportNumber` and [`public",
+      "source_file": "MEMORY\\records\\2026-10-24-phase20-21-audit-fix.md",
+      "line": 44
+    },
+    {
+      "source": "sec_2026_10_24_phase_20_21_audit_migration_model_service_route_vs_spec_record_records_2026_10_24_phase20_21_audit_fix_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_audit_only_no_code_changed_",
+      "evidence": "- **Audit only, no code changed:** migrations 0111–0146 present and ordered; every model carries its tenant + facility predicate; every service binds through `s",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_phase_20_21_audit_migration_model_service_route_vs_spec_record_records_2026_10_24_phase20_21_audit_fix_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_not_fixed_here_",
+      "evidence": "- **Not fixed here:** `prePushHook.a19` fails on Windows (shell + EPERM, out of scope, needs its owner); live PostgreSQL twins not re-run (no database in sessio",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 13
+    },
+    {
+      "source": "sec_2026_10_24_backlog_q_54_q_56_debated_and_decided_record_records_2026_10_24_q54_q56_debate_decision_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_decided_q_54_",
+      "evidence": "- **DECIDED (Q-54):** no self-approval exception — separation of duties stays unconditional; a single-admin tenant grants a second user. No code changed.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 16
+    },
+    {
+      "source": "sec_2026_10_24_backlog_q_54_q_56_debated_and_decided_record_records_2026_10_24_q54_q56_debate_decision_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_q_56_",
+      "evidence": "- **DONE (Q-56):** `GET /kanban/projects` returns `code`; `GET /tenants/:tenantId/status` returns `suspensionReason` + `suspendedAt`. New `kanban.code.q56` + `t",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 17
+    },
+    {
+      "source": "sec_renderers_vs_09_conform",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_d1_ipm_report",
+      "evidence": "- **D1 IPM report** ([`ipmReportPdf.ts`](frontend/src/lib/ipmReportPdf.ts)): A4 landscape, § 2.2 section order, L-1 (device's own calibration dates), L-2 (sessi",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 28
+    },
+    {
+      "source": "sec_renderers_vs_09_conform",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_d2_d3_inventory_pdf",
+      "evidence": "- **D2/D3 inventory PDF**: provider A3 (14 cols, thumbnails, two signature blocks naming the document's facility) / facility A4 (9 cols); generation date + page",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 29
+    },
+    {
+      "source": "sec_renderers_vs_09_conform",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_d4_d5_xlsx",
+      "evidence": "- **D4/D5 XLSX**: 13-col inventory (calibration + inventory dates apart, real date cells, frozen header, autofilter, no photo URLs) + 12-col recap (room snapsho",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 30
+    },
+    {
+      "source": "sec_renderers_vs_09_conform",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent__5_large_export_rules",
+      "evidence": "- **§ 5 large-export rules**: paged reads, progress + Cancel, photo threshold 1,000, rate-limit pacing — all in `ExportJob` + `pagedRead`.",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 31
+    },
+    {
+      "source": "sec_b1_inventory_export_type_printed_the_model_the_register_prints_the_device_type_high_wrong_column_on_a_compliance_document_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_found_",
+      "evidence": "- **Found:** [`documents.ts`](frontend/src/lib/export/documents.ts:92) `typeOf` returned `d.model ?? d.deviceType?.name`; the register's [`DeviceTable.tsx`](fro",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 37
+    },
+    {
+      "source": "sec_b1_inventory_export_type_printed_the_model_the_register_prints_the_device_type_high_wrong_column_on_a_compliance_document_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fixed_",
+      "evidence": "- **Fixed:** `typeOf` now returns `d.deviceType?.name ?? d.category ?? null` — the same value as the register. Comment names the register as the source of truth",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 38
+    },
+    {
+      "source": "sec_b1_inventory_export_type_printed_the_model_the_register_prints_the_device_type_high_wrong_column_on_a_compliance_document_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_test_",
+      "evidence": "- **Test:** [`documents.test.ts`](frontend/src/lib/export/documents.test.ts) — fixture gains `category: \"General\"`; asserts the full row's `type: \"General\"` (wa",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 39
+    },
+    {
+      "source": "sec_b2_on_screen_ipm_report_printed_raw_iso_calibration_dates_medium_the_pdf_was_right_the_screen_was_not_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_found_",
+      "evidence": "- **Found:** [`ReportClient.tsx`](frontend/src/app/(app)/dashboard/ipm/sessions/[sessionId]/report/ReportClient.tsx:161-162) rendered `doc.device[\"lastCalibrati",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 43
+    },
+    {
+      "source": "sec_b2_on_screen_ipm_report_printed_raw_iso_calibration_dates_medium_the_pdf_was_right_the_screen_was_not_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fixed_",
+      "evidence": "- **Fixed:** [`ipmReportPdf.ts`](frontend/src/lib/ipmReportPdf.ts:69) `dayText` exported (was module-private); the report passes both dates through it with the ",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 44
+    },
+    {
+      "source": "sec_b2_on_screen_ipm_report_printed_raw_iso_calibration_dates_medium_the_pdf_was_right_the_screen_was_not_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_test_",
+      "evidence": "- **Test:** [`ReportClient.test.tsx`](frontend/src/app/(app)/dashboard/ipm/__tests__/ReportClient.test.tsx:115-118) asserts `1 Mar 2026` / `1 Mar 2027` present ",
+      "source_file": "MEMORY\\records\\2026-10-24-phase22-23-audit-fix.md",
+      "line": 45
+    },
+    {
+      "source": "sec_2026_10_24_phase_22_23_audit_frontend_reports_vs_spec_two_display_defects_fixed_record_records_2026_10_24_phase22_23_audit_fix_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fixed_b1_",
+      "evidence": "- **Fixed (B1):** inventory PDF/XLSX \"Type\" column printed the device model; now the device type's name else the category — the same value as the register's Typ",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_phase_22_23_audit_frontend_reports_vs_spec_two_display_defects_fixed_record_records_2026_10_24_phase22_23_audit_fix_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_fixed_b2_",
+      "evidence": "- **Fixed (B2):** on-screen IPM report printed raw ISO calibration dates (`2026-03-01`); now the PDF's `dayText` (`1 Mar 2026`), exported for the page. `ReportC",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 13
+    },
+    {
+      "source": "sec_2026_10_24_phase_22_23_audit_frontend_reports_vs_spec_two_display_defects_fixed_record_records_2026_10_24_phase22_23_audit_fix_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_audit_",
+      "evidence": "- **Audit:** all 10 Phase 22 pages + `/field` + report/verify pages present on the generated client (rows in `data`, paging in top-level `meta`); D1/D2/D3/D4/D5",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 14
     }
   ],
   "stats": {
-    "total_sources": 326,
-    "total_entities": 7963,
-    "total_relations": 4366,
+    "total_sources": 328,
+    "total_entities": 7993,
+    "total_relations": 4384,
     "token_savings_estimate": "85-95%"
   }
 }

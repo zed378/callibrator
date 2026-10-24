@@ -34,7 +34,7 @@ const device = (over: Partial<Device> = {}): Device => ({
   serialNumber: "SN-1",
   manufacturer: "Make",
   model: "M-1",
-  category: null,
+  category: "General",
   status: "active",
   locationId: null,
   installationDate: null,
@@ -115,7 +115,8 @@ describe("P22-06 — export documents", () => {
       facility: "Clinic",
       name: "Pump",
       make: "Make",
-      type: "M-1",
+      // The register's Type column (DeviceTable): the device type's name, else the category — never the model.
+      type: "General",
       qrCode: "QR-1",
       serial: "SN-1",
       room: "ICU",
@@ -138,9 +139,11 @@ describe("P22-06 — export documents", () => {
       labels,
     );
     expect(bare).toMatchObject({ type: "Infusion pump", room: null, floor: null, technician: "Redacted", calibrationDate: null, condition: "cond:unset", qrCode: null });
+    // A device type beats the category; the model is never the Type column.
+    expect(inventoryRow(device({ deviceType: { id: "t", name: "Pump type" }, category: "General", model: "M-9" }), labels).type).toBe("Pump type");
     expect(inventoryRow(device({ registrantDisplay: { name: "Reg", role: null, organisation: null } }), labels).technician).toBe("Reg");
     expect(inventoryRow(device({ registrantDisplay: { name: "", role: null, organisation: null } }), labels).technician).toBeNull();
-    expect(inventoryRow(device({ model: null }), labels).type).toBeNull();
+    expect(inventoryRow(device({ model: null, category: null }), labels).type).toBeNull();
     expect(inventoryRow(device({ warehouse: null }), labels).room).toBeNull();
   });
 

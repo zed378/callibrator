@@ -750,7 +750,9 @@ const getTenantLifecycleStatus = async (
   return {
     status: tenant.status,
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty setting falls back to the tenant's status
-    lifecycleStatus: lifecycleSetting?.value || tenant.status,
+    lifecycleStatus: lifecycleSetting?.value || tenant.status,
+    suspensionReason: tenant.suspensionReason,
+    suspendedAt: tenant.suspendedAt,
     gracePeriodExpiresAt: tenant.gracePeriodExpiresAt,
     gracePeriodExpired,
     offboardedAt: tenant.offboardedAt,
