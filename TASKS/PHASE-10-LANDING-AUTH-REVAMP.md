@@ -194,7 +194,7 @@ Phase 10 is **frontend-focused**. Its backend pieces (P10-04's discovery endpoin
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** — status reconciled 2026-10-24: built (`services/accessRequest.service.ts`, `models/accessRequest.model.ts`, migration 0099, controllers, validators, public + admin routes, OpenAPI, two-tenant allow-list); tests `accessRequest.service.p1005` + `accessRequest.route.p1005` + `phase10.units.p1005` 97/97 — [record](../MEMORY/records/2026-10-24-p10-05-07-10-12-15-status-reconciled.md) |
 | **Depends on** | — |
 | **Spec refs** | MEMORY/specs/P10-05-request-access.md · docs/UI-UX/20-LANDING-AUTH-REVAMP.md §8 · docs/SECURITY/05-MULTI-TENANCY-SECURITY.md · ADR-098 §6 |
 | **Spec required** | **yes — written:** `MEMORY/specs/P10-05-request-access.md` |
@@ -253,7 +253,7 @@ Phase 10 is **frontend-focused**. Its backend pieces (P10-04's discovery endpoin
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** — status reconciled 2026-10-24: built (`frontend/src/app/(app)/dashboard/access-requests/page.tsx` + test, menu slug `access-requests` migration 0101); backend queue covered by the P10-05 97/97 — [record](../MEMORY/records/2026-10-24-p10-05-07-10-12-15-status-reconciled.md) |
 | **Depends on** | P10-05 |
 | **Spec refs** | MEMORY/specs/P10-05-request-access.md § UI · docs/UI-UX/research/02-standards-and-benchmarks.md §1.1 (worklist), §2.3 (side panel) · docs/UI-UX/10-COMPONENT-SPECIFICATION.md |
 | **Spec required** | no |
@@ -328,7 +328,7 @@ Phase 10 is **frontend-focused**. Its backend pieces (P10-04's discovery endpoin
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** — status reconciled 2026-10-24: built (`services/passkeyLogin.service.ts`, `/passkey/*` routes, ADR-108 Am. 1 several-passkeys); tests `passkeyLogin.service.p1010` + `publicAuth.route.p1004` 40/40 — [record](../MEMORY/records/2026-10-24-p10-05-07-10-12-15-status-reconciled.md) |
 | **Depends on** | P10-04 |
 | **Spec refs** | MEMORY/specs/P10-10-passkey-login.md · docs/UI-UX/20-LANDING-AUTH-REVAMP.md §7.5 · ADR-098 §5 |
 | **Spec required** | **yes — written:** `MEMORY/specs/P10-10-passkey-login.md` |
@@ -381,7 +381,7 @@ Phase 10 is **frontend-focused**. Its backend pieces (P10-04's discovery endpoin
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** — status reconciled 2026-10-24: built (`middlewares/selfRegistration.middleware.ts`, `config/publicAccess.ts#selfRegistrationEnabled`, auth route gate, OpenAPI); tests in `phase10.units.p1005` + `p10-public-auth.e2e` production-404 — [record](../MEMORY/records/2026-10-24-p10-05-07-10-12-15-status-reconciled.md) |
 | **Depends on** | — |
 | **Spec refs** | research 04 §3.4 · research 05 §5.5 · ADR-098 §8.3 · `backend/src/controllers/auth.controller.js:87` · `backend/src/services/auth.service.js:202–285` · `backend/src/config/env.ts` · ADR-075 (a self-registered account has no tenant) |
 | **Spec required** | no |
@@ -454,7 +454,7 @@ Phase 10 is **frontend-focused**. Its backend pieces (P10-04's discovery endpoin
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** — status reconciled 2026-10-24: built (`POST /auth/invitation/accept`, `frontend/src/app/(public)/invitation/page.tsx`, resend from the queue); tests in `publicAuth.route.p1004` — [record](../MEMORY/records/2026-10-24-p10-05-07-10-12-15-status-reconciled.md) |
 | **Depends on** | P10-05 |
 | **Spec refs** | MEMORY/specs/P10-05-request-access.md § Approve · ADR-098 §8.4 (Q-45) · docs/UI-UX/20-LANDING-AUTH-REVAMP.md §8.2, §11.2 · research 05 §6.2 · `backend/src/services/auth.service.js` (`generatePurposeToken`, `activationClaims`) |
 | **Spec required** | no (the P10-05 spec covers the token; this card is the acceptance side) |

@@ -8,6 +8,24 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — P17-07 gate rows green, live run + phones remain ([record](./records/2026-10-24-p17-07-gate-rows-green.md))
+- **PARTIAL:** G-01/G-03/G-05/G-06/G-08/G-16/G-20/G-21/G-23: 68/68. Exit (live PT-01…PT-33 + two real phones) BLOCKED.
+
+### 2026-10-24 — BACKLOG Q-55 was already DONE ([record](./records/2026-10-24-q55-work-order-schedule-cost-done.md))
+- **Reconciled, no code changed:** Q-55 work-order schedule, costs and resolution round-trip 13/13.
+
+### 2026-10-24 — BACKLOG Q-52 and Q-53 were already DONE ([records](./records/2026-10-24-q52-vendor-notes-done.md), [Q-53](./records/2026-10-24-q53-global-limiter-envelope-done.md))
+- **Reconciled, no code changed:** Q-52 `vendors.notes` round-trips 10/10; Q-53 global limiter answers the envelope 3/3.
+
+### 2026-10-24 — The eight Phase 9 open statuses were already DONE (P9-05/06/09/20/21/22/25) ([record](./records/2026-10-24-p9-05-06-09-20-21-22-25-status-reconciled.md))
+- **Reconciled, no code changed:** all layers `.ts`; 63/63 routes with code-first OpenAPI; `openapiRoutes.p925` 13/13.
+
+### 2026-10-24 — The TypeScript migration closes (P9-24) ([record](./records/2026-10-24-p9-24-close-out.md))
+- **DONE:** the exit holds with one dead `.js` file left by owner decision (`checkMenu.util.js`, A-18), pinned by `noSourceJs.p924.guard` 3/3. `allowJs: false` for source; banners state TypeScript as fact.
+
+### 2026-10-24 — The five Phase 10 TODOs were already DONE (P10-05/07/10/12/15) ([record](./records/2026-10-24-p10-05-07-10-12-15-status-reconciled.md))
+- **Reconciled, no code changed:** the phase file said TODO for DONE work. P10-05/P10-07: 97/97; P10-10/P10-15: 40/40. The Status cells now name the built files and passing suites.
+
 ### 2026-10-24 — The cutover runbook names the built reconciliation and data-quality routes (P30-01) ([record](./records/2026-10-24-p30-01-runbook-reconciliation-links.md))
 - **Documented:** steps 5 and 7 of the cutover runbook now name the built routes — `GET …/:id/data-quality` (P25-02) and `GET …/:id/reconciliation` (P25-01) — with what each answers. Still DRAFT: the run waits on real data.
 
