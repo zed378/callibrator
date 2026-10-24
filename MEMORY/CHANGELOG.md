@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — P9-26 batch 3: d05, a148, d12 guard scans to TypeScript ([record](./records/2026-10-24-p9-26-batch-03-guard-scans.md))
+- **DONE:** 3 × `.js` to `.ts`, same 788 cases, lint + typecheck clean, ratchet 695 to 690 (with batch 1–2).
+
 ### 2026-10-24 — P9-26 batch 2: jobContext.w12 to TypeScript ([record](./records/2026-10-24-p9-26-batch-02-job-context.md))
 - **DONE:** same 12 cases, lint clean, ratchet 693 to 692 `.js` test files.
 

@@ -726,6 +726,8 @@ const getTenantLifecycleStatus = async (
 ): Promise<{
   status: TenantRow["status"];
   lifecycleStatus: string | null;
+  suspensionReason: string | null;
+  suspendedAt: Date | null;
   gracePeriodExpiresAt: Date | null;
   gracePeriodExpired: boolean;
   offboardedAt: Date | null;
@@ -748,7 +750,7 @@ const getTenantLifecycleStatus = async (
   return {
     status: tenant.status,
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty setting falls back to the tenant's status
-    lifecycleStatus: lifecycleSetting?.value || tenant.status,
+    lifecycleStatus: lifecycleSetting?.value || tenant.status,
     gracePeriodExpiresAt: tenant.gracePeriodExpiresAt,
     gracePeriodExpired,
     offboardedAt: tenant.offboardedAt,

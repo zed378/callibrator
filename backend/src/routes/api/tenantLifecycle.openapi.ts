@@ -44,6 +44,8 @@ export default defineRouteDocs({
         data: z.object({
           status: z.enum(TENANT_STATUSES).nullable(),
           lifecycleStatus: z.string().nullable().meta({ description: "The granular state (e.g. `OFFBOARDED`); the status when none is stored" }),
+          suspensionReason: z.string().nullable(),
+          suspendedAt: z.iso.datetime().nullable(),
           gracePeriodExpiresAt: z.iso.datetime().nullable(),
           gracePeriodExpired: z.boolean(),
           offboardedAt: z.iso.datetime().nullable(),

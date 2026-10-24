@@ -62247,6 +62247,24 @@
                             "null"
                           ]
                         },
+                        "suspensionReason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "suspendedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "gracePeriodExpiresAt": {
                           "anyOf": [
                             {
@@ -62290,6 +62308,8 @@
                       "required": [
                         "status",
                         "lifecycleStatus",
+                        "suspensionReason",
+                        "suspendedAt",
                         "gracePeriodExpiresAt",
                         "gracePeriodExpired",
                         "offboardedAt",
@@ -86429,6 +86449,12 @@
           "name": {
             "type": "string"
           },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -86483,6 +86509,7 @@
         "required": [
           "id",
           "name",
+          "code",
           "description",
           "color",
           "createdBy",
@@ -86494,6 +86521,7 @@
         "example": {
           "id": "5b1e2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
           "name": "ICU devices",
+          "code": "ICU",
           "description": null,
           "color": "#2f6fdf",
           "createdBy": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
