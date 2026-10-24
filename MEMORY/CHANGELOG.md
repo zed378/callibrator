@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — The Indonesian user guides: one row per facility role, three items pending (P29-01) ([record](./records/2026-10-24-p29-01-guides-review.md))
+- **Corrected:** the facility technician was described as narrower; it records IPM and registers devices in its facility (not calibration dates). Real-phone run, OA-4 and the real-data dry run marked pending.
+
 ### 2026-10-24 — As-built modules doc gains Phase 25; CLAUDE.md gate rows corrected (P29-04) ([record](./records/2026-10-24-p29-04-modules-doc-review.md))
 - **Documented:** `docs/BACKEND/13` § 10.1 (reconciliation, data quality), § 6 (binding defect, nine routes). CLAUDE.md: 1,025 suites / 0 skipped (2026-10-11), live suites 55/55 `--with=all`, none by hand.
 
