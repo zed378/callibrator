@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-24T07:56:12.679Z",
+  "last_updated": "2026-10-24T08:41:38.750Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -326,7 +326,8 @@
     "frontend\\public\\licenses\\OFL-SpaceGrotesk.txt",
     "frontend\\.next\\server\\app\\robots.txt",
     "frontend\\.next\\standalone\\frontend\\.next\\server\\app\\robots.txt",
-    "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md"
+    "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-03-guard-scans.md"
   ],
   "entities": [
     {
@@ -71977,6 +71978,24 @@
       "source": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
       "line": 241,
       "evidence": "## Conclusion"
+    },
+    {
+      "id": "sec_p9_26_batch_3_rawsqltenantpredicate_d05_associationforeignkeys_a148_includerequired_d12_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 3: rawSqlTenantPredicate.d05, associationForeignKeys.a148, includeRequired.d12 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-03-guard-scans.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-03-guard-scans.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 3: rawSqlTenantPredicate.d05, associationForeignKeys.a148, includeRequired.d12 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_3_d05_a148_d12_guard_scans_to_typescript_record_records_2026_10_24_p9_26_batch_03_guard_scans_md_",
+      "name": "2026-10-24 — P9-26 batch 3: d05, a148, d12 guard scans to TypeScript ([record](./records/2026-10-24-p9-26-batch-03-guard-scans.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 3: d05, a148, d12 guard scans to TypeScript ([record](./records/2026-10-24-p9-26-batch-03-guard-scans.md))"
     }
   ],
   "relations": [
@@ -106899,12 +106918,20 @@
       "evidence": "| ADR-127 | Am. 1 | Worker scope `/field`; field app one document; `public/sw.js` generated pre-build; install pre-caches + warm lazy modules; purge on failed r",
       "source_file": "MEMORY\\records\\2026-10-24-phase18-19-spec-vs-built-analysis.md",
       "line": 199
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_3_d05_a148_d12_guard_scans_to_typescript_record_records_2026_10_24_p9_26_batch_03_guard_scans_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 788 cases, lint + typecheck clean, ratchet 695 to 690 (with batch 1–2).",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
     }
   ],
   "stats": {
-    "total_sources": 325,
-    "total_entities": 7961,
-    "total_relations": 4365,
+    "total_sources": 326,
+    "total_entities": 7963,
+    "total_relations": 4366,
     "token_savings_estimate": "85-95%"
   }
 }

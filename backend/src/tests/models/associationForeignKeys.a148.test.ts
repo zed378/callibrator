@@ -37,34 +37,74 @@
  * every migration have identical foreign-key catalogs (156) and identical
  * nullability on every column.
  */
+import type * as SequelizeModule from "sequelize";
+import type * as ModelsModule from "../../models";
+import type migration0037 from "../../migrations/0037-association-foreign-keys";
+import type migration0105 from "../../migrations/0105-api-key-actor-columns";
+import type migration0030 from "../../migrations/0030-tenant-foreign-keys-restrict";
 
 jest.mock("../../config", () => {
-  const { Sequelize } = jest.requireActual("sequelize");
+  const { Sequelize } = jest.requireActual<typeof SequelizeModule>("sequelize");
   const db = new Sequelize({ dialect: "postgres", logging: false });
-  db.query = async () => [];
+  db.query = (() => Promise.resolve([])) as unknown as typeof db.query;
   return { db };
 });
 
-const models = require("../../models");
-const { TARGETS } = require("../../migrations/0037-association-foreign-keys");
+const models = jest.requireActual<typeof ModelsModule>("../../models");
+const { TARGETS } = jest.requireActual<typeof migration0037>("../../migrations/0037-association-foreign-keys");
 // Q-51 (migration 0105): these user columns became nullable — an API key's row
 // names the key in api_key_id instead, and a CHECK holds exactly one set.
 const Q51_USER_COLUMNS = new Set(
-  require("../../migrations/0105-api-key-actor-columns").TARGETS.map((t) => `${t.table}.${t.userColumn}`),
+  (jest.requireActual<typeof migration0105>("../../migrations/0105-api-key-actor-columns").TARGETS as readonly { table: string; userColumn: string }[]).map(
+    (t) => `${t.table}.${t.userColumn}`,
+  ),
 );
-const q16 = require("../../migrations/0030-tenant-foreign-keys-restrict");
+const q16 = jest.requireActual<typeof migration0030>("../../migrations/0030-tenant-foreign-keys-restrict");
+
+interface AttributeLike {
+    field?: string;
+}
+
+interface ModelLike {
+    readonly name: string;
+    readonly tableAttributes: Record<string, unknown>;
+    readonly rawAttributes: Record<string, AttributeLike>;
+    readonly associations: Record<string, AssociationLike>;
+    getTableName(): string;
+}
+
+interface AssociationLike {
+    readonly as: string;
+    readonly associationType: string;
+    readonly foreignKey: string;
+    readonly otherKey?: string;
+    readonly source: ModelLike;
+    readonly target: ModelLike;
+    readonly through: { model: ModelLike };
+    readonly options: { onDelete?: string };
+}
+
+interface Target {
+    readonly table: string;
+    readonly column: string;
+    readonly ref: string;
+    readonly action: string;
+    readonly notNull: boolean;
+}
 
 const sequelize = models.sequelize;
-const queryGenerator = sequelize.getQueryInterface().queryGenerator;
-const allModels = [...new Set(Object.values(sequelize.models))];
-const byTable = (table) => allModels.find((m) => m.getTableName() === table);
+const queryGenerator = sequelize.getQueryInterface().queryGenerator as {
+    attributesToSQL(attributes: Record<string, unknown>, options: Record<string, unknown>): Record<string, string>;
+};
+const allModels = [...new Set(Object.values(sequelize.models))] as unknown as ModelLike[];
+const byTable = (table: string): ModelLike | undefined => allModels.find((m) => m.getTableName() === table);
 
 /**
  * Foreign keys outside A-148/A-149 and outside 0030, reviewed and left as
  * they are on every database today (none was an A-88 duplicate). Listed so a
  * NEW foreign key cannot appear without a decision.
  */
-const UNCHANGED = Object.freeze({
+const UNCHANGED: Readonly<Record<string, string>> = Object.freeze({
   "api_keys.created_by": "users SET NULL",
   "certificates.created_by": "users NO ACTION",
   "certificates.updated_by": "users NO ACTION",
@@ -224,10 +264,11 @@ const UNCHANGED = Object.freeze({
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */
-const columnDdl = (model) => {
-  const attributes = {};
+const columnDdl = (model: ModelLike): Record<string, string> => {
+  const normalizer = sequelize as unknown as { normalizeAttribute(attribute: unknown): unknown };
+  const attributes: Record<string, unknown> = {};
   for (const [field, attribute] of Object.entries(model.tableAttributes)) {
-    attributes[field] = sequelize.normalizeAttribute(attribute);
+    attributes[field] = normalizer.normalizeAttribute(attribute);
   }
   return queryGenerator.attributesToSQL(attributes, {
     table: model.getTableName(),
@@ -236,24 +277,24 @@ const columnDdl = (model) => {
 };
 
 /** Attribute names whose column is `field`. */
-const attributesOn = (model, field) =>
+const attributesOn = (model: ModelLike, field: string): string[] =>
   Object.entries(model.rawAttributes)
-    .filter(([name, attribute]) => (attribute.field || name) === field)
+    .filter(([name, attribute]) => (attribute.field ?? name) === field)
     .map(([name]) => name);
 
 /** [table, column, referenced table, action or "NO ACTION"] for every REFERENCES. */
-const references = [];
+const references: [string, string, string, string][] = [];
 for (const model of allModels) {
   for (const [field, ddl] of Object.entries(columnDdl(model))) {
     const m = /REFERENCES "([^"]+)" \("id"\)(?: ON DELETE (RESTRICT|CASCADE|SET NULL|NO ACTION))?/.exec(ddl);
     if (m) {
-      references.push([model.getTableName(), field, m[1], m[2] || "NO ACTION"]);
+      references.push([model.getTableName(), field, m[1] as string, m[2] ?? "NO ACTION"]);
     }
   }
 }
 
 /** Every [label, association] in the barrel. */
-const associations = [];
+const associations: [string, AssociationLike][] = [];
 for (const model of allModels) {
   for (const association of Object.values(model.associations)) {
     associations.push([`${model.name}.${association.as}`, association]);
@@ -261,7 +302,7 @@ for (const model of allModels) {
 }
 
 /** The model that holds the association's foreign key. */
-const holderOf = (association) => {
+const holderOf = (association: AssociationLike): ModelLike => {
   if (association.associationType === "BelongsTo") {
     return association.source;
   }
@@ -273,7 +314,8 @@ const holderOf = (association) => {
 
 describe("A-148 — no model carries a second attribute on one column", () => {
   it.each(allModels.map((m) => [m.getTableName(), m]))("%s", (_table, model) => {
-    const duplicated = Object.keys(model.tableAttributes).filter((field) => attributesOn(model, field).length > 1);
+    const typed = model;
+    const duplicated = Object.keys(typed.tableAttributes).filter((field) => attributesOn(typed, field).length > 1);
     expect(duplicated).toEqual([]);
   });
 });
@@ -287,37 +329,38 @@ describe("A-148 — every association names an attribute, never a column", () =>
     const holder = holderOf(association);
     const keys = [association.foreignKey];
     if (association.associationType === "BelongsToMany") {
-      keys.push(association.otherKey);
+      keys.push(association.otherKey as string);
     }
     for (const key of keys) {
       const attribute = holder.rawAttributes[key];
       expect(attribute).toBeDefined();
       // One attribute on its column: the key is not a column name that
       // shadows a camelCase attribute.
-      expect(attributesOn(holder, attribute.field || key)).toEqual([key]);
+      expect(attributesOn(holder, attribute?.field ?? key)).toEqual([key]);
     }
   });
 });
 
 describe("A-148 / A-149 — each 0037 decision is what sync() builds", () => {
   it("every TARGETS entry names a real table (a typo would test nothing)", () => {
-    for (const { table } of TARGETS) {
+    for (const { table } of TARGETS as readonly Target[]) {
       expect(byTable(table)).toBeDefined();
     }
   });
 
-  describe.each(TARGETS.map((t) => [t.table, t.column, t]))("%s.%s", (table, column, target) => {
+  describe.each((TARGETS as readonly Target[]).map((t) => [t.table, t.column, t]))("%s.%s", (table, column, target) => {
+    const typed = target;
     const model = byTable(table);
 
-    it(`references ${target.ref} ON DELETE ${target.action} ON UPDATE CASCADE`, () => {
-      expect(columnDdl(model)[column]).toContain(
-        `REFERENCES "${target.ref}" ("id") ON DELETE ${target.action} ON UPDATE CASCADE`,
+    it(`references ${typed.ref} ON DELETE ${typed.action} ON UPDATE CASCADE`, () => {
+      expect(columnDdl(model as ModelLike)[column]).toContain(
+        `REFERENCES "${typed.ref}" ("id") ON DELETE ${typed.action} ON UPDATE CASCADE`,
       );
     });
 
-    const notNull = target.notNull && !Q51_USER_COLUMNS.has(`${table}.${column}`);
+    const notNull = typed.notNull && !Q51_USER_COLUMNS.has(`${table}.${column}`);
     it(notNull ? "is NOT NULL" : "is nullable (0037, or Q-51 / 0105)", () => {
-      expect(/NOT NULL/.test(columnDdl(model)[column])).toBe(notNull);
+      expect((columnDdl(model as ModelLike)[column] ?? "").includes("NOT NULL")).toBe(notNull);
     });
 
     it("every association on the column states that onDelete", () => {
@@ -327,16 +370,16 @@ describe("A-148 / A-149 — each 0037 decision is what sync() builds", () => {
         .filter((a) => {
           const holder = holderOf(a);
           const attribute = holder.rawAttributes[a.foreignKey];
-          return holder.getTableName() === table && attribute && (attribute.field || a.foreignKey) === column;
+          return holder.getTableName() === table && attribute && (attribute.field ?? a.foreignKey) === column;
         });
       for (const association of found) {
-        expect(association.options.onDelete).toBe(target.action);
+        expect(association.options.onDelete).toBe(typed.action);
       }
     });
   });
 
   it("the regulated links are RESTRICT, not CASCADE or SET NULL", () => {
-    const ddl = (table, column) => columnDdl(byTable(table))[column];
+    const ddl = (table: string, column: string): string => columnDdl(byTable(table) as ModelLike)[column] ?? "";
     expect(ddl("calibration_records", "device_id")).toMatch(/NOT NULL REFERENCES .* ON DELETE RESTRICT/);
     expect(ddl("certificates", "calibration_record_id")).toMatch(/ON DELETE RESTRICT/);
     expect(ddl("capas", "nc_id")).toMatch(/NOT NULL REFERENCES .* ON DELETE RESTRICT/);
@@ -351,7 +394,7 @@ describe("every foreign key any model renders is a reviewed decision", () => {
   });
 
   it.each(references)("%s.%s → %s", (table, column, ref, action) => {
-    const target = TARGETS.find((t) => t.table === table && t.column === column);
+    const target = (TARGETS as readonly Target[]).find((t) => t.table === table && t.column === column);
     if (target) {
       expect([ref, action]).toEqual([target.ref, target.action]);
       return;
@@ -360,7 +403,7 @@ describe("every foreign key any model renders is a reviewed decision", () => {
       expect(action).toBe(q16.tenantAction(table));
       return;
     }
-    if (q16.USER_FK_RESTRICT.some((u) => u.table === table && u.column === column)) {
+    if ((q16.USER_FK_RESTRICT as readonly { table: string; column: string }[]).some((u) => u.table === table && u.column === column)) {
       expect([ref, action]).toEqual(["users", "RESTRICT"]);
       return;
     }

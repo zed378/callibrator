@@ -138,6 +138,7 @@ const KanbanProjectSummary = z
   .object({
     id: z.guid(),
     name: z.string(),
+    code: z.string().nullable(),
     description: z.string().nullable(),
     color: z.string().nullable(),
     createdBy: z.guid().nullable(),
@@ -150,6 +151,7 @@ const KanbanProjectSummary = z
     example: {
       id: PROJECT,
       name: "ICU devices",
+      code: "ICU",
       description: null,
       color: "#2f6fdf",
       createdBy: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
