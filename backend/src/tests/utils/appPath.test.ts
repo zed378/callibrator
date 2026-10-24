@@ -1,8 +1,12 @@
 /**
  * Tests for appPath util
  */
-const path = require("path");
-const appPath = require("../../utils/appPath.util");
+import path from "path";
+
+type AppPathFn = (...paths: string[]) => string;
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the module under test is `export =` (CommonJS)
+const appPath = require("../../utils/appPath.util") as AppPathFn;
 
 describe("appPath util", () => {
   it("should join a single segment to the app root", () => {
@@ -36,7 +40,8 @@ describe("appPath util", () => {
     const fakeExec = path.join(path.sep, "opt", "app", "exec.exe");
     process.execPath = fakeExec;
     try {
-      const appPathPackaged = require("../../utils/appPath.util");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- re-reads the module under a packaged process shape
+      const appPathPackaged = require("../../utils/appPath.util") as AppPathFn;
       const result = appPathPackaged("uploads");
       expect(result).toBe(path.join(path.dirname(fakeExec), "uploads"));
     } finally {

@@ -128,7 +128,7 @@ everything it wrote, so stopping is safe before the invitations.
 | 3 | Upload and stage it | the run reaches `loaded`; counts recorded |
 | 4 | **Transform** | the summary: every step, every source, nothing unaccounted (`TRANSFORM_INCOMPLETE` would have failed it) |
 | 5 | **Delta files** — re-run the rsync import | counts: only the delta is copied; the manifest is complete |
-| 6 | **Reconciliation R-1 … R-11** per facility | zero unexplained deltas; the operator's signature (P25-04) |
+| 6 | **Reconciliation** (P25-01: R-1/R-2/R-7 per facility; R-10/R-11/RC-F1/RC-F2/RC-F3/RC-F5 at the run level; R-3 … R-6, R-8, R-9, RC-F4, R-12 `manual` in P25-04) | zero unexplained deltas; the operator's signature (P25-04) |
 | 7 | **Open the pre-invitation gate** for the tenant (`upstream_invitations_open`) | the operator's confirmation; the flags route writes its audit row |
 | 8 | **Issue invitations** | the count of invitations sent; each account is `awaiting_invitation` until accepted |
 | 9 | **Declare Callibrator the system of record** | the go/no-go record is signed (P30-03) |
@@ -154,7 +154,7 @@ Dominated by the delta, not the bulk — **if the bulk was loaded ahead**.
 | Final dump + stage | ~384 k rows; staging measured < 1 min on a synthetic dump | minutes |
 | Transform + load | ~330 k audit rows dominate; 2–10 min estimated | minutes |
 | Delta files | a day's photos | minutes |
-| Reconciliation | 12 checks per facility | minutes |
+| Reconciliation | 9 automated checks (R-1/R-2/R-7 per facility; R-10/R-11/RC-F1/RC-F2/RC-F3/RC-F5 run level) + 8 `manual` recorded by hand | minutes |
 | **Total** | | **under 1 hour** if § 4 ran |
 
 ⏳ **Unproved:** every figure above is an estimate from the dry-run plan. P24-05 replaces them with
@@ -167,8 +167,8 @@ promised to anyone.
 
 - Upstream is **read-only**, for lookup by staff who have not yet switched.
 - **No dual writing.** A device's history written in two systems is two histories.
-- **Post-cutover reconciliation** runs again after the first week of real use: the same R-1 … R-11
-  checks, now against live data.
+- **Post-cutover reconciliation** runs again after the first week of real use: the same 9 automated
+  checks plus the 8 `manual` ones, now against live data.
 - Invitations still unaccepted are visible on the users page; an account still awaiting 30 days after
   its **first** invitation is deactivated by the nightly job (ADR-139 § 5). An administrator
   reactivates and re-invites.

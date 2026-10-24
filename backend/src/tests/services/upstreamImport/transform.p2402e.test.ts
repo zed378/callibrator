@@ -226,7 +226,7 @@ describe("P24-02e the device plan", () => {
           device("13", { sn: "SN-DUP", id_client: 2 }),
           device("14", { sn: "SN-OPER" }),
         ],
-        { takenSerial: new Map([[`${FAC_1}|SN-OPER`, OTHER]]) },
+        { takenSerial: new Map([[`${FAC_1}|sn-oper`, OTHER]]) },
       ),
     );
     expect(plan.insert.map((d) => [d.sourceRowNumber, d.serialNumber])).toEqual([
@@ -236,6 +236,27 @@ describe("P24-02e the device plan", () => {
       ["114", null],
     ]);
     expect(plan.mappings.find((m) => m.legacyId === "12")?.sourceValues).toEqual({ sn: "SN-DUP" });
+  });
+
+  it("serial duplicates are case-insensitive (05 section 3.2): sn-dup loses to SN-DUP of the same facility", () => {
+    const plan = planDevices(
+      input(
+        [
+          device("11", { sn: "SN-DUP" }),
+          device("12", { sn: "sn-dup" }),
+          device("13", { sn: "Sn-Dup", id_client: 2 }),
+          device("14", { sn: "sn-oper" }),
+        ],
+        { takenSerial: new Map([[`${FAC_1}|sn-oper`, OTHER]]) },
+      ),
+    );
+    expect(plan.insert.map((d) => [d.sourceRowNumber, d.serialNumber])).toEqual([
+      ["111", "SN-DUP"],
+      ["112", null],
+      ["113", "Sn-Dup"],
+      ["114", null],
+    ]);
+    expect(plan.mappings.find((m) => m.legacyId === "12")?.sourceValues).toEqual({ sn: "sn-dup" });
   });
 
   it("quarantine: a facility not imported, an invalid QR or an empty name, a case collision, a QR the register holds", () => {

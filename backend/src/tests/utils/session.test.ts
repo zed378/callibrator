@@ -2,12 +2,28 @@
  * Tests for session utility
  */
 
+interface SessionUtil {
+    hashToken: (token: string) => string;
+    createSession: (args: {
+        userId: string;
+        token: string;
+        ipAddress?: string | null;
+        userAgent?: string | null;
+        expiredAt: Date;
+    }) => Promise<{ is_revoked: boolean }>;
+    findSession: (args: { token: string; userId?: string | null; sessionId?: string | null }) => Promise<unknown>;
+    revokeSession: (args: { token: string; userId: string }) => Promise<[number]>;
+    revokeAllUserSessions: (userId: string) => Promise<[number]>;
+}
+
+const mockSessions = {
+  create: jest.fn(),
+  findOne: jest.fn(),
+  update: jest.fn(),
+};
+
 jest.mock("../../models", () => ({
-  Sessions: {
-    create: jest.fn(),
-    findOne: jest.fn(),
-    update: jest.fn(),
-  },
+  Sessions: mockSessions,
 }));
 
 const {
@@ -16,8 +32,11 @@ const {
   findSession,
   revokeSession,
   revokeAllUserSessions,
-} = require("../../utils/session.util");
-const { Sessions } = require("../../models");
+} = require("../../utils/session.util") as SessionUtil; // eslint-disable-line @typescript-eslint/no-require-imports -- the module under test is `export =` (CommonJS)
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the mocked barrel, typed as its mocks
+const { Sessions } = require("../../models") as {
+    Sessions: { create: jest.Mock; findOne: jest.Mock; update: jest.Mock };
+};
 
 describe("session utility", () => {
   beforeEach(() => {

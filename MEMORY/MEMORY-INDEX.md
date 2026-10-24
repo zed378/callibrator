@@ -10,6 +10,11 @@ Add a line here as part of writing the record — **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-10-24 | P9-26 | [Batch 6: session, d27, w02 util guards](./records/2026-10-24-p9-26-batch-06-session-d27-w02.md) | **DONE.** 3 × `.js` to `.ts`, same 211 cases, eslint + typecheck clean, ratchet 685 to 682 |
+| 2026-10-24 | P9-26 | [Batch 5: admin.route, d24, a127 guard scans](./records/2026-10-24-p9-26-batch-05-admin-d24-a127.md) | **DONE.** 3 × `.js` to `.ts`, same 86 cases, eslint + typecheck clean, ratchet 688 to 685 |
+| 2026-10-24 | P30-01 | [Runbook re-verified — three stale check-count claims fixed](./records/2026-10-24-p30-01-runbook-stale-checks-fix.md) | **Docs only.** T-0 row 6, § 7, § 8 now quote the PARTIAL split (9 automated, 8 `manual`). Phases 26–31 re-read, no other drift |
+| 2026-10-24 | P9-26 | [Batch 4: packaged, appPath path utils](./records/2026-10-24-p9-26-batch-04-path-utils.md) | **DONE.** 2 × `.js` to `.ts`, same 11 cases, eslint + typecheck clean, ratchet 690 to 688 |
+| 2026-10-24 | Phase 24-25 audit | [ETL + reconciliation vs spec — serial dedup case-insensitive fixed](./records/2026-10-24-phase24-25-audit-fix.md) | **1 fixed.** 13 steps + id_map/quarantine + R-1..R-12/RC-F1..F5/Q-18/Q-12/Q-13 verified; live p2402g 6/6 + p2403 3/3 on PG18; unit 48/48. Real-data dry run still BLOCKED (UD-18) |
 | 2026-10-24 | Phase 22-23 audit | [Frontend + reports vs spec — two display defects fixed](./records/2026-10-24-phase22-23-audit-fix.md) | **2 fixed.** Export Type = device type (was model); on-screen report dates via dayText (was raw ISO). 180 + 206 + 143 frontend, backend report suites green |
 | 2026-10-24 | Phase 20-21 audit | [Migration / model / service / route vs spec — no blocking defect](./records/2026-10-24-phase20-21-audit-fix.md) | **Audit only, no code.** 0111-0146 present; all Phase 20-21 guards green; typecheck plus load-check green; prePushHook.a19 fails on Windows (out of scope) |
 | 2026-10-24 | Q-54 / Q-56 | [Debated and decided: no self-approval exception; stored fields returned](./records/2026-10-24-q54-q56-debate-decision.md) | **DONE.** Q-54 strict, no code. Q-56: list returns `code`, status returns suspension reason + date, 4/4 |

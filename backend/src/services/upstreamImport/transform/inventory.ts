@@ -277,7 +277,7 @@ export const planDevices = (input: DeviceInput): DevicePlan => {
     const rawSerial = textOf(raw, "sn");
     let serialNumber = serialOf(rawSerial);
     if (serialNumber !== null) {
-      const key = `${facilityId}|${serialNumber}`;
+      const key = `${facilityId}|${serialNumber.toLowerCase()}`;
       const taken = input.takenSerial.get(key);
       if (seenSerial.has(key) || (taken !== undefined && taken !== row.targetId)) {
         serialNumber = null;
@@ -592,11 +592,11 @@ export const runDevices = async (context: StepContext): Promise<void> => {
       await sql<{ id: string; facilityId: string; serial: string }>(
         runner,
         `SELECT id, client_facility_id AS "facilityId", serial_number AS serial FROM calibration_devices
-          WHERE tenant_id = $1 AND serial_number = ANY($2::text[])`,
-        [tenantId, serials],
+          WHERE tenant_id = $1 AND lower(serial_number) = ANY($2::text[])`,
+        [tenantId, serials.map((s) => s.toLowerCase())],
         { transaction },
       )
-    ).map((d) => [`${d.facilityId}|${d.serial}`, d.id]),
+    ).map((d) => [`${d.facilityId}|${d.serial.toLowerCase()}`, d.id]),
   );
 
   const plan = planDevices({ rows, tenantId, qr, facilities, types, users, formerUsers, vendors, rooms, takenQr, takenSerial, newId: randomUUID });

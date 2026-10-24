@@ -10,31 +10,60 @@
  *     database): the values the application's writers produce pass; the wrong
  *     shapes fail with a message naming the column.
  */
-const fs = require("fs");
-const path = require("path");
-const { Sequelize, DataTypes } = require("sequelize");
-const { JSON_SHAPES, jsonShape } = require("../../utils/jsonShape.util");
+import fs from "fs";
+import path from "path";
+import { DataTypes, Sequelize } from "sequelize";
+import { JSON_SHAPES, jsonShape } from "../../utils/jsonShape.util";
+
+/** A model attribute definition: only the fields this suite reads. */
+interface AttributeDef {
+  readonly type?: unknown;
+  readonly validate?: { readonly shape?: { readonly shapeKey: string } };
+  readonly allowNull?: boolean;
+}
+
+/** A model class: only the surface this suite reads. */
+interface BuiltInstance {
+  validate(options: unknown): Promise<void>;
+}
+
+interface ModelLike {
+  readonly name: string;
+  readonly rawAttributes: Record<string, AttributeDef>;
+  build(values: unknown): BuiltInstance;
+}
+
+interface JsonAttribute {
+  readonly key: string;
+  readonly def: AttributeDef;
+}
 
 const MODELS_DIR = path.join(__dirname, "../../models");
 const sequelize = new Sequelize({ dialect: "postgres", logging: false });
 
-const models = {};
+type ModelFactory = (sequelize: Sequelize, dataTypes: typeof DataTypes) => ModelLike;
+
+const models: Record<string, ModelLike> = {};
 for (const file of fs.readdirSync(MODELS_DIR)) {
   if (!/\.model\.(js|ts)$/.test(file)) { // ADR-087 Amendment 4
     continue;
   }
-  const model = require(path.join(MODELS_DIR, file))(sequelize, DataTypes);
-  if (model && model.rawAttributes) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- model factories are CommonJS (export =)
+  const define = require(path.join(MODELS_DIR, file)) as ModelFactory;
+  const model: ModelLike = define(sequelize, DataTypes);
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- a factory returns unknown at runtime; the guard keeps a bad export out of the map
+  if (model.rawAttributes !== undefined) {
     models[model.name] = model;
   }
 }
 
-const jsonAttributes = () => {
-  const out = [];
+const jsonAttributes = (): JsonAttribute[] => {
+  const out: JsonAttribute[] = [];
   for (const [modelName, model] of Object.entries(models)) {
     for (const [attr, def] of Object.entries(model.rawAttributes)) {
-      if (def.type instanceof DataTypes.JSON || def.type instanceof DataTypes.JSONB) {
-        out.push({ key: `${modelName}.${attr}`, def });
+      const attrType = def.type;
+      if (attrType instanceof DataTypes.JSON || attrType instanceof DataTypes.JSONB) {
+        out.push({ key: modelName + "." + attr, def });
       }
     }
   }
@@ -58,7 +87,7 @@ describe("D-27 — every JSON column is declared", () => {
 
   it("each JSON attribute validates against its OWN declared shape", () => {
     const wrong = jsonAttributes()
-      .filter(({ key, def }) => !(def.validate && def.validate.shape && def.validate.shape.shapeKey === key))
+      .filter(({ key, def }) => def.validate?.shape?.shapeKey !== key)
       .map(({ key }) => key);
     expect(wrong).toEqual([]);
   });
@@ -74,7 +103,7 @@ describe("D-27 — every JSON column is declared", () => {
 });
 
 // Values the writers produce — each read from the writer named beside it.
-const GOOD = {
+const GOOD: Record<string, unknown[]> = {
   "ApiKey.scopes": [["equipment:read", "certificate:write", "equipment"], []],
   "AuditLog.changes": [{ before: { status: "draft" }, after: { status: "approved" } }, {}],
   "CalibrationDevice.uncertaintyBudget": [{ components: [{ name: "ref", u: 0.1 }] }],
@@ -205,7 +234,7 @@ const GOOD = {
   ],
 };
 
-const BAD = {
+const BAD: Record<string, unknown[]> = {
   "ApiKey.scopes": [["*"], ["equipment:*"], "equipment:read", [42]],
   "AuditLog.changes": [["before", "after"], "changed", 7],
   "CalibrationDevice.uncertaintyBudget": [[1, 2], "u=0.1"],
@@ -299,34 +328,45 @@ const BAD = {
   "CalibrationRecord.performerSnapshot": [{ name: "A", role: null, organisation: null, source: "manual" }, { role: null, organisation: null }],
 };
 
-const buildWith = (key, value) => {
+const buildWith = (key: string, value: unknown): BuiltInstance => {
   const [modelName, attr] = key.split(".");
-  return models[modelName].build({ [attr]: value });
+  const model = models[modelName as string];
+  if (model === undefined) {
+    throw new Error("No model for " + key);
+  }
+  return model.build({ [attr as string]: value });
 };
 
-const shapeErrors = async (key, value) => {
-  const attr = key.split(".")[1];
+interface ValidationIssue {
+  path?: string;
+  message: string;
+}
+
+const shapeErrors = async (key: string, value: unknown): Promise<string[]> => {
+  const attr = key.split(".")[1] as string;
   try {
-    await buildWith(key, value).validate({ fields: [attr] });
+    const built: BuiltInstance = buildWith(key, value);
+    await built.validate({ fields: [attr] });
     return [];
   } catch (err) {
-    return err.errors.filter((e) => e.path === attr).map((e) => e.message);
+    const validationError = err as { errors: ValidationIssue[] };
+    return validationError.errors.filter((e) => e.path === attr).map((e) => e.message);
   }
 };
 
 describe("D-27 — the models accept what the writers write", () => {
-  it.each(Object.entries(GOOD).flatMap(([key, values]) => values.map((v) => [key, v])))(
+  it.each(Object.entries(GOOD).flatMap(([key, values]) => values.map((v) => [key, v] as [string, unknown])))(
     "%s accepts %j",
-    async (key, value) => {
+    async (key: string, value: unknown) => {
       expect(await shapeErrors(key, value)).toEqual([]);
     },
   );
 });
 
 describe("D-27 — and refuse the wrong shape, naming the column", () => {
-  it.each(Object.entries(BAD).flatMap(([key, values]) => values.map((v) => [key, v])))(
+  it.each(Object.entries(BAD).flatMap(([key, values]) => values.map((v) => [key, v] as [string, unknown])))(
     "%s refuses %j",
-    async (key, value) => {
+    async (key: string, value: unknown) => {
       const errors = await shapeErrors(key, value);
       expect(errors).toHaveLength(1);
       expect(errors[0]).toContain(`${key} has the wrong shape`);
@@ -336,15 +376,17 @@ describe("D-27 — and refuse the wrong shape, naming the column", () => {
   // P6-02: a correction copies a record's `results` — null when the record had
   // none — and the shape check refused the null with a 500. Nullness belongs
   // to `allowNull`, not the shape.
-  it.each(jsonAttributes().map(({ key, def }) => [key, def.allowNull !== false]))(
+  it.each(jsonAttributes().map(({ key, def }) => [key, def.allowNull !== false] as [string, boolean]))(
     "%s: null is decided by allowNull (nullable: %s), never by the shape",
-    async (key, nullable) => {
-      const attr = key.split(".")[1];
-      let messages = [];
+    async (key: string, nullable: boolean) => {
+      const attr = key.split(".")[1] as string;
+      let messages: string[] = [];
       try {
-        await buildWith(key, null).validate({ fields: [attr] });
+        const built: BuiltInstance = buildWith(key, null);
+        await built.validate({ fields: [attr] });
       } catch (err) {
-        messages = err.errors.filter((e) => e.path === attr).map((e) => e.message);
+        const validationError = err as { errors: ValidationIssue[] };
+        messages = validationError.errors.filter((e) => e.path === attr).map((e) => e.message);
       }
       expect(messages.some((m) => m.includes("wrong shape"))).toBe(false);
       expect(messages.length > 0).toBe(!nullable);
@@ -352,8 +394,8 @@ describe("D-27 — and refuse the wrong shape, naming the column", () => {
   );
 
   it("the shape validator itself passes null through", () => {
-    expect(() => jsonShape("CalibrationRecord.results")(null)).not.toThrow();
-    expect(() => jsonShape("CalibrationRecord.results")(3)).toThrow("wrong shape");
+    expect(() => { jsonShape("CalibrationRecord.results")(null); }).not.toThrow();
+    expect(() => { jsonShape("CalibrationRecord.results")(3); }).toThrow("wrong shape");
   });
 
   it("every declared column has good AND bad fixtures here", () => {

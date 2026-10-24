@@ -16,28 +16,39 @@
  * Item 3 is read from the template text here, and from the real `helm template`
  * output in the last block (which needs helm on PATH, and fails without it).
  */
-const fs = require("fs");
-const path = require("path");
+import { execFileSync } from "child_process";
+import fs from "fs";
+import path from "path";
+import type * as SchedulerSwitchModule from "../../utils/schedulerSwitch.util";
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-const { scheduleSetting, schedulersEnabled, DISABLED } = require("../../utils/schedulerSwitch.util");
-const { logger } = require("../../middlewares/activityLog.middleware");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the module under test (named exports)
+const { scheduleSetting, schedulersEnabled, DISABLED } = require("../../utils/schedulerSwitch.util") as typeof SchedulerSwitchModule;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the mocked middleware, typed as its mocks
+const { logger } = require("../../middlewares/activityLog.middleware") as {
+    logger: Record<"info" | "warn" | "error", jest.Mock>;
+};
 
 const BACKEND = path.join(__dirname, "../../..");
 const SRC = path.join(BACKEND, "src");
 const REPO = path.join(BACKEND, "..");
 
 /** Replica-safe schedulers, each with the reason it may run everywhere. */
-const EXEMPT = {
+const EXEMPT: Record<string, string> = {
   "middlewares/webhookDeliveryScheduler.middleware.ts":
-    "claims deliveries with FOR UPDATE SKIP LOCKED (ADR-054); the chart runs it on API pods",
+        "claims deliveries with FOR UPDATE SKIP LOCKED (ADR-054); the chart runs it on API pods",
 };
-const EXEMPT_VARIABLES = ["WEBHOOK_DISPATCH_SCHEDULER"];
+const EXEMPT_VARIABLES: readonly string[] = ["WEBHOOK_DISPATCH_SCHEDULER"];
 
-const sourceFiles = (dir) =>
+interface SourceFile {
+    rel: string;
+    text: string;
+}
+
+const sourceFiles = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -47,45 +58,53 @@ const sourceFiles = (dir) =>
     return /\.(js|ts)$/.test(entry.name) ? [full] : [];
   });
 
-const files = sourceFiles(SRC).map((file) => ({
+const files: SourceFile[] = sourceFiles(SRC).map((file) => ({
   rel: path.relative(SRC, file).split(path.sep).join("/"),
   text: fs.readFileSync(file, "utf8"),
 }));
 
-const schedulerVariables = [
+const schedulerVariables: string[] = [
   ...new Set(
     files.flatMap(({ text }) => [
-      ...[...text.matchAll(/process\.env\.([A-Z_]+_SCHEDULER)\b/g)].map((m) => m[1]),
-      ...[...text.matchAll(/scheduleSetting\(\s*"([A-Z_]+_SCHEDULER)"/g)].map((m) => m[1]),
+      ...[...text.matchAll(/process\.env\.([A-Z_]+_SCHEDULER)\b/g)].map((m) => m[1] as string),
+      ...[...text.matchAll(/scheduleSetting\(\s*"([A-Z_]+_SCHEDULER)"/g)].map((m) => m[1] as string),
     ]),
   ),
 ].sort();
 
 describe("W-02 — scheduleSetting", () => {
+  // eslint-disable-next-line no-restricted-properties -- the test mutates the environment the switch reads
   const saved = { ...process.env };
   afterEach(() => {
+    // eslint-disable-next-line no-restricted-properties -- restore what the cases set
     process.env = { ...saved };
     jest.clearAllMocks();
   });
 
   it("defaults to enabled and returns the job's own variable, or its default", () => {
-    delete process.env.SCHEDULERS_ENABLED;
-    delete process.env.X_SCHEDULER;
+    // eslint-disable-next-line no-restricted-properties -- the switch reads the environment raw
+    delete process.env["SCHEDULERS_ENABLED"];
+    // eslint-disable-next-line no-restricted-properties -- as above
+    delete process.env["X_SCHEDULER"];
     expect(schedulersEnabled()).toBe(true);
     expect(scheduleSetting("X_SCHEDULER", "0 1 * * *")).toBe("0 1 * * *");
-    process.env.X_SCHEDULER = "5 4 * * *";
+    // eslint-disable-next-line no-restricted-properties -- the job's own variable
+    process.env["X_SCHEDULER"] = "5 4 * * *";
     expect(scheduleSetting("X_SCHEDULER", "0 1 * * *")).toBe("5 4 * * *");
   });
 
   it.each(["false", "FALSE", " 0 ", "off", "no"])("SCHEDULERS_ENABLED=%j disables every job, whatever its own variable says", (value) => {
-    process.env.SCHEDULERS_ENABLED = value;
-    process.env.X_SCHEDULER = "5 4 * * *";
+    // eslint-disable-next-line no-restricted-properties -- the switch under test
+    process.env["SCHEDULERS_ENABLED"] = value;
+    // eslint-disable-next-line no-restricted-properties -- the job's own variable
+    process.env["X_SCHEDULER"] = "5 4 * * *";
     expect(scheduleSetting("X_SCHEDULER", "0 1 * * *")).toBe(DISABLED);
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("X_SCHEDULER ignored: SCHEDULERS_ENABLED=false"));
   });
 
   it("SCHEDULERS_ENABLED=true leaves the jobs on", () => {
-    process.env.SCHEDULERS_ENABLED = "true";
+    // eslint-disable-next-line no-restricted-properties -- the switch under test
+    process.env["SCHEDULERS_ENABLED"] = "true";
     expect(scheduleSetting("X_SCHEDULER", "0 1 * * *")).toBe("0 1 * * *");
   });
 });
@@ -107,7 +126,7 @@ describe("W-02 — no scheduler escapes the switch", () => {
     const direct = files
       .filter(({ rel }) => !EXEMPT[rel])
       .flatMap(({ rel, text }) =>
-        [...text.matchAll(/process\.env\.([A-Z_]+_SCHEDULER)\b/g)].map((m) => `${rel}: ${m[1]}`),
+        [...text.matchAll(/process\.env\.([A-Z_]+_SCHEDULER)\b/g)].map((m) => `${rel}: ${m[1] as string}`),
       );
     expect(direct).toEqual([]);
   });
@@ -148,16 +167,17 @@ describe("W-02 — no scheduler escapes the switch", () => {
 describe("W-02 — the rendered chart (needs helm on PATH)", () => {
   beforeAll(() => {
     try {
-      require("child_process").execFileSync("helm", ["version", "--short"], { stdio: "ignore" });
+      execFileSync("helm", ["version", "--short"], { stdio: "ignore" });
     } catch (err) {
+      const code = (err as { code?: string; message?: string }).code ?? (err as Error).message;
       throw new Error(
-        `helm is not on PATH (${err.code || err.message}): install Helm 3 (CI pins v3.19.0) — this block renders the real chart`,
+        `helm is not on PATH (${code}): install Helm 3 (CI pins v3.19.0) — this block renders the real chart`,
       );
     }
   });
 
-  const render = (...extra) =>
-    require("child_process").execFileSync(
+  const render = (...extra: string[]): string =>
+    execFileSync(
       "helm",
       [
         "template", "r", path.join(REPO, "deploy/helm/callibrator"),
@@ -170,9 +190,9 @@ describe("W-02 — the rendered chart (needs helm on PATH)", () => {
       ],
       { encoding: "utf8", timeout: 60000 },
     );
-  const value = (manifest, name) => {
-    const m = manifest.match(new RegExp(`^[ \\t]*${name}: "([^"]*)"\\r?$`, "m"));
-    return m ? m[1] : undefined;
+  const value = (manifest: string, name: string): string | undefined => {
+    const m = new RegExp(`^[ \\t]*${name}: "([^"]*)"\\r?$`, "m").exec(manifest);
+    return m ? (m[1]) : undefined;
   };
 
   it("an API deployment (cron.enabled false, three replicas) renders NO enabled singleton scheduler", () => {

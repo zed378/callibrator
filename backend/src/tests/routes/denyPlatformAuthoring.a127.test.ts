@@ -25,34 +25,59 @@
  *     NOT_GUARDED with the reason, in writing. A new such route fails this
  *     test until someone decides.
  */
+import fs from "fs";
+import path from "path";
+import type { Request, Response, Router } from "express";
+import type * as AuthMiddleware from "../../middlewares/auth.middleware";
+import type * as TenantContextModule from "../../middlewares/tenantContext.middleware";
+import type * as DenyModule from "../../middlewares/denyPlatformAuthoring.middleware";
+import type * as WiringModule from "../../utils/authorizationWiring.util";
 
-const mockState = { user: null, tenantId: null, impersonatorId: null };
+interface MockUser {
+    id: string;
+    tenantId: string;
+    role: { name: string; roleLevel?: number };
+}
+
+interface MockState {
+    user: MockUser | null;
+    tenantId: string | null;
+    impersonatorId: string | null;
+}
+
+const mockState: MockState = { user: null, tenantId: null, impersonatorId: null };
 
 jest.mock("../../middlewares/auth.middleware", () => {
-  const actual = jest.requireActual("../../middlewares/auth.middleware");
+  const actual = jest.requireActual<typeof AuthMiddleware>("../../middlewares/auth.middleware");
   return {
     ...actual,
-    auth: (req, res, next) => {
-      req.user = mockState.user;
-      req.tenantId = mockState.tenantId;
-      req.impersonatorId = mockState.impersonatorId;
+    auth: (req: Request, _res: Response, next: () => void): void => {
+      (req as unknown as { user: MockUser | null }).user = mockState.user;
+      (req as unknown as { tenantId: string | null }).tenantId = mockState.tenantId;
+      (req as unknown as { impersonatorId: string | null }).impersonatorId = mockState.impersonatorId;
       next();
     },
-    denyApiKey: (req, res, next) => next(),
+    denyApiKey: (_req: Request, _res: Response, next: () => void): void => {
+      next();
+    },
   };
 });
 jest.mock("../../middlewares/dynamicAccess.middleware", () => ({
-  dynamicAccess: () => (req, res, next) => next(),
+  dynamicAccess: () => (_req: Request, _res: Response, next: () => void): void => {
+    next();
+  },
 }));
 jest.mock("../../middlewares/validation.middleware", () => ({
-  validate: () => (req, res, next) => next(),
+  validate: () => (_req: Request, _res: Response, next: () => void): void => {
+    next();
+  },
 }));
 
-const mockReached = (name) =>
-  jest.fn((req, res) => {
+const mockReached = (name: string) =>
+  jest.fn((_req: Request, res: Response) => {
     // What the tenant hooks would see for the rest of the request.
-    const { tenantStorage } = jest.requireActual("../../middlewares/tenantContext.middleware");
-    return res.status(200).json({ success: true, handler: name, ctx: tenantStorage.getStore() || null });
+    const { tenantStorage } = jest.requireActual<typeof TenantContextModule>("../../middlewares/tenantContext.middleware");
+    return res.status(200).json({ success: true, handler: name, ctx: tenantStorage.getStore() ?? null });
   });
 
 jest.mock("../../controllers/eSignature.controller", () => ({
@@ -114,22 +139,27 @@ jest.mock("../../controllers/calibrationRecords.controller", () => ({
   voidCalibrationRecord: mockReached("voidCalibrationRecord"),
 }));
 
-const fs = require("fs");
-const path = require("path");
-const {
-  stripComments,
-  readBracketed,
-  splitTopLevel,
-} = require("../../utils/authorizationWiring.util");
-const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
-const { MESSAGES } = require("../../middlewares/denyPlatformAuthoring.middleware");
+const { stripComments, readBracketed, splitTopLevel } =
+    jest.requireActual<typeof WiringModule>("../../utils/authorizationWiring.util");
+const { tenantStorage } = jest.requireActual<typeof TenantContextModule>("../../middlewares/tenantContext.middleware");
+const { MESSAGES } = jest.requireActual<typeof DenyModule>("../../middlewares/denyPlatformAuthoring.middleware");
 
-const ROUTERS = {
-  esignature: require("../../routes/api/eSignature.route"),
-  certificates: require("../../routes/api/certificates.route"),
-  "calibration-records": require("../../routes/api/calibrationRecords.route"),
-  sop: require("../../routes/api/sop.route"),
-  workflows: require("../../routes/api/workflows.route"),
+/* eslint-disable @typescript-eslint/no-require-imports -- the routers are `export =` (CommonJS), loaded after the mocks */
+const esignatureRouter = require("../../routes/api/eSignature.route") as Router;
+const certificatesRouter = require("../../routes/api/certificates.route") as Router;
+const calibrationRecordsRouter = require("../../routes/api/calibrationRecords.route") as Router;
+const sopRouter = require("../../routes/api/sop.route") as Router;
+const workflowsRouter = require("../../routes/api/workflows.route") as Router;
+const esignatureController = require("../../controllers/eSignature.controller") as Record<string, jest.Mock>;
+const certificateController = require("../../controllers/certificate.controller") as Record<string, jest.Mock>;
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+const ROUTERS: Record<string, Router> = {
+  esignature: esignatureRouter,
+  certificates: certificatesRouter,
+  "calibration-records": calibrationRecordsRouter,
+  sop: sopRouter,
+  workflows: workflowsRouter,
 };
 
 const MEMBER = "11111111-1111-4111-8111-111111111111";
@@ -141,23 +171,28 @@ const RECORD = "55555555-5555-4555-8555-555555555555";
 const SOP = "66666666-6666-4666-8666-666666666666";
 const INSTANCE = "77777777-7777-4777-8777-777777777777";
 
+interface Answer {
+    status: number;
+    body: { message?: string; handler?: string; ctx?: unknown };
+}
+
 /** Drive `router` with `method url`, inside the tenant context auth would open. */
-const http = (mount, method, url, body = {}) =>
+const http = (mount: string, method: string, url: string, body: Record<string, unknown> = {}): Promise<Answer> =>
   new Promise((resolve) => {
     const res = {
       statusCode: 200,
       headersSent: false,
-      status(code) {
-        this.statusCode = code;
-        return this;
+      status(code: number) {
+        res.statusCode = code;
+        return res;
       },
-      json(payload) {
-        this.headersSent = true;
-        resolve({ status: this.statusCode, body: payload });
-        return this;
+      json(payload: Answer["body"]) {
+        res.headersSent = true;
+        resolve({ status: res.statusCode, body: payload });
+        return res;
       },
       setHeader() {
-        return this;
+        return res;
       },
     };
     const req = {
@@ -169,50 +204,57 @@ const http = (mount, method, url, body = {}) =>
       params: {},
       headers: {},
       ip: "127.0.0.1",
-      get: () => undefined,
+      get: (): undefined => undefined,
     };
-    const roleName = mockState.user && mockState.user.role && mockState.user.role.name;
+    const roleName = mockState.user?.role.name;
     tenantStorage.run(
       {
-        tenantId: mockState.tenantId,
+        tenantId: mockState.tenantId as never,
         isSuperAdmin: roleName === "SUPERADMIN" || roleName === "SUPER_ADMIN",
         isSystemTask: false,
       },
-      () =>
-        ROUTERS[mount].handle(req, res, (err) =>
-          resolve({
-            status: err ? err.status || 500 : 404,
-            body: { message: err ? err.message : "no route" },
-          }),
-        ),
+      () => {
+        (ROUTERS[mount] as unknown as { handle: (q: unknown, s: unknown, n: (e?: { status?: number; message?: string }) => void) => void }).handle(
+          req,
+          res,
+          (err) => {
+            resolve({
+              status: err?.status ?? 500,
+              body: { message: err?.message ?? "no route" },
+            });
+          },
+        );
+      },
     );
   });
 
 // P20-06 (spec P18-01-02 § 4.3): the record void is rbac([TENANT_ADMIN]) before this guard — its
 // member is the tenant's administrator, so the request reaches the guard (and then the handler).
-const MEMBER_ROLE_FOR = { voidCalibrationRecord: { name: "HEALTHCARE ADMIN", roleLevel: 8 } };
-const asMember = (handler) => {
-  mockState.user = { id: MEMBER, tenantId: HOSPITAL, role: MEMBER_ROLE_FOR[handler] || { name: "TECHNICIAN" } };
+const MEMBER_ROLE_FOR: Record<string, { name: string; roleLevel: number }> = {
+  voidCalibrationRecord: { name: "HEALTHCARE ADMIN", roleLevel: 8 },
+};
+const asMember = (handler?: string): void => {
+  mockState.user = { id: MEMBER, tenantId: HOSPITAL, role: MEMBER_ROLE_FOR[handler ?? ""] ?? { name: "TECHNICIAN" } };
   mockState.tenantId = HOSPITAL;
   mockState.impersonatorId = null;
 };
 /** A super admin impersonating the hospital member (impersonateUser's token). */
-const asImpersonated = (handler) => {
+const asImpersonated = (handler?: string): void => {
   asMember(handler);
   mockState.impersonatorId = OPERATOR;
 };
 /** A super admin whose x-tenant-id override selected the hospital. */
-const asOperatorIn = (tenantId) => {
+const asOperatorIn = (tenantId: string): void => {
   mockState.user = { id: OPERATOR, tenantId: PLATFORM_HOME, role: { name: "SUPERADMIN" } };
   mockState.tenantId = tenantId;
   mockState.impersonatorId = null;
 };
 
-beforeEach(() => asMember());
+beforeEach(() => { asMember(); });
 
 // Every Part 11 act Q-17 names, and those the A-145 review added — the list
 // the middleware is mounted on.
-const PART11_ACTS = [
+const PART11_ACTS: [string, string, string, string][] = [
   ["esignature", "POST", "/sign", "signDocument"],
   ["certificates", "POST", `/${CERT}/approve`, "approveCertificate"],
   ["certificates", "POST", `/${CERT}/submit`, "submitCertificate"],
@@ -237,7 +279,7 @@ describe("A-127 — the named behaviours", () => {
     const res = await http("esignature", "POST", "/sign", { workflowId: CERT });
     expect(res.status).toBe(403);
     expect(res.body.message).toBe(MESSAGES.IMPERSONATING);
-    expect(require("../../controllers/eSignature.controller").signDocument).not.toHaveBeenCalled();
+    expect(esignatureController["signDocument"]).not.toHaveBeenCalled();
   });
 
   it("approving a certificate as a super admin in another tenant is refused", async () => {
@@ -245,9 +287,7 @@ describe("A-127 — the named behaviours", () => {
     const res = await http("certificates", "POST", `/${CERT}/approve`, { password: "x" });
     expect(res.status).toBe(403);
     expect(res.body.message).toBe(MESSAGES.OTHER_TENANT);
-    expect(
-      require("../../controllers/certificate.controller").approveCertificate,
-    ).not.toHaveBeenCalled();
+    expect(certificateController["approveCertificate"]).not.toHaveBeenCalled();
   });
 
   it("an ordinary member can still sign", async () => {
@@ -326,17 +366,23 @@ describe("A-127 — other writes remain allowed to an operator (audited with the
 
 const ROUTES_DIR = path.join(__dirname, "..", "..", "routes", "api");
 
-const routeCalls = (source) => {
+interface RouteCall {
+    method: string;
+    path: string;
+    args: string[];
+}
+
+const routeCalls = (source: string): RouteCall[] => {
   const clean = stripComments(source);
-  const calls = [];
+  const calls: RouteCall[] = [];
   const re = /\brouter\.(get|post|put|patch|delete)\s*\(/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(clean)) !== null) {
     const inner = readBracketed(clean, clean.indexOf("(", m.index));
-    const args = splitTopLevel(inner).map((a) => a.trim());
+    const args = splitTopLevel(inner ?? "").map((a) => a.trim());
     calls.push({
-      method: m[1].toUpperCase(),
-      path: args[0].replace(/^["'`]|["'`]$/g, ""),
+      method: (m[1] as string).toUpperCase(),
+      path: args[0]?.replace(/^["'`]|["'`]$/g, "") ?? "",
       args,
     });
   }
@@ -347,9 +393,14 @@ const routeCalls = (source) => {
 // "signCertificate" are.
 const REGULATED = /\bsign|approv|revok|submit|publish|acknowledg|certificate|calibrationRecord|workflow/i;
 
+interface Candidate {
+    key: string;
+    guarded: boolean;
+}
+
 /** Every write route that looks like a regulated act, and whether it is guarded. */
-const candidates = () => {
-  const out = [];
+const candidates = (): Candidate[] => {
+  const out: Candidate[] = [];
   // ADR-087 Amendment 4: .ts too; exemptions stay keyed by the file's name.
   for (const file of fs.readdirSync(ROUTES_DIR).filter((f) => /\.(js|ts)$/.test(f)).sort()) {
     const source = fs.readFileSync(path.join(ROUTES_DIR, file), "utf8");
@@ -382,14 +433,14 @@ const candidates = () => {
 //  - SOP acknowledge: the member's own training record (ISO 13485 §6.2).
 //  - workflow instance action: an approval or rejection; the final approval
 //    stamps the certificate / transfer / work order as approved by the caller.
-const GUARDED = [
+const GUARDED: string[] = [
   // P21-08 (ADR-138 Am. 1 § 1): revoking a device's public link is the tenant's act on its sticker (the scan catches the revoke; issue and rotate carry the guard too).
   "calibrationDevices.route.ts DELETE /:calibrationDeviceId/public-token",
   // P21-05 (ADR-133 § 2): the quick entry writes a calibration record (an outside laboratory's date).
   "calibrationDevices.route.ts POST /:calibrationDeviceId/calibration-dates",
   "calibrationRecords.route.ts POST /",
-  "calibrationRecords.route.ts POST /:calibrationRecordId/corrections", // P6-03
-  "calibrationRecords.route.ts POST /:calibrationRecordId/void", // P6-03
+  "calibrationRecords.route.ts POST /:calibrationRecordId/corrections",
+  "calibrationRecords.route.ts POST /:calibrationRecordId/void",
   "certificates.route.ts DELETE /:certificateId",
   "certificates.route.ts POST /",
   "certificates.route.ts POST /:certificateId/approve",
@@ -409,40 +460,40 @@ const GUARDED = [
 // Reviewed 2026-09-24 and deliberately NOT guarded — with the reason. A route
 // moved out of this list must move into GUARDED, and a new one must land in
 // one of the two.
-const NOT_GUARDED = {
+const NOT_GUARDED: Record<string, string> = {
   "ipm.route.ts POST /template-versions/:versionId/publish":
-    "P21-01 (ADR-125 § 4): publishing a checklist of the GLOBAL catalogue — a platform operation by the super admin (superAdminOnly), inside no tenant, audited under PLATFORM; not a record a tenant attests",
+        "P21-01 (ADR-125 § 4): publishing a checklist of the GLOBAL catalogue — a platform operation by the super admin (superAdminOnly), inside no tenant, audited under PLATFORM; not a record a tenant attests",
   "ipm.route.ts POST /template-proposals":
-    "P21-01 (ADR-125 § 5): a tenant's PROPOSAL to the platform operator — a request, not a regulated record; ipm-templates write, API keys refused",
+        "P21-01 (ADR-125 § 5): a tenant's PROPOSAL to the platform operator — a request, not a regulated record; ipm-templates write, API keys refused",
   "accessRequests.route.ts POST /":
-    "P10-05 (ADR-098 §6): the PUBLIC access-request intake (matched on its `submit` handler); no principal, no tenant, authors no Part 11 record",
+        "P10-05 (ADR-098 §6): the PUBLIC access-request intake (matched on its `submit` handler); no principal, no tenant, authors no Part 11 record",
   "admin.route.ts POST /access-requests/:id/approve":
-    "P10-05/P10-07: the super admin approving an access request creates a tenant and its first administrator — a platform operation (A-76), inside no tenant, audited under PLATFORM; not a record a tenant attests",
+        "P10-05/P10-07: the super admin approving an access request creates a tenant and its first administrator — a platform operation (A-76), inside no tenant, audited under PLATFORM; not a record a tenant attests",
   "ai.route.ts POST /ocr": "matched on its `certificate` gate; extracts text from a file, authors nothing",
   "apiKeys.route.ts DELETE /:id": "API-key revocation — an administrative act, not a Part 11 record",
   "attachments.route.ts POST /:id/signed-url": "issues a download URL, authors nothing",
   "auth.route.ts POST /first-sign-in/password":
-    "P10-16 (ADR-099): public — replaces a one-time password after its first sign-in; the password-change token is the capability, it authors no record content",
+        "P10-16 (ADR-099): public — replaces a one-time password after its first sign-in; the password-change token is the capability, it authors no record content",
   "eSignature.route.ts DELETE /workflows/:workflowId": "workflow management, audited (F-8); authors no signature",
   "eSignature.route.ts POST /workflows": "workflow setup, audited (F-8); the signature itself is POST /sign",
   "eSignature.route.ts POST /workflows/:workflowId/cancel":
-    "A-145 reviewed: withdraws a signing request; authors no signature and no record content, signatures already given stay verifiable; a closed workflow answers 409 and the cancel is audited with the impersonator (F-8, A-130). Unsticking a workflow is a legitimate support act",
+        "A-145 reviewed: withdraws a signing request; authors no signature and no record content, signatures already given stay verifiable; a closed workflow answers 409 and the cancel is audited with the impersonator (F-8, A-130). Unsticking a workflow is a legitimate support act",
   "eSignature.route.ts PUT /workflows/:workflowId": "workflow setup, audited (F-8); the signature itself is POST /sign",
   "iot.route.ts DELETE /devices/:deviceId/token":
-    "IoT device credential revocation — an administrative act on a machine credential, not a Part 11 record",
+        "IoT device credential revocation — an administrative act on a machine credential, not a Part 11 record",
   "menuGroups.route.ts POST /bulk-revoke": "menu configuration, not a record",
   "menuGroups.route.ts POST /revoke": "menu configuration, not a record",
   "menuGroups.route.ts POST /revoke-item": "menu configuration, not a record",
   "predictiveMaintenance.route.ts POST /recommendations/:deviceId/approve":
-    "A-145 reviewed: sets a device's calibrationIntervalDays — equipment master data that PUT /calibration-devices/:id edits unguarded under the same grant, so guarding here alone would be theatre. Audited in its transaction (APPROVE, APPLY_RECOMMENDED_INTERVAL)",
+        "A-145 reviewed: sets a device's calibrationIntervalDays — equipment master data that PUT /calibration-devices/:id edits unguarded under the same grant, so guarding here alone would be theatre. Audited in its transaction (APPROVE, APPLY_RECOMMENDED_INTERVAL)",
   "session.route.ts POST /:id/revoke": "session revocation, not a record",
   "session.route.ts POST /mine/:id/revoke": "the caller ends one of their own sessions (Q-08, ADR-084), not a record",
   "session.route.ts POST /user/:userId/revoke-all": "session revocation, not a record",
   "user.route.ts DELETE /:userId/invitation":
-    "P24-09a (ADR-139 § 3): an account's invitation (matched on its `revoke` handler), not a record; the platform operator may act on it at cutover — audited",
+        "P24-09a (ADR-139 § 3): an account's invitation (matched on its `revoke` handler), not a record; the platform operator may act on it at cutover — audited",
   "workflows.route.ts DELETE /:id": "workflow definition management, not a record",
   "webauthn.route.ts DELETE /credentials/:id":
-    "ADR-108 Am. 1: the caller removes one of their OWN passkeys (matched on its `revoke` handler); re-authenticated and audited, not a Part 11 record",
+        "ADR-108 Am. 1: the caller removes one of their OWN passkeys (matched on its `revoke` handler); re-authenticated and audited, not a Part 11 record",
   "workflows.route.ts POST /": "workflow definition management, not a record",
   "workflows.route.ts PUT /:id": "workflow definition management, not a record",
 };
@@ -473,7 +524,7 @@ describe("A-127 — every regulated-looking write route is enumerated and review
   });
 
   it("the guard runs after auth on every guarded route (it reads the principal)", () => {
-    const files = [...new Set(GUARDED.map((key) => key.split(" ")[0]))];
+    const files = [...new Set(GUARDED.map((key) => key.split(" ")[0] as string))];
     expect(files.length).toBeGreaterThan(3);
     for (const file of files) {
       const source = fs.readFileSync(path.join(ROUTES_DIR, file), "utf8");
