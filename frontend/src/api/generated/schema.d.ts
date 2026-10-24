@@ -15769,7 +15769,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description A page of tenants (the page is inside `data`) */
+            /** @description A page of tenants: rows in `data`, paging in a top-level `meta` (since 2026-10-24; before, the page sat inside `data`) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -15778,15 +15778,15 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         success: true;
-                        /** @description The HTTP status, repeated in the body */
-                        status: number;
+                        /** @constant */
+                        status: 200;
                         message: string;
-                        data: {
+                        data: components["schemas"]["TenantAsStored"][];
+                        meta: {
                             total: number;
                             page: number;
                             limit: number;
                             totalPages: number;
-                            tenants: components["schemas"]["TenantAsStored"][];
                         };
                     };
                 };

@@ -200,7 +200,7 @@ describe("P10 the super admin's queue (live)", () => {
     for (const code of codes) {
       const found = await call("GET", `/admin/tenants?search=${code}&limit=10`, { token: operator });
       expect(found.status).toBe(200);
-      tenants += arr(dataOf(found)["tenants"]).map(obj).filter((t) => str(t["code"]) === code).length;
+      tenants += arr(obj(found.body)["data"]).map(obj).filter((t) => str(t["code"]) === code).length;
     }
     expect(tenants).toBe(1);
   });

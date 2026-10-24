@@ -30,6 +30,9 @@ const { error: sendError } = require("../../utils/response.util");
 const VALID_USER_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VALID_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
 
+/** One page of tenants, as admin.service#getAllTenants answers it. */
+const page = (tenants) => ({ total: tenants.length, page: 1, limit: 10, totalPages: 1, tenants });
+
 describe("admin Controller", () => {
   let req, res, next;
 
@@ -53,9 +56,7 @@ describe("admin Controller", () => {
 
   describe("getAllTenants", () => {
     it("should return all tenants without filters", async () => {
-      adminService.getAllTenants.mockResolvedValue([
-        { id: "tenant-1", name: "Tenant A" },
-      ]);
+      adminService.getAllTenants.mockResolvedValue(page([{ id: "tenant-1", name: "Tenant A" }]));
 
       await adminController.getAllTenants(req, res, next);
 
@@ -64,16 +65,32 @@ describe("admin Controller", () => {
 
     it("should return tenants with search filter", async () => {
       req.query = { search: "hospital" };
-      adminService.getAllTenants.mockResolvedValue([]);
+      adminService.getAllTenants.mockResolvedValue(page([]));
 
       await adminController.getAllTenants(req, res, next);
 
       expect(adminService.getAllTenants).toHaveBeenCalledWith(undefined, undefined, "hospital");
     });
 
+    it("answers the house list envelope: rows in `data`, paging in a top-level `meta`", async () => {
+      const rows = [{ id: "tenant-1", name: "Tenant A" }];
+      adminService.getAllTenants.mockResolvedValue({ ...page(rows), total: 11, page: 2, limit: 10, totalPages: 2 });
+
+      await adminController.getAllTenants(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        status: 200,
+        message: "Tenants retrieved successfully",
+        data: rows,
+        meta: { total: 11, page: 2, limit: 10, totalPages: 2 },
+      });
+    });
+
     it("should return tenants with pagination", async () => {
       req.query = { page: "2", limit: "50" };
-      adminService.getAllTenants.mockResolvedValue([]);
+      adminService.getAllTenants.mockResolvedValue(page([]));
 
       await adminController.getAllTenants(req, res, next);
 
