@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — P9-26 batch 2: jobContext.w12 to TypeScript ([record](./records/2026-10-24-p9-26-batch-02-job-context.md))
+- **DONE:** same 12 cases, lint clean, ratchet 693 to 692 `.js` test files.
+
 ### 2026-10-24 — The Indonesian user guides: one row per facility role, three items pending (P29-01) ([record](./records/2026-10-24-p29-01-guides-review.md))
 - **Corrected:** the facility technician was described as narrower; it records IPM and registers devices in its facility (not calibration dates). Real-phone run, OA-4 and the real-data dry run marked pending.
 

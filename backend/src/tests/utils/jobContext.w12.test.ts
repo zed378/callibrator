@@ -7,27 +7,34 @@
  * reads only tenant A, and a create inside it is stamped with tenant A. With
  * no context at all — how every job ran before — the hooks add nothing.
  */
-const { Sequelize, DataTypes } = require("sequelize");
-const fs = require("fs");
-const path = require("path");
-const { runForTenant, runAsSystem, SYSTEM_TASKS } = require("../../utils/jobContext.util");
-const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
-const { register: registerTenantScopeHooks } = require("../../utils/tenantScope.util");
+import { Sequelize, DataTypes } from "sequelize";
+import fs from "node:fs";
+import path from "node:path";
+import { runForTenant, runAsSystem, SYSTEM_TASKS } from "../../utils/jobContext.util";
+import { tenantStorage } from "../../middlewares/tenantContext.middleware";
+import { register as registerTenantScopeHooks } from "../../utils/tenantScope.util";
+
+/** A Sequelize model built by `sequelize.define` — dynamic, untyped by design. */
+interface DynamicModel {
+    findAll: (options: unknown) => Promise<unknown>;
+    build: (values: unknown) => { tenantId?: string };
+    runHooks: (hook: string, instance: unknown, options: unknown) => Promise<void>;
+}
 
 const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 describe("runForTenant / runAsSystem", () => {
   it("runForTenant runs fn in a plain tenant context and returns its result", async () => {
-    const result = await runForTenant(TENANT_A, async () => tenantStorage.getStore());
+    const result = await runForTenant(TENANT_A, () => Promise.resolve(tenantStorage.getStore()));
     expect(result).toEqual({ tenantId: TENANT_A, isSuperAdmin: false, isSystemTask: false });
   });
 
   it("runForTenant refuses an empty tenant — a job with no tenant must say so", async () => {
-    await expect(runForTenant(null, async () => 1)).rejects.toThrow(/runAsSystem/);
+    await expect(runForTenant(null, () => Promise.resolve(1))).rejects.toThrow(/runAsSystem/);
   });
 
   it("runAsSystem is an explicit, named system task and never a super admin", async () => {
-    const result = await runAsSystem(SYSTEM_TASKS.SESSION_CLEANUP, async () => tenantStorage.getStore());
+    const result = await runAsSystem(SYSTEM_TASKS.SESSION_CLEANUP, () => Promise.resolve(tenantStorage.getStore()));
     expect(result).toEqual({
       tenantId: null,
       isSuperAdmin: false,
@@ -37,7 +44,7 @@ describe("runForTenant / runAsSystem", () => {
   });
 
   it("runAsSystem refuses an unnamed opt-out", async () => {
-    await expect(runAsSystem("", async () => 1)).rejects.toThrow(/reason/);
+    await expect(runAsSystem("", () => Promise.resolve(1))).rejects.toThrow(/reason/);
   });
 
   it("ADR-069: runAsSystem refuses a reason that is not a reviewed SYSTEM_TASKS entry", async () => {
@@ -49,7 +56,7 @@ describe("runForTenant / runAsSystem", () => {
 
 describe("ADR-069 — the cross-tenant opt-outs are a closed, reviewed list", () => {
   const SRC = path.join(__dirname, "..", "..");
-  const sourceFiles = (dir = SRC) =>
+  const sourceFiles = (dir: string = SRC): string[] =>
     fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -82,7 +89,7 @@ describe("ADR-069 — the cross-tenant opt-outs are a closed, reviewed list", ()
   });
 
   it("every runAsSystem call names a SYSTEM_TASKS entry, never a literal", () => {
-    const literal = [];
+    const literal: string[] = [];
     for (const file of sourceFiles()) {
       const text = fs.readFileSync(file, "utf8");
       for (const [call] of text.matchAll(/runAsSystem\(\s*[^)\s,]+/g)) {
@@ -96,24 +103,24 @@ describe("ADR-069 — the cross-tenant opt-outs are a closed, reviewed list", ()
 });
 
 describe("W-12 — the isolation hooks apply inside runForTenant", () => {
-  let Reading;
-  let sequelize;
+  let Reading: DynamicModel;
+  let sequelize: Sequelize;
 
   beforeAll(() => {
     sequelize = new Sequelize({ dialect: "postgres", logging: false });
-    registerTenantScopeHooks(sequelize);
+    registerTenantScopeHooks(sequelize as unknown as Parameters<typeof registerTenantScopeHooks>[0]);
     Reading = sequelize.define("Reading", {
       id: { type: DataTypes.UUID, primaryKey: true },
       tenantId: { type: DataTypes.UUID },
       value: { type: DataTypes.INTEGER },
-    });
+    }) as unknown as DynamicModel;
   });
 
-  const whereOf = async (fn) => {
-    let captured;
-    const spy = jest.spyOn(sequelize.getQueryInterface(), "select").mockImplementation(async (model, table, options) => {
-      captured = options.where;
-      return [];
+  const whereOf = async (fn: () => Promise<unknown>): Promise<unknown> => {
+    let captured: unknown;
+    const spy = jest.spyOn(sequelize.getQueryInterface(), "select").mockImplementation((_model, _table, options) => {
+      captured = (options as { where: unknown }).where;
+      return Promise.resolve([]);
     });
     await fn();
     spy.mockRestore();

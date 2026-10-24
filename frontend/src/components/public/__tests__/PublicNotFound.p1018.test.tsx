@@ -23,8 +23,12 @@ jest.mock("@/app/fonts/public", () => ({
   publicDisplayItalicFont: { variable: "font-pub-display-italic" },
   publicBodyFont: { variable: "font-pub-sans" },
 }));
-jest.mock("next/font/google", () => ({
-  JetBrains_Mono: () => ({ variable: "font-jetbrains" }),
+jest.mock("@/app/fonts/mono", () => ({
+  jetbrainsMono: { variable: "font-jetbrains" },
+}));
+jest.mock("@/app/fonts/dashboard", () => ({
+  inter: { variable: "font-inter" },
+  spaceGrotesk: { variable: "font-space-grotesk" },
 }));
 
 import { PublicNotFound } from "../PublicNotFound";
