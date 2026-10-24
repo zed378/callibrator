@@ -10417,6 +10417,31 @@ Two readings of the owner's sentence were possible: (a) the whole product's tena
 
 ---
 
+### ADR-124 Amendment 8 (2026-10-24, P17-07): a binding locks the user row without an include; an ended facility's token in hand is revoked (401) before the 403 `FACILITY_ENDED`
+
+**Context.** The live facility pentest (`p1707-facility-pentest.e2e`, docs/SECURITY/15 § 12.1) found two problems:
+
+- `PUT /users/:id/client-facility` answered 500 on every call (F-P1707-01). The binding locked the user row `FOR UPDATE` with a LEFT include of its role, and PostgreSQL refuses `FOR UPDATE` on the nullable side of an outer join. Nothing before had sent this SQL to a database.
+- PT-22, as written, expected a 403 on the bound user's next request. As built (P21-09b), ending a facility revokes that user's sessions.
+
+**Decision.**
+
+1. The binding locks the row with no include and reads the role separately, in the same transaction. `services/userFacilityBinding.p1707.live` holds this: 0/2 before the fix, 2/2 after.
+2. PT-22's expected answer is now: the token in hand gets 401 (revoked), and the next sign-in is refused 403 `FACILITY_ENDED` (the PWA's purge code). docs/SECURITY/15 § 12.1 records it.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| `lock: { level, of: User }` | it keeps a lock-plus-join shape that the next include edit can break again |
+| Keep the token alive until the 403 | a revoked session that still answers is weaker than a dead one |
+
+**Implications, including the bad ones.**
+
+- One more query per binding.
+- Bindings never worked on PostgreSQL before this fix. Every earlier claim that a binding was "proved" rested on memoryDb only.
+- A client that treats 401 as "sign in again" reaches the 403 `FACILITY_ENDED` one step later. P22-10's phone run must check that it still purges.
+
 ## ADR-125: Device Types and Inspection Checklists Are One Global, Versioned Catalogue Without `tenant_id` — Written Only by the Platform Operator, a Published Version Is Immutable, Every Session Pins the Version It Used; Tenants Propose Through a Tenant-Scoped Table
 
 **Date:** 2026-10-07 · **Status:** Accepted as the **TARGET — nothing here is built.** "One global, versioned catalogue, like `roles`" is the **owner's** decision (UD-3, 2026-10-07); the version model, the write path and the guards are decided by the ADR-writing agent under the owner's delegation · **Card:** P12-03 · **Builds in:** P19-01 (spec), P20-01/03, P21-01, P22-01, P24-02 (seeding) · **Works with:** ADR-064 §1 (global tables are guarded at the route), D-17 (`unscopedModels.d17`), D-05/P9-07 (`rawSqlTenantPredicate.d05`), ADR-124 (the facility dimension does not apply to global models), ADR-126 (sessions pin a version), ADR-127 (offline download) · **Record:** `MEMORY/records/2026-10-07-upstream-adrs.md` · **Amended by:** Amendment 1 (P19-01, 2026-10-07, below § Status — the catalogue as specified); Amendment 2 (P20-01/03, 2026-10-07 — as built: the items keep DELETE for a draft, exact decimal strings, the as-built choices); Amendment 3 (P21-01, 2026-10-09 — as built: migration 0125's rebase-draft exclusion, the limit as text, the API's shapes)

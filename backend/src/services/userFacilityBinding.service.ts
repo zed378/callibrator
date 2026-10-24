@@ -105,13 +105,16 @@ export const setBinding = async (tenantId: TenantId, input: UserFacilityBindingI
     throw new AppError(400, "You cannot change your own facility binding.");
   }
   const result = await db.transaction(async (transaction) => {
+    // P17-07 finding F-P1707-01: the row is locked WITHOUT an include — PostgreSQL refuses FOR UPDATE
+    // on the nullable side of an outer join, so the LEFT include of the role made every binding a 500.
+    // The role is read on its own, inside the same transaction.
     const user = await models.User.findOne({
       where: { id: input.userId, tenantId },
-      include: [{ model: models.Roles, as: "role", attributes: ["id", "name"], required: false }],
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
-    if (!user || isSuperAdminRoleName(user.role?.name)) {
+    const currentRole = user?.roleId ? await models.Roles.findByPk(user.roleId, { attributes: ["id", "name"], transaction }) : null;
+    if (!user || isSuperAdminRoleName(currentRole?.name)) {
       throw new AppError(404, "User not found");
     }
     const from = user.clientFacilityId ?? null;
@@ -130,7 +133,7 @@ export const setBinding = async (tenantId: TenantId, input: UserFacilityBindingI
       if (facility.status !== "active") {
         throw new AppError(409, `Users cannot be bound to a facility that is ${facility.status}.`);
       }
-      const role = input.roleId ? await loadRole(input.roleId, transaction) : { id: roleId, name: user.role?.name ?? "" };
+      const role = input.roleId ? await loadRole(input.roleId, transaction) : { id: roleId, name: currentRole?.name ?? "" };
       if (!BOUND_ROLE_NAMES.includes(role.name)) {
         throw new AppError(400, `A facility-bound user must hold one of the roles: ${BOUND_ROLE_NAMES.join(", ")}.`);
       }

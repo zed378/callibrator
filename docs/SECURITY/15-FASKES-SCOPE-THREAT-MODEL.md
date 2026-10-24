@@ -601,6 +601,34 @@ frontend jest · **B** browser / real phone · **R** reconciliation query (P25).
 | G-32 | `routes/importedAccount.closed.p2408.test.ts`, `services/sso.awaitingInvitation.p2408.test.ts`, `migrations/upstreamTransform.p2402b.live.test.ts` (ADR-139 § 2) | M/U + L | an imported account (`awaiting_invitation`) gets no reset code, its reset is refused with the unknown address's answer, SSO does not link it; every imported account is inserted awaiting; the transform role cannot UPDATE the marker | **built** 2026-10-22 | P24-08 | gate (before the dry run) |
 | G-33 | `routes/userInvitation.p2409a.test.ts`, `migrations/userInvitations.p2409a.live.test.ts` (ADR-139 § 3 – § 4, Am. 1) | M + L | an invitation is issued only after the operator opens the tenant, only to an account awaiting one, a shared account only with a named person; another tenant's account is the 404; a facility account is refused; every acceptance refusal is one 400; the hash is unique and append-mostly for every role | **built** 2026-10-22 | P24-09a | gate (before the invitations) |
 
+### 11.1 Status on 2026-10-24 (P17-07 review)
+
+Each gate row below was run on a quiet tree on 2026-10-24, and each named suite passed. A row whose
+named file does not exist says so. It is **not** green, and the suite that covers it is named
+instead. The record is `MEMORY/records/2026-10-24-p17-07-live-pentest.md`.
+
+| Row | What ran (2026-10-24) | State |
+|---|---|---|
+| G-01, G-02 | `utils/tenantScope.facility`, `utils/tenantScope.facilityDeny` | green |
+| G-03, G-05, G-06 | covered inside `utils/tenantScope.facility` (includes, bulk destroy, immutable column); the separate files `facilityIncludes`, `facilityBulkDestroy` and `facilityImmutable` do not exist | green under another name |
+| G-04 | `facilityHookless` and `tenantHookless.facility.live` do not exist | **not green** |
+| G-08, G-09, G-10 | `guards/twoFacilityRoutes.guard`, `guards/facilityAccessibleRoutes.guard`, `routes/facilityRouteDefault` | green |
+| G-11, G-12, G-13 | `guards/facilityScopedModels.guard`, `guards/facilityReadable.guard`, `guards/skipFacilityScope.guard` | green |
+| G-14 | `utils/rawSqlTenantPredicate.d05`, `utils/rawSqlFacilityPredicate.d05twin` | green (the U and G parts; the per-statement live part is not built) |
+| G-16 | `guards/facilityContextSource.guard` | green |
+| G-17 | `routes/userBinding.massAssignment`, `routes/userFacilityBinding.twoTenant`, and the new live `services/userFacilityBinding.p1707.live`. The files `facilityBinding.revokesSessions`, `facilityBinding.audit` and `userBinding.roles` do not exist; the live suite asserts the audit rows | green; **found F-P1707-01** (below) |
+| G-18 | `services/scim.facility`; `ssoJit.facility` does not exist | **partly green** (SCIM only) |
+| G-19 | `guards/socketFacilityRooms.guard` | green (the guard; the socket re-check tests are not named) |
+| G-20 | `guards/cacheKeyFacility.guard`, `services/dashboardCache.twoFacility` | green |
+| G-21, G-22 | `services/notificationRecipients.twoFacility`, `routes/exportReads.twoFacility` | green |
+| G-23 | `services/attachmentSigned.replay`, `routes/attachmentSigned.a365`; `attachmentSigned.twoFacility` does not exist, and its case runs live as PT-16 | green |
+| G-24 | `guards/facilityUserIncludes.guard` | green |
+| G-28 | live `e2e/modules/p1707-facility-pentest` on a disposable production-mode stack, 13/13 twice (§ 12.1) | **the two-facility HTTP spec is green**; the phones, sockets and PWA offline parts are not run |
+| G-29 | `migrations/upstreamImportGrants.p2401.live` 8/8 on PostgreSQL 18 | green |
+| G-30 | RC-F1, RC-F2, RC-F3 and RC-F5 are built (P25-01, ADR-129 Am. 11) and pass on synthetic data in `upstreamTransform.p2402g.live`; RC-F4 is `manual` | **partly built**; the real-data run is gated (UD-18) |
+
+The gate run held 20 suites, which passed with 263 tests. The two d05 suites ran in the guard run, which passed 44 suites with 335 tests.
+
 ## 12. Penetration Test Scope for P17-07
 
 **Setup.** A disposable production-mode stack (as the live E2E runs) seeded with **synthetic** data
@@ -647,6 +675,58 @@ and closed before go/no-go (P30-03).
 | PT-31 | Public page and legacy QR | guess tokens; sequential legacy numbers on the resolver; signed-in F1 technician resolving F2's legacy QR | no hit without the token; rate-limited; F2's QR → 404 for F1 |
 | PT-32 | Import residue | as `callibrator_app` and through the API, look for `upstream_import`, legacy ids, `source_values` | not reachable |
 | PT-33 | Cross-tenant regression | repeat PT-01/PT-14/PT-16 with a T2/F3 principal against T1 | 404 / nothing — the tenant dimension unchanged |
+
+### 12.1 Run on 2026-10-24 (P17-07 review, HTTP cases)
+
+**Where it ran.** A disposable production-mode stack (`s1p1707`) with `FACILITY_BINDING_ENABLED=true`
+in its throwaway env file only, synthetic data, and the backend image rebuilt from the working tree
+of 2026-10-24. The suite is `backend/src/tests/e2e/modules/p1707-facility-pentest.e2e.test.ts`. It
+passed 13/13 twice back to back. The backend log shows 0 × 5xx after the fix.
+
+**Covered:**
+
+- PT-01 and PT-33: IDOR across facilities and across tenants.
+- PT-02 and PT-03: id injection and lists.
+- PT-05, PT-06 and PT-11: writes, moves and oracles.
+- PT-07 … PT-10: escalation and provider-internal data.
+- PT-12: timing, 60 samples each.
+- PT-16: signed links.
+- PT-22: an ended facility. The token in hand is revoked (401), and a fresh sign-in is refused 403 `FACILITY_ENDED`.
+- PT-27: idempotent replay after a scope change.
+- PT-31: the public token.
+- PT-32 in part: tenants are refused on the import routes, and internal hosts are refused.
+
+**Log redaction**, checked on the run's 1,225 backend log lines:
+
+- no e-mail address;
+- no bearer token, JWT or password;
+- signed-link tokens appear as `[REDACTED]`;
+- public device tokens appear as a `~<8-hex>` fingerprint.
+
+**Not run (the exit stays open):**
+
+- PT-04 (exports in a browser);
+- PT-13 (the dashboard cache, live);
+- PT-14 and PT-15 (sockets);
+- PT-17 (storage-key enumeration);
+- PT-18 (notifications);
+- PT-19 (impersonation);
+- PT-20 (API key);
+- PT-21 (SSO JIT and SCIM, live);
+- PT-23 … PT-28 (two real phones, P22-10);
+- PT-29 (CSP, in a browser);
+- PT-30 (the upstream S-findings).
+
+**Findings.**
+
+| # | Severity | Finding | Fix | Test (fails before the fix) |
+|---|---|---|---|---|
+| F-P1707-01 | **High** (availability of a security control) | `PUT /users/:id/client-facility` answered 500 on every call. The user row was locked `FOR UPDATE` with a LEFT include of its role, and PostgreSQL refuses that ("FOR UPDATE cannot be applied to the nullable side of an outer join"). No account could be bound, re-bound or unbound. An administrator could therefore not take a facility away from a user, which is the facility scope's revocation path. Unit and memoryDb suites passed, because they send no SQL | `services/userFacilityBinding.service.ts`: lock the row without the include, and read the role on its own in the same transaction | `services/userFacilityBinding.p1707.live` (PG18): 0/2 with the include, 2/2 without it |
+| F-P1707-02 | Informational (test defect) | The suite's PT-08 read `/users/detail` with `{ id }`, but the route reads `userId`, so the case could never pass | test corrected | PT-08 green |
+| F-P1707-03 | Informational (spec wording) | PT-22 expected 403 on the token in hand. As built (P21-09b), ending a facility revokes the bound users' sessions, so that token gets 401, and the 403 `FACILITY_ENDED` comes at the next sign-in. That is stronger than the spec | the case asserts both | PT-22 green |
+
+No Critical finding is open, and no High is open after F-P1707-01's fix. The exit still needs the
+cases not run above.
 
 ## 13. Open Questions
 
