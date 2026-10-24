@@ -65,8 +65,8 @@ export const zonedText = (iso: string | null | undefined, timeZone: string, loca
   return withTime ? `${text} (${zone})` : text;
 };
 
-/** A calendar day as printed (`YYYY-MM-DD` read as written, never shifted). */
-const dayText = (value: string | null, locale: string): string => {
+/** A calendar day as printed (`YYYY-MM-DD` read as written, never shifted). Exported for the on-screen report (P19-06 § 11: the same printed day, never raw ISO text). */
+export const dayText = (value: string | null, locale: string): string => {
   const m = value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value) : null;
   if (!m) return "—";
   return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))));

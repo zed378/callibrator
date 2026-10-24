@@ -8,6 +8,19 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — Phase 22-23 audit: frontend + reports vs spec, two display defects fixed ([record](./records/2026-10-24-phase22-23-audit-fix.md))
+- **Fixed (B1):** inventory PDF/XLSX "Type" column printed the device model; now the device type's name else the category — the same value as the register's Type column. `documents.test.ts` pins it.
+- **Fixed (B2):** on-screen IPM report printed raw ISO calibration dates (`2026-03-01`); now the PDF's `dayText` (`1 Mar 2026`), exported for the page. `ReportClient.test.tsx` pins it.
+- **Audit:** all 10 Phase 22 pages + `/field` + report/verify pages present on the generated client (rows in `data`, paging in top-level `meta`); D1/D2/D3/D4/D5 renderers conform to 09 § 2–§ 5, golden file passes. 180 + 206 + 143 frontend tests, backend report/due/dashboard/records suites, both typechecks green. No phase status change; live browser / real phone / P23-05 sign-off still need owners.
+
+### 2026-10-24 — Phase 20-21 audit: migration / model / service / route vs spec ([record](./records/2026-10-24-phase20-21-audit-fix.md))
+- **Audit only, no code changed:** migrations 0111–0146 present and ordered; every model carries its tenant + facility predicate; every service binds through `sql()` + `facilityClause()`; every route gated with two-tenant / two-facility tests. All Phase 20-21 guards green; typecheck + load-check green. No phase status change (both phases stay DONE).
+- **Not fixed here:** `prePushHook.a19` fails on Windows (shell + EPERM, out of scope, needs its owner); live PostgreSQL twins not re-run (no database in session).
+
+### 2026-10-24 — BACKLOG Q-54/Q-56 debated and decided ([record](./records/2026-10-24-q54-q56-debate-decision.md))
+- **DECIDED (Q-54):** no self-approval exception — separation of duties stays unconditional; a single-admin tenant grants a second user. No code changed.
+- **DONE (Q-56):** `GET /kanban/projects` returns `code`; `GET /tenants/:tenantId/status` returns `suspensionReason` + `suspendedAt`. New `kanban.code.q56` + `tenantLifecycle.suspension.q56` 4/4 (fail-before 2/2 + 2/2 shown); `openapi.json` regenerated; no migration.
+
 ### 2026-10-24 — P9-26 batch 3: d05, a148, d12 guard scans to TypeScript ([record](./records/2026-10-24-p9-26-batch-03-guard-scans.md))
 - **DONE:** 3 × `.js` to `.ts`, same 788 cases, lint + typecheck clean, ratchet 695 to 690 (with batch 1–2).
 

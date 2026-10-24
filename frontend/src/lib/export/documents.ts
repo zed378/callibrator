@@ -88,8 +88,8 @@ export interface InventoryRow {
   platePhotoId: string | null;
 }
 
-/** "Type" upstream is the model; our device type, when set, is printed first. */
-const typeOf = (d: Device): string | null => d.model ?? d.deviceType?.name ?? null;
+/** The register's "Type" column (DeviceTable): the device type's name, else the category. The export prints the same. */
+const typeOf = (d: Device): string | null => d.deviceType?.name ?? d.category ?? null;
 
 export const inventoryRow = (d: Device, labels: ExportLabels): InventoryRow => ({
   id: d.id,

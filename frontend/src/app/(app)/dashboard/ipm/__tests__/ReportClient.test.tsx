@@ -112,6 +112,10 @@ describe("P23-02 — the on-screen report", () => {
     expect(within(safety).getByText("45 µA (≤ 100 µA)")).toBeInTheDocument();
     expect(within(screen.getByRole("table", { name: "Physical inspection" })).getByText("Minor damage")).toBeInTheDocument();
     expect(screen.getAllByText("The device must be repaired").length).toBeGreaterThan(0);
+    // P19-06 § 11: the device's calibration days print as days (the PDF's dayText), never raw ISO text.
+    expect(screen.getByText("1 Mar 2026")).toBeInTheDocument();
+    expect(screen.getByText("1 Mar 2027")).toBeInTheDocument();
+    expect(screen.queryByText("2026-03-01")).not.toBeInTheDocument();
     expect(screen.getByText(/^Signed electronically by Synthetic Technician/)).toBeInTheDocument();
     expect(screen.getByText("Awaiting electronic countersignature")).toBeInTheDocument();
     expect(screen.getByText(/^The content matches its hash/)).toBeInTheDocument();

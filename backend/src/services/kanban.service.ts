@@ -553,6 +553,7 @@ const listProjects = async (user: KanbanUser): Promise<Record<string, unknown>[]
   return projects.map((p) => ({
     id: p.id,
     name: p.name,
+    code: p.code,
     description: p.description,
     color: p.color,
     createdBy: p.createdBy,
