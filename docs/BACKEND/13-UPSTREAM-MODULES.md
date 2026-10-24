@@ -6,6 +6,8 @@
 > modules that adoption produced. It is **as built**, not as planned: every route module, model,
 > migration and service named here exists in the tree, and each claim carries its file.
 >
+> **Updated 2026-10-24 (P29-04 review):** § 10.1 adds the reconciliation and the data-quality report (P25-01/02, ADR-129 Am. 11). § 6 records the binding defect F-P1707-01 and the live pentest, and corrects the route count. § 11 and § 12 follow.
+>
 > **Not covered:** the upstream application itself (`docs/UPSTREAM/00` … `08`) and the frontend
 > screens (`docs/FRONTEND/`, `docs/UPSTREAM/13-USER-GUIDES-ID.md`).
 >
@@ -151,7 +153,7 @@ frontend** — the backend stores no PDF.
 
 ## 6. Client Facilities and Facility-Bound Users — `clientFacilities.route.ts`
 
-**Decision:** ADR-124 and its Amendments 1 … 6. **Migrations:** 0117 (facilities), 0118 … 0123 (the
+**Decision:** ADR-124 and its Amendments 1 … 6 and 8. **Migrations:** 0117 (facilities), 0118 … 0123 (the
 facility column across the device-anchored tables), 0124 (menus). **Models:** `clientFacility`,
 `clientFacilityMove`.
 
@@ -159,9 +161,13 @@ A **client facility** is a health facility the tenant serves. A **bound user** i
 facility by a **second, deny-by-default scope** applied by the same hooks — cross-facility is a
 **404**, identical to cross-tenant.
 
-- Eight routes: list, `/options`, get, create, edit, status, delete, and `/:id/users`.
+- Nine routes (`clientFacilities.route.ts`): `/mine` (the caller's own facility), list, `/options`, get, create, edit, status, delete, and `/:id/users`. The 2026-10-23 version said eight and missed `/mine`.
   `PUT /users/:userId/client-facility` binds, re-binds, unbinds and confirms, behind the setting
-  `FACILITY_BINDING_ENABLED`; a binding change **revokes the user's sessions**.
+  `FACILITY_BINDING_ENABLED`; a binding change **revokes the user's sessions**. Until 2026-10-24
+  every binding was a **500 on PostgreSQL**: the user row was locked `FOR UPDATE` with a LEFT
+  include of its role (F-P1707-01, ADR-124 Am. 8). The row is now locked alone, and
+  `services/userFacilityBinding.p1707.live` proves bind, re-bind, unbind and the cross-tenant 404
+  on PostgreSQL 18.
 - The **bound menu ceiling** is applied in `effectivePermission`, so a bound HEALTHCARE ADMIN does
   not see admin pages that would 403 — an unauthorised surface is **absent**, not hidden.
 - The database, not only the service, holds the invariants: `facility_insert_default`,
@@ -172,8 +178,9 @@ facility by a **second, deny-by-default scope** applied by the same hooks — cr
   leaves a move `in_progress` is refused.
 
 **As built:** P20-07 (migrations, 2026-10-08), P21-09a … e (the dimension, the routes, the move and
-keys, the A-90 sweep). **Open:** the § 11 gate of `docs/SECURITY/15` is **not green** (G-22, G-26 …
-G-30, the live twins).
+keys, the A-90 sweep). The live HTTP pentest `e2e/modules/p1707-facility-pentest` passed 13/13
+twice on 2026-10-24. **Open:** the § 11 gate of `docs/SECURITY/15` is **not all green**. § 11.1
+names each row: G-04 has no test, G-18 is SCIM only, and G-28 has no phone, socket or PWA run.
 
 ---
 
@@ -245,8 +252,8 @@ owner's (`TASKS/RUNBOOK-FIELD-REAL-DEVICE.md`, OPEN).
 ## 10. The Upstream ETL — `upstreamFileImports.route.ts`, the SQL-dump import, and the transform
 
 **Decisions:** ADR-129 (SQL dump, parsed never executed), ADR-130 (rsync images), ADR-129 Am. 1 … 10
-(the transform). **Migrations:** 0113, 0114 (the two import rows), 0133 (the transform role,
-`id_map`, `quarantine`), 0134 … 0141, 0145 (the transform's per-step grants). **Models:**
+(the transform), Am. 11 (the reconciliation). **Migrations:** 0113, 0114 (the two import rows), 0133 (the transform role,
+`id_map`, `quarantine`), 0134 … 0141, 0145 (the transform's per-step grants), 0146 (the reconciliation's two read grants). **Models:**
 `upstreamFileImport`, `upstreamSqlImport`.
 
 Three pieces, one direction: **extract → stage → transform → load**, per client facility of one
@@ -275,8 +282,38 @@ starts so turning it off stops a queued real import.
 
 **As built:** P24-01 (mechanism), P24-02a … g (every transform step), P24-03 (step 9, the photos,
 2026-10-23 — the transform is now available), P24-06, P24-07. **Open:** the **dry run** (P24-05) and
-therefore reconciliation (P25) and UAT (P26) await the owner's legal decision (**OA-5**, UD-18); the
-end-to-end proof to date is synthetic.
+UAT (P26) await the owner's legal decision (**OA-5**, UD-18). The end-to-end proof to date is
+synthetic.
+
+### 10.1 Reconciliation and the data-quality report — `admin.route.ts` (P25-01, P25-02: PARTIAL)
+
+**Decision:** ADR-129 Am. 11. **Migration:** 0146. **Contracts:**
+`packages/contracts/src/upstreamReconciliation.ts` and `upstreamDataQuality.ts`. **Services:**
+`upstreamReconciliation.service.ts` and `upstreamDataQuality.service.ts`.
+
+There are two super-admin reads of a **transformed** run:
+
+- `GET /admin/upstream-sql-imports/:id/reconciliation`
+- `GET /admin/upstream-sql-imports/:id/data-quality`
+
+Both read only, inside one transaction, on the **transform** connection, which is the only role that
+reads `upstream_import`, with the role proved first. Both answer **counts and codes only**: no
+staged value, name, serial or legacy id. Errors are coded: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND` and
+409 `RUN_NOT_TRANSFORMED`.
+
+- **Computed by the reconciliation:**
+  - R-1, R-2 and R-7 per facility (the mapped staged rows against the stored rows those mappings name);
+  - R-10 over every source of `TRANSFORM_STEPS`;
+  - R-11, RC-F1, RC-F2 and RC-F3;
+  - RC-F5 (imported `FACILITY_BOUND_ROLES` accounts left unbound).
+- **Computed by the report:** the quarantine groups in the run totals, plus Q-12, Q-13, Q-18 and
+  Q-19 per facility.
+- **Not automated, so they answer `manual`:** R-3 … R-6, R-8, R-9, RC-F4, R-12, Q-4, Q-14 and Q-28,
+  and the orphan, duplicate-file and user sections. P25-04 records them by hand on the dry-run
+  database.
+
+**Proof:** `upstreamTransform.p2402g.live`, "P25-01/P25-02 on the IPM world", on PostgreSQL 18 with
+synthetic data. A planted facility mismatch fails RC-F1 and R-1. Real data stays gated.
 
 ---
 
@@ -292,18 +329,22 @@ end-to-end proof to date is synthetic.
 | The catalogue is operator-only | `guards/inspectionCatalogueGlobal.guard` |
 | A staged table's name is allow-listed | `services/upstreamImport/tablePolicy.ts` + `transform/ledger.ts#stagedTable` |
 | The app role cannot read staging | `migrations/upstreamImportGrants.p2401.live` (as `callibrator_app`) |
+| A binding works on the real database | `services/userFacilityBinding.p1707.live` (F-P1707-01) |
+| A transformed run reconciles per facility | `upstreamReconciliation.service.ts`; `upstreamTransform.p2402g.live` |
 
 ---
 
 ## 12. What Is Not Done (so nobody reads this as finished)
 
 - **No real upstream data has been loaded.** `UPSTREAM_REAL_DATA_ALLOWED` is false; the legal basis
-  and the operator's client contracts (**OA-5**, UD-18) are the owner's. The dry run (P24-05),
-  reconciliation (P25), field UAT (P26) and cutover (P30) all wait behind it.
+  and the operator's client contracts (**OA-5**, UD-18) are the owner's. The dry run (P24-05), the
+  manual half of reconciliation (P25-03, P25-04), field UAT (P26) and cutover (P30) all wait
+  behind it.
 - **The legacy QR sticker is unread.** **OA-4** decides whether a sticker is a bare number or a URL;
   until it is scanned, the legacy resolver (P27-02) and the sticker-scan test (P27-04) are unbuilt.
-- **The facility-scope security gate is not green.** `docs/SECURITY/15` § 11 has open rows (G-22,
-  G-26 … G-30) and the live twins; the pre-go/no-go review (P17-07) is BLOCKED on them.
+- **The facility-scope security gate is not all green.** `docs/SECURITY/15` § 11.1 (2026-10-24)
+  names each row. The live HTTP pentest is green. The phone, socket, browser and SSO cases are not
+  run, so P17-07 stays PARTIAL.
 - **The field app has not been run on a real phone by a real person** (P26-02; the runbook is the
   owner's).
 - **This document is a map, not a second source of truth.** Where it and the code disagree, the code
@@ -316,7 +357,8 @@ end-to-end proof to date is synthetic.
 - Decisions: ADR-124 (tenancy and the facility scope), ADR-125 (the catalogue), ADR-126 (the IPM
   record), ADR-127 (the offline PWA), ADR-129 (the SQL-dump import and the transform), ADR-130 (the
   image import), ADR-132 (the register), ADR-133 (calibration dates), ADR-138 (the public page),
-  ADR-139 (invitations) — `MEMORY/DECISIONS.md`.
+  ADR-139 (invitations), ADR-129 Am. 11 (the reconciliation), ADR-124 Am. 8 (the binding lock) —
+  `MEMORY/DECISIONS.md`.
 - Research and plans: `docs/UPSTREAM/` (00 … 12); the phase index
   `TASKS/PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md`.
 - Frontend: `docs/FRONTEND/`, `docs/UPSTREAM/13-USER-GUIDES-ID.md`.
