@@ -134,9 +134,9 @@ const made = {
 const tenantWithAdmin = async (label: string, fixedCode?: string): Promise<Principal> => {
   let tenantId = "";
   if (fixedCode !== undefined) {
-    // GET /admin/tenants answers { tenants, total, … } in `data` (as built, before Phase 21).
-    const page = dataOf(await call("GET", `/admin/tenants?search=${fixedCode}&limit=100`, { token: operator }));
-    const found = arr(page["tenants"]).map(obj).find((t) => str(t["code"]) === fixedCode);
+    // GET /admin/tenants: rows in `data`, paging in a top-level `meta` (since 2026-10-24).
+    const page = await call("GET", `/admin/tenants?search=${fixedCode}&limit=100`, { token: operator });
+    const found = arr(obj(page.body)["data"]).map(obj).find((t) => str(t["code"]) === fixedCode);
     tenantId = str(found?.["id"]);
   }
   if (tenantId === "") {

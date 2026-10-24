@@ -2038,7 +2038,7 @@
         ],
         "responses": {
           "200": {
-            "description": "A page of tenants (the page is inside `data`)",
+            "description": "A page of tenants: rows in `data`, paging in a top-level `meta` (since 2026-10-24; before, the page sat inside `data`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2049,15 +2049,19 @@
                       "const": true
                     },
                     "status": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991,
-                      "description": "The HTTP status, repeated in the body"
+                      "type": "number",
+                      "const": 200
                     },
                     "message": {
                       "type": "string"
                     },
                     "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TenantAsStored"
+                      }
+                    },
+                    "meta": {
                       "type": "object",
                       "properties": {
                         "total": {
@@ -2079,20 +2083,13 @@
                           "type": "integer",
                           "minimum": -9007199254740991,
                           "maximum": 9007199254740991
-                        },
-                        "tenants": {
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/components/schemas/TenantAsStored"
-                          }
                         }
                       },
                       "required": [
                         "total",
                         "page",
                         "limit",
-                        "totalPages",
-                        "tenants"
+                        "totalPages"
                       ],
                       "additionalProperties": false
                     }
@@ -2101,7 +2098,8 @@
                     "success",
                     "status",
                     "message",
-                    "data"
+                    "data",
+                    "meta"
                   ],
                   "additionalProperties": false
                 }

@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — `GET /admin/tenants` answers the list envelope ([record](./records/2026-10-24-admin-tenants-envelope.md))
+- **Fixed (breaking, recorded):** rows in `data`, `{ total, page, limit, totalPages }` in a top-level `meta`; was a page object inside `data`. oasdiff: 9 errors, all this route; its two e2e consumers updated, 30/30 live.
+
+### 2026-10-24 — P9-26 batch 1: systemActors.a124 to TypeScript ([record](./records/2026-10-24-p9-26-batch-01-system-actors.md))
+- **DONE:** same 4 cases, lint clean, ratchet 694 to 693 `.js` test files.
+
 ### 2026-10-24 — P17-07 live facility pentest: every binding was a 500, fixed ([record](./records/2026-10-24-p17-07-live-pentest.md), ADR-124 Am. 8)
 - **Fixed (High, F-P1707-01):** `PUT /users/:id/client-facility` locked the user `FOR UPDATE` with a LEFT include; PostgreSQL refused it on every call. Live `userFacilityBinding.p1707.live` 0/2 before, 2/2 after.
 - **Ran:** `p1707-facility-pentest.e2e` 13/13 twice on a disposable production-mode stack; log redaction clean. Phones, sockets and browser cases still open.

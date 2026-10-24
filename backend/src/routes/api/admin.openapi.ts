@@ -215,13 +215,18 @@ export default defineRouteDocs({
       }),
       success: {
         status: 200,
-        description: "A page of tenants (the page is inside `data`)",
-        data: z.object({
-          total: z.number().int(),
-          page: z.number().int(),
-          limit: z.number().int(),
-          totalPages: z.number().int(),
-          tenants: z.array(storedTenantRow),
+        description: "A page of tenants: rows in `data`, paging in a top-level `meta` (since 2026-10-24; before, the page sat inside `data`)",
+        body: z.object({
+          success: z.literal(true),
+          status: z.literal(200),
+          message: z.string(),
+          data: z.array(storedTenantRow),
+          meta: z.object({
+            total: z.number().int(),
+            page: z.number().int(),
+            limit: z.number().int(),
+            totalPages: z.number().int(),
+          }),
         }),
       },
     },

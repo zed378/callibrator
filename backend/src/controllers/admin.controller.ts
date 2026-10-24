@@ -30,12 +30,14 @@ interface TenantListQuery {
 
 const getAllTenants = asyncHandlerWithMapping(async (req: Request) => {
   const { page, limit, search } = req.query as TenantListQuery;
-  const result = await adminService.getAllTenants(page, limit, search);
+  const { tenants, total, page: current, limit: size, totalPages } = await adminService.getAllTenants(page, limit, search);
+  // The house list envelope: rows in `data`, paging in a top-level `meta` (CLAUDE.md § The Response Envelope).
   return {
     success: true,
     status: 200,
     message: "Tenants retrieved successfully",
-    data: result,
+    data: tenants,
+    meta: { total, page: current, limit: size, totalPages },
   };
 }, {});
 
