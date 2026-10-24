@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — As-built modules doc gains Phase 25; CLAUDE.md gate rows corrected (P29-04) ([record](./records/2026-10-24-p29-04-modules-doc-review.md))
+- **Documented:** `docs/BACKEND/13` § 10.1 (reconciliation, data quality), § 6 (binding defect, nine routes). CLAUDE.md: 1,025 suites / 0 skipped (2026-10-11), live suites 55/55 `--with=all`, none by hand.
+
 ### 2026-10-24 — `GET /admin/tenants` answers the list envelope ([record](./records/2026-10-24-admin-tenants-envelope.md))
 - **Fixed (breaking, recorded):** rows in `data`, `{ total, page, limit, totalPages }` in a top-level `meta`; was a page object inside `data`. oasdiff: 9 errors, all this route; its two e2e consumers updated, 30/30 live.
 
