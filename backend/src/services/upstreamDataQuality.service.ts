@@ -29,8 +29,7 @@
  * The facility row carries the id and code only: the name is sensitive
  * operational data (03 § 9).
  */
-import { sql, type BindValue, type SqlRunner } from "../utils/sql.util";
-import type { Transaction } from "sequelize";
+import { sql, type SqlRunner } from "../utils/sql.util";
 import { createTransformDb, transformRoleName } from "../config/upstreamImport";
 import { ID_MAP, QUARANTINE } from "./upstreamImport/transform/ledger";
 import type {
@@ -64,9 +63,10 @@ const finding = (
   note: string,
 ): DataQualityFinding => ({ finding: findingId, status, count, note });
 
-/** `n` per facility of a `(facilityId, n)` statement. */
-const perFacility = async (runner: SqlRunner, text: string, bind: readonly BindValue[], transaction: Transaction): Promise<Map<string, number>> =>
-  new Map((await sql<{ facilityId: string; n: number }>(runner, text, bind, { transaction })).map((r) => [r.facilityId, r.n]));
+/** `n` per facility of a `(facilityId, n)` statement's rows. */
+const byFacility = (
+  rows: readonly { facilityId: string; n: number }[],
+): Map<string, number> => new Map(rows.map((r) => [r.facilityId, r.n]));
 
 /** The run's facilities: the provider tenant's, ordered by code. */
 const facilitiesOf = async (tenantId: string): Promise<Facility[]> =>
@@ -85,31 +85,60 @@ const facilitiesOf = async (tenantId: string): Promise<Facility[]> =>
  * The quarantine review and data-quality report of one transformed run, per facility.
  * @throws {CodedError} 404 UPSTREAM_SQL_IMPORT_NOT_FOUND; 409 RUN_NOT_TRANSFORMED (not `transformed`, or no provider tenant)
  */
-export const reportDataQuality = async (runId: string): Promise<UpstreamDataQualityResult> => {
-  const found = (await UpstreamSqlImport.findByPk(runId)) as unknown as Run | null;
+export const reportDataQuality = async (
+  runId: string,
+): Promise<UpstreamDataQualityResult> => {
+  const found = (await UpstreamSqlImport.findByPk(
+    runId,
+  )) as unknown as Run | null;
   if (found === null) {
-    throw new CodedError(404, "UPSTREAM_SQL_IMPORT_NOT_FOUND", "Import run not found");
+    throw new CodedError(
+      404,
+      "UPSTREAM_SQL_IMPORT_NOT_FOUND",
+      "Import run not found",
+    );
   }
   if (found.transformStatus !== "transformed") {
-    throw new CodedError(409, "RUN_NOT_TRANSFORMED", `The run's transform is ${found.transformStatus}; only a transformed run can be reported.`);
+    throw new CodedError(
+      409,
+      "RUN_NOT_TRANSFORMED",
+      `The run's transform is ${found.transformStatus}; only a transformed run can be reported.`,
+    );
   }
   const tenantId = found.transformTenantId;
   if (tenantId === null) {
-    throw new CodedError(409, "RUN_NOT_TRANSFORMED", "The run names no provider tenant.");
+    throw new CodedError(
+      409,
+      "RUN_NOT_TRANSFORMED",
+      "The run names no provider tenant.",
+    );
   }
   const connection = createTransformDb();
   try {
     return await connection.transaction(async (transaction) => {
       const runner = connection as unknown as SqlRunner;
       // The transform role, not a superuser (the runner's own proof, P24-01).
-      const [role] = await sql<{ currentUser: string }>(runner, "SELECT current_user AS \"currentUser\"", [], { transaction });
+      const [role] = await sql<{ currentUser: string }>(
+        runner,
+        'SELECT current_user AS "currentUser"',
+        [],
+        { transaction },
+      );
       if (role?.currentUser !== transformRoleName()) {
-        throw new AppError(500, "The report connection is not the transform role.");
+        throw new AppError(
+          500,
+          "The report connection is not the transform role.",
+        );
       }
       const facilities = await facilitiesOf(tenantId);
 
       // Quarantine by (facility, table, reason): the review itself, codes only.
-      const quarantineRows = await sql<{ facilityId: string | null; sourceTable: string; reason: string; n: number }>(
+      const quarantineRows = await sql<{
+        facilityId: string | null;
+        sourceTable: string;
+        reason: string;
+        n: number;
+      }>(
         runner,
         `SELECT m.client_facility_id AS "facilityId", q.source_table AS "sourceTable", q.reason, count(*)::int AS n
            FROM ${QUARANTINE} q
@@ -120,17 +149,28 @@ export const reportDataQuality = async (runId: string): Promise<UpstreamDataQual
         [runId],
         { transaction },
       );
-      const quarantineByFacility = new Map<string, DataQualityQuarantineGroup[]>();
+      const quarantineByFacility = new Map<
+        string,
+        DataQualityQuarantineGroup[]
+      >();
       const totals = new Map<string, DataQualityQuarantineGroup>();
       for (const r of quarantineRows) {
-        const group: DataQualityQuarantineGroup = { sourceTable: r.sourceTable, reason: r.reason, rows: r.n };
+        const group: DataQualityQuarantineGroup = {
+          sourceTable: r.sourceTable,
+          reason: r.reason,
+          rows: r.n,
+        };
         if (r.facilityId !== null) {
           const list = quarantineByFacility.get(r.facilityId) ?? [];
           list.push(group);
           quarantineByFacility.set(r.facilityId, list);
         }
         const key = `${r.sourceTable}:${r.reason}`;
-        const total = totals.get(key) ?? { sourceTable: r.sourceTable, reason: r.reason, rows: 0 };
+        const total = totals.get(key) ?? {
+          sourceTable: r.sourceTable,
+          reason: r.reason,
+          rows: 0,
+        };
         total.rows += r.n;
         totals.set(key, total);
       }
@@ -138,62 +178,124 @@ export const reportDataQuality = async (runId: string): Promise<UpstreamDataQual
       // Duplicates. Q-18: case-variant serial groups inside one facility — 0118 holds exact ones
       // unique per facility and the devices step NULLs a duplicate's serial (UD-9), so any group
       // here is a transform defect. Q-19: serials this facility shares with another facility.
-      const duplicates = await perFacility(
-        runner,
-        `SELECT client_facility_id AS "facilityId", count(*)::int AS n
+      const duplicates = byFacility(
+        await sql<{ facilityId: string; n: number }>(
+          runner,
+          `SELECT client_facility_id AS "facilityId", count(*)::int AS n
            FROM (SELECT client_facility_id FROM calibration_devices
                   WHERE tenant_id = $1 AND serial_number IS NOT NULL AND client_facility_id IS NOT NULL
                   GROUP BY client_facility_id, lower(serial_number) HAVING count(*) > 1) d
           GROUP BY client_facility_id`,
-        [tenantId],
-        transaction,
+          [tenantId],
+          { transaction },
+        ),
       );
-      const shared = await perFacility(
-        runner,
-        `SELECT d.client_facility_id AS "facilityId", count(DISTINCT lower(d.serial_number))::int AS n
+      const shared = byFacility(
+        await sql<{ facilityId: string; n: number }>(
+          runner,
+          `SELECT d.client_facility_id AS "facilityId", count(DISTINCT lower(d.serial_number))::int AS n
            FROM calibration_devices d
           WHERE d.tenant_id = $1 AND d.serial_number IS NOT NULL AND d.client_facility_id IS NOT NULL
             AND EXISTS (SELECT 1 FROM calibration_devices o
                          WHERE o.tenant_id = $1 AND o.client_facility_id <> d.client_facility_id
                            AND lower(o.serial_number) = lower(d.serial_number))
           GROUP BY d.client_facility_id`,
-        [tenantId],
-        transaction,
+          [tenantId],
+          { transaction },
+        ),
       );
 
       // Dates per facility: future (Q-12) and before 2023 (Q-13), inventory and calibration dates.
-      const datesOf = (bound: string): Promise<Map<string, number>> =>
-        perFacility(
+      const future = byFacility(
+        await sql<{ facilityId: string; n: number }>(
           runner,
           `SELECT f AS "facilityId", sum(n)::int AS n FROM (
              SELECT client_facility_id AS f, count(*) AS n FROM calibration_devices
-              WHERE tenant_id = $1 AND client_facility_id IS NOT NULL AND inventoried_on ${bound} GROUP BY 1
+              WHERE tenant_id = $1 AND client_facility_id IS NOT NULL AND inventoried_on > now() GROUP BY 1
              UNION ALL
              SELECT client_facility_id AS f, count(*) AS n FROM calibration_records
-              WHERE tenant_id = $1 AND client_facility_id IS NOT NULL AND calibration_date ${bound} GROUP BY 1
+              WHERE tenant_id = $1 AND client_facility_id IS NOT NULL AND calibration_date > now() GROUP BY 1
            ) d GROUP BY f`,
           [tenantId],
-          transaction,
-        );
-      const future = await datesOf("> now()");
-      const old = await datesOf("< DATE '2023-01-01'");
+          { transaction },
+        ),
+      );
+      const old = byFacility(
+        await sql<{ facilityId: string; n: number }>(
+          runner,
+          `SELECT f AS "facilityId", sum(n)::int AS n FROM (
+             SELECT client_facility_id AS f, count(*) AS n FROM calibration_devices
+              WHERE tenant_id = $1 AND client_facility_id IS NOT NULL AND inventoried_on < DATE '2023-01-01' GROUP BY 1
+             UNION ALL
+             SELECT client_facility_id AS f, count(*) AS n FROM calibration_records
+              WHERE tenant_id = $1 AND client_facility_id IS NOT NULL AND calibration_date < DATE '2023-01-01' GROUP BY 1
+           ) d GROUP BY f`,
+          [tenantId],
+          { transaction },
+        ),
+      );
 
-      const flagged = (findingId: string, counts: Map<string, number>, id: string, note: string): DataQualityFinding => {
+      const flagged = (
+        findingId: string,
+        counts: Map<string, number>,
+        id: string,
+        note: string,
+      ): DataQualityFinding => {
         const count = counts.get(id) ?? 0;
-        return finding(findingId, count === 0 ? "pass" : "flagged", count, note);
+        return finding(
+          findingId,
+          count === 0 ? "pass" : "flagged",
+          count,
+          note,
+        );
       };
       const facilityRows = facilities.map(({ id, code }) => ({
         clientFacilityId: id,
         facilityCode: code,
         quarantine: quarantineByFacility.get(id) ?? [],
         findings: [
-          flagged("Q-18", duplicates, id, "stored serial groups differing only in case inside the facility; 0 expected (UD-9, 0118)"),
-          flagged("Q-19", shared, id, "serials the facility shares with another facility of the provider: harmless, flagged"),
-          flagged("Q-12", future, id, "future inventory / calibration dates: flagged, never a due date"),
-          flagged("Q-13", old, id, "inventory / calibration dates before 2023: likely typing errors or real acquisition dates"),
-          finding("Q-4", "manual", 0, "NOT AUTOMATED: IPM rows whose device is gone are quarantined no_device; see the run totals"),
-          finding("Q-14", "manual", 0, "NOT AUTOMATED: calibration before inventory (plausible); review per device in P25-04"),
-          finding("Q-28", "manual", 0, "NOT AUTOMATED: files missing / unreferenced on disk; compare the manifests with the folders in P25-04"),
+          flagged(
+            "Q-18",
+            duplicates,
+            id,
+            "stored serial groups differing only in case inside the facility; 0 expected (UD-9, 0118)",
+          ),
+          flagged(
+            "Q-19",
+            shared,
+            id,
+            "serials the facility shares with another facility of the provider: harmless, flagged",
+          ),
+          flagged(
+            "Q-12",
+            future,
+            id,
+            "future inventory / calibration dates: flagged, never a due date",
+          ),
+          flagged(
+            "Q-13",
+            old,
+            id,
+            "inventory / calibration dates before 2023: likely typing errors or real acquisition dates",
+          ),
+          finding(
+            "Q-4",
+            "manual",
+            0,
+            "NOT AUTOMATED: IPM rows whose device is gone are quarantined no_device; see the run totals",
+          ),
+          finding(
+            "Q-14",
+            "manual",
+            0,
+            "NOT AUTOMATED: calibration before inventory (plausible); review per device in P25-04",
+          ),
+          finding(
+            "Q-28",
+            "manual",
+            0,
+            "NOT AUTOMATED: files missing / unreferenced on disk; compare the manifests with the folders in P25-04",
+          ),
         ],
       }));
 

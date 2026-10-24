@@ -272,6 +272,8 @@ const REVIEWED = Object.freeze({
   // upstream_sql_imports_one_transforming (migration 0133, WHERE transform_status IN
   // ('transform_requested', 'transforming')). The boot reconcile must see it, so it is not paged.
   "upstreamSqlTransform.service.ts::reconcileInterruptedTransforms::UpstreamSqlImport": [1, CLOSED],
+  "upstreamReconciliation.service.ts::facilitiesOf::ClientFacility": [1, CLOSED], // one provider's facilities, id and code
+  "upstreamDataQuality.service.ts::facilitiesOf::ClientFacility": [1, CLOSED], // one provider's facilities, id and code
   // P24-04: one tenant's import keys not yet revoked. Cap: a key is provisioned only when the
   // tenant has no usable one, and one lives 90 days past its sign-off day — so at most one usable
   // key plus the expired-unrevoked ones of earlier sign-offs (a handful over the import's life).

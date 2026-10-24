@@ -50,12 +50,20 @@
  * staged table the dump lacked counts as zero rows. R-10 runs over every
  * source of the step registry (steps.ts), each with its own legacy key.
  */
-import { sql, type BindValue, type SqlRunner } from "../utils/sql.util";
+import { sql, type SqlRunner } from "../utils/sql.util";
 import { createTransformDb, transformRoleName } from "../config/upstreamImport";
-import { ID_MAP, QUARANTINE, stagedTable, stagedTableExists } from "./upstreamImport/transform/ledger";
-import { TRANSFORM_STEPS, type StepContext, type TransformSource } from "./upstreamImport/transform/steps";
+import {
+  ID_MAP,
+  QUARANTINE,
+  stagedTable,
+  stagedTableExists,
+} from "./upstreamImport/transform/ledger";
+import {
+  TRANSFORM_STEPS,
+  type StepContext,
+  type TransformSource,
+} from "./upstreamImport/transform/steps";
 import { FACILITY_BOUND_ROLES } from "../constants/facilityAccess";
-import type { Transaction } from "sequelize";
 import type {
   ReconciliationCheckResult,
   UpstreamReconciliationCheck,
@@ -98,10 +106,16 @@ const check = (
 });
 
 /** An invariant: `bad` rows break it; zero passes. */
-const invariant = (checkName: UpstreamReconciliationCheck, bad: number, note: string): ReconciliationCheckResult =>
-  check(checkName, 0, bad, 0, note);
+const invariant = (
+  checkName: UpstreamReconciliationCheck,
+  bad: number,
+  note: string,
+): ReconciliationCheckResult => check(checkName, 0, bad, 0, note);
 
-const manual = (checkName: UpstreamReconciliationCheck, note: string): ReconciliationCheckResult => ({
+const manual = (
+  checkName: UpstreamReconciliationCheck,
+  note: string,
+): ReconciliationCheckResult => ({
   check: checkName,
   status: "manual",
   expected: 0,
@@ -125,34 +139,45 @@ const facilitiesOf = async (tenantId: string): Promise<Facility[]> =>
   ).map((f) => ({ id: f.id, code: f.code }));
 
 /** The sum of `n` over a count statement's rows (an aggregate answers one row). */
-const total = async (runner: SqlRunner, text: string, bind: readonly BindValue[], transaction: Transaction): Promise<number> =>
-  (await sql<{ n: number }>(runner, text, bind, { transaction })).reduce((sum, r) => sum + r.n, 0);
+const sum = (rows: readonly { n: number }[]): number =>
+  rows.reduce((acc, r) => acc + r.n, 0);
 
-/** `n` per facility of a `(facilityId, n)` statement. */
-const perFacility = async (runner: SqlRunner, text: string, bind: readonly BindValue[], transaction: Transaction): Promise<Map<string, number>> =>
-  new Map((await sql<{ facilityId: string; n: number }>(runner, text, bind, { transaction })).map((r) => [r.facilityId, r.n]));
+/** `n` per facility of a `(facilityId, n)` statement's rows. */
+const byFacility = (
+  rows: readonly { facilityId: string; n: number }[],
+): Map<string, number> => new Map(rows.map((r) => [r.facilityId, r.n]));
 
 /** Every staged source of the transform with its legacy key: the step registry is the one list. */
-const SOURCES: readonly TransformSource[] = TRANSFORM_STEPS.flatMap((s) => s.sources);
-const sourceOf = (table: string): TransformSource => SOURCES.find((s) => s.table === table) as TransformSource;
+const SOURCES: readonly TransformSource[] = TRANSFORM_STEPS.flatMap(
+  (s) => s.sources,
+);
+const sourceOf = (table: string): TransformSource =>
+  SOURCES.find((s) => s.table === table) as TransformSource;
 
 /** The mapped staged rows of `source` of this run, per facility the transform decided. */
-const stagedPerFacility = async (context: StepContext, source: TransformSource): Promise<Map<string, number>> =>
+const stagedPerFacility = async (
+  context: StepContext,
+  source: TransformSource,
+): Promise<Map<string, number>> =>
   (await stagedTableExists(context, source.table))
-    ? perFacility(
-      context.runner,
-      `SELECT m.client_facility_id AS "facilityId", count(*)::int AS n
+    ? byFacility(
+      await sql<{ facilityId: string; n: number }>(
+        context.runner,
+        `SELECT m.client_facility_id AS "facilityId", count(*)::int AS n
          FROM ${stagedTable(source.table)} s
          JOIN ${ID_MAP} m ON m.source_table = $2 AND m.legacy_id = (${String(source.legacyId)})
         WHERE s.import_run_id = $1 AND m.client_facility_id IS NOT NULL
         GROUP BY m.client_facility_id`,
-      [context.runId, source.table],
-      context.transaction,
+        [context.runId, source.table],
+        { transaction: context.transaction },
+      ),
     )
     : new Map<string, number>();
 
 /** R-10 over every staged source: [staged, mapped or quarantined, quarantined]. */
-const completeness = async (context: StepContext): Promise<[number, number, number]> => {
+const completeness = async (
+  context: StepContext,
+): Promise<[number, number, number]> => {
   let staged = 0;
   let accounted = 0;
   let quarantined = 0;
@@ -160,7 +185,11 @@ const completeness = async (context: StepContext): Promise<[number, number, numb
     if (!(await stagedTableExists(context, source.table))) {
       continue;
     }
-    const rows = await sql<{ staged: number; mapped: number; quarantined: number }>(
+    const rows = await sql<{
+      staged: number;
+      mapped: number;
+      quarantined: number;
+    }>(
       context.runner,
       `SELECT count(*)::int AS staged,
               count(*) FILTER (WHERE m.legacy_id IS NOT NULL)::int AS mapped,
@@ -182,57 +211,89 @@ const completeness = async (context: StepContext): Promise<[number, number, numb
   return [staged, accounted, quarantined];
 };
 
-/** Stored imported rows of `table` per facility: the targets of `source`'s mappings. */
-const importedSql = (table: string, source: string): string =>
-  `SELECT t.client_facility_id AS "facilityId", count(*)::int AS n FROM ${table} t
-     JOIN ${ID_MAP} m ON m.target_id = t.id AND m.source_table = '${source}'
-    WHERE t.tenant_id = $1 GROUP BY t.client_facility_id`;
-
 /**
  * The reconciliation of one transformed run, per facility.
  * @throws {CodedError} 404 UPSTREAM_SQL_IMPORT_NOT_FOUND; 409 RUN_NOT_TRANSFORMED (not `transformed`, or no provider tenant)
  */
-export const reconcileRun = async (runId: string): Promise<UpstreamReconciliationResult> => {
-  const found = (await UpstreamSqlImport.findByPk(runId)) as unknown as Run | null;
+export const reconcileRun = async (
+  runId: string,
+): Promise<UpstreamReconciliationResult> => {
+  const found = (await UpstreamSqlImport.findByPk(
+    runId,
+  )) as unknown as Run | null;
   if (found === null) {
-    throw new CodedError(404, "UPSTREAM_SQL_IMPORT_NOT_FOUND", "Import run not found");
+    throw new CodedError(
+      404,
+      "UPSTREAM_SQL_IMPORT_NOT_FOUND",
+      "Import run not found",
+    );
   }
   if (found.transformStatus !== "transformed") {
-    throw new CodedError(409, "RUN_NOT_TRANSFORMED", `The run's transform is ${found.transformStatus}; only a transformed run can be reconciled.`);
+    throw new CodedError(
+      409,
+      "RUN_NOT_TRANSFORMED",
+      `The run's transform is ${found.transformStatus}; only a transformed run can be reconciled.`,
+    );
   }
   const tenantId = found.transformTenantId;
   if (tenantId === null) {
-    throw new CodedError(409, "RUN_NOT_TRANSFORMED", "The run names no provider tenant.");
+    throw new CodedError(
+      409,
+      "RUN_NOT_TRANSFORMED",
+      "The run names no provider tenant.",
+    );
   }
   const connection = createTransformDb();
   try {
     return await connection.transaction(async (transaction) => {
       const runner = connection as unknown as SqlRunner;
-      const context: StepContext = { runId, runner, transaction, tenantId, sourceZone: "Asia/Jakarta" };
+      const context: StepContext = {
+        runId,
+        runner,
+        transaction,
+        tenantId,
+        sourceZone: "Asia/Jakarta",
+      };
       // The transform role, not a superuser (the runner's own proof, P24-01).
-      const [role] = await sql<{ currentUser: string }>(runner, "SELECT current_user AS \"currentUser\"", [], { transaction });
+      const [role] = await sql<{ currentUser: string }>(
+        runner,
+        'SELECT current_user AS "currentUser"',
+        [],
+        { transaction },
+      );
       if (role?.currentUser !== transformRoleName()) {
-        throw new AppError(500, "The reconciliation connection is not the transform role.");
+        throw new AppError(
+          500,
+          "The reconciliation connection is not the transform role.",
+        );
       }
       const facilities = await facilitiesOf(tenantId);
 
       // R-10 first: every staged row of the run is mapped or quarantined.
       const [staged, accounted, quarantined] = await completeness(context);
-      const r10 = check("R-10", staged, accounted, quarantined, "every staged row is mapped or quarantined (the runner proves it per step; asserted again here)");
+      const r10 = check(
+        "R-10",
+        staged,
+        accounted,
+        quarantined,
+        "every staged row is mapped or quarantined (the runner proves it per step; asserted again here)",
+      );
 
       // R-11: the composite FKs hold the tenant and facility chain (asserted, not trusted).
       const r11 = invariant(
         "R-11",
-        await total(
-          runner,
-          `SELECT (
+        sum(
+          await sql<{ n: number }>(
+            runner,
+            `SELECT (
              (SELECT count(*) FROM inspection_results r JOIN inspection_sessions s ON s.id = r.session_id
                WHERE r.tenant_id = $1 AND (s.tenant_id <> $1 OR r.client_facility_id IS DISTINCT FROM s.client_facility_id)) +
              (SELECT count(*) FROM inspection_sessions s JOIN calibration_devices d ON d.id = s.device_id
                WHERE s.tenant_id = $1 AND (d.tenant_id <> $1 OR s.client_facility_id IS DISTINCT FROM d.client_facility_id))
            )::int AS n`,
-          [tenantId],
-          transaction,
+            [tenantId],
+            { transaction },
+          ),
         ),
         "no result outside its session's tenant or facility, no session outside its device's (the composite FKs hold it)",
       );
@@ -240,9 +301,10 @@ export const reconcileRun = async (runId: string): Promise<UpstreamReconciliatio
       // RC-F1: every imported row's facility = the facility the transform decided.
       const rcF1 = invariant(
         "RC-F1",
-        await total(
-          runner,
-          `SELECT (
+        sum(
+          await sql<{ n: number }>(
+            runner,
+            `SELECT (
              (SELECT count(*) FROM calibration_devices d JOIN ${ID_MAP} m ON m.target_id = d.id
                WHERE d.tenant_id = $2 AND m.source_table = 'trx_inventory' AND m.import_run_id = $1
                  AND d.client_facility_id IS DISTINCT FROM m.client_facility_id) +
@@ -253,8 +315,9 @@ export const reconcileRun = async (runId: string): Promise<UpstreamReconciliatio
                WHERE r.tenant_id = $2 AND m.source_table = 'trx_kalibrasi' AND m.import_run_id = $1
                  AND r.client_facility_id IS DISTINCT FROM m.client_facility_id)
            )::int AS n`,
-          [runId, tenantId],
-          transaction,
+            [runId, tenantId],
+            { transaction },
+          ),
         ),
         "every imported row's facility is the facility the transform decided (id_map.client_facility_id)",
       );
@@ -262,16 +325,18 @@ export const reconcileRun = async (runId: string): Promise<UpstreamReconciliatio
       // RC-F2: every child's facility = its device's.
       const rcF2 = invariant(
         "RC-F2",
-        await total(
-          runner,
-          `SELECT (
+        sum(
+          await sql<{ n: number }>(
+            runner,
+            `SELECT (
              (SELECT count(*) FROM calibration_records r JOIN calibration_devices d ON d.id = r.device_id
                WHERE r.tenant_id = $1 AND r.client_facility_id IS DISTINCT FROM d.client_facility_id) +
              (SELECT count(*) FROM attachments a JOIN calibration_devices d ON d.id = a.resource_id
                WHERE a.tenant_id = $1 AND a.resource_type = 'device' AND a.client_facility_id IS DISTINCT FROM d.client_facility_id)
            )::int AS n`,
-          [tenantId],
-          transaction,
+            [tenantId],
+            { transaction },
+          ),
         ),
         "every calibration's facility is its device's; every device photo's is its device's",
       );
@@ -279,13 +344,15 @@ export const reconcileRun = async (runId: string): Promise<UpstreamReconciliatio
       // RC-F3: every device photo's key carries its row's f/<facility> segment.
       const rcF3 = invariant(
         "RC-F3",
-        await total(
-          runner,
-          `SELECT count(*)::int AS n FROM attachments
+        sum(
+          await sql<{ n: number }>(
+            runner,
+            `SELECT count(*)::int AS n FROM attachments
             WHERE tenant_id = $1 AND resource_type = 'device' AND client_facility_id IS NOT NULL
               AND storage_key NOT LIKE '%/f/' || client_facility_id::text || '/%'`,
-          [tenantId],
-          transaction,
+            [tenantId],
+            { transaction },
+          ),
         ),
         "every device photo's storage key carries its row's facility (t/<tenant>/f/<facility>/attachments/)",
       );
@@ -293,33 +360,90 @@ export const reconcileRun = async (runId: string): Promise<UpstreamReconciliatio
       // RC-F5: no imported facility account (a FACILITY_BOUND_ROLES role) is unbound.
       const rcF5 = invariant(
         "RC-F5",
-        await total(
-          runner,
-          `SELECT count(*)::int AS n FROM users u
+        sum(
+          await sql<{ n: number }>(
+            runner,
+            `SELECT count(*)::int AS n FROM users u
              JOIN roles r ON r.id = u.role_id
              JOIN ${ID_MAP} m ON m.target_id = u.id AND m.source_table = 'users'
             WHERE u.tenant_id = $1 AND r.name = ANY($2::text[]) AND u.client_facility_id IS NULL`,
-          [tenantId, FACILITY_BOUND_ROLES],
-          transaction,
+            [tenantId, FACILITY_BOUND_ROLES],
+            { transaction },
+          ),
         ),
         "no imported facility account is unbound (the users step quarantines facility_mapping_ambiguous instead)",
       );
 
       // Per facility: R-1 (devices), R-2 (session headers), R-7 (calibrations).
-      const stagedDevices = await stagedPerFacility(context, sourceOf("trx_inventory"));
-      const stagedSessions = await stagedPerFacility(context, sourceOf("trx_hasil_pemeriksaan"));
-      const stagedCalibrations = await stagedPerFacility(context, sourceOf("trx_kalibrasi"));
-      const devices = await perFacility(runner, importedSql("calibration_devices", "trx_inventory"), [tenantId], transaction);
-      const sessions = await perFacility(runner, importedSql("inspection_sessions", "trx_hasil_pemeriksaan"), [tenantId], transaction);
-      const calibrations = await perFacility(runner, importedSql("calibration_records", "trx_kalibrasi"), [tenantId], transaction);
+      const stagedDevices = await stagedPerFacility(
+        context,
+        sourceOf("trx_inventory"),
+      );
+      const stagedSessions = await stagedPerFacility(
+        context,
+        sourceOf("trx_hasil_pemeriksaan"),
+      );
+      const stagedCalibrations = await stagedPerFacility(
+        context,
+        sourceOf("trx_kalibrasi"),
+      );
+      // The stored rows those mappings name, per facility the row landed in.
+      const devices = byFacility(
+        await sql<{ facilityId: string; n: number }>(
+          runner,
+          `SELECT t.client_facility_id AS "facilityId", count(*)::int AS n FROM calibration_devices t
+             JOIN ${ID_MAP} m ON m.target_id = t.id AND m.source_table = 'trx_inventory'
+            WHERE t.tenant_id = $1 GROUP BY t.client_facility_id`,
+          [tenantId],
+          { transaction },
+        ),
+      );
+      const sessions = byFacility(
+        await sql<{ facilityId: string; n: number }>(
+          runner,
+          `SELECT t.client_facility_id AS "facilityId", count(*)::int AS n FROM inspection_sessions t
+             JOIN ${ID_MAP} m ON m.target_id = t.id AND m.source_table = 'trx_hasil_pemeriksaan'
+            WHERE t.tenant_id = $1 GROUP BY t.client_facility_id`,
+          [tenantId],
+          { transaction },
+        ),
+      );
+      const calibrations = byFacility(
+        await sql<{ facilityId: string; n: number }>(
+          runner,
+          `SELECT t.client_facility_id AS "facilityId", count(*)::int AS n FROM calibration_records t
+             JOIN ${ID_MAP} m ON m.target_id = t.id AND m.source_table = 'trx_kalibrasi'
+            WHERE t.tenant_id = $1 GROUP BY t.client_facility_id`,
+          [tenantId],
+          { transaction },
+        ),
+      );
 
       const facilityRows = facilities.map(({ id, code }) => ({
         clientFacilityId: id,
         facilityCode: code,
         checks: [
-          check("R-1", stagedDevices.get(id) ?? 0, devices.get(id) ?? 0, 0, "mapped staged devices vs stored imported devices of the facility (05 § 7)"),
-          check("R-2", stagedSessions.get(id) ?? 0, sessions.get(id) ?? 0, 0, "mapped staged session headers vs stored imported sessions of the facility"),
-          check("R-7", stagedCalibrations.get(id) ?? 0, calibrations.get(id) ?? 0, 0, "mapped staged calibrations vs stored imported calibrations of the facility"),
+          check(
+            "R-1",
+            stagedDevices.get(id) ?? 0,
+            devices.get(id) ?? 0,
+            0,
+            "mapped staged devices vs stored imported devices of the facility (05 § 7)",
+          ),
+          check(
+            "R-2",
+            stagedSessions.get(id) ?? 0,
+            sessions.get(id) ?? 0,
+            0,
+            "mapped staged session headers vs stored imported sessions of the facility",
+          ),
+          check(
+            "R-7",
+            stagedCalibrations.get(id) ?? 0,
+            calibrations.get(id) ?? 0,
+            0,
+            "mapped staged calibrations vs stored imported calibrations of the facility",
+          ),
         ],
       }));
 
@@ -327,7 +451,12 @@ export const reconcileRun = async (runId: string): Promise<UpstreamReconciliatio
         runId,
         providerTenantId: tenantId,
         transformSummary:
-          found.transformSummary === null ? null : { durationMs: found.transformSummary.durationMs, steps: found.transformSummary.steps.length },
+          found.transformSummary === null
+            ? null
+            : {
+              durationMs: found.transformSummary.durationMs,
+              steps: found.transformSummary.steps.length,
+            },
         facilities: facilityRows,
         runChecks: [
           r10,
@@ -336,14 +465,38 @@ export const reconcileRun = async (runId: string): Promise<UpstreamReconciliatio
           rcF2,
           rcF3,
           rcF5,
-          manual("R-3", "NOT AUTOMATED: detail rows per section; run the section queries of 05 § 7 on the dry-run database, in P25-04"),
-          manual("R-4", "NOT AUTOMATED: outcome distribution per section; staged status codes vs stored outcomes through ipm.ts, in P25-04"),
-          manual("R-5", "NOT AUTOMATED: numeric sums; SUM(terukur_1) with decimal comma vs SUM(measured_value_1), in P25-04"),
-          manual("R-6", "NOT AUTOMATED: environment AVG/MIN/MAX of temperature and humidity, in P25-04"),
-          manual("R-8", "NOT AUTOMATED: files per folder; referenced names vs attachments + quarantine (step 9 proves the checksums), in P25-04"),
-          manual("R-9", "NOT AUTOMATED: users per group vs users per (tenant, role), in P25-04"),
-          manual("RC-F4", "per-facility counts equal the source's: R-1, R-2 and R-7 cover the mapped rows; the source-side totals are P25-04's"),
-          manual("R-12", "NOT AUTOMATED: the app-level smoke (two-tenant suites and a live E2E on the dry-run database, P21-10's spec), in P25-04"),
+          manual(
+            "R-3",
+            "NOT AUTOMATED: detail rows per section; run the section queries of 05 § 7 on the dry-run database, in P25-04",
+          ),
+          manual(
+            "R-4",
+            "NOT AUTOMATED: outcome distribution per section; staged status codes vs stored outcomes through ipm.ts, in P25-04",
+          ),
+          manual(
+            "R-5",
+            "NOT AUTOMATED: numeric sums; SUM(terukur_1) with decimal comma vs SUM(measured_value_1), in P25-04",
+          ),
+          manual(
+            "R-6",
+            "NOT AUTOMATED: environment AVG/MIN/MAX of temperature and humidity, in P25-04",
+          ),
+          manual(
+            "R-8",
+            "NOT AUTOMATED: files per folder; referenced names vs attachments + quarantine (step 9 proves the checksums), in P25-04",
+          ),
+          manual(
+            "R-9",
+            "NOT AUTOMATED: users per group vs users per (tenant, role), in P25-04",
+          ),
+          manual(
+            "RC-F4",
+            "per-facility counts equal the source's: R-1, R-2 and R-7 cover the mapped rows; the source-side totals are P25-04's",
+          ),
+          manual(
+            "R-12",
+            "NOT AUTOMATED: the app-level smoke (two-tenant suites and a live E2E on the dry-run database, P21-10's spec), in P25-04",
+          ),
         ],
       };
     });

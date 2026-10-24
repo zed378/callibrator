@@ -399,20 +399,20 @@ describe("P24-02g — the IPM steps on live PostgreSQL 18, as the transform role
     // Two devices and two session headers mapped, each in its facility.
     expect(checks.filter((c) => c.check === "R-1").reduce((n, c) => n + c.actual, 0)).toBe(2);
     expect(checks.filter((c) => c.check === "R-2").reduce((n, c) => n + c.actual, 0)).toBe(2);
-    // A device moved to another facility behind the transform's back is caught (RC-F1, R-1), then put back.
-    const [moved] = await rows(
-      `SELECT d.id, d.client_facility_id AS facility FROM calibration_devices d WHERE d.tenant_id = '${PROVIDER}' AND d.qr_code = 'QR-G102'`,
+    // A device whose landed facility differs from the one the transform decided is caught (RC-F1, R-1 twice), then put back.
+    const [mapping] = await rows(
+      `SELECT m.legacy_id AS "legacyId", m.client_facility_id AS facility FROM upstream_import.id_map m
+         JOIN calibration_devices d ON d.id = m.target_id WHERE m.source_table = 'trx_inventory' AND d.qr_code = 'QR-G102'`,
     );
-    const t = await g.db.transaction();
+    const setDecided = (facility: string): Promise<unknown> =>
+      g.db.query(`UPDATE upstream_import.id_map SET client_facility_id = '${facility}' WHERE source_table = 'trx_inventory' AND legacy_id = '${String(mapping?.["legacyId"])}'`);
+    await setDecided(SELF);
     try {
-      await g.db.query("SET LOCAL session_replication_role = replica", { transaction: t });
-      await g.db.query(`UPDATE calibration_devices SET client_facility_id = '${SELF}' WHERE id = '${String(moved?.id)}'`, { transaction: t });
-      await t.commit();
       const broken = await g.reconciliation.reconcileRun(RUN_1);
       expect(broken.runChecks.find((c) => c.check === "RC-F1")).toMatchObject({ status: "fail", actual: 1 });
       expect(broken.facilities.flatMap((f) => f.checks).filter((c) => c.status === "fail").map((c) => c.check)).toEqual(["R-1", "R-1"]);
     } finally {
-      await g.db.query(`UPDATE calibration_devices SET client_facility_id = '${String(moved?.facility)}' WHERE id = '${String(moved?.id)}'`);
+      await setDecided(String(mapping?.["facility"]));
     }
 
     const report = await g.dataQuality.reportDataQuality(RUN_1);

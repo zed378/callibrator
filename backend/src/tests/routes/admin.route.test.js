@@ -88,7 +88,7 @@ describe("Admin Routes", () => {
     expect([...methods].sort()).toEqual(["get", "patch", "post", "put"]);
   });
 
-  it("has exactly its 21 route endpoints: 3 tenant ones, 2 SSO-domain ones (P10-04), 6 access-request ones (P10-05/07), 7 SQL-dump import ones (P24-06, P24-01's transform) and 3 catalogue-proposal ones (P21-01)", () => {
+  it("has exactly its 23 route endpoints: 3 tenant ones, 2 SSO-domain ones (P10-04), 6 access-request ones (P10-05/07), 9 SQL-dump import ones (P24-06, P24-01's transform, P25-01/02's reconciliation and report) and 3 catalogue-proposal ones (P21-01)", () => {
     const routes = adminRoutes.stack
       .filter((layer) => layer.route)
       .flatMap((layer) => Object.keys(layer.route.methods).map((m) => `${m.toUpperCase()} ${layer.route.path}`));
@@ -112,6 +112,8 @@ describe("Admin Routes", () => {
         "POST /upstream-sql-imports/:id/cancel",
         "POST /upstream-sql-imports/:id/retry",
         "POST /upstream-sql-imports/:id/transform",
+        "GET /upstream-sql-imports/:id/reconciliation",
+        "GET /upstream-sql-imports/:id/data-quality",
         "GET /ipm/template-proposals",
         "POST /ipm/template-proposals/:proposalId/accept",
         "POST /ipm/template-proposals/:proposalId/reject",

@@ -287,6 +287,25 @@ early, then copy only the delta at cutover by name.
 
 ## 7. Validation and Reconciliation
 
+> **As built (P25-01, P25-02, ADR-129 Am. 11, 2026-10-24) — PARTIAL.** Two routes answer the
+> checks below, read-only, as aggregates on the transform connection:
+> `GET /admin/upstream-sql-imports/:id/reconciliation` and `GET …/:id/data-quality`.
+>
+> **Automated:**
+>
+> - R-1, R-2 and R-7 per facility. They compare the mapped staged rows with the stored rows those
+>   mappings name.
+> - R-10 over every source of the step registry.
+> - R-11, RC-F1, RC-F2 and RC-F3.
+> - RC-F5, for `FACILITY_BOUND_ROLES` roles only.
+> - Q-12, Q-13, Q-18 and Q-19 per facility, plus the quarantine totals.
+>
+> **Not automated:** R-3 … R-6, R-8, R-9, RC-F4, R-12, Q-4, Q-14 and Q-28. Each answers `manual`,
+> and P25-04 records it by hand on the dry-run database.
+>
+> Migration 0146 gives the transform role the two columns these checks read. They are proven on
+> PostgreSQL 18 with synthetic data only.
+
 Run on the dry run and again after the real load. Each check compares a source query (MariaDB)
 with a target query (PostgreSQL), **per tenant** (`id_client` ↔ `tenant_id` via `id_map`).
 
