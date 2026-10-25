@@ -1,8 +1,7 @@
 /**
  * Tests for OTP utility
  */
-
-const { generateOTP, verifyOTP, hashOTP } = require("../../utils/otp.util");
+import { generateOTP, hashOTP, verifyOTP } from "../../utils/otp.util";
 
 describe("OTP utility", () => {
   describe("generateOTP", () => {

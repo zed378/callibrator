@@ -10,9 +10,24 @@
  * outside the figure are exactly the ones docs/BACKEND/09-TESTING.md
  * § "What 100% covers" lists — widening the exclusions fails here first.
  */
-const fs = require("fs");
-const path = require("path");
-const config = require("../../../jest.config");
+import fs from "node:fs";
+import path from "node:path";
+
+interface CoverageThreshold {
+    branches: number;
+    functions: number;
+    lines: number;
+    statements: number;
+}
+
+interface JestConfig {
+    collectCoverageFrom: string[];
+    coveragePathIgnorePatterns: string[];
+    coverageThreshold: Record<string, CoverageThreshold>;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the jest configuration is a CommonJS tool file outside src/
+const config = require("../../../jest.config") as JestConfig;
 
 const ROOT = path.join(__dirname, "..", "..", "..");
 
@@ -43,7 +58,7 @@ describe("P6-14 — the coverage scope", () => {
   });
 
   it("the threshold is 100% on the six measured layers and globally", () => {
-    const expected = { branches: 100, functions: 100, lines: 100, statements: 100 };
+    const expected: CoverageThreshold = { branches: 100, functions: 100, lines: 100, statements: 100 };
     for (const key of ["global", "./src/controllers/", "./src/middlewares/", "./src/routes/", "./src/services/", "./src/utils/", "./src/validators/"]) {
       expect(config.coverageThreshold[key]).toEqual(expected);
     }

@@ -1,16 +1,20 @@
 /**
  * Tests for env.util
  */
-const path = require("path");
+import path from "path";
+import type * as dotenvTypes from "dotenv";
 
 describe("env.util", () => {
   it("should not throw when loaded", () => {
-    expect(() => require("../../utils/env.util")).not.toThrow();
+    expect(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- loads the side-effect module
+      require("../../utils/env.util");
+    }).not.toThrow();
   });
 
   it("should load dotenv config in development mode", () => {
-    // In development (not packaged), dotenv.config is called with .env path
-    const envModule = require("../../utils/env.util");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the module under test is a side-effect module
+    const envModule = require("../../utils/env.util") as unknown;
     expect(envModule).toBeDefined();
   });
 
@@ -27,8 +31,9 @@ describe("env.util", () => {
 
   it("should load dotenv config from execPath directory when packaged", () => {
     jest.resetModules();
-    const dotenv = require("dotenv");
-    const dotenvSpy = jest.spyOn(dotenv, "config").mockImplementation(() => {});
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- fresh copy after resetModules so the spy reaches the module under test
+    const dotenv = require("dotenv") as typeof dotenvTypes;
+    const dotenvSpy = jest.spyOn(dotenv, "config").mockReturnValue({});
 
     process.pkg = {};
     const originalExecPath = process.execPath;
@@ -38,6 +43,7 @@ describe("env.util", () => {
     process.execPath = fakeExec;
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- re-reads the side-effect module under a packaged process shape
       require("../../utils/env.util");
       expect(dotenvSpy).toHaveBeenCalledWith({
         path: path.join(path.dirname(fakeExec), ".env"),

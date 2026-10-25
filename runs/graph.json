@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-24T12:34:03.715Z",
+  "last_updated": "2026-10-25T16:12:04.316Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -334,7 +334,11 @@
     "MEMORY\\records\\2026-10-24-p30-01-runbook-stale-checks-fix.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-04-path-utils.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-05-admin-d24-a127.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-06-session-d27-w02.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-06-session-d27-w02.md",
+    "batch8-remain.txt",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-08-guards-p611-p614-a42.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-09-password-otp-env.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-10-apperror-validateuuid-certnumber.md"
   ],
   "entities": [
     {
@@ -72444,6 +72448,69 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-24 — P9-26 batch 6: session, d27, w02 to TypeScript ([record](./records/2026-10-24-p9-26-batch-06-session-d27-w02.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_8_auditintransaction_p611_coveragescope_p614_noconsole_a42_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 8: auditInTransaction.p611, coverageScope.p614, noConsole.a42 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-08-guards-p611-p614-a42.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-08-guards-p611-p614-a42.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 8: auditInTransaction.p611, coverageScope.p614, noConsole.a42 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_8_p611_p614_a42_guard_scans_to_typescript_record_records_2026_10_24_p9_26_batch_08_guards_p611_p614_a42_md_",
+      "name": "2026-10-24 — P9-26 batch 8: p611, p614, a42 guard scans to TypeScript ([record](./records/2026-10-24-p9-26-batch-08-guards-p611-p614-a42.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 8: p611, p614, a42 guard scans to TypeScript ([record](./records/2026-10-24-p9-26-batch-08-guards-p611-p614-a42.md))"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_7_notfound_kanban_route_tickets_route_to_typescript_record_records_2026_10_24_p9_26_batch_07_notfound_kanban_tickets_md_",
+      "name": "2026-10-24 — P9-26 batch 7: notFound, kanban.route, tickets.route to TypeScript ([record](./records/2026-10-24-p9-26-batch-07-notfound-kanban-tickets.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 14,
+      "evidence": "### 2026-10-24 — P9-26 batch 7: notFound, kanban.route, tickets.route to TypeScript ([record](./records/2026-10-24-p9-26-batch-07-notfound-kanban-tickets.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_9_password_otp_env_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 9: password, otp, env — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-09-password-otp-env.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-09-password-otp-env.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 9: password, otp, env — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_9_password_otp_env_utils_to_typescript_record_records_2026_10_24_p9_26_batch_09_password_otp_env_md_",
+      "name": "2026-10-24 — P9-26 batch 9: password, otp, env utils to TypeScript ([record](./records/2026-10-24-p9-26-batch-09-password-otp-env.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 9: password, otp, env utils to TypeScript ([record](./records/2026-10-24-p9-26-batch-09-password-otp-env.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_10_apperror_validateuuid_certificatenumber_d40_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 10: appError, validateUuid, certificateNumber.d40 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-10-apperror-validateuuid-certnumber.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-10-apperror-validateuuid-certnumber.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 10: appError, validateUuid, certificateNumber.d40 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_10_apperror_validateuuid_certificatenumber_d40_to_typescript_record_records_2026_10_24_p9_26_batch_10_apperror_validateuuid_certnumber_md_",
+      "name": "2026-10-24 — P9-26 batch 10: appError, validateUuid, certificateNumber.d40 to TypeScript ([record](./records/2026-10-24-p9-26-batch-10-apperror-validateuuid-certnumber.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 10: appError, validateUuid, certificateNumber.d40 to TypeScript ([record](./records/2026-10-24-p9-26-batch-10-apperror-validateuuid"
     }
   ],
   "relations": [
@@ -107566,12 +107633,44 @@
       "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 211 cases, eslint + typecheck clean, ratchet 685 to 682.",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_8_p611_p614_a42_guard_scans_to_typescript_record_records_2026_10_24_p9_26_batch_08_guards_p611_p614_a42_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 679 to 676.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_7_notfound_kanban_route_tickets_route_to_typescript_record_records_2026_10_24_p9_26_batch_07_notfound_kanban_tickets_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 12 cases, eslint + typecheck clean, ratchet 682 to 679.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 15
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_9_password_otp_env_utils_to_typescript_record_records_2026_10_24_p9_26_batch_09_password_otp_env_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 20 cases, eslint + typecheck clean, ratchet 676 to 673.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_10_apperror_validateuuid_certificatenumber_d40_to_typescript_record_records_2026_10_24_p9_26_batch_10_apperror_validateuuid_certnumber_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 43 cases, eslint + typecheck clean, ratchet 673 to 670.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
     }
   ],
   "stats": {
-    "total_sources": 333,
-    "total_entities": 8012,
-    "total_relations": 4390,
+    "total_sources": 337,
+    "total_entities": 8019,
+    "total_relations": 4394,
     "token_savings_estimate": "85-95%"
   }
 }

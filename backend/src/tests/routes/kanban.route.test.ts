@@ -3,7 +3,18 @@
  *
  * Tests the Kanban route registrations and middleware chain.
  */
-const kanbanRoutes = require("../../routes/api/kanban.route");
+
+interface KanbanRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface KanbanRouter {
+    handle: unknown;
+    stack: KanbanRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const kanbanRoutes = require("../../routes/api/kanban.route") as KanbanRouter;
 
 describe("Kanban Routes", () => {
   it("should export an Express router", () => {

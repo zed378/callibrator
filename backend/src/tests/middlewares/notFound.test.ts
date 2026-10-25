@@ -2,8 +2,11 @@
  * Tests for notFound middleware
  * Tests that unmatched routes trigger the 404 response utility.
  */
-const { notFound } = require("../../middlewares/notFound.middleware");
-require("../../utils/response.util");
+import "../../utils/response.util";
+
+type Handler = (req: unknown, res: unknown) => void;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the middleware loads the same way as the other converted suites
+const { notFound } = require("../../middlewares/notFound.middleware") as { notFound: Handler };
 
 describe("notFound middleware", () => {
   beforeEach(() => {

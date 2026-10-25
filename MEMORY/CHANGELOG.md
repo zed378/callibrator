@@ -8,6 +8,18 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 — P9-26 batch 10: appError, validateUuid, certificateNumber.d40 to TypeScript ([record](./records/2026-10-24-p9-26-batch-10-apperror-validateuuid-certnumber.md))
+- **DONE:** 3 × `.js` to `.ts`, same 43 cases, eslint + typecheck clean, ratchet 673 to 670.
+
+### 2026-10-24 — P9-26 batch 9: password, otp, env utils to TypeScript ([record](./records/2026-10-24-p9-26-batch-09-password-otp-env.md))
+- **DONE:** 3 × `.js` to `.ts`, same 20 cases, eslint + typecheck clean, ratchet 676 to 673.
+
+### 2026-10-24 — P9-26 batch 8: p611, p614, a42 guard scans to TypeScript ([record](./records/2026-10-24-p9-26-batch-08-guards-p611-p614-a42.md))
+- **DONE:** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 679 to 676.
+
+### 2026-10-24 — P9-26 batch 7: notFound, kanban.route, tickets.route to TypeScript ([record](./records/2026-10-24-p9-26-batch-07-notfound-kanban-tickets.md))
+- **DONE:** 3 × `.js` to `.ts`, same 12 cases, eslint + typecheck clean, ratchet 682 to 679.
+
 ### 2026-10-24 — P9-26 batch 6: session, d27, w02 to TypeScript ([record](./records/2026-10-24-p9-26-batch-06-session-d27-w02.md))
 - **DONE:** 3 × `.js` to `.ts`, same 211 cases, eslint + typecheck clean, ratchet 685 to 682.
 
