@@ -1,8 +1,7 @@
 /**
  * Tests for password utility
  */
-
-const { hashPassword, comparePassword } = require("../../utils/password.util");
+import { comparePassword, hashPassword } from "../../utils/password.util";
 
 describe("password utility", () => {
   describe("hashPassword", () => {

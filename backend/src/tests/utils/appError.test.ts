@@ -1,19 +1,21 @@
 /**
  * Tests for appError utility
  */
-
-const {
+import {
   AppError,
   BadRequestError,
-  UnauthorizedError,
-  ForbiddenError,
-  NotFoundError,
   ConflictError,
-  TooManyRequestsError,
-  LockedError,
+  ForbiddenError,
   InternalServerError,
+  LockedError,
+  NotFoundError,
+  TooManyRequestsError,
+  UnauthorizedError,
   formatErrors,
-} = require("../../utils/appError.util");
+} from "../../utils/appError.util";
+import { environment } from "../../config/env";
+
+const env = environment();
 
 describe("AppError", () => {
   it("should create an AppError with status and message", () => {
@@ -75,21 +77,21 @@ describe("AppError", () => {
     });
 
     it("should include details in non-production", () => {
-      process.env.NODE_ENV = "development";
+      env["NODE_ENV"] = "development";
       const err = new AppError(400, "Bad request", true, { field: "email" });
       const json = err.toJSON();
 
       expect(json.details).toEqual({ field: "email" });
-      process.env.NODE_ENV = "test";
+      env["NODE_ENV"] = "test";
     });
 
     it("should not include details in production", () => {
-      process.env.NODE_ENV = "production";
+      env["NODE_ENV"] = "production";
       const err = new AppError(400, "Bad request", true, { field: "email" });
       const json = err.toJSON();
 
       expect(json.details).toBeUndefined();
-      process.env.NODE_ENV = "test";
+      env["NODE_ENV"] = "test";
     });
   });
 });

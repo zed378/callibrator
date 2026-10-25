@@ -23,12 +23,12 @@
  * and the behaviour of each covered mutation is proved by its own suite
  * (the *.audit.a41, user.audit.a77, webhook.secret.a51 tests and the rest).
  */
-const fs = require("fs");
-const path = require("path");
+import fs from "node:fs";
+import path from "node:path";
 
 const SRC = path.join(__dirname, "..", "..");
 
-const listJs = (dir) =>
+const listJs = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -38,11 +38,16 @@ const listJs = (dir) =>
     return /\.(js|ts)$/.test(entry.name) ? [full] : [];
   });
 
-const rel = (file) => path.relative(SRC, file).split(path.sep).join("/");
+const rel = (file: string): string => path.relative(SRC, file).split(path.sep).join("/");
+
+interface LogActionCall {
+    line: number;
+    text: string;
+}
 
 /** Every `logAction(...)` call with its full argument text (balanced parens). */
-const callsIn = (source) => {
-  const out = [];
+const callsIn = (source: string): LogActionCall[] => {
+  const out: LogActionCall[] = [];
   let i = 0;
   while ((i = source.indexOf("logAction(", i)) !== -1) {
     let depth = 0;
@@ -64,7 +69,7 @@ const callsIn = (source) => {
 };
 
 // Call sites that write no transaction, each with the reason it is right.
-const NO_TRANSACTION = {
+const NO_TRANSACTION: Readonly<Record<string, string>> = {
   // The audit row is the ONLY database write (the file is already on disk);
   // a null row deletes the file and refuses the upload.
   // P9 (ADR-087): contentMedia.service is TypeScript now; the call site moved with it.
@@ -80,16 +85,16 @@ describe("P6-11 — audit rows inside the transaction", () => {
   );
 
   it("the scan found call sites (a scan that finds nothing is not a pass)", () => {
-    const total = files.reduce((n, f) => n + callsIn(fs.readFileSync(f, "utf8")).length, 0);
+    const total = files.reduce((n: number, f: string) => n + callsIn(fs.readFileSync(f, "utf8")).length, 0);
     expect(total).toBeGreaterThan(50);
   });
 
   it("every logAction call passes a transaction, or is listed with its reason", () => {
-    const offenders = [];
+    const offenders: string[] = [];
     for (const file of files) {
       for (const call of callsIn(fs.readFileSync(file, "utf8"))) {
-        if (!/transaction/.test(call.text) && !NO_TRANSACTION[rel(file)]) {
-          offenders.push(`${rel(file)}:${call.line}`);
+        if (!call.text.includes("transaction") && !NO_TRANSACTION[rel(file)]) {
+          offenders.push(`${rel(file)}:${String(call.line)}`);
         }
       }
     }
@@ -99,7 +104,7 @@ describe("P6-11 — audit rows inside the transaction", () => {
   it("every listed exception still exists and still has a transaction-less call (no stale entry)", () => {
     for (const file of Object.keys(NO_TRANSACTION)) {
       const calls = callsIn(fs.readFileSync(path.join(SRC, file), "utf8"));
-      expect(calls.some((c) => !/transaction/.test(c.text))).toBe(true);
+      expect(calls.some((c) => !c.text.includes("transaction"))).toBe(true);
     }
   });
 

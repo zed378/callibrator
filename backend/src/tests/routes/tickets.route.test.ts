@@ -3,7 +3,18 @@
  *
  * Tests the ticket route registrations and middleware chain.
  */
-const ticketRoutes = require("../../routes/api/tickets.route");
+
+interface TicketRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface TicketRouter {
+    handle: unknown;
+    stack: TicketRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const ticketRoutes = require("../../routes/api/tickets.route") as TicketRouter;
 
 describe("Ticket Routes", () => {
   it("should export an Express router", () => {
