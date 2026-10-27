@@ -1,7 +1,19 @@
 /**
  * Maintenance Routes Tests
  */
-const maintenanceRoutes = require("../../routes/api/maintenance.route");
+
+interface MaintenanceRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface MaintenanceRouter {
+    handle: unknown;
+    stack: MaintenanceRouteLayer[];
+}
+
+const maintenanceRoutes =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+    require("../../routes/api/maintenance.route") as MaintenanceRouter;
 
 describe("Maintenance Routes", () => {
   it("should export an Express router", () => {
@@ -16,35 +28,35 @@ describe("Maintenance Routes", () => {
 
   it("should have GET / route", () => {
     const route = maintenanceRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/" && layer.route.methods.get,
+      (layer) => layer.route?.path === "/" && layer.route.methods["get"],
     );
     expect(route).toBeDefined();
   });
 
   it("should have GET /:orderId route", () => {
     const route = maintenanceRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:orderId" && layer.route.methods.get,
+      (layer) => layer.route?.path === "/:orderId" && layer.route.methods["get"],
     );
     expect(route).toBeDefined();
   });
 
   it("should have POST / route", () => {
     const route = maintenanceRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/" && layer.route.methods.post,
+      (layer) => layer.route?.path === "/" && layer.route.methods["post"],
     );
     expect(route).toBeDefined();
   });
 
   it("should have PATCH /:orderId route", () => {
     const route = maintenanceRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:orderId" && layer.route.methods.patch,
+      (layer) => layer.route?.path === "/:orderId" && layer.route.methods["patch"],
     );
     expect(route).toBeDefined();
   });
 
   it("should have DELETE /:orderId route", () => {
     const route = maintenanceRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:orderId" && layer.route.methods.delete,
+      (layer) => layer.route?.path === "/:orderId" && layer.route.methods["delete"],
     );
     expect(route).toBeDefined();
   });

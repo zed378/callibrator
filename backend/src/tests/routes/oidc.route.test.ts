@@ -3,7 +3,18 @@
  *
  * Tests the Oidc route registrations and middleware chain.
  */
-const oidcRoutes = require("../../routes/api/oidc.route");
+
+interface OidcRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface OidcRouter {
+    handle: unknown;
+    stack: OidcRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const oidcRoutes = require("../../routes/api/oidc.route") as OidcRouter;
 
 describe("Oidc Routes", () => {
   it("should export an Express router", () => {
@@ -36,10 +47,10 @@ describe("Oidc Routes", () => {
     oidcRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete).toBe(true);
       }
     });

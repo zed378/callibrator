@@ -3,7 +3,19 @@
  *
  * Tests the Webhooks route registrations and middleware chain.
  */
-const webhooksRoutes = require("../../routes/api/webhooks.route");
+
+interface WebhooksRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface WebhooksRouter {
+    handle: unknown;
+    stack: WebhooksRouteLayer[];
+}
+
+const webhooksRoutes =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+    require("../../routes/api/webhooks.route") as WebhooksRouter;
 
 describe("Webhooks Routes", () => {
   it("should export an Express router", () => {
@@ -32,11 +44,11 @@ describe("Webhooks Routes", () => {
     webhooksRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
-        const hasPatch = methods.patch === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
+        const hasPatch = methods["patch"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete || hasPatch).toBe(true);
       }
     });
