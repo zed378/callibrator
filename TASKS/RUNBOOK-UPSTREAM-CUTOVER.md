@@ -5,7 +5,7 @@
 > ahead of that on purpose — the same way `P29-02`'s "what changed" note was — so that the sequence,
 > the commands and the rollback are reviewed **before** a freeze window exists. Every command here
 > exists in the repository today. The reconciliation mechanism (P25-01: `GET …/reconciliation`) and the
-> data-quality report (P25-02: `GET …/data-quality`) are built and proven on synthetic data; RC-F4, R-12, Q-4, Q-14 and Q-28 are **not automated** (R-3 … R-6, R-8 and R-9 automated 2026-10-27, ADR-129 Am. 12) and answer `manual` — they are recorded by hand in P25-04. What is
+> data-quality report (P25-02: `GET …/data-quality`) are built and proven on synthetic data; RC-F4, R-12 and Q-28's unreferenced files are **not automated** (Q-4, Q-14 and Q-28's missing files automated 2026-10-27) (R-3 … R-6, R-8 and R-9 automated 2026-10-27, ADR-129 Am. 12) and answer `manual` — they are recorded by hand in P25-04. What is
 > **not** proved: the timings against real volumes (the dry run, P24-05), and every step marked ⏳ below.
 >
 > **No real data value appears in this file.** Counts and structure only.

@@ -11806,6 +11806,10 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 6. **R-9** (added the same day): at the run level, row by row. Each imported account's role is checked against the roles its staged group gives, from P18-01 § 2.1 written as literals in the reconciliation, not read from users.ts. A `client` may be HEALTHCARE ADMIN or ROOM USER: the earliest-active-client rule that chooses between them is not re-derived, so a client given the wrong one of the two passes. Run-level because provider staff (admin, user) have no facility.
 7. **R-8** (added the same day), in two parts. At the run level, every photo name a staged device row references per folder is a mapped attachment or quarantined, as 05 § 7 states it. Per facility, every mapped photo is a live attachment of its folder's purpose on its device, in the facility the transform decided. The folder → purpose pairs are written as literals. The checksums are not re-hashed: step 9 already compares each stored object's SHA-256 with the manifest's before writing the row, and re-reading every photo would be a second ingest.
 8. RC-F4 and R-12 stay `manual`. RC-F4's note points at R-1 … R-7; R-8 covers the photos.
+9. **P25-02's Q-4, Q-14 and Q-28** (the same day), per facility.
+   - **Q-4:** IPM session rows quarantined `no_device`. A quarantined row has no mapping, so it is attributed by its staged `id_client` through the facility step's `mst_faskes` mapping. Their result rows, quarantined `session_not_imported`, are not counted again.
+   - **Q-14:** calibrations dated before their device's inventory date, flagged as plausible.
+   - **Q-28, the missing half only:** `file_missing` photos, in their device's facility. The unreferenced half (files on disk no row names) needs the manifest. So a facility with no missing photo answers `manual`, not `pass`.
 
 **Alternatives considered.**
 

@@ -3886,7 +3886,7 @@
           "higherRoles": "allowed",
           "superAdmin": "bypasses"
         },
-        "description": "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18 and Q-19; Q-4, Q-14 and Q-28 answer `manual` (P25-04). Counts and fixed codes, never a value from the dump. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
+        "description": "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18, Q-19, Q-4 and Q-14, and Q-28's missing files (`manual` when none: unreferenced files are the manifest's, P25-04). Counts and fixed codes, never a value from the dump. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
         "parameters": [
           {
             "in": "path",
