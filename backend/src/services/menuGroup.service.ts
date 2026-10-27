@@ -365,9 +365,11 @@ const getRoleMenuAssignments = async (roleId: string, requester: MenuRequester |
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-conversion -- as built: ids compared as strings (a numeric id from a caller compares equal)
   if (requester && requesterRoleId && String(requesterRoleId) === String(roleId)) {
     // P21-09c: the requester's own menu carries its facility binding (the ceiling applies).
+    // The role's fields read one by one: req.user.role is a Sequelize instance, whose attributes are
+    // prototype getters a spread does not copy — the name was lost and the super admin read as a plain role.
     principal = {
       id: requester.id,
-      role: { ...requester.role, id: roleId },
+      role: { id: roleId, name: requester.role?.name ?? null, roleLevel: requester.role?.roleLevel ?? null },
       clientFacilityId: requester.clientFacilityId ?? null,
       isApiKey: requester.isApiKey ?? null,
     } as unknown as PermissionPrincipal;

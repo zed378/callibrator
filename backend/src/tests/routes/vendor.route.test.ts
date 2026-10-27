@@ -3,7 +3,18 @@
  *
  * Tests the Vendor route registrations and middleware chain.
  */
-const vendorRoutes = require("../../routes/api/vendor.route");
+
+interface VendorRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface VendorRouter {
+    handle: unknown;
+    stack: VendorRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const vendorRoutes = require("../../routes/api/vendor.route") as VendorRouter;
 
 describe("Vendor Routes", () => {
   it("should export an Express router", () => {

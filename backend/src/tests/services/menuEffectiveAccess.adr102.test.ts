@@ -230,6 +230,34 @@ describe("ADR-102 — each seeded role's sidebar is what the API serves", () => 
     expect(menu).toContain("/dashboard/client-facilities"); // P22-09 (0132): all three P20-06 entries active
   });
 
+  it("SUPERADMIN through req.user as auth.middleware builds it: the role a model instance, its attributes prototype getters", async () => {
+    // Sequelize defines attribute accessors on the model's prototype, so `{ ...instance }` carries no `name`.
+    // The service spread req.user.role and lost the name: the deployed super admin got the seeded grants only
+    // (no Users, Roles, Tenants, Sessions …, 2026-10-27).
+    class RoleInstance {
+      readonly dataValues: Record<string, unknown>;
+      constructor(values: Record<string, unknown>) {
+        this.dataValues = values;
+      }
+      get id(): unknown {
+        return this.dataValues["id"];
+      }
+      get name(): unknown {
+        return this.dataValues["name"];
+      }
+      get roleLevel(): unknown {
+        return this.dataValues["roleLevel"];
+      }
+    }
+    const name = ROLE_NAMES.SUPER_ADMIN;
+    const role = new RoleInstance({ id: seed().roleId(name), name, roleLevel: levelOf(name) });
+    const menu = leafPaths(await menuGroupService.getRoleMenuAssignments(seed().roleId(name), { id: USER_ID, roleId: role.id, role })).sort();
+    expect(menu).toEqual(await menuOf(name));
+    for (const page of ["/dashboard/users", "/dashboard/roles", "/dashboard/tenants", "/dashboard/session-management", "/dashboard/scim"]) {
+      expect(menu).toContain(page);
+    }
+  });
+
   it("no entry the old ancestor cascade showed and the API refuses (HEALTHCARE ADMIN)", async () => {
     const menu = await menuOf(ROLE_NAMES.HEALTCARE_ADMIN);
     for (const refused of ["/dashboard/roles", "/dashboard/menu-groups", "/dashboard/content", "/dashboard/permissions"]) {
