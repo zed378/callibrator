@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-27T04:59:39.602Z",
+  "last_updated": "2026-10-27T08:21:05.965Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -345,7 +345,10 @@
     "MEMORY\\records\\2026-10-24-p9-26-batch-14.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-15.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-16.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-17.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-17.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-18.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-19.md",
+    "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md"
   ],
   "entities": [
     {
@@ -72644,6 +72647,132 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-24 � P9-26 batch 17: csp.p708, bodylessBody.a09, controllerWrapper to TypeScript ([record](./records/2026-10-24-p9-26-batch-17.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_18_audit_routes_tenantbackup_routes_billing_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 18: audit.routes, tenantBackup.routes, billing.routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-18.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-18.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 18: audit.routes, tenantBackup.routes, billing.routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_18_audit_routes_tenantbackup_routes_billing_routes_to_typescript_record_records_2026_10_24_p9_26_batch_18_md_",
+      "name": "2026-10-24 — P9-26 batch 18: audit.routes, tenantBackup.routes, billing.routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-18.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 18: audit.routes, tenantBackup.routes, billing.routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-18.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_19_ssrf_util_fileresponse_util_controllerwrapper_apikey_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 19: ssrf.util, fileResponse.util, controllerWrapper.apiKey — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-19.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-19.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 19: ssrf.util, fileResponse.util, controllerWrapper.apiKey — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_19_ssrf_util_fileresponse_util_controllerwrapper_apikey_to_typescript_record_records_2026_10_24_p9_26_batch_19_md_rn_done_3_x_js_to_ts_same_57_cases_eslint_typecheck_clean_ratchet_646_to_643_rnrn_2026_10_24_p9_26_batch_18_audit_routes_tenantbackup_routes_billing_routes_to_typescript_record_records_2026_10_24_p9_26_batch_18_md_",
+      "name": "2026-10-24 � P9-26 batch 19: ssrf.util, fileResponse.util, controllerWrapper.apiKey to TypeScript ([record](./records/2026-10-24-p9-26-batch-19.md))rn- DONE: 3 x .js to .ts, same 57 cases, eslint + typecheck clean, ratchet 646 to 643.rnrn 2026-10-24 � P9-26 batch 18: audit.routes, tenantBackup.routes, billing.routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-18.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 � P9-26 batch 19: ssrf.util, fileResponse.util, controllerWrapper.apiKey to TypeScript ([record](./records/2026-10-24-p9-26-batch-19.md))`r`n- **"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_19_ssrf_util_fileresponse_util_controllerwrapper_apikey_to_typescript_record_records_2026_10_24_p9_26_batch_19_md_",
+      "name": "2026-10-24 — P9-26 batch 19: ssrf.util, fileResponse.util, controllerWrapper.apiKey to TypeScript ([record](./records/2026-10-24-p9-26-batch-19.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 19: ssrf.util, fileResponse.util, controllerWrapper.apiKey to TypeScript ([record](./records/2026-10-24-p9-26-batch-19.md))"
+    },
+    {
+      "id": "sec_adr_129_amendment_12_2026_10_27_p25_01_r_3_r_6_are_automated_row_by_row_not_as_the_sums_and_averages_05_7_names",
+      "name": "ADR-129 Amendment 12 (2026-10-27, P25-01): R-3 … R-6 are automated row by row, not as the sums and averages 05 § 7 names",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11779,
+      "evidence": "### ADR-129 Amendment 12 (2026-10-27, P25-01): R-3 … R-6 are automated row by row, not as the sums and averages 05 § 7 names"
+    },
+    {
+      "id": "sec_p25_01_r_3_r_6_automated_row_by_row",
+      "name": "P25-01: R-3 … R-6 automated, row by row",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 1,
+      "evidence": "# P25-01: R-3 … R-6 automated, row by row"
+    },
+    {
+      "id": "ent_r_3_",
+      "name": "R-3:",
+      "type": "Component/Requirement",
+      "description": "mapped staged rows against the rows that landed in the same facility, over the twelve",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 22,
+      "evidence": "- **R-3:** mapped staged rows against the rows that landed in the same facility, over the twelve"
+    },
+    {
+      "id": "ent_r_4_",
+      "name": "R-4:",
+      "type": "Component/Requirement",
+      "description": "the stored `outcome` against the section's code map applied to the staged `status`.",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 24,
+      "evidence": "- **R-4:** the stored `outcome` against the section's code map applied to the staged `status`."
+    },
+    {
+      "id": "ent_r_5_",
+      "name": "R-5:",
+      "type": "Component/Requirement",
+      "description": "`measured_value_1` and `measured_value_2` of performance and battery against `terukur_1`",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 27,
+      "evidence": "- **R-5:** `measured_value_1` and `measured_value_2` of performance and battery against `terukur_1`"
+    },
+    {
+      "id": "ent_r_6_",
+      "name": "R-6:",
+      "type": "Component/Requirement",
+      "description": "the environment `measured_value` against `value`, NULL when the item's range excludes it.",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 29,
+      "evidence": "- **R-6:** the environment `measured_value` against `value`, NULL when the item's range excludes it."
+    },
+    {
+      "id": "sec_why_row_by_row",
+      "name": "Why row by row",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 32,
+      "evidence": "## Why row by row"
+    },
+    {
+      "id": "sec_still_open_on_p25_01",
+      "name": "Still open on P25-01",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 60,
+      "evidence": "## Still open on P25-01"
+    },
+    {
+      "id": "sec_2026_10_27_p25_01_r_3_r_6_of_the_reconciliation_automated_row_by_row_record_records_2026_10_27_p25_01_r3_r6_row_level_md_adr_129_am_12_",
+      "name": "2026-10-27 — P25-01: R-3 … R-6 of the reconciliation automated, row by row ([record](./records/2026-10-27-p25-01-r3-r6-row-level.md), ADR-129 Am. 12)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-27 — P25-01: R-3 … R-6 of the reconciliation automated, row by row ([record](./records/2026-10-27-p25-01-r3-r6-row-level.md), ADR-129 Am. 12)"
     }
   ],
   "relations": [
@@ -107854,12 +107983,76 @@
       "evidence": "- **DONE:** 3 x `.js` to `.ts`, same 75 cases, eslint + typecheck clean, ratchet 652 to 649.",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_18_audit_routes_tenantbackup_routes_billing_routes_to_typescript_record_records_2026_10_24_p9_26_batch_18_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 14 cases, eslint + typecheck clean, ratchet 649 to 646.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_19_ssrf_util_fileresponse_util_controllerwrapper_apikey_to_typescript_record_records_2026_10_24_p9_26_batch_19_md_rn_done_3_x_js_to_ts_same_57_cases_eslint_typecheck_clean_ratchet_646_to_643_rnrn_2026_10_24_p9_26_batch_18_audit_routes_tenantbackup_routes_billing_routes_to_typescript_record_records_2026_10_24_p9_26_batch_18_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 � `.js` to `.ts`, same 14 cases, eslint + typecheck clean, ratchet 649 to 646.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_19_ssrf_util_fileresponse_util_controllerwrapper_apikey_to_typescript_record_records_2026_10_24_p9_26_batch_19_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 57 cases, eslint + typecheck clean, ratchet 646 to 643.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_r_3_",
+      "evidence": "- **R-3:** mapped staged rows against the rows that landed in the same facility, over the twelve",
+      "source_file": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 22
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_r_4_",
+      "evidence": "- **R-4:** the stored `outcome` against the section's code map applied to the staged `status`.",
+      "source_file": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 24
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_r_5_",
+      "evidence": "- **R-5:** `measured_value_1` and `measured_value_2` of performance and battery against `terukur_1`",
+      "source_file": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 27
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_r_6_",
+      "evidence": "- **R-6:** the environment `measured_value` against `value`, NULL when the item's range excludes it.",
+      "source_file": "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+      "line": 29
+    },
+    {
+      "source": "sec_2026_10_27_p25_01_r_3_r_6_of_the_reconciliation_automated_row_by_row_record_records_2026_10_27_p25_01_r3_r6_row_level_md_adr_129_am_12_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_admin_upstream_sql_imports_id_reconciliation",
+      "evidence": "- `GET /admin/upstream-sql-imports/:id/reconciliation` now answers R-1 … R-7 per facility; R-8, R-9, RC-F4, R-12 stay `manual`. Live `p2402g` 6/6 on PostgreSQL ",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
     }
   ],
   "stats": {
-    "total_sources": 344,
-    "total_entities": 8033,
-    "total_relations": 4401,
+    "total_sources": 347,
+    "total_entities": 8047,
+    "total_relations": 4409,
     "token_savings_estimate": "85-95%"
   }
 }

@@ -6,22 +6,36 @@
  * `warehouse:read` reached any handler behind a gate of another kind — or
  * behind `auth` alone. These cases cover the chokepoint that refuses it.
  */
+import type { NextFunction, Request, Response } from "express";
+import { asyncHandler, asyncHandlerWithMapping } from "../../utils/controllerWrapper.util";
 
-const { asyncHandler, asyncHandlerWithMapping } = require("../../utils/controllerWrapper.util");
+interface ResDouble {
+    statusCode: number | null;
+    body: unknown;
+    headersSent: boolean;
+    status: jest.Mock;
+    json: jest.Mock;
+}
 
-const makeRes = () => {
-  const res = { statusCode: null, body: null, headersSent: false };
-  res.status = jest.fn((code) => {
-    res.statusCode = code;
-    return res;
-  });
-  res.json = jest.fn((payload) => {
-    res.body = payload;
-    res.headersSent = true;
-    return res;
-  });
+const makeRes = (): ResDouble => {
+  const res: ResDouble = {
+    statusCode: null,
+    body: null,
+    headersSent: false,
+    status: jest.fn((code: number) => {
+      res.statusCode = code;
+      return res;
+    }),
+    json: jest.fn((payload: unknown) => {
+      res.body = payload;
+      res.headersSent = true;
+      return res;
+    }),
+  };
   return res;
 };
+
+const nextOf = (): NextFunction => jest.fn();
 
 describe("asyncHandler — API-key authorization (A-03)", () => {
   it("refuses an API key that no gate authorized", async () => {
@@ -29,7 +43,7 @@ describe("asyncHandler — API-key authorization (A-03)", () => {
     const res = makeRes();
     const req = { user: { isApiKey: true, apiKeyScopes: ["warehouse:read"] } };
 
-    await asyncHandler(controller)(req, res, jest.fn());
+    await asyncHandler(controller)(req as unknown as Request, res as unknown as Response, nextOf());
 
     expect(controller).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(403);
@@ -45,7 +59,7 @@ describe("asyncHandler — API-key authorization (A-03)", () => {
     const res = makeRes();
     const req = { user: { isApiKey: true }, apiKeyAuthorized: true };
 
-    await asyncHandler(controller)(req, res, jest.fn());
+    await asyncHandler(controller)(req as unknown as Request, res as unknown as Response, nextOf());
 
     expect(controller).toHaveBeenCalled();
     expect(res.statusCode).toBeNull();
@@ -55,7 +69,11 @@ describe("asyncHandler — API-key authorization (A-03)", () => {
     const controller = jest.fn();
     const res = makeRes();
 
-    await asyncHandler(controller)({ user: { id: "u1", role: { name: "USER" } } }, res, jest.fn());
+    await asyncHandler(controller)(
+            { user: { id: "u1", role: { name: "USER" } } } as unknown as Request,
+            res as unknown as Response,
+            nextOf(),
+    );
 
     expect(controller).toHaveBeenCalled();
   });
@@ -64,7 +82,7 @@ describe("asyncHandler — API-key authorization (A-03)", () => {
     const controller = jest.fn();
     const res = makeRes();
 
-    await asyncHandler(controller)({}, res, jest.fn());
+    await asyncHandler(controller)({} as unknown as Request, res as unknown as Response, nextOf());
 
     expect(controller).toHaveBeenCalled();
   });
@@ -73,7 +91,7 @@ describe("asyncHandler — API-key authorization (A-03)", () => {
     const controller = jest.fn();
     const res = makeRes();
 
-    await asyncHandler(controller)(undefined, res, jest.fn());
+    await asyncHandler(controller)(undefined as unknown as Request, res as unknown as Response, nextOf());
 
     expect(controller).toHaveBeenCalled();
   });
@@ -84,7 +102,11 @@ describe("asyncHandlerWithMapping — API-key authorization (A-03)", () => {
     const controller = jest.fn();
     const res = makeRes();
 
-    await asyncHandlerWithMapping(controller, {})({ user: { isApiKey: true } }, res, jest.fn());
+    await asyncHandlerWithMapping(controller, {})(
+            { user: { isApiKey: true } } as unknown as Request,
+            res as unknown as Response,
+            nextOf(),
+    );
 
     expect(controller).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(403);
@@ -95,9 +117,9 @@ describe("asyncHandlerWithMapping — API-key authorization (A-03)", () => {
     const res = makeRes();
 
     await asyncHandlerWithMapping(controller, {})(
-      { user: { isApiKey: true }, apiKeyAuthorized: true },
-      res,
-      jest.fn(),
+            { user: { isApiKey: true }, apiKeyAuthorized: true } as unknown as Request,
+            res as unknown as Response,
+            nextOf(),
     );
 
     expect(controller).toHaveBeenCalled();

@@ -34,6 +34,7 @@ const db = {
   present: false,
   completeness: { staged: 0, mapped: 0, quarantined: 0 },
   perFacility: [] as { facilityId: string; n: number }[],
+  sections: [] as { facility: string; staged: number; landed: number; stored: number; outcomeMatch: number; readingMatch: number }[],
   bad: 0,
 };
 const close = jest.fn(() => Promise.resolve());
@@ -44,6 +45,9 @@ const query = jest.fn((text: string) => {
   }
   if (text.includes("AS present")) {
     return Promise.resolve([{ present: db.present }]);
+  }
+  if (text.includes('AS "facility"')) {
+    return Promise.resolve(db.sections);
   }
   if (text.includes("AS staged")) {
     return Promise.resolve([db.completeness]);
@@ -69,6 +73,8 @@ const { tenantStorage } = require("../../middlewares/tenantContext.middleware") 
 const { TRANSFORM_STEPS } = require("../../services/upstreamImport/transform/steps") as { TRANSFORM_STEPS: readonly { sources: readonly unknown[] }[] };
 
 const SOURCES = TRANSFORM_STEPS.flatMap((s) => s.sources).length;
+/** The twelve upstream result tables of 05 § 3.1 (R-3 … R-6 read each once). */
+const RESULT_TABLES = 12;
 
 const asSuperAdmin = <T>(work: () => Promise<T>): Promise<T> =>
   new Promise<T>((resolve, reject) => {
@@ -106,7 +112,7 @@ const seedFacilities = (): void => {
 beforeEach(() => {
   mdb.reset();
   jest.clearAllMocks();
-  Object.assign(db, { role: "callibrator_transform", present: false, completeness: { staged: 0, mapped: 0, quarantined: 0 }, perFacility: [], bad: 0 });
+  Object.assign(db, { role: "callibrator_transform", present: false, completeness: { staged: 0, mapped: 0, quarantined: 0 }, perFacility: [], sections: [], bad: 0 });
 });
 
 describe("P25-01 the reconciliation request", () => {
@@ -140,6 +146,10 @@ describe("P25-01 the reconciliation request", () => {
       expect(row.checks.map((c) => [c.check, c.status])).toEqual([
         ["R-1", "pass"],
         ["R-2", "pass"],
+        ["R-3", "pass"],
+        ["R-4", "pass"],
+        ["R-5", "pass"],
+        ["R-6", "pass"],
         ["R-7", "pass"],
       ]);
     }
@@ -150,10 +160,6 @@ describe("P25-01 the reconciliation request", () => {
       ["RC-F2", "pass"],
       ["RC-F3", "pass"],
       ["RC-F5", "pass"],
-      ["R-3", "manual"],
-      ["R-4", "manual"],
-      ["R-5", "manual"],
-      ["R-6", "manual"],
       ["R-8", "manual"],
       ["R-9", "manual"],
       ["RC-F4", "manual"],
@@ -175,24 +181,67 @@ describe("P25-01 the reconciliation request", () => {
     const r10 = answer.runChecks.find((c) => c.check === "R-10");
     expect(r10).toMatchObject({ status: "fail", expected: 3 * SOURCES, actual: 2 * SOURCES, delta: -SOURCES, quarantined: SOURCES });
     expect(answer.runChecks.find((c) => c.check === "RC-F1")).toMatchObject({ status: "fail", expected: 0, actual: 4, delta: 4 });
-    // Staged and stored both answer 2 for F1, nothing for F2: equal, so both pass.
-    expect(answer.facilities.map((f) => f.checks.map((c) => [c.expected, c.actual, c.status]))).toEqual([
-      [
+    // Staged and stored both answer 2 for F1, nothing for F2: equal, so both pass (R-1, R-2, R-7).
+    const counted = (check: string) => answer.facilities.map((f) => f.checks.find((c) => c.check === check)).map((c) => [c?.expected, c?.actual, c?.status]);
+    for (const name of ["R-1", "R-2", "R-7"]) {
+      expect(counted(name)).toEqual([
         [2, 2, "pass"],
-        [2, 2, "pass"],
-        [2, 2, "pass"],
-      ],
-      [
         [0, 0, "pass"],
-        [0, 0, "pass"],
-        [0, 0, "pass"],
-      ],
-    ]);
+      ]);
+    }
     // Every staged statement names a table through the allow-list, the run bound as $1.
     const staged = query.mock.calls.filter(([text]) => text.includes("upstream_import.\"stg_"));
-    expect(staged.length).toBe(SOURCES + 3);
+    // R-10 over every source, R-1/R-2/R-7, and R-3 … R-6 once per result table.
+    expect(staged.length).toBe(SOURCES + 3 + RESULT_TABLES);
     for (const [, options] of staged as unknown as [string, { bind: unknown[] }][]) {
       expect(options.bind[0]).toBe(RUN);
     }
+  });
+
+  it("R-3 … R-6 per facility: row-level counts over the twelve result tables, a mismatch a fail naming its sections", async () => {
+    seedRun(RUN);
+    seedFacilities();
+    db.present = true;
+    // Every result table answers the same row for F1: 2 mapped, 2 landed, 1 in F1, 1 outcome and 2 readings matching.
+    db.sections = [{ facility: F1, staged: 2, landed: 2, stored: 1, outcomeMatch: 1, readingMatch: 2 }];
+    const answer = await asSuperAdmin(() => service.reconcileRun(RUN));
+    const f1 = answer.facilities.find((f) => f.clientFacilityId === F1)?.checks ?? [];
+    const byCheck = (name: string) => f1.find((c) => c.check === name);
+    expect(byCheck("R-3")).toMatchObject({ status: "fail", expected: 24, actual: 12, delta: -12 });
+    expect(byCheck("R-3")?.note).toContain("differ: battery, completeness, consumable, electrical_safety, electrical_supply, environment, function");
+    expect(byCheck("R-3")?.note.length).toBeLessThanOrEqual(280);
+    expect(byCheck("R-4")).toMatchObject({ status: "fail", expected: 24, actual: 12 });
+    // R-5: performance and battery only; R-6: the environment table only.
+    expect(byCheck("R-5")).toMatchObject({ status: "pass", expected: 4, actual: 4 });
+    expect(byCheck("R-6")).toMatchObject({ status: "pass", expected: 2, actual: 2 });
+    // F2 has no rows: every section check passes at zero.
+    const f2 = answer.facilities.find((f) => f.clientFacilityId === F2)?.checks ?? [];
+    expect(f2.filter((c) => ["R-3", "R-4", "R-5", "R-6"].includes(c.check)).map((c) => [c.expected, c.actual, c.status])).toEqual([
+      [0, 0, "pass"],
+      [0, 0, "pass"],
+      [0, 0, "pass"],
+      [0, 0, "pass"],
+    ]);
+  });
+
+  it("R-4 binds each section's code map (04 § 5) and R-6 the environment ranges (Q-21), never a staged value", async () => {
+    seedRun(RUN);
+    seedFacilities();
+    db.present = true;
+    await asSuperAdmin(() => service.reconcileRun(RUN));
+    const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
+    const sectionCall = (table: string) => calls.find(([text, options]) => text.includes('AS "facility"') && options.bind[1] === table)?.[1].bind ?? [];
+    /** The bound run, table and tenant, then the code map as code → outcome (the order of a pair list is not its meaning). */
+    const codeMap = (table: string) => {
+      const [run, name, tenant, codes, outcomes, ...rest] = sectionCall(table) as [string, string, string, string[], (string | null)[], ...unknown[]];
+      return { head: [run, name, tenant], map: Object.fromEntries(codes.map((c, i) => [c, outcomes[i]])), rest };
+    };
+    expect(codeMap("trx_pemeriksaan_fisik")).toEqual({ head: [RUN, "trx_pemeriksaan_fisik", HOME], map: { "1": "good", "0": "minor_damage", "-1": "major_damage" }, rest: [] });
+    expect(codeMap("trx_konsumabel").map).toEqual({ "1": "available", "0": "not_available", "-1": "empty" });
+    expect(codeMap("trx_kinerja_alat").map).toEqual({ "1": "pass", "0": "fail" });
+    // Measured sections: "1" is measured (no outcome), "-1" not applicable.
+    expect(codeMap("trx_keamanan_listrik").map).toEqual({ "1": null, "-1": "not_applicable" });
+    // The environment section has no codes; its ranges: temperature -20 … 80 °C, humidity 0 … 100 %.
+    expect(codeMap("trx_kondisi_lingkungan")).toEqual({ head: [RUN, "trx_kondisi_lingkungan", HOME], map: {}, rest: [["1", "2"], [-20, 0], [80, 100]] });
   });
 });

@@ -303,12 +303,14 @@ staged value, name, serial or legacy id. Errors are coded: 404 `UPSTREAM_SQL_IMP
 
 - **Computed by the reconciliation:**
   - R-1, R-2 and R-7 per facility (the mapped staged rows against the stored rows those mappings name);
+  - R-3 … R-6 per facility, row by row over the twelve result tables: rows landed, outcome by the
+    section's code map, the performance/battery readings, the environment reading (ADR-129 Am. 12);
   - R-10 over every source of `TRANSFORM_STEPS`;
   - R-11, RC-F1, RC-F2 and RC-F3;
   - RC-F5 (imported `FACILITY_BOUND_ROLES` accounts left unbound).
 - **Computed by the report:** the quarantine groups in the run totals, plus Q-12, Q-13, Q-18 and
   Q-19 per facility.
-- **Not automated, so they answer `manual`:** R-3 … R-6, R-8, R-9, RC-F4, R-12, Q-4, Q-14 and Q-28,
+- **Not automated, so they answer `manual`:** R-8, R-9, RC-F4, R-12, Q-4, Q-14 and Q-28,
   and the orphan, duplicate-file and user sections. P25-04 records them by hand on the dry-run
   database.
 
