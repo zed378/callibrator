@@ -10002,6 +10002,22 @@ On 2026-10-06 the owner pushed three public repositories, built at the repositor
 7. **The dev and e2e overlays are no longer complete without the build overlay.** Used alone, they pull the published images (and the dev frontend would point at the reference URL). The Makefile and CI stack it; a hand-typed command must too. The header of each says so.
 8. **Docker Hub's anonymous pull limit** applies to hosts that are not logged in. A VM deploy pulls three application images plus the pinned third-party ones; ordinary use is well under the limit, a crash-looping `pull_policy: always` would not be (no overlay sets it).
 
+
+### ADR-123 Amendment 1 (2026-10-27, owner): the reference VM deploys the moving `latest` with `docker compose up -d`; every deploy builds and pushes first
+
+**Context.** Since the fresh deploy of 2026-10-27 the VM's `.env` pinned `IMAGE_TAG=<sha>` plus three `*_DIGEST`s. The owner directed: deploy with `docker compose up -d` from the registry, and build and push before every deploy.
+
+**Decision.**
+
+1. A deploy has two steps. First, `scripts/release/push-images.ps1` runs from a clean worktree of the commit, made with `git -c core.autocrlf=false worktree add`; it does the clean-tree check, the secret scan, and pushes `<sha>` and `latest`. Second, on the VM, `scripts/release/deploy-vm.sh` runs `up -d --pull always --no-build`, waits for health, restarts nginx and smoke-tests.
+2. The VM's `.env` carries `IMAGE_TAG=latest` and no `*_DIGEST`. The script refuses to run while a digest is set.
+3. `--pull always` because a plain `up -d` keeps a local image of the same tag.
+4. nginx is restarted after the frontend is recreated, because it resolves the frontend's address at start; the site answered 502 on 2026-10-27 until it was restarted.
+
+**Alternatives considered.** Keep pinning a tag and digests: reproducible, but against the owner's direction, and each deploy edits `.env`. Use `deploy/build-push.ps1`, added the same day: it builds from the working tree, possibly dirty, with no secret scan and no LF guard, and the CRLF defect of 2026-10-27 came from exactly that path.
+
+**Implications, including the bad ones.** This is implication 2 of this ADR, now accepted: what runs is answerable only from `docker inspect` (the OCI `revision` label names the commit), and a rollback means re-tagging an older `<sha>` as `latest` or setting `IMAGE_TAG=<sha>` for that deploy. The `<sha>` tags are still pushed, so that remains possible. A `latest` pushed by mistake reaches the VM at its next deploy.
+
 ---
 
 ## ADR-124: The Tenant Is the Organisation That Performs Calibration and Maintenance; a Health Facility (Faskes) Is a Client Inside It; Facility-Bound Users Are Confined to Their Facility by a Second, Deny-by-Default Scope Applied by the Same Hooks
