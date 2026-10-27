@@ -224,7 +224,7 @@ describe("menuGroup.service", () => {
       expect(Role.findByPk).not.toHaveBeenCalled();
       expect(effective.loadPermissionSources).toHaveBeenCalledWith({
         id: "u-1",
-        role: { id: "role-1", name: "Admin" },
+        role: { id: "role-1", name: "Admin", roleLevel: null }, // the fields read one by one (a model instance's are getters)
         clientFacilityId: null, // P21-09c: the requester's binding (unbound here)
         isApiKey: null,
       });

@@ -10,6 +10,7 @@ Add a line here as part of writing the record — **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-10-24 | P9-26 | [Batch 23: stock, vendor, risk routes](./records/2026-10-24-p9-26-batch-23.md) | **DONE.** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 634 to 631 |
 | 2026-10-24 | P9-26 | [Batch 22: billing, session, tenantLifecycle validators](./records/2026-10-24-p9-26-batch-22.md) | **DONE.** 3 × `.js` to `.ts`, same 27 cases, eslint + typecheck clean, ratchet 637 to 634 |
 | 2026-10-24 | P9-26 | [Batch 21: storage.route, roles.route, notification.validator](./records/2026-10-24-p9-26-batch-21.md) | **DONE.** 3 × `.js` to `.ts`, same 17 cases, eslint + typecheck clean, ratchet 640 to 637 |
 | 2026-10-24 | P9-26 | [Batch 20: dbRole.p603, publicBaseUrl.a189, maxFileSize.p701](./records/2026-10-24-p9-26-batch-20.md) | **DONE.** 3 × `.js` to `.ts`, same 37 cases, eslint + typecheck clean, ratchet 643 to 640 |

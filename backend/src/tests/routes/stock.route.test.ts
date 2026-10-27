@@ -3,7 +3,18 @@
  *
  * Tests the Stock route registrations and middleware chain.
  */
-const stockRoutes = require("../../routes/api/stock.route");
+
+interface StockRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface StockRouter {
+    handle: unknown;
+    stack: StockRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const stockRoutes = require("../../routes/api/stock.route") as StockRouter;
 
 describe("Stock Routes", () => {
   it("should export an Express router", () => {

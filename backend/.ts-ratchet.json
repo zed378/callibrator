@@ -1,5 +1,5 @@
 {
-  "count": 634,
+  "count": 631,
   "files": [
     "__tests__/featureFlag.service.test.js",
     "__tests__/notificationChannels.service.test.js",
@@ -269,7 +269,6 @@
     "src/tests/routes/readGates.a155.test.js",
     "src/tests/routes/readGates.p604.test.js",
     "src/tests/routes/reports.route.test.js",
-    "src/tests/routes/risk.route.test.js",
     "src/tests/routes/risk.twoTenant.test.js",
     "src/tests/routes/rolesGlobal.d16.test.js",
     "src/tests/routes/routeGuards.a02.test.js",
@@ -286,7 +285,6 @@
     "src/tests/routes/session.route.test.js",
     "src/tests/routes/sop.route.test.js",
     "src/tests/routes/sso.oidcRoundTrip.a68.test.js",
-    "src/tests/routes/stock.route.test.js",
     "src/tests/routes/stock.twoTenant.test.js",
     "src/tests/routes/supplierScorecard.route.test.js",
     "src/tests/routes/supplierScorecard.twoTenant.test.js",
@@ -311,7 +309,6 @@
     "src/tests/routes/user.routes.test.js",
     "src/tests/routes/userPermissions.route.test.js",
     "src/tests/routes/vendor.qualify.p602.test.js",
-    "src/tests/routes/vendor.route.test.js",
     "src/tests/routes/vendor.twoTenant.test.js",
     "src/tests/routes/warehouse.route.test.js",
     "src/tests/routes/warehouse.twoTenant.test.js",
