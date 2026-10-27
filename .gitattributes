@@ -1,0 +1,4 @@
+# Shell scripts run inside Linux images: a checkout with core.autocrlf=true (Windows) must not
+# give them CRLF. The backup image's entrypoint failed with `/usr/bin/env: 'bash\r'` when built
+# from such a checkout (2026-10-27, release 34ad0c4).
+*.sh text eol=lf

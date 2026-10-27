@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-27T08:21:05.965Z",
+  "last_updated": "2026-10-27T09:33:30.564Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -348,7 +348,10 @@
     "MEMORY\\records\\2026-10-24-p9-26-batch-17.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-18.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-19.md",
-    "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md"
+    "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-20.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-21.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-22.md"
   ],
   "entities": [
     {
@@ -72773,6 +72776,51 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-27 — P25-01: R-3 … R-6 of the reconciliation automated, row by row ([record](./records/2026-10-27-p25-01-r3-r6-row-level.md), ADR-129 Am. 12)"
+    },
+    {
+      "id": "sec_p9_26_batch_20_dbrole_p603_publicbaseurl_a189_maxfilesize_p701_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 20: dbRole.p603, publicBaseUrl.a189, maxFileSize.p701 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-20.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-20.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 20: dbRole.p603, publicBaseUrl.a189, maxFileSize.p701 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_20_dbrole_p603_publicbaseurl_a189_maxfilesize_p701_to_typescript_record_records_2026_10_24_p9_26_batch_20_md_",
+      "name": "2026-10-24 — P9-26 batch 20: dbRole.p603, publicBaseUrl.a189, maxFileSize.p701 to TypeScript ([record](./records/2026-10-24-p9-26-batch-20.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 14,
+      "evidence": "### 2026-10-24 — P9-26 batch 20: dbRole.p603, publicBaseUrl.a189, maxFileSize.p701 to TypeScript ([record](./records/2026-10-24-p9-26-batch-20.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_21_storage_route_roles_route_notification_validator_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 21: storage.route, roles.route, notification.validator — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-21.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-21.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 21: storage.route, roles.route, notification.validator — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_21_storage_route_roles_route_notification_validator_to_typescript_record_records_2026_10_24_p9_26_batch_21_md_",
+      "name": "2026-10-24 — P9-26 batch 21: storage.route, roles.route, notification.validator to TypeScript ([record](./records/2026-10-24-p9-26-batch-21.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 14,
+      "evidence": "### 2026-10-24 — P9-26 batch 21: storage.route, roles.route, notification.validator to TypeScript ([record](./records/2026-10-24-p9-26-batch-21.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_22_billing_session_tenantlifecycle_validators_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 22: billing, session, tenantLifecycle validators — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-22.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-22.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 22: billing, session, tenantLifecycle validators — .js to .ts, no assertion changed"
     }
   ],
   "relations": [
@@ -108047,12 +108095,28 @@
       "evidence": "- `GET /admin/upstream-sql-imports/:id/reconciliation` now answers R-1 … R-7 per facility; R-8, R-9, RC-F4, R-12 stay `manual`. Live `p2402g` 6/6 on PostgreSQL ",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_20_dbrole_p603_publicbaseurl_a189_maxfilesize_p701_to_typescript_record_records_2026_10_24_p9_26_batch_20_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 x .js to .ts, same 37 cases, eslint + typecheck clean, ratchet 643 to 640.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 15
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_21_storage_route_roles_route_notification_validator_to_typescript_record_records_2026_10_24_p9_26_batch_21_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 17 cases, eslint + typecheck clean, ratchet 640 to 637.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 15
     }
   ],
   "stats": {
-    "total_sources": 347,
-    "total_entities": 8047,
-    "total_relations": 4409,
+    "total_sources": 350,
+    "total_entities": 8052,
+    "total_relations": 4411,
     "token_savings_estimate": "85-95%"
   }
 }

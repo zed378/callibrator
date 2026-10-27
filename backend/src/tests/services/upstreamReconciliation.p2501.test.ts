@@ -35,6 +35,7 @@ const db = {
   completeness: { staged: 0, mapped: 0, quarantined: 0 },
   perFacility: [] as { facilityId: string; n: number }[],
   sections: [] as { facility: string; staged: number; landed: number; stored: number; outcomeMatch: number; readingMatch: number }[],
+  users: { landed: 0, matching: 0 },
   bad: 0,
 };
 const close = jest.fn(() => Promise.resolve());
@@ -45,6 +46,9 @@ const query = jest.fn((text: string) => {
   }
   if (text.includes("AS present")) {
     return Promise.resolve([{ present: db.present }]);
+  }
+  if (text.includes("AS matching")) {
+    return Promise.resolve([db.users]);
   }
   if (text.includes('AS "facility"')) {
     return Promise.resolve(db.sections);
@@ -112,7 +116,7 @@ const seedFacilities = (): void => {
 beforeEach(() => {
   mdb.reset();
   jest.clearAllMocks();
-  Object.assign(db, { role: "callibrator_transform", present: false, completeness: { staged: 0, mapped: 0, quarantined: 0 }, perFacility: [], sections: [], bad: 0 });
+  Object.assign(db, { role: "callibrator_transform", present: false, completeness: { staged: 0, mapped: 0, quarantined: 0 }, perFacility: [], sections: [], users: { landed: 0, matching: 0 }, bad: 0 });
 });
 
 describe("P25-01 the reconciliation request", () => {
@@ -160,6 +164,7 @@ describe("P25-01 the reconciliation request", () => {
       ["RC-F2", "pass"],
       ["RC-F3", "pass"],
       ["RC-F5", "pass"],
+      ["R-9", "pass"],
       ["R-8", "manual"],
       ["R-9", "manual"],
       ["RC-F4", "manual"],
@@ -191,8 +196,8 @@ describe("P25-01 the reconciliation request", () => {
     }
     // Every staged statement names a table through the allow-list, the run bound as $1.
     const staged = query.mock.calls.filter(([text]) => text.includes("upstream_import.\"stg_"));
-    // R-10 over every source, R-1/R-2/R-7, and R-3 … R-6 once per result table.
-    expect(staged.length).toBe(SOURCES + 3 + RESULT_TABLES);
+    // R-10 over every source, R-1/R-2/R-7, R-3 … R-6 once per result table, and R-9.
+    expect(staged.length).toBe(SOURCES + 3 + RESULT_TABLES + 1);
     for (const [, options] of staged as unknown as [string, { bind: unknown[] }][]) {
       expect(options.bind[0]).toBe(RUN);
     }
@@ -243,5 +248,25 @@ describe("P25-01 the reconciliation request", () => {
     expect(codeMap("trx_keamanan_listrik").map).toEqual({ "1": null, "-1": "not_applicable" });
     // The environment section has no codes; its ranges: temperature -20 … 80 °C, humidity 0 … 100 %.
     expect(codeMap("trx_kondisi_lingkungan")).toEqual({ head: [RUN, "trx_kondisi_lingkungan", HOME], map: {}, rest: [["1", "2"], [-20, 0], [80, 100]] });
+  });
+
+  it("R-9: imported accounts against the role their group gives, bound as the pairs of P18-01 § 2.1", async () => {
+    seedRun(RUN);
+    seedFacilities();
+    db.present = true;
+    db.users = { landed: 5, matching: 4 };
+    const answer = await asSuperAdmin(() => service.reconcileRun(RUN));
+    expect(answer.runChecks.find((c) => c.check === "R-9")).toMatchObject({ status: "fail", expected: 5, actual: 4, delta: -1 });
+    const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
+    const bind = calls.find(([text]) => text.includes("AS matching"))?.[1].bind ?? [];
+    expect(bind.slice(0, 2)).toEqual([RUN, HOME]);
+    const [groups, roles] = bind.slice(2) as [string[], string[]];
+    expect(groups.map((g, i) => `${g}=${String(roles[i])}`).sort()).toEqual([
+      "admin=CALIBRATOR ADMIN",
+      "client=HEALTHCARE ADMIN",
+      "client=ROOM USER",
+      "teknisi_client=HEALTHCARE TECHNICIAN",
+      "user=TECHNICIAN",
+    ]);
   });
 });

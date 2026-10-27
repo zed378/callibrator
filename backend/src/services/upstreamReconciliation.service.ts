@@ -41,9 +41,9 @@
  *   R-12 the app-level smoke: the suites that must have passed on the
  *        dry-run database (named, with whether each did)
  *
- * AS BUILT (P25-01 review, 2026-10-24; R-3 … R-6 2026-10-27): R-1 … R-7 per
- * facility and R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 per run are
- * computed. R-8, R-9, RC-F4 and R-12 are NOT automated: they answer `manual`
+ * AS BUILT (P25-01 review, 2026-10-24; R-3 … R-6 and R-9 2026-10-27): R-1 …
+ * R-7 per facility and R-9, R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 per run
+ * are computed. R-8, RC-F4 and R-12 are NOT automated: they answer `manual`
  * with what to run in P25-04. R-3 … R-6 are ROW-LEVEL (the contract carries
  * integer counts, so a sum or an average would not fit it): each mapped
  * staged result row is joined to the result its mapping names, and R-4 … R-6
@@ -76,6 +76,7 @@ import {
   type TransformSource,
 } from "./upstreamImport/transform/steps";
 import { FACILITY_BOUND_ROLES } from "../constants/facilityAccess";
+import { ROLE_NAMES } from "../constants/roleConstants";
 import type {
   ReconciliationCheckResult,
   UpstreamReconciliationCheck,
@@ -348,6 +349,62 @@ const r3Note = (differing: ReadonlySet<string>): string =>
     : `mapped staged result rows vs results landed in the facility; differ: ${[...differing].sort().join(", ")}`
   ).slice(0, 280);
 
+/**
+ * R-9: the role each upstream group gives (P18-01 § 2.1), written from the rule, not read from
+ * users.ts. A `client` is HEALTHCARE ADMIN when it is its facility's earliest active client, else
+ * ROOM USER — both are accepted here; which of them a client got is not checked.
+ */
+const GROUP_ROLE_PAIRS: readonly (readonly [group: string, role: string])[] =
+  Object.freeze([
+    ["admin", ROLE_NAMES.CALIBRATOR_ADMIN],
+    ["user", ROLE_NAMES.TECHNICIAN],
+    ["client", ROLE_NAMES.ROOM_USER],
+    ["client", ROLE_NAMES.HEALTCARE_ADMIN],
+    ["teknisi_client", ROLE_NAMES.HEALTHCARE_TECHNICIAN],
+  ]);
+
+/**
+ * R-9 at the run level: the run's mapped staged users whose account landed in the tenant, and those
+ * whose role is one their staged group gives. Run-level because provider staff have no facility.
+ * @returns [landed, matching]
+ */
+const userRoles = async (
+  context: StepContext,
+): Promise<[number, number]> => {
+  if (!(await stagedTableExists(context, "users"))) {
+    return [0, 0];
+  }
+  const grouped =
+    (await stagedTableExists(context, "auth_groups")) &&
+    (await stagedTableExists(context, "auth_groups_users"));
+  const [row] = await sql<{ landed: number; matching: number }>(
+    context.runner,
+    `SELECT count(*)::int AS landed,
+            ${
+  grouped
+    ? `count(*) FILTER (WHERE EXISTS (
+              SELECT 1 FROM ${stagedTable("auth_groups_users")} gu
+                JOIN ${stagedTable("auth_groups")} g ON g.import_run_id = $1 AND g."id"::bigint = gu."group_id"::bigint
+                JOIN unnest($3::text[], $4::text[]) AS c(grp, role) ON c.grp = lower(btrim(g."name"::text))
+               WHERE gu.import_run_id = $1 AND gu."user_id"::bigint = s."id"::bigint AND c.role = r.name))::int`
+    : "0"
+} AS matching
+       FROM ${stagedTable("users")} s
+       JOIN ${ID_MAP} m ON m.source_table = 'users' AND m.legacy_id = (${String(sourceOf("users").legacyId)})
+       JOIN users u ON u.id = m.target_id AND u.tenant_id = $2
+       JOIN roles r ON r.id = u.role_id
+      WHERE s.import_run_id = $1`,
+    [
+      context.runId,
+      context.tenantId,
+      GROUP_ROLE_PAIRS.map(([group]) => group),
+      GROUP_ROLE_PAIRS.map(([, role]) => role),
+    ],
+    { transaction: context.transaction },
+  );
+  return [row?.landed ?? 0, row?.matching ?? 0];
+};
+
 /** R-10 over every staged source: [staged, mapped or quarantined, quarantined]. */
 const completeness = async (
   context: StepContext,
@@ -548,6 +605,16 @@ export const reconcileRun = async (
         "no imported facility account is unbound (the users step quarantines facility_mapping_ambiguous instead)",
       );
 
+      // R-9: every imported account's role is one its upstream group gives.
+      const [usersLanded, usersMatching] = await userRoles(context);
+      const r9 = check(
+        "R-9",
+        usersLanded,
+        usersMatching,
+        0,
+        "imported accounts whose role is one their upstream group gives (P18-01 § 2.1; a client's admin-or-room-user choice is not checked)",
+      );
+
       // Per facility: R-1 (devices), R-2 (session headers), R-7 (calibrations).
       const stagedDevices = await stagedPerFacility(
         context,
@@ -667,13 +734,10 @@ export const reconcileRun = async (
           rcF2,
           rcF3,
           rcF5,
+          r9,
           manual(
             "R-8",
             "NOT AUTOMATED: files per folder; referenced names vs attachments + quarantine (step 9 proves the checksums), in P25-04",
-          ),
-          manual(
-            "R-9",
-            "NOT AUTOMATED: users per group vs users per (tenant, role), in P25-04",
           ),
           manual(
             "RC-F4",

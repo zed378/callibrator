@@ -5,12 +5,9 @@
  * the schemas are exercised through the shared checkInput, and the error
  * formatting through fieldErrors (validators/input).
  */
-const { z } = require("zod");
-const {
-  revokeSessionSchema,
-  revokeAllSessionsSchema,
-} = require("../../validators/session.validator");
-const { checkInput, fieldErrors } = require("../../validators/input");
+import { z } from "zod";
+import { revokeSessionSchema, revokeAllSessionsSchema } from "../../validators/session.validator";
+import { checkInput, fieldErrors } from "../../validators/input";
 
 describe("Session Validators", () => {
   describe("revokeSessionSchema", () => {
@@ -19,7 +16,11 @@ describe("Session Validators", () => {
     });
 
     it("should apply the default for an absent body", () => {
-      expect(checkInput(undefined, revokeSessionSchema).value).toEqual({ reason: "MANUAL_REVOKE" });
+      const result = checkInput(undefined, revokeSessionSchema);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual({ reason: "MANUAL_REVOKE" });
+      }
     });
 
     it("should validate with custom reason", () => {
@@ -29,19 +30,31 @@ describe("Session Validators", () => {
     });
 
     it("should trim the reason", () => {
-      expect(checkInput({ reason: "  spaced  " }, revokeSessionSchema).value.reason).toBe("spaced");
+      const result = checkInput({ reason: "  spaced  " }, revokeSessionSchema);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.reason).toBe("spaced");
+      }
     });
 
     it("should reject a blank reason", () => {
-      expect(checkInput({ reason: "   " }, revokeSessionSchema).errors).toEqual([
-        { field: "reason", message: "Too small: expected string to have >=1 characters" },
-      ]);
+      const result = checkInput({ reason: "   " }, revokeSessionSchema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "reason", message: "Too small: expected string to have >=1 characters" },
+        ]);
+      }
     });
 
     it("should reject reason exceeding max length", () => {
-      expect(checkInput({ reason: "a".repeat(256) }, revokeSessionSchema).errors).toEqual([
-        { field: "reason", message: "Too big: expected string to have <=255 characters" },
-      ]);
+      const result = checkInput({ reason: "a".repeat(256) }, revokeSessionSchema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "reason", message: "Too big: expected string to have <=255 characters" },
+        ]);
+      }
     });
   });
 
@@ -55,9 +68,13 @@ describe("Session Validators", () => {
     });
 
     it("should reject reason exceeding max length", () => {
-      expect(checkInput({ reason: "a".repeat(256) }, revokeAllSessionsSchema).errors).toEqual([
-        { field: "reason", message: "Too big: expected string to have <=255 characters" },
-      ]);
+      const result = checkInput({ reason: "a".repeat(256) }, revokeAllSessionsSchema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "reason", message: "Too big: expected string to have <=255 characters" },
+        ]);
+      }
     });
   });
 
@@ -68,7 +85,7 @@ describe("Session Validators", () => {
     });
 
     it("should format error details correctly, nested paths joined with dots", () => {
-      const result = fieldErrors(schema.safeParse({ user: {} }).error);
+      const result = fieldErrors(schema.safeParse({ user: {} }).error as z.ZodError);
 
       expect(result).toEqual([
         { field: "tenantId", message: "tenantId is required" },

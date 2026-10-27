@@ -10,27 +10,37 @@
  * and upload.util.js (223). This pins both sides of every one of those
  * expressions, whatever `.env` holds.
  */
+import { environment } from "../../config/env";
+import type * as UploadUtil from "../../utils/upload.util";
 
 const MB5 = 5 * 1024 * 1024;
 
+const penv = environment();
+
 /** Run `load` in a fresh module registry with MAX_FILE_SIZE set or unset. */
-const withMaxFileSize = (value, load) => {
-  const saved = process.env.MAX_FILE_SIZE;
+const withMaxFileSize = (value: string | undefined, load: () => void): void => {
+  const saved = penv["MAX_FILE_SIZE"];
   if (value === undefined) {
-    delete process.env.MAX_FILE_SIZE;
+    Reflect.deleteProperty(penv, "MAX_FILE_SIZE");
   } else {
-    process.env.MAX_FILE_SIZE = value;
+    penv["MAX_FILE_SIZE"] = value;
   }
   try {
     jest.isolateModules(load);
   } finally {
     if (saved === undefined) {
-      delete process.env.MAX_FILE_SIZE;
+      Reflect.deleteProperty(penv, "MAX_FILE_SIZE");
     } else {
-      process.env.MAX_FILE_SIZE = saved;
+      penv["MAX_FILE_SIZE"] = saved;
     }
   }
 };
+
+interface MulterDouble {
+  (options: { limits: { fileSize: number } }): { single: jest.Mock; array: jest.Mock };
+  diskStorage: jest.Mock;
+  MulterError: new (message?: string) => Error;
+}
 
 describe("P7-01 MAX_FILE_SIZE: the configured value and the 5 MB fallback both apply", () => {
   afterEach(() => {
@@ -39,16 +49,17 @@ describe("P7-01 MAX_FILE_SIZE: the configured value and the 5 MB fallback both a
   });
 
   describe("utils/upload.util.js — the module-wide default limit", () => {
-    const defaultLimit = (value) => {
-      const limits = [];
+    const defaultLimit = (value: string | undefined): number | undefined => {
+      const limits: number[] = [];
       withMaxFileSize(value, () => {
-        const multer = jest.fn((options) => {
+        const multer = jest.fn((options: { limits: { fileSize: number } }) => {
           limits.push(options.limits.fileSize);
           return { single: jest.fn(), array: jest.fn() };
-        });
+        }) as unknown as MulterDouble;
         multer.diskStorage = jest.fn(() => ({}));
-        multer.MulterError = class MulterError extends Error {};
+        multer.MulterError = class MulterError extends Error { };
         jest.doMock("multer", () => multer);
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- re-reads the module under a mocked multer
         require("../../utils/upload.util");
       });
       // The first multer() call is the module-level instance.
@@ -65,16 +76,19 @@ describe("P7-01 MAX_FILE_SIZE: the configured value and the 5 MB fallback both a
   });
 
   describe("routes/api/tenant.route.js — the three logo uploads", () => {
-    const logoLimits = (value) => {
-      const limits = [];
+    const logoLimits = (value: string | undefined): number[] => {
+      const limits: number[] = [];
       withMaxFileSize(value, () => {
         jest.doMock("../../utils/upload.util", () => ({
-          ...jest.requireActual("../../utils/upload.util"),
-          upload: (options) => {
-            limits.push(options.maxFileSize);
-            return (req, res, next) => next();
+          ...jest.requireActual<typeof UploadUtil>("../../utils/upload.util"),
+          upload: (options: { maxFileSize?: number }) => {
+            limits.push(options.maxFileSize as number);
+            return (_req: unknown, _res: unknown, next: () => void): void => {
+              next();
+            };
           },
         }));
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- re-reads the route under the stubbed upload
         require("../../routes/api/tenant.route");
       });
       return limits;
