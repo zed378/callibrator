@@ -3,8 +3,32 @@
  *
  * Tests the IoT route registrations and middleware chain.
  */
-const iotRoutes = require("../../routes/api/iot.route");
-const { auth } = require("../../middlewares/auth.middleware");
+
+import type { RequestHandler } from "express";
+
+interface IotRouteStackEntry {
+    handle: unknown;
+}
+
+interface IotRoute {
+    path: string;
+    methods: Record<string, boolean>;
+    stack: IotRouteStackEntry[];
+}
+
+interface IotRouteLayer {
+    route?: IotRoute;
+}
+
+interface IotRouter {
+    handle: unknown;
+    stack: IotRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const iotRoutes = require("../../routes/api/iot.route") as IotRouter;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the middleware is `export =` (CommonJS), as built
+const { auth } = require("../../middlewares/auth.middleware") as { auth: RequestHandler };
 
 describe("IoT Routes", () => {
   it("should export an Express router", () => {
@@ -25,10 +49,8 @@ describe("IoT Routes", () => {
   it("should have POST route for /ingest", () => {
     const routes = iotRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/ingest" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+        layer.route?.path === "/ingest" &&
+                layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
@@ -37,8 +59,11 @@ describe("IoT Routes", () => {
   // the one unauthenticated route and carries the rate limiter instead.
   it("has ingest plus the four provisioning routes, and nothing else", () => {
     const routes = iotRoutes.stack
-      .filter((layer) => layer.route)
-      .map((layer) => `${Object.keys(layer.route.methods).join(",")} ${layer.route.path}`);
+      .filter((layer) => layer.route !== undefined)
+      .map((layer) => {
+        const route = layer.route as IotRoute;
+        return `${Object.keys(route.methods).join(",")} ${route.path}`;
+      });
     expect(routes.sort()).toEqual(
       [
         "post /ingest",
@@ -52,12 +77,12 @@ describe("IoT Routes", () => {
 
   it("gates every provisioning route with auth; ingest carries a rate limiter", () => {
     for (const layer of iotRoutes.stack.filter((l) => l.route)) {
-      if (layer.route.path === "/ingest") {
+      if (layer.route?.path === "/ingest") {
         expect(layer.route.stack).toHaveLength(2); // the limiter, then the controller
       } else {
-        expect(layer.route.stack[0].handle).toBe(auth);
+        expect(layer.route?.stack[0]?.handle).toBe(auth);
         // auth, validateUuid, dynamicAccess (+ denyApiKey, rbac on writes), controller
-        expect(layer.route.stack.length).toBeGreaterThanOrEqual(4);
+        expect(layer.route?.stack.length).toBeGreaterThanOrEqual(4);
       }
     }
   });

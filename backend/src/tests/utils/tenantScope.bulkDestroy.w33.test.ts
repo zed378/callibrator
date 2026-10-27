@@ -14,20 +14,21 @@
  * the real hooks; only the wire is stubbed. The same statements are executed
  * on PostgreSQL 18 by backgroundJobs.w12.live.test.js.
  */
-const { Sequelize, DataTypes } = require("sequelize");
-const { register } = require("../../utils/tenantScope.util");
-const { runForTenant } = require("../../utils/jobContext.util");
+import { DataTypes, Sequelize } from "sequelize";
+import type { Model, ModelStatic } from "sequelize";
+import { register } from "../../utils/tenantScope.util";
+import { runForTenant } from "../../utils/jobContext.util";
 
 const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 describe("W-33 — bulk destroy inside a tenant context", () => {
-  let db;
-  let Note;
-  let sql;
+  let db: Sequelize;
+  let Note: ModelStatic<Model>;
+  let sql: string[];
 
   beforeAll(() => {
     db = new Sequelize("postgres://u:p@127.0.0.1:5432/none", { dialect: "postgres", logging: false });
-    register(db);
+    register(db as unknown as Parameters<typeof register>[0]);
     Note = db.define(
       "Note",
       {
@@ -41,10 +42,14 @@ describe("W-33 — bulk destroy inside a tenant context", () => {
 
   beforeEach(() => {
     sql = [];
-    jest.spyOn(db, "query").mockImplementation(async (statement) => {
+    jest.spyOn(db, "query").mockImplementation((statement: unknown) => {
       sql.push(String(statement));
-      return 0;
+      return Promise.resolve(0) as never;
     });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it("the predicate is the COLUMN tenant_id, never the attribute tenantId", async () => {

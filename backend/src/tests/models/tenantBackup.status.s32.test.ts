@@ -13,10 +13,10 @@
  * (what sync() creates in the database) and the STATUS object (what the code
  * writes), plus every `TenantBackup.STATUS.<X>` the backup services name.
  */
-const fs = require("fs");
-const path = require("path");
-const { Sequelize, DataTypes } = require("sequelize");
-const defineTenantBackup = require("../../models/tenantBackup.model");
+import * as fs from "fs";
+import * as path from "path";
+import { DataTypes, Sequelize } from "sequelize";
+import defineTenantBackup from "../../models/tenantBackup.model";
 
 const sequelize = new Sequelize("postgres://u:p@127.0.0.1:1/none", { logging: false });
 const TenantBackup = defineTenantBackup(sequelize, DataTypes);
@@ -25,7 +25,8 @@ describe("S-32 tenant backup STATUS vs the status ENUM", () => {
   afterAll(() => sequelize.close());
 
   it("STATUS is exactly the ENUM's members", () => {
-    const enumValues = [...TenantBackup.rawAttributes.status.values].sort();
+    const attributes = TenantBackup.getAttributes() as unknown as Record<string, { values?: readonly string[] }>;
+    const enumValues = [...(attributes["status"]?.values ?? [])].sort();
     expect(Object.values(TenantBackup.STATUS).sort()).toEqual(enumValues);
   });
 
@@ -34,10 +35,13 @@ describe("S-32 tenant backup STATUS vs the status ENUM", () => {
     const files = ["tenantBackup.service.ts", "scheduledBackup.service.ts"].map((f) =>
       path.join(__dirname, "../../services", f),
     );
-    const named = new Set();
+    const named = new Set<string>();
     for (const file of files) {
-      for (const [, key] of fs.readFileSync(file, "utf8").matchAll(/TenantBackup\.STATUS\.([A-Z_]+)/g)) {
-        named.add(key);
+      for (const match of fs.readFileSync(file, "utf8").matchAll(/TenantBackup\.STATUS\.([A-Z_]+)/g)) {
+        const key = match[1];
+        if (key !== undefined) {
+          named.add(key);
+        }
       }
     }
     expect(named.size).toBeGreaterThan(3); // the scan found the uses it is guarding
@@ -47,17 +51,27 @@ describe("S-32 tenant backup STATUS vs the status ENUM", () => {
   });
 
   it("updateStatus no longer copies filePath into the VARCHAR(255) backupPath", async () => {
-    const row = { update: jest.fn(async (data) => data) };
-    jest.spyOn(TenantBackup, "findByPk").mockResolvedValue(row);
+    const row = { update: jest.fn((data: unknown) => Promise.resolve(data)) };
+    jest.spyOn(TenantBackup, "findByPk").mockResolvedValue(row as never);
     const longPath = `/${"a".repeat(300)}/tenant_x.zip`;
 
-    await TenantBackup.updateStatus("id-1", { status: "completed", filePath: longPath }, null, { transaction: "TX" });
+    await TenantBackup.updateStatus(
+      "id-1",
+      { status: "completed", filePath: longPath },
+      null,
+            { transaction: "TX" } as unknown as Parameters<typeof TenantBackup.updateStatus>[3],
+    );
 
     expect(TenantBackup.findByPk).toHaveBeenCalledWith("id-1", { transaction: "TX" });
-    const [data, options] = row.update.mock.calls[0];
+    const call = row.update.mock.calls[0] as unknown as [Record<string, unknown>, { transaction: string }];
+    const [data, options] = call;
     expect(data).not.toHaveProperty("backupPath");
-    expect(data.filePath).toBe(longPath);
+    expect(data["filePath"]).toBe(longPath);
     expect(options).toEqual({ transaction: "TX" });
-    expect(TenantBackup.rawAttributes.filePath.type.options.length).toBe(500);
+    const attributes = TenantBackup.getAttributes() as unknown as Record<
+            string,
+            { type: { options?: { length?: number } } }
+        >;
+    expect(attributes["filePath"]?.type.options?.length).toBe(500);
   });
 });
