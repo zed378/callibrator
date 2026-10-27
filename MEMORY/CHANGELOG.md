@@ -11,6 +11,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ### 2026-10-27 — P25-01: R-3 … R-6 of the reconciliation automated, row by row ([record](./records/2026-10-27-p25-01-r3-r6-row-level.md), ADR-129 Am. 12)
 - `GET /admin/upstream-sql-imports/:id/reconciliation` now answers R-1 … R-7 per facility; R-8, R-9, RC-F4, R-12 stay `manual`. Live `p2402g` 6/6 on PostgreSQL 18.6.
 
+### 2026-10-24 — P9-26 batch 21: storage.route, roles.route, notification.validator to TypeScript ([record](./records/2026-10-24-p9-26-batch-21.md))
+- **DONE:** 3 × `.js` to `.ts`, same 17 cases, eslint + typecheck clean, ratchet 640 to 637.
+
+### 2026-10-24 — P9-26 batch 20: dbRole.p603, publicBaseUrl.a189, maxFileSize.p701 to TypeScript ([record](./records/2026-10-24-p9-26-batch-20.md))
+- **DONE:** 3 × `.js` to `.ts`, same 37 cases, eslint + typecheck clean, ratchet 643 to 640.
+
 ### 2026-10-24 — P9-26 batch 19: ssrf.util, fileResponse.util, controllerWrapper.apiKey to TypeScript ([record](./records/2026-10-24-p9-26-batch-19.md))
 - **DONE:** 3 × `.js` to `.ts`, same 57 cases, eslint + typecheck clean, ratchet 646 to 643.
 

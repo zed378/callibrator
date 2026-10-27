@@ -3,7 +3,18 @@
  *
  * Tests the Roles route registrations and middleware chain.
  */
-const rolesRoutes = require("../../routes/api/roles.route");
+
+interface RolesRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface RolesRouter {
+    handle: unknown;
+    stack: RolesRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const rolesRoutes = require("../../routes/api/roles.route") as RolesRouter;
 
 describe("Roles Routes", () => {
   it("should export an Express router", () => {
