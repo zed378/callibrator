@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-27T09:51:37.100Z",
+  "last_updated": "2026-10-27T10:28:12.727Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -352,7 +352,9 @@
     "MEMORY\\records\\2026-10-24-p9-26-batch-20.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-21.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-22.md",
-    "MEMORY\\records\\2026-10-27-p25-01-r9-user-roles.md"
+    "MEMORY\\records\\2026-10-27-p25-01-r9-user-roles.md",
+    "MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-24.md"
   ],
   "entities": [
     {
@@ -72858,6 +72860,87 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-27 — P25-01: R-9 of the reconciliation automated ([record](./records/2026-10-27-p25-01-r9-user-roles.md), ADR-129 Am. 12)"
+    },
+    {
+      "id": "sec_the_super_admin_s_sidebar_showed_only_its_seeded_grants_a_spread_lost_the_role_s_name",
+      "name": "The super admin's sidebar showed only its seeded grants: a spread lost the role's name",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "source": "MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "line": 1,
+      "evidence": "# The super admin's sidebar showed only its seeded grants: a spread lost the role's name"
+    },
+    {
+      "id": "sec_symptom",
+      "name": "Symptom",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "source": "MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "line": 5,
+      "evidence": "## Symptom"
+    },
+    {
+      "id": "sec_cause",
+      "name": "Cause",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "source": "MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "line": 17,
+      "evidence": "## Cause"
+    },
+    {
+      "id": "sec_fix",
+      "name": "Fix",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "source": "MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "line": 33,
+      "evidence": "## Fix"
+    },
+    {
+      "id": "sec_side_note",
+      "name": "Side note",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "source": "MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
+      "line": 50,
+      "evidence": "## Side note"
+    },
+    {
+      "id": "sec_2026_10_27_fix_the_super_admin_s_sidebar_showed_only_its_seeded_grants_record_records_2026_10_27_superadmin_menu_role_spread_md_",
+      "name": "2026-10-27 — Fix: the super admin's sidebar showed only its seeded grants ([record](./records/2026-10-27-superadmin-menu-role-spread.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-27 — Fix: the super admin's sidebar showed only its seeded grants ([record](./records/2026-10-27-superadmin-menu-role-spread.md))"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_23_stock_vendor_risk_routes_to_typescript_record_records_2026_10_24_p9_26_batch_23_md_",
+      "name": "2026-10-24 — P9-26 batch 23: stock, vendor, risk routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-23.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 20,
+      "evidence": "### 2026-10-24 — P9-26 batch 23: stock, vendor, risk routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-23.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_24_ai_dashboard_apikeys_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 24: ai, dashboard, apiKeys routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-24.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-24.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 24: ai, dashboard, apiKeys routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_24_ai_dashboard_apikeys_routes_to_typescript_record_records_2026_10_24_p9_26_batch_24_md_",
+      "name": "2026-10-24 — P9-26 batch 24: ai, dashboard, apiKeys routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-24.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 20,
+      "evidence": "### 2026-10-24 — P9-26 batch 24: ai, dashboard, apiKeys routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-24.md))"
     }
   ],
   "relations": [
@@ -108164,12 +108247,36 @@
       "evidence": "- **Also computed:** R-9 at the run level (each imported account's role against its staged group).",
       "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
       "line": 313
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_23_stock_vendor_risk_routes_to_typescript_record_records_2026_10_24_p9_26_batch_23_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 634 to 631.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 21
+    },
+    {
+      "source": "sec_tests",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_id",
+      "evidence": "- `apiKeys.route.test.ts`: 10/10 — router shape, registered routes, multiple handlers, POST /, GET /, GET /:id, DELETE /:id, middleware-or-routes, POST/GET/DELE",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-batch-24.md",
+      "line": 24
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_24_ai_dashboard_apikeys_routes_to_typescript_record_records_2026_10_24_p9_26_batch_24_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 x .js to .ts, same 28 cases, eslint + typecheck clean, ratchet 631 to 628.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 21
     }
   ],
   "stats": {
-    "total_sources": 351,
-    "total_entities": 8056,
-    "total_relations": 4413,
+    "total_sources": 353,
+    "total_entities": 8065,
+    "total_relations": 4416,
     "token_savings_estimate": "85-95%"
   }
 }

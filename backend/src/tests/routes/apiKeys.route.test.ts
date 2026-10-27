@@ -5,12 +5,12 @@
  */
 
 interface ApiKeysRouteLayer {
-    route?: { path: string; methods: Record<string, boolean> };
+  route?: { path: string; methods: Record<string, boolean> };
 }
 
 interface ApiKeysRouter {
-    handle: unknown;
-    stack: ApiKeysRouteLayer[];
+  handle: unknown;
+  stack: ApiKeysRouteLayer[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
@@ -34,44 +34,28 @@ describe("API Keys Routes", () => {
 
   it("should have POST route for /", () => {
     const postRoutes = apiKeysRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-                layer.route.path === "/" &&
-                layer.route.methods &&
-                layer.route.methods["post"] === true,
+      (layer) => layer.route?.path === "/" && layer.route.methods["post"],
     );
     expect(postRoutes.length).toBe(1);
   });
 
   it("should have GET route for /", () => {
     const getRoutes = apiKeysRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-                layer.route.path === "/" &&
-                layer.route.methods &&
-                layer.route.methods["get"] === true,
+      (layer) => layer.route?.path === "/" && layer.route.methods["get"],
     );
     expect(getRoutes.length).toBe(1);
   });
 
   it("should have GET route for /:id", () => {
     const getRoutes = apiKeysRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-                layer.route.path === "/:id" &&
-                layer.route.methods &&
-                layer.route.methods["get"] === true,
+      (layer) => layer.route?.path === "/:id" && layer.route.methods["get"],
     );
     expect(getRoutes.length).toBe(1);
   });
 
   it("should have DELETE route for /:id", () => {
     const deleteRoutes = apiKeysRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-                layer.route.path === "/:id" &&
-                layer.route.methods &&
-                layer.route.methods["delete"] === true,
+      (layer) => layer.route?.path === "/:id" && layer.route.methods["delete"],
     );
     expect(deleteRoutes.length).toBe(1);
   });

@@ -34,22 +34,14 @@ describe("AI Routes", () => {
 
   it("should have POST route for /ocr", () => {
     const postRoutes = aiRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-                layer.route.path === "/ocr" &&
-                layer.route.methods &&
-                layer.route.methods["post"] === true,
+      (layer) => layer.route?.path === "/ocr" && layer.route.methods["post"],
     );
     expect(postRoutes.length).toBe(1);
   });
 
   it("should have POST route for /query", () => {
     const postRoutes = aiRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-                layer.route.path === "/query" &&
-                layer.route.methods &&
-                layer.route.methods["post"] === true,
+      (layer) => layer.route?.path === "/query" && layer.route.methods["post"],
     );
     expect(postRoutes.length).toBe(1);
   });
@@ -79,7 +71,7 @@ describe("AI Routes", () => {
     aiRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        expect(methods["post"] === true).toBe(true);
+        expect(methods["post"]).toBe(true);
       }
     });
   });
