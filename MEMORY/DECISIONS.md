@@ -11787,7 +11787,8 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 3. **R-4:** landed rows whose `outcome` is the one the section's code map gives the staged `status` (ipm.ts `RESULT_CODES`, the map 04 § 5 fixes). An unknown or measured code expects NULL.
 4. **R-5:** landed performance and battery rows whose `measured_value_1` and `measured_value_2` equal `terukur_1` and `terukur_2`. These are parsed in SQL as spec § 6.1 reads them (one `,` or `.` as the point, else NULL), written independently of `resultValuesOf`.
 5. **R-6:** landed environment rows whose `measured_value` equals the staged `value`. The value is NULL when the item's plausible range (Q-21, `ENVIRONMENT_RANGES`) excludes it.
-6. R-8, R-9, RC-F4 and R-12 stay `manual`. RC-F4's note now points at R-1 … R-7.
+6. **R-9** (added the same day): at the run level, row by row. Each imported account's role is checked against the roles its staged group gives, from P18-01 § 2.1 written as literals in the reconciliation, not read from users.ts. A `client` may be HEALTHCARE ADMIN or ROOM USER: the earliest-active-client rule that chooses between them is not re-derived, so a client given the wrong one of the two passes. Run-level because provider staff (admin, user) have no facility.
+7. R-8, RC-F4 and R-12 stay `manual`. RC-F4's note now points at R-1 … R-7.
 
 **Alternatives considered.**
 
