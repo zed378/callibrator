@@ -41,10 +41,10 @@
  *   R-12 the app-level smoke: the suites that must have passed on the
  *        dry-run database (named, with whether each did)
  *
- * AS BUILT (P25-01 review, 2026-10-24; R-3 … R-6 and R-9 2026-10-27): R-1 …
- * R-7 per facility and R-9, R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 per run
- * are computed. R-8, RC-F4 and R-12 are NOT automated: they answer `manual`
- * with what to run in P25-04. R-3 … R-6 are ROW-LEVEL (the contract carries
+ * AS BUILT (P25-01 review, 2026-10-24; R-3 … R-6, R-8 and R-9 2026-10-27):
+ * R-1 … R-8 per facility and R-8, R-9, R-10, R-11, RC-F1, RC-F2, RC-F3 and
+ * RC-F5 per run are computed. RC-F4 and R-12 are NOT automated: they answer
+ * `manual` with what to run in P25-04. R-3 … R-6 are ROW-LEVEL (the contract carries
  * integer counts, so a sum or an average would not fit it): each mapped
  * staged result row is joined to the result its mapping names, and R-4 … R-6
  * count the landed rows whose outcome or readings are the staged row's —
@@ -405,6 +405,89 @@ const userRoles = async (
   return [row?.landed ?? 0, row?.matching ?? 0];
 };
 
+/**
+ * R-8: the two photo folders (columns of the staged device rows) and the purpose an imported photo
+ * of each carries — 08-FILE-POLICY § 7 and devicePhoto.service, written here, not read from attachments.ts.
+ */
+const PHOTO_FOLDER_PURPOSES: readonly (readonly [folder: string, purpose: string])[] =
+  Object.freeze([
+    ["foto_depan", "device_front"],
+    ["foto_sn", "device_serial_plate"],
+  ]);
+
+/** R-8 of one run: the run-level accounting and, per decided facility, mapped photos against landed ones. */
+interface PhotoTotals {
+  referenced: number;
+  accounted: number;
+  quarantined: number;
+  perFacility: Map<string, { mapped: number; landed: number }>;
+}
+
+/**
+ * R-8: every name a staged device row references, per folder, is a mapped attachment (this run or an
+ * earlier one) or quarantined in this run (05 § 7: "referenced names per folder = attachments +
+ * quarantine"); and every mapped photo landed as a live attachment of the folder's purpose on its
+ * device, in the facility the transform decided. The checksums are step 9's own proof (it compares
+ * the stored object's SHA-256 with the manifest's before it writes the row).
+ */
+const photoTotals = async (context: StepContext): Promise<PhotoTotals> => {
+  const totals: PhotoTotals = {
+    referenced: 0,
+    accounted: 0,
+    quarantined: 0,
+    perFacility: new Map(),
+  };
+  if (!(await stagedTableExists(context, "trx_inventory"))) {
+    return totals;
+  }
+  const device = String(sourceOf("trx_inventory").legacyId);
+  for (const [folder, purpose] of PHOTO_FOLDER_PURPOSES) {
+    const [run] = await sql<{
+      referenced: number;
+      mapped: number;
+      quarantined: number;
+    }>(
+      context.runner,
+      `SELECT count(*)::int AS referenced,
+              count(m.legacy_id)::int AS mapped,
+              count(*) FILTER (WHERE m.legacy_id IS NULL AND EXISTS (
+                SELECT 1 FROM ${QUARANTINE} q
+                 WHERE q.import_run_id = $1 AND q.source_table = $2 AND q.source_row_number = s.source_row_number))::int AS quarantined
+         FROM ${stagedTable("trx_inventory")} s
+         LEFT JOIN ${ID_MAP} m ON m.source_table = $2 AND m.legacy_id = (${device})
+        WHERE s.import_run_id = $1 AND nullif(btrim(to_jsonb(s) ->> $2), '') IS NOT NULL`,
+      [context.runId, folder],
+      { transaction: context.transaction },
+    );
+    totals.referenced += run?.referenced ?? 0;
+    totals.accounted += (run?.mapped ?? 0) + (run?.quarantined ?? 0);
+    totals.quarantined += run?.quarantined ?? 0;
+    const rows = await sql<{ facility: string; mapped: number; landed: number }>(
+      context.runner,
+      `SELECT m.client_facility_id AS "facility", count(*)::int AS mapped,
+              count(a.id)::int AS landed
+         FROM ${stagedTable("trx_inventory")} s
+         JOIN ${ID_MAP} m ON m.source_table = $2 AND m.legacy_id = (${device})
+         LEFT JOIN ${ID_MAP} dm ON dm.source_table = 'trx_inventory' AND dm.legacy_id = (${device})
+         LEFT JOIN attachments a ON a.id = m.target_id AND a.tenant_id = $3 AND a.is_deleted = false
+              AND a.resource_type = 'device' AND a.purpose = $4 AND a.resource_id = dm.target_id
+              AND a.client_facility_id = m.client_facility_id
+        WHERE s.import_run_id = $1 AND m.client_facility_id IS NOT NULL
+          AND nullif(btrim(to_jsonb(s) ->> $2), '') IS NOT NULL
+        GROUP BY m.client_facility_id`,
+      [context.runId, folder, context.tenantId, purpose],
+      { transaction: context.transaction },
+    );
+    for (const row of rows) {
+      const t = totals.perFacility.get(row.facility) ?? { mapped: 0, landed: 0 };
+      t.mapped += row.mapped;
+      t.landed += row.landed;
+      totals.perFacility.set(row.facility, t);
+    }
+  }
+  return totals;
+};
+
 /** R-10 over every staged source: [staged, mapped or quarantined, quarantined]. */
 const completeness = async (
   context: StepContext,
@@ -662,9 +745,12 @@ export const reconcileRun = async (
 
       // Per facility: R-3 … R-6 over the result tables (05 § 7).
       const sections = await sectionTotals(context);
+      // R-8: the photos, per facility and at the run level.
+      const photos = await photoTotals(context);
 
       const facilityRows = facilities.map(({ id, code }) => {
         const t = sections.get(id) ?? emptyTotals();
+        const p = photos.perFacility.get(id) ?? { mapped: 0, landed: 0 };
         return {
           clientFacilityId: id,
           facilityCode: code,
@@ -712,6 +798,13 @@ export const reconcileRun = async (
               0,
               "mapped staged calibrations vs stored imported calibrations of the facility",
             ),
+            check(
+              "R-8",
+              p.mapped,
+              p.landed,
+              0,
+              "mapped photos vs live attachments of the folder's purpose on their device, in the facility (step 9 proves the checksums)",
+            ),
           ],
         };
       });
@@ -735,9 +828,12 @@ export const reconcileRun = async (
           rcF3,
           rcF5,
           r9,
-          manual(
+          check(
             "R-8",
-            "NOT AUTOMATED: files per folder; referenced names vs attachments + quarantine (step 9 proves the checksums), in P25-04",
+            photos.referenced,
+            photos.accounted,
+            photos.quarantined,
+            "every photo name a staged device references, per folder, is a mapped attachment or quarantined (05 § 7)",
           ),
           manual(
             "RC-F4",

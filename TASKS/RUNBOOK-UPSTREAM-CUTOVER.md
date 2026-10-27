@@ -5,7 +5,7 @@
 > ahead of that on purpose — the same way `P29-02`'s "what changed" note was — so that the sequence,
 > the commands and the rollback are reviewed **before** a freeze window exists. Every command here
 > exists in the repository today. The reconciliation mechanism (P25-01: `GET …/reconciliation`) and the
-> data-quality report (P25-02: `GET …/data-quality`) are built and proven on synthetic data; R-8, RC-F4, R-12, Q-4, Q-14 and Q-28 are **not automated** (R-3 … R-6 and R-9 automated 2026-10-27, ADR-129 Am. 12) and answer `manual` — they are recorded by hand in P25-04. What is
+> data-quality report (P25-02: `GET …/data-quality`) are built and proven on synthetic data; RC-F4, R-12, Q-4, Q-14 and Q-28 are **not automated** (R-3 … R-6, R-8 and R-9 automated 2026-10-27, ADR-129 Am. 12) and answer `manual` — they are recorded by hand in P25-04. What is
 > **not** proved: the timings against real volumes (the dry run, P24-05), and every step marked ⏳ below.
 >
 > **No real data value appears in this file.** Counts and structure only.
@@ -128,7 +128,7 @@ everything it wrote, so stopping is safe before the invitations.
 | 3 | Upload and stage it | the run reaches `loaded`; counts recorded |
 | 4 | **Transform** | the summary: every step, every source, nothing unaccounted (`TRANSFORM_INCOMPLETE` would have failed it) |
 | 5 | **Delta files** — re-run the rsync import | counts: only the delta is copied; the manifest is complete |
-| 6 | **Reconciliation** (P25-01: R-1 … R-7 per facility; R-9/R-10/R-11/RC-F1/RC-F2/RC-F3/RC-F5 at the run level; R-8, RC-F4, R-12 `manual` in P25-04) | zero unexplained deltas; the operator's signature (P25-04) |
+| 6 | **Reconciliation** (P25-01: R-1 … R-8 per facility; R-8/R-9/R-10/R-11/RC-F1/RC-F2/RC-F3/RC-F5 at the run level; RC-F4, R-12 `manual` in P25-04) | zero unexplained deltas; the operator's signature (P25-04) |
 | 7 | **Open the pre-invitation gate** for the tenant (`upstream_invitations_open`) | the operator's confirmation; the flags route writes its audit row |
 | 8 | **Issue invitations** | the count of invitations sent; each account is `awaiting_invitation` until accepted |
 | 9 | **Declare Callibrator the system of record** | the go/no-go record is signed (P30-03) |

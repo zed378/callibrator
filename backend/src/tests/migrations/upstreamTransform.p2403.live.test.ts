@@ -32,6 +32,7 @@ import type * as ServiceModule from "../../services/upstreamSqlTransform.service
 import type * as IngestModule from "../../services/upstreamFileImport/ingest";
 import type * as WorkspaceModule from "../../services/upstreamFileImport/workspace";
 import type * as M0145 from "../../migrations/0145-upstream-transform-attachments";
+import type * as ReconciliationModule from "../../services/upstreamReconciliation.service";
 import { heic, jpeg, png } from "../fixtures/photoFixtures";
 
 const IMPORT_ROLE = "callibrator_import";
@@ -83,6 +84,7 @@ const load = () => ({
   storedFile: require("../../services/storedFile.service") as { readObject(s: Scoped, k: string): Promise<Buffer>; removeObject(s: Scoped, k: string): Promise<void> },
   tenantStorage: (require("../../middlewares/tenantContext.middleware") as { tenantStorage: { run<T>(ctx: object, fn: () => T): T } }).tenantStorage,
   m0145: require("../../migrations/0145-upstream-transform-attachments") as typeof M0145,
+  reconciliation: require("../../services/upstreamReconciliation.service") as typeof ReconciliationModule,
 });
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -389,6 +391,26 @@ describe("P24-03 — the whole transform on live PostgreSQL 18 and local storage
     );
     expect(audits).toEqual([{ action: "CREATE", n: 3, facility: true, operation: true }]);
     expect(await rows("SELECT count(*)::int AS n FROM upstream_import.id_map WHERE source_table IN ('foto_depan', 'foto_sn')")).toEqual([{ n: 3 }]);
+
+    // P25-01 R-8 (2026-10-27): five referenced names = three mapped + two quarantined; the three mapped photos landed,
+    // each in its device's facility. A soft-deleted imported photo fails its facility's R-8, then is restored.
+    const reconcile = () =>
+      g.tenantStorage.run({ tenantId: null, isSuperAdmin: true, isSystemTask: false }, () => g.reconciliation.reconcileRun(RUN_1));
+    const answer = await reconcile();
+    expect(answer.runChecks.find((c) => c.check === "R-8")).toMatchObject({ status: "pass", expected: 5, actual: 5, quarantined: 2 });
+    const r8 = (a: typeof answer) => a.facilities.flatMap((f) => f.checks).filter((c) => c.check === "R-8");
+    expect(r8(answer).every((c) => c.status === "pass")).toBe(true);
+    expect(r8(answer).reduce((n, c) => n + c.actual, 0)).toBe(3);
+    const [front] = list.filter((p) => p["qr"] === "QR-P102");
+    const setDeleted = (deleted: boolean): Promise<unknown> =>
+      g.db.query(`UPDATE attachments SET is_deleted = ${String(deleted)} WHERE id = '${String(front?.["id"])}'`);
+    await setDeleted(true);
+    try {
+      const broken = r8(await reconcile()).filter((c) => c.status === "fail");
+      expect(broken.map((c) => [c.expected, c.actual])).toEqual([[1, 0]]);
+    } finally {
+      await setDeleted(false);
+    }
   });
 
   it("a re-run of the same dump writes no photo; a changed upstream photo replaces the import's own; the operator's photo is never replaced", async () => {

@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-27 — P25-01: R-8 of the reconciliation automated ([record](./records/2026-10-27-p25-01-r8-photos.md), ADR-129 Am. 12)
+- Photos per folder: every referenced name mapped or quarantined, every mapped photo landed in its facility. Live `p2403` 3/3, `p2402g` 6/6 on PostgreSQL 18.
+
 ### 2026-10-27 — Fix: the super admin's sidebar showed only its seeded grants ([record](./records/2026-10-27-superadmin-menu-role-spread.md))
 - `getRoleMenuAssignments` spread a Sequelize role instance and lost its `name`; the super admin now sees every page again (Users, Roles, Tenants, Sessions, SCIM …).
 

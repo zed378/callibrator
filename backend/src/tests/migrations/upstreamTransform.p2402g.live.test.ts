@@ -390,6 +390,7 @@ describe("P24-02g — the IPM steps on live PostgreSQL 18, as the transform role
       ["RC-F3", "pass"],
       ["RC-F5", "pass"],
       ["R-9", "pass"],
+      ["R-8", "pass"],
     ]);
     const r10 = reconciliation.runChecks.find((c) => c.check === "R-10");
     expect(r10?.expected).toBeGreaterThan(0);

@@ -11788,7 +11788,8 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 4. **R-5:** landed performance and battery rows whose `measured_value_1` and `measured_value_2` equal `terukur_1` and `terukur_2`. These are parsed in SQL as spec § 6.1 reads them (one `,` or `.` as the point, else NULL), written independently of `resultValuesOf`.
 5. **R-6:** landed environment rows whose `measured_value` equals the staged `value`. The value is NULL when the item's plausible range (Q-21, `ENVIRONMENT_RANGES`) excludes it.
 6. **R-9** (added the same day): at the run level, row by row. Each imported account's role is checked against the roles its staged group gives, from P18-01 § 2.1 written as literals in the reconciliation, not read from users.ts. A `client` may be HEALTHCARE ADMIN or ROOM USER: the earliest-active-client rule that chooses between them is not re-derived, so a client given the wrong one of the two passes. Run-level because provider staff (admin, user) have no facility.
-7. R-8, RC-F4 and R-12 stay `manual`. RC-F4's note now points at R-1 … R-7.
+7. **R-8** (added the same day), in two parts. At the run level, every photo name a staged device row references per folder is a mapped attachment or quarantined, as 05 § 7 states it. Per facility, every mapped photo is a live attachment of its folder's purpose on its device, in the facility the transform decided. The folder → purpose pairs are written as literals. The checksums are not re-hashed: step 9 already compares each stored object's SHA-256 with the manifest's before writing the row, and re-reading every photo would be a second ingest.
+8. RC-F4 and R-12 stay `manual`. RC-F4's note points at R-1 … R-7; R-8 covers the photos.
 
 **Alternatives considered.**
 
