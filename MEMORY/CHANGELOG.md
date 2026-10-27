@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-27 — P25-02: Q-4, Q-14 and Q-28's missing files in the data-quality report ([record](./records/2026-10-27-p25-02-q4-q14-q28.md), ADR-129 Am. 12)
+- Per facility: IPM sessions with no device, calibrations before inventory, missing photo files. Live `p2402g` 6/6, `p2403` 3/3 on PostgreSQL 18.
+
 ### 2026-10-24 — P9-26 batch 32: W-33, A-116, S-32 to TypeScript ([record](./records/2026-10-24-p9-26-batch-32.md))
 - **DONE:** 3 — `.js` to `.ts`, same 10 cases, eslint + typecheck clean, ratchet 607 to 604.
 

@@ -314,7 +314,9 @@ early, then copy only the delta at cutover by name.
 >   quarantined) and per facility (every mapped photo is a live attachment of the folder's purpose on
 >   its device, in the decided facility). The checksums are step 9's own proof.
 >
-> **Not automated:** RC-F4, R-12, Q-4, Q-14 and Q-28. Each answers `manual`,
+> - Q-4, Q-14 and the missing half of Q-28 per facility (P25-02, 2026-10-27).
+>
+> **Not automated:** RC-F4, R-12 and the unreferenced half of Q-28. Each answers `manual`,
 > and P25-04 records it by hand on the dry-run database.
 >
 > Migration 0146 gives the transform role the two columns these checks read. They are proven on

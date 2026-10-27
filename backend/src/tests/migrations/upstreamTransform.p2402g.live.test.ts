@@ -468,13 +468,17 @@ describe("P24-02g — the IPM steps on live PostgreSQL 18, as the transform role
       ]),
     );
     for (const row of report.facilities) {
-      expect(row.findings.filter((f) => f.status !== "manual").map((f) => [f.finding, f.status])).toEqual([
+      expect(row.findings.filter((f) => f.status !== "manual" && f.finding !== "Q-4").map((f) => [f.finding, f.status])).toEqual([
         ["Q-18", "pass"],
         ["Q-19", "pass"],
         ["Q-12", "pass"],
         ["Q-13", "pass"],
+        ["Q-14", "pass"],
       ]);
     }
+    // Q-4 (2026-10-27): the one session whose QR matches no device (QR-G999, id_client 1) flags exactly one facility.
+    const q4 = report.facilities.map((f) => f.findings.find((x) => x.finding === "Q-4"));
+    expect(q4.filter((f) => f?.status === "flagged").map((f) => f?.count)).toEqual([1]);
     // Counts and codes only: no staged value reaches either answer.
     const text = JSON.stringify([reconciliation, report]);
     for (const value of ["QR-G101", "QR-G102", "Pompa", "Sintetis", "teknisi.g@example.test"]) {

@@ -33,6 +33,7 @@ import type * as IngestModule from "../../services/upstreamFileImport/ingest";
 import type * as WorkspaceModule from "../../services/upstreamFileImport/workspace";
 import type * as M0145 from "../../migrations/0145-upstream-transform-attachments";
 import type * as ReconciliationModule from "../../services/upstreamReconciliation.service";
+import type * as DataQualityModule from "../../services/upstreamDataQuality.service";
 import { heic, jpeg, png } from "../fixtures/photoFixtures";
 
 const IMPORT_ROLE = "callibrator_import";
@@ -85,6 +86,7 @@ const load = () => ({
   tenantStorage: (require("../../middlewares/tenantContext.middleware") as { tenantStorage: { run<T>(ctx: object, fn: () => T): T } }).tenantStorage,
   m0145: require("../../migrations/0145-upstream-transform-attachments") as typeof M0145,
   reconciliation: require("../../services/upstreamReconciliation.service") as typeof ReconciliationModule,
+  dataQuality: require("../../services/upstreamDataQuality.service") as typeof DataQualityModule,
 });
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -411,6 +413,17 @@ describe("P24-03 — the whole transform on live PostgreSQL 18 and local storage
     } finally {
       await setDeleted(false);
     }
+
+    // P25-02 (2026-10-27): Q-28 counts QR-P102's missing serial-plate photo in its device's facility; Q-4 the
+    // session whose QR matches no device (QR-P999, id_client 1). Each flags exactly one facility, with 1.
+    const report = await g.tenantStorage.run({ tenantId: null, isSuperAdmin: true, isSystemTask: false }, () =>
+      g.dataQuality.reportDataQuality(RUN_1),
+    );
+    const flaggedOf = (id: string) =>
+      report.facilities.map((f) => ({ facility: f.clientFacilityId, ...f.findings.find((x) => x.finding === id) })).filter((f) => f.status === "flagged");
+    const deviceFacility = String(list.find((p) => p["qr"] === "QR-P102")?.["deviceFacility"]);
+    expect(flaggedOf("Q-28").map((f) => [f.facility, f.count])).toEqual([[deviceFacility, 1]]);
+    expect(flaggedOf("Q-4").map((f) => f.count)).toEqual([1]);
   });
 
   it("a re-run of the same dump writes no photo; a changed upstream photo replaces the import's own; the operator's photo is never replaced", async () => {

@@ -32,12 +32,16 @@ const db = {
   role: "callibrator_transform",
   quarantine: [] as { facilityId: string | null; sourceTable: string; reason: string; n: number }[],
   perFacility: [] as { facilityId: string; n: number }[],
+  present: false,
 };
 const close = jest.fn(() => Promise.resolve());
 /** The transform connection as `sql()` sees it: `query(text, { type, bind, transaction })`. */
 const query = jest.fn((text: string) => {
   if (text.includes("current_user")) {
     return Promise.resolve([{ currentUser: db.role }]);
+  }
+  if (text.includes("AS present")) {
+    return Promise.resolve([{ present: db.present }]);
   }
   if (text.includes('"sourceTable"')) {
     return Promise.resolve(db.quarantine);
@@ -85,7 +89,7 @@ const seedRun = (id: string, values: Record<string, unknown> = {}): void => {
 beforeEach(() => {
   mdb.reset();
   jest.clearAllMocks();
-  Object.assign(db, { role: "callibrator_transform", quarantine: [], perFacility: [] });
+  Object.assign(db, { role: "callibrator_transform", quarantine: [], perFacility: [], present: false });
   mdb.seed("ClientFacility", [
     { id: F1, tenantId: HOME, code: "F-0001", name: "Satu", kind: "hospital", status: "active" },
     { id: F2, tenantId: HOME, code: "F-0002", name: "Dua", kind: "clinic", status: "active" },
@@ -109,7 +113,7 @@ describe("P25-02 the data-quality report", () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
-  it("a clean run: every computed finding passes, the rest are manual and say NOT AUTOMATED", async () => {
+  it("a clean run: every computed finding passes; Q-28 stays manual (unreferenced files are the manifest's)", async () => {
     seedRun(RUN);
     const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
     expect(answer).toMatchObject({ runId: RUN, providerTenantId: HOME, totals: [] });
@@ -124,11 +128,11 @@ describe("P25-02 the data-quality report", () => {
         ["Q-19", "pass", 0],
         ["Q-12", "pass", 0],
         ["Q-13", "pass", 0],
-        ["Q-4", "manual", 0],
-        ["Q-14", "manual", 0],
+        ["Q-4", "pass", 0],
+        ["Q-14", "pass", 0],
         ["Q-28", "manual", 0],
       ]);
-      expect(row.findings.filter((f) => f.status === "manual").every((f) => f.note.startsWith("NOT AUTOMATED"))).toBe(true);
+      expect(row.findings.find((f) => f.finding === "Q-28")?.note).toContain("unreferenced files on disk are not counted");
     }
     expect(close).toHaveBeenCalledTimes(1);
   });
@@ -162,9 +166,36 @@ describe("P25-02 the data-quality report", () => {
       { sourceTable: "trx_kalibrasi", reason: "no_device", rows: 1 },
     ]);
     // The tenant is bound, never interpolated.
-    for (const [text, options] of query.mock.calls.slice(1) as unknown as [string, { bind: unknown[] }][]) {
+    for (const [text, options] of (query.mock.calls.slice(1) as unknown as [string, { bind: unknown[] }][]).filter(([t]) => !t.includes("AS present"))) {
       expect(text).not.toContain(HOME);
       expect(options.bind).toContain(text.includes("quarantine") ? RUN : HOME);
     }
+  });
+
+  it("Q-4 per session table, Q-14 per facility, Q-28 per photo folder: flagged with their counts, the run and table bound", async () => {
+    seedRun(RUN);
+    db.present = true;
+    // Every per-facility statement answers 1 for F1: Q-4 sums the four session tables, Q-28 the two folders.
+    db.perFacility = [{ facilityId: F1, n: 1 }];
+    const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
+    const [f1, f2] = answer.facilities;
+    const pick = (row: typeof f1, id: string) => row?.findings.find((f) => f.finding === id);
+    expect(pick(f1, "Q-4")).toMatchObject({ status: "flagged", count: 4 });
+    expect(pick(f1, "Q-14")).toMatchObject({ status: "flagged", count: 1 });
+    expect(pick(f1, "Q-28")).toMatchObject({ status: "flagged", count: 2 });
+    expect([pick(f2, "Q-4")?.status, pick(f2, "Q-14")?.status, pick(f2, "Q-28")?.status]).toEqual(["pass", "pass", "manual"]);
+    const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
+    const q4 = calls.filter(([text]) => text.includes("'no_device'")).map(([, o]) => o.bind);
+    expect(q4).toEqual([
+      [RUN, "trx_hasil_pemeriksaan"],
+      [RUN, "trx_hasil_maintenance"],
+      [RUN, "trx_rekomendasi_hasil_pekerjaan"],
+      [RUN, "trx_catatan"],
+    ]);
+    const q28 = calls.filter(([text]) => text.includes("'file_missing'")).map(([, o]) => o.bind);
+    expect(q28).toEqual([
+      [RUN, "foto_depan"],
+      [RUN, "foto_sn"],
+    ]);
   });
 });

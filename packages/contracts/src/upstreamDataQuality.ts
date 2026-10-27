@@ -11,7 +11,8 @@
  *
  * UPSTREAM_DATA_QUALITY_SECTIONS is the TARGET of 03 § 7. As built (P25-02 review,
  * 2026-10-24) the report computes the quarantine groups and Q-12, Q-13, Q-18
- * and Q-19 per facility; Q-4, Q-14 and Q-28 answer `manual`; the orphan,
+ * and Q-19 per facility; since 2026-10-27 also Q-4, Q-14 and Q-28's missing
+ * files (`manual` when none, the unreferenced half being the manifest's); the orphan,
  * file and user sections are not built (services/upstreamDataQuality.service.ts).
  *
  * A section that needs a human (a sampled field-by-field diff is P25-03)
