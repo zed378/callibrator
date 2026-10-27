@@ -34,11 +34,7 @@ describe("Dashboard Routes", () => {
 
   it("should have GET route for /metrics", () => {
     const routes = dashboardRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-                layer.route.path === "/metrics" &&
-                layer.route.methods &&
-                layer.route.methods["get"] === true,
+      (layer) => layer.route?.path === "/metrics" && layer.route.methods["get"],
     );
     expect(routes.length).toBe(1);
   });
@@ -62,7 +58,7 @@ describe("Dashboard Routes", () => {
     dashboardRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        expect(methods["get"] === true).toBe(true);
+        expect(methods["get"]).toBe(true);
       }
     });
   });

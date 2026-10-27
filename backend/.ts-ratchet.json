@@ -1,5 +1,5 @@
 {
-  "count": 631,
+  "count": 628,
   "files": [
     "__tests__/featureFlag.service.test.js",
     "__tests__/notificationChannels.service.test.js",
@@ -198,8 +198,6 @@
     "src/tests/models/uuidDefaults.a116.test.js",
     "src/tests/routes/admin.flags.a174.test.js",
     "src/tests/routes/ai.gate.a94.test.js",
-    "src/tests/routes/ai.route.test.js",
-    "src/tests/routes/apiKeys.route.test.js",
     "src/tests/routes/apiKeys.twoTenant.test.js",
     "src/tests/routes/appRoutes.a253.test.js",
     "src/tests/routes/attachments.orphans.d22.test.js",
@@ -226,7 +224,6 @@
     "src/tests/routes/content.routes.test.js",
     "src/tests/routes/customDomains.route.test.js",
     "src/tests/routes/customDomains.twoTenant.test.js",
-    "src/tests/routes/dashboard.route.test.js",
     "src/tests/routes/dataRetention.gate.a136.test.js",
     "src/tests/routes/dataRetention.routes.test.js",
     "src/tests/routes/dynamicAccessReach.a07.test.js",
