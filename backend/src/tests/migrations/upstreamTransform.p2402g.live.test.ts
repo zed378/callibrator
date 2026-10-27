@@ -415,6 +415,35 @@ describe("P24-02g — the IPM steps on live PostgreSQL 18, as the transform role
       await setDecided(String(mapping?.["facility"]));
     }
 
+    // R-3 … R-6 (2026-10-27): seven results landed (2 electrical safety, 1 performance, 2 environment, 1 consumable,
+    // 1 physical). "25,5" is read with its decimal comma, humidity "150" is NULL outside its range, terukur_2 "abc" NULL.
+    const total = (answer: typeof reconciliation, name: string, field: "expected" | "actual"): number =>
+      answer.facilities.flatMap((f) => f.checks).filter((c) => c.check === name).reduce((n, c) => n + c[field], 0);
+    expect(["R-3", "R-4", "R-5", "R-6"].map((name) => [name, total(reconciliation, name, "expected"), total(reconciliation, name, "actual")])).toEqual([
+      ["R-3", 7, 7],
+      ["R-4", 7, 7],
+      ["R-5", 1, 1],
+      ["R-6", 2, 2],
+    ]);
+    // A staged status, reading or environment value that no longer matches what landed fails exactly its check, then is put back.
+    const plant = (table: string, column: string, value: string, where: string): Promise<unknown> =>
+      g.db.query(`UPDATE upstream_import.stg_${table} SET ${column} = '${value}' WHERE import_run_id = '${RUN_1}' AND ${where}`);
+    await plant("trx_pemeriksaan_fisik", "status", "1", "id = 1");
+    await plant("trx_kinerja_alat", "terukur_1", "59,9", "id = 1");
+    await plant("trx_kondisi_lingkungan", "value", "25.6", "id = 1");
+    try {
+      const drifted = await g.reconciliation.reconcileRun(RUN_1);
+      expect(drifted.facilities.flatMap((f) => f.checks).filter((c) => c.status === "fail").map((c) => [c.check, c.expected, c.actual])).toEqual([
+        ["R-4", 7, 6],
+        ["R-5", 1, 0],
+        ["R-6", 2, 1],
+      ]);
+    } finally {
+      await plant("trx_pemeriksaan_fisik", "status", "0", "id = 1");
+      await plant("trx_kinerja_alat", "terukur_1", "59.80", "id = 1");
+      await plant("trx_kondisi_lingkungan", "value", "25,5", "id = 1");
+    }
+
     const report = await g.dataQuality.reportDataQuality(RUN_1);
     expect(report.facilities).toHaveLength(3);
     expect(report.totals).toEqual(

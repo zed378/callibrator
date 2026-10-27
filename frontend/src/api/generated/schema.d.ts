@@ -504,7 +504,7 @@ export interface paths {
         };
         /**
          * Reconcile a transformed SQL-dump import run, per facility
-         * @description P25-01 (docs/UPSTREAM/05 § 7): the reconciliation of a transformed run, aggregates only — counts and fixed codes, never a value from the dump. R-1, R-2 and R-7 are computed per facility; R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 at the run level; R-3 … R-6, R-8, R-9, RC-F4 and R-12 are not automated and answer `manual` (P25-04). Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.
+         * @description P25-01 (docs/UPSTREAM/05 § 7): the reconciliation of a transformed run, aggregates only — counts and fixed codes, never a value from the dump. R-1 … R-7 are computed per facility (R-3 … R-6 row by row over the result tables); R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 at the run level; R-8, R-9, RC-F4 and R-12 are not automated and answer `manual` (P25-04). Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.
          *
          *     **409** — The run's transform is not `transformed`.
          */
@@ -12187,6 +12187,7 @@ export interface components {
          * @example {
          *       "id": "5b1e2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
          *       "name": "ICU devices",
+         *       "code": "ICU",
          *       "description": null,
          *       "color": "#2f6fdf",
          *       "createdBy": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
@@ -12199,6 +12200,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            code: string | null;
             description: string | null;
             color: string | null;
             createdBy: string | null;
@@ -35207,6 +35209,8 @@ export interface operations {
                             status: ("active" | "suspended" | "deleted") | null;
                             /** @description The granular state (e.g. `OFFBOARDED`); the status when none is stored */
                             lifecycleStatus: string | null;
+                            suspensionReason: string | null;
+                            suspendedAt: string | null;
                             gracePeriodExpiresAt: string | null;
                             gracePeriodExpired: boolean;
                             offboardedAt: string | null;

@@ -11776,6 +11776,35 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 - R-1, R-2 and R-7 catch a lost or moved row. They do not catch a row wrongly quarantined; the P25-02 quarantine review covers that.
 - Proven on synthetic data on PostgreSQL 18 only. The dry run on real data stays gated (UD-7, UD-18, `UPSTREAM_REAL_DATA_ALLOWED=false`).
 
+### ADR-129 Amendment 12 (2026-10-27, P25-01): R-3 … R-6 are automated row by row, not as the sums and averages 05 § 7 names
+
+**Context.** Am. 11 left R-3 … R-6 `manual` because "each needs real volumes to shape". Reading the transform again showed that is not so for these four. `inspection_results` carries everything they need, and the transform role already reads it (0141): `section`, `outcome`, `measured_value*`. Every result row also has an `id_map` row naming its result, with the facility the transform decided. 05 § 7 states R-5 as `SUM(terukur_1)` against `SUM(measured_value_1)`, and R-6 as AVG/MIN/MAX of temperature and humidity. The contract carries `expected` and `actual` as integers ≥ 0, and a sum of readings is neither.
+
+**Decision.**
+
+1. For each of the twelve result tables the run staged, each mapped staged row is joined to the result its mapping names. Counts are taken per decided facility, with no new grant.
+2. **R-3:** mapped staged rows against those landed in the facility, summed over sections. The note names the sections that differ (fixed codes).
+3. **R-4:** landed rows whose `outcome` is the one the section's code map gives the staged `status` (ipm.ts `RESULT_CODES`, the map 04 § 5 fixes). An unknown or measured code expects NULL.
+4. **R-5:** landed performance and battery rows whose `measured_value_1` and `measured_value_2` equal `terukur_1` and `terukur_2`. These are parsed in SQL as spec § 6.1 reads them (one `,` or `.` as the point, else NULL), written independently of `resultValuesOf`.
+5. **R-6:** landed environment rows whose `measured_value` equals the staged `value`. The value is NULL when the item's plausible range (Q-21, `ENVIRONMENT_RANGES`) excludes it.
+6. R-8, R-9, RC-F4 and R-12 stay `manual`. RC-F4's note now points at R-1 … R-7.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Sums and averages as 05 § 7 writes them | do not fit the contract's integers. Changing the contract to decimals adds a breaking schema change for a weaker check: equal sums can hide two compensating errors, equal rows cannot |
+| Recompute every row through `resultValuesOf` and compare | a check generated from the code it tests proves consistency, not correctness. Only R-4 uses the transform's own map, because 05 § 7 says "through ipm.ts" |
+| Keep them `manual` until P24-05 | the queries need no real-data shape. Writing them now means the dry run measures them instead of debugging them |
+
+**Implications, including the bad ones.**
+
+- R-4 shares the code map with the transform. A wrong entry in `RESULT_CODES` would pass R-4. The unit test pins each section's map as literals from 04 § 5, so a changed map fails there, not here.
+- The SQL reading parser mirrors `parseDecimal`'s regular expression. If the two drift, R-5 and R-6 fail loudly rather than pass silently.
+- Row-level checks read every mapped result row once per run: about 279,000 rows on the 2026-10-06 dump, in twelve grouped statements. Not yet timed on real volumes; P24-05 times it.
+- A row wrongly quarantined is still not caught here. It is P25-02's quarantine review, as Am. 11 says.
+- Proven on synthetic data on PostgreSQL 18.6 only (`upstreamTransform.p2402g.live`).
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)

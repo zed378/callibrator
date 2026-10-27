@@ -41,23 +41,35 @@
  *   R-12 the app-level smoke: the suites that must have passed on the
  *        dry-run database (named, with whether each did)
  *
- * AS BUILT (P25-01 review, 2026-10-24): R-1, R-2 and R-7 per facility and
- * R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 per run are computed. R-3 … R-6,
- * R-8, R-9, RC-F4 and R-12 are NOT automated: they answer `manual` with what
- * to run in P25-04. R-1/R-2/R-7 compare the MAPPED staged rows of a facility
+ * AS BUILT (P25-01 review, 2026-10-24; R-3 … R-6 2026-10-27): R-1 … R-7 per
+ * facility and R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 per run are
+ * computed. R-8, R-9, RC-F4 and R-12 are NOT automated: they answer `manual`
+ * with what to run in P25-04. R-3 … R-6 are ROW-LEVEL (the contract carries
+ * integer counts, so a sum or an average would not fit it): each mapped
+ * staged result row is joined to the result its mapping names, and R-4 … R-6
+ * count the landed rows whose outcome or readings are the staged row's —
+ * equal rows give equal distributions, sums and AVG/MIN/MAX. R-1/R-2/R-7 compare the MAPPED staged rows of a facility
  * (id_map) with the stored rows those mappings name: they catch a lost or
  * moved row, not a quarantined one (the quarantine is P25-02's report). A
  * staged table the dump lacked counts as zero rows. R-10 runs over every
  * source of the step registry (steps.ts), each with its own legacy key.
  */
-import { sql, type SqlRunner } from "../utils/sql.util";
+import { sql, type BindValue, type SqlRunner } from "../utils/sql.util";
 import { createTransformDb, transformRoleName } from "../config/upstreamImport";
 import {
   ID_MAP,
   QUARANTINE,
+  checkedName,
   stagedTable,
   stagedTableExists,
 } from "./upstreamImport/transform/ledger";
+import {
+  ENVIRONMENT_RANGES,
+  ENVIRONMENT_TABLE,
+  RESULT_CODES,
+  RESULT_TABLES,
+  type ResultTableRule,
+} from "./upstreamImport/transform/ipm";
 import {
   TRANSFORM_STEPS,
   type StepContext,
@@ -173,6 +185,168 @@ const stagedPerFacility = async (
       ),
     )
     : new Map<string, number>();
+
+/** A staged column as text, trimmed (the row read through `to_jsonb`, so a column the dump lacked is NULL, not an error). */
+const stagedText = (column: string): string =>
+  `regexp_replace(coalesce(to_jsonb(s) ->> '${checkedName(column)}', ''), '^\\s+|\\s+$', '', 'g')`;
+
+/** A staged reading as `parseDecimal` reads it (inspectionValues § 6.1): one `,` or `.` as the point, else NULL. */
+const decimalSql = (column: string): string =>
+  `CASE WHEN ${stagedText(column)} ~ '^[+-]?[0-9]+([.,][0-9]+)?$' THEN replace(${stagedText(column)}, ',', '.')::numeric END`;
+
+/** The sections whose `terukur_1`/`terukur_2` become `measured_value_1`/`_2` (R-5). */
+const TWO_READINGS: ReadonlySet<string> = new Set(["performance", "battery"]);
+
+/**
+ * Whether a landed result's readings are the staged row's, written from 05 § 7 and spec § 6.1
+ * independently of `resultValuesOf`: R-5 the two readings of performance and battery, R-6 the
+ * environment reading (NULL when outside its plausible range, Q-21). Other sections: TRUE.
+ */
+const readingMatchSql = (
+  table: string,
+  rule: ResultTableRule,
+): { text: string; bind: BindValue[] } => {
+  if (TWO_READINGS.has(rule.section)) {
+    return {
+      text: `r.measured_value_1::numeric IS NOT DISTINCT FROM ${decimalSql("terukur_1")}
+         AND r.measured_value_2::numeric IS NOT DISTINCT FROM ${decimalSql("terukur_2")}`,
+      bind: [],
+    };
+  }
+  if (table === ENVIRONMENT_TABLE && rule.item !== null) {
+    const codes = Object.keys(ENVIRONMENT_RANGES);
+    const reading = decimalSql("value");
+    return {
+      text: `r.measured_value::numeric IS NOT DISTINCT FROM (
+           SELECT CASE WHEN e.code IS NOT NULL AND (${reading} < e.low OR ${reading} > e.high) THEN NULL ELSE ${reading} END
+             FROM (SELECT 1) one
+             LEFT JOIN unnest($6::text[], $7::numeric[], $8::numeric[]) AS e(code, low, high) ON e.code = ${stagedText(rule.item.column)})`,
+      bind: [
+        codes,
+        codes.map(
+          (c) => (ENVIRONMENT_RANGES[c] as readonly [number, number])[0],
+        ),
+        codes.map(
+          (c) => (ENVIRONMENT_RANGES[c] as readonly [number, number])[1],
+        ),
+      ],
+    };
+  }
+  return { text: "TRUE", bind: [] };
+};
+
+/** One result table's mapped rows of one facility: staged, landed, landed in the facility, outcome and reading matches. */
+interface SectionRow {
+  facility: string;
+  staged: number;
+  landed: number;
+  stored: number;
+  outcomeMatch: number;
+  readingMatch: number;
+}
+
+/**
+ * R-3 … R-6 for one result table: its run's mapped staged rows per decided facility, each joined
+ * to the result its mapping names. The expected outcome comes from the section's code map
+ * (ipm.ts RESULT_CODES, the map 04 § 5 fixes); an unknown code or a measured one expects NULL.
+ */
+const sectionRows = async (
+  context: StepContext,
+  table: string,
+): Promise<SectionRow[]> => {
+  if (!(await stagedTableExists(context, table))) {
+    return [];
+  }
+  const rule = RESULT_TABLES[table] as ResultTableRule;
+  const codes = Object.entries(RESULT_CODES[rule.section]);
+  const reading = readingMatchSql(table, rule);
+  return sql<SectionRow>(
+    context.runner,
+    `SELECT m.client_facility_id AS "facility",
+            count(*)::int AS staged,
+            count(r.id)::int AS landed,
+            count(*) FILTER (WHERE r.client_facility_id = m.client_facility_id)::int AS stored,
+            count(*) FILTER (WHERE r.id IS NOT NULL AND r.outcome::text IS NOT DISTINCT FROM c.outcome)::int AS "outcomeMatch",
+            count(*) FILTER (WHERE r.id IS NOT NULL AND (${reading.text}))::int AS "readingMatch"
+       FROM ${stagedTable(table)} s
+       JOIN ${ID_MAP} m ON m.source_table = $2 AND m.legacy_id = (${String(sourceOf(table).legacyId)})
+       LEFT JOIN inspection_results r ON r.id = m.target_id AND r.tenant_id = $3
+       LEFT JOIN unnest($4::text[], $5::text[]) AS c(code, outcome) ON c.code = ${stagedText("status")}
+      WHERE s.import_run_id = $1 AND m.client_facility_id IS NOT NULL
+      GROUP BY m.client_facility_id`,
+    [
+      context.runId,
+      table,
+      context.tenantId,
+      codes.map(([code]) => code),
+      codes.map(([, outcome]) => outcome),
+      ...reading.bind,
+    ],
+    { transaction: context.transaction },
+  );
+};
+
+/** R-3 … R-6 of one facility, summed over the result tables. */
+interface SectionTotals {
+  staged: number;
+  stored: number;
+  landed: number;
+  outcomeMatch: number;
+  readingLanded: number;
+  readingMatch: number;
+  environmentLanded: number;
+  environmentMatch: number;
+  /** The sections whose staged and stored counts differ (fixed codes). */
+  differing: Set<string>;
+}
+
+const emptyTotals = (): SectionTotals => ({
+  staged: 0,
+  stored: 0,
+  landed: 0,
+  outcomeMatch: 0,
+  readingLanded: 0,
+  readingMatch: 0,
+  environmentLanded: 0,
+  environmentMatch: 0,
+  differing: new Set<string>(),
+});
+
+/** R-3 … R-6 per facility over every result table the run staged. */
+const sectionTotals = async (
+  context: StepContext,
+): Promise<Map<string, SectionTotals>> => {
+  const totals = new Map<string, SectionTotals>();
+  for (const table of Object.keys(RESULT_TABLES)) {
+    const { section } = RESULT_TABLES[table] as ResultTableRule;
+    for (const row of await sectionRows(context, table)) {
+      const t = totals.get(row.facility) ?? emptyTotals();
+      t.staged += row.staged;
+      t.stored += row.stored;
+      t.landed += row.landed;
+      t.outcomeMatch += row.outcomeMatch;
+      if (TWO_READINGS.has(section)) {
+        t.readingLanded += row.landed;
+        t.readingMatch += row.readingMatch;
+      } else if (table === ENVIRONMENT_TABLE) {
+        t.environmentLanded += row.landed;
+        t.environmentMatch += row.readingMatch;
+      }
+      if (row.staged !== row.stored) {
+        t.differing.add(section);
+      }
+      totals.set(row.facility, t);
+    }
+  }
+  return totals;
+};
+
+/** The R-3 note: the sections that differ, cut to the contract's 280 characters. */
+const r3Note = (differing: ReadonlySet<string>): string =>
+  (differing.size === 0
+    ? "mapped staged result rows vs results landed in the facility, every section (05 § 7)"
+    : `mapped staged result rows vs results landed in the facility; differ: ${[...differing].sort().join(", ")}`
+  ).slice(0, 280);
 
 /** R-10 over every staged source: [staged, mapped or quarantined, quarantined]. */
 const completeness = async (
@@ -419,33 +593,61 @@ export const reconcileRun = async (
         ),
       );
 
-      const facilityRows = facilities.map(({ id, code }) => ({
-        clientFacilityId: id,
-        facilityCode: code,
-        checks: [
-          check(
-            "R-1",
-            stagedDevices.get(id) ?? 0,
-            devices.get(id) ?? 0,
-            0,
-            "mapped staged devices vs stored imported devices of the facility (05 § 7)",
-          ),
-          check(
-            "R-2",
-            stagedSessions.get(id) ?? 0,
-            sessions.get(id) ?? 0,
-            0,
-            "mapped staged session headers vs stored imported sessions of the facility",
-          ),
-          check(
-            "R-7",
-            stagedCalibrations.get(id) ?? 0,
-            calibrations.get(id) ?? 0,
-            0,
-            "mapped staged calibrations vs stored imported calibrations of the facility",
-          ),
-        ],
-      }));
+      // Per facility: R-3 … R-6 over the result tables (05 § 7).
+      const sections = await sectionTotals(context);
+
+      const facilityRows = facilities.map(({ id, code }) => {
+        const t = sections.get(id) ?? emptyTotals();
+        return {
+          clientFacilityId: id,
+          facilityCode: code,
+          checks: [
+            check(
+              "R-1",
+              stagedDevices.get(id) ?? 0,
+              devices.get(id) ?? 0,
+              0,
+              "mapped staged devices vs stored imported devices of the facility (05 § 7)",
+            ),
+            check(
+              "R-2",
+              stagedSessions.get(id) ?? 0,
+              sessions.get(id) ?? 0,
+              0,
+              "mapped staged session headers vs stored imported sessions of the facility",
+            ),
+            check("R-3", t.staged, t.stored, 0, r3Note(t.differing)),
+            check(
+              "R-4",
+              t.landed,
+              t.outcomeMatch,
+              0,
+              "landed results whose outcome is the one the section's code map gives the staged status (04 § 5)",
+            ),
+            check(
+              "R-5",
+              t.readingLanded,
+              t.readingMatch,
+              0,
+              "landed performance and battery results whose two readings equal the staged terukur_1/terukur_2 (decimal comma read)",
+            ),
+            check(
+              "R-6",
+              t.environmentLanded,
+              t.environmentMatch,
+              0,
+              "landed environment results whose reading equals the staged value (NULL outside its plausible range, Q-21)",
+            ),
+            check(
+              "R-7",
+              stagedCalibrations.get(id) ?? 0,
+              calibrations.get(id) ?? 0,
+              0,
+              "mapped staged calibrations vs stored imported calibrations of the facility",
+            ),
+          ],
+        };
+      });
 
       return {
         runId,
@@ -466,22 +668,6 @@ export const reconcileRun = async (
           rcF3,
           rcF5,
           manual(
-            "R-3",
-            "NOT AUTOMATED: detail rows per section; run the section queries of 05 § 7 on the dry-run database, in P25-04",
-          ),
-          manual(
-            "R-4",
-            "NOT AUTOMATED: outcome distribution per section; staged status codes vs stored outcomes through ipm.ts, in P25-04",
-          ),
-          manual(
-            "R-5",
-            "NOT AUTOMATED: numeric sums; SUM(terukur_1) with decimal comma vs SUM(measured_value_1), in P25-04",
-          ),
-          manual(
-            "R-6",
-            "NOT AUTOMATED: environment AVG/MIN/MAX of temperature and humidity, in P25-04",
-          ),
-          manual(
             "R-8",
             "NOT AUTOMATED: files per folder; referenced names vs attachments + quarantine (step 9 proves the checksums), in P25-04",
           ),
@@ -491,7 +677,7 @@ export const reconcileRun = async (
           ),
           manual(
             "RC-F4",
-            "per-facility counts equal the source's: R-1, R-2 and R-7 cover the mapped rows; the source-side totals are P25-04's",
+            "per-facility counts equal the source's: R-1 … R-7 cover the mapped rows; the source-side totals are P25-04's",
           ),
           manual(
             "R-12",

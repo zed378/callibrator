@@ -1,12 +1,8 @@
 /**
  * Tests for SSRF protection util
  */
-const dns = require("dns");
-const {
-  assertSafeUrl,
-  assertResolvedHostIsPublic,
-  isBlockedIp,
-} = require("../../utils/ssrf.util");
+import dns from "dns";
+import { assertSafeUrl, assertResolvedHostIsPublic, isBlockedIp } from "../../utils/ssrf.util";
 
 describe("ssrf.util", () => {
   describe("isBlockedIp", () => {
@@ -69,35 +65,29 @@ describe("ssrf.util", () => {
     it("resolves when the host maps to a public IP", async () => {
       jest
         .spyOn(dns.promises, "lookup")
-        .mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
-      await expect(
-        assertResolvedHostIsPublic("https://example.com/hook"),
-      ).resolves.toBeUndefined();
+        .mockResolvedValue([{ address: "93.184.216.34", family: 4 }] as never);
+      await expect(assertResolvedHostIsPublic("https://example.com/hook")).resolves.toBeUndefined();
     });
 
     it("rejects when the host resolves to an internal IP (DNS-based SSRF)", async () => {
       jest
         .spyOn(dns.promises, "lookup")
-        .mockResolvedValue([{ address: "169.254.169.254", family: 4 }]);
-      await expect(
-        assertResolvedHostIsPublic("https://sneaky.example.com/hook"),
-      ).rejects.toMatchObject({ status: 400 });
+        .mockResolvedValue([{ address: "169.254.169.254", family: 4 }] as never);
+      await expect(assertResolvedHostIsPublic("https://sneaky.example.com/hook")).rejects.toMatchObject({
+        status: 400,
+      });
     });
 
     it("rejects when the host cannot be resolved", async () => {
-      jest
-        .spyOn(dns.promises, "lookup")
-        .mockRejectedValue(new Error("ENOTFOUND"));
-      await expect(
-        assertResolvedHostIsPublic("https://does-not-exist.example/hook"),
-      ).rejects.toMatchObject({ status: 400 });
+      jest.spyOn(dns.promises, "lookup").mockRejectedValue(new Error("ENOTFOUND"));
+      await expect(assertResolvedHostIsPublic("https://does-not-exist.example/hook")).rejects.toMatchObject({
+        status: 400,
+      });
     });
 
     it("rejects when DNS resolves the host to zero addresses", async () => {
-      jest.spyOn(dns.promises, "lookup").mockResolvedValue([]);
-      await expect(
-        assertResolvedHostIsPublic("https://empty.example.com/hook"),
-      ).rejects.toMatchObject({
+      jest.spyOn(dns.promises, "lookup").mockResolvedValue([] as never);
+      await expect(assertResolvedHostIsPublic("https://empty.example.com/hook")).rejects.toMatchObject({
         status: 400,
         message: "URL host could not be resolved",
       });
@@ -107,10 +97,8 @@ describe("ssrf.util", () => {
       jest.spyOn(dns.promises, "lookup").mockResolvedValue([
         { address: "93.184.216.34", family: 4 },
         { address: "127.0.0.1", family: 4 },
-      ]);
-      await expect(
-        assertResolvedHostIsPublic("https://rebind.example.com/hook"),
-      ).rejects.toMatchObject({
+      ] as never);
+      await expect(assertResolvedHostIsPublic("https://rebind.example.com/hook")).rejects.toMatchObject({
         status: 400,
         message: "URL host resolves to a disallowed (internal) address",
       });
@@ -126,9 +114,7 @@ describe("ssrf.util", () => {
 
     it("does not perform DNS for a literal public IP host", async () => {
       const spy = jest.spyOn(dns.promises, "lookup");
-      await expect(
-        assertResolvedHostIsPublic("https://8.8.8.8/hook"),
-      ).resolves.toBeUndefined();
+      await expect(assertResolvedHostIsPublic("https://8.8.8.8/hook")).resolves.toBeUndefined();
       expect(spy).not.toHaveBeenCalled();
     });
   });
