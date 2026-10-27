@@ -36,6 +36,8 @@ const db = {
   perFacility: [] as { facilityId: string; n: number }[],
   sections: [] as { facility: string; staged: number; landed: number; stored: number; outcomeMatch: number; readingMatch: number }[],
   users: { landed: 0, matching: 0 },
+  photoRun: { referenced: 0, mapped: 0, quarantined: 0 },
+  photos: [] as { facility: string; mapped: number; landed: number }[],
   bad: 0,
 };
 const close = jest.fn(() => Promise.resolve());
@@ -46,6 +48,12 @@ const query = jest.fn((text: string) => {
   }
   if (text.includes("AS present")) {
     return Promise.resolve([{ present: db.present }]);
+  }
+  if (text.includes("AS referenced")) {
+    return Promise.resolve([db.photoRun]);
+  }
+  if (text.includes("AS mapped") && text.includes('AS "facility"')) {
+    return Promise.resolve(db.photos);
   }
   if (text.includes("AS matching")) {
     return Promise.resolve([db.users]);
@@ -116,7 +124,7 @@ const seedFacilities = (): void => {
 beforeEach(() => {
   mdb.reset();
   jest.clearAllMocks();
-  Object.assign(db, { role: "callibrator_transform", present: false, completeness: { staged: 0, mapped: 0, quarantined: 0 }, perFacility: [], sections: [], users: { landed: 0, matching: 0 }, bad: 0 });
+  Object.assign(db, { role: "callibrator_transform", present: false, completeness: { staged: 0, mapped: 0, quarantined: 0 }, perFacility: [], sections: [], users: { landed: 0, matching: 0 }, photoRun: { referenced: 0, mapped: 0, quarantined: 0 }, photos: [], bad: 0 });
 });
 
 describe("P25-01 the reconciliation request", () => {
@@ -155,6 +163,7 @@ describe("P25-01 the reconciliation request", () => {
         ["R-5", "pass"],
         ["R-6", "pass"],
         ["R-7", "pass"],
+        ["R-8", "pass"],
       ]);
     }
     expect(answer.runChecks.map((c) => [c.check, c.status])).toEqual([
@@ -165,7 +174,7 @@ describe("P25-01 the reconciliation request", () => {
       ["RC-F3", "pass"],
       ["RC-F5", "pass"],
       ["R-9", "pass"],
-      ["R-8", "manual"],
+      ["R-8", "pass"],
       ["RC-F4", "manual"],
       ["R-12", "manual"],
     ]);
@@ -195,8 +204,8 @@ describe("P25-01 the reconciliation request", () => {
     }
     // Every staged statement names a table through the allow-list, the run bound as $1.
     const staged = query.mock.calls.filter(([text]) => text.includes("upstream_import.\"stg_"));
-    // R-10 over every source, R-1/R-2/R-7, R-3 … R-6 once per result table, and R-9.
-    expect(staged.length).toBe(SOURCES + 3 + RESULT_TABLES + 1);
+    // R-10 over every source, R-1/R-2/R-7, R-3 … R-6 once per result table, R-9, and R-8 twice per photo folder.
+    expect(staged.length).toBe(SOURCES + 3 + RESULT_TABLES + 1 + 2 * 2);
     for (const [, options] of staged as unknown as [string, { bind: unknown[] }][]) {
       expect(options.bind[0]).toBe(RUN);
     }
@@ -266,6 +275,27 @@ describe("P25-01 the reconciliation request", () => {
       "client=ROOM USER",
       "teknisi_client=HEALTHCARE TECHNICIAN",
       "user=TECHNICIAN",
+    ]);
+  });
+
+  it("R-8: every referenced photo name is mapped or quarantined (run), and every mapped photo landed in its facility", async () => {
+    seedRun(RUN);
+    seedFacilities();
+    db.present = true;
+    // Each of the two folders answers: 3 referenced, 1 mapped, 1 quarantined (one unaccounted); F1 2 mapped, 1 landed.
+    db.photoRun = { referenced: 3, mapped: 1, quarantined: 1 };
+    db.photos = [{ facility: F1, mapped: 2, landed: 1 }];
+    const answer = await asSuperAdmin(() => service.reconcileRun(RUN));
+    expect(answer.runChecks.find((c) => c.check === "R-8")).toMatchObject({ status: "fail", expected: 6, actual: 4, delta: -2, quarantined: 2 });
+    const r8 = (id: string) => answer.facilities.find((f) => f.clientFacilityId === id)?.checks.find((c) => c.check === "R-8");
+    expect(r8(F1)).toMatchObject({ status: "fail", expected: 4, actual: 2 });
+    expect(r8(F2)).toMatchObject({ status: "pass", expected: 0, actual: 0 });
+    // Each folder with its own purpose (08-FILE-POLICY § 7), bound, never interpolated.
+    const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
+    const landedBinds = calls.filter(([text]) => text.includes("AS mapped") && text.includes('AS "facility"')).map(([, o]) => o.bind.slice(1));
+    expect(landedBinds).toEqual([
+      ["foto_depan", HOME, "device_front"],
+      ["foto_sn", HOME, "device_serial_plate"],
     ]);
   });
 });

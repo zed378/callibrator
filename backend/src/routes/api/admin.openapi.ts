@@ -503,8 +503,8 @@ export default defineRouteDocs({
       summary: "Reconcile a transformed SQL-dump import run, per facility",
       description:
         "P25-01 (docs/UPSTREAM/05 § 7): the reconciliation of a transformed run, aggregates only — counts and fixed codes, " +
-        "never a value from the dump. R-1 … R-7 are computed per facility (R-3 … R-6 row by row over the result tables); " +
-        "R-9, R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 at the run level; R-8, RC-F4 and R-12 are not automated and answer " +
+        "never a value from the dump. R-1 … R-8 are computed per facility (R-3 … R-6 row by row over the result tables); " +
+        "R-8, R-9, R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 at the run level; RC-F4 and R-12 are not automated and answer " +
         "`manual` (P25-04). " +
         "Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.",
       permission: superAdmin,

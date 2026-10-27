@@ -311,7 +311,8 @@ staged value, name, serial or legacy id. Errors are coded: 404 `UPSTREAM_SQL_IMP
 - **Computed by the report:** the quarantine groups in the run totals, plus Q-12, Q-13, Q-18 and
   Q-19 per facility.
 - **Also computed:** R-9 at the run level (each imported account's role against its staged group).
-- **Not automated, so they answer `manual`:** R-8, RC-F4, R-12, Q-4, Q-14 and Q-28,
+- **Also computed:** R-8, per facility and at the run level (the photos per folder).
+- **Not automated, so they answer `manual`:** RC-F4, R-12, Q-4, Q-14 and Q-28,
   and the orphan, duplicate-file and user sections. P25-04 records them by hand on the dry-run
   database.
 
