@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-27T11:05:07.591Z",
+  "last_updated": "2026-10-27T11:44:54.867Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -361,7 +361,10 @@
     "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-28.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-29.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-30.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-30.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-31.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-32.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-33.md"
   ],
   "entities": [
     {
@@ -73110,6 +73113,78 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 23,
       "evidence": "### 2026-10-24 � P9-26 batch 30: supplierScorecard, webauthn, predictiveMaintenance routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-30.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_31_esignature_notifications_content_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 31: eSignature, notifications, content routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-31.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-31.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 31: eSignature, notifications, content routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "api_get_posts_public",
+      "name": "GET /posts/public",
+      "type": "API_Endpoint",
+      "description": "- `content.routes.test.ts`: 8/8 — router shape, registered routes, GET /posts/public, GET /posts/public/:slug, GET /categories/public, POST /categories, PATCH /categories/:id, DELETE /categories/:id.",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-31.md",
+      "line": 24,
+      "evidence": "- `content.routes.test.ts`: 8/8 — router shape, registered routes, GET /posts/public, GET /posts/public/:slug, GET /categories/public, POST /categories, PATCH /"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_31_esignature_notifications_content_routes_to_typescript_record_records_2026_10_24_p9_26_batch_31_md_",
+      "name": "2026-10-24 � P9-26 batch 31: eSignature, notifications, content routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-31.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 23,
+      "evidence": "### 2026-10-24 � P9-26 batch 31: eSignature, notifications, content routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-31.md))"
+    },
+    {
+      "id": "sec_adr_123_amendment_1_2026_10_27_owner_the_reference_vm_deploys_the_moving_latest_with_docker_compose_up_d_every_deploy_builds_and_pushes_first",
+      "name": "ADR-123 Amendment 1 (2026-10-27, owner): the reference VM deploys the moving latest with docker compose up -d; every deploy builds and pushes first",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 10006,
+      "evidence": "### ADR-123 Amendment 1 (2026-10-27, owner): the reference VM deploys the moving `latest` with `docker compose up -d`; every deploy builds and pushes first"
+    },
+    {
+      "id": "sec_p9_26_batch_32_w_33_a_116_s_32_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 32: W-33, A-116, S-32 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-32.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-32.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 32: W-33, A-116, S-32 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_32_w_33_a_116_s_32_to_typescript_record_records_2026_10_24_p9_26_batch_32_md_",
+      "name": "2026-10-24 — P9-26 batch 32: W-33, A-116, S-32 to TypeScript ([record](./records/2026-10-24-p9-26-batch-32.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 32: W-33, A-116, S-32 to TypeScript ([record](./records/2026-10-24-p9-26-batch-32.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_33_search_guard_a04_iot_route_scim_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 33: search.guard.a04, iot.route, scim.routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-33.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-33.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 33: search.guard.a04, iot.route, scim.routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "api_post_ingest",
+      "name": "POST /ingest",
+      "type": "API_Endpoint",
+      "description": "- `iot.route.test.ts`: 6/6 — router shape, registered routes, multiple handlers, POST /ingest, ingest plus four provisioning routes, auth on every provisioning route.",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-33.md",
+      "line": 23,
+      "evidence": "- `iot.route.test.ts`: 6/6 — router shape, registered routes, multiple handlers, POST /ingest, ingest plus four provisioning routes, auth on every provisioning "
     }
   ],
   "relations": [
@@ -108520,12 +108595,68 @@
       "evidence": "- **DONE:** 3 � `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 613 to 610.",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 24
+    },
+    {
+      "source": "sec_tests",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_key_pairs",
+      "evidence": "- `eSignature.routes.test.ts`: 7/7 — router shape, registered routes, GET /key-pairs, POST /key-pairs, DELETE /key-pairs/:keyPairId, GET /workflows, GET /histor",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-batch-31.md",
+      "line": 22
+    },
+    {
+      "source": "sec_tests",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_test",
+      "evidence": "- `notifications.routes.test.ts`: 7/7 — router shape, registered routes, GET /, POST /test, PATCH /read-all, PATCH /:notificationId/read, DELETE /:notificationI",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-batch-31.md",
+      "line": 23
+    },
+    {
+      "source": "sec_tests",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_posts_public",
+      "evidence": "- `content.routes.test.ts`: 8/8 — router shape, registered routes, GET /posts/public, GET /posts/public/:slug, GET /categories/public, POST /categories, PATCH /",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-batch-31.md",
+      "line": 24
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_31_esignature_notifications_content_routes_to_typescript_record_records_2026_10_24_p9_26_batch_31_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 � `.js` to `.ts`, same 22 cases, eslint + typecheck clean, ratchet 610 to 607.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 24
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_32_w_33_a_116_s_32_to_typescript_record_records_2026_10_24_p9_26_batch_32_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 — `.js` to `.ts`, same 10 cases, eslint + typecheck clean, ratchet 607 to 604.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_tests",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_ingest",
+      "evidence": "- `iot.route.test.ts`: 6/6 — router shape, registered routes, multiple handlers, POST /ingest, ingest plus four provisioning routes, auth on every provisioning ",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-batch-33.md",
+      "line": 23
+    },
+    {
+      "source": "sec_tests",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_users",
+      "evidence": "- `scim.routes.test.ts`: 10/10 — router shape, registered routes, GET /Users, GET /Users/:id, POST /Users, PUT /Users/:id, PATCH /Users/:id, DELETE /Users/:id, ",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-batch-33.md",
+      "line": 24
     }
   ],
   "stats": {
-    "total_sources": 360,
-    "total_entities": 8083,
-    "total_relations": 4426,
+    "total_sources": 363,
+    "total_entities": 8091,
+    "total_relations": 4433,
     "token_savings_estimate": "85-95%"
   }
 }

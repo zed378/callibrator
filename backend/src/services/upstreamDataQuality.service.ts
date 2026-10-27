@@ -23,15 +23,29 @@
  *   Q-12 / Q-13 — future dates, and dates before 2023, of inventory and
  *     calibration
  *
- * NOT built (answer `manual`, never a guessed pass): Q-4, Q-14, Q-28, the
- * orphan, file (R-8) and user (R-9) sections the contract's
- * UPSTREAM_DATA_QUALITY_SECTIONS names. They are P25-04's, on the dry run.
+ *   Q-4 (2026-10-27) - IPM session rows quarantined no_device, attributed by
+ *     their staged id_client through the facility mapping
+ *   Q-14 (2026-10-27) - calibrations dated before their device's inventory date
+ *   Q-28 (2026-10-27, the missing half) - photos quarantined file_missing, in
+ *     their device's facility; `manual` when none, because unreferenced files
+ *     on disk (the manifest's side) are not counted
+ *
+ * NOT built: the orphan, file and user sections the contract's
+ * UPSTREAM_DATA_QUALITY_SECTIONS names as a target (R-8 and R-9 of the
+ * reconciliation cover the files and users per run). They are P25-04's.
  * The facility row carries the id and code only: the name is sensitive
  * operational data (03 § 9).
  */
 import { sql, type SqlRunner } from "../utils/sql.util";
 import { createTransformDb, transformRoleName } from "../config/upstreamImport";
-import { ID_MAP, QUARANTINE } from "./upstreamImport/transform/ledger";
+import {
+  ID_MAP,
+  QUARANTINE,
+  stagedTable,
+  stagedTableExists,
+} from "./upstreamImport/transform/ledger";
+import { SESSION_TABLES } from "./upstreamImport/transform/ipm";
+import type { StepContext } from "./upstreamImport/transform/steps";
 import type {
   DataQualityFinding,
   DataQualityQuarantineGroup,
@@ -67,6 +81,82 @@ const finding = (
 const byFacility = (
   rows: readonly { facilityId: string; n: number }[],
 ): Map<string, number> => new Map(rows.map((r) => [r.facilityId, r.n]));
+
+/** The two photo folders (columns of the staged device rows) whose missing files Q-28 counts. */
+const PHOTO_FOLDERS: readonly string[] = Object.freeze(["foto_depan", "foto_sn"]);
+
+/** Adds `rows` into `into`, per facility. */
+const addInto = (
+  into: Map<string, number>,
+  rows: readonly { facilityId: string; n: number }[],
+): void => {
+  for (const r of rows) {
+    into.set(r.facilityId, (into.get(r.facilityId) ?? 0) + r.n);
+  }
+};
+
+/**
+ * Q-4: the run's IPM session rows quarantined `no_device` (their QR matches no imported device),
+ * per facility. Such a row is never mapped, so its facility is its staged `id_client` through the
+ * facility step's mapping (`mst_faskes` -> client facility). Their result rows follow it as
+ * `session_not_imported` and are not counted again.
+ */
+const noDevicePerFacility = async (
+  context: StepContext,
+): Promise<Map<string, number>> => {
+  const counts = new Map<string, number>();
+  for (const table of SESSION_TABLES) {
+    if (!(await stagedTableExists(context, table))) {
+      continue;
+    }
+    addInto(
+      counts,
+      await sql<{ facilityId: string; n: number }>(
+        context.runner,
+        `SELECT fm.client_facility_id AS "facilityId", count(*)::int AS n
+           FROM ${QUARANTINE} q
+           JOIN ${stagedTable(table)} s ON s.import_run_id = q.import_run_id AND s.source_row_number = q.source_row_number
+           JOIN ${ID_MAP} fm ON fm.source_table = 'mst_faskes' AND fm.legacy_id = btrim(to_jsonb(s) ->> 'id_client')
+          WHERE q.import_run_id = $1 AND q.source_table = $2 AND q.reason = 'no_device' AND fm.client_facility_id IS NOT NULL
+          GROUP BY fm.client_facility_id`,
+        [context.runId, table],
+        { transaction: context.transaction },
+      ),
+    );
+  }
+  return counts;
+};
+
+/**
+ * Q-28 (the missing half): photos a mapped device names whose file is not on disk - quarantined
+ * `file_missing` per folder - in the device's facility. The other half (files on disk no row
+ * names) is the manifest's side and is not counted here.
+ */
+const missingFilesPerFacility = async (
+  context: StepContext,
+): Promise<Map<string, number>> => {
+  const counts = new Map<string, number>();
+  if (!(await stagedTableExists(context, "trx_inventory"))) {
+    return counts;
+  }
+  for (const folder of PHOTO_FOLDERS) {
+    addInto(
+      counts,
+      await sql<{ facilityId: string; n: number }>(
+        context.runner,
+        `SELECT dm.client_facility_id AS "facilityId", count(*)::int AS n
+           FROM ${QUARANTINE} q
+           JOIN ${stagedTable("trx_inventory")} s ON s.import_run_id = q.import_run_id AND s.source_row_number = q.source_row_number
+           JOIN ${ID_MAP} dm ON dm.source_table = 'trx_inventory' AND dm.legacy_id = s."id"::text
+          WHERE q.import_run_id = $1 AND q.source_table = $2 AND q.reason = 'file_missing' AND dm.client_facility_id IS NOT NULL
+          GROUP BY dm.client_facility_id`,
+        [context.runId, folder],
+        { transaction: context.transaction },
+      ),
+    );
+  }
+  return counts;
+};
 
 /** The run's facilities: the provider tenant's, ordered by code. */
 const facilitiesOf = async (tenantId: string): Promise<Facility[]> =>
@@ -235,6 +325,30 @@ export const reportDataQuality = async (
         ),
       );
 
+      // Q-14: calibrations dated before their device's inventory date (plausible: calibrated before
+      // registration), flagged for review.
+      const calibratedBefore = byFacility(
+        await sql<{ facilityId: string; n: number }>(
+          runner,
+          `SELECT r.client_facility_id AS "facilityId", count(*)::int AS n
+           FROM calibration_records r JOIN calibration_devices d ON d.id = r.device_id AND d.tenant_id = $1
+          WHERE r.tenant_id = $1 AND r.client_facility_id IS NOT NULL AND r.calibration_date < d.inventoried_on
+          GROUP BY r.client_facility_id`,
+          [tenantId],
+          { transaction },
+        ),
+      );
+      // Q-4 and Q-28 read the run's staged rows: a step's context on this connection.
+      const context: StepContext = {
+        runId,
+        runner,
+        transaction,
+        tenantId,
+        sourceZone: "Asia/Jakarta",
+      };
+      const noDevice = await noDevicePerFacility(context);
+      const missingFiles = await missingFilesPerFacility(context);
+
       const flagged = (
         findingId: string,
         counts: Map<string, number>,
@@ -278,24 +392,31 @@ export const reportDataQuality = async (
             id,
             "inventory / calibration dates before 2023: likely typing errors or real acquisition dates",
           ),
-          finding(
+          flagged(
             "Q-4",
-            "manual",
-            0,
-            "NOT AUTOMATED: IPM rows whose device is gone are quarantined no_device; see the run totals",
+            noDevice,
+            id,
+            "IPM session rows whose QR matches no imported device (quarantined no_device; their results follow as session_not_imported)",
           ),
-          finding(
+          flagged(
             "Q-14",
-            "manual",
-            0,
-            "NOT AUTOMATED: calibration before inventory (plausible); review per device in P25-04",
+            calibratedBefore,
+            id,
+            "calibrations dated before their device's inventory date: plausible (calibrated before registration), flagged",
           ),
-          finding(
-            "Q-28",
-            "manual",
-            0,
-            "NOT AUTOMATED: files missing / unreferenced on disk; compare the manifests with the folders in P25-04",
-          ),
+          (missingFiles.get(id) ?? 0) > 0
+            ? flagged(
+              "Q-28",
+              missingFiles,
+              id,
+              "photos a device names whose file is missing on disk (file_missing); unreferenced files on disk are the manifest's, P25-04",
+            )
+            : finding(
+              "Q-28",
+              "manual",
+              0,
+              "no photo missing on disk; unreferenced files on disk are not counted here (the manifest's side, P25-04)",
+            ),
         ],
       }));
 
