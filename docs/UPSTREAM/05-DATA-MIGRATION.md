@@ -306,7 +306,11 @@ early, then copy only the delta at cutover by name.
 > - RC-F5, for `FACILITY_BOUND_ROLES` roles only.
 > - Q-12, Q-13, Q-18 and Q-19 per facility, plus the quarantine totals.
 >
-> **Not automated:** R-8, R-9, RC-F4, R-12, Q-4, Q-14 and Q-28. Each answers `manual`,
+> - R-9 at the run level, row by row: each imported account's role against the roles its staged
+>   group gives (P18-01 § 2.1). A `client` may be HEALTHCARE ADMIN or ROOM USER; which of the two it
+>   got is not checked (Am. 12).
+>
+> **Not automated:** R-8, RC-F4, R-12, Q-4, Q-14 and Q-28. Each answers `manual`,
 > and P25-04 records it by hand on the dry-run database.
 >
 > Migration 0146 gives the transform role the two columns these checks read. They are proven on

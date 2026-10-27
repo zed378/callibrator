@@ -389,6 +389,7 @@ describe("P24-02g — the IPM steps on live PostgreSQL 18, as the transform role
       ["RC-F2", "pass"],
       ["RC-F3", "pass"],
       ["RC-F5", "pass"],
+      ["R-9", "pass"],
     ]);
     const r10 = reconciliation.runChecks.find((c) => c.check === "R-10");
     expect(r10?.expected).toBeGreaterThan(0);
@@ -442,6 +443,17 @@ describe("P24-02g — the IPM steps on live PostgreSQL 18, as the transform role
       await plant("trx_pemeriksaan_fisik", "status", "0", "id = 1");
       await plant("trx_kinerja_alat", "terukur_1", "59.80", "id = 1");
       await plant("trx_kondisi_lingkungan", "value", "25,5", "id = 1");
+    }
+
+    // R-9 (2026-10-27): the one imported account (group admin) is a CALIBRATOR ADMIN; a staged group renamed to
+    // `user` (TECHNICIAN) no longer gives that role, and R-9 fails, then the name is put back.
+    expect(reconciliation.runChecks.find((c) => c.check === "R-9")).toMatchObject({ status: "pass", expected: 1, actual: 1 });
+    await plant("auth_groups", "name", "user", "id = 1");
+    try {
+      const regrouped = await g.reconciliation.reconcileRun(RUN_1);
+      expect(regrouped.runChecks.find((c) => c.check === "R-9")).toMatchObject({ status: "fail", expected: 1, actual: 0 });
+    } finally {
+      await plant("auth_groups", "name", "admin", "id = 1");
     }
 
     const report = await g.dataQuality.reportDataQuality(RUN_1);

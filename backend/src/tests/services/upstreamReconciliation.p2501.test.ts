@@ -166,7 +166,6 @@ describe("P25-01 the reconciliation request", () => {
       ["RC-F5", "pass"],
       ["R-9", "pass"],
       ["R-8", "manual"],
-      ["R-9", "manual"],
       ["RC-F4", "manual"],
       ["R-12", "manual"],
     ]);

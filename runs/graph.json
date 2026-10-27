@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-27T09:33:30.564Z",
+  "last_updated": "2026-10-27T09:51:37.100Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -351,7 +351,8 @@
     "MEMORY\\records\\2026-10-27-p25-01-r3-r6-row-level.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-20.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-21.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-22.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-22.md",
+    "MEMORY\\records\\2026-10-27-p25-01-r9-user-roles.md"
   ],
   "entities": [
     {
@@ -72821,6 +72822,42 @@
       "source": "MEMORY\\records\\2026-10-24-p9-26-batch-22.md",
       "line": 1,
       "evidence": "# P9-26 batch 22: billing, session, tenantLifecycle validators — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_22_billing_session_tenantlifecycle_validators_to_typescript_record_records_2026_10_24_p9_26_batch_22_md_",
+      "name": "2026-10-24 — P9-26 batch 22: billing, session, tenantLifecycle validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-22.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 14,
+      "evidence": "### 2026-10-24 — P9-26 batch 22: billing, session, tenantLifecycle validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-22.md))"
+    },
+    {
+      "id": "ent_also_computed_",
+      "name": "Also computed:",
+      "type": "Component/Requirement",
+      "description": "R-9 at the run level (each imported account's role against its staged group).",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 313,
+      "evidence": "- **Also computed:** R-9 at the run level (each imported account's role against its staged group)."
+    },
+    {
+      "id": "sec_p25_01_r_9_automated_imported_accounts_against_their_upstream_group_s_role",
+      "name": "P25-01: R-9 automated — imported accounts against their upstream group's role",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-p25-01-r9-user-roles.md",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r9-user-roles.md",
+      "line": 1,
+      "evidence": "# P25-01: R-9 automated — imported accounts against their upstream group's role"
+    },
+    {
+      "id": "sec_2026_10_27_p25_01_r_9_of_the_reconciliation_automated_record_records_2026_10_27_p25_01_r9_user_roles_md_adr_129_am_12_",
+      "name": "2026-10-27 — P25-01: R-9 of the reconciliation automated ([record](./records/2026-10-27-p25-01-r9-user-roles.md), ADR-129 Am. 12)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-27 — P25-01: R-9 of the reconciliation automated ([record](./records/2026-10-27-p25-01-r9-user-roles.md), ADR-129 Am. 12)"
     }
   ],
   "relations": [
@@ -108111,12 +108148,28 @@
       "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 17 cases, eslint + typecheck clean, ratchet 640 to 637.",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 15
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_22_billing_session_tenantlifecycle_validators_to_typescript_record_records_2026_10_24_p9_26_batch_22_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 27 cases, eslint + typecheck clean, ratchet 637 to 634.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 15
+    },
+    {
+      "source": "sec_10_1_reconciliation_and_the_data_quality_report_admin_route_ts_p25_01_p25_02_partial_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_also_computed_",
+      "evidence": "- **Also computed:** R-9 at the run level (each imported account's role against its staged group).",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 313
     }
   ],
   "stats": {
-    "total_sources": 350,
-    "total_entities": 8052,
-    "total_relations": 4411,
+    "total_sources": 351,
+    "total_entities": 8056,
+    "total_relations": 4413,
     "token_savings_estimate": "85-95%"
   }
 }
