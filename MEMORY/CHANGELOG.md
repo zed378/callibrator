@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-27 — Fix: the super admin's sidebar showed only its seeded grants ([record](./records/2026-10-27-superadmin-menu-role-spread.md))
+- `getRoleMenuAssignments` spread a Sequelize role instance and lost its `name`; the super admin now sees every page again (Users, Roles, Tenants, Sessions, SCIM …).
+
 ### 2026-10-27 — P25-01: R-9 of the reconciliation automated ([record](./records/2026-10-27-p25-01-r9-user-roles.md), ADR-129 Am. 12)
 - Each imported account's role is checked against its upstream group's role, at the run level. Live `p2402g` 6/6 on PostgreSQL 18; a renamed staged group fails it.
 
