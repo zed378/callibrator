@@ -7,26 +7,27 @@
  * where the body is optional) it is owed instead of a TypeError-driven 500.
  */
 
-const { bodyDefault } = require("../../middlewares/bodyDefault.middleware");
+import type { Request, Response } from "express";
+import { bodyDefault } from "../../middlewares/bodyDefault.middleware";
 
 describe("bodyDefault middleware (A-09)", () => {
-  let res;
-  let next;
+  let res: Response;
+  let next: jest.Mock;
 
   beforeEach(() => {
-    res = {};
+    res = {} as unknown as Response;
     next = jest.fn();
   });
 
   it("replaces an absent body with {} — the Express 5 regression itself", () => {
-    const req = {}; // express.json() leaves req.body undefined on a bodyless request
+    const req = {} as unknown as Request;
 
     bodyDefault(req, res, next);
 
     expect(req.body).toEqual({});
     // Destructuring the body is what threw the TypeError that surfaced as a 500.
     expect(() => {
-      const { anything } = req.body;
+      const { anything } = req.body as { anything?: unknown };
       return anything;
     }).not.toThrow();
     expect(next).toHaveBeenCalledTimes(1);
@@ -34,7 +35,7 @@ describe("bodyDefault middleware (A-09)", () => {
 
   it("leaves a parsed object body untouched", () => {
     const parsed = { name: "Device A" };
-    const req = { body: parsed };
+    const req = { body: parsed } as unknown as Request;
 
     bodyDefault(req, res, next);
 
@@ -44,7 +45,7 @@ describe("bodyDefault middleware (A-09)", () => {
 
   it("leaves a Buffer body untouched (raw-body / webhook routes)", () => {
     const raw = Buffer.from('{"id":"evt_1"}');
-    const req = { body: raw };
+    const req = { body: raw } as unknown as Request;
 
     bodyDefault(req, res, next);
 
@@ -53,7 +54,7 @@ describe("bodyDefault middleware (A-09)", () => {
   });
 
   it("leaves an explicit null body untouched (only `undefined` is filled)", () => {
-    const req = { body: null };
+    const req = { body: null } as unknown as Request;
 
     bodyDefault(req, res, next);
 

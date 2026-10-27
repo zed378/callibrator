@@ -1,4 +1,4 @@
-# Memory Index
+﻿# Memory Index
 
 Every change record, newest first. One line each: date, task, title, and the hook that tells you whether this is the record you need.
 
@@ -10,6 +10,13 @@ Add a line here as part of writing the record — **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-10-24 | P9-26 | [Batch 17: csp.p708, bodylessBody.a09, controllerWrapper](./records/2026-10-24-p9-26-batch-17.md) | **DONE.** 3 × `.js` to `.ts`, same 75 cases, eslint + typecheck clean, ratchet 652 to 649 |
+| 2026-10-24 | P9-26 | [Batch 16: jwt.a31, jwt.purpose.a59, istanbulIgnore.a32](./records/2026-10-24-p9-26-batch-16.md) | **DONE.** 3 × `.js` to `.ts`, same 31 cases, eslint + typecheck clean, ratchet 655 to 652 |
+| 2026-10-24 | P9-26 | [Batch 15: jwt.env, mfaPolicy.a160, createFolder](./records/2026-10-24-p9-26-batch-15.md) | **DONE.** 3 × `.js` to `.ts`, same 12 cases, eslint + typecheck clean, ratchet 658 to 655 |
+| 2026-10-24 | P9-26 | [Batch 14: bodyDefault, metricsAuth.p702, certificatePdf.keyId](./records/2026-10-24-p9-26-batch-14.md) | **DONE.** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 661 to 658 |
+| 2026-10-24 | P9-26 | [Batch 13: keyring.p610, accessLog.init, auditActor](./records/2026-10-24-p9-26-batch-13.md) | **DONE.** 3 × `.js` to `.ts`, same 14 cases, eslint + typecheck clean, ratchet 664 to 661 |
+| 2026-10-24 | P9-26 | [Batch 12: runtimeDirs.p602, storagePath, dbReady](./records/2026-10-24-p9-26-batch-12.md) | **DONE.** 3 × `.js` to `.ts`, same 34 cases, eslint + typecheck clean, ratchet 667 to 664 |
+| 2026-10-24 | P9-26 | [Batch 11: quota, a260, audit controllers](./records/2026-10-24-p9-26-batch-11.md) | **DONE.** 3 × `.js` to `.ts`, same 8 cases, eslint + typecheck clean, ratchet 670 to 667 |
 | 2026-10-24 | P9-26 | [Batch 10: appError, validateUuid, certificateNumber.d40](./records/2026-10-24-p9-26-batch-10-apperror-validateuuid-certnumber.md) | **DONE.** 3 × `.js` to `.ts`, same 43 cases, eslint + typecheck clean, ratchet 673 to 670 |
 | 2026-10-24 | P9-26 | [Batch 9: password, otp, env utils](./records/2026-10-24-p9-26-batch-09-password-otp-env.md) | **DONE.** 3 × `.js` to `.ts`, same 20 cases, eslint + typecheck clean, ratchet 676 to 673 |
 | 2026-10-24 | P9-26 | [Batch 8: p611, p614, a42 guard scans](./records/2026-10-24-p9-26-batch-08-guards-p611-p614-a42.md) | **DONE.** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 679 to 676 |

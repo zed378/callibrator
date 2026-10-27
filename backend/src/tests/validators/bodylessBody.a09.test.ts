@@ -15,12 +15,12 @@
  * all three, plus the rule that no validator file brings back a helper of its
  * own.
  */
-
-const fs = require("fs");
-const path = require("path");
-const { z } = require("zod");
-const { checkInput, validateInput } = require("../../validators/input");
-const { validate } = require("../../middlewares/validation.middleware");
+import fs from "node:fs";
+import path from "node:path";
+import type { Request, Response } from "express";
+import { z } from "zod";
+import { checkInput, validateInput } from "../../validators/input";
+import { validate } from "../../middlewares/validation.middleware";
 
 const VALIDATOR_DIR = path.join(__dirname, "..", "..", "validators");
 const schema = z.object({ mustBeThere: z.string() });
@@ -33,10 +33,10 @@ describe("A-09 — an absent body is checked as {}", () => {
   });
 
   it("validateInput(undefined) throws the 400, never returns undefined", () => {
-    let thrown;
+    let thrown: unknown;
     try {
       validateInput(undefined, schema);
-    } catch (err) {
+    } catch (err: unknown) {
       thrown = err;
     }
     expect(thrown).toEqual({ status: 400, message: "Validation failed", errors: REQUIRED });
@@ -45,7 +45,7 @@ describe("A-09 — an absent body is checked as {}", () => {
   it("validate(schema) answers 400 for a request with no body", () => {
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
     const next = jest.fn();
-    validate(schema)({ body: undefined }, res, next);
+    validate(schema)({ body: undefined } as unknown as Request, res as unknown as Response, next);
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
   });
@@ -55,15 +55,15 @@ describe("A-09 / P9-11 — no validator file brings back a helper of its own", (
   const modules = fs
     .readdirSync(VALIDATOR_DIR)
     .filter((f) => /\.validator\.(js|ts)$/.test(f))
-    .map((f) => [f, require(path.join(VALIDATOR_DIR, f))]);
+    .map((f) => [f, jest.requireActual<Record<string, unknown>>(path.join(VALIDATOR_DIR, f))] as const);
 
   it("finds the validator modules (guards against this suite silently testing nothing)", () => {
     expect(modules.length).toBeGreaterThanOrEqual(35);
   });
 
   it.each(modules.map(([file]) => file))("%s exports no validate / formatErrors helper", (file) => {
-    const mod = require(path.join(VALIDATOR_DIR, file));
-    expect({ file, validate: typeof mod.validate, formatErrors: typeof mod.formatErrors }).toEqual({
+    const mod = jest.requireActual<Record<string, unknown>>(path.join(VALIDATOR_DIR, file));
+    expect({ file, validate: typeof mod["validate"], formatErrors: typeof mod["formatErrors"] }).toEqual({
       file,
       validate: "undefined",
       formatErrors: "undefined",

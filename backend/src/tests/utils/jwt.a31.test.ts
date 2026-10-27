@@ -10,13 +10,29 @@
  * as an access token whatever the two secrets were set to.
  */
 
-const loadJwt = (env) => {
+// jwt.util is `export =` (ADR-087 Am. 15): typed by what this test calls, as jwt.keyMemo.u06 does.
+interface JwtUtil {
+    generateAccessToken: (payload: Record<string, unknown>) => string;
+    generateRefreshToken: (payload: Record<string, unknown>) => string;
+    verifyAccessToken: (token: string) => Record<string, unknown>;
+    verifyRefreshToken: (token: string) => Record<string, unknown>;
+}
+
+interface JsonWebToken {
+    sign: (payload: object, secret: string, options: object) => string;
+}
+
+const loadJwt = (env: Record<string, string>): JwtUtil => {
+  // eslint-disable-next-line no-restricted-properties -- the test snapshots the environment the module validates at load
   const saved = { ...process.env };
   jest.resetModules();
+  // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
   Object.assign(process.env, env);
   try {
-    return require("../../utils/jwt.util");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- re-reads the module under a mutated environment
+    return require("../../utils/jwt.util") as JwtUtil;
   } finally {
+    // eslint-disable-next-line no-restricted-properties -- restore what the test changed
     process.env = saved;
   }
 };
@@ -54,7 +70,7 @@ describe("jwt.util startup validation (A-31)", () => {
 });
 
 describe("token types cannot be exchanged (A-31)", () => {
-  let jwt;
+  let jwt!: JwtUtil;
 
   beforeEach(() => {
     jwt = loadJwt({
@@ -88,13 +104,15 @@ describe("token types cannot be exchanged (A-31)", () => {
   // session out on deploy, and nothing issues a typ-less refresh JWT any more,
   // so it is accepted on the access path — deliberately, and only there.
   it("still accepts a legacy access token that carries no type claim", () => {
-    const jsonwebtoken = require("jsonwebtoken");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- legacy token signed outside the util, as the .js did
+    const jsonwebtoken = require("jsonwebtoken") as JsonWebToken;
     const legacy = jsonwebtoken.sign({ id: "u1" }, "access-secret-a31", { algorithm: "HS256" });
     expect(jwt.verifyAccessToken(legacy)).toMatchObject({ id: "u1" });
   });
 
   it("does not accept a legacy token signed with the refresh secret on the access path", () => {
-    const jsonwebtoken = require("jsonwebtoken");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- legacy token signed outside the util, as the .js did
+    const jsonwebtoken = require("jsonwebtoken") as JsonWebToken;
     const legacy = jsonwebtoken.sign({ id: "u1" }, "refresh-secret-a31", { algorithm: "HS256" });
     expect(() => jwt.verifyAccessToken(legacy)).toThrow("Invalid or expired access token");
   });

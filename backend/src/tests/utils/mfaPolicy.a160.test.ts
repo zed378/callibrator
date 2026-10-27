@@ -5,15 +5,16 @@
  *
  * Fail-before (baseline 2a157f1): the module did not exist.
  */
-const {
+import {
   MFA_REQUIRED_KEY,
   MFA_REQUIRED_MIN_ROLE_LEVEL_KEY,
   MFA_POLICY_KEYS,
   NO_POLICY,
   parseMfaPolicy,
   mfaEnrolmentRequired,
-} = require("../../utils/mfaPolicy.util");
-const { isSecretSettingKey } = require("../../constants/tenantSecretSettings");
+  type TenantSettingRow,
+} from "../../utils/mfaPolicy.util";
+import { isSecretSettingKey } from "../../constants/tenantSecretSettings";
 
 describe("A-160: the MFA policy settings", () => {
   it("are two plain tenant_settings keys", () => {
@@ -35,7 +36,9 @@ describe("A-160: the MFA policy settings", () => {
   });
 
   it("a minimum level without the switch is no policy", () => {
-    expect(parseMfaPolicy([{ key: MFA_REQUIRED_MIN_ROLE_LEVEL_KEY, value: "3" }])).toBe(NO_POLICY);
+    expect(
+      parseMfaPolicy([{ key: MFA_REQUIRED_MIN_ROLE_LEVEL_KEY, value: "3" }] as TenantSettingRow[]),
+    ).toBe(NO_POLICY);
   });
 
   it("no principal is never required to enrol", () => {

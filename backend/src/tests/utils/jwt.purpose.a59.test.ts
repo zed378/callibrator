@@ -5,8 +5,30 @@
  * verifier refuses it; the purpose verifier accepts it only for its own type
  * and, unlike the access verifier, refuses a token with NO `typ`.
  */
+import type { DecodedToken, TokenPurpose } from "../../types/auth";
 
-const jwt = require("jsonwebtoken");
+// jwt.util is `export =` (ADR-087 Am. 15): typed by what this test calls, as jwt.keyMemo.u06 does.
+interface JwtUtil {
+    generateAccessToken: (payload: Record<string, unknown>) => string;
+    generatePurposeToken: (
+        payload: Record<string, unknown>,
+        typ: TokenPurpose,
+        options?: { expiresIn?: string | number },
+    ) => string;
+    generateRefreshToken: (payload: Record<string, unknown>) => string;
+    verifyAccessToken: (token: string) => unknown;
+    verifyPurposeToken: (token: string, typ: TokenPurpose) => unknown;
+    decodeToken: (token: string) => DecodedToken | null;
+}
+
+interface JsonWebToken {
+    sign: (payload: object, secret: string, options: object) => string;
+}
+
+/* eslint-disable @typescript-eslint/no-require-imports -- jwt.util is `export =`; one typed require keeps the exact object */
+const jwtUtil = require("../../utils/jwt.util") as JwtUtil;
+/* eslint-enable @typescript-eslint/no-require-imports */
+
 const {
   generateAccessToken,
   generatePurposeToken,
@@ -14,15 +36,15 @@ const {
   verifyAccessToken,
   verifyPurposeToken,
   decodeToken,
-} = require("../../utils/jwt.util");
+} = jwtUtil;
 
-const PURPOSES = ["activation", "mfa", "socket"];
+const PURPOSES: TokenPurpose[] = ["activation", "mfa", "socket"];
 
 describe("jwt.util purpose tokens (A-59)", () => {
   it.each(PURPOSES)("a %s token is refused by verifyAccessToken", (typ) => {
     const token = generatePurposeToken({ id: "user-1" }, typ);
 
-    expect(decodeToken(token).typ).toBe(typ);
+    expect((decodeToken(token) as { typ?: unknown }).typ).toBe(typ);
     expect(() => verifyAccessToken(token)).toThrow(
       "Invalid or expired access token",
     );
@@ -46,10 +68,13 @@ describe("jwt.util purpose tokens (A-59)", () => {
   });
 
   it("verifyPurposeToken refuses a token with no typ — the pre-A-59 socket token shape", () => {
-    const untyped = jwt.sign(
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- signed outside the util, as the .js did
+    const jsonwebtoken = require("jsonwebtoken") as JsonWebToken;
+    const untyped = jsonwebtoken.sign(
       { id: "user-1", purpose: "socket" },
-      process.env.JWT_ACCESS_SECRET,
-      { expiresIn: 300, algorithm: "HS256" },
+            // eslint-disable-next-line no-restricted-properties -- the test signs with the same secret the util reads
+            process.env["JWT_ACCESS_SECRET"] as string,
+            { expiresIn: 300, algorithm: "HS256" },
     );
     expect(() => verifyPurposeToken(untyped, "socket")).toThrow(
       "Invalid or expired socket token",
@@ -63,8 +88,8 @@ describe("jwt.util purpose tokens (A-59)", () => {
   });
 
   it("each purpose has its own default lifetime, independent of JWT_ACCESS_EXPIRED", () => {
-    const lifetime = (typ) => {
-      const { iat, exp } = decodeToken(generatePurposeToken({ id: "u" }, typ));
+    const lifetime = (typ: TokenPurpose): number => {
+      const { iat, exp } = decodeToken(generatePurposeToken({ id: "u" }, typ)) as { iat: number; exp: number };
       return exp - iat;
     };
     expect(lifetime("activation")).toBe(24 * 60 * 60);
@@ -75,7 +100,7 @@ describe("jwt.util purpose tokens (A-59)", () => {
   it("honours an explicit expiresIn", () => {
     const { iat, exp } = decodeToken(
       generatePurposeToken({ id: "u" }, "socket", { expiresIn: 60 }),
-    );
+    ) as { iat: number; exp: number };
     expect(exp - iat).toBe(60);
   });
 
@@ -87,11 +112,12 @@ describe("jwt.util purpose tokens (A-59)", () => {
   it.each(["access", "refresh", "admin", undefined])(
     "refuses to mint or verify an unknown purpose (%s)",
     (typ) => {
-      expect(() => generatePurposeToken({ id: "u" }, typ)).toThrow(
+      const unknownPurpose = typ as unknown as TokenPurpose;
+      expect(() => generatePurposeToken({ id: "u" }, unknownPurpose)).toThrow(
         /Unknown token purpose/,
       );
       expect(() =>
-        verifyPurposeToken(generateAccessToken({ id: "u" }), typ),
+        verifyPurposeToken(generateAccessToken({ id: "u" }), unknownPurpose),
       ).toThrow(/Unknown token purpose/);
     },
   );

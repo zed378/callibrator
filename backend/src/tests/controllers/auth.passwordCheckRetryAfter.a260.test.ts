@@ -10,30 +10,55 @@
  * Real: auth.controller#passIsValid, controllerWrapper, response.util.
  * Faked: auth.service.
  */
+import type { Request, Response } from "express";
+import { AppError } from "../../utils/appError.util";
+
 jest.mock("../../services/auth.service", () => ({ passIsValid: jest.fn() }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-const authService = require("../../services/auth.service");
-const authController = require("../../controllers/auth.controller");
-const { AppError } = require("../../utils/appError.util");
+interface AuthServiceDouble {
+    passIsValid: jest.Mock;
+}
 
-const call = (handler) =>
+type Handler = (req: Request, res: Response, next: () => void) => void;
+
+interface FakeRes {
+    statusCode: number;
+    headers: Record<string, string>;
+    headersSent: boolean;
+    setHeader: (name: string, value: string) => FakeRes;
+    status: (code: number) => FakeRes;
+    json: (payload: unknown) => FakeRes;
+}
+
+interface CallAnswer {
+    status: number;
+    headers: Record<string, string>;
+    body: unknown;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factory above
+const authService = require("../../services/auth.service") as AuthServiceDouble;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the real controller, loaded after its doubles
+const authController = require("../../controllers/auth.controller") as { passIsValid: Handler };
+
+const call = (handler: Handler): Promise<CallAnswer> =>
   new Promise((resolve) => {
-    const res = {
+    const res: FakeRes = {
       statusCode: 200,
       headers: {},
       headersSent: false,
-      setHeader(name, value) {
+      setHeader(name: string, value: string) {
         this.headers[name.toLowerCase()] = value;
         return this;
       },
-      status(code) {
+      status(code: number) {
         this.statusCode = code;
         return this;
       },
-      json(payload) {
+      json(payload: unknown) {
         this.headersSent = true;
         resolve({ status: this.statusCode, headers: this.headers, body: payload });
         return this;
@@ -45,15 +70,14 @@ const call = (handler) =>
       ip: "198.51.100.8",
       headers: { "user-agent": "jest" },
     };
-    handler(req, res, () => {});
+    handler(req as unknown as Request, res as unknown as Response, () => undefined);
   });
 
 beforeEach(() => jest.clearAllMocks());
 
 describe("A-260: POST /auth/pass-is-valid when the budget is spent", () => {
   it("answers 429 with Retry-After, and hands the service the request's address and agent", async () => {
-    const paused = new AppError(429, "Too many wrong passwords.");
-    paused.retryAfterSeconds = 842.2;
+    const paused = Object.assign(new AppError(429, "Too many wrong passwords."), { retryAfterSeconds: 842.2 });
     authService.passIsValid.mockRejectedValueOnce(paused);
 
     const res = await call(authController.passIsValid);
@@ -77,8 +101,7 @@ describe("A-260: POST /auth/pass-is-valid when the budget is spent", () => {
   });
 
   it("Retry-After is never below one second", async () => {
-    const paused = new AppError(429, "Too many wrong passwords.");
-    paused.retryAfterSeconds = 0;
+    const paused = Object.assign(new AppError(429, "Too many wrong passwords."), { retryAfterSeconds: 0 });
     authService.passIsValid.mockRejectedValueOnce(paused);
 
     const res = await call(authController.passIsValid);

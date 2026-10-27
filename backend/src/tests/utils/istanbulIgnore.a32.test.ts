@@ -14,15 +14,21 @@
  *      one; raising it is a reviewed decision, not a drive-by.
  */
 
-const fs = require("fs");
-const path = require("path");
+import * as fs from "fs";
+import * as path from "path";
 
 const SRC = path.join(__dirname, "..", "..");
 // 30 on 2026-09-28 (P9-03a): lowered to the count, and the scan now reads .ts
 // too — a converted file carries its directives into TypeScript (ADR-092).
 const CEILING = 30;
 
-const listSource = (dir) =>
+interface DirectiveHit {
+    file: string;
+    line: number;
+    text: string;
+}
+
+const listSource = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -31,12 +37,12 @@ const listSource = (dir) =>
     return /\.(js|ts)$/.test(entry.name) ? [full] : [];
   });
 
-const directives = listSource(SRC).flatMap((file) =>
+const directives: DirectiveHit[] = listSource(SRC).flatMap((file) =>
   fs
     .readFileSync(file, "utf8")
     .split("\n")
     .map((line, i) => ({ file: path.relative(SRC, file), line: i + 1, text: line }))
-    .filter(({ text }) => /istanbul ignore/.test(text)),
+    .filter(({ text }) => text.includes("istanbul ignore")),
 );
 
 describe("A-32 — istanbul ignore directives", () => {
@@ -47,11 +53,11 @@ describe("A-32 — istanbul ignore directives", () => {
   it("every directive states why: `istanbul ignore <kind> -- <reason>`", () => {
     const unexplained = directives
       .filter(({ text }) => !/istanbul ignore (next|if|else|file)\s+--\s+\S/.test(text))
-      .map(({ file, line, text }) => `${file}:${line} ${text.trim()}`);
+      .map(({ file, line, text }) => `${file}:${String(line)} ${text.trim()}`);
     expect(unexplained).toEqual([]);
   });
 
-  it(`the count does not rise above ${CEILING}`, () => {
+  it("the count does not rise above " + String(CEILING), () => {
     expect(directives.length).toBeLessThanOrEqual(CEILING);
   });
 });
