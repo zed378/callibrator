@@ -257,6 +257,12 @@ ENV HOSTNAME=0.0.0.0
 
 ### The deploy, step by step
 
+> **The reference VM since 2026-10-27 (ADR-123 Am. 1, owner): build and push first, then `up -d` on `latest`.**
+> 1. Release from a clean, LF worktree: `git -c core.autocrlf=false worktree add --detach <dir> <commit>`, then `pwsh -File scripts/release/push-images.ps1` there. A checkout with `core.autocrlf=true` gave the backup image a CRLF entrypoint (`bash`, exit 127).
+> 2. On the VM: `git fetch -q origin && git reset -q --hard origin/main && bash scripts/release/deploy-vm.sh`. The script runs `up -d --pull always --no-build` (a plain `up -d` keeps a local image of the same tag), restarts nginx (a recreated frontend answers 502 until then), and smoke-tests. `.env` keeps `IMAGE_TAG=latest` and no `*_DIGEST`.
+>
+> The steps below remain the pinned path, for a rollback (`IMAGE_TAG=<sha>`) or any other host.
+
 0. **Release**, on a workstation, from PowerShell or cmd (Docker Desktop's credential store is not visible from Git Bash), after `docker login`: commit and push, then `pwsh -File scripts/release/push-images.ps1`. It refuses a dirty tree, builds be → fe → backup, scans every image, pushes `<short commit>` and `latest`, and prints the digests. `-DryRun` builds and scans without pushing; `-ScanTag <tag>` re-scans images already pulled.
 1. **On the VM, update the checkout.** It now supplies only the compose files and the nginx config: `git fetch && git reset --hard origin/main`. Never upload over tracked files: the closing deploy of 2026-10-02 found about 280 files owned by another uid, which `git reset` could not overwrite.
 2. **Check `.env`** by variable name, never printing a value. An `.env` made before 2026-10-06 says `BACKEND_IMAGE=callibrator/backend` and `FRONTEND_IMAGE=callibrator/frontend`. Those names exist on no registry, so `pull` fails: change them to the `zed378/…` names, or delete the lines. **Pin the release.** This is recommended; the default is `latest`:
