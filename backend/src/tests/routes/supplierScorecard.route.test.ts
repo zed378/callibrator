@@ -3,7 +3,19 @@
  *
  * Tests the SupplierScorecard route registrations and middleware chain.
  */
-const supplierscorecardRoutes = require("../../routes/api/supplierScorecard.route");
+
+interface SupplierScorecardRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface SupplierScorecardRouter {
+    handle: unknown;
+    stack: SupplierScorecardRouteLayer[];
+}
+
+const supplierscorecardRoutes =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+    require("../../routes/api/supplierScorecard.route") as SupplierScorecardRouter;
 
 describe("SupplierScorecard Routes", () => {
   it("should export an Express router", () => {
@@ -36,10 +48,10 @@ describe("SupplierScorecard Routes", () => {
     supplierscorecardRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete).toBe(true);
       }
     });

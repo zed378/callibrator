@@ -3,7 +3,18 @@
  *
  * Tests the Warehouse route registrations and middleware chain.
  */
-const warehouseRoutes = require("../../routes/api/warehouse.route");
+
+interface WarehouseRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface WarehouseRouter {
+    handle: unknown;
+    stack: WarehouseRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const warehouseRoutes = require("../../routes/api/warehouse.route") as WarehouseRouter;
 
 describe("Warehouse Routes", () => {
   it("should export an Express router", () => {

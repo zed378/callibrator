@@ -3,7 +3,18 @@
  *
  * Tests the Sop route registrations and middleware chain.
  */
-const sopRoutes = require("../../routes/api/sop.route");
+
+interface SopRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface SopRouter {
+    handle: unknown;
+    stack: SopRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const sopRoutes = require("../../routes/api/sop.route") as SopRouter;
 
 describe("Sop Routes", () => {
   it("should export an Express router", () => {
@@ -36,11 +47,11 @@ describe("Sop Routes", () => {
     sopRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
-        const hasPatch = methods.patch === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
+        const hasPatch = methods["patch"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete || hasPatch).toBe(true);
       }
     });

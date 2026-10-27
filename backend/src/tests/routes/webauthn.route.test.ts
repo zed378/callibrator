@@ -3,7 +3,19 @@
  *
  * Tests the Webauthn route registrations and middleware chain.
  */
-const webauthnRoutes = require("../../routes/api/webauthn.route");
+
+interface WebauthnRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface WebauthnRouter {
+    handle: unknown;
+    stack: WebauthnRouteLayer[];
+}
+
+const webauthnRoutes =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+    require("../../routes/api/webauthn.route") as WebauthnRouter;
 
 describe("Webauthn Routes", () => {
   it("should export an Express router", () => {
@@ -36,12 +48,12 @@ describe("Webauthn Routes", () => {
     webauthnRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
         // ADR-108 Amendment 1: PATCH /credentials/:id renames a passkey.
-        const hasPatch = methods.patch === true;
+        const hasPatch = methods["patch"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete || hasPatch).toBe(true);
       }
     });

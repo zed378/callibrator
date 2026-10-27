@@ -3,7 +3,18 @@
  *
  * Tests the Search route registrations and middleware chain.
  */
-const searchRoutes = require("../../routes/api/search.route");
+
+interface SearchRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface SearchRouter {
+    handle: unknown;
+    stack: SearchRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const searchRoutes = require("../../routes/api/search.route") as SearchRouter;
 
 describe("Search Routes", () => {
   it("should export an Express router", () => {
@@ -36,10 +47,10 @@ describe("Search Routes", () => {
     searchRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete).toBe(true);
       }
     });

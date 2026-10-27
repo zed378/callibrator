@@ -3,7 +3,19 @@
  *
  * Tests the NetworkSecurity route registrations and middleware chain.
  */
-const networksecurityRoutes = require("../../routes/api/networkSecurity.route");
+
+interface NetworkSecurityRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface NetworkSecurityRouter {
+    handle: unknown;
+    stack: NetworkSecurityRouteLayer[];
+}
+
+const networksecurityRoutes =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+    require("../../routes/api/networkSecurity.route") as NetworkSecurityRouter;
 
 describe("NetworkSecurity Routes", () => {
   it("should export an Express router", () => {
@@ -22,12 +34,8 @@ describe("NetworkSecurity Routes", () => {
   });
 
   it("should have middleware or routes in stack", () => {
-    const hasMiddleware = networksecurityRoutes.stack.some(
-      (layer) => !layer.route,
-    );
-    const hasRoutes = networksecurityRoutes.stack.some(
-      (layer) => layer.route,
-    );
+    const hasMiddleware = networksecurityRoutes.stack.some((layer) => !layer.route);
+    const hasRoutes = networksecurityRoutes.stack.some((layer) => layer.route);
     // At least one middleware or route layer should exist
     expect(hasMiddleware || hasRoutes).toBe(true);
   });
@@ -36,10 +44,10 @@ describe("NetworkSecurity Routes", () => {
     networksecurityRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete).toBe(true);
       }
     });

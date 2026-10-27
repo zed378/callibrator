@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-27T10:28:12.727Z",
+  "last_updated": "2026-10-27T11:05:07.591Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -354,7 +354,14 @@
     "MEMORY\\records\\2026-10-24-p9-26-batch-22.md",
     "MEMORY\\records\\2026-10-27-p25-01-r9-user-roles.md",
     "MEMORY\\records\\2026-10-27-superadmin-menu-role-spread.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-24.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-24.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-25.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-26.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-27.md",
+    "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-28.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-29.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-30.md"
   ],
   "entities": [
     {
@@ -72941,6 +72948,168 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 20,
       "evidence": "### 2026-10-24 — P9-26 batch 24: ai, dashboard, apiKeys routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-24.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_25_oidc_quota_warehouse_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 25: oidc, quota, warehouse routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-25.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-25.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 25: oidc, quota, warehouse routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_25_oidc_quota_warehouse_routes_to_typescript_record_records_2026_10_24_p9_26_batch_25_md_",
+      "name": "2026-10-24 — P9-26 batch 25: oidc, quota, warehouse routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-25.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 20,
+      "evidence": "### 2026-10-24 — P9-26 batch 25: oidc, quota, warehouse routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-25.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_26_session_search_reports_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 26: session, search, reports routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-26.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-26.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 26: session, search, reports routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_26_session_search_reports_routes_to_typescript_record_records_2026_10_24_p9_26_batch_26_md_",
+      "name": "2026-10-24 — P9-26 batch 26: session, search, reports routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-26.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 20,
+      "evidence": "### 2026-10-24 — P9-26 batch 26: session, search, reports routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-26.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_27_qms_sop_workflows_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 27: qms, sop, workflows routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-27.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-27.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 27: qms, sop, workflows routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_27_qms_sop_workflows_routes_to_typescript_record_records_2026_10_24_p9_26_batch_27_md_",
+      "name": "2026-10-24 — P9-26 batch 27: qms, sop, workflows routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-27.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 20,
+      "evidence": "### 2026-10-24 — P9-26 batch 27: qms, sop, workflows routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-27.md))"
+    },
+    {
+      "id": "sec_p25_01_r_8_automated_the_photos_per_folder_per_facility_and_per_run",
+      "name": "P25-01: R-8 automated — the photos per folder, per facility and per run",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "line": 1,
+      "evidence": "# P25-01: R-8 automated — the photos per folder, per facility and per run"
+    },
+    {
+      "id": "ent_run_level_",
+      "name": "Run level:",
+      "type": "Component/Requirement",
+      "description": "staged device rows of the run naming a file in that column, against those mapped",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "line": 17,
+      "evidence": "- **Run level:** staged device rows of the run naming a file in that column, against those mapped"
+    },
+    {
+      "id": "ent_per_decided_facility_",
+      "name": "Per decided facility:",
+      "type": "Component/Requirement",
+      "description": "mapped photos against live attachments (`is_deleted = false`). Each",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "line": 20,
+      "evidence": "- **Per decided facility:** mapped photos against live attachments (`is_deleted = false`). Each"
+    },
+    {
+      "id": "ent_rc_f4_",
+      "name": "RC-F4:",
+      "type": "Component/Requirement",
+      "description": "the source-side totals per facility, which need the dump's own counts.",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "line": 49,
+      "evidence": "- **RC-F4:** the source-side totals per facility, which need the dump's own counts."
+    },
+    {
+      "id": "ent_r_12_",
+      "name": "R-12:",
+      "type": "Component/Requirement",
+      "description": "the app-level smoke on the dry-run database.",
+      "source": "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "line": 50,
+      "evidence": "- **R-12:** the app-level smoke on the dry-run database."
+    },
+    {
+      "id": "sec_2026_10_27_p25_01_r_8_of_the_reconciliation_automated_record_records_2026_10_27_p25_01_r8_photos_md_adr_129_am_12_",
+      "name": "2026-10-27 — P25-01: R-8 of the reconciliation automated ([record](./records/2026-10-27-p25-01-r8-photos.md), ADR-129 Am. 12)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-27 — P25-01: R-8 of the reconciliation automated ([record](./records/2026-10-27-p25-01-r8-photos.md), ADR-129 Am. 12)"
+    },
+    {
+      "id": "sec_p9_26_batch_28_calibrationdevices_tenanthierarchy_webhooks_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 28: calibrationDevices, tenantHierarchy, webhooks routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-28.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-28.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 28: calibrationDevices, tenantHierarchy, webhooks routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_28_calibrationdevices_tenanthierarchy_webhooks_routes_to_typescript_record_records_2026_10_24_p9_26_batch_28_md_",
+      "name": "2026-10-24 — P9-26 batch 28: calibrationDevices, tenantHierarchy, webhooks routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-28.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 23,
+      "evidence": "### 2026-10-24 — P9-26 batch 28: calibrationDevices, tenantHierarchy, webhooks routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-28.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_29_finance_maintenance_networksecurity_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 29: finance, maintenance, networkSecurity routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-29.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-29.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 29: finance, maintenance, networkSecurity routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_29_finance_maintenance_networksecurity_routes_to_typescript_record_records_2026_10_24_p9_26_batch_29_md_",
+      "name": "2026-10-24 — P9-26 batch 29: finance, maintenance, networkSecurity routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-29.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 23,
+      "evidence": "### 2026-10-24 — P9-26 batch 29: finance, maintenance, networkSecurity routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-29.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_30_supplierscorecard_webauthn_predictivemaintenance_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 30: supplierScorecard, webauthn, predictiveMaintenance routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-30.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-30.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 30: supplierScorecard, webauthn, predictiveMaintenance routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_30_supplierscorecard_webauthn_predictivemaintenance_routes_to_typescript_record_records_2026_10_24_p9_26_batch_30_md_",
+      "name": "2026-10-24 � P9-26 batch 30: supplierScorecard, webauthn, predictiveMaintenance routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-30.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 23,
+      "evidence": "### 2026-10-24 � P9-26 batch 30: supplierScorecard, webauthn, predictiveMaintenance routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-30.md))"
     }
   ],
   "relations": [
@@ -108271,12 +108440,92 @@
       "evidence": "- **DONE:** 3 x .js to .ts, same 28 cases, eslint + typecheck clean, ratchet 631 to 628.",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 21
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_25_oidc_quota_warehouse_routes_to_typescript_record_records_2026_10_24_p9_26_batch_25_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 628 to 625.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 21
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_26_session_search_reports_routes_to_typescript_record_records_2026_10_24_p9_26_batch_26_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 625 to 622.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 21
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_27_qms_sop_workflows_routes_to_typescript_record_records_2026_10_24_p9_26_batch_27_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 622 to 619.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 21
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_run_level_",
+      "evidence": "- **Run level:** staged device rows of the run naming a file in that column, against those mapped",
+      "source_file": "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "line": 17
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_per_decided_facility_",
+      "evidence": "- **Per decided facility:** mapped photos against live attachments (`is_deleted = false`). Each",
+      "source_file": "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "line": 20
+    },
+    {
+      "source": "sec_still_open_on_p25_01",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_rc_f4_",
+      "evidence": "- **RC-F4:** the source-side totals per facility, which need the dump's own counts.",
+      "source_file": "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "line": 49
+    },
+    {
+      "source": "sec_still_open_on_p25_01",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_r_12_",
+      "evidence": "- **R-12:** the app-level smoke on the dry-run database.",
+      "source_file": "MEMORY\\records\\2026-10-27-p25-01-r8-photos.md",
+      "line": 50
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_28_calibrationdevices_tenanthierarchy_webhooks_routes_to_typescript_record_records_2026_10_24_p9_26_batch_28_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 17 cases, eslint + typecheck clean, ratchet 619 to 616.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 24
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_29_finance_maintenance_networksecurity_routes_to_typescript_record_records_2026_10_24_p9_26_batch_29_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 19 cases, eslint + typecheck clean, ratchet 616 to 613.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 24
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_30_supplierscorecard_webauthn_predictivemaintenance_routes_to_typescript_record_records_2026_10_24_p9_26_batch_30_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 � `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 613 to 610.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 24
     }
   ],
   "stats": {
-    "total_sources": 353,
-    "total_entities": 8065,
-    "total_relations": 4416,
+    "total_sources": 360,
+    "total_entities": 8083,
+    "total_relations": 4426,
     "token_savings_estimate": "85-95%"
   }
 }

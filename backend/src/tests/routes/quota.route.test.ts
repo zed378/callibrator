@@ -3,7 +3,18 @@
  *
  * Tests the Quota route registrations and middleware chain.
  */
-const quotaRoutes = require("../../routes/api/quota.route");
+
+interface QuotaRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface QuotaRouter {
+    handle: unknown;
+    stack: QuotaRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const quotaRoutes = require("../../routes/api/quota.route") as QuotaRouter;
 
 describe("Quota Routes", () => {
   it("should export an Express router", () => {
@@ -36,10 +47,10 @@ describe("Quota Routes", () => {
     quotaRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete).toBe(true);
       }
     });

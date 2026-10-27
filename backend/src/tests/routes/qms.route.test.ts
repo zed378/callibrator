@@ -3,7 +3,18 @@
  *
  * Tests the Qms route registrations and middleware chain.
  */
-const qmsRoutes = require("../../routes/api/qms.route");
+
+interface QmsRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface QmsRouter {
+    handle: unknown;
+    stack: QmsRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const qmsRoutes = require("../../routes/api/qms.route") as QmsRouter;
 
 describe("Qms Routes", () => {
   it("should export an Express router", () => {
@@ -36,11 +47,11 @@ describe("Qms Routes", () => {
     qmsRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
-        const hasPatch = methods.patch === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
+        const hasPatch = methods["patch"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete || hasPatch).toBe(true);
       }
     });
