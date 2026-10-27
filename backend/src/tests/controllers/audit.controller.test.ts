@@ -1,6 +1,7 @@
 /**
  * Tests for audit.controller.ts
  */
+import type { Request, Response } from "express";
 
 jest.mock("../../services/audit.service", () => ({
   fetchAuditLogs: jest.fn(),
@@ -11,19 +12,39 @@ jest.mock("../../utils/response.util", () => ({
   error: jest.fn(),
 }));
 
-const auditService = require("../../services/audit.service");
-const auditController = require("../../controllers/audit.controller");
-const { success } = require("../../utils/response.util");
+interface AuditServiceDouble {
+    fetchAuditLogs: jest.Mock;
+}
+
+interface ResponseDouble {
+    success: jest.Mock;
+}
+
+type Handler = (req: Request, res: Response, next: (err?: unknown) => void) => Promise<unknown>;
+
+interface FakeRes {
+    status: (code: number) => FakeRes;
+    json: jest.Mock;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factories above
+const auditService = require("../../services/audit.service") as AuditServiceDouble;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factories above
+const auditController = require("../../controllers/audit.controller") as { fetchAuditLogs: Handler };
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factories above
+const { success } = require("../../utils/response.util") as ResponseDouble;
 
 const VALID_TENANT_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 describe("auditController", () => {
-  let req, res, next;
+  let req: Record<string, unknown>;
+  let res: FakeRes;
+  let next: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    success.mockImplementation((res, data, meta, message, status) => {
-      res.status(status || 200).json({ success: true, data, meta, message });
+    success.mockImplementation((response: FakeRes, data: unknown, meta: unknown, message: unknown, status?: number) => {
+      response.status(status ?? 200).json({ success: true, data, meta, message });
     });
     req = {
       query: {},
@@ -46,14 +67,12 @@ describe("auditController", () => {
         status: 200,
         message: "Fetch audit logs successful",
         data: {
-          rows: [
-            { id: "log-1", action: "login", resourceType: "user" },
-          ],
+          rows: [{ id: "log-1", action: "login", resourceType: "user" }],
           meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
         },
       });
 
-      await auditController.fetchAuditLogs(req, res, next);
+      await auditController.fetchAuditLogs(req as unknown as Request, res as unknown as Response, next);
 
       expect(auditService.fetchAuditLogs).toHaveBeenCalledWith({
         tenantId: VALID_TENANT_ID,
@@ -81,7 +100,7 @@ describe("auditController", () => {
         },
       });
 
-      req.query = {
+      req["query"] = {
         page: "2",
         limit: "5",
         userId: "user-1",
@@ -92,7 +111,7 @@ describe("auditController", () => {
         endDate: "2026-12-31",
       };
 
-      await auditController.fetchAuditLogs(req, res, next);
+      await auditController.fetchAuditLogs(req as unknown as Request, res as unknown as Response, next);
 
       expect(auditService.fetchAuditLogs).toHaveBeenCalledWith({
         tenantId: VALID_TENANT_ID,
@@ -116,7 +135,7 @@ describe("auditController", () => {
         data: { rows: [], meta: {} },
       });
 
-      await auditController.fetchAuditLogs(req, res, next);
+      await auditController.fetchAuditLogs(req as unknown as Request, res as unknown as Response, next);
 
       expect(res.status).toHaveBeenCalledWith(500);
     });

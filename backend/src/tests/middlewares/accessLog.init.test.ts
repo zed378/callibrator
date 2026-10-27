@@ -13,7 +13,10 @@ jest.mock("rotating-file-stream", () => ({
 }));
 
 jest.mock("morgan", () => {
-  const fn = jest.fn(() => (req, res, next) => next());
+  const fn = jest.fn(
+    () =>
+      (_req: unknown, _res: unknown, next: () => void): void => { next(); },
+  ) as unknown as { (...args: unknown[]): unknown; token: jest.Mock };
   fn.token = jest.fn();
   return fn;
 });
@@ -29,12 +32,19 @@ jest.mock("fs", () => ({
 
 jest.mock("../../utils/storagePath.util", () => jest.fn(() => "/tmp/log/access"));
 
+interface FsDouble {
+    existsSync: jest.Mock;
+    mkdirSync: jest.Mock;
+}
+
 describe("accessLog middleware log directory setup", () => {
   it("should create the log directory recursively when it does not exist", () => {
     jest.isolateModules(() => {
-      const fs = require("fs");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- re-reads the module under a stubbed fs
+      const fs = require("fs") as FsDouble;
       fs.existsSync.mockReturnValue(false);
 
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- module load is the behaviour under test
       require("../../middlewares/accessLog.middleware");
 
       expect(fs.existsSync).toHaveBeenCalledWith("/tmp/log/access");
@@ -46,9 +56,11 @@ describe("accessLog middleware log directory setup", () => {
 
   it("should not create the log directory when it already exists", () => {
     jest.isolateModules(() => {
-      const fs = require("fs");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- re-reads the module under a stubbed fs
+      const fs = require("fs") as FsDouble;
       fs.existsSync.mockReturnValue(true);
 
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- module load is the behaviour under test
       require("../../middlewares/accessLog.middleware");
 
       expect(fs.mkdirSync).not.toHaveBeenCalled();

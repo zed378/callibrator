@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 User-visible and operationally significant changes, newest first. Coarser than [`MEMORY-INDEX.md`](./MEMORY-INDEX.md); every entry links to a record or an ADR.
 
@@ -7,6 +7,27 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ---
 
 ## Unreleased
+
+### 2026-10-24 — P9-26 batch 17: csp.p708, bodylessBody.a09, controllerWrapper to TypeScript ([record](./records/2026-10-24-p9-26-batch-17.md))
+- **DONE:** 3 × `.js` to `.ts`, same 75 cases, eslint + typecheck clean, ratchet 652 to 649.
+
+### 2026-10-24 — P9-26 batch 16: jwt.a31, jwt.purpose.a59, istanbulIgnore.a32 to TypeScript ([record](./records/2026-10-24-p9-26-batch-16.md))
+- **DONE:** 3 × `.js` to `.ts`, same 31 cases, eslint + typecheck clean, ratchet 655 to 652.
+
+### 2026-10-24 — P9-26 batch 15: jwt.env, mfaPolicy.a160, createFolder to TypeScript ([record](./records/2026-10-24-p9-26-batch-15.md))
+- **DONE:** 3 × `.js` to `.ts`, same 12 cases, eslint + typecheck clean, ratchet 658 to 655.
+
+### 2026-10-24 — P9-26 batch 14: bodyDefault, metricsAuth.p702, certificatePdf.keyId.p610 to TypeScript ([record](./records/2026-10-24-p9-26-batch-14.md))
+- **DONE:** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 661 to 658.
+
+### 2026-10-24 — P9-26 batch 13: keyring.p610, accessLog.init, auditActor to TypeScript ([record](./records/2026-10-24-p9-26-batch-13.md))
+- **DONE:** 3 × `.js` to `.ts`, same 14 cases, eslint + typecheck clean, ratchet 664 to 661.
+
+### 2026-10-24 — P9-26 batch 12: runtimeDirs.p602, storagePath, dbReady to TypeScript ([record](./records/2026-10-24-p9-26-batch-12.md))
+- **DONE:** 3 × `.js` to `.ts`, same 34 cases, eslint + typecheck clean, ratchet 667 to 664.
+
+### 2026-10-24 — P9-26 batch 11: quota, a260, audit controllers to TypeScript ([record](./records/2026-10-24-p9-26-batch-11.md))
+- **DONE:** 3 × `.js` to `.ts`, same 8 cases, eslint + typecheck clean, ratchet 670 to 667.
 
 ### 2026-10-24 — P9-26 batch 10: appError, validateUuid, certificateNumber.d40 to TypeScript ([record](./records/2026-10-24-p9-26-batch-10-apperror-validateuuid-certnumber.md))
 - **DONE:** 3 × `.js` to `.ts`, same 43 cases, eslint + typecheck clean, ratchet 673 to 670.

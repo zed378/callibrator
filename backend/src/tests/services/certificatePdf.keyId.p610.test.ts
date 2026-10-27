@@ -5,23 +5,46 @@
  * fingerprint of the secret, so a rotated secret yields a different id and a
  * stored signature could be verified against the key it names.
  */
+import crypto from "crypto";
+import type * as Keyring from "../../utils/keyring.util";
+import { environment } from "../../config/env";
+
 jest.mock("../../models", () => ({}));
 
-const crypto = require("crypto");
-const { keyIdOf } = require("../../utils/keyring.util");
+// The live environment object (config/env: process.env itself, not a copy).
+const penv = environment();
 
-const load = (secret) => {
-  const saved = process.env.CERT_SIGNING_SECRET;
-  process.env.CERT_SIGNING_SECRET = secret;
-  let mod;
+const { keyIdOf } = jest.requireActual<typeof Keyring>("../../utils/keyring.util");
+
+interface CertificatePdfModule {
+    SIGNATURE_KEY_ID: string;
+    computeSignature: (value: string) => string;
+}
+
+const load = (secret: string): CertificatePdfModule => {
+  const saved = penv["CERT_SIGNING_SECRET"];
+
+  penv["CERT_SIGNING_SECRET"] = secret;
+  let mod: CertificatePdfModule | undefined;
   try {
     jest.isolateModules(() => {
-      mod = require("../../services/certificatePdf.service");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- the module's load IS the behaviour under test
+      mod = require("../../services/certificatePdf.service") as CertificatePdfModule;
     });
   } finally {
-    process.env.CERT_SIGNING_SECRET = saved;
+    if (saved === undefined) {
+
+      Reflect.deleteProperty(penv, "CERT_SIGNING_SECRET");
+    } else {
+
+      penv["CERT_SIGNING_SECRET"] = saved;
+    }
   }
-  return mod;
+  const loaded: CertificatePdfModule | undefined = mod;
+  if (loaded === undefined) {
+    throw new Error("certificatePdf.service did not load");
+  }
+  return loaded;
 };
 
 describe("certificate signature key id (P6-10)", () => {

@@ -1,8 +1,8 @@
 /**
  * Tests for createFolder middleware
  */
-const fs = require("fs");
-const { ensureFolderExisted } = require("../../middlewares/createFolder.middleware");
+import fs from "fs";
+import { ensureFolderExisted } from "../../middlewares/createFolder.middleware";
 
 // Mock the logger to prevent console logs/errors
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -13,16 +13,20 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 
 describe("createFolder middleware", () => {
-  let originalExit;
-  let spyExists, spyMkdir;
+  let originalExit: typeof process.exit;
+  let exitSpy: jest.Mock;
+  let spyExists: jest.SpiedFunction<typeof fs.existsSync>;
+  let spyMkdir: jest.SpiedFunction<typeof fs.mkdirSync>;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- saved to restore the real exit after the suite
     originalExit = process.exit;
-    process.exit = jest.fn();
+    exitSpy = jest.fn();
+    process.exit = exitSpy as unknown as typeof process.exit;
 
     spyExists = jest.spyOn(fs, "existsSync").mockImplementation(() => true);
-    spyMkdir = jest.spyOn(fs, "mkdirSync").mockImplementation(() => {});
+    spyMkdir = jest.spyOn(fs, "mkdirSync").mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -47,16 +51,19 @@ describe("createFolder middleware", () => {
       throw new Error("Disk error");
     });
     ensureFolderExisted();
-    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it("should handle packaged environment (process.pkg set)", () => {
     jest.isolateModules(() => {
       process.pkg = {};
-      const { ensureFolderExisted } = require("../../middlewares/createFolder.middleware");
-      const spyExists = jest.spyOn(fs, "existsSync").mockReturnValue(true);
-      ensureFolderExisted();
-      expect(spyExists).toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- re-reads the module under the packaged flag
+      const { ensureFolderExisted: ensurePackaged } = require(
+        "../../middlewares/createFolder.middleware",
+      ) as { ensureFolderExisted: () => void };
+      const packagedExists = jest.spyOn(fs, "existsSync").mockReturnValue(true);
+      ensurePackaged();
+      expect(packagedExists).toHaveBeenCalled();
       delete process.pkg;
     });
   });

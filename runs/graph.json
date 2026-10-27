@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-25T16:12:04.316Z",
+  "last_updated": "2026-10-27T04:59:39.602Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -338,7 +338,14 @@
     "batch8-remain.txt",
     "MEMORY\\records\\2026-10-24-p9-26-batch-08-guards-p611-p614-a42.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-09-password-otp-env.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-10-apperror-validateuuid-certnumber.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-10-apperror-validateuuid-certnumber.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-11.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-12.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-13.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-14.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-15.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-16.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-17.md"
   ],
   "entities": [
     {
@@ -72511,6 +72518,132 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-24 — P9-26 batch 10: appError, validateUuid, certificateNumber.d40 to TypeScript ([record](./records/2026-10-24-p9-26-batch-10-apperror-validateuuid"
+    },
+    {
+      "id": "sec_p9_26_batch_11_quota_auth_passwordcheckretryafter_a260_audit_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 11: quota, auth.passwordCheckRetryAfter.a260, audit — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-11.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-11.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 11: quota, auth.passwordCheckRetryAfter.a260, audit — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_11_quota_a260_audit_controllers_to_typescript_record_records_2026_10_24_p9_26_batch_11_md_",
+      "name": "2026-10-24 — P9-26 batch 11: quota, a260, audit controllers to TypeScript ([record](./records/2026-10-24-p9-26-batch-11.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 11: quota, a260, audit controllers to TypeScript ([record](./records/2026-10-24-p9-26-batch-11.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_12_runtimedirs_p602_storagepath_dbready_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 12: runtimeDirs.p602, storagePath, dbReady — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-12.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-12.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 12: runtimeDirs.p602, storagePath, dbReady — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_12_runtimedirs_p602_storagepath_dbready_to_typescript_record_records_2026_10_24_p9_26_batch_12_md_",
+      "name": "2026-10-24 — P9-26 batch 12: runtimeDirs.p602, storagePath, dbReady to TypeScript ([record](./records/2026-10-24-p9-26-batch-12.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 12: runtimeDirs.p602, storagePath, dbReady to TypeScript ([record](./records/2026-10-24-p9-26-batch-12.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_13_keyring_p610_accesslog_init_auditactor_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 13: keyring.p610, accessLog.init, auditActor — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-13.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-13.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 13: keyring.p610, accessLog.init, auditActor — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_13_keyring_p610_accesslog_init_auditactor_to_typescript_record_records_2026_10_24_p9_26_batch_13_md_",
+      "name": "2026-10-24 — P9-26 batch 13: keyring.p610, accessLog.init, auditActor to TypeScript ([record](./records/2026-10-24-p9-26-batch-13.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 13: keyring.p610, accessLog.init, auditActor to TypeScript ([record](./records/2026-10-24-p9-26-batch-13.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_14_bodydefault_metricsauth_p702_certificatepdf_keyid_p610_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 14: bodyDefault, metricsAuth.p702, certificatePdf.keyId.p610 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-14.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-14.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 14: bodyDefault, metricsAuth.p702, certificatePdf.keyId.p610 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_14_bodydefault_metricsauth_p702_certificatepdf_keyid_p610_to_typescript_record_records_2026_10_24_p9_26_batch_14_md_",
+      "name": "2026-10-24 — P9-26 batch 14: bodyDefault, metricsAuth.p702, certificatePdf.keyId.p610 to TypeScript ([record](./records/2026-10-24-p9-26-batch-14.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 14: bodyDefault, metricsAuth.p702, certificatePdf.keyId.p610 to TypeScript ([record](./records/2026-10-24-p9-26-batch-14.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_15_jwt_env_mfapolicy_a160_createfolder_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 15: jwt.env, mfaPolicy.a160, createFolder — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-15.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-15.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 15: jwt.env, mfaPolicy.a160, createFolder — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_15_jwt_env_mfapolicy_a160_createfolder_to_typescript_record_records_2026_10_24_p9_26_batch_15_md_",
+      "name": "2026-10-24 — P9-26 batch 15: jwt.env, mfaPolicy.a160, createFolder to TypeScript ([record](./records/2026-10-24-p9-26-batch-15.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 15: jwt.env, mfaPolicy.a160, createFolder to TypeScript ([record](./records/2026-10-24-p9-26-batch-15.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_16_jwt_a31_jwt_purpose_a59_istanbulignore_a32_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 16: jwt.a31, jwt.purpose.a59, istanbulIgnore.a32 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-16.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-16.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 16: jwt.a31, jwt.purpose.a59, istanbulIgnore.a32 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_16_jwt_a31_jwt_purpose_a59_istanbulignore_a32_to_typescript_record_records_2026_10_24_p9_26_batch_16_md_",
+      "name": "2026-10-24 — P9-26 batch 16: jwt.a31, jwt.purpose.a59, istanbulIgnore.a32 to TypeScript ([record](./records/2026-10-24-p9-26-batch-16.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 — P9-26 batch 16: jwt.a31, jwt.purpose.a59, istanbulIgnore.a32 to TypeScript ([record](./records/2026-10-24-p9-26-batch-16.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_17_csp_p708_bodylessbody_a09_controllerwrapper_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 17: csp.p708, bodylessBody.a09, controllerWrapper — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-17.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-17.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 17: csp.p708, bodylessBody.a09, controllerWrapper — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_17_csp_p708_bodylessbody_a09_controllerwrapper_to_typescript_record_records_2026_10_24_p9_26_batch_17_md_",
+      "name": "2026-10-24 � P9-26 batch 17: csp.p708, bodylessBody.a09, controllerWrapper to TypeScript ([record](./records/2026-10-24-p9-26-batch-17.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 � P9-26 batch 17: csp.p708, bodylessBody.a09, controllerWrapper to TypeScript ([record](./records/2026-10-24-p9-26-batch-17.md))"
     }
   ],
   "relations": [
@@ -107665,12 +107798,68 @@
       "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 43 cases, eslint + typecheck clean, ratchet 673 to 670.",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_11_quota_a260_audit_controllers_to_typescript_record_records_2026_10_24_p9_26_batch_11_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 8 cases, eslint + typecheck clean, ratchet 670 to 667.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_12_runtimedirs_p602_storagepath_dbready_to_typescript_record_records_2026_10_24_p9_26_batch_12_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 34 cases, eslint + typecheck clean, ratchet 667 to 664.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_13_keyring_p610_accesslog_init_auditactor_to_typescript_record_records_2026_10_24_p9_26_batch_13_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 14 cases, eslint + typecheck clean, ratchet 664 to 661.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_14_bodydefault_metricsauth_p702_certificatepdf_keyid_p610_to_typescript_record_records_2026_10_24_p9_26_batch_14_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 661 to 658.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_15_jwt_env_mfapolicy_a160_createfolder_to_typescript_record_records_2026_10_24_p9_26_batch_15_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 12 cases, eslint + typecheck clean, ratchet 658 to 655.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_16_jwt_a31_jwt_purpose_a59_istanbulignore_a32_to_typescript_record_records_2026_10_24_p9_26_batch_16_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 × `.js` to `.ts`, same 31 cases, eslint + typecheck clean, ratchet 655 to 652.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_17_csp_p708_bodylessbody_a09_controllerwrapper_to_typescript_record_records_2026_10_24_p9_26_batch_17_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 x `.js` to `.ts`, same 75 cases, eslint + typecheck clean, ratchet 652 to 649.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
     }
   ],
   "stats": {
-    "total_sources": 337,
-    "total_entities": 8019,
-    "total_relations": 4394,
+    "total_sources": 344,
+    "total_entities": 8033,
+    "total_relations": 4401,
     "token_savings_estimate": "85-95%"
   }
 }

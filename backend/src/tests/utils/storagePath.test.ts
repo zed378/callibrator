@@ -1,7 +1,12 @@
 /**
  * Tests for storagePath util
  */
-const path = require("path");
+import path from "path";
+
+type StoragePathFn = (...paths: string[]) => string;
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the module under test is `export =` (CommonJS)
+const loadStoragePath = (): StoragePathFn => require("../../utils/storagePath.util") as StoragePathFn;
 
 describe("storagePath util", () => {
   beforeEach(() => {
@@ -13,18 +18,20 @@ describe("storagePath util", () => {
     it("should join a single segment to the storage root", () => {
       // Ensure process.pkg is undefined for non-packaged mode
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      delete process.env["APP_STORAGE_PATH"];
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath("exports");
       expect(result.endsWith(path.join("exports"))).toBe(true);
     });
 
     it("should join multiple segments", () => {
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      delete process.env["APP_STORAGE_PATH"];
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath("exports", "abc", "file.zip");
       expect(result.endsWith(path.join("exports", "abc", "file.zip"))).toBe(
         true,
@@ -33,17 +40,19 @@ describe("storagePath util", () => {
 
     it("should always produce an absolute path", () => {
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      delete process.env["APP_STORAGE_PATH"];
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       expect(path.isAbsolute(storagePath("x"))).toBe(true);
     });
 
     it("should return a string for the storage root with no segments", () => {
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      delete process.env["APP_STORAGE_PATH"];
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath();
       expect(typeof result).toBe("string");
       expect(result.length).toBeGreaterThan(0);
@@ -51,9 +60,10 @@ describe("storagePath util", () => {
 
     it("should use path.resolve with __dirname for non-packaged mode", () => {
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      delete process.env["APP_STORAGE_PATH"];
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath("test");
       // In non-packaged mode, storageRoot = path.resolve(__dirname, "../../")
       expect(result).toContain("backend");
@@ -64,22 +74,25 @@ describe("storagePath util", () => {
     it("should use APP_STORAGE_PATH when set in packaged mode", () => {
       // Set process.pkg BEFORE requiring the module
       process.pkg = { file: "/app/app.exe" };
-      process.env.APP_STORAGE_PATH = "/custom/storage";
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      process.env["APP_STORAGE_PATH"] = "/custom/storage";
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath("exports");
       expect(result).toBe(path.join("/custom/storage", "exports"));
 
       // Clean up
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- restores the environment the case mutated
+      delete process.env["APP_STORAGE_PATH"];
     });
 
     it("should use fallback path when APP_STORAGE_PATH is not set in packaged mode", () => {
       process.pkg = { file: "/app/app.exe" };
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      delete process.env["APP_STORAGE_PATH"];
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath("exports");
       // Fallback: path.join(path.dirname(process.execPath), "storage")
       const expectedRoot = path.join(path.dirname(process.execPath), "storage");
@@ -91,9 +104,10 @@ describe("storagePath util", () => {
 
     it("should join multiple segments in packaged mode with custom path", () => {
       process.pkg = { file: "/app/app.exe" };
-      process.env.APP_STORAGE_PATH = "/custom/storage";
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      process.env["APP_STORAGE_PATH"] = "/custom/storage";
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath("exports", "abc", "file.zip");
       expect(result).toBe(
         path.join("/custom/storage", "exports", "abc", "file.zip"),
@@ -101,26 +115,30 @@ describe("storagePath util", () => {
 
       // Clean up
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- restores the environment the case mutated
+      delete process.env["APP_STORAGE_PATH"];
     });
 
     it("should produce absolute path in packaged mode", () => {
       process.pkg = { file: "/app/app.exe" };
-      process.env.APP_STORAGE_PATH = "/custom/storage";
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      process.env["APP_STORAGE_PATH"] = "/custom/storage";
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       expect(path.isAbsolute(storagePath("x"))).toBe(true);
 
       // Clean up
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- restores the environment the case mutated
+      delete process.env["APP_STORAGE_PATH"];
     });
 
     it("should return string for storage root with no segments in packaged mode", () => {
       process.pkg = { file: "/app/app.exe" };
-      process.env.APP_STORAGE_PATH = "/custom/storage";
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      process.env["APP_STORAGE_PATH"] = "/custom/storage";
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath();
       expect(typeof result).toBe("string");
       // path.join() normalizes slashes, so on Windows it becomes backslashes
@@ -129,9 +147,10 @@ describe("storagePath util", () => {
 
     it("should prioritize APP_STORAGE_PATH over fallback in packaged mode", () => {
       process.pkg = { file: "/app/app.exe" };
-      process.env.APP_STORAGE_PATH = "/my/custom/path";
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      process.env["APP_STORAGE_PATH"] = "/my/custom/path";
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath();
       // When APP_STORAGE_PATH is set, it should be used directly
       // path.join() normalizes slashes, so on Windows it becomes backslashes
@@ -145,27 +164,30 @@ describe("storagePath util", () => {
   describe("edge cases", () => {
     it("should handle empty string segments", () => {
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      delete process.env["APP_STORAGE_PATH"];
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath("");
       expect(typeof result).toBe("string");
     });
 
     it("should handle segments with leading slashes", () => {
       delete process.pkg;
-      delete process.env.APP_STORAGE_PATH;
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      delete process.env["APP_STORAGE_PATH"];
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath("/absolute/path");
       expect(typeof result).toBe("string");
     });
 
     it("should handle APP_STORAGE_PATH with trailing slash", () => {
       process.pkg = { file: "/app/app.exe" };
-      process.env.APP_STORAGE_PATH = "/custom/storage/";
+      // eslint-disable-next-line no-restricted-properties -- the module under test reads the environment raw at load
+      process.env["APP_STORAGE_PATH"] = "/custom/storage/";
 
-      const storagePath = require("../../utils/storagePath.util");
+      const storagePath = loadStoragePath();
       const result = storagePath("exports");
       // On Windows, path.join normalizes to backslashes
       const expected = path.join("/custom/storage", "exports");

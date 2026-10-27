@@ -2,8 +2,8 @@
  * P6-10 / S-08 — utils/keyring.util.js. Real crypto: a key id is a function
  * of the key alone, so every replica and every script agrees on it.
  */
-const crypto = require("crypto");
-const { keyIdOf, splitKeyList, buildKeyring, KEY_ID_CONTEXT } = require("../../utils/keyring.util");
+import crypto from "crypto";
+import { buildKeyring, KEY_ID_CONTEXT, keyIdOf, splitKeyList } from "../../utils/keyring.util";
 
 const A = Buffer.alloc(32, 1);
 const B = Buffer.alloc(32, 2);
@@ -26,7 +26,7 @@ describe("splitKeyList", () => {
     ["k1", ["k1"]],
     ["k1,k2", ["k1", "k2"]],
     [" k1 ,\n k2  k3 ,, ", ["k1", "k2", "k3"]],
-  ])("%p -> %p", (raw, list) => {
+  ])("%p -> %p", (raw: string | undefined, list: string[]) => {
     expect(splitKeyList(raw)).toEqual(list);
   });
 });

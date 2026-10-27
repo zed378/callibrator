@@ -1,6 +1,8 @@
 /**
  * dbReady utility tests
  */
+import type { DbProbe, WaitForDbReadyOptions } from "../../utils/dbReady.util";
+
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
@@ -9,13 +11,23 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   },
 }));
 
-const { waitForDbReady } = require("../../utils/dbReady.util");
-const { logger } = require("../../middlewares/activityLog.middleware");
+interface LoggerDouble {
+    info: jest.Mock;
+    warn: jest.Mock;
+    error: jest.Mock;
+}
+
+type WaitForDbReady = (sequelize: DbProbe, opts?: WaitForDbReadyOptions) => Promise<string>;
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factory above
+const { waitForDbReady } = require("../../utils/dbReady.util") as { waitForDbReady: WaitForDbReady };
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the mocked logger, so assertions reach the same double
+const { logger } = require("../../middlewares/activityLog.middleware") as { logger: LoggerDouble };
 
 describe("waitForDbReady", () => {
-  let mockAuthenticate;
-  let mockQuery;
-  let mockSequelize;
+  let mockAuthenticate: jest.Mock;
+  let mockQuery: jest.Mock;
+  let mockSequelize: DbProbe;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -116,7 +128,7 @@ describe("waitForDbReady", () => {
           maxAttempts,
           delayMs: 1,
         }),
-      ).rejects.toThrow(`Database not ready after ${maxAttempts} attempts`);
+      ).rejects.toThrow(`Database not ready after ${String(maxAttempts)} attempts`);
 
       expect(mockAuthenticate).toHaveBeenCalledTimes(maxAttempts);
     });
