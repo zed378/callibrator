@@ -131,6 +131,11 @@ describe("P25-02 the data-quality report", () => {
         ["Q-4", "pass", 0],
         ["Q-14", "pass", 0],
         ["Q-28", "manual", 0],
+        ["Q-8", "pass", 0],
+        ["Q-9", "pass", 0],
+        ["Q-2", "pass", 0],
+        ["Q-3", "pass", 0],
+        ["Q-10", "pass", 0],
       ]);
       expect(row.findings.find((f) => f.finding === "Q-28")?.note).toContain("unreferenced files on disk are not counted");
     }
@@ -184,18 +189,48 @@ describe("P25-02 the data-quality report", () => {
     expect(pick(f1, "Q-14")).toMatchObject({ status: "flagged", count: 1 });
     expect(pick(f1, "Q-28")).toMatchObject({ status: "flagged", count: 2 });
     expect([pick(f2, "Q-4")?.status, pick(f2, "Q-14")?.status, pick(f2, "Q-28")?.status]).toEqual(["pass", "pass", "manual"]);
-    const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
-    const q4 = calls.filter(([text]) => text.includes("'no_device'")).map(([, o]) => o.bind);
+    const calls = query.mock.calls as unknown as [string, { bind?: unknown[] }][];
+    const q4 = calls.filter(([, o]) => o.bind?.[2] === "no_device").map(([, o]) => o.bind);
     expect(q4).toEqual([
-      [RUN, "trx_hasil_pemeriksaan"],
-      [RUN, "trx_hasil_maintenance"],
-      [RUN, "trx_rekomendasi_hasil_pekerjaan"],
-      [RUN, "trx_catatan"],
+      [RUN, "trx_hasil_pemeriksaan", "no_device"],
+      [RUN, "trx_hasil_maintenance", "no_device"],
+      [RUN, "trx_rekomendasi_hasil_pekerjaan", "no_device"],
+      [RUN, "trx_catatan", "no_device"],
     ]);
     const q28 = calls.filter(([text]) => text.includes("'file_missing'")).map(([, o]) => o.bind);
     expect(q28).toEqual([
       [RUN, "foto_depan"],
       [RUN, "foto_sn"],
+    ]);
+  });
+
+  it("duplicates (Q-8, Q-9) and orphans (Q-2 over the 16 IPM tables, Q-3 devices, Q-10 calibrations), per facility", async () => {
+    seedRun(RUN);
+    db.present = true;
+    db.perFacility = [{ facilityId: F1, n: 1 }];
+    const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
+    const [f1, f2] = answer.facilities;
+    const counts = (row: typeof f1) =>
+      ["Q-8", "Q-9", "Q-2", "Q-3", "Q-10"].map((id) => {
+        const f = row?.findings.find((x) => x.finding === id);
+        return [id, f?.status, f?.count];
+      });
+    expect(counts(f1)).toEqual([
+      ["Q-8", "flagged", 4],
+      ["Q-9", "flagged", 1],
+      ["Q-2", "flagged", 16],
+      ["Q-3", "flagged", 1],
+      ["Q-10", "flagged", 1],
+    ]);
+    expect(counts(f2).every(([, status, count]) => status === "pass" && count === 0)).toBe(true);
+    // The performer is matched against the users step's mapping; each table bound, the run first.
+    const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
+    const performer = calls.filter(([text]) => text.includes("um.source_table = 'users'")).map(([, o]) => o.bind[1]);
+    expect(performer).toEqual([
+      "trx_hasil_pemeriksaan", "trx_hasil_maintenance", "trx_rekomendasi_hasil_pekerjaan", "trx_catatan",
+      "trx_alat_kerja_digunakan", "trx_battery", "trx_fungsi_alat", "trx_keamanan_listrik", "trx_kelengkapan_alat", "trx_kinerja_alat",
+      "trx_kondisi_kelistrikan", "trx_kondisi_lingkungan", "trx_konsumabel", "trx_pemeliharaan_alat", "trx_pemeriksaan_fisik",
+      "trx_pemeriksaan_keamanan_lain", "trx_inventory", "trx_kalibrasi",
     ]);
   });
 });

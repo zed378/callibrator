@@ -521,7 +521,8 @@ export default defineRouteDocs({
       description:
         "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine " +
         "groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18, Q-19, Q-4 and " +
-        "Q-14, and Q-28's missing files (`manual` when none: unreferenced files are the manifest's, P25-04). " +
+        "Q-14, Q-28's missing files (`manual` when none: unreferenced files are the manifest's, P25-04), the duplicates " +
+        "Q-8 and Q-9 and the orphans Q-2, Q-3 and Q-10. " +
         "Counts and fixed codes, never a value from the dump. " +
         "Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.",
       permission: superAdmin,

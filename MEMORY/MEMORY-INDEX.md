@@ -10,6 +10,7 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-10-28 | P25-02; ADR-129 Am. 12 | [Duplicates and orphans in the data-quality report](./records/2026-10-28-p25-02-duplicates-orphans.md) | **PARTIAL.** Q-8 duplicate_header sessions (by staged id_client), Q-9 devices calibrated twice, Q-2/Q-3/Q-10 mapped rows whose id_user has no users mapping. Unit 6/6, route 3/3, live p2402g 6/6 (predicted totals 1/1/2/0/0) + p2403 3/3, guards 335. Left: Q-28 unreferenced, user section |
 | 2026-10-24 | P9-26 | [Batch 37: storage.signing, revokeOthers.a141, auditRedaction.d27](./records/2026-10-24-p9-26-batch-37.md) | **DONE.** 3 -- `.js` to `.ts`, same 27 cases, eslint + typecheck clean, ratchet 592 to 589 |`r`n| 2026-10-24 | P9-26 | [Batch 36: calibrationRecords.route, featureFlags.route, customDomains.route](./records/2026-10-24-p9-26-batch-36.md) | **DONE.** 3 -- `.js` to `.ts`, same 37 cases, eslint + typecheck clean, ratchet 595 to 592 |
 | 2026-10-24 | P9-26 | [Batch 35: batchJobs.route, calibrationScheduler.route, userPermissions.route](./records/2026-10-24-p9-26-batch-35.md) | **DONE.** 3 -- `.js` to `.ts`, same 28 cases, eslint + typecheck clean, ratchet 598 to 595 |
 | 2026-10-24 | P9-26 | [Batch 34: gdpr.routes, tenantLifecycle.routes, dataRetention.routes](./records/2026-10-24-p9-26-batch-34.md) | **DONE.** 3 -- `.js` to `.ts`, same 29 cases, eslint + typecheck clean, ratchet 601 to 598 |

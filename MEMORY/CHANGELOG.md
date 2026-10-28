@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-28 — P25-02: the duplicates (Q-8, Q-9) and orphans (Q-2, Q-3, Q-10) in the data-quality report ([record](./records/2026-10-28-p25-02-duplicates-orphans.md), ADR-129 Am. 12)
+- Per facility: second session headers, devices calibrated more than once, and IPM rows, devices and calibrations whose performer is no imported account. Live `p2402g` 6/6, `p2403` 3/3 on PostgreSQL 18.
+
 ### 2026-10-24 -- P9-26 batch 37: storage.signing, session.revokeOthers.a141, auditRedaction.d27 to TypeScript ([record](./records/2026-10-24-p9-26-batch-37.md))
 - **DONE:** 3 -- `.js` to `.ts`, same 27 cases, eslint + typecheck clean, ratchet 592 to 589.
 
