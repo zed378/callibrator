@@ -3886,7 +3886,7 @@
           "higherRoles": "allowed",
           "superAdmin": "bypasses"
         },
-        "description": "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18, Q-19, Q-4 and Q-14, Q-28's missing files (`manual` when none: unreferenced files are the manifest's, P25-04), the duplicates Q-8 and Q-9 and the orphans Q-2, Q-3 and Q-10. Counts and fixed codes, never a value from the dump. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
+        "description": "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18, Q-19, Q-4 and Q-14, Q-28's missing files, the duplicates Q-8 and Q-9 and the orphans Q-2, Q-3 and Q-10; at the run level (`runFindings`) Q-28's unreferenced photo files. Counts and fixed codes, never a value from the dump. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
         "parameters": [
           {
             "in": "path",
@@ -4059,13 +4059,52 @@
                             ],
                             "additionalProperties": false
                           }
+                        },
+                        "runFindings": {
+                          "maxItems": 50,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "finding": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 16
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pass",
+                                  "flagged",
+                                  "manual"
+                                ]
+                              },
+                              "count": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "note": {
+                                "type": "string",
+                                "maxLength": 280
+                              }
+                            },
+                            "required": [
+                              "finding",
+                              "status",
+                              "count",
+                              "note"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
                         "runId",
                         "providerTenantId",
                         "facilities",
-                        "totals"
+                        "totals",
+                        "runFindings"
                       ],
                       "additionalProperties": false
                     }

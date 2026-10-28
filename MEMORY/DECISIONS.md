@@ -11815,6 +11815,9 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
    - **Q-9:** devices with more than one live calibration.
    - **Q-2 / Q-3 / Q-10:** mapped IPM rows (16 tables), devices and calibrations whose staged `id_user` has no `users` mapping. That covers an absent user, a hard-deleted upstream user, and one the users step quarantined; in our model each is "performer kept as a snapshot".
    - The user section stays unbuilt: R-9 checks the imported accounts per run.
+11. **Q-28's unreferenced half** (2026-10-28). These are photo files the provider's image imports put in `foto_depan` / `foto_sn` (their manifests, read by step 9's own `catalogueOf`) that no staged device row of the run names, compared by step 9's `<folder>/<name>`.
+   - Such a file has no device and so no facility. The contract therefore gains a required run-level `runFindings` array (additive, no consumer outside the backend), and the facility Q-28 is now `pass`/`flagged` on the missing half alone.
+   - The manifests are read on the application's connection BEFORE the transform transaction, as the transform does. Read inside it, the model query failed live, because the transform role cannot read `upstream_file_imports`. The mocked unit test could not see that.
 
 **Alternatives considered.**
 

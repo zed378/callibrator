@@ -57,14 +57,21 @@ describe("P25-02 @callibrator/contracts/upstreamDataQuality — the report", () 
         expect(parsed).not.toHaveProperty("facilityName");
     });
 
-    it("the answer: the run, its provider tenant, per-facility rows and run-level totals", () => {
-        const parsed = upstreamDataQualityResult.parse({
+    it("the answer: the run, its provider tenant, per-facility rows, run-level totals and run-level findings", () => {
+        const answer = {
             runId: "a2502000-0000-4000-8000-0000000000e1",
             providerTenantId: "a2502000-0000-4000-8000-0000000000a1",
             facilities: [],
             totals: [],
-        });
+            runFindings: [{ finding: "Q-28", status: "flagged", count: 2, note: "unreferenced photo files on disk" }],
+        };
+        const parsed = upstreamDataQualityResult.parse(answer);
         expect(parsed.facilities).toEqual([]);
         expect(parsed.totals).toEqual([]);
+        expect(parsed.runFindings).toEqual([{ finding: "Q-28", status: "flagged", count: 2, note: "unreferenced photo files on disk" }]);
+        // A finding with no facility has nowhere else to go: the field is required, never silently absent.
+        const withoutRunFindings: Partial<typeof answer> = { ...answer };
+        delete withoutRunFindings.runFindings;
+        expect(() => upstreamDataQualityResult.parse(withoutRunFindings)).toThrow();
     });
 });

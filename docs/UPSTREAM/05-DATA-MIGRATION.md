@@ -317,7 +317,9 @@ early, then copy only the delta at cutover by name.
 > - Q-4, Q-14 and the missing half of Q-28 per facility (P25-02, 2026-10-27); the duplicates Q-8, Q-9 and the
 >   orphans Q-2, Q-3, Q-10 per facility (2026-10-28).
 >
-> **Not automated:** RC-F4, R-12 and the unreferenced half of Q-28. Each answers `manual`,
+> - Q-28's unreferenced half at the run level (`runFindings`, 2026-10-28).
+>
+> **Not automated:** RC-F4 and R-12. Each answers `manual`,
 > and P25-04 records it by hand on the dry-run database.
 >
 > Migration 0146 gives the transform role the two columns these checks read. They are proven on
