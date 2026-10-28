@@ -9,19 +9,35 @@
  * DESCRIBE a secret without holding it must survive, or the trail loses what
  * it is for.
  */
-jest.mock("../../models", () => ({ AuditLog: { create: jest.fn(async (v) => ({ id: "a-1", ...v })) }, User: {} }));
+import type * as AuditServiceModule from "../../services/audit.service";
+
+jest.mock("../../models", () => ({ AuditLog: { create: jest.fn((v: unknown) => Promise.resolve({ id: "a-1", ...(v as Record<string, unknown>) })) }, User: {} }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-const { redactAuditChanges, isSecretKey, REDACTED } = require("../../utils/auditRedaction.util");
-const { AuditLog } = require("../../models");
-const { logger } = require("../../middlewares/activityLog.middleware");
-const auditService = require("../../services/audit.service");
+import { redactAuditChanges, isSecretKey, REDACTED } from "../../utils/auditRedaction.util";
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the mocked barrel, typed as its mocks
+const { AuditLog } = require("../../models") as {
+    AuditLog: { create: jest.Mock };
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the mocked middleware, typed as its mocks
+const { logger } = require("../../middlewares/activityLog.middleware") as {
+    logger: { warn: jest.Mock };
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the module under test is `export =` (CommonJS), as built
+const auditService = require("../../services/audit.service") as typeof AuditServiceModule;
 
 const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1LTEifQ.c2lnbmF0dXJlLXZhbHVl";
 
-const FIXTURES = [
+interface Fixture {
+    name: string;
+    changes: Record<string, unknown>;
+    secretPaths: string[];
+    kept: Record<string, unknown>;
+}
+
+const FIXTURES: Fixture[] = [
   {
     name: "a password change (auth)",
     changes: {
@@ -80,11 +96,12 @@ const FIXTURES = [
   },
 ];
 
-const at = (obj, dotted) => dotted.split(".").reduce((o, k) => (o == null ? o : o[k]), obj);
+const at = (obj: unknown, dotted: string): unknown =>
+  dotted.split(".").reduce<unknown>((o, k) => (o == null ? o : (o as Record<string, unknown>)[k]), obj);
 
 describe("D-27 — audit changes are redacted against real-shaped fixtures", () => {
-  it.each(FIXTURES)("$name", ({ changes, secretPaths, kept }) => {
-    const snapshot = JSON.parse(JSON.stringify(changes));
+  it.each(FIXTURES)("$name", ({ changes, secretPaths, kept }: Fixture) => {
+    const snapshot = JSON.parse(JSON.stringify(changes)) as Record<string, unknown>;
     const { value, redacted } = redactAuditChanges(changes);
 
     for (const p of secretPaths) {
@@ -95,9 +112,9 @@ describe("D-27 — audit changes are redacted against real-shaped fixtures", () 
     }
     // No secret VALUE of the fixture survives anywhere in the stored JSON.
     const stored = JSON.stringify(value);
-    for (const p of secretPaths.filter((s) => !s.startsWith("request."))) {
+    for (const p of secretPaths.filter((s: string) => !s.startsWith("request."))) {
       const original = at(snapshot, p);
-      for (const piece of [].concat(original).map(String)) {
+      for (const piece of ([] as unknown[]).concat(original).map(String)) {
         expect(stored).not.toContain(piece);
       }
     }
@@ -126,9 +143,12 @@ describe("D-27 — audit changes are redacted against real-shaped fixtures", () 
     const when = new Date("2026-09-25T00:00:00Z");
     const instance = { toJSON: () => ({ password: "x", at: when }) };
     const scalarInstance = { toJSON: () => "plain" };
-    const cyclic = { name: "c" };
-    cyclic.self = cyclic;
-    const { value, redacted } = redactAuditChanges({ list: [instance, scalarInstance], cyclic, bare: `Bearer ${JWT}` });
+    const cyclic: Record<string, unknown> = { name: "c" };
+    cyclic["self"] = cyclic;
+    const { value, redacted } = redactAuditChanges({ list: [instance, scalarInstance], cyclic, bare: `Bearer ${JWT}` }) as {
+            value: { list: unknown[]; cyclic: { self: unknown }; bare: string };
+            redacted: string[];
+        };
     expect(value.list[0]).toEqual({ password: REDACTED, at: when });
     expect(value.list[1]).toBe("plain");
     expect(value.cyclic.self).toBe(cyclic);
@@ -138,7 +158,7 @@ describe("D-27 — audit changes are redacted against real-shaped fixtures", () 
   });
 
   it("stops descending past its depth bound", () => {
-    let deep = { password: "deep-secret" };
+    let deep: Record<string, unknown> = { password: "deep-secret" };
     for (let i = 0; i < 12; i += 1) {
       deep = { next: deep };
     }
@@ -157,7 +177,7 @@ describe("D-27 — audit.service#logAction stores the redacted copy and names th
       changes: { before: { secret: "whsec_1" }, after: { secret: "whsec_2", url: "https://x.test" } },
     });
 
-    const [row] = AuditLog.create.mock.calls[0];
+    const [row] = AuditLog.create.mock.calls[0] as [{ changes: unknown }];
     expect(row.changes).toEqual({ before: { secret: REDACTED }, after: { secret: REDACTED, url: "https://x.test" } });
     expect(logger.warn).toHaveBeenCalledWith(
       "Audit changes carried secret-bearing fields; their values were redacted",
@@ -175,7 +195,9 @@ describe("D-27 — audit.service#logAction stores the redacted copy and names th
       resourceId: "c-1",
       changes: { before: { status: "draft" }, after: { status: "pending_approval" } },
     });
-    expect(AuditLog.create.mock.calls.at(-1)[0].changes).toEqual({
+    const calls = AuditLog.create.mock.calls as [{ changes: unknown }][];
+    const lastCall = calls[calls.length - 1];
+    expect(lastCall?.[0].changes).toEqual({
       before: { status: "draft" },
       after: { status: "pending_approval" },
     });

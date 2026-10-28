@@ -4,7 +4,18 @@
  * Tests the userPermissions route registrations and middleware chain.
  * Endpoints: GET /:userId, POST /:userId, DELETE /:userId/:menuGroupId
  */
-const userPermissionsRoutes = require("../../routes/api/userPermissions.route");
+
+interface UserPermissionsRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface UserPermissionsRouter {
+    handle: unknown;
+    stack: UserPermissionsRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const userPermissionsRoutes = require("../../routes/api/userPermissions.route") as UserPermissionsRouter;
 
 describe("UserPermissions Routes", () => {
   it("should export an Express router", () => {
@@ -26,33 +37,21 @@ describe("UserPermissions Routes", () => {
 
   it("should have GET /:userId route", () => {
     const routes = userPermissionsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:userId" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/:userId" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST /:userId route", () => {
     const routes = userPermissionsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:userId" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/:userId" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have DELETE /:userId/:menuGroupId route", () => {
     const routes = userPermissionsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:userId/:menuGroupId" &&
-        layer.route.methods &&
-        layer.route.methods.delete,
+      (layer) => layer.route?.path === "/:userId/:menuGroupId" && layer.route.methods["delete"] === true,
     );
     expect(routes.length).toBe(1);
   });

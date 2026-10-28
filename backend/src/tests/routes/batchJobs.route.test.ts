@@ -3,7 +3,18 @@
  *
  * Tests the Batch Jobs route registrations and middleware chain.
  */
-const batchJobsRoutes = require("../../routes/api/batchJobs.route");
+
+interface BatchJobsRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface BatchJobsRouter {
+    handle: unknown;
+    stack: BatchJobsRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const batchJobsRoutes = require("../../routes/api/batchJobs.route") as BatchJobsRouter;
 
 describe("Batch Jobs Routes", () => {
   it("should export an Express router", () => {
@@ -23,33 +34,21 @@ describe("Batch Jobs Routes", () => {
 
   it("should have GET route for /", () => {
     const routes = batchJobsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have GET route for /:id", () => {
     const routes = batchJobsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:id" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/:id" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /test", () => {
     const routes = batchJobsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/test" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/test" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
@@ -72,7 +71,7 @@ describe("Batch Jobs Routes", () => {
     batchJobsRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        expect(methods.get === true || methods.post === true).toBe(true);
+        expect(methods["get"] === true || methods["post"] === true).toBe(true);
       }
     });
   });

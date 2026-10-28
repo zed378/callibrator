@@ -10,6 +10,10 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-10-24 | P9-26 | [Batch 37: storage.signing, revokeOthers.a141, auditRedaction.d27](./records/2026-10-24-p9-26-batch-37.md) | **DONE.** 3 -- `.js` to `.ts`, same 27 cases, eslint + typecheck clean, ratchet 592 to 589 |`r`n| 2026-10-24 | P9-26 | [Batch 36: calibrationRecords.route, featureFlags.route, customDomains.route](./records/2026-10-24-p9-26-batch-36.md) | **DONE.** 3 -- `.js` to `.ts`, same 37 cases, eslint + typecheck clean, ratchet 595 to 592 |
+| 2026-10-24 | P9-26 | [Batch 35: batchJobs.route, calibrationScheduler.route, userPermissions.route](./records/2026-10-24-p9-26-batch-35.md) | **DONE.** 3 -- `.js` to `.ts`, same 28 cases, eslint + typecheck clean, ratchet 598 to 595 |
+| 2026-10-24 | P9-26 | [Batch 34: gdpr.routes, tenantLifecycle.routes, dataRetention.routes](./records/2026-10-24-p9-26-batch-34.md) | **DONE.** 3 -- `.js` to `.ts`, same 29 cases, eslint + typecheck clean, ratchet 601 to 598 |
+| 2026-10-24 | P9-26 | [Batch 33: search.guard.a04, iot.route, scim.routes](./records/2026-10-24-p9-26-batch-33.md) | **DONE.** 3 -- `.js` to `.ts`, same 18 cases, eslint + typecheck clean, ratchet 604 to 601 |
 | 2026-10-24 | P9-26 | [Batch 32: W-33, A-116, S-32](./records/2026-10-24-p9-26-batch-32.md) | **DONE.** 3 — `.js` to `.ts`, same 10 cases, eslint + typecheck clean, ratchet 607 to 604 |
 | 2026-10-24 | P9-26 | [Batch 31: eSignature, notifications, content routes](./records/2026-10-24-p9-26-batch-31.md) | **DONE.** 3 � `.js` to `.ts`, same 22 cases, eslint + typecheck clean, ratchet 610 to 607 |
 | 2026-10-24 | P9-26 | [Batch 30: supplierScorecard, webauthn, predictiveMaintenance routes](./records/2026-10-24-p9-26-batch-30.md) | **DONE.** 3 � `.js` to `.ts`, same 15 cases, eslint + typecheck clean, ratchet 613 to 610 |

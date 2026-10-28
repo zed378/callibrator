@@ -1,4 +1,7 @@
-const signing = require("../../services/storage/signing");
+import type * as SigningModule from "../../services/storage/signing";
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the module under test is `export =` (CommonJS), as built
+const signing = require("../../services/storage/signing") as typeof SigningModule;
 
 const KEY = "t/tenant-1/attachments/report.pdf";
 const SECRET = "signing-secret";
@@ -35,19 +38,19 @@ describe("storage signing", () => {
     ["empty exp", ".sig"],
     ["non-numeric exp", "notanumber.sig"],
     ["missing signature", "9999999999."],
-  ])("rejects a malformed token: %s", (_label, token) => {
+  ])("rejects a malformed token: %s", (_label: string, token: unknown) => {
     expect(signing.verify(KEY, token, SECRET)).toBe(false);
   });
 
   it("rejects a signature of the wrong length without throwing", () => {
     // timingSafeEqual throws on a length mismatch; verify must guard it.
-    const future = Math.floor(Date.now() / 1000) + 300;
+    const future = String(Math.floor(Date.now() / 1000) + 300);
     expect(signing.verify(KEY, `${future}.deadbeef`, SECRET)).toBe(false);
   });
 
   it("rejects a right-length but wrong signature", () => {
     const { token, exp } = signing.sign(KEY, 300, SECRET);
-    const forged = `${exp}.${"0".repeat(token.length - String(exp).length - 1)}`;
+    const forged = `${String(exp)}.${"0".repeat(token.length - String(exp).length - 1)}`;
     expect(signing.verify(KEY, forged, SECRET)).toBe(false);
   });
 

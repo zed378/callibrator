@@ -3,7 +3,18 @@
  *
  * Tests the Feature Flags route registrations and middleware chain.
  */
-const featureFlagsRoutes = require("../../routes/api/featureFlags.route");
+
+interface FeatureFlagsRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface FeatureFlagsRouter {
+    handle: unknown;
+    stack: FeatureFlagsRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const featureFlagsRoutes = require("../../routes/api/featureFlags.route") as FeatureFlagsRouter;
 
 describe("Feature Flags Routes", () => {
   it("should export an Express router", () => {
@@ -23,22 +34,14 @@ describe("Feature Flags Routes", () => {
 
   it("should have GET route for /", () => {
     const routes = featureFlagsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have GET route for /definitions", () => {
     const routes = featureFlagsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/definitions" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/definitions" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
@@ -46,10 +49,7 @@ describe("Feature Flags Routes", () => {
   it("should have GET route for /:tenantId/:flagKey", () => {
     const routes = featureFlagsRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/:tenantId/:flagKey" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+        layer.route?.path === "/:tenantId/:flagKey" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
@@ -57,10 +57,7 @@ describe("Feature Flags Routes", () => {
   it("should have POST route for /:tenantId/:flagKey", () => {
     const routes = featureFlagsRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/:tenantId/:flagKey" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+        layer.route?.path === "/:tenantId/:flagKey" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
@@ -68,10 +65,7 @@ describe("Feature Flags Routes", () => {
   it("should have DELETE route for /:tenantId/:flagKey", () => {
     const routes = featureFlagsRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/:tenantId/:flagKey" &&
-        layer.route.methods &&
-        layer.route.methods.delete,
+        layer.route?.path === "/:tenantId/:flagKey" && layer.route.methods["delete"] === true,
     );
     expect(routes.length).toBe(1);
   });
@@ -79,25 +73,18 @@ describe("Feature Flags Routes", () => {
   it("should have POST route for /:tenantId/initialize", () => {
     const routes = featureFlagsRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/:tenantId/initialize" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+        layer.route?.path === "/:tenantId/initialize" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have middleware layers in stack", () => {
-    const middlewareLayers = featureFlagsRoutes.stack.filter(
-      (layer) => !layer.route,
-    );
+    const middlewareLayers = featureFlagsRoutes.stack.filter((layer) => !layer.route);
     expect(middlewareLayers.length).toBeGreaterThan(0);
   });
 
   it("should have router.use() applied before routes", () => {
-    const hasMiddleware = featureFlagsRoutes.stack.some(
-      (layer) => !layer.route,
-    );
+    const hasMiddleware = featureFlagsRoutes.stack.some((layer) => !layer.route);
     const hasRoutes = featureFlagsRoutes.stack.some((layer) => layer.route);
     expect(hasMiddleware).toBe(true);
     expect(hasRoutes).toBe(true);
@@ -107,18 +94,16 @@ describe("Feature Flags Routes", () => {
     featureFlagsRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasDelete = methods.delete === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasDelete = methods["delete"] === true;
         expect(hasGet || hasPost || hasDelete).toBe(true);
       }
     });
   });
 
   it("should have exactly 6 route endpoints", () => {
-    const routeCount = featureFlagsRoutes.stack.filter(
-      (layer) => layer.route,
-    ).length;
+    const routeCount = featureFlagsRoutes.stack.filter((layer) => layer.route).length;
     expect(routeCount).toBe(6);
   });
 });
