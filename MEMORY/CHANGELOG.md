@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-28 — Owner answers: OA-1 … OA-8, UD-7, UD-8, UD-18 ([record](./records/2026-10-28-owner-answers-oa-ud.md))
+- Legal basis = the calibration company's MoU with each facility (P17-03 closed, P24-05 unblocked); source zone UTC+7; `tgl_kalibrasi` is a real calibration date, interval set per request/standard; invitations manual; upstream deleted after cut-off.
+
 ### 2026-10-28 — Backlog G-01, G-05 and G-06 checked against the code ([record](./records/2026-10-28-backlog-g01-g05-g06.md))
 - G-01 resolved (Zod + code-first OpenAPI from the same schemas); G-05 and G-06 answered, each pinned by a named test.
 
