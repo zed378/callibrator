@@ -65,9 +65,10 @@ const load = () => ({
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 /** [id, id_client, id_alat, id_user, no_qrcode, nama_alat] */
+/** [id, id_client, id_alat, id_user, no_qrcode, nama_alat, tgl_kalibrasi] — P24-02h: 101's date is calibration 1's day, 102's is its own. */
 const DEVICES: readonly (readonly (string | number | null)[])[] = [
-  [101, 1, 1, 7, "QR-F101", "Pompa Sintetis"],
-  [102, 2, 1, null, "QR-F102", "Monitor Sintetis"],
+  [101, 1, 1, 7, "QR-F101", "Pompa Sintetis", "2025-04-01"],
+  [102, 2, 1, null, "QR-F102", "Monitor Sintetis", "2024-12-15"],
 ];
 
 /** [id, id_inventory, id_user, nama_ruangan, tanggal_kalibrasi, created_at] */
@@ -122,7 +123,7 @@ describe("P24-02f — the calibrations step on live PostgreSQL 18, as the transf
          ${values(run, [[7, "teknisi.f@example.test", "teknisif", "Teknisi Sintetis", 1, "2023-06-01 09:00:00", null]])}`,
       `INSERT INTO upstream_import.stg_auth_groups_users (import_run_id, source_row_number, group_id, user_id) VALUES ${values(run, [[1, 7]])}`,
       `INSERT INTO upstream_import.stg_mst_alat (import_run_id, source_row_number, id, nama_alat) VALUES ${values(run, [[1, "Pompa Infus"]])}`,
-      `INSERT INTO upstream_import.stg_trx_inventory (import_run_id, source_row_number, id, id_client, id_alat, id_user, no_qrcode, nama_alat) VALUES ${values(run, DEVICES)}`,
+      `INSERT INTO upstream_import.stg_trx_inventory (import_run_id, source_row_number, id, id_client, id_alat, id_user, no_qrcode, nama_alat, tgl_kalibrasi) VALUES ${values(run, DEVICES)}`,
       `INSERT INTO upstream_import.stg_trx_kalibrasi (import_run_id, source_row_number, id, id_inventory, id_user, nama_ruangan, tanggal_kalibrasi, created_at) VALUES
          ${values(run, CALIBRATIONS.map((c) => (moved !== null && c[0] === 1 ? [...c.slice(0, 4), moved, c[5] ?? null] : c)))}`,
     );
@@ -170,7 +171,7 @@ describe("P24-02f — the calibrations step on live PostgreSQL 18, as the transf
       `CREATE TABLE IF NOT EXISTS upstream_import.stg_auth_groups_users (${common}, group_id integer, user_id integer, ${pk})`,
       `CREATE TABLE IF NOT EXISTS upstream_import.stg_mst_alat (${common}, id integer, nama_alat varchar(255), ${pk})`,
       `CREATE TABLE IF NOT EXISTS upstream_import.stg_trx_inventory (${common}, id integer, id_client integer, id_alat integer, id_user integer,
-         no_qrcode varchar(255), nama_alat varchar(255), ${pk})`,
+         no_qrcode varchar(255), nama_alat varchar(255), tgl_kalibrasi date, ${pk})`,
       `CREATE TABLE IF NOT EXISTS upstream_import.stg_trx_kalibrasi (${common}, id integer, id_inventory integer, id_user integer, nama_ruangan varchar(255),
          tanggal_kalibrasi date, created_at timestamp, updated_at timestamp, ${pk})`,
     );
@@ -221,6 +222,8 @@ describe("P24-02f — the calibrations step on live PostgreSQL 18, as the transf
     const summary = await transform(RUN_1);
     expect(summary.steps.find((s) => s.step === "calibration_records")?.sources).toEqual([
       { table: "trx_kalibrasi", staged: 5, mapped: 3, unchanged: 0, quarantined: { future_calibration_date: 1, no_device: 1 } },
+      // P24-02h: both device dates accounted — 101's onto calibration 1 (the same day), 102's a record of its own.
+      { table: "tgl_kalibrasi", staged: 2, mapped: 2, unchanged: 0, quarantined: {} },
     ]);
     const records = await rows(
       `SELECT d.qr_code, r.entry_kind::text AS kind, (r.calibration_date AT TIME ZONE 'UTC')::text AS at_utc, r.room_snapshot AS room,
@@ -230,6 +233,11 @@ describe("P24-02f — the calibrations step on live PostgreSQL 18, as the transf
         WHERE r.tenant_id = '${PROVIDER}' ORDER BY r.calibration_date`,
     );
     expect(records).toEqual([
+      {
+        qr_code: "QR-F102", kind: "external_date", at_utc: "2024-12-14 17:00:00", room: null, person: false, key: KEY,
+        snapshot: { name: "Upstream import", role: "import", organisation: "Penyedia Sintetis F", source: "upstream-import" }, same_facility: true, lab: null,
+        results: null, created: "2024-12-14 17:00:00",
+      },
       {
         qr_code: "QR-F101", kind: "external_date", at_utc: "2025-03-31 17:00:00", room: "ICU", person: true, key: null,
         snapshot: expect.objectContaining({ name: "Teknisi Sintetis", source: "upstream-import" }) as unknown, same_facility: true, lab: null, results: null,
@@ -246,14 +254,28 @@ describe("P24-02f — the calibrations step on live PostgreSQL 18, as the transf
         results: null, created: "2025-05-31 17:00:00",
       },
     ]);
-    expect(await recordAudits()).toEqual([{ action: "CREATE", operation: "UPSTREAM_IMPORT", n: 3, facility: true }]);
+    expect(await recordAudits()).toEqual([{ action: "CREATE", operation: "UPSTREAM_IMPORT", n: 4, facility: true }]);
+    // One calibration is one record: QR-F101's device date maps onto calibration 1's record, not a second one.
+    expect(
+      await rows(
+        `SELECT m.legacy_id AS device, k.legacy_id AS calibration FROM upstream_import.id_map m
+           LEFT JOIN upstream_import.id_map k ON k.source_table = 'trx_kalibrasi' AND k.target_id = m.target_id
+          WHERE m.source_table = 'tgl_kalibrasi' ORDER BY m.legacy_id`,
+      ),
+    ).toEqual([
+      { device: "101", calibration: "1" },
+      { device: "102", calibration: null },
+    ]);
+    // No due date is derived for an imported device (UD-8: the interval is set per request or standard).
+    expect(await rows(`SELECT count(*)::int AS n FROM calibration_devices WHERE tenant_id = '${PROVIDER}' AND next_calibration_date IS NOT NULL`)).toEqual([{ n: 0 }]);
   });
 
   it("the same values again write nothing; a changed date is a correction that closes the record it supersedes", async () => {
     await stage(RUN_2);
     const again = await transform(RUN_2);
     expect(again.steps.find((s) => s.step === "calibration_records")?.sources[0]).toMatchObject({ mapped: 0, unchanged: 3 });
-    expect(await recordAudits()).toEqual([{ action: "CREATE", operation: "UPSTREAM_IMPORT", n: 3, facility: true }]);
+    expect(again.steps.find((s) => s.step === "calibration_records")?.sources[1]).toMatchObject({ table: "tgl_kalibrasi", mapped: 0, unchanged: 2 });
+    expect(await recordAudits()).toEqual([{ action: "CREATE", operation: "UPSTREAM_IMPORT", n: 4, facility: true }]);
 
     await stage(RUN_3, "2025-04-03");
     await transform(RUN_3);
@@ -273,7 +295,7 @@ describe("P24-02f — the calibrations step on live PostgreSQL 18, as the transf
     );
     expect(mapping).toEqual({ corrects: true });
     expect(await recordAudits()).toEqual([
-      { action: "CREATE", operation: "UPSTREAM_IMPORT", n: 3, facility: true },
+      { action: "CREATE", operation: "UPSTREAM_IMPORT", n: 4, facility: true },
       { action: "CREATE", operation: "UPSTREAM_IMPORT_CORRECTION", n: 1, facility: true },
       { action: "UPDATE", operation: "UPSTREAM_IMPORT_SUPERSEDED", n: 1, facility: true },
     ]);

@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-28 — P24-02h: the device's own calibration date (`tgl_kalibrasi`) imported as a calibration record ([record](./records/2026-10-28-p24-02h-device-calibration-dates.md), ADR-133 Am. 5)
+- Mapped onto a same-day record, else an `external_date` record by the import key; no due date (UD-8). Live `p2402f` 4/4 and the upstream live suites on PostgreSQL 18.
+
 ### 2026-10-28 — Owner answers: OA-1 … OA-8, UD-7, UD-8, UD-18 ([record](./records/2026-10-28-owner-answers-oa-ud.md))
 - Legal basis = the calibration company's MoU with each facility (P17-03 closed, P24-05 unblocked); source zone UTC+7; `tgl_kalibrasi` is a real calibration date, interval set per request/standard; invitations manual; upstream deleted after cut-off.
 

@@ -33,7 +33,8 @@ import { NULL_USER_PERFORMER, usableImportKey } from "../importKey";
 import { RESOURCE_TYPES } from "./auditRows";
 import { cleanText } from "./catalogue";
 import { textOf } from "./inventory";
-import { classifiedSql, quarantineRows, recordMappings, stagedTable, stagedTableExists, type Mapping, type QuarantineEntry } from "./ledger";
+import { ID_MAP, QUARANTINE, classifiedSql, quarantineRows, recordMappings, stagedTable, stagedTableExists, type Mapping, type QuarantineEntry } from "./ledger";
+import type { FolderCounts } from "./attachments";
 import { formerSnapshot, formerUsersOf, mappedTargets, numberFormerUsers, peopleOf, recordFormerUsers, type PersonSnapshotValue } from "./people";
 import { TransformFailure } from "./failure";
 import type { StepContext, TransformSource } from "./steps";
@@ -202,41 +203,9 @@ export const planCalibrations = (input: CalibrationInput): CalibrationPlan => {
 const keysOf = (rows: readonly StagedCalibrationRow[], key: string): string[] =>
   [...new Set(rows.map((r) => textOf(r.row, key)).filter((k): k is string => k !== null))];
 
-/** Step 10's `run`: the calibration dates. */
-export const runCalibrations = async (context: StepContext): Promise<void> => {
-  const { runner, transaction, runId, tenantId, sourceZone } = context;
-  if (!(await stagedTableExists(context, CALIBRATION_SOURCE.table))) {
-    return;
-  }
-  const rows = await sql<StagedCalibrationRow>(
-    runner,
-    `SELECT c."sourceRowNumber", c."legacyId", c."rowHash", c."targetId", c.decision, (t.id IS NOT NULL) AS "targetPresent",
-            (t.superseded_by_id IS NOT NULL OR coalesce(t.is_deleted, false)) AS "targetClosed",
-            to_jsonb(s) - 'import_run_id' - 'source_row_number' AS row
-       FROM (${classifiedSql(CALIBRATION_SOURCE)}) c
-       JOIN ${stagedTable(CALIBRATION_SOURCE.table)} s ON s.import_run_id = $1 AND s.source_row_number = c."sourceRowNumber"::bigint
-       LEFT JOIN calibration_records t ON t.id = c."targetId" AND t.tenant_id = $2`,
-    [runId, tenantId],
-    { transaction },
-  );
-  const deviceIds = await mappedTargets(context, "trx_inventory", keysOf(rows, "id_inventory"));
-  const present = new Map(
-    (
-      await sql<{ id: string; facilityId: string }>(
-        runner,
-        "SELECT id, client_facility_id AS \"facilityId\" FROM calibration_devices WHERE tenant_id = $1 AND id = ANY($2::uuid[])",
-        [tenantId, [...new Set(deviceIds.values())]],
-        { transaction },
-      )
-    ).map((d) => [d.id, d.facilityId]),
-  );
-  const devices = new Map(
-    [...deviceIds].flatMap(([legacy, id]) => {
-      const facilityId = present.get(id);
-      return facilityId === undefined ? [] : [[legacy, { id, facilityId }] as const];
-    }),
-  );
-  const { users, unmatched } = await peopleOf(context, keysOf(rows, "id_user"));
+/** The provider tenant's name, today in the source zone, and its usable import key. */
+const tenantAndKey = async (context: StepContext): Promise<{ tenantName: string | null; today: string; keyId: string | null }> => {
+  const { runner, transaction, tenantId, sourceZone } = context;
   const keys = await sql<{ id: string; isActive: boolean; expiresAt: string | null; scopes: string[] }>(
     runner,
     `SELECT id, is_active AS "isActive", expires_at AS "expiresAt", scopes FROM api_keys
@@ -244,39 +213,289 @@ export const runCalibrations = async (context: StepContext): Promise<void> => {
     [tenantId, IMPORT_KEY_NAME],
     { transaction },
   );
-  const key = keys.find((k) => usableImportKey(k, Date.now()));
   const [tenant] = await sql<{ name: string | null; today: string }>(
     runner,
     "SELECT t.name, (now() AT TIME ZONE $2)::date::text AS today FROM tenants t WHERE t.id = $1",
     [tenantId, sourceZone],
     { transaction },
   );
-  const plan = planCalibrations({
-    rows,
-    tenantId,
-    tenantName: tenant?.name ?? null,
-    today: tenant?.today ?? "",
-    devices,
-    users,
-    unmatched,
-    formerUsers: await formerUsersOf(context),
-    keyId: key?.id ?? null,
-    newId: randomUUID,
-  });
+  return { tenantName: tenant?.name ?? null, today: tenant?.today ?? "", keyId: keys.find((k) => usableImportKey(k, Date.now()))?.id ?? null };
+};
+
+/** Step 10's `run`: the calibration dates — `trx_kalibrasi`, then the device rows' own dates (P24-02h). */
+export const runCalibrations = async (context: StepContext): Promise<void> => {
+  const { runner, transaction, runId, tenantId } = context;
+  const calibrations = await stagedTableExists(context, CALIBRATION_SOURCE.table);
+  const inventory = await stagedTableExists(context, "trx_inventory");
+  if (!calibrations && !inventory) {
+    return;
+  }
+  const { tenantName, today, keyId } = await tenantAndKey(context);
+  if (calibrations) {
+    const rows = await sql<StagedCalibrationRow>(
+      runner,
+      `SELECT c."sourceRowNumber", c."legacyId", c."rowHash", c."targetId", c.decision, (t.id IS NOT NULL) AS "targetPresent",
+              (t.superseded_by_id IS NOT NULL OR coalesce(t.is_deleted, false)) AS "targetClosed",
+              to_jsonb(s) - 'import_run_id' - 'source_row_number' AS row
+         FROM (${classifiedSql(CALIBRATION_SOURCE)}) c
+         JOIN ${stagedTable(CALIBRATION_SOURCE.table)} s ON s.import_run_id = $1 AND s.source_row_number = c."sourceRowNumber"::bigint
+         LEFT JOIN calibration_records t ON t.id = c."targetId" AND t.tenant_id = $2`,
+      [runId, tenantId],
+      { transaction },
+    );
+    const devices = await devicesOf(context, keysOf(rows, "id_inventory"));
+    const { users, unmatched } = await peopleOf(context, keysOf(rows, "id_user"));
+    const plan = planCalibrations({
+      rows,
+      tenantId,
+      tenantName,
+      today,
+      devices,
+      users,
+      unmatched,
+      formerUsers: await formerUsersOf(context),
+      keyId,
+      newId: randomUUID,
+    });
+    if (plan.needsKey > 0) {
+      throw new TransformFailure(
+        "IMPORT_KEY_MISSING",
+        `${String(plan.needsKey)} calibration date(s) have no resolvable person and the tenant has no usable import key; provision it before loading calibration dates.`,
+      );
+    }
+    await recordFormerUsers(context, plan.formerUsers);
+    await writeRecords(context, plan.insert);
+    await quarantineRows(context, plan.quarantine);
+    await recordMappings(context, plan.mappings);
+  }
+  // P24-02h: the device rows' own calibration dates, after the trx_kalibrasi records (a same-day record is reused).
+  if (inventory) {
+    await runInventoryDates(context, tenantName, today, keyId);
+  }
+};
+
+// ------------------------------------------------------------------
+// THE DEVICE'S OWN CALIBRATION DATE (P24-02h; UD-8 decided by the owner 2026-10-28; ADR-133 Am. 5)
+// ------------------------------------------------------------------
+
+/**
+ * `trx_inventory.tgl_kalibrasi` — the date the operator calibrated the device (the owner, UD-8).
+ * Accounted as a column source of its own, as step 9 accounts the photo folders: id_map source
+ * table `tgl_kalibrasi`, legacy id the device's, the row hash of the date alone (a change to any
+ * other device column is no change of this date).
+ */
+export const INVENTORY_DATE_SOURCE = "tgl_kalibrasi";
+
+/** A staged device row naming a calibration date, with its earlier mapping. */
+export interface StagedInventoryDate {
+  sourceRowNumber: string;
+  legacyId: string;
+  raw: string;
+  room: string | null;
+  rowHash: string;
+  targetId: string | null;
+  mappedHash: string | null;
+  targetPresent: boolean;
+  targetClosed: boolean;
+}
+
+/** What the inventory-date plan reads. */
+export interface InventoryDateInput {
+  rows: readonly StagedInventoryDate[];
+  tenantId: string;
+  tenantName: string | null;
+  today: string;
+  /** `trx_inventory` legacy id → the device and its facility. */
+  devices: ReadonlyMap<string, { id: string; facilityId: string }>;
+  /** `<device id>|<YYYY-MM-DD>` → an effective record of that device on that day (written before this pass). */
+  effective: ReadonlyMap<string, string>;
+  keyId: string | null;
+  newId: () => string;
+}
+
+/** What the inventory-date plan writes: no former users (the column names no person). */
+export type InventoryDatePlan = Omit<CalibrationPlan, "formerUsers">;
+
+/**
+ * Decide every staged device date. Pure. A date the device already has an effective record for
+ * (a `trx_kalibrasi` row of that day, or an earlier import) maps onto that record: one calibration
+ * is one record. Otherwise an `external_date` record by the import key, the device's room as its
+ * room snapshot, and no due date (the interval is set per request or standard — UD-8).
+ */
+export const planInventoryDates = (input: InventoryDateInput): InventoryDatePlan => {
+  const plan: InventoryDatePlan = { insert: [], mappings: [], quarantine: [], needsKey: 0 };
+  const rows = [...input.rows].sort((a, b) => Number(a.legacyId) - Number(b.legacyId) || a.legacyId.localeCompare(b.legacyId));
+  const quarantine = (row: StagedInventoryDate, reason: QuarantineEntry["reason"]): void => {
+    plan.quarantine.push({ sourceTable: INVENTORY_DATE_SOURCE, sourceRowNumber: row.sourceRowNumber, legacyId: row.legacyId, reason });
+  };
+  const map = (row: StagedInventoryDate, targetId: string, facilityId: string): void => {
+    plan.mappings.push({
+      sourceTable: INVENTORY_DATE_SOURCE,
+      legacyId: row.legacyId,
+      targetTable: "calibration_records",
+      targetId,
+      tenantId: input.tenantId,
+      clientFacilityId: facilityId,
+      rowHash: row.rowHash,
+      sourceValues: null,
+    });
+  };
+  for (const row of rows) {
+    const device = input.devices.get(row.legacyId);
+    if (device === undefined) {
+      quarantine(row, "no_device");
+      continue;
+    }
+    const day = calendarDayOf(row.raw);
+    if (day === null) {
+      quarantine(row, "value_out_of_range");
+      continue;
+    }
+    if (day > input.today) {
+      quarantine(row, "future_calibration_date");
+      continue;
+    }
+    const changed = row.targetPresent && row.mappedHash !== row.rowHash;
+    if (row.targetPresent && (!changed || row.targetClosed)) {
+      // Unchanged; or a record the operator voided or corrected — the import does not reopen it.
+      continue;
+    }
+    const same = changed ? undefined : input.effective.get(`${device.id}|${day}`);
+    if (same !== undefined) {
+      map(row, same, device.facilityId);
+      continue;
+    }
+    if (input.keyId === null) {
+      plan.needsKey += 1;
+      continue;
+    }
+    const values: RecordValues = {
+      id: input.newId(),
+      sourceRowNumber: row.sourceRowNumber,
+      deviceId: device.id,
+      facilityId: device.facilityId,
+      calibrationDate: day,
+      performedBy: null,
+      apiKeyId: input.keyId,
+      roomSnapshot: row.room === null ? null : cleanText(row.room, ROOM_MAX) || null,
+      performerSnapshot: { name: NULL_USER_PERFORMER, role: "import", organisation: input.tenantName, source: "upstream-import" },
+      supersedesId: changed ? row.targetId : null,
+    };
+    plan.insert.push(values);
+    map(row, values.id, device.facilityId);
+  }
+  return plan;
+};
+
+/** The device dates of the run: every staged device row naming one, with its earlier mapping and record. */
+const readInventoryDates = (context: StepContext): Promise<StagedInventoryDate[]> =>
+  sql<StagedInventoryDate>(
+    context.runner,
+    `SELECT s.source_row_number::text AS "sourceRowNumber", s."id"::text AS "legacyId", btrim(to_jsonb(s) ->> 'tgl_kalibrasi') AS raw,
+            nullif(btrim(to_jsonb(s) ->> 'nama_ruangan'), '') AS room,
+            encode(sha256(convert_to(btrim(to_jsonb(s) ->> 'tgl_kalibrasi'), 'UTF8')), 'hex') AS "rowHash",
+            m.target_id AS "targetId", m.source_row_hash AS "mappedHash", (t.id IS NOT NULL) AS "targetPresent",
+            (t.superseded_by_id IS NOT NULL OR coalesce(t.is_deleted, false)) AS "targetClosed"
+       FROM ${stagedTable("trx_inventory")} s
+       LEFT JOIN ${ID_MAP} m ON m.source_table = $3 AND m.legacy_id = s."id"::text
+       LEFT JOIN calibration_records t ON t.id = m.target_id AND t.tenant_id = $2
+      WHERE s.import_run_id = $1 AND nullif(btrim(to_jsonb(s) ->> 'tgl_kalibrasi'), '') IS NOT NULL`,
+    [context.runId, context.tenantId, INVENTORY_DATE_SOURCE],
+    { transaction: context.transaction },
+  );
+
+/** The devices of the run's device rows, by their legacy id, with their facilities (present in the tenant). */
+const devicesOf = async (context: StepContext, legacyIds: readonly string[]): Promise<Map<string, { id: string; facilityId: string }>> => {
+  const deviceIds = await mappedTargets(context, "trx_inventory", legacyIds);
+  const present = new Map(
+    (
+      await sql<{ id: string; facilityId: string }>(
+        context.runner,
+        "SELECT id, client_facility_id AS \"facilityId\" FROM calibration_devices WHERE tenant_id = $1 AND id = ANY($2::uuid[])",
+        [context.tenantId, [...new Set(deviceIds.values())]],
+        { transaction: context.transaction },
+      )
+    ).map((d) => [d.id, d.facilityId]),
+  );
+  return new Map(
+    [...deviceIds].flatMap(([legacy, id]) => {
+      const facilityId = present.get(id);
+      return facilityId === undefined ? [] : [[legacy, { id, facilityId }] as const];
+    }),
+  );
+};
+
+/** The second pass of step 10: the device rows' own calibration dates, after the `trx_kalibrasi` records are written. */
+const runInventoryDates = async (context: StepContext, tenantName: string | null, today: string, keyId: string | null): Promise<void> => {
+  const rows = await readInventoryDates(context);
+  if (rows.length === 0) {
+    return;
+  }
+  const devices = await devicesOf(context, rows.map((r) => r.legacyId));
+  const effective = new Map(
+    (
+      await sql<{ id: string; deviceId: string; day: string }>(
+        context.runner,
+        `SELECT id, device_id AS "deviceId", (calibration_date AT TIME ZONE $3)::date::text AS day FROM calibration_records
+          WHERE tenant_id = $1 AND device_id = ANY($2::uuid[]) AND superseded_by_id IS NULL AND NOT coalesce(is_deleted, false)
+          ORDER BY created_at, id`,
+        [context.tenantId, [...new Set([...devices.values()].map((d) => d.id))], context.sourceZone],
+        { transaction: context.transaction },
+      )
+    ).map((r) => [`${r.deviceId}|${r.day}`, r.id] as const).reverse(),
+  );
+  const plan = planInventoryDates({ rows, tenantId: context.tenantId, tenantName, today, devices, effective, keyId, newId: randomUUID });
   if (plan.needsKey > 0) {
     throw new TransformFailure(
       "IMPORT_KEY_MISSING",
-      `${String(plan.needsKey)} calibration date(s) have no resolvable person and the tenant has no usable import key; provision it before loading calibration dates.`,
+      `${String(plan.needsKey)} device calibration date(s) need the tenant's import key, which it lacks; provision it before loading calibration dates.`,
     );
   }
-  await recordFormerUsers(context, plan.formerUsers);
-  await writeRecords(context, plan.insert);
+  await writeRecords(context, plan.insert, "trx_inventory", INVENTORY_DATE_SOURCE);
   await quarantineRows(context, plan.quarantine);
   await recordMappings(context, plan.mappings);
 };
 
+/** Step 10's accounting of the device dates: every device row of the run naming one is mapped or quarantined. */
+export const accountInventoryDates = async (context: StepContext): Promise<FolderCounts[]> => {
+  const counts: FolderCounts = { table: INVENTORY_DATE_SOURCE, staged: 0, mapped: 0, unchanged: 0, quarantined: {}, unaccounted: 0 };
+  if (await stagedTableExists(context, "trx_inventory")) {
+    const [row] = await sql<Omit<FolderCounts, "table" | "quarantined">>(
+      context.runner,
+      `SELECT count(*)::int AS staged,
+              count(*) FILTER (WHERE m.import_run_id = $1)::int AS mapped,
+              count(*) FILTER (WHERE m.legacy_id IS NOT NULL AND m.import_run_id <> $1)::int AS unchanged,
+              count(*) FILTER (WHERE m.legacy_id IS NULL AND NOT EXISTS (
+                SELECT 1 FROM ${QUARANTINE} q WHERE q.import_run_id = $1 AND q.source_table = $2 AND q.source_row_number = s.source_row_number))::int AS unaccounted
+         FROM ${stagedTable("trx_inventory")} s
+         LEFT JOIN ${ID_MAP} m ON m.source_table = $2 AND m.legacy_id = s."id"::text
+        WHERE s.import_run_id = $1 AND nullif(btrim(to_jsonb(s) ->> 'tgl_kalibrasi'), '') IS NOT NULL`,
+      [context.runId, INVENTORY_DATE_SOURCE],
+      { transaction: context.transaction },
+    );
+    counts.staged = row?.staged ?? 0;
+    counts.mapped = row?.mapped ?? 0;
+    counts.unchanged = row?.unchanged ?? 0;
+    counts.unaccounted = row?.unaccounted ?? 0;
+  }
+  for (const { reason, n } of await sql<{ reason: string; n: number }>(
+    context.runner,
+    `SELECT reason, count(*)::int AS n FROM ${QUARANTINE} WHERE import_run_id = $1 AND source_table = $2 GROUP BY reason ORDER BY reason`,
+    [context.runId, INVENTORY_DATE_SOURCE],
+    { transaction: context.transaction },
+  )) {
+    counts.quarantined[reason] = n;
+  }
+  return [counts];
+};
+
 /** The records, the superseded ones closed, and the audit rows — one statement each. */
-const writeRecords = async (context: StepContext, records: readonly RecordValues[]): Promise<void> => {
+const writeRecords = async (
+  context: StepContext,
+  records: readonly RecordValues[],
+  stagedSource: string = CALIBRATION_SOURCE.table,
+  auditSource: string = CALIBRATION_SOURCE.table,
+): Promise<void> => {
   const { runner, transaction, runId, tenantId, sourceZone } = context;
   if (records.length === 0) {
     return;
@@ -292,7 +511,7 @@ const writeRecords = async (context: StepContext, records: readonly RecordValues
                      v.day::date::timestamp AT TIME ZONE $13)
        FROM unnest($3::uuid[], $4::bigint[], $5::uuid[], $6::uuid[], $7::uuid[], $8::uuid[], $9::text[], $10::text[], $11::text[], $12::uuid[])
             AS v(id, srn, device, facility, performer, key, day, room, snapshot, supersedes)
-       JOIN ${stagedTable(CALIBRATION_SOURCE.table)} s ON s.import_run_id = $1 AND s.source_row_number = v.srn`,
+       JOIN ${stagedTable(stagedSource)} s ON s.import_run_id = $1 AND s.source_row_number = v.srn`,
     [
       runId,
       tenantId,
@@ -335,7 +554,7 @@ const writeRecords = async (context: StepContext, records: readonly RecordValues
     runner,
     `INSERT INTO audit_logs (id, tenant_id, user_id, actor_type, actor_name, action, resource_type, resource_id, client_facility_id, changes, created_at)
      SELECT gen_random_uuid(), $1::uuid, NULL, 'system', $2, e.action::"enum_audit_logs_action", $3, e.id, e.facility,
-            e.changes::jsonb || jsonb_build_object('source', 'skp_ipm', 'importRunId', $4::text, 'sourceTable', 'trx_kalibrasi', 'targetTable', 'calibration_records'),
+            e.changes::jsonb || jsonb_build_object('source', 'skp_ipm', 'importRunId', $4::text, 'sourceTable', $9::text, 'targetTable', 'calibration_records'),
             now()
        FROM unnest($5::text[], $6::text[], $7::uuid[], $8::text[]) WITH ORDINALITY AS e(action, id, facility, changes, n)
       ORDER BY e.n`,
@@ -348,6 +567,7 @@ const writeRecords = async (context: StepContext, records: readonly RecordValues
       entries.map((e) => e.id),
       entries.map((e) => e.facility),
       entries.map((e) => JSON.stringify(e.changes)),
+      auditSource,
     ],
     { transaction },
   );

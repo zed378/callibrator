@@ -199,10 +199,10 @@ describe("P24-02f the step", () => {
       [/former_users/, () => []],
     ]);
 
-  it("nothing staged: nothing read beyond the table check", async () => {
+  it("nothing staged: nothing read beyond the two table checks (trx_kalibrasi, and trx_inventory for the device dates)", async () => {
     const runner = double();
     await runCalibrations(context(runner));
-    expect(runner.calls).toHaveLength(1);
+    expect(runner.calls).toHaveLength(2);
   });
 
   it("reads in the provider tenant, inserts with the key and the person, closes the superseded record, audits — every value bound", async () => {

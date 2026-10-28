@@ -119,7 +119,8 @@ describe("P24-03 the registry", () => {
     expect(CERTIFICATE_SOURCE).toEqual({ table: "trx_inventory_file", legacyId: 's."id"::text' });
     expect(step.run).toBe(runAttachments);
     expect(step.account).toBe(accountPhotos);
-    expect(TRANSFORM_STEPS.filter((s) => s.id !== "attachments").every((s) => s.account === undefined)).toBe(true);
+    // P24-02h: step 10 accounts the device rows' own calibration dates; no other step accounts beyond its sources.
+    expect(TRANSFORM_STEPS.filter((s) => s.account !== undefined).map((s) => s.id)).toEqual(["attachments", "calibration_records"]);
     expect(STEP_AUDITED.has("attachments")).toBe(true);
     expect(isBuilt(TRANSFORM_STEPS)).toBe(true);
     expect(PHOTO_FOLDERS).toEqual([
