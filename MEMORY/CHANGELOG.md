@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-28 — Backlog G-01, G-05 and G-06 checked against the code ([record](./records/2026-10-28-backlog-g01-g05-g06.md))
+- G-01 resolved (Zod + code-first OpenAPI from the same schemas); G-05 and G-06 answered, each pinned by a named test.
+
 ### 2026-10-28 — P25-02: Q-28's unreferenced photo files as a run-level finding ([record](./records/2026-10-28-p25-02-q28-unreferenced.md), ADR-129 Am. 12)
 - The data-quality report gains `runFindings`: photo files on disk (the image-import manifests) that no staged device row names. Live `p2403` 3/3, `p2402g` 6/6 on PostgreSQL 18.
 

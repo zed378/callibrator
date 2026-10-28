@@ -74,4 +74,16 @@ describe("S-32 tenant backup STATUS vs the status ENUM", () => {
         >;
     expect(attributes["filePath"]?.type.options?.length).toBe(500);
   });
+
+  it("G-05: updateStatus writes fileSize and copies it to size, so the size pair always holds one value", async () => {
+    const row = { update: jest.fn((data: unknown) => Promise.resolve(data)) };
+    jest.spyOn(TenantBackup, "findByPk").mockResolvedValue(row as never);
+
+    await TenantBackup.updateStatus("id-2", { status: "completed", fileSize: 4096 });
+
+    const [data] = row.update.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(data["fileSize"]).toBe(4096);
+    expect(data["size"]).toBe(4096);
+    expect(data).not.toHaveProperty("backupPath");
+  });
 });
