@@ -314,6 +314,9 @@ staged value, name, serial or legacy id. Errors are coded: 404 `UPSTREAM_SQL_IMP
 - **Also computed:** R-8, per facility and at the run level (the photos per folder).
 - **Also computed by the report (2026-10-27):** Q-4 (IPM sessions quarantined `no_device`, by their staged
   `id_client`), Q-14 (calibration before inventory) and the missing half of Q-28 (`file_missing` photos).
+- **Also computed by the report (2026-10-28):** the duplicates Q-8 (second session headers) and Q-9 (devices
+  calibrated more than once), and the orphans Q-2, Q-3 and Q-10 (IPM rows, devices and calibrations whose
+  performer is no imported account).
 - **Not automated, so they answer `manual`:** RC-F4, R-12, the unreferenced half of Q-28,
   and the orphan, duplicate-file and user sections. P25-04 records them by hand on the dry-run
   database.

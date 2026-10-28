@@ -11810,6 +11810,11 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
    - **Q-4:** IPM session rows quarantined `no_device`. A quarantined row has no mapping, so it is attributed by its staged `id_client` through the facility step's `mst_faskes` mapping. Their result rows, quarantined `session_not_imported`, are not counted again.
    - **Q-14:** calibrations dated before their device's inventory date, flagged as plausible.
    - **Q-28, the missing half only:** `file_missing` photos, in their device's facility. The unreferenced half (files on disk no row names) needs the manifest. So a facility with no missing photo answers `manual`, not `pass`.
+10. **P25-02's duplicates and orphans** (2026-10-28), per facility.
+   - **Q-8:** second session headers, quarantined `duplicate_header`, attributed like Q-4.
+   - **Q-9:** devices with more than one live calibration.
+   - **Q-2 / Q-3 / Q-10:** mapped IPM rows (16 tables), devices and calibrations whose staged `id_user` has no `users` mapping. That covers an absent user, a hard-deleted upstream user, and one the users step quarantined; in our model each is "performer kept as a snapshot".
+   - The user section stays unbuilt: R-9 checks the imported accounts per run.
 
 **Alternatives considered.**
 

@@ -30,9 +30,14 @@
  *     their device's facility; `manual` when none, because unreferenced files
  *     on disk (the manifest's side) are not counted
  *
- * NOT built: the orphan, file and user sections the contract's
- * UPSTREAM_DATA_QUALITY_SECTIONS names as a target (R-8 and R-9 of the
- * reconciliation cover the files and users per run). They are P25-04's.
+ *   duplicates (2026-10-28) - Q-8 second session headers (quarantined
+ *     duplicate_header, by staged id_client); Q-9 devices with more than one
+ *     live calibration
+ *   orphans (2026-10-28) - Q-2 / Q-3 / Q-10: mapped IPM rows, devices and
+ *     calibrations whose staged id_user is no imported account
+ *
+ * NOT built: Q-28's unreferenced files (the manifest's side) and the user
+ * section (R-9 of the reconciliation checks the accounts per run). P25-04's.
  * The facility row carries the id and code only: the name is sensitive
  * operational data (03 § 9).
  */
@@ -44,7 +49,7 @@ import {
   stagedTable,
   stagedTableExists,
 } from "./upstreamImport/transform/ledger";
-import { SESSION_TABLES } from "./upstreamImport/transform/ipm";
+import { RESULT_TABLES, SESSION_TABLES } from "./upstreamImport/transform/ipm";
 import type { StepContext } from "./upstreamImport/transform/steps";
 import type {
   DataQualityFinding,
@@ -96,13 +101,15 @@ const addInto = (
 };
 
 /**
- * Q-4: the run's IPM session rows quarantined `no_device` (their QR matches no imported device),
- * per facility. Such a row is never mapped, so its facility is its staged `id_client` through the
- * facility step's mapping (`mst_faskes` -> client facility). Their result rows follow it as
- * `session_not_imported` and are not counted again.
+ * The run's IPM session rows quarantined with `reason`, per facility — Q-4 `no_device` (the QR
+ * matches no imported device), Q-8 `duplicate_header` (a second header for one key). Such a row is
+ * never mapped, so its facility is its staged `id_client` through the facility step's mapping
+ * (`mst_faskes` -> client facility). Their result rows follow as `session_not_imported` and are
+ * not counted again.
  */
-const noDevicePerFacility = async (
+const sessionQuarantinePerFacility = async (
   context: StepContext,
+  reason: "no_device" | "duplicate_header",
 ): Promise<Map<string, number>> => {
   const counts = new Map<string, number>();
   for (const table of SESSION_TABLES) {
@@ -117,8 +124,46 @@ const noDevicePerFacility = async (
            FROM ${QUARANTINE} q
            JOIN ${stagedTable(table)} s ON s.import_run_id = q.import_run_id AND s.source_row_number = q.source_row_number
            JOIN ${ID_MAP} fm ON fm.source_table = 'mst_faskes' AND fm.legacy_id = btrim(to_jsonb(s) ->> 'id_client')
-          WHERE q.import_run_id = $1 AND q.source_table = $2 AND q.reason = 'no_device' AND fm.client_facility_id IS NOT NULL
+          WHERE q.import_run_id = $1 AND q.source_table = $2 AND q.reason = $3 AND fm.client_facility_id IS NOT NULL
           GROUP BY fm.client_facility_id`,
+        [context.runId, table, reason],
+        { transaction: context.transaction },
+      ),
+    );
+  }
+  return counts;
+};
+
+/** The IPM tables whose rows name a performer (`id_user`): the four session tables and the twelve result tables. */
+const IPM_TABLES: readonly string[] = Object.freeze([
+  ...SESSION_TABLES,
+  ...Object.keys(RESULT_TABLES),
+]);
+
+/**
+ * Q-2 / Q-3 / Q-10: the run's MAPPED rows of `tables` whose `id_user` is no imported account
+ * (absent, a hard-deleted upstream user, or one the users step quarantined) — the performer is
+ * kept as a snapshot only (04 § 6). Per the facility the transform decided for the row.
+ */
+const performerUnknownPerFacility = async (
+  context: StepContext,
+  tables: readonly string[],
+): Promise<Map<string, number>> => {
+  const counts = new Map<string, number>();
+  for (const table of tables) {
+    if (!(await stagedTableExists(context, table))) {
+      continue;
+    }
+    addInto(
+      counts,
+      await sql<{ facilityId: string; n: number }>(
+        context.runner,
+        `SELECT m.client_facility_id AS "facilityId", count(*)::int AS n
+           FROM ${stagedTable(table)} s
+           JOIN ${ID_MAP} m ON m.source_table = $2 AND m.legacy_id = s."id"::text
+           LEFT JOIN ${ID_MAP} um ON um.source_table = 'users' AND um.legacy_id = btrim(to_jsonb(s) ->> 'id_user')
+          WHERE s.import_run_id = $1 AND m.client_facility_id IS NOT NULL AND um.legacy_id IS NULL
+          GROUP BY m.client_facility_id`,
         [context.runId, table],
         { transaction: context.transaction },
       ),
@@ -346,8 +391,26 @@ export const reportDataQuality = async (
         tenantId,
         sourceZone: "Asia/Jakarta",
       };
-      const noDevice = await noDevicePerFacility(context);
+      const noDevice = await sessionQuarantinePerFacility(context, "no_device");
       const missingFiles = await missingFilesPerFacility(context);
+      // Duplicates: Q-8 second session headers (quarantined), Q-9 devices with more than one live calibration.
+      const duplicateHeaders = await sessionQuarantinePerFacility(context, "duplicate_header");
+      const calibratedTwice = byFacility(
+        await sql<{ facilityId: string; n: number }>(
+          runner,
+          `SELECT f AS "facilityId", count(*)::int AS n FROM (
+             SELECT client_facility_id AS f FROM calibration_records
+              WHERE tenant_id = $1 AND client_facility_id IS NOT NULL AND deleted_at IS NULL
+              GROUP BY client_facility_id, device_id HAVING count(*) > 1
+           ) d GROUP BY f`,
+          [tenantId],
+          { transaction },
+        ),
+      );
+      // Orphans: performers that are no imported account (Q-2 IPM, Q-3 device registrant, Q-10 calibration).
+      const ipmPerformerUnknown = await performerUnknownPerFacility(context, IPM_TABLES);
+      const registrantUnknown = await performerUnknownPerFacility(context, ["trx_inventory"]);
+      const calibratorUnknown = await performerUnknownPerFacility(context, ["trx_kalibrasi"]);
 
       const flagged = (
         findingId: string,
@@ -417,6 +480,36 @@ export const reportDataQuality = async (
               0,
               "no photo missing on disk; unreferenced files on disk are not counted here (the manifest's side, P25-04)",
             ),
+          flagged(
+            "Q-8",
+            duplicateHeaders,
+            id,
+            "second session headers for one (QR, day), quarantined duplicate_header: the latest header was kept",
+          ),
+          flagged(
+            "Q-9",
+            calibratedTwice,
+            id,
+            "devices with more than one live calibration: kept as history, flagged",
+          ),
+          flagged(
+            "Q-2",
+            ipmPerformerUnknown,
+            id,
+            "imported IPM rows whose performer is no imported account: kept as a snapshot, no account link",
+          ),
+          flagged(
+            "Q-3",
+            registrantUnknown,
+            id,
+            "imported devices whose registrant is no imported account: kept as a snapshot, no account link",
+          ),
+          flagged(
+            "Q-10",
+            calibratorUnknown,
+            id,
+            "imported calibrations whose performer is no imported account (absent or departed): the import key acts for them",
+          ),
         ],
       }));
 
