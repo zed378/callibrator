@@ -5,8 +5,10 @@
  * `validateInput` helper, which throws the same plain 400 object the file's
  * own `validate` threw.
  */
-const { validateInput } = require("../../validators/input");
-const {
+import type { z } from "zod";
+import { validateInput } from "../../validators/input";
+import type { ValidationFailure } from "../../validators/input";
+import {
   getCertificatesQuery,
   createCertificateSchema,
   updateCertificateSchema,
@@ -16,18 +18,18 @@ const {
   revokeCertificateSchema,
   CERTIFICATE_STATUS,
   CERTIFICATE_TYPES,
-} = require("../../validators/certificate.validator");
+} from "../../validators/certificate.validator";
 
 const ID = "8c352a92-d6cf-4b71-b0db-6e69622d1b11";
 
-/** @returns what `validateInput` threw, or undefined */
-const thrownBy = (data, schema) => {
+/** @returns what `validateInput` threw */
+const thrownBy = (data: unknown, schema: z.ZodType): ValidationFailure => {
   try {
     validateInput(data, schema);
   } catch (error) {
-    return error;
+    return error as ValidationFailure;
   }
-  return undefined;
+  throw new Error("expected a validation failure");
 };
 
 describe("Certificate Validators", () => {

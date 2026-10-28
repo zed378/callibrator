@@ -488,6 +488,39 @@ const photoTotals = async (context: StepContext): Promise<PhotoTotals> => {
   return totals;
 };
 
+/** The device rows' own calibration dates (`tgl_kalibrasi`, P24-02h) per facility: mapped staged dates, and the stored records they name. */
+const deviceDatesPerFacility = async (
+  context: StepContext,
+): Promise<{ staged: Map<string, number>; stored: Map<string, number> }> => {
+  if (!(await stagedTableExists(context, "trx_inventory"))) {
+    return { staged: new Map(), stored: new Map() };
+  }
+  const staged = byFacility(
+    await sql<{ facilityId: string; n: number }>(
+      context.runner,
+      `SELECT m.client_facility_id AS "facilityId", count(*)::int AS n
+         FROM ${stagedTable("trx_inventory")} s
+         JOIN ${ID_MAP} m ON m.source_table = 'tgl_kalibrasi' AND m.legacy_id = s."id"::text
+        WHERE s.import_run_id = $1 AND m.client_facility_id IS NOT NULL
+          AND nullif(btrim(to_jsonb(s) ->> 'tgl_kalibrasi'), '') IS NOT NULL
+        GROUP BY m.client_facility_id`,
+      [context.runId],
+      { transaction: context.transaction },
+    ),
+  );
+  const stored = byFacility(
+    await sql<{ facilityId: string; n: number }>(
+      context.runner,
+      `SELECT t.client_facility_id AS "facilityId", count(*)::int AS n FROM calibration_records t
+         JOIN ${ID_MAP} m ON m.target_id = t.id AND m.source_table = 'tgl_kalibrasi'
+        WHERE t.tenant_id = $1 GROUP BY t.client_facility_id`,
+      [context.tenantId],
+      { transaction: context.transaction },
+    ),
+  );
+  return { staged, stored };
+};
+
 /** R-10 over every staged source: [staged, mapped or quarantined, quarantined]. */
 const completeness = async (
   context: StepContext,
@@ -742,6 +775,18 @@ export const reconcileRun = async (
           { transaction },
         ),
       );
+      // R-7 also counts the device rows' own calibration dates (P24-02h, ADR-133 Am. 5): the mapped staged
+      // dates against the stored records those mappings name. A date mapped onto a same-day trx_kalibrasi
+      // record counts once on each side, so the two stay comparable.
+      const deviceDates = await deviceDatesPerFacility(context);
+      for (const [into, from] of [
+        [stagedCalibrations, deviceDates.staged],
+        [calibrations, deviceDates.stored],
+      ] as const) {
+        for (const [facility, n] of from) {
+          into.set(facility, (into.get(facility) ?? 0) + n);
+        }
+      }
 
       // Per facility: R-3 … R-6 over the result tables (05 § 7).
       const sections = await sectionTotals(context);
@@ -796,7 +841,7 @@ export const reconcileRun = async (
               stagedCalibrations.get(id) ?? 0,
               calibrations.get(id) ?? 0,
               0,
-              "mapped staged calibrations vs stored imported calibrations of the facility",
+              "mapped staged calibrations (trx_kalibrasi and the devices' own dates) vs the stored records they name, in the facility",
             ),
             check(
               "R-8",

@@ -20,6 +20,30 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ### 2026-10-28 — P25-02: Q-28's unreferenced photo files as a run-level finding ([record](./records/2026-10-28-p25-02-q28-unreferenced.md), ADR-129 Am. 12)
 - The data-quality report gains `runFindings`: photo files on disk (the image-import manifests) that no staged device row names. Live `p2403` 3/3, `p2402g` 6/6 on PostgreSQL 18.
 
+### 2026-10-24 -- P9-26 batch 49: vendor.qualify.p602, userPermission.controller, workflow.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-49.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 30 cases, eslint + typecheck clean, ratchet 556 to 553.
+
+### 2026-10-24 -- P9-26 batch 48: user.safeAttributes, user.create.attributes, maintenance.includes.a190 to TypeScript ([record](./records/2026-10-24-p9-26-batch-48.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 7 cases, eslint + typecheck clean, ratchet 559 to 556.
+
+### 2026-10-24 -- P9-26 batch 47: ticket, content, dataRetention validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-47.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 78 cases, eslint + typecheck clean, ratchet 562 to 559.
+
+### 2026-10-24 -- P9-26 batch 46: finance, gdpr, networkSecurity validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-46.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 76 cases, eslint + typecheck clean, ratchet 565 to 562.
+
+### 2026-10-24 -- P9-26 batch 45: sso, calibrationRecords, qms validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-45.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 70 cases, eslint + typecheck clean, ratchet 568 to 565.
+
+### 2026-10-24 -- P9-26 batch 44: calibrationDevices, tenantBackup, roles validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-44.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 51 cases, eslint + typecheck clean, ratchet 571 to 568.
+
+### 2026-10-24 -- P9-26 batch 43: storage, featureFlag, certificate validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-43.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 45 cases, eslint + typecheck clean, ratchet 574 to 571.
+
+### 2026-10-24 -- P9-26 batch 42: webhooks.validation.a51, auth.routes, user.mfaSeedAtRest.s20 to TypeScript ([record](./records/2026-10-24-p9-26-batch-42.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 26 cases, eslint + typecheck clean, ratchet 577 to 574.
+
 ### 2026-10-24 -- P9-26 batch 41: clientIp.a16, health.forceHttps.s09, tenantSettings.secrets.a150 to TypeScript ([record](./records/2026-10-24-p9-26-batch-41.md))
 - **DONE:** 3 -- `.js` to `.ts`, same 46 cases, eslint + typecheck clean, ratchet 580 to 577.
 

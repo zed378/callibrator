@@ -4,13 +4,8 @@
  * P9-11 (ADR-093): the schemas are Zod, exercised through the shared
  * `checkInput` helper.
  */
-const { checkInput } = require("../../validators/input");
-const {
-  createPost,
-  updatePost,
-  createCategory,
-  updateCategory,
-} = require("../../validators/content.validator");
+import { checkInput } from "../../validators/input";
+import { createCategory, createPost, updateCategory, updatePost } from "../../validators/content.validator";
 
 const NOTHING_TO_UPDATE = [{ field: "", message: "Provide at least one field to update" }];
 const TYPE_OPTION = 'Invalid option: expected one of "BLOG"|"NEWS"';
@@ -21,8 +16,10 @@ describe("Content Validators", () => {
       const result = checkInput({ type: "BLOG", title: "My First Blog Post" }, createPost);
 
       expect(result.ok).toBe(true);
-      expect(result.value.type).toBe("BLOG");
-      expect(result.value.title).toBe("My First Blog Post");
+      if (result.ok) {
+        expect(result.value.type).toBe("BLOG");
+        expect(result.value.title).toBe("My First Blog Post");
+      }
     });
 
     it("should validate correct news post data", () => {
@@ -33,32 +30,40 @@ describe("Content Validators", () => {
       const result = checkInput({ title: "My Post" }, createPost);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual([{ field: "type", message: TYPE_OPTION }]);
+      if (!result.ok) {
+        expect(result.errors).toEqual([{ field: "type", message: TYPE_OPTION }]);
+      }
     });
 
     it("should reject missing title", () => {
       const result = checkInput({ type: "BLOG" }, createPost);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual([
-        { field: "title", message: "Invalid input: expected string, received undefined" },
-      ]);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "title", message: "Invalid input: expected string, received undefined" },
+        ]);
+      }
     });
 
     it("should reject invalid type value", () => {
       const result = checkInput({ type: "ARTICLE", title: "My Post" }, createPost);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual([{ field: "type", message: TYPE_OPTION }]);
+      if (!result.ok) {
+        expect(result.errors).toEqual([{ field: "type", message: TYPE_OPTION }]);
+      }
     });
 
     it("should reject title that is too short", () => {
       const result = checkInput({ type: "BLOG", title: "A" }, createPost);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual([
-        { field: "title", message: "Too small: expected string to have >=2 characters" },
-      ]);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "title", message: "Too small: expected string to have >=2 characters" },
+        ]);
+      }
     });
 
     it("should allow optional fields", () => {
@@ -86,11 +91,14 @@ describe("Content Validators", () => {
         createPost,
       );
 
-      expect(result.value).toEqual({
-        type: "BLOG",
-        title: "My Post",
-        featured: true,
-        publishedAt: new Date("2026-01-01"),
+      expect(result).toEqual({
+        ok: true,
+        value: {
+          type: "BLOG",
+          title: "My Post",
+          featured: true,
+          publishedAt: new Date("2026-01-01"),
+        },
       });
     });
 
@@ -107,7 +115,9 @@ describe("Content Validators", () => {
       const result = checkInput({ type: "BLOG", title: "My Post", categoryIds: ["not-a-uuid"] }, createPost);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual([{ field: "categoryIds.0", message: "Invalid GUID" }]);
+      if (!result.ok) {
+        expect(result.errors).toEqual([{ field: "categoryIds.0", message: "Invalid GUID" }]);
+      }
     });
 
     it("should allow empty string for optional string fields", () => {
@@ -133,7 +143,9 @@ describe("Content Validators", () => {
       const result = checkInput({}, updatePost);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual(NOTHING_TO_UPDATE);
+      if (!result.ok) {
+        expect(result.errors).toEqual(NOTHING_TO_UPDATE);
+      }
     });
 
     it("should allow all optional fields", () => {
@@ -164,18 +176,22 @@ describe("Content Validators", () => {
       const result = checkInput({ slug: "technology" }, createCategory);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual([
-        { field: "name", message: "Invalid input: expected string, received undefined" },
-      ]);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "name", message: "Invalid input: expected string, received undefined" },
+        ]);
+      }
     });
 
     it("should reject empty name", () => {
       const result = checkInput({ name: "" }, createCategory);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual([
-        { field: "name", message: "Too small: expected string to have >=1 characters" },
-      ]);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "name", message: "Too small: expected string to have >=1 characters" },
+        ]);
+      }
     });
 
     it("should allow null description", () => {
@@ -200,7 +216,9 @@ describe("Content Validators", () => {
       const result = checkInput({}, updateCategory);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual(NOTHING_TO_UPDATE);
+      if (!result.ok) {
+        expect(result.errors).toEqual(NOTHING_TO_UPDATE);
+      }
     });
 
     it("should allow null description in update", () => {

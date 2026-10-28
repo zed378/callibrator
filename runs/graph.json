@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-28T08:26:44.827Z",
+  "last_updated": "2026-10-28T10:35:04.153Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -373,7 +373,14 @@
     "MEMORY\\records\\2026-10-24-p9-26-batch-39.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-40.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-41.md",
-    "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md"
+    "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-45.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-46.md",
+    "MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-47.md",
+    "MEMORY\\specs\\P19-05-calibration-dates.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-48.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-49.md"
   ],
   "entities": [
     {
@@ -73491,6 +73498,501 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-28 — P25-02: Q-28's unreferenced photo files as a run-level finding ([record](./records/2026-10-28-p25-02-q28-unreferenced.md), ADR-129 Am. 12)"
+    },
+    {
+      "id": "sec_p9_26_batch_45_sso_calibrationrecords_qms_validators_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 45: sso, calibrationRecords, qms validators — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-45.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-45.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 45: sso, calibrationRecords, qms validators — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_28_backlog_g_01_g_05_and_g_06_checked_against_the_code_record_records_2026_10_28_backlog_g01_g05_g06_md_",
+      "name": "2026-10-28 — Backlog G-01, G-05 and G-06 checked against the code ([record](./records/2026-10-28-backlog-g01-g05-g06.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-28 — Backlog G-01, G-05 and G-06 checked against the code ([record](./records/2026-10-28-backlog-g01-g05-g06.md))"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_45_sso_calibrationrecords_qms_validators_to_typescript_record_records_2026_10_24_p9_26_batch_45_md_",
+      "name": "2026-10-24 -- P9-26 batch 45: sso, calibrationRecords, qms validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-45.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 17,
+      "evidence": "### 2026-10-24 -- P9-26 batch 45: sso, calibrationRecords, qms validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-45.md))"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_44_calibrationdevices_tenantbackup_roles_validators_to_typescript_record_records_2026_10_24_p9_26_batch_44_md_",
+      "name": "2026-10-24 -- P9-26 batch 44: calibrationDevices, tenantBackup, roles validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-44.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 20,
+      "evidence": "### 2026-10-24 -- P9-26 batch 44: calibrationDevices, tenantBackup, roles validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-44.md))"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_43_storage_featureflag_certificate_validators_to_typescript_record_records_2026_10_24_p9_26_batch_43_md_",
+      "name": "2026-10-24 -- P9-26 batch 43: storage, featureFlag, certificate validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-43.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 23,
+      "evidence": "### 2026-10-24 -- P9-26 batch 43: storage, featureFlag, certificate validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-43.md))"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_42_webhooks_validation_a51_auth_routes_user_mfaseedatrest_s20_to_typescript_record_records_2026_10_24_p9_26_batch_42_md_",
+      "name": "2026-10-24 -- P9-26 batch 42: webhooks.validation.a51, auth.routes, user.mfaSeedAtRest.s20 to TypeScript ([record](./records/2026-10-24-p9-26-batch-42.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 26,
+      "evidence": "### 2026-10-24 -- P9-26 batch 42: webhooks.validation.a51, auth.routes, user.mfaSeedAtRest.s20 to TypeScript ([record](./records/2026-10-24-p9-26-batch-42.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_46_finance_gdpr_networksecurity_validators_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 46: finance, gdpr, networkSecurity validators — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-46.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-46.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 46: finance, gdpr, networkSecurity validators — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_46_finance_gdpr_networksecurity_validators_to_typescript_record_records_2026_10_24_p9_26_batch_46_md_",
+      "name": "2026-10-24 -- P9-26 batch 46: finance, gdpr, networkSecurity validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-46.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 17,
+      "evidence": "### 2026-10-24 -- P9-26 batch 46: finance, gdpr, networkSecurity validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-46.md))"
+    },
+    {
+      "id": "sec_owner_decisions_of_2026_10_28",
+      "name": "Owner decisions of 2026-10-28",
+      "type": "Section/Module",
+      "description": "Specification section from TASKS\\PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md",
+      "source": "TASKS\\PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md",
+      "line": 338,
+      "evidence": "### Owner decisions of 2026-10-28"
+    },
+    {
+      "id": "sec_the_owner_s_answers_to_the_open_owner_facts_and_actions_oa_1_oa_8_ud_7_ud_8_ud_18_",
+      "name": "The owner's answers to the open owner facts and actions (OA-1 … OA-8, UD-7, UD-8, UD-18)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "source": "MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "line": 1,
+      "evidence": "# The owner's answers to the open owner facts and actions (OA-1 … OA-8, UD-7, UD-8, UD-18)"
+    },
+    {
+      "id": "sec_the_answers_in_the_owner_s_words_and_what_each_changes",
+      "name": "The answers, in the owner's words, and what each changes",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "source": "MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "line": 5,
+      "evidence": "## The answers, in the owner's words, and what each changes"
+    },
+    {
+      "id": "sec_what_is_now_unblocked",
+      "name": "What is now unblocked",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "source": "MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "line": 19,
+      "evidence": "## What is now unblocked"
+    },
+    {
+      "id": "ent_the_ud_8_mapping",
+      "name": "The UD-8 mapping",
+      "type": "Component/Requirement",
+      "description": "`tgl_kalibrasi` as a calibration event. This is a new P24-02 card, and its design needs an ADR because it changes ADR-133's import rules.",
+      "source": "MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "line": 22,
+      "evidence": "- **The UD-8 mapping**: `tgl_kalibrasi` as a calibration event. This is a new P24-02 card, and its design needs an ADR because it changes ADR-133's import rules"
+    },
+    {
+      "id": "sec_note_on_the_legal_basis",
+      "name": "Note on the legal basis",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "source": "MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "line": 24,
+      "evidence": "## Note on the legal basis"
+    },
+    {
+      "id": "sec_2026_10_28_owner_answers_oa_1_oa_8_ud_7_ud_8_ud_18_record_records_2026_10_28_owner_answers_oa_ud_md_",
+      "name": "2026-10-28 — Owner answers: OA-1 … OA-8, UD-7, UD-8, UD-18 ([record](./records/2026-10-28-owner-answers-oa-ud.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-28 — Owner answers: OA-1 … OA-8, UD-7, UD-8, UD-18 ([record](./records/2026-10-28-owner-answers-oa-ud.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_47_ticket_content_dataretention_validators_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 47: ticket, content, dataRetention validators — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-47.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-47.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 47: ticket, content, dataRetention validators — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_47_ticket_content_dataretention_validators_to_typescript_record_records_2026_10_24_p9_26_batch_47_md_",
+      "name": "2026-10-24 -- P9-26 batch 47: ticket, content, dataRetention validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-47.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 20,
+      "evidence": "### 2026-10-24 -- P9-26 batch 47: ticket, content, dataRetention validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-47.md))"
+    },
+    {
+      "id": "sec_adr_133_amendment_5_2026_10_28_p24_02h_ud_8_decided_by_the_owner_the_device_s_own_calibration_date_trxinventory_tglkalibrasi_is_imported_as_a_calibration_record",
+      "name": "ADR-133 Amendment 5 (2026-10-28, P24-02h; UD-8 decided by the owner): the device's own calibration date (trxinventory.tglkalibrasi) is imported as a calibration record",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 12255,
+      "evidence": "### ADR-133 Amendment 5 (2026-10-28, P24-02h; UD-8 decided by the owner): the device's own calibration date (`trx_inventory.tgl_kalibrasi`) is imported as a cal"
+    },
+    {
+      "id": "sec_feature_spec_p19_05_calibration_dates_the_quick_external_calibration_entry_by_qr_history_kept_the_next_due_date_from_the_latest_effective_record_calibration_due_and_the_import_actor",
+      "name": "Feature Spec — P19-05 Calibration Dates: the Quick External-Calibration Entry by QR, History Kept, the Next Due Date From the Latest Effective Record, \"Calibration Due\", and the Import Actor",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 1,
+      "evidence": "# Feature Spec — P19-05 Calibration Dates: the Quick External-Calibration Entry by QR, History Kept, the Next Due Date From the Latest Effective Record, \"Calibr"
+    },
+    {
+      "id": "sec_2_what_is_already_decided_not_re_decided_here_",
+      "name": "2. What Is Already Decided (not re-decided here)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 28,
+      "evidence": "## 2. What Is Already Decided (not re-decided here)"
+    },
+    {
+      "id": "sec_gaps_and_contradictions_found_resolved_by_adr_133_deviation_protocol_",
+      "name": "Gaps and contradictions found — resolved by ADR-133 (deviation protocol)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 44,
+      "evidence": "### Gaps and contradictions found — resolved by ADR-133 (deviation protocol)"
+    },
+    {
+      "id": "sec_4_columns_p20_02_the_same_migration_as_the_p19_03_device_columns_",
+      "name": "4. Columns (P20-02 — the same migration as the P19-03 device columns)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 79,
+      "evidence": "## 4. Columns (P20-02 — the same migration as the P19-03 device columns)"
+    },
+    {
+      "id": "sec_4_1_calibrationrecords",
+      "name": "4.1 calibrationrecords",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 83,
+      "evidence": "### 4.1 `calibration_records`"
+    },
+    {
+      "id": "sec_4_2_calibrationdevices",
+      "name": "4.2 calibrationdevices",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 95,
+      "evidence": "### 4.2 `calibration_devices`"
+    },
+    {
+      "id": "sec_5_the_next_due_date_one_rule_applied_on_create_correction_and_void_g_c1_g_c2_",
+      "name": "5. The Next Due Date — One Rule, Applied on Create, Correction and Void (G-C1, G-C2)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 109,
+      "evidence": "## 5. The Next Due Date — One Rule, Applied on Create, Correction and Void (G-C1, G-C2)"
+    },
+    {
+      "id": "sec_6_calibration_due_computed_at_read",
+      "name": "6. \"Calibration Due\" — Computed at Read",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 125,
+      "evidence": "## 6. \"Calibration Due\" — Computed at Read"
+    },
+    {
+      "id": "ent_the_scan",
+      "name": "The scan",
+      "type": "Component/Requirement",
+      "description": "(`calibrationScheduler.service#buildDueWhere`, P21-04) becomes `next_calibration_date <= threshold OR calibration_requested_at IS NOT NULL`; the work order it opens for a requested device says \"Calibr",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 139,
+      "evidence": "- **The scan** (`calibrationScheduler.service#buildDueWhere`, P21-04) becomes `next_calibration_date <= threshold OR calibration_requested_at IS NOT NULL`; the "
+    },
+    {
+      "id": "ent_clearing_the_request_",
+      "name": "Clearing the request:",
+      "type": "Component/Requirement",
+      "description": "a new **effective** record of the device with `calibration_date >= calibration_requested_at::date` (any entry kind) clears both columns in its transaction (audited `IPM_CALIBRATION_REQUEST_CLEARED`, a",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 140,
+      "evidence": "- **Clearing the request:** a new **effective** record of the device with `calibration_date >= calibration_requested_at::date` (any entry kind) clears both colu"
+    },
+    {
+      "id": "ent_imported_devices",
+      "name": "Imported devices",
+      "type": "Component/Requirement",
+      "description": "(UD-8 interim): the import sets neither `calibration_interval_days` nor `due_date`, so § 5 derives nothing and the scan never reminds — exactly the interim rule, with no special case in the code.",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 141,
+      "evidence": "- **Imported devices** (UD-8 interim): the import sets neither `calibration_interval_days` nor `due_date`, so § 5 derives nothing and the scan never reminds — e"
+    },
+    {
+      "id": "sec_7_the_quick_external_calibration_entry_f_62_p21_05_p22_05_",
+      "name": "7. The Quick External-Calibration Entry (F-62; P21-05, P22-05)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 145,
+      "evidence": "## 7. The Quick External-Calibration Entry (F-62; P21-05, P22-05)"
+    },
+    {
+      "id": "sec_7_1_flow",
+      "name": "7.1 Flow",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 147,
+      "evidence": "### 7.1 Flow"
+    },
+    {
+      "id": "sec_7_2_route",
+      "name": "7.2 Route",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 151,
+      "evidence": "### 7.2 Route"
+    },
+    {
+      "id": "api_post_api_v1_calibration_devices_calibrationdeviceid_calibration_dates",
+      "name": "POST /api/v1/calibration-devices/:calibrationDeviceId/calibration-dates",
+      "type": "API_Endpoint",
+      "description": "| `POST /api/v1/calibration-devices/:calibrationDeviceId/calibration-dates` | `auth, dynamicAccess(\"calibration\", \"write\"), denyPlatformAuthoring, validate(calibrationDateEntry, { from: [\"params\", \"body\"] })` — **API keys allowed** (as `POST /calibration-records`, Q-51: a laboratory's system may post dates; the key becomes `api_key_id`) | **no** (N-10: bound → 403-route, C-14) | ✔ (P19-02 § 9.2) | `calibrationDateEntry` (strict): `calibrationDate` (`YYYY-MM-DD`), `calibrationVendorId?` (uuid), `externalLabName?` (1 – 255; required when no vendor), `certificateNumber?` (≤ 100), `dueDate?` (`YYYY-MM-DD`, the certificate's stated next date), `isCompliant?` (the laboratory's verdict: true / false / omitted = not stated), `locationId?` or `room?` (P19-03 § 6.3), `notes?` (≤ 2000) | **A-14** `calibrationDates.twoTenant.test.ts` |",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 155,
+      "evidence": "| `POST /api/v1/calibration-devices/:calibrationDeviceId/calibration-dates` | `auth, dynamicAccess(\"calibration\", \"write\"), denyPlatformAuthoring, validate(cali"
+    },
+    {
+      "id": "sec_7_3_rules_and_answers",
+      "name": "7.3 Rules and answers",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 157,
+      "evidence": "### 7.3 Rules and answers"
+    },
+    {
+      "id": "api_post_calibration_records_id_corrections",
+      "name": "POST /calibration-records/:id/corrections",
+      "type": "API_Endpoint",
+      "description": "`calibration_date` is stored as 00:00 of that day in the tenant's zone (the column is `timestamptz`, `DataTypes.DATE`); reads present it as a date. Corrections and voids of a quick-entry record use the existing routes (`POST /calibration-records/:id/corrections` — technicians; `/void` — `rbac([TENANT_ADMIN])` after P20-06) — no new path, the same lifecycle (ADR-062).",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 173,
+      "evidence": "`calibration_date` is stored as 00:00 of that day in the tenant's zone (the column is `timestamptz`, `DataTypes.DATE`); reads present it as a date. Corrections "
+    },
+    {
+      "id": "sec_7_4_what_the_quick_entry_does_not_do",
+      "name": "7.4 What the quick entry does not do",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 175,
+      "evidence": "### 7.4 What the quick entry does not do"
+    },
+    {
+      "id": "sec_8_reads_for_the_recaps_and_lists_p21_06_09_4_",
+      "name": "8. Reads for the Recaps and Lists (P21-06; 09 § 4)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 183,
+      "evidence": "## 8. Reads for the Recaps and Lists (P21-06; `09` § 4)"
+    },
+    {
+      "id": "sec_9_import_p24_02_p24_04_the_calibration_transform_and_its_actor_g_c5_",
+      "name": "9. Import (P24-02, P24-04) — the Calibration Transform and Its Actor (G-C5)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 203,
+      "evidence": "## 9. Import (P24-02, P24-04) — the Calibration Transform and Its Actor (G-C5)"
+    },
+    {
+      "id": "sec_9_1_trxkalibrasi_calibrationrecords",
+      "name": "9.1 trxkalibrasi → calibrationrecords",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 205,
+      "evidence": "### 9.1 `trx_kalibrasi` → `calibration_records`"
+    },
+    {
+      "id": "sec_9_2_the_per_tenant_import_key_p24_04_",
+      "name": "9.2 The per-tenant import key (P24-04)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 222,
+      "evidence": "### 9.2 The per-tenant import key (P24-04)"
+    },
+    {
+      "id": "sec_10_audit_events",
+      "name": "10. Audit Events",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 235,
+      "evidence": "## 10. Audit Events"
+    },
+    {
+      "id": "sec_11_security_p17_06_cross_reference_",
+      "name": "11. Security (P17-06 cross-reference)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 250,
+      "evidence": "## 11. Security (P17-06 cross-reference)"
+    },
+    {
+      "id": "ent_not_facility_accessible",
+      "name": "Not facility-accessible",
+      "type": "Component/Requirement",
+      "description": "(N-10): the quick entry route is unmarked → a bound principal gets 403 `FACILITY_ROUTE_REFUSED` before parameters are read (G-10); facility staff read dates through the marked device and record reads.",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 252,
+      "evidence": "- **Not facility-accessible** (N-10): the quick entry route is unmarked → a bound principal gets 403 `FACILITY_ROUTE_REFUSED` before parameters are read (G-10);"
+    },
+    {
+      "id": "ent_context_",
+      "name": "Context:",
+      "type": "Component/Requirement",
+      "description": "device and vendor loaded in context (404 across tenants); `performed_by` / `api_key_id` from the principal, never the body (Q-51); the record's facility from its device (0119 trigger).",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 253,
+      "evidence": "- **Context:** device and vendor loaded in context (404 across tenants); `performed_by` / `api_key_id` from the principal, never the body (Q-51); the record's f"
+    },
+    {
+      "id": "ent_no_new_oracle_",
+      "name": "No new oracle:",
+      "type": "Component/Requirement",
+      "description": "no new uniqueness; the duplicate-date notice names a person only to a caller who can already read that record.",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 254,
+      "evidence": "- **No new oracle:** no new uniqueness; the duplicate-date notice names a person only to a caller who can already read that record."
+    },
+    {
+      "id": "ent_the_import_key",
+      "name": "The import key",
+      "type": "Component/Requirement",
+      "description": "reads every facility of the provider tenant (an API key is unbound — OQ-11); scoped to `calibration: write`, expiring, revoked at cutover (FT-101).",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 255,
+      "evidence": "- **The import key** reads every facility of the provider tenant (an API key is unbound — OQ-11); scoped to `calibration: write`, expiring, revoked at cutover ("
+    },
+    {
+      "id": "ent_raw_sql_",
+      "name": "Raw SQL:",
+      "type": "Component/Requirement",
+      "description": "the two `sql()` reads (§ 6, § 8) bind the tenant and the context's facility; live twins (G-14).",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 256,
+      "evidence": "- **Raw SQL:** the two `sql()` reads (§ 6, § 8) bind the tenant and the context's facility; live twins (G-14)."
+    },
+    {
+      "id": "sec_12_test_plan_mapped_to_the_p18_04_plan_and_the_gate_rows",
+      "name": "12. Test Plan — Mapped to the P18-04 Plan and the Gate Rows",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 260,
+      "evidence": "## 12. Test Plan — Mapped to the P18-04 Plan and the Gate Rows"
+    },
+    {
+      "id": "sec_13_threat_model_rows_and_am_n_addressed",
+      "name": "13. Threat-Model Rows and AM-n Addressed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 282,
+      "evidence": "## 13. Threat-Model Rows and AM-n Addressed"
+    },
+    {
+      "id": "sec_15_decisions_made_here_recorded_as_adr_133_",
+      "name": "15. Decisions Made Here (recorded as ADR-133)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\specs\\P19-05-calibration-dates.md",
+      "source": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 298,
+      "evidence": "## 15. Decisions Made Here (recorded as ADR-133)"
+    },
+    {
+      "id": "sec_2026_10_28_p24_02h_the_device_s_own_calibration_date_tglkalibrasi_imported_as_a_calibration_record_record_records_2026_10_28_p24_02h_device_calibration_dates_md_adr_133_am_5_",
+      "name": "2026-10-28 — P24-02h: the device's own calibration date (tglkalibrasi) imported as a calibration record ([record](./records/2026-10-28-p24-02h-device-calibration-dates.md), ADR-133 Am. 5)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-28 — P24-02h: the device's own calibration date (`tgl_kalibrasi`) imported as a calibration record ([record](./records/2026-10-28-p24-02h-device-cal"
+    },
+    {
+      "id": "sec_p9_26_batch_48_user_safeattributes_user_create_attributes_maintenance_includes_a190_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 48: user.safeAttributes, user.create.attributes, maintenance.includes.a190 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-48.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-48.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 48: user.safeAttributes, user.create.attributes, maintenance.includes.a190 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_48_user_safeattributes_user_create_attributes_maintenance_includes_a190_to_typescript_record_records_2026_10_24_p9_26_batch_48_md_",
+      "name": "2026-10-24 -- P9-26 batch 48: user.safeAttributes, user.create.attributes, maintenance.includes.a190 to TypeScript ([record](./records/2026-10-24-p9-26-batch-48.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 23,
+      "evidence": "### 2026-10-24 -- P9-26 batch 48: user.safeAttributes, user.create.attributes, maintenance.includes.a190 to TypeScript ([record](./records/2026-10-24-p9-26-batc"
+    },
+    {
+      "id": "sec_p9_26_batch_49_vendor_qualify_p602_userpermission_controller_workflow_controller_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 49: vendor.qualify.p602, userPermission.controller, workflow.controller — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-49.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-49.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 49: vendor.qualify.p602, userPermission.controller, workflow.controller — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_49_vendor_qualify_p602_userpermission_controller_workflow_controller_to_typescript_record_records_2026_10_24_p9_26_batch_49_md_",
+      "name": "2026-10-24 -- P9-26 batch 49: vendor.qualify.p602, userPermission.controller, workflow.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-49.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 23,
+      "evidence": "### 2026-10-24 -- P9-26 batch 49: vendor.qualify.p602, userPermission.controller, workflow.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-4"
     }
   ],
   "relations": [
@@ -109125,12 +109627,204 @@
       "evidence": "- **Run-level finding (`runFindings`, 2026-10-28):** Q-28's unreferenced half, the photo files the image imports'",
       "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
       "line": 320
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_45_sso_calibrationrecords_qms_validators_to_typescript_record_records_2026_10_24_p9_26_batch_45_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 70 cases, eslint + typecheck clean, ratchet 568 to 565.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 18
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_44_calibrationdevices_tenantbackup_roles_validators_to_typescript_record_records_2026_10_24_p9_26_batch_44_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 51 cases, eslint + typecheck clean, ratchet 571 to 568.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 21
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_43_storage_featureflag_certificate_validators_to_typescript_record_records_2026_10_24_p9_26_batch_43_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 45 cases, eslint + typecheck clean, ratchet 574 to 571.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 24
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_42_webhooks_validation_a51_auth_routes_user_mfaseedatrest_s20_to_typescript_record_records_2026_10_24_p9_26_batch_42_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 26 cases, eslint + typecheck clean, ratchet 577 to 574.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 27
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_46_finance_gdpr_networksecurity_validators_to_typescript_record_records_2026_10_24_p9_26_batch_46_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 76 cases, eslint + typecheck clean, ratchet 565 to 562.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 18
+    },
+    {
+      "source": "sec_what_is_now_unblocked",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_ud_8_mapping",
+      "evidence": "- **The UD-8 mapping**: `tgl_kalibrasi` as a calibration event. This is a new P24-02 card, and its design needs an ADR because it changes ADR-133's import rules",
+      "source_file": "MEMORY\\records\\2026-10-28-owner-answers-oa-ud.md",
+      "line": 22
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_47_ticket_content_dataretention_validators_to_typescript_record_records_2026_10_24_p9_26_batch_47_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 78 cases, eslint + typecheck clean, ratchet 562 to 559.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 21
+    },
+    {
+      "source": "sec_gaps_and_contradictions_found_resolved_by_adr_133_deviation_protocol_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_calibration_records",
+      "evidence": "| G-C7 | `02` F-62: the quick entry is `POST /calibration-records` with `standard: external lab` | that overloads `standard` (the reference standard) with \"who ",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 54
+    },
+    {
+      "source": "sec_5_the_next_due_date_one_rule_applied_on_create_correction_and_void_g_c1_g_c2_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_put_calibration_devices_id",
+      "evidence": "**Where:** `calibrationRecords.service` create, correct and void — and the new quick entry — call it inside their transaction after the record write, under `SEL",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 119
+    },
+    {
+      "source": "sec_6_calibration_due_computed_at_read",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_calibration_devices",
+      "evidence": "- Device reads gain `calibrationDue { state, nextCalibrationDate, source, requestedBySessionId? }` and `lastCalibration { date, entryKind, performerDisplay, ext",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 138
+    },
+    {
+      "source": "sec_6_calibration_due_computed_at_read",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_scan",
+      "evidence": "- **The scan** (`calibrationScheduler.service#buildDueWhere`, P21-04) becomes `next_calibration_date <= threshold OR calibration_requested_at IS NOT NULL`; the ",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 139
+    },
+    {
+      "source": "sec_6_calibration_due_computed_at_read",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_clearing_the_request_",
+      "evidence": "- **Clearing the request:** a new **effective** record of the device with `calibration_date >= calibration_requested_at::date` (any entry kind) clears both colu",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 140
+    },
+    {
+      "source": "sec_6_calibration_due_computed_at_read",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_imported_devices",
+      "evidence": "- **Imported devices** (UD-8 interim): the import sets neither `calibration_interval_days` nor `due_date`, so § 5 derives nothing and the scan never reminds — e",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 141
+    },
+    {
+      "source": "sec_7_1_flow",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_calibration_devices_by_qr_qrcode",
+      "evidence": "Scan or type the QR → `GET /calibration-devices/by-qr/:qrCode` (P19-03 § 8.2) shows the device, its last calibration, its room → the technician confirms or chan",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 149
+    },
+    {
+      "source": "sec_7_2_route",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_api_v1_calibration_devices_calibrationdeviceid_calibration_dates",
+      "evidence": "| `POST /api/v1/calibration-devices/:calibrationDeviceId/calibration-dates` | `auth, dynamicAccess(\"calibration\", \"write\"), denyPlatformAuthoring, validate(cali",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 155
+    },
+    {
+      "source": "sec_7_3_rules_and_answers",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_post_calibration_records_id_corrections",
+      "evidence": "`calibration_date` is stored as 00:00 of that day in the tenant's zone (the column is `timestamptz`, `DataTypes.DATE`); reads present it as a date. Corrections ",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 173
+    },
+    {
+      "source": "sec_8_reads_for_the_recaps_and_lists_p21_06_09_4_",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_api_v1_calibration_records",
+      "evidence": "`GET /api/v1/calibration-records` (marked A-4 for bound readers) gains, in `getCalibrationRecordsQuery`:",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 185
+    },
+    {
+      "source": "sec_11_security_p17_06_cross_reference_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_not_facility_accessible",
+      "evidence": "- **Not facility-accessible** (N-10): the quick entry route is unmarked → a bound principal gets 403 `FACILITY_ROUTE_REFUSED` before parameters are read (G-10);",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 252
+    },
+    {
+      "source": "sec_11_security_p17_06_cross_reference_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_context_",
+      "evidence": "- **Context:** device and vendor loaded in context (404 across tenants); `performed_by` / `api_key_id` from the principal, never the body (Q-51); the record's f",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 253
+    },
+    {
+      "source": "sec_11_security_p17_06_cross_reference_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_no_new_oracle_",
+      "evidence": "- **No new oracle:** no new uniqueness; the duplicate-date notice names a person only to a caller who can already read that record.",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 254
+    },
+    {
+      "source": "sec_11_security_p17_06_cross_reference_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_import_key",
+      "evidence": "- **The import key** reads every facility of the provider tenant (an API key is unbound — OQ-11); scoped to `calibration: write`, expiring, revoked at cutover (",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 255
+    },
+    {
+      "source": "sec_11_security_p17_06_cross_reference_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_raw_sql_",
+      "evidence": "- **Raw SQL:** the two `sql()` reads (§ 6, § 8) bind the tenant and the context's facility; live twins (G-14).",
+      "source_file": "MEMORY\\specs\\P19-05-calibration-dates.md",
+      "line": 256
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_48_user_safeattributes_user_create_attributes_maintenance_includes_a190_to_typescript_record_records_2026_10_24_p9_26_batch_48_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 7 cases, eslint + typecheck clean, ratchet 559 to 556.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 24
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_49_vendor_qualify_p602_userpermission_controller_workflow_controller_to_typescript_record_records_2026_10_24_p9_26_batch_49_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 30 cases, eslint + typecheck clean, ratchet 556 to 553.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 24
     }
   ],
   "stats": {
-    "total_sources": 372,
-    "total_entities": 8124,
-    "total_relations": 4454,
+    "total_sources": 379,
+    "total_entities": 8179,
+    "total_relations": 4478,
     "token_savings_estimate": "85-95%"
   }
 }

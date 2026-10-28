@@ -5,25 +5,27 @@
  * `validateInput` helper (the file's own `validate`, which threw an `Error`,
  * is gone; `validateInput` throws the plain 400 object).
  */
-const { validateInput: validate } = require("../../validators/input");
-const {
+import type { z } from "zod";
+import { validateInput as validate } from "../../validators/input";
+import type { FieldError, ValidationFailure } from "../../validators/input";
+import {
   requestErasure,
   updateConsent,
   rectifyData,
   restrictProcessing,
   rectifiedEmailSchema,
-} = require("../../validators/gdpr.validator");
+} from "../../validators/gdpr.validator";
 
 const REQUIRED_STRING = "Invalid input: expected string, received undefined";
 const TOO_LONG = "Too big: expected string to have <=500 characters";
 
 /** @returns the field errors `validate` threw (asserting the 400 shape), or undefined */
-const errorsOf = (data, schema) => {
+const errorsOf = (data: unknown, schema: z.ZodType): FieldError[] | undefined => {
   try {
     validate(data, schema);
   } catch (error) {
     expect(error).toMatchObject({ status: 400, message: "Validation failed" });
-    return error.errors;
+    return (error as ValidationFailure).errors;
   }
   return undefined;
 };
@@ -172,13 +174,21 @@ describe("GDPR/CCPA Validators", () => {
     });
 
     it("refuses a malformed or over-long address", () => {
-      expect(rectifiedEmailSchema.safeParse("not-an-email").error.issues[0].message).toBe("Invalid email address");
+      const malformed = rectifiedEmailSchema.safeParse("not-an-email");
+      expect(malformed.success).toBe(false);
+      if (!malformed.success) {
+        expect(malformed.error.issues.map((i) => i.message)).toEqual(["Invalid email address"]);
+      }
       // A 262-character address breaks both the RFC 5321 limits (64 before the
       // "@", 254 in all) and the 255 column cap; both are reported.
-      expect(rectifiedEmailSchema.safeParse(`${"a".repeat(250)}@example.com`).error.issues.map((i) => i.message)).toEqual([
-        "Invalid email address",
-        "Too big: expected string to have <=255 characters",
-      ]);
+      const overlong = rectifiedEmailSchema.safeParse(`${"a".repeat(250)}@example.com`);
+      expect(overlong.success).toBe(false);
+      if (!overlong.success) {
+        expect(overlong.error.issues.map((i) => i.message)).toEqual([
+          "Invalid email address",
+          "Too big: expected string to have <=255 characters",
+        ]);
+      }
     });
   });
 });

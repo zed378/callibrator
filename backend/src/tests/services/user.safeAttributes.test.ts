@@ -13,33 +13,48 @@
  * test that iterated the exclude list could not notice a name that matches no
  * attribute.
  */
+import type * as SequelizeModule from "sequelize";
 
-const mockSql = { statements: [] };
+const mockSql: { statements: string[] } = { statements: [] };
 
 jest.mock("../../config", () => {
-  const { Sequelize } = jest.requireActual("sequelize");
+  const { Sequelize } = jest.requireActual<typeof SequelizeModule>("sequelize");
   const db = new Sequelize({ dialect: "postgres", logging: false });
-  db.query = async (sql, options) => {
+  (db as unknown as { query: unknown }).query = (
+    sql: string | { query: string },
+    options?: { plain?: boolean },
+  ) => {
     mockSql.statements.push(typeof sql === "string" ? sql : sql.query);
-    if (options && options.plain) {return null;}
-    return [];
+    if (options?.plain) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve([]);
   };
-  db.transaction = async () => ({
-    finished: undefined,
-    commit: async () => {},
-    rollback: async () => {},
-  });
+  (db as unknown as { transaction: unknown }).transaction = () =>
+    Promise.resolve({
+      finished: undefined,
+      commit: () => Promise.resolve(),
+      rollback: () => Promise.resolve(),
+    });
   return { db };
 });
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
-const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
-const userService = require("../../services/user.service");
+/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as includes.a90 does */
+require("../../models");
+const { tenantStorage } = require("../../middlewares/tenantContext.middleware") as {
+    tenantStorage: { run<T>(store: object, fn: () => T): T };
+};
+const userService = require("../../services/user.service") as {
+    fetchUsers: (q: Record<string, unknown>) => Promise<unknown>;
+    fetchSpecificUser: (id: string) => Promise<unknown>;
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const ID = "22222222-2222-4222-8222-222222222222";
 
-const SECRET_COLUMNS = [
+const SECRET_COLUMNS: readonly string[] = [
   "password",
   "password_changed_at",
   "otp_code",
@@ -58,8 +73,8 @@ const SECRET_COLUMNS = [
 ];
 
 /** The columns a SELECT reads from the User table (alias "User"). */
-const userColumns = (sql) =>
-  [...sql.matchAll(/"User"\."([a-z_]+)"/g)].map((m) => m[1]);
+const userColumns = (sql: string): string[] =>
+  [...sql.matchAll(/"User"\."([a-z_]+)"/g)].map((m) => m[1] ?? "");
 
 beforeEach(() => {
   mockSql.statements = [];
@@ -69,7 +84,8 @@ describe("user reads never select a credential or second-factor column", () => {
   it("GET /users (fetchUsers)", async () => {
     await tenantStorage.run({ tenantId: TENANT }, () => userService.fetchUsers({ tenantId: TENANT }));
 
-    const list = mockSql.statements.find((s) => /^SELECT (?!count\()/i.test(s) && /FROM "users"/.test(s));
+    const list =
+            mockSql.statements.find((s) => /^SELECT (?!count\()/i.test(s) && s.includes('FROM "users"')) ?? "";
     const selected = userColumns(list.slice(0, list.indexOf(" FROM ")));
     expect(selected).toEqual(expect.arrayContaining(["id", "username", "email", "mfa_enabled"]));
     expect(selected.filter((c) => SECRET_COLUMNS.includes(c))).toEqual([]);
@@ -77,10 +93,10 @@ describe("user reads never select a credential or second-factor column", () => {
 
   it("GET /users/:id (fetchSpecificUser)", async () => {
     await tenantStorage.run({ tenantId: TENANT }, () =>
-      userService.fetchSpecificUser(ID).catch(() => {}),
+      userService.fetchSpecificUser(ID).catch(() => undefined),
     );
 
-    const detail = mockSql.statements.find((s) => /FROM "users"/.test(s));
+    const detail = mockSql.statements.find((s) => s.includes('FROM "users"')) ?? "";
     const selected = userColumns(detail.slice(0, detail.indexOf(" FROM ")));
     expect(selected).toEqual(expect.arrayContaining(["id", "username", "email"]));
     expect(selected.filter((c) => SECRET_COLUMNS.includes(c))).toEqual([]);

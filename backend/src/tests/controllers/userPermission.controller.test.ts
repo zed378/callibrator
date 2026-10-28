@@ -1,6 +1,7 @@
 /**
  * Tests for userPermission controller
  */
+import type { Request, Response } from "express";
 
 jest.mock("../../services/userPermission.service", () => ({
   getUserPermissions: jest.fn(),
@@ -13,23 +14,50 @@ jest.mock("../../utils/response.util", () => ({
   error: jest.fn(),
 }));
 
-const userPermissionController = require("../../controllers/userPermission.controller");
-const userPermissionService = require("../../services/userPermission.service");
-const { success, error } = require("../../utils/response.util");
+interface UserPermissionServiceDouble {
+    getUserPermissions: jest.Mock;
+    setUserPermission: jest.Mock;
+    removeUserPermission: jest.Mock;
+}
+
+interface ResponseDouble {
+    success: jest.Mock;
+    error: jest.Mock;
+}
+
+type Handler = (req: Request, res: Response, next: (err?: unknown) => void) => Promise<unknown>;
+
+interface FakeRes {
+    status: (code: number) => FakeRes;
+    json: jest.Mock;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factories above
+const userPermissionService = require("../../services/userPermission.service") as UserPermissionServiceDouble;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factories above
+const userPermissionController = require("../../controllers/userPermission.controller") as {
+    getUserPermissions: Handler;
+    setUserPermission: Handler;
+    removeUserPermission: Handler;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factories above
+const { success, error } = require("../../utils/response.util") as ResponseDouble;
 
 const USER_ID = "550e8400-e29b-41d4-a716-446655440000";
 const MENU_GROUP_ID = "550e8400-e29b-41d4-a716-446655440001";
 
 describe("userPermission Controller", () => {
-  let req, res, next;
+  let req: Record<string, unknown>;
+  let res: FakeRes;
+  let next: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    success.mockImplementation((res, data, meta, message, status) => {
-      res.status(status || 200).json({ success: true, data, message });
+    success.mockImplementation((response: FakeRes, data: unknown, _meta: unknown, message: unknown, status?: number) => {
+      response.status(status ?? 200).json({ success: true, data, message });
     });
-    error.mockImplementation((res, message, statusCode) => {
-      res.status(statusCode).json({
+    error.mockImplementation((response: FakeRes, message: unknown, statusCode: number) => {
+      response.status(statusCode).json({
         success: false,
         status: statusCode,
         message,
@@ -52,7 +80,7 @@ describe("userPermission Controller", () => {
 
   describe("getUserPermissions", () => {
     it("should return user permissions", async () => {
-      req.params = { userId: USER_ID };
+      req["params"] = { userId: USER_ID };
       userPermissionService.getUserPermissions.mockResolvedValue({
         success: true,
         status: 200,
@@ -65,18 +93,18 @@ describe("userPermission Controller", () => {
         },
       });
 
-      await userPermissionController.getUserPermissions(req, res, next);
+      await userPermissionController.getUserPermissions(req as unknown as Request, res as unknown as Response, next);
 
       expect(userPermissionService.getUserPermissions).toHaveBeenCalledWith(USER_ID);
       expect(success).toHaveBeenCalled();
     });
 
     it("should return 404 when user not found", async () => {
-      req.params = { userId: "invalid-id" };
+      req["params"] = { userId: "invalid-id" };
       const AppError = { status: 404, message: "User not found" };
       userPermissionService.getUserPermissions.mockRejectedValue(AppError);
 
-      await userPermissionController.getUserPermissions(req, res, next);
+      await userPermissionController.getUserPermissions(req as unknown as Request, res as unknown as Response, next);
 
       expect(res.status).toHaveBeenCalledWith(404);
     });
@@ -84,8 +112,8 @@ describe("userPermission Controller", () => {
 
   describe("setUserPermission", () => {
     it("should set a user permission", async () => {
-      req.params = { userId: USER_ID };
-      req.body = { menuGroupId: MENU_GROUP_ID, permissionType: "read", notes: "test" };
+      req["params"] = { userId: USER_ID };
+      req["body"] = { menuGroupId: MENU_GROUP_ID, permissionType: "read", notes: "test" };
       userPermissionService.setUserPermission.mockResolvedValue({
         success: true,
         status: 201,
@@ -93,7 +121,7 @@ describe("userPermission Controller", () => {
         data: { id: "perm-1", menuGroupId: MENU_GROUP_ID },
       });
 
-      await userPermissionController.setUserPermission(req, res, next);
+      await userPermissionController.setUserPermission(req as unknown as Request, res as unknown as Response, next);
 
       expect(userPermissionService.setUserPermission).toHaveBeenCalledWith(
         USER_ID,
@@ -108,10 +136,10 @@ describe("userPermission Controller", () => {
     });
 
     it("should return 400 when menuGroupId is missing", async () => {
-      req.params = { userId: USER_ID };
-      req.body = { permissionType: "read" };
+      req["params"] = { userId: USER_ID };
+      req["body"] = { permissionType: "read" };
 
-      await userPermissionController.setUserPermission(req, res, next);
+      await userPermissionController.setUserPermission(req as unknown as Request, res as unknown as Response, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
@@ -124,25 +152,25 @@ describe("userPermission Controller", () => {
     });
 
     it("should return 400 when permissionType is missing", async () => {
-      req.params = { userId: USER_ID };
-      req.body = { menuGroupId: MENU_GROUP_ID };
+      req["params"] = { userId: USER_ID };
+      req["body"] = { menuGroupId: MENU_GROUP_ID };
 
-      await userPermissionController.setUserPermission(req, res, next);
+      await userPermissionController.setUserPermission(req as unknown as Request, res as unknown as Response, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
     });
 
     it("should default grantedBy to null when user is not on req", async () => {
-      req.params = { userId: USER_ID };
-      req.body = { menuGroupId: MENU_GROUP_ID, permissionType: "read" };
-      req.user = {};
+      req["params"] = { userId: USER_ID };
+      req["body"] = { menuGroupId: MENU_GROUP_ID, permissionType: "read" };
+      req["user"] = {};
       userPermissionService.setUserPermission.mockResolvedValue({
         success: true,
         status: 201,
         data: { id: "perm-1" },
       });
 
-      await userPermissionController.setUserPermission(req, res, next);
+      await userPermissionController.setUserPermission(req as unknown as Request, res as unknown as Response, next);
 
       expect(userPermissionService.setUserPermission).toHaveBeenCalledWith(
         USER_ID,
@@ -157,7 +185,7 @@ describe("userPermission Controller", () => {
 
   describe("removeUserPermission", () => {
     it("should remove a user permission", async () => {
-      req.params = { userId: USER_ID, menuGroupId: MENU_GROUP_ID };
+      req["params"] = { userId: USER_ID, menuGroupId: MENU_GROUP_ID };
       userPermissionService.removeUserPermission.mockResolvedValue({
         success: true,
         status: 200,
@@ -165,7 +193,7 @@ describe("userPermission Controller", () => {
         data: null,
       });
 
-      await userPermissionController.removeUserPermission(req, res, next);
+      await userPermissionController.removeUserPermission(req as unknown as Request, res as unknown as Response, next);
 
       expect(userPermissionService.removeUserPermission).toHaveBeenCalledWith(
         USER_ID,
@@ -176,12 +204,12 @@ describe("userPermission Controller", () => {
     });
 
     it("should handle service error", async () => {
-      req.params = { userId: USER_ID, menuGroupId: MENU_GROUP_ID };
+      req["params"] = { userId: USER_ID, menuGroupId: MENU_GROUP_ID };
       userPermissionService.removeUserPermission.mockRejectedValue(
         new Error("Database error"),
       );
 
-      await userPermissionController.removeUserPermission(req, res, next);
+      await userPermissionController.removeUserPermission(req as unknown as Request, res as unknown as Response, next);
 
       expect(res.status).toHaveBeenCalledWith(500);
     });

@@ -4,11 +4,11 @@
  * P9-11: the file's own validate()/formatErrors() are gone; the schemas are
  * checked through the shared checkInput (strip-unknown, every issue).
  */
-const {
+import {
   createBackupSchema,
   restoreBackupSchema,
-} = require("../../validators/tenantBackup.validator");
-const { checkInput } = require("../../validators/input");
+} from "../../validators/tenantBackup.validator";
+import { checkInput } from "../../validators/input";
 
 describe("Tenant Backup Validators", () => {
   describe("createBackupSchema", () => {
@@ -16,21 +16,27 @@ describe("Tenant Backup Validators", () => {
       const result = checkInput({ name: "Weekly Backup" }, createBackupSchema);
 
       expect(result.ok).toBe(true);
-      expect(result.value).toEqual({ name: "Weekly Backup", backupType: "FULL", retentionDays: 90 });
+      if (result.ok) {
+        expect(result.value).toEqual({ name: "Weekly Backup", backupType: "FULL", retentionDays: 90 });
+      }
     });
 
     it("should validate with custom backup type", () => {
       const result = checkInput({ name: "Partial Backup", backupType: "PARTIAL" }, createBackupSchema);
 
       expect(result.ok).toBe(true);
-      expect(result.value.backupType).toBe("PARTIAL");
+      if (result.ok) {
+        expect(result.value.backupType).toBe("PARTIAL");
+      }
     });
 
     it("should validate with custom retention days", () => {
       const result = checkInput({ name: "Backup", retentionDays: 30 }, createBackupSchema);
 
       expect(result.ok).toBe(true);
-      expect(result.value.retentionDays).toBe(30);
+      if (result.ok) {
+        expect(result.value.retentionDays).toBe(30);
+      }
     });
 
     it("should convert a numeric-string retention and trim the text fields", () => {
@@ -65,21 +71,31 @@ describe("Tenant Backup Validators", () => {
       const result = checkInput({ name: "A" }, createBackupSchema);
 
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual([
-        { field: "name", message: "Too small: expected string to have >=2 characters" },
-      ]);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "name", message: "Too small: expected string to have >=2 characters" },
+        ]);
+      }
     });
 
     it("should reject name that is too long", () => {
-      expect(checkInput({ name: "a".repeat(101) }, createBackupSchema).errors).toEqual([
-        { field: "name", message: "Too big: expected string to have <=100 characters" },
-      ]);
+      const result = checkInput({ name: "a".repeat(101) }, createBackupSchema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "name", message: "Too big: expected string to have <=100 characters" },
+        ]);
+      }
     });
 
     it("should reject missing name", () => {
-      expect(checkInput({}, createBackupSchema).errors).toEqual([
-        { field: "name", message: "Invalid input: expected string, received undefined" },
-      ]);
+      const result = checkInput({}, createBackupSchema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "name", message: "Invalid input: expected string, received undefined" },
+        ]);
+      }
     });
 
     it("should reject a missing body as a missing name (A-09)", () => {
@@ -87,9 +103,13 @@ describe("Tenant Backup Validators", () => {
     });
 
     it("should reject invalid backup type", () => {
-      expect(checkInput({ name: "Backup", backupType: "INVALID" }, createBackupSchema).errors).toEqual([
-        { field: "backupType", message: 'Invalid option: expected one of "FULL"|"PARTIAL"|"USER_ONLY"' },
-      ]);
+      const result = checkInput({ name: "Backup", backupType: "INVALID" }, createBackupSchema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "backupType", message: 'Invalid option: expected one of "FULL"|"PARTIAL"|"USER_ONLY"' },
+        ]);
+      }
     });
 
     it("should reject retention days below minimum", () => {
@@ -115,11 +135,18 @@ describe("Tenant Backup Validators", () => {
     it("should report every failing field at once", () => {
       const result = checkInput({ name: "A", backupType: "X", retentionDays: 0 }, createBackupSchema);
 
-      expect(result.errors.map((e) => e.field)).toEqual(["name", "backupType", "retentionDays"]);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors.map((e) => e.field)).toEqual(["name", "backupType", "retentionDays"]);
+      }
     });
 
     it("should strip unknown fields", () => {
-      expect(checkInput({ name: "Backup", tenantId: "x" }, createBackupSchema).value.tenantId).toBeUndefined();
+      const result = checkInput({ name: "Backup", tenantId: "x" }, createBackupSchema);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect((result.value as Record<string, unknown>)["tenantId"]).toBeUndefined();
+      }
     });
   });
 
@@ -134,12 +161,22 @@ describe("Tenant Backup Validators", () => {
       const result = checkInput({ mergeData: true }, restoreBackupSchema);
 
       expect(result.ok).toBe(true);
-      expect(result.value.mergeData).toBe(true);
+      if (result.ok) {
+        expect(result.value.mergeData).toBe(true);
+      }
     });
 
     it("should convert the strings true and false", () => {
-      expect(checkInput({ mergeData: "true" }, restoreBackupSchema).value.mergeData).toBe(true);
-      expect(checkInput({ mergeData: "false" }, restoreBackupSchema).value.mergeData).toBe(false);
+      const truthy = checkInput({ mergeData: "true" }, restoreBackupSchema);
+      expect(truthy.ok).toBe(true);
+      if (truthy.ok) {
+        expect(truthy.value.mergeData).toBe(true);
+      }
+      const falsy = checkInput({ mergeData: "false" }, restoreBackupSchema);
+      expect(falsy.ok).toBe(true);
+      if (falsy.ok) {
+        expect(falsy.value.mergeData).toBe(false);
+      }
     });
 
     it("should reject non-boolean mergeData", () => {

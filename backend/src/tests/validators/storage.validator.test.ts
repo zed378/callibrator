@@ -1,11 +1,9 @@
-const {
-  updateStorageSettingsSchema,
-} = require("../../validators/storage.validator");
-const { checkInput } = require("../../validators/input");
+import { checkInput } from "../../validators/input";
+import { updateStorageSettingsSchema } from "../../validators/storage.validator";
 
 // P9-11: the schema is Zod; checkInput is the app's own entry point (unknown
 // keys stripped, every issue reported), as the old options here were.
-const check = (body) => checkInput(body, updateStorageSettingsSchema);
+const check = (body: unknown) => checkInput(body, updateStorageSettingsSchema);
 
 describe("updateStorageSettingsSchema", () => {
   it("accepts a full s3 configuration", () => {
@@ -20,7 +18,9 @@ describe("updateStorageSettingsSchema", () => {
       secretAccessKey: "SK",
     });
     expect(result.ok).toBe(true);
-    expect(result.value.bucket).toBe("b");
+    if (result.ok) {
+      expect(result.value.bucket).toBe("b");
+    }
   });
 
   it("accepts a minimal s3 configuration (ambient credentials)", () => {
@@ -28,12 +28,13 @@ describe("updateStorageSettingsSchema", () => {
   });
 
   it("converts \"true\"/\"false\" and trims text, as the old conversion did", () => {
-    const result = check({ provider: "s3", bucket: "  b  ", forcePathStyle: "true" });
-    expect(result).toEqual({ ok: true, value: { provider: "s3", bucket: "b", forcePathStyle: true } });
-    expect(check({ provider: "nfs", root: " /mnt ", fsync: "false" }).value).toEqual({
-      provider: "nfs",
-      root: "/mnt",
-      fsync: false,
+    expect(check({ provider: "s3", bucket: "  b  ", forcePathStyle: "true" })).toEqual({
+      ok: true,
+      value: { provider: "s3", bucket: "b", forcePathStyle: true },
+    });
+    expect(check({ provider: "nfs", root: " /mnt ", fsync: "false" })).toEqual({
+      ok: true,
+      value: { provider: "nfs", root: "/mnt", fsync: false },
     });
   });
 
@@ -73,9 +74,13 @@ describe("updateStorageSettingsSchema", () => {
   });
 
   it("requires a provider", () => {
-    expect(check({ bucket: "b" }).errors).toEqual([
-      { field: "provider", message: "Invalid discriminator value. Expected 's3' | 'nfs'" },
-    ]);
+    const result = check({ bucket: "b" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toEqual([
+        { field: "provider", message: "Invalid discriminator value. Expected 's3' | 'nfs'" },
+      ]);
+    }
   });
 
   it("forbids s3 fields on an nfs configuration", () => {
@@ -118,6 +123,8 @@ describe("updateStorageSettingsSchema", () => {
   it("strips unknown fields (e.g. an attempt to set endpointTrusted)", () => {
     const result = check({ provider: "s3", bucket: "b", endpointTrusted: true });
     expect(result.ok).toBe(true);
-    expect(result.value.endpointTrusted).toBeUndefined();
+    if (result.ok) {
+      expect((result.value as Record<string, unknown>)["endpointTrusted"]).toBeUndefined();
+    }
   });
 });

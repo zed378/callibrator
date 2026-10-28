@@ -13,22 +13,25 @@
  *   - every key userCreate hands Users.create is an attribute of the model;
  *   - the account is built verified.
  */
+import type * as SequelizeModule from "sequelize";
 
 jest.mock("../../config", () => {
-  const { Sequelize } = jest.requireActual("sequelize");
+  const { Sequelize } = jest.requireActual<typeof SequelizeModule>("sequelize");
   const db = new Sequelize({ dialect: "postgres", logging: false });
-  db.query = async () => [];
-  db.transaction = async () => {
+  (db as unknown as { query: unknown }).query = () => Promise.resolve([]);
+  (db as unknown as { transaction: unknown }).transaction = () => {
     const t = {
-      finished: undefined,
-      commit: async () => {
+      finished: undefined as string | undefined,
+      commit: () => {
         t.finished = "commit";
+        return Promise.resolve();
       },
-      rollback: async () => {
+      rollback: () => {
         t.finished = "rollback";
+        return Promise.resolve();
       },
     };
-    return t;
+    return Promise.resolve(t);
   };
   return { db };
 });
@@ -38,15 +41,29 @@ jest.mock("../../utils/password.util", () => ({
   comparePassword: jest.fn(),
 }));
 
-const models = require("../../models");
-const userService = require("../../services/user.service");
+/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as includes.a90 does */
+require("../../models");
+const models = require("../../models") as {
+    Users: {
+        findOne: (...args: unknown[]) => Promise<unknown>;
+        findByPk: (...args: unknown[]) => Promise<unknown>;
+        create: (...args: unknown[]) => Promise<unknown>;
+        build: (values: Record<string, unknown>) => { isEmailVerified: boolean };
+        getAttributes: () => Record<string, unknown>;
+    };
+    Roles: { findByPk: (...args: unknown[]) => Promise<unknown> };
+};
+const userService = require("../../services/user.service") as {
+    userCreate: (input: Record<string, unknown>) => Promise<{ data: Record<string, unknown> }>;
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const ROLE = "33333333-3333-4333-8333-333333333333";
 const ACTOR = "44444444-4444-4444-8444-444444444444";
 
 describe("userCreate writes only real User attributes", () => {
-  let captured;
+  let captured: Record<string, unknown> | null;
 
   beforeEach(() => {
     captured = null;
@@ -56,18 +73,18 @@ describe("userCreate writes only real User attributes", () => {
       name: "TECHNICIAN",
       status: "active",
     });
-    jest.spyOn(models.Users, "create").mockImplementation(async (values) => {
-      captured = values;
-      return models.Users.build(values);
+    jest.spyOn(models.Users, "create").mockImplementation((values: unknown) => {
+      captured = values as Record<string, unknown>;
+      return Promise.resolve(models.Users.build(captured));
     });
-    jest.spyOn(models.Users, "findByPk").mockImplementation(async () => ({ id: "u-new" }));
+    jest.spyOn(models.Users, "findByPk").mockImplementation(() => Promise.resolve({ id: "u-new" }));
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  const create = () =>
+  const create = (): Promise<{ data: Record<string, unknown> }> =>
     userService.userCreate({
       tenantId: TENANT,
       username: "ada",
@@ -84,16 +101,16 @@ describe("userCreate writes only real User attributes", () => {
     await create();
 
     expect(captured).not.toBeNull();
-    const attributes = Object.keys(models.Users.rawAttributes);
-    const unknown = Object.keys(captured).filter((key) => !attributes.includes(key));
+    const attributes = Object.keys(models.Users.getAttributes());
+    const unknown = Object.keys(captured ?? {}).filter((key) => !attributes.includes(key));
     expect(unknown).toEqual([]);
   });
 
   it("an admin-created user is stored email-verified", async () => {
     const result = await create();
 
-    const built = models.Users.build(captured);
+    const built = models.Users.build(captured ?? {});
     expect(built.isEmailVerified).toBe(true);
-    expect(result.data.isEmailVerified).toBe(true);
+    expect(result.data["isEmailVerified"]).toBe(true);
   });
 });
