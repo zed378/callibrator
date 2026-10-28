@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-27T11:44:54.867Z",
+  "last_updated": "2026-10-28T06:42:49.854Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -364,7 +364,10 @@
     "MEMORY\\records\\2026-10-24-p9-26-batch-30.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-31.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-32.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-33.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-33.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-35.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-36.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-37.md"
   ],
   "entities": [
     {
@@ -73185,6 +73188,87 @@
       "source": "MEMORY\\records\\2026-10-24-p9-26-batch-33.md",
       "line": 23,
       "evidence": "- `iot.route.test.ts`: 6/6 — router shape, registered routes, multiple handlers, POST /ingest, ingest plus four provisioning routes, auth on every provisioning "
+    },
+    {
+      "id": "sec_p9_26_batch_35_batchjobs_route_calibrationscheduler_route_userpermissions_route_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 35: batchJobs.route, calibrationScheduler.route, userPermissions.route — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-35.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-35.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 35: batchJobs.route, calibrationScheduler.route, userPermissions.route — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_27_p25_02_q_4_q_14_and_q_28_s_missing_files_in_the_data_quality_report_record_records_2026_10_27_p25_02_q4_q14_q28_md_adr_129_am_12_",
+      "name": "2026-10-27 — P25-02: Q-4, Q-14 and Q-28's missing files in the data-quality report ([record](./records/2026-10-27-p25-02-q4-q14-q28.md), ADR-129 Am. 12)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-27 — P25-02: Q-4, Q-14 and Q-28's missing files in the data-quality report ([record](./records/2026-10-27-p25-02-q4-q14-q28.md), ADR-129 Am. 12)"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_35_batchjobs_route_calibrationscheduler_route_userpermissions_route_to_typescript_record_records_2026_10_24_p9_26_batch_35_md_",
+      "name": "2026-10-24 -- P9-26 batch 35: batchJobs.route, calibrationScheduler.route, userPermissions.route to TypeScript ([record](./records/2026-10-24-p9-26-batch-35.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 14,
+      "evidence": "### 2026-10-24 -- P9-26 batch 35: batchJobs.route, calibrationScheduler.route, userPermissions.route to TypeScript ([record](./records/2026-10-24-p9-26-batch-35"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_34_gdpr_routes_tenantlifecycle_routes_dataretention_routes_to_typescript_record_records_2026_10_24_p9_26_batch_34_md_",
+      "name": "2026-10-24 -- P9-26 batch 34: gdpr.routes, tenantLifecycle.routes, dataRetention.routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-34.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 17,
+      "evidence": "### 2026-10-24 -- P9-26 batch 34: gdpr.routes, tenantLifecycle.routes, dataRetention.routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-34.md))"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_33_search_guard_a04_iot_route_scim_routes_to_typescript_record_records_2026_10_24_p9_26_batch_33_md_",
+      "name": "2026-10-24 -- P9-26 batch 33: search.guard.a04, iot.route, scim.routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-33.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 20,
+      "evidence": "### 2026-10-24 -- P9-26 batch 33: search.guard.a04, iot.route, scim.routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-33.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_36_calibrationrecords_route_featureflags_route_customdomains_route_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 36: calibrationRecords.route, featureFlags.route, customDomains.route — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-36.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-36.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 36: calibrationRecords.route, featureFlags.route, customDomains.route — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_36_calibrationrecords_route_featureflags_route_customdomains_route_to_typescript_record_records_2026_10_24_p9_26_batch_36_md_",
+      "name": "2026-10-24 -- P9-26 batch 36: calibrationRecords.route, featureFlags.route, customDomains.route to TypeScript ([record](./records/2026-10-24-p9-26-batch-36.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 14,
+      "evidence": "### 2026-10-24 -- P9-26 batch 36: calibrationRecords.route, featureFlags.route, customDomains.route to TypeScript ([record](./records/2026-10-24-p9-26-batch-36."
+    },
+    {
+      "id": "sec_p9_26_batch_37_storage_signing_session_revokeothers_a141_auditredaction_d27_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 37: storage.signing, session.revokeOthers.a141, auditRedaction.d27 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-37.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-37.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 37: storage.signing, session.revokeOthers.a141, auditRedaction.d27 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_37_storage_signing_session_revokeothers_a141_auditredaction_d27_to_typescript_record_records_2026_10_24_p9_26_batch_37_md_",
+      "name": "2026-10-24 -- P9-26 batch 37: storage.signing, session.revokeOthers.a141, auditRedaction.d27 to TypeScript ([record](./records/2026-10-24-p9-26-batch-37.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 -- P9-26 batch 37: storage.signing, session.revokeOthers.a141, auditRedaction.d27 to TypeScript ([record](./records/2026-10-24-p9-26-batch-37.md)"
     }
   ],
   "relations": [
@@ -108651,12 +108735,52 @@
       "evidence": "- `scim.routes.test.ts`: 10/10 — router shape, registered routes, GET /Users, GET /Users/:id, POST /Users, PUT /Users/:id, PATCH /Users/:id, DELETE /Users/:id, ",
       "source_file": "MEMORY\\records\\2026-10-24-p9-26-batch-33.md",
       "line": 24
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_35_batchjobs_route_calibrationscheduler_route_userpermissions_route_to_typescript_record_records_2026_10_24_p9_26_batch_35_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 28 cases, eslint + typecheck clean, ratchet 598 to 595.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 15
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_34_gdpr_routes_tenantlifecycle_routes_dataretention_routes_to_typescript_record_records_2026_10_24_p9_26_batch_34_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 29 cases, eslint + typecheck clean, ratchet 601 to 598.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 18
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_33_search_guard_a04_iot_route_scim_routes_to_typescript_record_records_2026_10_24_p9_26_batch_33_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 18 cases, eslint + typecheck clean, ratchet 604 to 601.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 21
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_36_calibrationrecords_route_featureflags_route_customdomains_route_to_typescript_record_records_2026_10_24_p9_26_batch_36_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 37 cases, eslint + typecheck clean, ratchet 595 to 592.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 15
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_37_storage_signing_session_revokeothers_a141_auditredaction_d27_to_typescript_record_records_2026_10_24_p9_26_batch_37_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 27 cases, eslint + typecheck clean, ratchet 592 to 589.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
     }
   ],
   "stats": {
-    "total_sources": 363,
-    "total_entities": 8091,
-    "total_relations": 4433,
+    "total_sources": 366,
+    "total_entities": 8100,
+    "total_relations": 4438,
     "token_savings_estimate": "85-95%"
   }
 }

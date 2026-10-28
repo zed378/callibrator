@@ -3,7 +3,18 @@
  *
  * Tests the Calibration Scheduler route registrations and middleware chain.
  */
-const calibrationSchedulerRoutes = require("../../routes/api/calibrationScheduler.route");
+
+interface CalibrationSchedulerRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface CalibrationSchedulerRouter {
+    handle: unknown;
+    stack: CalibrationSchedulerRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const calibrationSchedulerRoutes = require("../../routes/api/calibrationScheduler.route") as CalibrationSchedulerRouter;
 
 describe("Calibration Scheduler Routes", () => {
   it("should export an Express router", () => {
@@ -25,22 +36,14 @@ describe("Calibration Scheduler Routes", () => {
 
   it("should have GET route for /due", () => {
     const routes = calibrationSchedulerRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/due" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/due" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /run", () => {
     const routes = calibrationSchedulerRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/run" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/run" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
@@ -63,7 +66,7 @@ describe("Calibration Scheduler Routes", () => {
     calibrationSchedulerRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        expect(methods.get === true || methods.post === true).toBe(true);
+        expect(methods["get"] === true || methods["post"] === true).toBe(true);
       }
     });
   });

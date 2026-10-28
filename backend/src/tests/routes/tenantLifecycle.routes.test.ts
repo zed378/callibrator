@@ -1,5 +1,16 @@
+interface TenantLifecycleRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface TenantLifecycleRouter {
+    handle: unknown;
+    stack: TenantLifecycleRouteLayer[];
+}
+
 jest.mock("archiver", () => jest.fn());
-const tenantLifecycleRoutes = require("../../routes/api/tenantLifecycle.route");
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const tenantLifecycleRoutes = require("../../routes/api/tenantLifecycle.route") as TenantLifecycleRouter;
 
 describe("Tenant Lifecycle Routes", () => {
   it("should export an Express router", () => {
@@ -14,49 +25,49 @@ describe("Tenant Lifecycle Routes", () => {
 
   it("should have GET /:tenantId/status route", () => {
     const route = tenantLifecycleRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:tenantId/status" && layer.route.methods.get,
+      (layer) => layer.route?.path === "/:tenantId/status" && layer.route.methods["get"] === true,
     );
     expect(route).toBeDefined();
   });
 
   it("should have POST /:tenantId/suspend route", () => {
     const route = tenantLifecycleRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:tenantId/suspend" && layer.route.methods.post,
+      (layer) => layer.route?.path === "/:tenantId/suspend" && layer.route.methods["post"] === true,
     );
     expect(route).toBeDefined();
   });
 
   it("should have POST /:tenantId/resume route", () => {
     const route = tenantLifecycleRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:tenantId/resume" && layer.route.methods.post,
+      (layer) => layer.route?.path === "/:tenantId/resume" && layer.route.methods["post"] === true,
     );
     expect(route).toBeDefined();
   });
 
   it("should have POST /:tenantId/grace-period route", () => {
     const route = tenantLifecycleRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:tenantId/grace-period" && layer.route.methods.post,
+      (layer) => layer.route?.path === "/:tenantId/grace-period" && layer.route.methods["post"] === true,
     );
     expect(route).toBeDefined();
   });
 
   it("should have POST /:tenantId/offboard route", () => {
     const route = tenantLifecycleRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:tenantId/offboard" && layer.route.methods.post,
+      (layer) => layer.route?.path === "/:tenantId/offboard" && layer.route.methods["post"] === true,
     );
     expect(route).toBeDefined();
   });
 
   it("should have POST /:tenantId/offboard/cancel route", () => {
     const route = tenantLifecycleRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:tenantId/offboard/cancel" && layer.route.methods.post,
+      (layer) => layer.route?.path === "/:tenantId/offboard/cancel" && layer.route.methods["post"] === true,
     );
     expect(route).toBeDefined();
   });
 
   it("should have GET /:tenantId/export route", () => {
     const route = tenantLifecycleRoutes.stack.find(
-      (layer) => layer.route && layer.route.path === "/:tenantId/export" && layer.route.methods.get,
+      (layer) => layer.route?.path === "/:tenantId/export" && layer.route.methods["get"] === true,
     );
     expect(route).toBeDefined();
   });

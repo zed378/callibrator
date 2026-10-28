@@ -11,15 +11,22 @@
  * user id is server-derived; a tenant-less principal's scope would otherwise
  * match NO_TENANT_UUID and revoke nothing).
  */
+import { Op, type Transaction } from "sequelize";
+import type * as SessionServiceModule from "../../services/session.service";
+import type { UserId } from "../../types/ids";
+
 jest.mock("../../models", () => ({
   Sessions: { update: jest.fn() },
 }));
 
-const { Op } = require("sequelize");
-const { Sessions } = require("../../models");
-const { revokeOtherSessions } = require("../../services/session.service");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the mocked barrel, typed as its mocks
+const { Sessions } = require("../../models") as {
+    Sessions: { update: jest.Mock };
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the module under test is `export =` (CommonJS), as built
+const { revokeOtherSessions } = require("../../services/session.service") as typeof SessionServiceModule;
 
-const USER_ID = "11111111-1111-4111-8111-111111111111";
+const USER_ID = "11111111-1111-4111-8111-111111111111" as UserId;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -28,7 +35,7 @@ beforeEach(() => {
 
 describe("A-141: revokeOtherSessions", () => {
   it("revokes every live session of the user except the one named, and says how many", async () => {
-    const tx = { id: "tx" };
+    const tx = { id: "tx" } as unknown as Transaction;
 
     const count = await revokeOtherSessions(USER_ID, "sess-mine", "MFA_ROTATED", { transaction: tx });
 
@@ -36,7 +43,7 @@ describe("A-141: revokeOtherSessions", () => {
     expect(Sessions.update).toHaveBeenCalledWith(
       {
         is_revoked: true,
-        revoked_at: expect.any(Date),
+        revoked_at: expect.any(Date) as unknown,
         revoked_reason: "MFA_ROTATED",
         is_active: false,
       },
@@ -51,7 +58,7 @@ describe("A-141: revokeOtherSessions", () => {
   it("with no session to keep, revokes them all", async () => {
     await revokeOtherSessions(USER_ID, null, "MFA_ADMIN_RESET");
 
-    const [, options] = Sessions.update.mock.calls[0];
+    const [, options] = Sessions.update.mock.calls[0] as [unknown, { where: unknown; transaction: unknown }];
     expect(options.where).toEqual({ user_id: USER_ID, is_revoked: false });
     expect(options.transaction).toBeUndefined();
   });

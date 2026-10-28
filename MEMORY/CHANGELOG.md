@@ -8,8 +8,23 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-24 -- P9-26 batch 37: storage.signing, session.revokeOthers.a141, auditRedaction.d27 to TypeScript ([record](./records/2026-10-24-p9-26-batch-37.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 27 cases, eslint + typecheck clean, ratchet 592 to 589.
+
 ### 2026-10-27 — P25-02: Q-4, Q-14 and Q-28's missing files in the data-quality report ([record](./records/2026-10-27-p25-02-q4-q14-q28.md), ADR-129 Am. 12)
 - Per facility: IPM sessions with no device, calibrations before inventory, missing photo files. Live `p2402g` 6/6, `p2403` 3/3 on PostgreSQL 18.
+
+### 2026-10-24 -- P9-26 batch 36: calibrationRecords.route, featureFlags.route, customDomains.route to TypeScript ([record](./records/2026-10-24-p9-26-batch-36.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 37 cases, eslint + typecheck clean, ratchet 595 to 592.
+
+### 2026-10-24 -- P9-26 batch 35: batchJobs.route, calibrationScheduler.route, userPermissions.route to TypeScript ([record](./records/2026-10-24-p9-26-batch-35.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 28 cases, eslint + typecheck clean, ratchet 598 to 595.
+
+### 2026-10-24 -- P9-26 batch 34: gdpr.routes, tenantLifecycle.routes, dataRetention.routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-34.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 29 cases, eslint + typecheck clean, ratchet 601 to 598.
+
+### 2026-10-24 -- P9-26 batch 33: search.guard.a04, iot.route, scim.routes to TypeScript ([record](./records/2026-10-24-p9-26-batch-33.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 18 cases, eslint + typecheck clean, ratchet 604 to 601.
 
 ### 2026-10-24 — P9-26 batch 32: W-33, A-116, S-32 to TypeScript ([record](./records/2026-10-24-p9-26-batch-32.md))
 - **DONE:** 3 — `.js` to `.ts`, same 10 cases, eslint + typecheck clean, ratchet 607 to 604.
