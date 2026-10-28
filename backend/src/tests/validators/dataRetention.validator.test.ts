@@ -6,26 +6,28 @@
  * `{ field: message }` map; `validateInput` throws them as a
  * `[{ field, message }]` list.
  */
-const { validateInput: validate } = require("../../validators/input");
-const {
-  tenantIdSchema,
-  retentionPolicySchema,
+import type { z } from "zod";
+import { validateInput as validate } from "../../validators/input";
+import type { FieldError, ValidationFailure } from "../../validators/input";
+import {
+  anonymizeSchema,
   legalHoldSchema,
   piiMaskSchema,
-  anonymizeSchema,
-} = require("../../validators/dataRetention.validator");
+  retentionPolicySchema,
+  tenantIdSchema,
+} from "../../validators/dataRetention.validator";
 
 const T = "123e4567-e89b-12d3-a456-426614174000";
 const R = "123e4567-e89b-12d3-a456-426614174001";
 const REQUIRED_STRING = "Invalid input: expected string, received undefined";
 
 /** @returns the field errors `validate` threw (asserting the 400 shape), or undefined */
-const errorsOf = (data, schema) => {
+const errorsOf = (data: unknown, schema: z.ZodType): FieldError[] | undefined => {
   try {
     validate(data, schema);
   } catch (error) {
     expect(error).toMatchObject({ status: 400, message: "Validation failed" });
-    return error.errors;
+    return (error as ValidationFailure).errors;
   }
   return undefined;
 };
@@ -154,9 +156,9 @@ describe("Data Retention Validators", () => {
       });
 
       it("refuses subjectIds for users", () => {
-        expect(
-          errorsOf({ tenantId: T, entityType: "users", recordIds: [S], subjectIds: [S] }, piiMaskSchema),
-        ).toEqual([{ field: "subjectIds", message: "subjectIds is not allowed when entityType is users" }]);
+        expect(errorsOf({ tenantId: T, entityType: "users", recordIds: [S], subjectIds: [S] }, piiMaskSchema)).toEqual([
+          { field: "subjectIds", message: "subjectIds is not allowed when entityType is users" },
+        ]);
       });
     });
 
@@ -189,7 +191,9 @@ describe("Data Retention Validators", () => {
     });
 
     it("converts option flags from text", () => {
-      expect(validate({ tenantId: T, entityType: "user", options: { keepDates: "true" } }, anonymizeSchema).options).toEqual({
+      expect(
+        validate({ tenantId: T, entityType: "user", options: { keepDates: "true" } }, anonymizeSchema).options,
+      ).toEqual({
         keepDates: true,
       });
     });

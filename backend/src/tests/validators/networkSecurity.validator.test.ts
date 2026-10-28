@@ -5,27 +5,30 @@
  * exercised through the shared validateInput, which returns the parsed value
  * or throws { status: 400, message: "Validation failed", errors: [{ field, message }] }.
  */
-const {
+import type { z } from "zod";
+import {
   ipAllowlistSchema,
   geofenceSchema,
   evaluateLoginSchema,
-} = require("../../validators/networkSecurity.validator");
-const { validateInput } = require("../../validators/input");
+} from "../../validators/networkSecurity.validator";
+import { validateInput } from "../../validators/input";
+import type { FieldError } from "../../validators/input";
 
 const validate = validateInput;
 
 /**
- * @param {unknown} data - the input
- * @param {import("zod").ZodType} schema - the schema
- * @returns {Array<{field: string, message: string}>} the field errors validateInput threw
+ * @param data - the input
+ * @param schema - the schema
+ * @returns the field errors validateInput threw
  */
-const errorsOf = (data, schema) => {
+const errorsOf = (data: unknown, schema: z.ZodType): FieldError[] => {
   try {
     validate(data, schema);
   } catch (error) {
-    expect(error.status).toBe(400);
-    expect(error.message).toBe("Validation failed");
-    return error.errors;
+    const failure = error as { status?: number; message?: string; errors?: FieldError[] };
+    expect(failure.status).toBe(400);
+    expect(failure.message).toBe("Validation failed");
+    return failure.errors as FieldError[];
   }
   throw new Error("expected a validation failure");
 };
@@ -144,7 +147,7 @@ describe("Network Security Validators", () => {
       expect(() => validate({ ip: "2001:0db8:85a3:0000:0000:8a2e:0370:7334" }, evaluateLoginSchema)).not.toThrow();
     });
 
-    it.each(["10.0.0.0/8", "2001:db8::/32", "::1"])("should accept %s (IPv4/IPv6, CIDR optional)", (ip) => {
+    it.each(["10.0.0.0/8", "2001:db8::/32", "::1"])("should accept %s (IPv4/IPv6, CIDR optional)", (ip: string) => {
       expect(() => validate({ ip }, evaluateLoginSchema)).not.toThrow();
     });
 

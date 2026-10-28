@@ -18,6 +18,7 @@
  *   DB_HOST=127.0.0.1 DB_PORT=56240 DB_USER=postgres DB_PASS=p2402pass npm run test:live -- --only=p2402f
  *   docker rm -f p2402-pg18
  */
+import type * as ReconciliationModule from "../../services/upstreamReconciliation.service";
 import type { Transaction } from "sequelize";
 import { env } from "../../config/env";
 import type { TransformStep } from "../../services/upstreamImport/transform/steps";
@@ -54,7 +55,8 @@ const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph is loaded after the environment is set; typed by the members used */
 const load = () => ({
   db: (require("../../config") as { db: LiveDb }).db,
-  models: require("../../models") as unknown,
+  models: require("../../models") as { UpstreamSqlImport: { create(values: object): Promise<unknown> } },
+  reconciliation: require("../../services/upstreamReconciliation.service") as typeof ReconciliationModule,
   migrator: (require("../../config/migrator") as { migrator: { pending(): Promise<unknown[]> } }).migrator,
   migrationLock: require("../../utils/migrationLock.util") as { runSchemaSetup(options: object): Promise<unknown> },
   steps: require("../../services/upstreamImport/transform/steps") as typeof StepsModule,
@@ -64,7 +66,6 @@ const load = () => ({
 });
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-/** [id, id_client, id_alat, id_user, no_qrcode, nama_alat] */
 /** [id, id_client, id_alat, id_user, no_qrcode, nama_alat, tgl_kalibrasi] — P24-02h: 101's date is calibration 1's day, 102's is its own. */
 const DEVICES: readonly (readonly (string | number | null)[])[] = [
   [101, 1, 1, 7, "QR-F101", "Pompa Sintetis", "2025-04-01"],
@@ -266,6 +267,24 @@ describe("P24-02f — the calibrations step on live PostgreSQL 18, as the transf
       { device: "101", calibration: "1" },
       { device: "102", calibration: null },
     ]);
+    // R-7 (2026-10-28) counts the device dates too: 3 trx_kalibrasi + 2 device dates mapped, the 5 records they name
+    // stored, each in its facility — QR-F101's date naming calibration 1's record counts on both sides.
+    await g.models.UpstreamSqlImport.create({
+      id: RUN_1,
+      status: "loaded",
+      transformStatus: "transformed",
+      dataClass: "synthetic",
+      compression: "none",
+      sizeBytes: 1,
+      sha256: "f".repeat(64),
+      uploadedBy: null,
+      notifyTenantId: PROVIDER,
+      transformTenantId: PROVIDER,
+      transformSummary: { durationMs: 1, steps: [] },
+    });
+    const r7 = (await g.reconciliation.reconcileRun(RUN_1)).facilities.flatMap((f) => f.checks).filter((c) => c.check === "R-7");
+    expect(r7.every((c) => c.status === "pass")).toBe(true);
+    expect([r7.reduce((n, c) => n + c.expected, 0), r7.reduce((n, c) => n + c.actual, 0)]).toEqual([5, 5]);
     // No due date is derived for an imported device (UD-8: the interval is set per request or standard).
     expect(await rows(`SELECT count(*)::int AS n FROM calibration_devices WHERE tenant_id = '${PROVIDER}' AND next_calibration_date IS NOT NULL`)).toEqual([{ n: 0 }]);
   });

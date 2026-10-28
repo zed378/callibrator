@@ -196,16 +196,21 @@ describe("P25-01 the reconciliation request", () => {
     expect(answer.runChecks.find((c) => c.check === "RC-F1")).toMatchObject({ status: "fail", expected: 0, actual: 4, delta: 4 });
     // Staged and stored both answer 2 for F1, nothing for F2: equal, so both pass (R-1, R-2, R-7).
     const counted = (check: string) => answer.facilities.map((f) => f.checks.find((c) => c.check === check)).map((c) => [c?.expected, c?.actual, c?.status]);
-    for (const name of ["R-1", "R-2", "R-7"]) {
+    for (const name of ["R-1", "R-2"]) {
       expect(counted(name)).toEqual([
         [2, 2, "pass"],
         [0, 0, "pass"],
       ]);
     }
+    // R-7 adds the devices' own dates (P24-02h): the double answers 2 for them too, on both sides.
+    expect(counted("R-7")).toEqual([
+      [4, 4, "pass"],
+      [0, 0, "pass"],
+    ]);
     // Every staged statement names a table through the allow-list, the run bound as $1.
     const staged = query.mock.calls.filter(([text]) => text.includes("upstream_import.\"stg_"));
-    // R-10 over every source, R-1/R-2/R-7, R-3 … R-6 once per result table, R-9, and R-8 twice per photo folder.
-    expect(staged.length).toBe(SOURCES + 3 + RESULT_TABLES + 1 + 2 * 2);
+    // R-10 over every source, R-1/R-2/R-7, R-3 … R-6 once per result table, R-9, R-8 twice per photo folder, and R-7's device dates.
+    expect(staged.length).toBe(SOURCES + 3 + RESULT_TABLES + 1 + 2 * 2 + 1);
     for (const [, options] of staged as unknown as [string, { bind: unknown[] }][]) {
       expect(options.bind[0]).toBe(RUN);
     }

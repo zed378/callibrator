@@ -6,22 +6,24 @@
  * `{ field: message }` map; `validateInput` throws them as a
  * `[{ field, message }]` list.
  */
-const { validateInput: validate } = require("../../validators/input");
-const {
+import type { z } from "zod";
+import { validateInput as validate } from "../../validators/input";
+import type { FieldError, ValidationFailure } from "../../validators/input";
+import {
   flagKeySchema,
   flagValueSchema,
   tenantFlagQuerySchema,
-} = require("../../validators/featureFlag.validator");
+} from "../../validators/featureFlag.validator";
 
 const T = "123e4567-e89b-12d3-a456-426614174000";
 
 /** @returns the field errors `validate` threw (asserting the 400 shape), or undefined */
-const errorsOf = (data, schema) => {
+const errorsOf = (data: unknown, schema: z.ZodType): FieldError[] | undefined => {
   try {
     validate(data, schema);
   } catch (error) {
     expect(error).toMatchObject({ status: 400, message: "Validation failed" });
-    return error.errors;
+    return (error as ValidationFailure).errors;
   }
   return undefined;
 };

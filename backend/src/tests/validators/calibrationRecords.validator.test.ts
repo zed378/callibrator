@@ -4,15 +4,15 @@
  * P9-11 (ADR-093): the schemas are Zod, exercised through the shared
  * `checkInput` helper (the file's own `validate` / `formatErrors` are gone).
  */
-const { checkInput } = require("../../validators/input");
-const {
+import { checkInput } from "../../validators/input";
+import {
   getCalibrationRecordsQuery,
   calibrationRecordIdSchema,
   calibrationDeviceIdSchema,
   createCalibrationRecordSchema,
   correctCalibrationRecordSchema,
   voidCalibrationRecordSchema,
-} = require("../../validators/calibrationRecords.validator");
+} from "../../validators/calibrationRecords.validator";
 
 const ID = "8c352a92-d6cf-4b71-b0db-6e69622d1b11";
 const TOO_SHORT = "Too small: expected string to have >=3 characters";
@@ -32,28 +32,36 @@ describe("Calibration Record Validators", () => {
       const result = checkInput(data, getCalibrationRecordsQuery);
 
       expect(result.ok).toBe(true);
-      expect(result.value).toEqual({
-        page: 3,
-        limit: 10,
-        deviceId: ID,
-        isCompliant: true,
-        from: new Date("2026-01-01"),
-        to: new Date("2026-06-30"),
-        includeSuperseded: false,
-        // P21-06 (ADR-133 Am. 3): the recap parameters' defaults.
-        dateField: "calibration",
-        latestOnly: false,
-      });
+      if (result.ok) {
+        expect(result.value).toEqual({
+          page: 3,
+          limit: 10,
+          deviceId: ID,
+          isCompliant: true,
+          from: new Date("2026-01-01"),
+          to: new Date("2026-06-30"),
+          includeSuperseded: false,
+          // P21-06 (ADR-133 Am. 3): the recap parameters' defaults.
+          dateField: "calibration",
+          latestOnly: false,
+        });
+      }
     });
 
     it("should allow null isCompliant", () => {
       const result = checkInput({ isCompliant: null }, getCalibrationRecordsQuery);
       expect(result.ok).toBe(true);
-      expect(result.value.isCompliant).toBeNull();
+      if (result.ok) {
+        expect(result.value.isCompliant).toBeNull();
+      }
     });
 
     it("converts includeSuperseded from text", () => {
-      expect(checkInput({ includeSuperseded: "true" }, getCalibrationRecordsQuery).value.includeSuperseded).toBe(true);
+      const result = checkInput({ includeSuperseded: "true" }, getCalibrationRecordsQuery);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.includeSuperseded).toBe(true);
+      }
     });
   });
 
@@ -86,8 +94,10 @@ describe("Calibration Record Validators", () => {
       const result = checkInput(data, createCalibrationRecordSchema);
 
       expect(result.ok).toBe(true);
-      expect(result.value.deviceId).toBe(ID);
-      expect(result.value.calibrationDate).toEqual(new Date("2026-06-01"));
+      if (result.ok) {
+        expect(result.value.deviceId).toBe(ID);
+        expect(result.value.calibrationDate).toEqual(new Date("2026-06-01"));
+      }
     });
 
     it("defaults calibrationDate to now", () => {
@@ -95,17 +105,24 @@ describe("Calibration Record Validators", () => {
       const result = checkInput({ deviceId: ID }, createCalibrationRecordSchema);
 
       expect(result.ok).toBe(true);
-      expect(result.value.calibrationDate).toBeInstanceOf(Date);
-      expect(result.value.calibrationDate.getTime()).toBeGreaterThanOrEqual(before);
+      if (result.ok) {
+        expect(result.value.calibrationDate).toBeInstanceOf(Date);
+        expect((result.value.calibrationDate).getTime()).toBeGreaterThanOrEqual(before);
+      }
     });
 
     it("refuses results that are not an object and a certificate URL that is not a URL", () => {
-      expect(
-        checkInput({ deviceId: ID, results: [1], certificateFileUrl: "not a url" }, createCalibrationRecordSchema).errors,
-      ).toEqual([
-        { field: "results", message: "Invalid input" },
-        { field: "certificateFileUrl", message: "Invalid URL" },
-      ]);
+      const result = checkInput(
+        { deviceId: ID, results: [1], certificateFileUrl: "not a url" },
+        createCalibrationRecordSchema,
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "results", message: "Invalid input" },
+          { field: "certificateFileUrl", message: "Invalid URL" },
+        ]);
+      }
     });
   });
 
@@ -118,13 +135,15 @@ describe("Calibration Record Validators", () => {
         correctCalibrationRecordSchema,
       );
       expect(result.ok).toBe(true);
-      expect(result.value).toEqual({ notes: "Updated compliance note", isCompliant: false, reason: "misread the dial" });
+      if (result.ok) {
+        expect(result.value).toEqual({ notes: "Updated compliance note", isCompliant: false, reason: "misread the dial" });
+      }
     });
 
     it("converts a numeric-string measurement uncertainty", () => {
-      expect(checkInput({ reason: "abc", measurementUncertainty: "0.5" }, correctCalibrationRecordSchema).value).toEqual({
-        reason: "abc",
-        measurementUncertainty: 0.5,
+      expect(checkInput({ reason: "abc", measurementUncertainty: "0.5" }, correctCalibrationRecordSchema)).toEqual({
+        ok: true,
+        value: { reason: "abc", measurementUncertainty: 0.5 },
       });
     });
 
@@ -134,10 +153,12 @@ describe("Calibration Record Validators", () => {
       ["whitespace", { reason: "    " }, TOO_SHORT],
       ["too short", { reason: "ab" }, TOO_SHORT],
       ["too long", { reason: "x".repeat(2001) }, "Too big: expected string to have <=2000 characters"],
-    ])("refuses a %s reason", (_label, body, message) => {
+    ])("refuses a %s reason", (_label: string, body: Record<string, unknown>, message: string) => {
       const result = checkInput({ notes: "x", ...body }, correctCalibrationRecordSchema);
       expect(result.ok).toBe(false);
-      expect(result.errors).toEqual([{ field: "reason", message }]);
+      if (!result.ok) {
+        expect(result.errors).toEqual([{ field: "reason", message }]);
+      }
     });
 
     it("strips lifecycle fields a caller tries to set", () => {
@@ -146,7 +167,9 @@ describe("Calibration Record Validators", () => {
         correctCalibrationRecordSchema,
       );
       expect(result.ok).toBe(true);
-      expect(result.value).toEqual({ reason: "misread" });
+      if (result.ok) {
+        expect(result.value).toEqual({ reason: "misread" });
+      }
     });
   });
 
@@ -154,17 +177,23 @@ describe("Calibration Record Validators", () => {
     it("accepts a reason", () => {
       const result = checkInput({ reason: "entered twice" }, voidCalibrationRecordSchema);
       expect(result.ok).toBe(true);
-      expect(result.value).toEqual({ reason: "entered twice" });
+      if (result.ok) {
+        expect(result.value).toEqual({ reason: "entered twice" });
+      }
     });
 
-    it.each([[{}], [{ reason: "" }], [{ reason: "   " }]])("refuses %j", (body) => {
+    it.each([[{}], [{ reason: "" }], [{ reason: "   " }]])("refuses %j", (body: Record<string, unknown>) => {
       expect(checkInput(body, voidCalibrationRecordSchema).ok).toBe(false);
     });
 
     it("refuses a request with no body at all (A-09: Express 5 leaves it undefined)", () => {
-      expect(checkInput(undefined, voidCalibrationRecordSchema).errors).toEqual([
-        { field: "reason", message: "Invalid input: expected string, received undefined" },
-      ]);
+      const result = checkInput(undefined, voidCalibrationRecordSchema);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { field: "reason", message: "Invalid input: expected string, received undefined" },
+        ]);
+      }
     });
   });
 });
