@@ -23,13 +23,27 @@
  * `Session` carries `is_deleted` (the attribute itself is snake_case, see
  * CLAUDE.md's traps) and is not paranoid.
  */
+import type * as SequelizeModule from "sequelize";
 
 jest.mock("../../config", () => {
-  const { Sequelize } = jest.requireActual("sequelize");
+  const { Sequelize } = jest.requireActual<typeof SequelizeModule>("sequelize");
   return { db: new Sequelize({ dialect: "postgres", logging: false }) };
 });
 
-const models = require("../../models");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the real models barrel, read for its attribute definitions (house pattern: uuidDefaults.a116)
+const models = require("../../models") as unknown as {
+  sequelize: { models: Record<string, FlagModel> };
+};
+
+interface FlagAttribute {
+  readonly field?: string;
+}
+
+interface FlagModel {
+  readonly name: string;
+  readonly options: { readonly paranoid?: boolean; readonly defaultScope?: { readonly where?: Record<string, unknown> } };
+  getAttributes(): Record<string, FlagAttribute>;
+}
 
 const allModels = [...new Set(Object.values(models.sequelize.models))];
 
@@ -52,25 +66,28 @@ const DUAL = Object.freeze([
 /** The reviewed models that carry the flag and are NOT paranoid. */
 const FLAG_ONLY = Object.freeze(["Session"]);
 
-const flagOf = (Model) => {
-  const attributes = Model.getAttributes();
-  return attributes.isDeleted || attributes.is_deleted || null;
+const flagOf = (model: FlagModel): FlagAttribute | null => {
+  const attributes = model.getAttributes();
+  return attributes["isDeleted"] ?? attributes["is_deleted"] ?? null;
 };
 
 describe("D-25 — the soft-delete mechanism of every model is a reviewed decision", () => {
   it("the models carrying an is_deleted flag are exactly the reviewed ones; new models are paranoid", () => {
-    const dual = allModels.filter((M) => flagOf(M) && M.options.paranoid).map((M) => M.name).sort();
-    const flagOnly = allModels.filter((M) => flagOf(M) && !M.options.paranoid).map((M) => M.name).sort();
+    const dual = allModels.filter((m) => flagOf(m) !== null && m.options.paranoid).map((m) => m.name).sort();
+    const flagOnly = allModels.filter((m) => flagOf(m) !== null && !m.options.paranoid).map((m) => m.name).sort();
     expect(dual).toEqual([...DUAL]);
     expect(flagOnly).toEqual([...FLAG_ONLY]);
   });
 
   it("every flagged model's defaultScope excludes is_deleted rows, so a default read needs both flags to say live", () => {
     for (const name of [...DUAL, ...FLAG_ONLY]) {
-      const Model = models.sequelize.models[name];
-      expect({ name, field: flagOf(Model).field }).toEqual({ name, field: "is_deleted" });
-      const where = (Model.options.defaultScope || {}).where || {};
-      expect({ name, filters: where.is_deleted === false || where.isDeleted === false }).toEqual({
+      const model = models.sequelize.models[name];
+      if (model === undefined) {
+        throw new Error(`no model ${name}`);
+      }
+      expect({ name, field: flagOf(model)?.field }).toEqual({ name, field: "is_deleted" });
+      const where = model.options.defaultScope?.where ?? {};
+      expect({ name, filters: where["is_deleted"] === false || where["isDeleted"] === false }).toEqual({
         name,
         filters: true,
       });
@@ -79,8 +96,11 @@ describe("D-25 — the soft-delete mechanism of every model is a reviewed decisi
 
   it("the paranoid models declare deleted_at, which Sequelize adds as IS NULL to every default read", () => {
     for (const name of DUAL) {
-      const Model = models.sequelize.models[name];
-      expect({ name, deletedAt: Model.getAttributes().deletedAt && Model.getAttributes().deletedAt.field }).toEqual({
+      const model = models.sequelize.models[name];
+      if (model === undefined) {
+        throw new Error(`no model ${name}`);
+      }
+      expect({ name, deletedAt: model.getAttributes()["deletedAt"]?.field }).toEqual({
         name,
         deletedAt: "deleted_at",
       });

@@ -1,6 +1,9 @@
 /**
  * Tests for circuitBreaker utility
  */
+/* eslint-disable @typescript-eslint/require-await -- the fakes stand in for the async execute: a throw inside them must be a rejection */
+import type * as BreakerModule from "../../utils/circuitBreaker.util";
+import type { BreakerState } from "../../utils/circuitBreaker.util";
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
@@ -11,15 +14,17 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   },
 }));
 
-const {
-  CircuitBreaker,
-  CircuitBreakerPool,
-  STATES,
-  getBreaker,
-  withCircuitBreaker,
-  getPoolStats,
-  resetAll,
-} = require("../../utils/circuitBreaker.util");
+// Static import would hoist above jest.mock (Babel output shows the module's
+// own require first), so the module under test must load via require after
+// the mock — the house pattern schedulerSwitch.w02 uses.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the module under test, loaded after the jest.mock factory above
+const { CircuitBreaker, CircuitBreakerPool, STATES, getBreaker, withCircuitBreaker, getPoolStats, resetAll } = require("../../utils/circuitBreaker.util") as typeof BreakerModule;
+
+// jest.requireMock (not require): the Babel CommonJS transform hoists the
+// module-under-test's own require above jest.mock, so a plain require of the
+// mocked middleware here would read the real logger while the module reads
+// the mock.
+const { logger } = jest.requireMock<{ logger: { debug: jest.Mock; info: jest.Mock; warn: jest.Mock; error: jest.Mock } }>("../../middlewares/activityLog.middleware");
 
 describe("circuitBreaker", () => {
   beforeEach(() => {
@@ -93,7 +98,7 @@ describe("circuitBreaker", () => {
 
       for (let i = 0; i < 3; i++) {
         try {
-          await cb.execute(async () => {
+          await cb.execute(async (): Promise<never> => {
             throw new Error("Error");
           });
         } catch {
@@ -134,14 +139,18 @@ describe("circuitBreaker", () => {
 
     it("should emit events", async () => {
       const cb = new CircuitBreaker({ threshold: 2 });
-      const events = [];
+      const events: string[] = [];
 
-      cb.on("open", () => events.push("open"));
-      cb.on("failure", () => events.push("failure"));
+      cb.on("open", () => {
+        events.push("open");
+      });
+      cb.on("failure", () => {
+        events.push("failure");
+      });
 
       for (let i = 0; i < 2; i++) {
         try {
-          await cb.execute(async () => {
+          await cb.execute(async (): Promise<never> => {
             throw new Error("Error");
           });
         } catch {
@@ -158,7 +167,7 @@ describe("circuitBreaker", () => {
       cb._state = STATES.HALF_OPEN;
 
       try {
-        await cb.execute(async () => {
+        await cb.execute(async (): Promise<never> => {
           throw new Error("Failure");
         });
       } catch {
@@ -170,7 +179,6 @@ describe("circuitBreaker", () => {
 
     it("should log error when event listener throws", () => {
       const cb = new CircuitBreaker({ name: "listener_test" });
-      const { logger } = require("../../middlewares/activityLog.middleware");
 
       cb.on("open", () => {
         throw new Error("Listener crash");
@@ -304,16 +312,20 @@ describe("circuitBreaker", () => {
 
     it("should handle registering invalid events and emitting invalid events", () => {
       const cb = new CircuitBreaker();
-      cb.on("invalid_event", () => {});
+      cb.on("invalid_event", () => {
+        // the module ignores unknown events; the handler must never run
+      });
       expect(cb._listeners["invalid_event"]).toBeUndefined();
 
       // Ensure emitting invalid event doesn't throw
-      expect(() => cb._emit("invalid_event")).not.toThrow();
+      expect(() => {
+        cb._emit("invalid_event");
+      }).not.toThrow();
     });
 
     it("should handle _transitionTo with invalid state", () => {
       const cb = new CircuitBreaker();
-      cb._transitionTo("UNKNOWN_STATE");
+      cb._transitionTo("UNKNOWN_STATE" as unknown as BreakerState);
       expect(cb.getState().state).toBe("UNKNOWN_STATE");
     });
 

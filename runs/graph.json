@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-28T06:42:49.854Z",
+  "last_updated": "2026-10-28T08:26:44.827Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -367,7 +367,13 @@
     "MEMORY\\records\\2026-10-24-p9-26-batch-33.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-35.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-36.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-37.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-37.md",
+    "MEMORY\\records\\2026-10-28-p25-02-duplicates-orphans.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-38.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-39.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-40.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-41.md",
+    "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md"
   ],
   "entities": [
     {
@@ -73269,6 +73275,222 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-24 -- P9-26 batch 37: storage.signing, session.revokeOthers.a141, auditRedaction.d27 to TypeScript ([record](./records/2026-10-24-p9-26-batch-37.md)"
+    },
+    {
+      "id": "ent_q_4_",
+      "name": "Q-4:",
+      "type": "Component/Requirement",
+      "description": "IPM session rows quarantined `no_device`. A quarantined row has no mapping, so it is attributed by its staged `id_client` through the facility step's `mst_faskes` mapping. Their result rows, quarantin",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11810,
+      "evidence": "- **Q-4:** IPM session rows quarantined `no_device`. A quarantined row has no mapping, so it is attributed by its staged `id_client` through the facility step's"
+    },
+    {
+      "id": "ent_q_28_the_missing_half_only_",
+      "name": "Q-28, the missing half only:",
+      "type": "Component/Requirement",
+      "description": "`file_missing` photos, in their device's facility. The unreferenced half (files on disk no row names) needs the manifest. So a facility with no missing photo answers `manual`, not `pass`.",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11812,
+      "evidence": "- **Q-28, the missing half only:** `file_missing` photos, in their device's facility. The unreferenced half (files on disk no row names) needs the manifest. So "
+    },
+    {
+      "id": "ent_q_8_",
+      "name": "Q-8:",
+      "type": "Component/Requirement",
+      "description": "second session headers, quarantined `duplicate_header`, attributed like Q-4.",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11814,
+      "evidence": "- **Q-8:** second session headers, quarantined `duplicate_header`, attributed like Q-4."
+    },
+    {
+      "id": "ent_q_9_",
+      "name": "Q-9:",
+      "type": "Component/Requirement",
+      "description": "devices with more than one live calibration.",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11815,
+      "evidence": "- **Q-9:** devices with more than one live calibration."
+    },
+    {
+      "id": "ent_q_2_q_3_q_10_",
+      "name": "Q-2 / Q-3 / Q-10:",
+      "type": "Component/Requirement",
+      "description": "mapped IPM rows (16 tables), devices and calibrations whose staged `id_user` has no `users` mapping. That covers an absent user, a hard-deleted upstream user, and one the users step quarantined; in ou",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11816,
+      "evidence": "- **Q-2 / Q-3 / Q-10:** mapped IPM rows (16 tables), devices and calibrations whose staged `id_user` has no `users` mapping. That covers an absent user, a hard-"
+    },
+    {
+      "id": "ent_also_computed_by_the_report_2026_10_27_",
+      "name": "Also computed by the report (2026-10-27):",
+      "type": "Component/Requirement",
+      "description": "Q-4 (IPM sessions quarantined `no_device`, by their staged",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 315,
+      "evidence": "- **Also computed by the report (2026-10-27):** Q-4 (IPM sessions quarantined `no_device`, by their staged"
+    },
+    {
+      "id": "ent_also_computed_by_the_report_2026_10_28_",
+      "name": "Also computed by the report (2026-10-28):",
+      "type": "Component/Requirement",
+      "description": "the duplicates Q-8 (second session headers) and Q-9 (devices",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 317,
+      "evidence": "- **Also computed by the report (2026-10-28):** the duplicates Q-8 (second session headers) and Q-9 (devices"
+    },
+    {
+      "id": "sec_p25_02_the_duplicates_q_8_q_9_and_orphans_q_2_q_3_q_10_in_the_data_quality_report",
+      "name": "P25-02: the duplicates (Q-8, Q-9) and orphans (Q-2, Q-3, Q-10) in the data-quality report",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p25-02-duplicates-orphans.md",
+      "source": "MEMORY\\records\\2026-10-28-p25-02-duplicates-orphans.md",
+      "line": 1,
+      "evidence": "# P25-02: the duplicates (Q-8, Q-9) and orphans (Q-2, Q-3, Q-10) in the data-quality report"
+    },
+    {
+      "id": "sec_still_open_on_p25_02",
+      "name": "Still open on P25-02",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p25-02-duplicates-orphans.md",
+      "source": "MEMORY\\records\\2026-10-28-p25-02-duplicates-orphans.md",
+      "line": 46,
+      "evidence": "## Still open on P25-02"
+    },
+    {
+      "id": "sec_2026_10_28_p25_02_the_duplicates_q_8_q_9_and_orphans_q_2_q_3_q_10_in_the_data_quality_report_record_records_2026_10_28_p25_02_duplicates_orphans_md_adr_129_am_12_",
+      "name": "2026-10-28 — P25-02: the duplicates (Q-8, Q-9) and orphans (Q-2, Q-3, Q-10) in the data-quality report ([record](./records/2026-10-28-p25-02-duplicates-orphans.md), ADR-129 Am. 12)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-28 — P25-02: the duplicates (Q-8, Q-9) and orphans (Q-2, Q-3, Q-10) in the data-quality report ([record](./records/2026-10-28-p25-02-duplicates-orph"
+    },
+    {
+      "id": "sec_p9_26_batch_38_decimalgetters_d21_softdeletemechanisms_d25_circuitbreaker_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 38: decimalGetters.d21, softDeleteMechanisms.d25, circuitBreaker — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-38.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-38.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 38: decimalGetters.d21, softDeleteMechanisms.d25, circuitBreaker — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_38_decimalgetters_d21_softdeletemechanisms_d25_circuitbreaker_to_typescript_record_records_2026_10_24_p9_26_batch_38_md_",
+      "name": "2026-10-24 -- P9-26 batch 38: decimalGetters.d21, softDeleteMechanisms.d25, circuitBreaker to TypeScript ([record](./records/2026-10-24-p9-26-batch-38.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 -- P9-26 batch 38: decimalGetters.d21, softDeleteMechanisms.d25, circuitBreaker to TypeScript ([record](./records/2026-10-24-p9-26-batch-38.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_39_customdomains_tenanthierarchy_oidc_validators_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 39: customDomains, tenantHierarchy, oidc validators — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-39.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-39.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 39: customDomains, tenantHierarchy, oidc validators — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_39_customdomains_tenanthierarchy_oidc_validators_to_typescript_record_records_2026_10_24_p9_26_batch_39_md_",
+      "name": "2026-10-24 -- P9-26 batch 39: customDomains, tenantHierarchy, oidc validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-39.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 -- P9-26 batch 39: customDomains, tenantHierarchy, oidc validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-39.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_40_session_envelope_a111_activitylog_requestid_p703_esignature_norevocation_a107_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 40: session.envelope.a111, activityLog.requestId.p703, esignature.noRevocation.a107 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-40.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-40.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 40: session.envelope.a111, activityLog.requestId.p703, esignature.noRevocation.a107 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_40_session_envelope_a111_activitylog_requestid_p703_esignature_norevocation_a107_to_typescript_record_records_2026_10_24_p9_26_batch_40_md_",
+      "name": "2026-10-24 -- P9-26 batch 40: session.envelope.a111, activityLog.requestId.p703, esignature.noRevocation.a107 to TypeScript ([record](./records/2026-10-24-p9-26-batch-40.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-24 -- P9-26 batch 40: session.envelope.a111, activityLog.requestId.p703, esignature.noRevocation.a107 to TypeScript ([record](./records/2026-10-24-p"
+    },
+    {
+      "id": "sec_p9_26_batch_41_clientip_a16_health_forcehttps_s09_tenantsettings_secrets_a150_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 41: clientIp.a16, health.forceHttps.s09, tenantSettings.secrets.a150 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-41.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-41.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 41: clientIp.a16, health.forceHttps.s09, tenantSettings.secrets.a150 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_41_clientip_a16_health_forcehttps_s09_tenantsettings_secrets_a150_to_typescript_record_records_2026_10_24_p9_26_batch_41_md_",
+      "name": "2026-10-24 -- P9-26 batch 41: clientIp.a16, health.forceHttps.s09, tenantSettings.secrets.a150 to TypeScript ([record](./records/2026-10-24-p9-26-batch-41.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 10,
+      "evidence": "### 2026-10-24 -- P9-26 batch 41: clientIp.a16, health.forceHttps.s09, tenantSettings.secrets.a150 to TypeScript ([record](./records/2026-10-24-p9-26-batch-41.m"
+    },
+    {
+      "id": "sec_p25_02_q_28_s_unreferenced_photo_files_a_run_level_finding",
+      "name": "P25-02: Q-28's unreferenced photo files, a run-level finding",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md",
+      "source": "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md",
+      "line": 1,
+      "evidence": "# P25-02: Q-28's unreferenced photo files, a run-level finding"
+    },
+    {
+      "id": "ent_on_disk_",
+      "name": "On disk:",
+      "type": "Component/Requirement",
+      "description": "the catalogue of the provider's image-import manifests, read with step 9's own",
+      "source": "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md",
+      "line": 16,
+      "evidence": "- **On disk:** the catalogue of the provider's image-import manifests, read with step 9's own"
+    },
+    {
+      "id": "ent_named_",
+      "name": "Named:",
+      "type": "Component/Requirement",
+      "description": "every staged device row of the run, parsed with step 9's `photoNameOf` into",
+      "source": "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md",
+      "line": 18,
+      "evidence": "- **Named:** every staged device row of the run, parsed with step 9's `photoNameOf` into"
+    },
+    {
+      "id": "ent_quarantined_at_ingest_",
+      "name": "Quarantined at ingest:",
+      "type": "Component/Requirement",
+      "description": "such a file (a virus, a refused type) was still on disk, so it",
+      "source": "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md",
+      "line": 20,
+      "evidence": "- **Quarantined at ingest:** such a file (a virus, a refused type) was still on disk, so it"
+    },
+    {
+      "id": "ent_run_level_finding_runfindings_2026_10_28_",
+      "name": "Run-level finding (`runFindings`, 2026-10-28):",
+      "type": "Component/Requirement",
+      "description": "Q-28's unreferenced half, the photo files the image imports'",
+      "source": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 320,
+      "evidence": "- **Run-level finding (`runFindings`, 2026-10-28):** Q-28's unreferenced half, the photo files the image imports'"
+    },
+    {
+      "id": "sec_2026_10_28_p25_02_q_28_s_unreferenced_photo_files_as_a_run_level_finding_record_records_2026_10_28_p25_02_q28_unreferenced_md_adr_129_am_12_",
+      "name": "2026-10-28 — P25-02: Q-28's unreferenced photo files as a run-level finding ([record](./records/2026-10-28-p25-02-q28-unreferenced.md), ADR-129 Am. 12)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-28 — P25-02: Q-28's unreferenced photo files as a run-level finding ([record](./records/2026-10-28-p25-02-q28-unreferenced.md), ADR-129 Am. 12)"
     }
   ],
   "relations": [
@@ -108775,12 +108997,140 @@
       "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 27 cases, eslint + typecheck clean, ratchet 592 to 589.",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 12
+    },
+    {
+      "source": "sec_adr_129_amendment_12_2026_10_27_p25_01_r_3_r_6_are_automated_row_by_row_not_as_the_sums_and_averages_05_7_names",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_q_4_",
+      "evidence": "- **Q-4:** IPM session rows quarantined `no_device`. A quarantined row has no mapping, so it is attributed by its staged `id_client` through the facility step's",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 11810
+    },
+    {
+      "source": "sec_adr_129_amendment_12_2026_10_27_p25_01_r_3_r_6_are_automated_row_by_row_not_as_the_sums_and_averages_05_7_names",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_q_14_",
+      "evidence": "- **Q-14:** calibrations dated before their device's inventory date, flagged as plausible.",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 11811
+    },
+    {
+      "source": "sec_adr_129_amendment_12_2026_10_27_p25_01_r_3_r_6_are_automated_row_by_row_not_as_the_sums_and_averages_05_7_names",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_q_28_the_missing_half_only_",
+      "evidence": "- **Q-28, the missing half only:** `file_missing` photos, in their device's facility. The unreferenced half (files on disk no row names) needs the manifest. So ",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 11812
+    },
+    {
+      "source": "sec_adr_129_amendment_12_2026_10_27_p25_01_r_3_r_6_are_automated_row_by_row_not_as_the_sums_and_averages_05_7_names",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_q_8_",
+      "evidence": "- **Q-8:** second session headers, quarantined `duplicate_header`, attributed like Q-4.",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 11814
+    },
+    {
+      "source": "sec_adr_129_amendment_12_2026_10_27_p25_01_r_3_r_6_are_automated_row_by_row_not_as_the_sums_and_averages_05_7_names",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_q_9_",
+      "evidence": "- **Q-9:** devices with more than one live calibration.",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 11815
+    },
+    {
+      "source": "sec_adr_129_amendment_12_2026_10_27_p25_01_r_3_r_6_are_automated_row_by_row_not_as_the_sums_and_averages_05_7_names",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_q_2_q_3_q_10_",
+      "evidence": "- **Q-2 / Q-3 / Q-10:** mapped IPM rows (16 tables), devices and calibrations whose staged `id_user` has no `users` mapping. That covers an absent user, a hard-",
+      "source_file": "MEMORY\\DECISIONS.md",
+      "line": 11816
+    },
+    {
+      "source": "sec_10_1_reconciliation_and_the_data_quality_report_admin_route_ts_p25_01_p25_02_partial_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_also_computed_by_the_report_2026_10_27_",
+      "evidence": "- **Also computed by the report (2026-10-27):** Q-4 (IPM sessions quarantined `no_device`, by their staged",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 315
+    },
+    {
+      "source": "sec_10_1_reconciliation_and_the_data_quality_report_admin_route_ts_p25_01_p25_02_partial_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_also_computed_by_the_report_2026_10_28_",
+      "evidence": "- **Also computed by the report (2026-10-28):** the duplicates Q-8 (second session headers) and Q-9 (devices",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 317
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_38_decimalgetters_d21_softdeletemechanisms_d25_circuitbreaker_to_typescript_record_records_2026_10_24_p9_26_batch_38_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 69 cases, eslint + typecheck clean, ratchet 589 to 586.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_39_customdomains_tenanthierarchy_oidc_validators_to_typescript_record_records_2026_10_24_p9_26_batch_39_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 46 cases, eslint + typecheck clean, ratchet 586 to 583.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_40_session_envelope_a111_activitylog_requestid_p703_esignature_norevocation_a107_to_typescript_record_records_2026_10_24_p9_26_batch_40_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 8 cases, eslint + typecheck clean, ratchet 583 to 580.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 12
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_41_clientip_a16_health_forcehttps_s09_tenantsettings_secrets_a150_to_typescript_record_records_2026_10_24_p9_26_batch_41_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 46 cases, eslint + typecheck clean, ratchet 580 to 577.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 11
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_on_disk_",
+      "evidence": "- **On disk:** the catalogue of the provider's image-import manifests, read with step 9's own",
+      "source_file": "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md",
+      "line": 16
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_named_",
+      "evidence": "- **Named:** every staged device row of the run, parsed with step 9's `photoNameOf` into",
+      "source_file": "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md",
+      "line": 18
+    },
+    {
+      "source": "sec_what_changed",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_quarantined_at_ingest_",
+      "evidence": "- **Quarantined at ingest:** such a file (a virus, a refused type) was still on disk, so it",
+      "source_file": "MEMORY\\records\\2026-10-28-p25-02-q28-unreferenced.md",
+      "line": 20
+    },
+    {
+      "source": "sec_10_1_reconciliation_and_the_data_quality_report_admin_route_ts_p25_01_p25_02_partial_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_run_level_finding_runfindings_2026_10_28_",
+      "evidence": "- **Run-level finding (`runFindings`, 2026-10-28):** Q-28's unreferenced half, the photo files the image imports'",
+      "source_file": "docs\\BACKEND\\13-UPSTREAM-MODULES.md",
+      "line": 320
     }
   ],
   "stats": {
-    "total_sources": 366,
-    "total_entities": 8100,
-    "total_relations": 4438,
+    "total_sources": 372,
+    "total_entities": 8124,
+    "total_relations": 4454,
     "token_savings_estimate": "85-95%"
   }
 }

@@ -4,18 +4,19 @@
  * P9-11 (ADR-093): the schemas are Zod, exercised through the shared
  * `validateInput` helper (the file's own `validate` is gone).
  */
-const { validateInput } = require("../../validators/input");
-const { addDomain, domainType } = require("../../validators/customDomains.validator");
+import type { z } from "zod";
+import { addDomain, domainType } from "../../validators/customDomains.validator";
+import { validateInput, type FieldError, type ValidationFailure } from "../../validators/input";
 
 const TYPE_OPTION = 'Invalid option: expected one of "subdomain"|"custom"|"vanity"';
 
 /** @returns the field errors `validateInput` threw, or undefined */
-const errorsOf = (data, schema) => {
+const errorsOf = (data: unknown, schema: z.ZodType): FieldError[] | undefined => {
   try {
     validateInput(data, schema);
   } catch (error) {
     expect(error).toMatchObject({ status: 400, message: "Validation failed" });
-    return error.errors;
+    return (error as ValidationFailure).errors;
   }
   return undefined;
 };
@@ -54,11 +55,11 @@ describe("Custom Domains Validators", () => {
       ]);
     });
 
-    it.each(["sub.example.com", "localhost", "192.168.1.1", "::1"])("accepts the hostname or IP address %s", (domain) => {
+    it.each(["sub.example.com", "localhost", "192.168.1.1", "::1"])("accepts the hostname or IP address %s", (domain: string) => {
       expect(validateInput({ domain }, addDomain).domain).toBe(domain);
     });
 
-    it.each(["123", "2026-09-29", 123])("refuses %j: neither an IP address nor a name ending in a label that starts with a letter", (domain) => {
+    it.each(["123", "2026-09-29", 123])("refuses %j: neither an IP address nor a name ending in a label that starts with a letter", (domain: unknown) => {
       expect(errorsOf({ domain }, addDomain)).toEqual([{ field: "domain", message: "Must be a valid hostname" }]);
     });
 
