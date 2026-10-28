@@ -14,19 +14,40 @@
  * The list of DECIMAL attributes is DISCOVERED from the models, so a new
  * DECIMAL column without a getter fails here.
  */
+import type * as SequelizeModule from "sequelize";
 
 jest.mock("../../config", () => {
-  const { Sequelize } = jest.requireActual("sequelize");
+  const { Sequelize } = jest.requireActual<typeof SequelizeModule>("sequelize");
   return { db: new Sequelize({ dialect: "postgres", logging: false }) };
 });
 
-const models = require("../../models");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the real models barrel, read for its attribute definitions (house pattern: uuidDefaults.a116)
+const models = require("../../models") as unknown as {
+  sequelize: { models: Record<string, DecimalModel> };
+  Invoice: DecimalModel;
+};
+
+interface DecimalAttribute {
+  readonly type?: { readonly key?: string };
+}
+
+interface BuiltRow {
+  [key: string]: unknown;
+  get(key: string): unknown;
+  toJSON(): Record<string, unknown>;
+}
+
+interface DecimalModel {
+  readonly name: string;
+  readonly rawAttributes: Record<string, DecimalAttribute>;
+  build(values: Record<string, unknown>, options: Record<string, unknown>): BuiltRow;
+}
 
 const allModels = [...new Set(Object.values(models.sequelize.models))];
-const allDecimals = allModels.flatMap((model) =>
+const allDecimals: [string, string, DecimalModel][] = allModels.flatMap((model) =>
   Object.entries(model.rawAttributes)
-    .filter(([, attribute]) => attribute.type && attribute.type.key === "DECIMAL")
-    .map(([name]) => [model.name, name, model]),
+    .filter(([, attribute]) => attribute.type?.key === "DECIMAL")
+    .map(([name]): [string, string, DecimalModel] => [model.name, name, model]),
 );
 
 /*
@@ -74,7 +95,7 @@ describe("D-21 — every DECIMAL attribute reads as a number", () => {
     ]);
   });
 
-  it.each(decimals)("%s.%s: a row read back as '1250.50' is the number 1250.5", (_m, attribute, model) => {
+  it.each(decimals)("%s.%s: a row read back as '1250.50' is the number 1250.5", (_m: string, attribute: string, model: DecimalModel) => {
     const row = model.build({ [attribute]: "1250.50" }, { raw: true, isNewRecord: false });
     expect(typeof row[attribute]).toBe("number");
     expect(row[attribute]).toBe(1250.5);
@@ -82,7 +103,7 @@ describe("D-21 — every DECIMAL attribute reads as a number", () => {
     expect(typeof row.toJSON()[attribute]).toBe("number");
   });
 
-  it.each(decimals)("%s.%s: NULL stays NULL (not 0)", (_m, attribute, model) => {
+  it.each(decimals)("%s.%s: NULL stays NULL (not 0)", (_m: string, attribute: string, model: DecimalModel) => {
     const row = model.build({ [attribute]: null }, { raw: true, isNewRecord: false });
     expect(row[attribute]).toBeNull();
   });
@@ -91,7 +112,7 @@ describe("D-21 — every DECIMAL attribute reads as a number", () => {
     expect(exact.map(([m, a]) => `${m}.${a}`).sort()).toEqual([...EXACT_DECIMAL_STRINGS].sort());
   });
 
-  it.each(exact)("%s.%s (ADR-125 Am. 2): reads back as the exact decimal string, not a float", (_m, attribute, model) => {
+  it.each(exact)("%s.%s (ADR-125 Am. 2): reads back as the exact decimal string, not a float", (_m: string, attribute: string, model: DecimalModel) => {
     const row = model.build({ [attribute]: "0.7000001" }, { raw: true, isNewRecord: false });
     expect(row[attribute]).toBe("0.7000001");
     expect(row.toJSON()[attribute]).toBe("0.7000001");
@@ -102,7 +123,7 @@ describe("D-21 — every DECIMAL attribute reads as a number", () => {
       { amountDue: "90.00", amountPaid: "1000.00" },
       { raw: true, isNewRecord: false },
     );
-    expect(invoice.amountDue + invoice.amountPaid).toBe(1090);
-    expect(invoice.amountDue > invoice.amountPaid).toBe(false);
+    expect((invoice["amountDue"] as number) + (invoice["amountPaid"] as number)).toBe(1090);
+    expect((invoice["amountDue"] as number) > (invoice["amountPaid"] as number)).toBe(false);
   });
 });

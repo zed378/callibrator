@@ -5,20 +5,21 @@
  * exercised through the shared validateInput, which returns the parsed value
  * or throws { status: 400, message: "Validation failed", errors: [{ field, message }] }.
  */
-const { oidcClientSchema } = require("../../validators/oidc.validator");
-const { validateInput } = require("../../validators/input");
+import { oidcClientSchema } from "../../validators/oidc.validator";
+import { validateInput, type ValidationFailure } from "../../validators/input";
 
-const validate = (data) => validateInput(data, oidcClientSchema);
+const validate = (data: unknown): { name: string; redirectUris: string[]; scopes: string[]; grantTypes: string[] } =>
+  validateInput(data, oidcClientSchema);
 
 /**
- * @param {unknown} data - the input
- * @returns {object} the thrown validation failure
+ * @param data - the input
+ * @returns the thrown validation failure
  */
-const failure = (data) => {
+const failure = (data: unknown): ValidationFailure => {
   try {
     validate(data);
   } catch (error) {
-    return error;
+    return error as ValidationFailure;
   }
   throw new Error("expected a validation failure");
 };

@@ -15,28 +15,30 @@
  * Deletion of a revoked CERTIFICATE (the other half of A-107) is refused with
  * 409 since A-130: certificate.service.test.js and eSignature.a129a130.test.js.
  */
-
-const fs = require("fs");
-const path = require("path");
+import fs from "fs";
+import path from "path";
+import type * as ESignatureService from "../../services/eSignature.service";
+import type * as ESignatureController from "../../controllers/eSignature.controller";
+import type * as ESignatureValidator from "../../validators/eSignature.validator";
 
 jest.mock("../../models", () => ({}));
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the modules are TypeScript with `export =` (ADR-087 Am. 15: no named import beside it)
+const service = require("../../services/eSignature.service") as typeof ESignatureService;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the modules are TypeScript with `export =` (ADR-087 Am. 15: no named import beside it)
+const controller = require("../../controllers/eSignature.controller") as typeof ESignatureController;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the jest.mock factory above
+const validator = require("../../validators/eSignature.validator") as typeof ESignatureValidator;
+
 describe("A-107 — no signature revocation without a design", () => {
   it("the service, the controller and the validator export no revokeSignature", () => {
-    const service = require("../../services/eSignature.service");
-    const controller = require("../../controllers/eSignature.controller");
-    const validator = require("../../validators/eSignature.validator");
-
     expect(service).not.toHaveProperty("revokeSignature");
     expect(controller).not.toHaveProperty("revokeSignature");
     expect(validator).not.toHaveProperty("revokeSignature");
   });
 
   it("no e-signature route revokes a signature", () => {
-    const source = fs.readFileSync(
-      path.join(__dirname, "../../routes/api/eSignature.route.ts"),
-      "utf8",
-    );
+    const source = fs.readFileSync(path.join(__dirname, "../../routes/api/eSignature.route.ts"), "utf8");
     const routeLines = source.split("\n").filter((line) => /router\.(get|post|put|patch|delete)\(/.test(line));
     const routeBlocks = source.split(/router\.(?:get|post|put|patch|delete)\(/).slice(1).map((b) => b.slice(0, 200));
 
@@ -47,10 +49,7 @@ describe("A-107 — no signature revocation without a design", () => {
   });
 
   it("cancelling a workflow IS routed, gated and guarded (the other unrouted handler, A-130)", () => {
-    const source = fs.readFileSync(
-      path.join(__dirname, "../../routes/api/eSignature.route.ts"),
-      "utf8",
-    );
+    const source = fs.readFileSync(path.join(__dirname, "../../routes/api/eSignature.route.ts"), "utf8");
     const cancel = source.slice(source.indexOf('"/workflows/:workflowId/cancel"') - 40);
 
     expect(cancel).toMatch(/dynamicAccess\(MENU_SLUGS\.QMS, "write"\)/);

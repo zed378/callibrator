@@ -9,15 +9,19 @@
  * The keys are written out by hand — they are the claim, not a copy of
  * constants/tenantSecretSettings.js.
  */
-const { Sequelize, DataTypes } = require("sequelize");
-const defineTenantSettings = require("../../models/tenantSettings.model");
-const kms = require("../../services/kms.service");
-const {
+import { DataTypes, Sequelize } from "sequelize";
+import defineTenantSettings from "../../models/tenantSettings.model";
+import type KmsService from "../../services/kms.service";
+import type { TenantId } from "../../types/ids";
+import {
   isSecretSettingKey,
   isRedactedSettingKey,
-} = require("../../constants/tenantSecretSettings");
+} from "../../constants/tenantSecretSettings";
 
-const TENANT = "11111111-1111-4111-8111-111111111111";
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the real envelope code (house pattern: kms.unknownKey.p918)
+const kms = require("../../services/kms.service") as typeof KmsService;
+
+const TENANT = "11111111-1111-4111-8111-111111111111" as TenantId;
 
 const db = new Sequelize("postgres://u:p@127.0.0.1:5432/none", {
   dialect: "postgres",
@@ -25,9 +29,13 @@ const db = new Sequelize("postgres://u:p@127.0.0.1:5432/none", {
 });
 const TenantSettings = defineTenantSettings(db, DataTypes);
 
-const saveHooks = async (key, value) => {
+interface SettingRow {
+  value: string | null;
+}
+
+const saveHooks = async (key: string, value: string): Promise<SettingRow> => {
   const row = TenantSettings.build({ tenantId: TENANT, key, value });
-  await TenantSettings.runHooks("beforeSave", row, {});
+  await (TenantSettings as unknown as { runHooks(hook: string, row: unknown, options: object): Promise<void> }).runHooks("beforeSave", row, {});
   return row;
 };
 
@@ -68,17 +76,17 @@ const PLAINTEXT = [
 ];
 
 describe("A-150 — the tenant settings encrypted at rest", () => {
-  it.each(ENCRYPTED)("%s is envelope-encrypted on save and decrypted on read", async (key) => {
+  it.each(ENCRYPTED)("%s is envelope-encrypted on save and decrypted on read", async (key: string) => {
     const row = await saveHooks(key, "plain-secret");
 
-    expect(row.value.startsWith("v2:")).toBe(true); // P6-10: v2 names its master key
-    expect(kms.decryptData(TENANT, row.value)).toBe("plain-secret");
+    expect(row.value?.startsWith("v2:")).toBe(true); // P6-10: v2 names its master key
+    expect(kms.decryptData(TENANT, row.value as string)).toBe("plain-secret");
 
-    await TenantSettings.runHooks("afterFind", [row], {});
+    await (TenantSettings as unknown as { runHooks(hook: string, row: unknown, options: object): Promise<void> }).runHooks("afterFind", [row], {});
     expect(row.value).toBe("plain-secret");
   });
 
-  it.each(PLAINTEXT)("%s is stored as given", async (key) => {
+  it.each(PLAINTEXT)("%s is stored as given", async (key: string) => {
     const row = await saveHooks(key, "value");
 
     expect(row.value).toBe("value");
@@ -98,7 +106,7 @@ describe("A-150 — the tenant settings encrypted at rest", () => {
   });
 
   it("an existing envelope is not encrypted twice", async () => {
-    const envelope = kms.encryptData(TENANT, "x");
+    const envelope = kms.encryptData(TENANT, "x") as string;
     const row = await saveHooks("ai_api_key", envelope);
 
     expect(row.value).toBe(envelope);

@@ -14,39 +14,39 @@
  * TRUST_PROXY_HOPS. What is not: nginx and Next.js — the requests below are
  * the ones they send.
  */
+import fs from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import path from "node:path";
+import express from "express";
+import { TRUST_PROXY_HOPS } from "../../constants";
 
-const fs = require("fs");
-const http = require("http");
-const path = require("path");
-const express = require("express");
-const { TRUST_PROXY_HOPS } = require("../../constants");
-
-let server;
-let port;
+let server: http.Server;
+let port: number;
 
 beforeAll(async () => {
   const app = express();
   app.set("trust proxy", TRUST_PROXY_HOPS);
   app.get("/ip", (req, res) => res.json({ ip: req.ip }));
   server = http.createServer(app);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  ({ port } = server.address());
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  port = (server.address() as AddressInfo).port;
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => { resolve(); }));
 });
 
 /** GET /ip with `headers`; resolve the req.ip the app saw. */
-const ipSeen = (headers = {}) =>
+const ipSeen = (headers: Record<string, string> = {}): Promise<string> =>
   new Promise((resolve, reject) => {
     http
       .get({ host: "127.0.0.1", port, path: "/ip", headers }, (res) => {
         let body = "";
-        res.on("data", (chunk) => {
+        res.on("data", (chunk: string) => {
           body += chunk;
         });
-        res.on("end", () => resolve(JSON.parse(body).ip));
+        res.on("end", () => { resolve((JSON.parse(body) as { ip: string }).ip); });
       })
       .on("error", reject);
   });

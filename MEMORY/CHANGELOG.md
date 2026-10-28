@@ -11,6 +11,18 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ### 2026-10-28 — P25-02: Q-28's unreferenced photo files as a run-level finding ([record](./records/2026-10-28-p25-02-q28-unreferenced.md), ADR-129 Am. 12)
 - The data-quality report gains `runFindings`: photo files on disk (the image-import manifests) that no staged device row names. Live `p2403` 3/3, `p2402g` 6/6 on PostgreSQL 18.
 
+### 2026-10-24 -- P9-26 batch 41: clientIp.a16, health.forceHttps.s09, tenantSettings.secrets.a150 to TypeScript ([record](./records/2026-10-24-p9-26-batch-41.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 46 cases, eslint + typecheck clean, ratchet 580 to 577.
+
+### 2026-10-24 -- P9-26 batch 40: session.envelope.a111, activityLog.requestId.p703, esignature.noRevocation.a107 to TypeScript ([record](./records/2026-10-24-p9-26-batch-40.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 8 cases, eslint + typecheck clean, ratchet 583 to 580.
+
+### 2026-10-24 -- P9-26 batch 39: customDomains, tenantHierarchy, oidc validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-39.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 46 cases, eslint + typecheck clean, ratchet 586 to 583.
+
+### 2026-10-24 -- P9-26 batch 38: decimalGetters.d21, softDeleteMechanisms.d25, circuitBreaker to TypeScript ([record](./records/2026-10-24-p9-26-batch-38.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 69 cases, eslint + typecheck clean, ratchet 589 to 586.
+
 ### 2026-10-28 — P25-02: the duplicates (Q-8, Q-9) and orphans (Q-2, Q-3, Q-10) in the data-quality report ([record](./records/2026-10-28-p25-02-duplicates-orphans.md), ADR-129 Am. 12)
 - Per facility: second session headers, devices calibrated more than once, and IPM rows, devices and calibrations whose performer is no imported account. Live `p2402g` 6/6, `p2403` 3/3 on PostgreSQL 18.
 
