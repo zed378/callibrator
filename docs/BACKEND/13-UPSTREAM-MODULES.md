@@ -317,7 +317,9 @@ staged value, name, serial or legacy id. Errors are coded: 404 `UPSTREAM_SQL_IMP
 - **Also computed by the report (2026-10-28):** the duplicates Q-8 (second session headers) and Q-9 (devices
   calibrated more than once), and the orphans Q-2, Q-3 and Q-10 (IPM rows, devices and calibrations whose
   performer is no imported account).
-- **Not automated, so they answer `manual`:** RC-F4, R-12, the unreferenced half of Q-28,
+- **Run-level finding (`runFindings`, 2026-10-28):** Q-28's unreferenced half, the photo files the image imports'
+  manifests put in `foto_depan` / `foto_sn` that no staged device row names.
+- **Not automated, so they answer `manual`:** RC-F4, R-12,
   and the orphan, duplicate-file and user sections. P25-04 records them by hand on the dry-run
   database.
 

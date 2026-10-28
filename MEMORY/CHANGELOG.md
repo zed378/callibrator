@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-28 — P25-02: Q-28's unreferenced photo files as a run-level finding ([record](./records/2026-10-28-p25-02-q28-unreferenced.md), ADR-129 Am. 12)
+- The data-quality report gains `runFindings`: photo files on disk (the image-import manifests) that no staged device row names. Live `p2403` 3/3, `p2402g` 6/6 on PostgreSQL 18.
+
 ### 2026-10-28 — P25-02: the duplicates (Q-8, Q-9) and orphans (Q-2, Q-3, Q-10) in the data-quality report ([record](./records/2026-10-28-p25-02-duplicates-orphans.md), ADR-129 Am. 12)
 - Per facility: second session headers, devices calibrated more than once, and IPM rows, devices and calibrations whose performer is no imported account. Live `p2402g` 6/6, `p2403` 3/3 on PostgreSQL 18.
 

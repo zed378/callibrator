@@ -33,12 +33,17 @@ const db = {
   quarantine: [] as { facilityId: string | null; sourceTable: string; reason: string; n: number }[],
   perFacility: [] as { facilityId: string; n: number }[],
   present: false,
+  photoRows: [] as Record<string, string | null>[],
+  manifests: [] as string[],
 };
 const close = jest.fn(() => Promise.resolve());
 /** The transform connection as `sql()` sees it: `query(text, { type, bind, transaction })`. */
 const query = jest.fn((text: string) => {
   if (text.includes("current_user")) {
     return Promise.resolve([{ currentUser: db.role }]);
+  }
+  if (text.includes("AS foto_depan")) {
+    return Promise.resolve(db.photoRows);
   }
   if (text.includes("AS present")) {
     return Promise.resolve([{ present: db.present }]);
@@ -50,6 +55,9 @@ const query = jest.fn((text: string) => {
 });
 const transaction = jest.fn((fn: (t: object) => Promise<unknown>) => fn({}));
 const connection = { close, transaction, query };
+jest.mock("../../services/upstreamImport/transformFiles", () => ({
+  manifestsOf: () => Promise.resolve(db.manifests),
+}));
 jest.mock("../../config/upstreamImport", () => ({
   ...jest.requireActual<object>("../../config/upstreamImport"),
   createTransformDb: () => connection,
@@ -89,7 +97,7 @@ const seedRun = (id: string, values: Record<string, unknown> = {}): void => {
 beforeEach(() => {
   mdb.reset();
   jest.clearAllMocks();
-  Object.assign(db, { role: "callibrator_transform", quarantine: [], perFacility: [], present: false });
+  Object.assign(db, { role: "callibrator_transform", quarantine: [], perFacility: [], present: false, photoRows: [], manifests: [] });
   mdb.seed("ClientFacility", [
     { id: F1, tenantId: HOME, code: "F-0001", name: "Satu", kind: "hospital", status: "active" },
     { id: F2, tenantId: HOME, code: "F-0002", name: "Dua", kind: "clinic", status: "active" },
@@ -113,10 +121,11 @@ describe("P25-02 the data-quality report", () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
-  it("a clean run: every computed finding passes; Q-28 stays manual (unreferenced files are the manifest's)", async () => {
+  it("a clean run: every computed finding passes, per facility and at the run level", async () => {
     seedRun(RUN);
     const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
     expect(answer).toMatchObject({ runId: RUN, providerTenantId: HOME, totals: [] });
+    expect(answer.runFindings.map((f) => [f.finding, f.status, f.count])).toEqual([["Q-28", "pass", 0]]);
     expect(answer.facilities.map((f) => [f.clientFacilityId, f.facilityCode, f.quarantine])).toEqual([
       [F1, "F-0001", []],
       [F2, "F-0002", []],
@@ -130,14 +139,14 @@ describe("P25-02 the data-quality report", () => {
         ["Q-13", "pass", 0],
         ["Q-4", "pass", 0],
         ["Q-14", "pass", 0],
-        ["Q-28", "manual", 0],
+        ["Q-28", "pass", 0],
         ["Q-8", "pass", 0],
         ["Q-9", "pass", 0],
         ["Q-2", "pass", 0],
         ["Q-3", "pass", 0],
         ["Q-10", "pass", 0],
       ]);
-      expect(row.findings.find((f) => f.finding === "Q-28")?.note).toContain("unreferenced files on disk are not counted");
+      expect(row.findings.find((f) => f.finding === "Q-28")?.note).toContain("unreferenced files are a run-level finding");
     }
     expect(close).toHaveBeenCalledTimes(1);
   });
@@ -188,7 +197,7 @@ describe("P25-02 the data-quality report", () => {
     expect(pick(f1, "Q-4")).toMatchObject({ status: "flagged", count: 4 });
     expect(pick(f1, "Q-14")).toMatchObject({ status: "flagged", count: 1 });
     expect(pick(f1, "Q-28")).toMatchObject({ status: "flagged", count: 2 });
-    expect([pick(f2, "Q-4")?.status, pick(f2, "Q-14")?.status, pick(f2, "Q-28")?.status]).toEqual(["pass", "pass", "manual"]);
+    expect([pick(f2, "Q-4")?.status, pick(f2, "Q-14")?.status, pick(f2, "Q-28")?.status]).toEqual(["pass", "pass", "pass"]);
     const calls = query.mock.calls as unknown as [string, { bind?: unknown[] }][];
     const q4 = calls.filter(([, o]) => o.bind?.[2] === "no_device").map(([, o]) => o.bind);
     expect(q4).toEqual([
@@ -232,5 +241,26 @@ describe("P25-02 the data-quality report", () => {
       "trx_kondisi_kelistrikan", "trx_kondisi_lingkungan", "trx_konsumabel", "trx_pemeliharaan_alat", "trx_pemeriksaan_fisik",
       "trx_pemeriksaan_keamanan_lain", "trx_inventory", "trx_kalibrasi",
     ]);
+  });
+
+  it("Q-28 unreferenced (run level): manifest files in the photo folders no staged row names, by step 9's <folder>/<name>", async () => {
+    seedRun(RUN);
+    db.present = true;
+    const line = (sourcePath: string, outcome: string, extra: Record<string, string> = {}): string => JSON.stringify({ sourcePath, outcome, ...extra });
+    db.manifests = [
+      [
+        line("foto_depan/a1.jpg", "ingested", { storageKey: "k1", storedSha256: "s1", sourceSha256: "h1", detectedType: "jpeg" }),
+        line("foto_sn/a1sn.png", "ingested", { storageKey: "k2", storedSha256: "s2", sourceSha256: "h2", detectedType: "png" }),
+        line("foto_depan/orphan.jpg", "ingested", { storageKey: "k3", storedSha256: "s3", sourceSha256: "h3", detectedType: "jpeg" }),
+        line("foto_sn/virus.jpg", "quarantined", { reason: "virus_found" }),
+        line("dokumen/other.pdf", "quarantined", { reason: "type_refused" }),
+        "{torn",
+      ].join("\n"),
+    ];
+    // The front named by URL (the host stripped, as step 9 does), the serial plate by its bare name.
+    db.photoRows = [{ foto_depan: "https://old.example.test/uploads/foto_depan/a1.jpg?x=1", foto_sn: " a1sn.png " }, { foto_depan: null, foto_sn: "" }];
+    const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
+    // orphan.jpg and the quarantined virus.jpg are on disk and unnamed; another folder is not a photo folder.
+    expect(answer.runFindings).toEqual([expect.objectContaining({ finding: "Q-28", status: "flagged", count: 2 })]);
   });
 });

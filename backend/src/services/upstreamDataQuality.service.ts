@@ -26,9 +26,10 @@
  *   Q-4 (2026-10-27) - IPM session rows quarantined no_device, attributed by
  *     their staged id_client through the facility mapping
  *   Q-14 (2026-10-27) - calibrations dated before their device's inventory date
- *   Q-28 (2026-10-27, the missing half) - photos quarantined file_missing, in
- *     their device's facility; `manual` when none, because unreferenced files
- *     on disk (the manifest's side) are not counted
+ *   Q-28 - per facility the missing half (2026-10-27): photos quarantined
+ *     file_missing, in their device's facility; at the run level the
+ *     unreferenced half (2026-10-28): files the image imports' manifests put
+ *     in the photo folders that no staged device row names (`runFindings`)
  *
  *   duplicates (2026-10-28) - Q-8 second session headers (quarantined
  *     duplicate_header, by staged id_client); Q-9 devices with more than one
@@ -36,8 +37,8 @@
  *   orphans (2026-10-28) - Q-2 / Q-3 / Q-10: mapped IPM rows, devices and
  *     calibrations whose staged id_user is no imported account
  *
- * NOT built: Q-28's unreferenced files (the manifest's side) and the user
- * section (R-9 of the reconciliation checks the accounts per run). P25-04's.
+ * NOT built: the user section (R-9 of the reconciliation checks the accounts
+ * per run).
  * The facility row carries the id and code only: the name is sensitive
  * operational data (03 § 9).
  */
@@ -50,6 +51,9 @@ import {
   stagedTableExists,
 } from "./upstreamImport/transform/ledger";
 import { RESULT_TABLES, SESSION_TABLES } from "./upstreamImport/transform/ipm";
+import { photoNameOf } from "./upstreamImport/transform/attachments";
+import { catalogueOf } from "./upstreamImport/transform/photoFiles";
+import { manifestsOf } from "./upstreamImport/transformFiles";
 import type { StepContext } from "./upstreamImport/transform/steps";
 import type {
   DataQualityFinding,
@@ -203,6 +207,44 @@ const missingFilesPerFacility = async (
   return counts;
 };
 
+/**
+ * Q-28 (the unreferenced half): photo files the provider's image imports brought onto disk (their
+ * manifests, read as step 9 reads them) in the two photo folders that no staged device row of the
+ * run names - by the same `<folder>/<name>` step 9 looks up. Such a file has no device and so no
+ * facility: a run-level finding.
+ */
+const unreferencedFiles = async (
+  context: StepContext,
+  manifests: readonly string[],
+): Promise<number> => {
+  const catalogue = catalogueOf(manifests);
+  const referenced = new Set<string>();
+  if (await stagedTableExists(context, "trx_inventory")) {
+    const rows = await sql<Record<string, string | null>>(
+      context.runner,
+      `SELECT to_jsonb(s) ->> 'foto_depan' AS foto_depan, to_jsonb(s) ->> 'foto_sn' AS foto_sn
+         FROM ${stagedTable("trx_inventory")} s WHERE s.import_run_id = $1`,
+      [context.runId],
+      { transaction: context.transaction },
+    );
+    for (const row of rows) {
+      for (const folder of PHOTO_FOLDERS) {
+        const name = photoNameOf(row[folder] ?? null);
+        if (name !== null) {
+          referenced.add(`${folder}/${name}`);
+        }
+      }
+    }
+  }
+  let unreferenced = 0;
+  for (const path of catalogue.keys()) {
+    if (PHOTO_FOLDERS.some((folder) => path.startsWith(`${folder}/`)) && !referenced.has(path)) {
+      unreferenced += 1;
+    }
+  }
+  return unreferenced;
+};
+
 /** The run's facilities: the provider tenant's, ordered by code. */
 const facilitiesOf = async (tenantId: string): Promise<Facility[]> =>
   (
@@ -248,6 +290,9 @@ export const reportDataQuality = async (
       "The run names no provider tenant.",
     );
   }
+  // Q-28's manifests are read on the application's connection BEFORE the transform transaction (as the
+  // transform does): the transform role cannot read upstream_file_imports.
+  const manifests = await manifestsOf(tenantId);
   const connection = createTransformDb();
   try {
     return await connection.transaction(async (transaction) => {
@@ -393,6 +438,7 @@ export const reportDataQuality = async (
       };
       const noDevice = await sessionQuarantinePerFacility(context, "no_device");
       const missingFiles = await missingFilesPerFacility(context);
+      const unreferenced = await unreferencedFiles(context, manifests);
       // Duplicates: Q-8 second session headers (quarantined), Q-9 devices with more than one live calibration.
       const duplicateHeaders = await sessionQuarantinePerFacility(context, "duplicate_header");
       const calibratedTwice = byFacility(
@@ -467,19 +513,12 @@ export const reportDataQuality = async (
             id,
             "calibrations dated before their device's inventory date: plausible (calibrated before registration), flagged",
           ),
-          (missingFiles.get(id) ?? 0) > 0
-            ? flagged(
-              "Q-28",
-              missingFiles,
-              id,
-              "photos a device names whose file is missing on disk (file_missing); unreferenced files on disk are the manifest's, P25-04",
-            )
-            : finding(
-              "Q-28",
-              "manual",
-              0,
-              "no photo missing on disk; unreferenced files on disk are not counted here (the manifest's side, P25-04)",
-            ),
+          flagged(
+            "Q-28",
+            missingFiles,
+            id,
+            "photos a device names whose file is missing on disk (file_missing); unreferenced files are a run-level finding",
+          ),
           flagged(
             "Q-8",
             duplicateHeaders,
@@ -518,6 +557,14 @@ export const reportDataQuality = async (
         providerTenantId: tenantId,
         facilities: facilityRows,
         totals: [...totals.values()],
+        runFindings: [
+          finding(
+            "Q-28",
+            unreferenced === 0 ? "pass" : "flagged",
+            unreferenced,
+            "photo files on disk (the image imports' manifests) in foto_depan / foto_sn that no staged device row names",
+          ),
+        ],
       };
     });
   } finally {
