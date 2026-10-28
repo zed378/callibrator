@@ -23,7 +23,7 @@ import { USER_SOURCES, runUsers } from "./users";
 import { DEFINITION_SOURCES, DEVICE_TYPE_SOURCE, runDeviceTypes, runItemDefinitions } from "./catalogue";
 import { TEMPLATE_SOURCES, runTemplates } from "./templates";
 import { DEVICE_SOURCE, runDevices, runRooms, runVendors } from "./inventory";
-import { CALIBRATION_SOURCE, runCalibrations } from "./calibrations";
+import { CALIBRATION_SOURCE, accountInventoryDates, runCalibrations } from "./calibrations";
 import { RESULT_SOURCES, SESSION_SOURCES } from "./ipm";
 import { runIpmSessions } from "./ipmSessions";
 import { runIpmResults } from "./ipmResults";
@@ -109,7 +109,8 @@ export const TRANSFORM_STEPS: readonly TransformStep[] = Object.freeze([
   // P24-03: the device photos from the image imports' manifests, and the certificate index (attachments.ts).
   step("attachments", ["attachments"], Object.freeze([CERTIFICATE_SOURCE]), runAttachments, accountPhotos),
   // P24-02f: the calibration dates (calibrations.ts).
-  step("calibration_records", ["calibration_records"], Object.freeze([CALIBRATION_SOURCE]), runCalibrations),
+  // P24-02h: step 10 also accounts the device rows' own calibration dates (`tgl_kalibrasi`, UD-8).
+  step("calibration_records", ["calibration_records"], Object.freeze([CALIBRATION_SOURCE]), runCalibrations, accountInventoryDates),
   // P24-02g: the IPM visits as drafts, then their results and the issue of each report (ipmSessions.ts, ipmResults.ts).
   step("inspection_sessions", ["inspection_sessions"], SESSION_SOURCES, runIpmSessions),
   step("inspection_results", ["inspection_results", "inspection_sessions"], RESULT_SOURCES, runIpmResults),

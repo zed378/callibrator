@@ -12252,6 +12252,39 @@ Today `createCalibrationRecord` sets the device's `nextCalibrationDate` from whi
 
 ---
 
+### ADR-133 Amendment 5 (2026-10-28, P24-02h; UD-8 decided by the owner): the device's own calibration date (`trx_inventory.tgl_kalibrasi`) is imported as a calibration record
+
+**Context.** Until today `tgl_kalibrasi` was kept only in `id_map.source_values`, waiting for the SME (OA-7, UD-8). On 2026-10-28 the owner answered. The column is **the date the operator calibrated the device**. The interval is set per request or standard by the facility or the calibration company, so upstream holds none. The research found the column differing from `trx_kalibrasi` on 2,173 of 3,640 devices (03 Q-11), so many calibrations exist only there.
+
+**Decision.**
+
+1. Step 10 runs a second pass after the `trx_kalibrasi` records. Every staged device row naming a date is accounted as the column source `tgl_kalibrasi`: id_map source table `tgl_kalibrasi`, legacy id = the device's, row hash = SHA-256 of the date alone. The step's `account` (`accountInventoryDates`) makes an unaccounted row fatal, as step 9 does for the photo folders.
+2. Quarantine:
+   - a device not imported → `no_device`;
+   - not a calendar day → `value_out_of_range`;
+   - after today in the source zone → `future_calibration_date`.
+3. **One calibration is one record.** If the device already has an effective record (not superseded, not voided) on that day — a `trx_kalibrasi` row, or an earlier import — the date maps onto it. Nothing is written.
+4. Otherwise the date becomes an `external_date` record by the tenant's import key, snapshot "Upstream import" (`role: import`, the tenant's name, `source: upstream-import`). The column names no person. Its room snapshot is the device's `nama_ruangan`. There is no laboratory, result or certificate. An unusable key fails the transform with `IMPORT_KEY_MISSING`, as in Am. 4.
+5. **No due date.** Imported devices get no `next_calibration_date`. The interval is a later setting, per request or standard.
+6. Re-runs follow the step's existing rules. An unchanged date is skipped. A changed date is a correction that supersedes the record it mapped to. A record the operator voided or corrected is left alone.
+7. Step 10 now returns at once when neither `trx_kalibrasi` nor `trx_inventory` is staged.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| A record for every device date, duplicates included | the same calibration twice in the history and in the recap |
+| Set the device's "last calibration" field instead of a record | there is no such column. ADR-133 derives everything from the effective records; a second source would disagree with them |
+| Derive `next_calibration_date` with a default interval | the owner said the interval is set per request or standard, so a default would invent a regulatory date |
+| Keep ignoring the column | loses about 2,000 real calibration events |
+
+**Implications, including the bad ones.**
+
+- If the corrected day of a changed date equals another effective record, the correction still inserts a record: a duplicate is possible in that rare case. Mapping onto the other record would leave the superseded one effective.
+- If `trx_kalibrasi` later corrects the record a device date mapped onto, the date's mapping now points at a closed record and the date is skipped as unchanged. The device's own date then has no effective record of its own.
+- R-7 of the reconciliation counts `trx_kalibrasi` only. The device dates are accounted by the runner (no row unaccounted), not reconciled per facility yet.
+- Proven on synthetic data on PostgreSQL 18 (`upstreamTransform.p2402f.live`); real volumes in P24-05.
+
 ## ADR-134: Shared Packages Hold Logic and Design Tokens Only, in `packages/*` (No Root `shared/`, No Shared UI, No Per-Backend Client Adapter); the Backend Serves Native Clients Through a Token-Returning Ingress, Install Sessions With Reuse Detection, an App-Link SSO Exchange, Native Passkey Origins, a Push Registry, a 426 Version Floor and a Tenant Lookup by Code
 
 **Date:** 2026-10-08 · **Status:** Accepted as the **PLAN — nothing here is built.** "React Native with Expo + EAS beside the PWA", "share logic + design tokens only, each platform renders its own UI", "same monorepo, workspaces (`apps/mobile`, `packages/*`)", the native capabilities and sign-in methods, the roadmap (as revised the same day: the backend-agnostic contract first, Phases 32 … 34; the mobile plan Phases 35 … 40; the Go variant of the backend for mobile after Phase 999) and **tenant setup before sign-in** are the **owner's** decisions of 2026-10-08 (`TASKS/BACKLOG.md` D-11; the tenant-setup decision relayed by the coordinator the same day). The mechanisms are decided by the shared-packages documentation agent under the owner's standing delegation; the owner questions are Q-58 … Q-61 · **Documents:** [`docs/SHARED/`](../docs/SHARED/00-README.md) `00` … `08`, `90`; [`docs/MOBILE/20`](../docs/MOBILE/20-BACKEND-FOR-MOBILE-NODE.md), [`21`](../docs/MOBILE/21-BACKEND-FOR-MOBILE-GO.md) · **Plan:** [`TASKS/PHASE-35-SHARED-PACKAGES.md`](../TASKS/PHASE-35-SHARED-PACKAGES.md) … `PHASE-40-MOBILE-RELEASE.md` — **one plan**, Phases 35 … 40, after the backend-agnostic contract group (Phases 32 … 34, ADR-136); only the backend for mobile has a second (Go) variant, after Phase 999 · **Works with:** ADR-135 (the app), ADR-097 + Am. 1–6 (contracts), ADR-103 (code-first OpenAPI), ADR-059 / A-71 (the browser never holds a token), ADR-122 (tones), ADR-124 + Am. 1–3, ADR-127 + Am. 1 (the PWA engine), ADR-100 (budgets, one refusal), ADR-098 (the discovery residual) · **Supersedes:** ADR-089's root `shared/` area, shared UI components and per-backend frontend adapter; the Q-48 working decision to move `packages/contracts` into `shared/contracts` at Phase 999 · **Record:** `MEMORY/records/2026-10-08-shared-packages-mobile-backend-docs.md`

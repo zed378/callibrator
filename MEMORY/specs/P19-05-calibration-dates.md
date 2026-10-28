@@ -215,7 +215,7 @@ Each row carries, besides the record: `device { id, name, manufacturer, model, q
 | `created_at` | `created_at` | the input date for the "rentang input" recap |
 | two rows of one device (110, Q-9) | both kept, ordered by date — history | |
 
-`trx_inventory.tgl_kalibrasi` is **not** imported as a record (UD-8); its value stays in `id_map.source_values` so that OA-7's answer changes only P24-02's mapping (it may become an `external_date` record of its own, or a `manual` next date). After the load, § 5 derives nothing for imported devices (no interval, no stated due date) — the interim rule holds by construction.
+**Superseded 2026-10-28 (owner, UD-8; P24-02h, ADR-133 Am. 5): `tgl_kalibrasi` is the operator's calibration date and IS imported — as an `external_date` record by the import key, or mapped onto a same-day effective record; still no due date.** Was: `trx_inventory.tgl_kalibrasi` is **not** imported as a record (UD-8); its value stays in `id_map.source_values` so that OA-7's answer changes only P24-02's mapping (it may become an `external_date` record of its own, or a `manual` next date). After the load, § 5 derives nothing for imported devices (no interval, no stated due date) — the interim rule holds by construction.
 
 **No laboratory is invented for an imported row:** imported rows carry `performer_snapshot.source = "upstream-import"`, and the CHECK of § 4.1 admits an `external_date` row without a laboratory only for those rows or for a key-recorded row; a filler text such as "(not recorded upstream)" was rejected (it would read as data). A person entering through the API always names a laboratory (the contract's 400).
 
