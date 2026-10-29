@@ -39,7 +39,7 @@
       "@ai-sdk/vue": "^3.0.296",
       "@ai-sdk/provider-utils": "^4.0.56",
       "@ai-sdk/gateway": "^3.0.205",
-      "undici": "^7.29.1"
+      "undici": "^7.30.1"
     },
     "openapi-typescript": {
       "typescript": "npm:@typescript/typescript6@^6.0.2"
