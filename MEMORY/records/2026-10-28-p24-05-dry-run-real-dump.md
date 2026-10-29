@@ -98,7 +98,7 @@ Q-9 and Q-14 grew because the device dates are now records. Q-28's unreferenced 
 
 1. **The transform takes 17 minutes, not the runbook's 2–10.** The IPM steps account for 14 of them. The freeze estimate in the runbook (§ 7) is replaced by these figures. The photos will add to step 9's time. An optimisation of the IPM steps is a separate card if the window matters.
 2. **No electrical-safety template is imported.** All 638 `mapping_keamanan_listrik` rows and 228 of 282 `mapping_kinerja_alat` rows are quarantined as `item_content_incomplete`. The IPM items for electrical safety and most performance items then exist only as definitions without a published template. **This is the next card to investigate**, to decide whether it is the data or the template rule.
-3. **Q-14 is 22,854.** Most device calibration dates precede the device's `tgl_inventory`. The likely reading is that `tgl_inventory` is the date the device was registered in the upstream app (which started in 2024, 03 Q-15), not its acquisition date. That is plausible and flagged, not an error. It is worth one sentence from the owner.
+3. **Q-14 is 22,854.** Most device calibration dates precede the device's `tgl_inventory`. The likely reading is that `tgl_inventory` is the date the device was registered in the upstream app (which started in 2024, 03 Q-15), not its acquisition date. That is plausible and flagged, not an error. **Confirmed by the owner on 2026-10-28**: `tgl_inventory` is the registration date.
 
 ## Tests for the R-7 change
 
