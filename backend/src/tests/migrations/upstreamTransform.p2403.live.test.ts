@@ -383,6 +383,12 @@ describe("P24-03 — the whole transform on live PostgreSQL 18 and local storage
     const manifest = fs.readFileSync(g.workspace.importPaths(FILE_IMPORTS[0] as string, "").manifest, "utf8").trim().split("\n").map((l) => JSON.parse(l) as { sourcePath: string; storageKey?: string });
     const keyOf = (p: string): string => manifest.find((m) => m.sourcePath === p)?.storageKey as string;
     expect(objectExists(keyOf("foto_depan/a1.jpg"))).toBe(false);
+    // ADR-130 Am. 1: the ingest stored each photo's derivatives beside it; step 9 copied them (no decode) and
+    // their tenant-scope copies go with the original after the commit.
+    for (const variant of ["display", "thumb"]) {
+      expect(objectExists(keyOf("foto_depan/a1.jpg").replace(/\.[A-Za-z0-9]+$/, `.${variant}.jpg`))).toBe(false);
+    }
+    expect(manifest.find((m) => m.sourcePath === "foto_depan/a1.jpg")).toMatchObject({ derivatives: true });
     expect(objectExists(keyOf("foto_sn/a1sn.png"))).toBe(false);
     expect(objectExists(keyOf("foto_depan/c3.jpg"))).toBe(true);
 

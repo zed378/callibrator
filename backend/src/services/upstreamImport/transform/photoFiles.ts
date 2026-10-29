@@ -25,7 +25,14 @@ import type { ManifestEntry } from "../../upstreamFileImport/ingest";
 
 /** A source path's decision, as the manifests give it. */
 export type PhotoSource =
-  | { readonly outcome: "ingested"; readonly storageKey: string; readonly storedSha256: string; readonly type: "jpeg" | "png" }
+  | {
+      readonly outcome: "ingested";
+      readonly storageKey: string;
+      readonly storedSha256: string;
+      readonly type: "jpeg" | "png";
+      /** ADR-130 Am. 1: the ingest stored the two derivatives beside the object (an older manifest did not). */
+      readonly derivatives: boolean;
+    }
   | { readonly outcome: "quarantined"; readonly reason: QuarantineReason };
 
 /** The storage step 9 writes through, bound to the provider tenant. */
@@ -73,7 +80,13 @@ export const catalogueOf = (manifests: readonly string[]): Map<string, PhotoSour
         continue;
       }
       if (entry.outcome === "ingested" && entry.storageKey && entry.storedSha256 && entry.sourceSha256 && isImage(entry.detectedType)) {
-        const source: PhotoSource = { outcome: "ingested", storageKey: entry.storageKey, storedSha256: entry.storedSha256, type: entry.detectedType };
+        const source: PhotoSource = {
+          outcome: "ingested",
+          storageKey: entry.storageKey,
+          storedSha256: entry.storedSha256,
+          type: entry.detectedType,
+          derivatives: entry.derivatives === true,
+        };
         const byHash = ingested.get(entry.sourcePath) ?? new Map<string, PhotoSource>();
         byHash.set(entry.sourceSha256, source);
         ingested.set(entry.sourcePath, byHash);

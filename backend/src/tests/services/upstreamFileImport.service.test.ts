@@ -176,11 +176,11 @@ const writeSyntheticFiles = (
 ): Promise<{ ok: true; files: number; bytes: number }> => {
   const files: [string, Buffer][] = options.localDir.endsWith("foto_depan")
     ? [
-      ["d1.jpg", syntheticJpeg({ gps: true, seed: 1 })],
-      ["d2.png", syntheticPng({ text: true, seed: 2 })],
+      ["d1.jpg", syntheticJpeg({ pixels: true, gps: true, seed: 1 })],
+      ["d2.png", syntheticPng({ pixels: true, text: true, seed: 2 })],
       ["sub/run.sh", syntheticShellScript()],
     ]
-    : [["s1.jpg", syntheticJpeg({ seed: 3 })]];
+    : [["s1.jpg", syntheticJpeg({ pixels: true, seed: 3 })]];
   let bytes = 0;
   for (const [name, content] of files) {
     const file = path.join(options.localDir, ...name.split("/"));
@@ -366,9 +366,10 @@ describe("startImport → the job → completed", () => {
     expect(session.input.pinned.key).toBe(HOST_KEY);
     expect(options).toMatchObject({ remoteDir: "/srv/uploads/foto_depan", bandwidthLimitKbps: 4096 });
 
-    // Storage: three objects in the TARGET tenant, UUID-named.
+    // Storage: three images in the TARGET tenant, UUID-named, each with its two derivatives (ADR-130 Am. 1).
     expect([...objects.keys()].every((k) => k.startsWith(`t/${TARGET}/attachments/`))).toBe(true);
-    expect(objects.size).toBe(3);
+    expect(objects.size).toBe(3 * 3);
+    expect([...objects.keys()].filter((k) => /\.(display|thumb)\.jpg$/.test(k))).toHaveLength(6);
 
     // The batch job, in the target tenant, completed with the ingested count.
     const job = mdb.rows("BatchJob")[0];
@@ -408,7 +409,7 @@ describe("startImport → the job → completed", () => {
     const second = await startOk();
     const row = await settled(second.id);
     expect(row["summary"]).toMatchObject({ ingested: 0, skippedPresent: 3, quarantined: 1 });
-    expect(objects.size).toBe(3);
+    expect(objects.size).toBe(3 * 3); // the first import's three images and their derivatives, nothing more
   });
 
   it("a torn manifest line or a removed manifest is tolerated (that file is ingested again, never lost)", async () => {
@@ -517,7 +518,7 @@ describe("the job — failure and cancel", () => {
       (_s: unknown, options: { signal: AbortSignal; localDir: string }) =>
         new Promise((resolve) => {
           fs.mkdirSync(options.localDir, { recursive: true });
-          fs.writeFileSync(path.join(options.localDir, "partial.jpg"), syntheticJpeg());
+          fs.writeFileSync(path.join(options.localDir, "partial.jpg"), syntheticJpeg({ pixels: true }));
           options.signal.addEventListener("abort", () => { resolve({ ok: false, error: "cancelled" }); });
         }),
     );
