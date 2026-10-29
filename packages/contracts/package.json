@@ -21,7 +21,7 @@
     "test": "cd ../../backend && node --experimental-vm-modules --disable-warning=ExperimentalWarning ../node_modules/jest/bin/jest.js --config ../packages/contracts/jest.config.js"
   },
   "dependencies": {
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=26 <27"
