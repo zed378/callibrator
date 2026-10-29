@@ -151,14 +151,13 @@ Dominated by the delta, not the bulk — **if the bulk was loaded ahead**.
 
 | Item | Basis | Window |
 |---|---|---|
-| Final dump + stage | ~384 k rows; staging measured < 1 min on a synthetic dump | minutes |
-| Transform + load | ~330 k audit rows dominate; 2–10 min estimated | minutes |
+| Final dump + stage | **measured 2026-10-28 (P24-05):** 371,335 rows of the 2026-10-06 dump, upload + scan + parse + staging 26 s | under 1 min |
+| Transform + load | **measured 2026-10-28 (P24-05): 17 min** (1,023 s): IPM sessions 421 s and results 408 s dominate, step 9 112 s without real photos (it grows with them), rooms 41 s | ~20 min, more with the photos |
 | Delta files | a day's photos | minutes |
-| Reconciliation | 9 automated checks (R-1/R-2/R-7 per facility; R-10/R-11/RC-F1/RC-F2/RC-F3/RC-F5 run level) + 8 `manual` recorded by hand | minutes |
-| **Total** | | **under 1 hour** if § 4 ran |
+| Reconciliation | **measured 2026-10-28:** reconciliation 28 s + data-quality 10 s (R-1 … R-8 per facility, R-8/R-9/R-10/R-11/RC-F1/RC-F2/RC-F3/RC-F5 run level, all green); RC-F4 and R-12 recorded by hand | under 1 min + the operator's review |
+| **Total** | | **about 1 hour** if § 4 ran (the transform alone is ~20 min) |
 
-⏳ **Unproved:** every figure above is an estimate from the dry-run plan. P24-05 replaces them with
-measurements, and P30-02 times a full rehearsal on a disposable stack before the real window is
+⏳ **Measured once (P24-05, 2026-10-28, [record](../MEMORY/records/2026-10-28-p24-05-dry-run-real-dump.md)) on a workstation**, not on the target host; P30-02 times a full rehearsal on a disposable stack before the real window is
 promised to anyone.
 
 ---
