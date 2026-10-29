@@ -32,6 +32,30 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ### 2026-10-28 — P25-02: Q-28's unreferenced photo files as a run-level finding ([record](./records/2026-10-28-p25-02-q28-unreferenced.md), ADR-129 Am. 12)
 - The data-quality report gains `runFindings`: photo files on disk (the image-import manifests) that no staged device row names. Live `p2403` 3/3, `p2402g` 6/6 on PostgreSQL 18.
 
+### 2026-10-29 -- P9-26 bulk batch 02: 50 test files (11 controllers, 35 middlewares, 4 models) to TypeScript ([record](./records/2026-10-24-p9-26-bulk-batch-02.md))
+- **DONE:** 50 test files (100% of controller & middleware suites complete) -- `.js` to `.ts`, same 1124 cases, eslint + typecheck clean, ratchet floor lowered 485 to 435.
+
+### 2026-10-29 -- P9-26 bulk batch 01: 50 controller test files to TypeScript ([record](./records/2026-10-24-p9-26-bulk-batch-01.md))
+- **DONE:** 50 controller test files -- `.js` to `.ts`, same 850 cases, eslint + typecheck clean, ratchet floor lowered 535 to 485.
+
+### 2026-10-29 -- P9-26 batch 55: tenant.validator, user.validator, health.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-55.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 157 cases, eslint + typecheck clean, ratchet 538 to 535.
+
+### 2026-10-29 -- P9-26 batch 54: eSignature, scim, webhook validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-54.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 115 cases, eslint + typecheck clean, ratchet 541 to 538.
+
+### 2026-10-29 -- P9-26 batch 53: warehouse, workflow, auth validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-53.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 87 cases, eslint + typecheck clean, ratchet 544 to 541.
+
+### 2026-10-29 -- P9-26 batch 52: meteredBilling, stock, vendor validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-52.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 122 cases, eslint + typecheck clean, ratchet 547 to 544.
+
+### 2026-10-29 -- P9-26 batch 51: kanban, maintenance, menuGroup validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-51.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 117 cases, eslint + typecheck clean, ratchet 550 to 547.
+
+### 2026-10-24 -- P9-26 batch 50: sop.controller, batchJob.controller, migration.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-50.md))
+- **DONE:** 3 -- `.js` to `.ts`, same 22 cases, eslint + typecheck clean, ratchet 553 to 550.
+
 ### 2026-10-24 -- P9-26 batch 49: vendor.qualify.p602, userPermission.controller, workflow.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-49.md))
 - **DONE:** 3 -- `.js` to `.ts`, same 30 cases, eslint + typecheck clean, ratchet 556 to 553.
 

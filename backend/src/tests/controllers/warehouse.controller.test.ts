@@ -1,0 +1,387 @@
+/**
+ * Tests for Warehouse Controller
+ */
+import type { Request, Response, NextFunction } from "express";
+
+// Mock service FIRST
+jest.mock("../../services/warehouse.service", () => ({
+  fetchWarehouses: jest.fn(),
+  fetchSpecificWarehouse: jest.fn(),
+  createWarehouse: jest.fn(),
+  updateWarehouse: jest.fn(),
+  deleteWarehouse: jest.fn(),
+  fetchLocations: jest.fn(),
+  createLocation: jest.fn(),
+  updateLocation: jest.fn(),
+  deleteLocation: jest.fn(),
+}));
+
+// Mock response helper
+jest.mock("../../utils/response.util", () => ({
+  success: jest.fn(),
+  error: jest.fn(),
+}));
+
+interface WarehouseServiceDouble {
+  fetchWarehouses: jest.Mock;
+  fetchSpecificWarehouse: jest.Mock;
+  createWarehouse: jest.Mock;
+  updateWarehouse: jest.Mock;
+  deleteWarehouse: jest.Mock;
+  fetchLocations: jest.Mock;
+  createLocation: jest.Mock;
+  updateLocation: jest.Mock;
+  deleteLocation: jest.Mock;
+}
+
+interface ResponseDouble {
+  success: jest.Mock;
+  error: jest.Mock;
+}
+
+type Handler = (req: Request, res: Response, next?: NextFunction) => unknown;
+
+interface WarehouseControllerDouble {
+  getAllWarehouses: Handler;
+  getSpecificWarehouse: Handler;
+  createWarehouse: Handler;
+  updateWarehouse: Handler;
+  deleteWarehouse: Handler;
+  getLocations: Handler;
+  createLocation: Handler;
+  updateLocation: Handler;
+  deleteLocation: Handler;
+}
+
+interface FakeRes {
+  status: ((code: number) => FakeRes) & jest.Mock;
+  json: jest.Mock;
+  locals: Record<string, unknown>;
+}
+
+interface MockReq {
+  body: Record<string, unknown> | undefined;
+  query: Record<string, unknown>;
+  params: Record<string, string | undefined>;
+  headers: Record<string, string | undefined>;
+  user?: { id: string; tenantId: string } | undefined;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const warehouseController = require("../../controllers/warehouse.controller") as WarehouseControllerDouble;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const warehouseService = require("../../services/warehouse.service") as WarehouseServiceDouble;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { success, error } = require("../../utils/response.util") as ResponseDouble;
+
+describe("warehouseController", () => {
+  let req: MockReq;
+  let res: FakeRes;
+  let next: jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    next = jest.fn();
+    req = {
+      body: {},
+      query: {},
+      params: {},
+      headers: {},
+      user: { id: "user-1", tenantId: "tenant-1" },
+    };
+
+    res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+      locals: {},
+    };
+
+    success.mockImplementation((response: FakeRes, data: unknown, meta: unknown, message: unknown, status?: number) => {
+      response.status(status ?? 200).json({ success: true, data, meta, message });
+    });
+  });
+
+  describe("getAllWarehouses", () => {
+    it("should fetch all warehouses and return success response", async () => {
+      req.query = { page: "1", limit: "10", find: "Central" };
+
+      warehouseService.fetchWarehouses.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "Fetch warehouses successful",
+        data: {
+          rows: [{ id: "wh-1", name: "Central WH" }],
+          meta: { total: 1, page: 1, limit: 10 },
+        },
+      });
+
+      await warehouseController.getAllWarehouses(req as unknown as Request, res as unknown as Response);
+
+      expect(warehouseService.fetchWarehouses).toHaveBeenCalledWith({
+        tenantId: "tenant-1",
+        find: "Central",
+        page: 1,
+        limit: 10,
+      });
+      expect(success).toHaveBeenCalledWith(
+        res,
+        [{ id: "wh-1", name: "Central WH" }],
+        { total: 1, page: 1, limit: 10 },
+        "Fetch warehouses successful",
+        200,
+      );
+    });
+
+    it("should reject an invalid query without calling the service", async () => {
+      // `status` only accepts active/inactive — this trips the validate() throw.
+      req.query = { status: "archived" };
+
+      await warehouseController.getAllWarehouses(req as unknown as Request, res as unknown as Response, next);
+
+      expect(warehouseService.fetchWarehouses).not.toHaveBeenCalled();
+      // A-272 (ADR-100): asyncHandler answers a thrown validateInput failure
+      // like validate() — "Validation Error", the field list as details.
+      expect(error).toHaveBeenCalledWith(
+        res,
+        "Validation Error",
+        400,
+        expect.arrayContaining([expect.objectContaining({ field: expect.any(String) as unknown })]) as unknown,
+      );
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 400,
+          message: "Validation failed",
+          errors: expect.any(Array) as unknown,
+        }),
+      );
+    });
+  });
+
+  describe("getSpecificWarehouse", () => {
+    it("should fetch a warehouse and return success response", async () => {
+      req.params = { warehouseId: "8c352a92-d6cf-4b71-b0db-6e69622d1b11" };
+
+      warehouseService.fetchSpecificWarehouse.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "Fetch warehouse successful",
+        data: { id: "wh-1", name: "WH 1" },
+      });
+
+      await warehouseController.getSpecificWarehouse(req as unknown as Request, res as unknown as Response);
+
+      expect(warehouseService.fetchSpecificWarehouse).toHaveBeenCalledWith(
+        "tenant-1",
+        "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
+      );
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { id: "wh-1", name: "WH 1" },
+        null,
+        "Fetch warehouse successful",
+        200,
+      );
+    });
+  });
+
+  describe("createWarehouse", () => {
+    it("should create a warehouse and return success response", async () => {
+      req.body = { name: "New WH", code: "CODE-1" };
+
+      warehouseService.createWarehouse.mockResolvedValueOnce({
+        success: true,
+        status: 201,
+        message: "Warehouse created successfully",
+        data: { id: "wh-1", name: "New WH" },
+      });
+
+      await warehouseController.createWarehouse(req as unknown as Request, res as unknown as Response);
+
+      expect(warehouseService.createWarehouse).toHaveBeenCalledWith("tenant-1", {
+        name: "New WH",
+        code: "CODE-1",
+        status: "active",
+      }, expect.objectContaining({ apiKeyId: null }));
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { id: "wh-1", name: "New WH" },
+        null,
+        "Warehouse created successfully",
+        201,
+      );
+    });
+  });
+
+  describe("updateWarehouse", () => {
+    it("should update a warehouse and return success response", async () => {
+      req.params = { warehouseId: "8c352a92-d6cf-4b71-b0db-6e69622d1b11" };
+      req.body = { name: "Updated WH", status: "inactive" };
+
+      warehouseService.updateWarehouse.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "Warehouse updated successfully",
+        data: { id: "wh-1", name: "Updated WH" },
+      });
+
+      await warehouseController.updateWarehouse(req as unknown as Request, res as unknown as Response);
+
+      expect(warehouseService.updateWarehouse).toHaveBeenCalledWith(
+        "tenant-1",
+        "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
+        { name: "Updated WH", status: "inactive" }, expect.objectContaining({ apiKeyId: null }));
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { id: "wh-1", name: "Updated WH" },
+        null,
+        "Warehouse updated successfully",
+        200,
+      );
+    });
+  });
+
+  describe("deleteWarehouse", () => {
+    it("should delete a warehouse and return success response", async () => {
+      req.params = { warehouseId: "8c352a92-d6cf-4b71-b0db-6e69622d1b11" };
+
+      warehouseService.deleteWarehouse.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "Warehouse deleted successfully",
+        data: null,
+      });
+
+      await warehouseController.deleteWarehouse(req as unknown as Request, res as unknown as Response);
+
+      expect(warehouseService.deleteWarehouse).toHaveBeenCalledWith(
+        "tenant-1",
+        "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
+        expect.objectContaining({ apiKeyId: null }),
+      );
+      expect(success).toHaveBeenCalledWith(
+        res,
+        null,
+        null,
+        "Warehouse deleted successfully",
+        200,
+      );
+    });
+  });
+
+  describe("getLocations", () => {
+    it("should fetch locations and return success response", async () => {
+      req.params = { warehouseId: "8c352a92-d6cf-4b71-b0db-6e69622d1b11" };
+
+      warehouseService.fetchLocations.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "Fetch storage locations successful",
+        data: [{ id: "loc-1", name: "Loc 1" }],
+      });
+
+      await warehouseController.getLocations(req as unknown as Request, res as unknown as Response);
+
+      expect(warehouseService.fetchLocations).toHaveBeenCalledWith(
+        "tenant-1",
+        "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
+      );
+      expect(success).toHaveBeenCalledWith(
+        res,
+        [{ id: "loc-1", name: "Loc 1" }],
+        null,
+        "Fetch storage locations successful",
+        200,
+      );
+    });
+  });
+
+  describe("createLocation", () => {
+    it("should create storage location and return success response", async () => {
+      req.body = {
+        warehouseId: "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
+        name: "Loc New",
+        code: "L1",
+      };
+
+      warehouseService.createLocation.mockResolvedValueOnce({
+        success: true,
+        status: 201,
+        message: "Storage location created successfully",
+        data: { id: "loc-1", name: "Loc New" },
+      });
+
+      await warehouseController.createLocation(req as unknown as Request, res as unknown as Response);
+
+      expect(warehouseService.createLocation).toHaveBeenCalledWith("tenant-1", {
+        warehouseId: "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
+        name: "Loc New",
+        code: "L1",
+        isActive: true,
+      }, expect.objectContaining({ apiKeyId: null }));
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { id: "loc-1", name: "Loc New" },
+        null,
+        "Storage location created successfully",
+        201,
+      );
+    });
+  });
+
+  describe("updateLocation", () => {
+    it("should update storage location and return success response", async () => {
+      req.params = { locationId: "8c352a92-d6cf-4b71-b0db-6e69622d1b12" };
+      req.body = { name: "Loc Updated", isActive: false };
+
+      warehouseService.updateLocation.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "Storage location updated successfully",
+        data: { id: "loc-1", name: "Loc Updated" },
+      });
+
+      await warehouseController.updateLocation(req as unknown as Request, res as unknown as Response);
+
+      expect(warehouseService.updateLocation).toHaveBeenCalledWith(
+        "tenant-1",
+        "8c352a92-d6cf-4b71-b0db-6e69622d1b12",
+        { name: "Loc Updated", isActive: false }, expect.objectContaining({ apiKeyId: null }));
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { id: "loc-1", name: "Loc Updated" },
+        null,
+        "Storage location updated successfully",
+        200,
+      );
+    });
+  });
+
+  describe("deleteLocation", () => {
+    it("should delete storage location and return success response", async () => {
+      req.params = { locationId: "8c352a92-d6cf-4b71-b0db-6e69622d1b12" };
+
+      warehouseService.deleteLocation.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "Storage location deleted successfully",
+        data: null,
+      });
+
+      await warehouseController.deleteLocation(req as unknown as Request, res as unknown as Response);
+
+      expect(warehouseService.deleteLocation).toHaveBeenCalledWith(
+        "tenant-1",
+        "8c352a92-d6cf-4b71-b0db-6e69622d1b12",
+        expect.objectContaining({ apiKeyId: null }),
+      );
+      expect(success).toHaveBeenCalledWith(
+        res,
+        null,
+        null,
+        "Storage location deleted successfully",
+        200,
+      );
+    });
+  });
+});

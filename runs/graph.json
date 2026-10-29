@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-28T10:35:04.153Z",
+  "last_updated": "2026-10-29T06:47:49.989Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -380,7 +380,19 @@
     "MEMORY\\records\\2026-10-24-p9-26-batch-47.md",
     "MEMORY\\specs\\P19-05-calibration-dates.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-48.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-49.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-49.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-50.md",
+    "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-51.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-52.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-53.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-54.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-55.md",
+    "MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+    "MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
+    "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+    "MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+    "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md"
   ],
   "entities": [
     {
@@ -73993,6 +74005,483 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 23,
       "evidence": "### 2026-10-24 -- P9-26 batch 49: vendor.qualify.p602, userPermission.controller, workflow.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-4"
+    },
+    {
+      "id": "sec_p9_26_batch_50_sop_controller_batchjob_controller_migration_controller_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 50: sop.controller, batchJob.controller, migration.controller — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-50.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-50.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 50: sop.controller, batchJob.controller, migration.controller — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_24_p9_26_batch_50_sop_controller_batchjob_controller_migration_controller_to_typescript_record_records_2026_10_24_p9_26_batch_50_md_",
+      "name": "2026-10-24 -- P9-26 batch 50: sop.controller, batchJob.controller, migration.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-50.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 23,
+      "evidence": "### 2026-10-24 -- P9-26 batch 50: sop.controller, batchJob.controller, migration.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-50.md))"
+    },
+    {
+      "id": "sec_p24_05_the_first_dry_run_of_a_real_upstream_dump_every_automated_check_green_three_findings",
+      "name": "P24-05: the first dry run of a real upstream dump — every automated check green, three findings",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 1,
+      "evidence": "# P24-05: the first dry run of a real upstream dump — every automated check green, three findings"
+    },
+    {
+      "id": "sec_how_it_ran",
+      "name": "How it ran",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 5,
+      "evidence": "## How it ran"
+    },
+    {
+      "id": "sec_the_dump",
+      "name": "The dump",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 27,
+      "evidence": "## The dump"
+    },
+    {
+      "id": "sec_timings",
+      "name": "Timings",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 37,
+      "evidence": "## Timings"
+    },
+    {
+      "id": "sec_reconciliation_p25_01_on_real_volumes_every_automated_check_passes",
+      "name": "Reconciliation (P25-01) on real volumes: every automated check passes",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 67,
+      "evidence": "## Reconciliation (P25-01) on real volumes: every automated check passes"
+    },
+    {
+      "id": "sec_data_quality_p25_02_matches_the_research",
+      "name": "Data quality (P25-02): matches the research",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 79,
+      "evidence": "## Data quality (P25-02): matches the research"
+    },
+    {
+      "id": "sec_findings",
+      "name": "Findings",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 97,
+      "evidence": "## Findings"
+    },
+    {
+      "id": "sec_tests_for_the_r_7_change",
+      "name": "Tests for the R-7 change",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 103,
+      "evidence": "## Tests for the R-7 change"
+    },
+    {
+      "id": "sec_not_done",
+      "name": "Not done",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 115,
+      "evidence": "## Not done"
+    },
+    {
+      "id": "ent_the_photos_",
+      "name": "The photos.",
+      "type": "Component/Requirement",
+      "description": "The rsync image import of `foto_depan` / `foto_sn` (~47 k files, ~91 GB) into a throwaway bucket, then step 9 against real files. It is a separate run, starting with a sample.",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 117,
+      "evidence": "- **The photos.** The rsync image import of `foto_depan` / `foto_sn` (~47 k files, ~91 GB) into a throwaway bucket, then step 9 against real files. It is a sepa"
+    },
+    {
+      "id": "sec_2026_10_28_p24_05_the_first_dry_run_of_a_real_upstream_dump_record_records_2026_10_28_p24_05_dry_run_real_dump_md_",
+      "name": "2026-10-28 — P24-05: the first dry run of a real upstream dump ([record](./records/2026-10-28-p24-05-dry-run-real-dump.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-28 — P24-05: the first dry run of a real upstream dump ([record](./records/2026-10-28-p24-05-dry-run-real-dump.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_51_kanban_maintenance_menugroup_validators_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 51: kanban, maintenance, menuGroup validators — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-51.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-51.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 51: kanban, maintenance, menuGroup validators — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_p9_26_batch_52_meteredbilling_stock_vendor_validators_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 52: meteredBilling, stock, vendor validators — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-52.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-52.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 52: meteredBilling, stock, vendor validators — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_p9_26_batch_53_warehouse_workflow_auth_validators_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 53: warehouse, workflow, auth validators — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-53.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-53.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 53: warehouse, workflow, auth validators — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_p9_26_batch_54_esignature_scim_webhook_validators_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 54: eSignature, scim, webhook validators — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-54.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-54.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 54: eSignature, scim, webhook validators — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_p9_26_batch_55_tenant_validator_user_validator_health_controller_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 55: tenant.validator, user.validator, health.controller — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-55.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-55.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 55: tenant.validator, user.validator, health.controller — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_p24_05_finding_fixed_the_electrical_safety_limits_and_the_performance_units_the_transform_did_not_read",
+      "name": "P24-05 finding fixed: the electrical-safety limits and the performance units the transform did not read",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "line": 1,
+      "evidence": "# P24-05 finding fixed: the electrical-safety limits and the performance units the transform did not read"
+    },
+    {
+      "id": "sec_defect",
+      "name": "Defect",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "line": 5,
+      "evidence": "## Defect"
+    },
+    {
+      "id": "ent_electrical_safety_",
+      "name": "Electrical safety.",
+      "type": "Component/Requirement",
+      "description": "`mst_pemeriksaan_keamanan_listrik` has **no `nilai_acuan`**; the limit",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "line": 15,
+      "evidence": "- **Electrical safety.** `mst_pemeriksaan_keamanan_listrik` has **no `nilai_acuan`**; the limit"
+    },
+    {
+      "id": "sec_still_to_do",
+      "name": "Still to do",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "line": 53,
+      "evidence": "## Still to do"
+    },
+    {
+      "id": "sec_2026_10_28_fix_the_electrical_safety_limits_and_performance_units_the_transform_did_not_read_record_records_2026_10_28_p24_05_fix_catalogue_symbol_limits_md_",
+      "name": "2026-10-28 — Fix: the electrical-safety limits and performance units the transform did not read ([record](./records/2026-10-28-p24-05-fix-catalogue-symbol-limits.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-28 — Fix: the electrical-safety limits and performance units the transform did not read ([record](./records/2026-10-28-p24-05-fix-catalogue-symbol-l"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_55_tenant_validator_user_validator_health_controller_to_typescript_record_records_2026_10_24_p9_26_batch_55_md_",
+      "name": "2026-10-29 -- P9-26 batch 55: tenant.validator, user.validator, health.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-55.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 29,
+      "evidence": "### 2026-10-29 -- P9-26 batch 55: tenant.validator, user.validator, health.controller to TypeScript ([record](./records/2026-10-24-p9-26-batch-55.md))"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_54_esignature_scim_webhook_validators_to_typescript_record_records_2026_10_24_p9_26_batch_54_md_",
+      "name": "2026-10-29 -- P9-26 batch 54: eSignature, scim, webhook validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-54.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 32,
+      "evidence": "### 2026-10-29 -- P9-26 batch 54: eSignature, scim, webhook validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-54.md))"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_53_warehouse_workflow_auth_validators_to_typescript_record_records_2026_10_24_p9_26_batch_53_md_",
+      "name": "2026-10-29 -- P9-26 batch 53: warehouse, workflow, auth validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-53.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 35,
+      "evidence": "### 2026-10-29 -- P9-26 batch 53: warehouse, workflow, auth validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-53.md))"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_52_meteredbilling_stock_vendor_validators_to_typescript_record_records_2026_10_24_p9_26_batch_52_md_",
+      "name": "2026-10-29 -- P9-26 batch 52: meteredBilling, stock, vendor validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-52.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 38,
+      "evidence": "### 2026-10-29 -- P9-26 batch 52: meteredBilling, stock, vendor validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-52.md))"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_51_kanban_maintenance_menugroup_validators_to_typescript_record_records_2026_10_24_p9_26_batch_51_md_",
+      "name": "2026-10-29 -- P9-26 batch 51: kanban, maintenance, menuGroup validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-51.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 41,
+      "evidence": "### 2026-10-29 -- P9-26 batch 51: kanban, maintenance, menuGroup validators to TypeScript ([record](./records/2026-10-24-p9-26-batch-51.md))"
+    },
+    {
+      "id": "sec_re_measured_on_the_real_dump_2026_10_28_the_second_dry_run_",
+      "name": "Re-measured on the real dump (2026-10-28, the second dry run)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "source": "MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "line": 53,
+      "evidence": "## Re-measured on the real dump (2026-10-28, the second dry run)"
+    },
+    {
+      "id": "sec_p24_05_the_photo_pipeline_on_real_files_a_400_photo_sample_correct_and_step_9_is_the_slow_part",
+      "name": "P24-05: the photo pipeline on real files (a 400-photo sample) — correct, and step 9 is the slow part",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
+      "source": "MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
+      "line": 1,
+      "evidence": "# P24-05: the photo pipeline on real files (a 400-photo sample) — correct, and step 9 is the slow part"
+    },
+    {
+      "id": "sec_results",
+      "name": "Results",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
+      "source": "MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
+      "line": 22,
+      "evidence": "## Results"
+    },
+    {
+      "id": "sec_finding_step_9_dominates_once_real_photos_are_in",
+      "name": "Finding: step 9 dominates once real photos are in",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
+      "source": "MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
+      "line": 36,
+      "evidence": "## Finding: step 9 dominates once real photos are in"
+    },
+    {
+      "id": "sec_2026_10_29_p24_05_the_photo_pipeline_on_400_real_photos_record_records_2026_10_29_p24_05_photo_sample_dry_run_md_",
+      "name": "2026-10-29 — P24-05: the photo pipeline on 400 real photos ([record](./records/2026-10-29-p24-05-photo-sample-dry-run.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-29 — P24-05: the photo pipeline on 400 real photos ([record](./records/2026-10-29-p24-05-photo-sample-dry-run.md))"
+    },
+    {
+      "id": "sec_adr_130_amendment_1_2026_10_29_p24_05_finding_the_image_import_builds_the_photo_derivatives_at_ingest_the_transform_copies_them",
+      "name": "ADR-130 Amendment 1 (2026-10-29, P24-05 finding): the image import builds the photo derivatives at ingest; the transform copies them",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11899,
+      "evidence": "### ADR-130 Amendment 1 (2026-10-29, P24-05 finding): the image import builds the photo derivatives at ingest; the transform copies them"
+    },
+    {
+      "id": "sec_p9_26_bulk_batch_01_50_controller_test_files_js_to_ts_no_assertion_changed",
+      "name": "P9-26 bulk batch 01: 50 controller test files — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "line": 1,
+      "evidence": "# P9-26 bulk batch 01: 50 controller test files — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_converted_files_50_total_",
+      "name": "Converted Files (50 total)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "line": 9,
+      "evidence": "## Converted Files (50 total)"
+    },
+    {
+      "id": "ent_jest_",
+      "name": "Jest:",
+      "type": "Component/Requirement",
+      "description": "All 50 converted `.ts` suites passed (50 passed, 50 total; 850 passed, 850 total; 0 failures).",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "line": 66,
+      "evidence": "- **Jest:** All 50 converted `.ts` suites passed (50 passed, 50 total; 850 passed, 850 total; 0 failures)."
+    },
+    {
+      "id": "ent_eslint_",
+      "name": "ESLint:",
+      "type": "Component/Requirement",
+      "description": "Ran across all 50 controller test files with 0 errors and 0 warnings.",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "line": 67,
+      "evidence": "- **ESLint:** Ran across all 50 controller test files with 0 errors and 0 warnings."
+    },
+    {
+      "id": "ent_typescript_",
+      "name": "TypeScript:",
+      "type": "Component/Requirement",
+      "description": "Ran `npm run typecheck` (`tsc -p tsconfig.json --noEmit`) exiting cleanly with `ok`.",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "line": 68,
+      "evidence": "- **TypeScript:** Ran `npm run typecheck` (`tsc -p tsconfig.json --noEmit`) exiting cleanly with `ok`."
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_bulk_batch_01_50_controller_test_files_to_typescript_record_records_2026_10_24_p9_26_bulk_batch_01_md_",
+      "name": "2026-10-29 -- P9-26 bulk batch 01: 50 controller test files to TypeScript ([record](./records/2026-10-24-p9-26-bulk-batch-01.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 32,
+      "evidence": "### 2026-10-29 -- P9-26 bulk batch 01: 50 controller test files to TypeScript ([record](./records/2026-10-24-p9-26-bulk-batch-01.md))"
+    },
+    {
+      "id": "sec_fixed_and_re_measured_the_same_day_adr_130_am_1_991b2c6_",
+      "name": "Fixed and re-measured the same day (ADR-130 Am. 1, 991b2c6)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
+      "source": "MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
+      "line": 59,
+      "evidence": "## Fixed and re-measured the same day (ADR-130 Am. 1, `991b2c6`)"
+    },
+    {
+      "id": "sec_adr_129_amendment_13_2026_10_29_p24_05_finding_the_transform_refreshes_the_planner_s_statistics_after_every_step_inside_its_one_transaction_the_transform_role_holds_maintain_on_what_it_writes_migration_0147_",
+      "name": "ADR-129 Amendment 13 (2026-10-29, P24-05 finding): the transform refreshes the planner's statistics after every step, inside its one transaction; the transform role holds MAINTAIN on what it writes (migration 0147)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\DECISIONS.md",
+      "source": "MEMORY\\DECISIONS.md",
+      "line": 11838,
+      "evidence": "### ADR-129 Amendment 13 (2026-10-29, P24-05 finding): the transform refreshes the planner's statistics after every step, inside its one transaction; the transf"
+    },
+    {
+      "id": "sec_performance_the_transform_608_s_129_s_planner_statistics_device_search_on_a_trigram_index_compliance_counted_in_sql",
+      "name": "Performance: the transform 608 s → 129 s (planner statistics), device search on a trigram index, compliance counted in SQL",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "source": "MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "line": 1,
+      "evidence": "# Performance: the transform 608 s → 129 s (planner statistics), device search on a trigram index, compliance counted in SQL"
+    },
+    {
+      "id": "sec_how_it_was_measured",
+      "name": "How it was measured",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "source": "MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "line": 5,
+      "evidence": "## How it was measured"
+    },
+    {
+      "id": "sec_1_the_transform_cpu_then_planner_statistics",
+      "name": "1. The transform: CPU, then planner statistics",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "source": "MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "line": 12,
+      "evidence": "## 1. The transform: CPU, then planner statistics"
+    },
+    {
+      "id": "sec_2_api_reads_at_real_volume",
+      "name": "2. API reads at real volume",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "source": "MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "line": 35,
+      "evidence": "## 2. API reads at real volume"
+    },
+    {
+      "id": "sec_found_on_the_way",
+      "name": "Found on the way",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "source": "MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "line": 66,
+      "evidence": "## Found on the way"
+    },
+    {
+      "id": "sec_2026_10_29_performance_the_transform_608_s_129_s_device_search_on_a_trigram_index_compliance_counted_in_sql_record_records_2026_10_29_perf_transform_statistics_and_api_indexes_md_adr_129_am_13_",
+      "name": "2026-10-29 — Performance: the transform 608 s → 129 s; device search on a trigram index; compliance counted in SQL ([record](./records/2026-10-29-perf-transform-statistics-and-api-indexes.md), ADR-129 Am. 13)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-29 — Performance: the transform 608 s → 129 s; device search on a trigram index; compliance counted in SQL ([record](./records/2026-10-29-perf-trans"
+    },
+    {
+      "id": "sec_p9_26_bulk_batch_02_50_test_files_11_controllers_35_middlewares_4_models_js_to_ts_no_assertion_changed",
+      "name": "P9-26 bulk batch 02: 50 test files (11 controllers, 35 middlewares, 4 models) — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md",
+      "line": 1,
+      "evidence": "# P9-26 bulk batch 02: 50 test files (11 controllers, 35 middlewares, 4 models) — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_controller_tests_11_files_completing_100_of_controller_tests_",
+      "name": "Controller Tests (11 files — completing 100% of controller tests)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md",
+      "line": 11,
+      "evidence": "### Controller Tests (11 files — completing 100% of controller tests)"
+    },
+    {
+      "id": "sec_middleware_tests_35_files_completing_100_of_middleware_tests_",
+      "name": "Middleware Tests (35 files — completing 100% of middleware tests)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md",
+      "line": 24,
+      "evidence": "### Middleware Tests (35 files — completing 100% of middleware tests)"
+    },
+    {
+      "id": "sec_model_tests_4_files_",
+      "name": "Model Tests (4 files)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md",
+      "line": 61,
+      "evidence": "### Model Tests (4 files)"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_bulk_batch_02_50_test_files_11_controllers_35_middlewares_4_models_to_typescript_record_records_2026_10_24_p9_26_bulk_batch_02_md_",
+      "name": "2026-10-29 -- P9-26 bulk batch 02: 50 test files (11 controllers, 35 middlewares, 4 models) to TypeScript ([record](./records/2026-10-24-p9-26-bulk-batch-02.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 35,
+      "evidence": "### 2026-10-29 -- P9-26 bulk batch 02: 50 test files (11 controllers, 35 middlewares, 4 models) to TypeScript ([record](./records/2026-10-24-p9-26-bulk-batch-02"
     }
   ],
   "relations": [
@@ -109819,12 +110308,164 @@
       "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 30 cases, eslint + typecheck clean, ratchet 556 to 553.",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 24
+    },
+    {
+      "source": "sec_2026_10_24_p9_26_batch_50_sop_controller_batchjob_controller_migration_controller_to_typescript_record_records_2026_10_24_p9_26_batch_50_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 22 cases, eslint + typecheck clean, ratchet 553 to 550.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 24
+    },
+    {
+      "source": "sec_reconciliation_p25_01_on_real_volumes_every_automated_check_passes",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_run_level_",
+      "evidence": "- **Run level:** R-10 371,335 / 371,335 (13,362 quarantined). R-11, RC-F1, RC-F2, RC-F3 and RC-F5 are 0. R-9 is 105 / 105. R-8 is 47,444 / 47,444, all quarantin",
+      "source_file": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 69
+    },
+    {
+      "source": "sec_not_done",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_the_photos_",
+      "evidence": "- **The photos.** The rsync image import of `foto_depan` / `foto_sn` (~47 k files, ~91 GB) into a throwaway bucket, then step 9 against real files. It is a sepa",
+      "source_file": "MEMORY\\records\\2026-10-28-p24-05-dry-run-real-dump.md",
+      "line": 117
+    },
+    {
+      "source": "sec_tests",
+      "relation": "EXPOSES_ENDPOINT",
+      "target": "api_get_live",
+      "evidence": "- `health.controller.test.ts`: 8/8 — GET /live (1), GET /health public (3), GET /ready public (2), GET /api/v1/health gated detail (2).",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-batch-55.md",
+      "line": 24
+    },
+    {
+      "source": "sec_defect",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_electrical_safety_",
+      "evidence": "- **Electrical safety.** `mst_pemeriksaan_keamanan_listrik` has **no `nilai_acuan`**; the limit",
+      "source_file": "MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "line": 15
+    },
+    {
+      "source": "sec_defect",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_performance_",
+      "evidence": "- **Performance.** 96 items write their unit as a parenthesised `symbol` (`(g)`) beside a text",
+      "source_file": "MEMORY\\records\\2026-10-28-p24-05-fix-catalogue-symbol-limits.md",
+      "line": 19
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_batch_55_tenant_validator_user_validator_health_controller_to_typescript_record_records_2026_10_24_p9_26_batch_55_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 157 cases, eslint + typecheck clean, ratchet 538 to 535.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 30
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_batch_54_esignature_scim_webhook_validators_to_typescript_record_records_2026_10_24_p9_26_batch_54_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 115 cases, eslint + typecheck clean, ratchet 541 to 538.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 33
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_batch_53_warehouse_workflow_auth_validators_to_typescript_record_records_2026_10_24_p9_26_batch_53_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 87 cases, eslint + typecheck clean, ratchet 544 to 541.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 36
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_batch_52_meteredbilling_stock_vendor_validators_to_typescript_record_records_2026_10_24_p9_26_batch_52_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 122 cases, eslint + typecheck clean, ratchet 547 to 544.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 39
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_batch_51_kanban_maintenance_menugroup_validators_to_typescript_record_records_2026_10_24_p9_26_batch_51_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 3 -- `.js` to `.ts`, same 117 cases, eslint + typecheck clean, ratchet 550 to 547.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 42
+    },
+    {
+      "source": "sec_verification",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_jest_",
+      "evidence": "- **Jest:** All 50 converted `.ts` suites passed (50 passed, 50 total; 850 passed, 850 total; 0 failures).",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "line": 66
+    },
+    {
+      "source": "sec_verification",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_eslint_",
+      "evidence": "- **ESLint:** Ran across all 50 controller test files with 0 errors and 0 warnings.",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "line": 67
+    },
+    {
+      "source": "sec_verification",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_typescript_",
+      "evidence": "- **TypeScript:** Ran `npm run typecheck` (`tsc -p tsconfig.json --noEmit`) exiting cleanly with `ok`.",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "line": 68
+    },
+    {
+      "source": "sec_verification",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_ratchet_",
+      "evidence": "- **Ratchet:** `npm run ratchet` verified floor lowered from 535 to 485 (`50 .js file(s) gone`).",
+      "source_file": "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
+      "line": 69
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_bulk_batch_01_50_controller_test_files_to_typescript_record_records_2026_10_24_p9_26_bulk_batch_01_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 50 controller test files -- `.js` to `.ts`, same 850 cases, eslint + typecheck clean, ratchet floor lowered 535 to 485.",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 33
+    },
+    {
+      "source": "sec_how_it_was_measured",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_transform_",
+      "evidence": "- **Transform:** one dry run profiled with `--cpu-prof`, plus `pg_stat_statements`.",
+      "source_file": "MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "line": 9
+    },
+    {
+      "source": "sec_how_it_was_measured",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_api_",
+      "evidence": "- **API:** a local benchmark called the hot read services as a tenant user, five times each, on the transformed data: 23,722 devices and 25,855 calibration reco",
+      "source_file": "MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
+      "line": 10
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_bulk_batch_02_50_test_files_11_controllers_35_middlewares_4_models_to_typescript_record_records_2026_10_24_p9_26_bulk_batch_02_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 50 test files (100% of controller & middleware suites complete) -- `.js` to `.ts`, same 1124 cases, eslint + typecheck clean, ratchet floor lowered ",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 36
     }
   ],
   "stats": {
-    "total_sources": 379,
-    "total_entities": 8179,
-    "total_relations": 4478,
+    "total_sources": 391,
+    "total_entities": 8232,
+    "total_relations": 4497,
     "token_savings_estimate": "85-95%"
   }
 }

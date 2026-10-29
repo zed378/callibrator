@@ -1,0 +1,865 @@
+/**
+ * Tests for auth middleware
+ */
+
+import type { Request, Response, NextFunction } from "express";
+import type * as AuthMiddlewareModule from "../../middlewares/auth.middleware";
+
+jest.mock("../../utils/jwt.util", () => ({
+  verifyAccessToken: jest.fn(),
+}));
+
+jest.mock("../../utils/response.util", () => ({
+  unauthorized: jest.fn(),
+  forbidden: jest.fn(),
+  error: jest.fn(),
+}));
+
+jest.mock("../../services/auth.service", () => ({
+  getAuthUserWithTenant: jest.fn(),
+}));
+
+jest.mock("../../services/tenant.service", () => ({
+  getTenantByCodeForMiddleware: jest.fn(),
+  getTenantByIdForMiddleware: jest.fn(),
+}));
+
+jest.mock("../../services/apiKey.service", () => ({
+  verifyApiKey: jest.fn(),
+}));
+
+jest.mock("../../services/session.service", () => ({
+  isSessionLive: jest.fn(),
+  runWithSession: jest.fn((_sessionId: string, fn: () => unknown) => fn()),
+}));
+
+jest.mock("../../constants", () => ({
+  ROLE_NAMES: { SUPER_ADMIN: "SUPER_ADMIN" },
+}));
+
+jest.mock("../../middlewares/tenantContext.middleware", () => ({
+  tenantContextMiddleware: jest.fn((_req: Request, _res: Response, next: NextFunction) => {
+    next();
+  }),
+}));
+
+jest.mock("../../middlewares/activityLog.middleware", () => ({
+  logger: {
+    error: jest.fn(),
+  },
+}));
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { verifyAccessToken } = require("../../utils/jwt.util") as { verifyAccessToken: jest.Mock };
+const { unauthorized, forbidden, error: errorResponse } = require("../../utils/response.util") as {
+  unauthorized: jest.Mock;
+  forbidden: jest.Mock;
+  error: jest.Mock;
+};
+const authService = require("../../services/auth.service") as {
+  getAuthUserWithTenant: jest.Mock;
+};
+const tenantService = require("../../services/tenant.service") as {
+  getTenantByCodeForMiddleware: jest.Mock;
+  getTenantByIdForMiddleware: jest.Mock;
+};
+const apiKeyService = require("../../services/apiKey.service") as {
+  verifyApiKey: jest.Mock;
+};
+const sessionService = require("../../services/session.service") as {
+  isSessionLive: jest.Mock;
+  runWithSession: jest.Mock;
+};
+const {
+  auth,
+  optionalAuth,
+  denyApiKey,
+  superAdminOnly,
+} = require("../../middlewares/auth.middleware") as typeof AuthMiddlewareModule;
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+interface MockUser {
+  id?: string;
+  tenantId?: string | null;
+  isActive?: boolean;
+  status?: string;
+  role?: { id?: string | null; name?: string | null } | null;
+  mfaEnabled?: boolean;
+  tenant?: { id: string; status?: string } | null;
+  isApiKey?: boolean;
+  apiKeyScopes?: string[];
+  [key: string]: unknown;
+}
+
+interface MockHeaders {
+  authorization?: string | undefined;
+  [key: string]: string | undefined;
+}
+
+interface MockReq {
+  headers: MockHeaders;
+  user: MockUser | null;
+  tenantId: string | null;
+  tenant: unknown;
+  token: string | null;
+  sessionId?: string;
+  [key: string]: unknown;
+}
+
+interface MockRes {
+  locals: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+const asReq = (r: MockReq): Request => r as unknown as Request;
+const asRes = (r: MockRes): Response => r as unknown as Response;
+
+describe("auth middleware", () => {
+  let req: MockReq;
+  let res: MockRes;
+  let next: jest.Mock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    next = jest.fn();
+
+    req = {
+      headers: {},
+      user: null,
+      tenantId: null,
+      tenant: null,
+      token: null,
+    };
+
+    res = {
+      locals: {},
+    };
+
+    unauthorized.mockReturnValue(undefined);
+    forbidden.mockReturnValue(undefined);
+    // P6-12: every access token names its session, and the session is live
+    // unless a test says otherwise.
+    sessionService.isSessionLive.mockResolvedValue(true);
+  });
+
+  describe("auth", () => {
+    it("should reject request without authorization header", async () => {
+      await auth(asReq(req), asRes(res), next);
+
+      expect(unauthorized).toHaveBeenCalled();
+    });
+
+    it("should reject request with invalid token", async () => {
+      req.headers.authorization = "Bearer invalid-token";
+      verifyAccessToken.mockImplementation(() => {
+        throw new Error("Invalid token");
+      });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(unauthorized).toHaveBeenCalled();
+    });
+
+    it("should reject when user not found", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(null);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(unauthorized).toHaveBeenCalled();
+    });
+
+    it("should reject an MFA-pending token (mfaRequired) as an access token", async () => {
+      req.headers.authorization = "Bearer mfa-pending-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", mfaRequired: true });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(unauthorized).toHaveBeenCalledWith(asRes(res), "MFA verification required");
+      // Must short-circuit before loading the user / granting access.
+      expect(authService.getAuthUserWithTenant).not.toHaveBeenCalled();
+    });
+
+    it("should reject banned user", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        isActive: false,
+      });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(asRes(res), "Account banned", 403, null, { code: "ACCOUNT_INACTIVE" });
+    });
+
+    it("should reject suspended user", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        isActive: true,
+        status: "SUSPENDED",
+      });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(asRes(res), "Account is suspended", 403, null, { code: "ACCOUNT_INACTIVE" });
+    });
+
+    it("A-180: rejects an erased (GDPR-anonymised) account by its status alone", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        isActive: true,
+        status: "erased",
+      });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(asRes(res), "Account is erased", 403, null, { code: "ACCOUNT_INACTIVE" });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("A-48: rejects a token whose session is no longer live, before loading the user", async () => {
+      req.headers.authorization = "Bearer revoked-session-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      sessionService.isSessionLive.mockResolvedValue(false);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(sessionService.isSessionLive).toHaveBeenCalledWith("sess-1", "user-123");
+      expect(unauthorized).toHaveBeenCalledWith(
+        asRes(res),
+        "Session has been revoked or has expired",
+      );
+      expect(authService.getAuthUserWithTenant).not.toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("A-48: admits a live session and carries its id on req and in the request context", async () => {
+      req.headers.authorization = "Bearer live-session-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      sessionService.isSessionLive.mockResolvedValue(true);
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "TENANT_ADMIN" },
+        tenant: { id: "tenant-123", status: "active" },
+      });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.sessionId).toBe("sess-1");
+      expect(sessionService.runWithSession).toHaveBeenCalledWith(
+        "sess-1",
+        expect.any(Function),
+      );
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("should attach user to request on success", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "TENANT_ADMIN" },
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.user).toEqual(mockUser);
+      expect(req.tenantId).toBe("tenant-123");
+      expect(req.tenant).toEqual(mockUser.tenant);
+    });
+
+    it("should allow super admin to override tenant via x-tenant-code", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      req.headers["x-tenant-code"] = "override-tenant";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+      tenantService.getTenantByCodeForMiddleware.mockResolvedValue({
+        id: "override-tenant-id",
+        status: "ACTIVE",
+      });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.tenantId).toBe("override-tenant-id");
+    });
+
+    it("should handle API key authentication", async () => {
+      const mockKey = {
+        id: "api-key-123",
+        tenantId: "tenant-123",
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+        scopes: ["read", "write"],
+      };
+
+      req.headers.authorization = "ApiKey test-api-key";
+      apiKeyService.verifyApiKey.mockResolvedValue(mockKey);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.user?.isApiKey).toBe(true);
+      expect(req.user?.apiKeyScopes).toEqual(["read", "write"]);
+    });
+
+    it("should reject invalid API key", async () => {
+      req.headers.authorization = "ApiKey invalid-key";
+      apiKeyService.verifyApiKey.mockResolvedValue(null);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(unauthorized).toHaveBeenCalled();
+    });
+
+    it("should reject API key with suspended tenant", async () => {
+      const mockKey = {
+        id: "api-key-123",
+        tenantId: "tenant-123",
+        tenant: { id: "tenant-123", status: "suspended" },
+        scopes: ["read"],
+      };
+
+      req.headers.authorization = "ApiKey test-api-key";
+      apiKeyService.verifyApiKey.mockResolvedValue(mockKey);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(
+        expect.anything(),
+        "Tenant account is suspended",
+        403,
+        null,
+        { code: "TENANT_SUSPENDED" },
+      );
+    });
+
+    it("should reject API key with deleted tenant", async () => {
+      const mockKey = {
+        id: "api-key-123",
+        tenantId: "tenant-123",
+        tenant: { id: "tenant-123", status: "deleted" },
+        scopes: ["read"],
+      };
+
+      req.headers.authorization = "ApiKey test-api-key";
+      apiKeyService.verifyApiKey.mockResolvedValue(mockKey);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(asRes(res), "Tenant account is deleted", 403, null, { code: "TENANT_DELETED" });
+    });
+
+    it("should handle API key without tenant object", async () => {
+      const mockKey = {
+        id: "api-key-123",
+        tenantId: "tenant-123",
+        scopes: ["read", "write"],
+      };
+
+      req.headers.authorization = "ApiKey test-api-key";
+      apiKeyService.verifyApiKey.mockResolvedValue(mockKey);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.user?.isApiKey).toBe(true);
+      expect(req.tenantId).toBe("tenant-123");
+    });
+
+    it("should handle API key with null tenant", async () => {
+      const mockKey = {
+        id: "api-key-123",
+        tenantId: "tenant-123",
+        tenant: null,
+        scopes: [],
+      };
+
+      req.headers.authorization = "ApiKey test-api-key";
+      apiKeyService.verifyApiKey.mockResolvedValue(mockKey);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.user?.isApiKey).toBe(true);
+    });
+
+    it("should accept an API key whose tenant has no status field", async () => {
+      const mockKey = {
+        id: "api-key-123",
+        tenantId: "tenant-123",
+        tenant: { id: "tenant-123" },
+        scopes: ["read"],
+      };
+
+      req.headers.authorization = "ApiKey test-api-key";
+      apiKeyService.verifyApiKey.mockResolvedValue(mockKey);
+
+      await auth(asReq(req), asRes(res), next);
+
+      // A missing status normalizes to "" — neither suspended nor deleted.
+      expect(forbidden).not.toHaveBeenCalled();
+      expect(req.user?.isApiKey).toBe(true);
+      expect(req.user?.role).toEqual({ id: null, name: "API_KEY" });
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("should handle API key with undefined scopes", async () => {
+      const mockKey = {
+        id: "api-key-123",
+        tenantId: "tenant-123",
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+        scopes: undefined,
+      };
+
+      req.headers.authorization = "ApiKey test-api-key";
+      apiKeyService.verifyApiKey.mockResolvedValue(mockKey);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.user?.apiKeyScopes).toEqual([]);
+    });
+
+    it("should attach tenant context when user has no tenant", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: null,
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "TENANT_ADMIN" },
+        tenant: null,
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.user).toEqual(mockUser);
+      expect(req.tenantId).toBeNull();
+    });
+
+    it("should reject user with suspended tenant", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "TENANT_ADMIN" },
+        tenant: { id: "tenant-123", status: "suspended" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(asRes(res), "Tenant account is suspended", 403, null, { code: "TENANT_SUSPENDED" });
+    });
+
+    it("should reject user with deleted tenant", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "TENANT_ADMIN" },
+        tenant: { id: "tenant-123", status: "deleted" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(asRes(res), "Tenant account is deleted", 403, null, { code: "TENANT_DELETED" });
+    });
+
+    it("should reject user with SUSPENDED tenant status (uppercase)", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "TENANT_ADMIN" },
+        tenant: { id: "tenant-123", status: "SUSPENDED" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(asRes(res), "Tenant account is suspended", 403, null, { code: "TENANT_SUSPENDED" });
+    });
+
+    it("should reject user with DELETED tenant status (uppercase)", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "TENANT_ADMIN" },
+        tenant: { id: "tenant-123", status: "DELETED" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(asRes(res), "Tenant account is deleted", 403, null, { code: "TENANT_DELETED" });
+    });
+
+    it("should allow super admin to override tenant via x-tenant-id", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      req.headers["x-tenant-id"] = "override-tenant-id-header";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+      tenantService.getTenantByIdForMiddleware.mockResolvedValue({
+        id: "override-tenant-id-header",
+        status: "ACTIVE",
+      });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.tenantId).toBe("override-tenant-id-header");
+    });
+
+    it("should ignore invalid tenant code override for super admin", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      req.headers["x-tenant-code"] = "nonexistent-tenant";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+      tenantService.getTenantByCodeForMiddleware.mockResolvedValue(null);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.tenantId).toBe("tenant-123");
+    });
+
+    it("should ignore inactive tenant id override for super admin", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      req.headers["x-tenant-id"] = "inactive-tenant-id";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+      tenantService.getTenantByIdForMiddleware.mockResolvedValue({
+        id: "inactive-tenant-id",
+        status: "INACTIVE",
+      });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.tenantId).toBe("tenant-123");
+    });
+
+    it("should handle INACTIVE user status", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "INACTIVE",
+        role: { name: "TENANT_ADMIN" },
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(errorResponse).toHaveBeenCalledWith(asRes(res), "Account is inactive", 403, null, { code: "ACCOUNT_INACTIVE" });
+    });
+
+    it("should handle error in try-catch block", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockImplementation(() => {
+        throw new Error("Token verification failed");
+      });
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(unauthorized).toHaveBeenCalled();
+    });
+
+    it("should handle non-string role name", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: null },
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.user).toEqual(mockUser);
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("should handle SUPERADMIN role name variant", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "SUPERADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.user).toEqual(mockUser);
+    });
+
+    it("should handle SUPER_ADMIN role name variant (with underscore)", async () => {
+      const mockUser = {
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
+        tenant: { id: "tenant-123", status: "ACTIVE" },
+      };
+
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
+
+      await auth(asReq(req), asRes(res), next);
+
+      expect(req.user).toEqual(mockUser);
+    });
+  });
+
+  describe("optionalAuth", () => {
+    it("should continue without auth when no token", async () => {
+      await optionalAuth(asReq(req), asRes(res), next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.user).toBeNull();
+    });
+
+    it("should attach user when valid token", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+      });
+
+      await optionalAuth(asReq(req), asRes(res), next);
+
+      expect(req.user).toBeDefined();
+    });
+
+    it("A-48: treats a token whose session is revoked as no token", async () => {
+      req.headers.authorization = "Bearer revoked-session-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      sessionService.isSessionLive.mockResolvedValue(false);
+
+      await optionalAuth(asReq(req), asRes(res), next);
+
+      expect(sessionService.isSessionLive).toHaveBeenCalledWith("sess-1", "user-123");
+      expect(authService.getAuthUserWithTenant).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalled();
+      expect(req.user).toBeNull();
+    });
+
+    it("should continue without user when token is invalid", async () => {
+      req.headers.authorization = "Bearer invalid-token";
+      verifyAccessToken.mockImplementation(() => {
+        throw new Error("Invalid");
+      });
+
+      await optionalAuth(asReq(req), asRes(res), next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.user).toBeNull();
+    });
+
+    it("should not attach a user whose status is neither ACTIVE nor INACTIVE", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "SUSPENDED",
+      });
+
+      await optionalAuth(asReq(req), asRes(res), next);
+
+      // optionalAuth never rejects — it just proceeds anonymously.
+      expect(req.user).toBeNull();
+      expect(req.tenantId).toBeNull();
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("should not attach an inactive user", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: false,
+        status: "ACTIVE",
+      });
+
+      await optionalAuth(asReq(req), asRes(res), next);
+
+      expect(req.user).toBeNull();
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("should not attach a user when the lookup returns nothing", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue(null);
+
+      await optionalAuth(asReq(req), asRes(res), next);
+
+      expect(req.user).toBeNull();
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("should attach a tenant-less user without setting req.tenantId", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        tenantId: null,
+        isActive: true,
+        status: "ACTIVE",
+      });
+
+      await optionalAuth(asReq(req), asRes(res), next);
+
+      expect(req.user).toEqual(expect.objectContaining({ id: "user-123" }));
+      expect(req.tenantId).toBeNull();
+      expect(next).toHaveBeenCalled();
+    });
+  });
+
+  describe("denyApiKey", () => {
+    it("should deny request from API key", () => {
+      req.user = { isApiKey: true };
+
+      denyApiKey(asReq(req), asRes(res), next);
+
+      expect(forbidden).toHaveBeenCalled();
+    });
+
+    it("should allow normal user request", () => {
+      req.user = { isApiKey: false };
+
+      denyApiKey(asReq(req), asRes(res), next);
+
+      expect(next).toHaveBeenCalled();
+    });
+  });
+
+  describe("superAdminOnly", () => {
+    it("should deny non-super-admin", () => {
+      req.user = { role: { name: "TENANT_ADMIN" } };
+
+      superAdminOnly(asReq(req), asRes(res), next);
+
+      expect(forbidden).toHaveBeenCalled();
+    });
+
+    it("should allow super admin", () => {
+      req.user = { role: { name: "SUPER_ADMIN" } };
+
+      superAdminOnly(asReq(req), asRes(res), next);
+
+      expect(next).toHaveBeenCalled();
+    });
+
+    it("should deny when user has no role", () => {
+      req.user = {};
+
+      superAdminOnly(asReq(req), asRes(res), next);
+
+      expect(forbidden).toHaveBeenCalled();
+    });
+
+    it("should deny when user is null", () => {
+      req.user = null;
+
+      superAdminOnly(asReq(req), asRes(res), next);
+
+      expect(forbidden).toHaveBeenCalled();
+    });
+  });
+});
