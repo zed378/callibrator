@@ -1,0 +1,240 @@
+/* eslint-disable no-restricted-properties -- scheduler tests mutate process.env */
+/**
+ * Tests for retentionScheduler middleware
+ */
+
+import type * as SchedulerModule from "../../middlewares/retentionScheduler.middleware";
+
+jest.mock("../../services/jobMonitor.service", () =>
+  (jest.requireActual<{ create: () => unknown }>("../fixtures/jobMonitorMock")).create(),
+);
+jest.mock("node-cron", () => ({
+  schedule: jest.fn(),
+  validate: jest.fn(),
+}));
+
+jest.mock("../../middlewares/activityLog.middleware", () => ({
+  logger: {
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+  },
+}));
+
+jest.mock("../../services/dataRetention.service", () => ({
+  runRetentionSweep: jest.fn(),
+}));
+jest.mock("../../services/accessRequest.service", () => ({
+  runAccessRequestRetention: jest.fn(),
+}));
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const cron = require("node-cron") as { schedule: jest.Mock; validate: jest.Mock };
+const { logger } = require("../../middlewares/activityLog.middleware") as {
+  logger: Record<"info" | "error" | "warn", jest.Mock>;
+};
+const { runRetentionSweep } = require("../../services/dataRetention.service") as {
+  runRetentionSweep: jest.Mock;
+};
+const { runAccessRequestRetention } = require("../../services/accessRequest.service") as {
+  runAccessRequestRetention: jest.Mock;
+};
+
+beforeEach(() => {
+  runAccessRequestRetention.mockResolvedValue({ expired: 0, purged: 0 });
+});
+
+const {
+  initRetentionScheduler,
+} = require("../../middlewares/retentionScheduler.middleware") as typeof SchedulerModule;
+const monitor = require("../../services/jobMonitor.service") as Record<string, jest.Mock>;
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+describe("retentionScheduler middleware", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    cron.schedule.mockClear();
+    cron.validate.mockClear();
+  });
+
+  afterEach(() => {
+    process.env["RETENTION_SCHEDULER"] = originalEnv["RETENTION_SCHEDULER"];
+  });
+
+  it("logs info and returns when RETENTION_SCHEDULER is 'disabled'", () => {
+    process.env["RETENTION_SCHEDULER"] = "disabled";
+    initRetentionScheduler();
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Retention scheduler disabled via RETENTION_SCHEDULER",
+    );
+    expect(cron.schedule).not.toHaveBeenCalled();
+  });
+
+  it("logs info and returns when RETENTION_SCHEDULER is 'off'", () => {
+    process.env["RETENTION_SCHEDULER"] = "off";
+    initRetentionScheduler();
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Retention scheduler disabled via RETENTION_SCHEDULER",
+    );
+    expect(cron.schedule).not.toHaveBeenCalled();
+  });
+
+  it("logs error and returns when the cron expression is invalid", () => {
+    cron.validate.mockReturnValue(false);
+    process.env["RETENTION_SCHEDULER"] = "not-a-cron";
+    initRetentionScheduler();
+
+    expect(cron.validate).toHaveBeenCalledWith("not-a-cron");
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid RETENTION_SCHEDULER cron expression") as unknown,
+    );
+    expect(cron.schedule).not.toHaveBeenCalled();
+  });
+
+  it("logs info with a custom schedule when the expression is valid", () => {
+    cron.validate.mockReturnValue(true);
+    process.env["RETENTION_SCHEDULER"] = "0 4 * * *";
+    initRetentionScheduler();
+
+    expect(cron.validate).toHaveBeenCalledWith("0 4 * * *");
+    expect(logger.info).toHaveBeenCalledWith(
+      "Retention scheduler scheduled with: 0 4 * * *",
+    );
+  });
+
+  it("logs info with the default schedule when no env var is set", () => {
+    delete process.env["RETENTION_SCHEDULER"];
+    cron.validate.mockReturnValue(true);
+    initRetentionScheduler();
+
+    expect(cron.validate).toHaveBeenCalledWith("0 2 * * *");
+    expect(logger.info).toHaveBeenCalledWith(
+      "Retention scheduler scheduled at 2:00 AM daily",
+    );
+  });
+
+  it("uses the default schedule when the env var is an empty string", () => {
+    cron.validate.mockReturnValue(true);
+    process.env["RETENTION_SCHEDULER"] = "";
+    initRetentionScheduler();
+
+    expect(cron.validate).toHaveBeenCalledWith("0 2 * * *");
+  });
+
+  it("registers a cron job with the provided schedule", () => {
+    cron.validate.mockReturnValue(true);
+    process.env["RETENTION_SCHEDULER"] = "0 5 * * *";
+    initRetentionScheduler();
+
+    expect(cron.schedule).toHaveBeenCalledTimes(1);
+    const [expr, callback] = cron.schedule.mock.calls[0] as [string, () => Promise<unknown>];
+    expect(expr).toBe("0 5 * * *");
+    expect(typeof callback).toBe("function");
+  });
+
+  it("runs the sweep and logs a summary when the cron fires successfully", async () => {
+    cron.validate.mockReturnValue(true);
+    process.env["RETENTION_SCHEDULER"] = "0 2 * * *";
+    runRetentionSweep.mockResolvedValue({
+      tenants: 3,
+      purged: 12,
+      skipped: 1,
+      errors: 0,
+    });
+
+    initRetentionScheduler();
+    const [, callback] = cron.schedule.mock.calls[0] as [string, () => Promise<unknown>];
+    await callback();
+
+    expect(logger.info).toHaveBeenCalledWith("Running data retention sweep...");
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("tenants=3") as unknown,
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("purged=12") as unknown,
+    );
+  });
+
+  it("logs an error when the sweep throws", async () => {
+    cron.validate.mockReturnValue(true);
+    process.env["RETENTION_SCHEDULER"] = "0 2 * * *";
+    runRetentionSweep.mockRejectedValue(new Error("sweep failed"));
+
+    initRetentionScheduler();
+    const [, callback] = cron.schedule.mock.calls[0] as [string, () => Promise<unknown>];
+    await callback();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "Error during scheduled retention sweep: sweep failed",
+    );
+  });
+
+  describe("P10-05 (Q-42) — the access-request retention step", () => {
+    it("runs after the tenants and reports its counts in the run's summary", async () => {
+      cron.validate.mockReturnValue(true);
+      delete process.env["RETENTION_SCHEDULER"];
+      runRetentionSweep.mockResolvedValue({ tenants: 1, purged: 0, skipped: 0, errors: 0 });
+      runAccessRequestRetention.mockResolvedValue({ expired: 2, purged: 5 });
+      initRetentionScheduler();
+      const [, callback] = cron.schedule.mock.calls[0] as [string, () => Promise<{ outcome: string }>];
+      const run = await callback();
+      expect(run.outcome).toBe("success");
+      expect(runAccessRequestRetention).toHaveBeenCalledTimes(1);
+      const sweepCall = runRetentionSweep.mock.invocationCallOrder[0] ?? 0;
+      const accessCall = runAccessRequestRetention.mock.invocationCallOrder[0] ?? 0;
+      expect(sweepCall).toBeLessThan(accessCall);
+    });
+
+    it("a failing access-request step is a FAILED run, and the tenant sweep's result is kept", async () => {
+      cron.validate.mockReturnValue(true);
+      delete process.env["RETENTION_SCHEDULER"];
+      runRetentionSweep.mockResolvedValue({ tenants: 1, purged: 3, skipped: 0, errors: 0 });
+      runAccessRequestRetention.mockRejectedValue(new Error("db down"));
+      initRetentionScheduler();
+      const [, callback] = cron.schedule.mock.calls[0] as [string, () => Promise<unknown>];
+      const run = await callback();
+      expect(run).toEqual(expect.objectContaining({
+        outcome: "failure", error: "the access-request retention step failed: db down",
+      }));
+      expect(logger.error).toHaveBeenCalledWith("Access-request retention failed: db down");
+    });
+  });
+
+  describe("P7-02 job monitoring", () => {
+    it("a sweep with per-tenant errors is a FAILED run (the purge that failed nightly unnoticed)", async () => {
+      cron.validate.mockReturnValue(true);
+      delete process.env["RETENTION_SCHEDULER"];
+      runRetentionSweep.mockResolvedValue({ tenants: 2, purged: 0, skipped: 0, errors: 1 });
+      initRetentionScheduler();
+      const [, callback] = cron.schedule.mock.calls[0] as [string, () => Promise<unknown>];
+      const run = await callback();
+      expect(run).toEqual(expect.objectContaining({
+        outcome: "failure", error: "1 tenant(s) failed during the purge",
+      }));
+      expect(monitor["registerJob"]).toHaveBeenCalledWith("retention-sweep", undefined, "0 2 * * *");
+    });
+
+    it("a clean sweep succeeds; a thrown sweep fails", async () => {
+      cron.validate.mockReturnValue(true);
+      runRetentionSweep.mockResolvedValueOnce({ errors: 0 }).mockRejectedValueOnce(new Error("x"));
+      initRetentionScheduler();
+      const [, callback] = cron.schedule.mock.calls[0] as [string, () => Promise<{ outcome: string }>];
+      expect((await callback()).outcome).toBe("success");
+      expect((await callback()).outcome).toBe("failure");
+    });
+
+    it("disabled is reported as disabled; an invalid expression is alerted", () => {
+      process.env["RETENTION_SCHEDULER"] = "disabled";
+      initRetentionScheduler();
+      expect(monitor["markDisabled"]).toHaveBeenCalledWith("retention-sweep", "disabled via RETENTION_SCHEDULER");
+      process.env["RETENTION_SCHEDULER"] = "bad";
+      cron.validate.mockReturnValue(false);
+      initRetentionScheduler();
+      expect(monitor["refuseSchedule"]).toHaveBeenCalledWith("retention-sweep", "RETENTION_SCHEDULER", "bad");
+    });
+  });
+});

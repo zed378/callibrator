@@ -1,0 +1,165 @@
+/**
+ * Tests for dynamicAccess middleware when the activityLog logger is
+ * unavailable.
+ *
+ * dynamicAccess.middleware.js guards every logging call with
+ * `typeof logger !== "undefined"`. activityLog.middleware normally exports
+ * `{ activityLogger, logger }`; here it exports neither, so the destructured
+ * `logger` binding is undefined and the guards must take their false path.
+ * The middleware still has to produce its normal responses rather than
+ * crashing with "Cannot read properties of undefined".
+ */
+import type { NextFunction, Request, Response } from "express";
+
+jest.mock("../../models", () => ({
+  User: { findByPk: jest.fn() },
+  Tenants: { findByPk: jest.fn() },
+}));
+
+jest.mock("../../services/roles.service", () => ({
+  getRolePermissionsMatrix: jest.fn(),
+}));
+
+jest.mock("../../services/apiKey.service", () => ({
+  scopeAllows: jest.fn().mockReturnValue(false),
+}));
+
+jest.mock("../../services/userPermission.service", () => ({
+  getUserOverrideMatrix: jest.fn(),
+}));
+
+// The logger is deliberately absent from this module's exports.
+jest.mock("../../middlewares/activityLog.middleware", () => ({}));
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+interface DynamicAccessDouble {
+  dynamicAccess: (resource: unknown, action?: unknown, options?: unknown) => (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
+  hasDynamicPermission: (...args: unknown[]) => unknown;
+}
+const { dynamicAccess, hasDynamicPermission } = require("../../middlewares/dynamicAccess.middleware") as DynamicAccessDouble;
+const RolesService = require("../../services/roles.service") as {
+  getRolePermissionsMatrix: jest.Mock;
+};
+const {
+  getUserOverrideMatrix,
+} = require("../../services/userPermission.service") as {
+  getUserOverrideMatrix: jest.Mock;
+};
+const { Tenants } = require("../../models") as {
+  Tenants: { findByPk: jest.Mock };
+};
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+describe("dynamicAccess without a logger", () => {
+  let req: {
+    user?: { id: string; role: { id: string; name: string }; tenantId: string };
+    params?: Record<string, string>;
+    body?: Record<string, unknown>;
+    query?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  let res: {
+    status: jest.Mock;
+    json: jest.Mock;
+  };
+  let next: jest.Mock;
+
+  const asReq = (r: unknown): Request => r as Request;
+  const asRes = (r: unknown): Response => r as Response;
+  const asNext = (n: unknown): NextFunction => n as NextFunction;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    RolesService.getRolePermissionsMatrix.mockResolvedValue({
+      Home: ["read", "write"],
+    });
+    getUserOverrideMatrix.mockResolvedValue({});
+    next = jest.fn();
+    req = {
+      user: {
+        id: "user-1",
+        role: { id: "role-1", name: "user" },
+        tenantId: "tenant-123",
+      },
+      params: {},
+      body: {},
+      query: {},
+    };
+    res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+    };
+  });
+
+  it("confirms the mocked activityLog module exports no logger", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const activityLog = require("../../middlewares/activityLog.middleware") as Record<string, unknown>;
+    expect(activityLog["logger"]).toBeUndefined();
+  });
+
+  it("should still hand a thrown permission lookup to next(err) when there is no logger", async () => {
+    const boom = new Error("boom");
+    RolesService.getRolePermissionsMatrix.mockRejectedValue(boom);
+
+    await dynamicAccess("Home", "read")(asReq(req), asRes(res), asNext(next));
+
+    // A-13: the error goes to the global error handler (which sanitizes it in
+    // production); this middleware writes nothing itself.
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith(boom);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).not.toHaveBeenCalled();
+  });
+
+  it("should still fall back to role permissions when the override lookup fails", async () => {
+    getUserOverrideMatrix.mockRejectedValue(new Error("override down"));
+
+    await dynamicAccess("Home", "read")(asReq(req), asRes(res), asNext(next));
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  // AZ-04: the isolation refusal must still be produced — as a 404, the same
+  // body as not-found — when there is nowhere to log the reason.
+  it("should still refuse a foreign tenant with 404 when there is no logger", async () => {
+    Tenants.findByPk.mockResolvedValueOnce({ id: "tenant-999" });
+    req.params = { tenantId: "tenant-999" };
+
+    await dynamicAccess("Home", "read", { checkTenant: true })(asReq(req), asRes(res), asNext(next));
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      status: 404,
+      message: "Tenant not found",
+      data: null,
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("should still refuse an in-tenant permission failure with 403 when there is no logger", async () => {
+    RolesService.getRolePermissionsMatrix.mockResolvedValue({ Home: [] });
+
+    await dynamicAccess("Home", "write")(asReq(req), asRes(res), asNext(next));
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("should still return 500 from hasDynamicPermission when the lookup throws", async () => {
+    RolesService.getRolePermissionsMatrix.mockRejectedValue(new Error("boom"));
+    req.body = { menuGroup: "Home", permissionType: "read" };
+
+    await hasDynamicPermission(asReq(req), asRes(res), asNext(next));
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    // ADR-137 (2026-10-11): the house envelope — status and `data: null` too.
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      status: 500,
+      message: "Internal Server Error",
+      data: null,
+    });
+  });
+});
