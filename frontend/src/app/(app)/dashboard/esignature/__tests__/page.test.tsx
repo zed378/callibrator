@@ -43,7 +43,7 @@ jest.mock("@/stores/authStore", () => ({
 import { api } from "@/api/client";
 import { useToastStore } from "@/stores/toastStore";
 import ESignaturePage from "../page";
-import { grantPermissions, grantSuperAdmin, clearPermissions } from "@/tests/support/permissions";
+import { grantPermissions } from "@/tests/support/permissions";
 
 const mockedApi = api as jest.Mocked<typeof api>;
 

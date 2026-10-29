@@ -11,7 +11,7 @@
  *  - each document renders through RootDocument with ROOT_METADATA and declares
  *    `instant = false` (segment config is read from the file itself);
  *  - each imports its own group's sheet and never the other's;
- *  - the dashboard's faces are declared only in the (app) layout;
+ *  - the dashboard's faces (fonts/dashboard.ts) are attached only by the (app) layout;
  *  - RootDocument puts the request's nonce on the theme script and the
  *    request's language on <html>.
  *
@@ -86,17 +86,24 @@ describe("ADR-131: the two root layouts", () => {
     expect(sheetsOf("rootDocument.tsx")).toEqual([]);
   });
 
-  it("the dashboard's faces (Inter, Space Grotesk) are declared only in the (app) layout", () => {
+  it("the dashboard's faces (Inter, Space Grotesk) are attached only by the (app) layout", () => {
     const walk = (dir: string): string[] =>
       fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
         const p = path.join(dir, e.name);
         if (e.isDirectory()) return e.name === "__tests__" ? [] : walk(p);
         return /\.tsx?$/.test(e.name) && !/\.test\./.test(e.name) ? [p] : [];
       });
-    const declaring = walk(APP)
-      .filter((f) => /\b(Inter|Space_Grotesk)\(\{/.test(fs.readFileSync(f, "utf8")))
-      .map((f) => path.relative(APP, f).split(path.sep).join("/"));
-    expect(declaring).toEqual(["(app)/layout.tsx"]);
+    const rel = (f: string) => path.relative(APP, f).split(path.sep).join("/");
+    const files = walk(APP);
+    // Since ADR-131 Am. 1 (2026-10-24) the faces are self-hosted: fonts/dashboard.ts declares them
+    // with next/font/local, and the (app) layout is the one file that imports it. No file calls
+    // the next/font/google constructors any more.
+    const googleCalls = files.filter((f) => /\b(Inter|Space_Grotesk)\(\{/.test(fs.readFileSync(f, "utf8"))).map(rel);
+    expect(googleCalls).toEqual([]);
+    expect(read("fonts/dashboard.ts")).toContain('path: "./inter-latin-wght-normal.woff2"');
+    expect(read("fonts/dashboard.ts")).toContain('path: "./space-grotesk-latin-wght-normal.woff2"');
+    const importing = files.filter((f) => /from "[^"]*fonts\/dashboard"/.test(fs.readFileSync(f, "utf8"))).map(rel);
+    expect(importing).toEqual(["(app)/layout.tsx"]);
   });
 
   it("next.config enables the global 404 the two root layouts need", () => {

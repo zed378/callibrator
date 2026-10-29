@@ -5,7 +5,7 @@ import { useStockStore } from "@/stores/stockStore";
 import { stockService } from "@/api/services/stock.service";
 import { useWarehouseStore } from "@/stores/warehouseStore";
 import { useAuthStore } from "@/stores/authStore";
-import { Stock, StockTransfer, StockAdjustment, StockOpname } from "@/types";
+import { Stock } from "@/types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useSearchHandoff } from "@/stores/searchHandoffStore";
 import { actorLabel } from "@/lib/actorLabel";
@@ -208,7 +208,7 @@ export function useStock() {
     try {
       const csv = await stockService.exportInventoryCsv();
       downloadCsv("current_stock_levels.csv", csv);
-    } catch (err) {
+    } catch {
       setError("Failed to export stock levels");
     }
   };
@@ -232,7 +232,7 @@ export function useStock() {
         ].join(","))
       ];
       downloadCsv("stock_transfers_history.csv", rows.join("\n"));
-    } catch (err) {
+    } catch {
       setError("Failed to export stock transfers");
     }
   };
@@ -254,7 +254,7 @@ export function useStock() {
         ].join(","))
       ];
       downloadCsv("stock_adjustments_history.csv", rows.join("\n"));
-    } catch (err) {
+    } catch {
       setError("Failed to export stock adjustments");
     }
   };
@@ -275,7 +275,7 @@ export function useStock() {
         ].join(","))
       ];
       downloadCsv("stock_opname_history.csv", rows.join("\n"));
-    } catch (err) {
+    } catch {
       setError("Failed to export stock audits");
     }
   };
@@ -402,7 +402,7 @@ export function useStock() {
     try {
       await updateTransferStatus(id, status);
       loadTabData();
-    } catch (err) {
+    } catch {
       // Handled by store
     }
   };
@@ -441,7 +441,7 @@ export function useStock() {
     try {
       await updateOpnameStatus(id, status);
       loadTabData();
-    } catch (err) {
+    } catch {
       // Handled by store
     }
   };

@@ -46,7 +46,7 @@ export const parseXmlMetadata = (xmlText: string) => {
     }
 
     return { entityId, entryPoint, cert };
-  } catch (err) {
+  } catch {
     throw new Error("Failed to parse SAML XML Metadata. Ensure it is a valid IDP metadata XML file.");
   }
 };

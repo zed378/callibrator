@@ -17,7 +17,6 @@ describe('userStore', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // Reset store state
-    const store = useUserStore.getState();
     // Zustand stores don't have setState on getState, we need to use set directly
     // For testing, we just need to clear mocks
   });

@@ -1,6 +1,6 @@
 import React from "react";
 import { Stock } from "@/types";
-import { Table, Badge, Button } from "@/components/ui";
+import { Table, Button } from "@/components/ui";
 import { AlertTriangle, Sliders, ArrowLeftRight } from "lucide-react";
 
 interface InventoryTableProps {

@@ -25,7 +25,6 @@ describe("authStore", () => {
     localStorage.clear();
     mockCookie = "";
     // Reset store state
-    const store = useAuthStore.getState();
     useAuthStore.setState({
       user: null,
       avatarUrl: "",

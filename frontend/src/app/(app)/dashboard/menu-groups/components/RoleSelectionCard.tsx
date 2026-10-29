@@ -1,6 +1,6 @@
 "use client";
 
-import { Users, Shield, LayoutGrid } from "lucide-react";
+import { Users, Shield } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
