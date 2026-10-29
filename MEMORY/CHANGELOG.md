@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-29 — P24-05: the photo pipeline on 400 real photos ([record](./records/2026-10-29-p24-05-photo-sample-dry-run.md))
+- Ingest and step 9 correct on real files (R-8 377/377 per facility, RC-F2/F3 0); step 9 ~1.2 s per photo, so the full photo pass runs ahead of the freeze. The dry-run script takes a photo sample.
+
 ### 2026-10-28 — Fix: the electrical-safety limits and performance units the transform did not read ([record](./records/2026-10-28-p24-05-fix-catalogue-symbol-limits.md))
 - Found by the real-dump dry run: no electrical-safety template was imported. A limit in `symbol` (`≤ 0,2 Ω`) and a unit as `(g)` are now read. Live `p2402c` 3/3.
 

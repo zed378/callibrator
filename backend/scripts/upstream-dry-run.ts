@@ -19,15 +19,16 @@
  *   docker rm -f p2405-pg18 p2405-clamav
  */
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph loads after the environment is set; typed by the members used */
+import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 import { env, environment } from "../src/config/env";
 import type * as SqlUtil from "../src/utils/sql.util";
 
-const [dumpArg, outArg] = process.argv.slice(2);
+const [dumpArg, outArg, photosArg, sampleArg] = process.argv.slice(2);
 if (dumpArg === undefined || outArg === undefined) {
-  throw new Error("usage: tsx scripts/upstream-dry-run.ts <dump.sql> <summary.json>");
+  throw new Error("usage: tsx scripts/upstream-dry-run.ts <dump.sql> <summary.json> [<uploads dir with foto_depan/ foto_sn/> <sample per folder>]");
 }
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 const required = (name: string): string => {
@@ -51,6 +52,16 @@ Object.assign(environment(), {
   CLAMAV_TIMEOUT: "300000",
   UPSTREAM_SOURCE_TIMEZONE: "Asia/Jakarta",
 });
+// With photos: the tenant storage and the image-import workspace live in DRY_RUN_SCRATCH, never in the
+// repository's storage — real photos are written there, and the directory is deleted after the run.
+const scratchDir = photosArg === undefined ? null : path.resolve(required("DRY_RUN_SCRATCH"));
+if (scratchDir !== null) {
+  Object.assign(environment(), {
+    STORAGE_DRIVER: "local",
+    STORAGE_LOCAL_ROOT: path.join(scratchDir, "storage"),
+    UPSTREAM_FILE_IMPORT_DIR: path.join(scratchDir, "upstream-import"),
+  });
+}
 
 const PROVIDER = "a2405000-0000-4000-8000-0000000000c7";
 const SIGN_OFF = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
@@ -223,6 +234,79 @@ const main = async (): Promise<void> => {
     const actor = { userId: String(operator?.id), tenantId: PROVIDER, ipAddress: "127.0.0.1", userAgent: "p2405-dry-run" };
     await asSuperAdmin(() => provisionImportKey(PROVIDER, { signOffDate: SIGN_OFF, dataClass: "real" }, actor));
 
+    // Optional: the photos, as the image import ingests them after its rsync (P24-07, runbook § 4 — the bulk
+    // ahead of the transform). The transfer itself is not exercised here (no rsync on this host); the ingest is
+    // the production one: ClamAV, type by magic bytes, location metadata removed, the tenant's storage.
+    if (photosArg !== undefined) {
+      const sample = Number(sampleArg ?? "200");
+      const workspace = require("../src/services/upstreamFileImport/workspace") as {
+        importPaths: (id: string, key: string) => { staging: string; refused: string; manifest: string };
+      };
+      const ingest = require("../src/services/upstreamFileImport/ingest") as {
+        ingestStaged: (input: object, deps: object) => Promise<Record<string, unknown>>;
+      };
+      interface ScopedStorage {
+        buildKey: (o: object) => string;
+        put: (k: string, b: Buffer, o: object) => Promise<unknown>;
+      }
+      const storage = require("../src/services/storage") as { getTenantStorage: (t: string) => Promise<ScopedStorage> };
+      const virusScan = require("../src/services/virusScan.service") as { scanFile: (p: string) => Promise<{ clean: boolean }> };
+      const storedFile = require("../src/services/storedFile.service") as {
+        readObject: (s: unknown, k: string) => Promise<Buffer>;
+        removeObject: (s: unknown, k: string) => Promise<void>;
+      };
+      const importId = randomUUID();
+      const paths = workspace.importPaths(importId, importId);
+      const copied: Record<string, number> = {};
+      for (const folder of ["foto_depan", "foto_sn"]) {
+        const names = fs.readdirSync(path.join(photosArg, folder)).filter((n) => !n.startsWith(".")).sort();
+        const step = Math.max(1, Math.floor(names.length / sample));
+        const picked = names.filter((_, i) => i % step === 0).slice(0, sample);
+        fs.mkdirSync(path.join(paths.staging, folder), { recursive: true });
+        for (const name of picked) {
+          fs.copyFileSync(path.join(photosArg, folder, name), path.join(paths.staging, folder, name));
+        }
+        copied[folder] = picked.length;
+      }
+      const scoped = await storage.getTenantStorage(PROVIDER);
+      const [counts, ingestMs] = await timed("photo ingest", () =>
+        asSuperAdmin(() =>
+          ingest.ingestStaged(
+            {
+              stagingRoot: paths.staging,
+              classes: [
+                { name: "front", folder: "foto_depan" },
+                { name: "serial", folder: "foto_sn" },
+              ],
+              refusedRoot: paths.refused,
+              manifestPath: paths.manifest,
+              previouslyIngested: new Map(),
+              shouldStop: () => false,
+              onProgress: () => undefined,
+            },
+            {
+              scanFile: (abs: string) => virusScan.scanFile(abs),
+              buildKey: (name: string) => scoped.buildKey({ domain: "attachments", name }),
+              putObject: async (key: string, bytes: Buffer, contentType: string) => {
+                await scoped.put(key, bytes, { contentType });
+              },
+              readObject: (key: string) => storedFile.readObject(scoped, key),
+              removeObject: (key: string) => storedFile.removeObject(scoped, key),
+              newId: () => randomUUID(),
+            },
+          ),
+        ),
+      );
+      await sql(
+        db,
+        `INSERT INTO upstream_file_imports (id, target_tenant_id, status, host, port, username, remote_path, include_front, include_serial, auth_method,
+                                            host_key_type, host_key, host_key_fingerprint, synthetic_source, created_at, updated_at)
+         VALUES ($1, $2, 'completed', 'dry-run.invalid', 22, 'dry-run', '/uploads', true, true, 'password', 'ssh-ed25519', 'AAAA', 'SHA256:dry-run', false, now(), now())`,
+        [importId, PROVIDER],
+      );
+      summary["photos"] = { sampledPerFolder: copied, ingestMs, counts };
+    }
+
     // Stage 1: upload (a copy, as multer leaves it in the quarantine) → scan → parse → staging.
     const copy = quarantinePath(`p2405-${String(Date.now())}-dump.sql`);
     fs.mkdirSync(path.dirname(copy), { recursive: true });
@@ -276,6 +360,11 @@ const main = async (): Promise<void> => {
   } finally {
     fs.writeFileSync(outArg, `${JSON.stringify(summary, null, 2)}\n`);
     say(`summary written to ${outArg}`);
+    if (scratchDir !== null) {
+      // The real photos copied into the scratch storage go with it, whatever happened.
+      fs.rmSync(scratchDir, { recursive: true, force: true });
+      say("scratch storage removed");
+    }
     await db.close();
   }
 };

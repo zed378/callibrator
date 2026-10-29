@@ -96,7 +96,13 @@ make psql                    # a shell on the target database, when a count must
    certificate PDFs — archive-only, `docs/UPSTREAM/07` § 4.1). Confirm the host key fingerprint **by a
    person**. It is resumable; a re-run copies only what is missing.
 2. **Check the ingest's counts**: ingested, skipped as already present, quarantined by reason. Every
-   file has a manifest line, so the counts reconcile per folder.
+   file has a manifest line, so the counts reconcile per folder. (Measured on a 400-photo sample,
+   2026-10-29: ~0.6 s per file on a workstation, so a full ingest takes hours. Start it early.)
+2a. **Run the transform once with the photos, ahead of the freeze.** Step 9 costs ~1.2 s per photo
+   (measured, 2026-10-29: the read-back check, the decode, two derivatives). With ~47 k photos that is
+   hours inside one transaction, too long for the window. A re-run writes no unchanged photo, so after
+   this pass the cutover transform handles only the delta
+   ([record](../MEMORY/records/2026-10-29-p24-05-photo-sample-dry-run.md)).
 3. **Invitations drafted** — the provider administrator confirms the person behind each shared
    account. Do **not** issue yet: the gate opens after the pre-invitation checks are recorded.
 4. **Training** — the guides (`docs/UPSTREAM/13-USER-GUIDES-ID.md`) and the "what changed" note
