@@ -93,6 +93,8 @@ adds one under the owner's package rule (proved by tests and an image boot).
 
 *As built (P21-02b, ADR-132 Am. 3, 2026-10-09):* both derivatives are JPEG, built in pure JavaScript (`jpeg-js`, `pngjs`, no native module — the pkg binary carries them): a strict full decode, the EXIF orientation applied, transparency flattened, **no metadata by construction** (JFIF header and scan only); display 1,600 px q80, thumbnail 320 px q75. The keys are derived from the original's (`…/<uuid>.display.jpg`, `…/<uuid>.thumb.jpg`); the delete, the deleted-file sweep and the device move's re-key carry them; `usage()` counts them (same prefix). HEIC is not decoded by the server (§ 3).
 
+*Amended 2026-10-29 (ADR-130 Am. 1):* for the **upstream image import**, the derivatives are built at **ingest**, with the same function and so the same bytes, and stored beside the ingested object. The import therefore fully decodes what it ingests, and an undecodable image is refused there as `image_undecodable`. The transform's step 9 copies the three objects under the device's facility and builds them only for a manifest written before this amendment. The reason is cost: the pure-JavaScript decode takes ~1.7 s a photo, which the resumable, per-file ingest can absorb and the transform's one transaction cannot.
+
 ### 4.2 Originals ⚖
 
 **Default: originals are stored byte-exact** (their SHA-256 equals the source hash — the evidence

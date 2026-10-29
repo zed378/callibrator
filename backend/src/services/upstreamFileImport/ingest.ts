@@ -11,6 +11,10 @@
  *   location metadata removed (lossless)
  *   put t/<tenant>/attachments/<uuid>.<ext>, read back, SHA-256 again
  *                                       ── mismatch → object deleted, storage_verify_failed
+ *   full decode + the two derivatives (P21-02b's pipeline), put beside it as <uuid>.display.jpg /
+ *   <uuid>.thumb.jpg — ADR-130 Am. 1: the decode (~1.7 s a photo, pure JS) runs here, per file and
+ *   resumable, not in the transform's one transaction; the transform copies them
+ *                                       ── undecodable → objects deleted, image_undecodable
  *   manifest line; the quarantine copy deleted
  *
  * A refused file is MOVED to `refused/<import>/<reason>/` and stays there for the operator; it is
@@ -33,6 +37,8 @@ import {
 } from "../../constants/upstreamFileImport";
 import { detectImageType, extensionOf, inspectJpeg, inspectPng, mimeOf, type ImageType } from "./imageInspect";
 import { ensureDir } from "./workspace";
+import { UndecodableImageError, buildDerivatives } from "../devicePhoto/imageDerivatives";
+import { derivativeKeyOf } from "../devicePhoto/derivativeKeys";
 
 /** What the pipeline needs from the outside world (storage, scanner, ids). */
 export interface IngestDeps {
@@ -88,6 +94,8 @@ export interface ManifestEntry {
   storedSha256?: string;
   storageKey?: string;
   metadataStripped?: boolean;
+  /** ADR-130 Am. 1: the display and thumbnail derivatives are stored beside the object. */
+  derivatives?: boolean;
 }
 
 /** The directory rsync keeps partial files in (sshArgs#buildRsyncArgs): never ingested. */
@@ -225,6 +233,21 @@ export const ingestStaged = async (input: IngestInput, deps: IngestDeps): Promis
       await deps.removeObject(storageKey).catch(() => undefined);
       return refuse("storage_verify_failed", { detectedType: type, sourceSha256 });
     }
+    // ADR-130 Am. 1: the full decode (the polyglot guard) and the two derivatives, here and not in the transform.
+    const derivativeKeys = [derivativeKeyOf(storageKey, "display"), derivativeKeyOf(storageKey, "thumb")] as const;
+    const removeAll = async (): Promise<void> => {
+      for (const key of [storageKey, ...derivativeKeys]) {
+        await deps.removeObject(key).catch(() => undefined);
+      }
+    };
+    try {
+      const derivatives = buildDerivatives(type, inspected.bytes);
+      await deps.putObject(derivativeKeys[0], derivatives.display, "image/jpeg");
+      await deps.putObject(derivativeKeys[1], derivatives.thumb, "image/jpeg");
+    } catch (err) {
+      await removeAll();
+      return refuse(err instanceof UndecodableImageError ? "image_undecodable" : "ingest_failed", { detectedType: type, sourceSha256 });
+    }
     counts.ingested += 1;
     counts.bytesIngested += inspected.bytes.length;
     if (inspected.stripped) {
@@ -239,6 +262,7 @@ export const ingestStaged = async (input: IngestInput, deps: IngestDeps): Promis
       storedSha256,
       storageKey,
       metadataStripped: inspected.stripped,
+      derivatives: true,
     });
     await fs.promises.unlink(abs);
     return undefined;

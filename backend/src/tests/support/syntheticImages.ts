@@ -2,10 +2,28 @@
  * SYNTHETIC image files for the rsync image import's tests (and its live check's SSH server):
  * structurally valid JPEG / PNG / HEIC containers built byte by byte, with optional location
  * metadata (EXIF GPS, XMP, IPTC, PNG text chunks). No real photo, no real place: the GPS values
- * are fixed synthetic numbers. Nothing here is decodable as a picture (the scan data is filler),
- * which is all the import needs — it never decodes pixels (08-FILE-POLICY § 4.1: no image library).
+ * are fixed synthetic numbers. By default nothing here is decodable as a picture (the scan data is
+ * filler). Since ADR-130 Am. 1 the ingest fully decodes what it ingests (the derivatives are built
+ * there), so a file meant to be INGESTED is built with `pixels: true`: a real, tiny, seeded-noise
+ * image (jpeg-js / pngjs) carrying the same synthetic metadata segments.
  */
 import zlib from "zlib";
+import { encode as encodeJpeg } from "jpeg-js";
+import { PNG } from "pngjs";
+
+/** Seeded noise RGBA, so the encoded file is above the 1 KB floor and each seed differs. */
+const noise = (width: number, height: number, seed: number): Buffer => {
+  const data = Buffer.alloc(width * height * 4);
+  let x = (seed + 1) * 2654435761;
+  for (let i = 0; i < data.length; i += 4) {
+    x = (x * 1103515245 + 12345) >>> 0;
+    data[i] = x & 0xff;
+    data[i + 1] = (x >>> 8) & 0xff;
+    data[i + 2] = (x >>> 16) & 0xff;
+    data[i + 3] = 0xff;
+  }
+  return data;
+};
 
 /** Synthetic GPS: 1°2'3" S, 4°5'6" E — no particular place. */
 export const SYNTHETIC_GPS_RATIONALS = [1, 2, 3, 4, 5, 6];
@@ -80,14 +98,19 @@ export interface JpegOptions {
   trailer?: Buffer;
   /** Distinguishes otherwise identical files. */
   seed?: number;
+  /** A real, decodable image (64 × 48 unless sized) with the same metadata segments (ADR-130 Am. 1). */
+  pixels?: boolean;
 }
 
 /** A synthetic baseline JPEG: SOI, APP0, optional metadata, DQT, SOF0, SOS, filler, EOI. */
 export const syntheticJpeg = (options: JpegOptions = {}): Buffer => {
-  const width = options.width ?? 640;
-  const height = options.height ?? 480;
+  const width = options.width ?? (options.pixels ? 64 : 640);
+  const height = options.height ?? (options.pixels ? 48 : 480);
+  // A real image: the encoder's SOI + APP0, the synthetic metadata, then the encoder's tables, scan and EOI.
+  const real = options.pixels ? Buffer.from(encodeJpeg({ width, height, data: noise(width, height, options.seed ?? 0) }, 90).data) : null;
+  const realHeadEnd = real === null ? 0 : 4 + real.readUInt16BE(4);
   const parts: Buffer[] = [Buffer.from([0xff, 0xd8])];
-  parts.push(segment(0xe0, Buffer.from("JFIF\0\x01\x01\0\0\x01\0\x01\0\0", "latin1")));
+  parts.push(real === null ? segment(0xe0, Buffer.from("JFIF\0\x01\x01\0\0\x01\0\x01\0\0", "latin1")) : real.subarray(2, realHeadEnd));
   if (options.exif !== false) {
     parts.push(segment(0xe1, exifPayload({ gps: options.gps === true, bigEndian: options.bigEndianExif === true })));
   }
@@ -99,6 +122,13 @@ export const syntheticJpeg = (options: JpegOptions = {}): Buffer => {
   }
   if (options.comment) {
     parts.push(segment(0xfe, Buffer.from("synthetic comment", "latin1")));
+  }
+  if (real !== null) {
+    parts.push(real.subarray(realHeadEnd));
+    if (options.trailer) {
+      parts.push(options.trailer);
+    }
+    return Buffer.concat(parts);
   }
   parts.push(segment(0xdb, Buffer.concat([Buffer.from([0]), Buffer.alloc(64, 1)])));
   const sof = Buffer.alloc(15);
@@ -135,10 +165,29 @@ export interface PngOptions {
   text?: boolean;
   dataBytes?: number;
   seed?: number;
+  /** A real, decodable image (48 × 32 unless sized) with the same chunks (ADR-130 Am. 1). */
+  pixels?: boolean;
 }
 
 /** A synthetic PNG: IHDR, optional eXIf / tEXt / iTXt, IDAT filler, IEND — every CRC valid. */
 export const syntheticPng = (options: PngOptions = {}): Buffer => {
+  if (options.pixels) {
+    const width = options.width ?? 48;
+    const height = options.height ?? 32;
+    const png = new PNG({ width, height });
+    noise(width, height, options.seed ?? 0).copy(png.data);
+    const real = PNG.sync.write(png);
+    // Signature + IHDR (8 + 25 bytes), the synthetic chunks, then the encoder's IDAT and IEND.
+    const extra: Buffer[] = [];
+    if (options.exif) {
+      extra.push(pngChunk("eXIf", exifPayload({ gps: true }).subarray(6)));
+    }
+    if (options.text) {
+      extra.push(pngChunk("tEXt", Buffer.from("Comment\0synthetic", "latin1")));
+      extra.push(pngChunk("iTXt", Buffer.from("XML:com.adobe.xmp\0\0\0\0\0<x:xmpmeta/>", "latin1")));
+    }
+    return Buffer.concat([real.subarray(0, 33), ...extra, real.subarray(33)]);
+  }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(options.width ?? 320, 0);
   ihdr.writeUInt32BE(options.height ?? 240, 4);

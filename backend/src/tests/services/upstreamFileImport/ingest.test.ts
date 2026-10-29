@@ -105,8 +105,8 @@ afterEach(() => {
 
 describe("ingestStaged — 08-FILE-POLICY § 2 over synthetic files", () => {
   it("ingests JPEG and PNG (GPS removed), quarantines everything else by reason, and writes the manifest", async () => {
-    const gpsJpeg = syntheticJpeg({ gps: true, seed: 1 });
-    const png = syntheticPng({ exif: true, seed: 2 });
+    const gpsJpeg = syntheticJpeg({ pixels: true, gps: true, seed: 1 });
+    const png = syntheticPng({ pixels: true, exif: true, seed: 2 });
     put("foto_depan/a/front-1.jpg", gpsJpeg);
     put("foto_depan/front-2.png", png);
     put("foto_depan/photo.heic", syntheticHeic());
@@ -116,9 +116,9 @@ describe("ingestStaged — 08-FILE-POLICY § 2 over synthetic files", () => {
     put("foto_depan/huge.jpg", syntheticJpeg({ scanBytes: 10 * 1024 * 1024 + 10 }));
     put("foto_depan/bomb.jpg", syntheticJpeg({ width: 12_001, height: 100 }));
     put("foto_depan/broken.jpg", Buffer.concat([syntheticJpeg().subarray(0, 900), Buffer.alloc(400, 0x2a)]));
-    put("foto_sn/eicar.jpg", syntheticJpeg({ seed: 3 }));
-    put("foto_sn/scanerr.jpg", syntheticJpeg({ seed: 4 }));
-    put("foto_sn/.rsync-partial/half.jpg", syntheticJpeg({ seed: 5 }));
+    put("foto_sn/eicar.jpg", syntheticJpeg({ pixels: true, seed: 3 }));
+    put("foto_sn/scanerr.jpg", syntheticJpeg({ pixels: true, seed: 4 }));
+    put("foto_sn/.rsync-partial/half.jpg", syntheticJpeg({ pixels: true, seed: 5 }));
     const progress: number[] = [];
 
     const counts = await run({ onProgress: (processed, total) => progress.push(processed * 100 + total) });
@@ -144,10 +144,15 @@ describe("ingestStaged — 08-FILE-POLICY § 2 over synthetic files", () => {
     });
     expect(progress.at(-1)).toBe(11 * 100 + 11);
 
-    // Storage holds exactly the two ingested images, with their GPS gone, under UUID keys.
+    // Storage holds exactly the two ingested images, with their GPS gone, under UUID keys — and, since
+    // ADR-130 Am. 1, each one's display and thumbnail derivatives beside it (metadata-free by construction).
     expect([...objects.keys()].sort()).toEqual([
+      "t/11111111-1111-4111-8111-111111111111/attachments/00000000-0000-4000-8000-000000000001.display.jpg",
       "t/11111111-1111-4111-8111-111111111111/attachments/00000000-0000-4000-8000-000000000001.jpg",
+      "t/11111111-1111-4111-8111-111111111111/attachments/00000000-0000-4000-8000-000000000001.thumb.jpg",
+      "t/11111111-1111-4111-8111-111111111111/attachments/00000000-0000-4000-8000-000000000002.display.jpg",
       "t/11111111-1111-4111-8111-111111111111/attachments/00000000-0000-4000-8000-000000000002.png",
+      "t/11111111-1111-4111-8111-111111111111/attachments/00000000-0000-4000-8000-000000000002.thumb.jpg",
     ]);
     for (const bytes of objects.values()) {
       expect(bytes.includes(Buffer.from("S\0\0\0", "latin1"))).toBe(false);
@@ -170,6 +175,7 @@ describe("ingestStaged — 08-FILE-POLICY § 2 over synthetic files", () => {
       sourceSha256: sha(gpsJpeg),
       metadataStripped: true,
       size: gpsJpeg.length,
+      derivatives: true,
     });
     expect(front?.storedSha256).toBe(sha(objects.get(front?.storageKey ?? "") ?? Buffer.alloc(0)));
     expect(front?.storedSha256).not.toBe(front?.sourceSha256);
@@ -187,10 +193,10 @@ describe("ingestStaged — 08-FILE-POLICY § 2 over synthetic files", () => {
   });
 
   it("skips a file whose path and hash an earlier import already ingested; counts identical content at two paths", async () => {
-    const same = syntheticJpeg({ seed: 9 });
+    const same = syntheticJpeg({ pixels: true, seed: 9 });
     put("foto_depan/x.jpg", same);
     put("foto_sn/x-copy.jpg", same);
-    put("foto_sn/y.jpg", syntheticJpeg({ seed: 10 }));
+    put("foto_sn/y.jpg", syntheticJpeg({ pixels: true, seed: 10 }));
     const counts = await run({ previouslyIngested: new Map([["foto_depan/x.jpg", sha(same)], ["foto_sn/y.jpg", "stale-hash"]]) });
     expect(counts).toMatchObject({ ingested: 2, skippedPresent: 1, duplicateContent: 0 });
     expect(manifest().find((l) => l.sourcePath === "foto_depan/x.jpg")).toMatchObject({ outcome: "skipped_present", sourceSha256: sha(same) });
@@ -202,33 +208,33 @@ describe("ingestStaged — 08-FILE-POLICY § 2 over synthetic files", () => {
   });
 
   it("a put that throws leaves no object and quarantines ingest_failed", async () => {
-    put("foto_depan/a.jpg", syntheticJpeg());
+    put("foto_depan/a.jpg", syntheticJpeg({ pixels: true }));
     const counts = await run({}, deps({ putObject: () => Promise.reject(new Error("disk full")) }));
     expect(counts.quarantinedByReason).toEqual({ ingest_failed: 1 });
     expect(objects.size).toBe(0);
   });
 
   it("a read-back that does not hash as written deletes the object: storage_verify_failed", async () => {
-    put("foto_depan/a.jpg", syntheticJpeg());
+    put("foto_depan/a.jpg", syntheticJpeg({ pixels: true }));
     const counts = await run({}, deps({ readObject: () => Promise.resolve(Buffer.from("corrupted")) }));
     expect(counts.quarantinedByReason).toEqual({ storage_verify_failed: 1 });
     expect(objects.size).toBe(0);
   });
 
   it("a failing delete after a failed put is tolerated", async () => {
-    put("foto_depan/a.jpg", syntheticJpeg());
+    put("foto_depan/a.jpg", syntheticJpeg({ pixels: true }));
     const counts = await run(
       {},
       deps({ readObject: () => Promise.resolve(Buffer.alloc(0)), removeObject: () => Promise.reject(new Error("gone")) }),
     );
     expect(counts.quarantinedByReason).toEqual({ storage_verify_failed: 1 });
-    put("foto_depan/b.jpg", syntheticJpeg({ seed: 2 }));
+    put("foto_depan/b.jpg", syntheticJpeg({ pixels: true, seed: 2 }));
     const failing = await run({}, deps({ putObject: () => Promise.reject(new Error("x")), removeObject: () => Promise.reject(new Error("y")) }));
     expect(failing.quarantinedByReason).toEqual({ ingest_failed: 1 });
   });
 
   it("a file that cannot be read is counted failed and left in place", async () => {
-    put("foto_depan/a.jpg", syntheticJpeg());
+    put("foto_depan/a.jpg", syntheticJpeg({ pixels: true }));
     const spy = jest.spyOn(fs.promises, "lstat").mockRejectedValueOnce(Object.assign(new Error("EACCES"), { code: "EACCES" }));
     const counts = await run();
     spy.mockRestore();
@@ -237,8 +243,8 @@ describe("ingestStaged — 08-FILE-POLICY § 2 over synthetic files", () => {
   });
 
   it("stops between files when cancelled; the rest stays for a later run", async () => {
-    put("foto_depan/a.jpg", syntheticJpeg({ seed: 1 }));
-    put("foto_depan/b.jpg", syntheticJpeg({ seed: 2 }));
+    put("foto_depan/a.jpg", syntheticJpeg({ pixels: true, seed: 1 }));
+    put("foto_depan/b.jpg", syntheticJpeg({ pixels: true, seed: 2 }));
     let calls = 0;
     const counts = await run({
       shouldStop: () => {

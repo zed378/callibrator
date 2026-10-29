@@ -251,14 +251,27 @@ const writePhoto = async (context: StepContext, files: TransformFiles, work: Pho
   if (sha256(bytes) !== work.source.storedSha256) {
     return "storage_verify_failed";
   }
-  let derivatives: ReturnType<typeof buildDerivatives>;
-  try {
-    derivatives = buildDerivatives(work.source.type, bytes);
-  } catch (err) {
-    if (err instanceof UndecodableImageError) {
-      return "image_undecodable";
+  // ADR-130 Am. 1: the ingest built the derivatives (and so decoded the image); read them back. A manifest
+  // written before that, or a derivative that cannot be read, falls back to building them here.
+  let derivatives: { display: Buffer; thumb: Buffer } | null = null;
+  const storedDerivatives = [derivativeKeyOf(work.source.storageKey, "display"), derivativeKeyOf(work.source.storageKey, "thumb")] as const;
+  if (work.source.derivatives) {
+    try {
+      derivatives = { display: await files.readObject(storedDerivatives[0]), thumb: await files.readObject(storedDerivatives[1]) };
+    } catch {
+      derivatives = null;
     }
-    throw err;
+  }
+  const copied = derivatives !== null;
+  if (derivatives === null) {
+    try {
+      derivatives = buildDerivatives(work.source.type, bytes);
+    } catch (err) {
+      if (err instanceof UndecodableImageError) {
+        return "image_undecodable";
+      }
+      throw err;
+    }
   }
   const id = files.newId();
   const ext = extensionOf(work.source.type);
@@ -296,6 +309,9 @@ const writePhoto = async (context: StepContext, files: TransformFiles, work: Pho
   );
   await audit(context, "CREATE", id, work.facilityId, { sourceTable: work.folder, targetTable: "attachments", purpose: work.purpose, size: bytes.length });
   files.superseded.push(work.source.storageKey);
+  if (copied) {
+    files.superseded.push(...storedDerivatives);
+  }
   return {
     sourceTable: work.folder,
     legacyId: work.legacyId,

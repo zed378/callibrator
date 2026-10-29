@@ -110,7 +110,13 @@ const store = (catalogue: Map<string, PhotoSource>, objects: Map<string, Buffer>
   return files;
 };
 
-const ingested = (key: string, bytes: Buffer): PhotoSource => ({ outcome: "ingested", storageKey: key, storedSha256: sha(bytes), type: "jpeg" });
+const ingested = (key: string, bytes: Buffer, derivatives = false): PhotoSource => ({
+  outcome: "ingested",
+  storageKey: key,
+  storedSha256: sha(bytes),
+  type: "jpeg",
+  derivatives,
+});
 
 describe("P24-03 the registry", () => {
   it("step 9 is built over the certificate index, audits itself and accounts the photo folders; every step is built", () => {
@@ -175,7 +181,7 @@ describe("P24-03 the catalogue of the manifests", () => {
     const second = [
       line({ sourcePath: "foto_depan/a.jpg", outcome: "skipped_present", detectedType: "jpeg", sourceSha256: "s1" }),
       // the ETL's HEIC conversion, re-imported under the same path with JPEG bytes (ADR-132 Am. 3)
-      line({ sourcePath: "foto_depan/b.heic", outcome: "ingested", detectedType: "jpeg", sourceSha256: "s2", storedSha256: "h2", storageKey: "k2" }),
+      line({ sourcePath: "foto_depan/b.heic", outcome: "ingested", detectedType: "jpeg", sourceSha256: "s2", storedSha256: "h2", storageKey: "k2", derivatives: true }),
       line({ sourcePath: "foto_sn/c.png", outcome: "skipped_present", sourceSha256: "other" }),
       line({ sourcePath: "foto_sn/g.jpg", outcome: "skipped_present" }),
       line({ sourcePath: "foto_sn/h.jpg", outcome: "skipped_present", sourceSha256: "zz" }),
@@ -184,8 +190,8 @@ describe("P24-03 the catalogue of the manifests", () => {
     ].join("\n");
     const catalogue = catalogueOf([first, second]);
     expect(Object.fromEntries(catalogue)).toEqual({
-      "foto_depan/a.jpg": { outcome: "ingested", storageKey: "k1", storedSha256: "h1", type: "jpeg" },
-      "foto_depan/b.heic": { outcome: "ingested", storageKey: "k2", storedSha256: "h2", type: "jpeg" },
+      "foto_depan/a.jpg": { outcome: "ingested", storageKey: "k1", storedSha256: "h1", type: "jpeg", derivatives: false },
+      "foto_depan/b.heic": { outcome: "ingested", storageKey: "k2", storedSha256: "h2", type: "jpeg", derivatives: true },
     });
   });
 });
@@ -371,6 +377,46 @@ describe("P24-03 the step", () => {
       "foto_depan", "101", "attachments", "a2403000-0000-4000-8000-00000000e001", TENANT, FAC, RUN, photoHashOf("foto_depan/good.jpg", sha(photo)), null,
       "foto_sn", "101", "attachments", "a2403000-0000-4000-8000-00000000e002", TENANT, FAC, RUN, photoHashOf("foto_sn/good.jpg", sha(photo)), null,
     ]);
+  });
+
+  it("ADR-130 Am. 1: the ingest's derivatives are copied, never rebuilt; the tenant-scope copies are superseded with the original", async () => {
+    // Any decode here would throw: the step must read the stored derivatives instead.
+    mockFault.value = new Error("decoded although the ingest stored the derivatives");
+    const display = Buffer.from("stored display");
+    const thumb = Buffer.from("stored thumb");
+    const files = store(
+      new Map<string, PhotoSource>([["foto_depan/good.jpg", ingested(tenantKey("good"), photo, true)]]),
+      new Map([
+        [tenantKey("good"), photo],
+        [`t/${TENANT}/attachments/good.display.jpg`, display],
+        [`t/${TENANT}/attachments/good.thumb.jpg`, thumb],
+      ]),
+    );
+    const runner = double([
+      [/to_regclass/, () => [{ present: true }]],
+      [/AS front/, () => [{ sourceRowNumber: "1", legacyId: "101", front: "good.jpg", serial: null, deviceId: DEVICE, facilityId: FAC }]],
+    ]);
+    await runAttachments(context(runner, files));
+    const at = (n: string): Buffer | undefined => files.objects.get(`t/${TENANT}/f/${FAC}/attachments/a2403000-0000-4000-8000-00000000${n}`);
+    expect([at("e001.jpg"), at("e001.display.jpg"), at("e001.thumb.jpg")]).toEqual([photo, display, thumb]);
+    expect(files.superseded).toEqual([tenantKey("good"), `t/${TENANT}/attachments/good.display.jpg`, `t/${TENANT}/attachments/good.thumb.jpg`]);
+    expect(runner.calls.filter((c) => c.text.startsWith("INSERT INTO attachments"))).toHaveLength(1);
+  });
+
+  it("ADR-130 Am. 1: a manifest that names derivatives the storage no longer has falls back to building them", async () => {
+    const files = store(
+      new Map<string, PhotoSource>([["foto_depan/good.jpg", ingested(tenantKey("good"), photo, true)]]),
+      new Map([[tenantKey("good"), photo]]),
+    );
+    const runner = double([
+      [/to_regclass/, () => [{ present: true }]],
+      [/AS front/, () => [{ sourceRowNumber: "1", legacyId: "101", front: "good.jpg", serial: null, deviceId: DEVICE, facilityId: FAC }]],
+    ]);
+    await runAttachments(context(runner, files));
+    const keys = [...files.objects.keys()].filter((k) => k.startsWith(`t/${TENANT}/f/${FAC}/`));
+    expect(keys).toHaveLength(3);
+    // Built here, so there is no tenant-scope derivative to supersede.
+    expect(files.superseded).toEqual([tenantKey("good")]);
   });
 
   it("a derivative failure that is not an undecodable image fails the transform (the rollback removes the objects)", async () => {

@@ -11896,6 +11896,34 @@ The upstream application's device photos (front and serial-plate: ≈ 47,080 fil
 
 ---
 
+### ADR-130 Amendment 1 (2026-10-29, P24-05 finding): the image import builds the photo derivatives at ingest; the transform copies them
+
+**Context.** The first real-photo dry run measured step 9 at about 1.2 s per photo. A benchmark on ten real photos (2.07 MB average) put almost all of it in `buildDerivatives`: 1,714 ms against 5 ms to read and 2 ms to hash. That is the pure-JavaScript decode ADR-132 Am. 3 chose so the `pkg` binary carries no native module. Step 9 runs inside the transform's one transaction. With ~47,000 referenced photos, that is many hours in one transaction, during which a failure rolls back everything.
+
+**Decision.**
+
+1. The ingest (`upstreamFileImport/ingest.ts`) fully decodes each image it ingests and stores its display and thumbnail derivatives beside the object (`<uuid>.display.jpg`, `<uuid>.thumb.jpg`). It runs once the object is stored and verified. The function is `buildDerivatives`, the same as before, so the bytes are the same.
+2. An undecodable image is refused at ingest as `image_undecodable`, and its object and any derivative are removed. This is the 08 § 3 polyglot guard, now one stage earlier.
+3. The manifest line records `derivatives: true`. The transform's catalogue carries the flag.
+4. Step 9 reads the stored derivatives and copies the three objects under the device's facility. The tenant-scope derivative copies are superseded with the original and removed after the commit. If a manifest predates this amendment, or a stored derivative cannot be read, step 9 builds the derivatives as before.
+5. Nothing else changes: the operator's steps, the outcome codes, the keys, the audit rows and the reconciliation are all as they were.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| `sharp` (native, ~50 ms a photo) | a native module in the `pkg` binary is exactly what ADR-132 Am. 3 refused |
+| Worker threads for the decode | worker scripts inside a `pkg` snapshot are fragile, and the work would still sit inside the transaction, only shorter |
+| A WebAssembly decoder | a new artefact to package and prove, for a cost the ingest can absorb |
+| Leave it, and only run the photo transform ahead of the freeze | still hours in one transaction on the first pass |
+
+**Implications, including the bad ones.**
+
+- 08-FILE-POLICY § 4.1 said the import never decodes pixels. That is amended: it now does, with the same strict decoder the application already used on these files in step 9.
+- The ingest is about 1.7 s a photo slower, so a full ingest grows by roughly a day of CPU on a workstation. It is per file, resumable, and scheduled at T-7 d.
+- A derivative is stored for every ingested photo, including the ~3,360 that no device row names (Q-28's unreferenced half). These are left in the tenant scope like their originals until P31-02.
+- Manifests written before this amendment still work, through the fallback build.
+
 ## ADR-131: The Public Pages Get Their Own Root Layout and Their Own Global Stylesheet — Two Route Groups, `(public)` and `(app)`, Each With an `<html>`-Owning Layout; the Dashboard's Tailwind Sheet Is No Longer Render-Blocking on the Landing and the Sign-In Pages
 
 **Date:** 2026-10-08 · **Status:** **Accepted; BUILT 2026-10-08 by P10-18, with Amendment 1** (below) — a working decision of the coordinating session under the owner's delegation (2026-10-08: *"continue autonomously … decide anything needing confirmation by best practice"*); the owner may revise it · **Card:** P10-18 (Phase 10 follow-up) · **Works with:** ADR-071 / ADR-090 (every page rendered per request under a nonce CSP), ADR-098 and its Amendment 2 (no client providers in the root layout; public fonts in `fonts/public.ts`), ADR-118 (the warm public surface), ADR-122 (the dashboard's warm palette and one theme mechanism) · **Record:** `MEMORY/records/2026-10-08-phase12-18-29-docs.md` · **Evidence that raised it:** `MEMORY/records/2026-10-05-landing-warm-redesign.md` § "What remains, and the next levers" (item 2) and its 2026-10-07 addendum
