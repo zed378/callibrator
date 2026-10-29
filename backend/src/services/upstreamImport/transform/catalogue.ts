@@ -14,7 +14,9 @@
  * The content is built by the SAME function the catalogue service uses
  * (@callibrator/contracts `inspectionContentOf`): the label from `description`; `symbol`;
  * `setting` (performance); the limit from `nilai_acuan` where the table has it, parsed by
- * `parseLimit` (an unparsed one stays `text`, printed as written) and its unit the item's unit;
+ * `parseLimit` (an unparsed one stays `text`, printed as written) and its unit the item's unit —
+ * else (the real dump, P24-05) a `symbol` that parses as a limit (electrical safety's `≤ 0,2 Ω`),
+ * and a parenthesised `symbol` (`(g)`) as the unit of an item that still has none;
  * the upstream `notes` operator-only. `allowed_outcomes` from the upstream `status` code list
  * through § 5.1's mapping (completeness / function / other safety `1/0/-1` → pass / fail / N/A;
  * physical → good / minor / major damage; tools and maintenance `1/0` → done / not done;
@@ -39,6 +41,7 @@ import { randomUUID } from "crypto";
 import {
   INSPECTION_SECTION_RULES,
   inspectionContentOf,
+  normaliseUnit,
   parseLimit,
   type InspectionItemContentInput,
   type InspectionOutcome,
@@ -140,16 +143,39 @@ export interface DefinitionValues {
   readonly status: "active" | "retired";
 }
 
-/** The definition a staged checklist row becomes. Pure. */
+/** A symbol that is a unit in parentheses, as upstream writes the performance units: `(g)` → `g`. */
+const PARENTHESISED_UNIT = /^\(\s*([^()]+?)\s*\)$/;
+
+/**
+ * The definition a staged checklist row becomes. Pure.
+ *
+ * As the real dump has it (P24-05, 2026-10-28): `mst_pemeriksaan_keamanan_listrik` has NO `nilai_acuan`
+ * — its limit and unit are in `symbol` (`≤ 0,2 Ω`, `≤ 100 µA`) — and the performance units are written as
+ * a parenthesised `symbol` (`(g)`). A limit kind without a `nilai_acuan` therefore takes a `symbol` that
+ * parses as a limit as its limit; an item still without a unit takes a parenthesised `symbol` as its unit.
+ * A symbol consumed either way is not also kept as the symbol.
+ */
 export const definitionOf = (section: InspectionSection, row: Readonly<Record<string, unknown>>): DefinitionValues => {
   // Only the limit kinds carry a limit (0112 `limit_kind`); their unit is the limit's.
-  const limitText = section === "performance" || section === "electrical_safety" ? textOrNull(row["nilai_acuan"], 100) : null;
+  const limitKind = section === "performance" || section === "electrical_safety";
+  let symbol = textOrNull(row["symbol"], 50);
+  let limitText = limitKind ? textOrNull(row["nilai_acuan"], 100) : null;
+  if (limitKind && limitText === null && symbol !== null && (parseLimit(symbol)?.op ?? "text") !== "text") {
+    limitText = symbol;
+    symbol = null;
+  }
+  let unit = parseLimit(limitText)?.unit ?? null;
+  const parenthesised = unit === null && symbol !== null ? PARENTHESISED_UNIT.exec(symbol) : null;
+  if (parenthesised !== null) {
+    unit = normaliseUnit(parenthesised[1]);
+    symbol = null;
+  }
   const input: InspectionItemContentInput = {
     section,
     label: cleanText(row["description"], LABEL_MAX),
     inputKind: INSPECTION_SECTION_RULES[section].inputKinds[0] as InspectionItemContentInput["inputKind"],
-    unit: parseLimit(limitText)?.unit ?? null,
-    symbol: textOrNull(row["symbol"], 50),
+    unit,
+    symbol,
     settingText: section === "performance" ? textOrNull(row["setting"], 50) : null,
     limitText,
     allowedOutcomes: outcomesOf(section, row["status"]),

@@ -223,7 +223,7 @@ type without a mapping row), `created_at`, `updated_at`. Extra columns:
 | `mst_pemeriksaan_fungsi_alat` | — | `0,1,-1` | 0 |
 | `mst_pemeriksaan_kinerja_alat` | `symbol`, `setting`, `nilai_acuan` (reference value) varchar(50) | `0,1` | 0 |
 | `mst_alat_kerja_digunakan` | — | `0,1` | 0 |
-| `mst_pemeriksaan_keamanan_listrik` | `symbol` | `1,-1` | **1** (all 10) |
+| `mst_pemeriksaan_keamanan_listrik` | `symbol` — **holds the limit and its unit** (`≤ 0,2 Ω`, `≤ 100 µA`, `≤ 10 µA`); there is no `nilai_acuan` (read by the transform since 2026-10-28, P24-05) | `1,-1` | **1** (all 10) |
 | `mst_kondisi_kelistrikan`, `mst_pemeliharaan_alat`, `mst_pemeriksaan_fisik` (+`kebersihan_pemeriksaan_fisik`), `mst_pemeriksaan_keamanan_lain`, `mst_kondisi_lingkungan`, `mst_rekomendasi_hasil_pekerjaan`, `mst_stok_konsumable` | `symbol` on most | small lists | — |
 
 `mst_pemeriksaan_kinerja_alat.nilai_acuan` is text: 184 of 184 filled, only 30 purely numeric —

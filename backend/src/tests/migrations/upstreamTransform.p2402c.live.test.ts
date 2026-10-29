@@ -103,9 +103,10 @@ describe("P24-02c — the catalogue steps on live PostgreSQL 18, as the transfor
       `INSERT INTO upstream_import.stg_mst_kelengkapan_alat (import_run_id, source_row_number, id, description, status, notes, flag) VALUES
          ${values(run, [[1, relabel ?? "Kabel daya sintetis", "0,1,-1", "catatan operator", 0], [2, " ", "0,1", null, 0]])}`,
       `INSERT INTO upstream_import.stg_mst_pemeriksaan_kinerja_alat (import_run_id, source_row_number, id, description, status, symbol, setting, nilai_acuan) VALUES
-         ${values(run, [[1, "Laju aliran sintetis", "0,1", "Q", "N mL/h", "± 10 %"], [2, "Tekanan sintetis", "0,1", "P", "N mmHg", "± 5 mmHg"], [3, "Resolusi sintetis", "0,1", null, null, "≤ 2 × resolution"]])}`,
+         ${values(run, [[1, "Laju aliran sintetis", "0,1", "Q", "N mL/h", "± 10 %"], [2, "Tekanan sintetis", "0,1", "P", "N mmHg", "± 5 mmHg"], [3, "Resolusi sintetis", "0,1", null, null, "≤ 2 × resolution"],
+    [4, "Timbangan sintetis", "0,1", "(g)", "10", "≤ 3 Kali Resolusi"]])}`,
       `INSERT INTO upstream_import.stg_mst_pemeriksaan_keamanan_listrik (import_run_id, source_row_number, id, description, status, symbol, flag) VALUES
-         ${values(run, [[1, "Arus bocor sintetis", "1,-1", "I", 1]])}`,
+         ${values(run, [[1, "Arus bocor sintetis", "1,-1", "I", 1], [2, "Tahanan pentanahan sintetis", "1,-1", "≤ 0,2 Ω", 1]])}`,
       `INSERT INTO upstream_import.stg_mst_kondisi_lingkungan (import_run_id, source_row_number, id, description, status) VALUES ${values(run, [[1, "Suhu sintetis", null]])}`,
       `INSERT INTO upstream_import.stg_mst_rekomendasi_hasil_pekerjaan (import_run_id, source_row_number, id, description, status) VALUES
          ${values(run, [[1, "Laik pakai", "1"], [2, "Perlu kalibrasi", "0"]])}`,
@@ -186,8 +187,8 @@ describe("P24-02c — the catalogue steps on live PostgreSQL 18, as the transfor
     const defSources = summary.steps.find((s) => s.step === "inspection_item_definitions")?.sources.filter((s) => s.staged > 0);
     expect(defSources?.map((s) => [s.table, s.mapped, s.quarantined])).toEqual([
       ["mst_kelengkapan_alat", 1, { value_out_of_range: 1 }],
-      ["mst_pemeriksaan_kinerja_alat", 3, {}],
-      ["mst_pemeriksaan_keamanan_listrik", 1, {}],
+      ["mst_pemeriksaan_kinerja_alat", 4, {}],
+      ["mst_pemeriksaan_keamanan_listrik", 2, {}],
       ["mst_kondisi_lingkungan", 1, {}],
       ["mst_rekomendasi_hasil_pekerjaan", 0, { session_header_value: 2 }],
     ]);
@@ -212,9 +213,13 @@ describe("P24-02c — the catalogue steps on live PostgreSQL 18, as the transfor
       { legacy_table: "mst_kelengkapan_alat", legacy_id: 1, section: "completeness", kind: "tri_state", label: "Kabel daya sintetis", unit: null, setting_text: null, op: null, tol: null, limit_text: null, outcomes: "{pass,fail,not_applicable}", notes: "catatan operator", status: "active" },
       { legacy_table: "mst_kondisi_lingkungan", legacy_id: 1, section: "environment", kind: "measured", label: "Suhu sintetis", unit: null, setting_text: null, op: null, tol: null, limit_text: null, outcomes: "{}", notes: null, status: "retired" },
       { legacy_table: "mst_pemeriksaan_keamanan_listrik", legacy_id: 1, section: "electrical_safety", kind: "measured_with_limit", label: "Arus bocor sintetis", unit: null, setting_text: null, op: null, tol: null, limit_text: null, outcomes: "{pass,fail,not_applicable}", notes: null, status: "active" },
+      // P24-05: the real dump's shape — no nilai_acuan, the limit and its unit in `symbol`.
+      { legacy_table: "mst_pemeriksaan_keamanan_listrik", legacy_id: 2, section: "electrical_safety", kind: "measured_with_limit", label: "Tahanan pentanahan sintetis", unit: "Ω", setting_text: null, op: "lte", tol: null, limit_text: "≤ 0,2 Ω", outcomes: "{pass,fail,not_applicable}", notes: null, status: "active" },
       { legacy_table: "mst_pemeriksaan_kinerja_alat", legacy_id: 1, section: "performance", kind: "setting_measured_reference", label: "Laju aliran sintetis", unit: null, setting_text: "N mL/h", op: "plus_minus_pct", tol: "10", limit_text: "± 10 %", outcomes: "{pass,fail}", notes: null, status: "active" },
       { legacy_table: "mst_pemeriksaan_kinerja_alat", legacy_id: 2, section: "performance", kind: "setting_measured_reference", label: "Tekanan sintetis", unit: "mmHg", setting_text: "N mmHg", op: "plus_minus", tol: "5", limit_text: "± 5 mmHg", outcomes: "{pass,fail}", notes: null, status: "active" },
       { legacy_table: "mst_pemeriksaan_kinerja_alat", legacy_id: 3, section: "performance", kind: "setting_measured_reference", label: "Resolusi sintetis", unit: null, setting_text: null, op: "text", tol: null, limit_text: "≤ 2 × resolution", outcomes: "{pass,fail}", notes: null, status: "active" },
+      // P24-05: the unit written as a parenthesised symbol.
+      { legacy_table: "mst_pemeriksaan_kinerja_alat", legacy_id: 4, section: "performance", kind: "setting_measured_reference", label: "Timbangan sintetis", unit: "g", setting_text: "10", op: "text", tol: null, limit_text: "≤ 3 Kali Resolusi", outcomes: "{pass,fail}", notes: null, status: "active" },
     ]);
     const audits = await rows(
       `SELECT resource_type, count(*)::int AS n, bool_and(tenant_id = '${PLATFORM}') AS platform, bool_and(client_facility_id IS NULL) AS no_facility
@@ -222,7 +227,7 @@ describe("P24-02c — the catalogue steps on live PostgreSQL 18, as the transfor
     );
     expect(audits).toEqual([
       { resource_type: "DeviceType", n: 3, platform: true, no_facility: true },
-      { resource_type: "InspectionItemDefinition", n: 6, platform: true, no_facility: true },
+      { resource_type: "InspectionItemDefinition", n: 8, platform: true, no_facility: true },
     ]);
   });
 
