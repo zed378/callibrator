@@ -1073,8 +1073,23 @@ export interface ZonedDay {
  * @param timeZone - an IANA zone (e.g. `Asia/Jakarta`)
  * @returns year, month (1 – 12) and day
  */
+/**
+ * One day formatter per zone, built once. Constructing an `Intl.DateTimeFormat` costs far more than
+ * formatting with one; the import calls `zonedDay` for every IPM row (P24-05: 177 s of a dry run's CPU).
+ * An unknown zone still throws on construction, every time (nothing is cached for it).
+ */
+const DAY_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+const dayFormatter = (timeZone: string): Intl.DateTimeFormat => {
+  let formatter = DAY_FORMATTERS.get(timeZone);
+  if (formatter === undefined) {
+    formatter = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    DAY_FORMATTERS.set(timeZone, formatter);
+  }
+  return formatter;
+};
+
 export const zonedDay = (at: Date, timeZone: string): ZonedDay => {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(at);
+  const parts = dayFormatter(timeZone).formatToParts(at);
   const part: Readonly<Record<string, string>> = Object.fromEntries(parts.map((p) => [p.type, p.value]));
   return { year: Number(part["year"]), month: Number(part["month"]), day: Number(part["day"]) };
 };

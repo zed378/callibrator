@@ -201,15 +201,19 @@ const getCompliance = async (
       calibrationDate[Op.lte] = new Date(to);
     }
   }
-  const records = await CalibrationRecord.findAll({
+  // Counted in the database (at most three rows back): reading every record's flag to count it in
+  // Node brought every record of the tenant back, 25,855 per call at the real dump's volume (2026-10-29).
+  const groups = (await CalibrationRecord.findAll({
     where,
-    attributes: ["isCompliant"],
+    attributes: ["isCompliant", [fn("COUNT", col("id")), "count"]],
+    group: ["isCompliant"],
     raw: true,
-  });
-  const total = records.length;
-  const compliant = records.filter((r) => r.isCompliant === true).length;
-  const nonCompliant = records.filter((r) => r.isCompliant === false).length;
-  const unknown = total - compliant - nonCompliant;
+  })) as unknown as { isCompliant: boolean | null; count: number | string }[];
+  const countOf = (flag: boolean | null): number => groups.filter((g) => g.isCompliant === flag).reduce((n, g) => n + Number(g.count), 0);
+  const compliant = countOf(true);
+  const nonCompliant = countOf(false);
+  const unknown = countOf(null);
+  const total = compliant + nonCompliant + unknown;
   const complianceRate = total ? round2((compliant / total) * 100) : 0;
 
   const summary = { total, compliant, nonCompliant, unknown, complianceRate };

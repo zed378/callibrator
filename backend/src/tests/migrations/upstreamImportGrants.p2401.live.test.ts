@@ -159,6 +159,19 @@ describe("P24-01 — the transform's grants, bookkeeping and runner on live Post
     await g.db.close();
   });
 
+  // First: 0133's down / up below recreates the bookkeeping, and with it every later grant on it.
+  it("0147: MAINTAIN on every table the transform writes, so its ANALYZE is never a skipped warning; still no read where there was none", async () => {
+    const tables = (jest.requireActual<{ TABLES: readonly string[] }>("../../migrations/0147-upstream-transform-maintain")).TABLES;
+    const held = await rows(
+      `SELECT t AS "table", has_table_privilege('${TRANSFORM_ROLE}', t, 'MAINTAIN') AS maintain FROM unnest(ARRAY[:tables]::text[]) AS t`,
+      { tables: [...tables] },
+    );
+    expect(held.filter((r) => r["maintain"] !== true)).toEqual([]);
+    expect(await errorAs(TRANSFORM_ROLE, "ANALYZE audit_logs")).toBeNull();
+    expect(await errorAs(TRANSFORM_ROLE, "SELECT 1 FROM audit_logs LIMIT 1")).toMatch(/^42501/);
+    expect(await rows(`SELECT has_table_privilege('${TRANSFORM_ROLE}', 'tenants', 'MAINTAIN') AS m`)).toEqual([{ m: false }]);
+  });
+
   it("0133: down / up / up on the migrated database rebuilds the same objects", async () => {
     const objects = async (): Promise<Row[]> =>
       rows(

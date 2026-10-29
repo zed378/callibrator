@@ -242,17 +242,28 @@ export interface CalibrationDue {
   readonly requestedBySessionId: string | null;
 }
 
+/** One formatter per zone, built once (constructing one costs far more than using it; every listed device calls this). */
+const PART_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+const partFormatter = (timeZone: string): Intl.DateTimeFormat => {
+  let formatter = PART_FORMATTERS.get(timeZone);
+  if (formatter === undefined) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+    PART_FORMATTERS.set(timeZone, formatter);
+  }
+  return formatter;
+};
+
 const zonedParts = (at: Date, timeZone: string): Readonly<Record<string, number>> => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(at);
+  const parts = partFormatter(timeZone).formatToParts(at);
   return Object.fromEntries(parts.map((p) => [p.type, Number(p.value)]));
 };
 

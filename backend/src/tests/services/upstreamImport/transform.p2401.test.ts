@@ -266,6 +266,19 @@ describe("P24-01 the runner", () => {
     expect(summary.durationMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("P24-05: after each step, ANALYZE what it wrote and the ledger, inside the transaction, before its accounting", async () => {
+    const runner = double([
+      [/current_user/, okRole],
+      [/to_regclass/, () => [{ present: true }]],
+    ]);
+    await runTransform({ runId: RUN, db, runner, role: ROLE, ...SCOPE, steps: [builtStep("first", "mst_faskes"), builtStep("second", null)] });
+    const analyses = runner.calls.filter((c) => c.text.startsWith("ANALYZE"));
+    expect(analyses.map((c) => [c.text, c.bind, c.transaction])).toEqual(
+      [1, 2].flatMap(() => ["ANALYZE x", `ANALYZE ${ID_MAP}`, `ANALYZE ${QUARANTINE}`].map((text) => [text, [], TX])),
+    );
+    expect(runner.calls.indexOf(analyses[2] as Call)).toBeLessThan(runner.calls.findIndex((c) => c.text.includes("AS staged")));
+  });
+
   it("a staged row neither mapped nor quarantined fails the transform TRANSFORM_INCOMPLETE at its step; later steps never run", async () => {
     const runner = double([
       [/current_user/, okRole],

@@ -60,7 +60,7 @@ import batchJobService from "./batchJob.service";
 import notificationService from "./notification.service";
 import virusScan from "./virusScan.service";
 import { ImportCancelled, ImportFailure, runPipeline, type PipelineResult, type TableReport } from "./upstreamImport/importPipeline";
-import { beginStaging, purgeRun } from "./upstreamImport/stagingLoader";
+import { analyzeStaged, beginStaging, purgeRun } from "./upstreamImport/stagingLoader";
 import { isTransformRequestable, reconcileInterruptedTransforms, transformAvailable } from "./upstreamSqlTransform.service";
 import type { SqlRunner } from "../utils/sql.util";
 import type { ModelInstance } from "../types/models";
@@ -731,6 +731,15 @@ const stage = async (run: Run, settings: UpstreamImportSettings): Promise<Pipeli
         },
       });
       await transaction.commit();
+      // P24-05: statistics for the loaded tables now, not at autovacuum's next pass (a failure costs speed only).
+      await analyzeStaged(
+        staging as unknown as SqlRunner,
+        Object.entries(result.tables)
+          .filter(([, report]) => report.staged && report.rowsLoaded > 0)
+          .map(([table]) => table),
+      ).catch((err: unknown) => {
+        logger.warn("Upstream SQL import: ANALYZE of the staged tables failed", { runId: run.id, sqlState: sqlStateOf(err) });
+      });
       return result;
     } catch (err) {
       await transaction.rollback();

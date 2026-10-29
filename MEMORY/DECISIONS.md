@@ -11835,6 +11835,32 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 - A row wrongly quarantined is still not caught here. It is P25-02's quarantine review, as Am. 11 says.
 - Proven on synthetic data on PostgreSQL 18.6 only (`upstreamTransform.p2402g.live`).
 
+### ADR-129 Amendment 13 (2026-10-29, P24-05 finding): the transform refreshes the planner's statistics after every step, inside its one transaction; the transform role holds MAINTAIN on what it writes (migration 0147)
+
+**Context.** A profiled real-dump dry run put about 447 s of the transform's 608 s in waiting on the database. Three reads were each run once but slow: the IPM device snapshot with its correlated `calibration_records` subquery took 120 s, the photo rows 63 s and the rooms 30 s. Each read tables the earlier steps had just filled. Inside one transaction autovacuum never sees those rows, so the planner still costed the tables as nearly empty and chose nested loops over sequential scans.
+
+**Decision.**
+
+1. After each step the runner runs `ANALYZE` on the tables the step declares in `writes`, and on `id_map` and `quarantine`. It runs on the transaction's own connection, so it samples the uncommitted rows.
+2. Migration 0147 grants `MAINTAIN` (PostgreSQL 17+) to the transform role on those tables and on `upstream_import.former_users`. MAINTAIN covers ANALYZE, VACUUM, REINDEX, CLUSTER, REFRESH MATERIALIZED VIEW and LOCK TABLE. It reads no row and writes none. The three bookkeeping tables are granted as the import role, which owns them.
+3. Stage 1 runs `ANALYZE` on every staging table that received rows, once its transaction commits. A failure there is logged and costs speed only.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Rewrite the three slow reads with planner hints or CTEs | PostgreSQL has no hints. A rewrite fixes three statements, not the cause, and the next read of a fresh table would hit the same problem. |
+| Commit per step | breaks the one-transaction rollback ADR-129 rests on |
+| Run the transform as the tables' owner | far wider than statistics: DDL, every row |
+| `SET` cost parameters for the transform session | tuning around missing statistics, not supplying them |
+
+**Implications, including the bad ones.**
+
+- On the same dump the transform takes 128.7 s instead of 607.9 s. Outcomes are identical: per-step counts, 0 reconciliation failures and the data-quality report differ only in fresh UUIDs ([record](./records/2026-10-29-perf-transform-statistics-and-api-indexes.md)).
+- MAINTAIN lets the transform role take `LOCK TABLE` on those tables. That role already writes them in one long transaction, so it gains no new way to block the application.
+- An ANALYZE costs a sample read per table per step: seconds in total at this volume.
+- Without the grant (an older migration state), ANALYZE warns and skips. The transform stays correct, only slower. The live suite `p2401` pins that the grant is there.
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)

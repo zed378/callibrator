@@ -163,7 +163,8 @@ describe("reporting.service (coverage)", () => {
             [Op.lte]: new Date("2026-02-01"),
           },
         },
-        attributes: ["isCompliant"],
+        attributes: ["isCompliant", [expect.anything(), "count"]],
+        group: ["isCompliant"],
         raw: true,
       });
     });
@@ -221,9 +222,8 @@ describe("reporting.service (coverage)", () => {
 
     it("rounds the compliance rate to two decimals", async () => {
       CalibrationRecord.findAll.mockResolvedValue([
-        { isCompliant: true },
-        { isCompliant: false },
-        { isCompliant: false },
+        { isCompliant: true, count: "1" },
+        { isCompliant: false, count: "2" },
       ]);
 
       const r = await reporting.getCompliance("t1");
@@ -377,8 +377,8 @@ describe("reporting.service (coverage)", () => {
         { status: "open", count: "2" },
       ]);
       CalibrationRecord.findAll.mockResolvedValue([
-        { isCompliant: true },
-        { isCompliant: false },
+        { isCompliant: true, count: "1" },
+        { isCompliant: false, count: "1" },
       ]);
       Stock.findAll.mockResolvedValue([
         { itemName: "A", sku: "s1", quantity: 5, minQuantity: 1 },

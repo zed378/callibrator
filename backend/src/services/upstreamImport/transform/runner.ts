@@ -138,6 +138,20 @@ const countSource = async (context: StepContext, source: TransformSource): Promi
 };
 
 /**
+ * P24-05 finding (2026-10-29): fresh planner statistics for what a step wrote. The transform writes
+ * hundreds of thousands of rows in its one transaction and the next steps read them back; with the
+ * statistics of the empty tables the planner chose nested loops over sequential scans (three reads of
+ * the real dump took 120 s, 63 s and 30 s). ANALYZE inside the transaction sees its own rows. It needs
+ * MAINTAIN (migration 0147); without it PostgreSQL warns and skips, and nothing fails.
+ * Table names come from the step registry (code) and the ledger's constants, never from input.
+ */
+const refreshStatistics = async (context: StepContext, step: TransformStep): Promise<void> => {
+  for (const table of [...step.writes.map(checkedName), ID_MAP, QUARANTINE]) {
+    await sql(context.runner, `ANALYZE ${table}`, [], { transaction: context.transaction });
+  }
+};
+
+/**
  * Step 4: a staged table holding rows of this run that no step accounts for. The candidates are
  * the allow-listed tables (tablePolicy.ts STAGED_TABLES) no step claims; the catalogue only says
  * which of them exist, and a name reaches the statement through `stagedTable` (the allow-list),
@@ -192,6 +206,7 @@ export const runTransform = async (options: TransformOptions): Promise<UpstreamS
       const stepStarted = now();
       // isBuilt() proved every run is set.
       await (step.run as (c: StepContext) => Promise<void>)(context);
+      await refreshStatistics(context, step);
       const counted: SourceSummary[] = [];
       const accounted: (SourceSummary & { unaccounted: number })[] = [];
       for (const source of step.sources) {
