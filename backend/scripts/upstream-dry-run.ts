@@ -21,14 +21,17 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph loads after the environment is set; typed by the members used */
 import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
+import { env, environment } from "../src/config/env";
+import type * as SqlUtil from "../src/utils/sql.util";
 
 const [dumpArg, outArg] = process.argv.slice(2);
 if (dumpArg === undefined || outArg === undefined) {
   throw new Error("usage: tsx scripts/upstream-dry-run.ts <dump.sql> <summary.json>");
 }
-require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
+dotenv.config({ path: path.join(__dirname, "..", ".env") });
 const required = (name: string): string => {
-  const value = process.env[name];
+  const value = env(name);
   if (value === undefined || value === "") {
     throw new Error(`${name} is required`);
   }
@@ -37,7 +40,7 @@ const required = (name: string): string => {
 if (!required("DB_NAME").includes("scratch")) {
   throw new Error(`Refusing DB_NAME="${required("DB_NAME")}": the dry run runs on a throwaway database whose name contains "scratch"`);
 }
-Object.assign(process.env, {
+Object.assign(environment(), {
   NODE_ENV: "development",
   BATCH_JOBS_INLINE: "true",
   UPSTREAM_REAL_DATA_ALLOWED: "true",
@@ -64,6 +67,7 @@ const say = (line: string): void => {
 };
 
 const main = async (): Promise<void> => {
+  const { sql } = require("../src/utils/sql.util") as typeof SqlUtil;
   const { db } = require("../src/config") as {
     db: { options: { logging: unknown }; query(sql: string, o?: object): Promise<[Record<string, unknown>[], unknown]>; close(): Promise<void> };
   };
@@ -75,7 +79,7 @@ const main = async (): Promise<void> => {
   const { tenantStorage } = require("../src/middlewares/tenantContext.middleware") as {
     tenantStorage: { run<T>(ctx: object, fn: () => T): T };
   };
-  const { quarantinePath } = require("../src/utils/upload.util") as { quarantinePath(name: string): string };
+  const { quarantinePath } = require("../src/utils/upload.util") as { quarantinePath: (name: string) => string };
   const importService = require("../src/services/upstreamSqlImport.service") as {
     uploadDump(file: { path: string; size: number }, body: unknown, actor: object): Promise<{ id: string }>;
     getRun(id: string): Promise<Record<string, unknown>>;
@@ -84,10 +88,10 @@ const main = async (): Promise<void> => {
     requestTransform(id: string, input: { providerTenantId: string }, actor: object): Promise<void>;
   };
   const { provisionImportKey } = require("../src/services/upstreamImport/importKey") as {
-    provisionImportKey(tenantId: string, input: { signOffDate: string; dataClass: string }, actor: { userId: string }): Promise<unknown>;
+    provisionImportKey: (tenantId: string, input: { signOffDate: string; dataClass: string }, actor: { userId: string }) => Promise<unknown>;
   };
   const { createSelfFacility } = require("../src/services/clientFacility.service") as {
-    createSelfFacility(tenant: object): Promise<unknown>;
+    createSelfFacility: (tenant: object) => Promise<unknown>;
   };
   const reconciliation = require("../src/services/upstreamReconciliation.service") as { reconcileRun(id: string): Promise<unknown> };
   const dataQuality = require("../src/services/upstreamDataQuality.service") as { reportDataQuality(id: string): Promise<unknown> };
@@ -122,7 +126,7 @@ const main = async (): Promise<void> => {
    * `Key (...)=(...)` value in the message redacted. The transaction rolls back as in the job.
    */
   const diagnose = async (runId: string): Promise<Record<string, unknown>> => {
-    const { runTransform } = require("../src/services/upstreamImport/transform/runner") as { runTransform(o: object): Promise<unknown> };
+    const { runTransform } = require("../src/services/upstreamImport/transform/runner") as { runTransform: (o: object) => Promise<unknown> };
     const { TRANSFORM_STEPS } = require("../src/services/upstreamImport/transform/steps") as {
       TRANSFORM_STEPS: readonly { id: string; run: ((c: unknown) => Promise<void>) | null }[];
     };
@@ -132,8 +136,8 @@ const main = async (): Promise<void> => {
       sourceTimeZone(): string;
     };
     const { loadTransformFiles, settleTransformFiles } = require("../src/services/upstreamImport/transformFiles") as {
-      loadTransformFiles(t: string): Promise<unknown>;
-      settleTransformFiles(f: unknown, committed: boolean): Promise<unknown>;
+      loadTransformFiles: (t: string) => Promise<unknown>;
+      settleTransformFiles: (f: unknown, committed: boolean) => Promise<unknown>;
     };
     let failedStep: string | null = null;
     const steps = TRANSFORM_STEPS.map((s) => ({
@@ -165,7 +169,7 @@ const main = async (): Promise<void> => {
       const e = err as { name?: string; code?: string; message?: string; parent?: Record<string, unknown> };
       const p = e.parent ?? {};
       const redact = (text: unknown): string =>
-        String(text ?? "")
+        (typeof text === "string" ? text : "")
           .replace(/\)=\([^)]*\)/g, ")=(<redacted>)")
           .replace(/'[^']{0,500}'/g, "'<v>'")
           .replace(/"[^"]{0,200}"/g, (m) => (/^"[a-z_][a-z0-9_]*"$/.test(m) ? m : '"<v>"'))
@@ -201,22 +205,22 @@ const main = async (): Promise<void> => {
     await asSuperAdmin(() => migrationService.seedAllRoles());
 
     // The provider tenant (the calibration company), its self facility, an operator, and the import key.
-    await db.query(
+    await sql(
+      db,
       `INSERT INTO tenants (id, name, subdomain, email, status, created_at, updated_at)
-       VALUES (:id, 'Dry Run Provider', 'p2405provider', 'p2405@dryrun.invalid', 'active', now(), now()) ON CONFLICT (id) DO NOTHING`,
-      { replacements: { id: PROVIDER } },
+       VALUES ($1, 'Dry Run Provider', 'p2405provider', 'p2405@dryrun.invalid', 'active', now(), now()) ON CONFLICT (id) DO NOTHING`,
+      [PROVIDER],
     );
     await asSuperAdmin(() => createSelfFacility({ id: PROVIDER, name: "Dry Run Provider" }));
-    const [operator] = (
-      await db.query(
-        `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url, status, is_active,
-                            must_change_password, is_deleted, created_at, updated_at)
-         VALUES (gen_random_uuid(), :t, 'p2405-operator', 'p2405-operator@dryrun.invalid', 'x', 'Dry', 'Run', 'default.svg', 'ACTIVE', true,
-                 false, false, now(), now()) RETURNING id`,
-        { replacements: { t: PROVIDER } },
-      )
-    )[0];
-    const actor = { userId: String(operator?.["id"]), tenantId: PROVIDER, ipAddress: "127.0.0.1", userAgent: "p2405-dry-run" };
+    const [operator] = await sql<{ id: string }>(
+      db,
+      `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url, status, is_active,
+                          must_change_password, is_deleted, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, 'p2405-operator', 'p2405-operator@dryrun.invalid', 'x', 'Dry', 'Run', 'default.svg', 'ACTIVE', true,
+               false, false, now(), now()) RETURNING id`,
+      [PROVIDER],
+    );
+    const actor = { userId: String(operator?.id), tenantId: PROVIDER, ipAddress: "127.0.0.1", userAgent: "p2405-dry-run" };
     await asSuperAdmin(() => provisionImportKey(PROVIDER, { signOffDate: SIGN_OFF, dataClass: "real" }, actor));
 
     // Stage 1: upload (a copy, as multer leaves it in the quarantine) → scan → parse → staging.

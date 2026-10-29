@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-28 — P24-05: the first dry run of a real upstream dump ([record](./records/2026-10-28-p24-05-dry-run-real-dump.md))
+- 371,335 rows staged in 26 s; transform 17 min; every automated reconciliation check green across 115 facilities. Findings: the transform's length, no electrical-safety template imported (866 `item_content_incomplete`), Q-14 22,854. R-7 now also counts the device dates. New script `backend/scripts/upstream-dry-run.ts` (never in CI).
+
 ### 2026-10-28 — P24-02h: the device's own calibration date (`tgl_kalibrasi`) imported as a calibration record ([record](./records/2026-10-28-p24-02h-device-calibration-dates.md), ADR-133 Am. 5)
 - Mapped onto a same-day record, else an `external_date` record by the import key; no due date (UD-8). Live `p2402f` 4/4 and the upstream live suites on PostgreSQL 18.
 
