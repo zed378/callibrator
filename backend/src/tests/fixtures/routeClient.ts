@@ -56,6 +56,9 @@ export interface TwoTenantWorld {
   readonly tenantA: TenantRow;
   readonly tenantB: TenantRow;
   readonly superAdmin: Principal;
+  /** Model doubles whose lookups resolve against the fixture's rows (fixtures/twoTenants.js). */
+  readonly Tenants: { findByPk(...args: unknown[]): unknown; findOne(...args: unknown[]): unknown };
+  readonly Users: { findByPk(...args: unknown[]): unknown };
   principal(tenant: TenantRow, role: string): Principal;
   snapshot(tenant: TenantRow): Record<string, unknown>;
 }

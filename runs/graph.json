@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-29T06:47:49.989Z",
+  "last_updated": "2026-10-29T11:10:24.780Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -392,7 +392,14 @@
     "MEMORY\\records\\2026-10-29-p24-05-photo-sample-dry-run.md",
     "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-01.md",
     "MEMORY\\records\\2026-10-29-perf-transform-statistics-and-api-indexes.md",
-    "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md"
+    "MEMORY\\records\\2026-10-24-p9-26-bulk-batch-02.md",
+    ".tmp-b3.txt",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-56.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-57.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-58.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-59.md",
+    "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-60.md"
   ],
   "entities": [
     {
@@ -74482,6 +74489,132 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 35,
       "evidence": "### 2026-10-29 -- P9-26 bulk batch 02: 50 test files (11 controllers, 35 middlewares, 4 models) to TypeScript ([record](./records/2026-10-24-p9-26-bulk-batch-02"
+    },
+    {
+      "id": "sec_p9_26_batch_56_ten_twotenant_route_suites_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 56: ten twoTenant route suites — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-56.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-56.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 56: ten twoTenant route suites — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_56_ten_twotenant_route_suites_to_typescript_record_records_2026_10_24_p9_26_batch_56_md_",
+      "name": "2026-10-29 -- P9-26 batch 56: ten twoTenant route suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-56.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 35,
+      "evidence": "### 2026-10-29 -- P9-26 batch 56: ten twoTenant route suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-56.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_57_ten_service_suites_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 57: ten service suites — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-57.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-57.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 57: ten service suites — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_57_ten_service_suites_to_typescript_record_records_2026_10_24_p9_26_batch_57_md_",
+      "name": "2026-10-29 -- P9-26 batch 57: ten service suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-57.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 35,
+      "evidence": "### 2026-10-29 -- P9-26 batch 57: ten service suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-57.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_58_two_tenant_guards_services_routes_utils_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 58: two-tenant, guards, services, routes, utils — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-58.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-58.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 58: two-tenant, guards, services, routes, utils — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_58_two_tenant_guards_services_routes_utils_to_typescript_record_records_2026_10_24_p9_26_batch_58_md_",
+      "name": "2026-10-29 -- P9-26 batch 58: two-tenant, guards, services, routes, utils to TypeScript ([record](./records/2026-10-24-p9-26-batch-58.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 35,
+      "evidence": "### 2026-10-29 -- P9-26 batch 58: two-tenant, guards, services, routes, utils to TypeScript ([record](./records/2026-10-24-p9-26-batch-58.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_59_stripewebhook_quota_virusscan_admin_flags_audit_rabbitmq_mfa_email_attachments_health_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 59: stripeWebhook, quota, virusScan, admin flags, audit, rabbitmq, mfa, email, attachments, health — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-59.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-59.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 59: stripeWebhook, quota, virusScan, admin flags, audit, rabbitmq, mfa, email, attachments, health — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_59_ten_suites_to_typescript_record_records_2026_10_24_p9_26_batch_59_md_",
+      "name": "2026-10-29 — P9-26 batch 59: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-59.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-29 — P9-26 batch 59: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-59.md))"
+    },
+    {
+      "id": "sec_2026_10_29_ci_on_89e0ee7_four_red_jobs_four_causes_four_fixes",
+      "name": "2026-10-29 — CI on 89e0ee7: four red jobs, four causes, four fixes",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "source": "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "line": 1,
+      "evidence": "# 2026-10-29 — CI on `89e0ee7`: four red jobs, four causes, four fixes"
+    },
+    {
+      "id": "sec_evidence_named_",
+      "name": "Evidence (named)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "source": "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "line": 15,
+      "evidence": "## Evidence (named)"
+    },
+    {
+      "id": "sec_left_open",
+      "name": "Left open",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "source": "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "line": 33,
+      "evidence": "## Left open"
+    },
+    {
+      "id": "sec_2026_10_29_ci_the_four_red_jobs_on_89e0ee7_fixed_record_records_2026_10_29_ci_green_89e0ee7_md_",
+      "name": "2026-10-29 — CI: the four red jobs on 89e0ee7 fixed ([record](./records/2026-10-29-ci-green-89e0ee7.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-29 — CI: the four red jobs on 89e0ee7 fixed ([record](./records/2026-10-29-ci-green-89e0ee7.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_60_archiver_contract_migrations_0057_0060_a110_d18_a180_w17_a07_p708_w19_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 60: archiver contract, migrations 0057-0060, a110, d18, a180, w17, a07, p708, w19 — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-60.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-60.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 60: archiver contract, migrations 0057-0060, a110, d18, a180, w17, a07, p708, w19 — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_60_ten_suites_to_typescript_record_records_2026_10_24_p9_26_batch_60_md_",
+      "name": "2026-10-29 — P9-26 batch 60: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-60.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-29 — P9-26 batch 60: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-60.md))"
     }
   ],
   "relations": [
@@ -110460,12 +110593,68 @@
       "evidence": "- **DONE:** 50 test files (100% of controller & middleware suites complete) -- `.js` to `.ts`, same 1124 cases, eslint + typecheck clean, ratchet floor lowered ",
       "source_file": "MEMORY\\CHANGELOG.md",
       "line": 36
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_batch_56_ten_twotenant_route_suites_to_typescript_record_records_2026_10_24_p9_26_batch_56_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 10 two-tenant suites (batchJobs, meteredBilling, apiKeys, supplierScorecard, finance, maintenance, vendor, warehouse, webhooks, calibrationDevices) ",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 36
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_batch_57_ten_service_suites_to_typescript_record_records_2026_10_24_p9_26_batch_57_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 10 service suites (oidcJwks.realKey, tenantLifecycle.gracePeriod.w21, iotDevice.service, jobMonitor.coverage.w13, notificationChannels.service, cont",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 36
+    },
+    {
+      "source": "sec_2026_10_29_p9_26_batch_58_two_tenant_guards_services_routes_utils_to_typescript_record_records_2026_10_24_p9_26_batch_58_md_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_done_",
+      "evidence": "- **DONE:** 10 suites (stock.twoTenant, user.create.mustChangePassword.a123, dataRetention.maskAuditPaged.d24, profileSlug.a80, admin.service.cache.a175, tenant",
+      "source_file": "MEMORY\\CHANGELOG.md",
+      "line": 36
+    },
+    {
+      "source": "sec_evidence_named_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_audit_",
+      "evidence": "- **Audit:** `npm audit --omit=dev --audit-level=high` reports 0 vulnerabilities. `node scripts/ci/npm-audit-gate.js` reports \"0 high/critical advisory(ies), 0 ",
+      "source_file": "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "line": 17
+    },
+    {
+      "source": "sec_evidence_named_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_frontend",
+      "evidence": "- **Frontend** (worktree, new lockfile installed): `npx eslint` 0 errors. `npm run typecheck` 0 errors. `npx jest --ci --coverage`: 399 suites, 95.12 / 87.37 / ",
+      "source_file": "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "line": 18
+    },
+    {
+      "source": "sec_evidence_named_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_backend",
+      "evidence": "- **Backend** (worktree, new lockfile): `npm run test:coverage -- --ci --forceExit` at **100 %** on all four measures: statements 34140/34140, branches 17447/17",
+      "source_file": "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "line": 19
+    },
+    {
+      "source": "sec_evidence_named_",
+      "relation": "DEFINES_REQUIREMENT",
+      "target": "ent_live_",
+      "evidence": "- **Live:** `npm run test:live -- --with=all` against `la-` containers: PostgreSQL 18 (pgvector), ClamAV 1.4, Redis 7, RabbitMQ 4, Mosquitto 2, SeaweedFS.",
+      "source_file": "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
+      "line": 27
     }
   ],
   "stats": {
-    "total_sources": 391,
-    "total_entities": 8232,
-    "total_relations": 4497,
+    "total_sources": 398,
+    "total_entities": 8246,
+    "total_relations": 4504,
     "token_savings_estimate": "85-95%"
   }
 }

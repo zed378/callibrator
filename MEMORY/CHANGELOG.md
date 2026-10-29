@@ -8,8 +8,14 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-29 — P9-26 batch 60: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-60.md))
+- gdpr.archiverContract.p602, 0057-0059.p6, 0060-work-order-auto-scheduled-unique, tenantHierarchy.userRoles.a110, signatureEvidence.d18, auth.erasedStatus.a180, webhook.emitCap.w17, dynamicAccessReach.a07, tenant.logoUrl.p708, rateLimiter.memoryBound.w19 -- .js to .ts, same 65 cases, eslint clean, ratchet 379 to 369.
+
 ### 2026-10-29 — CI: the four red jobs on 89e0ee7 fixed ([record](./records/2026-10-29-ci-green-89e0ee7.md))
 - npm audit: next 16.4.3, zod 4.6.7, multer 2.5.0 and the lockfile's 2 critical / 6 high production advisories. Frontend: a kanban fixture type and two guards stale since the self-hosted fonts. Backend coverage back to 100 %. Live suites: the RabbitMQ setup step raced the broker's Erlang cookie (probe as root before startup) and never let a suite run; it now waits on the broker's log.
+
+### 2026-10-29 — P9-26 batch 59: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-59.md))
+- stripeWebhook, quota.ownBucket.q06, virusScan, admin.flags.a174, audit.a42, rabbitmq.dedup.a26, mfa.secretAtRest.s20, email.templates, attachments.route, health.jobs.p702 -- .js to .ts, same 102 cases, eslint + typecheck clean, ratchet 389 to 379.
 
 ### 2026-10-29 — Performance: the transform 608 s → 129 s; device search on a trigram index; compliance counted in SQL ([record](./records/2026-10-29-perf-transform-statistics-and-api-indexes.md), ADR-129 Am. 13)
 - Migration 0147: the transform role gets MAINTAIN, and the runner ANALYZEs after each step. Migration 0148: one tenant-led trigram GIN for the device `find=` (rare term 40 → 6 ms). `getCompliance` groups in SQL instead of reading every record. Contracts cache their date formatters (14×). Same outcomes on the real dump; live `p2401`, `t0148` on PostgreSQL 18.
@@ -34,6 +40,15 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### 2026-10-28 — P25-02: Q-28's unreferenced photo files as a run-level finding ([record](./records/2026-10-28-p25-02-q28-unreferenced.md), ADR-129 Am. 12)
 - The data-quality report gains `runFindings`: photo files on disk (the image-import manifests) that no staged device row names. Live `p2403` 3/3, `p2402g` 6/6 on PostgreSQL 18.
+
+### 2026-10-29 -- P9-26 batch 58: two-tenant, guards, services, routes, utils to TypeScript ([record](./records/2026-10-24-p9-26-batch-58.md))
+- **DONE:** 10 suites (stock.twoTenant, user.create.mustChangePassword.a123, dataRetention.maskAuditPaged.d24, profileSlug.a80, admin.service.cache.a175, tenantHierarchy.guards, ai.ragReach.az02, tenant.routes, auth.getAuthUser.mfaPolicy.a160, audit.actor.a124) -- `.js` to `.ts`, same 108 cases, eslint + typecheck clean, ratchet 399 to 389.
+
+### 2026-10-29 -- P9-26 batch 57: ten service suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-57.md))
+- **DONE:** 10 service suites (oidcJwks.realKey, tenantLifecycle.gracePeriod.w21, iotDevice.service, jobMonitor.coverage.w13, notificationChannels.service, contentMedia.service, migration.service.constants, storage.keys, sop.fanout.d24, maintenance.w30) -- `.js` to `.ts`, same 61 cases, eslint + typecheck clean, ratchet 409 to 399.
+
+### 2026-10-29 -- P9-26 batch 56: ten twoTenant route suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-56.md))
+- **DONE:** 10 two-tenant suites (batchJobs, meteredBilling, apiKeys, supplierScorecard, finance, maintenance, vendor, warehouse, webhooks, calibrationDevices) -- `.js` to `.ts`, same 64 cases, eslint + typecheck clean, ratchet 435 to 409 (with parallel conversions).
 
 ### 2026-10-29 -- P9-26 bulk batch 02: 50 test files (11 controllers, 35 middlewares, 4 models) to TypeScript ([record](./records/2026-10-24-p9-26-bulk-batch-02.md))
 - **DONE:** 50 test files (100% of controller & middleware suites complete) -- `.js` to `.ts`, same 1124 cases, eslint + typecheck clean, ratchet floor lowered 485 to 435.
