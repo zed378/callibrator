@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-28 — Fix: the electrical-safety limits and performance units the transform did not read ([record](./records/2026-10-28-p24-05-fix-catalogue-symbol-limits.md))
+- Found by the real-dump dry run: no electrical-safety template was imported. A limit in `symbol` (`≤ 0,2 Ω`) and a unit as `(g)` are now read. Live `p2402c` 3/3.
+
 ### 2026-10-28 — P24-05: the first dry run of a real upstream dump ([record](./records/2026-10-28-p24-05-dry-run-real-dump.md))
 - 371,335 rows staged in 26 s; transform 17 min; every automated reconciliation check green across 115 facilities. Findings: the transform's length, no electrical-safety template imported (866 `item_content_incomplete`), Q-14 22,854. R-7 now also counts the device dates. New script `backend/scripts/upstream-dry-run.ts` (never in CI).
 

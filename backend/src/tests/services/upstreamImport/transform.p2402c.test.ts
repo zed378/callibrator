@@ -23,6 +23,7 @@ import {
   type StagedCatalogueRow,
 } from "../../../services/upstreamImport/transform/catalogue";
 import type { SqlQueryOptions, SqlRunner } from "../../../utils/sql.util";
+import { inspectionContentProblems } from "@callibrator/contracts/inspectionValues";
 
 const RUN = "a2402000-0000-4000-8000-0000000000f3";
 const TX = { id: "tx" } as unknown as Transaction;
@@ -131,6 +132,29 @@ describe("P24-02c a definition's content", () => {
     });
     expect(definitionOf("electrical_safety", { description: "Arus bocor", status: "1", nilai_acuan: "..." }).content).toMatchObject({ limitOp: "text", limitText: "..." });
     expect(definitionOf("electrical_safety", { description: "Arus bocor", status: "1" }).content).toMatchObject({ limitOp: null, unit: null });
+  });
+
+  it("P24-05 (the real dump): electrical safety has no nilai_acuan — its symbol is the limit and its unit, and the item is publishable", () => {
+    const values = definitionOf("electrical_safety", { description: "Tahanan Hubungan Pentanahan", status: "1,-1", symbol: "≤ 0,2 Ω", notes: "1=Ya, -1=N/A", flag: 1 });
+    expect(values.content).toMatchObject({ inputKind: "measured_with_limit", unit: "Ω", limitOp: "lte", limitValue: "0.2", limitText: "≤ 0,2 Ω", symbol: null });
+    expect(inspectionContentProblems(values.content)).toEqual([]);
+    // A nilai_acuan, where a table has one, still wins over the symbol (the synthetic shape of the earlier suites).
+    expect(definitionOf("electrical_safety", { description: "Arus bocor", status: "1", symbol: "I", nilai_acuan: "≤ 100 µA" }).content).toMatchObject({
+      unit: "µA",
+      limitValue: "100",
+      symbol: "I",
+    });
+    // A symbol that is no limit stays the symbol.
+    expect(definitionOf("electrical_safety", { description: "Arus bocor", status: "1", symbol: "I" }).content).toMatchObject({ symbol: "I", unit: null, limitOp: null });
+  });
+
+  it("P24-05 (the real dump): a performance unit written as a parenthesised symbol is the unit; with none anywhere the item stays incomplete", () => {
+    const weighed = definitionOf("performance", { description: "Akurasi Timbangan", status: "0,1", symbol: "(g)", setting: "10", nilai_acuan: "≤ 3 Kali Rsolusi" });
+    expect(weighed.content).toMatchObject({ unit: "g", symbol: null, settingText: "10", limitOp: "text", limitText: "≤ 3 Kali Rsolusi" });
+    expect(inspectionContentProblems(weighed.content)).toEqual([]);
+    const relative = definitionOf("performance", { description: "Konsentrasi O2", status: "0,1", setting: "N20(0), O2(1), Air(0)", nilai_acuan: "± 10%" });
+    expect(relative.content).toMatchObject({ unit: null, limitOp: "plus_minus_pct" });
+    expect(inspectionContentProblems(relative.content)).toEqual([expect.stringContaining("needs its unit")]);
   });
 
   it("a base section is retired and never carries a setting or a limit; notes may be absent", () => {
