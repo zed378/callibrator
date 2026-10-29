@@ -14,14 +14,27 @@
  * real; only `auth` (to set the principal) and the model layer are stubbed.
  * The assertion is on the JSON body a client actually receives.
  */
+import type * as SessionRoute from "../../routes/api/session.route";
+import type * as MeteredBillingRoute from "../../routes/api/meteredBilling.route";
 
-let currentUser = null;
+interface Principal {
+  id: string;
+  tenantId: string;
+  role: { id: string; name: string; role_level: number };
+}
+
+let currentUser: Principal | null = null;
+
+interface AuthMiddlewareModule {
+  [key: string]: unknown;
+  auth: (req: { user?: Principal | null }, res: unknown, next: () => void) => void;
+}
 
 jest.mock("../../middlewares/auth.middleware", () => {
-  const actual = jest.requireActual("../../middlewares/auth.middleware");
+  const actual = jest.requireActual<AuthMiddlewareModule>("../../middlewares/auth.middleware");
   return {
     ...actual,
-    auth: (req, res, next) => {
+    auth: (req: { user?: Principal | null }, _res: unknown, next: () => void): void => {
       req.user = currentUser;
       next();
     },
@@ -53,38 +66,64 @@ jest.mock("../../models", () => ({
   Tenant: { findByPk: jest.fn() },
 }));
 
-const { Sessions, Invoice } = require("../../models");
-const sessionRouter = require("../../routes/api/session.route");
-const billingRouter = require("../../routes/api/meteredBilling.route");
+interface ModelDouble {
+  findAndCountAll: jest.Mock;
+}
+
+interface TestRouter {
+  handle: (req: unknown, res: unknown, next: (err?: { status?: number; statusCode?: number; message?: string }) => void) => void;
+}
+
+/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as every memoryDb test */
+const { Sessions, Invoice } = require("../../models") as { Sessions: ModelDouble; Invoice: ModelDouble };
+const sessionRouter = require("../../routes/api/session.route") as typeof SessionRoute as unknown as TestRouter;
+const billingRouter = require("../../routes/api/meteredBilling.route") as typeof MeteredBillingRoute as unknown as TestRouter;
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+interface CallResult {
+  status: number;
+  body: { success?: boolean; data?: unknown; meta?: unknown; message?: string | undefined } | null;
+}
+
+interface ResDouble {
+  statusCode: number;
+  headersSent: boolean;
+  status(code: number): ResDouble;
+  json(payload: CallResult["body"]): ResDouble;
+  send(payload: CallResult["body"]): ResDouble;
+  setHeader(): ResDouble;
+  set(): ResDouble;
+  end(): ResDouble;
+}
 
 // Express's own router.handle with a minimal req/res pair — the harness of
 // routeGuards.a28 / workflows.access.a58 (supertest is not a dependency).
-const call = (router, mount, url) =>
+const call = (router: TestRouter, mount: string, url: string): Promise<CallResult> =>
   new Promise((resolve) => {
     const [pathname, search = ""] = url.split("?");
     const query = Object.fromEntries(new URLSearchParams(search));
-    const res = {
+    const res: ResDouble = {
       statusCode: 200,
       headersSent: false,
-      status(code) {
+      status(code: number): typeof res {
         this.statusCode = code;
         return this;
       },
-      json(payload) {
+      json(payload: CallResult["body"]): typeof res {
         this.headersSent = true;
         resolve({ status: this.statusCode, body: payload });
         return this;
       },
-      send(payload) {
+      send(payload: CallResult["body"]): typeof res {
         return this.json(payload);
       },
-      setHeader() {
+      setHeader(): typeof res {
         return this;
       },
-      set() {
+      set(): typeof res {
         return this;
       },
-      end() {
+      end(): typeof res {
         this.headersSent = true;
         resolve({ status: this.statusCode, body: null });
         return this;
@@ -101,29 +140,37 @@ const call = (router, mount, url) =>
       params: {},
       headers: {},
       ip: "127.0.0.1",
-      get: () => undefined,
+      get: (): undefined => undefined,
     };
-    router.handle(req, res, (err) =>
+    router.handle(req, res, (err) => {
       resolve({
-        status: err ? err.status || err.statusCode || 500 : 404,
+        status: err ? err.status ?? err.statusCode ?? 500 : 404,
         body: { message: err ? err.message : "no route" },
-      }),
+      });
+    },
     );
   });
 
 const USER = "550e8400-e29b-41d4-a716-446655440000";
 const TENANT = "33333333-3333-4333-8333-333333333333";
 
+interface EnvelopeMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 /** The envelope's rule, stated once: rows in data, meta beside it. */
-const expectHouseEnvelope = (body, { rows, meta }) => {
-  expect(body.success).toBe(true);
-  expect(Array.isArray(body.data)).toBe(true);
-  expect(body.data).toHaveLength(rows);
-  expect(body.meta).toEqual(meta);
+const expectHouseEnvelope = (body: CallResult["body"], { rows, meta }: { rows: number; meta: EnvelopeMeta }): void => {
+  expect(body?.success).toBe(true);
+  expect(Array.isArray((body as { data?: unknown }).data)).toBe(true);
+  expect((body as { data?: unknown[] }).data).toHaveLength(rows);
+  expect((body as { meta?: unknown }).meta).toEqual(meta);
   // Never the nested shapes.
-  expect(body.data).not.toHaveProperty("rows");
-  expect(body.data).not.toHaveProperty("meta");
-  expect(body.data).not.toHaveProperty("sessions");
+  expect(body?.data).not.toHaveProperty("rows");
+  expect(body?.data).not.toHaveProperty("meta");
+  expect(body?.data).not.toHaveProperty("sessions");
 };
 
 beforeEach(() => {
@@ -152,7 +199,7 @@ describe("F-13 — list endpoints answer the house envelope through their routes
       rows: 2,
       meta: { total: 21, page: 2, limit: 10, totalPages: 3 },
     });
-    expect(body.data[0]).toEqual({ id: "inv-1", tenantId: TENANT, amount: 100 });
+    expect((body as { data?: unknown[] }).data?.[0]).toEqual({ id: "inv-1", tenantId: TENANT, amount: 100 });
     // The tenant is the caller's, from the principal.
     expect(Invoice.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: TENANT }, limit: 10, offset: 10 }),
@@ -192,6 +239,6 @@ describe("F-13 — list endpoints answer the house envelope through their routes
       rows: 1,
       meta: { total: 3, page: 1, limit: 20, totalPages: 1 },
     });
-    expect(body.data[0]).toMatchObject({ id: "8c352a92-d6cf-4b71-b0db-6e69622d1b11", status: "active" });
+    expect(body?.data).toMatchObject([{ id: "8c352a92-d6cf-4b71-b0db-6e69622d1b11", status: "active" }]);
   });
 });

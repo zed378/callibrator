@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-29T11:10:24.780Z",
+  "last_updated": "2026-10-29T12:00:14.885Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -399,7 +399,9 @@
     "MEMORY\\records\\2026-10-24-p9-26-batch-58.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-59.md",
     "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-60.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-60.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-61.md",
+    "MEMORY\\records\\2026-10-24-p9-26-batch-62.md"
   ],
   "entities": [
     {
@@ -74615,6 +74617,42 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-29 — P9-26 batch 60: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-60.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_61_guards_migrations_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 61: guards, migrations, routes — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-61.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-61.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 61: guards, migrations, routes — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_61_ten_suites_to_typescript_record_records_2026_10_24_p9_26_batch_61_md_",
+      "name": "2026-10-29 — P9-26 batch 61: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-61.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-29 — P9-26 batch 61: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-61.md))"
+    },
+    {
+      "id": "sec_p9_26_batch_62_route_shape_gate_envelope_health_billing_checkmenu_js_to_ts_no_assertion_changed",
+      "name": "P9-26 batch 62: route-shape, gate, envelope, health, billing, checkMenu — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-10-24-p9-26-batch-62.md",
+      "source": "MEMORY\\records\\2026-10-24-p9-26-batch-62.md",
+      "line": 1,
+      "evidence": "# P9-26 batch 62: route-shape, gate, envelope, health, billing, checkMenu — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_2026_10_29_p9_26_batch_62_ten_suites_to_typescript_record_records_2026_10_24_p9_26_batch_62_md_",
+      "name": "2026-10-29 — P9-26 batch 62: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-62.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-10-29 — P9-26 batch 62: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-62.md))"
     }
   ],
   "relations": [
@@ -110652,8 +110690,8 @@
     }
   ],
   "stats": {
-    "total_sources": 398,
-    "total_entities": 8246,
+    "total_sources": 400,
+    "total_entities": 8250,
     "total_relations": 4504,
     "token_savings_estimate": "85-95%"
   }

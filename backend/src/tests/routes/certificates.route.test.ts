@@ -3,7 +3,19 @@
  *
  * Tests the Certificates route registrations and middleware chain.
  */
-const certificatesRoutes = require("../../routes/api/certificates.route");
+import type * as CertificatesRoute from "../../routes/api/certificates.route";
+
+interface CertificatesRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface CertificatesRouter {
+    handle: unknown;
+    stack: CertificatesRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const certificatesRoutes = require("../../routes/api/certificates.route") as typeof CertificatesRoute as unknown as CertificatesRouter;
 
 describe("Certificates Routes", () => {
   it("should export an Express router", () => {
@@ -23,121 +35,77 @@ describe("Certificates Routes", () => {
 
   it("should have GET route for /verify/:certificateNumber", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/verify/:certificateNumber" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/verify/:certificateNumber" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have GET route for /", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have GET route for /stats", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/stats" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/stats" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have GET route for /:certificateId", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:certificateId" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/:certificateId" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have PUT route for /:certificateId", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:certificateId" &&
-        layer.route.methods &&
-        layer.route.methods.put,
+      (layer) => layer.route?.path === "/:certificateId" && layer.route.methods["put"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have DELETE route for /:certificateId", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:certificateId" &&
-        layer.route.methods &&
-        layer.route.methods.delete,
+      (layer) => layer.route?.path === "/:certificateId" && layer.route.methods["delete"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /:certificateId/approve", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:certificateId/approve" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/:certificateId/approve" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /:certificateId/sign", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:certificateId/sign" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/:certificateId/sign" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /:certificateId/revoke", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:certificateId/revoke" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/:certificateId/revoke" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have GET route for /:certificateId/pdf", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:certificateId/pdf" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/:certificateId/pdf" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
@@ -146,30 +114,20 @@ describe("Certificates Routes", () => {
   // the document is data, GET /:certificateId/document.
   it("has no POST route for /:certificateId/pdf", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:certificateId/pdf" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/:certificateId/pdf" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(0);
   });
 
   it("should have GET route for /:certificateId/document", () => {
     const routes = certificatesRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:certificateId/document" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/:certificateId/document" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have middleware or routes in stack", () => {
-    const hasMiddleware = certificatesRoutes.stack.some(
-      (layer) => !layer.route,
-    );
+    const hasMiddleware = certificatesRoutes.stack.some((layer) => !layer.route);
     const hasRoutes = certificatesRoutes.stack.some((layer) => layer.route);
     // At least one middleware or route layer should exist
     expect(hasMiddleware || hasRoutes).toBe(true);
@@ -179,19 +137,17 @@ describe("Certificates Routes", () => {
     certificatesRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
+        const hasGet = methods["get"] === true;
+        const hasPost = methods["post"] === true;
+        const hasPut = methods["put"] === true;
+        const hasDelete = methods["delete"] === true;
         expect(hasGet || hasPost || hasPut || hasDelete).toBe(true);
       }
     });
   });
 
   it("should have exactly 14 route endpoints", () => {
-    const routeCount = certificatesRoutes.stack.filter(
-      (layer) => layer.route,
-    ).length;
+    const routeCount = certificatesRoutes.stack.filter((layer) => layer.route).length;
     // 14 since ADR-042 step 4 added GET /verify/:certificateNumber/document.
     expect(routeCount).toBe(14);
   });

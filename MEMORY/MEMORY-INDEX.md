@@ -10,6 +10,8 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-10-29 | P9-26 | [Batch 62: route-shape, gate, envelope, health, billing, checkMenu](./records/2026-10-24-p9-26-batch-62.md) | **DONE.** 10 suites -- .js to .ts, same 185 cases, eslint + typecheck clean, ratchet 359 to 349 |
+| 2026-10-29 | P9-26 | [Batch 61: guards, migrations, routes](./records/2026-10-24-p9-26-batch-61.md) | **DONE.** 10 suites -- .js to .ts, same 92 cases, eslint + typecheck clean, ratchet 369 to 359 |
 | 2026-10-29 | P9-26 | [Batch 60: archiver contract, migrations 0057-0060, a110, d18, a180, w17, a07, p708, w19](./records/2026-10-24-p9-26-batch-60.md) | **DONE.** 10 suites -- .js to .ts, same 65 cases, eslint clean, ratchet 379 to 369 |
 | 2026-10-29 | CI | [CI on 89e0ee7: four red jobs fixed](./records/2026-10-29-ci-green-89e0ee7.md) | **DONE in code; CI proof on next push.** audit 0 high/critical (459865f); frontend typecheck + 2 stale font guards (8640b43); backend coverage 100 % (8822b10); live-db RabbitMQ cookie race in the setup step. Local live 68/68 suites, 517 tests |
 | 2026-10-29 | P9-26 | [Batch 59: stripeWebhook, quota, virusScan, admin flags, audit, rabbitmq, mfa, email, attachments, health](./records/2026-10-24-p9-26-batch-59.md) | **DONE.** 10 suites -- .js to .ts, same 102 cases, eslint + typecheck clean, ratchet 389 to 379 |

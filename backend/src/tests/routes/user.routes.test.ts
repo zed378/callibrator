@@ -3,7 +3,18 @@
  *
  * Tests the user route registrations and middleware chain.
  */
-const EventEmitter = require("events");
+import { EventEmitter } from "events";
+import type * as UserRoute from "../../routes/api/user.route";
+import type * as AuditService from "../../services/audit.service";
+
+interface UserRouteLayer {
+  route?: { path?: string; methods: Record<string, boolean>; stack: { handle: (...args: unknown[]) => void }[] };
+}
+
+interface UserRouter {
+  handle: unknown;
+  stack: UserRouteLayer[];
+}
 
 // audit.service is stubbed, so any audit write on a user route shows up as a
 // logAction call. (The after-response recordAudit middleware was removed
@@ -12,8 +23,10 @@ jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue(undefined),
 }));
 
-const userRoutes = require("../../routes/api/user.route");
-const auditService = require("../../services/audit.service");
+/* eslint-disable @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built */
+const userRoutes = require("../../routes/api/user.route") as typeof UserRoute as unknown as UserRouter;
+const auditService = require("../../services/audit.service") as typeof AuditService;
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 describe("User Routes", () => {
   it("should export an Express router", () => {
@@ -32,89 +45,62 @@ describe("User Routes", () => {
   });
 
   it("should have GET method routes", () => {
-    const getRoutes = userRoutes.stack.filter(
-      (layer) => layer.route && layer.route.methods && layer.route.methods.get,
-    );
+    const getRoutes = userRoutes.stack.filter((layer) => layer.route?.methods["get"] === true);
     expect(getRoutes.length).toBeGreaterThan(0);
   });
 
   it("should have POST method routes", () => {
-    const postRoutes = userRoutes.stack.filter(
-      (layer) => layer.route && layer.route.methods && layer.route.methods.post,
-    );
+    const postRoutes = userRoutes.stack.filter((layer) => layer.route?.methods["post"] === true);
     expect(postRoutes.length).toBeGreaterThan(3);
   });
 
   it("should have PATCH method routes", () => {
-    const patchRoutes = userRoutes.stack.filter(
-      (layer) =>
-        layer.route && layer.route.methods && layer.route.methods.patch,
-    );
+    const patchRoutes = userRoutes.stack.filter((layer) => layer.route?.methods["patch"] === true);
     expect(patchRoutes.length).toBeGreaterThan(0);
   });
 
   it("should have DELETE method routes", () => {
-    const deleteRoutes = userRoutes.stack.filter(
-      (layer) =>
-        layer.route && layer.route.methods && layer.route.methods.delete,
-    );
+    const deleteRoutes = userRoutes.stack.filter((layer) => layer.route?.methods["delete"] === true);
     expect(deleteRoutes.length).toBeGreaterThan(0);
   });
 
   it("should have /all route", () => {
-    const allLayers = userRoutes.stack.filter((layer) => {
-      return layer.route && layer.route.path === "/all";
-    });
+    const allLayers = userRoutes.stack.filter((layer) => layer.route?.path === "/all");
     expect(allLayers.length).toBeGreaterThan(0);
   });
 
   it("should have /detail route", () => {
-    const detailLayers = userRoutes.stack.filter((layer) => {
-      return layer.route && layer.route.path === "/detail";
-    });
+    const detailLayers = userRoutes.stack.filter((layer) => layer.route?.path === "/detail");
     expect(detailLayers.length).toBeGreaterThan(0);
   });
 
   it("should have /create route", () => {
-    const createLayers = userRoutes.stack.filter((layer) => {
-      return layer.route && layer.route.path === "/create";
-    });
+    const createLayers = userRoutes.stack.filter((layer) => layer.route?.path === "/create");
     expect(createLayers.length).toBeGreaterThan(0);
   });
 
   it("should have /edit route", () => {
-    const editLayers = userRoutes.stack.filter((layer) => {
-      return layer.route && layer.route.path === "/edit";
-    });
+    const editLayers = userRoutes.stack.filter((layer) => layer.route?.path === "/edit");
     expect(editLayers.length).toBeGreaterThan(0);
   });
 
   it("should have /delete route", () => {
-    const deleteLayers = userRoutes.stack.filter((layer) => {
-      return layer.route && layer.route.path === "/delete";
-    });
+    const deleteLayers = userRoutes.stack.filter((layer) => layer.route?.path === "/delete");
     expect(deleteLayers.length).toBeGreaterThan(0);
   });
 
   it("should have /username-check route", () => {
-    const usernameCheckLayers = userRoutes.stack.filter((layer) => {
-      return layer.route && layer.route.path === "/username-check";
-    });
+    const usernameCheckLayers = userRoutes.stack.filter((layer) => layer.route?.path === "/username-check");
     expect(usernameCheckLayers.length).toBeGreaterThan(0);
   });
 
   it("should have /role-update route", () => {
-    const roleUpdateLayers = userRoutes.stack.filter((layer) => {
-      return layer.route && layer.route.path === "/role-update";
-    });
+    const roleUpdateLayers = userRoutes.stack.filter((layer) => layer.route?.path === "/role-update");
     expect(roleUpdateLayers.length).toBeGreaterThan(0);
   });
 
   it("should have avatar routes with userId param", () => {
-    const avatarLayers = userRoutes.stack.filter((layer) => {
-      const p = layer.route && layer.route.path;
-      return p && p.includes("avatar");
-    });
+    const avatarLayers = userRoutes.stack.filter((layer) => layer.route?.path?.includes("avatar") === true);
     expect(avatarLayers.length).toBeGreaterThan(0);
   });
 
@@ -127,15 +113,23 @@ describe("User Routes", () => {
   // second row for every change. No route layer may write an audit row.
   // --------------------------------------------------------------------
   describe("A-77 — no post-response audit on the user mutation routes", () => {
-    const handlesFor = (path, method) => {
-      const layer = userRoutes.stack.find(
-        (l) => l.route && l.route.path === path && l.route.methods[method],
-      );
+    const handlesFor = (path: string, method: string): ((...args: unknown[]) => void)[] => {
+      const layer = userRoutes.stack.find((l) => l.route?.path === path && l.route.methods[method] === true);
+      if (layer?.route === undefined) {
+        throw new Error(`route not found: ${method} ${path}`);
+      }
       return layer.route.stack.map((s) => s.handle);
     };
 
-    const fireFinish = async (path, method) => {
-      const res = new EventEmitter();
+    const fireFinish = (path: string, method: string): Promise<void> => {
+      const res = new EventEmitter() as EventEmitter & {
+        statusCode: number;
+        status: jest.Mock;
+        json: jest.Mock;
+        send: jest.Mock;
+        setHeader: jest.Mock;
+        getHeader: jest.Mock;
+      };
       res.statusCode = 200;
       res.status = jest.fn().mockReturnValue(res);
       res.json = jest.fn().mockReturnValue(res);
@@ -149,15 +143,18 @@ describe("User Routes", () => {
         body: { userId: "user-99" },
         user: { id: "actor-1", tenantId: "tenant-1" },
       };
+      const noop = (): void => undefined;
       for (const h of handlesFor(path, method)) {
         try {
-          h(req, res, () => {});
+          h(req, res, noop);
         } catch {
           /* a gate rejecting the stub request */
         }
       }
       res.emit("finish");
-      await new Promise((r) => setImmediate(r));
+      return new Promise<void>((r) => {
+        setImmediate(r);
+      });
     };
 
     beforeEach(() => jest.clearAllMocks());
@@ -167,7 +164,7 @@ describe("User Routes", () => {
       ["/create", "post"],
       ["/edit", "patch"],
       ["/delete", "delete"],
-    ])("%s (%s) writes no audit row from the route layer", async (path, method) => {
+    ])("%s (%s) writes no audit row from the route layer", async (path: string, method: string) => {
       await fireFinish(path, method);
       expect(auditService.logAction).not.toHaveBeenCalled();
     });

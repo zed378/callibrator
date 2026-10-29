@@ -3,7 +3,19 @@
  *
  * Tests the Menu Groups route registrations and middleware chain.
  */
-const menuGroupsRoutes = require("../../routes/api/menuGroups.route");
+import type * as MenuGroupsRoute from "../../routes/api/menuGroups.route";
+
+interface MenuGroupsRouteLayer {
+    route?: { path: string; methods: Record<string, boolean> };
+}
+
+interface MenuGroupsRouter {
+    handle: unknown;
+    stack: MenuGroupsRouteLayer[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), as built
+const menuGroupsRoutes = require("../../routes/api/menuGroups.route") as typeof MenuGroupsRoute as unknown as MenuGroupsRouter;
 
 describe("Menu Groups Routes", () => {
   it("should export an Express router", () => {
@@ -23,176 +35,112 @@ describe("Menu Groups Routes", () => {
 
   it("should have POST route for /filter", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/filter" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/filter" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /get-assignments", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/get-assignments" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/get-assignments" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have GET route for /menu-groups", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/menu-groups" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/menu-groups" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have GET route for /menu-groups/admin", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/menu-groups/admin" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/menu-groups/admin" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have GET route for /roles", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/roles" &&
-        layer.route.methods &&
-        layer.route.methods.get,
+      (layer) => layer.route?.path === "/roles" && layer.route.methods["get"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /create", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/create" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/create" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /update", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/update" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/update" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /delete", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/delete" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/delete" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /assign", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/assign" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/assign" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /revoke", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/revoke" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/revoke" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /assign-item", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/assign-item" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/assign-item" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /revoke-item", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/revoke-item" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/revoke-item" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /bulk-assign", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/bulk-assign" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/bulk-assign" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have POST route for /bulk-revoke", () => {
     const routes = menuGroupsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/bulk-revoke" &&
-        layer.route.methods &&
-        layer.route.methods.post,
+      (layer) => layer.route?.path === "/bulk-revoke" && layer.route.methods["post"] === true,
     );
     expect(routes.length).toBe(1);
   });
 
   it("should have middleware or routes in stack", () => {
-    const hasMiddleware = menuGroupsRoutes.stack.some(
-      (layer) => !layer.route,
-    );
-    const hasRoutes = menuGroupsRoutes.stack.some(
-      (layer) => layer.route,
-    );
+    const hasMiddleware = menuGroupsRoutes.stack.some((layer) => !layer.route);
+    const hasRoutes = menuGroupsRoutes.stack.some((layer) => layer.route);
     // At least one middleware or route layer should exist
     expect(hasMiddleware || hasRoutes).toBe(true);
   });
 
   it("should have middleware or routes in stack", () => {
-    const hasMiddleware = menuGroupsRoutes.stack.some(
-      (layer) => !layer.route,
-    );
-    const hasRoutes = menuGroupsRoutes.stack.some(
-      (layer) => layer.route,
-    );
+    const hasMiddleware = menuGroupsRoutes.stack.some((layer) => !layer.route);
+    const hasRoutes = menuGroupsRoutes.stack.some((layer) => layer.route);
     // At least one middleware or route layer should exist
     expect(hasMiddleware || hasRoutes).toBe(true);
   });
@@ -201,16 +149,14 @@ describe("Menu Groups Routes", () => {
     menuGroupsRoutes.stack.forEach((layer) => {
       if (layer.route) {
         const methods = layer.route.methods;
-        expect(methods.get === true || methods.post === true).toBe(true);
+        expect(methods["get"] === true || methods["post"] === true).toBe(true);
       }
     });
   });
 
   // 15 since ADR-102 added GET /my-permissions.
   it("should have exactly 15 route endpoints", () => {
-    const routeCount = menuGroupsRoutes.stack.filter(
-      (layer) => layer.route,
-    ).length;
+    const routeCount = menuGroupsRoutes.stack.filter((layer) => layer.route).length;
     expect(routeCount).toBe(15);
   });
 });
