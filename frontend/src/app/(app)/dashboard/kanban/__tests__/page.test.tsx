@@ -35,6 +35,7 @@ const post = api.post as jest.Mock;
 const project = (id: string, over: Partial<KanbanProjectSummary> = {}): KanbanProjectSummary => ({
   id,
   name: `Board ${id}`,
+  code: null,
   description: null,
   color: "#4f46e5",
   createdBy: "u-1",

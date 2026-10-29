@@ -53,7 +53,9 @@ describe("public surface CSS (P10-17 perf addendum)", () => {
       }
       expect(tables).not.toBeNull();
       const ascii = (tables as Buffer).toString("latin1");
-      expect(ascii).toContain("kern"); // the decode found the feature list
+      // The decode found the feature list. Not `kern`: JetBrains Mono, a monospace face, has no
+      // kerning feature (ADR-131 Am. 1 added it here); every face in this folder has `locl`.
+      expect(ascii).toContain("locl");
       for (const tag of ["cv02", "cv03", "cv04", "cv11"]) expect(ascii).not.toContain(tag);
     },
   );

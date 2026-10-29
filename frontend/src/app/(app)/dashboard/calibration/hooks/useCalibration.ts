@@ -206,7 +206,7 @@ export function useCalibration() {
         complianceFilter,
       );
       fetchCertificateStats();
-    } catch (err) {
+    } catch {
       // Handled by store
     }
   };
@@ -245,7 +245,7 @@ export function useCalibration() {
         certNumFilter || undefined,
       );
       fetchCertificateStats();
-    } catch (err) {
+    } catch {
       // Handled by store
     }
   };
@@ -269,7 +269,7 @@ export function useCalibration() {
     try {
       await submitCertificate(cert.id);
       refetchCertificates();
-    } catch (err) {
+    } catch {
       // Handled by store (the explanation is shown in the page alert)
     }
   };
@@ -321,7 +321,7 @@ export function useCalibration() {
         certNumFilter || undefined,
       );
       fetchCertificateStats();
-    } catch (err) {
+    } catch {
       // Handled by store
     }
   };
@@ -366,7 +366,7 @@ export function useCalibration() {
         certNumFilter || undefined,
       );
       fetchCertificateStats();
-    } catch (err) {
+    } catch {
       // Handled by store
     }
   };
@@ -413,7 +413,7 @@ export function useCalibration() {
         certNumFilter || undefined,
       );
       fetchCertificateStats();
-    } catch (err) {
+    } catch {
       // Handled by store
     }
   };

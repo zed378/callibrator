@@ -1,6 +1,6 @@
 import React from "react";
 import { PaginatedResponse, Warehouse, WarehouseStatus } from "@/types";
-import { Card, CardContent, Table, Pagination, Button, TableSkeleton } from "@/components/ui";
+import { Card, Table, Pagination, Button, TableSkeleton } from "@/components/ui";
 import { Warehouse as WarehouseIcon, MapPin, Edit, Trash2, Eye } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 

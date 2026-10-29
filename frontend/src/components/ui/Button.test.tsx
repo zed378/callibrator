@@ -1,7 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { Button } from './Button';
-import { Loader2 } from 'lucide-react';
 
 describe('Button', () => {
   it('should render button with children', () => {
@@ -61,7 +60,7 @@ describe('Button', () => {
   });
 
   it('should render left icon', () => {
-    const { container } = render(
+    render(
       <Button leftIcon={<span data-testid="left-icon">Left</span>}>
         With Icon
       </Button>,
@@ -70,7 +69,7 @@ describe('Button', () => {
   });
 
   it('should render right icon', () => {
-    const { container } = render(
+    render(
       <Button rightIcon={<span data-testid="right-icon">Right</span>}>
         With Icon
       </Button>,

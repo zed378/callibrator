@@ -1,5 +1,5 @@
 import React from "react";
-import { Input, Badge, Select, Button } from "@/components/ui";
+import { Input, Select, Button } from "@/components/ui";
 import { CheckCircle, XCircle } from "lucide-react";
 import type { User } from "@/types";
 

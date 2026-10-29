@@ -32,7 +32,7 @@ describe('Input', () => {
   });
 
   it('should not display helper text when error exists', () => {
-    const { container } = render(
+    render(
       <Input error="Required" helperText="This should not appear" />,
     );
     expect(

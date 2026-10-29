@@ -2,9 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
-import { Button } from "@/components/ui";
 import { useAuthStore } from "@/stores/authStore";
-import { userService } from "@/api/services/user.service";
 import AvatarUpload from "./components/AvatarUpload";
 import ProfileForm from "./components/ProfileForm";
 import AppearanceSettings from "./components/AppearanceSettings";

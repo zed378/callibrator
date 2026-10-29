@@ -1,5 +1,5 @@
 import React, { useId } from "react";
-import { Shield, X, AlertTriangle, Loader2 } from "lucide-react";
+import { Shield, X, AlertTriangle } from "lucide-react";
 import { Button, Input, Textarea } from "@/components/ui";
 import { useModalA11y } from "@/components/ui/useModalA11y";
 
