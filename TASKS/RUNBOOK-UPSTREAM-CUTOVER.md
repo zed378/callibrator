@@ -152,7 +152,7 @@ Dominated by the delta, not the bulk — **if the bulk was loaded ahead**.
 | Item | Basis | Window |
 |---|---|---|
 | Final dump + stage | **measured 2026-10-28 (P24-05):** 371,335 rows of the 2026-10-06 dump, upload + scan + parse + staging 26 s | under 1 min |
-| Transform + load | **measured 2026-10-28 (P24-05): 17 min** (1,023 s): IPM sessions 421 s and results 408 s dominate, step 9 112 s without real photos (it grows with them), rooms 41 s | ~20 min, more with the photos |
+| Transform + load | **measured twice on 2026-10-28 (P24-05): 5.6 min and 17 min** on one workstation, the slower under load from other test suites. The IPM sessions and results dominate in both runs; step 9 runs without real photos here and grows with them | 6–20 min, more with the photos |
 | Delta files | a day's photos | minutes |
 | Reconciliation | **measured 2026-10-28:** reconciliation 28 s + data-quality 10 s (R-1 … R-8 per facility, R-8/R-9/R-10/R-11/RC-F1/RC-F2/RC-F3/RC-F5 run level, all green); RC-F4 and R-12 recorded by hand | under 1 min + the operator's review |
 | **Total** | | **about 1 hour** if § 4 ran (the transform alone is ~20 min) |

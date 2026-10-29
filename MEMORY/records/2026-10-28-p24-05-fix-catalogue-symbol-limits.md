@@ -50,8 +50,16 @@ operator completes it in the catalogue, and the next run adds them (ADR-129 Am. 
 | Live, PostgreSQL 18: `p2402d`, `p2402g`, `p2403` | pass |
 | eslint | clean |
 
-## Still to do
+## Re-measured on the real dump (2026-10-28, the second dry run)
 
-Re-run the dry run on the real dump and record how many of the 866 quarantined template rows now
-publish. The expectation is all 638 electrical-safety rows, and the performance rows whose item now
-has a unit. The rows whose item has no unit anywhere stay quarantined.
+Same dump (`2026-10-06-skp_ipm.sql`), same script, a fresh throwaway PostgreSQL 18 and ClamAV,
+removed after the run.
+
+| Template source | First dry run | After the fix |
+|---|---|---|
+| `mapping_keamanan_listrik` | 0 of 638 (638 incomplete) | **638 of 638** |
+| `mapping_kinerja_alat` | 54 of 282 (228 incomplete) | **176 of 282** (106 incomplete: their item has no unit anywhere in the data, for the operator to complete) |
+
+All other template sources are unchanged: `mapping_fugsi_alat` 860, `mapping_alat_kerja_digunakan`
+758, `mapping_kelengkapan_alat` 338. Every reconciliation check passes again. R-7 is now
+**27,299 / 27,299**: 3,640 `trx_kalibrasi` rows plus 23,659 device dates.
