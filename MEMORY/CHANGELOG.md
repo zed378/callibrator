@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-29 — CI: the four red jobs on 89e0ee7 fixed ([record](./records/2026-10-29-ci-green-89e0ee7.md))
+- npm audit: next 16.4.3, zod 4.6.7, multer 2.5.0 and the lockfile's 2 critical / 6 high production advisories. Frontend: a kanban fixture type and two guards stale since the self-hosted fonts. Backend coverage back to 100 %. Live suites: the RabbitMQ setup step raced the broker's Erlang cookie (probe as root before startup) and never let a suite run; it now waits on the broker's log.
+
 ### 2026-10-29 — Performance: the transform 608 s → 129 s; device search on a trigram index; compliance counted in SQL ([record](./records/2026-10-29-perf-transform-statistics-and-api-indexes.md), ADR-129 Am. 13)
 - Migration 0147: the transform role gets MAINTAIN, and the runner ANALYZEs after each step. Migration 0148: one tenant-led trigram GIN for the device `find=` (rare term 40 → 6 ms). `getCompliance` groups in SQL instead of reading every record. Contracts cache their date formatters (14×). Same outcomes on the real dump; live `p2401`, `t0148` on PostgreSQL 18.
 

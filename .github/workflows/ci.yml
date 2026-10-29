@@ -542,13 +542,23 @@ jobs:
           done
           docker logs mqtt; exit 1
       # A step, not a service: rabbitmq.w06 restarts the broker by container name.
+      # Wait on the broker's own log, never on a CLI probe: `docker exec` runs the
+      # CLI as root, and a probe that lands before the server has written its
+      # Erlang cookie creates /var/lib/rabbitmq/.erlang.cookie owned by root; the
+      # server (user rabbitmq) then dies with "Error when reading ... .erlang.cookie:
+      # eacces" and the probe never passes (red since 2026-10-28, reproduced locally
+      # with this digest; record 2026-10-29-ci-green-89e0ee7). One probe after startup.
       - name: RabbitMQ 4 (rmq-live, digest-pinned)
         run: |
           set -euo pipefail
           docker run -d --name rmq-live -p 5672:5672 \
             rabbitmq:4-alpine@sha256:2cb43283d8bbd3caa6c0f0dc00e96c8de772df33df7fd8af6aee4d605aeb8ada
-          for i in $(seq 1 90); do
-            if docker exec rmq-live rabbitmq-diagnostics -q check_port_connectivity >/dev/null 2>&1; then echo "broker up after ${i}s"; exit 0; fi
+          for i in $(seq 1 120); do
+            # grep reads the whole log (no -q): an early exit would SIGPIPE docker logs under pipefail.
+            if docker logs rmq-live 2>&1 | grep "Server startup complete" >/dev/null; then
+              docker exec rmq-live rabbitmq-diagnostics -q check_port_connectivity >/dev/null
+              echo "broker up after ${i}s"; exit 0
+            fi
             sleep 1
           done
           docker logs rmq-live; exit 1
