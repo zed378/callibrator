@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-29 — P9-26 batch 62: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-62.md))
+- certificates.route, user.routes, menuGroups.route, routeGuards.a02, envelope.f13, health.route, managementPages.q20, rolesGlobal.d16, meteredBilling.route, checkMenu -- .js to .ts, same 185 cases, eslint + typecheck clean, ratchet 359 to 349.
+
+### 2026-10-29 — P9-26 batch 61: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-61.md))
+- nodeVersion.a257, 0022-encrypt-webhook-secrets, 0043-webhook-durable-delivery, 0044-iot-device-token-hash, 0056-uploads-public-class, admin.flags.a174, appRoutes.a253, attachments.orphans.d22, auth.ssoExchange.a60, certificateFrame.p708 -- .js to .ts, same 92 cases, eslint + typecheck clean, ratchet 369 to 359.
+
 ### 2026-10-29 — P9-26 batch 60: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-60.md))
 - gdpr.archiverContract.p602, 0057-0059.p6, 0060-work-order-auto-scheduled-unique, tenantHierarchy.userRoles.a110, signatureEvidence.d18, auth.erasedStatus.a180, webhook.emitCap.w17, dynamicAccessReach.a07, tenant.logoUrl.p708, rateLimiter.memoryBound.w19 -- .js to .ts, same 65 cases, eslint clean, ratchet 379 to 369.
 

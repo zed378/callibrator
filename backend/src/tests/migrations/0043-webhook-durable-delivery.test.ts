@@ -16,30 +16,41 @@
  * second `up` changed nothing; `down` removed both; `down` again and `up`
  * after `down` both succeeded.
  */
-const fs = require("fs");
-const path = require("path");
-const migration = require("../../migrations/0043-webhook-durable-delivery");
+/* eslint-disable @typescript-eslint/require-await -- the fakes stand in for the async sequelize: a throw inside them must be a rejection */
+import * as fs from "fs";
+import * as path from "path";
+
+import migration from "../../migrations/0043-webhook-durable-delivery";
 
 const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
-const fakeContext = ({ table = true, column = false, index = false } = {}) => {
-  const calls = [];
-  const query = jest.fn(async (sql, options = {}) => {
+interface CallRecord {
+    sql: string;
+    options: { replacements?: Record<string, unknown>; transaction?: unknown };
+}
+
+const fakeContext = ({ table = true, column = false, index = false }: { table?: boolean; column?: boolean; index?: boolean } = {}) => {
+  const calls: CallRecord[] = [];
+  const query = jest.fn(async (sql: string, options: { replacements?: Record<string, unknown>; transaction?: unknown } = {}) => {
     calls.push({ sql: sql.replace(/\s+/g, " ").trim(), options });
-    if (/to_regclass/.test(sql)) {
-      const name = options.replacements.table || options.replacements.index;
+    if (sql.includes("to_regclass")) {
+      const name = (options.replacements?.["table"] ?? options.replacements?.["index"]) as string;
       return [[{ present: name === migration.TABLE ? table : index }]];
     }
-    if (/information_schema\.columns/.test(sql)) {
+    if (sql.includes("information_schema.columns")) {
       return [[{ n: column ? 1 : 0 }]];
     }
     return [[]];
   });
   const tx = { id: "tx" };
-  return { calls, tx, context: { sequelize: { query, transaction: async (fn) => fn(tx) } } };
+  return { calls, tx, context: { sequelize: { query, transaction: async (fn: (tx: unknown) => unknown) => fn(tx) } } };
 };
 
-const statements = (calls) => calls.map((c) => c.sql).filter((s) => !/^SELECT/.test(s));
+type FakeContext = ReturnType<typeof fakeContext>;
+type Context = Parameters<typeof migration.up>[0]["context"];
+const ctx = (fake: FakeContext["context"]): Context => fake as unknown as Context;
+
+const statements = (calls: CallRecord[]): string[] => calls.map((c) => c.sql).filter((s) => !s.startsWith("SELECT"));
 
 describe("0043-webhook-durable-delivery", () => {
   it("is registered in the migrator", () => {
@@ -50,13 +61,13 @@ describe("0043-webhook-durable-delivery", () => {
 
   it("refuses — does not skip — when webhook_deliveries is missing", async () => {
     const { context, calls } = fakeContext({ table: false });
-    await expect(migration.up({ context })).rejects.toThrow(/does not exist/);
+    await expect(migration.up({ context: ctx(context) })).rejects.toThrow(/does not exist/);
     expect(statements(calls)).toEqual([]);
   });
 
   it("on a pre-0043 table: adds the column, resumes/dead-letters abandoned rows, adds the index — in one transaction", async () => {
     const { context, calls, tx } = fakeContext();
-    await migration.up({ context });
+    await migration.up({ context: ctx(context) });
     const done = statements(calls);
     expect(done[0]).toBe("SET LOCAL lock_timeout = '10s'");
     expect(done[1]).toBe("ALTER TABLE webhook_deliveries ADD COLUMN next_attempt_at TIMESTAMPTZ NULL");
@@ -65,20 +76,20 @@ describe("0043-webhook-durable-delivery", () => {
     expect(done[4]).toBe(
       "CREATE INDEX webhook_deliveries_due ON webhook_deliveries (next_attempt_at) WHERE status IN ('pending', 'failed')",
     );
-    expect(calls.find((c) => /SET status = 'exhausted'/.test(c.sql)).options.replacements.note).toBe(migration.ABANDONED_NOTE);
+    expect(calls.find((c) => c.sql.includes("SET status = 'exhausted'"))?.options.replacements?.["note"]).toBe(migration.ABANDONED_NOTE);
     expect(calls.every((c) => c.options.transaction === tx)).toBe(true);
   });
 
   it("is idempotent: with the column and index present it adds neither", async () => {
     const { context, calls } = fakeContext({ column: true, index: true });
-    await migration.up({ context });
+    await migration.up({ context: ctx(context) });
     const done = statements(calls);
     expect(done.some((s) => /ADD COLUMN|CREATE INDEX/.test(s))).toBe(false);
   });
 
   it("down drops the index and the column", async () => {
     const { context, calls } = fakeContext();
-    await migration.down({ context });
+    await migration.down({ context: ctx(context) });
     expect(statements(calls)).toEqual([
       "SET LOCAL lock_timeout = '10s'",
       "DROP INDEX IF EXISTS webhook_deliveries_due",
@@ -88,7 +99,7 @@ describe("0043-webhook-durable-delivery", () => {
 
   it("down on a database without the table does nothing", async () => {
     const { context, calls } = fakeContext({ table: false });
-    await migration.down({ context });
+    await migration.down({ context: ctx(context) });
     expect(statements(calls)).toEqual([]);
   });
 });

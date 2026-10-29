@@ -16,22 +16,43 @@
  * that is covered in sso.controller.test.js and, over a fake pg wire, in
  * auth.tokenPurpose.a59.test.js.
  */
+/* eslint-disable no-restricted-properties -- the test toggles AUTH_RATE_LIMIT_BY_IP per case, as the limiter reads it */
+interface RateLimiter {
+  clearMemoryStore: () => void;
+}
 
 // A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
-jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
-const authRouter = require("../../routes/api/auth.route");
-const { clearMemoryStore } = require("../../services/rateLimiter.redis.service");
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(() => Promise.resolve(undefined)) }));
 
-const exchange = (body, ip = "198.51.100.20") =>
+interface AuthRouter {
+  handle: (
+    req: object,
+    res: object,
+    done: (err?: { status?: number; statusCode?: number; message?: string }) => void,
+  ) => void;
+  stack: { route?: { path: string; methods: Record<string, boolean>; stack: unknown[] } }[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the router is `export =` (CommonJS), loaded after the mocks
+const authRouter = require("../../routes/api/auth.route") as AuthRouter;
+/* eslint-disable-next-line @typescript-eslint/no-require-imports -- loaded after the mocks above, as every memoryDb test */
+const { clearMemoryStore } = require("../../services/rateLimiter.redis.service") as RateLimiter;
+
+interface ExchangeAnswer {
+  status: number;
+  body: { message?: string | undefined; token?: unknown };
+}
+
+const exchange = (body: unknown, ip = "198.51.100.20"): Promise<ExchangeAnswer> =>
   new Promise((resolve) => {
     const res = {
       statusCode: 200,
       headersSent: false,
-      status(code) {
+      status(code: number) {
         this.statusCode = code;
         return this;
       },
-      json(payload) {
+      json(payload: ExchangeAnswer["body"]) {
         this.headersSent = true;
         resolve({ status: this.statusCode, body: payload });
         return this;
@@ -56,39 +77,39 @@ const exchange = (body, ip = "198.51.100.20") =>
       socket: {},
       get: () => undefined,
     };
-    authRouter.handle(req, res, (err) =>
+    authRouter.handle(req, res, (err?: { status?: number; message?: string }) => {
       resolve({
-        status: err ? err.status || 500 : 404,
-        body: { message: err ? err.message : "no route" },
-      }),
-    );
+        status: err?.status ?? 500,
+        body: { message: err?.message ?? "no route" },
+      });
+    });
   });
 
 const WELL_FORMED_UNKNOWN = "Z".repeat(43);
 
-const ORIGINAL_BY_IP = process.env.AUTH_RATE_LIMIT_BY_IP;
+const ORIGINAL_BY_IP = process.env["AUTH_RATE_LIMIT_BY_IP"];
 
 beforeEach(() => {
-  delete process.env.AUTH_RATE_LIMIT_BY_IP;
+  delete process.env["AUTH_RATE_LIMIT_BY_IP"];
   clearMemoryStore();
 });
 
 afterAll(() => {
   if (ORIGINAL_BY_IP === undefined) {
-    delete process.env.AUTH_RATE_LIMIT_BY_IP;
+    delete process.env["AUTH_RATE_LIMIT_BY_IP"];
   } else {
-    process.env.AUTH_RATE_LIMIT_BY_IP = ORIGINAL_BY_IP;
+    process.env["AUTH_RATE_LIMIT_BY_IP"] = ORIGINAL_BY_IP;
   }
 });
 
 describe("A-60: POST /auth/sso/exchange", () => {
   it("is registered, public, and gated by the rate-limit pre-check and validate()", () => {
     const layer = authRouter.stack.find(
-      (l) => l.route && l.route.path === "/sso/exchange" && l.route.methods.post,
+      (l) => l.route?.path === "/sso/exchange" && l.route.methods["post"],
     );
     expect(layer).toBeDefined();
     // pre-check, validate, controller — no `auth`: the code is the credential.
-    expect(layer.route.stack).toHaveLength(3);
+    expect(layer?.route?.stack).toHaveLength(3);
   });
 
   it("refuses a body that is not a hand-off code with 400", async () => {
@@ -120,7 +141,7 @@ describe("A-60: POST /auth/sso/exchange", () => {
   });
 
   it("with AUTH_RATE_LIMIT_BY_IP=true, locks an IP out with 429 after repeated failed exchanges, and only that IP", async () => {
-    process.env.AUTH_RATE_LIMIT_BY_IP = "true";
+    process.env["AUTH_RATE_LIMIT_BY_IP"] = "true";
     // ssoExchange: maxAttempts 10; the per-IP lock is at maxAttempts * 3.
     for (let i = 0; i < 30; i += 1) {
       expect((await exchange({ code: WELL_FORMED_UNKNOWN }, "198.51.100.66")).status).toBe(401);
@@ -137,14 +158,14 @@ describe("A-60: POST /auth/sso/exchange", () => {
   // req.ip is known to be the client (A-16) that address may be shared by
   // every browser — and 30 bad codes from anyone locked SSO for everyone.
   it("with AUTH_RATE_LIMIT_BY_IP unset, failed exchanges never lock the address", async () => {
-    delete process.env.AUTH_RATE_LIMIT_BY_IP;
+    delete process.env["AUTH_RATE_LIMIT_BY_IP"];
     for (let i = 0; i < 40; i += 1) {
       expect((await exchange({ code: WELL_FORMED_UNKNOWN }, "198.51.100.68")).status).toBe(401);
     }
   });
 
   it("with AUTH_RATE_LIMIT_BY_IP=false, failed exchanges never lock the address", async () => {
-    process.env.AUTH_RATE_LIMIT_BY_IP = "false";
+    process.env["AUTH_RATE_LIMIT_BY_IP"] = "false";
     for (let i = 0; i < 40; i += 1) {
       expect((await exchange({ code: WELL_FORMED_UNKNOWN }, "198.51.100.69")).status).toBe(401);
     }

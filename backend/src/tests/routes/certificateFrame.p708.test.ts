@@ -25,13 +25,27 @@
  *    download — keeps helmet's `frame-ancestors 'none'` and
  *    `X-Frame-Options: SAMEORIGIN`.
  */
+/* eslint-disable no-restricted-properties -- the test sets CORS_ORIGIN per the helmet setup, as index.js reads it */
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import * as http from "http";
+import express from "express";
+import helmet from "helmet";
 
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
-const http = require("http");
-const express = require("express");
-const helmet = require("helmet");
+import { API_CSP_DIRECTIVES } from "../../utils/csp.util";
+
+interface CertificatePdfService {
+    verifyByCertificateNumber: jest.Mock;
+    getVerifiedDocument: jest.Mock;
+    getStoredPdf: jest.Mock;
+}
+
+interface CertificatePdfController {
+    verifyCertificate: (req: unknown, res: unknown, next: unknown) => unknown;
+    verifyDocument: (req: unknown, res: unknown, next: unknown) => unknown;
+    downloadPdf: (req: unknown, res: unknown, next: unknown) => unknown;
+}
 
 jest.mock("../../services/certificatePdf.service", () => ({
   verifyByCertificateNumber: jest.fn(),
@@ -42,31 +56,32 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-const certificatePdfService = require("../../services/certificatePdf.service");
-const controller = require("../../controllers/certificatePdf.controller");
-const { API_CSP_DIRECTIVES } = require("../../utils/csp.util");
+/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as every memoryDb test */
+const certificatePdfService = require("../../services/certificatePdf.service") as CertificatePdfService;
+const controller = require("../../controllers/certificatePdf.controller") as CertificatePdfController;
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "p708-frame-"));
 const PDF_PATH = path.join(dir, "cert.pdf");
 const CERT_ID = "7f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f";
 const NUMBER = "CERT-20260925-ACME-0001";
 
-let server;
-let base;
+let server: http.Server;
+let base: string;
 
-const get = (urlPath) =>
+const get = (urlPath: string): Promise<{ status: number | undefined; headers: http.IncomingHttpHeaders }> =>
   new Promise((resolve, reject) => {
     http
       .get(`${base}${urlPath}`, (res) => {
         res.resume();
-        res.on("end", () => resolve({ status: res.statusCode, headers: res.headers }));
+        res.on("end", () => { resolve({ status: res.statusCode, headers: res.headers }); });
       })
       .on("error", reject);
   });
 
 beforeAll(async () => {
   fs.writeFileSync(PDF_PATH, `%PDF-1.7\n${"x".repeat(64)}`);
-  process.env.CORS_ORIGIN = "https://app.example.test";
+  process.env["CORS_ORIGIN"] = "https://app.example.test";
 
   const app = express();
   // index.js, verbatim.
@@ -77,25 +92,27 @@ beforeAll(async () => {
       crossOriginEmbedderPolicy: false,
     }),
   );
-  app.get("/api/v1/certificates/verify/:certificateNumber", controller.verifyCertificate);
-  app.get("/api/v1/certificates/verify/:certificateNumber/document", controller.verifyDocument);
+  app.get("/api/v1/certificates/verify/:certificateNumber", controller.verifyCertificate as express.RequestHandler);
+  app.get("/api/v1/certificates/verify/:certificateNumber/document", controller.verifyDocument as express.RequestHandler);
   app.get(
     "/api/v1/certificates/:certificateId/pdf",
-    (req, _res, next) => {
+    (req: { user?: unknown }, _res: unknown, next: () => void) => {
       req.user = { id: "u-1", tenantId: "t-1" };
       next();
     },
-    controller.downloadPdf,
+        controller.downloadPdf as express.RequestHandler,
   );
   server = http.createServer(app);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  base = `http://127.0.0.1:${server.address().port}`;
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address !== null ? String(address.port) : "0";
+  base = `http://127.0.0.1:${port}`;
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => { resolve(); }));
   fs.rmSync(dir, { recursive: true, force: true });
-  delete process.env.CORS_ORIGIN;
+  delete process.env["CORS_ORIGIN"];
 });
 
 beforeEach(() => {

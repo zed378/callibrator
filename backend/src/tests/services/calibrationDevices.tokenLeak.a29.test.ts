@@ -1,0 +1,182 @@
+/**
+ * A-29 — the IoT ingest credential never appears in a device response.
+ *
+ * Before A-29 the model's defaultScope excluded nothing, so once a device had
+ * `iotDeviceToken` it was SELECTed and returned by every device list and
+ * detail response to everyone who could read the register. The token is now
+ * stored only as `iotTokenHash` (migration 0044), which the defaultScope
+ * excludes and toJSON() strips.
+ *
+ * Technique (calibrationDevices.serial.a92.test.js): the REAL models barrel on
+ * an UNCONNECTED PostgreSQL-dialect Sequelize whose `query` fakes the table.
+ * The fake answers a SELECT with only the columns the SQL actually asked for,
+ * from a row that holds BOTH the legacy plaintext column and the hash — so the
+ * test observes what the generated SQL would have exposed, whichever model
+ * version is under test. The full chain is the real controller → service →
+ * model → response.util.
+ */
+import type * as SequelizeModule from "sequelize";
+import type CalibrationDevicesController from "../../controllers/calibrationDevices.controller";
+import type { TenantId } from "../../types/ids";
+
+const mockDb: { statements: string[]; handler: ((sql: string, options: { plain?: boolean; attributes?: unknown }) => unknown) | null } = {
+  statements: [],
+  handler: null,
+};
+
+jest.mock("../../config", () => {
+  const { Sequelize } = jest.requireActual<typeof SequelizeModule>("sequelize");
+  const db = new Sequelize({ dialect: "postgres", logging: false });
+  (db as unknown as { query: unknown }).query = (sql: string | { query: string }, options: { plain?: boolean; attributes?: unknown } = {}) => {
+    const text = typeof sql === "string" ? sql : sql.query;
+    mockDb.statements.push(text);
+    if (!mockDb.handler) {
+      throw new Error("mockDb.handler not set");
+    }
+    return Promise.resolve(mockDb.handler(text, options));
+  };
+  return { db };
+});
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
+jest.mock("../../services/redis.service", () => ({
+  get: jest.fn().mockResolvedValue(null),
+  set: jest.fn().mockResolvedValue(undefined),
+  del: jest.fn().mockResolvedValue(undefined),
+  cacheKeys: { userPermissions: (id: string): string => `user-perms:${id}` },
+}));
+
+/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as calibrationDevices.serial.a92 does */
+import crypto from "crypto";
+require("../../models");
+const models = require("../../models") as {
+    CalibrationDevice: {
+        build: (values: Record<string, unknown>, options?: Record<string, unknown>) => Record<string, unknown> & {
+            iotTokenHash: string;
+            toJSON: () => Record<string, unknown>;
+        };
+    };
+};
+const { tenantStorage } = require("../../middlewares/tenantContext.middleware") as {
+    tenantStorage: { run<T>(store: object, fn: () => T): T };
+};
+const controller = require("../../controllers/calibrationDevices.controller") as unknown as {
+    getAllCalibrationDevices: (req: unknown, res: unknown, next: unknown) => void;
+    getSpecificCalibrationDevice: (req: unknown, res: unknown, next: unknown) => void;
+};
+void (null as unknown as typeof CalibrationDevicesController);
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+const TENANT = "11111111-1111-4111-8111-111111111111" as TenantId;
+const DEVICE = "22222222-2222-4222-8222-222222222222";
+const TOKEN = "iot_plaintext-ingest-token-that-must-never-leak";
+const HASH = crypto.createHash("sha256").update(TOKEN).digest("hex");
+
+/** The device as the database holds it — every column any version has had. */
+const DB_ROW: Record<string, unknown> = {
+  id: DEVICE,
+  tenantId: TENANT,
+  name: "Infusion pump",
+  status: "active",
+  iotEnabled: true,
+  readingTolerance: { temperature: { max: 30 } },
+  iotDeviceToken: TOKEN, // the pre-0044 plaintext column
+  iotTokenHash: HASH, // the 0044 column
+  iotTokenIssuedAt: new Date("2026-09-24T00:00:00Z"),
+  isDeleted: false,
+};
+
+/** Only the columns the SELECT asked for, under their attribute names. */
+const projected = (attributes: unknown): Record<string, unknown> =>
+  Object.fromEntries(
+    ((attributes as (string | string[])[] | undefined) ?? [])
+      .map((a) => (Array.isArray(a) ? a[1] : a))
+      .filter((name): name is string => typeof name === "string" && name in DB_ROW)
+      .map((name) => [name, DB_ROW[name]]),
+  );
+
+beforeEach(() => {
+  mockDb.statements = [];
+  mockDb.handler = (sql: string, options: { plain?: boolean; attributes?: unknown }) => {
+    if (/^SELECT count\(/i.test(sql)) {
+      return { count: 1 };
+    }
+    if (sql.includes('FROM "calibration_devices"')) {
+      const row = models.CalibrationDevice.build(projected(options.attributes), {
+        isNewRecord: false,
+        raw: true,
+      });
+      return options.plain ? row : [row];
+    }
+    return options.plain ? null : []; // calibration records, anything else
+  };
+});
+
+interface CallResult {
+    status: number;
+    body: { data: Record<string, unknown>[] };
+}
+
+interface ResDouble {
+    status: jest.Mock;
+    json: jest.Mock;
+}
+
+type Handler = (req: unknown, res: unknown, next: unknown) => void;
+
+const call = (handler: Handler, req: unknown): Promise<CallResult> =>
+  new Promise<CallResult>((resolve, reject) => {
+    const res: ResDouble = {
+      status: jest.fn(),
+      json: jest.fn(),
+    };
+    res.status.mockImplementation(() => res);
+    res.json.mockImplementation((body: CallResult["body"]) => {
+      resolve({ status: ((res.status.mock.calls[res.status.mock.calls.length - 1] as unknown[] | undefined)?.[0] as number | undefined) ?? 0, body });
+      return res;
+    });
+    tenantStorage.run({ tenantId: TENANT }, () => { handler(req, res, reject); });
+  });
+
+const principal = { id: "33333333-3333-4333-8333-333333333333", tenantId: TENANT };
+
+describe("A-29 — no device response carries the ingest token or its hash", () => {
+  it("the device LIST response never contains the token or its hash", async () => {
+    const { status, body } = await call(controller.getAllCalibrationDevices, {
+      query: {},
+      user: principal,
+    });
+
+    expect(status).toBe(200);
+    expect(body.data).toHaveLength(1);
+    // P21-02a: a list row is the presented device (its JSON plus the read's facts), no longer the instance.
+    expect(body.data[0]).toMatchObject({ id: DEVICE, iotEnabled: true });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain(TOKEN);
+    expect(serialized).not.toContain(HASH);
+    const listSelect = mockDb.statements.find((s) => s.startsWith("SELECT \"CalibrationDevice\""));
+    expect(listSelect).not.toMatch(/iot_device_token|iot_token_hash/);
+  });
+
+  it("the device DETAIL response never contains the token or its hash", async () => {
+    const { status, body } = await call(controller.getSpecificCalibrationDevice, {
+      params: { calibrationDeviceId: DEVICE },
+      user: principal,
+    });
+
+    expect(status).toBe(200);
+    const serialized = JSON.stringify(body);
+    expect(serialized).toContain(DEVICE);
+    expect(serialized).not.toContain(TOKEN);
+    expect(serialized).not.toContain(HASH);
+  });
+
+  it("toJSON() strips the hash even from a row loaded unscoped", () => {
+    const row = models.CalibrationDevice.build(
+      { id: DEVICE, tenantId: TENANT, name: "x", iotTokenHash: HASH },
+      { isNewRecord: false },
+    );
+    expect(row.iotTokenHash).toBe(HASH); // the server can still read it
+    expect(JSON.stringify(row)).not.toContain(HASH);
+    expect(row.toJSON()).not.toHaveProperty("iotTokenHash");
+  });
+});

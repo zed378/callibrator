@@ -7,44 +7,76 @@
  * exact plaintext. It does NOT prove the SQL runs on PostgreSQL: that needs
  * `make migrate` against a real database and a `SELECT` afterwards.
  */
+/* eslint-disable @typescript-eslint/require-await -- the fakes stand in for the async QueryInterface: a throw inside them must be a rejection */
+import * as fs from "fs";
+import * as path from "path";
+
+import type * as KmsModule from "../../services/kms.service";
+import migration from "../../migrations/0022-encrypt-webhook-secrets";
+
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-const migration = require("../../migrations/0022-encrypt-webhook-secrets");
-const { migrator } = (() => {
-  // The manifest is the other half of "registered": read it as text so this
-  // test does not open a database connection.
-  const fs = require("fs");
-  const path = require("path");
-  return { migrator: fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8") };
-})();
-const kms = require("../../services/kms.service");
+/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as every memoryDb test */
+const kms = require("../../services/kms.service") as typeof KmsModule;
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+type Context = Parameters<typeof migration.up>[0]["context"];
+const ctx = (qi: object): Context => qi as Context;
+
+const migrator = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
 
 const T1 = "11111111-1111-4111-8111-111111111111";
 const T2 = "22222222-2222-4222-8222-222222222222";
+
+interface WebhookRow {
+    id: string;
+    tenant_id: string;
+    secret: string;
+    is_deleted?: boolean;
+}
+
+interface FakeState {
+    rows: WebhookRow[];
+    secretType: string;
+    changeColumn: { table: string; column: string; spec: unknown }[];
+}
+
+interface QueryOptions {
+    replacements?: Record<string, string>;
+    transaction?: unknown;
+}
 
 /**
  * A QueryInterface stand-in over an in-memory `webhooks` table. It understands
  * exactly the statements the migration issues, and throws on anything else so
  * an unexpected query cannot pass silently.
  */
-const fakeQueryInterface = ({ rows, tables = ["webhooks"], secretType = "CHARACTER VARYING(128)" }) => {
-  const state = { rows: rows.map((r) => ({ ...r })), secretType, changeColumn: [] };
+const fakeQueryInterface = ({
+  rows,
+  tables = ["webhooks"],
+  secretType = "CHARACTER VARYING(128)",
+}: {
+    rows: WebhookRow[];
+    tables?: string[];
+    secretType?: string;
+}) => {
+  const state: FakeState = { rows: rows.map((r) => ({ ...r })), secretType, changeColumn: [] };
   const tx = { id: "tx" };
   const qi = {
     state,
     showAllTables: jest.fn(async () => tables.map((t) => ({ tableName: t }))),
     describeTable: jest.fn(async () => ({ secret: { type: state.secretType } })),
-    changeColumn: jest.fn(async (table, column, spec) => {
+    changeColumn: jest.fn(async (table: string, column: string, spec: { type: { key: string; _length?: number } }) => {
       state.changeColumn.push({ table, column, spec });
-      state.secretType = spec.type.key === "TEXT" ? "TEXT" : `CHARACTER VARYING(${spec.type._length})`;
+      state.secretType = spec.type.key === "TEXT" ? "TEXT" : `CHARACTER VARYING(${String(spec.type._length)})`;
     }),
     sequelize: {
-      transaction: jest.fn(async (cb) => cb(tx)),
-      query: jest.fn(async (sql, opts = {}) => {
+      transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(tx)),
+      query: jest.fn(async (sql: string, opts: QueryOptions = {}) => {
         const s = sql.replace(/\s+/g, " ").trim();
-        const r = opts.replacements || {};
+        const r = opts.replacements ?? {};
         if (s.startsWith("SELECT id, tenant_id, secret FROM webhooks WHERE secret NOT LIKE")) {
           return state.rows.filter((x) => !/^v[12]:/.test(x.secret));
         }
@@ -59,9 +91,9 @@ const fakeQueryInterface = ({ rows, tables = ["webhooks"], secretType = "CHARACT
         }
         if (s.startsWith("UPDATE webhooks SET secret = :secret WHERE id = :id AND tenant_id = :tenantId AND secret = :previous")) {
           expect(opts.transaction).toBe(tx);
-          const hit = state.rows.find((x) => x.id === r.id && x.tenant_id === r.tenantId && x.secret === r.previous);
+          const hit = state.rows.find((x) => x.id === r["id"] && x.tenant_id === r["tenantId"] && x.secret === r["previous"]);
           if (hit) {
-            hit.secret = r.secret;
+            hit.secret = r["secret"] as string;
           }
           return [[], { rowCount: hit ? 1 : 0 }];
         }
@@ -72,13 +104,13 @@ const fakeQueryInterface = ({ rows, tables = ["webhooks"], secretType = "CHARACT
   return qi;
 };
 
-const seed = () => [
+const seed = (): WebhookRow[] => [
   { id: "w1", tenant_id: T1, secret: "a".repeat(48) },
   { id: "w2", tenant_id: T2, secret: "b".repeat(48) },
   // soft-deleted rows are still secrets at rest
   { id: "w3", tenant_id: T1, secret: "c".repeat(48), is_deleted: true },
   // already encrypted — must be left byte-for-byte alone
-  { id: "w4", tenant_id: T2, secret: kms.encryptData(T2, "d".repeat(64)) },
+  { id: "w4", tenant_id: T2, secret: kms.encryptData(T2, "d".repeat(64)) as string },
 ];
 
 describe("migration 0022-encrypt-webhook-secrets", () => {
@@ -90,12 +122,12 @@ describe("migration 0022-encrypt-webhook-secrets", () => {
 
   it("up widens the column to TEXT and encrypts every plaintext row under its own tenant", async () => {
     const qi = fakeQueryInterface({ rows: seed() });
-    const w4Before = qi.state.rows[3].secret;
+    const w4Before = (qi.state.rows[3] as WebhookRow).secret;
 
-    await migration.up({ context: qi });
+    await migration.up({ context: ctx(qi) });
 
     expect(qi.state.secretType).toBe("TEXT");
-    const [w1, w2, w3, w4] = qi.state.rows;
+    const [w1, w2, w3, w4] = qi.state.rows as [WebhookRow, WebhookRow, WebhookRow, WebhookRow];
     for (const r of [w1, w2, w3, w4]) {
       expect(r.secret.startsWith("v2:")).toBe(true); // P6-10: a new envelope names its key
     }
@@ -109,9 +141,9 @@ describe("migration 0022-encrypt-webhook-secrets", () => {
 
   it("up is idempotent — a second run changes nothing", async () => {
     const qi = fakeQueryInterface({ rows: seed() });
-    await migration.up({ context: qi });
+    await migration.up({ context: ctx(qi) });
     const after = qi.state.rows.map((r) => r.secret);
-    await migration.up({ context: qi });
+    await migration.up({ context: ctx(qi) });
     expect(qi.state.rows.map((r) => r.secret)).toEqual(after);
   });
 
@@ -119,32 +151,32 @@ describe("migration 0022-encrypt-webhook-secrets", () => {
     const qi = fakeQueryInterface({ rows: seed() });
     // A concurrent writer changed w1 between the SELECT and the UPDATE.
     const original = qi.sequelize.query;
-    qi.sequelize.query = jest.fn(async (sql, opts) => {
-      if (/^\s*UPDATE/.test(sql) && opts.replacements.id === "w1") {
+    qi.sequelize.query = jest.fn(async (sql: string, opts: QueryOptions = {}) => {
+      if (/^\s*UPDATE/.test(sql) && opts.replacements?.["id"] === "w1") {
         return [[], { rowCount: 0 }];
       }
       return original(sql, opts);
     });
-    await expect(migration.up({ context: qi })).rejects.toThrow(/0022/);
+    await expect(migration.up({ context: ctx(qi) })).rejects.toThrow(/0022/);
   });
 
   it("up does nothing, without error, when there is no webhooks table", async () => {
     const qi = fakeQueryInterface({ rows: [], tables: ["users"] });
-    await migration.up({ context: qi });
+    await migration.up({ context: ctx(qi) });
     expect(qi.describeTable).not.toHaveBeenCalled();
     expect(qi.sequelize.query).not.toHaveBeenCalled();
   });
 
   it("up does not re-issue the column change when it is already TEXT", async () => {
     const qi = fakeQueryInterface({ rows: [], secretType: "TEXT" });
-    await migration.up({ context: qi });
+    await migration.up({ context: ctx(qi) });
     expect(qi.changeColumn).not.toHaveBeenCalled();
   });
 
   it("down restores the exact plaintext and the original column width", async () => {
     const qi = fakeQueryInterface({ rows: seed() });
-    await migration.up({ context: qi });
-    await migration.down({ context: qi });
+    await migration.up({ context: ctx(qi) });
+    await migration.down({ context: ctx(qi) });
 
     expect(qi.state.secretType).toBe("CHARACTER VARYING(128)");
     expect(qi.state.rows.map((r) => r.secret)).toEqual([
@@ -157,20 +189,20 @@ describe("migration 0022-encrypt-webhook-secrets", () => {
 
   it("down fails loudly if a row could not be decrypted back", async () => {
     const qi = fakeQueryInterface({ rows: seed() });
-    await migration.up({ context: qi });
+    await migration.up({ context: ctx(qi) });
     const original = qi.sequelize.query;
-    qi.sequelize.query = jest.fn(async (sql, opts) => {
+    qi.sequelize.query = jest.fn(async (sql: string, opts: QueryOptions = {}) => {
       if (/^\s*UPDATE/.test(sql)) {
         return [[], { rowCount: 0 }];
       }
       return original(sql, opts);
     });
-    await expect(migration.down({ context: qi })).rejects.toThrow(/0022/);
+    await expect(migration.down({ context: ctx(qi) })).rejects.toThrow(/0022/);
   });
 
   it("down does nothing when there is no webhooks table", async () => {
     const qi = fakeQueryInterface({ rows: [], tables: [] });
-    await migration.down({ context: qi });
+    await migration.down({ context: ctx(qi) });
     expect(qi.changeColumn).not.toHaveBeenCalled();
   });
 });

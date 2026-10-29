@@ -13,8 +13,16 @@
  * writes billing (PATCH /billing/subscription can set `status`) or touches
  * the platform blog (`content`).
  */
-const fs = require("fs");
-const path = require("path");
+import * as fs from "fs";
+import * as path from "path";
+import type * as Models from "../../models";
+import type * as Constants from "../../constants";
+
+type DynamicAccessGate = (req: unknown, res: unknown, next: () => void) => void;
+
+interface DynamicAccessMiddleware {
+  dynamicAccess: (menuGroup: string, permissionType: string, options?: { checkTenant?: boolean }) => DynamicAccessGate;
+}
 
 jest.mock("../../models", () => ({
   Role: { findByPk: jest.fn() },
@@ -28,39 +36,70 @@ jest.mock("../../services/redis.service", () => ({
   set: jest.fn().mockResolvedValue(undefined),
   del: jest.fn(),
   delPattern: jest.fn(),
-  cacheKeys: { permissions: (id) => `perm:${id}`, userPermissions: (id) => `uperm:${id}` },
+  cacheKeys: { permissions: (id: string) => `perm:${id}`, userPermissions: (id: string) => `uperm:${id}` },
 }));
 jest.mock("../../services/userPermission.service", () => ({
   getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 
-const { Role, RoleMenuPermission } = require("../../models");
-const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
-const { ROLE_NAMES, ROLE_MENU_ASSIGNMENTS } = require("../../constants");
+/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as every memoryDb test */
+const { Role, RoleMenuPermission } = require("../../models") as typeof Models as unknown as {
+  Role: { findByPk: jest.Mock };
+  RoleMenuPermission: { findAll: jest.Mock };
+};
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware") as DynamicAccessMiddleware;
+const { ROLE_NAMES, ROLE_MENU_ASSIGNMENTS } = require("../../constants") as typeof Constants;
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+interface MenuNode {
+  slug: string;
+  name: string | undefined;
+  parentSlug: string | undefined;
+}
+
+interface RoleMenuAssignment {
+  roleName: string;
+  menus: Record<string, unknown>;
+}
 
 const SEED = fs.readFileSync(path.join(__dirname, "..", "..", "utils", "seedMenuGroups.util.ts"), "utf8");
 const MENU_DATA = SEED.slice(SEED.indexOf("const menuData = ["), SEED.indexOf("];", SEED.indexOf("const menuData = [")));
-const MENUS = [...MENU_DATA.matchAll(/\{[^{}]*?slug:\s*"([^"]+)"[^{}]*?\}/g)].map((m) => ({
-  slug: m[1],
-  name: (m[0].match(/name:\s*"([^"]+)"/) || [])[1],
-  parentSlug: (m[0].match(/parentSlug:\s*"([^"]+)"/) || [])[1],
+const MENUS: MenuNode[] = [...MENU_DATA.matchAll(/\{[^{}]*?slug:\s*"([^"]+)"[^{}]*?\}/g)].map((m) => ({
+  slug: m[1] ?? "",
+  name: ((/name:\s*"([^"]+)"/.exec(m[0])) ?? [])[1],
+  parentSlug: ((/parentSlug:\s*"([^"]+)"/.exec(m[0])) ?? [])[1],
 }));
-const menuRow = (slug) => {
+const menuRow = (slug: string): { name: string | undefined; slug: string; children: { name: string | undefined; slug: string }[] } | null => {
   const menu = MENUS.find((m) => m.slug === slug);
   return menu
     ? { name: menu.name, slug: menu.slug, children: MENUS.filter((c) => c.parentSlug === slug).map((c) => ({ name: c.name, slug: c.slug })) }
     : null;
 };
-const rowsFor = (roleName) => {
-  const entry = ROLE_MENU_ASSIGNMENTS.find((a) => a.roleName === roleName);
+const rowsFor = (roleName: string): { permissionType: unknown; menu: unknown }[] => {
+  const entry = (ROLE_MENU_ASSIGNMENTS as RoleMenuAssignment[]).find((a) => a.roleName === roleName);
   return Object.entries(entry ? entry.menus : {})
     .map(([slug, permissionType]) => ({ permissionType, menu: menuRow(slug) }))
     .filter((row) => row.menu !== null);
 };
 
-const passes = (roleName, resource, action, options) =>
+interface ProbeReq {
+  user: { id: string; tenantId: string; role: { id: string; name: string } };
+  params: Record<string, unknown>;
+  body: Record<string, unknown>;
+  query: Record<string, unknown>;
+  headers: Record<string, unknown>;
+  method: string;
+  originalUrl: string;
+}
+
+interface ProbeRes {
+  status(): ProbeRes;
+  json(): ProbeRes;
+}
+
+const passes = (roleName: string, resource: string, action: string, options?: { checkTenant?: boolean }): Promise<boolean> =>
   new Promise((resolve) => {
-    const req = {
+    const req: ProbeReq = {
       user: { id: "11111111-1111-4111-8111-111111111111", tenantId: "33333333-3333-4333-8333-333333333333", role: { id: roleName, name: roleName } },
       params: {},
       body: {},
@@ -69,21 +108,23 @@ const passes = (roleName, resource, action, options) =>
       method: "GET",
       originalUrl: "/probe",
     };
-    const res = {
-      status() {
+    const res: ProbeRes = {
+      status(): ProbeRes {
         return this;
       },
-      json() {
+      json(): ProbeRes {
         resolve(false);
         return this;
       },
     };
-    dynamicAccess(resource, action, options)(req, res, () => resolve(true));
+    (dynamicAccess(resource, action, options))(req, res, () => {
+      resolve(true);
+    });
   });
 
 beforeEach(() => {
-  Role.findByPk.mockImplementation(async (id) => ({ id, status: "active" }));
-  RoleMenuPermission.findAll.mockImplementation(async ({ where }) => rowsFor(where.roleId));
+  Role.findByPk.mockImplementation((id: string) => Promise.resolve({ id, status: "active" }));
+  RoleMenuPermission.findAll.mockImplementation(({ where }: { where: { roleId: string } }) => Promise.resolve(rowsFor(where.roleId)));
 });
 
 const R = ROLE_NAMES;
@@ -93,7 +134,7 @@ const T = { checkTenant: true };
 
 // [resource, action, options, roles that must pass] — every other seeded
 // tenant role must be refused.
-const GATES = [
+const GATES: [string, string, { checkTenant: boolean } | undefined, string[]][] = [
   ["users", "read", T, ADMINS],
   ["users", "create", T, ADMINS],
   ["users", "update", T, ADMINS],
@@ -109,9 +150,10 @@ const GATES = [
 ];
 
 describe("Q-20 — the Management pages, per seeded role", () => {
-  it.each(GATES)("%s:%s", async (resource, action, options, allowed) => {
+  it.each(GATES)("%s:%s", async (resource: string, action: string, options: { checkTenant: boolean } | undefined, allowed: string[]) => {
     for (const role of [...ADMINS, ...OTHERS]) {
-      await expect({ role, passed: await passes(role, resource, action, options) }).toEqual({
+      const passed = await passes(role, resource, action, options);
+      expect({ role, passed }).toEqual({
         role,
         passed: allowed.includes(role),
       });

@@ -6,11 +6,12 @@
  * We need to drain the event loop before asserting.
  */
 describe("checkMenu util", () => {
-  let exitMock;
+  let exitMock: jest.SpyInstance;
 
   beforeEach(() => {
     jest.resetModules();
-    exitMock = jest.spyOn(process, "exit").mockImplementation(() => {});
+    // eslint-disable-next-line @typescript-eslint/no-empty-function -- the mock swallows process.exit; the assertion is on its calls
+    exitMock = jest.spyOn(process, "exit").mockImplementation((() => { }) as () => never);
   });
 
   afterEach(() => {
@@ -43,7 +44,9 @@ describe("checkMenu util", () => {
 
     // require triggers checkMenu.util.js which calls check()
     // check() is async so we need to wait for the event loop
+    /* eslint-disable @typescript-eslint/no-require-imports -- the module runs check() at load; isolated per test */
     require("../../utils/checkMenu.util");
+    /* eslint-enable @typescript-eslint/no-require-imports */
 
     // Wait for the async check() to complete and call process.exit
     await new Promise((resolve) => setImmediate(resolve));
@@ -72,7 +75,9 @@ describe("checkMenu util", () => {
       },
     }));
 
+    /* eslint-disable @typescript-eslint/no-require-imports -- the module runs check() at load; isolated per test */
     require("../../utils/checkMenu.util");
+    /* eslint-enable @typescript-eslint/no-require-imports */
 
     await new Promise((resolve) => setImmediate(resolve));
 

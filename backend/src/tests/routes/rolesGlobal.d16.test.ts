@@ -19,26 +19,41 @@
  * The route inventory is pinned too: a NEW mutating route on these routers
  * fails the inventory test until it is added here — with its guard.
  */
+interface Principal {
+  id: string;
+  tenantId: string | null;
+  roleId?: string;
+  role: { id: string; name: string; roleLevel?: number };
+}
 
-let currentUser = null;
+interface AuthMiddlewareModule {
+  [key: string]: unknown;
+  auth: (req: { user?: Principal | null }, res: unknown, next: () => void) => void;
+}
+
+let currentUser: Principal | null = null;
 
 jest.mock("../../middlewares/auth.middleware", () => {
-  const actual = jest.requireActual("../../middlewares/auth.middleware");
+  const actual = jest.requireActual<AuthMiddlewareModule>("../../middlewares/auth.middleware");
   return {
     ...actual,
-    auth: (req, res, next) => {
+    auth: (req: { user?: Principal | null }, _res: unknown, next: () => void): void => {
       req.user = currentUser;
       next();
     },
   };
 });
 
-const reached = [];
-const mockSpyController = (names) =>
+interface SpyRes {
+  status(code: number): { json(payload: unknown): void };
+}
+
+const reached: string[] = [];
+const mockSpyController = (names: string[]): Record<string, (req: unknown, res: SpyRes) => void> =>
   Object.fromEntries(
     names.map((name) => [
       name,
-      (req, res) => {
+      (_req: unknown, res: SpyRes): void => {
         reached.push(name);
         res.status(200).json({ success: true });
       },
@@ -82,39 +97,60 @@ jest.mock("../../controllers/userPermission.controller", () =>
   mockSpyController(["getUserPermissions", "setUserPermission", "removeUserPermission"]),
 );
 
-const ROUTERS = {
-  "/roles": require("../../routes/api/roles.route"),
-  "/menu-groups": require("../../routes/api/menuGroups.route"),
-  "/user-permissions": require("../../routes/api/userPermissions.route"),
+interface TestRouter {
+  handle: (req: unknown, res: unknown, next: (err?: { status?: number; message?: string }) => void) => void;
+  stack: { route?: { path: string; methods: Record<string, boolean> } }[];
+}
+
+const ROUTERS: Record<string, TestRouter> = {
+  "/roles": jest.requireActual<TestRouter>("../../routes/api/roles.route"),
+  "/menu-groups": jest.requireActual<TestRouter>("../../routes/api/menuGroups.route"),
+  "/user-permissions": jest.requireActual<TestRouter>("../../routes/api/userPermissions.route"),
 };
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const ID2 = "22222222-2222-4222-8222-222222222222";
 const TENANT = "33333333-3333-4333-8333-333333333333";
 
+interface CallResult {
+  status: number;
+  body: { message?: string | undefined } | null;
+}
+
+interface ResDouble {
+  statusCode: number;
+  headersSent: boolean;
+  status(code: number): ResDouble;
+  json(payload: CallResult["body"]): ResDouble;
+  send(payload: CallResult["body"]): ResDouble;
+  setHeader(): ResDouble;
+  end(): ResDouble;
+}
+
 /** Drive a router through Express's own handle(); resolve with status + body. */
-const call = (method, fullUrl, body = {}) =>
+const call = (method: string, fullUrl: string, body: Record<string, unknown> = {}): Promise<CallResult> =>
   new Promise((resolve) => {
-    const prefix = Object.keys(ROUTERS).find((p) => fullUrl.startsWith(p));
-    const res = {
+    const prefix = Object.keys(ROUTERS).find((p) => fullUrl.startsWith(p)) ?? "/roles";
+    const router = ROUTERS[prefix] as TestRouter;
+    const res: ResDouble = {
       statusCode: 200,
       headersSent: false,
-      status(code) {
+      status(code: number): typeof res {
         this.statusCode = code;
         return this;
       },
-      json(payload) {
+      json(payload: CallResult["body"]): typeof res {
         this.headersSent = true;
         resolve({ status: this.statusCode, body: payload });
         return this;
       },
-      send(payload) {
+      send(payload: CallResult["body"]): typeof res {
         return this.json(payload);
       },
-      setHeader() {
+      setHeader(): typeof res {
         return this;
       },
-      end() {
+      end(): typeof res {
         return this.json(null);
       },
     };
@@ -127,20 +163,19 @@ const call = (method, fullUrl, body = {}) =>
       params: {},
       headers: {},
       ip: "127.0.0.1",
-      get: () => undefined,
+      get: (): undefined => undefined,
     };
-    ROUTERS[prefix].handle(req, res, (err) =>
-      resolve({ status: err ? err.status || 500 : 404, body: { message: err && err.message } }),
+    router.handle(req, res, (err) => { resolve({ status: err?.status ?? 500, body: { message: err?.message } }); },
     );
   });
 
-const tenantAdmin = () => ({
+const tenantAdmin = (): Principal => ({
   id: ID,
   tenantId: TENANT,
   roleId: "role-ta",
   role: { id: "role-ta", name: "TENANT_ADMIN", roleLevel: 8 },
 });
-const superAdmin = () => ({
+const superAdmin = (): Principal => ({
   id: ID,
   tenantId: null,
   role: { id: "role-sa", name: "SUPERADMIN", roleLevel: 10 },
@@ -150,7 +185,7 @@ const superAdmin = () => ({
  * Every route that writes roles, role permissions, menu groups or per-user
  * menu permissions — [method, url, body, handler].
  */
-const MUTATING = [
+const MUTATING: [string, string, Record<string, unknown>, string][] = [
   ["POST", "/roles", { name: "Probe" }, "createRole"],
   ["PATCH", `/roles/${ID}`, { name: "Renamed" }, "updateRole"],
   ["DELETE", `/roles/${ID}`, {}, "deleteRole"],
@@ -183,11 +218,11 @@ beforeEach(() => {
 
 describe("D-16 — the route inventory is the reviewed one", () => {
   it("every non-GET route on the three routers is on MUTATING or READ_BY_POST", () => {
-    const found = [];
+    const found: string[] = [];
     for (const [prefix, router] of Object.entries(ROUTERS)) {
       for (const layer of router.stack.filter((l) => l.route)) {
-        for (const method of Object.keys(layer.route.methods).filter((m) => m !== "get")) {
-          found.push(`${method.toUpperCase()} ${prefix}${layer.route.path}`.replace(/\/$/, ""));
+        for (const method of Object.keys(layer.route?.methods ?? {}).filter((m) => m !== "get")) {
+          found.push(`${method.toUpperCase()} ${prefix}${layer.route?.path ?? ""}`.replace(/\/$/, ""));
         }
       }
     }
@@ -207,7 +242,7 @@ describe("D-16 — the route inventory is the reviewed one", () => {
 });
 
 describe("D-16 — a tenant admin cannot write a global role, permission or menu (403, handler never reached)", () => {
-  it.each(MUTATING)("%s %s", async (method, url, body, handler) => {
+  it.each(MUTATING)("%s %s", async (method: string, url: string, body: Record<string, unknown>, handler: string) => {
     currentUser = tenantAdmin();
     const res = await call(method, url, body);
     expect(res.status).toBe(403);
@@ -216,7 +251,7 @@ describe("D-16 — a tenant admin cannot write a global role, permission or menu
 });
 
 describe("D-16 — the platform operator passes the same guard (the route is reachable, not dead)", () => {
-  it.each(MUTATING)("%s %s", async (method, url, body, handler) => {
+  it.each(MUTATING)("%s %s", async (method: string, url: string, body: Record<string, unknown>, handler: string) => {
     currentUser = superAdmin();
     const res = await call(method, url, body);
     // Past rbac: either the (spy) handler answered, or body validation did —

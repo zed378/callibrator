@@ -13,55 +13,81 @@
  * index.js cannot be required without booting the server, so what it
  * registers is read from its source — the same technique as the P6-04 guard.
  */
-const fs = require("fs");
-const http = require("http");
-const path = require("path");
-const express = require("express");
+/* eslint-disable no-restricted-properties -- the test switches NODE_ENV/SWAGGER_ENABLED per case, as the app reads them */
+import * as fs from "fs";
+import * as http from "http";
+import * as path from "path";
+import express from "express";
 
 // P9-25: each serve() loads the gated docs router (and the models) in isolation — slow on a busy machine.
 jest.setTimeout(60000);
 
 const INDEX_SOURCE = fs.readFileSync(path.join(__dirname, "..", "..", "..", "index.ts"), "utf8");
 
-const ENV_KEYS = ["NODE_ENV", "SWAGGER_ENABLED", "KMS_MASTER_KEY"];
-const saved = {};
+const ENV_KEYS = ["NODE_ENV", "SWAGGER_ENABLED", "KMS_MASTER_KEY"] as const;
+const saved: Record<string, string | undefined> = {};
 beforeAll(() => {
-  for (const k of ENV_KEYS) {saved[k] = process.env[k];}
+  for (const k of ENV_KEYS) {
+    saved[k] = process.env[k];
+  }
 });
 afterEach(() => {
   for (const k of ENV_KEYS) {
-    if (saved[k] === undefined) {delete process.env[k];}
-    else {process.env[k] = saved[k];}
+    const value = saved[k];
+    if (value === undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- restoring the pre-test environment
+      delete process.env[k];
+    } else {
+      process.env[k] = value;
+    }
   }
 });
 
+interface ServedApp {
+  published: boolean;
+  get: (p: string) => Promise<{ status: number; body: string }>;
+  close: () => Promise<void>;
+}
+
 /** An app with swaggerDocs() and a 404 fallback, as index.js mounts them. */
-const serve = async (given) => {
+const serve = async (given: Record<string, string>): Promise<ServedApp> => {
   // P9-25 (ADR-103): docs/apiDocs.ts loads the gated router, whose auth chain
   // loads the models; in production kms.service refuses to load without a
   // master key. A synthetic test key, never a real one.
-  const env = given.NODE_ENV === "production" ? { KMS_MASTER_KEY: "ab".repeat(32), ...given } : given;
+  const env = given["NODE_ENV"] === "production" ? { KMS_MASTER_KEY: "ab".repeat(32), ...given } : given;
   for (const k of ENV_KEYS) {
-    if (env[k] === undefined) {delete process.env[k];}
-    else {process.env[k] = env[k];}
+    const value = env[k];
+    if (value === undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- per-case environment, restored in afterEach
+      delete process.env[k];
+    } else {
+      process.env[k] = value;
+    }
   }
-  let swaggerDocs;
+  let swaggerDocs: ((app: express.Express) => boolean) | undefined;
   jest.isolateModules(() => {
-    ({ apiDocs: swaggerDocs } = require("../../docs/apiDocs"));
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- isolated load per case, as the env changes per case
+    swaggerDocs = (require("../../docs/apiDocs") as { apiDocs: (app: express.Express) => boolean }).apiDocs;
   });
+  if (swaggerDocs === undefined) {
+    throw new Error("apiDocs did not load");
+  }
+  const docs = swaggerDocs;
   const app = express();
-  const published = swaggerDocs(app);
-  app.use((req, res) => res.status(404).json({ success: false, status: 404 }));
+  const published = docs(app);
+  app.use((_req: unknown, res: express.Response) => res.status(404).json({ success: false, status: 404 }));
   const server = http.createServer(app);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address !== null ? String(address.port) : "0";
+  const base = `http://127.0.0.1:${port}`;
   return {
     published,
-    get: async (p) => {
+    get: async (p: string) => {
       const res = await fetch(`${base}${p}`);
       return { status: res.status, body: await res.text() };
     },
-    close: () => new Promise((resolve) => server.close(resolve)),
+    close: () => new Promise<void>((resolve) => server.close(() => { resolve(); })),
   };
 };
 

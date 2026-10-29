@@ -6,6 +6,15 @@
  * from the public paths, and that the per-dependency breakdown is unreachable
  * without a super-admin session.
  */
+import http from "http";
+import express from "express";
+import type * as AuthMiddleware from "../../middlewares/auth.middleware";
+import type * as HealthRoute from "../../routes/internal/health.route";
+
+interface HealthServiceDouble {
+    isReady: jest.Mock;
+    getReadiness: jest.Mock;
+}
 
 jest.mock("../../middlewares/auth.middleware", () => ({
   auth: jest.fn(),
@@ -24,19 +33,11 @@ jest.mock("../../services/health.service", () => ({
   getReadiness: jest.fn(),
 }));
 
-const http = require("http");
-const express = require("express");
-
-const {
-  auth,
-  denyApiKey,
-  superAdminOnly,
-} = require("../../middlewares/auth.middleware");
-const healthService = require("../../services/health.service");
-const {
-  publicHealthRoutes,
-  internalHealthRoutes,
-} = require("../../routes/internal/health.route");
+/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as every memoryDb test */
+const { auth, denyApiKey, superAdminOnly } = require("../../middlewares/auth.middleware") as typeof AuthMiddleware;
+const healthService = require("../../services/health.service") as HealthServiceDouble;
+const { publicHealthRoutes, internalHealthRoutes } = require("../../routes/internal/health.route") as typeof HealthRoute;
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 const REPORT = {
   status: "healthy",
@@ -50,38 +51,51 @@ const REPORT = {
   ],
 };
 
-let server;
-let baseUrl;
+let server: http.Server;
+let baseUrl: string;
 
-const pass = (req, res, next) => next();
+const pass = (_req: unknown, _res: unknown, next: () => void): void => {
+  next();
+};
 
-const get = async (path) => {
+const get = async (path: string): Promise<{ status: number; text: string }> => {
   const response = await fetch(`${baseUrl}${path}`);
   const text = await response.text();
   return { status: response.status, text };
 };
 
-beforeAll(async () => {
+beforeAll(() => {
   const app = express();
   app.use(publicHealthRoutes);
   app.use("/api/v1/health", internalHealthRoutes);
 
   server = http.createServer(app);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  return new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve();
+    });
+  }).then(() => {
+    const address = server.address();
+    const port = typeof address === "object" && address !== null ? String(address.port) : "0";
+    baseUrl = `http://127.0.0.1:${port}`;
+  });
 });
 
-afterAll(async () => {
-  await new Promise((resolve) => server.close(resolve));
+afterAll(() => {
+  return new Promise<void>((resolve) => {
+    server.close(() => {
+      resolve();
+    });
+  });
 });
 
 beforeEach(() => {
   jest.clearAllMocks();
-  auth.mockImplementation(pass);
-  denyApiKey.mockImplementation(pass);
-  superAdminOnly.mockImplementation(pass);
-  healthService.isReady.mockResolvedValue(true);
-  healthService.getReadiness.mockResolvedValue(REPORT);
+  (auth as jest.Mock).mockImplementation(pass);
+  (denyApiKey as jest.Mock).mockImplementation(pass);
+  (superAdminOnly as jest.Mock).mockImplementation(pass);
+  (healthService.isReady).mockResolvedValue(true);
+  (healthService.getReadiness).mockResolvedValue(REPORT);
 });
 
 describe("public health routes", () => {
@@ -106,7 +120,7 @@ describe("public health routes", () => {
   });
 
   it("GET /health is 503 when a required dependency is down", async () => {
-    healthService.isReady.mockResolvedValue(false);
+    (healthService.isReady).mockResolvedValue(false);
 
     const response = await get("/health");
 
@@ -117,7 +131,7 @@ describe("public health routes", () => {
   it("GET /ready is 200 READY / 503 NOT READY", async () => {
     expect(await get("/ready")).toEqual({ status: 200, text: "READY" });
 
-    healthService.isReady.mockResolvedValue(false);
+    (healthService.isReady).mockResolvedValue(false);
     expect(await get("/ready")).toEqual({ status: 503, text: "NOT READY" });
   });
 });
@@ -130,14 +144,13 @@ describe("gated readiness detail", () => {
     expect(denyApiKey).toHaveBeenCalled();
     expect(superAdminOnly).toHaveBeenCalled();
 
-    const body = JSON.parse(response.text);
+    const body = JSON.parse(response.text) as { data: { dependencies: unknown[] } };
     expect(response.status).toBe(200);
     expect(body.data.dependencies).toHaveLength(5);
   });
 
   it("is refused for an unauthenticated caller — the breakdown never runs", async () => {
-    auth.mockImplementation((req, res) =>
-      res.status(401).json({ message: "Unauthorized" }),
+    (auth as jest.Mock).mockImplementation((_req: unknown, res: { status: (c: number) => { json: (b: unknown) => void } }) => { res.status(401).json({ message: "Unauthorized" }); },
     );
 
     const response = await get("/api/v1/health");
@@ -148,8 +161,7 @@ describe("gated readiness detail", () => {
   });
 
   it("is refused for an API key", async () => {
-    denyApiKey.mockImplementation((req, res) =>
-      res.status(403).json({ message: "API keys cannot access this endpoint" }),
+    (denyApiKey as jest.Mock).mockImplementation((_req: unknown, res: { status: (c: number) => { json: (b: unknown) => void } }) => { res.status(403).json({ message: "API keys cannot access this endpoint" }); },
     );
 
     const response = await get("/api/v1/health");
@@ -160,8 +172,7 @@ describe("gated readiness detail", () => {
   });
 
   it("is refused for an authenticated non-super-admin", async () => {
-    superAdminOnly.mockImplementation((req, res) =>
-      res.status(403).json({ message: "Super admin access required" }),
+    (superAdminOnly as jest.Mock).mockImplementation((_req: unknown, res: { status: (c: number) => { json: (b: unknown) => void } }) => { res.status(403).json({ message: "Super admin access required" }); },
     );
 
     const response = await get("/api/v1/health");
