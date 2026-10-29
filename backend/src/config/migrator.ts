@@ -249,6 +249,10 @@ const migrationModules: [string, MigrationModule][] = [
   ["0145-upstream-transform-attachments.js", require("../migrations/0145-upstream-transform-attachments")],
   // P25-01/P25-02 (ADR-129 Am. 11): the reconciliation's two read grants to the transform role.
   ["0146-upstream-reconciliation-grants.js", require("../migrations/0146-upstream-reconciliation-grants")],
+  // P24-05 finding: MAINTAIN on what the transform writes, so the runner can ANALYZE inside its one transaction.
+  ["0147-upstream-transform-maintain.js", require("../migrations/0147-upstream-transform-maintain")],
+  // The device register's text search (find=): one tenant-led trigram GIN over name, serial and manufacturer.
+  ["0148-device-text-search-trgm.js", require("../migrations/0148-device-text-search-trgm")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

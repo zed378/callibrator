@@ -12,7 +12,7 @@ import os from "os";
 import path from "path";
 import { gzipSync } from "zlib";
 import type { Transaction } from "sequelize";
-import { batchSize, beginStaging, insertRows, prepareTable, purgeRun, type StagingSession } from "../../../services/upstreamImport/stagingLoader";
+import { analyzeStaged, batchSize, beginStaging, insertRows, prepareTable, purgeRun, type StagingSession } from "../../../services/upstreamImport/stagingLoader";
 import { ImportCancelled, ImportFailure, runPipeline, type PipelineProgress } from "../../../services/upstreamImport/importPipeline";
 import { syntheticUpstreamDump } from "../../support/syntheticUpstreamDump";
 
@@ -81,6 +81,18 @@ describe("P24-06 stagingLoader", () => {
       ['DELETE FROM upstream_import."stg_users" WHERE import_run_id = $1', ["run-1"]],
       ['DELETE FROM upstream_import."stg_mst_faskes" WHERE import_run_id = $1', ["run-1"]],
     ]);
+  });
+
+  it("P24-05: analyzeStaged refreshes the statistics of each loaded staging table, and refuses a name it would have to quote", async () => {
+    const { session, calls } = fakeSession();
+    await analyzeStaged(session.runner, ["users", "mst_faskes"]);
+    expect(calls.map((c) => [c.text, c.bind])).toEqual([
+      ['ANALYZE upstream_import."stg_users"', []],
+      ['ANALYZE upstream_import."stg_mst_faskes"', []],
+    ]);
+    const refused = fakeSession();
+    await expect(analyzeStaged(refused.session.runner, ['t"; DROP TABLE x; --'])).rejects.toThrow(/not a plain lower-case table name/);
+    expect(refused.calls).toEqual([]);
   });
 
   it("prepareTable creates the table, adds a missing column, and reports a changed type as schema_conflict", async () => {

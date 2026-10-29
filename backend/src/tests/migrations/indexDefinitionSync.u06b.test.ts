@@ -109,6 +109,22 @@ describe("U-06b — every index a migration creates parses in Sequelize's showIn
     }
   });
 
+  it("0148's trigram GIN parses: four fields, the operator classes left out of the names", async () => {
+    // indkey and the rendering as PostgreSQL 18 gave them for the index (P24-05 scratch database, 2026-10-29).
+    const rows = (await showIndex({
+      name: "calibration_devices_tenant_id_text_trgm",
+      primary: false,
+      unique: false,
+      indkey: "2 3 4 5",
+      column_indexes: [2, 3, 4, 5],
+      column_names: "{tenant_id,name,serial_number,manufacturer}",
+      definition:
+        "CREATE INDEX calibration_devices_tenant_id_text_trgm ON public.calibration_devices USING gin " +
+        "(tenant_id, name gin_trgm_ops, serial_number gin_trgm_ops, manufacturer gin_trgm_ops)",
+    })) as { fields: { attribute: string }[] }[];
+    expect(rows[0]?.fields.map((f) => f.attribute)).toEqual(["tenant_id", "name", "serial_number", "manufacturer"]);
+  });
+
   it("no migration creates an index with INCLUDE (...) — its columns are in indkey but not in the parsed pieces", () => {
     const dir = path.join(__dirname, "../../migrations");
     const offenders = fs

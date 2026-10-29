@@ -53,7 +53,9 @@ jest.mock("../../config/upstreamImport", () => ({
 }));
 const beginStaging = jest.fn();
 const purgeRun = jest.fn();
+const analyzeStaged = jest.fn();
 jest.mock("../../services/upstreamImport/stagingLoader", () => ({
+  analyzeStaged: (...a: unknown[]) => analyzeStaged(...a) as unknown,
   beginStaging: (...a: unknown[]) => beginStaging(...a) as unknown,
   purgeRun: (...a: unknown[]) => purgeRun(...a) as unknown,
 }));
@@ -126,6 +128,7 @@ beforeEach(() => {
   scanFile.mockResolvedValue({ clean: true, provider: "none" });
   beginStaging.mockResolvedValue(undefined);
   purgeRun.mockResolvedValue([]);
+  analyzeStaged.mockResolvedValue(undefined);
   runPipeline.mockResolvedValue({ tables, summary, bytesRead: 10, uncompressedBytes: 10 });
   mdb.seed("Tenant", [
     { id: PLATFORM, name: "Callibrator Platform", code: "PLATFORM", status: "active" },
@@ -251,6 +254,17 @@ describe("P24-06 the worker", () => {
     expect(String(note?.["message"])).toContain(view.sha256);
     const loaded = await service.getRun(view.id);
     expect(loaded).toMatchObject({ progress: 1, durationMs: expect.any(Number) as unknown, tables: [{ table: "t", ...tables.t }] });
+  });
+
+  it("P24-05: the tables that loaded rows are analysed after the commit; a failed ANALYZE costs speed, never the run", async () => {
+    const view = await upload(DUMP);
+    const mixed = { ...tables, skipped: { ...tables.t, staged: false }, empty: { ...tables.t, rowsLoaded: 0 } };
+    runPipeline.mockResolvedValueOnce({ tables: mixed, summary, bytesRead: 10, uncompressedBytes: 10 });
+    analyzeStaged.mockRejectedValueOnce(Object.assign(new Error("denied"), { parent: { code: "42501" } }));
+    await job();
+    expect(analyzeStaged).toHaveBeenCalledWith(expect.anything(), ["t"]);
+    expect(analyzeStaged.mock.invocationCallOrder[0]).toBeGreaterThan(commit.mock.invocationCallOrder[0] ?? Infinity);
+    expect(run(view.id)["status"]).toBe("loaded");
   });
 
   it("nothing from the dump reaches the run, an audit row or a notification", async () => {

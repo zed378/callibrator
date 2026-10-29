@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-29 — Performance: the transform 608 s → 129 s; device search on a trigram index; compliance counted in SQL ([record](./records/2026-10-29-perf-transform-statistics-and-api-indexes.md), ADR-129 Am. 13)
+- Migration 0147: the transform role gets MAINTAIN, and the runner ANALYZEs after each step. Migration 0148: one tenant-led trigram GIN for the device `find=` (rare term 40 → 6 ms). `getCompliance` groups in SQL instead of reading every record. Contracts cache their date formatters (14×). Same outcomes on the real dump; live `p2401`, `t0148` on PostgreSQL 18.
+
 ### 2026-10-29 — P24-05: the photo pipeline on 400 real photos ([record](./records/2026-10-29-p24-05-photo-sample-dry-run.md))
 - Ingest and step 9 correct on real files (R-8 377/377 per facility, RC-F2/F3 0); step 9 ~1.2 s per photo, so the full photo pass runs ahead of the freeze. The dry-run script takes a photo sample.
 

@@ -110,10 +110,9 @@ describe("reporting.service", () => {
   describe("getCompliance", () => {
     it("computes the compliance rate", async () => {
       CalibrationRecord.findAll.mockResolvedValue([
-        { isCompliant: true },
-        { isCompliant: true },
-        { isCompliant: false },
-        { isCompliant: null },
+        { isCompliant: true, count: "2" },
+        { isCompliant: false, count: 1 },
+        { isCompliant: null, count: "1" },
       ]);
       const r = await reporting.getCompliance("t1");
       expect(r.summary).toMatchObject({

@@ -19,6 +19,7 @@ import type { Transaction } from "sequelize";
 import { sql, type BindValue, type SqlRunner } from "../../utils/sql.util";
 import { STAGING_SCHEMA } from "../../config/upstreamImport";
 import type { StagingType } from "./stagingValues";
+import { stagingTableOf } from "./tablePolicy";
 
 /** The run's staging connection and its transaction. */
 export interface StagingSession {
@@ -64,6 +65,22 @@ export interface RoleCheck {
   superuser: boolean;
   canCreate: boolean;
 }
+
+/**
+ * Fresh planner statistics for the tables a run loaded (P24-05 finding, 2026-10-29): the transform may
+ * start seconds after the load commits, before autovacuum's analyze, and joins the staged rows with
+ * the id map. Run AFTER the load's commit, on the import role's connection (the tables' owner).
+ * The names are the staging allow-list's (`stagingTableOf`), checked as plain identifiers.
+ */
+export const analyzeStaged = async (runner: SqlRunner, tables: readonly string[]): Promise<void> => {
+  for (const table of tables) {
+    const name = stagingTableOf(table);
+    if (!/^[a-z_][a-z0-9_]{0,62}$/.test(name)) {
+      throw new Error(`staging: "${name}" is not a plain lower-case table name`);
+    }
+    await sql(runner, `ANALYZE ${STAGING_SCHEMA}."${name}"`, []);
+  }
+};
 
 /**
  * Serialise runs (one at a time, whatever replica) and prove the connection
