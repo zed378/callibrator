@@ -98,10 +98,10 @@ make psql                    # a shell on the target database, when a count must
 2. **Check the ingest's counts**: ingested, skipped as already present, quarantined by reason. Every
    file has a manifest line, so the counts reconcile per folder. (Measured on a 400-photo sample,
    2026-10-29: ~0.6 s per file on a workstation, so a full ingest takes hours. Start it early.)
-2a. **Run the transform once with the photos, ahead of the freeze.** Step 9 costs ~1.2 s per photo
-   (measured, 2026-10-29: the read-back check, the decode, two derivatives). With ~47 k photos that is
-   hours inside one transaction, too long for the window. A re-run writes no unchanged photo, so after
-   this pass the cutover transform handles only the delta
+2a. **Run the transform once with the photos, ahead of the freeze.** Since ADR-130 Am. 1 the ingest
+   builds the derivatives (~2 s per file, at T-7 d), and step 9 only copies them (~0.05 s per photo;
+   it was ~1.2 s). A re-run writes no unchanged photo, so after this pass the cutover transform
+   handles only the delta
    ([record](../MEMORY/records/2026-10-29-p24-05-photo-sample-dry-run.md)).
 3. **Invitations drafted** — the provider administrator confirms the person behind each shared
    account. Do **not** issue yet: the gate opens after the pre-invitation checks are recorded.

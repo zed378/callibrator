@@ -55,3 +55,25 @@ It runs at T-7 d in the runbook, resumable, which fits.
   (P30-02).
 - The rsync transfer on real files: on the VM or in a Linux container, with the owner's host-key
   confirmation (P24-07's flow).
+
+## Fixed and re-measured the same day (ADR-130 Am. 1, `991b2c6`)
+
+A benchmark on ten real photos (2.07 MB average) located the cost in `buildDerivatives`: 1,714 ms
+against 5 ms to read and 2 ms to hash. The derivatives are now built at **ingest**, with the same
+function and so the same bytes. Step 9 copies them.
+
+Re-run on the **same 400-photo sample and the same dump**:
+
+| | Before | After |
+|---|---|---|
+| Ingest (400 files) | 243 s (0.6 s a file) | 821 s (2.05 s a file; the decode moved here) |
+| **Step 9** | **456 s** | **71.5 s**, most of it the accounting of 47,444 photo references; a run with no photo took 54–112 s |
+| Step 9 per photo | ~1.2 s | ~0.05 s |
+| Photos mapped / quarantined | 186 + 191 / 7 | **identical** |
+| R-8, RC-F2, RC-F3, Q-28 unreferenced | 377/377, 0, 0, 20 | **identical** |
+| Reconciliation failures | 0 | 0 |
+
+The step-9 risk above is resolved: ~47,000 photos now cost minutes in the transaction, not hours.
+The ingest absorbs the decode, per file and resumable. A full ingest is roughly a day of CPU on this
+workstation, scheduled at T-7 d. The runbook's "photo transform ahead of the freeze" step stays as
+a safeguard.
