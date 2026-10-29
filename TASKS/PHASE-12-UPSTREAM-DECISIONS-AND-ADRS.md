@@ -350,6 +350,7 @@ The owner answered the open owner facts and actions ([record](../MEMORY/records/
 | P29-03 | Training videos | Owner deliverable, deferred |
 | P17-07 exit | Done once every phase is finished | Deferred to the end |
 | Q-61 | The `@callibrator` npm organisation after all implementation | Deferred to the end |
+| Q-14 (dry run, 2026-10-28) | Confirmed: `tgl_inventory` is the date the device was registered in the upstream app, not its acquisition date | The 22,854 calibrations dated before it are expected; Q-14 stays a flag, not a defect |
 
 ## 4. Owner Actions Outside the Codebase
 
