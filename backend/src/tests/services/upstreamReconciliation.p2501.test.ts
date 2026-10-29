@@ -39,30 +39,40 @@ const db = {
   photoRun: { referenced: 0, mapped: 0, quarantined: 0 },
   photos: [] as { facility: string; mapped: number; landed: number }[],
   bad: 0,
+  /** Staged tables that are absent although `present` is true (`stg_<name>`). */
+  absent: [] as string[],
+  /** The run-level count statements (R-9's, R-8's per folder) answer no row. */
+  noRow: false,
+  /** R-7's device dates per facility (`'tgl_kalibrasi'`), when they differ from `perFacility`. */
+  deviceDates: null as { facilityId: string; n: number }[] | null,
 };
 const close = jest.fn(() => Promise.resolve());
 /** The transform connection as `sql()` sees it: `query(text, { type, bind, transaction })`. */
-const query = jest.fn((text: string) => {
+const query = jest.fn((text: string, options?: { bind?: unknown[] }) => {
   if (text.includes("current_user")) {
     return Promise.resolve([{ currentUser: db.role }]);
   }
   if (text.includes("AS present")) {
-    return Promise.resolve([{ present: db.present }]);
+    const table = String(options?.bind?.[0]);
+    return Promise.resolve([{ present: db.present && !db.absent.some((t) => table.endsWith(`stg_${t}`)) }]);
   }
   if (text.includes("AS referenced")) {
-    return Promise.resolve([db.photoRun]);
+    return Promise.resolve(db.noRow ? [] : [db.photoRun]);
   }
   if (text.includes("AS mapped") && text.includes('AS "facility"')) {
     return Promise.resolve(db.photos);
   }
   if (text.includes("AS matching")) {
-    return Promise.resolve([db.users]);
+    return Promise.resolve(db.noRow ? [] : [db.users]);
   }
   if (text.includes('AS "facility"')) {
     return Promise.resolve(db.sections);
   }
   if (text.includes("AS staged")) {
     return Promise.resolve([db.completeness]);
+  }
+  if (db.deviceDates && text.includes("source_table = 'tgl_kalibrasi'")) {
+    return Promise.resolve(db.deviceDates);
   }
   if (text.includes('"facilityId"')) {
     return Promise.resolve(db.perFacility);
@@ -124,7 +134,7 @@ const seedFacilities = (): void => {
 beforeEach(() => {
   mdb.reset();
   jest.clearAllMocks();
-  Object.assign(db, { role: "callibrator_transform", present: false, completeness: { staged: 0, mapped: 0, quarantined: 0 }, perFacility: [], sections: [], users: { landed: 0, matching: 0 }, photoRun: { referenced: 0, mapped: 0, quarantined: 0 }, photos: [], bad: 0 });
+  Object.assign(db, { role: "callibrator_transform", present: false, completeness: { staged: 0, mapped: 0, quarantined: 0 }, perFacility: [], sections: [], users: { landed: 0, matching: 0 }, photoRun: { referenced: 0, mapped: 0, quarantined: 0 }, photos: [], bad: 0, absent: [], noRow: false, deviceDates: null });
 });
 
 describe("P25-01 the reconciliation request", () => {
@@ -302,5 +312,30 @@ describe("P25-01 the reconciliation request", () => {
       ["foto_depan", HOME, "device_front"],
       ["foto_sn", HOME, "device_serial_plate"],
     ]);
+  });
+
+  it("the edges: equal sections differ in nothing; R-9 without the staged groups counts no match; a count with no row reads as zero; R-7's device dates in a facility of their own", async () => {
+    seedRun(RUN);
+    seedFacilities();
+    db.present = true;
+    db.absent = ["auth_groups"];
+    db.noRow = true;
+    db.sections = [{ facility: F1, staged: 2, landed: 2, stored: 2, outcomeMatch: 2, readingMatch: 2 }];
+    db.perFacility = [{ facilityId: F1, n: 1 }];
+    db.deviceDates = [{ facilityId: F2, n: 3 }];
+    const answer = await asSuperAdmin(() => service.reconcileRun(RUN));
+    const check = (id: string, name: string) => answer.facilities.find((f) => f.clientFacilityId === id)?.checks.find((c) => c.check === name);
+    expect(check(F1, "R-3")).toMatchObject({ status: "pass", expected: 24, actual: 24 });
+    expect(check(F1, "R-3")?.note).not.toContain("differ");
+    // R-9's statement without auth_groups staged: no group join, the match a constant 0 (and no row read as 0 / 0).
+    const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
+    const r9 = calls.find(([text]) => text.includes("AS matching"))?.[0] ?? "";
+    expect(r9).toMatch(/\s0 AS matching/);
+    expect(r9).not.toContain("auth_groups_users");
+    expect(answer.runChecks.find((c) => c.check === "R-9")).toMatchObject({ status: "pass", expected: 0, actual: 0 });
+    expect(answer.runChecks.find((c) => c.check === "R-8")).toMatchObject({ status: "pass", expected: 0, actual: 0 });
+    // F2 has no trx_kalibrasi rows; its device dates alone make its R-7 (staged and stored both 3).
+    expect(check(F2, "R-7")).toMatchObject({ status: "pass", expected: 3, actual: 3 });
+    expect(check(F1, "R-7")).toMatchObject({ status: "pass", expected: 1, actual: 1 });
   });
 });

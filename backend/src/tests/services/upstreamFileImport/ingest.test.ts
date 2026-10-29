@@ -233,6 +233,39 @@ describe("ingestStaged — 08-FILE-POLICY § 2 over synthetic files", () => {
     expect(failing.quarantinedByReason).toEqual({ ingest_failed: 1 });
   });
 
+  it("ADR-130 Am. 1: an image that passes the inspection but does not decode is refused image_undecodable, and its stored object is removed", async () => {
+    // Without `pixels: true` the synthetic JPEG has valid segments and no decodable scan.
+    put("foto_depan/a.jpg", syntheticJpeg());
+    const counts = await run();
+    expect(counts.quarantinedByReason).toEqual({ image_undecodable: 1 });
+    expect(counts.ingested).toBe(0);
+    expect(objects.size).toBe(0);
+  });
+
+  it("a derivative put that throws is ingest_failed: the object and both derivative keys are removed, a failing delete tolerated", async () => {
+    put("foto_depan/a.jpg", syntheticJpeg({ pixels: true }));
+    const removed: string[] = [];
+    const counts = await run(
+      {},
+      deps({
+        putObject: (key, bytes) => {
+          if (key.includes("display") || key.includes("thumb")) {
+            return Promise.reject(new Error("disk full"));
+          }
+          objects.set(key, Buffer.from(bytes));
+          return Promise.resolve();
+        },
+        removeObject: (key) => {
+          removed.push(key);
+          return Promise.reject(new Error("gone"));
+        },
+      }),
+    );
+    expect(counts.quarantinedByReason).toEqual({ ingest_failed: 1 });
+    expect(removed).toHaveLength(3);
+    expect(new Set(removed).size).toBe(3);
+  });
+
   it("a file that cannot be read is counted failed and left in place", async () => {
     put("foto_depan/a.jpg", syntheticJpeg({ pixels: true }));
     const spy = jest.spyOn(fs.promises, "lstat").mockRejectedValueOnce(Object.assign(new Error("EACCES"), { code: "EACCES" }));

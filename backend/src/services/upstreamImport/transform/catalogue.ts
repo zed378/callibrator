@@ -160,7 +160,9 @@ export const definitionOf = (section: InspectionSection, row: Readonly<Record<st
   const limitKind = section === "performance" || section === "electrical_safety";
   let symbol = textOrNull(row["symbol"], 50);
   let limitText = limitKind ? textOrNull(row["nilai_acuan"], 100) : null;
-  if (limitKind && limitText === null && symbol !== null && (parseLimit(symbol)?.op ?? "text") !== "text") {
+  // A non-null symbol is never blank (cleanText collapses whitespace as parseLimit does), so
+  // parseLimit answers a limit here; `undefined` is listed only for its `| null` type.
+  if (limitKind && limitText === null && symbol !== null && ![undefined, "text"].includes(parseLimit(symbol)?.op)) {
     limitText = symbol;
     symbol = null;
   }
