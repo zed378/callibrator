@@ -124,6 +124,13 @@ describe("G-P2 — a bound user's sidebar on the real seed", () => {
     expect(unbound).toEqual(expect.arrayContaining(["/dashboard/users", "/dashboard/devices", "/dashboard/audit"]));
     expect(unbound.length).toBeGreaterThan(BASE.length + 10);
   });
+
+  it("a bound requester whose role was not loaded (roleId only): name and level read as null, and the menu fails closed (empty)", async () => {
+    const roleIdOnly = { id: USER, roleId: ROLE_IDS.HEALTHCARE_TECHNICIAN, clientFacilityId: F1 };
+    expect(await menuService.getRoleMenuAssignments(ROLE_IDS.HEALTHCARE_TECHNICIAN, roleIdOnly)).toEqual([]);
+    // The same requester with its role loaded sees its bound sidebar: the empty menu is the missing name.
+    expect(await sidebar("HEALTHCARE_TECHNICIAN")).toEqual(BOUND_SIDEBARS.HEALTHCARE_TECHNICIAN);
+  });
 });
 
 describe("P18-03 § 13 — GET /menu-groups/my-permissions", () => {
