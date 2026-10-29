@@ -36,6 +36,13 @@ The first attempt failed in the `users` step: the scratch database had no seeded
 
 ## Timings
 
+> **A second run (after the catalogue fix, same dump) took 334.5 s for the transform, against
+> 1,022.7 s here.** The slow one ran while other test suites were loading this workstation. The
+> per-step shape is the same in both. On the second run the IPM sessions took 123 s and the results
+> 109 s, step 9 54 s and the rooms 31 s. Read the figures below as an upper bound on a loaded machine;
+> the host's own figure is P30-02's.
+
+
 | Stage | Duration |
 |---|---|
 | migrations | 16.5 s |
