@@ -20,6 +20,7 @@
  * Restoring `router.get("/nc", getNCs)` fails the "refused" cases below.
  */
 
+import type * as AuthMiddleware from "../../middlewares/auth.middleware";
 import type * as RouteClient from "../fixtures/routeClient";
 import type { Principal, TwoTenantWorld } from "../fixtures/routeClient";
 import { ROLE_NAMES, ROLE_IDS } from "../../constants/roleConstants";
@@ -50,7 +51,7 @@ const mockSeed: { current: Seed | null } = { current: null };
 let currentUser: Principal | null = null;
 
 jest.mock("../../middlewares/auth.middleware", () => {
-  const actual = jest.requireActual<typeof import("../../middlewares/auth.middleware")>(
+  const actual = jest.requireActual<typeof AuthMiddleware>(
     "../../middlewares/auth.middleware",
   );
   return {
@@ -106,7 +107,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 
 // Body validation runs AFTER the gate and is not what is under test.
 jest.mock("../../middlewares/validation.middleware", () => ({
-  validate: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  validate: () => (_req: unknown, _res: unknown, next: () => void) => { next(); },
 }));
 
 const reached = (name: string) =>
@@ -176,11 +177,10 @@ const http = (method: string, url: string): Promise<HttpResponse> =>
       ip: "127.0.0.1",
       get: () => undefined,
     };
-    router.handle(req, res, (err) =>
-      resolve({
-        status: err ? err.status || err.statusCode || 500 : 404,
-        body: { message: err ? err.message : "no route" },
-      }),
+    router.handle(req, res, (err) => { resolve({
+      status: err ? err.status ?? err.statusCode ?? 500 : 404,
+      body: { message: err ? err.message : "no route" },
+    }); },
     );
   });
 

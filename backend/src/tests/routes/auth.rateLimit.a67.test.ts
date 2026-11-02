@@ -127,7 +127,7 @@ const ipLimit = (endpoint: string): number => getAuthConfig(endpoint).maxAttempt
 // what this suite counts is the per-address limit.
 let badLoginSeq = 0;
 const badLogin = () => ({
-  user: `nobody-${(badLoginSeq += 1)}@hospital.example.com`,
+  user: `nobody-${String((badLoginSeq += 1))}@hospital.example.com`,
   password: "Wrong-password-1",
 });
 

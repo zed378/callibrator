@@ -111,10 +111,10 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 
 interface TwoTenantsModule {
-  createTwoTenants(): TwoTenantWorld;
+  createTwoTenants: () => TwoTenantWorld;
 }
 interface SeededAuthorizationModule {
-  createSeededAuthorization(): Seed;
+  createSeededAuthorization: () => Seed;
 }
 interface DataRetentionServiceMock {
   getRetentionPolicy: jest.Mock;

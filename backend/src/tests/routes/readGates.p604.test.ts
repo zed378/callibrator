@@ -20,6 +20,7 @@
  * to an id that does not exist (CLAUDE.md, two-tenant rule).
  */
 
+import type * as AuthMiddleware from "../../middlewares/auth.middleware";
 import type * as RouteClient from "../fixtures/routeClient";
 import type { Principal, TwoTenantWorld } from "../fixtures/routeClient";
 import { ROLE_NAMES, ROLE_IDS } from "../../constants/roleConstants";
@@ -68,7 +69,7 @@ const mockRows: { scorecards: ScorecardRow[]; jobs: BatchJobRow[] } = { scorecar
 let currentUser: UserContext = null;
 
 jest.mock("../../middlewares/auth.middleware", () => {
-  const actual = jest.requireActual<typeof import("../../middlewares/auth.middleware")>(
+  const actual = jest.requireActual<typeof AuthMiddleware>(
     "../../middlewares/auth.middleware",
   );
   return {
@@ -86,11 +87,11 @@ jest.mock("../../models", () => {
     findByPk: (...args: unknown[]) => mockSeed.current?.Roles.findByPk(...args),
   };
   const byIdAndTenant = <T extends { id: string; tenantId: string }>(rows: () => T[]) => ({
-    findOne: async ({ where }: { where: { id: string; tenantId: string } }) =>
-      rows().find((r) => r.id === where.id && r.tenantId === where.tenantId) ?? null,
-    findAndCountAll: async ({ where }: { where: { tenantId: string } }) => {
+    findOne: ({ where }: { where: { id: string; tenantId: string } }) =>
+      Promise.resolve(rows().find((r) => r.id === where.id && r.tenantId === where.tenantId) ?? null),
+    findAndCountAll: ({ where }: { where: { tenantId: string } }) => {
       const found = rows().filter((r) => r.tenantId === where.tenantId);
-      return { count: found.length, rows: found };
+      return Promise.resolve({ count: found.length, rows: found });
     },
   });
   return {
@@ -101,7 +102,7 @@ jest.mock("../../models", () => {
     SupplierScorecard: byIdAndTenant(() => mockRows.scorecards),
     BatchJob: {
       ...byIdAndTenant(() => mockRows.jobs),
-      create: async (values: Record<string, unknown>) => ({ id: "0b000000-0000-4000-8000-0000000000cc", ...values }),
+      create: (values: Record<string, unknown>) => Promise.resolve({ id: "0b000000-0000-4000-8000-0000000000cc", ...values }),
     },
     Role: roles,
     Roles: roles,
@@ -126,29 +127,29 @@ jest.mock("../../config", () => {
   actual.db.transaction = async (cb) => cb("TX");
   return actual;
 });
-jest.mock("../../services/audit.service", () => ({ logAction: jest.fn(async () => ({})) }));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn(() => Promise.resolve({})) }));
 jest.mock("../../services/reporting.service", () => ({
-  getSummary: jest.fn(async () => ({ devices: 1 })),
-  getCompliance: jest.fn(async () => ({})),
-  getCalibrationWorkload: jest.fn(async () => ({})),
-  getOverdueDevices: jest.fn(async () => []),
-  getInventory: jest.fn(async () => ({})),
+  getSummary: jest.fn(() => Promise.resolve({ devices: 1 })),
+  getCompliance: jest.fn(() => Promise.resolve({})),
+  getCalibrationWorkload: jest.fn(() => Promise.resolve({})),
+  getOverdueDevices: jest.fn(() => Promise.resolve([])),
+  getInventory: jest.fn(() => Promise.resolve({})),
 }));
 jest.mock("../../services/featureFlag.service", () => ({ DEFAULT_FLAGS: { enable_iot: false } }));
-jest.mock("../../services/oidcProvider.service", () => ({ getClients: jest.fn(async () => []) }));
+jest.mock("../../services/oidcProvider.service", () => ({ getClients: jest.fn(() => Promise.resolve([])) }));
 jest.mock("../../services/notification.service", () => ({
-  emitNotification: jest.fn(async (n: unknown) => n),
+  emitNotification: jest.fn((n: unknown) => Promise.resolve(n)),
 }));
 jest.mock("../../services/menuGroup.service", () => ({
-  listMenuGroups: jest.fn(async () => []),
-  getRoleMenuAssignments: jest.fn(async () => []),
+  listMenuGroups: jest.fn(() => Promise.resolve([])),
+  getRoleMenuAssignments: jest.fn(() => Promise.resolve([])),
 }));
 jest.mock("../../services/user.service", () => ({
-  checkUsernameAvailability: jest.fn(async () => ({ data: { available: true }, message: "ok" })),
+  checkUsernameAvailability: jest.fn(() => Promise.resolve({ data: { available: true }, message: "ok" })),
 }));
 jest.mock("../../services/rabbitmq.service", () => ({
-  assertQueue: jest.fn(async () => undefined),
-  publish: jest.fn(async () => true),
+  assertQueue: jest.fn(() => Promise.resolve(undefined)),
+  publish: jest.fn(() => Promise.resolve(true)),
 }));
 jest.mock("../../utils/password.util", () => ({ hashPassword: jest.fn() }));
 jest.mock("../../services/userPermission.service", () => ({
@@ -247,11 +248,10 @@ const http = (
       ip: "127.0.0.1",
       get: () => undefined,
     };
-    router.handle(req, res, (err) =>
-      resolve({
-        status: err ? err.status || err.statusCode || 500 : 404,
-        body: { message: err ? err.message : "no route" },
-      }),
+    router.handle(req, res, (err) => { resolve({
+      status: err ? err.status ?? err.statusCode ?? 500 : 404,
+      body: { message: err ? err.message : "no route" },
+    }); },
     );
   });
 
@@ -280,7 +280,7 @@ let fx: TwoTenantWorld;
 const batchJobService = require("../../services/batchJob.service") as {
   registerHandler: (type: string, handler: () => Promise<unknown>) => void;
 };
-batchJobService.registerHandler("EXPORT_CSV", async () => ({ processedItems: 0 }));
+batchJobService.registerHandler("EXPORT_CSV", () => Promise.resolve({ processedItems: 0 }));
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -292,11 +292,13 @@ beforeEach(async () => {
   const row = (id: string, tenantId: string): ScorecardRow => ({
     id,
     tenantId,
-    async update(values: Record<string, unknown>) {
+    update(values: Record<string, unknown>) {
       Object.assign(this, values);
-      return this;
+      return Promise.resolve(this);
     },
-    async destroy() {},
+    destroy() {
+      return Promise.resolve();
+    },
   });
   mockRows.scorecards = [
     row("5c000000-0000-4000-8000-00000000000a", fx.tenantA.id),
@@ -326,19 +328,19 @@ const CASES: Record<string, CaseEntry> = {
   "GET /reports/inventory": { call: () => http(routers.reports, "GET", "/inventory"), allowed: EVERY_TENANT_ROLE },
   "GET /supplier-scorecard": { call: () => http(routers.scorecard, "GET", "/"), allowed: SCORECARD_READ },
   "GET /supplier-scorecard/:id": {
-    call: () => http(routers.scorecard, "GET", `/${mockRows.scorecards[0]!.id}`),
+    call: () => http(routers.scorecard, "GET", `/${(mockRows.scorecards[0] as ScorecardRow).id}`),
     allowed: SCORECARD_READ,
   },
   "PUT /supplier-scorecard/:id": {
-    call: () => http(routers.scorecard, "PUT", `/${mockRows.scorecards[0]!.id}`, { body: { score: 3 } }),
+    call: () => http(routers.scorecard, "PUT", `/${(mockRows.scorecards[0] as ScorecardRow).id}`, { body: { score: 3 } }),
     allowed: SCORECARD_WRITE,
   },
   "DELETE /supplier-scorecard/:id": {
-    call: () => http(routers.scorecard, "DELETE", `/${mockRows.scorecards[0]!.id}`),
+    call: () => http(routers.scorecard, "DELETE", `/${(mockRows.scorecards[0] as ScorecardRow).id}`),
     allowed: SCORECARD_WRITE,
   },
   "GET /jobs": { call: () => http(routers.jobs, "GET", "/"), allowed: JOBS_READ },
-  "GET /jobs/:id": { call: () => http(routers.jobs, "GET", `/${mockRows.jobs[0]!.id}`), allowed: JOBS_READ },
+  "GET /jobs/:id": { call: () => http(routers.jobs, "GET", `/${(mockRows.jobs[0] as BatchJobRow).id}`), allowed: JOBS_READ },
   "POST /jobs/test": { call: () => http(routers.jobs, "POST", "/test"), allowed: [] },
   "GET /feature-flags/definitions": { call: () => http(routers.flags, "GET", "/definitions"), allowed: FLAGS_READ },
   "GET /oidc/clients": { call: () => http(routers.oidc, "GET", "/clients"), allowed: OIDC_READ },
@@ -356,7 +358,7 @@ const CASES: Record<string, CaseEntry> = {
 };
 
 describe.each(Object.keys(CASES))("P6-04 — %s", (name) => {
-  const caseEntry = CASES[name]!;
+  const caseEntry = CASES[name] as CaseEntry;
   const { call, allowed } = caseEntry;
 
   it.each(TENANT_ROLES)("as %s", async (role) => {
@@ -395,10 +397,10 @@ describe("P6-04 — two-tenant 404 on the gated :id routes", () => {
   const NO_SUCH = "99999999-9999-4999-8999-999999999999";
 
   it.each([
-    ["GET", "scorecard", () => mockRows.scorecards[1]!.id],
-    ["PUT", "scorecard", () => mockRows.scorecards[1]!.id],
-    ["DELETE", "scorecard", () => mockRows.scorecards[1]!.id],
-    ["GET", "jobs", () => mockRows.jobs[1]!.id],
+    ["GET", "scorecard", () => (mockRows.scorecards[1] as ScorecardRow).id],
+    ["PUT", "scorecard", () => (mockRows.scorecards[1] as ScorecardRow).id],
+    ["DELETE", "scorecard", () => (mockRows.scorecards[1] as ScorecardRow).id],
+    ["GET", "jobs", () => (mockRows.jobs[1] as BatchJobRow).id],
   ] as const)("%s %s/:id — tenant B's id is 404, identical to a nonexistent id", async (method, routerKey, foreignId) => {
     currentUser = ADMIN();
     const router = routers[routerKey];
@@ -406,10 +408,11 @@ describe("P6-04 — two-tenant 404 on the gated :id routes", () => {
     const missing = await http(router, method, `/${NO_SUCH}`, { body: { score: 1 } });
 
     expect(foreign.status).toBe(404);
-    const shown = ({ details: _details, ...rest }: Record<string, unknown>) => rest;
+    const shown = (body: Record<string, unknown>) =>
+      Object.fromEntries(Object.entries(body).filter(([key]) => key !== "details"));
     expect(shown(foreign.body as Record<string, unknown>)).toEqual(shown(missing.body as Record<string, unknown>));
     // tenant B's row is untouched
-    expect(mockRows.scorecards[1]!.score).toBeUndefined();
+    expect((mockRows.scorecards[1] as ScorecardRow).score).toBeUndefined();
   });
 });
 
@@ -426,7 +429,7 @@ describe("AZ-01 G-06 — the sidebar menu reads answer for the caller's own role
     const res = await call((currentUser as unknown as { roleId: string }).roleId);
     expect(res.status).toBe(200);
     // ADR-102: getRoleMenuAssignments also takes the requester (its overrides).
-    expect(menuGroupService[service].mock.calls[0]![0]).toBe((currentUser as unknown as { roleId: string }).roleId);
+    expect((menuGroupService[service].mock.calls as unknown[][])[0]?.[0]).toBe((currentUser as unknown as { roleId: string }).roleId);
   });
 
   it.each(cases)("%s — another role's id: 403, the service never runs", async (_name, call, service) => {

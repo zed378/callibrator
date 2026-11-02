@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-properties -- the guards under test read NODE_ENV, ALLOW_* and SEED_DEMO at call time, so each case sets them around the call */
 /**
  * Migration Routes Tests
  *
@@ -9,12 +10,12 @@ interface RouteLayer {
   route?: {
     path?: string;
     methods?: Record<string, boolean>;
-    stack: Array<{
+    stack: {
       handle?: {
         name?: string;
         (req: unknown, res: unknown, next: (err?: unknown) => void): unknown;
       };
-    }>;
+    }[];
   };
 }
 
@@ -27,8 +28,8 @@ interface MigrationRouter {
 // tests (0% function coverage). Mock their collaborators so they can be driven
 // directly off the route stack.
 jest.mock("../../middlewares/auth.middleware", () => ({
-  auth: jest.fn((_req: unknown, _res: unknown, next: (err?: unknown) => void) => next()),
-  superAdminOnly: jest.fn((_req: unknown, _res: unknown, next: (err?: unknown) => void) => next()),
+  auth: jest.fn((_req: unknown, _res: unknown, next: (err?: unknown) => void) => { next(); }),
+  superAdminOnly: jest.fn((_req: unknown, _res: unknown, next: (err?: unknown) => void) => { next(); }),
 }));
 
 jest.mock("../../utils/response.util", () => ({
@@ -70,10 +71,8 @@ describe("Migration Routes", () => {
   it("should have GET /up route", () => {
     const routes = migrationRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/up" &&
-        layer.route.methods &&
-        layer.route.methods["get"],
+        layer.route?.path === "/up" &&
+        layer.route.methods?.["get"],
     );
     expect(routes.length).toBe(1);
   });
@@ -81,10 +80,8 @@ describe("Migration Routes", () => {
   it("should have GET /down route", () => {
     const routes = migrationRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/down" &&
-        layer.route.methods &&
-        layer.route.methods["get"],
+        layer.route?.path === "/down" &&
+        layer.route.methods?.["get"],
     );
     expect(routes.length).toBe(1);
   });
@@ -92,10 +89,8 @@ describe("Migration Routes", () => {
   it("should have GET /seeding route", () => {
     const routes = migrationRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/seeding" &&
-        layer.route.methods &&
-        layer.route.methods["get"],
+        layer.route?.path === "/seeding" &&
+        layer.route.methods?.["get"],
     );
     expect(routes.length).toBe(1);
   });
@@ -103,10 +98,8 @@ describe("Migration Routes", () => {
   it("should have GET /unseeding route", () => {
     const routes = migrationRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/unseeding" &&
-        layer.route.methods &&
-        layer.route.methods["get"],
+        layer.route?.path === "/unseeding" &&
+        layer.route.methods?.["get"],
     );
     expect(routes.length).toBe(1);
   });
@@ -114,10 +107,8 @@ describe("Migration Routes", () => {
   it("should have GET /seed-demo route", () => {
     const routes = migrationRoutes.stack.filter(
       (layer) =>
-        layer.route &&
-        layer.route.path === "/seed-demo" &&
-        layer.route.methods &&
-        layer.route.methods["get"],
+        layer.route?.path === "/seed-demo" &&
+        layer.route.methods?.["get"],
     );
     expect(routes.length).toBe(1);
   });
@@ -156,8 +147,8 @@ describe("Migration Routes", () => {
   /** Pull a named middleware off a route's handler stack. */
   const guardFor = (path: string, name: string) =>
     migrationRoutes.stack
-      .find((l) => l.route && l.route.path === path)
-      ?.route?.stack.find((s) => s.handle && s.handle.name === name)?.handle as (
+      .find((l) => l.route?.path === path)
+      ?.route?.stack.find((s) => s.handle?.name === name)?.handle as (
         req: unknown,
         res: unknown,
         next: (err?: unknown) => void,
@@ -272,7 +263,7 @@ describe("Migration Routes", () => {
     it("forwards an auth error instead of running superAdminOnly", () => {
       delete process.env["ALLOW_SEEDING"];
       const boom = new Error("bad token");
-      auth.mockImplementationOnce((_req: unknown, _res: unknown, cb: (err?: unknown) => void) => cb(boom));
+      auth.mockImplementationOnce((_req: unknown, _res: unknown, cb: (err?: unknown) => void) => { cb(boom); });
       const next = jest.fn();
 
       guard()({}, makeRes(), next);

@@ -110,7 +110,7 @@ describe("A-121 — audit rows are never purged", () => {
         dataRetention.setRetentionPolicy(T1, "audit_logs", days),
       ).rejects.toMatchObject({
         status: 400,
-        message: expect.stringMatching(/audit logs are not subject to retention/i),
+        message: expect.stringMatching(/audit logs are not subject to retention/i) as unknown,
       });
       expect(TenantSettings.upsert).not.toHaveBeenCalled();
     });
@@ -122,7 +122,7 @@ describe("A-121 — audit rows are never purged", () => {
         dataRetention.setRetentionPolicy(T1, entity, days),
       ).rejects.toMatchObject({
         status: 400,
-        message: expect.stringContaining(`at least ${String(floor)} days`),
+        message: expect.stringContaining(`at least ${String(floor)} days`) as unknown,
       });
       expect(TenantSettings.upsert).not.toHaveBeenCalled();
     });
@@ -136,7 +136,7 @@ describe("A-121 — audit rows are never purged", () => {
           key: "retention_policy_notifications",
           value: "30",
         },
-        { transaction: expect.anything() },
+        { transaction: expect.anything() as unknown },
       );
     });
 
@@ -149,7 +149,7 @@ describe("A-121 — audit rows are never purged", () => {
           key: "retention_policy_sessions",
           value: "0",
         },
-        { transaction: expect.anything() },
+        { transaction: expect.anything() as unknown },
       );
     });
   });
@@ -162,7 +162,7 @@ describe("A-121 — audit rows are never purged", () => {
           dataRetention.setRetentionPolicy(tenantId as TenantId, "notifications", 90),
         ).rejects.toMatchObject({
           status: 400,
-          message: expect.stringMatching(/per tenant/i),
+          message: expect.stringMatching(/per tenant/i) as unknown,
         });
         expect(TenantSettings.upsert).not.toHaveBeenCalled();
       },
