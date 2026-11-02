@@ -25,7 +25,12 @@ import path from "path";
 import dotenv from "dotenv";
 import { env, environment } from "../src/config/env";
 import type * as SqlUtil from "../src/utils/sql.util";
+import { upstreamReconciliationResult } from "@callibrator/contracts/upstreamReconciliation";
+import { upstreamDataQualityResult } from "@callibrator/contracts/upstreamDataQuality";
+import { REPORT_DIFF_SAMPLE_MAX, upstreamReportDiffResult } from "@callibrator/contracts/upstreamReportDiff";
 
+/** Past any dump's sessions: the census of the report diff, beside the contract's largest sample. */
+const REPORT_DIFF_CENSUS = 1_000_000;
 const [dumpArg, outArg, photosArg, sampleArg] = process.argv.slice(2);
 if (dumpArg === undefined || outArg === undefined) {
   throw new Error("usage: tsx scripts/upstream-dry-run.ts <dump.sql> <summary.json> [<uploads dir with foto_depan/ foto_sn/> <sample per folder>]");
@@ -106,6 +111,7 @@ const main = async (): Promise<void> => {
   };
   const reconciliation = require("../src/services/upstreamReconciliation.service") as { reconcileRun(id: string): Promise<unknown> };
   const dataQuality = require("../src/services/upstreamDataQuality.service") as { reportDataQuality(id: string): Promise<unknown> };
+  const reportDiff = require("../src/services/upstreamReportDiff.service") as { diffRun(id: string, sample: number): Promise<unknown> };
 
   const asSuperAdmin = <T>(work: () => Promise<T>): Promise<T> =>
     new Promise<T>((resolve, reject) => {
@@ -351,9 +357,17 @@ const main = async (): Promise<void> => {
     // P25-01 and P25-02 on real volumes.
     const [reconciled, reconcileMs] = await timed("reconciliation", () => asSuperAdmin(() => reconciliation.reconcileRun(runId)));
     const [quality, qualityMs] = await timed("data quality", () => asSuperAdmin(() => dataQuality.reportDataQuality(runId)));
+    const [diff, diffMs] = await timed("report diff", () => asSuperAdmin(() => reportDiff.diffRun(runId, REPORT_DIFF_SAMPLE_MAX)));
+    const [census, censusMs] = await timed("report diff, every session", () => asSuperAdmin(() => reportDiff.diffRun(runId, REPORT_DIFF_CENSUS)));
+    // The real answers against their contracts: a mock proves the client, not the contract.
+    upstreamReconciliationResult.parse(reconciled);
+    upstreamDataQualityResult.parse(quality);
+    upstreamReportDiffResult.parse(diff);
     summary["reconciliation"] = { ms: reconcileMs, answer: reconciled };
     summary["dataQuality"] = { ms: qualityMs, answer: quality };
-    summary["timingsMs"] = { migrations: migrateMs, stage1: stageMs, transform: transformMs, reconciliation: reconcileMs, dataQuality: qualityMs };
+    summary["reportDiff"] = { ms: diffMs, answer: diff };
+    summary["reportDiffCensus"] = { ms: censusMs, answer: census };
+    summary["timingsMs"] = { migrations: migrateMs, stage1: stageMs, transform: transformMs, reconciliation: reconcileMs, dataQuality: qualityMs, reportDiff: diffMs };
   } catch (err) {
     summary["failure"] = err instanceof Error ? err.message : String(err);
     throw err;

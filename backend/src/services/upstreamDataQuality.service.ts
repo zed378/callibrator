@@ -37,8 +37,19 @@
  *   orphans (2026-10-28) - Q-2 / Q-3 / Q-10: mapped IPM rows, devices and
  *     calibrations whose staged id_user is no imported account
  *
- * NOT built: the user section (R-9 of the reconciliation checks the accounts
- * per run).
+ *   the rest of 03 § 7 (2026-11-02, ADR-129 Am. 14), per facility: Q-5 rows whose
+ *     device type differs from the device's, Q-6 / Q-7 item references deleted /
+ *     absent, Q-11 the device's date against its calibrations, Q-15 no created_at,
+ *     Q-17 serial placeholders, Q-18 duplicates NULLed by UD-9 (`Q-18-NULL`), Q-20
+ *     a device name that is not its type's, Q-21 environment readings kept raw,
+ *     Q-22 decimal commas, Q-23 non-numeric readings, Q-24 untrimmed device text,
+ *     Q-27 photo URLs with a host
+ *   run level (`runFindings`): Q-16 archive rows with no created_at, duplicate
+ *     files (`F-DUP-HASH` one content under several paths, `F-DUP-NAME` one file
+ *     named by several devices), the users section U-1 … U-6
+ *
+ * Not counted: Q-1 and Q-25 describe the schema and the encoding (no per-run
+ * number); Q-26 is `auth_logins`, which is never staged.
  * The facility row carries the id and code only: the name is sensitive
  * operational data (03 § 9).
  */
@@ -50,8 +61,13 @@ import {
   stagedTable,
   stagedTableExists,
 } from "./upstreamImport/transform/ledger";
-import { RESULT_TABLES, SESSION_TABLES } from "./upstreamImport/transform/ipm";
+import {
+  RESULT_TABLES,
+  SESSION_TABLES,
+  type ResultTableRule,
+} from "./upstreamImport/transform/ipm";
 import { photoNameOf } from "./upstreamImport/transform/attachments";
+import { FORMER_USERS } from "./upstreamImport/transform/people";
 import { catalogueOf } from "./upstreamImport/transform/photoFiles";
 import { manifestsOf } from "./upstreamImport/transformFiles";
 import type { StepContext } from "./upstreamImport/transform/steps";
@@ -207,18 +223,29 @@ const missingFilesPerFacility = async (
   return counts;
 };
 
+/** The file findings of a run. */
+interface FileFindings {
+  unreferenced: number;
+  /** Paths whose ingested content another path of the folders already has. */
+  sameContent: number;
+  /** Device references beyond the first to one `<folder>/<name>`. */
+  sameName: number;
+}
+
 /**
  * Q-28 (the unreferenced half): photo files the provider's image imports brought onto disk (their
  * manifests, read as step 9 reads them) in the two photo folders that no staged device row of the
  * run names - by the same `<folder>/<name>` step 9 looks up. Such a file has no device and so no
- * facility: a run-level finding.
+ * facility: a run-level finding. So are the duplicate files: one content under several paths (the
+ * manifests' stored SHA-256) and one file named by several devices.
  */
-const unreferencedFiles = async (
+const fileFindings = async (
   context: StepContext,
   manifests: readonly string[],
-): Promise<number> => {
+): Promise<FileFindings> => {
   const catalogue = catalogueOf(manifests);
   const referenced = new Set<string>();
+  let sameName = 0;
   if (await stagedTableExists(context, "trx_inventory")) {
     const rows = await sql<Record<string, string | null>>(
       context.runner,
@@ -231,18 +258,228 @@ const unreferencedFiles = async (
       for (const folder of PHOTO_FOLDERS) {
         const name = photoNameOf(row[folder] ?? null);
         if (name !== null) {
-          referenced.add(`${folder}/${name}`);
+          const path = `${folder}/${name}`;
+          sameName += referenced.has(path) ? 1 : 0;
+          referenced.add(path);
         }
       }
     }
   }
   let unreferenced = 0;
-  for (const path of catalogue.keys()) {
-    if (PHOTO_FOLDERS.some((folder) => path.startsWith(`${folder}/`)) && !referenced.has(path)) {
-      unreferenced += 1;
+  let sameContent = 0;
+  const contents = new Set<string>();
+  for (const [path, source] of catalogue) {
+    if (!PHOTO_FOLDERS.some((folder) => path.startsWith(`${folder}/`))) {
+      continue;
+    }
+    unreferenced += referenced.has(path) ? 0 : 1;
+    if (source.outcome === "ingested") {
+      sameContent += contents.has(source.storedSha256) ? 1 : 0;
+      contents.add(source.storedSha256);
     }
   }
-  return unreferenced;
+  return { unreferenced, sameContent, sameName };
+};
+
+/** Q-17's words (03 § 7), written from the finding, not read from inventory.ts: a serial placeholder. */
+const SERIAL_PLACEHOLDER_WORDS: readonly string[] = Object.freeze([
+  "none", "null", "nil", "n/a", "na", "tidak ada", "tidak", "kosong", "unknown", "tanpa sn", "no sn",
+]);
+
+/** The per-facility counts of one transformed run's devices. */
+interface DeviceCounts {
+  facilityId: string;
+  q11: number;
+  q15: number;
+  q17: number;
+  q18Nulled: number;
+  q20: number;
+  q24: number;
+  q27: number;
+}
+
+/** A staged device column as text. */
+const deviceText = (column: string): string => `coalesce(to_jsonb(s) ->> '${column}', '')`;
+/** The staged serial, trimmed and folded. */
+const SERIAL = `lower(btrim(${deviceText("sn")}))`;
+const IS_PLACEHOLDER = `(length(${SERIAL}) < 3 OR ${SERIAL} ~ '^[-0./ ]+$' OR ${SERIAL} = ANY($3::text[]))`;
+
+/**
+ * Q-11, Q-15, Q-17, the serials UD-9 NULLed, Q-20, Q-24 and Q-27 over the run's mapped device rows,
+ * in the facility the transform decided. Q-20 reads the stored name against its type's, Q-17 the
+ * staged serial against the stored NULL.
+ */
+const deviceCountsPerFacility = async (context: StepContext): Promise<DeviceCounts[]> => {
+  if (!(await stagedTableExists(context, "trx_inventory"))) {
+    return [];
+  }
+  const calibrations = (await stagedTableExists(context, "trx_kalibrasi"))
+    ? `(SELECT btrim(to_jsonb(c) ->> 'id_inventory') AS ref, array_agg(left(to_jsonb(c) ->> 'tanggal_kalibrasi', 10)) AS days
+          FROM ${stagedTable("trx_kalibrasi")} c WHERE c.import_run_id = $1 GROUP BY 1)`
+    : "(SELECT NULL::text AS ref, NULL::text[] AS days)";
+  const untrimmed = ["nama_alat", "merk", "type", "sn", "nama_ruangan"]
+    .map((c) => `${deviceText(c)} <> btrim(${deviceText(c)})`)
+    .join(" OR ");
+  return sql<DeviceCounts>(
+    context.runner,
+    `SELECT m.client_facility_id AS "facilityId",
+            count(*) FILTER (WHERE k.days IS NOT NULL AND ${deviceText("tgl_kalibrasi")} <> ''
+                               AND NOT left(${deviceText("tgl_kalibrasi")}, 10) = ANY(k.days))::int AS q11,
+            count(*) FILTER (WHERE ${deviceText("created_at")} = '')::int AS q15,
+            count(*) FILTER (WHERE d.serial_number IS NULL AND ${IS_PLACEHOLDER})::int AS q17,
+            count(*) FILTER (WHERE d.serial_number IS NULL AND NOT ${IS_PLACEHOLDER})::int AS "q18Nulled",
+            count(*) FILTER (WHERE t.name IS NOT NULL AND lower(btrim(d.name)) <> lower(btrim(t.name)))::int AS q20,
+            count(*) FILTER (WHERE ${untrimmed})::int AS q24,
+            count(*) FILTER (WHERE ${deviceText("foto_depan")} ~* '^https?://' OR ${deviceText("foto_sn")} ~* '^https?://')::int AS q27
+       FROM ${stagedTable("trx_inventory")} s
+       JOIN ${ID_MAP} m ON m.source_table = 'trx_inventory' AND m.legacy_id = s."id"::text
+       JOIN calibration_devices d ON d.id = m.target_id AND d.tenant_id = $2
+       LEFT JOIN device_types t ON t.id = d.device_type_id
+       LEFT JOIN ${calibrations} k ON k.ref = s."id"::text
+      WHERE s.import_run_id = $1 AND m.client_facility_id IS NOT NULL
+      GROUP BY m.client_facility_id`,
+    [context.runId, context.tenantId, SERIAL_PLACEHOLDER_WORDS],
+    { transaction: context.transaction },
+  );
+};
+
+/** Q-6 and Q-7: the mapped result rows whose item reference names a catalogue row that is gone, or none at all. */
+const itemReferencesPerFacility = async (
+  context: StepContext,
+): Promise<{ deleted: Map<string, number>; absent: Map<string, number> }> => {
+  const deleted = new Map<string, number>();
+  const absent = new Map<string, number>();
+  for (const table of Object.keys(RESULT_TABLES)) {
+    const { item } = RESULT_TABLES[table] as ResultTableRule;
+    if (item === null || !(await stagedTableExists(context, table))) {
+      continue;
+    }
+    const rows = await sql<{ facilityId: string; gone: number; none: number }>(
+      context.runner,
+      `SELECT m.client_facility_id AS "facilityId",
+              count(*) FILTER (WHERE y.item <> '0' AND c.legacy_id IS NULL)::int AS gone,
+              count(*) FILTER (WHERE y.item = '0')::int AS none
+         FROM ${stagedTable(table)} s
+         JOIN ${ID_MAP} m ON m.source_table = $2 AND m.legacy_id = s."id"::text
+         CROSS JOIN LATERAL (SELECT coalesce(nullif(btrim(to_jsonb(s) ->> $3), ''), '0') AS item) y
+         LEFT JOIN ${ID_MAP} c ON c.source_table = $4 AND c.legacy_id = y.item
+        WHERE s.import_run_id = $1 AND m.client_facility_id IS NOT NULL
+        GROUP BY m.client_facility_id`,
+      [context.runId, table, item.column, item.catalogue],
+      { transaction: context.transaction },
+    );
+    addInto(deleted, rows.map((r) => ({ facilityId: r.facilityId, n: r.gone })));
+    addInto(absent, rows.map((r) => ({ facilityId: r.facilityId, n: r.none })));
+  }
+  return { deleted, absent };
+};
+
+/** Q-5: the mapped IPM rows whose `id_alat` is not their device's current type (the row keeps its snapshot label). */
+const typeChangedPerFacility = async (context: StepContext): Promise<Map<string, number>> => {
+  const counts = new Map<string, number>();
+  if (!(await stagedTableExists(context, "trx_inventory"))) {
+    return counts;
+  }
+  for (const table of IPM_TABLES) {
+    if (!(await stagedTableExists(context, table))) {
+      continue;
+    }
+    addInto(
+      counts,
+      await sql<{ facilityId: string; n: number }>(
+        context.runner,
+        `SELECT m.client_facility_id AS "facilityId", count(*)::int AS n
+           FROM ${stagedTable(table)} s
+           JOIN ${ID_MAP} m ON m.source_table = $2 AND m.legacy_id = s."id"::text
+           JOIN ${stagedTable("trx_inventory")} d ON d.import_run_id = $1
+                AND btrim(to_jsonb(d) ->> 'no_qrcode') = btrim(to_jsonb(s) ->> 'no_qrcode')
+          WHERE s.import_run_id = $1 AND m.client_facility_id IS NOT NULL
+            AND nullif(btrim(to_jsonb(s) ->> 'id_alat'), '') <> nullif(btrim(to_jsonb(d) ->> 'id_alat'), '')
+          GROUP BY m.client_facility_id`,
+        [context.runId, table],
+        { transaction: context.transaction },
+      ),
+    );
+  }
+  return counts;
+};
+
+/** Q-22: the mapped performance rows with a decimal comma in a reading. */
+const decimalCommasPerFacility = async (context: StepContext): Promise<Map<string, number>> =>
+  (await stagedTableExists(context, "trx_kinerja_alat"))
+    ? byFacility(
+      await sql<{ facilityId: string; n: number }>(
+        context.runner,
+        `SELECT m.client_facility_id AS "facilityId", count(*)::int AS n
+           FROM ${stagedTable("trx_kinerja_alat")} s
+           JOIN ${ID_MAP} m ON m.source_table = 'trx_kinerja_alat' AND m.legacy_id = s."id"::text
+          WHERE s.import_run_id = $1 AND m.client_facility_id IS NOT NULL
+            AND (coalesce(to_jsonb(s) ->> 'terukur_1', '') LIKE '%,%' OR coalesce(to_jsonb(s) ->> 'terukur_2', '') LIKE '%,%')
+          GROUP BY m.client_facility_id`,
+        [context.runId],
+        { transaction: context.transaction },
+      ),
+    )
+    : new Map<string, number>();
+
+/** The users section (run level: provider staff have no facility), read from the staged accounts. */
+interface UserCounts {
+  notImported: number;
+  inactive: number;
+  noMail: number;
+  unnamed: number;
+  sharedMail: number;
+}
+
+const NO_USERS: UserCounts = { notImported: 0, inactive: 0, noMail: 0, unnamed: 0, sharedMail: 0 };
+
+const userCounts = async (context: StepContext): Promise<UserCounts> => {
+  if (!(await stagedTableExists(context, "users"))) {
+    return NO_USERS;
+  }
+  const mail = "lower(btrim(coalesce(to_jsonb(s) ->> 'email', '')))";
+  const [row] = await sql<UserCounts>(
+    context.runner,
+    `SELECT count(*) FILTER (WHERE m.legacy_id IS NULL)::int AS "notImported",
+            count(*) FILTER (WHERE m.legacy_id IS NOT NULL AND coalesce(nullif(to_jsonb(s) ->> 'active', ''), '0') = '0')::int AS inactive,
+            count(*) FILTER (WHERE m.legacy_id IS NOT NULL AND ${mail} !~ '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$')::int AS "noMail",
+            count(*) FILTER (WHERE m.legacy_id IS NOT NULL AND btrim(coalesce(to_jsonb(s) ->> 'fullname', '')) = '')::int AS unnamed,
+            (SELECT count(*)::int FROM (
+               SELECT 1 FROM ${stagedTable("users")} s WHERE s.import_run_id = $1 AND ${mail} <> ''
+                GROUP BY ${mail} HAVING count(*) > 1) g) AS "sharedMail"
+       FROM ${stagedTable("users")} s
+       LEFT JOIN ${ID_MAP} m ON m.source_table = 'users' AND m.legacy_id = s."id"::text
+      WHERE s.import_run_id = $1`,
+    [context.runId],
+    { transaction: context.transaction },
+  );
+  return row ?? NO_USERS;
+};
+
+/** U-6: the departed upstream users numbered for snapshots (`former_users`, one numbering per migration). */
+const formerUserCount = async (context: StepContext): Promise<number> => {
+  const [row] = await sql<{ n: number }>(
+    context.runner,
+    `SELECT count(*)::int AS n FROM ${FORMER_USERS}`,
+    [],
+    { transaction: context.transaction },
+  );
+  return row?.n ?? 0;
+};
+
+/** Q-16: archive-index rows with no `created_at` (the upload time is unknown). */
+const archiveRowsWithoutTime = async (context: StepContext): Promise<number> => {
+  if (!(await stagedTableExists(context, "trx_inventory_file"))) {
+    return 0;
+  }
+  const [row] = await sql<{ n: number }>(
+    context.runner,
+    `SELECT count(*)::int AS n FROM ${stagedTable("trx_inventory_file")} s
+      WHERE s.import_run_id = $1 AND coalesce(to_jsonb(s) ->> 'created_at', '') = ''`,
+    [context.runId],
+    { transaction: context.transaction },
+  );
+  return row?.n ?? 0;
 };
 
 /** The run's facilities: the provider tenant's, ordered by code. */
@@ -438,7 +675,7 @@ export const reportDataQuality = async (
       };
       const noDevice = await sessionQuarantinePerFacility(context, "no_device");
       const missingFiles = await missingFilesPerFacility(context);
-      const unreferenced = await unreferencedFiles(context, manifests);
+      const files = await fileFindings(context, manifests);
       // Duplicates: Q-8 second session headers (quarantined), Q-9 devices with more than one live calibration.
       const duplicateHeaders = await sessionQuarantinePerFacility(context, "duplicate_header");
       const calibratedTwice = byFacility(
@@ -457,6 +694,27 @@ export const reportDataQuality = async (
       const ipmPerformerUnknown = await performerUnknownPerFacility(context, IPM_TABLES);
       const registrantUnknown = await performerUnknownPerFacility(context, ["trx_inventory"]);
       const calibratorUnknown = await performerUnknownPerFacility(context, ["trx_kalibrasi"]);
+      // The rest of 03 § 7 (ADR-129 Am. 14).
+      const devices = await deviceCountsPerFacility(context);
+      const deviceCount = (key: Exclude<keyof DeviceCounts, "facilityId">): Map<string, number> =>
+        new Map(devices.map((d) => [d.facilityId, d[key]]));
+      const references = await itemReferencesPerFacility(context);
+      const typeChanged = await typeChangedPerFacility(context);
+      const decimalCommas = await decimalCommasPerFacility(context);
+      const kept = await sql<{ facilityId: string; q21: number; q23: number }>(
+        runner,
+        `SELECT client_facility_id AS "facilityId",
+                count(*) FILTER (WHERE section = 'environment' AND (warn_flag OR raw_value IS NOT NULL))::int AS q21,
+                count(*) FILTER (WHERE section <> 'environment' AND raw_value IS NOT NULL)::int AS q23
+           FROM inspection_results
+          WHERE tenant_id = $1 AND client_facility_id IS NOT NULL AND legacy_id IS NOT NULL
+          GROUP BY client_facility_id`,
+        [tenantId],
+        { transaction },
+      );
+      const users = await userCounts(context);
+      const formerUsers = await formerUserCount(context);
+      const archiveUntimed = await archiveRowsWithoutTime(context);
 
       const flagged = (
         findingId: string,
@@ -549,8 +807,88 @@ export const reportDataQuality = async (
             id,
             "imported calibrations whose performer is no imported account (absent or departed): the import key acts for them",
           ),
+          flagged(
+            "Q-5",
+            typeChanged,
+            id,
+            "imported IPM rows whose device type differs from the device's current type: the row keeps its snapshot label",
+          ),
+          flagged(
+            "Q-6",
+            references.deleted,
+            id,
+            "imported result rows whose item reference names a catalogue row that is gone: the label is kept",
+          ),
+          flagged(
+            "Q-7",
+            references.absent,
+            id,
+            "imported result rows with no item reference (absent by design upstream): matched by label or label only",
+          ),
+          flagged(
+            "Q-11",
+            deviceCount("q11"),
+            id,
+            "devices whose own calibration date is none of their calibration rows' dates: two meanings of the date, both kept",
+          ),
+          flagged(
+            "Q-15",
+            deviceCount("q15"),
+            id,
+            "devices with no upstream created_at: tgl_inventory is the registration date",
+          ),
+          flagged(
+            "Q-17",
+            deviceCount("q17"),
+            id,
+            "serial placeholders stored as NULL (empty, too short, or a none-like word)",
+          ),
+          flagged(
+            "Q-18-NULL",
+            deviceCount("q18Nulled"),
+            id,
+            "real serials stored as NULL because another device of the facility holds them (UD-9): the original is kept in id_map",
+          ),
+          flagged(
+            "Q-20",
+            deviceCount("q20"),
+            id,
+            "devices whose name differs from their type's catalogue name: the name is a free snapshot, kept",
+          ),
+          flagged(
+            "Q-21",
+            new Map(kept.map((k) => [k.facilityId, k.q21])),
+            id,
+            "environment readings outside their range or not numeric: stored NULL with the text kept",
+          ),
+          flagged(
+            "Q-22",
+            decimalCommas,
+            id,
+            "performance rows with a decimal comma in a reading: read as the decimal point",
+          ),
+          flagged(
+            "Q-23",
+            new Map(kept.map((k) => [k.facilityId, k.q23])),
+            id,
+            "result values that are not numeric or not a known code: stored NULL with the text kept",
+          ),
+          flagged(
+            "Q-24",
+            deviceCount("q24"),
+            id,
+            "devices with untrimmed text in a printed field: cleaned on load",
+          ),
+          flagged(
+            "Q-27",
+            deviceCount("q27"),
+            id,
+            "devices whose photo reference embeds a host: stripped to the file name",
+          ),
         ],
       }));
+      const runFinding = (findingId: string, count: number, note: string): DataQualityFinding =>
+        finding(findingId, count === 0 ? "pass" : "flagged", count, note);
 
       return {
         runId,
@@ -558,11 +896,55 @@ export const reportDataQuality = async (
         facilities: facilityRows,
         totals: [...totals.values()],
         runFindings: [
-          finding(
+          runFinding(
             "Q-28",
-            unreferenced === 0 ? "pass" : "flagged",
-            unreferenced,
+            files.unreferenced,
             "photo files on disk (the image imports' manifests) in foto_depan / foto_sn that no staged device row names",
+          ),
+          runFinding(
+            "F-DUP-HASH",
+            files.sameContent,
+            "photo paths whose content another path of the two folders already has (the manifests' stored SHA-256)",
+          ),
+          runFinding(
+            "F-DUP-NAME",
+            files.sameName,
+            "device photo references beyond the first to one file of a folder",
+          ),
+          runFinding(
+            "Q-16",
+            archiveUntimed,
+            "certificate archive rows with no upstream created_at: the upload time is unknown",
+          ),
+          runFinding(
+            "U-1",
+            users.notImported,
+            "staged accounts not imported (their quarantine reasons are in the totals)",
+          ),
+          runFinding(
+            "U-2",
+            users.inactive,
+            "imported accounts inactive upstream: imported inactive, never invited",
+          ),
+          runFinding(
+            "U-3",
+            users.sharedMail,
+            "e-mail addresses more than one staged account holds (case folded): one imported, the rest email_in_use",
+          ),
+          runFinding(
+            "U-4",
+            users.noMail,
+            "imported accounts with no usable e-mail address: they cannot receive an invitation",
+          ),
+          runFinding(
+            "U-5",
+            users.unnamed,
+            "imported accounts with no full name: snapshots print the unnamed-user label",
+          ),
+          runFinding(
+            "U-6",
+            formerUsers,
+            "departed upstream users numbered for snapshots: never accounts (ADR-139 § 6)",
           ),
         ],
       };

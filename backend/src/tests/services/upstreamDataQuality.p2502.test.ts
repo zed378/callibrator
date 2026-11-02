@@ -35,10 +35,15 @@ const db = {
   present: false,
   photoRows: [] as Record<string, string | null>[],
   manifests: [] as string[],
+  absent: [] as string[],
+  devices: [] as Record<string, unknown>[],
+  references: [] as { facilityId: string; gone: number; none: number }[],
+  kept: [] as { facilityId: string; q21: number; q23: number }[],
+  users: [] as Record<string, number>[],
 };
 const close = jest.fn(() => Promise.resolve());
 /** The transform connection as `sql()` sees it: `query(text, { type, bind, transaction })`. */
-const query = jest.fn((text: string) => {
+const query = jest.fn((text: string, options?: { bind?: unknown[] }) => {
   if (text.includes("current_user")) {
     return Promise.resolve([{ currentUser: db.role }]);
   }
@@ -46,7 +51,20 @@ const query = jest.fn((text: string) => {
     return Promise.resolve(db.photoRows);
   }
   if (text.includes("AS present")) {
-    return Promise.resolve([{ present: db.present }]);
+    const table = String(options?.bind?.[0]);
+    return Promise.resolve([{ present: db.present && !db.absent.some((t) => table.endsWith(`stg_${t}`)) }]);
+  }
+  if (text.includes("AS q11")) {
+    return Promise.resolve(db.devices);
+  }
+  if (text.includes("AS gone")) {
+    return Promise.resolve(db.references);
+  }
+  if (text.includes("AS q21")) {
+    return Promise.resolve(db.kept);
+  }
+  if (text.includes('AS "notImported"')) {
+    return Promise.resolve(db.users);
   }
   if (text.includes('"sourceTable"')) {
     return Promise.resolve(db.quarantine);
@@ -97,7 +115,7 @@ const seedRun = (id: string, values: Record<string, unknown> = {}): void => {
 beforeEach(() => {
   mdb.reset();
   jest.clearAllMocks();
-  Object.assign(db, { role: "callibrator_transform", quarantine: [], perFacility: [], present: false, photoRows: [], manifests: [] });
+  Object.assign(db, { role: "callibrator_transform", quarantine: [], perFacility: [], present: false, photoRows: [], manifests: [], absent: [], devices: [], references: [], kept: [], users: [] });
   mdb.seed("ClientFacility", [
     { id: F1, tenantId: HOME, code: "F-0001", name: "Satu", kind: "hospital", status: "active" },
     { id: F2, tenantId: HOME, code: "F-0002", name: "Dua", kind: "clinic", status: "active" },
@@ -125,7 +143,9 @@ describe("P25-02 the data-quality report", () => {
     seedRun(RUN);
     const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
     expect(answer).toMatchObject({ runId: RUN, providerTenantId: HOME, totals: [] });
-    expect(answer.runFindings.map((f) => [f.finding, f.status, f.count])).toEqual([["Q-28", "pass", 0]]);
+    expect(answer.runFindings.map((f) => [f.finding, f.status, f.count])).toEqual(
+      ["Q-28", "F-DUP-HASH", "F-DUP-NAME", "Q-16", "U-1", "U-2", "U-3", "U-4", "U-5", "U-6"].map((id) => [id, "pass", 0]),
+    );
     expect(answer.facilities.map((f) => [f.clientFacilityId, f.facilityCode, f.quarantine])).toEqual([
       [F1, "F-0001", []],
       [F2, "F-0002", []],
@@ -145,6 +165,7 @@ describe("P25-02 the data-quality report", () => {
         ["Q-2", "pass", 0],
         ["Q-3", "pass", 0],
         ["Q-10", "pass", 0],
+        ...["Q-5", "Q-6", "Q-7", "Q-11", "Q-15", "Q-17", "Q-18-NULL", "Q-20", "Q-21", "Q-22", "Q-23", "Q-24", "Q-27"].map((id) => [id, "pass", 0]),
       ]);
       expect(row.findings.find((f) => f.finding === "Q-28")?.note).toContain("unreferenced files are a run-level finding");
     }
@@ -180,7 +201,7 @@ describe("P25-02 the data-quality report", () => {
       { sourceTable: "trx_kalibrasi", reason: "no_device", rows: 1 },
     ]);
     // The tenant is bound, never interpolated.
-    for (const [text, options] of (query.mock.calls.slice(1) as unknown as [string, { bind: unknown[] }][]).filter(([t]) => !t.includes("AS present"))) {
+    for (const [text, options] of (query.mock.calls.slice(1) as unknown as [string, { bind: unknown[] }][]).filter(([t]) => !t.includes("AS present") && !t.includes("former_users"))) {
       expect(text).not.toContain(HOME);
       expect(options.bind).toContain(text.includes("quarantine") ? RUN : HOME);
     }
@@ -261,6 +282,60 @@ describe("P25-02 the data-quality report", () => {
     db.photoRows = [{ foto_depan: "https://old.example.test/uploads/foto_depan/a1.jpg?x=1", foto_sn: " a1sn.png " }, { foto_depan: null, foto_sn: "" }];
     const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
     // orphan.jpg and the quarantined virus.jpg are on disk and unnamed; another folder is not a photo folder.
-    expect(answer.runFindings).toEqual([expect.objectContaining({ finding: "Q-28", status: "flagged", count: 2 })]);
+    expect(answer.runFindings[0]).toEqual(expect.objectContaining({ finding: "Q-28", status: "flagged", count: 2 }));
+  });
+
+  it("the rest of 03 § 7, per facility: the device counts, the item references, Q-5, Q-22 and the readings kept raw", async () => {
+    seedRun(RUN);
+    db.present = true;
+    db.perFacility = [{ facilityId: F2, n: 2 }];
+    db.devices = [{ facilityId: F1, q11: 1, q15: 2, q17: 3, q18Nulled: 4, q20: 5, q24: 6, q27: 7 }];
+    db.references = [{ facilityId: F1, gone: 1, none: 2 }];
+    db.kept = [{ facilityId: F1, q21: 8, q23: 9 }];
+    const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
+    const [f1, f2] = answer.facilities;
+    const count = (row: typeof f1, id: string): number | undefined => row?.findings.find((f) => f.finding === id)?.count;
+    expect(["Q-11", "Q-15", "Q-17", "Q-18-NULL", "Q-20", "Q-24", "Q-27", "Q-21", "Q-23"].map((id) => count(f1, id))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // Seven result tables carry an item reference.
+    expect(count(f1, "Q-6")).toBe(7);
+    expect(count(f1, "Q-7")).toBe(14);
+    expect(count(f1, "Q-5")).toBe(0);
+    // Sixteen IPM tables for Q-5, one performance table for Q-22; the placeholders are bound, as literals of 03 Q-17.
+    expect(count(f2, "Q-5")).toBe(32);
+    expect(count(f2, "Q-22")).toBe(2);
+    const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
+    const device = calls.find(([text]) => text.includes("AS q11"));
+    expect(device?.[1].bind).toEqual([RUN, HOME, expect.arrayContaining(["none", "n/a", "tidak ada"])]);
+    expect(device?.[0]).toContain("array_agg");
+  });
+
+  it("the staged tables a dump may lack: nothing counted, Q-11 joins nothing", async () => {
+    seedRun(RUN);
+    db.present = true;
+    db.absent = ["trx_kalibrasi", "trx_kinerja_alat", "trx_fungsi_alat", "trx_catatan", "users", "trx_inventory_file"];
+    const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
+    const calls = query.mock.calls as unknown as [string][];
+    expect(calls.find(([text]) => text.includes("AS q11"))?.[0]).toContain("NULL::text[] AS days");
+    expect(answer.runFindings.every((f) => f.count === 0)).toBe(true);
+    db.absent = ["trx_inventory"];
+    expect((await asSuperAdmin(() => service.reportDataQuality(RUN))).facilities[0]?.findings.find((f) => f.finding === "Q-5")?.count).toBe(0);
+  });
+
+  it("run level: duplicate files by content and by reference, Q-16, and the users section", async () => {
+    seedRun(RUN);
+    db.present = true;
+    const ingested = (sourcePath: string, sha: string): string =>
+      JSON.stringify({ sourcePath, outcome: "ingested", storageKey: `k-${sourcePath}`, storedSha256: sha, sourceSha256: `h-${sourcePath}`, detectedType: "jpeg" });
+    db.manifests = [[ingested("foto_depan/a.jpg", "same"), ingested("foto_sn/b.jpg", "same"), ingested("foto_sn/c.jpg", "other")].join("\n")];
+    db.photoRows = [
+      { foto_depan: "a.jpg", foto_sn: "b.jpg" },
+      { foto_depan: "a.jpg", foto_sn: null },
+    ];
+    db.perFacility = [{ facilityId: F1, n: 3 }];
+    db.users = [{ notImported: 1, inactive: 2, noMail: 3, unnamed: 4, sharedMail: 5 }];
+    const answer = await asSuperAdmin(() => service.reportDataQuality(RUN));
+    const count = (id: string): number | undefined => answer.runFindings.find((f) => f.finding === id)?.count;
+    expect(["F-DUP-HASH", "F-DUP-NAME", "Q-16", "U-1", "U-2", "U-3", "U-4", "U-5", "U-6"].map(count)).toEqual([1, 1, 3, 1, 2, 5, 3, 4, 3]);
+    expect(answer.runFindings.find((f) => f.finding === "U-4")?.status).toBe("flagged");
   });
 });

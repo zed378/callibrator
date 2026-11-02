@@ -133,6 +133,8 @@ const CROSS_TENANT: Readonly<Record<string, string>> = {
         "read-only counts over id_map, quarantine and the allow-listed staging tables; tenant tables joined bind the provider tenant",
   "services/upstreamDataQuality.service.ts#${table}":
         "read-only counts over id_map and quarantine (constants); tenant tables bind the provider tenant",
+  "services/upstreamReportDiff.service.ts#${table}":
+        "read-only reads over id_map, quarantine and the allow-listed staging tables; tenant tables bind the provider tenant",
 };
 
 interface ModelLike {

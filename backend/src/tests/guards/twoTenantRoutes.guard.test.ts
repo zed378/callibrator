@@ -524,6 +524,7 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
   "api/admin.route POST /upstream-sql-imports/:id/transform": { kind: "platform", reason: UPSTREAM_SQL_IMPORTS },
   "api/admin.route GET /upstream-sql-imports/:id/reconciliation": { kind: "platform", reason: UPSTREAM_SQL_IMPORTS },
   "api/admin.route GET /upstream-sql-imports/:id/data-quality": { kind: "platform", reason: UPSTREAM_SQL_IMPORTS },
+  "api/admin.route GET /upstream-sql-imports/:id/report-diff": { kind: "platform", reason: UPSTREAM_SQL_IMPORTS },
   "api/dataRetention.route PUT /:tenantId/policy": { kind: "platform", reason: PLATFORM_TENANTS },
   "api/dataRetention.route POST /:tenantId/legal-hold": { kind: "platform", reason: PLATFORM_TENANTS },
   "api/dataRetention.route DELETE /:tenantId/legal-hold": { kind: "platform", reason: PLATFORM_TENANTS },

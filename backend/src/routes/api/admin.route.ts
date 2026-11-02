@@ -37,6 +37,8 @@ import { reconciliation as reconcileSqlImport } from "../../controllers/upstream
 import { upstreamReconciliationIdSchema } from "../../validators/upstreamReconciliation.validator";
 import { dataQuality as dataQualitySqlImport } from "../../controllers/upstreamDataQuality.controller";
 import { upstreamDataQualityIdSchema } from "../../validators/upstreamDataQuality.validator";
+import { reportDiff as reportDiffSqlImport } from "../../controllers/upstreamReportDiff.controller";
+import { upstreamReportDiffSchema } from "../../validators/upstreamReportDiff.validator";
 import { acceptProposal, listProposalsQuery, rejectProposal } from "@callibrator/contracts/inspectionCatalogue";
 import { accept as acceptCatalogueProposal, proposalQueue, reject as rejectCatalogueProposal } from "../../controllers/inspectionCatalogue.controller";
 
@@ -158,6 +160,13 @@ router.get(
   superAdminOnly,
   validate(upstreamDataQualityIdSchema, { from: "params" }),
   dataQualitySqlImport,
+);
+// P25-03 (docs/UPSTREAM/09 § 2): the sampled report diff, field by field, aggregates only.
+router.get(
+  "/upstream-sql-imports/:id/report-diff",
+  superAdminOnly,
+  validate(upstreamReportDiffSchema, { from: ["params", "query"] }),
+  reportDiffSqlImport,
 );
 
 // ---------------------------------------------------------------------------

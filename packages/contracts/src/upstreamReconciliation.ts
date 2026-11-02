@@ -7,9 +7,9 @@
  * the database through this contract — the same rule the import's own
  * views live by (ADR-129).
  *
- * R-12 (the app-level smoke) is not a count: it names the suites that must
- * have passed on the dry-run database, and whether each did. The live E2E
- * run itself is P21-10's spec on the dry-run stack, recorded in P25-04.
+ * R-12 (the app-level smoke) is not a count and not a database check: it
+ * answers `manual`. The live E2E run itself is P21-10's spec on the dry-run
+ * stack, recorded in P25-04.
  */
 import { z } from "zod";
 import { uuid } from "./fields";

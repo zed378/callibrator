@@ -35,16 +35,18 @@
  *   RC-F1 every imported row's facility = `id_map.client_facility_id`
  *   RC-F2 every child's facility = its device's
  *   RC-F3 every attachment key's `f/<facility>` segment = its row's
- *   RC-F4 per-facility counts equal the source's (covered by R-1 … R-9)
+ *   RC-F4 per-facility counts equal the source's: every staged device,
+ *        calibration and IPM row, attributed by the UPSTREAM DEVICE's
+ *        `id_client` (never by id_map), landed in that facility or is quarantined
  *   RC-F5 no imported facility account (a FACILITY_BOUND_ROLES role) is
  *        unbound; "two facilities" cannot happen (one `client_facility_id`)
  *   R-12 the app-level smoke: the suites that must have passed on the
  *        dry-run database (named, with whether each did)
  *
  * AS BUILT (P25-01 review, 2026-10-24; R-3 … R-6, R-8 and R-9 2026-10-27):
- * R-1 … R-8 per facility and R-8, R-9, R-10, R-11, RC-F1, RC-F2, RC-F3 and
- * RC-F5 per run are computed. RC-F4 and R-12 are NOT automated: they answer
- * `manual` with what to run in P25-04. R-3 … R-6 are ROW-LEVEL (the contract carries
+ * R-1 … R-8 and RC-F4 (2026-11-02, ADR-129 Am. 14) per facility and R-8, R-9,
+ * R-10, R-11, RC-F1, RC-F2, RC-F3, RC-F4 and RC-F5 per run are computed. R-12 is
+ * no database check: it answers `manual`. R-3 … R-6 are ROW-LEVEL (the contract carries
  * integer counts, so a sum or an average would not fit it): each mapped
  * staged result row is joined to the result its mapping names, and R-4 … R-6
  * count the landed rows whose outcome or readings are the staged row's —
@@ -68,6 +70,7 @@ import {
   ENVIRONMENT_TABLE,
   RESULT_CODES,
   RESULT_TABLES,
+  SESSION_TABLES,
   type ResultTableRule,
 } from "./upstreamImport/transform/ipm";
 import {
@@ -558,6 +561,109 @@ const completeness = async (
   return [staged, accounted, quarantined];
 };
 
+/** RC-F4 of one facility, or of the rows no facility claims (key null). */
+interface SourceAccounting {
+  source: number;
+  landed: number;
+  quarantined: number;
+}
+
+/** A staged row's upstream QR, trimmed; empty is none. */
+const qrOf = (alias: string): string =>
+  `nullif(btrim(to_jsonb(${alias}) ->> 'no_qrcode'), '')`;
+
+/**
+ * RC-F4's tables and how a row of each finds its upstream device (threat model FT-99: the facility
+ * is the upstream device row's, and children inherit it). A device is its own; a calibration names
+ * it by `id_inventory`; an IPM row by its QR.
+ */
+const SOURCE_FACILITY_TABLES: readonly (readonly [table: string, link: "self" | "inventory" | "qr"])[] =
+  Object.freeze([
+    ["trx_inventory", "self"],
+    ["trx_kalibrasi", "inventory"],
+    ...[...SESSION_TABLES, ...Object.keys(RESULT_TABLES)].map(
+      (table) => [table, "qr"] as const,
+    ),
+  ]);
+
+/** The join to the staged upstream device row (`d.client`, its `id_client`). */
+const deviceLinkSql = (link: "self" | "inventory" | "qr"): string => {
+  const inventory = stagedTable("trx_inventory");
+  if (link === "inventory") {
+    return `LEFT JOIN (SELECT x."id"::text AS ref, btrim(to_jsonb(x) ->> 'id_client') AS client
+                         FROM ${inventory} x WHERE x.import_run_id = $1) d
+              ON d.ref = btrim(to_jsonb(s) ->> 'id_inventory')`;
+  }
+  if (link === "qr") {
+    return `LEFT JOIN (SELECT DISTINCT ON (${qrOf("x")}) ${qrOf("x")} AS ref, btrim(to_jsonb(x) ->> 'id_client') AS client
+                         FROM ${inventory} x WHERE x.import_run_id = $1 ORDER BY ${qrOf("x")}, x.source_row_number DESC) d
+              ON d.ref = ${qrOf("s")}`;
+  }
+  return "CROSS JOIN LATERAL (SELECT NULL::text AS client) d";
+};
+
+/**
+ * RC-F4 (G-30, ADR-129 Am. 14): for every staged device, calibration and IPM row, the facility the
+ * SOURCE gives it — the upstream device's `id_client` through the facility step's `mst_faskes`
+ * mapping, the row's own `id_client` only when it has no device — and whether it landed in THAT
+ * facility or is quarantined. R-1 … R-7 start from `id_map`'s decision and so cannot see a wrong
+ * decision; this starts from the staged rows and reads the stored row's own facility.
+ */
+const sourceAccounting = async (
+  context: StepContext,
+): Promise<Map<string | null, SourceAccounting>> => {
+  const totals = new Map<string | null, SourceAccounting>();
+  if (!(await stagedTableExists(context, "trx_inventory"))) {
+    return totals;
+  }
+  for (const [table, link] of SOURCE_FACILITY_TABLES) {
+    if (!(await stagedTableExists(context, table))) {
+      continue;
+    }
+    const rows = await sql<{ facility: string | null } & SourceAccounting>(
+      context.runner,
+      `SELECT y.facility, count(*)::int AS source,
+              count(*) FILTER (WHERE y.landed)::int AS landed,
+              count(*) FILTER (WHERE NOT y.landed AND EXISTS (
+                SELECT 1 FROM ${QUARANTINE} q
+                 WHERE q.import_run_id = $1 AND q.source_table = $3 AND q.source_row_number = y.row_number))::int AS quarantined
+         FROM (
+           SELECT fm.client_facility_id AS facility, s.source_row_number AS row_number,
+                  coalesce(r.client_facility_id = fm.client_facility_id, false) AS landed
+             FROM ${stagedTable(table)} s
+             ${deviceLinkSql(link)}
+             LEFT JOIN ${ID_MAP} fm ON fm.source_table = 'mst_faskes'
+                  AND fm.legacy_id = coalesce(d.client, btrim(to_jsonb(s) ->> 'id_client'))
+             LEFT JOIN ${ID_MAP} m ON m.source_table = $3 AND m.legacy_id = s."id"::text
+             LEFT JOIN (
+               SELECT id, client_facility_id FROM calibration_devices WHERE tenant_id = $2
+               UNION ALL SELECT id, client_facility_id FROM calibration_records WHERE tenant_id = $2
+               UNION ALL SELECT id, client_facility_id FROM inspection_sessions WHERE tenant_id = $2
+               UNION ALL SELECT id, client_facility_id FROM inspection_results WHERE tenant_id = $2
+             ) r ON r.id = m.target_id
+            WHERE s.import_run_id = $1
+         ) y
+        GROUP BY y.facility`,
+      [context.runId, context.tenantId, table],
+      { transaction: context.transaction },
+    );
+    for (const { facility, source, landed, quarantined } of rows) {
+      const t = totals.get(facility) ?? { source: 0, landed: 0, quarantined: 0 };
+      t.source += source;
+      t.landed += landed;
+      t.quarantined += quarantined;
+      totals.set(facility, t);
+    }
+  }
+  return totals;
+};
+
+const RC_F4_NOTE =
+  "staged devices, calibrations and IPM rows by their upstream device's facility vs rows landed there or quarantined";
+
+const rcF4 = (t: SourceAccounting): ReconciliationCheckResult =>
+  check("RC-F4", t.source, t.landed + t.quarantined, t.quarantined, RC_F4_NOTE);
+
 /**
  * The reconciliation of one transformed run, per facility.
  * @throws {CodedError} 404 UPSTREAM_SQL_IMPORT_NOT_FOUND; 409 RUN_NOT_TRANSFORMED (not `transformed`, or no provider tenant)
@@ -792,6 +898,17 @@ export const reconcileRun = async (
       const sections = await sectionTotals(context);
       // R-8: the photos, per facility and at the run level.
       const photos = await photoTotals(context);
+      // RC-F4: per facility and, with the rows no facility claims, at the run level.
+      const accounting = await sourceAccounting(context);
+      const none: SourceAccounting = { source: 0, landed: 0, quarantined: 0 };
+      const accountingTotal = [...accounting.values()].reduce<SourceAccounting>(
+        (acc, t) => ({
+          source: acc.source + t.source,
+          landed: acc.landed + t.landed,
+          quarantined: acc.quarantined + t.quarantined,
+        }),
+        none,
+      );
 
       const facilityRows = facilities.map(({ id, code }) => {
         const t = sections.get(id) ?? emptyTotals();
@@ -850,6 +967,7 @@ export const reconcileRun = async (
               0,
               "mapped photos vs live attachments of the folder's purpose on their device, in the facility (step 9 proves the checksums)",
             ),
+            rcF4(accounting.get(id) ?? none),
           ],
         };
       });
@@ -880,13 +998,10 @@ export const reconcileRun = async (
             photos.quarantined,
             "every photo name a staged device references, per folder, is a mapped attachment or quarantined (05 § 7)",
           ),
-          manual(
-            "RC-F4",
-            "per-facility counts equal the source's: R-1 … R-7 cover the mapped rows; the source-side totals are P25-04's",
-          ),
+          rcF4(accountingTotal),
           manual(
             "R-12",
-            "NOT AUTOMATED: the app-level smoke (two-tenant suites and a live E2E on the dry-run database, P21-10's spec), in P25-04",
+            "NOT A DATABASE CHECK: the app-level smoke (two-tenant suites and a live E2E on the dry-run stack, P21-10's spec); recorded in P25-04",
           ),
         ],
       };

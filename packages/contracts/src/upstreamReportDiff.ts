@@ -3,7 +3,7 @@
  * report upstream prints (`ipm/pdf_ipm.php`, docs/UPSTREAM/09 § 2.1–2.3) set
  * beside the fields our report document is built from (the imported session,
  * its snapshots and its results), field by field, over a deterministic sample
- * of the run's imported sessions (ADR-129 Am. 13).
+ * of the run's imported sessions (ADR-129 Am. 14).
  *
  * Aggregates only. Every number is a count; every field is a fixed code. No
  * staged value, no legacy id, no QR, no name, no serial, no note ever leaves
@@ -76,6 +76,7 @@ export const upstreamReportDiffResult = z
         sample: z
             .object({
                 requested: z.number().int().min(1).max(REPORT_DIFF_SAMPLE_MAX),
+                population: z.number().int().min(0),
                 sessions: z.number().int().min(0),
                 facilities: z.number().int().min(0),
             })

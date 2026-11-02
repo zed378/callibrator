@@ -45,6 +45,8 @@ const db = {
   noRow: false,
   /** R-7's device dates per facility (`'tgl_kalibrasi'`), when they differ from `perFacility`. */
   deviceDates: null as { facilityId: string; n: number }[] | null,
+  /** RC-F4, per staged table. */
+  accounting: [] as { facility: string | null; source: number; landed: number; quarantined: number }[],
 };
 const close = jest.fn(() => Promise.resolve());
 /** The transform connection as `sql()` sees it: `query(text, { type, bind, transaction })`. */
@@ -55,6 +57,9 @@ const query = jest.fn((text: string, options?: { bind?: unknown[] }) => {
   if (text.includes("AS present")) {
     const table = String(options?.bind?.[0]);
     return Promise.resolve([{ present: db.present && !db.absent.some((t) => table.endsWith(`stg_${t}`)) }]);
+  }
+  if (text.includes("AS source")) {
+    return Promise.resolve(db.accounting);
   }
   if (text.includes("AS referenced")) {
     return Promise.resolve(db.noRow ? [] : [db.photoRun]);
@@ -174,6 +179,7 @@ describe("P25-01 the reconciliation request", () => {
         ["R-6", "pass"],
         ["R-7", "pass"],
         ["R-8", "pass"],
+        ["RC-F4", "pass"],
       ]);
     }
     expect(answer.runChecks.map((c) => [c.check, c.status])).toEqual([
@@ -185,10 +191,10 @@ describe("P25-01 the reconciliation request", () => {
       ["RC-F5", "pass"],
       ["R-9", "pass"],
       ["R-8", "pass"],
-      ["RC-F4", "manual"],
+      ["RC-F4", "pass"],
       ["R-12", "manual"],
     ]);
-    expect(answer.runChecks.filter((c) => c.status === "manual" && c.check !== "RC-F4").every((c) => c.note.startsWith("NOT AUTOMATED"))).toBe(true);
+    expect(answer.runChecks.find((c) => c.status === "manual")?.note).toContain("NOT A DATABASE CHECK");
     expect(close).toHaveBeenCalledTimes(1);
   });
 
@@ -219,8 +225,9 @@ describe("P25-01 the reconciliation request", () => {
     ]);
     // Every staged statement names a table through the allow-list, the run bound as $1.
     const staged = query.mock.calls.filter(([text]) => text.includes("upstream_import.\"stg_"));
-    // R-10 over every source, R-1/R-2/R-7, R-3 … R-6 once per result table, R-9, R-8 twice per photo folder, and R-7's device dates.
-    expect(staged.length).toBe(SOURCES + 3 + RESULT_TABLES + 1 + 2 * 2 + 1);
+    // R-10 over every source, R-1/R-2/R-7, R-3 … R-6 once per result table, R-9, R-8 twice per photo folder, R-7's device dates,
+    // and RC-F4 over the devices, the calibrations, the four session tables and the result tables.
+    expect(staged.length).toBe(SOURCES + 3 + RESULT_TABLES + 1 + 2 * 2 + 1 + 2 + 4 + RESULT_TABLES);
     for (const [, options] of staged as unknown as [string, { bind: unknown[] }][]) {
       expect(options.bind[0]).toBe(RUN);
     }
@@ -312,6 +319,45 @@ describe("P25-01 the reconciliation request", () => {
       ["foto_depan", HOME, "device_front"],
       ["foto_sn", HOME, "device_serial_plate"],
     ]);
+  });
+
+  it("RC-F4: a row that landed elsewhere fails its facility; a row no facility claims counts at the run level only", async () => {
+    seedRun(RUN);
+    seedFacilities();
+    db.present = true;
+    db.absent = ["trx_battery"];
+    db.accounting = [
+      { facility: F1, source: 10, landed: 8, quarantined: 1 },
+      { facility: null, source: 2, landed: 0, quarantined: 2 },
+    ];
+    const answer = await asSuperAdmin(() => service.reconcileRun(RUN));
+    const tables = 2 + 4 + RESULT_TABLES - 1;
+    const rcF4 = answer.facilities.map((f) => f.checks.find((c) => c.check === "RC-F4"));
+    expect(rcF4[0]).toMatchObject({ status: "fail", expected: 10 * tables, actual: 9 * tables, quarantined: tables });
+    expect(rcF4[1]).toMatchObject({ status: "pass", expected: 0, actual: 0 });
+    expect(answer.runChecks.find((c) => c.check === "RC-F4")).toMatchObject({
+      status: "fail",
+      expected: 12 * tables,
+      actual: 11 * tables,
+      quarantined: 3 * tables,
+    });
+    // The device comes from the staged row (id_inventory, or the QR), never from id_map's decision.
+    const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
+    const statement = (table: string): string => calls.find(([text, o]) => text.includes("AS source") && o.bind[2] === table)?.[0] ?? "";
+    expect(statement("trx_inventory")).toContain("SELECT NULL::text AS client");
+    expect(statement("trx_kalibrasi")).toContain("d.ref = btrim(to_jsonb(s) ->> 'id_inventory')");
+    expect(statement("trx_catatan")).toContain("DISTINCT ON");
+    expect(calls.filter(([text]) => text.includes("AS source")).every(([, o]) => o.bind[0] === RUN && o.bind[1] === HOME)).toBe(true);
+  });
+
+  it("RC-F4 with no staged register has nothing to attribute", async () => {
+    seedRun(RUN);
+    seedFacilities();
+    db.present = true;
+    db.absent = ["trx_inventory"];
+    db.accounting = [{ facility: F1, source: 1, landed: 0, quarantined: 0 }];
+    const answer = await asSuperAdmin(() => service.reconcileRun(RUN));
+    expect(answer.runChecks.find((c) => c.check === "RC-F4")).toMatchObject({ status: "pass", expected: 0, actual: 0 });
   });
 
   it("the edges: equal sections differ in nothing; R-9 without the staged groups counts no match; a count with no row reads as zero; R-7's device dates in a facility of their own", async () => {

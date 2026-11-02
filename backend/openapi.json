@@ -3886,7 +3886,7 @@
           "higherRoles": "allowed",
           "superAdmin": "bypasses"
         },
-        "description": "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18, Q-19, Q-4 and Q-14, Q-28's missing files, the duplicates Q-8 and Q-9 and the orphans Q-2, Q-3 and Q-10; at the run level (`runFindings`) Q-28's unreferenced photo files. Counts and fixed codes, never a value from the dump. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
+        "description": "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18, Q-19, Q-4 and Q-14, Q-28's missing files, the duplicates Q-8 and Q-9, the orphans Q-2, Q-3 and Q-10, and Q-5, Q-6, Q-7, Q-11, Q-15, Q-17, Q-18-NULL, Q-20 … Q-24 and Q-27; at the run level (`runFindings`) Q-28's unreferenced photo files, the duplicate files F-DUP-HASH and F-DUP-NAME, Q-16 and the users section U-1 … U-6. Counts and fixed codes, never a value from the dump. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
         "parameters": [
           {
             "in": "path",
@@ -4173,7 +4173,7 @@
           "higherRoles": "allowed",
           "superAdmin": "bypasses"
         },
-        "description": "P25-01 (docs/UPSTREAM/05 § 7): the reconciliation of a transformed run, aggregates only — counts and fixed codes, never a value from the dump. R-1 … R-8 are computed per facility (R-3 … R-6 row by row over the result tables); R-8, R-9, R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 at the run level; RC-F4 and R-12 are not automated and answer `manual` (P25-04). Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
+        "description": "P25-01 (docs/UPSTREAM/05 § 7): the reconciliation of a transformed run, aggregates only — counts and fixed codes, never a value from the dump. R-1 … R-8 are computed per facility (R-3 … R-6 row by row over the result tables); RC-F4 per facility and at the run level, starting from the staged rows' upstream device; R-8, R-9, R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 at the run level; R-12 is no database check and answers `manual` (P25-04). Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
         "parameters": [
           {
             "in": "path",
@@ -4428,6 +4428,243 @@
                         "transformSummary",
                         "facilities",
                         "runChecks"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/upstream-sql-imports/{id}/report-diff": {
+      "get": {
+        "operationId": "adminDiffUpstreamReports",
+        "summary": "Compare a sample of a transformed run's reports with upstream's, field by field",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/admin.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "SUPER_ADMIN",
+            "SUPERADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "P25-03 (docs/UPSTREAM/09 § 2): what the upstream IPM report prints for a deterministic sample of the run's imported sessions (first by md5 of the session key; `sample`, default 200, at most 2000) set beside what our report document is built from. Each field counts `equal`, `explained` by a documented rule, and `differs`; a field passes when nothing differs. Counts and fixed codes, never a value from the dump. Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.\n\n**409** — The run's transform is not `transformed`.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The import run's id",
+              "example": "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b"
+            },
+            "required": true,
+            "description": "The import run's id"
+          },
+          {
+            "in": "query",
+            "name": "sample",
+            "schema": {
+              "default": 200,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report diff, one verdict per field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "runId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                        },
+                        "providerTenantId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                        },
+                        "sample": {
+                          "type": "object",
+                          "properties": {
+                            "requested": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 2000
+                            },
+                            "population": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "sessions": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "facilities": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "requested",
+                            "population",
+                            "sessions",
+                            "facilities"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "fields": {
+                          "maxItems": 50,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "field": {
+                                "type": "string",
+                                "enum": [
+                                  "device.name",
+                                  "facility",
+                                  "ipm.date",
+                                  "room",
+                                  "device.qr",
+                                  "device.brand",
+                                  "device.serial",
+                                  "device.model",
+                                  "visit",
+                                  "results.rows",
+                                  "results.values",
+                                  "inspection.result",
+                                  "maintenance.result",
+                                  "recommendation",
+                                  "notes",
+                                  "technician"
+                                ]
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "pass",
+                                  "fail"
+                                ]
+                              },
+                              "compared": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "equal": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "explained": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "differs": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "note": {
+                                "type": "string",
+                                "maxLength": 280
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "status",
+                              "compared",
+                              "equal",
+                              "explained",
+                              "differs",
+                              "note"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "runId",
+                        "providerTenantId",
+                        "sample",
+                        "fields"
                       ],
                       "additionalProperties": false
                     }
