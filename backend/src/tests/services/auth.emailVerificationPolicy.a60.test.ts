@@ -20,14 +20,13 @@
  * Harness: the A-83 one — real auth.service, audit.service and the login
  * schema; faked models, transaction, createSession and bcrypt.
  */
-import type AuthService from "../../services/auth.service";
 
-const mockTx = { id: "tx-a60" };
+const mockTx: any = { id: "tx-a60" };
 
 // A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
-jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(() => Promise.resolve(undefined)) }));
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => Promise.resolve(fn(mockTx))) },
+  db: { transaction: jest.fn(async (fn: any) => fn(mockTx)) },
 }));
 
 jest.mock("../../models", () => ({
@@ -52,37 +51,15 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as every memoryDb test */
-const { Users, AuditLog } = require("../../models") as {
-    Users: { findOne: jest.Mock; findByPk: jest.Mock };
-    AuditLog: { create: jest.Mock };
-};
-const { createSession } = require("../../services/session.service") as { createSession: jest.Mock };
-const { comparePassword } = require("../../utils/password.util") as { comparePassword: jest.Mock };
-const authService = require("../../services/auth.service") as typeof AuthService;
-/* eslint-enable @typescript-eslint/no-require-imports */
+const { Users, AuditLog } = require("../../models");
+const { createSession } = require("../../services/session.service");
+const { comparePassword } = require("../../utils/password.util");
+const authService = require("../../services/auth.service");
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const TENANT_ID = "22222222-2222-4222-8222-222222222222";
 
-interface UserRow {
-    id: string;
-    tenantId: string | null;
-    tenant: { id: string; status: string } | null;
-    username: string;
-    email: string;
-    password: string;
-    isActive: boolean;
-    status: string;
-    isEmailVerified: boolean;
-    failedLoginAttempts: number;
-    lockedUntil: null;
-    mfaEnabled: boolean;
-    role: { id: string; name: string; roleLevel: number };
-    update: jest.Mock;
-}
-
-const userRow = (overrides: Partial<UserRow> = {}): UserRow => ({
+const userRow = (overrides = {}) => ({
   id: USER_ID,
   tenantId: TENANT_ID,
   tenant: { id: TENANT_ID, status: "active" },
@@ -100,17 +77,12 @@ const userRow = (overrides: Partial<UserRow> = {}): UserRow => ({
   ...overrides,
 });
 
-const passwordLogin = (): Promise<{ status: number; data: Record<string, unknown>; message: string }> =>
-    authService.loginUser({ user: "ada", password: "Right-password-1", ip: "203.0.113.5" }) as Promise<{
-        status: number;
-        data: Record<string, unknown>;
-        message: string;
-    }>;
+const passwordLogin = () => authService.loginUser({ user: "ada", password: "Right-password-1", ip: "203.0.113.5" });
 
 beforeEach(() => {
   jest.clearAllMocks();
   createSession.mockResolvedValue({ id: "session-1" });
-  AuditLog.create.mockImplementation((row: unknown) => Promise.resolve({ toJSON: () => row }));
+  AuditLog.create.mockImplementation(async (row: any) => ({ toJSON: () => row }));
   comparePassword.mockResolvedValue(true);
 });
 
@@ -131,7 +103,7 @@ describe("A-60 / Q-11 — an unverified address does not gate sign-in (ADR-075)"
   // A-369 (ADR-075 Am. 1): this case used to sign in "into nothing" — a session every
   // request then refused with 401 "Invalid session". It is now refused at sign-in for having
   // no tenant, verified or not: the address is still not what is checked.
-  it.each([false, true])("a self-registered account (no tenant) is refused for having no tenant, not for its address (verified: %s)", async (isEmailVerified: boolean) => {
+  it.each([false, true])("a self-registered account (no tenant) is refused for having no tenant, not for its address (verified: %s)", async (isEmailVerified: any) => {
     Users.findOne.mockResolvedValue(userRow({ isEmailVerified, tenantId: null, tenant: null, role: { id: "r", name: "USER", roleLevel: 1 } }));
 
     await expect(passwordLogin()).rejects.toMatchObject({ status: 403, publicCode: "ACCOUNT_HAS_NO_TENANT" });

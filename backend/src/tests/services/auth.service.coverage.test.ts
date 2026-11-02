@@ -1,0 +1,945 @@
+/**
+ * Branch/line coverage tests for auth.service.js
+ *
+ * Complements auth.service.test.js — targets the registration guard rails
+ * (validation, lock contention, duplicate email/username, rollback), the login
+ * lockout/MFA branches, and the OTP queue's failure handling.
+ *
+ * Mocking notes (this repo has a history of mocks that hide bugs):
+ *  - The auth VALIDATOR is NOT stubbed: the real Zod schemas run through the
+ *    real `checkInput` (validators/input), which is only spy-wrapped. Only
+ *    provably-unreachable defensive guards override it, and each says so inline.
+ *  - `cacheKeys` is the REAL object from redis.service. Do not fabricate keys on
+ *    it — auth.service.js:567 already calls a `cacheKeys.userSessions` that does
+ *    not exist, and a fabricated mock is what has been hiding that.
+ */
+
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn() },
+}));
+
+jest.mock("../../models", () => ({
+  Users: {
+    findOne: jest.fn(),
+    findByPk: jest.fn(),
+    create: jest.fn(),
+    // A-115: mfa.service#consumeCode stamps the used TOTP step (one row).
+    update: jest.fn().mockResolvedValue([1]),
+  },
+  Role: { findOne: jest.fn() },
+  Roles: { findOne: jest.fn() },
+  Tenants: { findOne: jest.fn() },
+  // P21-09: "who am I" counts the tenant's client facilities (facilityMode).
+  ClientFacility: { count: jest.fn(async () => 0) },
+}));
+
+jest.mock("../../utils/password.util", () => ({
+  hashPassword: jest.fn(),
+  comparePassword: jest.fn(),
+}));
+
+jest.mock("../../utils/jwt.util", () => ({
+  generateAccessToken: jest.fn(),
+  generatePurposeToken: jest.fn(),
+  verifyAccessToken: jest.fn(),
+  verifyPurposeToken: jest.fn(),
+  generateOpaqueRefreshToken: jest.fn(),
+  generateRefreshToken: jest.fn(),
+}));
+
+// A-72: the LOGIN audit row's contract is tested with the real audit.service
+// in auth.loginAudit.a72.test.js.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn(),
+  // A-126: the lock itself is written through persistLock; its ACCOUNT_LOCKED
+  // row is tested in auth.accountLocked.a126.test.js with the real service.
+  recordAccountLock: jest.fn(({ persistLock  }: any) => persistLock(null)),
+}));
+
+jest.mock("../../services/emailQueue.service", () => ({
+  queueActivationEmail: jest.fn(),
+  queueOtpEmail: jest.fn(),
+}));
+
+jest.mock("../../services/session.service", () => ({
+  createSession: jest.fn(),
+  validateSession: jest.fn(),
+  revokeSession: jest.fn(),
+  revokeAllSessions: jest.fn(),
+}));
+
+// Real Zod schemas + the real checkInput; checkInput is only spy-wrapped so
+// the dead defensive guard below can be reached.
+jest.mock("../../validators/input", () => {
+  const actual = jest.requireActual("../../validators/input");
+  return { ...actual, checkInput: jest.fn(actual.checkInput) };
+});
+
+// Real cacheKeys (see header note); only the IO functions are stubbed.
+jest.mock("../../services/redis.service", () => {
+  const actual = jest.requireActual("../../services/redis.service");
+  return {
+    acquireLock: jest.fn(),
+    releaseLock: jest.fn(),
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
+    cacheKeys: actual.cacheKeys,
+  };
+});
+
+jest.mock("../../middlewares/activityLog.middleware", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+}));
+
+const { db } = require("../../config");
+const { Users } = require("../../models");
+const { hashPassword, comparePassword } = require("../../utils/password.util");
+const {
+  generateAccessToken,
+  generatePurposeToken,
+  generateOpaqueRefreshToken,
+} = require("../../utils/jwt.util");
+const {
+  queueActivationEmail,
+  queueOtpEmail,
+} = require("../../services/emailQueue.service");
+const { createSession } = require("../../services/session.service");
+const { checkInput } = require("../../validators/input");
+const {
+  acquireLock,
+  releaseLock,
+  set,
+  del,
+  cacheKeys,
+} = require("../../services/redis.service");
+const { logger } = require("../../middlewares/activityLog.middleware");
+const { ROLE_IDS } = require("../../constants");
+// A-99: the TOTP check is the REAL otplib — a code generated from the secret
+// now. These cases used to pass any code through a global mock.
+const { generateSync } = require("otplib");
+const TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+const liveCode = () => generateSync({ secret: TOTP_SECRET });
+
+const {
+  registerUser,
+  loginUser,
+  requestOTP,
+  verifyUserSession,
+  loginMfa,
+  impersonateUser,
+} = require("../../services/auth.service");
+
+// Satisfies the real registerSchema (alphanum username, upper+lower+digit password).
+const VALID_REGISTRATION = {
+  firstName: "Ada",
+  lastName: "Lovelace",
+  username: "adalovelace",
+  email: "ada@example.com",
+  password: "Str0ngPassw0rd",
+};
+
+// Mirrors a real Sequelize transaction: commit()/rollback() mark it `finished`,
+// which is exactly what stops auth.service's catch block from double-rolling-back.
+const makeTransaction = (overrides = {}) => {
+  const t: any = {
+    finished: undefined,
+    LOCK: { UPDATE: "UPDATE" },
+    ...overrides,
+  };
+  t.commit = jest.fn(async () => {
+    t.finished = "commit";
+  });
+  t.rollback = jest.fn(async () => {
+    t.finished = "rollback";
+  });
+  return t;
+};
+
+describe("auth.service (coverage)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // A-185: the sign-in throttle's in-process store, between cases.
+    require("../../services/rateLimiter.redis.service").clearMemoryStore();
+    acquireLock.mockResolvedValue("lock-id");
+    releaseLock.mockResolvedValue(true);
+    set.mockResolvedValue(true);
+    del.mockResolvedValue(true);
+    hashPassword.mockResolvedValue("hashed");
+    generateAccessToken.mockReturnValue("access-token");
+    generatePurposeToken.mockReturnValue("purpose-token");
+    generateOpaqueRefreshToken.mockReturnValue("opaque-refresh");
+    createSession.mockResolvedValue({ id: "session-1" });
+    // A-72: login opens a transaction for the session and its LOGIN row.
+    db.transaction.mockImplementation(async (fn: any) => fn({ id: "tx" }));
+    queueActivationEmail.mockResolvedValue(true);
+    queueOtpEmail.mockResolvedValue(true);
+  });
+
+  // ================================================================
+  describe("registerUser — validation", () => {
+    it("rejects input that fails the real registerSchema before taking a lock", async () => {
+      const err = await registerUser({
+        firstName: "A", // min 2
+        username: "no",
+        email: "not-an-email",
+        password: "weak",
+      }).catch((e: any) => e);
+
+      expect(err.status).toBe(400);
+      expect(err.message).toBe("Validation failed");
+      // details are the real checkInput field errors
+      expect(err.details).toEqual([
+        { field: "firstName", message: "Too small: expected string to have >=2 characters" },
+        { field: "username", message: "Too small: expected string to have >=3 characters" },
+        { field: "email", message: "Invalid email address" },
+        { field: "password", message: "Too small: expected string to have >=8 characters" },
+        { field: "password", message: "Password must contain uppercase, lowercase, and number" },
+      ]);
+      expect(acquireLock).not.toHaveBeenCalled();
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects a password without the required character mix", async () => {
+      const err = await registerUser({
+        ...VALID_REGISTRATION,
+        password: "alllowercase",
+      }).catch((e: any) => e);
+
+      expect(err.status).toBe(400);
+      expect(err.details).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: "password",
+            message: "Password must contain uppercase, lowercase, and number",
+          }),
+        ]),
+      );
+    });
+  });
+
+  // ================================================================
+  describe("registerUser — locking", () => {
+    it("returns 429 when the registration lock is already held", async () => {
+      acquireLock.mockResolvedValue(null);
+
+      const err = await registerUser(VALID_REGISTRATION).catch((e: any) => e);
+
+      expect(err.status).toBe(429);
+      expect(err.message).toBe("Registration in progress. Please wait and try again.");
+      expect(acquireLock).toHaveBeenCalledWith(
+        "register:ada@example.com:adalovelace",
+        10000,
+      );
+      // no lockId → nothing to release, and no transaction was ever opened
+      expect(releaseLock).not.toHaveBeenCalled();
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it("releases the lock even when registration fails", async () => {
+      const transaction = makeTransaction();
+      db.transaction.mockResolvedValue(transaction);
+      Users.findOne.mockResolvedValue({ id: "existing" });
+
+      await registerUser(VALID_REGISTRATION).catch(() => {});
+
+      expect(releaseLock).toHaveBeenCalledWith(
+        "register:ada@example.com:adalovelace",
+        "lock-id",
+      );
+    });
+
+    it("swallows a releaseLock failure rather than masking the result", async () => {
+      const transaction = makeTransaction();
+      db.transaction.mockResolvedValue(transaction);
+      Users.findOne.mockResolvedValue(null);
+      Users.create.mockResolvedValue({ id: "user-1" });
+      releaseLock.mockRejectedValue(new Error("redis down"));
+
+      const result = await registerUser(VALID_REGISTRATION, "https://app.test");
+
+      expect(result).toEqual({
+        success: true,
+        status: 202,
+        message: "If the address can be registered, an activation link has been sent",
+      });
+    });
+  });
+
+  // ================================================================
+  describe("registerUser — duplicates (P10-12, A-290: no account oracle)", () => {
+    const NEUTRAL = {
+      success: true,
+      status: 202,
+      message: "If the address can be registered, an activation link has been sent",
+    };
+
+    it("answers a taken email exactly like a new registration, rolls back, hashes, writes and mails nothing", async () => {
+      const transaction = makeTransaction();
+      db.transaction.mockResolvedValue(transaction);
+      Users.findOne.mockResolvedValue({ id: "existing", email: "ada@example.com" });
+
+      const result = await registerUser(VALID_REGISTRATION);
+
+      expect(result).toEqual(NEUTRAL);
+      expect(transaction.rollback).toHaveBeenCalledTimes(1);
+      expect(transaction.commit).not.toHaveBeenCalled();
+      // The same bcrypt cost as a new registration, so timing does not tell them apart.
+      expect(hashPassword).toHaveBeenCalledWith("Str0ngPassw0rd");
+      expect(Users.create).not.toHaveBeenCalled();
+      expect(queueActivationEmail).not.toHaveBeenCalled();
+      expect(generatePurposeToken).not.toHaveBeenCalled();
+      // A taken email needs no username lookup.
+      expect(Users.findOne).toHaveBeenCalledTimes(1);
+      expect(Users.findOne).toHaveBeenNthCalledWith(1, {
+        where: { email: "ada@example.com" },
+        transaction,
+        lock: "UPDATE",
+      });
+      expect(logger.info).toHaveBeenCalledWith("Registration not created: the identity is taken", { field: "email" });
+    });
+
+    it("answers a taken username exactly like a new registration, rolls back, writes and mails nothing", async () => {
+      const transaction = makeTransaction();
+      db.transaction.mockResolvedValue(transaction);
+      Users.findOne
+        .mockResolvedValueOnce(null) // email is free
+        .mockResolvedValueOnce({ id: "existing", username: "adalovelace" });
+
+      const result = await registerUser(VALID_REGISTRATION);
+
+      expect(result).toEqual(NEUTRAL);
+      expect(transaction.rollback).toHaveBeenCalledTimes(1);
+      expect(hashPassword).toHaveBeenCalledWith("Str0ngPassw0rd");
+      expect(Users.create).not.toHaveBeenCalled();
+      expect(queueActivationEmail).not.toHaveBeenCalled();
+      expect(Users.findOne).toHaveBeenNthCalledWith(2, {
+        where: { username: "adalovelace" },
+        transaction,
+        lock: "UPDATE",
+      });
+      expect(logger.info).toHaveBeenCalledWith("Registration not created: the identity is taken", { field: "username" });
+    });
+
+    it("gives the new, taken-email and taken-username cases a deep-equal answer", async () => {
+      const answers = [];
+      for (const found of [[null, null], [{ id: "e" }], [null, { id: "u" }]]) {
+        db.transaction.mockResolvedValue(makeTransaction());
+        Users.findOne.mockReset();
+        for (const row of found) {
+          Users.findOne.mockResolvedValueOnce(row);
+        }
+        Users.create.mockResolvedValue({ id: "user-1" });
+        answers.push(await registerUser(VALID_REGISTRATION, "https://app.test"));
+      }
+      expect(answers[1]).toEqual(answers[0]);
+      expect(answers[2]).toEqual(answers[0]);
+    });
+  });
+
+  // ================================================================
+  describe("registerUser — success path", () => {
+    it("creates the user, caches the lookups and issues an activation token", async () => {
+      const transaction = makeTransaction();
+      db.transaction.mockResolvedValue(transaction);
+      Users.findOne.mockResolvedValue(null);
+      Users.create.mockResolvedValue({ id: "user-1" });
+
+      const result = await registerUser(VALID_REGISTRATION, "https://app.test");
+
+      expect(result).toEqual({
+        success: true,
+        status: 202,
+        message: "If the address can be registered, an activation link has been sent",
+      });
+      expect(Users.create).toHaveBeenCalledWith(
+        {
+          firstName: "Ada",
+          lastName: "Lovelace",
+          username: "adalovelace",
+          email: "ada@example.com",
+          password: "hashed",
+          roleId: ROLE_IDS.USER,
+          isEmailVerified: false,
+        },
+        { transaction },
+      );
+      expect(transaction.commit).toHaveBeenCalledTimes(1);
+      expect(transaction.rollback).not.toHaveBeenCalled();
+      expect(set).toHaveBeenCalledWith(
+        cacheKeys.userByEmail("ada@example.com"),
+        "user-1",
+        86400,
+      );
+      expect(set).toHaveBeenCalledWith(
+        cacheKeys.userByUsername("adalovelace"),
+        "user-1",
+        86400,
+      );
+      // A-59: an activation purpose token, never an access token.
+      expect(generatePurposeToken).toHaveBeenCalledWith(
+        // A-191: bound to the registration address.
+        require("../../utils/activationToken.util").activationClaims("user-1", "ada@example.com"),
+        "activation",
+      );
+      expect(generateAccessToken).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith("User registered", {
+        userId: "user-1",
+        email: "ada@example.com",
+      });
+    });
+
+    it("still registers when no origin is supplied", async () => {
+      const transaction = makeTransaction();
+      db.transaction.mockResolvedValue(transaction);
+      Users.findOne.mockResolvedValue(null);
+      Users.create.mockResolvedValue({ id: "user-1" });
+
+      const result = await registerUser(VALID_REGISTRATION);
+
+      expect(result.status).toBe(202);
+      expect(transaction.commit).toHaveBeenCalled();
+    });
+
+    it("does not fail registration when queueing the activation email throws", async () => {
+      const transaction = makeTransaction();
+      db.transaction.mockResolvedValue(transaction);
+      Users.findOne.mockResolvedValue(null);
+      Users.create.mockResolvedValue({ id: "user-1" });
+      // NOTE: the real queueActivationEmail is `async`, so it can only ever
+      // reject — never throw synchronously. This exercises auth.service's own
+      // guard; the args it passes are deliberately NOT asserted here (see the
+      // reported signature-mismatch defect at auth.service.js:126).
+      queueActivationEmail.mockImplementation(() => {
+        throw new Error("rabbitmq unreachable");
+      });
+
+      const result = await registerUser(VALID_REGISTRATION, "https://app.test");
+
+      expect(result.status).toBe(202);
+      expect(transaction.commit).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith("queueActivationEmail failed", {
+        err: "rabbitmq unreachable",
+      });
+    });
+  });
+
+  // ================================================================
+  describe("registerUser — rollback on failure", () => {
+    it("rolls back an unfinished transaction and rethrows the original error", async () => {
+      const transaction = makeTransaction({ finished: undefined });
+      db.transaction.mockResolvedValue(transaction);
+      Users.findOne.mockResolvedValue(null);
+      Users.create.mockRejectedValue(new Error("insert failed"));
+
+      const err = await registerUser(VALID_REGISTRATION).catch((e: any) => e);
+
+      expect(err.message).toBe("insert failed");
+      expect(transaction.rollback).toHaveBeenCalledTimes(1);
+      expect(transaction.commit).not.toHaveBeenCalled();
+    });
+
+    it("does not roll back once the transaction has already committed", async () => {
+      const transaction = makeTransaction();
+      db.transaction.mockResolvedValue(transaction);
+      Users.findOne.mockResolvedValue(null);
+      Users.create.mockResolvedValue({ id: "user-1" });
+      set.mockRejectedValue(new Error("redis write failed")); // fails after commit
+
+      const err = await registerUser(VALID_REGISTRATION).catch((e: any) => e);
+
+      expect(err.message).toBe("redis write failed");
+      expect(transaction.commit).toHaveBeenCalled();
+      expect(transaction.finished).toBe("commit");
+      expect(transaction.rollback).not.toHaveBeenCalled();
+    });
+
+    it("rethrows when opening the transaction itself fails", async () => {
+      db.transaction.mockRejectedValue(new Error("no connection"));
+
+      const err = await registerUser(VALID_REGISTRATION).catch((e: any) => e);
+
+      expect(err.message).toBe("no connection");
+      expect(releaseLock).toHaveBeenCalled();
+    });
+  });
+
+  // ================================================================
+  describe("loginUser — identifier resolution", () => {
+    const activeUser = (overrides = {}) => ({
+      id: "user-1",
+      username: "adalovelace",
+      email: "ada@example.com",
+      password: "hashed",
+      isActive: true,
+      tenantId: "tenant-1",
+      tenant: { id: "tenant-1", status: "active" }, // A-83
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      role: null,
+      update: jest.fn().mockResolvedValue({}),
+      ...overrides,
+    });
+
+    it("looks the user up by either username or email", async () => {
+      const user = activeUser();
+      Users.findOne.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(true);
+
+      const result = await loginUser({
+        user: "ada@example.com",
+        password: "Str0ngPassw0rd",
+      });
+
+      expect(result.status).toBe(200);
+      const where = Users.findOne.mock.calls[0][0].where;
+      const orClauses = (where as any)[Object.getOwnPropertySymbols(where)[0]!];
+      expect(orClauses).toEqual([
+        { username: "ada@example.com" },
+        { email: "ada@example.com" },
+      ]);
+    });
+
+    it("throws 401 when the resolved identifier is not a string", async () => {
+      // Defensive guard: the real loginSchema requires one of user/username/email
+      // and types them all as strings, so this state is unreachable through it.
+      // `checkInput` is overridden for this single call to exercise the guard.
+      checkInput.mockReturnValueOnce({
+        ok: true,
+        value: { password: "Str0ngPassw0rd" },
+      });
+
+      const err = await loginUser({ password: "Str0ngPassw0rd" }).catch((e: any) => e);
+
+      expect(err.status).toBe(401);
+      expect(err.message).toBe("Invalid credentials");
+      expect(Users.findOne).not.toHaveBeenCalled();
+    });
+
+    it("throws 401 when no user matches", async () => {
+      Users.findOne.mockResolvedValue(null);
+
+      const err = await loginUser({
+        username: "ghost",
+        password: "Str0ngPassw0rd",
+      }).catch((e: any) => e);
+
+      expect(err.status).toBe(401);
+      expect(err.message).toBe("Invalid credentials");
+      // A-185: an unknown account still pays for a bcrypt comparison.
+      expect(comparePassword).toHaveBeenCalledWith(
+        "Str0ngPassw0rd",
+        require("../../services/auth.service").UNKNOWN_ACCOUNT_HASH,
+      );
+    });
+  });
+
+  // ================================================================
+  describe("loginUser — lockout", () => {
+    const lockableUser = (overrides = {}) => ({
+      id: "user-1",
+      username: "adalovelace",
+      email: "ada@example.com",
+      password: "hashed",
+      isActive: true,
+      tenantId: "tenant-1",
+      tenant: { id: "tenant-1", status: "active" }, // A-83
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      role: null,
+      update: jest.fn().mockResolvedValue({}),
+      ...overrides,
+    });
+
+    it("throws 423 while the account is still locked — to the password holder only (A-185)", async () => {
+      const user = lockableUser({
+        lockedUntil: new Date(Date.now() + 10 * 60 * 1000),
+      });
+      Users.findOne.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(true);
+
+      const err = await loginUser({
+        username: "adalovelace",
+        password: "Str0ngPassw0rd",
+      }).catch((e: any) => e);
+
+      expect(err.status).toBe(423);
+      expect(err.message).toBe("Account temporarily locked");
+    });
+
+    it("allows login once the lock has expired", async () => {
+      const user = lockableUser({
+        lockedUntil: new Date(Date.now() - 1000),
+        failedLoginAttempts: 2,
+      });
+      Users.findOne.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(true);
+
+      const result = await loginUser({
+        username: "adalovelace",
+        password: "Str0ngPassw0rd",
+      });
+
+      expect(result.status).toBe(200);
+      expect(user.update).toHaveBeenCalledWith({
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      });
+    });
+
+    it("A-185: the fifth failed attempt pauses the identifier and address, never the account", async () => {
+      const user = lockableUser({ failedLoginAttempts: 4 });
+      Users.findOne.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(false);
+      const { recordAccountLock } = require("../../services/audit.service");
+
+      const statuses = [];
+      for (let i = 0; i < 6; i += 1) {
+        statuses.push(
+          (await loginUser({ username: "adalovelace", password: "wrong", ip: "192.0.2.1" }).catch((e: any) => e))
+            .status,
+        );
+      }
+
+      expect(statuses).toEqual([401, 401, 401, 401, 401, 429]);
+      expect(user.update).not.toHaveBeenCalled();
+      expect(recordAccountLock).toHaveBeenCalledTimes(1);
+      expect(recordAccountLock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user,
+          endpoint: "login",
+          scope: "identifier+address",
+          failedAttempts: 5,
+          ipAddress: "192.0.2.1",
+          userAgent: null,
+        }),
+      );
+      // Nothing is written to the account.
+      await expect(recordAccountLock.mock.calls[0][0].persistLock()).resolves.toBeUndefined();
+    });
+
+    it("A-185: a failure with no address is counted under 'unknown'", async () => {
+      Users.findOne.mockResolvedValue(null);
+      comparePassword.mockResolvedValue(false);
+
+      for (let i = 0; i < 5; i += 1) {
+        await loginUser({ username: "ghost-no-ip", password: "wrong" }).catch((e: any) => e);
+      }
+      const err = await loginUser({ username: "ghost-no-ip", password: "wrong" }).catch((e: any) => e);
+
+      expect(err.status).toBe(429);
+    });
+  });
+
+  // ================================================================
+  describe("loginUser — success shape", () => {
+    it("returns MFA-required (202) with a short-lived token and no refresh token", async () => {
+      const user = {
+        id: "user-1",
+        username: "adalovelace",
+        email: "ada@example.com",
+        password: "hashed",
+        isActive: true,
+        tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" }, // A-83
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        mfaEnabled: true,
+        role: null,
+        update: jest.fn().mockResolvedValue({}),
+      };
+      Users.findOne.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(true);
+      generatePurposeToken.mockReturnValueOnce("mfa-token");
+
+      const result = await loginUser({
+        username: "adalovelace",
+        password: "Str0ngPassw0rd",
+      });
+
+      expect(result).toEqual({
+        success: true,
+        status: 202,
+        message: "MFA required",
+        data: {
+          id: "user-1",
+          username: "adalovelace",
+          email: "ada@example.com",
+          mfaRequired: true,
+        },
+        token: "mfa-token",
+        refreshToken: null,
+      });
+      // A-59: an "mfa" purpose token, not an access token.
+      expect(generatePurposeToken).toHaveBeenCalledWith(
+        { id: "user-1", email: "ada@example.com", mfaRequired: true },
+        "mfa",
+      );
+      expect(generateAccessToken).not.toHaveBeenCalled();
+      // No session before the second factor: loginMfa creates it.
+      expect(createSession).not.toHaveBeenCalled();
+    });
+
+    it("defaults ip/userAgent to empty strings and maps the role association", async () => {
+      const user = {
+        id: "user-1",
+        username: "adalovelace",
+        email: "ada@example.com",
+        password: "hashed",
+        isActive: true,
+        tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" }, // A-83
+        roleId: "role-1",
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        role: { id: "role-1", name: "USER", description: "ignored" },
+        update: jest.fn().mockResolvedValue({}),
+      };
+      Users.findOne.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(true);
+
+      const result = await loginUser({
+        username: "adalovelace",
+        password: "Str0ngPassw0rd",
+      });
+
+      expect(result.data.role).toEqual({ id: "role-1", name: "USER" });
+      expect(result.data.mfaEnabled).toBe(false);
+      expect(result.refreshToken).toBe("opaque-refresh");
+      expect(createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ ipAddress: "", userAgent: "" }),
+      );
+    });
+
+    it("returns a null role when the association is not loaded", async () => {
+      const user = {
+        id: "user-1",
+        username: "adalovelace",
+        email: "ada@example.com",
+        password: "hashed",
+        isActive: true,
+        // A-369: a role-less account needs a tenant to sign in.
+        tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" },
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        role: null,
+        update: jest.fn().mockResolvedValue({}),
+      };
+      Users.findOne.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(true);
+
+      const result = await loginUser({
+        username: "adalovelace",
+        password: "Str0ngPassw0rd",
+        ip: "10.0.0.1",
+        userAgent: "jest",
+      });
+
+      expect(result.data.role).toBeNull();
+      expect(createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ ipAddress: "10.0.0.1", userAgent: "jest" }),
+      );
+    });
+  });
+
+  // ================================================================
+  describe("requestOTP", () => {
+    const otpUser = (overrides = {}) => ({
+      id: "user-1",
+      email: "ada@example.com",
+      firstName: "Ada",
+      lastName: "Lovelace",
+      otpRequestCount: 2,
+      update: jest.fn().mockResolvedValue({}),
+      ...overrides,
+    });
+
+    it("increments the OTP request counter and stores a hashed code", async () => {
+      const user = otpUser();
+      Users.findOne.mockResolvedValue(user);
+
+      const result = await requestOTP({ email: "ada@example.com" });
+
+      expect(result).toEqual({ success: true, status: 200, message: "OTP sent" });
+      const patch = user.update.mock.calls[0][0];
+      expect(patch.otpRequestCount).toBe(3);
+      // the raw OTP must never be persisted — only its sha256 digest
+      expect(patch.otpCode).toMatch(/^[a-f0-9]{64}$/);
+      expect(patch.otpExpiredAt).toBeInstanceOf(Date);
+      expect(patch.otpLastRequestedAt).toBeInstanceOf(Date);
+    });
+
+    it("starts the OTP counter at 1 when it has never been set", async () => {
+      const user = otpUser({ otpRequestCount: null });
+      Users.findOne.mockResolvedValue(user);
+
+      await requestOTP({ email: "ada@example.com" });
+
+      expect(user.update.mock.calls[0][0].otpRequestCount).toBe(1);
+    });
+
+    it("does not leak account existence when the email is unknown", async () => {
+      Users.findOne.mockResolvedValue(null);
+
+      const result = await requestOTP({ email: "nobody@example.com" });
+
+      expect(result).toEqual({
+        success: true,
+        status: 200,
+        message: "If the account exists, OTP has been sent",
+      });
+      expect(queueOtpEmail).not.toHaveBeenCalled();
+    });
+
+    it("rejects an email that fails the real forgotPasswordSchema", async () => {
+      const err = await requestOTP({ email: "nope" }).catch((e: any) => e);
+
+      expect(err.status).toBe(400);
+      expect(err.message).toBe("Validation failed");
+      expect(Users.findOne).not.toHaveBeenCalled();
+    });
+
+    it("still reports success when queueing the OTP email throws", async () => {
+      const user = otpUser();
+      Users.findOne.mockResolvedValue(user);
+      // As with the activation email, the real queueOtpEmail is `async` and can
+      // only reject. This exercises auth.service's guard; the args are NOT
+      // asserted (see the reported signature-mismatch defect at
+      // auth.service.js:332).
+      queueOtpEmail.mockImplementation(() => {
+        throw new Error("queue offline");
+      });
+
+      const result = await requestOTP({ email: "ada@example.com" });
+
+      expect(result).toEqual({ success: true, status: 200, message: "OTP sent" });
+      expect(user.update).toHaveBeenCalled(); // the OTP was still persisted
+      expect(logger.warn).toHaveBeenCalledWith("queueOtpEmail failed", {
+        err: "queue offline",
+      });
+    });
+  });
+
+  // ================================================================
+  describe("verifyUserSession", () => {
+    it("returns a null role when the association is not loaded", async () => {
+      Users.findByPk.mockResolvedValue({
+        id: "user-1",
+        username: "adalovelace",
+        email: "ada@example.com",
+        isActive: true,
+        roleId: "role-1",
+        tenantId: "tenant-1",
+        role: null,
+      });
+
+      const result = await verifyUserSession("user-1");
+
+      expect(result.status).toBe(200);
+      expect(result.message).toBe("Token valid");
+      expect(result.data.role).toBeNull();
+      expect(result.data.tenantId).toBe("tenant-1");
+    });
+  });
+
+  // ================================================================
+  describe("loginMfa", () => {
+    it("defaults ip/userAgent to empty strings when the caller omits them", async () => {
+      const user = {
+        id: "user-1",
+        username: "adalovelace",
+        email: "ada@example.com",
+        tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" }, // A-83
+        roleId: "role-1",
+        isActive: true,
+        mfaEnabled: true,
+        mfaSecret: TOTP_SECRET,
+        role: { id: "role-1", name: "USER" },
+        update: jest.fn().mockResolvedValue({}),
+      };
+      Users.findByPk.mockResolvedValue(user);
+
+      const result = await loginMfa("user-1", liveCode());
+
+      expect(result.status).toBe(200);
+      expect(result.data.mfaEnabled).toBe(true);
+      expect(createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "user-1",
+          tenantId: "tenant-1",
+          ipAddress: "",
+          userAgent: "",
+        }),
+      );
+      // A-211: stamped in the session's transaction.
+      expect(user.update).toHaveBeenCalledWith(
+        { lastLoginAt: expect.any(Date) },
+        { transaction: expect.anything() },
+      );
+    });
+
+    it("returns a null role when the association is not loaded", async () => {
+      Users.findByPk.mockResolvedValue({
+        id: "user-1",
+        username: "adalovelace",
+        email: "ada@example.com",
+        isActive: true,
+        mfaEnabled: true,
+        mfaSecret: TOTP_SECRET,
+        role: null,
+        update: jest.fn().mockResolvedValue({}),
+      });
+
+      const result = await loginMfa("user-1", liveCode(), "10.0.0.1", "jest");
+
+      expect(result.data.role).toBeNull();
+    });
+  });
+
+  // ================================================================
+  describe("impersonateUser", () => {
+    it("returns a null role when the target user has no role loaded", async () => {
+      const superAdmin = {
+        id: "sa-1",
+        email: "root@example.com",
+        role: { id: "r0", name: "SUPER_ADMIN" },
+      };
+      const targetUser = {
+        id: "user-2",
+        username: "target",
+        email: "target@example.com",
+        tenantId: "tenant-1",
+        roleId: "role-1",
+        role: null,
+      };
+      Users.findByPk.mockResolvedValue(superAdmin);
+      Users.findOne.mockResolvedValue(targetUser);
+
+      const result = await impersonateUser("sa-1", "tenant-1", "user-2");
+
+      expect(result.status).toBe(200);
+      expect(result.data.role).toBeNull();
+      expect(result.data.isImpersonating).toBe(true);
+      // A-48: the token names the impersonation session, so the session's
+      // one-hour expiry (and a revoke) binds the access token too.
+      expect(generateAccessToken).toHaveBeenCalledWith({
+        id: "user-2",
+        email: "target@example.com",
+        impersonatorId: "sa-1",
+        sid: "session-1",
+      });
+      // impersonated sessions are attributed back to the super admin
+      expect(createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "user-2",
+          ipAddress: "",
+          userAgent: " (Impersonated by root@example.com)",
+        }),
+      );
+    });
+  });
+});
