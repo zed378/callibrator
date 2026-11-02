@@ -18,6 +18,7 @@
  *   (none)          every other seeded role
  */
 
+import type * as AuthMiddleware from "../../middlewares/auth.middleware";
 import type * as RouteClient from "../fixtures/routeClient";
 import type { Principal, TwoTenantWorld } from "../fixtures/routeClient";
 import { ROLE_NAMES, ROLE_IDS } from "../../constants/roleConstants";
@@ -48,7 +49,7 @@ const mockSeed: { current: Seed | null } = { current: null };
 let currentUser: Principal | null = null;
 
 jest.mock("../../middlewares/auth.middleware", () => {
-  const actual = jest.requireActual<typeof import("../../middlewares/auth.middleware")>(
+  const actual = jest.requireActual<typeof AuthMiddleware>(
     "../../middlewares/auth.middleware",
   );
   return {
@@ -101,7 +102,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 jest.mock("../../services/quota.service", () => ({
-  getUsageSummary: jest.fn(async (tenantId: string) => ({ tenantId, plan: "pro", seats: { used: 1, limit: 5 } })),
+  getUsageSummary: jest.fn((tenantId: string) => Promise.resolve({ tenantId, plan: "pro", seats: { used: 1, limit: 5 } })),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -156,11 +157,10 @@ const http = (): Promise<HttpResponse> =>
       ip: "127.0.0.1",
       get: () => undefined,
     };
-    router.handle(req, res, (err) =>
-      resolve({
-        status: err ? err.status || err.statusCode || 500 : 404,
-        body: { message: err ? err.message : "no route" },
-      }),
+    router.handle(req, res, (err) => { resolve({
+      status: err ? err.status ?? err.statusCode ?? 500 : 404,
+      body: { message: err ? err.message : "no route" },
+    }); },
     );
   });
 

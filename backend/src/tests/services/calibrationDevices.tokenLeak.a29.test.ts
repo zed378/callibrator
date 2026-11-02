@@ -16,7 +16,6 @@
  * model → response.util.
  */
 import type * as SequelizeModule from "sequelize";
-import type CalibrationDevicesController from "../../controllers/calibrationDevices.controller";
 import type { TenantId } from "../../types/ids";
 
 const mockDb: { statements: string[]; handler: ((sql: string, options: { plain?: boolean; attributes?: unknown }) => unknown) | null } = {
@@ -63,7 +62,6 @@ const controller = require("../../controllers/calibrationDevices.controller") as
     getAllCalibrationDevices: (req: unknown, res: unknown, next: unknown) => void;
     getSpecificCalibrationDevice: (req: unknown, res: unknown, next: unknown) => void;
 };
-void (null as unknown as typeof CalibrationDevicesController);
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 const TENANT = "11111111-1111-4111-8111-111111111111" as TenantId;

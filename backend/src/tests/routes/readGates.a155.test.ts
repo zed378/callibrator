@@ -18,6 +18,7 @@
  * hand from seedMenuGroups.util.js: they are the claim.
  */
 
+import type * as AuthMiddleware from "../../middlewares/auth.middleware";
 import type * as RouteClient from "../fixtures/routeClient";
 import type { Principal, TwoTenantWorld } from "../fixtures/routeClient";
 import { ROLE_NAMES, ROLE_IDS } from "../../constants/roleConstants";
@@ -49,7 +50,7 @@ const mockFx: { current: TwoTenantWorld | null } = { current: null };
 let currentUser: Principal | null = null;
 
 jest.mock("../../middlewares/auth.middleware", () => {
-  const actual = jest.requireActual<typeof import("../../middlewares/auth.middleware")>(
+  const actual = jest.requireActual<typeof AuthMiddleware>(
     "../../middlewares/auth.middleware",
   );
   return {
@@ -87,15 +88,15 @@ jest.mock("../../models", () => {
 });
 
 jest.mock("../../services/featureFlag.service", () => ({
-  getTenantFlags: jest.fn(async () => ({ enable_iot: true })),
-  isEnabled: jest.fn(async () => true),
+  getTenantFlags: jest.fn(() => Promise.resolve({ enable_iot: true })),
+  isEnabled: jest.fn(() => Promise.resolve(true)),
 }));
 jest.mock("../../services/tenantLifecycle.service", () => ({
-  getTenantLifecycleStatus: jest.fn(async () => ({ status: "ACTIVE" })),
+  getTenantLifecycleStatus: jest.fn(() => Promise.resolve({ status: "ACTIVE" })),
 }));
 jest.mock("../../services/networkSecurity.service", () => ({
-  getTenantIpAllowlist: jest.fn(async () => ["10.0.0.0/8"]),
-  getTenantGeofence: jest.fn(async () => null),
+  getTenantIpAllowlist: jest.fn(() => Promise.resolve(["10.0.0.0/8"])),
+  getTenantGeofence: jest.fn(() => Promise.resolve(null)),
 }));
 jest.mock("../../utils/password.util", () => ({ hashPassword: jest.fn() }));
 jest.mock("../../services/userPermission.service", () => ({
@@ -180,11 +181,10 @@ const http = (router: RouterLike, url: string, query: Record<string, unknown> = 
       ip: "127.0.0.1",
       get: () => undefined,
     };
-    router.handle(req, res, (err) =>
-      resolve({
-        status: err ? err.status || err.statusCode || 500 : 404,
-        body: { message: err ? err.message : "no route" },
-      }),
+    router.handle(req, res, (err) => { resolve({
+      status: err ? err.status ?? err.statusCode ?? 500 : 404,
+      body: { message: err ? err.message : "no route" },
+    }); },
     );
   });
 
@@ -242,7 +242,7 @@ const TENANT_READS: Record<string, TenantReadEntry> = {
 };
 
 describe.each(Object.keys(TENANT_READS))("A-155 — %s", (name) => {
-  const readEntry = TENANT_READS[name]!;
+  const readEntry = TENANT_READS[name] as (typeof TENANT_READS)[string];
   const { call, service, allowed } = readEntry;
 
   it.each(TENANT_ROLES)("in its own tenant: %s", async (role) => {
@@ -252,7 +252,7 @@ describe.each(Object.keys(TENANT_READS))("A-155 — %s", (name) => {
 
     if (allowed.includes(role)) {
       expect(res.status).toBe(200);
-      expect(service().mock.calls[0]![0]).toBe(fx.tenantA.id);
+      expect((service().mock.calls as unknown[][])[0]?.[0]).toBe(fx.tenantA.id);
     } else {
       expect(res.status).toBe(403);
       expect(service()).not.toHaveBeenCalled();
@@ -276,7 +276,7 @@ describe.each(Object.keys(TENANT_READS))("A-155 — %s", (name) => {
     const res = await call(fx.tenantB.id);
 
     expect(res.status).toBe(200);
-    expect(service().mock.calls[0]![0]).toBe(fx.tenantB.id);
+    expect((service().mock.calls as unknown[][])[0]?.[0]).toBe(fx.tenantB.id);
   });
 });
 

@@ -304,7 +304,7 @@ const scanSource = (source: string, file = ""): ScanFinding[] => {
     : (espree.parse(source, { ecmaVersion: "latest", sourceType: "script", loc: true }) as AstNode);
   const found: ScanFinding[] = [];
   const visit = (node: unknown): void => {
-    if (!node || typeof node !== "object" || !("type" in node) || typeof (node as { type: unknown }).type !== "string") {
+    if (!node || typeof node !== "object" || !("type" in node) || typeof (node).type !== "string") {
       return;
     }
     const n = node as AstNode;

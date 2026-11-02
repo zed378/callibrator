@@ -29,7 +29,7 @@ jest.mock("../../config", () => {
   (db as unknown as { query: unknown }).query = (sql: string | { query: string }, options: { plain?: boolean; model?: { bulkBuild: (rows: unknown[], opts: unknown) => unknown[] } } = {}) => {
     const text = typeof sql === "string" ? sql : sql.query;
     mockDb.statements.push(text);
-    const table = (/FROM "([a-z_]+)"/.exec(text) || [])[1];
+    const table = /FROM "([a-z_]+)"/.exec(text)?.[1];
     const stored = table ? mockDb.rows[table] : undefined;
     if (!/^SELECT /i.test(text) || !stored || !options.model) {
       return Promise.resolve(options.plain ? null : []);
@@ -141,6 +141,6 @@ describe("D-3 — the backup type the API sends selects the users", () => {
   it('"PARTIAL" exports the tenant row only, as before', async () => {
     const data = await takeBackup("PARTIAL");
     expect(data.users).toEqual([]);
-    expect(mockDb.statements.some((s) => /FROM "users"/.test(s))).toBe(false);
+    expect(mockDb.statements.some((s) => s.includes('FROM "users"'))).toBe(false);
   });
 });

@@ -13,15 +13,16 @@
  * foreign row and these tests would see it.
  */
 
+import type * as AuthMiddleware from "../../middlewares/auth.middleware";
 import type * as RouteClient from "../fixtures/routeClient";
 import type { Principal, TwoTenantWorld } from "../fixtures/routeClient";
 import { ROLE_NAMES, MENU_SLUGS } from "../../constants";
 
 interface MockStore {
-  users: Array<{ id: string; tenantId: string }>;
-  devices: Array<{ id: string; tenantId: string }>;
-  ncs: Array<{ id: string; tenantId: string; ncNumber: string }>;
-  capas: Array<{ id: string; tenantId: string; capaNumber: string; assignedTo: string | null }>;
+  users: { id: string; tenantId: string }[];
+  devices: { id: string; tenantId: string }[];
+  ncs: { id: string; tenantId: string; ncNumber: string }[];
+  capas: { id: string; tenantId: string; capaNumber: string; assignedTo: string | null }[];
   counters: Map<string, number>;
 }
 
@@ -40,7 +41,7 @@ const mockFx: { current: TwoTenantWorld | null; store: MockStore | null } = {
 let currentUser: Principal | null = null;
 
 jest.mock("../../middlewares/auth.middleware", () => {
-  const actual = jest.requireActual<typeof import("../../middlewares/auth.middleware")>(
+  const actual = jest.requireActual<typeof AuthMiddleware>(
     "../../middlewares/auth.middleware",
   );
   return {
@@ -53,21 +54,21 @@ jest.mock("../../middlewares/auth.middleware", () => {
 });
 
 /** findOne over a table: matches every key of `where` exactly, nothing else. */
-const mockFindOne = <K extends keyof Omit<MockStore, "counters">>(table: K) =>
-  jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
+const mockFindOne = (table: keyof Omit<MockStore, "counters">) =>
+  jest.fn(({ where }: { where: Record<string, unknown> }) => {
     const list = mockFx.store?.[table] ?? [];
-    const row = (list as Array<Record<string, unknown>>).find((r) =>
+    const row = (list as Record<string, unknown>[]).find((r) =>
       Object.entries(where).every(([k, v]) => r[k] === v),
     );
-    return row ? { ...row } : null;
+    return Promise.resolve(row ? { ...row } : null);
   });
 
-const mockCreate = <K extends "ncs" | "capas">(table: K) =>
-  jest.fn(async (values: Record<string, unknown>) => {
+const mockCreate = (table: "ncs" | "capas") =>
+  jest.fn((values: Record<string, unknown>) => {
     const list = mockFx.store?.[table] ?? [];
-    const row = { id: `${table}-${list.length + 1}`, ...values };
-    (list as Array<Record<string, unknown>>).push(row);
-    return row;
+    const row = { id: `${table}-${String(list.length + 1)}`, ...values };
+    (list as Record<string, unknown>[]).push(row);
+    return Promise.resolve(row);
   });
 
 jest.mock("../../models", () => ({
@@ -83,18 +84,18 @@ jest.mock("../../models", () => ({
   NonConformance: {
     findOne: mockFindOne("ncs"),
     create: mockCreate("ncs"),
-    count: jest.fn(async ({ where }: { where: { tenantId: string } }) =>
-      mockFx.store?.ncs.filter((r) => r.tenantId === where.tenantId).length ?? 0,
+    count: jest.fn(({ where }: { where: { tenantId: string } }) =>
+      Promise.resolve(mockFx.store?.ncs.filter((r) => r.tenantId === where.tenantId).length ?? 0),
     ),
   },
   Capa: {
-    findOne: jest.fn(async ({ where }: { where: { id: string; tenantId: string } }) => {
+    findOne: jest.fn(({ where }: { where: { id: string; tenantId: string } }) => {
       const row = mockFx.store?.capas.find((r) => r.id === where.id && r.tenantId === where.tenantId);
-      return row ? Object.assign(row, { save: jest.fn(async () => row) }) : null;
+      return Promise.resolve(row ? Object.assign(row, { save: jest.fn(() => Promise.resolve(row)) }) : null);
     }),
     create: mockCreate("capas"),
-    count: jest.fn(async ({ where }: { where: { tenantId: string } }) =>
-      mockFx.store?.capas.filter((r) => r.tenantId === where.tenantId).length ?? 0,
+    count: jest.fn(({ where }: { where: { tenantId: string } }) =>
+      Promise.resolve(mockFx.store?.capas.filter((r) => r.tenantId === where.tenantId).length ?? 0),
     ),
   },
 }));
@@ -104,12 +105,12 @@ jest.mock("../../config", () => ({
     transaction: async <T>(cb: (tx: { id: string }) => Promise<T>): Promise<T> => cb({ id: "tx" }),
     // The per-tenant counter claim (A-73): one counter per tenant and kind.
     // P9-07: through sql() — bind [$1 tenant, $2 kind, $3 pattern], type SELECT.
-    query: async (_sql: string, { bind }: { bind: [string, string, ...unknown[]] }) => {
+    query: (_sql: string, { bind }: { bind: [string, string, ...unknown[]] }) => {
       const [tenantId, kind] = bind;
       const key = `${tenantId}:${kind}`;
-      const seq = ((mockFx.store?.counters.get(key)) || 0) + 1;
+      const seq = (mockFx.store?.counters.get(key) ?? 0) + 1;
       mockFx.store?.counters.set(key, seq);
-      return [{ seq }];
+      return Promise.resolve([{ seq }]);
     },
   },
 }));
@@ -181,11 +182,10 @@ const http = (method: string, url: string, body: Record<string, unknown> = {}): 
       ip: "127.0.0.1",
       get: () => undefined,
     };
-    router.handle(req, res, (err) =>
-      resolve({
-        status: err ? err.status || 500 : 404,
-        body: { message: (err ? err.message : "no route") as string },
-      }),
+    router.handle(req, res, (err) => { resolve({
+      status: err ? err.status ?? 500 : 404,
+      body: { message: (err ? err.message : "no route") as string },
+    }); },
     );
   });
 
@@ -218,8 +218,8 @@ beforeEach(() => {
     counters: new Map(),
   };
   const grant = { [MENU_SLUGS.QMS]: ["write"] };
-  RolesService.getRolePermissionsMatrix.mockImplementation(async (roleId: string) =>
-    roleId === adminA.role.id ? grant : {},
+  RolesService.getRolePermissionsMatrix.mockImplementation((roleId: string) =>
+    Promise.resolve(roleId === adminA.role.id ? grant : {}),
   );
   currentUser = adminA;
 });
@@ -283,7 +283,7 @@ describe("A-75 — a QMS record cannot reference another tenant's device or user
   });
 
   it("another tenant's NC cannot be the parent of a CAPA", async () => {
-    mockFx.store!.ncs[0]!.tenantId = fx.tenantB.id;
+    ((mockFx.store as MockStore).ncs[0] as MockStore["ncs"][number]).tenantId = fx.tenantB.id;
 
     const res = await http("post", "/capa", { ncId: NC_A, title: "t", actionPlan: "p" });
 

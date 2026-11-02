@@ -109,7 +109,7 @@ describe("A-134 — why the role cascade was removed, read from the real models"
 
   it("the former call `User.findAll({ include: [Role] })` throws before any SQL (alias `role`)", async () => {
     await expect(
-      tenantStorage.run({ tenantId: PARENT }, () =>
+      tenantStorage.run({ tenantId: PARENT }, (): unknown =>
         models.User.findAll({ where: { tenantId: PARENT }, include: [models.Role] }),
       ),
     ).rejects.toThrow(/alias/i);

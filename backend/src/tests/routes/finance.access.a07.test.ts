@@ -23,6 +23,7 @@
 
 import fs from "fs";
 import path from "path";
+import type RolesServiceType from "../../services/roles.service";
 import type { Request, Response, NextFunction } from "express";
 import type * as AuthMiddleware from "../../middlewares/auth.middleware";
 
@@ -118,7 +119,7 @@ const { Role, RoleMenuPermission } = require("../../models") as { Role: MockMode
 const financeController = require("../../controllers/finance.controller") as Record<string, jest.Mock>;
 import { ROLE_NAMES, ROLE_MENU_ASSIGNMENTS, MENU_SLUGS } from "../../constants";
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- CommonJS service
-const RolesService = require("../../services/roles.service") as typeof import("../../services/roles.service");
+const RolesService = require("../../services/roles.service") as typeof RolesServiceType;
 
 interface ExpressRouter {
   handle: (

@@ -15,6 +15,7 @@
  * roles are written out by hand from seedMenuGroups.util.js: they are the claim.
  */
 
+import type * as AuthMiddleware from "../../middlewares/auth.middleware";
 import type * as RouteClient from "../fixtures/routeClient";
 import type { Principal, TwoTenantWorld } from "../fixtures/routeClient";
 import { ROLE_NAMES, ROLE_IDS } from "../../constants/roleConstants";
@@ -46,7 +47,7 @@ const mockFx: { current: TwoTenantWorld | null } = { current: null };
 let currentUser: Principal | null = null;
 
 jest.mock("../../middlewares/auth.middleware", () => {
-  const actual = jest.requireActual<typeof import("../../middlewares/auth.middleware")>(
+  const actual = jest.requireActual<typeof AuthMiddleware>(
     "../../middlewares/auth.middleware",
   );
   return {
@@ -84,7 +85,7 @@ jest.mock("../../models", () => {
 });
 
 jest.mock("../../services/networkSecurity.service", () => ({
-  evaluateLoginSecurity: jest.fn(async () => ({
+  evaluateLoginSecurity: jest.fn(() => Promise.resolve({
     allowed: false,
     ip: { allowed: true },
     geofence: { allowed: false, distanceKm: 12.5, radiusKm: 5 },
@@ -123,7 +124,7 @@ const router = require("../../routes/api/networkSecurity.route") as {
     res: unknown,
     next: (err?: { status?: number; statusCode?: number; message?: string }) => void,
   ) => void;
-  stack: Array<{ route?: { path?: string; stack: unknown[] } }>;
+  stack: { route?: { path?: string; stack: unknown[] } }[];
 };
 
 const BODY = { ip: "203.0.113.9", latitude: -6.2, longitude: 106.8 };
@@ -158,11 +159,10 @@ const post = (body: Record<string, unknown> = BODY, query: Record<string, unknow
       ip: "127.0.0.1",
       get: () => undefined,
     };
-    router.handle(req, res, (err) =>
-      resolve({
-        status: err ? err.status || err.statusCode || 500 : 404,
-        body: { message: err ? err.message : "no route" },
-      }),
+    router.handle(req, res, (err) => { resolve({
+      status: err ? err.status ?? err.statusCode ?? 500 : 404,
+      body: { message: err ? err.message : "no route" },
+    }); },
     );
   });
 
@@ -193,7 +193,7 @@ const seededPrincipal = (tenant: TwoTenantWorld["tenantA"], role: string): Princ
 
 describe("A-179 — POST /network-security/evaluate-login needs network-security: read", () => {
   it("the route carries a permission gate (it was auth alone)", () => {
-    const layer = router.stack.find((l) => l.route && l.route.path === "/evaluate-login");
+    const layer = router.stack.find((l) => l.route?.path === "/evaluate-login");
     // auth is router-level; the route's own stack is the gate + the handler.
     expect(layer?.route?.stack.length).toBe(2);
   });
