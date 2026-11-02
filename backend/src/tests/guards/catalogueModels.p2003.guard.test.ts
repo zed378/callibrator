@@ -115,7 +115,7 @@ describe("P20-01 / P20-03 — the inspection catalogue is global, unscoped, and 
   });
 
   it("the five are listed in unscopedModels.d17 as `global`, with ADR-125 as the reason", () => {
-    const source = fs.readFileSync(path.join(__dirname, "../models/unscopedModels.d17.test.js"), "utf8");
+    const source = fs.readFileSync(path.join(__dirname, "../models/unscopedModels.d17.test.ts"), "utf8");
     expect(source).toMatch(/const CATALOGUE = "ADR-125: platform catalogue; writes superAdminOnly/);
     for (const name of CATALOGUE) {
       expect(source).toContain(`  ${name}: { group: "global", why: CATALOGUE },`);

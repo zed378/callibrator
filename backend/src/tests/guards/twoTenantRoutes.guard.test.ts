@@ -662,7 +662,10 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
 
 const readTestFile = (file: string): string | null => {
   const full = path.join(TESTS_DIR, file);
-  return fs.existsSync(full) ? fs.readFileSync(full, "utf8") : null;
+  // An entry may name the test before its JS-to-TS conversion, which keeps every case title
+  // (CLAUDE.md): the title check below still decides whether the route stays covered.
+  const found = [full, full.replace(/\.js$/, ".ts")].find((candidate) => fs.existsSync(candidate));
+  return found === undefined ? null : fs.readFileSync(found, "utf8");
 };
 
 const testSources = (): Record<string, string> => {
