@@ -1,0 +1,236 @@
+require("nodemailer");
+require("mustache");
+require("fs");
+require("path");
+
+jest.mock("nodemailer", () => ({
+  createTransport: jest.fn().mockReturnValue({
+    sendMail: jest.fn().mockResolvedValue({ messageId: "123" })
+  })
+}));
+jest.mock("mustache", () => ({
+  render: jest.fn((template: any, variables: any) => {
+    return `Rendered: ${template} with ${JSON.stringify(variables)}`;
+  })
+}));
+jest.mock("fs", () => ({
+  readFileSync: jest.fn().mockImplementation((filepath: any) => {
+    if (filepath.includes("template.html")) {return "Mock Activation Template: {{firstName}} {{link}}";}
+    if (filepath.includes("otp.html")) {return "Mock OTP Template: {{firstName}} {{otp}}";}
+    return "Default Template";
+  })
+}));
+
+// Mock process.env before requiring the service
+process.env["MAIL_HOST"] = "smtp.test.com";
+process.env["MAIL_PORT"] = "587";
+process.env["MAIL_USER"] = "test@example.com";
+process.env["MAIL_PASSWORD"] = "password";
+process.env["MAIL_FROM"] = "noreply@example.com";
+
+const { sendEmail, sendActivationEmail, sendOtpEmail, sendNotificationEmail } = require("../../services/email.service");
+
+describe("email.service", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe("sendEmail", () => {
+    it("should send an email with correct parameters", async () => {
+      const mockSendMail = require("nodemailer").createTransport().sendMail;
+      const emailData: any = {
+        to: "user@test.com",
+        subject: "Test Subject",
+        html: "<p>Test HTML</p>"
+      };
+
+      const result = await sendEmail(emailData);
+
+      expect(mockSendMail).toHaveBeenCalledWith({
+        from: "noreply@example.com",
+        to: "user@test.com",
+        subject: "Test Subject",
+        html: "<p>Test HTML</p>"
+      });
+      expect(result).toEqual({ messageId: "123" });
+    });
+  });
+
+  describe("sendActivationEmail", () => {
+    it("should render template and send activation email", async () => {
+      const mockSendMail = require("nodemailer").createTransport().sendMail;
+      const emailData: any = {
+        email: "newuser@test.com",
+        firstName: "John",
+        lastName: "Doe",
+        activationLink: "http://activate.test/123"
+      };
+
+      const result = await sendActivationEmail(emailData);
+
+      expect(require("mustache").render).toHaveBeenCalledWith(
+        "Mock Activation Template: {{firstName}} {{link}}",
+        {
+          // Branding resolved from this deployment, never a hard-coded third
+          // party. The templates used to point at another company's logo.
+          appUrl: "http://localhost:5000",
+          appName: "Device Calibrator",
+          logoUrl: "http://localhost:5000/brand/logo-email.png",
+          supportEmail: "noreply@example.com",
+          firstName: "John",
+          lastName: "Doe",
+          link: "http://activate.test/123"
+        }
+      );
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "newuser@test.com",
+          subject: "Account Activation",
+          html: expect.stringContaining("Rendered: Mock Activation Template")
+        })
+      );
+      expect(result).toEqual({ messageId: "123" });
+    });
+  });
+
+  // brandContext() reads process.env at call time, so clearing the variables
+  // exercises the fallbacks without re-requiring the module. The behaviour
+  // matters: with no HOST_URL the images simply do not render, and crucially
+  // NO third party is contacted — which is the whole point of replacing the
+  // hard-coded fullfind.co URLs.
+  describe("branding with no HOST_URL or MAIL_FROM", () => {
+    const saved: any = {};
+    beforeEach(() => {
+      saved.host = process.env["HOST_URL"];
+      saved.from = process.env["MAIL_FROM"];
+      delete process.env["HOST_URL"];
+      delete process.env["MAIL_FROM"];
+    });
+    afterEach(() => {
+      if (saved.host === undefined) {delete process.env["HOST_URL"];} else
+      {process.env["HOST_URL"] = saved.host;}
+      if (saved.from === undefined) {delete process.env["MAIL_FROM"];} else
+      {process.env["MAIL_FROM"] = saved.from;}
+    });
+
+    it("falls back to empty branding rather than an external host", async () => {
+      await sendActivationEmail({
+        email: "a@test.com",
+        firstName: "A",
+        lastName: "B",
+        activationLink: "http://activate.test/1"
+      });
+
+      const ctx = require("mustache").render.mock.calls[0][1];
+      expect(ctx.appUrl).toBe("");
+      expect(ctx.supportEmail).toBe("");
+      expect(ctx.logoUrl).toBe("/brand/logo-email.png");
+      expect(ctx.logoUrl).not.toContain("fullfind");
+    });
+  });
+
+  describe("sendOtpEmail", () => {
+    it("should render template and send OTP email", async () => {
+      const mockSendMail = require("nodemailer").createTransport().sendMail;
+      const emailData: any = {
+        email: "forgot@test.com",
+        firstName: "Jane",
+        lastName: "Smith",
+        otp: "123456"
+      };
+
+      const result = await sendOtpEmail(emailData);
+
+      expect(require("mustache").render).toHaveBeenCalledWith(
+        "Mock OTP Template: {{firstName}} {{otp}}",
+        {
+          appUrl: "http://localhost:5000",
+          appName: "Device Calibrator",
+          logoUrl: "http://localhost:5000/brand/logo-email.png",
+          supportEmail: "noreply@example.com",
+          firstName: "Jane",
+          lastName: "Smith",
+          otp: "123456"
+        }
+      );
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "forgot@test.com",
+          subject: "Password Reset OTP",
+          html: expect.stringContaining("Rendered: Mock OTP Template")
+        })
+      );
+      expect(result).toEqual({ messageId: "123" });
+    });
+  });
+
+  describe("sendNotificationEmail", () => {
+    it("should send notification email with all fields and CTA url", async () => {
+      const mockSendMail = require("nodemailer").createTransport().sendMail;
+      const result = await sendNotificationEmail({
+        email: "recipient@test.com",
+        firstName: "Alice",
+        title: "Test Title & Special chars",
+        message: "Hello <World>",
+        actionUrl: "https://view.details.com/123"
+      });
+
+      expect(mockSendMail).toHaveBeenCalledWith({
+        from: "noreply@example.com",
+        to: "recipient@test.com",
+        subject: "Test Title & Special chars",
+        html: expect.stringContaining("Test Title &amp; Special chars")
+      });
+      expect(mockSendMail.mock.calls[0][0].html).toContain("Hi Alice");
+      expect(mockSendMail.mock.calls[0][0].html).toContain("Hello &lt;World&gt;");
+      expect(mockSendMail.mock.calls[0][0].html).toContain('href="https://view.details.com/123"');
+      expect(result).toEqual({ messageId: "123" });
+    });
+
+    it("should fall back to default name when firstName is missing and omit CTA when actionUrl is invalid", async () => {
+      const mockSendMail = require("nodemailer").createTransport().sendMail;
+      await sendNotificationEmail({
+        email: "recipient@test.com",
+        title: "Title",
+        message: "Message",
+        actionUrl: "invalid-url"
+      });
+
+      expect(mockSendMail.mock.calls[0][0].html).toContain("Hi there");
+      expect(mockSendMail.mock.calls[0][0].html).not.toContain("View details");
+    });
+
+    describe("A-172 — the footer is the deployment's brand", () => {
+      const footer = (html: any) => html.match(/<p style="color:#4A423A;font-size:12px">([^<]*)<\/p>/)[1];
+      let saved: any = undefined;
+      beforeEach(() => {
+        saved = process.env["APP_NAME"];
+      });
+      afterEach(() => {
+        if (saved === undefined) {delete process.env["APP_NAME"];} else {process.env["APP_NAME"] = saved;}
+      });
+
+      it("names APP_NAME, escaped, and never the hard-coded boilerplate name", async () => {
+        process.env["APP_NAME"] = "RS Sehat <Kalibrasi> & Co";
+        const mockSendMail = require("nodemailer").createTransport().sendMail;
+
+        await sendNotificationEmail({ email: "r@test.com", title: "T", message: "M" });
+
+        const { html } = mockSendMail.mock.calls[0][0];
+        expect(footer(html)).toBe("RS Sehat &lt;Kalibrasi&gt; &amp; Co");
+        expect(html).not.toContain("Calibration Management System");
+      });
+
+      it("falls back to the default brand the other templates use", async () => {
+        delete process.env["APP_NAME"];
+        const mockSendMail = require("nodemailer").createTransport().sendMail;
+
+        await sendNotificationEmail({ email: "r@test.com", title: "T", message: "M" });
+
+        expect(footer(mockSendMail.mock.calls[0][0].html)).toBe("Device Calibrator");
+      });
+    });
+  });
+});
