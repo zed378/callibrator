@@ -100,12 +100,12 @@ interface Suite {
 
 /** Every live suite. A new `*.live.test.*` is added here (liveSuites.a367.guard fails otherwise). */
 export const SUITES: readonly Suite[] = Object.freeze([
-  { id: "p6", file: "src/tests/services/dataIntegrity.p6.live.test.js", db: "scratch" },
-  { id: "p613", file: "src/tests/migrations/0090-webhook-secret-rotation-overlap.p613.live.test.js", db: "scratch" },
-  { id: "dba", file: "src/tests/migrations/dataIdentity.dbA.live.test.js", db: "scratch" },
-  { id: "dbb", file: "src/tests/services/dataLayer.dbB.live.test.js", db: "scratch" },
-  { id: "dbc", file: "src/tests/services/dataLayer.dbC.live.test.js", env: { DB_APP_ROLE: "callibrator_app" }, db: "scratch" },
-  { id: "dbd", file: "src/tests/services/dataLayer.dbD.live.test.js", env: { DB_APP_ROLE: "dbd_fresh_app" }, db: "scratch" },
+  { id: "p6", file: "src/tests/services/dataIntegrity.p6.live.test.ts", db: "scratch" },
+  { id: "p613", file: "src/tests/migrations/0090-webhook-secret-rotation-overlap.p613.live.test.ts", db: "scratch" },
+  { id: "dba", file: "src/tests/migrations/dataIdentity.dbA.live.test.ts", db: "scratch" },
+  { id: "dbb", file: "src/tests/services/dataLayer.dbB.live.test.ts", db: "scratch" },
+  { id: "dbc", file: "src/tests/services/dataLayer.dbC.live.test.ts", env: { DB_APP_ROLE: "callibrator_app" }, db: "scratch" },
+  { id: "dbd", file: "src/tests/services/dataLayer.dbD.live.test.ts", env: { DB_APP_ROLE: "dbd_fresh_app" }, db: "scratch" },
   { id: "a215", file: "src/tests/services/authCards.a215.live.test.ts", db: "scratch" },
   { id: "s08", file: "src/tests/services/keyRotation.s08.live.test.js", db: "scratch" },
   { id: "s20", file: "src/tests/services/secretsAtRest.s20.live.test.js", env: { DB_APP_ROLE: "callibrator_app" }, db: "scratch" },
@@ -151,7 +151,7 @@ export const SUITES: readonly Suite[] = Object.freeze([
   { id: "p1707bind", file: "src/tests/services/userFacilityBinding.p1707.live.test.ts", db: "scratch" },
   { id: "c3menu", file: "src/tests/migrations/menuEntries.c3.live.test.ts", db: "scratch" },
   { id: "p803", file: "src/tests/utils/migrationLock.p803.live.test.ts", db: "scratch" },
-  { id: "w03", file: "src/tests/services/calibrationScheduler.w03.live.test.js", db: "own" },
+  { id: "w03", file: "src/tests/services/calibrationScheduler.w03.live.test.ts", db: "own" },
   { id: "w07", file: "src/tests/services/batchJob.w07.live.test.ts", db: "own" },
   { id: "w12", file: "src/tests/services/backgroundJobs.w12.live.test.ts", db: "own" },
   { id: "w15", file: "src/tests/services/retentionExports.w15w16.live.test.js", db: "own" },
