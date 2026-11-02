@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-02 — CI on c29c1085: three of four red jobs fixed in code ([record](./records/2026-11-02-ci-green-c29c1085.md))
+- Stale `.test.js` paths in two guards, a gitleaks false positive, the `a54` live race, dbC/dbD's time budget, and two renamed live suites in the manifest. 143 lint errors fixed. Conversion junk removed; `runs/` ignored; the pre-push hook runs the guards.
+- The lint baseline goes back to 0 from an undocumented 13076. `backend lint` stays red: 12,933 errors from batches 03 and 04, then the contracts gate on the P25-03 draft. Not yet proven by a CI run.
+
 ### 2026-11-02 — P9-26 bulk batch 04: 50 suites to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-04.md))
 - Bulk Batch 4: 50 test suites (3 `__tests__`, 2 `config`, 24 `routes`, 21 `utils`) converted from `.js` to strict `.ts`. All test assertions strictly preserved, typecheck clean (`ok`), Jest passing, eslint-ratchet passing (code 0), ratchet floor lowered from 335 to 285.
 
