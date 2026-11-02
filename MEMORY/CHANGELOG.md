@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-02 — P9-26 bulk batch 09: 50 service test files to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-09.md))
+- Bulk Batch 9: 50 service test files converted from `.js` to strict `.ts`. All test assertions strictly preserved, typecheck clean (`ok`), live-suites manifest synchronized, ratchet floor lowered from 85 to 35.
+
 ### 2026-11-02 — P9-26 bulk batch 08: 50 service test files to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-08.md))
 - Bulk Batch 8: 50 service test files converted from `.js` to strict `.ts`. All test assertions strictly preserved, typecheck clean (`ok`), live-suites manifest synchronized, ratchet floor lowered from 135 to 85.
 
