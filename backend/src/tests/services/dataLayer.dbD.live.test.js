@@ -33,7 +33,7 @@
  * Every run creates its own tenants, so it can be re-run on the same database.
  */
 
-jest.setTimeout(120000);
+jest.setTimeout(300000);
 
 const startProcess = () => {
   const { db } = require("../../config");

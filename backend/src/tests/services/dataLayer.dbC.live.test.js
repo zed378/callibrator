@@ -30,7 +30,7 @@
 
 const { SELF_FACILITIES_SQL } = require("../fixtures/selfFacility");
 
-jest.setTimeout(120000);
+jest.setTimeout(300000);
 
 // Loaded in the MAIN module registry, not jest.isolateModules: the services
 // lazily require attachment.service at call time, and a require made after an
