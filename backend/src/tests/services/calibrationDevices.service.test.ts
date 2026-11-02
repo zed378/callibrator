@@ -1,0 +1,569 @@
+/**
+ * Tests for calibrationDevices.service.js
+ */
+
+// D-22 (ADR-070): a parent's delete soft-deletes its attachments through
+// attachment.service, in the parent's transaction.
+// P21-02a: a read's facts and displays are deviceReads' own suites' (calibrationDevices.reads.p2102);
+// here the device rows pass through as they are.
+jest.mock("../../services/deviceReads.service", () => ({
+  deviceFacts: jest.fn(async () => new Map()),
+  labNames: jest.fn(async () => new Map()),
+  presentDevice: jest.fn((row: any) => row),
+  fieldSummary: jest.fn((row: any) => row),
+  viewerIsBound: jest.fn(() => false),
+}));
+// P21-02a: the registrant's snapshot reads the person display (its own suite: personDisplay).
+jest.mock("../../services/personDisplay.service", () => ({
+  displayPeople: jest.fn(async (ids: any) => new Map(ids.filter(Boolean).map((id: any) => [id, { name: "Teknisi Sintetis", role: "TECHNICIAN", organisation: "Lab Sintetis", redacted: false }]))),
+}));
+jest.mock("../../services/attachment.service", () => ({
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
+}));
+jest.mock("sequelize", () => ({
+  Op: {
+    or: Symbol("or"),
+    iLike: Symbol("iLike"),
+  },
+}));
+
+jest.mock("../../models", () => ({
+  CalibrationDevice: {
+    findAndCountAll: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn(),
+    findAll: jest.fn(),
+    bulkCreate: jest.fn(),
+    // A-92: serial lookups go through unscoped() (deleted rows hold serials
+    // too); it hands back the same mock so findOne/findAll stay shared.
+    unscoped: jest.fn(),
+  },
+  // P21-09 (G-F1): a create resolves its client facility — none here, so the
+  // device is created without one (the database's default trigger fills it).
+  ClientFacility: { findOne: jest.fn(async () => null) },
+  // P21-08 (ADR-138 Am. 1 § 7): a delete revokes the device's public link — none here.
+  PublicDeviceToken: { findOne: jest.fn(async () => null) },
+}));
+
+// A-133: device writes run in a managed transaction with their audit row
+// (asserted against the auditLedger in calibrationDevices.audit.a133.test.js).
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (callback: any) => callback({ id: "tx" })) },
+}));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
+
+/** The stand-in transaction the mocked db.transaction hands its callback. */
+const TX = { id: "tx" };
+
+jest.mock("../../middlewares/activityLog.middleware", () => ({
+  logger: {
+    info: jest.fn(),
+    error: jest.fn(),
+  },
+}));
+
+jest.mock("../../utils/appError.util", () => {
+  class AppError extends Error {
+    status: any;
+    statusCode: any;
+    code: any;
+    errors: any;
+    constructor(status: any, message: any) {
+      super(message);
+      this.status = status;
+    }
+  }
+  return { AppError };
+});
+
+// The create / update schemas are REAL (P9-11: Zod through validators/input,
+// and the CSV import's per-row checkInput), so every body and CSV row below is
+// judged by the rules the API applies.
+
+const { CalibrationDevice } = require("../../models");
+const {
+  fetchCalibrationDevices,
+  fetchSpecificCalibrationDevice,
+  createCalibrationDevice,
+  updateCalibrationDevice,
+  deleteCalibrationDevice,
+  bulkImportCalibrationDevices,
+} = require("../../services/calibrationDevices.service");
+
+describe("calibrationDevices.service", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    CalibrationDevice.unscoped.mockReturnValue(CalibrationDevice);
+  });
+
+  describe("fetchCalibrationDevices", () => {
+    // A-90: a device may have no warehouse; the list LEFT-joins it (SQL
+    // asserted in includes.a90.test.js) and returns the device with null.
+    it("A-90: lists a device with no warehouse, asking for a LEFT join", async () => {
+      const homeless = { id: "device-1", name: "Device 1", warehouse: null };
+      CalibrationDevice.findAndCountAll.mockResolvedValueOnce({ rows: [homeless], count: 1 });
+
+      const result = await fetchCalibrationDevices({ tenantId: "tenant-1" });
+
+      expect(result.data.rows).toEqual([homeless]);
+      const { include } = CalibrationDevice.findAndCountAll.mock.calls[0][0];
+      // P21-02a: the type, facility and laboratory are included too, every one LEFT.
+      expect(include).toEqual(expect.arrayContaining([expect.objectContaining({ association: "warehouse", required: false })]));
+      expect(include.every((i: any) => i.required === false)).toBe(true);
+    });
+
+    it("should fetch calibration devices successfully without query params", async () => {
+      CalibrationDevice.findAndCountAll.mockResolvedValueOnce({
+        rows: [{ id: "device-1", name: "Device 1" }],
+        count: 1,
+      });
+
+      const result = await fetchCalibrationDevices({ tenantId: "tenant-1" });
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(200);
+      expect(result.data.rows).toHaveLength(1);
+      expect(result.data.meta.total).toBe(1);
+    });
+
+    it("should fetch with query params (find, status, category)", async () => {
+      CalibrationDevice.findAndCountAll.mockResolvedValueOnce({
+        rows: [{ id: "device-1", name: "Search Device" }],
+        count: 1,
+      });
+
+      const result = await fetchCalibrationDevices({
+        tenantId: "tenant-1",
+        find: "search",
+        status: "ACTIVE",
+        category: "Temp",
+        page: 2,
+        limit: 5,
+      });
+
+      expect(result.success).toBe(true);
+      expect(CalibrationDevice.findAndCountAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            tenantId: "tenant-1",
+            status: "active",
+            category: "Temp",
+          }),
+          limit: 5,
+          offset: 5,
+        }),
+      );
+    });
+
+    it("should handle error during fetching", async () => {
+      CalibrationDevice.findAndCountAll.mockRejectedValueOnce(new Error("Db error"));
+      await expect(
+        fetchCalibrationDevices({ tenantId: "tenant-1" }),
+      ).rejects.toThrow("Db error");
+    });
+  });
+
+  describe("fetchSpecificCalibrationDevice", () => {
+    it("should fetch a specific device successfully", async () => {
+      CalibrationDevice.findOne.mockResolvedValueOnce({
+        id: "device-1",
+        name: "Device 1",
+      });
+
+      const result = await fetchSpecificCalibrationDevice("tenant-1", "device-1");
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(200);
+      expect(result.data.name).toBe("Device 1");
+    });
+
+    it("should return 404 if device is not found", async () => {
+      CalibrationDevice.findOne.mockResolvedValueOnce(null);
+
+      const result = await fetchSpecificCalibrationDevice("tenant-1", "device-1");
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(404);
+      expect(result.data).toBeNull();
+    });
+
+    it("should handle error during fetchSpecificCalibrationDevice", async () => {
+      CalibrationDevice.findOne.mockRejectedValueOnce(new Error("Db error"));
+      await expect(
+        fetchSpecificCalibrationDevice("tenant-1", "device-1"),
+      ).rejects.toThrow("Db error");
+    });
+  });
+
+  describe("createCalibrationDevice", () => {
+    it("should throw a 400 error when validation fails", async () => {
+      await expect(
+        createCalibrationDevice("tenant-1", { serialNumber: "123" }),
+      ).rejects.toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [{ field: "name", message: "Invalid input: expected string, received undefined" }],
+      });
+      expect(CalibrationDevice.findOne).not.toHaveBeenCalled();
+    });
+
+    it("should return 409 if device serial number already exists", async () => {
+      CalibrationDevice.findOne.mockResolvedValueOnce({
+        id: "existing-device",
+        serialNumber: "SN123",
+      });
+
+      const result = await createCalibrationDevice("tenant-1", {
+        name: "Device A",
+        serialNumber: "SN123",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(409);
+      expect(result.message).toContain("already exists");
+    });
+
+    it("skips the duplicate lookup entirely when no serialNumber is supplied", async () => {
+      CalibrationDevice.create.mockResolvedValueOnce({ id: "dev-new", name: "Device A" });
+
+      const result = await createCalibrationDevice("tenant-1", { name: "Device A" });
+
+      // A null serialNumber must never be used as a WHERE parameter.
+      expect(CalibrationDevice.findOne).not.toHaveBeenCalled();
+      expect(result.status).toBe(201);
+      // The schema defaults status to "active".
+      expect(CalibrationDevice.create).toHaveBeenCalledWith({
+        name: "Device A",
+        status: "active",
+        tenantId: "tenant-1",
+      }, { transaction: TX });
+    });
+
+    it("should create device successfully if all valid", async () => {
+      const inputData = { name: "Device A", serialNumber: "SN123" };
+      CalibrationDevice.findOne.mockResolvedValueOnce(null);
+      CalibrationDevice.create.mockResolvedValueOnce({
+        id: "new-device",
+        ...inputData,
+      });
+
+      const result = await createCalibrationDevice("tenant-1", inputData);
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(201);
+      expect(result.data.id).toBe("new-device");
+    });
+
+    it("should handle error during create", async () => {
+      CalibrationDevice.findOne.mockRejectedValueOnce(new Error("Db error"));
+
+      await expect(
+        createCalibrationDevice("tenant-1", {
+          name: "Device A",
+          serialNumber: "SN-A",
+        }),
+      ).rejects.toThrow("Db error");
+    });
+  });
+
+  describe("updateCalibrationDevice", () => {
+    it("should throw a 400 error when validation fails", async () => {
+      await expect(
+        updateCalibrationDevice("tenant-1", "device-1", { name: 123 }),
+      ).rejects.toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [{ field: "name", message: "Invalid input: expected string, received number" }],
+      });
+      expect(CalibrationDevice.findOne).not.toHaveBeenCalled();
+    });
+
+    it("should return 404 if device is not found", async () => {
+      CalibrationDevice.findOne.mockResolvedValueOnce(null);
+
+      const result = await updateCalibrationDevice("tenant-1", "device-1", {
+        name: "Updated Name",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(404);
+    });
+
+    it("should update device successfully", async () => {
+      const mockDevice: any = {
+        id: "device-1",
+        name: "Device 1",
+        update: jest.fn().mockResolvedValueOnce(true),
+      };
+      CalibrationDevice.findOne.mockResolvedValueOnce(mockDevice);
+
+      const result = await updateCalibrationDevice("tenant-1", "device-1", {
+        name: "Updated Name",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(200);
+      expect(mockDevice.update).toHaveBeenCalledWith({ name: "Updated Name" }, { transaction: TX });
+    });
+
+    it("should handle error during update", async () => {
+      CalibrationDevice.findOne.mockRejectedValueOnce(new Error("Db error"));
+
+      await expect(
+        updateCalibrationDevice("tenant-1", "device-1", { name: "Updated Name" }),
+      ).rejects.toThrow("Db error");
+    });
+  });
+
+  describe("deleteCalibrationDevice", () => {
+    it("should return 404 if device is not found", async () => {
+      CalibrationDevice.findOne.mockResolvedValueOnce(null);
+
+      const result = await deleteCalibrationDevice("tenant-1", "device-1");
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(404);
+    });
+
+    it("should delete device successfully", async () => {
+      const mockDevice: any = {
+        id: "device-1",
+        softDelete: jest.fn().mockResolvedValueOnce(true),
+      };
+      CalibrationDevice.findOne.mockResolvedValueOnce(mockDevice);
+
+      const result = await deleteCalibrationDevice("tenant-1", "device-1");
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(200);
+      expect(mockDevice.softDelete).toHaveBeenCalled();
+      // D-22 (ADR-070): its attachments in the same transaction.
+      expect(require("../../services/attachment.service").softDeleteForResource).toHaveBeenCalledWith(
+        "tenant-1",
+        "CalibrationDevice",
+        "device-1",
+        expect.objectContaining({ transaction: expect.anything() }),
+      );
+    });
+
+    it("should handle error during delete", async () => {
+      CalibrationDevice.findOne.mockRejectedValueOnce(new Error("Db error"));
+
+      await expect(
+        deleteCalibrationDevice("tenant-1", "device-1"),
+      ).rejects.toThrow("Db error");
+    });
+  });
+
+  describe("bulkImportCalibrationDevices", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const testCsvPath = path.join(__dirname, "test-import.csv");
+
+    afterEach(() => {
+      if (fs.existsSync(testCsvPath)) {
+        fs.unlinkSync(testCsvPath);
+      }
+    });
+
+    it("should return 400 if CSV has fewer than 2 rows", async () => {
+      fs.writeFileSync(testCsvPath, "Device Name,Manufacturer,Model\n");
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(400);
+      expect(result.message).toContain("must contain a header row");
+      expect(result.data.successCount).toBe(0);
+    });
+
+    it("should successfully import valid devices, skip empty rows, and handle validation/duplicate errors", async () => {
+      // Existing DB devices for duplicate check
+      CalibrationDevice.findAll.mockResolvedValueOnce([
+        { serialNumber: "SN-DUPLICATE" },
+      ]);
+
+      // CSV Content:
+      // Row 2: Valid device (will succeed)
+      // Row 3: Empty row (will skip)
+      // Row 4: Duplicate SN (will fail with duplicate error)
+      // Row 5: Missing name (will fail schema validation)
+      const csvContent =
+        "Device Name,Manufacturer,Model,Serial Number,Status\n" +
+        "Valid Device,Manufacturer A,Model A,SN-100,active\n" +
+        ",,,,\n" +
+        "Duplicate Device,Manufacturer B,Model B,SN-DUPLICATE,active\n" +
+        ",Manufacturer C,Model C,SN-200,active\n";
+
+      fs.writeFileSync(testCsvPath, csvContent);
+
+      CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
+
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(200);
+      expect(result.data.successCount).toBe(1);
+      expect(result.data.failedCount).toBe(2);
+      expect(result.data.totalCount).toBe(3);
+
+      expect(result.data.errors).toHaveLength(2);
+      // Row 4 error should be serialNumber duplicate
+      expect(result.data.errors[0].row).toBe(4);
+      expect(result.data.errors[0].errors[0].field).toBe("serialNumber");
+      // Row 5 error should be name required
+      expect(result.data.errors[1].row).toBe(5);
+      expect(result.data.errors[1].errors[0].field).toBe("name");
+
+      expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: "Valid Device",
+          manufacturer: "Manufacturer A",
+          model: "Model A",
+          serialNumber: "SN-100",
+          status: "active",
+          tenantId: "tenant-1",
+        }),
+      ], { transaction: TX });
+    });
+
+    it("should handle db errors and throw", async () => {
+      fs.writeFileSync(testCsvPath, "Device Name\nDevice A\n");
+      CalibrationDevice.findAll.mockRejectedValueOnce(new Error("DB Connection Error"));
+
+      await expect(
+        bulkImportCalibrationDevices("tenant-1", testCsvPath),
+      ).rejects.toThrow("DB Connection Error");
+    });
+
+    it("should cover all CSV parsing edge cases, CRLF, escaped quotes, last line without newline, and calibration interval conversions", async () => {
+
+      CalibrationDevice.findAll.mockResolvedValueOnce([]);
+      CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
+
+      const csvContent =
+        "Device Name,Manufacturer,Calibration Interval Days\r\n" +
+        "\"Device \"\"Name\"\"\",Manufacturer A,30\r\n" +
+        "Device B,Manufacturer B,";
+
+      fs.writeFileSync(testCsvPath, csvContent);
+
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+
+      expect(result.success).toBe(true);
+      expect(result.data.successCount).toBe(2);
+      expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: 'Device "Name"',
+          manufacturer: "Manufacturer A",
+          calibrationIntervalDays: 30,
+        }),
+        expect.objectContaining({
+          name: "Device B",
+          manufacturer: "Manufacturer B",
+          calibrationIntervalDays: null,
+        }),
+      ], { transaction: TX });
+    });
+
+    it("ignores a whitespace-only trailing fragment after the final newline", async () => {
+      CalibrationDevice.findAll.mockResolvedValueOnce([]);
+      CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
+
+      // trailing "   " leaves a non-empty currentField that trims to "" with an
+      // empty currentLine — it must not become a third, blank device row.
+      fs.writeFileSync(testCsvPath, "Device Name\nDevice A\nDevice B\n   ");
+
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+
+      expect(result.data.successCount).toBe(2);
+      expect(result.data.failedCount).toBe(0);
+      expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
+        expect.objectContaining({ name: "Device A" }),
+        expect.objectContaining({ name: "Device B" }),
+      ], { transaction: TX });
+    });
+
+    it("skips blank lines in the middle of the file", async () => {
+      CalibrationDevice.findAll.mockResolvedValueOnce([]);
+      CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
+
+      fs.writeFileSync(testCsvPath, "Device Name\nDevice A\n\nDevice B\n");
+
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+
+      // The blank line must not become a third device or a validation error.
+      expect(result.data.successCount).toBe(2);
+      expect(result.data.failedCount).toBe(0);
+      expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
+        expect.objectContaining({ name: "Device A" }),
+        expect.objectContaining({ name: "Device B" }),
+      ], { transaction: TX });
+    });
+
+    it("parses a final single-column row that has no trailing newline", async () => {
+      CalibrationDevice.findAll.mockResolvedValueOnce([]);
+      CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
+
+      fs.writeFileSync(testCsvPath, "Device Name\nDevice A");
+
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+
+      expect(result.data.successCount).toBe(1);
+      expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
+        { name: "Device A", status: "active", tenantId: "tenant-1" },
+      ], { transaction: TX });
+    });
+
+    it("ignores unmapped headers and columns missing from a short row", async () => {
+      CalibrationDevice.findAll.mockResolvedValueOnce([]);
+      CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
+
+      // "Notes" maps to nothing; the row stops before the "Model" column.
+      fs.writeFileSync(testCsvPath, "Device Name,Notes,Model\nDevice A,some note\n");
+
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+
+      expect(result.data.successCount).toBe(1);
+      expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
+        { name: "Device A", status: "active", tenantId: "tenant-1" },
+      ], { transaction: TX });
+    });
+
+    it("passes a non-numeric calibration interval through unconverted so validation can reject it", async () => {
+      CalibrationDevice.findAll.mockResolvedValueOnce([]);
+
+      fs.writeFileSync(testCsvPath, "Device Name,Calibration Interval Days\nDevice A,not-a-number\n");
+
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+
+      // Unconverted, the text reaches the schema, which refuses it for the row.
+      expect(CalibrationDevice.bulkCreate).not.toHaveBeenCalled();
+      expect(result.data.errors).toEqual([
+        {
+          row: 2,
+          errors: [{ field: "calibrationIntervalDays", message: "Invalid input" }],
+        },
+      ]);
+    });
+
+    it("does not call bulkCreate when every row fails validation", async () => {
+      CalibrationDevice.findAll.mockResolvedValueOnce([]);
+
+      // A one-letter name is below the schema's minimum.
+      fs.writeFileSync(testCsvPath, "Device Name\nA\n");
+
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+
+      expect(CalibrationDevice.bulkCreate).not.toHaveBeenCalled();
+      expect(result.data).toMatchObject({
+        successCount: 0,
+        failedCount: 1,
+        totalCount: 1,
+      });
+      expect(result.data.errors[0]).toEqual({
+        row: 2,
+        errors: [{ field: "name", message: "Too small: expected string to have >=2 characters" }],
+      });
+    });
+  });
+});

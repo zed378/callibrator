@@ -17,35 +17,15 @@
  * auditLedger fixture, the JWT utilities. Faked: the user row, createSession
  * (it returns a fresh id per call, as the database would), bcrypt, TOTP.
  */
-import type * as JwtModule from "jsonwebtoken";
-import type AuthService from "../../services/auth.service";
-import type JwtUtil from "../../utils/jwt.util";
+const jwt = require("jsonwebtoken");
+const { createLedger } = require("../fixtures/auditLedger");
 
-interface Ledger {
-  write: (table: string, row: unknown, options?: unknown) => unknown;
-  committed: (table: string) => unknown[];
-  auditRows: () => unknown[];
-  transaction: (...args: unknown[]) => unknown;
-  failNext: (table: string, error: Error) => void;
-  AuditLog: { create: (...args: unknown[]) => unknown };
-}
-
-const jwt = jest.requireActual<typeof JwtModule>("jsonwebtoken");
-const { createLedger } = jest.requireActual<{ createLedger: () => Ledger }>("../fixtures/auditLedger");
-
-const mockRef: { ledger: Ledger | null; seq: number } = { ledger: null, seq: 0 };
-
-const ledger = (): Ledger => {
-  if (!mockRef.ledger) {
-    throw new Error("ledger not created");
-  }
-  return mockRef.ledger;
-};
+const mockRef: any = { ledger: null, seq: 0 };
 
 // A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
-jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(() => Promise.resolve(undefined)) }));
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: unknown[]) => ledger().transaction(...args) },
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 
 jest.mock("../../models", () => ({
@@ -53,19 +33,19 @@ jest.mock("../../models", () => ({
   Role: {},
   User: {},
   Tenants: {},
-  AuditLog: { create: (...args: unknown[]) => ledger().AuditLog.create(...args) },
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 
 jest.mock("../../services/session.service", () => ({
-  createSession: jest.fn(() => {
+  createSession: jest.fn(async () => {
     mockRef.seq += 1;
-    return Promise.resolve({ id: `33333333-3333-4333-8333-${String(mockRef.seq).padStart(12, "0")}` });
+    return { id: `33333333-3333-4333-8333-${String(mockRef.seq).padStart(12, "0")}` };
   }),
 }));
 
 jest.mock("../../utils/password.util", () => ({
   hashPassword: jest.fn(),
-  comparePassword: jest.fn((plain: string, hash: string) => Promise.resolve(plain === "Right-password-1" && hash === "hash")),
+  comparePassword: jest.fn(async (plain: any, hash: any) => plain === "Right-password-1" && hash === "hash"),
 }));
 
 jest.mock("../../services/mfa.service", () => ({ consumeCode: jest.fn(), consumeRecoveryCode: jest.fn() }));
@@ -74,38 +54,17 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-/* eslint-disable @typescript-eslint/no-require-imports -- loaded after the mocks above, as every memoryDb test */
-const { Users } = require("../../models") as {
-  Users: { findOne: jest.Mock; findByPk: jest.Mock };
-};
-const sessionService = require("../../services/session.service") as { createSession: jest.Mock };
-const mfaService = require("../../services/mfa.service") as { consumeCode: jest.Mock };
-const authService = require("../../services/auth.service") as typeof AuthService;
-const limiter = require("../../services/rateLimiter.redis.service") as { clearMemoryStore: () => void };
-const { verifyAccessToken } = require("../../utils/jwt.util") as typeof JwtUtil;
-/* eslint-enable @typescript-eslint/no-require-imports */
+const { Users } = require("../../models");
+const sessionService = require("../../services/session.service");
+const mfaService = require("../../services/mfa.service");
+const authService = require("../../services/auth.service");
+const limiter = require("../../services/rateLimiter.redis.service");
+const { verifyAccessToken } = require("../../utils/jwt.util");
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const TENANT_ID = "22222222-2222-4222-8222-222222222222";
 
-interface UserRow {
-  id: string;
-  tenantId: string;
-  tenant: { id: string; status: string };
-  username: string;
-  email: string;
-  password: string;
-  isActive: boolean;
-  status: string;
-  failedLoginAttempts: number;
-  lockedUntil: null;
-  mfaEnabled: boolean;
-  mfaSecret: string | null;
-  role: null;
-  update: jest.Mock;
-}
-
-const userRow = (overrides: Partial<UserRow> = {}): UserRow => ({
+const userRow = (overrides = {}) => ({
   id: USER_ID,
   tenantId: TENANT_ID,
   tenant: { id: TENANT_ID, status: "active" },
@@ -119,26 +78,23 @@ const userRow = (overrides: Partial<UserRow> = {}): UserRow => ({
   mfaEnabled: false,
   mfaSecret: null,
   role: null,
-  update: jest.fn((values: unknown, options: unknown) => ledger().write("users", values, options)),
+  update: jest.fn(async (values: any, options: any) => mockRef.ledger.write("users", values, options)),
   ...overrides,
 });
 
-let account: UserRow;
+let account: any;
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockRef.ledger = createLedger();
   limiter.clearMemoryStore();
   account = userRow();
-  Users.findOne.mockImplementation(() => Promise.resolve(account));
-  Users.findByPk.mockImplementation(() => Promise.resolve(account));
+  Users.findOne.mockImplementation(async () => account);
+  Users.findByPk.mockImplementation(async () => account);
 });
 
-const passwordStep = (): Promise<{ status: number; token: string }> =>
-  authService.loginUser({ user: "ada", password: "Right-password-1", ip: "198.51.100.9", userAgent: "ua" }) as Promise<{
-    status: number;
-    token: string;
-  }>;
+const passwordStep = () =>
+  authService.loginUser({ user: "ada", password: "Right-password-1", ip: "198.51.100.9", userAgent: "ua" });
 
 describe("Q-08 (ADR-084): no session identifier exists before authentication, and none survives it", () => {
   it("the MFA password step creates no session, and its token names none", async () => {
@@ -158,21 +114,19 @@ describe("Q-08 (ADR-084): no session identifier exists before authentication, an
     await passwordStep();
     mfaService.consumeCode.mockResolvedValue(true);
 
-    const result = (await authService.loginMfa(USER_ID, "123456", "198.51.100.9", "ua")) as {
-      token: string;
-    };
+    const result = await authService.loginMfa(USER_ID, "123456", "198.51.100.9", "ua");
 
     expect(sessionService.createSession).toHaveBeenCalledTimes(1);
-    const created = (await sessionService.createSession.mock.results[0]?.value) as { id: string };
-    expect((verifyAccessToken(result.token) as Record<string, unknown>)["sid"]).toBe(created.id);
+    const created = await sessionService.createSession.mock.results[0].value;
+    expect(verifyAccessToken(result.token).sid).toBe(created.id);
   });
 
   it("two sign-ins of one account get two different sessions — a sign-in never adopts one", async () => {
     const first = await passwordStep();
     const second = await passwordStep();
 
-    const a = (verifyAccessToken(first.token) as Record<string, unknown>)["sid"];
-    const b = (verifyAccessToken(second.token) as Record<string, unknown>)["sid"];
+    const a = verifyAccessToken(first.token).sid;
+    const b = verifyAccessToken(second.token).sid;
     expect(a).toBeTruthy();
     expect(b).toBeTruthy();
     expect(a).not.toBe(b);

@@ -1,0 +1,373 @@
+/**
+ * Tests for audit.service.js
+ *
+ * Covers: logAction, fetchAuditLogs
+ *
+ * NOTE: Service exports are logAction (not logAudit) and fetchAuditLogs (not getAuditLogs).
+ * No getAuditStats function exists.
+ */
+
+jest.mock("../../config", () => ({
+  Sequelize: { useCLS: jest.fn() },
+  db: {},
+}));
+
+jest.mock("../../models", () => ({
+  AuditLog: {
+    findAll: jest.fn(),
+    create: jest.fn(),
+  },
+  User: {},
+  sequelize: {},
+}));
+
+// P8-04 (ADR-096): the list's count is a bounded raw count through utils/sql.util.
+jest.mock("../../utils/sql.util", () => ({ sql: jest.fn() }));
+
+jest.mock("sequelize", () => ({
+  Op: { gte: Symbol("gte"), lte: Symbol("lte") },
+}));
+
+const { AuditLog } = require("../../models");
+const { sql } = require("../../utils/sql.util");
+
+/** One list page: `rows` from findAll, `count` from the bounded count. */
+const listResult = ({ count, rows  }: any) => {
+  AuditLog.findAll.mockResolvedValueOnce(rows);
+  sql.mockResolvedValueOnce([{ n: count }]);
+};
+const auditService = require("../../services/audit.service");
+
+describe("audit.service", () => {
+  beforeEach(() => { jest.clearAllMocks(); });
+
+  // ================================================================
+  // audit_logs.action is a closed ENUM (CREATE|UPDATE|DELETE|LOGIN|APPROVE|EXPORT).
+  // These tests used lowercase values, which PostgreSQL rejects; the mock
+  // accepted them. See audit.service.a42.test.js for the ENUM-enforcing tests.
+  describe("logAction", () => {
+    it("should create an audit log entry", async () => {
+      const mockLog: any = { id: "log-1", tenantId: "t-1" };
+      AuditLog.create.mockResolvedValueOnce(mockLog);
+
+      const result = await auditService.logAction({
+        tenantId: "t-1",
+        userId: "user-1",
+        action: "CREATE",
+        resourceType: "tenant",
+        resourceId: "t-1",
+      });
+
+      expect(result).toEqual(mockLog);
+      expect(AuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "t-1",
+          userId: "user-1",
+          action: "CREATE",
+          resourceType: "tenant",
+          resourceId: "t-1",
+        }),
+        { transaction: undefined },
+      );
+    });
+
+    it("should include optional fields", async () => {
+      AuditLog.create.mockResolvedValueOnce({ id: "log-1" });
+
+      await auditService.logAction({
+        tenantId: "t-1",
+        userId: "user-1",
+        action: "LOGIN",
+        resourceType: "session",
+        ipAddress: "192.168.1.1",
+        userAgent: "Mozilla/5.0",
+      });
+
+      expect(AuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ipAddress: "192.168.1.1",
+          userAgent: "Mozilla/5.0",
+        }),
+        { transaction: undefined },
+      );
+    });
+
+    it("should return null on error without throwing", async () => {
+      AuditLog.create.mockRejectedValueOnce(new Error("DB down"));
+
+      const result = await auditService.logAction({
+        tenantId: "t-1",
+        userId: "user-1",
+        action: "DELETE",
+        resourceType: "user",
+        resourceId: "u-1",
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("should default resourceId to null when not provided", async () => {
+      AuditLog.create.mockResolvedValueOnce({ id: "log-1" });
+
+      await auditService.logAction({
+        tenantId: "t-1",
+        userId: "user-1",
+        action: "UPDATE",
+        resourceType: "tenant",
+      });
+
+      expect(AuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({ resourceId: null }),
+        { transaction: undefined },
+      );
+    });
+  });
+
+  // ================================================================
+  describe("fetchAuditLogs", () => {
+    it("should return paginated audit logs with defaults", async () => {
+      const mockRows = [
+        {
+          id: "log-1",
+          action: "create",
+          toJSON: () => ({ id: "log-1", action: "create", createdAt: new Date().toISOString() }),
+        },
+      ];
+      listResult({ count: 1, rows: mockRows });
+
+      const result = await auditService.fetchAuditLogs({ tenantId: "t-1" });
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(200);
+      expect(result.data.meta.total).toBe(1);
+      expect(result.data.meta.page).toBe(1);
+      expect(result.data.rows).toHaveLength(1);
+    });
+
+    it("should filter by userId", async () => {
+      listResult({ count: 5, rows: [] });
+
+      await auditService.fetchAuditLogs({ tenantId: "t-1", userId: "user-1" });
+
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: "user-1" }),
+        }),
+      );
+    });
+
+    it("should filter by resourceType", async () => {
+      listResult({ count: 0, rows: [] });
+
+      await auditService.fetchAuditLogs({ tenantId: "t-1", resourceType: "certificate" });
+
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ resourceType: "certificate" }),
+        }),
+      );
+    });
+
+    it("should filter by action", async () => {
+      listResult({ count: 0, rows: [] });
+
+      await auditService.fetchAuditLogs({ tenantId: "t-1", action: "delete" });
+
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ action: "delete" }),
+        }),
+      );
+    });
+
+    it("should filter by date range using Op.gte/Op.lte", async () => {
+      listResult({ count: 0, rows: [] });
+
+      await auditService.fetchAuditLogs({
+        tenantId: "t-1",
+        startDate: "2024-01-01",
+        endDate: "2024-12-31",
+      });
+
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            createdAt: expect.any(Object),
+          }),
+        }),
+      );
+    });
+
+    it("should return empty results when no logs match", async () => {
+      listResult({ count: 0, rows: [] });
+
+      const result = await auditService.fetchAuditLogs({ tenantId: "t-1" });
+
+      expect(result.data.meta.total).toBe(0);
+      expect(result.data.meta.totalPages).toBe(0);
+      expect(result.data.rows).toHaveLength(0);
+    });
+
+    it("should apply MAX_LIMIT cap on limit", async () => {
+      const { MAX_LIMIT } = require("../../constants");
+      listResult({ count: 0, rows: [] });
+
+      await auditService.fetchAuditLogs({ tenantId: "t-1", limit: 99999 });
+
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          limit: MAX_LIMIT,
+        }),
+      );
+    });
+
+    it("should throw on DB error", async () => {
+      sql.mockResolvedValueOnce([{ n: 0 }]);
+      AuditLog.findAll.mockRejectedValueOnce(new Error("DB connection failed"));
+
+      await expect(auditService.fetchAuditLogs({ tenantId: "t-1" }))
+        .rejects.toMatchObject({ status: 500, message: "DB connection failed" });
+    });
+  });
+
+  // ================================================================
+  // Coverage: transform helpers, single-sided filters, error defaults
+  // ================================================================
+  describe("transformLog (via logAction)", () => {
+    it("returns null when the created row is null", async () => {
+      AuditLog.create.mockResolvedValueOnce(null);
+
+      const result = await auditService.logAction({
+        tenantId: "t-1",
+        userId: "u-1",
+        action: "CREATE",
+        resourceType: "tenant",
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("spreads a plain object row that has no toJSON", async () => {
+      AuditLog.create.mockResolvedValueOnce({ id: "log-1", action: "create" });
+
+      const result = await auditService.logAction({
+        tenantId: "t-1",
+        userId: "u-1",
+        action: "CREATE",
+        resourceType: "tenant",
+      });
+
+      expect(result).toEqual({ id: "log-1", action: "create" });
+    });
+
+    it("uses toJSON when the row is a Sequelize instance", async () => {
+      AuditLog.create.mockResolvedValueOnce({
+        id: "log-1",
+        toJSON: () => ({ id: "log-1", serialized: true }),
+      });
+
+      const result = await auditService.logAction({
+        tenantId: "t-1",
+        userId: "u-1",
+        action: "CREATE",
+        resourceType: "tenant",
+      });
+
+      expect(result).toEqual({ id: "log-1", serialized: true });
+    });
+  });
+
+  describe("fetchAuditLogs coverage gaps", () => {
+    it("filters by resourceId", async () => {
+      listResult({ count: 0, rows: [] });
+
+      await auditService.fetchAuditLogs({ tenantId: "t-1", resourceId: "res-9" });
+
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ resourceId: "res-9" }),
+        }),
+      );
+    });
+
+    it("applies only Op.gte when startDate is given without endDate", async () => {
+      const { Op } = require("sequelize");
+      listResult({ count: 0, rows: [] });
+
+      await auditService.fetchAuditLogs({ tenantId: "t-1", startDate: "2024-01-01" });
+
+      const where = AuditLog.findAll.mock.calls[0][0].where;
+      expect(where.createdAt[Op.gte]).toEqual(new Date("2024-01-01"));
+      expect(where.createdAt[Op.lte]).toBeUndefined();
+    });
+
+    it("applies only Op.lte when endDate is given without startDate", async () => {
+      const { Op } = require("sequelize");
+      listResult({ count: 0, rows: [] });
+
+      await auditService.fetchAuditLogs({ tenantId: "t-1", endDate: "2024-12-31" });
+
+      const where = AuditLog.findAll.mock.calls[0][0].where;
+      expect(where.createdAt[Op.lte]).toEqual(new Date("2024-12-31"));
+      expect(where.createdAt[Op.gte]).toBeUndefined();
+    });
+
+    it("applies the default window when neither date bound nor a resource is given (P8-04)", async () => {
+      const { Op } = require("sequelize");
+      listResult({ count: 0, rows: [] });
+      const before = Date.now();
+
+      const result = await auditService.fetchAuditLogs({ tenantId: "t-1" });
+
+      const where = AuditLog.findAll.mock.calls[0][0].where;
+      const windowMs = auditService.AUDIT_DEFAULT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+      expect(where.createdAt[Op.gte].getTime()).toBeGreaterThanOrEqual(before - windowMs);
+      expect(where.createdAt[Op.gte].getTime()).toBeLessThanOrEqual(Date.now() - windowMs);
+      expect(where.createdAt[Op.lte]).toBeUndefined();
+      expect(result.data.meta.window).toEqual({
+        from: where.createdAt[Op.gte].toISOString(),
+        to: null,
+        defaulted: true,
+      });
+    });
+
+    it("falls back to DEFAULT_LIMIT when limit is not a number", async () => {
+      const { DEFAULT_LIMIT } = require("../../constants");
+      listResult({ count: 0, rows: [] });
+
+      await auditService.fetchAuditLogs({ tenantId: "t-1", limit: "abc" });
+
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: DEFAULT_LIMIT }),
+      );
+    });
+
+    it("tolerates an undefined rows array from the model", async () => {
+      listResult({ count: 0, rows: undefined });
+
+      const result = await auditService.fetchAuditLogs({ tenantId: "t-1" });
+
+      expect(result.data.rows).toEqual([]);
+    });
+
+    it("defaults status to 500 and message when the error carries neither", async () => {
+      sql.mockResolvedValueOnce([{ n: 0 }]);
+      AuditLog.findAll.mockRejectedValueOnce({});
+
+      await expect(auditService.fetchAuditLogs({ tenantId: "t-1" })).rejects.toEqual({
+        status: 500,
+        message: "Failed to fetch audit logs",
+      });
+    });
+
+    it("preserves a non-500 status carried by the error", async () => {
+      sql.mockResolvedValueOnce([{ n: 0 }]);
+      AuditLog.findAll.mockRejectedValueOnce({ status: 403, message: "Nope" });
+
+      await expect(auditService.fetchAuditLogs({ tenantId: "t-1" })).rejects.toEqual({
+        status: 403,
+        message: "Nope",
+      });
+    });
+  });
+});

@@ -10,6 +10,7 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-11-02 | P9-26 | [Bulk Batch 05: 50 service test files](./records/2026-11-02-p9-26-bulk-batch-05.md) | **DONE.** 50 test files in `backend/src/tests/services/` -- `.js` to `.ts`, assertions preserved, typecheck clean, live-suites manifest updated, ratchet floor lowered to 235 |
 | 2026-11-02 | CI | [CI on c29c1085: 8 of 12, what is fixed and what is not](./records/2026-11-02-ci-green-c29c1085.md) | **DONE in code; CI proof on next push.** Guards, gitleaks, `a54` race, dbC/dbD budget. **Open:** `backend lint` red: 12,933 errors from batches 03-04 (baseline restored to 0), then the contracts gate on the P25-03 draft. |
 | 2026-11-02 | P9-26 | [Bulk Batch 04: 50 test files (3 __tests__, 2 config, 24 routes, 21 utils)](./records/2026-11-02-p9-26-bulk-batch-04.md) | **DONE.** 50 test files (3 __tests__, 2 config, 24 routes, 21 utils) -- `.js` to `.ts`, assertions preserved, eslint + typecheck clean, ratchet floor lowered to 285 |
 | 2026-11-02 | P9-26 | [Bulk Batch 03: 50 test files (2 models, 48 routes)](./records/2026-11-02-p9-26-bulk-batch-03.md) | **DONE.** 50 test files (2 models, 48 routes) -- `.js` to `.ts`, same 919 cases, eslint + typecheck clean, ratchet floor lowered to 335 |
