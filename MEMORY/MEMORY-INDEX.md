@@ -10,6 +10,7 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-11-02 | P9-26 | [Bulk Batch 09: 50 service test files](./records/2026-11-02-p9-26-bulk-batch-09.md) | **DONE.** 50 service test files -- `.js` to `.ts`, assertions preserved, typecheck clean, live-suites synchronized, ratchet floor lowered to 35 |
 | 2026-11-02 | P9-26 | [Bulk Batch 08: 50 service test files](./records/2026-11-02-p9-26-bulk-batch-08.md) | **DONE.** 50 service test files -- `.js` to `.ts`, assertions preserved, typecheck clean, live-suites synchronized, ratchet floor lowered to 85 |
 | 2026-11-02 | P9-26 | [Bulk Batch 07: 50 test files (3 e2e, 7 fixtures, 4 migrations, 36 services)](./records/2026-11-02-p9-26-bulk-batch-07.md) | **DONE.** 50 test files -- `.js` to `.ts`, assertions preserved, typecheck clean, live-suites synchronized, ratchet floor lowered to 135 |
 | 2026-11-02 | P9-26 | [Bulk Batch 06: 50 E2E test files](./records/2026-11-02-p9-26-bulk-batch-06.md) | **DONE.** 50 test files in `backend/src/tests/e2e/` -- `.js` to `.ts`, assertions preserved, typecheck clean, ratchet floor lowered to 185 |
