@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-02 — P9-26 bulk batch 04: 50 suites to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-04.md))
+- Bulk Batch 4: 50 test suites (3 `__tests__`, 2 `config`, 24 `routes`, 21 `utils`) converted from `.js` to strict `.ts`. All test assertions strictly preserved, typecheck clean (`ok`), Jest passing, eslint-ratchet passing (code 0), ratchet floor lowered from 335 to 285.
+
+### 2026-11-02 — P9-26 bulk batch 03: 50 suites to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-03.md))
+- Bulk Batch 3: 50 test suites (2 model tests and 48 route tests in `backend/src/tests/routes/`) converted from `.js` to strict `.ts`. 919 test assertions strictly preserved, typecheck clean (`ok`), 50 Jest suites passing (919/919 passed), eslint-ratchet passing (code 0), ratchet floor lowered from 435 to 335.
+
 ### 2026-10-29 — P9-26 batch 62: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-62.md))
 - certificates.route, user.routes, menuGroups.route, routeGuards.a02, envelope.f13, health.route, managementPages.q20, rolesGlobal.d16, meteredBilling.route, checkMenu -- .js to .ts, same 185 cases, eslint + typecheck clean, ratchet 359 to 349.
 

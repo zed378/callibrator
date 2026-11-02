@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-10-29T12:00:14.885Z",
+  "last_updated": "2026-11-02T07:00:10.724Z",
   "sources": [
     "README.md",
     "MEMORY\\templates\\FEATURE-SPEC-TEMPLATE.md",
@@ -401,7 +401,11 @@
     "MEMORY\\records\\2026-10-29-ci-green-89e0ee7.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-60.md",
     "MEMORY\\records\\2026-10-24-p9-26-batch-61.md",
-    "MEMORY\\records\\2026-10-24-p9-26-batch-62.md"
+    "MEMORY\\records\\2026-10-24-p9-26-batch-62.md",
+    "backend\\uploads\\attachments\\b-report.pdf",
+    "backend\\uploads\\certificates\\1758600000000-4242-9f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f.pdf",
+    "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-03.md",
+    "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md"
   ],
   "entities": [
     {
@@ -74653,6 +74657,105 @@
       "source": "MEMORY\\CHANGELOG.md",
       "line": 11,
       "evidence": "### 2026-10-29 — P9-26 batch 62: ten suites to TypeScript ([record](./records/2026-10-24-p9-26-batch-62.md))"
+    },
+    {
+      "id": "sec_p9_26_bulk_batch_03_50_test_files_2_models_48_routes_js_to_ts_no_assertion_changed",
+      "name": "P9-26 bulk batch 03: 50 test files (2 models, 48 routes) — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-11-02-p9-26-bulk-batch-03.md",
+      "source": "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-03.md",
+      "line": 1,
+      "evidence": "# P9-26 bulk batch 03: 50 test files (2 models, 48 routes) — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_converted_files_50_total_919_tests_",
+      "name": "Converted Files (50 total, 919 tests)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-11-02-p9-26-bulk-batch-03.md",
+      "source": "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-03.md",
+      "line": 9,
+      "evidence": "## Converted Files (50 total, 919 tests)"
+    },
+    {
+      "id": "sec_model_tests_2_files_",
+      "name": "Model Tests (2 files)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-11-02-p9-26-bulk-batch-03.md",
+      "source": "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-03.md",
+      "line": 11,
+      "evidence": "### Model Tests (2 files)"
+    },
+    {
+      "id": "sec_route_tests_48_files_",
+      "name": "Route Tests (48 files)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-11-02-p9-26-bulk-batch-03.md",
+      "source": "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-03.md",
+      "line": 15,
+      "evidence": "### Route Tests (48 files)"
+    },
+    {
+      "id": "sec_2026_11_02_p9_26_bulk_batch_03_50_suites_to_typescript_record_records_2026_11_02_p9_26_bulk_batch_03_md_",
+      "name": "2026-11-02 — P9-26 bulk batch 03: 50 suites to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-03.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-11-02 — P9-26 bulk batch 03: 50 suites to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-03.md))"
+    },
+    {
+      "id": "sec_p9_26_bulk_batch_04_50_test_files_3_tests_2_config_24_routes_21_utils_js_to_ts_no_assertion_changed",
+      "name": "P9-26 bulk batch 04: 50 test files (3 tests, 2 config, 24 routes, 21 utils) — .js to .ts, no assertion changed",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "source": "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "line": 1,
+      "evidence": "# P9-26 bulk batch 04: 50 test files (3 __tests__, 2 config, 24 routes, 21 utils) — .js to .ts, no assertion changed"
+    },
+    {
+      "id": "sec_backend_tests_3_files_",
+      "name": "backend/tests/ (3 files)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "source": "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "line": 17,
+      "evidence": "### `backend/__tests__/` (3 files)"
+    },
+    {
+      "id": "sec_backend_src_tests_config_2_files_",
+      "name": "backend/src/tests/config/ (2 files)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "source": "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "line": 22,
+      "evidence": "### `backend/src/tests/config/` (2 files)"
+    },
+    {
+      "id": "sec_backend_src_tests_routes_24_files_",
+      "name": "backend/src/tests/routes/ (24 files)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "source": "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "line": 26,
+      "evidence": "### `backend/src/tests/routes/` (24 files)"
+    },
+    {
+      "id": "sec_backend_src_tests_utils_21_files_",
+      "name": "backend/src/tests/utils/ (21 files)",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "source": "MEMORY\\records\\2026-11-02-p9-26-bulk-batch-04.md",
+      "line": 52,
+      "evidence": "### `backend/src/tests/utils/` (21 files)"
+    },
+    {
+      "id": "sec_2026_11_02_p9_26_bulk_batch_04_50_suites_to_typescript_record_records_2026_11_02_p9_26_bulk_batch_04_md_",
+      "name": "2026-11-02 — P9-26 bulk batch 04: 50 suites to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-04.md))",
+      "type": "Section/Module",
+      "description": "Specification section from MEMORY\\CHANGELOG.md",
+      "source": "MEMORY\\CHANGELOG.md",
+      "line": 11,
+      "evidence": "### 2026-11-02 — P9-26 bulk batch 04: 50 suites to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-04.md))"
     }
   ],
   "relations": [
@@ -110690,8 +110793,8 @@
     }
   ],
   "stats": {
-    "total_sources": 400,
-    "total_entities": 8250,
+    "total_sources": 404,
+    "total_entities": 8261,
     "total_relations": 4504,
     "token_savings_estimate": "85-95%"
   }
