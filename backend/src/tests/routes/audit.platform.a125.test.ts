@@ -1,0 +1,329 @@
+/**
+ * A-125 (ADR-051 Q-14, F-7) and A-124 — who can read the PLATFORM tenant's
+ * audit trail, and what a reader sees of the actor.
+ *
+ * Real chain: audit.route -> dynamicAccess -> audit.controller ->
+ * audit.service, over the two-tenant fixture. The request runs inside the
+ * REAL tenant context (tenantContext.middleware), and the AuditLog double
+ * applies the REAL tenant predicate (utils/tenantScope.util.js
+ * applyTenantWhere — what the global beforeFind hook runs) before filtering
+ * in-memory rows. Stubbed: `auth` (sets req.user as auth.middleware does), the
+ * permission matrix.
+ *
+ * What this does not prove is the SQL: the tenant hooks' SQL is covered by
+ * their own suites, and the PLATFORM row and CHECK were verified on
+ * PostgreSQL 18.
+ */
+import type { Request, Response, NextFunction } from "express";
+
+interface AuditRow {
+  id: string;
+  tenantId: string;
+  userId: string | null;
+  actorType: string;
+  actorName: string | null;
+  action: string;
+  resourceType: string;
+  resourceId?: string;
+  changes?: Record<string, unknown>;
+}
+
+const mockFx: { current: ReturnType<typeof createTwoTenants> | null } = { current: null };
+const mockRows: AuditRow[] = [];
+let currentUser: unknown = null;
+
+jest.mock("../../middlewares/auth.middleware", () => {
+  const actual = jest.requireActual<typeof import("../../middlewares/auth.middleware")>(
+    "../../middlewares/auth.middleware",
+  );
+  const { tenantContextMiddleware } = jest.requireActual<typeof import("../../middlewares/tenantContext.middleware")>(
+    "../../middlewares/tenantContext.middleware",
+  );
+  return {
+    ...actual,
+    auth: (req: Request, res: Response, next: NextFunction) => {
+      const r = req as unknown as { user: unknown; tenantId: unknown };
+      r.user = currentUser;
+      r.tenantId = (currentUser as { tenantId: string }).tenantId;
+      tenantContextMiddleware(req, res, next);
+    },
+  };
+});
+
+jest.mock("../../models", () => {
+  const { applyTenantWhere } = jest.requireActual<{
+    applyTenantWhere: (options: { where?: Record<string, unknown> }, model: { rawAttributes: Record<string, unknown> }) => void;
+  }>("../../utils/tenantScope.util");
+  const matches = (row: AuditRow, where: Record<string, unknown>) =>
+    Object.entries(where).every(([key, value]) => value === undefined || (row as unknown as Record<string, unknown>)[key] === value);
+  return {
+    Tenants: { findByPk: (...args: any[]) => (mockFx.current as any)?.Tenants?.findByPk(...args) },
+    User: {},
+    Users: {},
+    AuditLog: {
+      findAll: jest.fn(async (options: { where: Record<string, unknown> }) => {
+        // What the global beforeFind hook does to this query.
+        applyTenantWhere(options, { rawAttributes: { tenantId: {} } });
+        // P8-04 (ADR-096): the default date window; these rows carry no date.
+        const { createdAt: _window, ...where } = options.where;
+        return mockRows.filter((r) => matches(r, where)).map((r) => ({ toJSON: () => ({ ...r }) }));
+      }),
+    },
+    sequelize: {},
+  };
+});
+
+// P8-04 (ADR-096): the list's bounded count is raw SQL through utils/sql.util,
+// with the tenant BOUND as $1 (the hooks do not reach it). The double answers
+// it from the same rows, by the bound values: $1 tenant, $2 user, $3 actor
+// type, $4 action, $5 resource type.
+jest.mock("../../utils/sql.util", () => ({
+  sql: jest.fn(async (_db: unknown, _text: string, bind: [string, string | null, string | null, string | null, string | null]) => {
+    const [tenantId, userId, actorType, action, resourceType] = bind;
+    const n = mockRows.filter(
+      (r) =>
+        r.tenantId === tenantId &&
+        (userId === null || r.userId === userId) &&
+        (actorType === null || r.actorType === actorType) &&
+        (action === null || r.action === action) &&
+        (resourceType === null || r.resourceType === resourceType),
+    ).length;
+    return [{ n }];
+  }),
+}));
+
+jest.mock("../../services/roles.service", () => ({ getRolePermissionsMatrix: jest.fn() }));
+jest.mock("../../services/userPermission.service", () => ({
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../../middlewares/activityLog.middleware", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { createTwoTenants } = require("../fixtures/twoTenants") as { createTwoTenants: typeof import("../fixtures/twoTenants").createTwoTenants };
+const RolesService = require("../../services/roles.service") as typeof import("../../services/roles.service");
+const { AuditLog } = require("../../models") as typeof import("../../models");
+const { ROLE_NAMES } = require("../../constants") as typeof import("../../constants");
+const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant") as typeof import("../../constants/platformTenant");
+const router = require("../../routes/api/audit.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
+const { errorHandler } = require("../../middlewares/errorHandlers.middleware") as typeof import("../../middlewares/errorHandlers.middleware");
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+interface HttpResponse {
+  status: number;
+  body: {
+    message?: string;
+    data?: AuditRow[];
+    meta?: { total?: number };
+  };
+}
+
+const http = (query: Record<string, string> = {}): Promise<HttpResponse> =>
+  new Promise((resolve) => {
+    const res = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: HttpResponse["body"]) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: HttpResponse["body"]) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        resolve({ status: this.statusCode, body: {} });
+        return this;
+      },
+    };
+    const search = new URLSearchParams(query).toString();
+    const req = {
+      method: "GET",
+      url: search ? `/?${search}` : "/",
+      originalUrl: "/api/v1/audit",
+      body: {},
+      query,
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    (router as unknown as { handle: (req: unknown, res: unknown, next: (err?: { status?: number; statusCode?: number; message?: string }) => void) => void }).handle(req, res, (err?: { status?: number; statusCode?: number; message?: string }) => {
+      if (err && typeof errorHandler === "function") {
+        return (errorHandler as unknown as (e: unknown, q: unknown, s: unknown, n: () => void) => void)(err, req, res, () => {});
+      }
+      return resolve({
+        status: err ? err.status || err.statusCode || 500 : 404,
+        body: { message: err?.message ?? "no route" },
+      });
+    });
+  });
+
+let fx: ReturnType<typeof createTwoTenants>;
+let hospitalAdmin: ReturnType<typeof fx.principal>;
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  fx = createTwoTenants();
+  mockFx.current = fx;
+  hospitalAdmin = fx.principal(fx.tenantA, ROLE_NAMES.HEALTCARE_ADMIN);
+  (RolesService.getRolePermissionsMatrix as jest.Mock).mockResolvedValue({
+    "Audit Logs": ["read"],
+    audit: ["read"],
+    AuditLogs: ["read"],
+  });
+  mockRows.length = 0;
+  mockRows.push(
+    {
+      id: "a-1",
+      tenantId: fx.tenantA.id,
+      userId: hospitalAdmin.id,
+      actorType: "user",
+      actorName: null,
+      action: "UPDATE",
+      resourceType: "CalibrationDevice",
+    },
+    {
+      id: "a-2",
+      tenantId: fx.tenantA.id,
+      userId: null,
+      actorType: "system",
+      actorName: "system:retention-purge",
+      action: "DELETE",
+      resourceType: "DataRetention",
+    },
+    {
+      id: "b-1",
+      tenantId: fx.tenantB.id,
+      userId: "someone-in-b",
+      actorType: "user",
+      actorName: null,
+      action: "UPDATE",
+      resourceType: "User",
+    },
+    {
+      id: "p-1",
+      tenantId: PLATFORM_TENANT_ID,
+      userId: fx.superAdmin.id,
+      actorType: "user",
+      actorName: null,
+      action: "CREATE",
+      resourceType: "Tenant",
+      resourceId: fx.tenantB.id,
+      changes: { after: { name: "Hospital B" } },
+    },
+  );
+});
+
+const ids = (res: HttpResponse) => res.body.data!.map((r) => r.id).sort();
+
+describe("A-125 — the platform audit trail", () => {
+  it("a hospital admin cannot read platform audit rows", async () => {
+    currentUser = hospitalAdmin;
+
+    const asked = await http({ scope: "platform" });
+    const own = await http();
+
+    expect(asked.status).toBe(403);
+    expect(asked.body.message).toBe("Only a platform administrator can read the platform audit trail");
+    // Their own trail has no platform row in it — not even the creation of a
+    // tenant their super admin's home happens to be.
+    expect(own.status).toBe(200);
+    expect(ids(own)).toEqual(["a-1", "a-2"]);
+    // The refused request never reached the table.
+    expect(AuditLog.findAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("naming the PLATFORM tenant in the query is a 404 at the gate, like any foreign tenant", async () => {
+    currentUser = hospitalAdmin;
+
+    const res = await http({ tenantId: PLATFORM_TENANT_ID });
+
+    expect(res.status).toBe(404);
+    expect(AuditLog.findAll).not.toHaveBeenCalled();
+  });
+
+  it("even if asked for PLATFORM's rows, the tenant hooks give a hospital principal only its own", async () => {
+    currentUser = hospitalAdmin;
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const auditService = require("../../services/audit.service") as {
+      fetchAuditLogs: (query: { tenantId: string }) => Promise<{ data: { rows: AuditRow[]; meta: { total: number } } }>;
+    };
+    const { tenantStorage } = require("../../middlewares/tenantContext.middleware") as {
+      tenantStorage: { run: <T>(ctx: object, fn: () => Promise<T>) => Promise<T> };
+    };
+    /* eslint-enable @typescript-eslint/no-require-imports */
+
+    const result = await tenantStorage.run(
+      { tenantId: fx.tenantA.id, isSuperAdmin: false, isSystemTask: false },
+      () => auditService.fetchAuditLogs({ tenantId: PLATFORM_TENANT_ID }),
+    );
+
+    expect(result.data.rows.map((r) => r.id).sort()).toEqual(["a-1", "a-2"]);
+    // P8-04: the raw count binds the tenant the hook forces, not the one asked for.
+    expect(result.data.meta.total).toBe(2);
+  });
+
+  it("a super admin reads the platform trail with scope=platform — and only it", async () => {
+    currentUser = fx.superAdmin;
+
+    const res = await http({ scope: "platform" });
+
+    expect(res.status).toBe(200);
+    expect(ids(res)).toEqual(["p-1"]);
+    expect(res.body.meta).toMatchObject({ total: 1 });
+  });
+
+  it("a super admin's default trail is their home tenant, which holds no platform rows", async () => {
+    currentUser = fx.superAdmin;
+
+    const res = await http();
+
+    expect(ids(res)).toEqual(["a-1", "a-2"]);
+  });
+
+  it("an unknown scope is a 400", async () => {
+    currentUser = fx.superAdmin;
+
+    const res = await http({ scope: "everything" });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("A-124 — the audit API returns the actor", () => {
+  it("each row carries actorType and actorName, and a system row names its job", async () => {
+    currentUser = hospitalAdmin;
+
+    const res = await http();
+
+    const system = res.body.data!.find((r) => r.id === "a-2");
+    expect(system).toMatchObject({ userId: null, actorType: "system", actorName: "system:retention-purge" });
+    expect(res.body.data!.find((r) => r.id === "a-1")).toMatchObject({ actorType: "user", actorName: null });
+  });
+
+  it("actorType=system lists only the actions no person took", async () => {
+    currentUser = hospitalAdmin;
+
+    const res = await http({ actorType: "system" });
+
+    expect(ids(res)).toEqual(["a-2"]);
+  });
+
+  it("an actorType outside the ENUM is a 400, not a database error", async () => {
+    currentUser = hospitalAdmin;
+
+    const res = await http({ actorType: "robot" });
+
+    expect(res.status).toBe(400);
+    expect(AuditLog.findAll).not.toHaveBeenCalled();
+  });
+});

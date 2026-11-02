@@ -10,6 +10,8 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-11-02 | P9-26 | [Bulk Batch 04: 50 test files (3 __tests__, 2 config, 24 routes, 21 utils)](./records/2026-11-02-p9-26-bulk-batch-04.md) | **DONE.** 50 test files (3 __tests__, 2 config, 24 routes, 21 utils) -- `.js` to `.ts`, assertions preserved, eslint + typecheck clean, ratchet floor lowered to 285 |
+| 2026-11-02 | P9-26 | [Bulk Batch 03: 50 test files (2 models, 48 routes)](./records/2026-11-02-p9-26-bulk-batch-03.md) | **DONE.** 50 test files (2 models, 48 routes) -- `.js` to `.ts`, same 919 cases, eslint + typecheck clean, ratchet floor lowered to 335 |
 | 2026-10-29 | P9-26 | [Batch 62: route-shape, gate, envelope, health, billing, checkMenu](./records/2026-10-24-p9-26-batch-62.md) | **DONE.** 10 suites -- .js to .ts, same 185 cases, eslint + typecheck clean, ratchet 359 to 349 |
 | 2026-10-29 | P9-26 | [Batch 61: guards, migrations, routes](./records/2026-10-24-p9-26-batch-61.md) | **DONE.** 10 suites -- .js to .ts, same 92 cases, eslint + typecheck clean, ratchet 369 to 359 |
 | 2026-10-29 | P9-26 | [Batch 60: archiver contract, migrations 0057-0060, a110, d18, a180, w17, a07, p708, w19](./records/2026-10-24-p9-26-batch-60.md) | **DONE.** 10 suites -- .js to .ts, same 65 cases, eslint clean, ratchet 379 to 369 |
