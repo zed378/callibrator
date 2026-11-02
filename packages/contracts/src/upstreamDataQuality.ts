@@ -9,15 +9,15 @@
  * contract — the same rule the reconciliation (P25-01) and the import's own
  * views live by (ADR-129).
  *
- * UPSTREAM_DATA_QUALITY_SECTIONS is the TARGET of 03 § 7. As built (P25-02 review,
- * 2026-10-24) the report computes the quarantine groups and Q-12, Q-13, Q-18
- * and Q-19 per facility; since 2026-10-27 also Q-4, Q-14 and Q-28's missing
- * files, and at the run level (`runFindings`, 2026-10-28) its unreferenced files; since
- * 2026-10-28 the duplicates Q-8, Q-9 and the orphans Q-2, Q-3, Q-10; the orphan,
- * file and user sections are not built (services/upstreamDataQuality.service.ts).
+ * UPSTREAM_DATA_QUALITY_SECTIONS groups the findings of 03 § 7. Every section is
+ * computed (2026-11-02, ADR-129 Am. 14): the quarantine groups, the per-facility
+ * findings Q-2 … Q-24 and Q-27 and Q-28's missing files, and at the run level
+ * (`runFindings`) Q-16, Q-28's unreferenced files, the duplicate files and the
+ * users section U-1 … U-6. Q-1 and Q-25 describe the schema and Q-26 a table that
+ * is never staged, so they have no per-run count
+ * (services/upstreamDataQuality.service.ts).
  *
- * A section that needs a human (a sampled field-by-field diff is P25-03)
- * answers `manual`, never a guessed pass.
+ * A finding that needs a human answers `manual`, never a guessed pass.
  */
 import { z } from "zod";
 import { uuid } from "./fields";
@@ -79,7 +79,7 @@ export const upstreamDataQualityResult = z
         providerTenantId: uuid(),
         facilities: z.array(dataQualityFacilityRow).max(1000),
         totals: z.array(dataQualityQuarantineGroup).max(200),
-        /** Findings with no facility (2026-10-28): Q-28's files on disk that no staged row names. */
+        /** Findings with no facility: the files (Q-16, Q-28's unreferenced, duplicates) and the users section. */
         runFindings: z.array(dataQualityFinding).max(50),
     })
     .strict();

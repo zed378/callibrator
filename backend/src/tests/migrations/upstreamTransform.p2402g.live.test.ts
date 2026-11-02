@@ -31,6 +31,7 @@ import type * as ReportModule from "../../services/ipmReport.service";
 import type * as JobContextModule from "../../utils/jobContext.util";
 import type * as ReconciliationModule from "../../services/upstreamReconciliation.service";
 import type * as DataQualityModule from "../../services/upstreamDataQuality.service";
+import type * as ReportDiffModule from "../../services/upstreamReportDiff.service";
 
 const IMPORT_ROLE = "callibrator_import";
 const TRANSFORM_ROLE = "callibrator_transform";
@@ -75,6 +76,7 @@ const load = () => ({
   m0141: require("../../migrations/0141-upstream-transform-ipm") as Migration,
   reconciliation: require("../../services/upstreamReconciliation.service") as typeof ReconciliationModule,
   dataQuality: require("../../services/upstreamDataQuality.service") as typeof DataQualityModule,
+  reportDiff: require("../../services/upstreamReportDiff.service") as typeof ReportDiffModule,
 });
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -391,6 +393,7 @@ describe("P24-02g — the IPM steps on live PostgreSQL 18, as the transform role
       ["RC-F5", "pass"],
       ["R-9", "pass"],
       ["R-8", "pass"],
+      ["RC-F4", "pass"],
     ]);
     const r10 = reconciliation.runChecks.find((c) => c.check === "R-10");
     expect(r10?.expected).toBeGreaterThan(0);
@@ -494,6 +497,103 @@ describe("P24-02g — the IPM steps on live PostgreSQL 18, as the transform role
     ]);
     // Counts and codes only: no staged value reaches either answer.
     const text = JSON.stringify([reconciliation, report]);
+    for (const value of ["QR-G101", "QR-G102", "Pompa", "Sintetis", "teknisi.g@example.test"]) {
+      expect(text).not.toContain(value);
+    }
+  });
+
+  it("RC-F4 reads the source, not id_map: a staged device in another facility fails it while RC-F1 and R-1 still pass", async () => {
+    const answer = await g.reconciliation.reconcileRun(RUN_1);
+    const run = (a: typeof answer) => a.runChecks.find((c) => c.check === "RC-F4");
+    expect(run(answer)).toMatchObject({ status: "pass" });
+    expect(run(answer)?.expected).toBeGreaterThan(0);
+    expect(run(answer)?.quarantined).toBeGreaterThan(0);
+    expect(answer.facilities.flatMap((f) => f.checks).filter((c) => c.check === "RC-F4").every((c) => c.status === "pass")).toBe(true);
+    await g.db.query(`UPDATE upstream_import.stg_trx_inventory SET id_client = 2 WHERE import_run_id = '${RUN_1}' AND id = 101`);
+    try {
+      const moved = await g.reconciliation.reconcileRun(RUN_1);
+      expect(moved.runChecks.find((c) => c.check === "RC-F1")).toMatchObject({ status: "pass" });
+      expect(run(moved)).toMatchObject({ status: "fail" });
+      const failing = moved.facilities.flatMap((f) => f.checks).filter((c) => c.status === "fail").map((c) => c.check);
+      // The facility the source now names is short of those rows; the other's source and landed rows fall together.
+      expect(failing).toEqual(["RC-F4"]);
+    } finally {
+      await g.db.query(`UPDATE upstream_import.stg_trx_inventory SET id_client = 1 WHERE import_run_id = '${RUN_1}' AND id = 101`);
+    }
+  });
+
+  it("the rest of 03 § 7 and the users section on the transform role, as counts", async () => {
+    const report = await g.dataQuality.reportDataQuality(RUN_1);
+    const sumOf = (id: string): number => report.facilities.reduce((n, f) => n + (f.findings.find((x) => x.finding === id)?.count ?? 0), 0);
+    // The result rows of the two sessions: the seven below name no item (0 or NULL) but the one electrical-safety row of item 1 and the two environment rows.
+    expect(["Q-5", "Q-6", "Q-7", "Q-21", "Q-22", "Q-23", "Q-24", "Q-27"].map((id) => [id, sumOf(id)])).toEqual([
+      ["Q-5", 0],
+      ["Q-6", 0],
+      ["Q-7", 3],
+      ["Q-21", 1],
+      ["Q-22", 0],
+      ["Q-23", 1],
+      ["Q-24", 0],
+      ["Q-27", 0],
+    ]);
+    // Two devices: no serial staged, so neither is a NULLed real serial; both have no created_at and an empty sn.
+    expect(["Q-15", "Q-17", "Q-18-NULL", "Q-20"].map((id) => [id, sumOf(id)])).toEqual([
+      ["Q-15", 2],
+      ["Q-17", 2],
+      ["Q-18-NULL", 0],
+      ["Q-20", 2],
+    ]);
+    const run = (id: string): number | undefined => report.runFindings.find((f) => f.finding === id)?.count;
+    expect(["U-1", "U-2", "U-3", "U-4", "U-5"].map((id) => [id, run(id)])).toEqual([
+      ["U-1", 0],
+      ["U-2", 0],
+      ["U-3", 0],
+      ["U-4", 0],
+      ["U-5", 0],
+    ]);
+    expect(run("U-6")).toBeGreaterThan(0);
+    expect(JSON.stringify(report)).not.toContain("teknisi.g@example.test");
+    // Q-5: a session row of another device type than the device's, then put back.
+    await g.db.query(`UPDATE upstream_import.stg_trx_inventory SET id_alat = 1 WHERE import_run_id = '${RUN_1}'`);
+    await g.db.query(`UPDATE upstream_import.stg_trx_hasil_pemeriksaan SET id_alat = 9 WHERE import_run_id = '${RUN_1}' AND id = 4`);
+    try {
+      const typed = await g.dataQuality.reportDataQuality(RUN_1);
+      expect(typed.facilities.reduce((n, f) => n + (f.findings.find((x) => x.finding === "Q-5")?.count ?? 0), 0)).toBe(1);
+    } finally {
+      await g.db.query(`UPDATE upstream_import.stg_trx_hasil_pemeriksaan SET id_alat = NULL WHERE import_run_id = '${RUN_1}' AND id = 4`);
+    }
+  });
+
+  it("P25-03: the sampled report diff passes on the IPM world and fails exactly the field a staged value changes", async () => {
+    const answer = await g.reportDiff.diffRun(RUN_1, 10);
+    expect(answer.sample).toMatchObject({ requested: 10, sessions: answer.sample.population });
+    expect(answer.sample.sessions).toBeGreaterThan(0);
+    expect(answer.fields.filter((f) => f.status !== "pass").map((f) => [f.field, f.equal, f.explained, f.differs])).toEqual([]);
+    const field = (a: typeof answer, name: string) => a.fields.find((f) => f.field === name);
+    // "  Catatan sintetis  " is cleaned, and the second QR-G101 header (a lower id that disagrees) is explained.
+    expect([field(answer, "notes")?.explained, field(answer, "inspection.result")?.explained]).toEqual([1, 1]);
+    // Humidity 150 is NULL with its text kept (Q-21) and terukur_2 "abc" kept raw (Q-23), so the values are explained, not equal.
+    expect(field(answer, "results.values")?.explained).toBeGreaterThan(0);
+    const plant = (table: string, set: string, where: string): Promise<unknown> =>
+      g.db.query(`UPDATE upstream_import.stg_${table} SET ${set} WHERE import_run_id = '${RUN_1}' AND ${where}`);
+    await plant("trx_catatan", "description = 'Catatan lain'", "id = 1");
+    await plant("trx_inventory", "nama_alat = 'Alat lain'", "id = 101");
+    await plant("trx_kinerja_alat", "terukur_1 = '1.5'", "id = 1");
+    try {
+      const drifted = await g.reportDiff.diffRun(RUN_1, 10);
+      expect(drifted.fields.filter((f) => f.status === "fail").map((f) => [f.field, f.differs])).toEqual([
+        ["device.name", 2],
+        ["results.values", 1],
+        ["notes", 1],
+      ]);
+    } finally {
+      await plant("trx_catatan", "description = '  Catatan sintetis  '", "id = 1");
+      await plant("trx_inventory", "nama_alat = 'Pompa Sintetis'", "id = 101");
+      await plant("trx_kinerja_alat", "terukur_1 = '59.80'", "id = 1");
+    }
+    // Sampled by the key: the same sessions on a smaller sample's prefix, and no staged value in the answer.
+    expect((await g.reportDiff.diffRun(RUN_1, 1)).sample.sessions).toBe(1);
+    const text = JSON.stringify(answer);
     for (const value of ["QR-G101", "QR-G102", "Pompa", "Sintetis", "teknisi.g@example.test"]) {
       expect(text).not.toContain(value);
     }

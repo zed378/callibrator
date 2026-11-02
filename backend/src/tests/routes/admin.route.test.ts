@@ -116,6 +116,7 @@ describe("Admin Routes", () => {
         "POST /upstream-sql-imports/:id/transform",
         "GET /upstream-sql-imports/:id/reconciliation",
         "GET /upstream-sql-imports/:id/data-quality",
+        "GET /upstream-sql-imports/:id/report-diff",
         "GET /ipm/template-proposals",
         "POST /ipm/template-proposals/:proposalId/accept",
         "POST /ipm/template-proposals/:proposalId/reject",

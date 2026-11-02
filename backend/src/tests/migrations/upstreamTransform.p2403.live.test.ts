@@ -434,13 +434,13 @@ describe("P24-03 — the whole transform on live PostgreSQL 18 and local storage
     // Q-28 unreferenced (2026-10-28, run level): every file the manifests put in the photo folders is named by a
     // staged device row (c3.jpg too: its device was not imported, but it is named). A manifest line for a file no
     // row names makes it 1, then the manifest is restored.
-    expect(report.runFindings).toEqual([expect.objectContaining({ finding: "Q-28", status: "pass", count: 0 })]);
+    expect(report.runFindings.slice(0, 1)).toEqual([expect.objectContaining({ finding: "Q-28", status: "pass", count: 0 })]);
     const manifestPath = g.workspace.importPaths(FILE_IMPORTS[0] as string, "").manifest;
     const original = fs.readFileSync(manifestPath, "utf8");
     fs.writeFileSync(manifestPath, `${original.trimEnd()}\n${JSON.stringify({ sourcePath: "foto_sn/orphan.jpg", outcome: "quarantined", reason: "virus_found" })}\n`);
     try {
       const orphaned = await g.tenantStorage.run({ tenantId: null, isSuperAdmin: true, isSystemTask: false }, () => g.dataQuality.reportDataQuality(RUN_1));
-      expect(orphaned.runFindings).toEqual([expect.objectContaining({ finding: "Q-28", status: "flagged", count: 1 })]);
+      expect(orphaned.runFindings.slice(0, 1)).toEqual([expect.objectContaining({ finding: "Q-28", status: "flagged", count: 1 })]);
     } finally {
       fs.writeFileSync(manifestPath, original);
     }

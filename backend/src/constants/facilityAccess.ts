@@ -593,6 +593,22 @@ export const RAW_SQL_UNREACHABLE_BY_BOUND: Readonly<Record<string, RawSqlUnreach
     reason: "P25-02 data-quality report: per-facility date counts of the provider tenant's calibrations (bound); read-only, super admin only",
     reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/data-quality"],
   },
+  "services/upstreamDataQuality.service.ts#inspection_results": {
+    reason: "P25-02 data-quality report: per-facility counts of the provider tenant's results kept raw (bound); read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/data-quality"],
+  },
+  "services/upstreamReportDiff.service.ts#${table}": {
+    reason: "P25-03 report diff: reads over `upstream_import` id_map, quarantine and the allow-listed staging tables (via stagedTable); only counts leave; read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/report-diff"],
+  },
+  "services/upstreamReportDiff.service.ts#inspection_sessions": {
+    reason: "P25-03 report diff: the sampled imported sessions of the provider tenant across its facilities (bound); only counts leave; read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/report-diff"],
+  },
+  "services/upstreamReportDiff.service.ts#inspection_results": {
+    reason: "P25-03 report diff: the sampled sessions' results of the provider tenant (bound); only counts leave; read-only, super admin only",
+    reachableFrom: ["api/admin.route.ts GET /upstream-sql-imports/:id/report-diff"],
+  },
   "services/upstreamImport/transform/ledger.ts#${table}": {
     reason:
       "the upstream transform's `upstream_import` bookkeeping (id_map, quarantine, allow-listed stg_ tables via stagedTable; ADR-129 Am. 2); a worker, no principal",

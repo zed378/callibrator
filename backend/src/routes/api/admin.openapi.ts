@@ -39,6 +39,7 @@ import {
 } from "@callibrator/contracts/upstreamSqlImport";
 import { upstreamReconciliationResult } from "@callibrator/contracts/upstreamReconciliation";
 import { upstreamDataQualityResult } from "@callibrator/contracts/upstreamDataQuality";
+import { REPORT_DIFF_SAMPLE_DEFAULT, REPORT_DIFF_SAMPLE_MAX, upstreamReportDiffResult } from "@callibrator/contracts/upstreamReportDiff";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 import { acceptProposalBody, listProposalsQuery, proposalIdParams, rejectProposalBody } from "@callibrator/contracts/inspectionCatalogue";
 import { TemplateProposal, TemplateProposalQueueRow } from "../../docs/openapi/inspectionCatalogueSchemas";
@@ -504,8 +505,8 @@ export default defineRouteDocs({
       description:
         "P25-01 (docs/UPSTREAM/05 § 7): the reconciliation of a transformed run, aggregates only — counts and fixed codes, " +
         "never a value from the dump. R-1 … R-8 are computed per facility (R-3 … R-6 row by row over the result tables); " +
-        "R-8, R-9, R-10, R-11, RC-F1, RC-F2, RC-F3 and RC-F5 at the run level; RC-F4 and R-12 are not automated and answer " +
-        "`manual` (P25-04). " +
+        "RC-F4 per facility and at the run level, starting from the staged rows' upstream device; R-8, R-9, R-10, R-11, RC-F1, " +
+        "RC-F2, RC-F3 and RC-F5 at the run level; R-12 is no database check and answers `manual` (P25-04). " +
         "Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.",
       permission: superAdmin,
       audited: false,
@@ -522,13 +523,33 @@ export default defineRouteDocs({
         "P25-02 (docs/UPSTREAM/03 § 7): the quarantine review and data-quality report of a transformed run — quarantine " +
         "groups by source table and reason (codes only, run-level totals), and per facility Q-12, Q-13, Q-18, Q-19, Q-4 and " +
         "Q-14, Q-28's missing files, the duplicates " +
-        "Q-8 and Q-9 and the orphans Q-2, Q-3 and Q-10; at the run level (`runFindings`) Q-28's unreferenced photo files. " +
+        "Q-8 and Q-9, the orphans Q-2, Q-3 and Q-10, and Q-5, Q-6, Q-7, Q-11, Q-15, Q-17, Q-18-NULL, Q-20 … Q-24 and Q-27; at the run " +
+        "level (`runFindings`) Q-28's unreferenced photo files, the duplicate files F-DUP-HASH and F-DUP-NAME, Q-16 and the users " +
+        "section U-1 … U-6. " +
         "Counts and fixed codes, never a value from the dump. " +
         "Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.",
       permission: superAdmin,
       audited: false,
       params: sqlImportParams,
       success: { status: 200, description: "The quarantine review and data-quality report, per facility", data: upstreamDataQualityResult },
+      conflict: "The run's transform is not `transformed`.",
+    },
+    {
+      method: "get",
+      path: "/upstream-sql-imports/:id/report-diff",
+      operationId: "adminDiffUpstreamReports",
+      summary: "Compare a sample of a transformed run's reports with upstream's, field by field",
+      description:
+        "P25-03 (docs/UPSTREAM/09 § 2): what the upstream IPM report prints for a deterministic sample of the run's imported " +
+        `sessions (first by md5 of the session key; \`sample\`, default ${String(REPORT_DIFF_SAMPLE_DEFAULT)}, at most ${String(REPORT_DIFF_SAMPLE_MAX)}) ` +
+        "set beside what our report document is built from. Each field counts `equal`, `explained` by a documented rule, and " +
+        "`differs`; a field passes when nothing differs. Counts and fixed codes, never a value from the dump. " +
+        "Errors carry a top-level `code`: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND`; 409 `RUN_NOT_TRANSFORMED`.",
+      permission: superAdmin,
+      audited: false,
+      params: sqlImportParams,
+      query: z.object({ sample: z.coerce.number().int().min(1).max(REPORT_DIFF_SAMPLE_MAX).default(REPORT_DIFF_SAMPLE_DEFAULT) }),
+      success: { status: 200, description: "The report diff, one verdict per field", data: upstreamReportDiffResult },
       conflict: "The run's transform is not `transformed`.",
     },
     {

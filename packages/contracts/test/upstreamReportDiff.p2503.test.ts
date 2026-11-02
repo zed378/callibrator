@@ -60,7 +60,7 @@ describe("P25-03 @callibrator/contracts/upstreamReportDiff", () => {
         const result = {
             runId: RUN,
             providerTenantId: TENANT,
-            sample: { requested: 200, sessions: 200, facilities: 4 },
+            sample: { requested: 200, population: 8153, sessions: 200, facilities: 4 },
             fields: [field],
         };
         expect(upstreamReportDiffResult.parse(result)).toEqual(result);
