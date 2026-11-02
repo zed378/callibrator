@@ -268,6 +268,11 @@ describe("A-19: make hooks installs the hook and a pinned gitleaks", () => {
     expect(install).toBeGreaterThan(verify);
   });
 
+  it("a backend change runs the guards, which read the tree a rename can strand a path in", () => {
+    const hook = fs.readFileSync(HOOK, "utf8");
+    expect(hook).toMatch(/npm test --silent -- src\/tests\/guards --ci\) \|\| fail=1/);
+  });
+
   it("the committed hook is executable (mode 100755), so a Linux or macOS clone can run it", () => {
     const r = run("git", ["ls-files", "-s", "scripts/git-hooks/pre-push"], { cwd: ROOT });
     expect(r.stdout).toMatch(/^100755 /);

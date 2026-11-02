@@ -11,7 +11,9 @@
 #      only place a push cannot be taken back from.
 #   2. the backend ESLint ratchet (scripts/ci/eslint-ratchet.js).
 #   3. the frontend typecheck, when frontend/ changed.
-# It does NOT run the unit suites (minutes, not seconds) — CI does.
+#   4. the backend guards (src/tests/guards, about 90 s), when backend/ changed:
+#      they read the tree itself, so a rename that strands a path fails here.
+# It does NOT run the other unit suites (minutes, not seconds) — CI does.
 #
 # A missing tool is a loud SKIP, not a pass and not a block: the hook is a
 # convenience in front of CI, which is the gate.
@@ -69,6 +71,8 @@ if printf '%s\n' "$changed" | grep -q '^backend/'; then
   (cd backend && npm run --silent typecheck) || fail=1
   say "backend TypeScript ratchet"
   (cd backend && npm run --silent ratchet) || fail=1 # P9-04: no new .js file
+  say "backend guards"
+  (cd backend && npm test --silent -- src/tests/guards --ci) || fail=1 # needs backend/.env
 fi
 
 # 3. frontend typecheck
