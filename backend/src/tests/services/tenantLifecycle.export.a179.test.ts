@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * A-179 (a) — the tenant-lifecycle export returned credentials.
  *
@@ -22,12 +23,12 @@
  * something derived from the service's own allow-list (CLAUDE.md § Evidence).
  */
 
-const mockDb = { rows: {}, statements: [] };
+const mockDb: any = { rows: {}, statements: [] };
 
 jest.mock("../../config", () => {
   const { Sequelize } = jest.requireActual("sequelize");
   const db = new Sequelize({ dialect: "postgres", logging: false });
-  db.query = async (sql, options = {}) => {
+  db.query = async (sql: any, options: any = {}) => {
     const text = typeof sql === "string" ? sql : sql.query;
     mockDb.statements.push(text);
     const table = (text.match(/FROM "([a-z_]+)"/) || [])[1];
@@ -36,13 +37,13 @@ jest.mock("../../config", () => {
       return options.plain ? null : [];
     }
     const selectList = text.slice("SELECT ".length, text.indexOf(" FROM "));
-    const picked = stored.map((row) => {
+    const picked = stored.map((row: any) => {
       if (selectList.trim() === "*") {
         return { ...row };
       }
-      const out = {};
+      const out: any = {};
       const re = /"([a-z_]+)"(?: AS "([A-Za-z_]+)")?/g;
-      let m;
+      let m: any;
       while ((m = re.exec(selectList)) !== null) {
         const column = m[1];
         const attribute = m[2] || m[1];
@@ -60,43 +61,43 @@ jest.mock("../../config", () => {
   return { db };
 });
 jest.mock("../../services/kms.service", () => ({
-  encryptData: jest.fn((_tenantId, value) => `v1:${value}`),
-  decryptData: jest.fn((_tenantId, value) => value.replace(/^v1:ENC-/, "")),
-  isEnvelope: (value) => typeof value === "string" && /^v[12]:/.test(value),
+  encryptData: jest.fn((_tenantId: any, value: any) => `v1:${value}`),
+  decryptData: jest.fn((_tenantId: any, value: any) => value.replace(/^v1:ENC-/, "")),
+  isEnvelope: (value: any) => typeof value === "string" && /^v[12]:/.test(value)
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
-const models = require("../../models");
+const models: any = require("../../models");
 const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
 const tenantLifecycle = require("../../services/tenantLifecycle.service");
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const USER = "33333333-3333-4333-8333-333333333333";
 
-const asSuperAdmin = (fn) => tenantStorage.run({ tenantId: TENANT, isSuperAdmin: true }, fn);
+const asSuperAdmin = (fn: any) => tenantStorage.run({ tenantId: TENANT, isSuperAdmin: true }, fn);
 
 /**
  * Attributes no tenant export may ever carry: credentials, second factors,
  * one-time codes and lockout state. Hand-written (see the header).
  */
 const FORBIDDEN_USER_ATTRIBUTES = [
-  "password",
-  "mfaSecret",
-  "mfaPendingSecret",
-  "mfaPendingCreatedAt",
-  "mfaLastUsedStep",
-  "mfaRecoveryCodes",
-  "webauthnCredentialId",
-  "webauthnPublicKey",
-  "webauthnSignCount",
-  "otpCode",
-  "otpExpiredAt",
-  "otpRequestCount",
-  "otpLastRequestedAt",
-  "failedLoginAttempts",
-  "lockedUntil",
-  "passwordChangedAt",
-];
+"password",
+"mfaSecret",
+"mfaPendingSecret",
+"mfaPendingCreatedAt",
+"mfaLastUsedStep",
+"mfaRecoveryCodes",
+"webauthnCredentialId",
+"webauthnPublicKey",
+"webauthnSignCount",
+"otpCode",
+"otpExpiredAt",
+"otpRequestCount",
+"otpLastRequestedAt",
+"failedLoginAttempts",
+"lockedUntil",
+"passwordChangedAt"];
+
 
 /** A name that says "this is a secret or authentication state". */
 const SECRET_SHAPED = /secret|password|passwd|otp|mfa|webauthn|token|credential|recovery|hash|locked|failed/i;
@@ -114,20 +115,20 @@ const SECRETS = {
   aiKey: "sk-live-AI-API-KEY-0000",
   smtpPassword: "SMTP-PASSWORD-hunter2",
   oidcRp: "OIDC-RP-SECRET-SHA256-deadbeef",
-  mirroredAiKey: "sk-live-MIRRORED-IN-TENANTS-SETTINGS",
+  mirroredAiKey: "sk-live-MIRRORED-IN-TENANTS-SETTINGS"
 };
 
 /** A users row with EVERY column of the REAL model holding a value. */
 const fullUserRow = () => {
-  const row = {};
-  for (const attribute of Object.values(models.User.rawAttributes)) {
+  const row: any = {};
+  for (const attribute of Object.values(models.User.rawAttributes) as any[]) {
     const key = attribute.type.key;
     row[attribute.field] =
-      key === "BOOLEAN" ? true
-        : key === "INTEGER" ? 7
-          : key === "DATE" ? new Date("2026-09-01T00:00:00Z")
-            : key === "UUID" ? USER
-              : `value-of-${attribute.fieldName}`;
+    key === "BOOLEAN" ? true :
+    key === "INTEGER" ? 7 :
+    key === "DATE" ? new Date("2026-09-01T00:00:00Z") :
+    key === "UUID" ? USER :
+    `value-of-${attribute.fieldName}`;
   }
   Object.assign(row, {
     id: USER,
@@ -143,18 +144,18 @@ const fullUserRow = () => {
     otp_code: SECRETS.otpCode,
     mfa_recovery_codes: [SECRETS.recoveryCode],
     is_deleted: false,
-    deleted_at: null,
+    deleted_at: null
   });
   return row;
 };
 
-const settingRow = (key, value) => ({
+const settingRow = (key: any, value: any) => ({
   id: `${key}-id`,
   tenant_id: TENANT,
   key,
   value,
   created_at: new Date("2026-09-01T00:00:00Z"),
-  updated_at: new Date("2026-09-01T00:00:00Z"),
+  updated_at: new Date("2026-09-01T00:00:00Z")
 });
 
 const tenantRow = () => ({
@@ -166,7 +167,7 @@ const tenantRow = () => ({
   status: "active",
   is_deleted: false,
   deleted_at: null,
-  settings: { ai_api_key: SECRETS.mirroredAiKey, theme: "dark" },
+  settings: { ai_api_key: SECRETS.mirroredAiKey, theme: "dark" }
 });
 
 beforeEach(() => {
@@ -176,16 +177,16 @@ beforeEach(() => {
     users: [fullUserRow()],
     tenants: [tenantRow()],
     tenant_settings: [
-      // Encrypted at rest; the afterFind hook decrypts them.
-      settingRow("storage_credentials", `v1:ENC-${SECRETS.s3Secret}`),
-      settingRow("ai_api_key", `v1:ENC-${SECRETS.aiKey}`),
-      // Secret by NAME (SECRET_KEY_PATTERN), stored in plaintext.
-      settingRow("smtp_password", SECRETS.smtpPassword),
-      // Redacted, not encrypted: an OIDC relying party's secret hash.
-      settingRow("oidc_rp_portal", SECRETS.oidcRp),
-      settingRow("lifecycle_status", "ACTIVE"),
-      settingRow("webhook_signing_secret", ""),
-    ],
+    // Encrypted at rest; the afterFind hook decrypts them.
+    settingRow("storage_credentials", `v1:ENC-${SECRETS.s3Secret}`),
+    settingRow("ai_api_key", `v1:ENC-${SECRETS.aiKey}`),
+    // Secret by NAME (SECRET_KEY_PATTERN), stored in plaintext.
+    settingRow("smtp_password", SECRETS.smtpPassword),
+    // Redacted, not encrypted: an OIDC relying party's secret hash.
+    settingRow("oidc_rp_portal", SECRETS.oidcRp),
+    settingRow("lifecycle_status", "ACTIVE"),
+    settingRow("webhook_signing_secret", "")]
+
   };
 });
 
@@ -210,27 +211,27 @@ describe("A-179 — the tenant-lifecycle export carries no credential", () => {
       expect({ attribute, exported: keys.includes(attribute) }).toEqual({ attribute, exported: false });
     }
     expect(users[0]).toEqual(
-      expect.objectContaining({ id: USER, username: "nurse.jane", email: "jane@hospital.test" }),
+      expect.objectContaining({ id: USER, username: "nurse.jane", email: "jane@hospital.test" })
     );
   });
 
   it("the users SELECT names no credential column — the database is never asked for one", async () => {
     await exportIt();
 
-    const usersSelect = mockDb.statements.find((s) => /^SELECT .* FROM "users"/.test(s));
+    const usersSelect = mockDb.statements.find((s: any) => /^SELECT .* FROM "users"/.test(s));
     const selectList = usersSelect.slice(0, usersSelect.indexOf(" FROM "));
     for (const attribute of FORBIDDEN_USER_ATTRIBUTES) {
       const column = models.User.rawAttributes[attribute].field;
       expect({ column, selected: selectList.includes(`"${column}"`) }).toEqual({
         column,
-        selected: false,
+        selected: false
       });
     }
   });
 
   it("a secret setting keeps its key and reads [REDACTED]; an ordinary one and an empty secret are unchanged", async () => {
     const { settings } = await exportIt();
-    const byKey = Object.fromEntries(settings.map((s) => [s.key, s.value]));
+    const byKey = Object.fromEntries(settings.map((s: any) => [s.key, s.value]));
 
     expect(byKey).toEqual({
       storage_credentials: "[REDACTED]",
@@ -238,7 +239,7 @@ describe("A-179 — the tenant-lifecycle export carries no credential", () => {
       smtp_password: "[REDACTED]",
       oidc_rp_portal: "[REDACTED]",
       lifecycle_status: "ACTIVE",
-      webhook_signing_secret: "",
+      webhook_signing_secret: ""
     });
   });
 
@@ -257,7 +258,7 @@ describe("A-179 — the tenant-lifecycle export carries no credential", () => {
     const saved = jest.spyOn(models.Tenant.prototype, "save").mockResolvedValue(undefined);
     jest.spyOn(models.TenantSettings, "upsert").mockResolvedValue(undefined);
     const { db } = require("../../config");
-    jest.spyOn(db, "transaction").mockImplementation(async (cb) => cb({ id: "tx" }));
+    jest.spyOn(db, "transaction").mockImplementation(async (cb: any) => cb({ id: "tx" }));
 
     const result = await asSuperAdmin(() => tenantLifecycle.offboardTenant(TENANT));
 
@@ -271,7 +272,7 @@ describe("A-179 — the allow-list is checked against the REAL User model", () =
     for (const attribute of FORBIDDEN_USER_ATTRIBUTES) {
       expect({ attribute, isAttribute: attribute in models.User.rawAttributes }).toEqual({
         attribute,
-        isAttribute: true,
+        isAttribute: true
       });
     }
   });
@@ -280,9 +281,9 @@ describe("A-179 — the allow-list is checked against the REAL User model", () =
     const allowed = tenantLifecycle.EXPORTED_USER_ATTRIBUTES;
     // Driven by the MODEL, not by the allow-list: a column added tomorrow is
     // checked the day it appears.
-    const secretShaped = Object.keys(models.User.rawAttributes).filter((a) => SECRET_SHAPED.test(a));
+    const secretShaped = Object.keys(models.User.rawAttributes).filter((a: any) => SECRET_SHAPED.test(a));
     expect(secretShaped).toEqual(
-      expect.arrayContaining(["password", "mfaSecret", "mfaRecoveryCodes", "otpCode", "webauthnPublicKey"]),
+      expect.arrayContaining(["password", "mfaSecret", "mfaRecoveryCodes", "otpCode", "webauthnPublicKey"])
     );
     for (const attribute of secretShaped) {
       expect({ attribute, allowed: allowed.includes(attribute) }).toEqual({ attribute, allowed: false });
@@ -291,7 +292,7 @@ describe("A-179 — the allow-list is checked against the REAL User model", () =
     for (const attribute of allowed) {
       expect({ attribute, isAttribute: attribute in models.User.rawAttributes }).toEqual({
         attribute,
-        isAttribute: true,
+        isAttribute: true
       });
     }
   });

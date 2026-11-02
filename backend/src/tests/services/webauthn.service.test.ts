@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * Tests for the WebAuthn service (the @simplewebauthn/server calls doubled, the
  * Redis-backed challenge store doubled) — the branches of every function.
@@ -13,17 +14,17 @@ jest.mock("@simplewebauthn/server", () => ({
   generateRegistrationOptions: jest.fn(),
   verifyRegistrationResponse: jest.fn(),
   generateAuthenticationOptions: jest.fn(),
-  verifyAuthenticationResponse: jest.fn(),
+  verifyAuthenticationResponse: jest.fn()
 }));
 
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
   set: jest.fn(),
-  del: jest.fn(),
+  del: jest.fn()
 }));
 
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (fn) => fn({ id: "tx", LOCK: { UPDATE: "UPDATE" } })) },
+  db: { transaction: jest.fn(async (fn: any) => fn({ id: "tx", LOCK: { UPDATE: "UPDATE" } })) }
 }));
 
 jest.mock("../../models", () => ({
@@ -33,17 +34,17 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(),
     count: jest.fn(),
     create: jest.fn(),
-    destroy: jest.fn(),
-  },
+    destroy: jest.fn()
+  }
 }));
 
 jest.mock("../../services/auth.service", () => ({
   auditCredentialChange: jest.fn(),
-  reauthenticate: jest.fn(async () => "password"),
+  reauthenticate: jest.fn(async () => "password")
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }));
 
 const lib = require("@simplewebauthn/server");
@@ -52,18 +53,18 @@ const { Users, WebauthnCredential } = require("../../models");
 const authService = require("../../services/auth.service");
 const webauthn = require("../../services/webauthn.service");
 
-const userRow = (extra = {}) => ({
+const userRow = (extra: any = {}) => ({
   id: "u1",
   tenantId: "t1",
   webauthnEnabled: true,
-  update: jest.fn(async function (values) {
+  update: jest.fn(async function (values: any) {
     Object.assign(this, values);
     return this;
   }),
-  ...extra,
+  ...extra
 });
 
-const passkeyRow = (extra = {}) => ({
+const passkeyRow = (extra: any = {}) => ({
   id: "p1",
   userId: "u1",
   credentialId: "cred-1",
@@ -74,12 +75,12 @@ const passkeyRow = (extra = {}) => ({
   transports: ["internal"],
   createdAt: new Date("2026-09-01"),
   lastUsedAt: null,
-  update: jest.fn(async function (values) {
+  update: jest.fn(async function (values: any) {
     Object.assign(this, values);
     return this;
   }),
   destroy: jest.fn(async () => undefined),
-  ...extra,
+  ...extra
 });
 
 describe("webauthn.service", () => {
@@ -98,24 +99,24 @@ describe("webauthn.service", () => {
     it("generates options, stores the challenge and excludes the caller's enrolled passkeys", async () => {
       lib.generateRegistrationOptions.mockResolvedValue({ challenge: "c1" });
       WebauthnCredential.findAll.mockResolvedValue([
-        { credentialId: "cred-1", transports: ["usb"] },
-        { credentialId: "cred-2", transports: null },
-      ]);
+      { credentialId: "cred-1", transports: ["usb"] },
+      { credentialId: "cred-2", transports: null }]
+      );
 
       const result = await webauthn.getRegistrationOptions(user);
 
       expect(result).toEqual({ challenge: "c1" });
       expect(WebauthnCredential.findAll).toHaveBeenCalledWith({
         where: { userId: "u1" },
-        attributes: ["credentialId", "transports"],
+        attributes: ["credentialId", "transports"]
       });
       expect(redis.set).toHaveBeenCalledWith("webauthn:challenge:u1", "c1", 300);
       const args = lib.generateRegistrationOptions.mock.calls[0][0];
       expect(args).toMatchObject({ rpID: "localhost", userName: "a@b.com", userDisplayName: "Ann Lee" });
       expect(args.excludeCredentials).toEqual([
-        { id: "cred-1", transports: ["usb"] },
-        { id: "cred-2", transports: undefined },
-      ]);
+      { id: "cred-1", transports: ["usb"] },
+      { id: "cred-2", transports: undefined }]
+      );
     });
 
     it("takes an explicit list when given (and reads none)", async () => {
@@ -123,13 +124,13 @@ describe("webauthn.service", () => {
       await webauthn.getRegistrationOptions(user, [{ credentialId: "cred-9", transports: ["nfc"] }]);
       expect(WebauthnCredential.findAll).not.toHaveBeenCalled();
       expect(lib.generateRegistrationOptions.mock.calls[0][0].excludeCredentials).toEqual([
-        { id: "cred-9", transports: ["nfc"] },
-      ]);
+      { id: "cred-9", transports: ["nfc"] }]
+      );
     });
 
     it("refuses at the limit (409)", async () => {
       WebauthnCredential.findAll.mockResolvedValue(
-        Array.from({ length: webauthn.MAX_PASSKEYS_PER_USER }, (_, i) => ({ credentialId: `c${i}`, transports: null })),
+        Array.from({ length: webauthn.MAX_PASSKEYS_PER_USER }, (_: any, i: any) => ({ credentialId: `c${i}`, transports: null }))
       );
       await expect(webauthn.getRegistrationOptions(user)).rejects.toMatchObject({ status: 409 });
     });
@@ -159,9 +160,9 @@ describe("webauthn.service", () => {
 
       expect(result).toEqual({ challenge: "c2" });
       expect(lib.generateAuthenticationOptions.mock.calls[0][0].allowCredentials).toEqual([
-        { id: "cred-1" },
-        { id: "cred-2" },
-      ]);
+      { id: "cred-1" },
+      { id: "cred-2" }]
+      );
       expect(redis.set).toHaveBeenCalledWith("webauthn:challenge:u1", "c2", 300);
     });
 
@@ -175,11 +176,11 @@ describe("webauthn.service", () => {
   // -------------------------------------------------------- verifyRegistration
   describe("verifyRegistration", () => {
     const resp = { id: "cred-new" };
-    const verified = (transports) => ({
+    const verified = (transports: any = undefined) => ({
       verified: true,
       registrationInfo: {
-        credential: { id: "cred-new", publicKey: Buffer.from([1, 2, 3]), counter: 5, ...(transports ? { transports } : {}) },
-      },
+        credential: { id: "cred-new", publicKey: Buffer.from([1, 2, 3]), counter: 5, ...(transports ? { transports } : {}) }
+      }
     });
 
     it("throws 400 when the challenge is missing/expired", async () => {
@@ -203,7 +204,7 @@ describe("webauthn.service", () => {
       const user = userRow();
       Users.findOne.mockResolvedValue(user);
       WebauthnCredential.count.mockResolvedValueOnce(2).mockResolvedValueOnce(0);
-      WebauthnCredential.create.mockImplementation(async (values) => passkeyRow({ ...values, id: "p-new" }));
+      WebauthnCredential.create.mockImplementation(async (values: any) => passkeyRow({ ...values, id: "p-new" }));
 
       const result = await webauthn.verifyRegistration("t1", "u1", resp, { name: "  YubiKey  ", ipAddress: "1.2.3.4", userAgent: "ua" });
 
@@ -219,7 +220,7 @@ describe("webauthn.service", () => {
         operation: "WEBAUTHN_REGISTER",
         details: { passkeyId: "p-new", name: "YubiKey", passkeysHeld: 3 },
         ipAddress: "1.2.3.4",
-        userAgent: "ua",
+        userAgent: "ua"
       });
       expect(redis.del).toHaveBeenCalledWith("webauthn:challenge:u1");
     });
@@ -229,7 +230,7 @@ describe("webauthn.service", () => {
       lib.verifyRegistrationResponse.mockResolvedValue(verified());
       const user = userRow({ webauthnEnabled: false });
       Users.findOne.mockResolvedValue(user);
-      WebauthnCredential.create.mockImplementation(async (values) => passkeyRow({ ...values, id: "p-new" }));
+      WebauthnCredential.create.mockImplementation(async (values: any) => passkeyRow({ ...values, id: "p-new" }));
 
       const result = await webauthn.verifyRegistration("t1", "u1", resp);
 
@@ -252,7 +253,7 @@ describe("webauthn.service", () => {
       WebauthnCredential.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
       await expect(webauthn.verifyRegistration("t1", "u1", resp)).rejects.toMatchObject({
         status: 409,
-        message: "This passkey is already registered",
+        message: "This passkey is already registered"
       });
       expect(WebauthnCredential.create).not.toHaveBeenCalled();
     });
@@ -262,7 +263,7 @@ describe("webauthn.service", () => {
       lib.verifyRegistrationResponse.mockResolvedValue(verified());
       Users.findOne.mockResolvedValue(userRow());
       WebauthnCredential.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
-      WebauthnCredential.create.mockImplementation(async (values) => passkeyRow(values));
+      WebauthnCredential.create.mockImplementation(async (values: any) => passkeyRow(values));
       const result = await webauthn.verifyRegistration("t1", "u1", resp, { name: "   " });
       expect(result.credential.name).toBe("Passkey 2");
     });
@@ -320,7 +321,7 @@ describe("webauthn.service", () => {
         enabled: true,
         count: 2,
         signCount: 9,
-        lastUpdatedAt: new Date("2026-01-01"),
+        lastUpdatedAt: new Date("2026-01-01")
       });
     });
 
@@ -343,8 +344,8 @@ describe("webauthn.service", () => {
       WebauthnCredential.findAll.mockResolvedValue([passkeyRow()]);
       const list = await webauthn.listPasskeys("t1", "u1");
       expect(list).toEqual([
-        { id: "p1", name: "Laptop", createdAt: new Date("2026-09-01"), lastUsedAt: null, transports: ["internal"] },
-      ]);
+      { id: "p1", name: "Laptop", createdAt: new Date("2026-09-01"), lastUsedAt: null, transports: ["internal"] }]
+      );
       expect(WebauthnCredential.findAll).toHaveBeenCalledWith({ where: { userId: "u1" }, order: [["createdAt", "ASC"]] });
     });
 
@@ -364,11 +365,11 @@ describe("webauthn.service", () => {
       expect(WebauthnCredential.findOne).toHaveBeenCalledWith({
         where: { id: "p1", userId: "u1" },
         transaction: expect.anything(),
-        lock: "UPDATE",
+        lock: "UPDATE"
       });
       expect(authService.auditCredentialChange.mock.calls[0][1]).toMatchObject({
         operation: "WEBAUTHN_RENAME",
-        details: { passkeyId: "p1", before: { name: "Laptop" }, after: { name: "Work laptop" } },
+        details: { passkeyId: "p1", before: { name: "Laptop" }, after: { name: "Work laptop" } }
       });
     });
 
@@ -401,7 +402,7 @@ describe("webauthn.service", () => {
       expect(user.update).toHaveBeenCalledWith({ webauthnEnabled: false }, { transaction: expect.anything() });
       expect(authService.auditCredentialChange.mock.calls[1][1]).toMatchObject({
         operation: "WEBAUTHN_REVOKE",
-        details: { passkeyId: "p1", remaining: 0, reauthenticatedWith: "password" },
+        details: { passkeyId: "p1", remaining: 0, reauthenticatedWith: "password" }
       });
     });
 
@@ -424,7 +425,7 @@ describe("webauthn.service", () => {
       jest.resetModules();
     });
 
-    const loadWith = (env) => {
+    const loadWith = (env: any) => {
       jest.resetModules();
       Object.assign(process.env, env);
       jest.doMock("@simplewebauthn/server", () => lib);
@@ -438,23 +439,23 @@ describe("webauthn.service", () => {
       redis.del.mockResolvedValue(true);
       lib.verifyRegistrationResponse.mockResolvedValue({
         verified: true,
-        registrationInfo: { credential: { id: "c", publicKey: Buffer.from([1]), counter: 0 } },
+        registrationInfo: { credential: { id: "c", publicKey: Buffer.from([1]), counter: 0 } }
       });
       Users.findOne.mockResolvedValue(userRow());
       WebauthnCredential.count.mockResolvedValue(0);
-      WebauthnCredential.create.mockImplementation(async (values) => passkeyRow(values));
+      WebauthnCredential.create.mockImplementation(async (values: any) => passkeyRow(values));
     };
 
     it.each([
-      [{}, "http://localhost:3000", true],
-      [{ WEBAUTHN_ORIGIN: "https://app.example.com", WEBAUTHN_RP_ID: "example.com" }, "https://app.example.com", false],
-      [{ WEBAUTHN_RP_ID: "example.com" }, "https://example.com", true],
-    ])("with %j the expected origin is %s", async (env, expected, clearOrigin) => {
+    [{}, "http://localhost:3000", true],
+    [{ WEBAUTHN_ORIGIN: "https://app.example.com", WEBAUTHN_RP_ID: "example.com" }, "https://app.example.com", false],
+    [{ WEBAUTHN_RP_ID: "example.com" }, "https://example.com", true]]
+    )("with %j the expected origin is %s", async (env: any, expected: any, clearOrigin: any) => {
       if (clearOrigin) {
-        delete process.env.WEBAUTHN_ORIGIN;
+        delete process.env["WEBAUTHN_ORIGIN"];
       }
       if (!env.WEBAUTHN_RP_ID) {
-        delete process.env.WEBAUTHN_RP_ID;
+        delete process.env["WEBAUTHN_RP_ID"];
       }
       const svc = loadWith(env);
       okRegistration();

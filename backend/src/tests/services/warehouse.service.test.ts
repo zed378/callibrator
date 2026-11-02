@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * Tests for warehouse.service.js
  */
@@ -11,14 +12,14 @@ jest.mock("sequelize", () => ({
     like: Symbol("like"),
     iLike: Symbol("iLike"), // A-320: the search matches with ILIKE
     ne: Symbol("ne"),
-    or: Symbol("or"),
-  },
+    or: Symbol("or")
+  }
 }));
 
 jest.mock("../../config", () => ({
   db: {
-    transaction: jest.fn(),
-  },
+    transaction: jest.fn()
+  }
 }));
 
 jest.mock("../../models", () => ({
@@ -26,34 +27,35 @@ jest.mock("../../models", () => ({
     findAndCountAll: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
-    count: jest.fn(),
+    count: jest.fn()
   },
   StorageLocation: {
     findAll: jest.fn(),
     findOne: jest.fn(),
-    create: jest.fn(),
+    create: jest.fn()
   },
   Stock: {
-    count: jest.fn(),
-  },
+    count: jest.fn()
+  }
 }));
 
 // P6-11: every write commits with one audit row in its transaction.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn(),
+  logAction: jest.fn()
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     error: jest.fn(),
-    warn: jest.fn(),
-  },
+    warn: jest.fn()
+  }
 }));
 
 jest.mock("../../utils/appError.util", () => {
   class AppError extends Error {
-    constructor(status, message) {
+    status: any;
+    constructor(status: any, message: any) {
       super(message);
       this.name = "AppError";
       this.status = status;
@@ -80,14 +82,14 @@ const {
   fetchLocations,
   createLocation,
   updateLocation,
-  deleteLocation,
+  deleteLocation
 } = require("../../services/warehouse.service");
 
-const expectRejectsWithMessage = async (promise, message) => {
+const expectRejectsWithMessage = async (promise: any, message: any) => {
   try {
     await promise;
     expect(true).toBe(false);
-  } catch (err) {
+  } catch (err: any) {
     expect(err).toBeDefined();
     const actual = err.message || JSON.stringify(err);
     expect(actual).toContain(message);
@@ -98,13 +100,13 @@ const expectRejectsWithMessage = async (promise, message) => {
 const WH_ID = "11111111-1111-4111-8111-111111111111";
 
 /** The 400 validateInput throws, with the field errors in Zod's words. */
-const expectValidationFailure = async (promise, errors) => {
+const expectValidationFailure = async (promise: any, errors: any) => {
   await expect(promise).rejects.toEqual({ status: 400, message: "Validation failed", errors });
 };
 
-const mockTransaction = () => ({
-  commit: jest.fn().mockResolvedValue(),
-  rollback: jest.fn().mockResolvedValue(),
+const mockTransaction: any = () => ({
+  commit: jest.fn().mockResolvedValue(undefined),
+  rollback: jest.fn().mockResolvedValue(undefined)
 });
 
 describe("warehouse.service", () => {
@@ -116,7 +118,7 @@ describe("warehouse.service", () => {
     it("should fetch warehouses successfully without find query", async () => {
       Warehouse.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: WH_ID, name: "Warehouse 1" }],
-        count: 1,
+        count: 1
       });
 
       const result = await fetchWarehouses({ tenantId: "tenant-1" });
@@ -129,14 +131,14 @@ describe("warehouse.service", () => {
     it("should fetch warehouses with find search term", async () => {
       Warehouse.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: WH_ID, name: "Search WH" }],
-        count: 1,
+        count: 1
       });
 
       const result = await fetchWarehouses({
         tenantId: "tenant-1",
         find: "search",
         page: 2,
-        limit: 10,
+        limit: 10
       });
 
       expect(result.success).toBe(true);
@@ -144,9 +146,9 @@ describe("warehouse.service", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             tenantId: "tenant-1",
-            isDeleted: false,
-          }),
-        }),
+            isDeleted: false
+          })
+        })
       );
     });
 
@@ -154,7 +156,7 @@ describe("warehouse.service", () => {
       Warehouse.findAndCountAll.mockRejectedValueOnce(new Error("Database error"));
       await expectRejectsWithMessage(
         fetchWarehouses({ tenantId: "tenant-1" }),
-        "Database error",
+        "Database error"
       );
     });
   });
@@ -164,7 +166,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockResolvedValueOnce({
         id: WH_ID,
         name: "WH 1",
-        locations: [],
+        locations: []
       });
 
       const result = await fetchSpecificWarehouse("tenant-1", WH_ID);
@@ -176,7 +178,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         fetchSpecificWarehouse("tenant-1", WH_ID),
-        "Warehouse not found",
+        "Warehouse not found"
       );
     });
 
@@ -184,7 +186,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockRejectedValueOnce(new Error("Database error"));
       await expectRejectsWithMessage(
         fetchSpecificWarehouse("tenant-1", WH_ID),
-        "Database error",
+        "Database error"
       );
     });
   });
@@ -192,9 +194,9 @@ describe("warehouse.service", () => {
   describe("createWarehouse", () => {
     it("should throw 400 if validation fails", async () => {
       await expectValidationFailure(createWarehouse("tenant-1", { code: "C" }), [
-        { field: "name", message: "Invalid input: expected string, received undefined" },
-        { field: "code", message: "Too small: expected string to have >=2 characters" },
-      ]);
+      { field: "name", message: "Invalid input: expected string, received undefined" },
+      { field: "code", message: "Too small: expected string to have >=2 characters" }]
+      );
       expect(db.transaction).not.toHaveBeenCalled();
     });
 
@@ -205,7 +207,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         createWarehouse("tenant-1", { name: "WH New", code: "CODE-1" }),
-        "Warehouse code already exists",
+        "Warehouse code already exists"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -217,7 +219,7 @@ describe("warehouse.service", () => {
       Warehouse.create.mockResolvedValueOnce({
         id: "wh-new",
         name: "WH New",
-        code: "CODE-1",
+        code: "CODE-1"
       });
 
       const result = await createWarehouse("tenant-1", {
@@ -225,7 +227,7 @@ describe("warehouse.service", () => {
         code: "CODE-1",
         address: "123 Street",
         description: "New",
-        status: "active",
+        status: "active"
       });
 
       expect(result.success).toBe(true);
@@ -244,7 +246,7 @@ describe("warehouse.service", () => {
 
       expect(Warehouse.create).toHaveBeenCalledWith(
         expect.objectContaining({ status: "active", address: null, description: null }),
-        { transaction: tx },
+        { transaction: tx }
       );
     });
 
@@ -256,7 +258,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         createWarehouse("tenant-1", { name: "WH New", code: "CODE-1" }),
-        "Creation failed",
+        "Creation failed"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -265,7 +267,7 @@ describe("warehouse.service", () => {
       db.transaction.mockRejectedValueOnce(new Error("Tx start failed"));
       await expectRejectsWithMessage(
         createWarehouse("tenant-1", { name: "WH New", code: "CODE-1" }),
-        "Tx start failed",
+        "Tx start failed"
       );
     });
 
@@ -277,7 +279,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         createWarehouse("tenant-1", { name: "WH New", code: "CODE-1" }),
-        "Query failed",
+        "Query failed"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -286,8 +288,8 @@ describe("warehouse.service", () => {
   describe("updateWarehouse", () => {
     it("should throw 400 if validation fails", async () => {
       await expectValidationFailure(updateWarehouse("tenant-1", WH_ID, { status: "archived" }), [
-        { field: "status", message: 'Invalid option: expected one of "active"|"inactive"' },
-      ]);
+      { field: "status", message: 'Invalid option: expected one of "active"|"inactive"' }]
+      );
       expect(db.transaction).not.toHaveBeenCalled();
     });
 
@@ -298,7 +300,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         updateWarehouse("tenant-1", WH_ID, { name: "Updated WH" }),
-        "Warehouse not found",
+        "Warehouse not found"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -311,7 +313,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         updateWarehouse("tenant-1", WH_ID, { code: "CODE-2" }),
-        "Warehouse code already exists",
+        "Warehouse code already exists"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -319,14 +321,14 @@ describe("warehouse.service", () => {
     it("should update warehouse successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      const mockWarehouse = {
+      const mockWarehouse: any = {
         id: WH_ID,
         name: "WH 1",
         code: "CODE-1",
         address: "Old address",
         description: "Old description",
         status: "active",
-        update: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({})
       };
       Warehouse.findOne.mockResolvedValueOnce(mockWarehouse); // find current
       Warehouse.findOne.mockResolvedValueOnce(null); // duplicate check for updated code
@@ -336,7 +338,7 @@ describe("warehouse.service", () => {
         code: "CODE-NEW",
         address: "New address",
         description: "New description",
-        status: "inactive",
+        status: "inactive"
       });
 
       expect(result.success).toBe(true);
@@ -346,9 +348,9 @@ describe("warehouse.service", () => {
           code: "CODE-NEW",
           address: "New address",
           description: "New description",
-          status: "inactive",
+          status: "inactive"
         }),
-        expect.any(Object),
+        expect.any(Object)
       );
       expect(tx.commit).toHaveBeenCalled();
     });
@@ -356,14 +358,14 @@ describe("warehouse.service", () => {
     it("should fallback to current warehouse properties if not provided", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      const mockWarehouse = {
+      const mockWarehouse: any = {
         id: WH_ID,
         name: "WH 1",
         code: "CODE-1",
         address: "Address 1",
         description: "Desc 1",
         status: "active",
-        update: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({})
       };
       Warehouse.findOne.mockResolvedValueOnce(mockWarehouse);
 
@@ -375,9 +377,9 @@ describe("warehouse.service", () => {
           code: "CODE-1",
           address: "Address 1",
           description: "Desc 1",
-          status: "active",
+          status: "active"
         },
-        expect.any(Object),
+        expect.any(Object)
       );
     });
 
@@ -385,7 +387,7 @@ describe("warehouse.service", () => {
       db.transaction.mockRejectedValueOnce(new Error("Tx start failed"));
       await expectRejectsWithMessage(
         updateWarehouse("tenant-1", WH_ID, { name: "Updated WH" }),
-        "Tx start failed",
+        "Tx start failed"
       );
     });
 
@@ -397,7 +399,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         updateWarehouse("tenant-1", WH_ID, { name: "Updated WH" }),
-        "Query failed",
+        "Query failed"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -411,7 +413,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         deleteWarehouse("tenant-1", WH_ID),
-        "Warehouse not found",
+        "Warehouse not found"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -424,7 +426,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         deleteWarehouse("tenant-1", WH_ID),
-        "Cannot delete warehouse with 5 items in stock",
+        "Cannot delete warehouse with 5 items in stock"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -432,9 +434,9 @@ describe("warehouse.service", () => {
     it("should delete warehouse successfully if no stock", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      const mockWarehouse = {
+      const mockWarehouse: any = {
         id: WH_ID,
-        save: jest.fn().mockResolvedValue(),
+        save: jest.fn().mockResolvedValue(undefined)
       };
       Warehouse.findOne.mockResolvedValueOnce(mockWarehouse);
       Stock.count.mockResolvedValueOnce(0);
@@ -451,7 +453,7 @@ describe("warehouse.service", () => {
       db.transaction.mockRejectedValueOnce(new Error("Tx start failed"));
       await expectRejectsWithMessage(
         deleteWarehouse("tenant-1", WH_ID),
-        "Tx start failed",
+        "Tx start failed"
       );
     });
 
@@ -463,7 +465,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         deleteWarehouse("tenant-1", WH_ID),
-        "Query failed",
+        "Query failed"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -476,7 +478,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         deleteWarehouse("tenant-1", WH_ID),
-        "Query failed",
+        "Query failed"
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -487,7 +489,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         fetchLocations("tenant-1", WH_ID),
-        "Warehouse not found",
+        "Warehouse not found"
       );
     });
 
@@ -504,8 +506,8 @@ describe("warehouse.service", () => {
   describe("createLocation", () => {
     it("should throw 400 if validation fails", async () => {
       await expectValidationFailure(createLocation("tenant-1", { warehouseId: "wh-1", name: "Loc 1", code: "L1" }), [
-        { field: "warehouseId", message: "Invalid GUID" },
-      ]);
+      { field: "warehouseId", message: "Invalid GUID" }]
+      );
       expect(db.transaction).not.toHaveBeenCalled();
     });
 
@@ -516,7 +518,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         createLocation("tenant-1", { warehouseId: WH_ID, name: "Loc 1", code: "L1" }),
-        "Warehouse not found",
+        "Warehouse not found"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -529,7 +531,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         createLocation("tenant-1", { warehouseId: WH_ID, name: "Loc 1", code: "L1" }),
-        "Storage location code already exists in this warehouse",
+        "Storage location code already exists in this warehouse"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -542,7 +544,7 @@ describe("warehouse.service", () => {
       StorageLocation.create.mockResolvedValueOnce({
         id: "loc-new",
         name: "Loc New",
-        code: "L2",
+        code: "L2"
       });
 
       const result = await createLocation("tenant-1", {
@@ -550,7 +552,7 @@ describe("warehouse.service", () => {
         name: "Loc New",
         code: "L2",
         description: "Top shelf",
-        isActive: true,
+        isActive: true
       });
 
       expect(result.success).toBe(true);
@@ -568,7 +570,7 @@ describe("warehouse.service", () => {
       await createLocation("tenant-1", {
         warehouseId: WH_ID,
         name: "Loc New",
-        code: "L2",
+        code: "L2"
       });
 
       expect(StorageLocation.create).toHaveBeenCalledWith(
@@ -578,9 +580,9 @@ describe("warehouse.service", () => {
           name: "Loc New",
           code: "L2",
           description: null,
-          isActive: true,
+          isActive: true
         },
-        { transaction: tx },
+        { transaction: tx }
       );
     });
 
@@ -589,7 +591,7 @@ describe("warehouse.service", () => {
     // service against a pass-through validateInput to pin that fallback too.
     it("the service still defaults isActive to true when validation hands it no value", async () => {
       await jest.isolateModulesAsync(async () => {
-        jest.doMock("../../validators/input", () => ({ validateInput: (data) => ({ ...data }) }));
+        jest.doMock("../../validators/input", () => ({ validateInput: (data: any) => ({ ...data }) }));
         const isolatedModels = require("../../models");
         const isolatedDb = require("../../config").db;
         const isolatedService = require("../../services/warehouse.service");
@@ -603,7 +605,7 @@ describe("warehouse.service", () => {
 
         expect(isolatedModels.StorageLocation.create).toHaveBeenCalledWith(
           expect.objectContaining({ isActive: true }),
-          { transaction: tx },
+          { transaction: tx }
         );
       });
     });
@@ -619,12 +621,12 @@ describe("warehouse.service", () => {
         warehouseId: WH_ID,
         name: "Loc New",
         code: "L2",
-        isActive: false,
+        isActive: false
       });
 
       expect(StorageLocation.create).toHaveBeenCalledWith(
         expect.objectContaining({ isActive: false }),
-        { transaction: tx },
+        { transaction: tx }
       );
     });
 
@@ -632,7 +634,7 @@ describe("warehouse.service", () => {
       db.transaction.mockRejectedValueOnce(new Error("Tx start failed"));
       await expectRejectsWithMessage(
         createLocation("tenant-1", { warehouseId: WH_ID, name: "Loc 1", code: "L1" }),
-        "Tx start failed",
+        "Tx start failed"
       );
     });
 
@@ -644,7 +646,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         createLocation("tenant-1", { warehouseId: WH_ID, name: "Loc 1", code: "L1" }),
-        "Query failed",
+        "Query failed"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -653,8 +655,8 @@ describe("warehouse.service", () => {
   describe("updateLocation", () => {
     it("should throw 400 if validation fails", async () => {
       await expectValidationFailure(updateLocation("tenant-1", "loc-1", { isActive: "maybe" }), [
-        { field: "isActive", message: "Invalid input: expected boolean, received string" },
-      ]);
+      { field: "isActive", message: "Invalid input: expected boolean, received string" }]
+      );
       expect(db.transaction).not.toHaveBeenCalled();
     });
 
@@ -665,7 +667,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         updateLocation("tenant-1", "loc-1", { name: "Loc Updated" }),
-        "Storage location not found",
+        "Storage location not found"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -678,7 +680,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         updateLocation("tenant-1", "loc-1", { code: "CODE-DUP" }),
-        "Storage location code already exists in this warehouse",
+        "Storage location code already exists in this warehouse"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -686,14 +688,14 @@ describe("warehouse.service", () => {
     it("should update location successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      const mockLoc = {
+      const mockLoc: any = {
         id: "loc-1",
         warehouseId: WH_ID,
         name: "Old Name",
         code: "Old Code",
         description: "Old desc",
         isActive: true,
-        update: jest.fn().mockResolvedValue(),
+        update: jest.fn().mockResolvedValue(undefined)
       };
       StorageLocation.findOne.mockResolvedValueOnce(mockLoc);
       StorageLocation.findOne.mockResolvedValueOnce(null); // duplicate check for updated code
@@ -702,7 +704,7 @@ describe("warehouse.service", () => {
         name: "New Name",
         code: "New Code",
         description: "New desc",
-        isActive: false,
+        isActive: false
       });
 
       expect(result.success).toBe(true);
@@ -711,9 +713,9 @@ describe("warehouse.service", () => {
           name: "New Name",
           code: "New Code",
           description: "New desc",
-          isActive: false,
+          isActive: false
         }),
-        expect.any(Object),
+        expect.any(Object)
       );
       expect(tx.commit).toHaveBeenCalled();
     });
@@ -721,14 +723,14 @@ describe("warehouse.service", () => {
     it("should fallback to current properties when not provided", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      const mockLoc = {
+      const mockLoc: any = {
         id: "loc-1",
         warehouseId: WH_ID,
         name: "Old Name",
         code: "Old Code",
         description: "Old desc",
         isActive: true,
-        update: jest.fn().mockResolvedValue(),
+        update: jest.fn().mockResolvedValue(undefined)
       };
       StorageLocation.findOne.mockResolvedValueOnce(mockLoc);
 
@@ -739,9 +741,9 @@ describe("warehouse.service", () => {
           name: "Old Name",
           code: "Old Code",
           description: "Old desc",
-          isActive: true,
+          isActive: true
         },
-        expect.any(Object),
+        expect.any(Object)
       );
     });
 
@@ -749,7 +751,7 @@ describe("warehouse.service", () => {
       db.transaction.mockRejectedValueOnce(new Error("Tx start failed"));
       await expectRejectsWithMessage(
         updateLocation("tenant-1", "loc-1", { name: "Loc Updated" }),
-        "Tx start failed",
+        "Tx start failed"
       );
     });
 
@@ -761,7 +763,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         updateLocation("tenant-1", "loc-1", { name: "Loc Updated" }),
-        "Query failed",
+        "Query failed"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -775,7 +777,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         deleteLocation("tenant-1", "loc-1"),
-        "Storage location not found",
+        "Storage location not found"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -788,7 +790,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         deleteLocation("tenant-1", "loc-1"),
-        "Cannot delete storage location with 3 items in stock",
+        "Cannot delete storage location with 3 items in stock"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -796,9 +798,9 @@ describe("warehouse.service", () => {
     it("should delete storage location successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      const mockLoc = {
+      const mockLoc: any = {
         id: "loc-1",
-        destroy: jest.fn().mockResolvedValue(),
+        destroy: jest.fn().mockResolvedValue(undefined)
       };
       StorageLocation.findOne.mockResolvedValueOnce(mockLoc);
       Stock.count.mockResolvedValueOnce(0);
@@ -813,7 +815,7 @@ describe("warehouse.service", () => {
       db.transaction.mockRejectedValueOnce(new Error("Tx start failed"));
       await expectRejectsWithMessage(
         deleteLocation("tenant-1", "loc-1"),
-        "Tx start failed",
+        "Tx start failed"
       );
     });
 
@@ -825,7 +827,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         deleteLocation("tenant-1", "loc-1"),
-        "Query failed",
+        "Query failed"
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -839,12 +841,12 @@ describe("warehouse.service", () => {
   // ================================================================
   describe("no rollback after the transaction has finished", () => {
     const failingCommitTransaction = () => {
-      const tx = {
-        rollback: jest.fn().mockResolvedValue(),
+      const tx: any = {
+        rollback: jest.fn().mockResolvedValue(undefined),
         commit: jest.fn(async () => {
           tx.finished = "commit";
           throw new Error("Commit failed");
-        }),
+        })
       };
       return tx;
     };
@@ -857,7 +859,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         createWarehouse("tenant-1", { name: "WH", code: "W1" }),
-        "Commit failed",
+        "Commit failed"
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -869,12 +871,12 @@ describe("warehouse.service", () => {
         id: WH_ID,
         name: "Old",
         code: "W1",
-        update: jest.fn().mockResolvedValue(true),
+        update: jest.fn().mockResolvedValue(true)
       });
 
       await expectRejectsWithMessage(
         updateWarehouse("tenant-1", WH_ID, { name: "New" }),
-        "Commit failed",
+        "Commit failed"
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -884,13 +886,13 @@ describe("warehouse.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       Warehouse.findOne.mockResolvedValueOnce({
         id: WH_ID,
-        save: jest.fn().mockResolvedValue(true),
+        save: jest.fn().mockResolvedValue(true)
       });
       Stock.count.mockResolvedValueOnce(0);
 
       await expectRejectsWithMessage(
         deleteWarehouse("tenant-1", WH_ID),
-        "Commit failed",
+        "Commit failed"
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -904,7 +906,7 @@ describe("warehouse.service", () => {
 
       await expectRejectsWithMessage(
         createLocation("tenant-1", { warehouseId: WH_ID, name: "Lo", code: "L1" }),
-        "Commit failed",
+        "Commit failed"
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -915,12 +917,12 @@ describe("warehouse.service", () => {
       StorageLocation.findOne.mockResolvedValueOnce({
         id: "loc-1",
         warehouseId: WH_ID,
-        update: jest.fn().mockResolvedValue(true),
+        update: jest.fn().mockResolvedValue(true)
       });
 
       await expectRejectsWithMessage(
         updateLocation("tenant-1", "loc-1", { name: "New" }),
-        "Commit failed",
+        "Commit failed"
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -930,13 +932,13 @@ describe("warehouse.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       StorageLocation.findOne.mockResolvedValueOnce({
         id: "loc-1",
-        destroy: jest.fn().mockResolvedValue(true),
+        destroy: jest.fn().mockResolvedValue(true)
       });
       Stock.count.mockResolvedValueOnce(0);
 
       await expectRejectsWithMessage(
         deleteLocation("tenant-1", "loc-1"),
-        "Commit failed",
+        "Commit failed"
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });

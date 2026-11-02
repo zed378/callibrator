@@ -1,21 +1,22 @@
-﻿/**
- * Test Utilities
- *
- * Shared helpers for writing consistent tests across the codebase.
- */
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+/**
+* Test Utilities
+*
+* Shared helpers for writing consistent tests across the codebase.
+*/
 
 /**
  * Create a mock Express response object
  * @returns {Object} Mock res object with stubbed methods
  */
 const createMockRes = () => {
-  const res = {
+  const res: any = {
     status: jest.fn().mockReturnThis(),
     json: jest.fn().mockReturnThis(),
     send: jest.fn().mockReturnThis(),
     set: jest.fn().mockReturnThis(),
     end: jest.fn().mockReturnThis(),
-    locals: {},
+    locals: {}
   };
   return res;
 };
@@ -25,19 +26,19 @@ const createMockRes = () => {
  * @param {Object} options - Request properties to override
  * @returns {Object} Mock req object
  */
-const createMockReq = (options = {}) => {
-  const req = {
+const createMockReq = (options: any = {}) => {
+  const req: any = {
     body: {},
     query: {},
     params: {},
     user: null,
     headers: {
       authorization: null,
-      "x-forwarded-for": "127.0.0.1",
+      "x-forwarded-for": "127.0.0.1"
     },
     ip: "127.0.0.1",
     requestId: "test-request-id",
-    ...options,
+    ...options
   };
   return req;
 };
@@ -56,7 +57,7 @@ const createMockNext = () => {
  * @param {Object} options - Model methods to stub
  * @returns {Object} Mock model
  */
-const createMockModel = (options = {}) => {
+const createMockModel = (options: any = {}) => {
   const defaults = {
     findOne: jest.fn().mockResolvedValue(null),
     findAndCountAll: jest.fn().mockResolvedValue({ rows: [], count: 0 }),
@@ -65,7 +66,7 @@ const createMockModel = (options = {}) => {
     bulkCreate: jest.fn().mockResolvedValue([]),
     update: jest.fn().mockResolvedValue([1]),
     destroy: jest.fn().mockResolvedValue(1),
-    count: jest.fn().mockResolvedValue(0),
+    count: jest.fn().mockResolvedValue(0)
   };
   return { ...defaults, ...options };
 };
@@ -77,7 +78,7 @@ const createMockModel = (options = {}) => {
 const createMockTransaction = () => {
   return {
     commit: jest.fn().mockResolvedValue(undefined),
-    rollback: jest.fn().mockResolvedValue(undefined),
+    rollback: jest.fn().mockResolvedValue(undefined)
   };
 };
 
@@ -89,7 +90,7 @@ const createMockTransactionWithOptions = () => {
   const transaction = createMockTransaction();
   return {
     ...transaction,
-    toObject: jest.fn().mockReturnValue(transaction),
+    toObject: jest.fn().mockReturnValue(transaction)
   };
 };
 
@@ -98,7 +99,7 @@ const createMockTransactionWithOptions = () => {
  * @param {number} ms - Milliseconds to wait
  * @returns {Promise<void>}
  */
-const wait = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
+const wait = (ms: any = 0) => new Promise((resolve: any) => setTimeout(resolve, ms));
 
 /**
  * Mock a function that should throw
@@ -106,7 +107,7 @@ const wait = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
  * @param {Error} error - Error to throw
  * @returns {jest.Mock}
  */
-const mockThrow = (error) => {
+const mockThrow: any = (error: any) => {
   return jest.fn().mockRejectedValue(error);
 };
 
@@ -115,7 +116,7 @@ const mockThrow = (error) => {
  * @param {*} value - Value to resolve with
  * @returns {jest.Mock}
  */
-const mockResolve = (value) => {
+const mockResolve: any = (value: any) => {
   return jest.fn().mockResolvedValue(value);
 };
 
@@ -125,7 +126,7 @@ const mockResolve = (value) => {
  * @param {Error} error - Error to throw on second call
  * @returns {jest.Mock}
  */
-const mockResolveThenThrow = (value, error) => {
+const mockResolveThenThrow: any = (value: any, error: any) => {
   return jest.fn().mockImplementation(() => {
     if (mockResolveThenThrow.callCount === 0) {
       mockResolveThenThrow.callCount++;
@@ -148,5 +149,5 @@ module.exports = {
   wait,
   mockThrow,
   mockResolve,
-  mockResolveThenThrow,
+  mockResolveThenThrow
 };

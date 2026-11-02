@@ -44,8 +44,8 @@ describe("P6-14 — the coverage scope", () => {
     expect(config.collectCoverageFrom.some((p) => p.includes("index.js"))).toBe(false);
     const source = fs.readFileSync(path.join(ROOT, "jest.config.js"), "utf8");
     expect(source).toMatch(/backend\/index\.js`, is NOT measured/);
-    expect(source).toMatch(/liveContract\.smoke\.test\.js/);
-    expect(fs.existsSync(path.join(ROOT, "src/tests/e2e/liveContract.smoke.test.js"))).toBe(true);
+    expect(source).toMatch(/liveContract\.smoke\.test\.ts/);
+    expect(fs.existsSync(path.join(ROOT, "src/tests/e2e/liveContract.smoke.test.ts"))).toBe(true);
   });
 
   it("the excluded layers are exactly the documented five — widening them is a reviewed change", () => {
