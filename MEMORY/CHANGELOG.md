@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-02 — P9-26 bulk batch 06: 50 E2E test files to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-06.md))
+- Bulk Batch 6: 50 E2E test files (3 root e2e specs and 47 module e2e specs) converted from `.js` to strict `.ts`. All test assertions strictly preserved, typecheck clean (`ok`), ratchet floor lowered from 235 to 185.
+
 ### 2026-11-02 — P9-26 bulk batch 05: 50 service suites to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-05.md))
 - Bulk Batch 5: 50 service test suites in `backend/src/tests/services/` converted from `.js` to strict `.ts`. All test assertions strictly preserved, typecheck clean (`ok`), live-suites manifest updated for renamed `.live.test.ts` files, ratchet floor lowered from 285 to 235.
 
