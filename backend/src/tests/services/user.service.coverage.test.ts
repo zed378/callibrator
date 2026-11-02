@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * Additional branch/error coverage for user.service.js
  *
@@ -18,7 +19,7 @@
 
 // A-77: user mutations write their audit row inside the transaction.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({}),
+  logAction: jest.fn().mockResolvedValue({})
 }));
 jest.mock("sequelize", () => ({
   Sequelize: { fn: jest.fn(), col: jest.fn() },
@@ -27,12 +28,12 @@ jest.mock("sequelize", () => ({
     notIn: Symbol("notIn"),
     like: Symbol("like"),
     and: Symbol("and"),
-    or: Symbol("or"),
-  },
+    or: Symbol("or")
+  }
 }));
 
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn() },
+  db: { transaction: jest.fn() }
 }));
 
 jest.mock("../../models", () => ({
@@ -41,31 +42,31 @@ jest.mock("../../models", () => ({
     findByPk: jest.fn(),
     create: jest.fn(),
     findAndCountAll: jest.fn(),
-    findAll: jest.fn(),
+    findAll: jest.fn()
   },
   Roles: {
     findOne: jest.fn(),
-    findByPk: jest.fn(),
-  },
+    findByPk: jest.fn()
+  }
 }));
 
 jest.mock("../../utils/password.util", () => ({
-  hashPassword: jest.fn(),
+  hashPassword: jest.fn()
 }));
 
 jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(),
-  getUploadUrl: jest.fn((f) => `/uploads/public/profile/${f}`),
+  getUploadUrl: jest.fn((f: any) => `/uploads/public/profile/${f}`)
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() }
 }));
 
 jest.mock("../../constants", () => ({
   SUPER_ADMIN_ROLE_ID: "super-admin-uuid",
   DEFAULT_LIMIT: 20,
-  MAX_LIMIT: 100,
+  MAX_LIMIT: 100
 }));
 
 // The request schemas are the real Zod ones. `validateInput`
@@ -96,26 +97,26 @@ const {
   userRoleUpdate,
   userCreate,
   editUser,
-  deleteUser,
+  deleteUser
 } = require("../../services/user.service");
 
 // ================================================================
 // HELPERS
 // ================================================================
 
-const mockTransaction = () => ({
+const mockTransaction: any = () => ({
   commit: jest.fn().mockResolvedValue(undefined),
-  rollback: jest.fn().mockResolvedValue(undefined),
+  rollback: jest.fn().mockResolvedValue(undefined)
 });
 
 /**
  * The service throws plain objects ({ status, message }) from most paths, so
  * `rejects.toThrow()` cannot be used. Capture and return the thrown value.
  */
-const catchErr = async (promise) => {
+const catchErr = async (promise: any) => {
   try {
     await promise;
-  } catch (err) {
+  } catch (err: any) {
     return err;
   }
   throw new Error("Expected the promise to reject, but it resolved");
@@ -136,7 +137,7 @@ describe("user.service - branch & error coverage", () => {
     db.transaction.mockReset().mockResolvedValue(mockTransaction());
     hashPassword.mockReset().mockResolvedValue("hashed_pw");
     deleteUpload.mockReset().mockResolvedValue(undefined);
-    validateInput.mockReset().mockImplementation((data) => ({ ...data }));
+    validateInput.mockReset().mockImplementation((data: any) => ({ ...data }));
   });
 
   // ==============================================================
@@ -152,15 +153,15 @@ describe("user.service - branch & error coverage", () => {
           firstName: "Test",
           lastName: "User",
           password: "password123",
-          roleId: "11111111-1111-4111-8111-111111111111",
-        }),
+          roleId: "11111111-1111-4111-8111-111111111111"
+        })
       );
 
       expect(err.status).toBe(400);
       expect(err.message).toBe("Validation failed");
       expect(err.errors).toEqual([
-        { field: "email", message: "Invalid input: expected string, received undefined" },
-      ]);
+      { field: "email", message: "Invalid input: expected string, received undefined" }]
+      );
       // Validation happens before any DB work
       expect(db.transaction).not.toHaveBeenCalled();
       expect(Users.create).not.toHaveBeenCalled();
@@ -170,7 +171,7 @@ describe("user.service - branch & error coverage", () => {
       validateInput.mockImplementation(realValidateInput);
 
       const err = await catchErr(
-        userRoleUpdate({ userId: "11111111-1111-4111-8111-111111111111", roleId: "not-a-uuid" }),
+        userRoleUpdate({ userId: "11111111-1111-4111-8111-111111111111", roleId: "not-a-uuid" })
       );
 
       expect(err.status).toBe(400);
@@ -183,13 +184,13 @@ describe("user.service - branch & error coverage", () => {
       validateInput.mockImplementation(realValidateInput);
 
       const err = await catchErr(
-        editUser({ userId: "11111111-1111-4111-8111-111111111111", status: "deleted" }),
+        editUser({ userId: "11111111-1111-4111-8111-111111111111", status: "deleted" })
       );
 
       expect(err.status).toBe(400);
       expect(err.errors).toEqual([
-        { field: "status", message: 'Invalid option: expected one of "ACTIVE"|"INACTIVE"|"SUSPENDED"' },
-      ]);
+      { field: "status", message: 'Invalid option: expected one of "ACTIVE"|"INACTIVE"|"SUSPENDED"' }]
+      );
       expect(db.transaction).not.toHaveBeenCalled();
     });
   });
@@ -198,13 +199,13 @@ describe("user.service - branch & error coverage", () => {
   // fetchUsers
   // ==============================================================
   describe("fetchUsers", () => {
-    const makeRow = (extra = {}) => {
+    const makeRow = (extra: any = {}) => {
       const data = { id: "u1", username: "u", email: "u@t.com", ...extra };
       return {
         get: () => data,
         picture: "pic.png",
         first_name: "First",
-        last_name: "Last",
+        last_name: "Last"
       };
     };
 
@@ -214,7 +215,7 @@ describe("user.service - branch & error coverage", () => {
       await fetchUsers({
         tenantId: "t1",
         role: { id: "super-admin-uuid" },
-        includeSystemAccount: true,
+        includeSystemAccount: true
       });
 
       const where = Users.findAndCountAll.mock.calls[0][0].where;
@@ -236,7 +237,7 @@ describe("user.service - branch & error coverage", () => {
       // A-109: a user with NO role is kept — `role_id NOT IN (...)` alone is
       // NULL for them and dropped them from the list.
       expect(where[Op.and]).toContainEqual({
-        [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }],
+        [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }]
       });
     });
 
@@ -248,7 +249,7 @@ describe("user.service - branch & error coverage", () => {
 
       expect(Roles.findOne).toHaveBeenCalledWith({
         where: { name: "SUPER_ADMIN" },
-        attributes: ["id"],
+        attributes: ["id"]
       });
       // Resolved to the super-admin id -> tenant scoping skipped
       expect(Users.findAndCountAll.mock.calls[0][0].where.tenantId).toBeUndefined();
@@ -271,11 +272,11 @@ describe("user.service - branch & error coverage", () => {
 
       const where = Users.findAndCountAll.mock.calls[0][0].where;
       expect(where[Op.or]).toEqual([
-        { username: { [Op.like]: "%  abc%" } },
-        { firstName: { [Op.like]: "%  abc%" } },
-        { lastName: { [Op.like]: "%  abc%" } },
-        { email: { [Op.like]: "%  abc%" } },
-      ]);
+      { username: { [Op.like]: "%  abc%" } },
+      { firstName: { [Op.like]: "%  abc%" } },
+      { lastName: { [Op.like]: "%  abc%" } },
+      { email: { [Op.like]: "%  abc%" } }]
+      );
     });
 
     it("should ignore a whitespace-only search term", async () => {
@@ -314,7 +315,7 @@ describe("user.service - branch & error coverage", () => {
       const where = Users.findAndCountAll.mock.calls[0][0].where;
       expect(where.roleId).toBeUndefined();
       expect(where[Op.and]).toContainEqual({
-        [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }],
+        [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }]
       });
     });
 
@@ -325,11 +326,11 @@ describe("user.service - branch & error coverage", () => {
       await fetchUsers({ tenantId: "t1" });
 
       expect(Users.findAndCountAll.mock.calls[0][0].where[Op.and]).toEqual([
-        // A-109: the super-admin guard, NULL-safe.
-        { [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }] },
-        { username: { [Op.ne]: "sys" } },
-        { email: { [Op.ne]: "sys@mail.com" } },
-      ]);
+      // A-109: the super-admin guard, NULL-safe.
+      { [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }] },
+      { username: { [Op.ne]: "sys" } },
+      { email: { [Op.ne]: "sys@mail.com" } }]
+      );
     });
 
     it("should include the system account when explicitly requested", async () => {
@@ -340,8 +341,8 @@ describe("user.service - branch & error coverage", () => {
 
       // Only the super-admin guard (A-109) — no system-account exclusion.
       expect(Users.findAndCountAll.mock.calls[0][0].where[Op.and]).toEqual([
-        { [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }] },
-      ]);
+      { [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }] }]
+      );
     });
 
     it("should clamp limit to MAX_LIMIT and floor page at 1", async () => {
@@ -366,12 +367,12 @@ describe("user.service - branch & error coverage", () => {
     it("should aggregate status counts and expose pagination flags", async () => {
       Users.findAndCountAll.mockResolvedValue({
         rows: [makeRow()],
-        count: 45,
+        count: 45
       });
       Users.findAll.mockResolvedValue([
-        { status: "ACTIVE", count: "40" },
-        { status: "LOCKED", count: "5" },
-        { status: "GHOST", count: "99" }, // unknown status is ignored
+      { status: "ACTIVE", count: "40" },
+      { status: "LOCKED", count: "5" },
+      { status: "GHOST", count: "99" } // unknown status is ignored
       ]);
 
       const result = await fetchUsers({ tenantId: "t1", page: 2, limit: 20 });
@@ -380,7 +381,7 @@ describe("user.service - branch & error coverage", () => {
         ACTIVE: 40,
         INACTIVE: 0,
         LOCKED: 5,
-        SUSPENDED: 0,
+        SUSPENDED: 0
       });
       expect(result.meta.total).toBe(45);
       expect(result.meta.totalPages).toBe(3);
@@ -399,11 +400,11 @@ describe("user.service - branch & error coverage", () => {
         ACTIVE: 0,
         INACTIVE: 0,
         LOCKED: 0,
-        SUSPENDED: 0,
+        SUSPENDED: 0
       });
       expect(logger.error).toHaveBeenCalledWith(
         "Failed to fetch user status counts",
-        expect.objectContaining({ error: "group by exploded" }),
+        expect.objectContaining({ error: "group by exploded" })
       );
     });
 
@@ -442,7 +443,7 @@ describe("user.service - branch & error coverage", () => {
 
       expect(logger.error).toHaveBeenCalledWith(
         "Error fetching users",
-        expect.objectContaining({ role: "r-9" }),
+        expect.objectContaining({ role: "r-9" })
       );
     });
   });
@@ -506,7 +507,7 @@ describe("user.service - branch & error coverage", () => {
       expect(err).toEqual({ status: 500, message: "db gone" });
       expect(logger.error).toHaveBeenCalledWith(
         "Error checking username availability",
-        expect.objectContaining({ err: "db gone" }),
+        expect.objectContaining({ err: "db gone" })
       );
     });
 
@@ -522,12 +523,12 @@ describe("user.service - branch & error coverage", () => {
   // userRoleUpdate
   // ==============================================================
   describe("userRoleUpdate", () => {
-    const makeUser = (overrides = {}) => ({
+    const makeUser = (overrides: any = {}) => ({
       id: "u1",
       tenantId: "tenant-A",
       role_id: "old-role",
       update: jest.fn().mockResolvedValue({}),
-      ...overrides,
+      ...overrides
     });
 
     it("should throw 404 when the target role does not exist", async () => {
@@ -537,7 +538,7 @@ describe("user.service - branch & error coverage", () => {
       Roles.findByPk.mockResolvedValue(null);
 
       const err = await catchErr(
-        userRoleUpdate({ userId: "u1", roleId: "ghost", actorIsSuperAdmin: true }),
+        userRoleUpdate({ userId: "u1", roleId: "ghost", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 404, message: "Role not found" });
@@ -550,7 +551,7 @@ describe("user.service - branch & error coverage", () => {
       Roles.findByPk.mockResolvedValue({
         id: "super-admin-uuid",
         name: "Anything",
-        status: "active",
+        status: "active"
       });
 
       const err = await catchErr(
@@ -558,8 +559,8 @@ describe("user.service - branch & error coverage", () => {
           userId: "u1",
           roleId: "super-admin-uuid",
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
-        }),
+          actorTenantId: "tenant-A"
+        })
       );
 
       expect(err.status).toBe(403);
@@ -572,7 +573,7 @@ describe("user.service - branch & error coverage", () => {
       Roles.findByPk.mockResolvedValue({
         id: "other",
         name: "SUPER_ADMIN",
-        status: "active",
+        status: "active"
       });
 
       const err = await catchErr(
@@ -580,8 +581,8 @@ describe("user.service - branch & error coverage", () => {
           userId: "u1",
           roleId: "other",
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
-        }),
+          actorTenantId: "tenant-A"
+        })
       );
 
       expect(err.status).toBe(403);
@@ -595,25 +596,25 @@ describe("user.service - branch & error coverage", () => {
       Roles.findByPk.mockResolvedValue({
         id: "super-admin-uuid",
         name: "SUPER_ADMIN",
-        status: "active",
+        status: "active"
       });
 
       const result = await userRoleUpdate({
         userId: "u1",
         roleId: "super-admin-uuid",
         updatedBy: "root",
-        actorIsSuperAdmin: true,
+        actorIsSuperAdmin: true
       });
 
       expect(user.update).toHaveBeenCalledWith(
         { roleId: "super-admin-uuid" },
-        { transaction: tx },
+        { transaction: tx }
       );
       expect(tx.commit).toHaveBeenCalled();
       expect(result.data).toEqual({
         userId: "u1",
         roleId: "super-admin-uuid",
-        roleName: "SUPER_ADMIN",
+        roleName: "SUPER_ADMIN"
       });
     });
 
@@ -625,14 +626,14 @@ describe("user.service - branch & error coverage", () => {
       Roles.findByPk.mockResolvedValue({
         id: "editor",
         name: "EDITOR",
-        status: "active",
+        status: "active"
       });
 
       const result = await userRoleUpdate({
         userId: "u1",
         roleId: "editor",
         actorIsSuperAdmin: false,
-        actorTenantId: "tenant-A",
+        actorTenantId: "tenant-A"
       });
 
       expect(result.status).toBe(200);
@@ -643,12 +644,12 @@ describe("user.service - branch & error coverage", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValue(tx);
       Users.findByPk.mockResolvedValue(
-        makeUser({ update: jest.fn().mockRejectedValue(new Error("write failed")) }),
+        makeUser({ update: jest.fn().mockRejectedValue(new Error("write failed")) })
       );
       Roles.findByPk.mockResolvedValue({ id: "editor", name: "E", status: "active" });
 
       const err = await catchErr(
-        userRoleUpdate({ userId: "u1", roleId: "editor", actorIsSuperAdmin: true }),
+        userRoleUpdate({ userId: "u1", roleId: "editor", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 500, message: "write failed" });
@@ -667,7 +668,7 @@ describe("user.service - branch & error coverage", () => {
       email: "new@test.com",
       password: "password123",
       roleId: "role-1",
-      tenantId: "tenant-client",
+      tenantId: "tenant-client"
     };
 
     const activeRole = { id: "role-1", name: "EDITOR", status: "active", description: "Editors" };
@@ -679,7 +680,7 @@ describe("user.service - branch & error coverage", () => {
       Roles.findByPk.mockResolvedValue({ id: "role-1", name: "E", status: "archived" });
 
       const err = await catchErr(
-        userCreate({ ...baseInput, actorIsSuperAdmin: true }),
+        userCreate({ ...baseInput, actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 400, message: "Cannot assign inactive role to user" });
@@ -710,7 +711,7 @@ describe("user.service - branch & error coverage", () => {
       await userCreate({
         ...baseInput,
         actorIsSuperAdmin: false,
-        actorTenantId: "tenant-actor",
+        actorTenantId: "tenant-actor"
       });
 
       expect(Users.create.mock.calls[0][0].tenantId).toBe("tenant-actor");
@@ -737,7 +738,7 @@ describe("user.service - branch & error coverage", () => {
       Roles.findByPk.mockResolvedValue(activeRole);
 
       const err = await catchErr(
-        userCreate({ ...baseInput, actorIsSuperAdmin: false, actorTenantId: null }),
+        userCreate({ ...baseInput, actorIsSuperAdmin: false, actorTenantId: null })
       );
 
       expect(err).toEqual({ status: 403, message: "Forbidden: your account cannot create users" });
@@ -760,7 +761,7 @@ describe("user.service - branch & error coverage", () => {
         email: "  MiXeD@Test.COM ",
         username: "  spaced  ",
         status: undefined,
-        actorIsSuperAdmin: true,
+        actorIsSuperAdmin: true
       });
 
       expect(hashPassword).toHaveBeenCalledWith("password123");
@@ -773,8 +774,8 @@ describe("user.service - branch & error coverage", () => {
           password: "$2b$hashed",
           roleId: "role-1", // the attribute; `role_id` is dropped since the FK became roleId
           status: "ACTIVE", // defaulted
-          isEmailVerified: true, // the attribute; `is_email_verified` was silently dropped
-        }),
+          isEmailVerified: true // the attribute; `is_email_verified` was silently dropped
+        })
       );
     });
 
@@ -797,7 +798,7 @@ describe("user.service - branch & error coverage", () => {
       const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
         rollback: jest.fn().mockResolvedValue(undefined),
-        finished: "commit",
+        finished: "commit"
       };
       db.transaction.mockResolvedValue(tx);
       Users.findOne.mockResolvedValue(null);
@@ -817,7 +818,7 @@ describe("user.service - branch & error coverage", () => {
   // editUser
   // ==============================================================
   describe("editUser", () => {
-    const makeUser = (overrides = {}) => ({
+    const makeUser = (overrides: any = {}) => ({
       id: "u1",
       tenantId: "tenant-A",
       username: "old",
@@ -828,7 +829,7 @@ describe("user.service - branch & error coverage", () => {
       isEmailVerified: false,
       isActive: true, // A-295: the attribute (the mock used to carry the non-attribute `is_active`)
       update: jest.fn().mockResolvedValue({}),
-      ...overrides,
+      ...overrides
     });
 
     it("should refuse a cross-tenant edit with the not-found 404 (AZ-04)", async () => {
@@ -841,8 +842,8 @@ describe("user.service - branch & error coverage", () => {
           userId: "u1",
           username: "hijack",
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
-        }),
+          actorTenantId: "tenant-A"
+        })
       );
 
       // AZ-04: indistinguishable from a user that does not exist.
@@ -857,7 +858,7 @@ describe("user.service - branch & error coverage", () => {
       Users.findOne.mockResolvedValue({ id: "u2" });
 
       const err = await catchErr(
-        editUser({ userId: "u1", username: "taken", actorIsSuperAdmin: true }),
+        editUser({ userId: "u1", username: "taken", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 409, message: "Username already used" });
@@ -871,7 +872,7 @@ describe("user.service - branch & error coverage", () => {
       Users.findOne.mockResolvedValue({ id: "u2" });
 
       const err = await catchErr(
-        editUser({ userId: "u1", email: "taken@test.com", actorIsSuperAdmin: true }),
+        editUser({ userId: "u1", email: "taken@test.com", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 409, message: "Email already registered" });
@@ -886,7 +887,7 @@ describe("user.service - branch & error coverage", () => {
         userId: "u1",
         username: "old",
         email: "old@test.com",
-        actorIsSuperAdmin: true,
+        actorIsSuperAdmin: true
       });
 
       expect(Users.findOne).not.toHaveBeenCalled();
@@ -912,9 +913,9 @@ describe("user.service - branch & error coverage", () => {
           email: "old@test.com",
           status: "ACTIVE",
           isEmailVerified: false,
-          isActive: true,
+          isActive: true
         },
-        { transaction: tx },
+        { transaction: tx }
       );
     });
 
@@ -935,7 +936,7 @@ describe("user.service - branch & error coverage", () => {
         status: "INACTIVE",
         isEmailVerified: true,
         is_active: false,
-        actorIsSuperAdmin: true,
+        actorIsSuperAdmin: true
       });
 
       expect(user.update).toHaveBeenCalledWith(
@@ -947,9 +948,9 @@ describe("user.service - branch & error coverage", () => {
           email: "new@test.com",
           status: "INACTIVE",
           isEmailVerified: true,
-          isActive: false,
+          isActive: false
         },
-        { transaction: tx },
+        { transaction: tx }
       );
     });
 
@@ -970,7 +971,7 @@ describe("user.service - branch & error coverage", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValue(tx);
       Users.findByPk.mockResolvedValue(
-        makeUser({ update: jest.fn().mockRejectedValue(new Error("update blew up")) }),
+        makeUser({ update: jest.fn().mockRejectedValue(new Error("update blew up")) })
       );
 
       const err = await catchErr(editUser({ userId: "u1", actorIsSuperAdmin: true }));
@@ -979,7 +980,7 @@ describe("user.service - branch & error coverage", () => {
       expect(tx.rollback).toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledWith(
         "Error updating user",
-        expect.objectContaining({ err: "update blew up" }),
+        expect.objectContaining({ err: "update blew up" })
       );
     });
   });
@@ -992,7 +993,7 @@ describe("user.service - branch & error coverage", () => {
   // deleteUser
   // ==============================================================
   describe("deleteUser", () => {
-    const makeUser = (overrides = {}) => ({
+    const makeUser = (overrides: any = {}) => ({
       id: "u2",
       username: "victim",
       email: "victim@test.com",
@@ -1001,14 +1002,14 @@ describe("user.service - branch & error coverage", () => {
       picture: null,
       role: { id: "role-user", name: "USER" },
       destroy: jest.fn().mockResolvedValue(1),
-      ...overrides,
+      ...overrides
     });
 
     it("should throw 404 when the user does not exist", async () => {
       Users.findByPk.mockResolvedValue(null);
 
       const err = await catchErr(
-        deleteUser({ userId: "ghost", deletedBy: "admin", actorIsSuperAdmin: true }),
+        deleteUser({ userId: "ghost", deletedBy: "admin", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 404, message: "User not found" });
@@ -1019,12 +1020,12 @@ describe("user.service - branch & error coverage", () => {
       Users.findByPk.mockResolvedValue(user);
 
       const err = await catchErr(
-        deleteUser({ userId: "u2", deletedBy: "root", actorIsSuperAdmin: true }),
+        deleteUser({ userId: "u2", deletedBy: "root", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({
         status: 403,
-        message: "The default system administrator account cannot be deleted",
+        message: "The default system administrator account cannot be deleted"
       });
       expect(user.destroy).not.toHaveBeenCalled();
     });
@@ -1034,7 +1035,7 @@ describe("user.service - branch & error coverage", () => {
       Users.findByPk.mockResolvedValue(user);
 
       const err = await catchErr(
-        deleteUser({ userId: "u2", deletedBy: "root", actorIsSuperAdmin: true }),
+        deleteUser({ userId: "u2", deletedBy: "root", actorIsSuperAdmin: true })
       );
 
       expect(err.status).toBe(403);
@@ -1050,13 +1051,13 @@ describe("user.service - branch & error coverage", () => {
           userId: "u2",
           deletedBy: "admin",
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
-        }),
+          actorTenantId: "tenant-A"
+        })
       );
 
       expect(err).toEqual({
         status: 403,
-        message: "Forbidden: cannot delete a SUPER_ADMIN account",
+        message: "Forbidden: cannot delete a SUPER_ADMIN account"
       });
       expect(user.destroy).not.toHaveBeenCalled();
     });
@@ -1069,8 +1070,8 @@ describe("user.service - branch & error coverage", () => {
           userId: "u2",
           deletedBy: "admin",
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
-        }),
+          actorTenantId: "tenant-A"
+        })
       );
 
       expect(err.status).toBe(403);
@@ -1084,8 +1085,8 @@ describe("user.service - branch & error coverage", () => {
           userId: "u2",
           deletedBy: "admin",
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
-        }),
+          actorTenantId: "tenant-A"
+        })
       );
 
       expect(err.status).toBe(403);
@@ -1099,7 +1100,7 @@ describe("user.service - branch & error coverage", () => {
         userId: "u2",
         deletedBy: "admin",
         actorIsSuperAdmin: false,
-        actorTenantId: "tenant-A",
+        actorTenantId: "tenant-A"
       });
 
       expect(result.success).toBe(true);
@@ -1113,14 +1114,14 @@ describe("user.service - branch & error coverage", () => {
       const result = await deleteUser({
         userId: "u2",
         deletedBy: "root",
-        actorIsSuperAdmin: true,
+        actorIsSuperAdmin: true
       });
 
       expect(user.destroy).toHaveBeenCalled();
       expect(result.data).toEqual({
         id: "u2",
         username: "victim",
-        email: "victim@test.com",
+        email: "victim@test.com"
       });
     });
 
@@ -1135,7 +1136,7 @@ describe("user.service - branch & error coverage", () => {
       expect(deleteUpload).toHaveBeenCalledWith("mine.png", "uploads/public/profile");
       expect(user.destroy).toHaveBeenCalled();
       expect(user.destroy.mock.invocationCallOrder[0]).toBeLessThan(
-        deleteUpload.mock.invocationCallOrder[0],
+        deleteUpload.mock.invocationCallOrder[0]
       );
     });
 
@@ -1157,12 +1158,12 @@ describe("user.service - branch & error coverage", () => {
       const result = await deleteUser({
         userId: "u2",
         deletedBy: "admin",
-        actorIsSuperAdmin: true,
+        actorIsSuperAdmin: true
       });
 
       expect(logger.warn).toHaveBeenCalledWith(
         "Failed to delete user avatar: mine.png",
-        expect.any(Error),
+        expect.any(Error)
       );
       expect(user.destroy).toHaveBeenCalled();
       expect(result.success).toBe(true);
@@ -1170,17 +1171,17 @@ describe("user.service - branch & error coverage", () => {
 
     it("should map a destroy failure to a 500", async () => {
       Users.findByPk.mockResolvedValue(
-        makeUser({ destroy: jest.fn().mockRejectedValue(new Error("FK constraint")) }),
+        makeUser({ destroy: jest.fn().mockRejectedValue(new Error("FK constraint")) })
       );
 
       const err = await catchErr(
-        deleteUser({ userId: "u2", deletedBy: "admin", actorIsSuperAdmin: true }),
+        deleteUser({ userId: "u2", deletedBy: "admin", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 500, message: "FK constraint" });
       expect(logger.error).toHaveBeenCalledWith(
         "Error deleting user",
-        expect.objectContaining({ err: "FK constraint" }),
+        expect.objectContaining({ err: "FK constraint" })
       );
     });
 
@@ -1198,7 +1199,7 @@ describe("user.service - branch & error coverage", () => {
       Users.findByPk.mockRejectedValue({ status: 418 });
 
       const err = await catchErr(
-        deleteUser({ userId: "u2", deletedBy: "admin", actorIsSuperAdmin: true }),
+        deleteUser({ userId: "u2", deletedBy: "admin", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 418, message: "Internal server error" });
@@ -1209,29 +1210,29 @@ describe("user.service - branch & error coverage", () => {
   // HOST_URL-derived avatar base URL
   // ==============================================================
   describe("avatarBaseUrl", () => {
-    const originalHostUrl = process.env.HOST_URL;
+    const originalHostUrl = process.env["HOST_URL"];
 
     afterEach(() => {
       if (originalHostUrl === undefined) {
-        delete process.env.HOST_URL;
+        delete process.env["HOST_URL"];
       } else {
-        process.env.HOST_URL = originalHostUrl;
+        process.env["HOST_URL"] = originalHostUrl;
       }
     });
 
     it("should prefix the avatar base URL with HOST_URL when it is set", async () => {
-      process.env.HOST_URL = "https://cdn.example.com";
+      process.env["HOST_URL"] = "https://cdn.example.com";
       Users.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
 
       const result = await fetchUsers({ tenantId: "t1" });
 
       expect(result.data.avatarBaseUrl).toBe(
-        "https://cdn.example.com/uploads/public/profile/",
+        "https://cdn.example.com/uploads/public/profile/"
       );
     });
 
     it("should fall back to a relative avatar base URL when HOST_URL is unset", async () => {
-      delete process.env.HOST_URL;
+      delete process.env["HOST_URL"];
       Users.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
 
       const result = await fetchUsers({ tenantId: "t1" });
@@ -1240,12 +1241,12 @@ describe("user.service - branch & error coverage", () => {
     });
 
     it("should shape fetchSpecificUser with the HOST_URL-derived picture fields", async () => {
-      process.env.HOST_URL = "https://cdn.example.com";
+      process.env["HOST_URL"] = "https://cdn.example.com";
       Users.findByPk.mockResolvedValue({
         get: () => ({ id: "u1", username: "test" }),
         picture: "me.png",
         first_name: "Te",
-        last_name: "St",
+        last_name: "St"
       });
 
       const result = await fetchSpecificUser("u1");
@@ -1256,7 +1257,7 @@ describe("user.service - branch & error coverage", () => {
         avatarUrl: "me.png",
         picture: "me.png",
         first_name: "Te",
-        last_name: "St",
+        last_name: "St"
       });
     });
   });
@@ -1277,7 +1278,7 @@ describe("user.service - branch & error coverage", () => {
       db.transaction.mockRejectedValue(new Error("pool exhausted"));
 
       const err = await catchErr(
-        userRoleUpdate({ userId: "u1", roleId: "r1", actorIsSuperAdmin: true }),
+        userRoleUpdate({ userId: "u1", roleId: "r1", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 500, message: "pool exhausted" });
@@ -1288,7 +1289,7 @@ describe("user.service - branch & error coverage", () => {
       Users.findByPk.mockRejectedValue({ status: 409 });
 
       const err = await catchErr(
-        userRoleUpdate({ userId: "u1", roleId: "r1", actorIsSuperAdmin: true }),
+        userRoleUpdate({ userId: "u1", roleId: "r1", actorIsSuperAdmin: true })
       );
 
       expect(err).toEqual({ status: 409, message: "Internal server error" });
@@ -1303,8 +1304,8 @@ describe("user.service - branch & error coverage", () => {
           email: "e@e.com",
           password: "p",
           roleId: "r1",
-          actorIsSuperAdmin: true,
-        }),
+          actorIsSuperAdmin: true
+        })
       );
 
       expect(err).toEqual({ status: 500, message: "pool exhausted" });
@@ -1320,8 +1321,8 @@ describe("user.service - branch & error coverage", () => {
           email: "e@e.com",
           password: "p",
           roleId: "r1",
-          actorIsSuperAdmin: true,
-        }),
+          actorIsSuperAdmin: true
+        })
       );
 
       expect(err).toEqual({ status: 409, message: "Internal server error" });
@@ -1356,11 +1357,11 @@ describe("user.service - branch & error coverage", () => {
     });
 
     it("fetchSpecificUser should fall back to a relative avatar base URL when HOST_URL is unset", async () => {
-      const original = process.env.HOST_URL;
-      delete process.env.HOST_URL;
+      const original = process.env["HOST_URL"];
+      delete process.env["HOST_URL"];
       Users.findByPk.mockResolvedValue({
         get: () => ({ id: "u1" }),
-        picture: null,
+        picture: null
       });
 
       const result = await fetchSpecificUser("u1");
@@ -1369,7 +1370,7 @@ describe("user.service - branch & error coverage", () => {
       expect(result.data.avatarUrl).toBeNull();
 
       if (original !== undefined) {
-        process.env.HOST_URL = original;
+        process.env["HOST_URL"] = original;
       }
     });
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * batchJob.worker — the consumer that drives batch jobs (W-06, W-07, W-31).
  *
@@ -22,40 +23,40 @@ jest.mock("../../services/batchJob.service", () => ({
   BATCH_DLQ: "batch_jobs_dlq",
   runJob: jest.fn(),
   failAbandonedJobs: jest.fn(),
-  failInterruptedJobs: jest.fn(),
+  failInterruptedJobs: jest.fn()
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }));
 
 jest.mock("amqplib", () => ({ connect: jest.fn() }));
 jest.mock("../../services/redis.service", () => ({
   getRedisConnection: jest.fn(() => null),
-  del: jest.fn(),
+  del: jest.fn()
 }));
 
 const { createBroker, settle } = require("../fixtures/fakeAmqp");
 
 const ENV = { ...process.env };
 
-const msgFor = (payload) => ({ content: Buffer.from(JSON.stringify(payload)) });
+const msgFor = (payload: any) => ({ content: Buffer.from(JSON.stringify(payload)) });
 
-const waitFor = async (predicate, ms = 1000) => {
+const waitFor = async (predicate: any, ms: any = 1000) => {
   const until = Date.now() + ms;
   while (!predicate()) {
     if (Date.now() > until) {
       throw new Error("condition not met in time");
     }
-    await new Promise((r) => setTimeout(r, 2));
+    await new Promise((r: any) => setTimeout(r, 2));
   }
 };
 
 describe("handleMessage (mocked broker)", () => {
-  let worker;
-  let rabbitmq;
-  let batchJobService;
-  let logger;
+  let worker: any;
+  let rabbitmq: any;
+  let batchJobService: any;
+  let logger: any;
   const ch = { id: "arrival-channel" };
 
   beforeEach(() => {
@@ -65,7 +66,7 @@ describe("handleMessage (mocked broker)", () => {
       nack: jest.fn(),
       assertQueue: jest.fn(),
       startConsumer: jest.fn(),
-      stopConsumers: jest.fn(),
+      stopConsumers: jest.fn()
     }));
     rabbitmq = require("../../services/rabbitmq.service");
     batchJobService = require("../../services/batchJob.service");
@@ -99,7 +100,7 @@ describe("handleMessage (mocked broker)", () => {
     expect(rabbitmq.ack).toHaveBeenCalledWith(ch, msg);
     expect(logger.info).toHaveBeenCalledWith("Batch job message settled without running", {
       jobId: "j1",
-      reason: "job is COMPLETED",
+      reason: "job is COMPLETED"
     });
   });
 
@@ -124,10 +125,10 @@ describe("handleMessage (mocked broker)", () => {
   });
 
   it.each([
-    ["not JSON", "not json"],
-    ["JSON null", "null"],
-    ["a JSON number", "42"],
-  ])("drops a message whose body is %s, without running anything", async (_label, body) => {
+  ["not JSON", "not json"],
+  ["JSON null", "null"],
+  ["a JSON number", "42"]]
+  )("drops a message whose body is %s, without running anything", async (_label: any, body: any) => {
     const msg = { content: Buffer.from(body) };
 
     await worker.handleMessage(msg, ch);
@@ -138,7 +139,7 @@ describe("handleMessage (mocked broker)", () => {
   });
 
   it("starts nothing but the sweep in inline mode, and the sweep runs once however often it starts", async () => {
-    process.env.BATCH_JOBS_INLINE = "true";
+    process.env["BATCH_JOBS_INLINE"] = "true";
     batchJobService.failAbandonedJobs.mockResolvedValue(0);
 
     await expect(worker.startBatchJobWorker()).resolves.toBe(false);
@@ -152,7 +153,7 @@ describe("handleMessage (mocked broker)", () => {
   });
 
   it("a failing sweep is logged, never thrown", async () => {
-    process.env.BATCH_JOBS_INLINE = "true";
+    process.env["BATCH_JOBS_INLINE"] = "true";
     batchJobService.failAbandonedJobs.mockRejectedValue(new Error("db down"));
 
     await expect(worker.startBatchJobWorker()).resolves.toBe(false);
@@ -163,7 +164,7 @@ describe("handleMessage (mocked broker)", () => {
   });
 
   it("registers a supervised consumer with prefetch and a setup that re-declares the queues", async () => {
-    process.env.BATCH_PREFETCH = "3";
+    process.env["BATCH_PREFETCH"] = "3";
     batchJobService.failAbandonedJobs.mockResolvedValue(0);
     rabbitmq.startConsumer.mockResolvedValue(true);
 
@@ -173,7 +174,7 @@ describe("handleMessage (mocked broker)", () => {
     expect(queue).toBe("batch_jobs");
     expect(handler).toBe(worker.handleMessage);
     expect(options.prefetch).toBe(3);
-    const consumerChannel = {};
+    const consumerChannel: any = {};
     await options.setup(consumerChannel);
     expect(rabbitmq.assertQueue).toHaveBeenCalledWith("batch_jobs", "batch_jobs_dlq", consumerChannel);
     expect(logger.info).toHaveBeenCalledWith("Batch job worker started (RabbitMQ)");
@@ -203,8 +204,8 @@ describe("handleMessage (mocked broker)", () => {
   });
 
   it("stop fails the jobs still running at the deadline; a failure to do so is logged", async () => {
-    let finish;
-    batchJobService.runJob.mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+    let finish: any;
+    batchJobService.runJob.mockImplementation(() => new Promise((resolve: any) => finish = resolve));
     const inFlight = worker.handleMessage(msgFor({ jobId: "j7", tenantId: "t1" }), ch);
     rabbitmq.stopConsumers.mockResolvedValue({ drained: false, pending: 1 });
     batchJobService.failInterruptedJobs.mockRejectedValueOnce(new Error("db gone"));
@@ -214,7 +215,7 @@ describe("handleMessage (mocked broker)", () => {
     expect(batchJobService.failInterruptedJobs).toHaveBeenCalledWith(["j7"]);
     expect(logger.error).toHaveBeenCalledWith(
       "Could not mark interrupted batch jobs FAILED; the sweep will",
-      { error: "db gone" },
+      { error: "db gone" }
     );
     finish({ ran: true });
     await inFlight;
@@ -222,10 +223,10 @@ describe("handleMessage (mocked broker)", () => {
 });
 
 describe("the worker on rabbitmq.service over an in-memory broker (W-06, W-07, W-31)", () => {
-  let broker;
-  let worker;
-  let rabbitmq;
-  let batchJobService;
+  let broker: any;
+  let worker: any;
+  let rabbitmq: any;
+  let batchJobService: any;
 
   beforeEach(() => {
     jest.resetModules();
@@ -235,7 +236,7 @@ describe("the worker on rabbitmq.service over an in-memory broker (W-06, W-07, W
       RABBITMQ_RECONNECT_BASE_MS: "5",
       RABBITMQ_RECONNECT_MAX_MS: "20",
       RABBITMQ_DRAIN_TIMEOUT_MS: "20",
-      BATCH_JOBS_INLINE: "false",
+      BATCH_JOBS_INLINE: "false"
     };
     broker = createBroker();
     require("amqplib").connect.mockImplementation(broker.connect);
@@ -283,8 +284,8 @@ describe("the worker on rabbitmq.service over an in-memory broker (W-06, W-07, W
   });
 
   it("shutdown mid-job fails the job; its redelivery elsewhere settles without running it (W-07)", async () => {
-    let finish;
-    batchJobService.runJob.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    let finish: any;
+    batchJobService.runJob.mockImplementationOnce(() => new Promise((resolve: any) => finish = resolve));
     await worker.startBatchJobWorker();
     broker.publish("batch_jobs", { jobId: "long", tenantId: "t1" });
     await waitFor(() => batchJobService.runJob.mock.calls.length === 1);

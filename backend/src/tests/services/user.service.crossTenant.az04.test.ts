@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * AZ-04 (user.service instance) — cross-tenant must be indistinguishable from
  * not-found.
@@ -18,7 +19,7 @@
 
 // A-77: user mutations write their audit row inside the transaction.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({}),
+  logAction: jest.fn().mockResolvedValue({})
 }));
 jest.mock("sequelize", () => ({
   Sequelize: { fn: jest.fn(), col: jest.fn() },
@@ -26,31 +27,31 @@ jest.mock("sequelize", () => ({
     ne: Symbol("ne"),
     like: Symbol("like"),
     or: Symbol("or"),
-    notIn: Symbol("notIn"),
-  },
+    notIn: Symbol("notIn")
+  }
 }));
 
 jest.mock("../../config", () => ({ db: { transaction: jest.fn() } }));
 
 jest.mock("../../models", () => ({
   Users: { findByPk: jest.fn(), findOne: jest.fn() },
-  Roles: { findByPk: jest.fn() },
+  Roles: { findByPk: jest.fn() }
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() }
 }));
 
 jest.mock("../../utils/password.util", () => ({ hashPassword: jest.fn() }));
 jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(),
-  getUploadUrl: jest.fn(),
+  getUploadUrl: jest.fn()
 }));
 
 jest.mock("../../constants", () => ({
   SUPER_ADMIN_ROLE_ID: "super-admin-uuid",
   DEFAULT_LIMIT: 20,
-  MAX_LIMIT: 100,
+  MAX_LIMIT: 100
 }));
 
 // The request schemas are REAL (P9-11: Zod through validators/input), so the
@@ -62,7 +63,7 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 const {
   userRoleUpdate,
   editUser,
-  deleteUser,
+  deleteUser
 } = require("../../services/user.service");
 
 // Ids the request schemas accept (they are uuids since P9-11 validates for real).
@@ -71,7 +72,7 @@ const ROLE_X = "00000002-0000-4000-8000-000000000002";
 
 const ACTOR = { actorIsSuperAdmin: false, actorTenantId: "tenant-A" };
 
-const foreignUser = (overrides = {}) => ({
+const foreignUser = (overrides: any = {}) => ({
   id: U_FOREIGN,
   username: "victim",
   email: "victim@b.example",
@@ -81,14 +82,14 @@ const foreignUser = (overrides = {}) => ({
   update: jest.fn(),
   destroy: jest.fn(),
   get: () => ({ id: U_FOREIGN }),
-  ...overrides,
+  ...overrides
 });
 
 /** Run `call` and return whatever it rejected with (fail if it resolved). */
-const rejectionOf = async (call) => {
+const rejectionOf = async (call: any) => {
   try {
     await call();
-  } catch (err) {
+  } catch (err: any) {
     return err;
   }
   throw new Error("expected the call to reject");
@@ -99,35 +100,35 @@ const rejectionOf = async (call) => {
  * for, so the "missing" and "foreign" cases use the same id.
  */
 const SITES = [
-  {
-    name: "userRoleUpdate",
-    run: () =>
-      userRoleUpdate({
-        userId: U_FOREIGN,
-        roleId: ROLE_X,
-        updatedBy: "actor",
-        ...ACTOR,
-      }),
-  },
-  {
-    name: "editUser",
-    run: () =>
-      editUser({
-        userId: U_FOREIGN,
-        firstName: "Changed",
-        updatedBy: "actor",
-        ...ACTOR,
-      }),
-  },
-  {
-    name: "deleteUser",
-    run: () =>
-      deleteUser({ userId: U_FOREIGN, deletedBy: "actor", ...ACTOR }),
-  },
-];
+{
+  name: "userRoleUpdate",
+  run: () =>
+  userRoleUpdate({
+    userId: U_FOREIGN,
+    roleId: ROLE_X,
+    updatedBy: "actor",
+    ...ACTOR
+  })
+},
+{
+  name: "editUser",
+  run: () =>
+  editUser({
+    userId: U_FOREIGN,
+    firstName: "Changed",
+    updatedBy: "actor",
+    ...ACTOR
+  })
+},
+{
+  name: "deleteUser",
+  run: () =>
+  deleteUser({ userId: U_FOREIGN, deletedBy: "actor", ...ACTOR })
+}];
+
 
 describe("user.service — AZ-04 cross-tenant is indistinguishable from not-found", () => {
-  let tx;
+  let tx: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -135,7 +136,7 @@ describe("user.service — AZ-04 cross-tenant is indistinguishable from not-foun
     db.transaction.mockResolvedValue(tx);
   });
 
-  describe.each(SITES)("$name", ({ name, run }) => {
+  describe.each(SITES)("$name", ({ name, run }: any) => {
     it("a foreign user and a nonexistent user produce byte-identical errors", async () => {
       Users.findByPk.mockResolvedValueOnce(null);
       const missing = await rejectionOf(run);
@@ -162,8 +163,8 @@ describe("user.service — AZ-04 cross-tenant is indistinguishable from not-foun
           operation: name,
           userId: U_FOREIGN,
           userTenantId: "tenant-B",
-          actorTenantId: "tenant-A",
-        }),
+          actorTenantId: "tenant-A"
+        })
       );
     });
 
@@ -184,10 +185,10 @@ describe("user.service — AZ-04 cross-tenant is indistinguishable from not-foun
     // probing another tenant's system account got "cannot be deleted" (403) —
     // confirming the id. The tenant check now runs first.
     Users.findByPk.mockResolvedValueOnce(
-      foreignUser({ username: "sys", email: "sys@mail.com" }),
+      foreignUser({ username: "sys", email: "sys@mail.com" })
     );
     const err = await rejectionOf(() =>
-      deleteUser({ userId: U_FOREIGN, deletedBy: "actor", ...ACTOR }),
+    deleteUser({ userId: U_FOREIGN, deletedBy: "actor", ...ACTOR })
     );
 
     expect(err).toEqual({ status: 404, message: "User not found" });
@@ -195,20 +196,20 @@ describe("user.service — AZ-04 cross-tenant is indistinguishable from not-foun
 
   it("deleteUser: a super-admin is still refused the system account with the explicit 403", async () => {
     Users.findByPk.mockResolvedValueOnce(
-      foreignUser({ username: "sys", email: "sys@mail.com" }),
+      foreignUser({ username: "sys", email: "sys@mail.com" })
     );
     const err = await rejectionOf(() =>
-      deleteUser({
-        userId: U_FOREIGN,
-        deletedBy: "actor",
-        actorIsSuperAdmin: true,
-        actorTenantId: null,
-      }),
+    deleteUser({
+      userId: U_FOREIGN,
+      deletedBy: "actor",
+      actorIsSuperAdmin: true,
+      actorTenantId: null
+    })
     );
 
     expect(err).toEqual({
       status: 403,
-      message: "The default system administrator account cannot be deleted",
+      message: "The default system administrator account cannot be deleted"
     });
   });
 });

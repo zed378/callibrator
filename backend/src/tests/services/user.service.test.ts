@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * Tests for user.service.js
  *
@@ -17,7 +18,7 @@
 // because Jest resolves "sequelize" to this mock → infinite recursion.
 // A-77: user mutations write their audit row inside the transaction.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({}),
+  logAction: jest.fn().mockResolvedValue({})
 }));
 jest.mock("sequelize", () => ({
   Sequelize: { fn: jest.fn(), col: jest.fn() },
@@ -59,13 +60,13 @@ jest.mock("sequelize", () => ({
     col: Symbol("col"),
     placeholder: Symbol("placeholder"),
     join: Symbol("join"),
-    match: Symbol("match"),
-  },
+    match: Symbol("match")
+  }
 }));
 
 // --- config ---
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn() },
+  db: { transaction: jest.fn() }
 }));
 
 // --- models ---
@@ -75,26 +76,27 @@ jest.mock("../../models", () => ({
     findByPk: jest.fn().mockResolvedValue(null),
     create: jest.fn().mockResolvedValue({}),
     findAndCountAll: jest.fn().mockResolvedValue({ rows: [], count: 0 }),
-    findAll: jest.fn().mockResolvedValue([]),
+    findAll: jest.fn().mockResolvedValue([])
   },
   Roles: {
     findOne: jest.fn().mockResolvedValue(null),
     findByPk: jest.fn().mockResolvedValue(null),
     create: jest.fn().mockResolvedValue({}),
     findAndCountAll: jest.fn().mockResolvedValue({ rows: [], count: 0 }),
-    findAll: jest.fn().mockResolvedValue([]),
-  },
+    findAll: jest.fn().mockResolvedValue([])
+  }
 }));
 
 // --- utils ---
 jest.mock("../../utils/password.util", () => ({ hashPassword: jest.fn().mockResolvedValue("hashed_pw") }));
 jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(),
-  getUploadUrl: jest.fn((f) => `/uploads/public/profile/${f}`),
+  getUploadUrl: jest.fn((f: any) => `/uploads/public/profile/${f}`)
 }));
 jest.mock("../../utils/appError.util", () => {
   class AppError extends Error {
-    constructor(status, message) {
+    status: any;
+    constructor(status: any, message: any) {
       super(message);
       this.name = "AppError";
       this.status = status;
@@ -105,14 +107,14 @@ jest.mock("../../utils/appError.util", () => {
 
 // --- middleware ---
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() }
 }));
 
 // --- constants ---
 jest.mock("../../constants", () => ({
   SUPER_ADMIN_ROLE_ID: "super-admin-uuid",
   DEFAULT_LIMIT: 20,
-  MAX_LIMIT: 100,
+  MAX_LIMIT: 100
 }));
 
 // --- validators ---
@@ -137,7 +139,7 @@ const {
   userRoleUpdate,
   userCreate,
   editUser,
-  deleteUser,
+  deleteUser
 } = require("../../services/user.service");
 
 // Ids the request schemas accept (they are uuids since P9-11 validates for real).
@@ -159,22 +161,22 @@ const ROLE_USER = "0000000d-0000-4000-8000-00000000000d";
 // HELPERS
 // ================================================================
 
-const mockTransaction = () => ({
+const mockTransaction: any = () => ({
   commit: jest.fn(),
-  rollback: jest.fn(),
+  rollback: jest.fn()
 });
 
 // The service throws plain objects like { status: 404, message: "..." }
 // `expect().rejects.toThrow()` only catches Error instances.
 // Helper: assert rejection with a message match on the thrown object.
-const expectRejectsWithMessage = async (promise, message) => {
+const expectRejectsWithMessage = async (promise: any, message: any) => {
   try {
     await promise;
     expect(true).toBe(false); // Should have thrown
-  } catch (err) {
+  } catch (err: any) {
     // err may be a plain object { status, message } or an Error
     expect(err).toBeDefined();
-    const actual = (err && err.message) || String(err);
+    const actual = err && err.message || String(err);
     expect(actual).toContain(message);
   }
 };
@@ -193,7 +195,7 @@ describe("user.service", () => {
   // fetchUsers
   // --------------------------------------------------------------
   describe("fetchUsers", () => {
-    const makeUserRow = (extra = {}) => {
+    const makeUserRow = (extra: any = {}) => {
       const data = {
         id: U1,
         username: "testuser",
@@ -201,21 +203,21 @@ describe("user.service", () => {
         avatar_url: "avatar.png",
         firstName: "Test",
         lastName: "User",
-        ...extra,
+        ...extra
       };
       return {
         get: () => data,
         picture: data.avatar_url,
         first_name: data.firstName,
         last_name: data.lastName,
-        role: { get: () => ({ id: R1, name: "admin", description: "Admin" }) },
+        role: { get: () => ({ id: R1, name: "admin", description: "Admin" }) }
       };
     };
 
     it("should fetch users with pagination", async () => {
       Users.findAndCountAll.mockResolvedValueOnce({
         rows: [makeUserRow()],
-        count: 1,
+        count: 1
       });
       db.transaction.mockResolvedValueOnce(mockTransaction());
       Users.findAll.mockResolvedValueOnce([{ status: "ACTIVE", count: 5 }]);
@@ -240,13 +242,13 @@ describe("user.service", () => {
   // --------------------------------------------------------------
   describe("fetchSpecificUser", () => {
     it("should return user by ID", async () => {
-      const mockUser = {
+      const mockUser: any = {
         get: () => ({
           id: U1,
           username: "test",
           email: "test@test.com",
-          avatar_url: "a.png",
-        }),
+          avatar_url: "a.png"
+        })
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
 
@@ -282,11 +284,11 @@ describe("user.service", () => {
   // userRoleUpdate
   // --------------------------------------------------------------
   describe("userRoleUpdate", () => {
-    const makeMockUser = (overrides = {}) => ({
+    const makeMockUser = (overrides: any = {}) => ({
       get: () => ({ id: U1, role_id: OLD_ROLE, ...overrides }),
       // A-369: a tenant role needs a tenant (a tenant-less account is refused).
       tenantId: "tenant-a369",
-      update: jest.fn().mockResolvedValue({}),
+      update: jest.fn().mockResolvedValue({})
     });
 
     it("should update user role successfully", async () => {
@@ -298,7 +300,7 @@ describe("user.service", () => {
         userId: U1,
         roleId: NEW_ROLE,
         updatedBy: "admin",
-        actorIsSuperAdmin: true,
+        actorIsSuperAdmin: true
       });
       expect(result.success).toBe(true);
       expect(result.data.roleName).toBe("editor");
@@ -309,7 +311,7 @@ describe("user.service", () => {
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
         userRoleUpdate({ userId: NONEXISTENT, roleId: ROLE_UUID, updatedBy: "admin" }),
-        "User not found",
+        "User not found"
       );
     });
 
@@ -319,23 +321,23 @@ describe("user.service", () => {
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
         userRoleUpdate({ userId: U1, roleId: INACTIVE_ROLE, updatedBy: "admin", actorIsSuperAdmin: true }),
-        "Cannot assign inactive role to user",
+        "Cannot assign inactive role to user"
       );
     });
 
     it("should throw 400 when user already has this role", async () => {
-      const mockUser = {
+      const mockUser: any = {
         get: () => ({ id: U1, roleId: SAME_ROLE }),
         roleId: SAME_ROLE, // the attribute; `role_id` is gone (A-148)
         tenantId: "tenant-a369", // A-369
-        update: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({})
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       Roles.findByPk.mockResolvedValueOnce({ id: SAME_ROLE, name: "admin", status: "active" });
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
         userRoleUpdate({ userId: U1, roleId: SAME_ROLE, updatedBy: "admin", actorIsSuperAdmin: true }),
-        "User already has this role",
+        "User already has this role"
       );
     });
   });
@@ -359,14 +361,14 @@ describe("user.service", () => {
         is_email_verified: true,
         createdAt: new Date(),
         isEmailVerified: true,
-        roleId: R1,
+        roleId: R1
       };
       Users.create.mockResolvedValueOnce(createdUser);
       Users.findByPk.mockResolvedValueOnce(createdUser);
       db.transaction.mockResolvedValueOnce({
         commit: jest.fn(),
         rollback: jest.fn(),
-        finished: Promise.resolve(),
+        finished: Promise.resolve()
       });
 
       const result = await userCreate({
@@ -378,7 +380,7 @@ describe("user.service", () => {
         roleId: R1,
         tenantId: T1,
         // A-125 follow-up: a non-super-admin creates in its OWN tenant.
-        actorTenantId: T1,
+        actorTenantId: T1
       });
       expect(result.success).toBe(true);
       expect(result.data.username).toBe("newuser");
@@ -389,7 +391,7 @@ describe("user.service", () => {
       db.transaction.mockResolvedValueOnce({
         commit: jest.fn(),
         rollback: jest.fn(),
-        finished: Promise.resolve(),
+        finished: Promise.resolve()
       });
       await expectRejectsWithMessage(
         userCreate({
@@ -399,9 +401,9 @@ describe("user.service", () => {
           email: "t@t.com",
           password: "password123",
           roleId: R1,
-          actorTenantId: T1,
+          actorTenantId: T1
         }),
-        "Username already used",
+        "Username already used"
       );
     });
 
@@ -411,7 +413,7 @@ describe("user.service", () => {
       db.transaction.mockResolvedValueOnce({
         commit: jest.fn(),
         rollback: jest.fn(),
-        finished: Promise.resolve(),
+        finished: Promise.resolve()
       });
       await expectRejectsWithMessage(
         userCreate({
@@ -421,9 +423,9 @@ describe("user.service", () => {
           email: "taken@test.com",
           password: "password123",
           roleId: R1,
-          actorTenantId: T1,
+          actorTenantId: T1
         }),
-        "Email already registered",
+        "Email already registered"
       );
     });
 
@@ -433,7 +435,7 @@ describe("user.service", () => {
       db.transaction.mockResolvedValueOnce({
         commit: jest.fn(),
         rollback: jest.fn(),
-        finished: Promise.resolve(),
+        finished: Promise.resolve()
       });
       await expectRejectsWithMessage(
         userCreate({
@@ -443,9 +445,9 @@ describe("user.service", () => {
           email: "n@n.com",
           password: "password123",
           roleId: MISSING_ROLE,
-          actorIsSuperAdmin: true,
+          actorIsSuperAdmin: true
         }),
-        "Role not found",
+        "Role not found"
       );
     });
   });
@@ -455,7 +457,7 @@ describe("user.service", () => {
   // --------------------------------------------------------------
   describe("editUser", () => {
     it("should update user successfully", async () => {
-      const mockUser = {
+      const mockUser: any = {
         get: () => ({
           id: U1,
           username: "old",
@@ -466,7 +468,7 @@ describe("user.service", () => {
           tenantId: T1,
           is_email_verified: true,
           is_active: true,
-          updatedAt: new Date(),
+          updatedAt: new Date()
         }),
         id: U1,
         username: "newuser",
@@ -479,7 +481,7 @@ describe("user.service", () => {
         isEmailVerified: true,
         is_active: true,
         updatedAt: new Date(),
-        update: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({})
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       db.transaction.mockResolvedValueOnce(mockTransaction());
@@ -492,7 +494,7 @@ describe("user.service", () => {
         email: "new@test.com",
         status: "ACTIVE",
         updatedBy: "admin",
-        actorIsSuperAdmin: true,
+        actorIsSuperAdmin: true
       });
       expect(result.success).toBe(true);
       expect(result.data.username).toBe("newuser");
@@ -509,18 +511,18 @@ describe("user.service", () => {
   // --------------------------------------------------------------
   describe("deleteUser", () => {
     it("should delete user successfully", async () => {
-      const mockUser = {
+      const mockUser: any = {
         get: () => ({
           id: U1,
           username: "touser",
           email: "t@t.com",
-          picture: "/uploads/pic.png",
+          picture: "/uploads/pic.png"
         }),
         id: U1,
         username: "touser",
         email: "t@t.com",
         picture: "/uploads/pic.png",
-        destroy: jest.fn().mockResolvedValue(1),
+        destroy: jest.fn().mockResolvedValue(1)
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       deleteUpload.mockResolvedValue(undefined);
@@ -530,29 +532,29 @@ describe("user.service", () => {
       const result = await deleteUser({
         userId: U1,
         deletedBy: "admin",
-        actorIsSuperAdmin: true,
+        actorIsSuperAdmin: true
       });
       expect(result.success).toBe(true);
       expect(result.data.username).toBe("touser");
     });
 
     it("should throw 400 when trying to delete self", async () => {
-      const mockUser = {
+      const mockUser: any = {
         get: () => ({
           id: U1,
           username: "self",
           email: "s@s.com",
-          picture: null,
+          picture: null
         }),
         id: U1,
         username: "self",
         email: "s@s.com",
-        picture: null,
+        picture: null
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       await expectRejectsWithMessage(
         deleteUser({ userId: U1, deletedBy: U1, actorIsSuperAdmin: true }),
-        "You cannot delete your own account",
+        "You cannot delete your own account"
       );
     });
 
@@ -561,12 +563,12 @@ describe("user.service", () => {
     });
 
     it("should refuse cross-tenant delete as not-found for a non-super-admin (AZ-04)", async () => {
-      const mockUser = {
+      const mockUser: any = {
         get: () => ({ id: U2, username: "victim" }),
         id: U2,
         tenantId: "tenant-B",
         role: { name: "USER" },
-        roleId: ROLE_USER,
+        roleId: ROLE_USER
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       await expectRejectsWithMessage(
@@ -574,9 +576,9 @@ describe("user.service", () => {
           userId: U2,
           deletedBy: "admin",
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
+          actorTenantId: "tenant-A"
         }),
-        "User not found", // AZ-04: cross-tenant is indistinguishable from missing
+        "User not found" // AZ-04: cross-tenant is indistinguishable from missing
       );
     });
   });
@@ -586,16 +588,16 @@ describe("user.service", () => {
   // --------------------------------------------------------------
   describe("access-control guards", () => {
     it("userRoleUpdate denies granting SUPER_ADMIN for a non-super-admin", async () => {
-      const mockUser = {
+      const mockUser: any = {
         get: () => ({ id: U1, role_id: OLD_ROLE }),
         tenantId: "tenant-A",
-        update: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({})
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       Roles.findByPk.mockResolvedValueOnce({
         id: SUPER_ROLE,
         name: "SUPERADMIN",
-        status: "active",
+        status: "active"
       });
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
@@ -604,17 +606,17 @@ describe("user.service", () => {
           roleId: SUPER_ROLE,
           updatedBy: "admin",
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
+          actorTenantId: "tenant-A"
         }),
-        "cannot assign the SUPER_ADMIN role",
+        "cannot assign the SUPER_ADMIN role"
       );
     });
 
     it("userRoleUpdate refuses cross-tenant modification as not-found (AZ-04)", async () => {
-      const mockUser = {
+      const mockUser: any = {
         get: () => ({ id: U1, role_id: OLD_ROLE }),
         tenantId: "tenant-B",
-        update: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({})
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       db.transaction.mockResolvedValueOnce(mockTransaction());
@@ -624,9 +626,9 @@ describe("user.service", () => {
           roleId: NEW_ROLE,
           updatedBy: "admin",
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
+          actorTenantId: "tenant-A"
         }),
-        "User not found", // AZ-04: cross-tenant is indistinguishable from missing
+        "User not found" // AZ-04: cross-tenant is indistinguishable from missing
       );
     });
 
@@ -636,7 +638,7 @@ describe("user.service", () => {
       Roles.findByPk.mockResolvedValueOnce({
         id: SUPER_ROLE,
         name: "SUPER_ADMIN",
-        status: "active",
+        status: "active"
       });
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
@@ -648,9 +650,9 @@ describe("user.service", () => {
           password: "password123",
           roleId: SUPER_ROLE,
           actorIsSuperAdmin: false,
-          actorTenantId: "tenant-A",
+          actorTenantId: "tenant-A"
         }),
-        "cannot create a SUPER_ADMIN account",
+        "cannot create a SUPER_ADMIN account"
       );
     });
   });

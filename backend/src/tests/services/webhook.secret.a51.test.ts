@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * A-51 — the webhook signing secret: server-generated only, envelope-encrypted
  * at rest, decrypted only to sign, rotatable, and never kept across a url change.
@@ -14,23 +15,23 @@ jest.mock("../../models", () => ({
     findAll: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
-    findAndCountAll: jest.fn(),
+    findAndCountAll: jest.fn()
   },
   WebhookDelivery: {
     create: jest.fn(),
     findOne: jest.fn(),
-    findAndCountAll: jest.fn(),
+    findAndCountAll: jest.fn()
   },
-  AuditLog: { create: jest.fn() },
+  AuditLog: { create: jest.fn() }
 }));
 
 const TX = { id: "tx-1" };
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn((cb) => cb(TX)), query: jest.fn() },
+  db: { transaction: jest.fn((cb: any) => cb(TX)), query: jest.fn() }
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 }));
 
 jest.mock("../../utils/ssrf.util", () => ({
@@ -39,7 +40,7 @@ jest.mock("../../utils/ssrf.util", () => ({
   isBlockedIp: jest.fn(),
   // A-307: delivery goes through ssrf.util#pinnedFetch (fetch-shaped); these
   // tests keep asserting on `global.fetch`, which the double forwards to.
-  pinnedFetch: (...args) => global.fetch(...args),
+  pinnedFetch: (...args: any[]) => (global.fetch as any)(...args)
 }));
 
 const webhookService = require("../../services/webhook.service");
@@ -51,19 +52,19 @@ const TENANT = "11111111-1111-4111-8111-111111111111";
 const ACTOR = { userId: "u-1", ipAddress: "10.0.0.1", userAgent: "jest" };
 
 // A-10: the signature covers `${timestamp}.${body}` (X-Webhook-Timestamp).
-const hmac = (secret, body, timestamp) =>
-  `v1=${crypto.createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")}`;
+const hmac = (secret: any, body: any, timestamp: any) =>
+`v1=${crypto.createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")}`;
 
 // A persisted-looking row: `update` applies the patch to the instance, the way
 // Sequelize's instance update does.
-const row = (fields) => {
+const row = (fields: any) => {
   const r = { id: "w1", tenantId: TENANT, url: "https://old.example.com/hook", events: ["*"], ...fields };
-  r.update = jest.fn(async (patch) => Object.assign(r, patch));
+  r.update = jest.fn(async (patch: any) => Object.assign(r, patch));
   return r;
 };
 
 // Dispatch one delivery for `webhook` and return what went over the wire.
-const deliverOnce = async (webhook) => {
+const deliverOnce = async (webhook: any) => {
   const delivery = { id: "d1", tenantId: TENANT, webhookId: webhook.id, event: "test", payload: {}, attempts: 0, update: jest.fn() };
   Webhook.findAll.mockResolvedValue([webhook]);
   Webhook.findOne.mockResolvedValue({ isActive: true, ...webhook });
@@ -72,15 +73,15 @@ const deliverOnce = async (webhook) => {
   db.query.mockResolvedValueOnce([{ id: "d1", tenantId: TENANT }]); // the claim (P9-18: sql() answers the rows directly)
   global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 });
   await webhookService.emitEvent(TENANT, "test", {});
-  for (let i = 0; i < 5 && !global.fetch.mock.calls.length; i++) {
-    await new Promise((r) => setImmediate(r));
+  for (let i = 0; i < 5 && !(global.fetch as any).mock.calls.length; i++) {
+    await new Promise((r: any) => setImmediate(r));
   }
-  const [, init] = global.fetch.mock.calls[0];
+  const [, init] = (global.fetch as any).mock.calls[0];
   return {
     body: init.body,
     signature: init.headers["X-Webhook-Signature"],
     previous: init.headers["X-Webhook-Signature-Previous"],
-    timestamp: init.headers["X-Webhook-Timestamp"],
+    timestamp: init.headers["X-Webhook-Timestamp"]
   };
 };
 
@@ -89,8 +90,8 @@ describe("A-51 — webhook secret handling", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    db.transaction.mockImplementation((cb) => cb(TX));
-    Webhook.create.mockImplementation(async (values) => ({ id: "w1", createdAt: new Date(), ...values }));
+    db.transaction.mockImplementation((cb: any) => cb(TX));
+    Webhook.create.mockImplementation(async (values: any) => ({ id: "w1", createdAt: new Date(), ...values }));
   });
 
   afterEach(() => {
@@ -102,7 +103,7 @@ describe("A-51 — webhook secret handling", () => {
       url: "https://receiver.example.com/hook",
       events: ["*"],
       secret: "a",
-      createdBy: "u-1",
+      createdBy: "u-1"
     });
 
     expect(result.secret).not.toBe("a");
@@ -115,7 +116,7 @@ describe("A-51 — webhook secret handling", () => {
     const result = await webhookService.createWebhook(TENANT, {
       url: "https://receiver.example.com/hook",
       events: ["*"],
-      createdBy: "u-1",
+      createdBy: "u-1"
     });
 
     const stored = Webhook.create.mock.calls[0][0].secret;
@@ -131,7 +132,7 @@ describe("A-51 — webhook secret handling", () => {
     const created = await webhookService.createWebhook(TENANT, {
       url: "https://receiver.example.com/hook",
       events: ["*"],
-      createdBy: "u-1",
+      createdBy: "u-1"
     });
     const stored = Webhook.create.mock.calls[0][0].secret;
 
@@ -166,7 +167,7 @@ describe("A-51 — webhook secret handling", () => {
     expect(result.previousSecretExpiresAt).toBeNull();
     expect(webhook.update).toHaveBeenCalledWith(
       { secret: expect.stringMatching(/^v2:/), previousSecret: null, previousSecretExpiresAt: null },
-      { transaction: TX },
+      { transaction: TX }
     );
     expect(AuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -176,9 +177,9 @@ describe("A-51 — webhook secret handling", () => {
         resourceType: "Webhook",
         resourceId: "w1",
         ipAddress: "10.0.0.1",
-        userAgent: "jest",
+        userAgent: "jest"
       }),
-      { transaction: TX },
+      { transaction: TX }
     );
     // The audit row must never carry the secret, old or new.
     const audited = JSON.stringify(AuditLog.create.mock.calls[0][0]);
@@ -205,7 +206,7 @@ describe("A-51 — webhook secret handling", () => {
   it("rotation of another tenant's webhook is a 404", async () => {
     Webhook.findOne.mockResolvedValue(null);
     await expect(webhookService.rotateSecret(TENANT, "w-other", ACTOR)).rejects.toMatchObject({
-      status: 404,
+      status: 404
     });
     expect(AuditLog.create).not.toHaveBeenCalled();
   });
@@ -219,7 +220,7 @@ describe("A-51 — webhook secret handling", () => {
       TENANT,
       "w1",
       { url: "https://new.example.com/hook" },
-      ACTOR,
+      ACTOR
     );
 
     expect(result.url).toBe("https://new.example.com/hook");
@@ -227,11 +228,11 @@ describe("A-51 — webhook secret handling", () => {
     expect(result.secret).not.toBe(oldSecret);
     expect(webhook.update).toHaveBeenCalledWith(
       expect.objectContaining({ url: "https://new.example.com/hook", secret: expect.stringMatching(/^v2:/) }),
-      { transaction: TX },
+      { transaction: TX }
     );
     expect(AuditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ action: "UPDATE", resourceType: "Webhook", resourceId: "w1" }),
-      { transaction: TX },
+      { transaction: TX }
     );
 
     const { body, signature, timestamp } = await deliverOnce(webhook);
@@ -248,7 +249,7 @@ describe("A-51 — webhook secret handling", () => {
       TENANT,
       "w1",
       { url: "https://old.example.com/hook", description: "same host" },
-      ACTOR,
+      ACTOR
     );
 
     expect(result.secret).toBeUndefined();
@@ -272,8 +273,8 @@ describe("P6-13 — rotation with an overlap window (ADR-085)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    db.transaction.mockImplementation((cb) => cb(TX));
-    Webhook.create.mockImplementation(async (values) => ({ id: "w1", createdAt: new Date(), ...values }));
+    db.transaction.mockImplementation((cb: any) => cb(TX));
+    Webhook.create.mockImplementation(async (values: any) => ({ id: "w1", createdAt: new Date(), ...values }));
   });
 
   afterEach(() => {
@@ -304,7 +305,7 @@ describe("P6-13 — rotation with an overlap window (ADR-085)", () => {
     const webhook = row({
       secret: kms.encryptData(TENANT, "a".repeat(64)),
       previousSecret: kms.encryptData(TENANT, "b".repeat(64)),
-      previousSecretExpiresAt: new Date(Date.now() - 1000),
+      previousSecretExpiresAt: new Date(Date.now() - 1000)
     });
     Webhook.findOne.mockResolvedValue(webhook);
 
@@ -328,7 +329,7 @@ describe("P6-13 — rotation with an overlap window (ADR-085)", () => {
     const webhook = row({
       secret: kms.encryptData(TENANT, "a".repeat(64)),
       previousSecret: kms.encryptData(TENANT, "b".repeat(64)),
-      previousSecretExpiresAt: new Date(Date.now() + 3600e3),
+      previousSecretExpiresAt: new Date(Date.now() + 3600e3)
     });
     Webhook.findOne.mockResolvedValue(webhook);
 
@@ -367,16 +368,16 @@ describe("P6-13 — rotation with an overlap window (ADR-085)", () => {
     }
     expect(JSON.stringify(rotated)).not.toContain(oldSecret);
     const sinks = JSON.stringify([
-      AuditLog.create.mock.calls,
-      logger.info.mock.calls,
-      logger.warn.mock.calls,
-      logger.error.mock.calls,
-    ]);
+    AuditLog.create.mock.calls,
+    logger.info.mock.calls,
+    logger.warn.mock.calls,
+    logger.error.mock.calls]
+    );
     for (const s of secrets) {
       expect(sinks).not.toContain(s);
     }
     // Every change above wrote its audit row inside its transaction.
-    expect(AuditLog.create.mock.calls.map(([v]) => v.action)).toEqual(["CREATE", "UPDATE", "UPDATE", "DELETE"]);
+    expect(AuditLog.create.mock.calls.map(([v]: any) => v.action)).toEqual(["CREATE", "UPDATE", "UPDATE", "DELETE"]);
     for (const [, options] of AuditLog.create.mock.calls) {
       expect(options).toEqual({ transaction: TX });
     }

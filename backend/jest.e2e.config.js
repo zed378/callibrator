@@ -11,7 +11,7 @@ module.exports = {
   // The live contract smoke has its own runner (jest.contract.config.js,
   // `npm run test:contract`): it needs a demo-seeded NON-production stack and
   // up to 30 minutes, so it is not part of this run — and never skipped in its own.
-  testPathIgnorePatterns: ["/node_modules/", "/tests/e2e/liveContract\\.smoke\\.test\\.js$"],
+  testPathIgnorePatterns: ["/node_modules/", "/tests/e2e/liveContract\\.smoke\\.test\\.(js|ts)$"],
   // 2026-10-10 (no test may be skipped): mail is mandatory — a run without a
   // reachable Mailpit (E2E_MAILPIT_URL) refuses to start instead of skipping
   // the mailed-secret tests.

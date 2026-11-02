@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * A-10 — durable webhook delivery and receiver-side replay protection, over a
  * REAL HTTP receiver in this process (tests/fixtures/webhookReceiver.js).
@@ -13,28 +14,28 @@
  * no timers, no memory from the first — only the rows.
  */
 
-const mockStore = { deliveries: new Map(), webhooks: new Map(), seq: 0 };
+const mockStore: any = { deliveries: new Map(), webhooks: new Map(), seq: 0 };
 
-const mockDeliveryRow = (values) => {
+const mockDeliveryRow: any = (values: any) => {
   const r = { attempts: 0, createdAt: new Date(), ...values };
-  r.update = jest.fn(async (patch) => Object.assign(r, patch));
+  r.update = jest.fn(async (patch: any) => Object.assign(r, patch));
   return r;
 };
 
 jest.mock("../../models", () => ({
   Webhook: {
-    findAll: jest.fn(async ({ where }) =>
-      [...mockStore.webhooks.values()].filter(
-        (w) => w.tenantId === where.tenantId && w.isActive && w.events.includes("*"),
-      ),
+    findAll: jest.fn(async ({ where }: any) =>
+    [...mockStore.webhooks.values()].filter(
+      (w: any) => w.tenantId === where.tenantId && w.isActive && w.events.includes("*")
+    )
     ),
-    findOne: jest.fn(async ({ where }) => {
+    findOne: jest.fn(async ({ where }: any) => {
       const w = mockStore.webhooks.get(where.id);
       return w && w.tenantId === where.tenantId ? w : null;
-    }),
+    })
   },
   WebhookDelivery: {
-    create: jest.fn(async (values) => {
+    create: jest.fn(async (values: any) => {
       mockStore.seq += 1;
       const id = `dddddddd-0000-4000-8000-${String(mockStore.seq).padStart(12, "0")}`;
       // nextAttemptAt arrives as fn("now"): the database would store now().
@@ -42,39 +43,39 @@ jest.mock("../../models", () => ({
       mockStore.deliveries.set(id, row);
       return row;
     }),
-    findOne: jest.fn(async ({ where }) => {
+    findOne: jest.fn(async ({ where }: any) => {
       const d = mockStore.deliveries.get(where.id);
       return d && d.tenantId === where.tenantId ? d : null;
-    }),
+    })
   },
-  AuditLog: { create: jest.fn() },
+  AuditLog: { create: jest.fn() }
 }));
 
 jest.mock("../../config", () => ({
   db: {
-    transaction: jest.fn((cb) => cb({})),
+    transaction: jest.fn((cb: any) => cb({})),
     // The claim, with the contract webhook.service#claim relies on. P9-18: it
     // is sent through sql() — $1 lease seconds, $2 limit, and for one
     // delivery $3 id and $4 tenant — and answers the RETURNING rows directly.
-    query: jest.fn(async (sql, { bind }) => {
+    query: jest.fn(async (sql: any, { bind }: any) => {
       const [leaseSeconds, limit, id, tenantId] = bind;
       const now = Date.now();
-      const due = [...mockStore.deliveries.values()]
-        .filter((d) => ["pending", "failed"].includes(d.status))
-        .filter((d) => d.nextAttemptAt && d.nextAttemptAt.getTime() <= now)
-        .filter((d) => !sql.includes("AND id = $3") || (d.id === id && d.tenantId === tenantId))
-        .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt)
-        .slice(0, limit);
-      due.forEach((d) => {
+      const due = [...mockStore.deliveries.values()].
+      filter((d: any) => ["pending", "failed"].includes(d.status)).
+      filter((d: any) => d.nextAttemptAt && d.nextAttemptAt.getTime() <= now).
+      filter((d: any) => !sql.includes("AND id = $3") || d.id === id && d.tenantId === tenantId).
+      sort((a: any, b: any) => a.nextAttemptAt - b.nextAttemptAt).
+      slice(0, limit);
+      due.forEach((d: any) => {
         d.nextAttemptAt = new Date(now + leaseSeconds * 1000);
       });
-      return due.map((d) => ({ id: d.id, tenantId: d.tenantId }));
-    }),
-  },
+      return due.map((d: any) => ({ id: d.id, tenantId: d.tenantId }));
+    })
+  }
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 }));
 
 jest.mock("../../utils/ssrf.util", () => ({
@@ -85,19 +86,19 @@ jest.mock("../../utils/ssrf.util", () => ({
   // A-307: the REAL pinned transport, so these deliveries cross a real socket
   // through the pinned lookup (the signature must survive byte for byte).
   // Loopback is let through by the development allow-list set below.
-  pinnedFetch: jest.requireActual("../../utils/ssrf.util").pinnedFetch,
+  pinnedFetch: jest.requireActual("../../utils/ssrf.util").pinnedFetch
 }));
 
 // A-307: see the ssrf.util double above; never honoured in production.
-const ORIGINAL_SSRF_DEV_ALLOW_HOSTS = process.env.SSRF_DEV_ALLOW_HOSTS;
+const ORIGINAL_SSRF_DEV_ALLOW_HOSTS = process.env["SSRF_DEV_ALLOW_HOSTS"];
 beforeAll(() => {
-  process.env.SSRF_DEV_ALLOW_HOSTS = "127.0.0.1,localhost";
+  process.env["SSRF_DEV_ALLOW_HOSTS"] = "127.0.0.1,localhost";
 });
 afterAll(() => {
   if (ORIGINAL_SSRF_DEV_ALLOW_HOSTS === undefined) {
-    delete process.env.SSRF_DEV_ALLOW_HOSTS;
+    delete process.env["SSRF_DEV_ALLOW_HOSTS"];
   } else {
-    process.env.SSRF_DEV_ALLOW_HOSTS = ORIGINAL_SSRF_DEV_ALLOW_HOSTS;
+    process.env["SSRF_DEV_ALLOW_HOSTS"] = ORIGINAL_SSRF_DEV_ALLOW_HOSTS;
   }
 });
 
@@ -109,7 +110,7 @@ const SECRET_A = "a".repeat(64);
 const SECRET_B = "b".repeat(64);
 
 const loadService = () => {
-  let svc;
+  let svc: any;
   jest.isolateModules(() => {
     svc = require("../../services/webhook.service");
   });
@@ -117,32 +118,32 @@ const loadService = () => {
 };
 
 /** Wait until `predicate` holds (real sockets are asynchronous). */
-const until = async (predicate, ms = 3000) => {
+const until = async (predicate: any, ms: any = 3000) => {
   const end = Date.now() + ms;
   while (!predicate()) {
     if (Date.now() > end) {
       throw new Error("timed out waiting");
     }
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r: any) => setTimeout(r, 10));
   }
 };
 
 const makeDue = () =>
-  mockStore.deliveries.forEach((d) => {
-    if (d.nextAttemptAt) {
-      d.nextAttemptAt = new Date(Date.now() - 1000);
-    }
-  });
+mockStore.deliveries.forEach((d: any) => {
+  if (d.nextAttemptAt) {
+    d.nextAttemptAt = new Date(Date.now() - 1000);
+  }
+});
 
 describe("A-10 — durable delivery to a real HTTP receiver", () => {
-  const receivers = [];
-  const receiver = async (secret, status) => {
+  const receivers: any[] = [];
+  const receiver = async (secret: any, status: any) => {
     const rx = await startReceiver({ secret, status });
     receivers.push(rx);
     return rx;
   };
-  const register = (id, tenantId, secret, url) =>
-    mockStore.webhooks.set(id, { id, tenantId, url, secret, events: ["*"], isActive: true });
+  const register = (id: any, tenantId: any, secret: any, url: any) =>
+  mockStore.webhooks.set(id, { id, tenantId, url, secret, events: ["*"], isActive: true });
 
   beforeEach(() => {
     mockStore.deliveries.clear();
@@ -250,10 +251,10 @@ describe("A-10 — durable delivery to a real HTTP receiver", () => {
     expect(JSON.parse(rxA.received[0].body).data).toEqual({ transferId: "t-a" });
     expect(JSON.parse(rxB.received[0].body).data).toEqual({ transferId: "t-b" });
     const rows = [...mockStore.deliveries.values()];
-    expect(rows.map((d) => [d.tenantId, d.webhookId])).toEqual([
-      [TENANT_A, "w-a"],
-      [TENANT_B, "w-b"],
-    ]);
+    expect(rows.map((d: any) => [d.tenantId, d.webhookId])).toEqual([
+    [TENANT_A, "w-a"],
+    [TENANT_B, "w-b"]]
+    );
 
     // A's failed delivery, due again: tenant B's claim by id takes nothing.
     makeDue();
@@ -267,7 +268,7 @@ describe("A-10 — durable delivery to a real HTTP receiver", () => {
   it("verifyWebhook refuses a request with a header missing", () => {
     expect(verifyWebhook(SECRET_A, {}, "{}", new Set())).toBe("missing-headers");
     expect(
-      verifyWebhook(SECRET_A, { "x-webhook-timestamp": "abc", "x-webhook-signature": "v1=x", "x-webhook-delivery": "d" }, "{}", new Set()),
+      verifyWebhook(SECRET_A, { "x-webhook-timestamp": "abc", "x-webhook-signature": "v1=x", "x-webhook-delivery": "d" }, "{}", new Set())
     ).toBe("stale");
   });
 });

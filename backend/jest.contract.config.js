@@ -16,7 +16,7 @@ const e2e = require("./jest.e2e.config");
 
 module.exports = {
   ...e2e,
-  testMatch: ["**/tests/e2e/liveContract.smoke.test.js"],
+  testMatch: ["**/tests/e2e/liveContract.smoke.test.ts"],
   testPathIgnorePatterns: ["/node_modules/"],
   // It reads no mail: Mailpit is not required here.
   globalSetup: undefined,

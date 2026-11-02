@@ -11,6 +11,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ### 2026-11-02 — P25: the reconciliation on the real dump, and the report diff ([record](./records/2026-11-02-p25-reconciliation-real-data.md))
 - RC-F4 is computed from the staged rows; the data-quality report covers the rest of 03 § 7, the duplicate files and the users section; `GET /admin/upstream-sql-imports/:id/report-diff` compares 16 fields of a sample, aggregates only (ADR-129 Am. 14). On the 2026-10-06 dump: 115 facilities, 0 failing; 8,392 sessions, 0 `differs`. P25-02 and P25-03 DONE; P25-01 16 of 17, R-12 BLOCKED; P25-04 BLOCKED on the operator.
 
+### 2026-11-02 — P9-26 bulk batch 10: 32 test files to TypeScript, final test migration ([record](./records/2026-11-02-p9-26-bulk-batch-10.md))
+- Bulk Batch 10: final test suite migration in `backend/` (26 service tests, 2 worker/test utils, 1 guard, 1 e2e smoke, 2 duplicate `.js` removed) converted from `.js` to strict `.ts`. All test assertions strictly preserved, typecheck clean (`ok`), live-suites manifest synchronized, coverageScope guard synchronized, ratchet floor lowered from 35 to 3.
+
 ### 2026-11-02 — P9-26 bulk batch 09: 50 service test files to TypeScript ([record](./records/2026-11-02-p9-26-bulk-batch-09.md))
 - Bulk Batch 9: 50 service test files converted from `.js` to strict `.ts`. All test assertions strictly preserved, typecheck clean (`ok`), live-suites manifest synchronized, ratchet floor lowered from 85 to 35.
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * W-34 against a REAL PostgreSQL 18 — the statics that ran no tenant hook.
  *
@@ -27,22 +28,22 @@ const { bootSchema, enterAppRole, APP_ROLE } = require("../fixtures/liveBoot");
 
 const A = "a34a34a3-0000-4000-8000-0000000000a1";
 const B = "b34b34b3-0000-4000-8000-0000000000b1";
-const WH = { [A]: "a34a34a3-0000-4000-8000-0000000000f1", [B]: "b34b34b3-0000-4000-8000-0000000000f2" };
+const WH: any = { [A]: "a34a34a3-0000-4000-8000-0000000000f1", [B]: "b34b34b3-0000-4000-8000-0000000000f2" };
 const STOCK = {
   a1: "a34a34a3-0000-4000-8000-00000000c0a1",
   a2: "a34a34a3-0000-4000-8000-00000000c0a2",
   b1: "b34b34b3-0000-4000-8000-00000000c0b1",
-  b2: "b34b34b3-0000-4000-8000-00000000c0b2",
+  b2: "b34b34b3-0000-4000-8000-00000000c0b2"
 };
 
 describe("W-34 — hookless statics on live PostgreSQL", () => {
   jest.setTimeout(60000);
-  let db;
-  let Stock;
-  let runForTenant;
+  let db: any;
+  let Stock: any;
+  let runForTenant: any;
 
-  const q = async (sql, replacements = {}) => (await db.query(sql, { replacements }))[0];
-  const qty = async (id) => (await q("SELECT quantity FROM stocks WHERE id = :id", { id }))[0].quantity;
+  const q = async (sql: any, replacements: any = {}) => (await db.query(sql, { replacements }))[0];
+  const qty = async (id: any) => (await q("SELECT quantity FROM stocks WHERE id = :id", { id }))[0].quantity;
 
   const cleanup = async () => {
     await q("DELETE FROM stocks WHERE tenant_id IN (:t)", { t: [A, B] });
@@ -52,16 +53,17 @@ describe("W-34 — hookless statics on live PostgreSQL", () => {
 
   const seed = async () => {
     await q("DELETE FROM stocks WHERE tenant_id IN (:t)", { t: [A, B] });
-    for (const [id, tenantId, quantity] of [
+    const entries: [string, string, number][] = [
       [STOCK.a1, A, 3],
       [STOCK.a2, A, 4],
       [STOCK.b1, B, 100],
-      [STOCK.b2, B, 1000],
-    ]) {
+      [STOCK.b2, B, 1000]
+    ];
+    for (const [id, tenantId, quantity] of entries) {
       await q(
         `INSERT INTO stocks (id, tenant_id, warehouse_id, item_name, quantity, min_quantity, is_deleted, created_at, updated_at)
          VALUES (:id, :tenantId, :wh, 'w34', :quantity, 0, false, now(), now())`,
-        { id, tenantId, wh: WH[tenantId], quantity },
+        { id, tenantId, wh: (WH as any)[tenantId], quantity }
       );
     }
   };
@@ -74,19 +76,20 @@ describe("W-34 — hookless statics on live PostgreSQL", () => {
     await bootSchema(db, require("../../config/migrator").migrator);
     await enterAppRole(db);
     await cleanup();
-    for (const [id, sub] of [
+    const tenants: [string, string][] = [
       [A, "w34-live-a"],
-      [B, "w34-live-b"],
-    ]) {
+      [B, "w34-live-b"]
+    ];
+    for (const [id, sub] of tenants) {
       await q(
         `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
          VALUES (:id, :sub, :sub, :email, now(), now())`,
-        { id, sub, email: `${sub}@example.test` },
+        { id, sub, email: `${sub}@example.test` }
       );
       await q(
         `INSERT INTO warehouses (id, tenant_id, name, code, is_deleted, created_at, updated_at)
          VALUES (:wh, :id, 'W34', 'W34', false, now(), now())`,
-        { wh: WH[id], id },
+        { wh: (WH as any)[id], id }
       );
     }
   });
@@ -144,7 +147,7 @@ describe("W-34 — hookless statics on live PostgreSQL", () => {
     await runForTenant(A, () => Stock.unscoped().restore({ where: { itemName: "w34" } }));
 
     const rows = await q("SELECT tenant_id, deleted_at IS NULL AS live FROM stocks WHERE tenant_id IN (:t)", { t: [A, B] });
-    expect(rows.filter((r) => r.tenant_id === A).every((r) => r.live)).toBe(true);
-    expect(rows.filter((r) => r.tenant_id === B).every((r) => !r.live)).toBe(true);
+    expect(rows.filter((r: any) => r.tenant_id === A).every((r: any) => r.live)).toBe(true);
+    expect(rows.filter((r: any) => r.tenant_id === B).every((r: any) => !r.live)).toBe(true);
   });
 });

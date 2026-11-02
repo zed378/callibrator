@@ -1,34 +1,36 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 const { describe, it, expect, beforeEach } = require("@jest/globals");
 
 // A-278 (ADR-094): the write runs in a transaction with its audit row; the
 // double passes a marker through so the write's options can be asserted.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({}),
+  logAction: jest.fn().mockResolvedValue({})
 }));
 
 jest.mock("sequelize", () => ({
   Op: {
     or: Symbol("or"),
     like: Symbol("like"),
-    iLike: Symbol("iLike"), // A-330: the search matches with ILIKE
-  },
+    iLike: Symbol("iLike") // A-330: the search matches with ILIKE
+  }
 }));
 
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb) => cb("tx")) },
+  db: { transaction: jest.fn(async (cb: any) => cb("tx")) }
 }));
 
 jest.mock("../../models", () => ({
   Vendors: {
     findAndCountAll: jest.fn(),
     findOne: jest.fn(),
-    create: jest.fn(),
-  },
+    create: jest.fn()
+  }
 }));
 
 jest.mock("../../utils/appError.util", () => {
   class AppError extends Error {
-    constructor(status, message) {
+    status: any;
+    constructor(status: any, message: any) {
       super(message);
       this.name = "AppError";
       this.status = status;
@@ -45,28 +47,28 @@ const {
   createVendor,
   updateVendor,
   deleteVendor,
-  qualifyVendor,
+  qualifyVendor
 } = require("../../services/vendor.service");
 
 // ---- helpers ----
-const expectRejectsWithMessage = async (promise, message) => {
+const expectRejectsWithMessage = async (promise: any, message: any) => {
   try {
     await promise;
     expect(true).toBe(false);
-  } catch (err) {
+  } catch (err: any) {
     expect(err).toBeDefined();
-    const actual = (err && err.message) || String(err);
+    const actual = err && err.message || String(err);
     expect(actual).toContain(message);
   }
 };
 
-const mockVendor = (extra = {}) => ({
+const mockVendor: any = (extra: any = {}) => ({
   id: "v-1",
   name: "Acme Corp",
   status: "active",
   type: "supplier",
   ...extra,
-  toJSON: () => ({ ...extra, id: "v-1", name: "Acme Corp", status: "active", type: "supplier" }),
+  toJSON: () => ({ ...extra, id: "v-1", name: "Acme Corp", status: "active", type: "supplier" })
 });
 
 // ================================================================
@@ -80,13 +82,13 @@ describe("vendor.service", () => {
     it("should fetch vendors with pagination", async () => {
       Vendors.findAndCountAll.mockResolvedValueOnce({
         rows: [mockVendor({ id: "v-1" })],
-        count: 1,
+        count: 1
       });
 
       const result = await fetchVendors({
         tenantId: "t-1",
         page: 1,
-        limit: 10,
+        limit: 10
       });
 
       expect(result.success).toBe(true);
@@ -113,8 +115,8 @@ describe("vendor.service", () => {
 
       expect(Vendors.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ status: "active" }),
-        }),
+          where: expect.objectContaining({ status: "active" })
+        })
       );
     });
 
@@ -124,8 +126,8 @@ describe("vendor.service", () => {
 
       expect(Vendors.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ type: "supplier" }),
-        }),
+          where: expect.objectContaining({ type: "supplier" })
+        })
       );
     });
 
@@ -157,7 +159,7 @@ describe("vendor.service", () => {
       Vendors.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         getVendorById("t-1", "missing"),
-        "Vendor not found",
+        "Vendor not found"
       );
     });
 
@@ -165,7 +167,7 @@ describe("vendor.service", () => {
       Vendors.findOne.mockRejectedValueOnce(new Error("Query failed"));
       await expectRejectsWithMessage(
         getVendorById("t-1", "v-1"),
-        "Query failed",
+        "Query failed"
       );
     });
   });
@@ -179,7 +181,7 @@ describe("vendor.service", () => {
       const result = await createVendor("t-1", {
         name: "New Vendor",
         type: "supplier",
-        status: "active",
+        status: "active"
       });
 
       expect(result.success).toBe(true);
@@ -187,8 +189,8 @@ describe("vendor.service", () => {
       expect(Vendors.create).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: "t-1",
-          name: "New Vendor",
-        }), { transaction: "tx" },
+          name: "New Vendor"
+        }), { transaction: "tx" }
       );
     });
 
@@ -196,7 +198,7 @@ describe("vendor.service", () => {
       Vendors.create.mockRejectedValueOnce(new Error("Create failed"));
       await expectRejectsWithMessage(
         createVendor("t-1", { name: "X" }),
-        "Create failed",
+        "Create failed"
       );
     });
   });
@@ -210,13 +212,13 @@ describe("vendor.service", () => {
 
       const result = await updateVendor("t-1", "v-1", {
         name: "Updated Name",
-        status: "inactive",
+        status: "inactive"
       });
 
       expect(result.success).toBe(true);
       expect(vendor.update).toHaveBeenCalledWith({
         name: "Updated Name",
-        status: "inactive",
+        status: "inactive"
       }, { transaction: "tx" });
     });
 
@@ -224,7 +226,7 @@ describe("vendor.service", () => {
       Vendors.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         updateVendor("t-1", "missing", { name: "X" }),
-        "Vendor not found",
+        "Vendor not found"
       );
     });
 
@@ -232,7 +234,7 @@ describe("vendor.service", () => {
       Vendors.findOne.mockRejectedValueOnce(new Error("Update failed"));
       await expectRejectsWithMessage(
         updateVendor("t-1", "v-1", { name: "X" }),
-        "Update failed",
+        "Update failed"
       );
     });
   });
@@ -253,7 +255,7 @@ describe("vendor.service", () => {
       Vendors.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         deleteVendor("t-1", "missing"),
-        "Vendor not found",
+        "Vendor not found"
       );
     });
 
@@ -261,7 +263,7 @@ describe("vendor.service", () => {
       Vendors.findOne.mockRejectedValueOnce(new Error("Delete failed"));
       await expectRejectsWithMessage(
         deleteVendor("t-1", "v-1"),
-        "Delete failed",
+        "Delete failed"
       );
     });
   });
@@ -284,7 +286,7 @@ describe("vendor.service", () => {
         approvalStatus: "approved",
         scorecard: 95,
         lastAuditDate: "2025-01-01",
-        nextAuditDate: "2026-01-01",
+        nextAuditDate: "2026-01-01"
       });
 
       expect(vendor.approvalStatus).toBe("approved");
@@ -304,7 +306,7 @@ describe("vendor.service", () => {
       await qualifyVendor({
         tenantId: "t-1",
         id: "v-p",
-        approvalStatus: "approved",
+        approvalStatus: "approved"
       });
 
       expect(vendor.approvalStatus).toBe("approved");
@@ -315,7 +317,7 @@ describe("vendor.service", () => {
       Vendors.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         qualifyVendor({ tenantId: "t-1", id: "missing" }),
-        "Vendor not found",
+        "Vendor not found"
       );
     });
 
@@ -323,7 +325,7 @@ describe("vendor.service", () => {
       Vendors.findOne.mockRejectedValueOnce(new Error("DB down"));
       await expectRejectsWithMessage(
         qualifyVendor({ tenantId: "t-1", id: "v-1" }),
-        "DB down",
+        "DB down"
       );
     });
 
@@ -365,7 +367,7 @@ describe("vendor.service", () => {
     it("should map a plain (non-Sequelize) row by spreading it when toJSON is absent", async () => {
       Vendors.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: "plain-1", name: "Plain Vendor" }],
-        count: 1,
+        count: 1
       });
 
       const result = await fetchVendors({ tenantId: "t-1" });
@@ -403,37 +405,37 @@ describe("vendor.service", () => {
     // `{ status: error.status || 500, message: error.message || "<default>" }`.
     // A bare throw with neither field must surface the 500 + per-method default.
     const cases = [
-      ["fetchVendors", () => fetchVendors({ tenantId: "t-1" }), "findAndCountAll", "Failed to fetch vendors"],
-      ["getVendorById", () => getVendorById("t-1", "v-1"), "findOne", "Failed to retrieve vendor"],
-      ["createVendor", () => createVendor("t-1", { name: "X" }), "create", "Failed to create vendor"],
-      ["updateVendor", () => updateVendor("t-1", "v-1", { name: "X" }), "findOne", "Failed to update vendor"],
-      ["deleteVendor", () => deleteVendor("t-1", "v-1"), "findOne", "Failed to delete vendor"],
-      ["qualifyVendor", () => qualifyVendor({ tenantId: "t-1", id: "v-1" }), "findOne", "Failed to qualify vendor"],
-    ];
+    ["fetchVendors", () => fetchVendors({ tenantId: "t-1" }), "findAndCountAll", "Failed to fetch vendors"],
+    ["getVendorById", () => getVendorById("t-1", "v-1"), "findOne", "Failed to retrieve vendor"],
+    ["createVendor", () => createVendor("t-1", { name: "X" }), "create", "Failed to create vendor"],
+    ["updateVendor", () => updateVendor("t-1", "v-1", { name: "X" }), "findOne", "Failed to update vendor"],
+    ["deleteVendor", () => deleteVendor("t-1", "v-1"), "findOne", "Failed to delete vendor"],
+    ["qualifyVendor", () => qualifyVendor({ tenantId: "t-1", id: "v-1" }), "findOne", "Failed to qualify vendor"]];
+
 
     it.each(cases)(
       "%s should default to status 500 and its own message when the error carries neither",
-      async (_name, invoke, mockFn, defaultMessage) => {
+      async (_name: any, invoke: any, mockFn: any, defaultMessage: any) => {
         // A rejection with no `status` and no `message`.
         Vendors[mockFn].mockRejectedValueOnce({});
 
         await expect(invoke()).rejects.toEqual({
           status: 500,
-          message: defaultMessage,
+          message: defaultMessage
         });
-      },
+      }
     );
 
     it.each(cases)(
       "%s should preserve a status carried on the thrown error",
-      async (_name, invoke, mockFn) => {
+      async (_name: any, invoke: any, mockFn: any) => {
         Vendors[mockFn].mockRejectedValueOnce({ status: 409, message: "Conflict" });
 
         await expect(invoke()).rejects.toEqual({
           status: 409,
-          message: "Conflict",
+          message: "Conflict"
         });
-      },
+      }
     );
   });
 });

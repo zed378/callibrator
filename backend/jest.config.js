@@ -49,7 +49,7 @@ module.exports = {
   // which a unit test can only exercise by mocking all of it. Its boot path is
   // covered instead by a real boot — CI's `boot-and-migrate` stage
   // (.github/workflows/ci.yml) and the live E2E spec
-  // src/tests/e2e/liveContract.smoke.test.js, which loads every module index.js
+  // src/tests/e2e/liveContract.smoke.test.ts, which loads every module index.js
   // mounts and calls every route on a running server.
   collectCoverageFrom: [
     // config/ is all TypeScript since 2026-10-01 (P9-21); a .js pattern here would

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * A-96 — avatar mutations (user.service#updateUserAvatar / #removeUserAvatar).
  *
@@ -11,11 +12,11 @@
  * user answers 404, like a missing one.
  */
 
-const mockEvents = [];
+const mockEvents: any[] = [];
 
 jest.mock("../../models", () => ({
   Users: { findByPk: jest.fn() },
-  Roles: {},
+  Roles: {}
 }));
 
 jest.mock("../../config", () => ({
@@ -29,29 +30,29 @@ jest.mock("../../config", () => ({
       rollback: jest.fn(async function rollback() {
         mockEvents.push("rollback");
         this.finished = "rollback";
-      }),
-    })),
-  },
+      })
+    }))
+  }
 }));
 
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn(async () => {
     mockEvents.push("audit");
     return {};
-  }),
+  })
 }));
 
 jest.mock("../../utils/upload.util", () => ({
-  deleteUpload: jest.fn(async (name) => {
+  deleteUpload: jest.fn(async (name: any) => {
     mockEvents.push(`unlink:${name}`);
   }),
-  getUploadUrl: jest.fn(),
+  getUploadUrl: jest.fn()
 }));
 
 jest.mock("../../utils/password.util", () => ({ hashPassword: jest.fn() }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 }));
 
 const { Users } = require("../../models");
@@ -65,28 +66,28 @@ const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const USER_ID = "cccccccc-cccc-4ccc-8ccc-000000000001";
 const ACTOR_ID = "cccccccc-cccc-4ccc-8ccc-000000000002";
 
-const actor = (overrides = {}) => ({
+const actor = (overrides: any = {}) => ({
   actorTenantId: TENANT_A,
   actorIsSuperAdmin: false,
   ipAddress: "10.0.0.1",
   userAgent: "jest",
-  ...overrides,
+  ...overrides
 });
 
-const userRow = (fields) => {
-  const row = {
+const userRow = (fields: any = {}) => {
+  const row: any = {
     id: USER_ID,
     tenantId: TENANT_A,
     avatarUrl: "old.png",
     ...fields,
-    getDataValue(key) {
+    getDataValue(key: any) {
       return row[key];
     },
-    update: jest.fn(async (values) => {
+    update: jest.fn(async (values: any) => {
       mockEvents.push("update");
       Object.assign(row, values);
       return row;
-    }),
+    })
   };
   return row;
 };
@@ -108,7 +109,7 @@ describe("A-96 — updateUserAvatar", () => {
     expect(Users.findByPk).toHaveBeenCalledWith(USER_ID, { transaction: tx });
     expect(row.update).toHaveBeenCalledWith(
       { avatarUrl: "new.png" },
-      { silent: true, transaction: tx },
+      { silent: true, transaction: tx }
     );
     expect(auditService.logAction).toHaveBeenCalledWith(
       {
@@ -119,12 +120,12 @@ describe("A-96 — updateUserAvatar", () => {
         resourceId: USER_ID,
         changes: {
           operation: "UPDATE_AVATAR",
-          avatarUrl: { before: "old.png", after: "new.png" },
+          avatarUrl: { before: "old.png", after: "new.png" }
         },
         ipAddress: "10.0.0.1",
-        userAgent: "jest",
+        userAgent: "jest"
       },
-      { transaction: tx },
+      { transaction: tx }
     );
     expect(mockEvents).toEqual(["update", "audit", "commit", "unlink:old.png"]);
     expect(deleteUpload).toHaveBeenCalledWith("old.png", "uploads/public/profile");
@@ -135,7 +136,7 @@ describe("A-96 — updateUserAvatar", () => {
     auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
 
     await expect(
-      userService.updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor()),
+      userService.updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor())
     ).rejects.toBeDefined();
 
     expect(mockEvents).toEqual(["update", "rollback"]);
@@ -151,7 +152,7 @@ describe("A-96 — updateUserAvatar", () => {
     Users.findByPk.mockResolvedValue(userRow({ avatarUrl: "prev.png" }));
     deleteUpload.mockRejectedValueOnce(new Error("EPERM"));
     await expect(
-      userService.updateUserAvatar(USER_ID, "new2.png", ACTOR_ID, actor()),
+      userService.updateUserAvatar(USER_ID, "new2.png", ACTOR_ID, actor())
     ).resolves.toMatchObject({ status: 200 });
   });
 
@@ -162,20 +163,20 @@ describe("A-96 — updateUserAvatar", () => {
 
     expect(auditService.logAction.mock.calls[0][0].changes.avatarUrl).toEqual({
       before: null,
-      after: "new.png",
+      after: "new.png"
     });
     expect(deleteUpload).not.toHaveBeenCalled();
   });
 
   it("another tenant's user is 404, byte-identical to a missing one, and nothing is written", async () => {
     Users.findByPk.mockResolvedValueOnce(userRow({ tenantId: TENANT_B }));
-    const foreign = await userService
-      .updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor())
-      .catch((e) => e);
+    const foreign = await userService.
+    updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor()).
+    catch((e: any) => e);
     Users.findByPk.mockResolvedValueOnce(null);
-    const missing = await userService
-      .updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor())
-      .catch((e) => e);
+    const missing = await userService.
+    updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor()).
+    catch((e: any) => e);
 
     expect(foreign).toEqual({ status: 404, message: "User not found" });
     expect(missing).toEqual(foreign);
@@ -190,7 +191,7 @@ describe("A-96 — updateUserAvatar", () => {
       USER_ID,
       "new.png",
       ACTOR_ID,
-      actor({ actorIsSuperAdmin: true }),
+      actor({ actorIsSuperAdmin: true })
     );
 
     expect(auditService.logAction.mock.calls[0][0].tenantId).toBe(TENANT_B);
@@ -201,7 +202,7 @@ describe("A-96 — updateUserAvatar", () => {
 
     await expect(userService.updateUserAvatar(USER_ID, "new.png", ACTOR_ID)).rejects.toEqual({
       status: 404,
-      message: "User not found",
+      message: "User not found"
     });
   });
 
@@ -209,7 +210,7 @@ describe("A-96 — updateUserAvatar", () => {
     Users.findByPk.mockRejectedValue(new TypeError("boom"));
 
     await expect(
-      userService.updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor()),
+      userService.updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor())
     ).rejects.toMatchObject({ status: 500, message: "Failed to update user avatar" });
     expect(mockEvents).toEqual(["rollback"]);
   });
@@ -244,7 +245,7 @@ describe("A-96 — updateUserAvatar edges", () => {
     Users.findByPk.mockRejectedValue({ status: 409, message: "conflict" });
 
     await expect(
-      userService.updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor()),
+      userService.updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor())
     ).rejects.toEqual({ status: 409, message: "conflict" });
   });
 });
@@ -260,7 +261,7 @@ describe("A-96 — removeUserAvatar", () => {
     const tx = await db.transaction.mock.results[0].value;
     expect(row.update).toHaveBeenCalledWith(
       { avatarUrl: "default.svg" },
-      { silent: true, transaction: tx },
+      { silent: true, transaction: tx }
     );
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -271,10 +272,10 @@ describe("A-96 — removeUserAvatar", () => {
         resourceId: USER_ID,
         changes: {
           operation: "REMOVE_AVATAR",
-          avatarUrl: { before: "old.png", after: "default.svg" },
-        },
+          avatarUrl: { before: "old.png", after: "default.svg" }
+        }
       }),
-      { transaction: tx },
+      { transaction: tx }
     );
     expect(mockEvents).toEqual(["update", "audit", "commit", "unlink:old.png"]);
   });
@@ -291,7 +292,7 @@ describe("A-96 — removeUserAvatar", () => {
 
   it.each([null, "default.svg"])(
     "no avatar (%s): nothing changes, nothing is audited, nothing is deleted",
-    async (avatarUrl) => {
+    async (avatarUrl: any) => {
       const row = userRow({ avatarUrl });
       Users.findByPk.mockResolvedValue(row);
 
@@ -302,7 +303,7 @@ describe("A-96 — removeUserAvatar", () => {
       expect(auditService.logAction).not.toHaveBeenCalled();
       expect(deleteUpload).not.toHaveBeenCalled();
       expect(mockEvents).toEqual(["rollback"]);
-    },
+    }
   );
 
   it("a failed unlink after commit does not fail the request", async () => {
@@ -310,7 +311,7 @@ describe("A-96 — removeUserAvatar", () => {
     deleteUpload.mockRejectedValueOnce(new Error("EPERM"));
 
     await expect(userService.removeUserAvatar(USER_ID, ACTOR_ID, actor())).resolves.toMatchObject({
-      status: 200,
+      status: 200
     });
   });
 
@@ -319,7 +320,7 @@ describe("A-96 — removeUserAvatar", () => {
 
     await expect(userService.removeUserAvatar(USER_ID, ACTOR_ID, actor())).rejects.toEqual({
       status: 404,
-      message: "User not found",
+      message: "User not found"
     });
     expect(auditService.logAction).not.toHaveBeenCalled();
     expect(deleteUpload).not.toHaveBeenCalled();
@@ -330,7 +331,7 @@ describe("A-96 — removeUserAvatar", () => {
 
     await expect(userService.removeUserAvatar(USER_ID, ACTOR_ID)).rejects.toEqual({
       status: 404,
-      message: "User not found",
+      message: "User not found"
     });
   });
 
@@ -338,12 +339,12 @@ describe("A-96 — removeUserAvatar", () => {
     Users.findByPk.mockRejectedValue({ status: 404, message: "User not found" });
     db.transaction.mockResolvedValueOnce({
       commit: jest.fn(),
-      rollback: jest.fn().mockRejectedValue(new Error("already finished")),
+      rollback: jest.fn().mockRejectedValue(new Error("already finished"))
     });
 
     await expect(userService.removeUserAvatar(USER_ID, ACTOR_ID, actor())).rejects.toEqual({
       status: 404,
-      message: "User not found",
+      message: "User not found"
     });
   });
 
@@ -352,7 +353,7 @@ describe("A-96 — removeUserAvatar", () => {
 
     await expect(userService.removeUserAvatar(USER_ID, ACTOR_ID, actor())).rejects.toMatchObject({
       status: 500,
-      message: "Failed to remove user avatar",
+      message: "Failed to remove user avatar"
     });
   });
 });

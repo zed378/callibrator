@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
 /**
  * A-128 (ADR-051 Q-18) — a tenant administrator's identity conflicts are
  * rate-limited and audited: the residual cross-tenant existence oracle.
@@ -22,28 +23,28 @@
  */
 const { createLedger } = require("../fixtures/auditLedger");
 
-const mockRef = { ledger: null, sql: [] };
+const mockRef: any = { ledger: null, sql: [] };
 
 jest.mock("../../config", () => {
   const { Sequelize } = jest.requireActual("sequelize");
   const db = new Sequelize({ dialect: "postgres", logging: false });
   // Every SELECT is recorded and finds nothing (a `plain` one — findOne — is null).
-  db.query = async (sql, options = {}) => {
+  db.query = async (sql: any, options: any = {}) => {
     mockRef.sql.push(String(sql));
     return options.plain ? null : [];
   };
-  db.transaction = (...args) => mockRef.ledger.transaction(...args);
+  db.transaction = (...args: any[]) => mockRef.ledger.transaction(...args);
   return { db };
 });
 jest.mock("../../utils/password.util", () => ({
   hashPassword: jest.fn().mockResolvedValue("$2b$hash"),
-  comparePassword: jest.fn(),
+  comparePassword: jest.fn()
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
 }));
 
-const models = require("../../models");
+const models: any = require("../../models");
 const userService = require("../../services/user.service");
 const { clearMemoryStore } = require("../../services/rateLimiter.redis.service");
 const { getAuthConfig } = require("../../constants/rateLimitConstants");
@@ -60,14 +61,15 @@ const TAKEN_EMAIL = "nurse@hospital-b.example.com";
 const BUDGET = getAuthConfig("userIdentityConflict").maxAttempts;
 
 /** The identities some account — in any tenant — holds. */
-let held;
-let created;
+let held: any;
+let created: any;
 
-const findOneImpl = async (options) => {
+const findOneImpl = async (options: any) => {
   const where = options.where || {};
   for (const field of ["username", "email"]) {
     // The operator is a Symbol key ([Op.iLike]).
-    const pattern = where[field] && where[field][Object.getOwnPropertySymbols(where[field])[0]];
+    const sym = Object.getOwnPropertySymbols(where[field] || {})[0];
+    const pattern = where[field] && sym ? where[field][sym] : undefined;
     if (typeof pattern === "string" && held[field].has(pattern.replace(/\\(.)/g, "$1"))) {
       return { id: "holder" };
     }
@@ -75,7 +77,7 @@ const findOneImpl = async (options) => {
   return null;
 };
 
-const adminInput = (overrides = {}) => ({
+const adminInput = (overrides: any = {}) => ({
   username: "newnurse",
   firstName: "New",
   lastName: "Nurse",
@@ -87,14 +89,14 @@ const adminInput = (overrides = {}) => ({
   actorIsSuperAdmin: false,
   ipAddress: "192.0.2.10",
   userAgent: "admin-browser",
-  ...overrides,
+  ...overrides
 });
 
-const createAs = (overrides) =>
-  tenantStorage.run({ tenantId: TENANT_A }, () => userService.userCreate(adminInput(overrides)));
+const createAs = (overrides: any = {}) =>
+tenantStorage.run({ tenantId: TENANT_A }, () => userService.userCreate(adminInput(overrides)));
 
 const conflictRows = () =>
-  mockRef.ledger.auditRows().filter((r) => r.changes && r.changes.operation === "IDENTITY_CONFLICT");
+mockRef.ledger.auditRows().filter((r: any) => r.changes && r.changes.operation === "IDENTITY_CONFLICT");
 
 beforeEach(() => {
   mockRef.ledger = createLedger();
@@ -104,12 +106,12 @@ beforeEach(() => {
   created = [];
   jest.spyOn(models.Users, "findOne").mockImplementation(findOneImpl);
   jest.spyOn(models.Roles, "findByPk").mockResolvedValue({ id: ROLE, name: "TECHNICIAN", status: "active" });
-  jest.spyOn(models.Users, "create").mockImplementation(async (values) => {
+  jest.spyOn(models.Users, "create").mockImplementation(async (values: any) => {
     created.push(values);
     return models.Users.build({ id: "u-new", ...values });
   });
   jest.spyOn(models.Users, "findByPk").mockImplementation(async () => ({ id: "u-new" }));
-  jest.spyOn(models.AuditLog, "create").mockImplementation((...args) => mockRef.ledger.AuditLog.create(...args));
+  jest.spyOn(models.AuditLog, "create").mockImplementation((...args: any[]) => mockRef.ledger.AuditLog.create(...args));
 });
 
 afterEach(() => {
@@ -122,7 +124,7 @@ describe("A-128: a conflict on create is a 409, audited", () => {
 
     await expect(createAs({ email: TAKEN_EMAIL })).rejects.toEqual({
       status: 409,
-      message: "Email already registered",
+      message: "Email already registered"
     });
 
     expect(created).toEqual([]);
@@ -137,7 +139,7 @@ describe("A-128: a conflict on create is a 409, audited", () => {
       resourceId: null,
       changes: { operation: "IDENTITY_CONFLICT", outcome: "refused", field: "email" },
       ipAddress: "192.0.2.10",
-      userAgent: "admin-browser",
+      userAgent: "admin-browser"
     });
     // Never the probed value, never whose it was: this tenant's admins read it.
     expect(JSON.stringify(row)).not.toContain(TAKEN_EMAIL);
@@ -154,7 +156,7 @@ describe("A-128: a conflict on create is a 409, audited", () => {
   });
 
   it("a unique violation that races past the check is the same audited 409, not a 500", async () => {
-    const race = new Error("Validation error");
+    const race: any = new Error("Validation error");
     race.name = "SequelizeUniqueConstraintError";
     race.fields = { email: "x" };
     models.Users.create.mockRejectedValueOnce(race);
@@ -164,7 +166,7 @@ describe("A-128: a conflict on create is a 409, audited", () => {
 
     const usernameRace = Object.assign(new Error("Validation error"), {
       name: "SequelizeUniqueConstraintError",
-      fields: { username: "x" },
+      fields: { username: "x" }
     });
     models.Users.create.mockRejectedValueOnce(usernameRace);
     await expect(createAs()).rejects.toEqual({ status: 409, message: "Username already used" });
@@ -173,7 +175,7 @@ describe("A-128: a conflict on create is a 409, audited", () => {
   it("a unique violation on anything else is not an identity conflict — no row, a 500", async () => {
     const other = Object.assign(new Error("duplicate key"), {
       name: "SequelizeUniqueConstraintError",
-      fields: { webauthn_credential_id: "x" },
+      fields: { webauthn_credential_id: "x" }
     });
     models.Users.create.mockRejectedValueOnce(other);
     await expect(createAs()).rejects.toMatchObject({ status: 500 });
@@ -197,8 +199,8 @@ describe("A-128: a conflict on create is a 409, audited", () => {
     for (let i = 0; i < BUDGET + 1; i += 1) {
       await expect(
         userService.userCreate(
-          adminInput({ email: TAKEN_EMAIL, createdBy: SUPER_ADMIN, actorIsSuperAdmin: true, tenantId: TENANT_A }),
-        ),
+          adminInput({ email: TAKEN_EMAIL, createdBy: SUPER_ADMIN, actorIsSuperAdmin: true, tenantId: TENANT_A })
+        )
       ).rejects.toEqual({ status: 409, message: "Email already registered" });
     }
 
@@ -212,7 +214,7 @@ describe("A-128: the lookup is global, soft-deleted included, and exact", () => 
 
     await createAs({ username: "newnurse", email: "a_b%c@hospital-a.example.com" });
 
-    const lookups = mockRef.sql.filter((q) => /^SELECT "id" FROM "users"/.test(q));
+    const lookups = mockRef.sql.filter((q: any) => /^SELECT "id" FROM "users"/.test(q));
     expect(lookups).toHaveLength(2);
     const [byUsername, byEmail] = lookups;
     expect(byUsername).toContain("\"User\".\"username\" ILIKE 'newnurse'");
@@ -232,10 +234,10 @@ describe("A-128: the lookup is global, soft-deleted included, and exact", () => 
     models.Users.findByPk.mockResolvedValue(user);
 
     await tenantStorage.run({ tenantId: TENANT_A }, () =>
-      userService.editUser({ userId: TARGET, email: "fresh@a.example.com", updatedBy: ADMIN_A, actorTenantId: TENANT_A }),
+    userService.editUser({ userId: TARGET, email: "fresh@a.example.com", updatedBy: ADMIN_A, actorTenantId: TENANT_A })
     );
 
-    const [lookup] = mockRef.sql.filter((q) => /^SELECT "id" FROM "users"/.test(q));
+    const [lookup] = mockRef.sql.filter((q: any) => /^SELECT "id" FROM "users"/.test(q));
     expect(lookup).toContain(`"User"."id" != '${TARGET}'`);
     expect(lookup).not.toMatch(/tenant_id/);
   });
@@ -252,7 +254,7 @@ describe("A-128: conflicts are rate-limited per administrator", () => {
     // Even a FREE identity is refused now: a spent budget learns nothing.
     await expect(createAs({ email: "free@hospital-a.example.com" })).rejects.toMatchObject({
       status: 429,
-      message: expect.stringMatching(/^Too many usernames or email addresses/),
+      message: expect.stringMatching(/^Too many usernames or email addresses/)
     });
     expect(models.Users.findOne).not.toHaveBeenCalled();
     expect(conflictRows()).toHaveLength(BUDGET);
@@ -260,7 +262,7 @@ describe("A-128: conflicts are rate-limited per administrator", () => {
       actorId: ADMIN_A,
       tenantId: TENANT_A,
       field: "email",
-      action: "CREATE",
+      action: "CREATE"
     });
   });
 
@@ -286,10 +288,10 @@ describe("A-128: an identity-changing edit is the same probe", () => {
     user.update = jest.fn(async () => user);
     return user;
   };
-  const editAs = (fields) =>
-    tenantStorage.run({ tenantId: TENANT_A }, () =>
-      userService.editUser({ userId: TARGET, updatedBy: ADMIN_A, actorTenantId: TENANT_A, ...fields }),
-    );
+  const editAs = (fields: any) =>
+  tenantStorage.run({ tenantId: TENANT_A }, () =>
+  userService.editUser({ userId: TARGET, updatedBy: ADMIN_A, actorTenantId: TENANT_A, ...fields })
+  );
 
   it("renaming to an email another tenant holds is an audited 409 UPDATE about the target", async () => {
     models.Users.findByPk.mockResolvedValue(target());
@@ -303,7 +305,7 @@ describe("A-128: an identity-changing edit is the same probe", () => {
       userId: ADMIN_A,
       action: "UPDATE",
       resourceId: TARGET,
-      changes: { operation: "IDENTITY_CONFLICT", outcome: "refused", field: "email" },
+      changes: { operation: "IDENTITY_CONFLICT", outcome: "refused", field: "email" }
     });
   });
 
@@ -312,7 +314,7 @@ describe("A-128: an identity-changing edit is the same probe", () => {
     user.update = jest.fn(async () => {
       throw Object.assign(new Error("Validation error"), {
         name: "SequelizeUniqueConstraintError",
-        fields: { username: "x" },
+        fields: { username: "x" }
       });
     });
     models.Users.findByPk.mockResolvedValue(user);
