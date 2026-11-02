@@ -285,19 +285,21 @@ starts so turning it off stops a queued real import.
 UAT (P26) await the owner's legal decision (**OA-5**, UD-18). The end-to-end proof to date is
 synthetic.
 
-### 10.1 Reconciliation and the data-quality report — `admin.route.ts` (P25-01, P25-02: PARTIAL)
+### 10.1 Reconciliation, data quality and the report diff — `admin.route.ts` (P25-01 PARTIAL, P25-02, P25-03)
 
-**Decision:** ADR-129 Am. 11. **Migration:** 0146. **Contracts:**
-`packages/contracts/src/upstreamReconciliation.ts` and `upstreamDataQuality.ts`. **Services:**
-`upstreamReconciliation.service.ts` and `upstreamDataQuality.service.ts`.
+**Decision:** ADR-129 Am. 11, Am. 12, Am. 14. **Migration:** 0146. **Contracts:**
+`packages/contracts/src/upstreamReconciliation.ts`, `upstreamDataQuality.ts` and `upstreamReportDiff.ts`. **Services:**
+`upstreamReconciliation.service.ts`, `upstreamDataQuality.service.ts`, `upstreamReportDiff.service.ts`
+(with the pure comparison `upstreamImport/reportDiff.ts`).
 
-There are two super-admin reads of a **transformed** run:
+There are three super-admin reads of a **transformed** run:
 
 - `GET /admin/upstream-sql-imports/:id/reconciliation`
 - `GET /admin/upstream-sql-imports/:id/data-quality`
+- `GET /admin/upstream-sql-imports/:id/report-diff?sample=` (default 200, at most 2000)
 
-Both read only, inside one transaction, on the **transform** connection, which is the only role that
-reads `upstream_import`, with the role proved first. Both answer **counts and codes only**: no
+All read only, inside one transaction, on the **transform** connection, which is the only role that
+reads `upstream_import`, with the role proved first. All answer **counts and codes only**: no
 staged value, name, serial or legacy id. Errors are coded: 404 `UPSTREAM_SQL_IMPORT_NOT_FOUND` and
 409 `RUN_NOT_TRANSFORMED`.
 
@@ -319,12 +321,16 @@ staged value, name, serial or legacy id. Errors are coded: 404 `UPSTREAM_SQL_IMP
   performer is no imported account).
 - **Run-level finding (`runFindings`, 2026-10-28):** Q-28's unreferenced half, the photo files the image imports'
   manifests put in `foto_depan` / `foto_sn` that no staged device row names.
-- **Not automated, so they answer `manual`:** RC-F4, R-12,
-  and the orphan, duplicate-file and user sections. P25-04 records them by hand on the dry-run
-  database.
+- **Also computed (2026-11-02, Am. 14):** RC-F4 per facility and at the run level, from the staged rows' upstream
+  device; the rest of 03 § 7 (Q-5, Q-6, Q-7, Q-11, Q-15, Q-17, `Q-18-NULL`, Q-20 … Q-24, Q-27 per facility); and at the
+  run level Q-16, the duplicate files `F-DUP-HASH` and `F-DUP-NAME`, and the users section `U-1` … `U-6`.
+- **The report diff:** the first `sample` sessions by `md5(legacy_key)`, the staged side found by `(QR, date)` as upstream
+  finds it, 16 fields each `equal`, `explained` or `differs`, written from 09 § 2.2 and importing nothing from the transform.
+- **Not a database check, so it answers `manual`:** R-12. P25-04 records it on the dry-run stack.
 
-**Proof:** `upstreamTransform.p2402g.live`, "P25-01/P25-02 on the IPM world", on PostgreSQL 18 with
-synthetic data. A planted facility mismatch fails RC-F1 and R-1. Real data stays gated.
+**Proof:** `upstreamTransform.p2402g.live` and `p2403` on PostgreSQL 18 with synthetic data: a planted facility
+mismatch fails RC-F1 and R-1, a staged device moved to another facility fails RC-F4 alone, a changed staged value fails
+exactly its report field. On real data: the 2026-10-06 dump, [record](../../MEMORY/records/2026-11-02-p25-reconciliation-real-data.md).
 
 ---
 

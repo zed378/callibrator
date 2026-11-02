@@ -625,7 +625,7 @@ instead. The record is `MEMORY/records/2026-10-24-p17-07-live-pentest.md`.
 | G-24 | `guards/facilityUserIncludes.guard` | green |
 | G-28 | live `e2e/modules/p1707-facility-pentest` on a disposable production-mode stack, 13/13 twice (§ 12.1) | **the two-facility HTTP spec is green**; the phones, sockets and PWA offline parts are not run |
 | G-29 | `migrations/upstreamImportGrants.p2401.live` 8/8 on PostgreSQL 18 | green |
-| G-30 | RC-F1, RC-F2, RC-F3 and RC-F5 are built (P25-01, ADR-129 Am. 11) and pass on synthetic data in `upstreamTransform.p2402g.live`; RC-F4 is `manual` | **partly built**; the real-data run is gated (UD-18) |
+| G-30 | RC-F1 … RC-F5 are built (P25-01, ADR-129 Am. 11, Am. 14; RC-F4 from the staged rows, not `id_map`) and pass on synthetic data in `upstreamTransform.p2402g.live` and on the real 2026-10-06 dump ([record](../../MEMORY/records/2026-11-02-p25-reconciliation-real-data.md)) | **partly built**; the real-data run is gated (UD-18) |
 
 The gate run held 20 suites, which passed with 263 tests. The two d05 suites ran in the guard run, which passed 44 suites with 335 tests.
 

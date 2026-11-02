@@ -287,9 +287,9 @@ early, then copy only the delta at cutover by name.
 
 ## 7. Validation and Reconciliation
 
-> **As built (P25-01, P25-02, ADR-129 Am. 11, 2026-10-24; Am. 12, 2026-10-27) — PARTIAL.** Two routes answer the
-> checks below, read-only, as aggregates on the transform connection:
-> `GET /admin/upstream-sql-imports/:id/reconciliation` and `GET …/:id/data-quality`.
+> **As built (P25-01, P25-02, P25-03, ADR-129 Am. 11, 2026-10-24; Am. 12, 2026-10-27; Am. 14, 2026-11-02).** Three routes
+> answer the checks below, read-only, as aggregates on the transform connection:
+> `GET /admin/upstream-sql-imports/:id/reconciliation`, `GET …/:id/data-quality` and `GET …/:id/report-diff`.
 >
 > **Automated:**
 >
@@ -319,11 +319,17 @@ early, then copy only the delta at cutover by name.
 >
 > - Q-28's unreferenced half at the run level (`runFindings`, 2026-10-28).
 >
-> **Not automated:** RC-F4 and R-12. Each answers `manual`,
-> and P25-04 records it by hand on the dry-run database.
+> - RC-F4 per facility and at the run level (2026-11-02): every staged device, calibration and IPM row, by its upstream
+>   device's `id_client` and not by `id_map`, landed in that facility or is quarantined.
+> - The rest of 03 § 7 (2026-11-02): Q-5, Q-6, Q-7, Q-11, Q-15, Q-17, `Q-18-NULL`, Q-20 … Q-24 and Q-27 per facility; Q-16, the
+>   duplicate files `F-DUP-HASH` and `F-DUP-NAME` and the users section `U-1` … `U-6` at the run level.
+> - The report diff (P25-03): a deterministic sample of imported sessions, what upstream's report prints against what
+>   ours is built from, 16 fields, each `equal`, `explained` or `differs`.
+>
+> **Not a database check:** R-12. It answers `manual`, and P25-04 records it on the dry-run stack.
 >
 > Migration 0146 gives the transform role the two columns these checks read. They are proven on
-> PostgreSQL 18 with synthetic data only.
+> PostgreSQL 18 on synthetic data and on the real 2026-10-06 dump ([record](../../MEMORY/records/2026-11-02-p25-reconciliation-real-data.md)).
 
 Run on the dry run and again after the real load. Each check compares a source query (MariaDB)
 with a target query (PostgreSQL), **per tenant** (`id_client` ↔ `tenant_id` via `id_map`).

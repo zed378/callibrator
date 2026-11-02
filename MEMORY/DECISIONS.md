@@ -11861,6 +11861,41 @@ The ETL (Phase 24) starts from the upstream's daily `mysqldump` (MariaDB 10.5, ~
 - An ANALYZE costs a sample read per table per step: seconds in total at this volume.
 - Without the grant (an older migration state), ANALYZE warns and skips. The transform stays correct, only slower. The live suite `p2401` pins that the grant is there.
 
+### ADR-129 Amendment 14 (2026-11-02, P25-01, P25-02, P25-03): RC-F4 starts from the staged rows, the data-quality report covers the rest of 03 § 7, and the report diff compares rows, not rendered pages
+
+**Context.** Am. 12 left RC-F4, R-12 and the user section open, and P25-03 was a parked contract. Three things in the spec needed a decision. G-30 says RC-F4 is "per-facility counts equal the source's", but R-1 … R-7 start from `id_map`, so they cannot see a wrong decision there. Only `05 § 7` names R-12, and it is no database question. And P25-03's title says "upstream vs ours, field by field, on throwaway copies", which reads as two rendered reports side by side, while the privacy rule forbids any real value in the repository or a report.
+
+**Decision.**
+
+1. **RC-F4 is computed, per facility and at the run level.** For every staged device, calibration and IPM row (18 tables), the source's facility is the upstream device's `id_client` through the `mst_faskes` mapping (by `id_inventory` for a calibration, by QR for an IPM row, the row's own `id_client` only when it has no device). A row counts when the stored row its mapping names has that facility, or when it is quarantined. `id_map`'s decision is not read. The run-level check also counts rows no facility claims. Photos stay R-8's and the device dates R-7's.
+2. **R-12 stays `manual`.** It is not computable from the database. Its note says so; the run is P25-04's.
+3. **The data-quality report covers the rest of 03 § 7.** Per facility: Q-5, Q-6, Q-7, Q-11, Q-15, Q-17, `Q-18-NULL` (real serials NULLed by UD-9, since Q-18 itself is 0 by construction), Q-20 … Q-24, Q-27. At the run level, where no facility applies: Q-16, the duplicate files `F-DUP-HASH` (one stored content under several paths) and `F-DUP-NAME` (one file named by several devices), and the users section `U-1` … `U-6`. Q-1 and Q-25 describe the schema and the encoding, and Q-26 is `auth_logins`, which is never staged, so they have no per-run count.
+4. **Q-6 counts references with no imported catalogue row**, not upstream's soft-deleted items, because that is what decides "link by id, else the label". Q-24 counts five printed device columns. Both therefore differ from the research's figures in 03 § 7, which stay as measured then.
+5. **P25-03 compares the rows a report is built from, not rendered pages.** `GET /admin/upstream-sql-imports/:id/report-diff?sample=` finds the staged side as upstream's report does (`(QR, date)`, 09 § 2.3), reads the stored session, its snapshots and results, and compares field by field in the process. Only the tally leaves. The comparison (`upstreamImport/reportDiff.ts`) is written from 09 § 2.2's printed words and 03's rules as literals, and imports nothing from the transform.
+6. **The sample** is the first `sample` sessions by `md5(legacy_key)`, default 200, at most 2000: deterministic, and stable across re-runs because the key is. `sample.population` is added to the parked contract so a reader can see the fraction.
+7. **`explained` is a closed list:** whitespace (Q-24), a placeholder or UD-9 serial, a merged room or facility's case, a QR's case, a duplicate header (Q-8), an unknown code, text kept raw (Q-21, Q-23), N/A, and the departed, absent or unnamed performer (07 § 3). A field passes when nothing `differs`.
+8. **The parked draft's header cited "ADR-129 Am. 13".** That number was already the planner-statistics amendment; it is corrected to this one.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Keep RC-F4 `manual` | the data is all in staging; "R-1 … R-7 cover it" is false for a wrong `id_map` decision, which is the case G-30 exists for |
+| RC-F4 by each row's own `id_client` | FT-99 says the facility is the upstream device's; a device moved upstream would then read as a false failure on its older rows |
+| Render upstream's PDF and ours, compare text | needs the PHP application running on real data, and a PDF diff is a page of real values. Rows give the same comparison with counts only |
+| Reuse `resultValuesOf` and `RESULT_CODES` in the diff | a check generated from the code it tests proves consistency, not correctness |
+| A random sample | not repeatable, so a failure could not be re-read |
+| Keep Q-18 alone | it is 0 by construction once UD-9 has run; the operator needs how many real serials were dropped |
+
+**Implications, including the bad ones.**
+
+- RC-F4 adds 18 statements, each joining the four tenant tables through one UNION: the reconciliation takes about 26 s on the 2026-10-06 dump. It is a read in a rehearsal, not a request path.
+- The diff reads up to the whole sample into the process, about 36 rows a session. The contract's cap bounds that. The dry-run script alone goes past the cap, for a census.
+- The diff's literals repeat 04 § 5 and 09 § 2.2. If those maps change, the diff fails loudly rather than following them.
+- `explained` is a judgement encoded in code. The operator signs it in P25-04; the note on each field says what it covers.
+- A session whose staged rows left a later dump reads as `differs`. On a cumulative dump that is a real change.
+- Comparing rows does not prove the jsPDF renderer prints them. P23-02's golden file covers the renderer, and P23-05 is the provider's side-by-side sign-off.
+
 ## ADR-130: Upstream Photos Are Imported Over rsync/SSH by a Super-Admin Background Job — Credentials Encrypted and Erased With the Import, the Host Key Pinned After a Person Confirms It, Never a Shell; Files Land in a Quarantine, Pass 08-FILE-POLICY's Ingest Into the Tenant's Own Scope With a Manifest for the ETL; the Requester Is Notified
 
 **Date:** 2026-10-07 · **Status:** Accepted and **built** · **Card:** P24-07 (`TASKS/PHASE-24-UPSTREAM-DATA-ETL.md`; the transfer and ingest half of P24-03) · **Source:** owner request 2026-10-07 ("import images from the existing server … rsync in a background process … username, password, host, path … check connection … notify when it finishes"); the coordinator's design brief of the same day; `docs/UPSTREAM/08-FILE-POLICY.md`, `05-DATA-MIGRATION.md` § 6, `06-DPIA.md` § 5 · **Record:** [`records/2026-10-07-rsync-image-import-module.md`](./records/2026-10-07-rsync-image-import-module.md)
