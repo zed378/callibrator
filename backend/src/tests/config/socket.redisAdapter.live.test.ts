@@ -137,6 +137,14 @@ describe("Socket.IO Redis adapter — live Redis (A-54)", () => {
     expect(a.io.of("/").adapter.constructor.name).toBe("RedisAdapter");
     expect(b.io.of("/").adapter.constructor.name).toBe("RedisAdapter");
 
+    // Each adapter subscribes asynchronously, and fetchSockets counts replicas by PUBSUB NUMSUB:
+    // until B's subscription lands, A waits for nobody and answers [] (3 of 8 runs on Linux).
+    const adapter = a.io.of("/").adapter as unknown as { serverCount: () => Promise<number> };
+    const deadline = Date.now() + 5000;
+    while ((await adapter.serverCount()) < 2 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
     const client = await connectClient(b.url);
     const joined = await (client as ClientSocket & { emitWithAck: (ev: string, arg: string) => Promise<unknown> }).emitWithAck("kanban:join", "proj-54");
     expect(joined).toEqual({ ok: true });

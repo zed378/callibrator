@@ -150,7 +150,7 @@ export const SUITES: readonly Suite[] = Object.freeze([
   { id: "t0148", file: "src/tests/migrations/deviceTextSearch.0148.live.test.ts", db: "scratch" },
   { id: "p1707bind", file: "src/tests/services/userFacilityBinding.p1707.live.test.ts", db: "scratch" },
   { id: "c3menu", file: "src/tests/migrations/menuEntries.c3.live.test.ts", db: "scratch" },
-  { id: "p803", file: "src/tests/utils/migrationLock.p803.live.test.js", db: "scratch" },
+  { id: "p803", file: "src/tests/utils/migrationLock.p803.live.test.ts", db: "scratch" },
   { id: "w03", file: "src/tests/services/calibrationScheduler.w03.live.test.js", db: "own" },
   { id: "w07", file: "src/tests/services/batchJob.w07.live.test.js", db: "own" },
   { id: "w12", file: "src/tests/services/backgroundJobs.w12.live.test.js", db: "own" },
@@ -162,7 +162,7 @@ export const SUITES: readonly Suite[] = Object.freeze([
   { id: "w14", file: "src/tests/services/iot.sharedSubscription.w14.live.test.js", db: "own", needs: ["mqtt"] },
   { id: "p2406", file: "src/tests/services/upstreamSqlImport.p2406.live.test.ts", db: "scratch", needs: ["clamav"] },
   { id: "a30", file: "src/tests/services/rateLimiter.redis.live.test.js", db: "none", needs: ["redis"] },
-  { id: "a54", file: "src/tests/config/socket.redisAdapter.live.test.js", db: "none", needs: ["redis"] },
+  { id: "a54", file: "src/tests/config/socket.redisAdapter.live.test.ts", db: "none", needs: ["redis"] },
   { id: "am5", file: "src/tests/services/rateLimiter.fixedWindow.am5.live.test.ts", db: "none", needs: ["redis"] },
   { id: "w06", file: "src/tests/services/rabbitmq.w06.live.test.js", db: "none", needs: ["rabbitmq"] },
   { id: "u09", file: "src/tests/services/storage.s3.u09.live.test.ts", db: "none", needs: ["s3"] },
@@ -375,6 +375,12 @@ const main = async (): Promise<number> => {
     process.stdout.write(`  NOT SELECTED  ${s.id.padEnd(10)} needs --with=${(s.needs ?? []).join(",")}\n`);
   }
   const failed = outcomes.filter((o) => !o.passed);
+  // ADR-117: a check run's annotations need no token and the job log does, so a red job names its suites.
+  if (env("GITHUB_ACTIONS") === "true") {
+    for (const o of failed) {
+      process.stdout.write(`::error title=live suite ${o.id}::${o.id} failed (${String(o.counts?.failed ?? "no result")})\n`);
+    }
+  }
   const sum = (k: keyof JestCounts): number => outcomes.reduce((n, o) => n + (o.counts?.[k] ?? 0), 0);
   process.stdout.write(
     `${String(outcomes.length - failed.length)} of ${String(outcomes.length)} suites passed; ` +
