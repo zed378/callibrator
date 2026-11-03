@@ -126,12 +126,21 @@ const CREDENTIAL_ENDPOINTS = [
   "/api/v1/auth/passkey/verify",
   "/api/v1/auth/invitation/accept",
   "/api/v1/access-requests",
+  // P21-15 (ADR-140): a personal e-signature's create, revoke and document signing re-enter a credential.
+  "/api/v1/esignature/me",
+  "/api/v1/esignature/me/revoke",
+  "/api/v1/esignature/documents",
 ];
 
 // P23-02 (G-R12): + the one parametrised path, an IPM report signature (a 401 is a wrong credential).
 const isCredentialEndpoint = (url: string | undefined): boolean => {
   const path = (url || "").split("?")[0] ?? "";
-  return CREDENTIAL_ENDPOINTS.includes(path) || /^\/api\/v1\/ipm\/sessions\/[^/]+\/signatures$/.test(path);
+  return (
+    CREDENTIAL_ENDPOINTS.includes(path) ||
+    /^\/api\/v1\/ipm\/sessions\/[^/]+\/signatures$/.test(path) ||
+    // P21-15: an e-signature applied to a calibration record (a 401 is a wrong credential).
+    /^\/api\/v1\/calibration-records\/[^/]+\/esignatures$/.test(path)
+  );
 };
 
 /** Pages behind the session — the ones proxy.ts guards. */

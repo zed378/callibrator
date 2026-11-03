@@ -251,7 +251,8 @@ describe("calibration page — permissions (ADR-102)", () => {
 
     const certify = screen.getAllByRole("button", { name: /Certify/ });
     expect(certify).toHaveLength(1);
-    expect(within(screen.getByText("Unknown Device").closest("tr") as HTMLElement).queryByRole("button")).toBeNull();
+    // P21-15: every row now offers its E-signatures; a non-compliant record still offers no Certify.
+    expect(within(screen.getByText("Unknown Device").closest("tr") as HTMLElement).queryByRole("button", { name: /Certify/ })).toBeNull();
 
     fireEvent.click(certify[0]);
     // One year of validity from the calibration date is the default.

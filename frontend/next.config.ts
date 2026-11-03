@@ -57,6 +57,16 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "no-store" },
         ],
       },
+      // P21-15 (ADR-140): the public e-signature verification — never indexed, never cached, and the
+      // link's token never leaves in a Referer.
+      {
+        source: "/s/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
     ];
   },
   // P10-06 (/register → /request-access) and ADR-102 (/dashboard/warehouse →

@@ -124,6 +124,8 @@ import type IpmRouteModule from "./src/routes/api/ipm.route";
 import type IpmSessionsRouteModule from "./src/routes/api/ipmSessions.route";
 import type IpmReportsRouteModule from "./src/routes/api/ipmReports.route";
 import type PublicDevicesRouteModule from "./src/routes/api/publicDevices.route";
+import type PublicEsignaturesRouteModule from "./src/routes/api/publicEsignatures.route";
+import type UserEsignaturesRouteModule from "./src/routes/api/userEsignatures.route";
 import type FieldRouteModule from "./src/routes/api/field.route";
 import type MigratorModule from "./src/config/migrator";
 import type * as MigrationLockUtilModule from "./src/utils/migrationLock.util";
@@ -514,6 +516,8 @@ const ipmRoutes = require("./src/routes/api/ipm.route") as typeof IpmRouteModule
 const ipmSessionRoutes = require("./src/routes/api/ipmSessions.route") as typeof IpmSessionsRouteModule;
 const ipmReportRoutes = require("./src/routes/api/ipmReports.route") as typeof IpmReportsRouteModule;
 const publicDeviceRoutes = require("./src/routes/api/publicDevices.route") as typeof PublicDevicesRouteModule;
+const publicEsignatureRoutes = require("./src/routes/api/publicEsignatures.route") as typeof PublicEsignaturesRouteModule;
+const userEsignatureRoutes = require("./src/routes/api/userEsignatures.route") as typeof UserEsignaturesRouteModule;
 const fieldRoutes = require("./src/routes/api/field.route") as typeof FieldRouteModule;
 
 // ======================================================
@@ -588,6 +592,8 @@ app.use("/api/v1/metered-billing", meteredBillingRoutes);
 app.use("/api/v1/custom-domains", customDomainsRoutes);
 app.use("/api/v1/gdpr", gdprRoutes);
 app.use("/api/v1/tenant-hierarchy", tenantHierarchyRoutes);
+// P21-15 (ADR-140): personal e-signatures — before the generic workflows at the same prefix (no path is theirs).
+app.use("/api/v1/esignature", userEsignatureRoutes);
 app.use("/api/v1/esignature", eSignatureRoutes);
 app.use("/api/v1/kanban", kanbanRoutes);
 app.use("/api/v1/tickets", ticketRoutes);
@@ -600,6 +606,8 @@ app.use("/api/v1/ipm/sessions", ipmSessionRoutes);
 app.use("/api/v1/ipm", ipmReportRoutes);
 // P21-08 (ADR-138): the public device page — one exempted, budgeted read by capability token.
 app.use("/api/v1/public/devices", publicDeviceRoutes);
+// P21-15 (ADR-140): the public verification of an e-signature application — one exempted, budgeted read by capability token.
+app.use("/api/v1/public/esignatures", publicEsignatureRoutes);
 app.use("/api/v1/ipm", ipmRoutes);
 // P21-03 (P19-08 § 11.3): the field app's administrator wipe.
 app.use("/api/v1/field", fieldRoutes);

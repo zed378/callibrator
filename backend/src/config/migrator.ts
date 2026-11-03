@@ -253,6 +253,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0147-upstream-transform-maintain.js", require("../migrations/0147-upstream-transform-maintain")],
   // The device register's text search (find=): one tenant-led trigram GIN over name, serial and manufacturer.
   ["0148-device-text-search-trgm.js", require("../migrations/0148-device-text-search-trgm")],
+  // P21-15 (ADR-140): user_esignatures + esignature_applications — personal e-signatures (KMS-wrapped keys) and their append-only applications.
+  ["0149-user-esignatures.js", require("../migrations/0149-user-esignatures")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 

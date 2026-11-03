@@ -9,7 +9,7 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: ["/", "/blog", "/news"],
         // P22-08: /d/ is a sticker's capability page (ADR-138) — never crawled.
-        disallow: ["/dashboard", "/api", "/d/"],
+        disallow: ["/dashboard", "/api", "/d/", "/s/"],
       },
     ],
     sitemap: `${SITE}/sitemap.xml`,

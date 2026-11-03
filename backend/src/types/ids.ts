@@ -107,6 +107,12 @@ export type PublicDeviceTokenId = Brand<string, "PublicDeviceTokenId">;
 /** An imported user's invitation row id (`user_invitations.id`, P24-09a / ADR-139) — never the token. */
 export type UserInvitationId = Brand<string, "UserInvitationId">;
 
+/** A personal e-signature's id (`user_esignatures.id`, P21-15 / ADR-140). */
+export type UserEsignatureId = Brand<string, "UserEsignatureId">;
+
+/** An e-signature application's id (`esignature_applications.id`, P21-15 / ADR-140) — never the token. */
+export type EsignatureApplicationId = Brand<string, "EsignatureApplicationId">;
+
 /** The constructors' shared check. */
 const assertUuid = (value: string, what: string): void => {
   if (!UUID_SHAPE.test(value)) {

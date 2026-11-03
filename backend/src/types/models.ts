@@ -20,6 +20,8 @@ import type defineInspectionResult from "../models/inspectionResult.model";
 import type defineInspectionSessionSignature from "../models/inspectionSessionSignature.model";
 import type definePublicDeviceToken from "../models/publicDeviceToken.model";
 import type defineUserInvitation from "../models/userInvitation.model";
+import type defineUserEsignature from "../models/userEsignature.model";
+import type defineEsignatureApplication from "../models/esignatureApplication.model";
 import type defineIdempotencyKey from "../models/idempotencyKey.model";
 import type defineInspectionItemDefinition from "../models/inspectionItemDefinition.model";
 import type defineInspectionTemplate from "../models/inspectionTemplate.model";
@@ -209,6 +211,9 @@ export interface Models {
   PublicDeviceToken: ReturnType<typeof definePublicDeviceToken>;
   // P24-09a (ADR-139 § 3) — born TypeScript: an imported user's invitation
   UserInvitation: ReturnType<typeof defineUserInvitation>;
+  // P21-15 (ADR-140) — born TypeScript: a personal e-signature and its applications
+  UserEsignature: ReturnType<typeof defineUserEsignature>;
+  EsignatureApplication: ReturnType<typeof defineEsignatureApplication>;
 }
 
 /** An instance of the model registered under `K`. */
