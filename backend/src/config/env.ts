@@ -122,6 +122,13 @@ export const environmentSchema = z
       }
     }
 
+    // config/index.ts#validateConfig (SEC-01) — DB_NAME is interpolated (quoted, un-bindable) into
+    // the bootstrap's CREATE DATABASE. Refuse anything but a plain identifier so a tainted or
+    // misconfigured value cannot break out of the quotes (DDL injection). Same rule as validateConfig.
+    if (e.DB_NAME && e.DB_NAME.trim() !== "" && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(e.DB_NAME)) {
+      problem("DB_NAME", `"${e.DB_NAME}" must be a plain database identifier (SEC-01: interpolated into bootstrap DDL)`);
+    }
+
     // utils/jwt.util.ts — every environment (A-31).
     if (!e.JWT_ACCESS_SECRET) {
       problem("JWT_ACCESS_SECRET", "is required");
