@@ -94,6 +94,18 @@ const validateConfig = (): void => {
     throw new Error(msg);
   }
 
+  // SEC-01: DB_NAME is interpolated (quoted, and cannot be bound) into the bootstrap's
+  // `CREATE DATABASE "<name>"`. Refuse anything that is not a plain identifier, so a
+  // tainted or misconfigured value cannot break out of the quotes (DDL injection).
+  // Mirrors roleFrom in config/upstreamImport.ts; the same rule lives in environmentSchema.
+  if (dbName !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(dbName)) {
+    const msg =
+      `Invalid DB_NAME: "${dbName}". Must be a plain database identifier ` +
+      "([A-Za-z_][A-Za-z0-9_]*); it is interpolated into bootstrap DDL.";
+    logger.error(`CONFIG_VALIDATION_FAILURE: ${msg}`);
+    throw new Error(msg);
+  }
+
   logger.info("Configuration validated successfully");
 };
 
@@ -156,7 +168,8 @@ const db = new Sequelize(config);
  * Create Database If Not Exists
  * PostgreSQL only: connects to the "postgres" maintenance database to create
  * the target database when it does not exist.
- * @returns true, whether or not the database could be created (the main connection reports errors)
+ * @returns true when the target database exists or was created; false when the
+ *   bootstrap connection or creation failed (Connection() then retries — A11-BUG-01)
  */
 async function createDatabaseIfNotExists(): Promise<boolean> {
   // PostgreSQL: Need to connect to 'postgres' database to create a new database
@@ -197,8 +210,10 @@ async function createDatabaseIfNotExists(): Promise<boolean> {
     } catch {
       // Ignore close errors
     }
-    // Continue anyway - the main connection will handle errors
-    return true;
+    // A11-BUG-01: report the failure so Connection()'s retry loop actually runs.
+    // (It previously returned true unconditionally, so the `!databaseCreated`
+    // retry branch was dead and a bootstrap failure fell straight through.)
+    return false;
   }
 }
 
@@ -225,7 +240,7 @@ async function Connection({ maxAttempts = 20, delayMs = 3000 }: { maxAttempts?: 
       // (The .js passed `{ maxAttempts: 20, delayMs: 3000 }` here, which the function never read.)
       const databaseCreated = await createDatabaseIfNotExists();
 
-      // As built: createDatabaseIfNotExists always answers true, so this branch is never taken.
+      // A11-BUG-01: createDatabaseIfNotExists now reports failure, so this retry branch is live.
       if (!databaseCreated) {
         logger.warn(
           `Failed to create/access database (attempt ${String(attempt)}/${String(maxAttempts)}). ` +
