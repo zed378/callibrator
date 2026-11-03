@@ -227,5 +227,14 @@ EXPOSE 3000
 # Run as non-root
 USER app
 
+# INF-01: container health. /live is the dependency-free liveness probe
+# (routes/internal/health.route.ts), so a blip in Postgres/Redis/RabbitMQ does
+# not flap the container unhealthy; /health (the aggregate readiness verdict) is
+# what nginx and the orchestrator readiness probes use. wget is in the Alpine
+# base (busybox). (INF-01's "runs as root" is already addressed by USER app
+# above — uid 997, pinned.)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:3000/live || exit 1
+
 # Start application
 CMD ["./backend"]
