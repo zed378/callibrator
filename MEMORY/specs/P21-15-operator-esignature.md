@@ -1,99 +1,110 @@
-# P21-15: The operator's e-signature on a calibration record, verifiable at a public URL
+# P21-15: Personal e-signatures, applied to calibration records, certificates and other documents, verifiable at a public URL
 
-**Card:** P21-15 (Phase 21) · **ADR:** ADR-140 · **Status:** spec, 2026-11-03
-**Owner's words (2026-11-03):** "buatkan fitur e-signature yang mana bisa diverifikasi lewat public endpoint"; "bedakan e-signature dengan sertifikat. e-signature digunakan untuk verifikasi data operator yang melakukan kalibrasi."
+**Card:** P21-15 (Phase 21) · **ADR:** ADR-140 · **Status:** spec **v2**, 2026-11-03. v2 supersedes v1 of the same day, which covered only the operator's signature on a calibration record.
 
-## 1. What it is, and what it is not
+**Owner's words (2026-11-03):**
+1. "buatkan fitur e-signature yang mana bisa diverifikasi lewat public endpoint"
+2. "bedakan e-signature dengan sertifikat. e-signature digunakan untuk verifikasi data operator yang melakukan kalibrasi."
+3. "saya ingin setiap user bisa membuat e-signature dan e-signature tersebut bisa dibubuhkan ke sertifikat atau dokumen lainnya jika diperlukan"
 
-- **It is** the attestation of the person who **performed** a calibration, given on the calibration record itself: "I performed this calibration and these are the results I measured." It binds the signer to a SHA-256 hash of the record's data. Anyone holding the link can check, without signing in, that the data has not changed since it was signed and who signed it.
-- **It is not the certificate.** A certificate is the document issued to the customer, approved and signed through the certificate flow (`certificate.service`, the signing key, the `/verify` page, ADR-040). Nothing in the certificate flow changes, and neither requires the other. A record can be signed with no certificate, and a certificate can be issued from an unsigned record. The certificate page may *link* to the record's signature verification, but only as a link.
-- **It is not the generic workflow** (`/api/v1/esignature`, `signature_workflows`): that binds a free `documentId` with no content hash, verifies only signed in, and asks a requester to name the signers. The operator's signature has exactly one possible signer, the record's `performedBy`, so it needs no workflow.
-- IPM sessions already carry a performer signature with a content hash and a public verdict (P21-04, `inspection_session_signatures`). This card gives a calibration record the same guarantees, following that design wherever it fits.
+## 1. The model in one paragraph
 
-## 2. Data: `calibration_record_signatures` (migration 0149)
+**Every user creates their own e-signature once**: a visual specimen (drawn or uploaded) plus a personal RSA key pair. The private key is held server-side, encrypted under the KMS ring, and is used only after the user re-authenticates. Each time the e-signature is **applied** to a document, the system makes a **signature application**: a record binding the signer, the meaning ("performed", "approved", …), the time and the SHA-256 of the document's content, signed with the signer's personal key. Every application has its own **public verification link and QR**: anyone can check who signed what, when, and that the content has not changed since. **The e-signature is not the certificate**; it can be *affixed* to a certificate (and to other documents) when needed. The certificate keeps its own tenant-key digital signature (ADR-040), unchanged.
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | uuid PK | |
-| `tenant_id` | uuid NOT NULL | stamped from context; tenant-scoped model |
-| `calibration_record_id` | uuid NOT NULL FK → `calibration_records` | **UNIQUE**: one operator signature per record (a correction is a new record and is signed anew) |
-| `signer_user_id` | uuid NOT NULL FK → `users` | = the record's `performed_by`, the authenticated caller |
-| `signer_snapshot` | jsonb NOT NULL | `{ name, role, organisation }` at signing; **no e-mail, no phone** (FT-15) |
-| `meaning` | varchar(40) NOT NULL | `performed` (the only value now; CHECK) |
-| `auth_method` | varchar(10) NOT NULL | `password` \| `mfa` (CHECK) |
-| `data_hash` | char(64) NOT NULL | SHA-256 hex of the canonical record data (§ 3) |
-| `scheme` | varchar(40) NOT NULL | `calrec-sig-v1-rsa-sha256` |
-| `signing_key_id` | varchar(100) NOT NULL | the tenant key (`tenant_keys.key_id`) |
-| `signature_value` | text NOT NULL | base64 RSA-SHA256 over the signed payload (§ 3) |
-| `signed_at` | timestamptz NOT NULL | server clock, millisecond precision |
-| `verification_token` | varchar(64) NOT NULL UNIQUE | 24 CSPRNG bytes base64url, generated server-side (ADR-100). Stored like the IPM report's (G-R3) so the link can be printed again later |
-| `ip_address`, `user_agent` | | stored, **never returned** |
-| `created_at` | timestamptz | |
+## 2. Data (migration 0149)
 
-- **Append-only**: a trigger refuses UPDATE and DELETE (as 0057/0127). A signature is never edited or withdrawn. When the record is corrected or voided, the public verdict says so (§ 5).
-- Grants: `callibrator_app` gets SELECT and INSERT only. A live test as `callibrator_app` proves UPDATE and DELETE are refused.
-- The migration must not use a blanket try/catch. Its index lives in the migration, not the model (Am. 3 trap).
+### 2.1 `user_esignatures`: a user's e-signature (one active per user)
 
-## 3. Canonical forms (in `packages/contracts`, so the browser recomputes the same bytes)
+| Column | Notes |
+|---|---|
+| `id` uuid PK, `tenant_id` uuid NOT NULL | tenant-scoped; the super admin, who has no tenant, cannot create one (403 `ESIG_PLATFORM`) |
+| `user_id` uuid NOT NULL FK → users | partial UNIQUE (`user_id`) WHERE `status = 'active'` |
+| `version` int NOT NULL | 1, 2, … per user; a replacement is a new row and the old one becomes `superseded` |
+| `specimen_svg` text NOT NULL | the visual signature as **sanitised SVG**: paths only, no script, no external refs, ≤ 64 KB. A drawn signature produces SVG directly; an uploaded PNG/JPEG is vectorised in the browser or embedded as a data-URI `<image>` (≤ 256 KB). The server validates it with an allow-list sanitiser and rejects anything else (400) |
+| `public_key_pem` text NOT NULL | RSA-3072 public half |
+| `private_key_enc` text NOT NULL | the private half, encrypted with the KMS ring (the mechanism `tenant_keys` already uses); **never returned, never logged** |
+| `key_fingerprint` char(64) NOT NULL | SHA-256 of the SPKI DER, shown on verification |
+| `status` | `active` \| `superseded` \| `revoked` (CHECK) |
+| `created_at`, `superseded_at`, `revoked_at`, `revoked_reason` | |
 
-`canonicalCalibrationRecordData(record)` returns a JSON array of `[name, value]` pairs, in this fixed order, with every value a string and null rendered as `""`:
-`schemeVersion` ("calrec-data-v1"), `tenantId`, `recordId`, `deviceId`, `clientFacilityId`, `calibrationDate` (YYYY-MM-DD), `dueDate`, `standard`, `results` (the JSON with object keys sorted recursively), `measurementUncertainty`, `isCompliant` ("true"/"false"/""), `entryKind`, `performedBy`, `calibrationVendorId`, `externalLabName`, `notes`.
-`data_hash = sha256(utf8(that JSON))`.
+- Create, replace and revoke each require **re-authentication** (`certificate.service#verifySignerCredentials`, password or MFA) and write an **audit row** in the same transaction.
+- **A key or specimen is never deleted.** A superseded or revoked e-signature still verifies the applications it made. Revocation means "do not use from now on"; it does not invalidate the past (the public page shows "revoked on <day>" beside earlier applications).
+- Each user manages only their own e-signature. A tenant admin can **revoke** a user's e-signature (for example, a departed employee) but can never create or replace one for someone else.
 
-The **signed payload** is `JSON.stringify` of `[["scheme", …], ["tenantId", …], ["recordId", …], ["dataHash", …], ["signerUserId", …], ["signedAt", ISO ms], ["authMethod", …], ["meaning", …]]`. It is signed with the tenant's current signing key, through `eSignature.service`'s `loadSigningKey`, which must be exported. `loadVerificationKey` verifies, so a rotated or deleted key still verifies while its public half is retained.
+### 2.2 `esignature_applications`: one application to one document
 
-Golden-file tests pin both canonical forms in contracts. A change to either is a new `schemeVersion`, never an edit.
+| Column | Notes |
+|---|---|
+| `id` uuid PK, `tenant_id` | |
+| `esignature_id` uuid NOT NULL FK → user_esignatures | the version used |
+| `signer_user_id` uuid NOT NULL | |
+| `signer_snapshot` jsonb NOT NULL | `{ name, role, organisation }`; no e-mail or phone (FT-15) |
+| `document_type` varchar(40) NOT NULL | `calibration_record` \| `certificate` \| `document` (CHECK; extensible by migration) |
+| `document_id` uuid NULL | the record or certificate id; NULL for a `document` |
+| `document_title` varchar(255) NOT NULL | shown publicly: the certificate number, "Calibration record <device> <date>", or the uploaded file's name as the signer typed it |
+| `meaning` varchar(40) NOT NULL | `performed` \| `reviewed` \| `approved` \| `authored` \| `acknowledged` (CHECK) |
+| `content_hash` char(64) NOT NULL | SHA-256 of the canonical content (§ 3) |
+| `content_scheme` varchar(40) NOT NULL | `calrec-data-v1` \| `cert-data-v1` \| `file-sha256` |
+| `auth_method` | `password` \| `mfa` |
+| `signature_value` text NOT NULL | base64 RSA-SHA256 (personal key) over the signed payload (§ 3) |
+| `signed_at` timestamptz NOT NULL | |
+| `verification_token` varchar(64) NOT NULL UNIQUE | 24 CSPRNG bytes base64url (ADR-100); stored, like the IPM report's, so the QR can be printed again |
+| `ip_address`, `user_agent` | stored, never returned |
 
-## 4. Signing: `POST /api/v1/calibration-records/:id/signatures`
+- **Append-only** (trigger refuses UPDATE and DELETE; `callibrator_app` gets SELECT and INSERT only; a live test runs as `callibrator_app`).
+- UNIQUE (`document_type`, `document_id`, `signer_user_id`, `meaning`) WHERE `document_id` IS NOT NULL: the same person cannot apply the same meaning to the same record twice.
+- Every application also writes an `e_signature_records` row (the Part 11 log: entityType, entityId, action `sign`, meaning, authMethod, documentHash) and an audit row, all in one transaction.
 
-Chain: `auth, denyApiKey, dynamicAccess("calibration", "write"), denyPlatformAuthoring, validateUuid("id"), validate(schema, { from: ["params", "body"] })`. Body: `{ authMethod: "password"|"mfa", credential: string, meaning: "performed" }`. Online only.
+## 3. Canonical content and the signed payload (in `packages/contracts`, so the browser recomputes the same bytes)
 
-In one transaction:
-1. Load the record **in context** (another tenant's, a soft-deleted or a missing one: the same 404), `FOR SHARE`.
-2. Refuse, each with a top-level `code` and a state explanation:
-   - 403 `CALREC_SIGNATURE_NOT_PERFORMER`: the caller is not `performedBy`.
-   - 409 `CALREC_VOIDED`: "This record was voided on <day>; a voided record is not signed."
-   - 409 `CALREC_SUPERSEDED` + `headId`: "This record was corrected on <day>; sign the latest version."
-   - 409 `CALREC_EXTERNAL`: an external-lab or imported record (`entryKind` not a performance by this user, or `performedBy` null): "Records from an external laboratory or the previous system are not signed electronically."
-   - 409 `CALREC_ALREADY_SIGNED`: "You signed this record on <day>."
-3. Re-enter the credential through `certificate.service#verifySignerCredentials`, exported as needed (Part 11 § 11.200(a); a wrong credential is the existing 401 plus its `SIGNATURE_AUTH_FAILED` row).
-4. Compute `data_hash`, then sign.
-5. Insert the signature, an **audit row** (`CALIBRATION_RECORD_SIGNED`, entity CalibrationRecord) and an `e_signature_records` row (Part 11 log: `entityType` "CalibrationRecord", `action` "sign", `meaning`, `authMethod`, `documentHash` = `data_hash`), all three in the same transaction. A unique violation on concurrent signing becomes `CALREC_ALREADY_SIGNED`.
-6. 201 → `{ data: { signature (no ip/agent), verifyUrl } }`. After commit, emit `calibration:signed` to the tenant room.
+- `calrec-data-v1`: a JSON array of `[name, value]` pairs, in this fixed order, with every value a string and null rendered as `""`: `schemeVersion`, `tenantId`, `recordId`, `deviceId`, `clientFacilityId`, `calibrationDate` (YYYY-MM-DD), `dueDate`, `standard`, `results` (keys sorted recursively), `measurementUncertainty`, `isCompliant`, `entryKind`, `performedBy`, `calibrationVendorId`, `externalLabName`, `notes`.
+- `cert-data-v1`: the same form over the certificate's issued content: `schemeVersion`, `tenantId`, `certificateId`, `certificateNumber`, `calibrationRecordId`, `deviceId`, `issueDate`, `validUntil`, `status`-independent fields only (**not** `status`, `signedAt`, `digitalSignature`, which change as the certificate moves through its flow), and the certificate's own integrity hash where it has one (A-241). Read `certificate.service` and the frontend certificate renderer, pick the fields that define what the certificate *says*, and record the list in ADR-140.
+- `file-sha256`: the SHA-256 of the file's bytes, **computed in the browser**. The server receives only the hash, the title and the size; **the file itself is never uploaded or stored** (memory: frontend-rendered documents; privacy). The verifier drops the same file on the public page, and the browser compares the hashes.
+- **Signed payload** = `JSON.stringify` of `[["scheme","esig-app-v1-rsa-sha256"],["tenantId"],["applicationId"],["esignatureId"],["keyFingerprint"],["documentType"],["documentId"],["contentScheme"],["contentHash"],["meaning"],["signerUserId"],["signedAt" ISO ms],["authMethod"]]`, signed with the signer's private key. Golden-file tests pin every form. A change is a new scheme version, never an edit.
 
-`GET /api/v1/calibration-records/:id/signatures` (calibration read) returns the record's signature with `verifyUrl` and an `integrity` field (the hash recomputed now: `intact` | `changed`). `verifyUrl` uses `PUBLIC_APP_URL` if set (frontend page `/s/<id>?t=<token>`), otherwise the API URL, as `ipmVerifyUrl` does.
+## 4. API (all under `/api/v1`)
 
-Both `:id` routes get a two-tenant test asserting 404 (`twoTenantSuite` + `memoryDb`, `@two-tenant` marker).
+**My e-signature** (`auth`, `denyApiKey`, `dynamicAccess(MENU_SLUGS.ESIGNATURE, …)`; every tenant role that signs holds `esignature` since A-129, so check that migration and grant `esignature:write` to any role that performs, approves or signs and lacks it, by a migration with an ADR note):
+- `GET /esignature/me`: the active e-signature (specimen, fingerprint, version, created_at) or `null`, plus earlier versions (no keys).
+- `POST /esignature/me` `{ specimenSvg, authMethod, credential }`: create, or replace (the old row becomes `superseded`). The key pair is generated server-side. 201.
+- `POST /esignature/me/revoke` `{ authMethod, credential, reason }`.
+- `POST /esignature/users/:userId/revoke` (tenant admin, `qms` write): revoke someone else's; two-tenant test.
 
-## 5. Public verification: `GET /api/v1/public/calibration-signatures/:signatureId?token=`
+**Apply** (each requires the signer's active e-signature, else 409 `ESIG_NONE` "Create your e-signature first, in Profile → E-signature."; each re-authenticates):
+- `POST /calibration-records/:id/esignatures` `{ meaning, authMethod, credential }`. `performed` only by the record's `performedBy` (403 `ESIG_NOT_PERFORMER`); `reviewed` by anyone else with calibration write. Refusals: 409 `CALREC_VOIDED`, `CALREC_SUPERSEDED` + `headId`, `CALREC_EXTERNAL` (external lab or imported), `ESIG_ALREADY_APPLIED`. Each 409 is a state explanation.
+- `POST /certificates/:id/esignatures` `{ meaning, authMethod, credential }`. `performed`: the certificate's `calibratedBy`. `approved`: its `approvedBy`/`signedBy`, once the certificate has reached that state; otherwise 409 with the state ("this certificate is in `draft`…"). **The certificate's existing approve and sign steps also apply the actor's e-signature automatically when they have one** (meaning `approved`), in the same transaction as the step. Without one, the step still works exactly as today, and the certificate shows no specimen. Nothing in the certificate flow is ever blocked for lack of an e-signature.
+- `POST /esignature/documents` `{ title, contentHash, sizeBytes, meaning, authMethod, credential }`: sign any file by hash.
 
-No `auth`. It is a reviewed `public` exemption in `routeGateExemptions` and in the two-tenant allow-list. It uses a `requestBudget` pair like the IPM verification: `calSigVerifyToken` counts every request, and `calSigVerify` counts every non-verdict, in the controller. The signature is resolved by id plus a constant-time token comparison, under the reviewed `skipTenantScope`. A malformed, unknown or mismatched link returns **one identical 404**.
+**Read:**
+- `GET /calibration-records/:id/esignatures` and `GET /certificates/:id/esignatures`: the applications, each with `verifyUrl`, `specimenSvg`, the signer snapshot and an `integrity` field (the content hash recomputed now: `intact` \| `changed`). Two-tenant tests.
+- `GET /esignature/me/applications`: what I have signed (paged; `data` + top-level `meta`).
 
-`verdict`, the field to branch on:
-- `valid`: the signature verifies and the data hash recomputed now equals `data_hash`.
-- `data_changed`: the signature verifies but the record's data no longer hashes to `data_hash`. This is a tamper signal: log it at warn and count it.
-- `invalid`: the cryptographic check fails.
-- `key_missing`: the signing key's public half is gone.
-- plus a `recordState` field, `current` | `superseded` (with the correction day) | `voided`. It is shown beside a `valid` verdict, never in place of one.
+**Public, no `auth`** (a reviewed `public` exemption, in the two-tenant allow-list, a `requestBudget` pair like the IPM verification):
+- `GET /public/esignatures/:applicationId?token=`. A malformed, unknown or mismatched link returns one identical 404 (constant-time comparison, reviewed `skipTenantScope`). The verdict is the field to branch on:
+  - `valid`: the signature verifies under the stored public key and, for record and certificate types, the content hash recomputed now matches.
+  - `content_changed`: the signature verifies but the content no longer hashes to the stored value. Tamper signal: log it at warn and count it.
+  - `invalid`: the cryptographic check fails.
+  - For `document` the verdict is `valid` or `invalid` (the server has no file), plus the browser-side comparison.
+  - Beside the verdict: `esignatureState` (`active` \| `superseded` \| `revoked` + day) and, for records and certificates, `documentState` (`current` \| `superseded` \| `voided`).
+- **Shown:** verdict and explanation (ID/EN keys), signer snapshot, specimen SVG, key fingerprint and public key PEM (offline verification), meaning, `signedAt`, organisation display name, document type and title, `contentHash`, and the canonical content for records and certificates (so the browser can recompute it), with a minimal record or certificate summary (device name, brand, model, serial; dates; compliant).
+- **Never shown:** e-mail, IP, user agent, the token, internal ids beyond those inside the canonical content.
+- Headers: `Cache-Control: no-store` and `X-Robots-Tag: noindex`.
 
-Shown, and only this: the verdict and its explanation (ID and EN keys), `signedAt`, `meaning`, the signer snapshot (name, role, organisation), the tenant's display name, a record summary (device name, brand, model, serial number; calibration date; due date; compliant; standard), `dataHash`, the canonical data fields (so the browser can recompute the hash), `scheme`, `signingKeyId`, and the public key PEM (so anyone can verify offline). **Never shown:** e-mail, IP, user agent, internal user ids beyond those inside the canonical data, the token itself, or results beyond the canonical data. Response headers: `Cache-Control: no-store` and `X-Robots-Tag: noindex`.
+## 5. Frontend
 
-## 6. Frontend
+- **Profile → E-signature** (every user): draw on a canvas (pointer and touch; clear and redo) or upload an image; preview; save with password or MFA. Shows the fingerprint, the version history, "Replace" and "Revoke".
+- **Calibration record detail:** an "E-signature" panel with the applications (specimen, name, role, meaning, time, integrity badge, verify link, QR), a **Sign** button (meaning, then credential) for the performer or a reviewer, and the `ESIG_NONE` explanation with a link to the profile.
+- **Certificate:** in the frontend renderer's signature blocks (calibrated by / approved by), place each applicable application's **specimen**, name, role and date, plus a small verification QR. A block with no application stays as today. Signing panel as on the record. The certificate's own verification (`/verify`) is unchanged and links to the e-signature verifications.
+- **Sign a document** (`/esignature/documents`): drop a file (hashed in the browser, never uploaded), give a title, choose a meaning, sign. The result offers the verify link, the QR, and a printable "signature sheet" (specimen, details, QR) to attach to the paper document.
+- **Public page `/s/[id]?t=`** (server-rendered under the nonce CSP, ID/EN, noindex, **exactly one `<main>` and one `<h1>`**): the verdict as the heading, the details, the specimen rendered as sanitised SVG (no `dangerouslySetInnerHTML` of unsanitised input; render the paths, or use an `<img>` with a data-URI), a "check it yourself" section (recompute the canonical hash with Web Crypto; for `document`, drop the file), and the bundle budget kept.
 
-- **Calibration record detail:** a "Tanda tangan elektronik operator / Operator e-signature" panel.
-  - Unsigned record, caller is the performer: a **Sign** button opens a dialog with the meaning statement, then password or MFA code. The submit button stays disabled while the request is pending.
-  - Signed record: who signed, when, the integrity badge, the verify link, the QR (made in the browser), and Copy link.
-  - A 409 response is shown as its explanation text.
-- **Public page `/s/[id]`** (server-rendered under the nonce CSP, ID/EN, `noindex`, one `<main>`, one `<h1>`): the verdict as the main heading, the details from § 5, and a "check it yourself" section that recomputes the SHA-256 in the browser (Web Crypto) from the canonical data and compares it with `dataHash`. It stays within the public page's bundle budget.
-- The certificate view does not change, except for one optional link, "Verify the operator's e-signature", shown when the record is signed.
+## 6. Gates, docs, record
 
-## 7. Contract, docs and gates
-
-- OpenAPI modules for the three routes. Zod schemas in `packages/contracts`. `openapi:check` and `openapi:lint` pass.
-- `docs/BACKEND/13-UPSTREAM-MODULES.md` gets a section; the user guide (`docs/UPSTREAM/13-USER-GUIDES-ID.md`, technician) gets "Menandatangani rekaman kalibrasi".
-- Per-card gates (scoped, the owner's rule): lint clean on changed files; typecheck; `npm run ratchet`; `load:check`; jest `--findRelatedTests` with changed files at 100%; contracts at 100%; the migration's live suite on PostgreSQL 18 as `callibrator_app`; frontend jest for the new components and page; `next build` within budget. `routePermissionGuard` and `twoTenantRoutes.guard` pass.
+- OpenAPI modules for every route; Zod schemas in contracts; `openapi:check` and `openapi:lint` pass.
+- Per-card gates (scoped): lint clean on changed files; typecheck; `npm run ratchet`; `load:check`; jest `--findRelatedTests` with changed files at 100%; contracts at 100%; the live suite of migration 0149 on PostgreSQL 18 as `callibrator_app`; frontend jest for new components and pages; `next build` within budget. `routePermissionGuard` and `twoTenantRoutes.guard` pass.
+- Docs: `docs/BACKEND/13-UPSTREAM-MODULES.md` and a user guide section in `docs/UPSTREAM/13-USER-GUIDES-ID.md` ("Membuat e-signature", "Menandatangani rekaman kalibrasi, sertifikat dan dokumen"). ADR-140 records the alternatives considered: the tenant key instead of personal keys; storing the uploaded document; extending the generic workflow tables; the visual specimen only, without a key. Its implications, including the bad ones, include: server-held private keys are not a qualified electronic signature (PSrE/BSrE) under Indonesian law; KMS loss means no new applications, but verification still works from the stored public keys.
 - Record, CHANGELOG, MEMORY-INDEX, PROGRESS (Phase 21: 15 cards) in the same commit.
 
-## 8. Out of scope (said so that nobody rounds it up)
+## 7. Out of scope (stated so nobody rounds it up)
 
-Revocation or withdrawal of a signature; a second signer (reviewer countersign) on calibration records; signing many records at once; offline signing; signing imported records from the previous system.
+Qualified certificates from an Indonesian CA (PSrE), or the user holding their own private key (device or passkey signing); multi-party signing workflows (the generic `/esignature/workflows` stays as it is); stamping the specimen into an uploaded PDF's bytes; offline signing; signing imported records from the previous system.
