@@ -116,7 +116,9 @@ SELECT json_build_object(
       (xpath('/row/c/text()', query_to_xml('SELECT coalesce(sum(hashtextextended(id::text || ''|'' || extract(epoch FROM created_at)::text, 0)::numeric), 0) AS c FROM public.audit_logs', false, true, '')))[1]::text END),
   'migrations', (SELECT CASE WHEN to_regclass('public.schema_migrations') IS NULL THEN NULL ELSE
       (xpath('/row/c/text()', query_to_xml('SELECT count(*) || '':'' || coalesce(max(name), '''') AS c FROM public.schema_migrations', false, true, '')))[1]::text END),
-  'vector', (SELECT extversion FROM pg_extension WHERE extname = 'vector')
+  'vector', (SELECT extversion FROM pg_extension WHERE extname = 'vector'),
+  'roles', (SELECT coalesce(json_agg(rolname ORDER BY rolname), '[]'::json) FROM pg_roles
+      WHERE rolname !~ '^pg_' AND rolname <> current_user)
 )::text;
 SQL
 }
@@ -254,14 +256,24 @@ do_verify() {
   fi
   check scratch true "PostgreSQL $(scratch_psql -d postgres -c 'SHOW server_version' | cut -d' ' -f1) on 127.0.0.1:${SCRATCH_PORT}"
 
-  # Restore in the documented order: the application role first (it is cluster-wide and
-  # not in a dump), then the archive, stopping at the first error.
-  {
-    if [ "$DB_APP_ROLE" != "none" ]; then
-      printf 'CREATE ROLE %s NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;\n' "\"$DB_APP_ROLE\""
-    fi
-    printf 'CREATE DATABASE %s OWNER %s;\n' "\"$DB_NAME\"" "\"$DB_USER\""
-  } | scratch_psql -d postgres >"$SCRATCH_PID_DIR/roles.log" 2>&1 || {
+  # Restore in the documented order: the roles first (they are cluster-wide and not in a
+  # dump), then the archive, stopping at the first error. The roles are the source's, as
+  # the manifest recorded them in the dump's snapshot: the application role, and the
+  # import and transform roles of migrations 0114 and 0133, whose grants are in the dump.
+  # A manifest written before the roles were recorded falls back to DB_APP_ROLE.
+  local app_role=""
+  [ "$DB_APP_ROLE" = "none" ] || app_role=$DB_APP_ROLE
+  scratch_psql -d postgres -v src="${src_facts:-null}" -v app="$app_role" -v db="$DB_NAME" -v owner="$DB_USER" \
+      >"$SCRATCH_PID_DIR/roles.log" 2>&1 <<'SQL' || {
+SELECT format('CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS', r)
+  FROM (SELECT json_array_elements_text(coalesce((:'src'::json)->'roles', '[]'::json)) AS r
+        UNION SELECT nullif(:'app', '')) wanted
+ WHERE r IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r)
+ ORDER BY r
+\gexec
+SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'owner')
+\gexec
+SQL
     VERIFY_ERROR="could not prepare the scratch database: $(last_error "$SCRATCH_PID_DIR/roles.log")"
     check restore false "$VERIFY_ERROR"
     return 1
