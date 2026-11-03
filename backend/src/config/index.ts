@@ -13,6 +13,7 @@
  *    which only the replacement query used, is no longer read.
  * It replaces `index.d.ts`, which described the `.js` exports and is removed.
  */
+import { readFileSync } from "fs";
 import type * as SequelizeModule from "sequelize";
 import type * as ActivityLogModule from "../middlewares/activityLog.middleware";
 import type * as ClsNamespaceModule from "../utils/clsNamespace.util";
@@ -140,6 +141,28 @@ const baseConfig = {
   },
 };
 
+// A11-DB-02: the TLS options for the connection. DB_SSL=true enables TLS;
+// DB_SSL_CA supplies a CA for a managed Postgres presenting a private-CA
+// certificate (PEM contents, or a path to a PEM file); DB_SSL_REJECT_UNAUTHORIZED
+// (default true) controls chain verification. Both are documented in .env.example
+// and declared in config/env.ts. Unset behaviour is unchanged.
+const resolveDbSsl = (): false | { require: boolean; ca?: string; rejectUnauthorized?: boolean } => {
+  if (process.env["DB_SSL"] !== "true") {
+    return false;
+  }
+  const options: { require: boolean; ca?: string; rejectUnauthorized?: boolean } = { require: true };
+  const ca = process.env["DB_SSL_CA"];
+  if (ca !== undefined && ca.trim() !== "") {
+    // A path to a PEM file, or the PEM contents themselves. A path that cannot be
+    // read throws at load — refusing to start is correct for a broken TLS config.
+    options.ca = ca.includes("-----BEGIN") ? ca : readFileSync(ca.trim(), "utf8");
+  }
+  const reject = process.env["DB_SSL_REJECT_UNAUTHORIZED"];
+  options.rejectUnauthorized =
+    reject === undefined || reject.trim() === "" ? true : reject.trim().toLowerCase() === "true";
+  return options;
+};
+
 // PostgreSQL Configuration
 // `supportsSearchPath` is not in Sequelize's Options type; the instance reads it from the config as before.
 const pgConfig = {
@@ -148,7 +171,7 @@ const pgConfig = {
   database: dbName as string,
 
   dialectOptions: {
-    ssl: process.env["DB_SSL"] === "true" ? { require: true } : false,
+    ssl: resolveDbSsl(),
   },
 
   supportsSearchPath: false,
