@@ -25,6 +25,7 @@
 // senders, `logger`, `claimMessage`) is captured at load; the two numbers are
 // read through config/env at load, as before. `export =` keeps the object
 // `require()` returned.
+import { randomUUID } from "crypto";
 import type { Channel, ConsumeMessage } from "amqplib";
 import rabbitmq from "./rabbitmq.service";
 import {
@@ -156,7 +157,9 @@ const addEmailJob = async (job: EmailJobInput): Promise<boolean> => {
     const ch = await publishingChannel();
 
     const jobData = {
-      id: `${String(Date.now())}-${Math.random().toString(36).slice(2, 8)}`,
+      // A11-SEC-02: the consumer deduplicates on this id; Math.random() can
+      // collide under burst, dropping a delivery. crypto.randomUUID() cannot.
+      id: `${String(Date.now())}-${randomUUID()}`,
       type: job.type,
       data: job.data,
       createdAt: new Date().toISOString(),

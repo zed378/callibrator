@@ -6,6 +6,7 @@
 // (credentialOptions and the first getRedisConnection); internal calls use the
 // local functions, never the exports, as the JavaScript did. `export =` keeps
 // the object `require()` returned.
+import { randomUUID } from "crypto";
 import Redis from "ioredis";
 import type { Redis as RedisClient } from "ioredis";
 import { logger as loadedLogger } from "../middlewares/activityLog.middleware";
@@ -379,7 +380,9 @@ const acquireLock = async (key: string, ttl = 5000): Promise<string | null> => {
     if (!isReady(client)) {return null;}
 
     const lockKey = `lock:${key}`;
-    const lockId = `${String(Date.now())}-${Math.random().toString(36).slice(2)}`;
+    // A11-SEC-02: a lock id must be unguessable and unique, so one worker cannot
+    // release another's lock; Math.random() is not a CSPRNG.
+    const lockId = `${String(Date.now())}-${randomUUID()}`;
 
     // SET NX EX = Set if Not eXists with EXpiry
     const result = await client.set(

@@ -17,6 +17,7 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type ExpressModule from "express";
 import { env } from "../config/env";
 import { sanitizeParsedBody } from "../middlewares/globalSanitizer.middleware";
+import { randomBytes } from "crypto";
 import type * as UuidModule from "uuid" with { "resolution-mode": "import" };
 import type * as StorageModule from "../services/storage";
 import type * as StoredFileModule from "../services/storedFile.service";
@@ -345,7 +346,9 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const randomPrefix = String(Date.now()) + "-" + String(Math.floor(Math.random() * 10000));
+    // A11-SEC-02: crypto randomness for the prefix segment (the uuidv4 suffix
+    // already guarantees uniqueness; this keeps the historical name shape).
+    const randomPrefix = String(Date.now()) + "-" + String(randomBytes(2).readUInt16BE(0));
     const fileName = `${randomPrefix}-${uuidv4()}${ext}`;
     req.uploadFilename = fileName;
     cb(null, fileName);
