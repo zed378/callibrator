@@ -2223,4 +2223,10 @@ export = {
   getStatus,
   SIGNATURE_STATUS,
   WORKFLOW_STATUS,
+  // P21-15 (ADR-140): the operator's signature on a calibration record signs and verifies with the
+  // same tenant key, through the same two loaders (a deleted key still verifies while its public
+  // half is retained) and the same digest.
+  loadSigningKey,
+  loadVerificationKey,
+  SIGNATURE_DIGEST,
 };

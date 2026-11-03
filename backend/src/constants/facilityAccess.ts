@@ -336,6 +336,7 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
   "api/calibrationRecords.route.ts": {
     "GET /": { kind: "read", reason: "A-4: the facility's calibration records, with the performer display (A-90)" },
     "GET /:calibrationRecordId": { kind: "read", reason: "A-4: one record of the facility, with the performer display" },
+    "GET /:calibrationRecordId/esignatures": { kind: "read", reason: "P21-15 (ADR-140): the e-signatures applied to one record of the facility — the record is read in the caller's scope first" },
   },
   "api/attachments.route.ts": {
     "POST /": {

@@ -145,6 +145,50 @@ Semuanya dibuat di peramban Anda; Anda dapat membatalkan di tengah proses.
 | Mengubah fasilitas sebuah alat | Perpindahan alat adalah satu operasi teraudit (lihat admin penyedia) |
 | Memindai tanda tangan sendiri dari ponsel | Tanda tangan hanya daring, di halaman laporan |
 
+### 1.8 Membuat e-signature
+
+Buka **Profil** → bagian **E-signature**.
+
+1. Pilih **Buat e-signature saya**. Gambar tanda tangan Anda di kotak (mouse, pena, atau jari), atau
+   **unggah gambar** PNG/JPEG (paling besar 180 KB). **Hapus** untuk mengulang.
+2. Periksa **pratinjau**, lalu masukkan **kata sandi** atau **kode MFA** Anda dan simpan.
+3. Sistem membuat kunci pribadi Anda dan menyimpannya terenkripsi di server. Anda melihat **sidik
+   kunci** dan **versi**.
+
+**Ganti** membuat versi baru; versi lama tetap memverifikasi apa yang pernah ditandatanganinya.
+**Cabut** berarti "jangan dipakai lagi mulai sekarang"; tanda tangan sebelumnya tetap dapat
+diverifikasi. Administrator tenant dapat mencabut e-signature Anda (misalnya bila Anda keluar),
+tetapi tidak dapat membuatnya untuk Anda.
+
+**E-signature bukan sertifikat kalibrasi.** Ini juga bukan tanda tangan elektronik tersertifikasi
+(PSrE): kuncinya disimpan oleh penyedia layanan dan hanya dipakai setelah Anda memasukkan ulang kata
+sandi atau kode MFA.
+
+### 1.9 Menandatangani rekaman kalibrasi dan dokumen
+
+**Rekaman kalibrasi.** Di **Kalibrasi** → tab rekaman, pilih **E-signatures** pada baris rekaman.
+
+- Bila Anda yang melakukan kalibrasi, tombolnya **Sign as performed**; orang lain dengan hak tulis
+  kalibrasi menandatangani **as reviewed**.
+- Masukkan kata sandi atau kode MFA. Setiap tanda tangan tampil dengan spesimen, nama, peran, waktu,
+  status isi (**tidak berubah** / **berubah**), tautan verifikasi dan QR-nya.
+- Rekaman yang sudah dibatalkan, sudah dikoreksi, atau berasal dari laboratorium luar / sistem lama
+  tidak ditandatangani; pesan di layar menjelaskan alasannya. Belum punya e-signature? Pesannya
+  mengarahkan Anda ke Profil.
+
+**Dokumen apa pun.** Buka **/dashboard/esignature/documents** (**Sign a document**).
+
+1. Pilih berkas. **Peramban Anda menghitung sidik SHA-256-nya; berkas tidak diunggah.**
+2. Beri judul, pilih makna (disusun, ditinjau, disetujui, diketahui, dilaksanakan), masukkan kata
+   sandi atau kode MFA, lalu tanda tangani.
+3. Cetak **lembar tanda tangan** (spesimen, rincian, QR) dan lampirkan ke dokumen kertas.
+
+**Verifikasi.** Siapa pun yang memegang tautan atau QR membuka halaman `/s/…` tanpa masuk: hasilnya
+**sah**, **isi berubah**, atau **tidak cocok**, lengkap dengan spesimen dan sidik kunci. Untuk dokumen,
+pembaca memilih berkasnya sendiri dan peramban membandingkan sidiknya.
+
+**Sertifikat:** penempelan e-signature ke sertifikat **belum tersedia** (ADR-140 § 6).
+
 ---
 
 ## 2. Panduan Pengguna Faskes

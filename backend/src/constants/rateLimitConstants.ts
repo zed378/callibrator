@@ -256,6 +256,24 @@ const API_ENDPOINTS = {
     windowMs: WINDOW.FIFTEEN_MIN,
     description: "IPM report signing",
   },
+  // P21-15 (ADR-140 § 4): the public verification of an e-signature application — every request (300)
+  // and every answer that is not a verdict (60), per address (ADR-100's pair); and every e-signature
+  // act that re-enters a credential (create, revoke, apply), per user and address (the A-185 class).
+  esigVerifyToken: {
+    maxRequests: 300,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "E-signature verification",
+  },
+  esigVerify: {
+    maxRequests: 60,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "E-signature verification",
+  },
+  esigSign: {
+    maxRequests: 10,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "E-signature signing",
+  },
   // P21-08 (ADR-138 § 4, Am. 1 § 8; P19-07 § 7): the public device page — every request per address
   // (120), every 404 per address again (30: a failed lookup counts double, so a scanner of random
   // tokens is slowed first), and every request of every address (3 000, the database's ceiling

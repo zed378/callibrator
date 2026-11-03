@@ -622,6 +622,11 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
     reason:
       "the public device page (P21-08, ADR-138): the 128-bit sticker token is the capability, resolved by its hash across tenants on purpose; every failure is one identical 404 (publicDevicePage.p2108)",
   },
+  "api/publicEsignatures.route GET /:applicationId": {
+    kind: "public",
+    reason:
+      "the public verification of an e-signature application (P21-15, ADR-140): the 192-bit token is the capability, the row resolved by id across tenants on purpose; every failure is one identical 404 (esignatures.p2115)",
+  },
   "api/content.route GET /posts/public/:slug": {
     kind: "public",
     reason: "the public site's published posts; posts are platform content with no tenant column",

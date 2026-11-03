@@ -382,6 +382,8 @@ const JSON_SHAPES: Readonly<Record<string, z.ZodType | undefined>> = Object.free
   "InspectionSessionSignature.signerSnapshot": personSnapshot,
   "CalibrationDevice.registrantSnapshot": personSnapshot,
   "CalibrationRecord.performerSnapshot": calibrationPerformerSnapshot,
+  // P21-15 (ADR-140): the signer of an e-signature application, as printed — name, role, organisation only.
+  "EsignatureApplication.signerSnapshot": personSnapshot,
 });
 
 /**

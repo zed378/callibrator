@@ -14,6 +14,10 @@ import { ROLE_NAMES } from "../../constants/roleConstants";
 import { validateUuid } from "../../middlewares/validateUuid.middleware";
 import { denyPlatformAuthoring } from "../../middlewares/denyPlatformAuthoring.middleware"; // A-127, ADR-051 Q-17
 import calibrationRecordsController from "../../controllers/calibrationRecords.controller";
+import { requestBudget } from "../../middlewares/requestBudget.middleware";
+import { validate } from "../../middlewares/validation.middleware";
+import { applyRecordEsignature, recordEsignaturesParams } from "@callibrator/contracts/esignatures";
+import { applyToRecordHandler, recordApplications } from "../../controllers/userEsignature.controller";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -65,6 +69,33 @@ router.post(
   dynamicAccess("calibration", "write"),
   denyPlatformAuthoring,
   calibrationRecordsController.voidCalibrationRecord,
+);
+
+// P21-15 (ADR-140; spec P21-15 v2 § 4): the personal e-signature applied to a record — `performed` by
+// its performer, `reviewed` by anyone else with calibration write — re-entering a credential (the
+// signing budget per user and address: the A-185 class). An API key is refused (a person signs). The
+// read answers every application with its link, its specimen and the integrity now.
+const signingBudget = requestBudget("esigSign", { keyOf: (req) => (req.user as { id: string }).id });
+
+router.post(
+  "/:calibrationRecordId/esignatures",
+  auth,
+  denyApiKey,
+  dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
+  validateUuid("calibrationRecordId"),
+  validate(applyRecordEsignature, { from: ["params", "body"] }),
+  signingBudget,
+  applyToRecordHandler,
+);
+
+router.get(
+  "/:calibrationRecordId/esignatures",
+  auth,
+  validateUuid("calibrationRecordId"),
+  dynamicAccess("calibration", "read"),
+  validate(recordEsignaturesParams, { from: "params" }),
+  recordApplications,
 );
 
 export = router;

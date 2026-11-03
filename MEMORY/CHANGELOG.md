@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-03 — P21-15 (WIP): personal e-signatures, applied to calibration records and to documents by hash, each publicly verifiable ([record](./records/2026-11-03-p21-15-operator-esignature.md), ADR-140)
+- Every user can create an e-signature in Profile → E-signature: a drawn or uploaded specimen (an allow-listed SVG) and a personal RSA-3072 key held on the server under KMS. Create, replace and revoke re-enter the password or MFA code and are audited; a revoked or replaced e-signature still verifies what it signed.
+- It is applied to a calibration record (`performed` by the performer, `reviewed` by anyone else) or to any file by its SHA-256 (the file is never uploaded); each application has its own public link and QR, `/s/<id>?t=<token>`, showing `valid`, `content changed` or `invalid` and letting the reader recompute the hash in the browser. Migration 0149 (`user_esignatures`, `esignature_applications`; append-only for every role).
+- **Not yet:** e-signatures on certificates (part 4 of the spec). The certificate's own signature is unchanged.
+- The public device page `/d/[token]` no longer renders a second `<h1>` in its loading shell.
+
 ### 2026-11-03 — Backup verifier: every source role is restored before `pg_restore` ([record](./records/2026-11-03-backup-verify-roles.md))
 - The nightly restore verification failed on the reference deployment from 2026-10-27 to 2026-11-01: the scratch server lacked `callibrator_transform` (migration 0133). The manifest now records the source's roles (`facts.roles`) and the verifier creates them all (ADR-116 Am. 1); `docs/DEVOPS/04` § Restore Order step 4b creates all three roles. Proven against PostgreSQL 18: the released image fails, the rebuilt one passes all seven checks. Not yet deployed.
 

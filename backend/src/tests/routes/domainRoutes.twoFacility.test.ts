@@ -16,6 +16,7 @@
  * @two-facility api/calibrationDevices.route.ts GET /:calibrationDeviceId
  * @two-facility api/calibrationDevices.route.ts PUT /:calibrationDeviceId
  * @two-facility api/calibrationRecords.route.ts GET /:calibrationRecordId
+ * @two-facility api/calibrationRecords.route.ts GET /:calibrationRecordId/esignatures
  * @two-facility api/attachments.route.ts GET /:id
  * @two-facility api/attachments.route.ts GET /:id/download
  * @two-facility api/attachments.route.ts POST /:id/signed-url
@@ -152,7 +153,11 @@ twoFacilitySuite({
   routeFile: "api/calibrationRecords.route.ts",
   mdb,
   context: () => ctx,
-  routes: [{ key: "GET /:calibrationRecordId", method: "GET", path: (id) => `/${id}`, ownId: own("r1"), foreignId: own("r2"), unboundToo: true }],
+  routes: [
+    { key: "GET /:calibrationRecordId", method: "GET", path: (id) => `/${id}`, ownId: own("r1"), foreignId: own("r2"), unboundToo: true },
+    // P21-15 (ADR-140): the e-signatures applied to a record — read in the caller's facility scope first.
+    { key: "GET /:calibrationRecordId/esignatures", method: "GET", path: (id) => `/${id}/esignatures`, ownId: own("r1"), foreignId: own("r2"), unboundToo: true },
+  ],
   lists: [{ key: "GET /", path: "/", ownId: own("r1"), foreignId: own("r2") }],
 });
 
