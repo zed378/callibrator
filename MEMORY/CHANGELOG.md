@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-03 — Backup verifier: every source role is restored before `pg_restore` ([record](./records/2026-11-03-backup-verify-roles.md))
+- The nightly restore verification failed on the reference deployment from 2026-10-27 to 2026-11-01: the scratch server lacked `callibrator_transform` (migration 0133). The manifest now records the source's roles (`facts.roles`) and the verifier creates them all (ADR-116 Am. 1); `docs/DEVOPS/04` § Restore Order step 4b creates all three roles. Proven against PostgreSQL 18: the released image fails, the rebuilt one passes all seven checks. Not yet deployed.
+
 ### 2026-11-02 — P25: the reconciliation on the real dump, and the report diff ([record](./records/2026-11-02-p25-reconciliation-real-data.md))
 - RC-F4 is computed from the staged rows; the data-quality report covers the rest of 03 § 7, the duplicate files and the users section; `GET /admin/upstream-sql-imports/:id/report-diff` compares 16 fields of a sample, aggregates only (ADR-129 Am. 14). On the 2026-10-06 dump: 115 facilities, 0 failing; 8,392 sessions, 0 `differs`. P25-02 and P25-03 DONE; P25-01 16 of 17, R-12 BLOCKED; P25-04 BLOCKED on the operator.
 

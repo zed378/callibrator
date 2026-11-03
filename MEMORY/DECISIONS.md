@@ -9439,6 +9439,23 @@ A restore test is the only thing that turns a dump into a backup; doing it on **
 - **A source facts read on a very large `audit_logs`** is a full scan inside the dump's transaction; it lengthens the snapshot's lifetime. Acceptable at current scale; revisit with production volume.
 - `BACKUP_VERIFY_TABLES` names tables interpolated into SQL; the script accepts only `^[a-z_][a-z0-9_]*$`.
 
+### Amendment 1 (2026-11-03): The Verifier Restores Every Role the Source Has, Not Only the Application Role
+
+**Defect.** Migrations 0114 and 0133 (Phase 24) added `callibrator_import` and `callibrator_transform` and grant on schema `upstream_import` to them. The verifier created only `DB_APP_ROLE` before `pg_restore --exit-on-error`, so every restore stopped at `GRANT USAGE ON SCHEMA upstream_import TO callibrator_transform`. On the reference deployment the nightly verification failed **six nights running (2026-10-27 to 2026-11-01)**. Dumps were written, but none passed the restore check. The alert path ran, but nobody acted on it until this was found after the `155605d` deploy. § Restore Order step 4b in `docs/DEVOPS/04` had the same gap for a restore by hand.
+
+**Decision.** The dump's manifest records the source cluster's non-system roles (`facts.roles`: `pg_roles`, not `pg_*`, not the dumping user), read in the same exported snapshot as the other facts. The verifier creates each one `NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS` (names through `format('%I')`) in the throwaway server before the restore, plus `DB_APP_ROLE` when set. A manifest written before this amendment carries no `roles`, so its restore falls back to `DB_APP_ROLE` only. Step 4b now creates all three roles.
+
+**Alternatives considered.**
+- *Create a fixed list (app, import, transform) in the script.* Rejected: the next migration that adds a role would break the verifier again, silently until the next night, and `UPSTREAM_*_DB_ROLE` can rename them.
+- *Parse the grantees out of the dump's ACL entries* (`pg_restore -L <ACL lines> -f -`). This also works for old dumps, but it parses SQL text (quoted names, `DEFAULT ACL … FOR ROLE`, policies `TO`). Rejected for now because the snapshot read is exact and simpler. It is the fallback to build if old dumps ever need verifying.
+- *Restore without `--exit-on-error`.* Rejected: that is the "errors ignored: 85" restore the P7-04 drill condemned (D-4).
+
+**Implications, including the bad ones.**
+- **The 14 dumps on the VM written before this image cannot pass verification** (no `roles` in their manifests). The first verified dump will be the first one taken by the new image. Until then the newest verified dump is from before 2026-10-27, if any is still retained.
+- Every non-system role of the source cluster is created in the scratch server, including roles of other databases on a shared cluster. They are harmless there (NOLOGIN, deleted with the server).
+- `roles` is not in the exact-equality `facts` comparison: the restored list is the one the verifier just created, so comparing it proves nothing.
+- **Proof:** a throwaway PostgreSQL 18 migrated by `zed378/calibration-be:155605d` (roles `callibrator_app`, `_import`, `_transform`). `run-once` with the released `zed378/calibration-backup:155605d` failed `restore` with the VM's exact error. The rebuilt image passed `sha256`, `toc`, `scratch`, `restore`, `pgvector`, `facts` and `schema` (89 tables, 1302 columns, 124 control objects); restoreSeconds 10. Record: `MEMORY/records/2026-11-03-backup-verify-roles.md`.
+
 ---
 
 ## ADR-117: The Dependency Audit Is Two Gates — the Production Tree With No Exceptions, the Whole Tree Through a Reviewed, Expiring Allow-List Keyed by GHSA Id; a Failed Backend Test Run Explains Itself in Public Annotations

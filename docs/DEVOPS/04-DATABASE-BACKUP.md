@@ -89,6 +89,13 @@ cluster, every grant fails, `pg_restore` exits 1 ("errors ignored on restore: 85
 backend then refuses to boot with `role "callibrator_app" does not exist`. Create the role **before**
 restoring — see Restore Order (drill finding D-4, ADR-078).
 
+**Nor the upstream import roles (ADR-116 Am. 1, 2026-11-03).** Migrations 0114 and 0133 add
+`callibrator_import` and `callibrator_transform` (`UPSTREAM_IMPORT_DB_ROLE`, `UPSTREAM_TRANSFORM_DB_ROLE`)
+and grant on schema `upstream_import` to them. A restore that creates only the application role stops at
+`GRANT USAGE ON SCHEMA upstream_import TO callibrator_transform`. That is what failed the scheduled
+verification on the reference deployment every night from 2026-10-27 to 2026-11-01. Since Am. 1 the
+manifest records the source's roles (`facts.roles`) and the verifier creates every one of them.
+
 ### Retention
 
 | Kind | Kept |
@@ -143,16 +150,18 @@ they live in, and it had no step for the application role.
      (healthy is not enough on first boot: the init script restarts the server)
 4. restore the database — one of:
    a) the volume snapshot (./volumes/postgres) — roles come with it; or
-   b) a dump, role first:
+   b) a dump, roles first (every role in the dump's manifest, "facts.roles"):
         docker compose … exec -T postgres psql -U $DB_USER -d postgres \
           -c "DROP DATABASE $DB_NAME" \
           -c "CREATE ROLE callibrator_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS" \
-          -c "GRANT callibrator_app TO $DB_USER" \
+          -c "CREATE ROLE callibrator_import NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS" \
+          -c "CREATE ROLE callibrator_transform NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS" \
+          -c "GRANT callibrator_app, callibrator_import, callibrator_transform TO $DB_USER" \
           -c "CREATE DATABASE $DB_NAME OWNER $DB_USER"
         docker compose … exec -T postgres pg_restore -U $DB_USER -d $DB_NAME \
           --no-owner --exit-on-error < backups/db-<date>.dump
-      (use DB_APP_ROLE's value if it is not callibrator_app; --exit-on-error makes a
-       missing role a failure instead of "errors ignored")
+      (use the DB_APP_ROLE / UPSTREAM_*_DB_ROLE values if they differ; --exit-on-error
+       makes a missing role a failure instead of "errors ignored")
 5. restore the object store: ./volumes/uploads (attachments AND certificates/ PDFs),
    ./volumes/storage, ./volumes/backup — or repoint STORAGE_DRIVER at the surviving bucket
 6. start redis, rabbitmq (empty volumes are fine), then the backend. Its boot migrates,
@@ -212,11 +221,11 @@ in the image `callibrator/backup-verify` (compose service `db-backup`; Helm Cron
 
 | Step | What it proves | Fails when |
 |---|---|---|
-| dump | `pg_dump -Fc` inside an **exported snapshot**; the same transaction writes `<dump>.manifest.json`: exact row counts of `BACKUP_VERIFY_TABLES`, a checksum over `audit_logs`, migrations (count + newest), pgvector version, SHA-256 | the source is unreachable, pg_dump errors |
+| dump | `pg_dump -Fc` inside an **exported snapshot**; the same transaction writes `<dump>.manifest.json`: exact row counts of `BACKUP_VERIFY_TABLES`, a checksum over `audit_logs`, migrations (count + newest), pgvector version, the cluster's non-system roles (`roles`, Am. 1), SHA-256 | the source is unreachable, pg_dump errors |
 | `sha256` | the file is the one the manifest describes | truncation, bit rot |
 | `toc` | `pg_restore --list` reads the archive | a corrupt archive |
 | `scratch` | a **throwaway PostgreSQL 18 + pgvector** starts inside the container (loopback only, deleted afterwards) | — |
-| `restore` | role first, then `pg_restore --no-owner --exit-on-error` — § Restore Order step 4b | any restore error |
+| `restore` | the manifest's roles first (a manifest from before Am. 1: `DB_APP_ROLE` only), then `pg_restore --no-owner --exit-on-error` — § Restore Order step 4b | any restore error, a role the dump grants to and the scratch server lacks included |
 | `pgvector` | `CREATE EXTENSION vector` came back | the extension is missing |
 | `facts` | counts, audit checksum, migrations, pgvector **equal** the snapshot's — exact, no tolerance | a lost or extra row |
 | `schema` | the application's own check (`./backend verify-schema`, the boot's `[schema-verify]`) on the restored copy | the copy would refuse a boot |
