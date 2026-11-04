@@ -22,7 +22,7 @@ imagePullSecrets: []
 # same ones that create those objects. The umbrella refuses to render if
 # backend.secretName is set.
 
-# Must match the uid backend/Dockerfile pins (useradd -r -u 997).
+# Must match the uid and gid backend/Dockerfile pins (USER 997:997).
 podSecurityContext:
   runAsUser: 997
   runAsGroup: 997

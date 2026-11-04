@@ -166,7 +166,9 @@ RUN set -eux; \
 # image happens to leave free — 997 today, not guaranteed tomorrow — and the
 # compose stack's volume-init service must chown the bind mounts to this exact
 # number. An unpinned uid would make a base-image bump a silent crash loop.
-RUN useradd -r -u 997 -s /usr/sbin/nologin app
+# The gid is pinned too (997, the one `useradd -r` happened to give): the Helm
+# chart runs the pod as runAsGroup 997, and an unpinned group could drift.
+RUN groupadd -r -g 997 app && useradd -r -u 997 -g app -s /usr/sbin/nologin app
 
 # Create persistent storage directories.
 #
@@ -224,15 +226,17 @@ RUN chmod +x ./backend && \
 # Expose port
 EXPOSE 3000
 
-# Run as non-root
-USER app
+# Run as non-root. NUMERIC, as frontend/Dockerfile's USER 1001:1001: a
+# Kubernetes pod with runAsNonRoot refuses an image whose USER is a name it
+# cannot verify, unless the pod also sets runAsUser (the chart does; any other
+# pod spec would not start). INF-01 (the 2026-11 audit).
+USER 997:997
 
 # INF-01: container health. /live is the dependency-free liveness probe
 # (routes/internal/health.route.ts), so a blip in Postgres/Redis/RabbitMQ does
 # not flap the container unhealthy; /health (the aggregate readiness verdict) is
-# what nginx and the orchestrator readiness probes use. wget is in the Alpine
-# base (busybox). (INF-01's "runs as root" is already addressed by USER app
-# above — uid 997, pinned.)
+# what nginx and the orchestrator readiness probes use. wget is installed in
+# this Debian stage's apt step above.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD wget -q -O /dev/null http://127.0.0.1:3000/live || exit 1
 

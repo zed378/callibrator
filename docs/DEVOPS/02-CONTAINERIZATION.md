@@ -46,7 +46,7 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates openssl chromium fonts-liberation wget; \
     rm -rf /var/lib/apt/lists/*
-RUN useradd -r -u 997 -s /usr/sbin/nologin app
+RUN groupadd -r -g 997 app && useradd -r -u 997 -g app -s /usr/sbin/nologin app
 RUN mkdir -p /app/backup/tenant-backups /app/log /app/uploads/profile /app/uploads/tenant && \
     chown -R app:app /app/backup /app/log /app/uploads
 COPY --from=builder /out/backend ./backend
@@ -58,7 +58,7 @@ ENV NODE_ENV=production APP_STORAGE_PATH=/app \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 RUN chmod +x ./backend && chown app:app ./backend
 EXPOSE 3000
-USER app
+USER 997:997   # numeric: runAsNonRoot cannot verify a name (INF-01, 2026-11-04)
 CMD ["./backend"]
 ```
 
