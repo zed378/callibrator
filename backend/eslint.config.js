@@ -265,8 +265,7 @@ module.exports = [
     //    their stdout/stderr IS their interface, read by the operator or a pipeline.
     //  - src/tests/e2e/setup.js: the live E2E harness reports the server's readiness to the person
     //    running `make test-e2e`; it never runs inside the application.
-    //  - src/utils/checkMenu.util.js: a dead diagnostic whose deletion awaits the owner (A-18).
-    files: ["src/scripts/**/*.ts", "src/tests/e2e/setup.js", "src/utils/checkMenu.util.js"],
+    files: ["src/scripts/**/*.ts", "src/tests/e2e/setup.js"],
     rules: { "no-console": "off" },
   },
 ];

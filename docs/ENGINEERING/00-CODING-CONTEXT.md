@@ -2,7 +2,7 @@
 
 The one file to read at the start of every session before writing backend or frontend code. Everything here is a summary; follow the link when the summary is not enough.
 
-> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087), compiled to CommonJS; the only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18). The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The frontend is TypeScript as well. Where a section describes behaviour, it is **as-built** unless marked *target*.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087), compiled to CommonJS; no source `.js` file is left: the dead `utils/checkMenu.util.js` was deleted on 2026-11-04 (A-18, the 2026-11 audit's ARC-02). P9-26 converted the test trees to TypeScript; **2 `.js` files are left there**, both jest setup files (`src/tests/e2e/setup.js`, `src/tests/setup/nodeMajor.globalSetup.js`), and the 335 converted test files lint at their `.js` level from a frozen list that only shrinks (ADR-092 Am. 1); **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The frontend is TypeScript as well. Where a section describes behaviour, it is **as-built** unless marked *target*.
 
 ---
 
@@ -19,7 +19,7 @@ The two things that must never break:
 
 | Concern | As-built | Target |
 |---|---|---|
-| Backend language | **TypeScript, strict**, emitted as CommonJS (ADR-038, ADR-087), checked by TypeScript 7; the one source `.js` left is `utils/checkMenu.util.js` (A-18); 694 legacy `.js` test-tree files (P9-26) | same, with the legacy tests converted (P9-26) |
+| Backend language | **TypeScript, strict**, emitted as CommonJS (ADR-038, ADR-087), checked by TypeScript 7; no source `.js` is left (A-18, deleted 2026-11-04); 2 `.js` jest setup files in the test trees (P9-26) | same, with the legacy tests converted (P9-26) |
 | HTTP | Express 5 | same |
 | Database | **PostgreSQL 18 + pgvector, only** (ADR-039) | same |
 | ORM | Sequelize 6, global tenant-scoping hooks (ADR-029); all 73 models typed with `InferAttributes` (`initModel`, P9-10) | same |

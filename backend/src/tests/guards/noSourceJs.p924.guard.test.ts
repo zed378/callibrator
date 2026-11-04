@@ -18,10 +18,14 @@ import path from "path";
 
 const BACKEND = path.join(__dirname, "..", "..", "..");
 
-/** The source `.js` files still to convert or delete, each with who holds it (2026-10-02). */
-const PENDING: readonly string[] = [
-  "src/utils/checkMenu.util.js", // dead; deleting it awaits the owner (A-18)
-];
+/**
+ * The source `.js` files still to convert or delete, each with who holds it.
+ *
+ * Empty since 2026-11-04: the last one, `src/utils/checkMenu.util.js` — a
+ * dead diagnostic script that imported nothing in production code — was
+ * deleted (A-18). The backend source tree is TypeScript.
+ */
+const PENDING: readonly string[] = [];
 
 /** Every `.js` file under `dir`, relative to the backend root, `/`-separated. */
 const jsUnder = (dir: string): string[] =>

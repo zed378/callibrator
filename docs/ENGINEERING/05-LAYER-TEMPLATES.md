@@ -2,7 +2,7 @@
 
 A copyable template for every backend layer, in TypeScript, with an **as-built** note under each naming the module the converted code actually follows. Where a template and its note differ, the note is the code.
 
-> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087); the only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18). The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). Edit a legacy `.js` test in place; do not half-convert it.
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087); no source `.js` file is left: the dead `utils/checkMenu.util.js` was deleted on 2026-11-04 (A-18, the 2026-11 audit's ARC-02). P9-26 converted the test trees to TypeScript; **2 `.js` files are left there**, both jest setup files (`src/tests/e2e/setup.js`, `src/tests/setup/nodeMajor.globalSetup.js`), and the 335 converted test files lint at their `.js` level from a frozen list that only shrinks (ADR-092 Am. 1); **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). Edit a legacy `.js` test in place; do not half-convert it.
 
 ---
 

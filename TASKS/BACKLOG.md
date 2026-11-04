@@ -107,7 +107,6 @@ Taken by the main session under the owner's explicit delegation (*"decide the be
 | Q-42 | the privacy notice naming the data controller (before `/request-access` goes live) and counsel's review of public copy |
 | Q-43 | the legal entity for the copyright line |
 | P8-01 | an S3 or NFS target and an ambient credential chain (IAM role / service account) |
-| A-18 | permission to delete `backend/src/utils/checkMenu.util.js` |
 | Q-61 (2026-10-08) | **create the free npm organisation `callibrator`** (reserves the `@callibrator` scope; nothing is published) — owner to-do |
 
 ---

@@ -1,8 +1,7 @@
 {
-  "count": 3,
+  "count": 2,
   "files": [
     "src/tests/e2e/setup.js",
-    "src/tests/setup/nodeMajor.globalSetup.js",
-    "src/utils/checkMenu.util.js"
+    "src/tests/setup/nodeMajor.globalSetup.js"
   ]
 }

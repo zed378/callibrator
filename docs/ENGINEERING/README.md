@@ -2,7 +2,7 @@
 
 How code in this repository is written, laid out, named, layered, tested, logged and reviewed. The rest of `docs/` says **what** the system does; this category says **how** it is built, so that work done by different people and different agent sessions lands as one codebase.
 
-> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087), compiled to CommonJS; the only source `.js` file left is the dead `utils/checkMenu.util.js`, awaiting deletion (A-18). The **694 `.js` files in the test trees are legacy JavaScript** (682 test files and 12 fixtures and helpers, `src/tests/` and `__tests__/`, counted 2026-10-02), converted opportunistically under P9-26; **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The frontend is TypeScript too. The database is PostgreSQL only (ADR-039).
+> **Language status (as-built 2026-10-02).** The backend's source is **TypeScript, strict** (ADR-038; toolchain ADR-087), compiled to CommonJS; no source `.js` file is left: the dead `utils/checkMenu.util.js` was deleted on 2026-11-04 (A-18, the 2026-11 audit's ARC-02). P9-26 converted the test trees to TypeScript; **2 `.js` files are left there**, both jest setup files (`src/tests/e2e/setup.js`, `src/tests/setup/nodeMajor.globalSetup.js`), and the 335 converted test files lint at their `.js` level from a frozen list that only shrinks (ADR-092 Am. 1); **all new code, tests included, is TypeScript** (`npm run ratchet` refuses a new `.js` file). The frontend is TypeScript too. The database is PostgreSQL only (ADR-039).
 
 Start with [`00-CODING-CONTEXT.md`](./00-CODING-CONTEXT.md) — it fits in one read and points at everything else.
 
