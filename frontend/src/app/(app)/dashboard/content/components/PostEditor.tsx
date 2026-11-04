@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button, Input, Textarea, Select, MultiSelect } from "@/components/ui";
 import { useToastStore } from "@/stores/toastStore";
-import RichTextEditor from "@/components/editor/RichTextEditor";
+import RichTextEditor from "@/components/editor/LazyRichTextEditor";
 import {
   contentService,
   type Post,
@@ -247,6 +247,7 @@ export default function PostEditor({ initial }: { initial?: Post }) {
           <Panel>
             <label className="mb-2 block text-sm font-medium text-foreground">Body</label>
             <RichTextEditor
+              label="Body"
               value={form.contentHtml || ""}
               onChange={(html) => set("contentHtml", html)}
             />

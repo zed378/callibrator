@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog, Button, Input, Select } from "@/components/ui";
-import RichTextEditor from "@/components/editor/RichTextEditor";
+import RichTextEditor from "@/components/editor/LazyRichTextEditor";
 import { useToastStore } from "@/stores/toastStore";
 import {
   ticketService,
@@ -135,6 +135,7 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }: Props)
           {/* Same TipTap editor the blog uses; images upload to the attachment
               store tagged as a Ticket resource. */}
           <RichTextEditor
+            label="Description"
             value={description}
             onChange={setDescription}
             imageResourceType="Ticket"

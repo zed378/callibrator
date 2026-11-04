@@ -67,7 +67,8 @@ module.exports = {
     // services/ is all TypeScript since 2026-10-02 (attachment and maintenance, the last two);
     // a .js pattern would match nothing (coverageScope.p614).
     "src/services/**/*.ts",
-    "src/utils/**/*.js",
+    // utils/ is all TypeScript since 2026-11-04 (the dead checkMenu.util.js,
+    // A-18); a .js pattern would match nothing (coverageScope.p614).
     "src/utils/**/*.ts",
     "src/validators/**/*.ts",
     // A declaration file (`x.d.ts` beside a still-JavaScript module, P9-12) emits
