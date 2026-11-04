@@ -73,8 +73,13 @@ async function rename(context: QueryInterface, direction: Direction): Promise<vo
     let desc: ColumnsDescription;
     try {
       desc = await context.describeTable(table);
-    } catch {
-      continue; // table not created yet — nothing to rename
+    } catch (err) {
+      // A11-DB-03: only "the table is not created yet" means nothing to rename;
+      // any other failure propagates and the migration is not recorded as applied.
+      if (/no description found|does not exist/i.test((err as Error).message)) {
+        continue;
+      }
+      throw err;
     }
     for (const [camel, snake] of Object.entries(mapping)) {
       const [from, to] = direction === "up" ? [camel, snake] : [snake, camel];

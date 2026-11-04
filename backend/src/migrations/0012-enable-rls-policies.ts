@@ -88,6 +88,11 @@ export = {
 
         logger.info("RLS policy applied", { table: tableName });
       } catch (err) {
+        // A11-DB-03: only an absent table or tenant column is a reason to skip; any
+        // other failure (permission, connection, syntax) is not, and propagates.
+        if (!/does not exist/i.test((err as Error).message)) {
+          throw err;
+        }
         logger.warn("RLS setup skipped", { table: tableName, error: (err as Error).message });
       }
     }
@@ -157,6 +162,10 @@ export = {
 
         logger.info("RLS policy removed", { table: tableName });
       } catch (err) {
+        // A11-DB-03: only an absent table is a reason to skip; anything else propagates.
+        if (!/does not exist/i.test((err as Error).message)) {
+          throw err;
+        }
         logger.warn("RLS removal skipped", { table: tableName, error: (err as Error).message });
       }
     }
