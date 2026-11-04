@@ -92,13 +92,11 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const { createTwoTenants } = require("../fixtures/twoTenants") as { createTwoTenants: typeof import("../fixtures/twoTenants").createTwoTenants };
 const { createSeededAuthorization } = require("../fixtures/seededAuthorization") as { createSeededAuthorization: typeof import("../fixtures/seededAuthorization").createSeededAuthorization };
 const { ROLE_NAMES, ROLE_IDS } = require("../../constants/roleConstants") as typeof import("../../constants/roleConstants");
 const aiService = require("../../services/ai.service") as typeof import("../../services/ai.service");
 const router = require("../../routes/api/ai.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 interface HttpResponse {
   status: number;
@@ -231,7 +229,7 @@ describe("A-94 — POST /ai/ocr is gated on certificate write", () => {
   });
 
   it("the gate runs BEFORE multer: in the route's handler chain, dynamicAccess precedes the upload", () => {
-    const routerWithStack = router as unknown as { stack: Array<{ route?: { path: string; stack: Array<{ name: string }> } }> };
+    const routerWithStack = router as unknown as { stack: { route?: { path: string; stack: { name: string }[] } }[] };
     const layer = routerWithStack.stack.find((l) => l.route && l.route.path === "/ocr");
     const names = layer!.route!.stack.map((l) => l.name);
     expect(names.indexOf("multerMiddleware")).toBeGreaterThan(-1);

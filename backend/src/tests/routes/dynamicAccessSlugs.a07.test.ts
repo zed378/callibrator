@@ -102,9 +102,9 @@ beforeAll(() => {
   // Requiring a router runs its top level, which is where every
   // `dynamicAccess(...)` gate is constructed.
   for (const file of ROUTE_FILES) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
+
     require(file);
-    /* eslint-enable @typescript-eslint/no-require-imports */
+
   }
 });
 
@@ -163,13 +163,11 @@ describe("A-07 — dynamicAccess resources are seeded menu slugs", () => {
     const computed = collectRouteGates().filter((gate) => gate.names === null);
     expect(computed.map((gate) => path.basename(gate.file))).toEqual(["search.route.ts"]);
 
-    /* eslint-disable @typescript-eslint/no-require-imports */
     const { SEARCH_MENUS } = require("../../services/search.service") as { SEARCH_MENUS: string[] };
-    /* eslint-enable @typescript-eslint/no-require-imports */
+
     expect(SEARCH_MENUS.length).toBeGreaterThan(0);
     for (const menu of SEARCH_MENUS) {
       expect(SLUGS.has(menu)).toBe(true);
     }
   });
 });
-

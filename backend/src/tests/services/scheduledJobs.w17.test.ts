@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * W-12 / W-17 — every scheduled job declares its tenant context and reads a
  * bounded amount per statement.
@@ -20,19 +20,19 @@
 const { Op } = require("sequelize");
 
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")), query: jest.fn() }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")), query: jest.fn() },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 // W-15: the retention sweep ends with the GDPR export sweep (gdpr.exportSweep.w15.test.js).
 jest.mock("../../services/gdpr.service", () => ({
-  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 })
+  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 }),
 }));
 jest.mock("../../services/tenantBackup.service", () => ({
   BACKUP_DIR: require("path").join(require("os").tmpdir(), "w17-scheduled-jobs", "backups"),
-  createBackup: jest.fn()
+  createBackup: jest.fn(),
 }));
 jest.mock("../../models", () => ({
   Notification: { destroy: jest.fn() },
@@ -44,14 +44,14 @@ jest.mock("../../models", () => ({
   TenantBackup: {
     STATUS: { COMPLETED: "completed", DELETED: "deleted" },
     DEFAULT_RETENTION_DAYS: 30,
-    findAll: jest.fn()
+    findAll: jest.fn(),
   },
   Webhook: { findOne: jest.fn() },
   WebhookDelivery: { findOne: jest.fn() },
   AuditLog: { create: jest.fn() },
   User: {},
   Subscription: {},
-  Invoice: {}
+  Invoice: {},
 }));
 
 const models: any = require("../../models");
@@ -85,7 +85,7 @@ describe("retention purge (W-12, W-17)", () => {
       purged: { notifications: 5, sessions: 1 },
       skipped: false,
       complete: true,
-      anomalies: []
+      anomalies: [],
     });
     expect(db.transaction).toHaveBeenCalledTimes(3);
     // Every destroy is bounded.
@@ -95,9 +95,9 @@ describe("retention purge (W-12, W-17)", () => {
     // Pass 2 and 3 revisit only the table that filled its batch.
     expect(models.Session.destroy).toHaveBeenCalledTimes(1);
     expect(auditService.logAction.mock.calls.map(([e]: any) => [e.changes.after.purged, e.changes.batch])).toEqual([
-    [{ notifications: 2, sessions: 1 }, { size: 2, full: ["notifications"] }],
-    [{ notifications: 2 }, { size: 2, full: ["notifications"] }],
-    [{ notifications: 1 }, { size: 2, full: [] }]]
+      [{ notifications: 2, sessions: 1 }, { size: 2, full: ["notifications"] }],
+      [{ notifications: 2 }, { size: 2, full: ["notifications"] }],
+      [{ notifications: 1 }, { size: 2, full: [] }]],
     );
   });
 
@@ -112,8 +112,8 @@ describe("retention purge (W-12, W-17)", () => {
 
   it("a tenant whose every period is 'keep forever' opens no transaction", async () => {
     models.TenantSettings.findAll.mockResolvedValue([
-    { key: "retention_policy_notifications", value: "0" },
-    { key: "retention_policy_sessions", value: "0" }]
+      { key: "retention_policy_notifications", value: "0" },
+      { key: "retention_policy_sessions", value: "0" }],
     );
 
     const result = await retention.purgeExpiredRecords("t1");
@@ -124,8 +124,8 @@ describe("retention purge (W-12, W-17)", () => {
 
   it("the sweep reads tenants in keyset pages and purges each inside ITS OWN tenant context", async () => {
     models.Tenant.findAll.
-    mockResolvedValueOnce([{ id: "t1" }, { id: "t2" }]).
-    mockResolvedValueOnce([{ id: "t3" }]);
+      mockResolvedValueOnce([{ id: "t1" }, { id: "t2" }]).
+      mockResolvedValueOnce([{ id: "t3" }]);
     const contexts: any[] = [];
     models.Notification.destroy.mockImplementation(async () => {
       contexts.push(tenantStorage.getStore());
@@ -184,7 +184,7 @@ describe("session cleanup (W-12, W-17)", () => {
       tenantId: null,
       isSuperAdmin: false,
       isSystemTask: true,
-      systemReason: SYSTEM_TASKS.SESSION_CLEANUP
+      systemReason: SYSTEM_TASKS.SESSION_CLEANUP,
     });
   });
 });
@@ -226,7 +226,7 @@ describe("scheduled backup (W-17)", () => {
     retentionDays: 1,
     expiresAt: new Date("2026-01-01T00:00:00Z"),
     update: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   });
 
   it("the tenant list is read in keyset pages", async () => {
@@ -258,9 +258,9 @@ describe("scheduled backup (W-17)", () => {
     const second = models.TenantBackup.findAll.mock.calls[1][0];
     expect(second.limit).toBe(2);
     expect(second.where[Op.or]).toEqual([
-    { tenantId: { [Op.gt]: "A" } },
-    { tenantId: "A", createdAt: { [Op.lt]: a2.createdAt } },
-    { tenantId: "A", createdAt: a2.createdAt, id: { [Op.lt]: "a2" } }]
+      { tenantId: { [Op.gt]: "A" } },
+      { tenantId: "A", createdAt: { [Op.lt]: a2.createdAt } },
+      { tenantId: "A", createdAt: a2.createdAt, id: { [Op.lt]: "a2" } }],
     );
     expect(models.TenantBackup.findAll.mock.calls[2][0].where[Op.or][0]).toEqual({ tenantId: { [Op.gt]: "B" } });
   });

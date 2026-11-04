@@ -50,7 +50,6 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 
 import { generateSync } from "otplib";
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const authRouter = require("../../routes/api/auth.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
 const { Users } = require("../../models") as typeof import("../../models");
 const {
@@ -59,7 +58,6 @@ const {
 } = require("../../services/rateLimiter.redis.service") as typeof import("../../services/rateLimiter.redis.service");
 const { getAuthConfig } = require("../../constants/rateLimitConstants") as typeof import("../../constants/rateLimitConstants");
 const { logger } = require("../../middlewares/activityLog.middleware") as { logger: { info: jest.Mock; warn: jest.Mock; error: jest.Mock; debug: jest.Mock } };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 const SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
 const PASSWORD = "correct horse battery staple";
@@ -181,13 +179,13 @@ beforeEach(() => {
   jest.spyOn(Users, "findByPk").mockImplementation(async (id: unknown) => rows.get(id as string) as never || null);
   jest.spyOn(Users, "update").mockResolvedValue([1] as never);
   // No database: the promotion's transaction runs its callback directly.
-  /* eslint-disable @typescript-eslint/no-require-imports */
+
   const { db } = require("../../config") as { db: { transaction: (fn: (tx: { id: string }) => Promise<unknown>) => Promise<unknown> } };
   jest.spyOn(db, "transaction").mockImplementation(async (fn: (tx: { id: string }) => Promise<unknown>) => fn({ id: "tx" }));
   const password = require("../../utils/password.util") as {
     comparePassword: (plain: string, hash: string) => Promise<boolean>;
   };
-  /* eslint-enable @typescript-eslint/no-require-imports */
+
   jest
     .spyOn(password, "comparePassword")
     .mockImplementation(async (plain: string, hash: string) => hash === `hash:${plain}`);
@@ -226,7 +224,7 @@ describe("A-142: wrong codes on the signed-in MFA endpoints are counted and lock
     rows.set(id, enrolled(id));
 
     // Spread the guesses: 2 on setup, 2 on disable, 1 on verify.
-    const attempts: Array<[string, Record<string, unknown>]> = [
+    const attempts: [string, Record<string, unknown>][] = [
       ["/mfa/setup", { currentPassword: PASSWORD, code: wrongCode() }],
       ["/mfa/setup", { currentPassword: "guess", code: wrongCode() }],
       ["/mfa/disable", { currentPassword: PASSWORD, code: wrongCode() }],

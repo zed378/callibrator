@@ -4,14 +4,14 @@ const mockNonConformance: any = {
   count: jest.fn(),
   create: jest.fn(),
   findAndCountAll: jest.fn(),
-  findOne: jest.fn()
+  findOne: jest.fn(),
 };
 
 const mockCapa: any = {
   count: jest.fn(),
   create: jest.fn(),
   findAndCountAll: jest.fn(),
-  findOne: jest.fn()
+  findOne: jest.fn(),
 };
 
 const mockUser: any = { findOne: jest.fn() };
@@ -23,7 +23,7 @@ const mockModels: any = {
   NonConformance: mockNonConformance,
   Capa: mockCapa,
   User: mockUser,
-  CalibrationDevice: mockCalibrationDevice
+  CalibrationDevice: mockCalibrationDevice,
 };
 
 jest.mock("../../models", () => mockModels);
@@ -33,18 +33,18 @@ jest.mock("../../models", () => mockModels);
 jest.mock("../../config", () => ({
   db: {
     transaction: jest.fn(async (cb: any) => cb("TX")),
-    query: (...args: any[]) => mockQuery(...args)
-  }
+    query: (...args: any[]) => mockQuery(...args),
+  },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 const qmsService = require("../../services/qms.service");
@@ -67,14 +67,14 @@ describe("qms.service", () => {
       it("should create a non-conformance with the counter's number, formatted", async () => {
         mockQuery.mockResolvedValue([{ seq: 3 }]);
         mockNonConformance.create.mockImplementation((data: any) =>
-        Promise.resolve({ id: "nc-1", ...data })
+          Promise.resolve({ id: "nc-1", ...data }),
         );
 
         const result = await qmsService.createNC("tenant-1", "user-1", {
           title: "Test NC",
           description: "Test Description",
           severity: "HIGH",
-          deviceId: "device-1"
+          deviceId: "device-1",
         });
 
         expect(mockNonConformance.count).not.toHaveBeenCalled();
@@ -82,13 +82,13 @@ describe("qms.service", () => {
         expect(claim()).toEqual({
           type: "SELECT",
           bind: ["tenant-1", "NC", "^NC-([0-9]{1,9})$"],
-          transaction: "TX"
+          transaction: "TX",
         });
         // A-75: the device is looked up in the caller's tenant, in the transaction.
         expect(mockCalibrationDevice.findOne).toHaveBeenCalledWith({
           where: { id: "device-1", tenantId: "tenant-1" },
           attributes: ["id"],
-          transaction: "TX"
+          transaction: "TX",
         });
         expect(mockNonConformance.create).toHaveBeenCalledWith({
           tenantId: "tenant-1",
@@ -100,14 +100,14 @@ describe("qms.service", () => {
           deviceId: "device-1",
           dateIdentified: expect.any(Date),
           rootCause: null,
-          status: "OPEN"
+          status: "OPEN",
         }, { transaction: "TX" });
         expect(result.id).toBe("nc-1");
       });
 
       it("should default severity to MEDIUM and dateIdentified to now", async () => {
         mockNonConformance.create.mockImplementation((data: any) =>
-        Promise.resolve({ id: "nc-2", ...data })
+          Promise.resolve({ id: "nc-2", ...data }),
         );
 
         await qmsService.createNC("tenant-1", "user-1", { title: "Minimal" });
@@ -118,9 +118,9 @@ describe("qms.service", () => {
             severity: "MEDIUM",
             status: "OPEN",
             deviceId: null,
-            dateIdentified: expect.any(Date)
+            dateIdentified: expect.any(Date),
           }),
-          { transaction: "TX" }
+          { transaction: "TX" },
         );
         // No device named, nothing to look up.
         expect(mockCalibrationDevice.findOne).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ describe("qms.service", () => {
 
         expect(mockNonConformance.create).toHaveBeenCalledWith(
           expect.objectContaining({ rootCause: "worn probe" }),
-          { transaction: "TX" }
+          { transaction: "TX" },
         );
       });
 
@@ -141,8 +141,8 @@ describe("qms.service", () => {
         mockCalibrationDevice.findOne.mockResolvedValue(null);
 
         const err = await qmsService.
-        createNC("tenant-1", "user-1", { title: "t", deviceId: "foreign" }).
-        catch((e: any) => e);
+          createNC("tenant-1", "user-1", { title: "t", deviceId: "foreign" }).
+          catch((e: any) => e);
 
         expect(err).toBeInstanceOf(AppError);
         expect(err.status).toBe(404);
@@ -154,17 +154,17 @@ describe("qms.service", () => {
       it("should honour an explicitly supplied dateIdentified", async () => {
         const when = new Date("2026-01-15T00:00:00Z");
         mockNonConformance.create.mockImplementation((data: any) =>
-        Promise.resolve({ id: "nc-3", ...data })
+          Promise.resolve({ id: "nc-3", ...data }),
         );
 
         await qmsService.createNC("tenant-1", "user-1", {
           title: "Dated",
-          dateIdentified: when
+          dateIdentified: when,
         });
 
         expect(mockNonConformance.create).toHaveBeenCalledWith(
           expect.objectContaining({ dateIdentified: when }),
-          { transaction: "TX" }
+          { transaction: "TX" },
         );
       });
     });
@@ -173,7 +173,7 @@ describe("qms.service", () => {
       it("should default to page 1 / limit 10 and omit the status filter", async () => {
         mockNonConformance.findAndCountAll.mockResolvedValue({
           count: 0,
-          rows: []
+          rows: [],
         });
 
         const result = await qmsService.getNCs("tenant-1");
@@ -183,8 +183,8 @@ describe("qms.service", () => {
             // No `status` key when no filter is passed.
             where: { tenantId: "tenant-1" },
             limit: 10,
-            offset: 0
-          })
+            offset: 0,
+          }),
         );
         expect(result.page).toBe(1);
         expect(result.limit).toBe(10);
@@ -194,13 +194,13 @@ describe("qms.service", () => {
       it("should offset correctly for a later page", async () => {
         mockNonConformance.findAndCountAll.mockResolvedValue({
           count: 25,
-          rows: []
+          rows: [],
         });
 
         const result = await qmsService.getNCs("tenant-1", 3, 10);
 
         expect(mockNonConformance.findAndCountAll).toHaveBeenCalledWith(
-          expect.objectContaining({ offset: 20, limit: 10 })
+          expect.objectContaining({ offset: 20, limit: 10 }),
         );
         expect(result.totalPages).toBe(3);
       });
@@ -208,7 +208,7 @@ describe("qms.service", () => {
       it("should return paginated list of non-conformances", async () => {
         mockNonConformance.findAndCountAll.mockResolvedValue({
           count: 1,
-          rows: [{ id: "nc-1", title: "NC 1" }]
+          rows: [{ id: "nc-1", title: "NC 1" }],
         });
 
         const result = await qmsService.getNCs("tenant-1", 1, 10, "OPEN");
@@ -219,22 +219,22 @@ describe("qms.service", () => {
           offset: 0,
           // A-75: LEFT OUTER JOINs, each carrying the tenant predicate.
           include: [
-          {
-            model: mockUser,
-            as: "reporter",
-            attributes: ["id", "firstName", "lastName", "email"],
-            required: false,
-            where: { tenantId: "tenant-1" }
-          },
-          {
-            model: mockCalibrationDevice,
-            as: "device",
-            attributes: ["id", "name", "serialNumber"],
-            required: false,
-            where: { tenantId: "tenant-1" }
-          }],
+            {
+              model: mockUser,
+              as: "reporter",
+              attributes: ["id", "firstName", "lastName", "email"],
+              required: false,
+              where: { tenantId: "tenant-1" },
+            },
+            {
+              model: mockCalibrationDevice,
+              as: "device",
+              attributes: ["id", "name", "serialNumber"],
+              required: false,
+              where: { tenantId: "tenant-1" },
+            }],
 
-          order: [["createdAt", "DESC"], ["id", "DESC"]]
+          order: [["createdAt", "DESC"], ["id", "DESC"]],
         });
         expect(result.total).toBe(1);
         expect(result.nonConformances).toHaveLength(1);
@@ -246,18 +246,18 @@ describe("qms.service", () => {
         const mockNc: any = {
           id: "nc-1",
           title: "Old Title",
-          save: jest.fn().mockResolvedValue(true)
+          save: jest.fn().mockResolvedValue(true),
         };
         mockNonConformance.findOne.mockResolvedValue(mockNc);
 
         const result = await qmsService.updateNC("tenant-1", "nc-1", {
           title: "New Title",
-          status: "CLOSED"
+          status: "CLOSED",
         });
 
         expect(mockNonConformance.findOne).toHaveBeenCalledWith({
           where: { id: "nc-1", tenantId: "tenant-1" },
-          transaction: "TX"
+          transaction: "TX",
         });
         expect(mockNc.title).toBe("New Title");
         expect(mockNc.status).toBe("CLOSED");
@@ -269,7 +269,7 @@ describe("qms.service", () => {
         mockNonConformance.findOne.mockResolvedValue(null);
 
         await expect(
-          qmsService.updateNC("tenant-1", "nc-1", { title: "New" })
+          qmsService.updateNC("tenant-1", "nc-1", { title: "New" }),
         ).rejects.toThrow("Non-Conformance not found");
       });
     });
@@ -281,7 +281,7 @@ describe("qms.service", () => {
         mockNonConformance.findOne.mockResolvedValue({ id: "nc-1" });
         mockQuery.mockResolvedValue([{ seq: 5 }]);
         mockCapa.create.mockImplementation((data: any) =>
-        Promise.resolve({ id: "capa-1", ...data })
+          Promise.resolve({ id: "capa-1", ...data }),
         );
 
         const result = await qmsService.createCapa("tenant-1", {
@@ -289,23 +289,23 @@ describe("qms.service", () => {
           title: "Capa Title",
           actionPlan: "Plan",
           assignedTo: "user-2",
-          dueDate: "2026-08-01"
+          dueDate: "2026-08-01",
         });
 
         expect(mockNonConformance.findOne).toHaveBeenCalledWith({
           where: { id: "nc-1", tenantId: "tenant-1" },
-          transaction: "TX"
+          transaction: "TX",
         });
         expect(mockCapa.count).not.toHaveBeenCalled();
         expect(claim()).toEqual({
           type: "SELECT",
           bind: ["tenant-1", "CAPA", "^CAPA-([0-9]{1,9})$"],
-          transaction: "TX"
+          transaction: "TX",
         });
         expect(mockUser.findOne).toHaveBeenCalledWith({
           where: { id: "user-2", tenantId: "tenant-1" },
           attributes: ["id"],
-          transaction: "TX"
+          transaction: "TX",
         });
         expect(mockCapa.create).toHaveBeenCalledWith({
           tenantId: "tenant-1",
@@ -315,7 +315,7 @@ describe("qms.service", () => {
           actionPlan: "Plan",
           assignedTo: "user-2",
           dueDate: "2026-08-01",
-          status: "DRAFT"
+          status: "DRAFT",
         }, { transaction: "TX" });
         expect(result.id).toBe("capa-1");
       });
@@ -324,7 +324,7 @@ describe("qms.service", () => {
         mockNonConformance.findOne.mockResolvedValue(null);
 
         await expect(
-          qmsService.createCapa("tenant-1", { ncId: "nc-1" })
+          qmsService.createCapa("tenant-1", { ncId: "nc-1" }),
         ).rejects.toThrow("Non-Conformance not found");
       });
 
@@ -337,7 +337,7 @@ describe("qms.service", () => {
         expect(mockUser.findOne).not.toHaveBeenCalled();
         expect(mockCapa.create).toHaveBeenCalledWith(
           expect.objectContaining({ capaNumber: "CAPA-00001", assignedTo: null, dueDate: null }),
-          { transaction: "TX" }
+          { transaction: "TX" },
         );
       });
 
@@ -346,8 +346,8 @@ describe("qms.service", () => {
         mockUser.findOne.mockResolvedValue(null);
 
         const err = await qmsService.
-        createCapa("tenant-1", { ncId: "nc-1", title: "t", actionPlan: "p", assignedTo: "foreign" }).
-        catch((e: any) => e);
+          createCapa("tenant-1", { ncId: "nc-1", title: "t", actionPlan: "p", assignedTo: "foreign" }).
+          catch((e: any) => e);
 
         expect(err.status).toBe(404);
         expect(err.message).toBe("Assignee not found");
@@ -366,8 +366,8 @@ describe("qms.service", () => {
           expect.objectContaining({
             where: { tenantId: "tenant-1" },
             limit: 10,
-            offset: 0
-          })
+            offset: 0,
+          }),
         );
         expect(result.page).toBe(1);
         expect(result.limit).toBe(10);
@@ -379,7 +379,7 @@ describe("qms.service", () => {
         const result = await qmsService.getCapas("tenant-1", 2, 5);
 
         expect(mockCapa.findAndCountAll).toHaveBeenCalledWith(
-          expect.objectContaining({ offset: 5, limit: 5 })
+          expect.objectContaining({ offset: 5, limit: 5 }),
         );
         expect(result.totalPages).toBe(3);
       });
@@ -387,7 +387,7 @@ describe("qms.service", () => {
       it("should return paginated list of CAPAs", async () => {
         mockCapa.findAndCountAll.mockResolvedValue({
           count: 1,
-          rows: [{ id: "capa-1", title: "Capa 1" }]
+          rows: [{ id: "capa-1", title: "Capa 1" }],
         });
 
         const result = await qmsService.getCapas("tenant-1", 1, 10, "DRAFT");
@@ -397,22 +397,22 @@ describe("qms.service", () => {
           limit: 10,
           offset: 0,
           include: [
-          {
-            model: mockNonConformance,
-            as: "nonConformance",
-            attributes: ["id", "ncNumber", "title"],
-            required: false,
-            where: { tenantId: "tenant-1" }
-          },
-          {
-            model: mockUser,
-            as: "assignee",
-            attributes: ["id", "firstName", "lastName", "email"],
-            required: false,
-            where: { tenantId: "tenant-1" }
-          }],
+            {
+              model: mockNonConformance,
+              as: "nonConformance",
+              attributes: ["id", "ncNumber", "title"],
+              required: false,
+              where: { tenantId: "tenant-1" },
+            },
+            {
+              model: mockUser,
+              as: "assignee",
+              attributes: ["id", "firstName", "lastName", "email"],
+              required: false,
+              where: { tenantId: "tenant-1" },
+            }],
 
-          order: [["createdAt", "DESC"], ["id", "DESC"]]
+          order: [["createdAt", "DESC"], ["id", "DESC"]],
         });
         expect(result.total).toBe(1);
         expect(result.capas).toHaveLength(1);
@@ -424,18 +424,18 @@ describe("qms.service", () => {
         const mockCapaInstance: any = {
           id: "capa-1",
           title: "Old Title",
-          save: jest.fn().mockResolvedValue(true)
+          save: jest.fn().mockResolvedValue(true),
         };
         mockCapa.findOne.mockResolvedValue(mockCapaInstance);
 
         const result = await qmsService.updateCapa("tenant-1", "capa-1", {
           title: "New Title",
-          status: "CLOSED"
+          status: "CLOSED",
         });
 
         expect(mockCapa.findOne).toHaveBeenCalledWith({
           where: { id: "capa-1", tenantId: "tenant-1" },
-          transaction: "TX"
+          transaction: "TX",
         });
         expect(mockCapaInstance.title).toBe("New Title");
         expect(mockCapaInstance.status).toBe("CLOSED");
@@ -452,7 +452,7 @@ describe("qms.service", () => {
           "tenant-1",
           "capa-1",
           { approvedBy: "someone-else", verificationNotes: "ok" },
-          { userId: "caller-1" }
+          { userId: "caller-1" },
         );
 
         expect(capa.approvedBy).toBe("caller-1");
@@ -484,15 +484,15 @@ describe("qms.service", () => {
         mockUser.findOne.mockResolvedValue(null);
 
         const err = await qmsService.
-        updateCapa("tenant-1", "capa-1", { assignedTo: "foreign" }, { userId: "caller-1" }).
-        catch((e: any) => e);
+          updateCapa("tenant-1", "capa-1", { assignedTo: "foreign" }, { userId: "caller-1" }).
+          catch((e: any) => e);
 
         expect(err.status).toBe(404);
         expect(err.message).toBe("Assignee not found");
         expect(mockUser.findOne).toHaveBeenCalledWith({
           where: { id: "foreign", tenantId: "tenant-1" },
           attributes: ["id"],
-          transaction: "TX"
+          transaction: "TX",
         });
         expect(capa.assignedTo).toBeNull();
         expect(capa.save).not.toHaveBeenCalled();
@@ -515,7 +515,7 @@ describe("qms.service", () => {
         mockCapa.findOne.mockResolvedValue(null);
 
         await expect(
-          qmsService.updateCapa("tenant-1", "capa-1", { title: "New" })
+          qmsService.updateCapa("tenant-1", "capa-1", { title: "New" }),
         ).rejects.toThrow("CAPA not found");
       });
     });

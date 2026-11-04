@@ -15,17 +15,17 @@ const { Op } = require("sequelize");
 jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb: any) => cb("TX")) } }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../services/gdpr.service", () => ({
-  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 })
+  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 }),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 jest.mock("../../models", () => ({
   IotReading: { destroy: jest.fn() },
   Notification: { destroy: jest.fn() },
   Session: { destroy: jest.fn() },
   Tenant: { findAll: jest.fn() },
-  TenantSettings: { findOne: jest.fn(), findAll: jest.fn(), upsert: jest.fn() }
+  TenantSettings: { findOne: jest.fn(), findAll: jest.fn(), upsert: jest.fn() },
 }));
 
 const models = require("../../models");
@@ -35,7 +35,7 @@ const { failureOf } = require("../../middlewares/retentionScheduler.middleware")
 
 const stored = (entity: any, value: any) => ({ key: `retention_policy_${entity}`, value });
 const cutoffDays = (destroy: any) =>
-Math.round((Date.now() - destroy.mock.calls[0][0].where.createdAt[Op.lt].getTime()) / 86400000);
+  Math.round((Date.now() - destroy.mock.calls[0][0].where.createdAt[Op.lt].getTime()) / 86400000);
 
 describe("W-16 — a malformed retention setting", () => {
   beforeEach(() => {
@@ -53,7 +53,7 @@ describe("W-16 — a malformed retention setting", () => {
       const policies = await retention.getRetentionPolicy("t1");
 
       expect(policies.notifications).toBe(90);
-    }
+    },
   );
 
   it("a whole number with surrounding spaces is applied", async () => {
@@ -68,10 +68,10 @@ describe("W-16 — a malformed retention setting", () => {
 
     expect(cutoffDays(models.Notification.destroy)).toBe(90);
     expect(result.anomalies).toEqual([
-    { entity: "notifications", source: "tenant_settings", value: "forever", appliedDays: 90 }]
+      { entity: "notifications", source: "tenant_settings", value: "forever", appliedDays: 90 }],
     );
     expect(logger.error).toHaveBeenCalledWith(
-      expect.stringMatching(/tenant t1: notifications = "forever" \(tenant_settings\).*platform default of 90 days applies/)
+      expect.stringMatching(/tenant t1: notifications = "forever" \(tenant_settings\).*platform default of 90 days applies/),
     );
   });
 
@@ -84,7 +84,7 @@ describe("W-16 — a malformed retention setting", () => {
   it("the sweep counts anomalies, and the scheduler calls such a run a failure", async () => {
     models.Tenant.findAll.mockResolvedValue([{ id: "t1" }, { id: "t2" }]);
     models.TenantSettings.findAll.mockImplementation(async ({ where }: any) =>
-    where.tenantId === "t1" ? [stored("notifications", "forever"), stored("sessions", "")] : []
+      where.tenantId === "t1" ? [stored("notifications", "forever"), stored("sessions", "")] : [],
     );
 
     const summary = await retention.runRetentionSweep();
@@ -92,14 +92,14 @@ describe("W-16 — a malformed retention setting", () => {
     expect(summary).toMatchObject({ tenants: 2, errors: 0, anomalies: 2 });
     expect(failureOf(summary)).toBe(
       "2 retention setting(s) are not a whole number of days " +
-      "(the platform default was applied; the error log names each tenant and key)"
+      "(the platform default was applied; the error log names each tenant and key)",
     );
   });
 
   it("failureOf: a clean run is not a failure; errors and export failures are named", () => {
     expect(failureOf({ errors: 0, anomalies: 0, exportErrors: 0 })).toBeNull();
     expect(failureOf({ errors: 1, anomalies: 0, exportErrors: 2 })).toBe(
-      "1 tenant(s) failed during the purge; 2 expired GDPR export(s) could not be deleted"
+      "1 tenant(s) failed during the purge; 2 expired GDPR export(s) could not be deleted",
     );
   });
 
@@ -126,7 +126,7 @@ describe("W-16 — a malformed retention setting", () => {
       expect(isolatedModels.Notification.destroy).not.toHaveBeenCalled();
       expect(isolatedModels.Session.destroy).toHaveBeenCalled(); // the other entities still purge
       expect(result.anomalies).toEqual([
-      { entity: "notifications", source: "environment", value: NaN, appliedDays: null }]
+        { entity: "notifications", source: "environment", value: NaN, appliedDays: null }],
       );
       expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("NOT purged until it is fixed"));
     });
@@ -137,7 +137,7 @@ describe("W-16 — setRetentionPolicy refuses a value that is not a whole number
   it.each([["abc"], [1.5], [NaN], ["30"]])("%p is a 400 and nothing is written", async (days: any) => {
     await expect(retention.setRetentionPolicy("t1", "notifications", days, { userId: "u1" })).rejects.toMatchObject({
       status: 400,
-      message: "Retention days must be a whole number of days"
+      message: "Retention days must be a whole number of days",
     });
     expect(models.TenantSettings.upsert).not.toHaveBeenCalled();
   });

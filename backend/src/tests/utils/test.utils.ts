@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Test utilities — helpers for creating mock req/res/next, models, transactions,
  * and utility functions commonly used across unit tests.

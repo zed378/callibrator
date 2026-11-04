@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * S-20 (migration 0086) and S-32 (migration 0087) against a REAL PostgreSQL.
  *
@@ -62,7 +62,7 @@ const startProcess = () => {
       mfaService: require("../../services/mfa.service"),
       authService: require("../../services/auth.service"),
       backupService: require("../../services/tenantBackup.service"),
-      constants: require("../../constants")
+      constants: require("../../constants"),
     };
   });
   return graph;
@@ -77,14 +77,14 @@ describe("S-20 / S-32 — live PostgreSQL", () => {
     const [row] = await q(
       `SELECT data_type FROM information_schema.columns
         WHERE table_schema = current_schema() AND table_name = :table AND column_name = :column`,
-      { table, column }
+      { table, column },
     );
     return row ? row.data_type : null;
   };
   const types = async () => ({
     mfa_secret: await typeOf("users", "mfa_secret"),
     mfa_pending_secret: await typeOf("users", "mfa_pending_secret"),
-    backup_path: await typeOf("tenant_backups", "backup_path")
+    backup_path: await typeOf("tenant_backups", "backup_path"),
   });
   const seedsOf = async (id: any) => {
     const [row] = await q("SELECT mfa_secret, mfa_pending_secret FROM users WHERE id = :id", { id });
@@ -94,7 +94,7 @@ describe("S-20 / S-32 — live PostgreSQL", () => {
     const [row] = await q(
       `SELECT count(*) FILTER (WHERE mfa_secret IS NOT NULL AND mfa_secret NOT LIKE 'v2:%')::int AS live,
               count(*) FILTER (WHERE mfa_pending_secret IS NOT NULL AND mfa_pending_secret NOT LIKE 'v2:%')::int AS pending
-         FROM users`
+         FROM users`,
     );
     return row;
   };
@@ -107,7 +107,7 @@ describe("S-20 / S-32 — live PostgreSQL", () => {
                :enabled, :secret, :pending, CASE WHEN CAST(:pending AS text) IS NULL THEN NULL ELSE now() END,
                :deleted, CASE WHEN :deleted THEN now() ELSE NULL END, now(), now())
        RETURNING id`,
-      { tenantId, tag, email: `${tag}@live.test`, enabled: secret !== null, secret, pending, deleted }
+      { tenantId, tag, email: `${tag}@live.test`, enabled: secret !== null, secret, pending, deleted },
     );
     return row.id;
   };
@@ -117,7 +117,7 @@ describe("S-20 / S-32 — live PostgreSQL", () => {
        VALUES (gen_random_uuid(), :tenantId, :status, :retentionDays, '/legacy/path.zip',
                now() - interval '3 days', now())
        RETURNING id, created_at`,
-      { tenantId: g.constants.DEFAULT_TENANT.id, status, retentionDays }
+      { tenantId: g.constants.DEFAULT_TENANT.id, status, retentionDays },
     );
     return row;
   };
@@ -154,7 +154,7 @@ describe("S-20 / S-32 — live PostgreSQL", () => {
     await g.db.query(
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
        VALUES (:id, 'Default', 'default', 'default@tenant.test', now(), now()) ON CONFLICT (id) DO NOTHING`,
-      { replacements: { id: tenantId } }
+      { replacements: { id: tenantId } },
     );
     // The schema as it was before 0086 and 0087.
     await g.db.query("ALTER TABLE users ALTER COLUMN mfa_secret TYPE VARCHAR(255)");
@@ -215,7 +215,7 @@ describe("S-20 / S-32 — live PostgreSQL", () => {
     expect(await types()).toEqual({
       mfa_secret: "character varying",
       mfa_pending_secret: "character varying",
-      backup_path: "character varying"
+      backup_path: "character varying",
     });
     expect(await seedsOf(ids.member)).toEqual({ mfa_secret: SEED_B, mfa_pending_secret: SEED_LEGACY });
     expect((await seedsOf(ids.operator)).mfa_secret).toBe(SEED_A);
@@ -256,7 +256,7 @@ describe("S-20 / S-32 — live PostgreSQL", () => {
     });
 
     const asTenant = (fn: any) =>
-    p.tenantStorage.run({ tenantId: p.constants.DEFAULT_TENANT.id, isSuperAdmin: false, isSystemTask: false }, fn);
+      p.tenantStorage.run({ tenantId: p.constants.DEFAULT_TENANT.id, isSuperAdmin: false, isSystemTask: false }, fn);
 
     it("every query runs as the application role", async () => {
       const [[row]] = await p.db.query("SELECT current_user AS u");
@@ -286,14 +286,14 @@ describe("S-20 / S-32 — live PostgreSQL", () => {
       expect(await p.mfaService.verifyLogin(row, step(30))).toBe(true);
       expect(await p.mfaService.verifyLogin(row, step(30))).toBe(false); // A-115 replay, still enforced
       const [{ mfa_last_used_step: lastStep }] = await q("SELECT mfa_last_used_step FROM users WHERE id = :id", {
-        id: userId
+        id: userId,
       });
       expect(Number(lastStep)).toBe(Math.floor((now + 30) / 30));
     });
 
     it("the model refuses a plaintext seed on the real database, and writes nothing", async () => {
       const err = await asTenant(() =>
-      p.models.Users.update({ mfaSecret: SEED_A }, { where: { id: ids.member } })
+        p.models.Users.update({ mfaSecret: SEED_A }, { where: { id: ids.member } }),
       ).catch((e: any) => e);
       expect(String(err && err.message)).toMatch(/refusing to store mfaSecret in plaintext/);
       expect((await seedsOf(ids.member)).mfa_secret).toMatch(/^v2:/);
@@ -303,22 +303,22 @@ describe("S-20 / S-32 — live PostgreSQL", () => {
       const tenantId = p.constants.DEFAULT_TENANT.id;
       const actor = ids.member;
       const created = await asTenant(() =>
-      p.backupService.createBackup({ tenantId, createdById: actor, backupType: "user_only", retentionDays: 7, models: p.models })
+        p.backupService.createBackup({ tenantId, createdById: actor, backupType: "user_only", retentionDays: 7, models: p.models }),
       );
       const backupId = created.data.id;
       const [row] = await q(
         "SELECT status, expires_at, created_at, backup_path, file_path FROM tenant_backups WHERE id = :id",
-        { id: backupId }
+        { id: backupId },
       );
       expect(row.status).toBe("completed");
       expect(row.backup_path).toBeNull(); // legacy column no longer written
       expect(row.file_path).toMatch(/\.zip$/);
       expect(new Date(row.expires_at).getTime() - Date.now()).toBeGreaterThan(6.9 * DAY);
       const audit = async (action: any) =>
-      q("SELECT count(*)::int AS n FROM audit_logs WHERE resource_type = 'TenantBackup' AND resource_id = :id AND action = :action", {
-        id: backupId,
-        action
-      });
+        q("SELECT count(*)::int AS n FROM audit_logs WHERE resource_type = 'TenantBackup' AND resource_id = :id AND action = :action", {
+          id: backupId,
+          action,
+        });
       expect(await audit("CREATE")).toEqual([{ n: 1 }]);
 
       await asTenant(() => p.backupService.deleteBackup(backupId, actor, p.models));

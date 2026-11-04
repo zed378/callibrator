@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Storage façade tests.
  *
@@ -10,7 +10,7 @@
 jest.mock("../../services/storage/config.service", () => ({
   getTenantConfig: jest.fn(),
   getGlobalConfig: jest.fn(),
-  validateTenantConfig: jest.fn((c: any) => ({ ...c }))
+  validateTenantConfig: jest.fn((c: any) => ({ ...c })),
 }));
 
 // A-40: an in-memory stand-in for Redis, shared by every copy of the façade
@@ -21,38 +21,38 @@ jest.mock("../../services/redis.service", () => ({
   set: jest.fn(async (k: any, v: any) => {
     mockRedisStore.set(k, v);
     return true;
-  })
+  }),
 }));
 
 const mockLocalInstances: any[] = [];
 const mockS3Instances: any[] = [];
 
 jest.mock("../../services/storage/local.driver", () =>
-jest.fn(function LocalDriver(config: any) {
-  this.name = config.name || "local";
-  this.config = config;
-  this.put = jest.fn().mockResolvedValue({ key: "k" });
-  this.get = jest.fn().mockResolvedValue("stream");
-  this.stat = jest.fn().mockResolvedValue({ size: 10 });
-  this.exists = jest.fn().mockResolvedValue(true);
-  this.delete = jest.fn().mockResolvedValue({ deleted: true });
-  this.list = jest.fn().mockResolvedValue({ keys: [] });
-  this.deleteMany = jest.fn().mockResolvedValue({ deleted: 0 });
-  this.signedUrl = jest.fn().mockReturnValue({ url: "signed", direct: false });
-  this.healthCheck = jest.fn().mockResolvedValue({ ok: true });
-  require("../../services/storage/local.driver").instances.push(this);
-})
+  jest.fn(function LocalDriver(config: any) {
+    this.name = config.name || "local";
+    this.config = config;
+    this.put = jest.fn().mockResolvedValue({ key: "k" });
+    this.get = jest.fn().mockResolvedValue("stream");
+    this.stat = jest.fn().mockResolvedValue({ size: 10 });
+    this.exists = jest.fn().mockResolvedValue(true);
+    this.delete = jest.fn().mockResolvedValue({ deleted: true });
+    this.list = jest.fn().mockResolvedValue({ keys: [] });
+    this.deleteMany = jest.fn().mockResolvedValue({ deleted: 0 });
+    this.signedUrl = jest.fn().mockReturnValue({ url: "signed", direct: false });
+    this.healthCheck = jest.fn().mockResolvedValue({ ok: true });
+    require("../../services/storage/local.driver").instances.push(this);
+  }),
 );
 jest.mock("../../services/storage/s3.driver", () =>
-jest.fn(function S3Driver(config: any) {
-  this.name = "s3";
-  this.config = config;
-  this.put = jest.fn().mockResolvedValue({ key: "k" });
-  this.list = jest.fn().mockResolvedValue({ keys: [] });
-  this.stat = jest.fn().mockResolvedValue({ size: 1 });
-  this.signedUrl = jest.fn().mockResolvedValue({ url: "presigned", direct: true });
-  require("../../services/storage/s3.driver").instances.push(this);
-})
+  jest.fn(function S3Driver(config: any) {
+    this.name = "s3";
+    this.config = config;
+    this.put = jest.fn().mockResolvedValue({ key: "k" });
+    this.list = jest.fn().mockResolvedValue({ keys: [] });
+    this.stat = jest.fn().mockResolvedValue({ size: 1 });
+    this.signedUrl = jest.fn().mockResolvedValue({ url: "presigned", direct: true });
+    require("../../services/storage/s3.driver").instances.push(this);
+  }),
 );
 
 const LocalDriver = require("../../services/storage/local.driver");
@@ -95,7 +95,7 @@ describe("storage façade — provider resolution", () => {
       provider: "s3",
       bucket: "tenant-bucket",
       accessKeyId: "AK",
-      secretAccessKey: "SK"
+      secretAccessKey: "SK",
     });
 
     const scoped = await storage.getTenantStorage("tenant-1");
@@ -104,7 +104,7 @@ describe("storage façade — provider resolution", () => {
     expect(mockS3Instances[0].config).toMatchObject({
       bucket: "tenant-bucket",
       accessKeyId: "AK",
-      secretAccessKey: "SK"
+      secretAccessKey: "SK",
     });
     expect(config.getGlobalConfig).not.toHaveBeenCalled();
   });
@@ -114,7 +114,7 @@ describe("storage façade — provider resolution", () => {
     await storage.getTenantStorage("tenant-1");
     expect(config.validateTenantConfig).toHaveBeenCalledWith({
       provider: "nfs",
-      root: "/mnt"
+      root: "/mnt",
     });
   });
 
@@ -124,12 +124,12 @@ describe("storage façade — provider resolution", () => {
       provider: "s3",
       bucket: "b",
       accessKeyId: "AK",
-      secretAccessKey: "SK"
+      secretAccessKey: "SK",
     });
     await storage.getTenantStorage("tenant-1");
     expect(mockS3Instances[0].config).toMatchObject({
       accessKeyId: "AK",
-      secretAccessKey: "SK"
+      secretAccessKey: "SK",
     });
   });
 
@@ -139,7 +139,7 @@ describe("storage façade — provider resolution", () => {
     expect(mockLocalInstances[0].config).toMatchObject({
       accessKeyId: null,
       secretAccessKey: null,
-      name: "nfs"
+      name: "nfs",
     });
   });
 
@@ -147,7 +147,7 @@ describe("storage façade — provider resolution", () => {
     config.getGlobalConfig.mockReturnValue({
       provider: "nfs",
       root: "/mnt",
-      fsync: true
+      fsync: true,
     });
     const scoped = await storage.getGlobalStorage();
     expect(scoped.provider).toBe("nfs");
@@ -156,7 +156,7 @@ describe("storage façade — provider resolution", () => {
 
   it("requires a tenant id", async () => {
     await expect(storage.getTenantStorage(null)).rejects.toThrow(
-      "requires a tenantId"
+      "requires a tenantId",
     );
   });
 });
@@ -205,7 +205,7 @@ describe("storage façade — signed object resolution", () => {
 
   it("refuses an invalid token before touching storage", async () => {
     await expect(
-      storage.openSignedObject(TENANT_KEY, "9999999999.bad")
+      storage.openSignedObject(TENANT_KEY, "9999999999.bad"),
     ).rejects.toMatchObject({ status: 403 });
     expect(mockLocalInstances).toHaveLength(0);
   });
@@ -213,13 +213,13 @@ describe("storage façade — signed object resolution", () => {
   it("refuses a token whose key was tampered with", async () => {
     const { token } = signing.sign(TENANT_KEY, 300, SIGN_SECRET);
     await expect(
-      storage.openSignedObject("t/tenant-2/attachments/report.pdf", token)
+      storage.openSignedObject("t/tenant-2/attachments/report.pdf", token),
     ).rejects.toMatchObject({ status: 403 });
   });
 
   it("rejects a malformed key", async () => {
     await expect(
-      storage.openSignedObject("../../etc/passwd", "x.y")
+      storage.openSignedObject("../../etc/passwd", "x.y"),
     ).rejects.toThrow();
   });
 });
@@ -297,7 +297,7 @@ describe("storage façade — driver caching", () => {
     } finally {
       now.mockRestore();
       redisService.get.mockImplementation(async (k: any) =>
-      mockRedisStore.has(k) ? mockRedisStore.get(k) : null
+        mockRedisStore.has(k) ? mockRedisStore.get(k) : null,
       );
     }
   });
@@ -339,34 +339,34 @@ describe("storage façade — tenant binding", () => {
 
   it("builds keys inside its own namespace", () => {
     expect(scoped.buildKey({ domain: "attachments", name: "a.pdf" })).toBe(
-      "t/tenant-1/attachments/a.pdf"
+      "t/tenant-1/attachments/a.pdf",
     );
   });
 
   it.each([
-  ["put", (s: any) => s.put("t/tenant-2/attachments/a.pdf", Buffer.from("x"))],
-  ["get", (s: any) => s.get("t/tenant-2/attachments/a.pdf")],
-  ["stat", (s: any) => s.stat("t/tenant-2/attachments/a.pdf")],
-  ["exists", (s: any) => s.exists("t/tenant-2/attachments/a.pdf")],
-  ["delete", (s: any) => s.delete("t/tenant-2/attachments/a.pdf")],
-  ["signedUrl", (s: any) => s.signedUrl("t/tenant-2/attachments/a.pdf")]]
+    ["put", (s: any) => s.put("t/tenant-2/attachments/a.pdf", Buffer.from("x"))],
+    ["get", (s: any) => s.get("t/tenant-2/attachments/a.pdf")],
+    ["stat", (s: any) => s.stat("t/tenant-2/attachments/a.pdf")],
+    ["exists", (s: any) => s.exists("t/tenant-2/attachments/a.pdf")],
+    ["delete", (s: any) => s.delete("t/tenant-2/attachments/a.pdf")],
+    ["signedUrl", (s: any) => s.signedUrl("t/tenant-2/attachments/a.pdf")]],
   )("refuses %s against another tenant's key", async (_name: any, call: any) => {
     await expect(async () => call(scoped)).rejects.toThrow(
-      "does not belong to this tenant"
+      "does not belong to this tenant",
     );
     expect(scoped.driver.put).not.toHaveBeenCalled();
   });
 
   it("refuses a global key from a tenant-bound store", async () => {
     await expect(async () => scoped.get("global/branding/logo.png")).rejects.toThrow(
-      "does not belong to this tenant"
+      "does not belong to this tenant",
     );
   });
 
   it("passes an owned key through to the driver", async () => {
     await scoped.put(TENANT_KEY, Buffer.from("x"), { contentType: "application/pdf" });
     expect(scoped.driver.put).toHaveBeenCalledWith(TENANT_KEY, expect.any(Buffer), {
-      contentType: "application/pdf"
+      contentType: "application/pdf",
     });
   });
 
@@ -384,7 +384,7 @@ describe("storage façade — tenant binding", () => {
     await scoped.list("certificates");
     expect(scoped.driver.list).toHaveBeenLastCalledWith(
       "t/tenant-1/certificates/",
-      undefined
+      undefined,
     );
 
     await scoped.deleteMany("attachments");
@@ -401,10 +401,10 @@ describe("storage façade — tenant binding", () => {
   it("binds the global store to global/ only", async () => {
     const global = await storage.getGlobalStorage();
     expect(global.buildKey({ domain: "branding", name: "logo.png" })).toBe(
-      "global/branding/logo.png"
+      "global/branding/logo.png",
     );
     await expect(async () => global.get(TENANT_KEY)).rejects.toThrow(
-      "does not belong to this tenant"
+      "does not belong to this tenant",
     );
   });
 });
@@ -418,7 +418,7 @@ describe("storage façade — signed URLs", () => {
     expect(scoped.driver.signedUrl).toHaveBeenCalledWith(TENANT_KEY, {
       ttlSec: 60,
       baseUrl: "https://app.example.com",
-      secret: expect.any(String)
+      secret: expect.any(String),
     });
     delete process.env["PUBLIC_BASE_URL"];
   });
@@ -442,7 +442,7 @@ describe("storage façade — signed URLs", () => {
     config.getTenantConfig.mockResolvedValue({ provider: "s3", bucket: "b" });
     const scoped = await storage.getTenantStorage("tenant-1");
     await expect(scoped.signedUrl(TENANT_KEY, { ttlSec: 30 })).resolves.toMatchObject({
-      direct: true
+      direct: true,
     });
     expect(scoped.driver.signedUrl).toHaveBeenCalledWith(TENANT_KEY, { ttlSec: 30 });
   });
@@ -453,9 +453,9 @@ describe("storage façade — usage accounting", () => {
     const scoped = await storage.getTenantStorage("tenant-1");
     scoped.driver.list.mockResolvedValue({ keys: ["a", "b", "c"] });
     scoped.driver.stat.
-    mockResolvedValueOnce({ size: 100 }).
-    mockResolvedValueOnce({ size: 250 }).
-    mockResolvedValueOnce({ size: 0 });
+      mockResolvedValueOnce({ size: 100 }).
+      mockResolvedValueOnce({ size: 250 }).
+      mockResolvedValueOnce({ size: 0 });
 
     await expect(scoped.usage()).resolves.toEqual({ bytes: 350, objects: 3 });
   });
@@ -464,8 +464,8 @@ describe("storage façade — usage accounting", () => {
     const scoped = await storage.getTenantStorage("tenant-1");
     scoped.driver.list.mockResolvedValue({ keys: ["a", "b"] });
     scoped.driver.stat.
-    mockResolvedValueOnce({ size: 100 }).
-    mockRejectedValueOnce(Object.assign(new Error("gone"), { status: 404 }));
+      mockResolvedValueOnce({ size: 100 }).
+      mockRejectedValueOnce(Object.assign(new Error("gone"), { status: 404 }));
 
     await expect(scoped.usage()).resolves.toEqual({ bytes: 100, objects: 2 });
   });
@@ -474,7 +474,7 @@ describe("storage façade — usage accounting", () => {
     const scoped = await storage.getTenantStorage("tenant-1");
     scoped.driver.list.mockResolvedValue({ keys: ["a"] });
     scoped.driver.stat.mockRejectedValue(
-      Object.assign(new Error("EACCES"), { status: 500 })
+      Object.assign(new Error("EACCES"), { status: 500 }),
     );
     await expect(scoped.usage()).rejects.toThrow("EACCES");
   });
@@ -484,7 +484,7 @@ describe("storage façade — usage accounting", () => {
     scoped.driver.list.mockResolvedValue({ keys: [] });
     await scoped.usage("certificates");
     expect(scoped.driver.list).toHaveBeenCalledWith("t/tenant-1/certificates/", {
-      limit: Number.MAX_SAFE_INTEGER
+      limit: Number.MAX_SAFE_INTEGER,
     });
   });
 

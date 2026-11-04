@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * P7-05 (ADR-078) — a database restored WITHOUT the KMS master key it was
  * written under must refuse the boot, not start cleanly and fail per request.
@@ -27,7 +27,7 @@ const load = (env: any) => {
     jest.isolateModules(() => {
       mod = {
         verify: require("../../utils/kmsVerify.util"),
-        kms: require("../../services/kms.service")
+        kms: require("../../services/kms.service"),
       };
     });
   } finally {
@@ -76,7 +76,7 @@ const fakeDb = (tables: any) => ({
     // P9-21: the sample is read with a bound $1 (sql()); `replacements` before it.
     const hit = rows.find((x: any) => x.id === (opts.bind ? opts.bind[0] : opts.replacements.id));
     return [{ id: hit.id, tenant_id: hit.tenant_id, value: hit.value }];
-  })
+  }),
 });
 
 const logger = () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn() });
@@ -87,7 +87,7 @@ describe("P7-05 — the boot refuses a database whose KMS master key is missing"
     const db = fakeDb({
       tenant_settings: [{ id: "1", tenant_id: TENANT, value: kms.encryptData(TENANT, "sso-secret") }, { id: "2", tenant_id: TENANT, value: "plain, not a secret" }],
       webhooks: [{ id: "3", tenant_id: TENANT, value: kms.encryptData(TENANT, "whsec") }],
-      tenant_keys: [{ id: "4", tenant_id: TENANT, value: kms.encryptData(TENANT, "-----BEGIN PRIVATE KEY-----") }]
+      tenant_keys: [{ id: "4", tenant_id: TENANT, value: kms.encryptData(TENANT, "-----BEGIN PRIVATE KEY-----") }],
     });
     const log = logger();
     const result = await verify.assertKmsKeysConfigured({ sequelize: db, logger: log });
@@ -106,14 +106,14 @@ describe("P7-05 — the boot refuses a database whose KMS master key is missing"
     const { verify } = load({ KMS_MASTER_KEY: KEY_B }); // the restore got a NEW key
     const db = fakeDb({
       tenant_keys: [
-      { id: "1", tenant_id: TENANT, value: writer.encryptData(TENANT, "pem-1") },
-      { id: "2", tenant_id: TENANT, value: writer.encryptData(TENANT, "pem-2") }]
+        { id: "1", tenant_id: TENANT, value: writer.encryptData(TENANT, "pem-1") },
+        { id: "2", tenant_id: TENANT, value: writer.encryptData(TENANT, "pem-2") }],
 
     });
     const log = logger();
     const missing = keyIdOf(Buffer.from(KEY_A, "hex"));
     await expect(verify.assertKmsKeysConfigured({ sequelize: db, logger: log })).rejects.toThrow(
-      `tenant_keys.private_key: 2 value(s) wrapped under KMS master key ${missing}, which is not configured`
+      `tenant_keys.private_key: 2 value(s) wrapped under KMS master key ${missing}, which is not configured`,
     );
     expect(log.error).toHaveBeenCalledWith(expect.stringContaining("[kms-verify] UNREADABLE: tenant_keys.private_key"));
   });
@@ -128,8 +128,8 @@ describe("P7-05 — the boot refuses a database whose KMS master key is missing"
   it("decrypts a sample v1 envelope (which names no key): the right key passes, a wrong one refuses", async () => {
     const db = fakeDb({
       tenant_settings: [
-      { id: "b", tenant_id: TENANT, value: legacyV1(KEY_A, TENANT, "x") },
-      { id: "a", tenant_id: TENANT, value: legacyV1(KEY_A, TENANT, "y") }]
+        { id: "b", tenant_id: TENANT, value: legacyV1(KEY_A, TENANT, "x") },
+        { id: "a", tenant_id: TENANT, value: legacyV1(KEY_A, TENANT, "y") }],
 
     });
     const right = load({ KMS_MASTER_KEY: KEY_A }).verify;
@@ -138,7 +138,7 @@ describe("P7-05 — the boot refuses a database whose KMS master key is missing"
     const wrong = load({ KMS_MASTER_KEY: KEY_B }).verify;
     const result = await wrong.verifyKmsKeys(db);
     expect(result.problems).toEqual([
-    "tenant_settings.value: 2 v1 value(s); the sample (id a) does not decrypt under any configured KMS master key"]
+      "tenant_settings.value: 2 v1 value(s); the sample (id a) does not decrypt under any configured KMS master key"],
     );
   });
 

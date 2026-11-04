@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-11 — the domain events in constants/webhookEvents.js are emitted by the
  * services, from `transaction.afterCommit`: a committed change is announced
@@ -37,7 +37,7 @@ const mockMakeTx: any = () => {
     },
     async rollback() {
       this.finished = "rollback";
-    }
+    },
   };
   mockTx.all.push(tx);
   return tx;
@@ -61,8 +61,8 @@ jest.mock("../../config", () => ({
       await tx.commit();
       return result;
     }),
-    query: jest.fn(async () => [{ seq: 7 }]) // qms claimNumber (P9-07: sql(), type SELECT: the rows)
-  }
+    query: jest.fn(async () => [{ seq: 7 }]), // qms claimNumber (P9-07: sql(), type SELECT: the rows)
+  },
 }));
 
 jest.mock("../../services/webhook.service", () => ({
@@ -73,7 +73,7 @@ jest.mock("../../services/webhook.service", () => ({
     } else {
       emit();
     }
-  })
+  }),
 }));
 
 // ADR-107 (Q-50): the sign step's snapshot reads the tenant, device and users
@@ -81,7 +81,7 @@ jest.mock("../../services/webhook.service", () => ({
 // certificates.signSnapshot.q50.test.ts's subject, not this suite's.
 jest.mock("../../services/certificateDocument.service", () => ({
   ...jest.requireActual("../../services/certificateDocument.service"),
-  captureSignedSnapshot: jest.fn(async () => null)
+  captureSignedSnapshot: jest.fn(async () => null),
 }));
 // P21-15: the e-signature collaborator is outside this suite's scope; certificateEsignatures.p2115 tests it over the real models.
 jest.mock("../../services/esignatureApplication.service", () => ({ autoApplyApproval: jest.fn().mockResolvedValue(null), certificateMarks: jest.fn().mockResolvedValue([]) }));
@@ -97,16 +97,16 @@ jest.mock("../../models", () => ({
   // workflow.service for a PENDING approval instance; none here (undefined).
   WorkflowInstance: { findOne: jest.fn() },
   StockTransfer: { findOne: jest.fn() },
-  Stock: { findOne: jest.fn(), findOrCreate: jest.fn() }
+  Stock: { findOne: jest.fn(), findOrCreate: jest.fn() },
 }));
 
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../services/auth.service", () => ({
-  passIsValid: jest.fn().mockResolvedValue({ data: { valid: true } })
+  passIsValid: jest.fn().mockResolvedValue({ data: { valid: true } }),
 }));
 jest.mock("../../services/mfa.service", () => ({ verifyLogin: jest.fn() }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const models: any = require("../../models");
@@ -151,14 +151,14 @@ describe("A-11 — certificates", () => {
       mockTx.all[0],
       T,
       WEBHOOK_EVENTS.CERTIFICATE_APPROVED,
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(mockEmitted).toEqual([
-    {
-      tenantId: T,
-      event: "certificate.approved",
-      payload: { certificateId: "cert-1", certificateNumber: "CERT-1", deviceId: "dev-1", status: "approved", approvedBy: "u-2" }
-    }]
+      {
+        tenantId: T,
+        event: "certificate.approved",
+        payload: { certificateId: "cert-1", certificateNumber: "CERT-1", deviceId: "dev-1", status: "approved", approvedBy: "u-2" },
+      }],
     );
   });
 
@@ -166,7 +166,7 @@ describe("A-11 — certificates", () => {
     models.Certificate.findOne.mockResolvedValueOnce(cert("approved"));
     await certificateService.signCertificate(T, "cert-1", "sig", "k1", "u-2", { ...AUTH, meaning: "Signed" });
     expect(mockEmitted).toEqual([
-    expect.objectContaining({ event: "certificate.signed", payload: expect.objectContaining({ status: "signed", signedBy: "u-2" }) })]
+      expect.objectContaining({ event: "certificate.signed", payload: expect.objectContaining({ status: "signed", signedBy: "u-2" }) })],
     );
   });
 
@@ -201,12 +201,12 @@ describe("A-11 — maintenance work orders (managed transaction)", () => {
   it("work_order.created is emitted after the insert commits", async () => {
     models.CalibrationDevice.findOne.mockResolvedValueOnce({ id: "dev-1" });
     models.MaintenanceWorkOrder.create.mockResolvedValueOnce(
-      instance({ id: "wo-1", deviceId: "dev-1", type: "Preventative", status: "Open", priority: "High", title: "t" })
+      instance({ id: "wo-1", deviceId: "dev-1", type: "Preventative", status: "Open", priority: "High", title: "t" }),
     );
     await maintenanceService.createWorkOrder(T, { title: "t", deviceId: "dev-1" });
     expect(webhookService.emitAfterCommit).toHaveBeenCalledWith(mockTx.all[0], T, "work_order.created", expect.any(Object));
     expect(mockEmitted).toEqual([
-    { tenantId: T, event: "work_order.created", payload: { workOrderId: "wo-1", deviceId: "dev-1", type: "Preventative", status: "Open", priority: "High" } }]
+      { tenantId: T, event: "work_order.created", payload: { workOrderId: "wo-1", deviceId: "dev-1", type: "Preventative", status: "Open", priority: "High" } }],
     );
   });
 
@@ -226,11 +226,11 @@ describe("A-11 — maintenance work orders (managed transaction)", () => {
 
   it("work_order.completed is emitted on the transition into Completed", async () => {
     models.MaintenanceWorkOrder.findOne.mockResolvedValueOnce(
-      instance({ id: "wo-1", deviceId: "dev-1", type: "Repair", status: "InProgress" })
+      instance({ id: "wo-1", deviceId: "dev-1", type: "Repair", status: "InProgress" }),
     );
     await maintenanceService.updateWorkOrder(T, "wo-1", { status: "Completed" });
     expect(mockEmitted).toEqual([
-    { tenantId: T, event: "work_order.completed", payload: { workOrderId: "wo-1", deviceId: "dev-1", type: "Repair", status: "Completed" } }]
+      { tenantId: T, event: "work_order.completed", payload: { workOrderId: "wo-1", deviceId: "dev-1", type: "Repair", status: "Completed" } }],
     );
   });
 
@@ -245,7 +245,7 @@ describe("A-11 — maintenance work orders (managed transaction)", () => {
 
 describe("A-11 — stock transfers (unmanaged transaction)", () => {
   const transfer = (status: any = "pending") =>
-  instance({ id: "tr-1", status, itemName: "Probe", quantity: 2, fromWarehouseId: "wh-1", toWarehouseId: "wh-2" });
+    instance({ id: "tr-1", status, itemName: "Probe", quantity: 2, fromWarehouseId: "wh-1", toWarehouseId: "wh-2" });
 
   it("stock_transfer.completed is emitted after the transfer's commit", async () => {
     models.StockTransfer.findOne.mockResolvedValueOnce(transfer());
@@ -254,11 +254,11 @@ describe("A-11 — stock transfers (unmanaged transaction)", () => {
     await stockService.updateTransferStatus(T, "tr-1", { status: "completed" }, "u-2");
     expect(webhookService.emitAfterCommit).toHaveBeenCalledWith(mockTx.all[0], T, "stock_transfer.completed", expect.any(Object));
     expect(mockEmitted).toEqual([
-    {
-      tenantId: T,
-      event: "stock_transfer.completed",
-      payload: { transferId: "tr-1", itemName: "Probe", quantity: 2, fromWarehouseId: "wh-1", toWarehouseId: "wh-2", approvedBy: "u-2" }
-    }]
+      {
+        tenantId: T,
+        event: "stock_transfer.completed",
+        payload: { transferId: "tr-1", itemName: "Probe", quantity: 2, fromWarehouseId: "wh-1", toWarehouseId: "wh-2", approvedBy: "u-2" },
+      }],
     );
   });
 
@@ -284,11 +284,11 @@ describe("A-11 — CAPA", () => {
     models.Capa.create.mockResolvedValueOnce({ id: "capa-1" });
     await qmsService.createCapa(T, { ncId: "nc-1", title: "Fix", actionPlan: "plan", dueDate: "2026-10-01" }, { userId: "u-2" });
     expect(mockEmitted).toEqual([
-    {
-      tenantId: T,
-      event: "capa.created",
-      payload: { capaId: "capa-1", capaNumber: "CAPA-00007", ncId: "nc-1", ncNumber: "NC-00001", status: "DRAFT", dueDate: "2026-10-01" }
-    }]
+      {
+        tenantId: T,
+        event: "capa.created",
+        payload: { capaId: "capa-1", capaNumber: "CAPA-00007", ncId: "nc-1", ncNumber: "NC-00001", status: "DRAFT", dueDate: "2026-10-01" },
+      }],
     );
   });
 
@@ -304,7 +304,7 @@ describe("A-11 — CAPA", () => {
     models.Capa.findOne.mockResolvedValueOnce(instance({ id: "capa-1", capaNumber: "CAPA-00007", ncId: "nc-1", status: "VERIFICATION" }));
     await qmsService.updateCapa(T, "capa-1", { status: "CLOSED" }, { userId: "u-2" });
     expect(mockEmitted).toEqual([
-    { tenantId: T, event: "capa.closed", payload: { capaId: "capa-1", capaNumber: "CAPA-00007", ncId: "nc-1", status: "CLOSED", closedBy: "u-2" } }]
+      { tenantId: T, event: "capa.closed", payload: { capaId: "capa-1", capaNumber: "CAPA-00007", ncId: "nc-1", status: "CLOSED", closedBy: "u-2" } }],
     );
   });
 
@@ -326,10 +326,10 @@ describe("A-11 — CAPA", () => {
 describe("A-11 — the catalogue is what is emitted", () => {
   const services = path.join(__dirname, "../../services");
   const source = fs.
-  readdirSync(services).
-  filter((f: any) => /\.(js|ts)$/.test(f)) // ADR-087 Amendment 4
-  .map((f: any) => fs.readFileSync(path.join(services, f), "utf8")).
-  join("\n");
+    readdirSync(services).
+    filter((f: any) => /\.(js|ts)$/.test(f)) // ADR-087 Amendment 4
+    .map((f: any) => fs.readFileSync(path.join(services, f), "utf8")).
+    join("\n");
 
   it.each(Object.entries(WEBHOOK_EVENTS))("%s (%s) has an emit site in a service", (key: any, name: any) => {
     const byConstant = source.includes(`WEBHOOK_EVENTS.${key}`);
@@ -346,7 +346,7 @@ describe("A-11 — the catalogue is what is emitted", () => {
   it("the frontend offers exactly `*` and the catalogue — and no longer the inert webhook.test", () => {
     const modal = fs.readFileSync(
       path.join(__dirname, "../../../../frontend/src/app/(app)/dashboard/webhooks/components/WebhookModal.tsx"),
-      "utf8"
+      "utf8",
     );
     const block = modal.match(/const PREDEFINED_EVENTS = \[([\s\S]*?)\];/)[1];
     const offered = [...block.matchAll(/"([^"]+)"/g)].map((m: any) => m[1]);

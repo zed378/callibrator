@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * ADR-070 — webhook_deliveries had no purge (the open item of ADR-064 #4).
  *
@@ -21,24 +21,24 @@ jest.mock("../../models", () => ({
     findAll: jest.fn(async ({ where, limit }: any) => {
       const { Op: SOp } = require("sequelize");
       return mockStore.deliveries.
-      filter(
-        (d: any) =>
-        d.tenantId === where.tenantId &&
+        filter(
+          (d: any) =>
+            d.tenantId === where.tenantId &&
         where.status.includes(d.status) &&
-        d.updatedAt < where.updatedAt[SOp.lt]
-      ).
-      sort((a: any, b: any) => a.updatedAt - b.updatedAt).
-      slice(0, limit).
-      map((d: any) => ({ id: d.id, status: d.status }));
+        d.updatedAt < where.updatedAt[SOp.lt],
+        ).
+        sort((a: any, b: any) => a.updatedAt - b.updatedAt).
+        slice(0, limit).
+        map((d: any) => ({ id: d.id, status: d.status }));
     }),
     destroy: jest.fn(async ({ where }: any) => {
       const before = mockStore.deliveries.length;
       mockStore.deliveries = mockStore.deliveries.filter(
-        (d: any) => !(where.id.includes(d.id) && d.tenantId === where.tenantId && where.status.includes(d.status))
+        (d: any) => !(where.id.includes(d.id) && d.tenantId === where.tenantId && where.status.includes(d.status)),
       );
       return before - mockStore.deliveries.length;
-    })
-  }
+    }),
+  },
 }));
 
 jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb: any) => cb("TX")) } }));
@@ -60,14 +60,13 @@ const delivery = (tenantId: any, status: any, ageDays: any) => ({
   id: `d-${++seq}`,
   tenantId,
   status,
-  updatedAt: daysAgo(ageDays)
+  updatedAt: daysAgo(ageDays),
 });
 
 const ENV = [
-"WEBHOOK_DELIVERY_RETENTION_DAYS",
-"WEBHOOK_DELIVERY_PURGE_BATCH",
-"WEBHOOK_DELIVERY_PURGE_MAX_ROWS"];
-
+  "WEBHOOK_DELIVERY_RETENTION_DAYS",
+  "WEBHOOK_DELIVERY_PURGE_BATCH",
+  "WEBHOOK_DELIVERY_PURGE_MAX_ROWS"];
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -95,17 +94,16 @@ describe("ADR-070 — retention window", () => {
 describe("ADR-070 — purgeFinishedDeliveries", () => {
   it("removes finished rows past the window and nothing else — never a pending or failed row, however old", async () => {
     const keep = [
-    delivery("tenant-a", "pending", 400),
-    delivery("tenant-a", "failed", 400),
-    delivery("tenant-a", "success", 29),
-    delivery("tenant-a", "exhausted", 10)];
+      delivery("tenant-a", "pending", 400),
+      delivery("tenant-a", "failed", 400),
+      delivery("tenant-a", "success", 29),
+      delivery("tenant-a", "exhausted", 10)];
 
     mockStore.deliveries = [
-    ...keep,
-    delivery("tenant-a", "success", 31),
-    delivery("tenant-a", "exhausted", 45),
-    delivery("tenant-b", "success", 200)];
-
+      ...keep,
+      delivery("tenant-a", "success", 31),
+      delivery("tenant-a", "exhausted", 45),
+      delivery("tenant-b", "success", 200)];
 
     const summary = await purge.purgeFinishedDeliveries({ now: NOW });
 
@@ -114,7 +112,7 @@ describe("ADR-070 — purgeFinishedDeliveries", () => {
       deleted: 3,
       retentionDays: 30,
       cutoff: daysAgo(30).toISOString(),
-      stoppedEarly: false
+      stoppedEarly: false,
     });
     expect(mockStore.deliveries.map((d: any) => d.id)).toEqual(keep.map((d: any) => d.id));
 
@@ -131,10 +129,9 @@ describe("ADR-070 — purgeFinishedDeliveries", () => {
 
   it("works per tenant, in that tenant's context, with one audit row per batch in the batch's transaction", async () => {
     mockStore.deliveries = [
-    delivery("tenant-a", "success", 40),
-    delivery("tenant-a", "exhausted", 50),
-    delivery("tenant-b", "success", 60)];
-
+      delivery("tenant-a", "success", 40),
+      delivery("tenant-a", "exhausted", 50),
+      delivery("tenant-b", "success", 60)];
 
     await purge.purgeFinishedDeliveries({ now: NOW });
 
@@ -154,10 +151,10 @@ describe("ADR-070 — purgeFinishedDeliveries", () => {
           deleted: 2,
           byStatus: { exhausted: 1, success: 1 },
           olderThan: daysAgo(30).toISOString(),
-          retentionDays: 30
-        }
+          retentionDays: 30,
+        },
       },
-      { transaction: "TX" }
+      { transaction: "TX" },
     );
     expect(auditService.logAction.mock.calls[1][0].tenantId).toBe("tenant-b");
   });
@@ -176,9 +173,8 @@ describe("ADR-070 — purgeFinishedDeliveries", () => {
     process.env["WEBHOOK_DELIVERY_PURGE_BATCH"] = "2";
     process.env["WEBHOOK_DELIVERY_PURGE_MAX_ROWS"] = "5";
     mockStore.deliveries = [
-    ...Array.from({ length: 4 }, (_: any, i: any) => delivery("tenant-a", "success", 40 + i)),
-    ...Array.from({ length: 4 }, (_: any, i: any) => delivery("tenant-b", "exhausted", 40 + i))];
-
+      ...Array.from({ length: 4 }, (_: any, i: any) => delivery("tenant-a", "success", 40 + i)),
+      ...Array.from({ length: 4 }, (_: any, i: any) => delivery("tenant-b", "exhausted", 40 + i))];
 
     const summary = await purge.purgeFinishedDeliveries({ now: NOW });
 
@@ -188,10 +184,10 @@ describe("ADR-070 — purgeFinishedDeliveries", () => {
     // tenant-a: 2 + 2, then an empty read within the remaining budget of 1;
     // tenant-b: the remaining budget of 1.
     expect(WebhookDelivery.findAll.mock.calls.map(([o]: any) => [o.where.tenantId, o.limit])).toEqual([
-    ["tenant-a", 2],
-    ["tenant-a", 2],
-    ["tenant-a", 1],
-    ["tenant-b", 1]]
+      ["tenant-a", 2],
+      ["tenant-a", 2],
+      ["tenant-a", 1],
+      ["tenant-b", 1]],
     );
     expect(auditService.logAction).toHaveBeenCalledTimes(3);
   });

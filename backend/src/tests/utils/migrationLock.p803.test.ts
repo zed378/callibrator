@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * P8-03 (ADR-086) — the schema lock's branches, on a scripted connection.
  * What PostgreSQL then does with two real instances is proven by
@@ -11,7 +11,7 @@ const {
   withSchemaLock,
   resolveTimeoutMs,
   MIGRATION_LOCK_KEY,
-  DEFAULT_TIMEOUT_MS
+  DEFAULT_TIMEOUT_MS,
 } = require("../../utils/migrationLock.util");
 
 /** A connection whose pg_try_advisory_lock answers follow `answers` (true = acquired). */
@@ -27,11 +27,11 @@ const scripted = (answers: any, { unlockThrows = false } = {}) => {
         throw new Error("connection lost");
       }
       return { rows: [{ pg_advisory_unlock: true }] };
-    })
+    }),
   };
   const manager: any = {
     getConnection: jest.fn(async () => connection),
-    releaseConnection: jest.fn()
+    releaseConnection: jest.fn(),
   };
   return { sequelize: { connectionManager: manager, sync: jest.fn(async () => {}) }, manager, calls };
 };
@@ -48,9 +48,9 @@ describe("P8-03 withSchemaLock", () => {
     });
     await expect(withSchemaLock({ sequelize, logger: log, fn })).resolves.toBe("done");
     expect(calls.map((c: any) => c.sql)).toEqual([
-    "SELECT pg_try_advisory_lock($1::bigint) AS locked",
-    "STEP",
-    "SELECT pg_advisory_unlock($1::bigint)"]
+      "SELECT pg_try_advisory_lock($1::bigint) AS locked",
+      "STEP",
+      "SELECT pg_advisory_unlock($1::bigint)"],
     );
     expect(calls[0].params).toEqual([MIGRATION_LOCK_KEY]);
     expect(calls[2].params).toEqual([MIGRATION_LOCK_KEY]);
@@ -65,7 +65,7 @@ describe("P8-03 withSchemaLock", () => {
     const sleep = jest.fn(async () => {});
     const fn = jest.fn(async () => "ran");
     await expect(
-      withSchemaLock({ sequelize, logger: log, fn, sleep, pollMs: 5, timeoutMs: 60000 })
+      withSchemaLock({ sequelize, logger: log, fn, sleep, pollMs: 5, timeoutMs: 60000 }),
     ).resolves.toBe("ran");
     expect(sleep).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(5);
@@ -86,7 +86,7 @@ describe("P8-03 withSchemaLock", () => {
     });
     const fn = jest.fn();
     await expect(
-      withSchemaLock({ sequelize, logger: logger(), fn, sleep, now, pollMs: 100, timeoutMs: 250 })
+      withSchemaLock({ sequelize, logger: logger(), fn, sleep, now, pollMs: 100, timeoutMs: 250 }),
     ).rejects.toThrow(/not released within 250 ms/);
     expect(fn).not.toHaveBeenCalled();
     expect(calls.some((c: any) => c.sql.includes("pg_advisory_unlock"))).toBe(false);
@@ -101,8 +101,8 @@ describe("P8-03 withSchemaLock", () => {
         logger: logger(),
         fn: async () => {
           throw new Error("migration 0042 failed");
-        }
-      })
+        },
+      }),
     ).rejects.toThrow("migration 0042 failed");
     expect(calls.at(-1).sql).toBe("SELECT pg_advisory_unlock($1::bigint)");
     expect(manager.releaseConnection).toHaveBeenCalledTimes(1);
@@ -111,7 +111,7 @@ describe("P8-03 withSchemaLock", () => {
   test("P8-03: a failing unlock still releases the connection, and the failure propagates", async () => {
     const { sequelize, manager } = scripted([true], { unlockThrows: true });
     await expect(
-      withSchemaLock({ sequelize, logger: logger(), fn: async () => "ok" })
+      withSchemaLock({ sequelize, logger: logger(), fn: async () => "ok" }),
     ).rejects.toThrow("connection lost");
     expect(manager.releaseConnection).toHaveBeenCalledTimes(1);
   });
@@ -126,16 +126,16 @@ describe("P8-03 withSchemaLock", () => {
 
 describe("P8-03 resolveTimeoutMs", () => {
   test.each([
-  [{}, DEFAULT_TIMEOUT_MS],
-  [{ MIGRATION_LOCK_TIMEOUT_MS: "" }, DEFAULT_TIMEOUT_MS],
-  [{ MIGRATION_LOCK_TIMEOUT_MS: "30000" }, 30000]]
+    [{}, DEFAULT_TIMEOUT_MS],
+    [{ MIGRATION_LOCK_TIMEOUT_MS: "" }, DEFAULT_TIMEOUT_MS],
+    [{ MIGRATION_LOCK_TIMEOUT_MS: "30000" }, 30000]],
   )("P8-03: %j -> %d", (env: any, expected: any) => {
     expect(resolveTimeoutMs(env)).toBe(expected);
   });
 
   test.each(["0", "-5", "10s", "1.5"])("P8-03: refuses %s", (value: any) => {
     expect(() => resolveTimeoutMs({ MIGRATION_LOCK_TIMEOUT_MS: value })).toThrow(
-      /not a positive integer/
+      /not a positive integer/,
     );
   });
 
@@ -162,18 +162,18 @@ describe("P8-03 runSchemaSetup", () => {
       up: jest.fn(async () => {
         calls.push({ sql: "UP" });
         return [{ name: "0091-x.js" }, { name: "0092-y.js" }];
-      })
+      }),
     };
     const log = logger();
     await expect(runSchemaSetup({ sequelize, migrator, logger: log })).resolves.toEqual([
-    { name: "0091-x.js" },
-    { name: "0092-y.js" }]
+      { name: "0091-x.js" },
+      { name: "0092-y.js" }],
     );
     expect(calls.map((c: any) => c.sql)).toEqual([
-    "SELECT pg_try_advisory_lock($1::bigint) AS locked",
-    "SYNC",
-    "UP",
-    "SELECT pg_advisory_unlock($1::bigint)"]
+      "SELECT pg_try_advisory_lock($1::bigint) AS locked",
+      "SYNC",
+      "UP",
+      "SELECT pg_advisory_unlock($1::bigint)"],
     );
     expect(log.info).toHaveBeenCalledWith("All database tables synced");
     expect(log.info).toHaveBeenCalledWith("Applied 2 migration(s): 0091-x.js, 0092-y.js");
@@ -187,7 +187,7 @@ describe("P8-03 runSchemaSetup", () => {
       sequelize,
       migrator: { up: async () => [] },
       logger: log,
-      lockOptions: { sleep, pollMs: 7 }
+      lockOptions: { sleep, pollMs: 7 },
     });
     expect(applied).toEqual([]);
     expect(sleep).toHaveBeenCalledWith(7);

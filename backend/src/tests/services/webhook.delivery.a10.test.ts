@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-10 — durable webhook delivery and receiver-side replay protection, over a
  * REAL HTTP receiver in this process (tests/fixtures/webhookReceiver.js).
@@ -25,14 +25,14 @@ const mockDeliveryRow: any = (values: any) => {
 jest.mock("../../models", () => ({
   Webhook: {
     findAll: jest.fn(async ({ where }: any) =>
-    [...mockStore.webhooks.values()].filter(
-      (w: any) => w.tenantId === where.tenantId && w.isActive && w.events.includes("*")
-    )
+      [...mockStore.webhooks.values()].filter(
+        (w: any) => w.tenantId === where.tenantId && w.isActive && w.events.includes("*"),
+      ),
     ),
     findOne: jest.fn(async ({ where }: any) => {
       const w = mockStore.webhooks.get(where.id);
       return w && w.tenantId === where.tenantId ? w : null;
-    })
+    }),
   },
   WebhookDelivery: {
     create: jest.fn(async (values: any) => {
@@ -46,9 +46,9 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(async ({ where }: any) => {
       const d = mockStore.deliveries.get(where.id);
       return d && d.tenantId === where.tenantId ? d : null;
-    })
+    }),
   },
-  AuditLog: { create: jest.fn() }
+  AuditLog: { create: jest.fn() },
 }));
 
 jest.mock("../../config", () => ({
@@ -61,21 +61,21 @@ jest.mock("../../config", () => ({
       const [leaseSeconds, limit, id, tenantId] = bind;
       const now = Date.now();
       const due = [...mockStore.deliveries.values()].
-      filter((d: any) => ["pending", "failed"].includes(d.status)).
-      filter((d: any) => d.nextAttemptAt && d.nextAttemptAt.getTime() <= now).
-      filter((d: any) => !sql.includes("AND id = $3") || d.id === id && d.tenantId === tenantId).
-      sort((a: any, b: any) => a.nextAttemptAt - b.nextAttemptAt).
-      slice(0, limit);
+        filter((d: any) => ["pending", "failed"].includes(d.status)).
+        filter((d: any) => d.nextAttemptAt && d.nextAttemptAt.getTime() <= now).
+        filter((d: any) => !sql.includes("AND id = $3") || d.id === id && d.tenantId === tenantId).
+        sort((a: any, b: any) => a.nextAttemptAt - b.nextAttemptAt).
+        slice(0, limit);
       due.forEach((d: any) => {
         d.nextAttemptAt = new Date(now + leaseSeconds * 1000);
       });
       return due.map((d: any) => ({ id: d.id, tenantId: d.tenantId }));
-    })
-  }
+    }),
+  },
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 jest.mock("../../utils/ssrf.util", () => ({
@@ -86,7 +86,7 @@ jest.mock("../../utils/ssrf.util", () => ({
   // A-307: the REAL pinned transport, so these deliveries cross a real socket
   // through the pinned lookup (the signature must survive byte for byte).
   // Loopback is let through by the development allow-list set below.
-  pinnedFetch: jest.requireActual("../../utils/ssrf.util").pinnedFetch
+  pinnedFetch: jest.requireActual("../../utils/ssrf.util").pinnedFetch,
 }));
 
 // A-307: see the ssrf.util double above; never honoured in production.
@@ -129,11 +129,11 @@ const until = async (predicate: any, ms: any = 3000) => {
 };
 
 const makeDue = () =>
-mockStore.deliveries.forEach((d: any) => {
-  if (d.nextAttemptAt) {
-    d.nextAttemptAt = new Date(Date.now() - 1000);
-  }
-});
+  mockStore.deliveries.forEach((d: any) => {
+    if (d.nextAttemptAt) {
+      d.nextAttemptAt = new Date(Date.now() - 1000);
+    }
+  });
 
 describe("A-10 — durable delivery to a real HTTP receiver", () => {
   const receivers: any[] = [];
@@ -143,7 +143,7 @@ describe("A-10 — durable delivery to a real HTTP receiver", () => {
     return rx;
   };
   const register = (id: any, tenantId: any, secret: any, url: any) =>
-  mockStore.webhooks.set(id, { id, tenantId, url, secret, events: ["*"], isActive: true });
+    mockStore.webhooks.set(id, { id, tenantId, url, secret, events: ["*"], isActive: true });
 
   beforeEach(() => {
     mockStore.deliveries.clear();
@@ -252,8 +252,8 @@ describe("A-10 — durable delivery to a real HTTP receiver", () => {
     expect(JSON.parse(rxB.received[0].body).data).toEqual({ transferId: "t-b" });
     const rows = [...mockStore.deliveries.values()];
     expect(rows.map((d: any) => [d.tenantId, d.webhookId])).toEqual([
-    [TENANT_A, "w-a"],
-    [TENANT_B, "w-b"]]
+      [TENANT_A, "w-a"],
+      [TENANT_B, "w-b"]],
     );
 
     // A's failed delivery, due again: tenant B's claim by id takes nothing.
@@ -268,7 +268,7 @@ describe("A-10 — durable delivery to a real HTTP receiver", () => {
   it("verifyWebhook refuses a request with a header missing", () => {
     expect(verifyWebhook(SECRET_A, {}, "{}", new Set())).toBe("missing-headers");
     expect(
-      verifyWebhook(SECRET_A, { "x-webhook-timestamp": "abc", "x-webhook-signature": "v1=x", "x-webhook-delivery": "d" }, "{}", new Set())
+      verifyWebhook(SECRET_A, { "x-webhook-timestamp": "abc", "x-webhook-signature": "v1=x", "x-webhook-delivery": "d" }, "{}", new Set()),
     ).toBe("stale");
   });
 });

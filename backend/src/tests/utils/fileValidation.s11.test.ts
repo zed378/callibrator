@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * S-11 — the attachment types the route allows must be uploadable, and only
  * with content of the declared kind.
@@ -27,7 +27,7 @@ const RELS =
 "</Relationships>";
 
 const contentTypes = (overrides: any) =>
-'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
 '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
 '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
 '<Default Extension="xml" ContentType="application/xml"/>' +
@@ -35,7 +35,7 @@ overrides +
 "</Types>";
 
 const zipBuffer = (zip: any) =>
-zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 
 /** A minimal but well-formed WordprocessingML package. */
 const buildDocx = () => {
@@ -43,15 +43,15 @@ const buildDocx = () => {
   zip.file(
     "[Content_Types].xml",
     contentTypes(
-      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
-    )
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>',
+    ),
   );
   zip.file("_rels/.rels", RELS.replace("%TARGET%", "word/document.xml"));
   zip.file(
     "word/document.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-    "<w:body><w:p><w:r><w:t>Calibration procedure</w:t></w:r></w:p></w:body></w:document>"
+    "<w:body><w:p><w:r><w:t>Calibration procedure</w:t></w:r></w:p></w:body></w:document>",
   );
   return zipBuffer(zip);
 };
@@ -63,22 +63,22 @@ const buildXlsx = () => {
     "[Content_Types].xml",
     contentTypes(
       '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-    )
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>',
+    ),
   );
   zip.file("_rels/.rels", RELS.replace("%TARGET%", "xl/workbook.xml"));
   zip.file(
     "xl/workbook.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-    '<sheets><sheet name="Readings" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    '<sheets><sheet name="Readings" sheetId="1" r:id="rId1"/></sheets></workbook>',
   );
   zip.file(
     "xl/_rels/workbook.xml.rels",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
-    "</Relationships>"
+    "</Relationships>",
   );
   zip.file(
     "xl/worksheets/sheet1.xml",
@@ -86,7 +86,7 @@ const buildXlsx = () => {
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' +
     '<row r="1"><c r="A1" t="inlineStr"><is><t>Reading</t></is></c></row>' +
     '<row r="2"><c r="A2"><v>37.2</v></c></row>' +
-    "</sheetData></worksheet>"
+    "</sheetData></worksheet>",
   );
   return zipBuffer(zip);
 };
@@ -112,7 +112,7 @@ const buildOle2 = () => {
 
 /** Offset of the ZIP end-of-central-directory record. */
 const eocdOffset = (buf: any) =>
-buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
 
 describe("S-11 — attachment types validated against real file content", () => {
   let dir: any;
@@ -141,46 +141,46 @@ describe("S-11 — attachment types validated against real file content", () => 
   describe("accepted", () => {
     it("S-11: a real .xlsx passes as spreadsheetml.sheet", async () => {
       await expect(
-        validateFileMagicBytes(write("readings.xlsx", xlsx), XLSX)
+        validateFileMagicBytes(write("readings.xlsx", xlsx), XLSX),
       ).resolves.toBe(XLSX);
     });
 
     it("S-11: a real .docx passes as wordprocessingml.document", async () => {
       await expect(
-        validateFileMagicBytes(write("procedure.docx", docx), DOCX)
+        validateFileMagicBytes(write("procedure.docx", docx), DOCX),
       ).resolves.toBe(DOCX);
     });
 
     it("S-11: an OLE2 .xls passes as application/vnd.ms-excel", async () => {
       await expect(
-        validateFileMagicBytes(write("legacy.xls", buildOle2()), XLS)
+        validateFileMagicBytes(write("legacy.xls", buildOle2()), XLS),
       ).resolves.toBe(XLS);
     });
 
     it("S-11: an OLE2 .doc passes as application/msword", async () => {
       await expect(
-        validateFileMagicBytes(write("legacy.doc", buildOle2()), DOC)
+        validateFileMagicBytes(write("legacy.doc", buildOle2()), DOC),
       ).resolves.toBe(DOC);
     });
 
     it("S-11: a .csv passes as text/csv", async () => {
       const csv = "serial,reading,unit\nDEV-001,37.2,°C\nDEV-002,36.9,°C\n";
       await expect(
-        validateFileMagicBytes(write("readings.csv", csv), "text/csv")
+        validateFileMagicBytes(write("readings.csv", csv), "text/csv"),
       ).resolves.toBe("text/csv");
     });
 
     it("S-11: a UTF-8 .txt passes as text/plain", async () => {
       const txt = "Kalibrasi selesai — suhu ruang 23 °C, µ = 0.02\r\n";
       await expect(
-        validateFileMagicBytes(write("notes.txt", txt), "text/plain")
+        validateFileMagicBytes(write("notes.txt", txt), "text/plain"),
       ).resolves.toBe("text/plain");
     });
 
     it("S-11: a .csv larger than the 8 KiB inspection window passes", async () => {
       const csv = "serial,reading\n" + "DEV-001,37.2\n".repeat(2000);
       await expect(
-        validateFileMagicBytes(write("big.csv", csv), "text/csv")
+        validateFileMagicBytes(write("big.csv", csv), "text/csv"),
       ).resolves.toBe("text/csv");
     });
   });
@@ -190,7 +190,7 @@ describe("S-11 — attachment types validated against real file content", () => 
       const file = write("renamed.xlsx", "just some notes, not a workbook\n");
       await expect(validateFileMagicBytes(file, XLSX)).rejects.toMatchObject({
         status: 400,
-        message: `File content does not match declared type "${XLSX}"`
+        message: `File content does not match declared type "${XLSX}"`,
       });
     });
 
@@ -201,7 +201,7 @@ describe("S-11 — attachment types validated against real file content", () => 
       const file = write("archive.docx", await zipBuffer(zip));
       await expect(validateFileMagicBytes(file, DOCX)).rejects.toMatchObject({
         status: 400,
-        message: `File content does not match declared type "${DOCX}"`
+        message: `File content does not match declared type "${DOCX}"`,
       });
     });
 
@@ -209,41 +209,41 @@ describe("S-11 — attachment types validated against real file content", () => 
       const file = write("procedure.xlsx", docx);
       await expect(validateFileMagicBytes(file, XLSX)).rejects.toMatchObject({
         status: 400,
-        message: `File content does not match declared type "${XLSX}"`
+        message: `File content does not match declared type "${XLSX}"`,
       });
     });
 
     it("S-11: an xlsx declared as docx is refused", async () => {
       const file = write("readings.docx", xlsx);
       await expect(validateFileMagicBytes(file, DOCX)).rejects.toThrow(
-        `declared type "${DOCX}"`
+        `declared type "${DOCX}"`,
       );
     });
 
     it("S-11: a binary with a NUL byte declared as text/plain is refused", async () => {
       const file = write(
         "binary.txt",
-        Buffer.from([0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x00, 0x01, 0x02])
+        Buffer.from([0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x00, 0x01, 0x02]),
       );
       await expect(
-        validateFileMagicBytes(file, "text/plain")
+        validateFileMagicBytes(file, "text/plain"),
       ).rejects.toMatchObject({
         status: 400,
-        message: 'File content does not match declared type "text/plain"'
+        message: 'File content does not match declared type "text/plain"',
       });
     });
 
     it("S-11: an OLE2 file declared as text/csv is refused", async () => {
       const file = write("legacy.csv", buildOle2());
       await expect(validateFileMagicBytes(file, "text/csv")).rejects.toThrow(
-        'declared type "text/csv"'
+        'declared type "text/csv"',
       );
     });
 
     it("S-11: a text file declared as application/vnd.ms-excel is refused", async () => {
       const file = write("notes.xls", "serial,reading\n");
       await expect(validateFileMagicBytes(file, XLS)).rejects.toThrow(
-        `declared type "${XLS}"`
+        `declared type "${XLS}"`,
       );
     });
   });
@@ -251,18 +251,18 @@ describe("S-11 — attachment types validated against real file content", () => 
   describe("malformed ZIP containers declared as OOXML are refused", () => {
     it("S-11: a ZIP local header with no end-of-central-directory record", async () => {
       const buf = Buffer.concat([
-      Buffer.from([0x50, 0x4b, 0x03, 0x04]),
-      Buffer.alloc(200, 0x41)]
+        Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+        Buffer.alloc(200, 0x41)],
       );
       await expect(
-        validateFileMagicBytes(write("truncated.xlsx", buf), XLSX)
+        validateFileMagicBytes(write("truncated.xlsx", buf), XLSX),
       ).rejects.toThrow(`declared type "${XLSX}"`);
     });
 
     it("S-11: a ZIP shorter than an end-of-central-directory record", async () => {
       const buf = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]);
       await expect(
-        validateFileMagicBytes(write("tiny.docx", buf), DOCX)
+        validateFileMagicBytes(write("tiny.docx", buf), DOCX),
       ).rejects.toThrow(`declared type "${DOCX}"`);
     });
 
@@ -270,7 +270,7 @@ describe("S-11 — attachment types validated against real file content", () => 
       const buf = Buffer.from(xlsx);
       buf.writeUInt32LE(0xffffffff, eocdOffset(buf) + 16);
       await expect(
-        validateFileMagicBytes(write("zip64ish.xlsx", buf), XLSX)
+        validateFileMagicBytes(write("zip64ish.xlsx", buf), XLSX),
       ).rejects.toThrow(`declared type "${XLSX}"`);
     });
 
@@ -279,7 +279,7 @@ describe("S-11 — attachment types validated against real file content", () => 
       const eocd = eocdOffset(buf);
       buf.writeUInt16LE(buf.readUInt16LE(eocd + 10) + 1, eocd + 10);
       await expect(
-        validateFileMagicBytes(write("overcount.xlsx", buf), XLSX)
+        validateFileMagicBytes(write("overcount.xlsx", buf), XLSX),
       ).rejects.toThrow(`declared type "${XLSX}"`);
     });
 
@@ -288,7 +288,7 @@ describe("S-11 — attachment types validated against real file content", () => 
       const cdOffset = buf.readUInt32LE(eocdOffset(buf) + 16);
       buf[cdOffset] = 0x00;
       await expect(
-        validateFileMagicBytes(write("badcd.xlsx", buf), XLSX)
+        validateFileMagicBytes(write("badcd.xlsx", buf), XLSX),
       ).rejects.toThrow(`declared type "${XLSX}"`);
     });
   });
@@ -296,7 +296,7 @@ describe("S-11 — attachment types validated against real file content", () => 
   describe("unchanged behaviour", () => {
     it("S-11: an xlsx declared as application/zip is still verified as zip", async () => {
       await expect(
-        validateFileMagicBytes(write("readings.zip", xlsx), "application/zip")
+        validateFileMagicBytes(write("readings.zip", xlsx), "application/zip"),
       ).resolves.toBe("application/zip");
     });
   });

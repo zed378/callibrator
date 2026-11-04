@@ -47,7 +47,7 @@ const startProcess = () => {
     certificates: require("../../services/certificate.service"),
     devices: require("../../services/calibrationDevices.service"),
     attachments: require("../../services/attachment.service"),
-    purge: require("../../services/webhookDeliveryPurge.service")
+    purge: require("../../services/webhookDeliveryPurge.service"),
   };
 };
 
@@ -70,13 +70,13 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
   const inTenant = (tenantId: any, fn: any) => g.tenantStorage.run({ tenantId, isSuperAdmin: false }, fn);
 
   const attachment = async (tenantId: any, resourceType: any, resourceId: any) =>
-  (
-  await one(
-    `INSERT INTO attachments (id, tenant_id, resource_type, resource_id, file_name, original_name, created_at, updated_at)
+    (
+      await one(
+        `INSERT INTO attachments (id, tenant_id, resource_type, resource_id, file_name, original_name, created_at, updated_at)
          VALUES (gen_random_uuid(), :tenantId, :resourceType, :resourceId, 'f.bin', 'f.pdf', now(), now()) RETURNING id`,
-    { tenantId, resourceType, resourceId }
-  )).
-  id;
+        { tenantId, resourceType, resourceId },
+      )).
+      id;
 
   /**
    * P20-07: a PRE-A-97 attachment naming another tenant's record cannot be written any more — the
@@ -89,7 +89,7 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
   const legacyAttachment = async (tenantId: any, resourceType: any, resourceId: any) => {
     const { Sequelize } = require("sequelize");
     const owner = new Sequelize(process.env["DB_NAME"], process.env["DB_USER"], process.env["DB_PASS"], {
-      host: process.env["DB_HOST"], port: Number(process.env["DB_PORT"] || 5432), dialect: "postgres", logging: false
+      host: process.env["DB_HOST"], port: Number(process.env["DB_PORT"] || 5432), dialect: "postgres", logging: false,
     });
     try {
       return await owner.transaction(async (transaction: any) => {
@@ -98,7 +98,7 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
           `INSERT INTO attachments (id, tenant_id, resource_type, resource_id, client_facility_id, file_name, original_name, created_at, updated_at)
            VALUES (gen_random_uuid(), :tenantId, :resourceType, :resourceId,
                    (SELECT id FROM client_facilities WHERE tenant_id = :tenantId AND is_self), 'f.bin', 'f.pdf', now(), now()) RETURNING id`,
-          { transaction, replacements: { tenantId, resourceType, resourceId } }
+          { transaction, replacements: { tenantId, resourceType, resourceId } },
         );
         await owner.query("ALTER TABLE attachments ENABLE ALWAYS TRIGGER attachments_facility_matches_resource", { transaction });
         return row.id;
@@ -125,38 +125,38 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
     await q(
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at) VALUES
          (:a, 'dbC A', :sa, :ea, now(), now()), (:b, 'dbC B', :sb, :eb, now(), now())`,
-      { a: A, b: B, sa: `dbc-a-${tag}`, sb: `dbc-b-${tag}`, ea: `a-${tag}@dbc.test`, eb: `b-${tag}@dbc.test` }
+      { a: A, b: B, sa: `dbc-a-${tag}`, sb: `dbc-b-${tag}`, ea: `a-${tag}@dbc.test`, eb: `b-${tag}@dbc.test` },
     );
     ids.user = (
-    await one(
-      `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url,
+      await one(
+        `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url,
                             status, must_change_password, is_deleted, created_at, updated_at)
          VALUES (gen_random_uuid(), :t, :u, :e, 'x', 'D', 'C', 'default.svg', 'ACTIVE', false, false, now(), now())
          RETURNING id`,
-      { t: A, u: `dbc-${tag}`, e: `dbc-${tag}@dbc.test` }
-    )).
-    id;
+        { t: A, u: `dbc-${tag}`, e: `dbc-${tag}@dbc.test` },
+      )).
+      id;
     // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
     await q(SELF_FACILITIES_SQL);
     const device = async (tenantId: any) =>
-    (
-    await one(
-      `INSERT INTO calibration_devices (id, tenant_id, name, created_at, updated_at)
+      (
+        await one(
+          `INSERT INTO calibration_devices (id, tenant_id, name, created_at, updated_at)
            VALUES (gen_random_uuid(), :tenantId, 'dbC device', now(), now()) RETURNING id`,
-      { tenantId }
-    )).
-    id;
+          { tenantId },
+        )).
+        id;
     ids.deviceA = await device(A);
     ids.deviceB = await device(B);
     const certificate = async (tenantId: any, deviceId: any) =>
-    (
-    await one(
-      // verification_token: NOT NULL + UNIQUE since migration 0096 (A-293).
-      `INSERT INTO certificates (id, tenant_id, device_id, certificate_number, status, verification_token, created_at, updated_at)
+      (
+        await one(
+          // verification_token: NOT NULL + UNIQUE since migration 0096 (A-293).
+          `INSERT INTO certificates (id, tenant_id, device_id, certificate_number, status, verification_token, created_at, updated_at)
            VALUES (gen_random_uuid(), :tenantId, :deviceId, :n, 'draft', :v, now(), now()) RETURNING id`,
-      { tenantId, deviceId, n: `DBC-${randomUUID().slice(0, 12)}`, v: randomBytes(24).toString("base64url") }
-    )).
-    id;
+          { tenantId, deviceId, n: `DBC-${randomUUID().slice(0, 12)}`, v: randomBytes(24).toString("base64url") },
+        )).
+        id;
     ids.certA = await certificate(A, ids.deviceA);
     ids.certB = await certificate(B, ids.deviceB);
   });
@@ -175,13 +175,13 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
     const foreign = await legacyAttachment(B, "certificate", ids.certA);
 
     const result = await inTenant(A, () =>
-    g.certificates.deleteCertificate(A, ids.certA, { userId: ids.user, ipAddress: "127.0.0.1" })
+      g.certificates.deleteCertificate(A, ids.certA, { userId: ids.user, ipAddress: "127.0.0.1" }),
     );
     expect(result.status).toBe(200);
 
     const flags = await q(
       "SELECT id, is_deleted FROM attachments WHERE id IN (:list) ORDER BY id",
-      { list: [a1, a2, onDevice, foreign] }
+      { list: [a1, a2, onDevice, foreign] },
     );
     const deleted = Object.fromEntries(flags.map((r: any) => [r.id, r.is_deleted]));
     expect(deleted).toEqual({ [a1]: true, [a2]: true, [onDevice]: false, [foreign]: false });
@@ -190,7 +190,7 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
       `SELECT resource_id, tenant_id, user_id, actor_type, changes->'cascade' AS cascade
          FROM audit_logs WHERE resource_type = 'Attachment' AND action = 'DELETE'
           AND changes->'cascade'->>'id' = :cert ORDER BY resource_id`,
-      { cert: ids.certA }
+      { cert: ids.certA },
     );
     expect(audit.map((r: any) => r.resource_id).sort()).toEqual([a1, a2].sort());
     for (const row of audit) {
@@ -204,7 +204,7 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
     const device = await attachment(A, "device", ids.deviceA);
 
     const result = await inTenant(A, () =>
-    g.devices.deleteCalibrationDevice(A, ids.deviceA, { userId: ids.user })
+      g.devices.deleteCalibrationDevice(A, ids.deviceA, { userId: ids.user }),
     );
     expect(result.status).toBe(200);
     const rows = await q("SELECT is_deleted FROM attachments WHERE id IN (:list)", { list: [onDevice, device] });
@@ -213,22 +213,22 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
 
   it("D-22: the orphan report finds deleted parents, unlinkable types and cross-tenant links — only in the caller's tenant", async () => {
     const order = (
-    await one(
-      `INSERT INTO maintenance_work_orders (id, tenant_id, device_id, title, created_at, updated_at, deleted_at)
+      await one(
+        `INSERT INTO maintenance_work_orders (id, tenant_id, device_id, title, created_at, updated_at, deleted_at)
          VALUES (gen_random_uuid(), :t, :d, 'gone', now(), now(), now()) RETURNING id`,
-      // P20-07: the work order is A's, on A's (deleted) device — a work order on another tenant's
-      // device is refused by the composite key (0121); the parent missing or deleted is the point.
-      { t: A, d: ids.deviceA }
-    )).
-    id;
+        // P20-07: the work order is A's, on A's (deleted) device — a work order on another tenant's
+        // device is refused by the composite key (0121); the parent missing or deleted is the point.
+        { t: A, d: ids.deviceA },
+      )).
+      id;
     const voided = (
-    await one(
-      `INSERT INTO calibration_records (id, tenant_id, device_id, performed_by, calibration_date, is_deleted,
+      await one(
+        `INSERT INTO calibration_records (id, tenant_id, device_id, performed_by, calibration_date, is_deleted,
                                           void_reason, created_at, updated_at)
          VALUES (gen_random_uuid(), :t, :d, :u, now(), true, 'entered in error', now(), now()) RETURNING id`,
-      { t: A, d: ids.deviceA, u: ids.user }
-    )).
-    id;
+        { t: A, d: ids.deviceA, u: ids.user },
+      )).
+      id;
     const deletedParent = await attachment(A, "workorder", order);
     const unlinkable = await attachment(A, "post", randomUUID());
     const crossTenant = await legacyAttachment(A, "certificate", ids.certB);
@@ -259,41 +259,40 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
 
   it("the purge removes finished deliveries past the window and nothing else, audited per tenant as the system", async () => {
     const webhook = async (tenantId: any) =>
-    (
-    await one(
-      `INSERT INTO webhooks (id, tenant_id, url, secret, created_at, updated_at)
+      (
+        await one(
+          `INSERT INTO webhooks (id, tenant_id, url, secret, created_at, updated_at)
            VALUES (gen_random_uuid(), :tenantId, 'https://hooks.dbc.test/x', 'v1:x', now(), now()) RETURNING id`,
-      { tenantId }
-    )).
-    id;
+          { tenantId },
+        )).
+        id;
     const whA = await webhook(A);
     const whB = await webhook(B);
     const delivery = async (tenantId: any, webhookId: any, status: any, ageDays: any) =>
-    (
-    await one(
-      `INSERT INTO webhook_deliveries (id, tenant_id, webhook_id, event, status, created_at, updated_at)
+      (
+        await one(
+          `INSERT INTO webhook_deliveries (id, tenant_id, webhook_id, event, status, created_at, updated_at)
            VALUES (gen_random_uuid(), :tenantId, :webhookId, 'certificate.signed', :status,
                    now() - (:age || ' days')::interval, now() - (:age || ' days')::interval) RETURNING id`,
-      { tenantId, webhookId, status, age: String(ageDays) }
-    )).
-    id;
+          { tenantId, webhookId, status, age: String(ageDays) },
+        )).
+        id;
     const gone = [
-    await delivery(A, whA, "success", 40),
-    await delivery(A, whA, "exhausted", 90),
-    await delivery(B, whB, "success", 31)];
+      await delivery(A, whA, "success", 40),
+      await delivery(A, whA, "exhausted", 90),
+      await delivery(B, whB, "success", 31)];
 
     const kept = [
-    await delivery(A, whA, "pending", 400),
-    await delivery(A, whA, "failed", 400),
-    await delivery(A, whA, "success", 1),
-    await delivery(B, whB, "exhausted", 29)];
-
+      await delivery(A, whA, "pending", 400),
+      await delivery(A, whA, "failed", 400),
+      await delivery(A, whA, "success", 1),
+      await delivery(B, whB, "exhausted", 29)];
 
     const summary = await g.purge.purgeFinishedDeliveries();
     expect(summary.deleted).toBeGreaterThanOrEqual(3);
 
     const left = (await q("SELECT id FROM webhook_deliveries WHERE tenant_id IN (:a, :b)", { a: A, b: B })).map(
-      (r: any) => r.id
+      (r: any) => r.id,
     );
     expect(left.sort()).toEqual(kept.sort());
     for (const id of gone) {
@@ -303,7 +302,7 @@ describe("dbC — D-22 cascade + orphan report, webhook delivery purge — live 
     const audit = await q(
       `SELECT tenant_id, user_id, actor_type, actor_name, changes FROM audit_logs
         WHERE resource_type = 'WebhookDelivery' AND tenant_id IN (:a, :b) ORDER BY tenant_id`,
-      { a: A, b: B }
+      { a: A, b: B },
     );
     expect(audit).toHaveLength(2);
     for (const row of audit) {

@@ -47,7 +47,7 @@ const startProcess = () => {
     sweep: require("../../services/attachmentFileSweep.service"),
     kanban: require("../../services/kanban.service"),
     storagePath: require("../../utils/storagePath.util"),
-    migration0019: require("../../migrations/0019-add-signature-crypto-fields")
+    migration0019: require("../../migrations/0019-add-signature-crypto-fields"),
   };
 };
 
@@ -87,7 +87,7 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
        VALUES (gen_random_uuid(), :tenantId, :resourceType, :resourceId, :fileName, 'f.pdf', 'uploads/attachments',
                :deleted, now() - interval '400 days',
                now() - (:age || ' days')::interval) RETURNING id`,
-      { tenantId, resourceType, resourceId, fileName, deleted, age: String(deleted ? deletedDaysAgo : 0) }
+      { tenantId, resourceType, resourceId, fileName, deleted, age: String(deleted ? deletedDaysAgo : 0) },
     );
     return { id: row.id, abs };
   };
@@ -110,7 +110,7 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
     d29 = { shape: (await qi.showIndex("signature_records")).find((i: any) => i.name === "dbd_sig_key_other_name") };
     await g.migration0019.up({ context: qi });
     d29.after = (await q(
-      "SELECT indexname FROM pg_indexes WHERE tablename = 'signature_records' AND indexdef LIKE '%(signing_key_id)%' ORDER BY 1"
+      "SELECT indexname FROM pg_indexes WHERE tablename = 'signature_records' AND indexdef LIKE '%(signing_key_id)%' ORDER BY 1",
     )).map((r: any) => r.indexname);
     // Put the database back as the migration leaves it.
     await q("DROP INDEX dbd_sig_key_other_name");
@@ -123,17 +123,17 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
     await q(
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at) VALUES
          (:a, 'dbD A', :sa, :ea, now(), now()), (:b, 'dbD B', :sb, :eb, now(), now())`,
-      { a: A, b: B, sa: `dbd-a-${tag}`, sb: `dbd-b-${tag}`, ea: `a-${tag}@dbd.test`, eb: `b-${tag}@dbd.test` }
+      { a: A, b: B, sa: `dbd-a-${tag}`, sb: `dbd-b-${tag}`, ea: `a-${tag}@dbd.test`, eb: `b-${tag}@dbd.test` },
     );
     ids.user = (
-    await one(
-      `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url,
+      await one(
+        `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url,
                             status, must_change_password, is_deleted, created_at, updated_at)
          VALUES (gen_random_uuid(), :t, :u, :e, 'x', 'D', 'D', 'default.svg', 'ACTIVE', false, false, now(), now())
          RETURNING id`,
-      { t: A, u: `dbd-${tag}`, e: `dbd-${tag}@dbd.test` }
-    )).
-    id;
+        { t: A, u: `dbd-${tag}`, e: `dbd-${tag}@dbd.test` },
+      )).
+      id;
   });
 
   afterAll(async () => {
@@ -148,7 +148,7 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
   it("migration 0088: attachments.file_purged_at is a nullable timestamptz with no default", async () => {
     const col = await one(
       `SELECT data_type, is_nullable, column_default FROM information_schema.columns
-        WHERE table_name = 'attachments' AND column_name = 'file_purged_at'`
+        WHERE table_name = 'attachments' AND column_name = 'file_purged_at'`,
     );
     expect(col).toEqual({ data_type: "timestamp with time zone", is_nullable: "YES", column_default: null });
   });
@@ -175,20 +175,20 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
       expect(fs.existsSync(kept.abs)).toBe(true);
     }
     const marks = await q("SELECT id, file_purged_at IS NOT NULL AS purged FROM attachments WHERE id IN (:list)", {
-      list: [old.id, recent.id, liveRow.id, oldB.id, liveB.id]
+      list: [old.id, recent.id, liveRow.id, oldB.id, liveB.id],
     });
     expect(Object.fromEntries(marks.map((r: any) => [r.id, r.purged]))).toEqual({
       [old.id]: true,
       [recent.id]: false,
       [liveRow.id]: false,
       [oldB.id]: true,
-      [liveB.id]: false
+      [liveB.id]: false,
     });
 
     const audit = await q(
       `SELECT tenant_id, user_id, actor_type, actor_name, action, changes FROM audit_logs
         WHERE resource_type = 'Attachment' AND resource_id IN (:list) ORDER BY tenant_id`,
-      { list: [old.id, oldB.id, recent.id, liveRow.id] }
+      { list: [old.id, oldB.id, recent.id, liveRow.id] },
     );
     expect(audit).toHaveLength(2);
     for (const row of audit) {
@@ -196,7 +196,7 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
         user_id: null,
         actor_type: "system",
         actor_name: "system:attachment-file-sweep",
-        action: "DELETE"
+        action: "DELETE",
       });
       expect(row.changes).toMatchObject({ operation: "file-purge", file: "removed", retentionDays: 90 });
     }
@@ -204,7 +204,7 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
     const again = await g.sweep.sweepDeletedAttachmentFiles();
     const reswept = await q(
       "SELECT count(*)::int AS n FROM audit_logs WHERE resource_type = 'Attachment' AND resource_id IN (:list)",
-      { list: [old.id, oldB.id] }
+      { list: [old.id, oldB.id] },
     );
     expect(reswept[0].n).toBe(2);
     expect(again.failed).toBe(0);
@@ -217,34 +217,34 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
 
     await expect(
       inTenant(A, () =>
-      g.models.Attachment.create({ tenantId: A, resourceType: "legacy-typo", fileName: "x", originalName: "x" })
-      )
+        g.models.Attachment.create({ tenantId: A, resourceType: "legacy-typo", fileName: "x", originalName: "x" }),
+      ),
     ).rejects.toThrow('resourceType "legacy-typo" is not one of');
   });
 
   it("D-22 project: deleting a kanban project soft-deletes its cards' files, each audit row naming the card and the project", async () => {
     const project = (
-    await one(
-      `INSERT INTO kanban_projects (id, tenant_id, name, card_seq, created_by, created_at, updated_at)
+      await one(
+        `INSERT INTO kanban_projects (id, tenant_id, name, card_seq, created_by, created_at, updated_at)
          VALUES (gen_random_uuid(), :t, 'dbD board', 0, :u, now(), now()) RETURNING id`,
-      { t: A, u: ids.user }
-    )).
-    id;
+        { t: A, u: ids.user },
+      )).
+      id;
     const column = (
-    await one(
-      `INSERT INTO kanban_columns (id, project_id, name, position, is_done, created_at, updated_at)
+      await one(
+        `INSERT INTO kanban_columns (id, project_id, name, position, is_done, created_at, updated_at)
          VALUES (gen_random_uuid(), :p, 'To Do', 0, false, now(), now()) RETURNING id`,
-      { p: project }
-    )).
-    id;
+        { p: project },
+      )).
+      id;
     const card = async (title: any) =>
-    (
-    await one(
-      `INSERT INTO kanban_cards (id, tenant_id, project_id, column_id, title, position, created_at, updated_at)
+      (
+        await one(
+          `INSERT INTO kanban_cards (id, tenant_id, project_id, column_id, title, position, created_at, updated_at)
            VALUES (gen_random_uuid(), :t, :p, :c, :title, 0, now(), now()) RETURNING id`,
-      { t: A, p: project, c: column, title }
-    )).
-    id;
+          { t: A, p: project, c: column, title },
+        )).
+        id;
     const c1 = await card("one");
     const c2 = await card("two");
     const f1 = await attachment(A, { resourceType: "KanbanCard", resourceId: c1 });
@@ -254,24 +254,24 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
     await inTenant(A, () => g.kanban.deleteProject({ id: ids.user, tenantId: A, role: { name: "TECHNICIAN" } }, project));
 
     const flags = await q("SELECT id, is_deleted FROM attachments WHERE id IN (:list)", {
-      list: [f1.id, f2.id, elsewhere.id]
+      list: [f1.id, f2.id, elsewhere.id],
     });
     expect(Object.fromEntries(flags.map((r: any) => [r.id, r.is_deleted]))).toEqual({
       [f1.id]: true,
       [f2.id]: true,
-      [elsewhere.id]: false
+      [elsewhere.id]: false,
     });
     const audit = await q(
       `SELECT resource_id, user_id, changes->'cascade' AS cascade FROM audit_logs
         WHERE resource_type = 'Attachment' AND action = 'DELETE' AND resource_id IN (:list)`,
-      { list: [f1.id, f2.id] }
+      { list: [f1.id, f2.id] },
     );
     const byId = Object.fromEntries(audit.map((r: any) => [r.resource_id, r]));
     expect(byId[f1.id].cascade).toEqual({ type: "KanbanCard", id: c1, via: { type: "KanbanProject", id: project } });
     expect(byId[f2.id].cascade).toEqual({ type: "KanbanCard", id: c2, via: { type: "KanbanProject", id: project } });
     expect(byId[f1.id].user_id).toBe(ids.user);
     expect((await one("SELECT deleted_at IS NOT NULL AS gone FROM kanban_projects WHERE id = :p", { p: project })).gone).toBe(
-      true
+      true,
     );
   });
 
@@ -290,7 +290,7 @@ describe("dbD — ADR-083 on live PostgreSQL 18, as the application role", () =>
              JOIN pg_enum e ON e.enumtypid = t.oid
             WHERE c.table_schema = 'public' AND c.table_name = :table AND c.column_name = :column
             ORDER BY e.enumsortorder`,
-          { table: Model.getTableName().tableName || Model.getTableName(), column: def.field }
+          { table: Model.getTableName().tableName || Model.getTableName(), column: def.field },
         );
         checked += 1;
         const labels = rows.map((r: any) => r.label);

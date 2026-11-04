@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-258 — POST /users/username-check answered a different question from the
  * create it serves.
@@ -34,7 +34,7 @@ jest.mock("../../config", () => {
   return { db };
 });
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const models: any = require("../../models");
@@ -49,29 +49,29 @@ const SUPER_ADMIN = "99999999-9999-4999-8999-999999999999";
 const BUDGET = getAuthConfig("userIdentityConflict").maxAttempts;
 
 const probe = (username: any, overrides: any = {}) =>
-tenantStorage.run({ tenantId: TENANT_A }, () =>
-userService.checkUsernameAvailability({
-  username,
-  actorId: ADMIN_A,
-  actorTenantId: TENANT_A,
-  actorIsSuperAdmin: false,
-  ipAddress: "192.0.2.10",
-  userAgent: "admin-browser",
-  ...overrides
-})
-);
+  tenantStorage.run({ tenantId: TENANT_A }, () =>
+    userService.checkUsernameAvailability({
+      username,
+      actorId: ADMIN_A,
+      actorTenantId: TENANT_A,
+      actorIsSuperAdmin: false,
+      ipAddress: "192.0.2.10",
+      userAgent: "admin-browser",
+      ...overrides,
+    }),
+  );
 
 const conflictRows = () =>
-mockRef.ledger.auditRows().filter((r: any) => r.changes && r.changes.operation === "IDENTITY_CONFLICT");
+  mockRef.ledger.auditRows().filter((r: any) => r.changes && r.changes.operation === "IDENTITY_CONFLICT");
 
 /** Makes the lookup find a holder for exactly these (lower-cased) usernames. */
 const holding = (...names: any[]) =>
-jest.spyOn(models.Users, "findOne").mockImplementation(async (options: any) => {
-  const where = options.where.username;
-  const sym = Object.getOwnPropertySymbols(where)[0];
-  const pattern = (sym ? where[sym] : "") || "";
-  return names.includes(pattern.replace(/\\(.)/g, "$1").toLowerCase()) ? { id: "holder" } : null;
-});
+  jest.spyOn(models.Users, "findOne").mockImplementation(async (options: any) => {
+    const where = options.where.username;
+    const sym = Object.getOwnPropertySymbols(where)[0];
+    const pattern = (sym ? where[sym] : "") || "";
+    return names.includes(pattern.replace(/\\(.)/g, "$1").toLowerCase()) ? { id: "holder" } : null;
+  });
 
 beforeEach(() => {
   mockRef.ledger = createLedger();
@@ -114,18 +114,18 @@ describe("A-258: the probe asks the question the create asks", () => {
 
     await expect(
       tenantStorage.run({ tenantId: TENANT_A }, () =>
-      userService.userCreate({
-        username: "Nurse",
-        firstName: "Nora",
-        lastName: "Nurse",
-        email: "n@hospital-a.example.com",
-        password: "Str0ng!Passw0rd",
-        roleId: "33333333-3333-4333-8333-333333333333",
-        createdBy: ADMIN_A,
-        actorTenantId: TENANT_A,
-        actorIsSuperAdmin: false
-      })
-      )
+        userService.userCreate({
+          username: "Nurse",
+          firstName: "Nora",
+          lastName: "Nurse",
+          email: "n@hospital-a.example.com",
+          password: "Str0ng!Passw0rd",
+          roleId: "33333333-3333-4333-8333-333333333333",
+          createdBy: ADMIN_A,
+          actorTenantId: TENANT_A,
+          actorIsSuperAdmin: false,
+        }),
+      ),
     ).rejects.toEqual({ status: 409, message: "Username already used" });
   });
 });
@@ -146,7 +146,7 @@ describe("A-258: a 'taken' answer is the A-128 oracle — budgeted and audited",
       resourceId: null,
       changes: { operation: "IDENTITY_CONFLICT", outcome: "reported_taken", field: "username" },
       ipAddress: "192.0.2.10",
-      userAgent: "admin-browser"
+      userAgent: "admin-browser",
     });
     expect(JSON.stringify(row)).not.toContain("held-name");
   });
@@ -177,18 +177,18 @@ describe("A-258: a 'taken' answer is the A-128 oracle — budgeted and audited",
     }
     await expect(
       tenantStorage.run({ tenantId: TENANT_A }, () =>
-      userService.userCreate({
-        username: "fresh",
-        firstName: "Fresh",
-        lastName: "Person",
-        email: "f@hospital-a.example.com",
-        password: "Str0ng!Passw0rd",
-        roleId: "33333333-3333-4333-8333-333333333333",
-        createdBy: ADMIN_A,
-        actorTenantId: TENANT_A,
-        actorIsSuperAdmin: false
-      })
-      )
+        userService.userCreate({
+          username: "fresh",
+          firstName: "Fresh",
+          lastName: "Person",
+          email: "f@hospital-a.example.com",
+          password: "Str0ng!Passw0rd",
+          roleId: "33333333-3333-4333-8333-333333333333",
+          createdBy: ADMIN_A,
+          actorTenantId: TENANT_A,
+          actorIsSuperAdmin: false,
+        }),
+      ),
     ).rejects.toMatchObject({ status: 429 });
   });
 

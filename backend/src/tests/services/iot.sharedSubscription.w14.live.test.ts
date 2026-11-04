@@ -38,7 +38,7 @@ describe("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", ()
 
   const q = async (sql: any, replacements: any = {}) => (await db.query(sql, { replacements }))[0];
   const count = async (table: any) =>
-  Number((await q(`SELECT count(*)::int AS n FROM ${table} WHERE tenant_id = :t`, { t: T }))[0].n);
+    Number((await q(`SELECT count(*)::int AS n FROM ${table} WHERE tenant_id = :t`, { t: T }))[0].n);
   const sleep = (ms: any) => new Promise((resolve: any) => setTimeout(resolve, ms));
   /** Wait until `table` holds `n` rows of the tenant, then a settle period for any duplicate. */
   const settle = async (table: any, n: any) => {
@@ -49,9 +49,9 @@ describe("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", ()
     await sleep(1500);
   };
   const publish = (payload: any) =>
-  new Promise((resolve: any, reject: any) =>
-  publisher.publish(`device/${DEVICE}/${T}`, JSON.stringify(payload), { qos: 1 }, (err: any) => err ? reject(err) : resolve())
-  );
+    new Promise((resolve: any, reject: any) =>
+      publisher.publish(`device/${DEVICE}/${T}`, JSON.stringify(payload), { qos: 1 }, (err: any) => err ? reject(err) : resolve()),
+    );
 
   beforeAll(async () => {
     process.env["MQTT_HOST"] = process.env["MQTT_LIVE_HOST"] || "127.0.0.1";
@@ -64,14 +64,14 @@ describe("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", ()
     await q(
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
        VALUES (:t, 'w14-live', 'w14-live', 'w14@example.test', now(), now())`,
-      { t: T }
+      { t: T },
     );
     // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
     await q(SELF_FACILITIES_SQL);
     await q(
       `INSERT INTO calibration_devices (id, tenant_id, name, status, iot_enabled, reading_tolerance, created_at, updated_at)
        VALUES (:d, :t, 'Fridge probe', 'active', true, '{"temperature": {"max": 8}}', now(), now())`,
-      { d: DEVICE, t: T }
+      { d: DEVICE, t: T },
     );
 
     const IotService = require("../../services/iot.service").constructor;
@@ -108,8 +108,8 @@ describe("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", ()
     expect(
       Number((await q(
         "SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = :t AND actor_name = 'system:iot-ingest'",
-        { t: T }
-      ))[0].n)
+        { t: T },
+      ))[0].n),
     ).toBe(1);
   });
 
@@ -122,7 +122,7 @@ describe("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", ()
     const seqs = await q(
       `SELECT (metrics->>'seq')::int AS seq, count(*)::int AS n FROM iot_readings
         WHERE tenant_id = :t AND metrics ? 'seq' GROUP BY 1 ORDER BY 1`,
-      { t: T }
+      { t: T },
     );
     expect(seqs).toHaveLength(40);
     expect(seqs.every(({ n }: any) => n === 1)).toBe(true);

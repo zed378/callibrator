@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 const crypto = require("crypto");
 
 jest.mock("../../models", () => ({
@@ -6,24 +6,24 @@ jest.mock("../../models", () => ({
     findAll: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
-    findAndCountAll: jest.fn()
+    findAndCountAll: jest.fn(),
   },
   WebhookDelivery: {
     create: jest.fn(),
     findOne: jest.fn(),
-    findAndCountAll: jest.fn()
+    findAndCountAll: jest.fn(),
   },
-  AuditLog: { create: jest.fn() }
+  AuditLog: { create: jest.fn() },
 }));
 
 // `query` is the claim (webhook.service#claim). Its SQL semantics — SKIP
 // LOCKED, the lease — are proved on PostgreSQL in webhook.durable.a10.live.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn((cb: any) => cb({ id: "tx" })), query: jest.fn() }
+  db: { transaction: jest.fn((cb: any) => cb({ id: "tx" })), query: jest.fn() },
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 // SSRF guards do real URL parsing / DNS resolution; neutralize them here so
@@ -35,7 +35,7 @@ jest.mock("../../utils/ssrf.util", () => ({
   isBlockedIp: jest.fn(),
   // A-307: delivery goes through ssrf.util#pinnedFetch (fetch-shaped); these
   // tests keep asserting on `global.fetch`, which the double forwards to.
-  pinnedFetch: (...args: any[]) => (global.fetch as any)(...args)
+  pinnedFetch: (...args: any[]) => (global.fetch as any)(...args),
 }));
 
 const webhookService = require("../../services/webhook.service");
@@ -55,7 +55,7 @@ const deliveryRow = (fields: any = {}) => {
     payload: {},
     attempts: 0,
     createdAt: new Date("2026-09-24T00:00:00Z"),
-    ...fields
+    ...fields,
   };
   r.update = jest.fn(async (patch: any) => Object.assign(r, patch));
   return r;
@@ -112,7 +112,7 @@ describe("webhook.service", () => {
         WEBHOOK_BACKOFF_CAP_MS: "4000",
         WEBHOOK_LEASE_MS: "60000",
         WEBHOOK_DISPATCH_BATCH: "7",
-        WEBHOOK_EMIT_CONCURRENCY: "4"
+        WEBHOOK_EMIT_CONCURRENCY: "4",
       });
       try {
         jest.isolateModules(() => {
@@ -123,7 +123,7 @@ describe("webhook.service", () => {
             BACKOFF_CAP_MS: 4000,
             LEASE_MS: 60000,
             BATCH_SIZE: 7,
-            EMIT_CONCURRENCY: 4
+            EMIT_CONCURRENCY: 4,
           });
           expect([1, 2, 3, 4].map(svc._backoffMs)).toEqual([1000, 2000, 4000, 4000]);
         });
@@ -146,7 +146,7 @@ describe("webhook.service", () => {
           description: "Test hook",
           isActive: true,
           secret: "super-secret",
-          createdBy: "user-1"
+          createdBy: "user-1",
         });
 
         const result = await webhookService.createWebhook("t1", {
@@ -154,7 +154,7 @@ describe("webhook.service", () => {
           events: ["*"],
           description: "Test hook",
           secret: "super-secret",
-          createdBy: "user-1"
+          createdBy: "user-1",
         });
 
         expect(result.secret).not.toBe("super-secret");
@@ -171,14 +171,14 @@ describe("webhook.service", () => {
           description: null,
           isActive: true,
           secret: undefined,
-          createdBy: null
+          createdBy: null,
         });
 
         // P6-13: no createdBy, so the audit row names the actor argument.
         const result = await webhookService.createWebhook(
           "t1",
           { url: "https://test.com", events: ["*"] },
-          { userId: "user-1" }
+          { userId: "user-1" },
         );
 
         expect(result.description).toBeNull();
@@ -191,14 +191,14 @@ describe("webhook.service", () => {
           tenantId: "t1",
           url: "https://test.com",
           events: ["*"],
-          isActive: false
+          isActive: false,
         });
 
         const result = await webhookService.createWebhook("t1", {
           url: "https://test.com",
           events: ["*"],
           isActive: false,
-          createdBy: "user-1"
+          createdBy: "user-1",
         });
 
         expect(result.isActive).toBe(false);
@@ -210,10 +210,10 @@ describe("webhook.service", () => {
 
       it("throws 400 if events is not a non-empty array", async () => {
         await expect(webhookService.createWebhook("t1", { url: "https://x.com", events: [] })).rejects.toThrow(
-          "events must be a non-empty array"
+          "events must be a non-empty array",
         );
         await expect(webhookService.createWebhook("t1", { url: "https://x.com", events: "not-array" })).rejects.toThrow(
-          "events must be a non-empty array"
+          "events must be a non-empty array",
         );
       });
     });
@@ -222,7 +222,7 @@ describe("webhook.service", () => {
       it("lists webhooks with pagination and metadata", async () => {
         Webhook.findAndCountAll.mockResolvedValue({
           count: 1,
-          rows: [{ id: "w1", url: "https://x.com" }]
+          rows: [{ id: "w1", url: "https://x.com" }],
         });
 
         const result = await webhookService.listWebhooks("t1", { page: 2, limit: 5 });
@@ -233,7 +233,7 @@ describe("webhook.service", () => {
       it("lists webhooks with default parameters", async () => {
         Webhook.findAndCountAll.mockResolvedValue({
           count: 1,
-          rows: [{ id: "w1", url: "https://x.com" }]
+          rows: [{ id: "w1", url: "https://x.com" }],
         });
 
         const result = await webhookService.listWebhooks("t1");
@@ -243,7 +243,7 @@ describe("webhook.service", () => {
       it("handles listWebhooks with falsy or extremely high limits", async () => {
         Webhook.findAndCountAll.mockResolvedValue({
           count: 1,
-          rows: [{ id: "w1", url: "https://x.com" }]
+          rows: [{ id: "w1", url: "https://x.com" }],
         });
 
         await webhookService.listWebhooks("t1", { limit: 0 });
@@ -276,7 +276,7 @@ describe("webhook.service", () => {
           "t1",
           "w1",
           { url: "https://new.com", events: ["event1"] },
-          { userId: "user-1" }
+          { userId: "user-1" },
         );
         expect(mockUpdate).toHaveBeenCalledWith(
           {
@@ -285,9 +285,9 @@ describe("webhook.service", () => {
             secret: expect.stringMatching(/^v2:/), // P6-10: v2 names its key
             // P6-13: a url change ends any rotation overlap.
             previousSecret: null,
-            previousSecretExpiresAt: null
+            previousSecretExpiresAt: null,
           },
-          { transaction: { id: "tx" } }
+          { transaction: { id: "tx" } },
         );
       });
 
@@ -301,23 +301,23 @@ describe("webhook.service", () => {
           "t1",
           "w1",
           { url: "https://same.com", isActive: false },
-          { userId: "user-1" }
+          { userId: "user-1" },
         );
         expect(mockUpdate).toHaveBeenCalledWith(
           { url: "https://same.com", isActive: false },
-          { transaction: { id: "tx" } }
+          { transaction: { id: "tx" } },
         );
         expect(result.secret).toBeUndefined();
         expect(AuditLog.create).toHaveBeenCalledWith(
           expect.objectContaining({ action: "UPDATE", resourceType: "Webhook", userId: "user-1" }),
-          { transaction: { id: "tx" } }
+          { transaction: { id: "tx" } },
         );
       });
 
       it("throws 400 if updating events with invalid array", async () => {
         Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1" });
         await expect(webhookService.updateWebhook("t1", "w1", { events: [] })).rejects.toThrow(
-          "events must be a non-empty array"
+          "events must be a non-empty array",
         );
       });
     });
@@ -332,7 +332,7 @@ describe("webhook.service", () => {
         expect(mockSoftDelete).toHaveBeenCalledWith({ transaction: { id: "tx" } });
         expect(AuditLog.create).toHaveBeenCalledWith(
           expect.objectContaining({ action: "DELETE", resourceType: "Webhook", resourceId: "w1" }),
-          { transaction: { id: "tx" } }
+          { transaction: { id: "tx" } },
         );
       });
 
@@ -348,7 +348,7 @@ describe("webhook.service", () => {
         Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1" });
         WebhookDelivery.findAndCountAll.mockResolvedValue({
           count: 1,
-          rows: [{ id: "d1" }]
+          rows: [{ id: "d1" }],
         });
 
         const result = await webhookService.listDeliveries("t1", "w1");
@@ -359,7 +359,7 @@ describe("webhook.service", () => {
         Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1" });
         WebhookDelivery.findAndCountAll.mockResolvedValue({
           count: 1,
-          rows: [{ id: "d1" }]
+          rows: [{ id: "d1" }],
         });
 
         const result = await webhookService.listDeliveries("t1", "w1", { page: 2, limit: 15 });
@@ -370,7 +370,7 @@ describe("webhook.service", () => {
         Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1" });
         WebhookDelivery.findAndCountAll.mockResolvedValue({
           count: 1,
-          rows: [{ id: "d1" }]
+          rows: [{ id: "d1" }],
         });
 
         await webhookService.listDeliveries("t1", "w1", { limit: 0 });
@@ -425,7 +425,7 @@ describe("webhook.service", () => {
       expect(created).toMatchObject({ tenantId: "t1", webhookId: "w1", event: "device.overdue", status: "pending" });
       expect(created.nextAttemptAt).toBeDefined(); // the database's now()
       expect(row.update).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "success", attempts: 1, responseStatus: 200, nextAttemptAt: null })
+        expect.objectContaining({ status: "success", attempts: 1, responseStatus: 200, nextAttemptAt: null }),
       );
       // Every read after the claim is scoped by the claimed row's tenant.
       expect(WebhookDelivery.findOne).toHaveBeenCalledWith({ where: { id: "d1", tenantId: "t1" } });
@@ -451,7 +451,7 @@ describe("webhook.service", () => {
       expect(Math.abs(Number(ts) - Date.now() / 1000)).toBeLessThan(5);
       expect(init.headers["X-Webhook-Delivery"]).toBe("d1");
       expect(init.headers["X-Webhook-Signature"]).toBe(
-        `v1=${crypto.createHmac("sha256", "s").update(`${ts}.${init.body}`).digest("hex")}`
+        `v1=${crypto.createHmac("sha256", "s").update(`${ts}.${init.body}`).digest("hex")}`,
       );
       expect(JSON.parse(init.body)).toMatchObject({ id: "d1", event: "device.overdue", data: {} });
     });
@@ -476,7 +476,7 @@ describe("webhook.service", () => {
         status: "failed",
         attempts: 1,
         responseStatus: 302,
-        lastError: expect.stringContaining("Redirect (302) not followed")
+        lastError: expect.stringContaining("Redirect (302) not followed"),
       });
       // Retry in a minute, in the database — not in a timer in this process.
       expect(patch.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(before + 60000);
@@ -570,7 +570,7 @@ describe("webhook.service", () => {
       const row = deliveryRow({ attempts: 11 });
       await run(row, hookRow());
       expect(row.update).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "exhausted", attempts: 12, nextAttemptAt: null })
+        expect.objectContaining({ status: "exhausted", attempts: 12, nextAttemptAt: null }),
       );
       expect(logger.warn).toHaveBeenCalledWith("Webhook delivery exhausted after 12 attempt(s): d1");
     });
@@ -586,7 +586,7 @@ describe("webhook.service", () => {
       const abort = Object.assign(new Error("aborted"), { name: "AbortError" });
       await run(row, hookRow(), jest.fn().mockRejectedValue(abort));
       expect(row.update).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "failed", responseStatus: null, lastError: "timeout" })
+        expect.objectContaining({ status: "failed", responseStatus: null, lastError: "timeout" }),
       );
     });
 
@@ -596,9 +596,9 @@ describe("webhook.service", () => {
         const row = deliveryRow();
         const hanging = jest.fn(
           (_url: any, { signal }: any) =>
-          new Promise((_resolve: any, reject: any) =>
-          signal.addEventListener("abort", () => reject(Object.assign(new Error("x"), { name: "AbortError" })))
-          )
+            new Promise((_resolve: any, reject: any) =>
+              signal.addEventListener("abort", () => reject(Object.assign(new Error("x"), { name: "AbortError" }))),
+            ),
         );
         const pending = run(row, hookRow(), hanging);
         for (let i = 0; i < 5 && !hanging.mock.calls.length; i++) {
@@ -623,8 +623,8 @@ describe("webhook.service", () => {
     it("claims a batch and attempts every row; one failure never stops another", async () => {
       const ok = deliveryRow({ id: "d1" });
       claims([
-      { id: "d1", tenantId: "t1" },
-      { id: "d2", tenantId: "t2" }]
+        { id: "d1", tenantId: "t1" },
+        { id: "d2", tenantId: "t2" }],
       );
       WebhookDelivery.findOne.mockImplementation(async ({ where }: any) => {
         if (where.id === "d2") {
@@ -666,7 +666,7 @@ describe("webhook.service", () => {
       hooks.forEach((h: any) => h());
       await flush();
       expect(Webhook.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ tenantId: "t1" }) })
+        expect.objectContaining({ where: expect.objectContaining({ tenantId: "t1" }) }),
       );
     });
 

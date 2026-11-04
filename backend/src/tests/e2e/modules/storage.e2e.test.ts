@@ -86,7 +86,7 @@ describe("E2E Storage Module (HTTP)", () => {
   // Off the compose stack the name does not resolve, which fails the test too;
   // the backend bounds the test at 5 s either way. E2E_S3_DEAD_ENDPOINT
   // overrides the endpoint.
-  const DEAD_ENDPOINT = process.env['E2E_S3_DEAD_ENDPOINT'] || "http://postgres:1";
+  const DEAD_ENDPOINT = process.env["E2E_S3_DEAD_ENDPOINT"] || "http://postgres:1";
 
   test("PUT /storage/settings — 422 when S3 connection test fails", async () => {
     const started = Date.now();

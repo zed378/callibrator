@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * S-26 — the JWT access-key "registry" was decorative, and a deployment that
  * pinned any algorithm but HS256 stopped verifying every token after 30 days
@@ -14,19 +14,19 @@ const jwt = require("jsonwebtoken");
 const DAY = 24 * 60 * 60 * 1000;
 const BASE_ENV: any = {
   JWT_ACCESS_SECRET: "s26-access-secret-current",
-  JWT_REFRESH_SECRET: "s26-refresh-secret"
+  JWT_REFRESH_SECRET: "s26-refresh-secret",
 };
 
 const load = (env: any) => {
   const saved: any = { ...process.env };
   for (const k of [
-  "JWT_ALGORITHM",
-  "JWT_PRIVATE_KEY",
-  "JWT_PUBLIC_KEY",
-  "JWT_PUBLIC_KEY_PREVIOUS",
-  "JWT_ACCESS_SECRET_PREVIOUS",
-  "JWT_ACCESS_EXPIRED",
-  "JWT_KEY_ID"])
+    "JWT_ALGORITHM",
+    "JWT_PRIVATE_KEY",
+    "JWT_PUBLIC_KEY",
+    "JWT_PUBLIC_KEY_PREVIOUS",
+    "JWT_ACCESS_SECRET_PREVIOUS",
+    "JWT_ACCESS_EXPIRED",
+    "JWT_KEY_ID"])
   {
     delete process.env[k];
   }
@@ -41,11 +41,11 @@ const load = (env: any) => {
 };
 
 const rsa = () =>
-crypto.generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  publicKeyEncoding: { type: "spki", format: "pem" },
-  privateKeyEncoding: { type: "pkcs8", format: "pem" }
-});
+  crypto.generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: "spki", format: "pem" },
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+  });
 
 let restore = () => {};
 afterEach(() => {
@@ -65,7 +65,7 @@ describe("S-26 — the active key set cannot expire", () => {
       jest.setSystemTime(new Date(Date.now() + 31 * DAY));
       const token = booted.generateAccessToken({ id: "user-1" });
       expect(booted.verifyAccessToken(token)).toMatchObject({ id: "user-1", typ: "access" });
-    }
+    },
   );
 
   it("RS256: after 31 days of uptime a token still verifies", () => {
@@ -115,7 +115,7 @@ describe("S-26 — rotation by environment, selected by kid", () => {
       JWT_ALGORITHM: "RS256",
       JWT_PRIVATE_KEY: newPair.privateKey,
       JWT_PUBLIC_KEY: newPair.publicKey,
-      JWT_PUBLIC_KEY_PREVIOUS: oldPair.publicKey
+      JWT_PUBLIC_KEY_PREVIOUS: oldPair.publicKey,
     });
     restore = rotated.restore;
     expect(rotated.mod.verifyAccessToken(oldToken)).toMatchObject({ id: "u" });
@@ -138,7 +138,7 @@ describe("S-26 — rotation by environment, selected by kid", () => {
     const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", {
       namedCurve: "P-256",
       publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" }
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
     const loaded = load({ JWT_ALGORITHM: "ES256", JWT_PRIVATE_KEY: privateKey, JWT_PUBLIC_KEY: publicKey });
     restore = loaded.restore;
@@ -149,7 +149,7 @@ describe("S-26 — rotation by environment, selected by kid", () => {
     const loaded = load({ JWT_ALGORITHM: "RS256" });
     restore = loaded.restore;
     expect(() => loaded.mod.generateAccessToken({ id: "u" })).toThrow(
-      "Algorithm RS256 requires JWT_PRIVATE_KEY environment variable"
+      "Algorithm RS256 requires JWT_PRIVATE_KEY environment variable",
     );
     expect(loaded.mod.getKeyInfo()).toEqual({ keyId: null, algorithm: "RS256", previousKeyIds: [], keyCount: 0 });
     expect(() => loaded.mod.verifyAccessToken("a.b.c")).toThrow("Invalid or expired access token");
@@ -206,7 +206,7 @@ describe("S-26 — rotation by environment, selected by kid", () => {
     const loaded = load({ JWT_ALGORITHM: "HS256" });
     restore = loaded.restore;
     expect(() => loaded.mod.verifyPurposeToken(loaded.mod.generateAccessToken({ id: "u" }), "mfa")).toThrow(
-      "Invalid or expired mfa token"
+      "Invalid or expired mfa token",
     );
   });
 

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for redis.service.js
  */
@@ -44,7 +44,7 @@ jest.mock("ioredis", () => {
     // helper in production returned early. Readiness is `status` only.
     get status() {
       return mockStatus;
-    }
+    },
   }));
 });
 
@@ -52,8 +52,8 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     error: jest.fn(),
     info: jest.fn(),
-    warn: jest.fn()
-  }
+    warn: jest.fn(),
+  },
 }));
 
 describe("redis.service", () => {
@@ -130,8 +130,8 @@ describe("redis.service", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "Redis Initialization Failed",
-          message: "Connect failed"
-        })
+          message: "Connect failed",
+        }),
       );
     });
   });
@@ -166,8 +166,8 @@ describe("redis.service", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "Redis Connection Error",
-          message: "Some Redis Error"
-        })
+          message: "Some Redis Error",
+        }),
       );
     });
   });
@@ -199,8 +199,8 @@ describe("redis.service", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "Redis GET Error",
-          message: "GET failed"
-        })
+          message: "GET failed",
+        }),
       );
     });
   });
@@ -232,8 +232,8 @@ describe("redis.service", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "Redis SET Error",
-          message: "SET failed"
-        })
+          message: "SET failed",
+        }),
       );
     });
   });
@@ -259,8 +259,8 @@ describe("redis.service", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "Redis DEL Error",
-          message: "DEL failed"
-        })
+          message: "DEL failed",
+        }),
       );
     });
   });
@@ -294,7 +294,7 @@ describe("redis.service", () => {
       expect(await redisService.getDel("key")).toBeNull();
       const { logger } = require("../../middlewares/activityLog.middleware");
       expect(logger.error).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "Redis GETDEL Error", message: "GETDEL failed" })
+        expect.objectContaining({ status: "Redis GETDEL Error", message: "GETDEL failed" }),
       );
     });
   });
@@ -308,8 +308,8 @@ describe("redis.service", () => {
 
     it("should scan and delete matching keys sequentially", async () => {
       mockScan.
-      mockResolvedValueOnce(["123", ["k1", "k2"]]).
-      mockResolvedValueOnce(["0", ["k3"]]);
+        mockResolvedValueOnce(["123", ["k1", "k2"]]).
+        mockResolvedValueOnce(["0", ["k3"]]);
 
       const result = await redisService.delPattern("pattern:*");
       expect(result).toBe(3);
@@ -326,8 +326,8 @@ describe("redis.service", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "Redis DEL Pattern Error",
-          message: "SCAN failed"
-        })
+          message: "SCAN failed",
+        }),
       );
     });
   });
@@ -349,7 +349,7 @@ describe("redis.service", () => {
         result,
         "EX",
         5,
-        "NX"
+        "NX",
       );
     });
 
@@ -367,8 +367,8 @@ describe("redis.service", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "Redis Lock Error",
-          message: "Lock SET failed"
-        })
+          message: "Lock SET failed",
+        }),
       );
     });
   });
@@ -401,8 +401,8 @@ describe("redis.service", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "Redis Unlock Error",
-          message: "EVAL failed"
-        })
+          message: "EVAL failed",
+        }),
       );
     });
   });
@@ -444,8 +444,8 @@ describe("redis.service", () => {
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           status: "Redis Close Error",
-          message: "Quit failed"
-        })
+          message: "Quit failed",
+        }),
       );
     });
 
@@ -479,7 +479,7 @@ describe("redis.service", () => {
 
       expect(Redis).toHaveBeenCalledWith(
         "redis://cache.internal:6380",
-        expect.objectContaining({ lazyConnect: true, maxRetriesPerRequest: 3 })
+        expect.objectContaining({ lazyConnect: true, maxRetriesPerRequest: 3 }),
       );
     });
 
@@ -495,7 +495,7 @@ describe("redis.service", () => {
 
       expect(Redis).toHaveBeenCalledWith(
         "redis://redis-host:6399",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -511,7 +511,7 @@ describe("redis.service", () => {
 
       expect(Redis).toHaveBeenCalledWith(
         "redis://localhost:6379",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -538,7 +538,7 @@ describe("redis.service", () => {
       const { logger } = require("../../middlewares/activityLog.middleware");
       expect(logger.error).toHaveBeenCalledWith({
         status: "Redis Connection Error",
-        message: "ECONNREFUSED"
+        message: "ECONNREFUSED",
       });
     });
 
@@ -601,13 +601,13 @@ describe("redis.service", () => {
       mockListeners.close(); // each failed reconnect closes again — still one line
       expect(log().warn).toHaveBeenCalledTimes(1);
       expect(log().warn).toHaveBeenCalledWith(
-        expect.stringContaining("Redis connection lost")
+        expect.stringContaining("Redis connection lost"),
       );
 
       mockListeners.ready();
       expect(log().warn).toHaveBeenCalledTimes(2);
       expect(log().warn).toHaveBeenLastCalledWith(
-        expect.stringContaining("Redis reconnected")
+        expect.stringContaining("Redis reconnected"),
       );
     });
 
@@ -624,7 +624,7 @@ describe("redis.service", () => {
 
       mockListeners.end();
       expect(log().error).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "Redis Connection Ended" })
+        expect.objectContaining({ status: "Redis Connection Ended" }),
       );
       expect(mockConnect).not.toHaveBeenCalled();
 
@@ -677,7 +677,7 @@ describe("redis.service", () => {
 
       await expect(redisService.get("user:u1")).resolves.toEqual({
         id: "u1",
-        active: true
+        active: true,
       });
     });
 
@@ -704,9 +704,9 @@ describe("redis.service", () => {
 
     it("walks every cursor page and sums the deletions", async () => {
       mockScan.
-      mockResolvedValueOnce(["17", ["user:1", "user:2"]]).
-      mockResolvedValueOnce(["42", []]) // an empty middle page must not stop the walk
-      .mockResolvedValueOnce(["0", ["user:3"]]);
+        mockResolvedValueOnce(["17", ["user:1", "user:2"]]).
+        mockResolvedValueOnce(["42", []]) // an empty middle page must not stop the walk
+        .mockResolvedValueOnce(["0", ["user:3"]]);
 
       await expect(redisService.delPattern("user:*")).resolves.toBe(3);
       expect(mockScan).toHaveBeenCalledTimes(3);
@@ -733,7 +733,7 @@ describe("redis.service", () => {
         lockId,
         "EX",
         3,
-        "NX"
+        "NX",
       );
     });
   });
@@ -743,7 +743,7 @@ describe("redis.service", () => {
       mockEval.mockResolvedValue(0);
 
       await expect(redisService.releaseLock("resource", "lock-1")).resolves.toBe(
-        false
+        false,
       );
     });
   });
@@ -802,7 +802,7 @@ describe("S-09 Redis credentials", () => {
 
     expect(Redis).toHaveBeenLastCalledWith(
       expect.any(String),
-      expect.objectContaining({ password: "s3cret", username: "callibrator", lazyConnect: true })
+      expect.objectContaining({ password: "s3cret", username: "callibrator", lazyConnect: true }),
     );
     expect(fresh.credentialOptions()).toEqual({ password: "s3cret", username: "callibrator" });
   });

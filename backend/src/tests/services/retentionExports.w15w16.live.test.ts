@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * W-15 and W-16 against a REAL PostgreSQL 18 — the nightly retention sweep
  * (dataRetention.service#runRetentionSweep) as the scheduler runs it.
@@ -60,13 +60,13 @@ describe("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
       await q(
         `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
          VALUES (:id, :sub, :sub, :email, now(), now())`,
-        { id, sub, email: `${sub}@example.test` }
+        { id, sub, email: `${sub}@example.test` },
       );
     }
     await q(
       `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, created_at, updated_at)
        VALUES (:id, :t, 'w15live', 'w15live@example.test', 'x', 'W', '15', now(), now())`,
-      { id: USER_A, t: A }
+      { id: USER_A, t: A },
     );
   }, LIVE_BOOT_TIMEOUT_MS);
 
@@ -84,14 +84,14 @@ describe("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
     await q(
       `INSERT INTO tenant_settings (id, tenant_id, key, value, created_at, updated_at)
        VALUES (gen_random_uuid(), :t, 'retention_policy_notifications', 'forever', now(), now())`,
-      { t: A }
+      { t: A },
     );
     for (const tenantId of [A, B]) {
       for (const age of ["200 days", "10 days"]) {
         await q(
           `INSERT INTO notifications (id, tenant_id, type, title, message, created_at, updated_at)
            VALUES (gen_random_uuid(), :t, 'SYSTEM', 'w16', 'w16', now() - interval '${age}', now())`,
-          { t: tenantId }
+          { t: tenantId },
         );
       }
     }
@@ -108,7 +108,7 @@ describe("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
     const [row] = await q(
       `SELECT changes FROM audit_logs
         WHERE tenant_id = :t AND resource_type = 'DataRetention' AND actor_name = 'system:retention-purge'`,
-      { t: A }
+      { t: A },
     );
     expect(row.changes.after.purged).toEqual({ notifications: 1 });
     expect(row.changes.before.retentionDays.notifications).toBe(90);
@@ -126,8 +126,8 @@ describe("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
         tenantId: A,
         userId: USER_A,
         createdAt: new Date(created).toISOString(),
-        expiresAt: new Date(created + 168 * 3600000).toISOString()
-      })
+        expiresAt: new Date(created + 168 * 3600000).toISOString(),
+      }),
     );
     fs.writeFileSync(path.join(dir, `${id}.zip`), "PK personal data");
 
@@ -139,18 +139,18 @@ describe("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
     const rows = await q(
       `SELECT tenant_id, user_id, actor_type, actor_name, action, resource_id, changes
          FROM audit_logs WHERE tenant_id = :t AND resource_type = 'DataExport'`,
-      { t: A }
+      { t: A },
     );
     expect(rows).toEqual([
-    {
-      tenant_id: A,
-      user_id: null,
-      actor_type: "system",
-      actor_name: "system:retention-purge",
-      action: "DELETE",
-      resource_id: id,
-      changes: expect.objectContaining({ operation: "GDPR_EXPORT_EXPIRED", subjectUserId: USER_A })
-    }]
+      {
+        tenant_id: A,
+        user_id: null,
+        actor_type: "system",
+        actor_name: "system:retention-purge",
+        action: "DELETE",
+        resource_id: id,
+        changes: expect.objectContaining({ operation: "GDPR_EXPORT_EXPIRED", subjectUserId: USER_A }),
+      }],
     );
   });
 });

@@ -87,7 +87,7 @@ const createBroker = ({ ttlScale = 0 }: any = {}) => {
         const msg = {
           content: message.content,
           properties: message.properties,
-          fields: { deliveryTag, redelivered: message.redelivered, routingKey: name, consumerTag: consumer.tag }
+          fields: { deliveryTag, redelivered: message.redelivered, routingKey: name, consumerTag: consumer.tag },
         };
         consumer.channel.delivered.set(deliveryTag, { msg, message, queueName: name, consumer });
         consumer.onMessage(msg);
@@ -297,7 +297,7 @@ const createBroker = ({ ttlScale = 0 }: any = {}) => {
         clearTimeout(t);
       }
       timers.clear();
-    }
+    },
   };
   return broker;
 };

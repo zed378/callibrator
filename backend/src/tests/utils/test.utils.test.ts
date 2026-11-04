@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for test.utils.js utilities
  */
@@ -11,7 +11,7 @@ const {
   createMockTransaction,
   wait,
   mockThrow,
-  mockResolve
+  mockResolve,
 } = require("../test.utils");
 
 describe("createMockRes", () => {
@@ -49,7 +49,7 @@ describe("createMockReq", () => {
   it("should accept custom properties", () => {
     const req = createMockReq({
       body: { username: "test" },
-      user: { id: 1 }
+      user: { id: 1 },
     });
 
     expect(req.body).toEqual({ username: "test" });

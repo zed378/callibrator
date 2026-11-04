@@ -25,7 +25,7 @@ const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
 const mockRef: any = { ledger: null };
 
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 
 jest.mock("../../models", () => ({
@@ -39,26 +39,26 @@ jest.mock("../../models", () => ({
   SignatureWorkflow: { findByPk: jest.fn() },
   SignatureRecord: { create: jest.fn() },
   Sequelize: {},
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 
 const PASSWORD = "Correct-horse-1";
 const MFA_CODE = "424242";
 
 jest.mock("../../services/auth.service", () => ({
-  passIsValid: jest.fn(async (_userId: any, password: any) => ({ data: { valid: password === "Correct-horse-1" } }))
+  passIsValid: jest.fn(async (_userId: any, password: any) => ({ data: { valid: password === "Correct-horse-1" } })),
 }));
 jest.mock("../../services/mfa.service", () => ({
-  verifyLogin: jest.fn(async (_user: any, code: any) => code === "424242")
+  verifyLogin: jest.fn(async (_user: any, code: any) => code === "424242"),
 }));
 jest.mock("../../services/webhook.service", () => ({ dispatch: jest.fn() }));
 // A-203: no approval workflow is pending here (the refusal is certificate.service.test.js's).
 jest.mock("../../services/workflow.service", () => ({
   startWorkflow: jest.fn(async () => null),
-  findPendingInstance: jest.fn(async () => null)
+  findPendingInstance: jest.fn(async () => null),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const { Certificate, User, SignatureWorkflowStep } = require("../../models");
@@ -80,7 +80,7 @@ beforeEach(() => {
     isActive: true,
     status: "ACTIVE",
     mfaEnabled: true,
-    mfaSecret: "S"
+    mfaSecret: "S",
   });
 });
 
@@ -94,8 +94,8 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
         authPayload: "guess-1",
         meaning: "Approved",
         ipAddress: "198.51.100.20",
-        userAgent: "probe"
-      })
+        userAgent: "probe",
+      }),
     ).rejects.toMatchObject({ status: 401, message: "Invalid password for e-signature." });
 
     expect(failures()).toHaveLength(1);
@@ -109,7 +109,7 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
       resourceId: CERT_ID,
       changes: { method: "password", operation: "approved" },
       ipAddress: "198.51.100.20",
-      userAgent: "probe"
+      userAgent: "probe",
     });
     // Never the credential: this table is permanent.
     expect(JSON.stringify(row)).not.toContain("guess-1");
@@ -124,8 +124,8 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
       certificateService.signCertificate(TENANT_ID, CERT_ID, {}, "key-1", SIGNER, {
         authMethod: "mfa",
         authPayload: "000000",
-        meaning: "Signed"
-      })
+        meaning: "Signed",
+      }),
     ).rejects.toMatchObject({ status: 401, message: "Invalid MFA code for e-signature." });
 
     expect(failures()).toHaveLength(1);
@@ -133,7 +133,7 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
       changes: { method: "mfa", operation: "signed" },
       resourceType: "Certificate",
       ipAddress: null,
-      userAgent: null
+      userAgent: null,
     });
   });
 
@@ -142,14 +142,14 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
     require("../../models").SignatureWorkflow.findByPk.mockResolvedValue({
       id: "wf-1",
       tenantId: TENANT_ID,
-      status: "in_progress"
+      status: "in_progress",
     });
     SignatureWorkflowStep.findByPk.mockResolvedValue({
       id: "step-1",
       workflowId: "wf-1",
       tenantId: TENANT_ID,
       signerId: SIGNER,
-      status: "pending"
+      status: "pending",
     });
 
     await expect(
@@ -158,8 +158,8 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
         authPayload: "guess-2",
         reason: "Reviewed",
         ipAddress: "203.0.113.4",
-        userAgent: "ua"
-      })
+        userAgent: "ua",
+      }),
     ).rejects.toMatchObject({ status: 401 });
 
     expect(failures()).toHaveLength(1);
@@ -170,7 +170,7 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
       resourceId: "step-1",
       changes: { method: "password", operation: "sign" },
       ipAddress: "203.0.113.4",
-      userAgent: "ua"
+      userAgent: "ua",
     });
   });
 
@@ -183,11 +183,11 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
 
   it("a missing credential or an account without MFA is not an attempt on a credential — no row", async () => {
     await expect(
-      certificateService.verifySignerCredentials(SIGNER, "password", "", { tenantId: TENANT_ID })
+      certificateService.verifySignerCredentials(SIGNER, "password", "", { tenantId: TENANT_ID }),
     ).rejects.toMatchObject({ status: 401 });
     User.findByPk.mockResolvedValueOnce({ id: SIGNER, mfaEnabled: false });
     await expect(
-      certificateService.verifySignerCredentials(SIGNER, "mfa", MFA_CODE, { tenantId: TENANT_ID })
+      certificateService.verifySignerCredentials(SIGNER, "mfa", MFA_CODE, { tenantId: TENANT_ID }),
     ).rejects.toMatchObject({ status: 400 });
 
     expect(mockRef.ledger.auditRows()).toEqual([]);
@@ -195,7 +195,7 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
 
   it("with no context the row goes in the signer's own tenant, about the signer", async () => {
     await expect(certificateService.verifySignerCredentials(SIGNER, "password", "nope")).rejects.toMatchObject({
-      status: 401
+      status: 401,
     });
 
     expect(User.findByPk).toHaveBeenCalledWith(SIGNER, { attributes: ["id", "tenantId"] });
@@ -203,18 +203,18 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
       tenantId: TENANT_ID,
       resourceType: "User",
       resourceId: SIGNER,
-      changes: { method: "password", operation: null }
+      changes: { method: "password", operation: null },
     });
   });
 
   it("with no context and no readable signer the row goes under PLATFORM (ADR-051 Q-14)", async () => {
     User.findByPk.mockResolvedValueOnce(null);
     await expect(certificateService.verifySignerCredentials(SIGNER, "password", "nope")).rejects.toMatchObject({
-      status: 401
+      status: 401,
     });
     User.findByPk.mockResolvedValueOnce({ id: SIGNER, tenantId: null });
     await expect(certificateService.verifySignerCredentials(SIGNER, "password", "nope")).rejects.toMatchObject({
-      status: 401
+      status: 401,
     });
 
     expect(failures().map((r: any) => r.tenantId)).toEqual([PLATFORM_TENANT_ID, PLATFORM_TENANT_ID]);
@@ -224,7 +224,7 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
     mockRef.ledger.failNext("audit_logs", new Error("audit insert failed"));
 
     await expect(
-      certificateService.verifySignerCredentials(SIGNER, "password", "nope", { tenantId: TENANT_ID })
+      certificateService.verifySignerCredentials(SIGNER, "password", "nope", { tenantId: TENANT_ID }),
     ).rejects.toThrow("audit insert failed");
     expect(mockRef.ledger.auditRows()).toEqual([]);
   });

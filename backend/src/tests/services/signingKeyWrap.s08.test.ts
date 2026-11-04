@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * S-08 / P6-10 — tenant e-signature private keys are stored as KMS envelopes
  * (authenticated, tenant-bound, rotatable), and the legacy AES-CBC form is
@@ -34,7 +34,7 @@ beforeAll(() => {
   PEM = crypto.generateKeyPairSync("rsa", {
     modulusLength: 2048,
     publicKeyEncoding: { type: "spki", format: "pem" },
-    privateKeyEncoding: { type: "pkcs8", format: "pem" }
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
   }).privateKey;
 });
 
@@ -71,14 +71,14 @@ describe("signingKeyWrap", () => {
   it("a legacy key under an unknown secret is refused, saying how many secrets were tried", () => {
     const wrap = load({ ENCRYPT_KEY: "enc-2" });
     expect(() => wrap.unwrapPrivateKey(TENANT, encryptPrivateKeyForTest(PEM, "enc-1"))).toThrow(
-      /no configured ENCRYPT_KEY \(1 tried\) decrypts this legacy signing key/
+      /no configured ENCRYPT_KEY \(1 tried\) decrypts this legacy signing key/,
     );
   });
 
   it("a legacy key with NO ENCRYPT_KEY configured is refused, saying so", () => {
     const wrap = load({});
     expect(() => wrap.unwrapPrivateKey(TENANT, encryptPrivateKeyForTest(PEM, "enc-1"))).toThrow(
-      /ENCRYPT_KEY is not set/
+      /ENCRYPT_KEY is not set/,
     );
   });
 
@@ -111,7 +111,7 @@ describe("eSignature.generateKeyPair stores the new form", () => {
       jest.doMock("../../models", () => ({
         TenantKey: { create: jest.fn(async (row: any) => created.push(row)) },
         // A-278 (ADR-094): the key's creation writes an audit row in its transaction.
-        AuditLog: { create: jest.fn(async (row: any) => row) }
+        AuditLog: { create: jest.fn(async (row: any) => row) },
       }));
       jest.doMock("../../config", () => ({ db: { transaction: async (cb: any) => cb("TX") } }));
       service = require("../../services/eSignature.service");

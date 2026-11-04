@@ -14,7 +14,7 @@
  */
 
 jest.mock("../../config", () => ({
-  db: { transaction: async (cb: any) => cb("TX") }
+  db: { transaction: async (cb: any) => cb("TX") },
 }));
 
 const { Sequelize, DataTypes } = require("sequelize");
@@ -28,7 +28,7 @@ const PASSWORD = "correct horse battery staple";
 const realUser = (overrides: any = {}) => {
   const User = require("../../models/user.model")(
     new Sequelize({ dialect: "postgres", logging: false }),
-    DataTypes
+    DataTypes,
   );
   return User.build({
     id: SIGNER,
@@ -38,7 +38,7 @@ const realUser = (overrides: any = {}) => {
     firstName: "Ada",
     lastName: "Lovelace",
     tenantId: TENANT_ID,
-    ...overrides
+    ...overrides,
   });
 };
 
@@ -57,37 +57,37 @@ describe("signDocument — the signer's account state", () => {
       workflowId: "wf-1",
       tenantId: TENANT_ID,
       signerId: SIGNER,
-      update: jest.fn().mockResolvedValue(true)
+      update: jest.fn().mockResolvedValue(true),
     };
     const workflow: any = {
       id: "wf-1",
       documentId: "doc-1",
       tenantId: TENANT_ID,
       status: "in_progress",
-      update: jest.fn().mockResolvedValue(true)
+      update: jest.fn().mockResolvedValue(true),
     };
     const models: any = {
       TenantKey: {
         unscoped: jest.fn(() => ({ findOne: jest.fn().mockResolvedValue(keyPair) })),
-        findOne: jest.fn()
+        findOne: jest.fn(),
       },
       SignatureWorkflowStep: {
         findByPk: jest.fn(async (id: any) => id === step.id ? step : null),
-        findAll: jest.fn().mockResolvedValue([{ status: "signed" }])
+        findAll: jest.fn().mockResolvedValue([{ status: "signed" }]),
       },
       SignatureWorkflow: { findByPk: jest.fn().mockResolvedValue(workflow) },
       SignatureRecord: { create: jest.fn(async (attrs: any) => ({ ...attrs, id: "sig-1" })) },
       AuditLog: { create: jest.fn().mockResolvedValue(true) },
-      User: { findByPk: jest.fn(async (id: any) => id === SIGNER ? user : null) }
+      User: { findByPk: jest.fn(async (id: any) => id === SIGNER ? user : null) },
     };
     const passIsValid = jest.fn(async (userId: any, password: any) => ({
-      data: { valid: userId === SIGNER && password === PASSWORD }
+      data: { valid: userId === SIGNER && password === PASSWORD },
     }));
 
     jest.resetModules();
     jest.doMock("../../models", () => models);
     jest.doMock("../../middlewares/activityLog.middleware", () => ({
-      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
     }));
     jest.doMock("../../services/auth.service", () => ({ passIsValid }));
     const svc = require("../../services/eSignature.service");
@@ -95,7 +95,7 @@ describe("signDocument — the signer's account state", () => {
   };
 
   const sign = (h: any) =>
-  h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" });
+    h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" });
 
   it("a real ACTIVE user (as stored by the model default) can sign their step", async () => {
     const user = realUser();
@@ -112,10 +112,10 @@ describe("signDocument — the signer's account state", () => {
   });
 
   it.each([
-  ["INACTIVE", { status: "INACTIVE" }],
-  ["SUSPENDED", { status: "SUSPENDED" }],
-  ["erased (GDPR)", { status: "erased" }],
-  ["deactivated (isActive false)", { isActive: false }]]
+    ["INACTIVE", { status: "INACTIVE" }],
+    ["SUSPENDED", { status: "SUSPENDED" }],
+    ["erased (GDPR)", { status: "erased" }],
+    ["deactivated (isActive false)", { isActive: false }]],
   )("a %s account is refused 401, and nothing is signed", async (_label: any, overrides: any) => {
     const h = buildHarness(realUser(overrides));
 

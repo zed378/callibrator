@@ -8,6 +8,11 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-04 — Backend lint back at 0 errors: P9-26's converted tests lint at their `.js` level ([record](./records/2026-11-04-backend-lint-zero.md), ADR-092 Am. 1)
+- `node scripts/ci/eslint-ratchet.js`: 78,365 errors → **0 errors, 0 warnings, baseline 0** (never raised).
+- The 335 converted test files (a frozen list in `backend/.eslint-legacy-tests.json` that only shrinks) keep the base rules and lose the type-aware ones. A new test file is held to the full set.
+- 235 test files reformatted by ESLint's fixers, all 235 proved AST-identical to `HEAD`.
+
 ### 2026-11-03 — Comprehensive audit, Wave 1: config, security and infra fixes ([record](./records/2026-11-03-audit-wave1.md))
 - On branch `feat/audit-2026-11`: SEC-01 (bootstrap `CREATE DATABASE` identifier validation) and A11-BUG-01 (`createDatabaseIfNotExists` reports failure so the retry loop engages); A11-SEC-01 (deleted the dead `otp.util`) and A11-SEC-02 (CSPRNG identifiers for redis locks, email jobs, upload names); A11-DB-02 (`DB_SSL_CA` / `DB_SSL_REJECT_UNAUTHORIZED` for managed-Postgres TLS); INF-01 (container HEALTHCHECK on `/live`), SEC-03 (nginx baseline security headers) and INF-02 (documented the proxy/app timeout relationship). BUG-01/02, ARC-01, DB-01/02/03, PERF and A11-DB-03 are deferred with reasons in the record.
 

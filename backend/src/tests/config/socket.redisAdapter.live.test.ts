@@ -60,9 +60,9 @@ interface Replica {
 }
 
 describe("Socket.IO Redis adapter — live Redis (A-54)", () => {
-  /* eslint-disable @typescript-eslint/no-require-imports */
+
   const { io: ioClient } = require("socket.io-client") as { io: (url: string, opts: unknown) => ClientSocket };
-  /* eslint-enable @typescript-eslint/no-require-imports */
+
   const replicas: Replica[] = [];
   const clients: ClientSocket[] = [];
 
@@ -72,12 +72,12 @@ describe("Socket.IO Redis adapter — live Redis (A-54)", () => {
     let redisService: any;
     let logger: any;
     jest.isolateModules(() => {
-      /* eslint-disable @typescript-eslint/no-require-imports */
+
       redisService = require("../../services/redis.service");
       socketModule = require("../../config/socket");
       // A-42: the hub logs through the (mocked) winston logger of ITS registry.
       ({ logger } = require("../../middlewares/activityLog.middleware"));
-      /* eslint-enable @typescript-eslint/no-require-imports */
+
     });
     if (withRedis) {
       await redisService.initRedis();
@@ -173,4 +173,3 @@ describe("Socket.IO Redis adapter — live Redis (A-54)", () => {
     );
   });
 });
-

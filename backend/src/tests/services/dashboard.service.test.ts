@@ -4,56 +4,56 @@ jest.mock("../../models", () => ({
     lt: Symbol("lt"),
     gte: Symbol("gte"),
     lte: Symbol("lte"),
-    in: Symbol("in")
+    in: Symbol("in"),
   },
   Sequelize: {
     fn: jest.fn(),
-    col: jest.fn()
+    col: jest.fn(),
   },
   User: {
     count: jest.fn(),
-    findAll: jest.fn()
+    findAll: jest.fn(),
   },
   Tenant: {
     count: jest.fn(),
     findByPk: jest.fn(),
-    findAll: jest.fn()
+    findAll: jest.fn(),
   },
   CalibrationDevice: {
     count: jest.fn(),
-    findAll: jest.fn()
+    findAll: jest.fn(),
   },
   CalibrationRecord: {
     count: jest.fn(),
-    findAll: jest.fn()
+    findAll: jest.fn(),
   },
   Certificate: {
     count: jest.fn(),
-    findAll: jest.fn()
+    findAll: jest.fn(),
   },
   Stock: {
     count: jest.fn(),
-    sum: jest.fn()
+    sum: jest.fn(),
   },
   Warehouse: {
-    count: jest.fn()
+    count: jest.fn(),
   },
   StockTransfer: {
-    count: jest.fn()
+    count: jest.fn(),
   },
   StockOpname: {
-    count: jest.fn()
+    count: jest.fn(),
   },
   MaintenanceWorkOrder: {
-    count: jest.fn()
+    count: jest.fn(),
   },
   // P21-07: the IPM figures (their own suite: dashboard.p2107).
   InspectionSession: {
-    count: jest.fn()
-  }
+    count: jest.fn(),
+  },
 }));
 jest.mock("../../services/ipmDue.service", () => ({
-  countDue: jest.fn(() => Promise.resolve({ scheduled: 0, due: 0, neverInspected: 0 }))
+  countDue: jest.fn(() => Promise.resolve({ scheduled: 0, due: 0, neverInspected: 0 })),
 }));
 
 const {
@@ -68,7 +68,7 @@ const {
   StockOpname,
   MaintenanceWorkOrder,
   Sequelize,
-  Op
+  Op,
 } = require("../../models");
 const { getDashboardMetrics } = require("../../services/dashboard.service");
 
@@ -120,7 +120,7 @@ describe("dashboard.service", () => {
         id: "tenant-1",
         name: "Test Tenant",
         code: "TT",
-        status: "active"
+        status: "active",
       });
 
       const result = await getDashboardMetrics("tenant-1");
@@ -137,7 +137,7 @@ describe("dashboard.service", () => {
         id: "tenant-1",
         name: "Test Tenant",
         code: "TT",
-        status: "active"
+        status: "active",
       });
     });
 
@@ -186,16 +186,16 @@ describe("dashboard.service", () => {
         return Promise.resolve(5);
       });
       Tenant.findAll.mockResolvedValue([
-      { id: "tenant-1", name: "Tenant 1", code: "T1", status: "active" },
-      { id: "tenant-2", name: "Tenant 2", code: "T2", status: "active" }]
+        { id: "tenant-1", name: "Tenant 1", code: "T1", status: "active" },
+        { id: "tenant-2", name: "Tenant 2", code: "T2", status: "active" }],
       );
       User.findAll.mockResolvedValue([
-      { tenantId: "tenant-1", count: "50" },
-      { tenantId: "tenant-2", count: "30" }]
+        { tenantId: "tenant-1", count: "50" },
+        { tenantId: "tenant-2", count: "30" }],
       );
       CalibrationDevice.findAll.mockResolvedValue([
-      { tenantId: "tenant-1", count: "40" },
-      { tenantId: "tenant-2", count: "20" }]
+        { tenantId: "tenant-1", count: "40" },
+        { tenantId: "tenant-2", count: "20" }],
       );
 
       const result = await getDashboardMetrics();
@@ -279,13 +279,13 @@ describe("dashboard.service", () => {
       CalibrationDevice.count.mockResolvedValue(5);
       CalibrationRecord.count.mockResolvedValue(0);
       CalibrationRecord.findAll.mockResolvedValue([
-      { month: "2026-01", count: 5 },
-      { month: "2026-02", count: 10 }]
+        { month: "2026-01", count: 5 },
+        { month: "2026-02", count: 10 }],
       );
       Certificate.count.mockResolvedValue(0);
       Certificate.findAll.mockResolvedValue([
-      { month: "2026-01", count: 2 },
-      { month: "2026-02", count: 4 }]
+        { month: "2026-01", count: 2 },
+        { month: "2026-02", count: 4 }],
       );
       Stock.count.mockResolvedValue(0);
       Stock.sum.mockResolvedValue(0);
@@ -397,8 +397,8 @@ describe("dashboard.service", () => {
     it("places each grouped row in its month, reading COUNT (a bigint string) as a number", async () => {
       zeroAll();
       CalibrationRecord.findAll.mockResolvedValue([
-      { month: monthKey(monthsAgo(0)), count: "2" },
-      { month: monthKey(monthsAgo(1)), count: "1" }]
+        { month: monthKey(monthsAgo(0)), count: "2" },
+        { month: monthKey(monthsAgo(1)), count: "1" }],
       );
 
       const result = await getDashboardMetrics("tenant-1");
@@ -480,15 +480,15 @@ describe("dashboard.service", () => {
       }
 
       const trendCall = (Model: any) =>
-      Model.findAll.mock.calls.map(([o]: any) => o).find((o: any) => Array.isArray(o.attributes) && o.attributes.some((a: any) => a[1] === "month"));
+        Model.findAll.mock.calls.map(([o]: any) => o).find((o: any) => Array.isArray(o.attributes) && o.attributes.some((a: any) => a[1] === "month"));
       const options = trendCall(CalibrationRecord);
       const month: any = {
         fn: "to_char",
-        args: [{ fn: "date_trunc", args: ["month", { col: "calibration_date" }] }, "YYYY-MM"]
+        args: [{ fn: "date_trunc", args: ["month", { col: "calibration_date" }] }, "YYYY-MM"],
       };
       expect(options.attributes).toEqual([
-      [month, "month"],
-      [{ fn: "COUNT", args: [{ col: "id" }] }, "count"]]
+        [month, "month"],
+        [{ fn: "COUNT", args: [{ col: "id" }] }, "count"]],
       );
       expect(options.group).toEqual([month]);
       expect(options.raw).toBe(true);
@@ -496,7 +496,7 @@ describe("dashboard.service", () => {
       expect(options.where.calibrationDate[Op.gte]).toEqual(monthsAgo(5));
       // Certificates have no rawAttributes here: the attribute name is the column.
       expect(trendCall(Certificate).group).toEqual([
-      { fn: "to_char", args: [{ fn: "date_trunc", args: ["month", { col: "createdAt" }] }, "YYYY-MM"] }]
+        { fn: "to_char", args: [{ fn: "date_trunc", args: ["month", { col: "createdAt" }] }, "YYYY-MM"] }],
       );
     });
   });
@@ -531,9 +531,9 @@ describe("dashboard.service", () => {
       zeroAllExceptCalibrations();
       // total=3 (first count call), compliant=1 (second) → 33.333% → 33.3
       CalibrationRecord.count.
-      mockResolvedValueOnce(3).
-      mockResolvedValueOnce(1).
-      mockResolvedValueOnce(0);
+        mockResolvedValueOnce(3).
+        mockResolvedValueOnce(1).
+        mockResolvedValueOnce(0);
 
       const result = await getDashboardMetrics("tenant-1");
 
@@ -562,16 +562,16 @@ describe("dashboard.service", () => {
       zeroGlobal();
       CalibrationDevice.findAll.mockResolvedValue([]);
       Tenant.findAll.mockResolvedValue([
-      { id: "tenant-1", name: "Has users", code: "T1", status: "active" },
-      { id: "tenant-2", name: "Empty", code: "T2", status: "active" }]
+        { id: "tenant-1", name: "Has users", code: "T1", status: "active" },
+        { id: "tenant-2", name: "Empty", code: "T2", status: "active" }],
       );
       User.findAll.mockResolvedValue([{ tenantId: "tenant-1", count: "7" }]);
 
       const result = await getDashboardMetrics();
 
       expect(result.data.tenantBreakdown).toEqual([
-      { id: "tenant-1", name: "Has users", code: "T1", status: "active", users: 7, devices: 0 },
-      { id: "tenant-2", name: "Empty", code: "T2", status: "active", users: 0, devices: 0 }]
+        { id: "tenant-1", name: "Has users", code: "T1", status: "active", users: 7, devices: 0 },
+        { id: "tenant-2", name: "Empty", code: "T2", status: "active", users: 0, devices: 0 }],
       );
     });
 
@@ -579,12 +579,12 @@ describe("dashboard.service", () => {
       zeroGlobal();
       CalibrationDevice.findAll.mockResolvedValue([]);
       Tenant.findAll.mockResolvedValue([
-      { id: "tenant-1", name: "Tenant 1", code: "T1", status: "active" }]
+        { id: "tenant-1", name: "Tenant 1", code: "T1", status: "active" }],
       );
       // A NULL tenant_id aggregate row must not become a breakdown entry.
       User.findAll.mockResolvedValue([
-      { tenantId: null, count: "3" },
-      { tenantId: "tenant-1", count: "4" }]
+        { tenantId: null, count: "3" },
+        { tenantId: "tenant-1", count: "4" }],
       );
 
       const result = await getDashboardMetrics();

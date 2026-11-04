@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for tenantBackup service
  */
@@ -15,8 +15,8 @@ const mockFs: any = {
       if (event === "data") {cb(Buffer.from("mock data"));}
       if (event === "end") {cb();}
       return this;
-    })
-  }))
+    }),
+  })),
 };
 
 jest.mock("fs", () => mockFs);
@@ -31,36 +31,36 @@ jest.mock("path", () => ({
   join: jest.fn((...args: any[]) => "/mock/" + args.join("/")),
   dirname: jest.fn(() => "/mock"),
   resolve: jest.fn(() => "/mock/resolved"),
-  basename: jest.fn((p: any) => String(p).split("/").pop())
+  basename: jest.fn((p: any) => String(p).split("/").pop()),
 }));
 
 // Mock crypto module
 jest.mock("crypto", () => ({
   createHash: jest.fn(() => ({
     update: jest.fn(),
-    digest: jest.fn(() => "mock-checksum")
+    digest: jest.fn(() => "mock-checksum"),
   })),
   // Not drawn by the restore since A-120 (it no longer creates accounts);
   // kept so a module that does draw it is not handed undefined.
-  randomBytes: jest.fn(() => Buffer.from("0123456789abcdef0123456789abcdef"))
+  randomBytes: jest.fn(() => Buffer.from("0123456789abcdef0123456789abcdef")),
 }));
 
 // Mock JSZip
 const mockZipGenerateAsync: any = jest.
-fn().
-mockResolvedValue(Buffer.from("mock-zip-data"));
+  fn().
+  mockResolvedValue(Buffer.from("mock-zip-data"));
 const mockZipFile: any = jest.fn();
 
 jest.mock("jszip", () => {
   return jest.fn().mockImplementation(() => ({
     file: mockZipFile,
-    generateAsync: mockZipGenerateAsync
+    generateAsync: mockZipGenerateAsync,
   }));
 });
 
 // Mock uuid
 jest.mock("uuid", () => ({
-  v4: jest.fn(() => "mock-uuid-123")
+  v4: jest.fn(() => "mock-uuid-123"),
 }));
 
 // Mock moment
@@ -68,7 +68,7 @@ jest.mock("moment", () => {
   const actual = jest.requireActual("moment");
   const mockMoment: any = jest.fn(() => ({
     format: jest.fn(() => "20240101_120000"),
-    subtract: jest.fn().mockReturnThis()
+    subtract: jest.fn().mockReturnThis(),
   }));
   return Object.assign(mockMoment, actual);
 });
@@ -94,7 +94,7 @@ const mockTenantBackup: any = {
   // validator's spelling — and so hid that the export never matched it.
   BACKUP_TYPES: {
     FULL: "full",
-    USER_ONLY: "user_only"
+    USER_ONLY: "user_only",
   },
   // S-32: the real model's STATUS is exactly its ENUM — no RESTORING,
   // RESTORED or DELETING (tests/models/tenantBackup.status.s32.test.js).
@@ -103,12 +103,12 @@ const mockTenantBackup: any = {
     IN_PROGRESS: "IN_PROGRESS",
     COMPLETED: "COMPLETED",
     FAILED: "FAILED",
-    DELETED: "DELETED"
-  }
+    DELETED: "DELETED",
+  },
 };
 
 const mockTenant: any = {
-  findByPk: jest.fn()
+  findByPk: jest.fn(),
 };
 
 // The restore reads through Users.unscoped().findOne(...) so it can see
@@ -122,46 +122,46 @@ const mockUsers: any = {
   bulkCreate: jest.fn(),
   destroy: jest.fn(),
   findOrCreate: jest.fn(),
-  unscoped: jest.fn()
+  unscoped: jest.fn(),
 };
 
 const mockAuditLog: any = {
-  create: jest.fn()
+  create: jest.fn(),
 };
 
 const mockTenantSettings: any = {
   findAll: jest.fn(),
   bulkCreate: jest.fn(),
   destroy: jest.fn(),
-  findOrCreate: jest.fn()
+  findOrCreate: jest.fn(),
 };
 
 const mockTenantRoles: any = {
   findAll: jest.fn(),
   bulkCreate: jest.fn(),
   destroy: jest.fn(),
-  findOrCreate: jest.fn()
+  findOrCreate: jest.fn(),
 };
 
 const mockTenantFeatures: any = {
   findAll: jest.fn(),
   bulkCreate: jest.fn(),
   destroy: jest.fn(),
-  findOrCreate: jest.fn()
+  findOrCreate: jest.fn(),
 };
 
 const mockUserPermissions: any = {
   findAll: jest.fn(),
   bulkCreate: jest.fn(),
-  destroy: jest.fn()
+  destroy: jest.fn(),
 };
 
 const mockTenantAuditLog: any = {
-  findAll: jest.fn()
+  findAll: jest.fn(),
 };
 
 const mockSessions: any = {
-  destroy: jest.fn()
+  destroy: jest.fn(),
 };
 
 const mockSequelize: any = {
@@ -169,14 +169,14 @@ const mockSequelize: any = {
     ne: "$ne",
     or: "$or",
     gte: "$gte",
-    lt: "$lt"
+    lt: "$lt",
   },
   Sequelize: {
     Op: {
       ne: "$ne",
       or: "$or",
       gte: "$gte",
-      lt: "$lt"
+      lt: "$lt",
     },
     UUIDV4: "uuid-v4",
     STRING: "string",
@@ -188,12 +188,12 @@ const mockSequelize: any = {
     JSONB: "jsonb",
     ENUM: "enum",
     fn: jest.fn((name: any, col: any) => `${name}(${col})`),
-    col: jest.fn((col: any) => col)
+    col: jest.fn((col: any) => col),
   },
   // Both forms Sequelize offers: unmanaged (no callback — restoreBackup) and
   // managed (a callback run with the transaction — createBackup's COMPLETED
   // step and deleteBackup, S-32).
-  transaction: jest.fn()
+  transaction: jest.fn(),
 };
 
 const bothTransactionForms = (callback: any) => {
@@ -215,7 +215,7 @@ jest.mock("../../models", () => ({
   AuditLog: mockAuditLog,
   // The models barrel really does export `sequelize`; restoreBackup falls back
   // to it when the caller passes no models.sequelize.
-  sequelize: mockSequelize
+  sequelize: mockSequelize,
 }));
 
 // Mock activity log
@@ -224,8 +224,8 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     error: jest.fn(),
-    http: jest.fn()
-  }
+    http: jest.fn(),
+  },
 }));
 
 // NOTE: appError.util is deliberately NOT mocked. The real AppError exposes
@@ -239,7 +239,7 @@ const {
   restoreBackup,
   deleteBackup,
   getBackupStats,
-  cleanupExpiredBackups
+  cleanupExpiredBackups,
 } = require("../../services/tenantBackup.service");
 
 describe("Tenant Backup Service", () => {
@@ -254,11 +254,11 @@ describe("Tenant Backup Service", () => {
         Users: {
           destroy: jest.fn(),
           bulkCreate: jest.fn(),
-          findOrCreate: jest.fn()
-        }
-      }
+          findOrCreate: jest.fn(),
+        },
+      },
     },
-    Sequelize: mockSequelize.Sequelize
+    Sequelize: mockSequelize.Sequelize,
   };
 
   beforeEach(() => {
@@ -288,19 +288,19 @@ describe("Tenant Backup Service", () => {
       const mockBackup: any = {
         id: mockBackupId,
         tenantId: mockTenantId,
-        status: "PENDING"
+        status: "PENDING",
       };
 
       const mockTenantData: any = {
         id: mockTenantId,
         name: "Test Tenant",
-        toJSON: jest.fn(() => ({ id: mockTenantId, name: "Test Tenant" }))
+        toJSON: jest.fn(() => ({ id: mockTenantId, name: "Test Tenant" })),
       };
 
       mockTenantBackup.createBackup.mockResolvedValue(mockBackup);
       mockTenantBackup.updateStatus.mockResolvedValue({
         ...mockBackup,
-        status: "COMPLETED"
+        status: "COMPLETED",
       });
       mockTenant.findByPk.mockResolvedValue(mockTenantData);
       mockTenantSettings.findAll.mockResolvedValue([]);
@@ -316,7 +316,7 @@ describe("Tenant Backup Service", () => {
         createdById: mockUserId,
         name: "Test Backup",
         backupType: "FULL",
-        models: mockModels
+        models: mockModels,
       });
 
       expect(result.success).toBe(true);
@@ -325,9 +325,9 @@ describe("Tenant Backup Service", () => {
         expect.objectContaining({
           tenantId: mockTenantId,
           createdById: mockUserId,
-          name: "Test Backup"
+          name: "Test Backup",
         }),
-        mockModels
+        mockModels,
       );
     });
 
@@ -335,31 +335,31 @@ describe("Tenant Backup Service", () => {
       const mockBackup: any = {
         id: mockBackupId,
         tenantId: mockTenantId,
-        status: "PENDING"
+        status: "PENDING",
       };
 
       mockTenantBackup.createBackup.mockResolvedValue(mockBackup);
       mockTenantBackup.updateStatus.
-      mockResolvedValueOnce({ ...mockBackup, status: "IN_PROGRESS" }).
-      mockResolvedValueOnce({ ...mockBackup, status: "FAILED" });
+        mockResolvedValueOnce({ ...mockBackup, status: "IN_PROGRESS" }).
+        mockResolvedValueOnce({ ...mockBackup, status: "FAILED" });
 
       const mockTenantData: any = {
         id: mockTenantId,
         name: "Test Tenant",
-        toJSON: jest.fn(() => ({ id: mockTenantId, name: "Test Tenant" }))
+        toJSON: jest.fn(() => ({ id: mockTenantId, name: "Test Tenant" })),
       };
 
       mockTenant.findByPk.
-      mockResolvedValueOnce(mockTenantData).
-      mockRejectedValueOnce(new Error("Database error"));
+        mockResolvedValueOnce(mockTenantData).
+        mockRejectedValueOnce(new Error("Database error"));
 
       await expect(
         createBackup({
           tenantId: mockTenantId,
           createdById: mockUserId,
           name: "Test Backup",
-          models: mockModels
-        })
+          models: mockModels,
+        }),
       ).rejects.toThrow("Failed to create backup");
     });
 
@@ -367,7 +367,7 @@ describe("Tenant Backup Service", () => {
       mockTenant.findByPk.mockResolvedValue(null);
 
       await expect(
-        createBackup({ tenantId: "ghost", createdById: mockUserId, models: mockModels })
+        createBackup({ tenantId: "ghost", createdById: mockUserId, models: mockModels }),
       ).rejects.toMatchObject({ status: 404, message: "Tenant not found" });
 
       expect(mockTenantBackup.createBackup).not.toHaveBeenCalled();
@@ -376,20 +376,20 @@ describe("Tenant Backup Service", () => {
     it("should mark the backup FAILED and wrap the error as a 500", async () => {
       mockTenantBackup.createBackup.mockResolvedValue({ id: mockBackupId });
       mockTenant.findByPk.
-      mockResolvedValueOnce({ toJSON: () => ({ id: mockTenantId }) }).
-      mockRejectedValueOnce(new Error("boom"));
+        mockResolvedValueOnce({ toJSON: () => ({ id: mockTenantId }) }).
+        mockRejectedValueOnce(new Error("boom"));
 
       const err = await createBackup({
         tenantId: mockTenantId,
         createdById: mockUserId,
-        models: mockModels
+        models: mockModels,
       }).catch((e: any) => e);
 
       expect(err).toMatchObject({ status: 500, message: "Failed to create backup: boom" });
       expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
         mockBackupId,
         { status: "FAILED", errorMessage: "boom" },
-        mockModels
+        mockModels,
       );
     });
 
@@ -397,15 +397,15 @@ describe("Tenant Backup Service", () => {
       mockTenantBackup.createBackup.mockResolvedValue({ id: mockBackupId });
       mockTenant.findByPk.mockResolvedValue({ toJSON: () => ({ id: mockTenantId, name: "T" }) });
       mockUsers.findAll.mockResolvedValue([
-      { toJSON: () => ({ id: "u1", email: "u1@test.com" }) },
-      { toJSON: () => ({ id: "u2", email: "u2@test.com" }) }]
+        { toJSON: () => ({ id: "u1", email: "u1@test.com" }) },
+        { toJSON: () => ({ id: "u2", email: "u2@test.com" }) }],
       );
 
       await createBackup({
         tenantId: mockTenantId,
         createdById: mockUserId,
         backupType: "FULL",
-        models: mockModels
+        models: mockModels,
       });
 
       // A-139: an allow-list, never a deny-list. The full claim - no
@@ -414,24 +414,24 @@ describe("Tenant Backup Service", () => {
       expect(mockUsers.findAll).toHaveBeenCalledWith({
         where: { tenantId: mockTenantId },
         attributes: [
-        "id",
-        "tenantId",
-        "roleId",
-        "username",
-        "email",
-        "firstName",
-        "lastName",
-        "phone",
-        "avatarUrl",
-        "isActive",
-        "status"]
+          "id",
+          "tenantId",
+          "roleId",
+          "username",
+          "email",
+          "firstName",
+          "lastName",
+          "phone",
+          "avatarUrl",
+          "isActive",
+          "status"],
 
       });
 
       const payload = JSON.parse(mockZipFile.mock.calls[0][1]);
       expect(payload.users).toEqual([
-      { id: "u1", email: "u1@test.com" },
-      { id: "u2", email: "u2@test.com" }]
+        { id: "u1", email: "u1@test.com" },
+        { id: "u2", email: "u2@test.com" }],
       );
       expect(payload.tenant).toEqual({ id: mockTenantId, name: "T" });
 
@@ -441,10 +441,10 @@ describe("Tenant Backup Service", () => {
           status: "COMPLETED",
           recordCount: 2,
           metadata: expect.objectContaining({ checksum: "mock-checksum" }),
-          retentionDays: 30 // S-32: stamps expiresAt
+          retentionDays: 30, // S-32: stamps expiresAt
         }),
         mockModels,
-        { transaction: expect.any(Object) }
+        { transaction: expect.any(Object) },
       );
     });
 
@@ -459,7 +459,7 @@ describe("Tenant Backup Service", () => {
         createdById: mockUserId,
         backupType: "USER_ONLY",
         retentionDays: 7,
-        models: mockModels
+        models: mockModels,
       });
 
       const [, updates,, options] = mockTenantBackup.updateStatus.mock.calls.at(-1);
@@ -471,9 +471,9 @@ describe("Tenant Backup Service", () => {
           action: "CREATE",
           resourceType: "TenantBackup",
           resourceId: mockBackupId,
-          changes: expect.objectContaining({ operation: "BACKUP", backupType: "USER_ONLY", retentionDays: 7 })
+          changes: expect.objectContaining({ operation: "BACKUP", backupType: "USER_ONLY", retentionDays: 7 }),
         }),
-        expect.objectContaining({ transaction: options.transaction })
+        expect.objectContaining({ transaction: options.transaction }),
       );
     });
 
@@ -495,12 +495,12 @@ describe("Tenant Backup Service", () => {
       mockAuditLog.create.mockRejectedValue(new Error("audit insert failed"));
 
       await expect(
-        createBackup({ tenantId: mockTenantId, createdById: mockUserId, backupType: "USER_ONLY", models: mockModels })
+        createBackup({ tenantId: mockTenantId, createdById: mockUserId, backupType: "USER_ONLY", models: mockModels }),
       ).rejects.toThrow("Failed to create backup");
       expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
         mockBackupId,
         expect.objectContaining({ status: "FAILED" }),
-        mockModels
+        mockModels,
       );
     });
 
@@ -512,7 +512,7 @@ describe("Tenant Backup Service", () => {
         tenantId: mockTenantId,
         createdById: mockUserId,
         backupType: "PARTIAL",
-        models: mockModels
+        models: mockModels,
       });
 
       expect(mockUsers.findAll).not.toHaveBeenCalled();
@@ -522,22 +522,22 @@ describe("Tenant Backup Service", () => {
         mockBackupId,
         expect.objectContaining({ status: "COMPLETED", recordCount: 0 }),
         mockModels,
-        { transaction: expect.any(Object) }
+        { transaction: expect.any(Object) },
       );
     });
 
     it("should record a null tenant when the tenant vanishes mid-export", async () => {
       mockTenantBackup.createBackup.mockResolvedValue({ id: mockBackupId });
       mockTenant.findByPk.
-      mockResolvedValueOnce({ toJSON: () => ({ id: mockTenantId }) }) // validation passes
-      .mockResolvedValueOnce(null); // gone by export time
+        mockResolvedValueOnce({ toJSON: () => ({ id: mockTenantId }) }) // validation passes
+        .mockResolvedValueOnce(null); // gone by export time
       mockUsers.findAll.mockResolvedValue([]);
 
       await createBackup({
         tenantId: mockTenantId,
         createdById: mockUserId,
         backupType: "USER_ONLY",
-        models: mockModels
+        models: mockModels,
       });
 
       const payload = JSON.parse(mockZipFile.mock.calls[0][1]);
@@ -583,17 +583,17 @@ describe("Tenant Backup Service", () => {
         expect([...storage.__objects.keys()]).toEqual([key]);
         expect(storage.__objects.get(key)).toMatchObject({
           body: Buffer.from("mock-zip-data"),
-          contentType: "application/zip"
+          contentType: "application/zip",
         });
         expect(mockTenantBackup.updateStatus).toHaveBeenCalledWith(
           mockBackupId,
           expect.objectContaining({
             filePath: key,
             fileSize: Buffer.from("mock-zip-data").length,
-            metadata: expect.objectContaining({ checksum: "mock-checksum" })
+            metadata: expect.objectContaining({ checksum: "mock-checksum" }),
           }),
           mockModels,
-          expect.any(Object)
+          expect.any(Object),
         );
         expect(mockFs.writeFileSync).not.toHaveBeenCalled();
         expect(mockFs.mkdirSync).not.toHaveBeenCalled();
@@ -606,15 +606,15 @@ describe("Tenant Backup Service", () => {
         mockUsers.findAll.mockResolvedValue([]);
 
         await expect(
-          createBackup({ tenantId: mockTenantId, createdById: mockUserId, models: mockModels })
+          createBackup({ tenantId: mockTenantId, createdById: mockUserId, models: mockModels }),
         ).rejects.toMatchObject({
           status: 500,
-          message: "Failed to create backup: bucket unreachable"
+          message: "Failed to create backup: bucket unreachable",
         });
         expect(mockTenantBackup.updateStatus).toHaveBeenCalledWith(
           mockBackupId,
           expect.objectContaining({ status: "FAILED" }),
-          mockModels
+          mockModels,
         );
         expect(storage.__objects.size).toBe(0);
       });
@@ -629,7 +629,7 @@ describe("Tenant Backup Service", () => {
         filePath: "/mock/backups/backup.zip",
         metadata: { filename: "backup.zip" },
         tenant: { id: mockTenantId },
-        creator: { id: mockUserId }
+        creator: { id: mockUserId },
       };
 
       mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
@@ -645,19 +645,19 @@ describe("Tenant Backup Service", () => {
       mockTenantBackup.findByPk.mockResolvedValue(null);
 
       await expect(downloadBackup("nonexistent", mockModels)).rejects.toThrow(
-        "Backup not found"
+        "Backup not found",
       );
     });
 
     it("should throw error if backup is not ready", async () => {
       mockTenantBackup.findByPk.mockResolvedValue({
         id: mockBackupId,
-        status: "IN_PROGRESS"
+        status: "IN_PROGRESS",
       });
 
       await expect(downloadBackup(mockBackupId, mockModels)).rejects.toMatchObject({
         status: 400,
-        message: "Backup is not ready for download"
+        message: "Backup is not ready for download",
       });
     });
 
@@ -665,13 +665,13 @@ describe("Tenant Backup Service", () => {
       mockTenantBackup.findByPk.mockResolvedValue({
         id: mockBackupId,
         status: "COMPLETED",
-        filePath: "/mock/backups/gone.zip"
+        filePath: "/mock/backups/gone.zip",
       });
       mockFs.existsSync.mockReturnValue(false);
 
       await expect(downloadBackup(mockBackupId, mockModels)).rejects.toMatchObject({
         status: 404,
-        message: "Backup file not found on storage"
+        message: "Backup file not found on storage",
       });
     });
 
@@ -679,12 +679,12 @@ describe("Tenant Backup Service", () => {
       mockTenantBackup.findByPk.mockResolvedValue({
         id: mockBackupId,
         status: "COMPLETED",
-        filePath: null
+        filePath: null,
       });
 
       await expect(downloadBackup(mockBackupId, mockModels)).rejects.toMatchObject({
         status: 404,
-        message: "Backup file not found on storage"
+        message: "Backup file not found on storage",
       });
     });
   });
@@ -709,14 +709,14 @@ describe("Tenant Backup Service", () => {
       status: "COMPLETED",
       filePath: "/mock/backups/backup.zip",
       metadata: {},
-      ...overrides
+      ...overrides,
     });
 
     const archive = (overrides: any = {}) => ({
       metadata: { version: "1.0", backupType: "FULL" },
       tenant: { id: mockTenantId },
       users: [],
-      ...overrides
+      ...overrides,
     });
 
     const backedUpUser = (overrides: any = {}) => ({
@@ -724,7 +724,7 @@ describe("Tenant Backup Service", () => {
       email: "test1@example.com",
       firstName: "Test",
       lastName: "One",
-      ...overrides
+      ...overrides,
     });
 
     // Builds a JSZip stub whose archive yields `files`.
@@ -733,30 +733,30 @@ describe("Tenant Backup Service", () => {
       MockJSZip.mockImplementation(() => ({
         loadAsync: jest.fn().mockResolvedValue({ files }),
         file: mockZipFile,
-        generateAsync: mockZipGenerateAsync
+        generateAsync: mockZipGenerateAsync,
       }));
     };
     const tenantDataFile = (payload: any) => ({
       "tenant_data_full.json": {
-        async: jest.fn().mockResolvedValue(JSON.stringify(payload))
-      }
+        async: jest.fn().mockResolvedValue(JSON.stringify(payload)),
+      },
     });
     const stubArchive = (payload: any) => stubZipWith(tenantDataFile(payload));
 
     const run = (args: any = {}) =>
-    restoreBackup({
-      backupId: mockBackupId,
-      restoredById: mockUserId,
-      models: mockModels,
-      ...args
-    });
+      restoreBackup({
+        backupId: mockBackupId,
+        restoredById: mockUserId,
+        models: mockModels,
+        ...args,
+      });
 
     const liveAccount = (overrides: any = {}) => ({
       id: "live-1",
       isDeleted: false,
       deletedAt: null,
       update: jest.fn().mockResolvedValue({}),
-      ...overrides
+      ...overrides,
     });
 
     beforeEach(() => {
@@ -783,7 +783,7 @@ describe("Tenant Backup Service", () => {
       mockTenantBackup.findByPk.mockResolvedValue(null);
 
       await expect(run({ backupId: "nonexistent" })).rejects.toThrow(
-        "Backup not found"
+        "Backup not found",
       );
     });
 
@@ -843,21 +843,21 @@ describe("Tenant Backup Service", () => {
         stubArchive(
           archive({
             users: [
-            backedUpUser({
-              id: erasedId,
-              username: "jane.erased",
-              email: "jane@hospital.test",
-              firstName: "Jane",
-              lastName: "Doe",
-              phone: "+62 811 000 000"
-            })]
+              backedUpUser({
+                id: erasedId,
+                username: "jane.erased",
+                email: "jane@hospital.test",
+                firstName: "Jane",
+                lastName: "Doe",
+                phone: "+62 811 000 000",
+              })],
 
-          })
+          }),
         );
         // No account carries the archived username or email any more ...
         mockUsers.findOne.mockImplementation(async ({ where }: any) =>
         // ... but the id still resolves to the anonymised row.
-        where.id === erasedId ? { id: erasedId, status: "erased" } : null
+          where.id === erasedId ? { id: erasedId, status: "erased" } : null,
         );
 
         const result = await run();
@@ -865,7 +865,7 @@ describe("Tenant Backup Service", () => {
         expect(mockUsers.create).not.toHaveBeenCalled();
         expect(mockUsers.bulkCreate).not.toHaveBeenCalled();
         expect(result.data.notRestored).toEqual([
-        { entry: 0, username: "jane.erased", reason: "erased" }]
+          { entry: 0, username: "jane.erased", reason: "erased" }],
         );
         expect(result.data).not.toHaveProperty("created");
         expect(result.data).not.toHaveProperty("pendingActivation");
@@ -884,22 +884,22 @@ describe("Tenant Backup Service", () => {
         stubArchive(
           archive({
             users: [
-            backedUpUser({ id: "5f0e4d3c-2b1a-4098-8f7e-6d5c4b3a2918" }),
-            // An id the archive mangled never reaches the query: a malformed
-            // uuid would abort the transaction.
-            backedUpUser({ id: "not-a-uuid", username: "u2", email: "u2@example.com" }),
-            backedUpUser({ id: undefined, username: "u3", email: "u3@example.com" })]
+              backedUpUser({ id: "5f0e4d3c-2b1a-4098-8f7e-6d5c4b3a2918" }),
+              // An id the archive mangled never reaches the query: a malformed
+              // uuid would abort the transaction.
+              backedUpUser({ id: "not-a-uuid", username: "u2", email: "u2@example.com" }),
+              backedUpUser({ id: undefined, username: "u3", email: "u3@example.com" })],
 
-          })
+          }),
         );
 
         const result = await run();
 
         expect(mockUsers.create).not.toHaveBeenCalled();
         expect(result.data.notRestored).toEqual([
-        { entry: 0, username: "test1", reason: "absent" },
-        { entry: 1, username: "u2", reason: "absent" },
-        { entry: 2, username: "u3", reason: "absent" }]
+          { entry: 0, username: "test1", reason: "absent" },
+          { entry: 1, username: "u2", reason: "absent" },
+          { entry: 2, username: "u3", reason: "absent" }],
         );
         // One natural-key lookup per entry, plus one id lookup for the only
         // well-formed id.
@@ -909,7 +909,7 @@ describe("Tenant Backup Service", () => {
           where: { id: "5f0e4d3c-2b1a-4098-8f7e-6d5c4b3a2918", tenantId: mockTenantId },
           attributes: ["id", "status"],
           paranoid: false,
-          transaction: mockTransaction
+          transaction: mockTransaction,
         });
       });
 
@@ -919,14 +919,14 @@ describe("Tenant Backup Service", () => {
         stubArchive(archive({ users: [backedUpUser({ id: renamedId })] }));
         const renamed = liveAccount({ id: renamedId, status: "ACTIVE" });
         mockUsers.findOne.mockImplementation(async ({ where }: any) =>
-        where.id === renamedId ? renamed : null
+          where.id === renamedId ? renamed : null,
         );
 
         const result = await run();
 
         expect(renamed.update).not.toHaveBeenCalled();
         expect(result.data.notRestored).toEqual([
-        { entry: 0, username: "test1", reason: "absent" }]
+          { entry: 0, username: "test1", reason: "absent" }],
         );
       });
     });
@@ -939,14 +939,14 @@ describe("Tenant Backup Service", () => {
       stubArchive(
         archive({
           users: [
-          backedUpUser({
-            firstName: "Restored",
-            roleId: "role-super",
-            isActive: false,
-            password: "x"
-          })]
+            backedUpUser({
+              firstName: "Restored",
+              roleId: "role-super",
+              isActive: false,
+              password: "x",
+            })],
 
-        })
+        }),
       );
       const live = liveAccount();
       mockUsers.findOne.mockResolvedValue(live);
@@ -960,10 +960,10 @@ describe("Tenant Backup Service", () => {
       expect(mockUsers.create).not.toHaveBeenCalled();
       expect(live.update).toHaveBeenCalledWith(
         { firstName: "Restored", lastName: "One" },
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
       expect(result.data).toEqual(
-        expect.objectContaining({ updated: 1, notRestored: [], retained: 2 })
+        expect.objectContaining({ updated: 1, notRestored: [], retained: 2 }),
       );
     });
 
@@ -977,10 +977,10 @@ describe("Tenant Backup Service", () => {
       expect(mockUsers.findOne).toHaveBeenCalledWith({
         where: {
           tenantId: mockTenantId,
-          [Op.or]: [{ username: "test1" }, { email: "test1@example.com" }]
+          [Op.or]: [{ username: "test1" }, { email: "test1@example.com" }],
         },
         paranoid: false,
-        transaction: mockTransaction
+        transaction: mockTransaction,
       });
     });
 
@@ -993,16 +993,16 @@ describe("Tenant Backup Service", () => {
       stubArchive(
         archive({
           users: [
-          backedUpUser({
-            tenantId: "tenant-B",
-            roleId: "super-admin-role",
-            isActive: true,
-            status: "active",
-            password: "$2b$10$chosenhash",
-            firstName: "Renamed"
-          })]
+            backedUpUser({
+              tenantId: "tenant-B",
+              roleId: "super-admin-role",
+              isActive: true,
+              status: "active",
+              password: "$2b$10$chosenhash",
+              firstName: "Renamed",
+            })],
 
-        })
+        }),
       );
       const live = liveAccount();
       mockUsers.findOne.mockResolvedValue(live);
@@ -1013,7 +1013,7 @@ describe("Tenant Backup Service", () => {
       expect(mockUsers.findOne.mock.calls[0][0].where.tenantId).toBe(mockTenantId);
       expect(live.update).toHaveBeenCalledWith(
         { firstName: "Renamed", lastName: "One" },
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
       expect(mockUsers.create).not.toHaveBeenCalled();
       expect(mockModels.sequelize.models.Users.bulkCreate).not.toHaveBeenCalled();
@@ -1022,7 +1022,7 @@ describe("Tenant Backup Service", () => {
 
     it("leaves a live account completely untouched when mergeData is true (the merge path executes)", async () => {
       mockTenantBackup.findByPk.mockResolvedValue(
-        restorableBackup({ metadata: { checksum: "mock-checksum" } })
+        restorableBackup({ metadata: { checksum: "mock-checksum" } }),
       );
       stubArchive(archive({ users: [backedUpUser({ firstName: "Changed" })] }));
       const live = liveAccount();
@@ -1034,7 +1034,7 @@ describe("Tenant Backup Service", () => {
       expect(live.update).not.toHaveBeenCalled();
       expect(mockUsers.create).not.toHaveBeenCalled();
       expect(result.data).toEqual(
-        expect.objectContaining({ unchanged: 1, retained: 0 })
+        expect.objectContaining({ unchanged: 1, retained: 0 }),
       );
       expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
         mockBackupId,
@@ -1046,16 +1046,16 @@ describe("Tenant Backup Service", () => {
             checksum: "mock-checksum",
             recordsProcessed: 1,
             restoredById: mockUserId,
-            unchanged: 1
-          })
+            unchanged: 1,
+          }),
         }),
-        mockModels
+        mockModels,
       );
     });
 
     it.each([
-    ["isDeleted", { isDeleted: true }],
-    ["deletedAt", { deletedAt: new Date("2026-01-01") }]]
+      ["isDeleted", { isDeleted: true }],
+      ["deletedAt", { deletedAt: new Date("2026-01-01") }]],
     )(
       "does not revive an account an administrator deleted (%s)",
       async (_label: any, deletedState: any) => {
@@ -1069,7 +1069,7 @@ describe("Tenant Backup Service", () => {
         expect(deleted.update).not.toHaveBeenCalled();
         expect(mockUsers.create).not.toHaveBeenCalled();
         expect(result.data.skippedDeleted).toBe(1);
-      }
+      },
     );
 
     it("writes one audit row naming the backup and the actor, inside the restore transaction", async () => {
@@ -1097,18 +1097,18 @@ describe("Tenant Backup Service", () => {
             unchanged: 0,
             skippedDeleted: 0,
             retained: 0,
-            notRestored: [{ entry: 0, reason: "absent" }]
+            notRestored: [{ entry: 0, reason: "absent" }],
           },
           // Written through audit.service#logAction (A-41), which fills the
           // request-origin columns; a restore has none.
           ipAddress: null,
-          userAgent: null
+          userAgent: null,
         }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
       // The audit row precedes the commit.
       expect(mockAuditLog.create.mock.invocationCallOrder[0]).toBeLessThan(
-        mockTransaction.commit.mock.invocationCallOrder[0]
+        mockTransaction.commit.mock.invocationCallOrder[0],
       );
     });
 
@@ -1130,7 +1130,7 @@ describe("Tenant Backup Service", () => {
 
     it("targets the included tenant when the backup row carries no tenantId column value", async () => {
       mockTenantBackup.findByPk.mockResolvedValue(
-        restorableBackup({ tenantId: undefined, tenant: { id: mockTenantId } })
+        restorableBackup({ tenantId: undefined, tenant: { id: mockTenantId } }),
       );
       stubArchive(archive({ users: [backedUpUser()] }));
 
@@ -1153,7 +1153,7 @@ describe("Tenant Backup Service", () => {
     it("restores a non-full backup whose archive has no users section", async () => {
       mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
       stubArchive(
-        archive({ metadata: { version: "1.0", backupType: "PARTIAL" }, users: undefined })
+        archive({ metadata: { version: "1.0", backupType: "PARTIAL" }, users: undefined }),
       );
 
       const result = await run();
@@ -1185,12 +1185,12 @@ describe("Tenant Backup Service", () => {
       // restore failed on PostgreSQL). A running restore is IN_PROGRESS; a
       // restored backup is COMPLETED with restoredAt.
       it.each([
-      ["PENDING", {}, /is PENDING and cannot be restored.*Wait for it to complete/],
-      ["IN_PROGRESS", {}, /is IN_PROGRESS and cannot be restored.*already running/],
-      [
-      "COMPLETED",
-      { restoredAt: new Date("2026-09-20T10:00:00Z") },
-      /has already been restored \(at 2026-09-20T10:00:00.000Z\).*take a new backup/]]
+        ["PENDING", {}, /is PENDING and cannot be restored.*Wait for it to complete/],
+        ["IN_PROGRESS", {}, /is IN_PROGRESS and cannot be restored.*already running/],
+        [
+          "COMPLETED",
+          { restoredAt: new Date("2026-09-20T10:00:00Z") },
+          /has already been restored \(at 2026-09-20T10:00:00.000Z\).*take a new backup/]],
 
       )("refuses a backup in state %s %o", async (status: any, extra: any, message: any) => {
         // Previously a bare 400 "Backup is not ready for restore".
@@ -1213,7 +1213,7 @@ describe("Tenant Backup Service", () => {
 
         expect(mockTenantBackup.update).toHaveBeenCalledWith(
           { status: "IN_PROGRESS" },
-          { where: { id: mockBackupId, status: "COMPLETED", restoredAt: null } }
+          { where: { id: mockBackupId, status: "COMPLETED", restoredAt: null } },
         );
         expect(error.status).toBe(409);
         expect(error.message).toMatch(/is IN_PROGRESS and cannot be restored.*already running/);
@@ -1225,8 +1225,8 @@ describe("Tenant Backup Service", () => {
         stubArchive(
           archive({
             tenant: { id: "tenant-other" },
-            users: [backedUpUser({ tenantId: "tenant-other" })]
-          })
+            users: [backedUpUser({ tenantId: "tenant-other" })],
+          }),
         );
 
         const error = await run().catch((e: any) => e);
@@ -1234,14 +1234,14 @@ describe("Tenant Backup Service", () => {
         expect(error.status).toBe(409);
         expect(error.message).toBe(
           `Backup ${mockBackupId} belongs to tenant ${mockTenantId}, but its archive was taken from tenant tenant-other. ` +
-          "A backup can only be restored into the tenant that owns it; nothing has been written."
+          "A backup can only be restored into the tenant that owns it; nothing has been written.",
         );
         expectNothingWritten();
       });
 
       it("refuses a backup row with no owning tenant", async () => {
         mockTenantBackup.findByPk.mockResolvedValue(
-          restorableBackup({ tenantId: null })
+          restorableBackup({ tenantId: null }),
         );
         stubArchive(archive());
 
@@ -1254,7 +1254,7 @@ describe("Tenant Backup Service", () => {
 
       it("refuses an archive that no longer matches its recorded checksum", async () => {
         mockTenantBackup.findByPk.mockResolvedValue(
-          restorableBackup({ metadata: { checksum: "recorded-at-backup-time" } })
+          restorableBackup({ metadata: { checksum: "recorded-at-backup-time" } }),
         );
         stubArchive(archive({ users: [backedUpUser()] }));
 
@@ -1279,8 +1279,8 @@ describe("Tenant Backup Service", () => {
       });
 
       it.each([
-      ["metadata", { metadata: undefined }],
-      ["tenant", { tenant: undefined }]]
+        ["metadata", { metadata: undefined }],
+        ["tenant", { tenant: undefined }]],
       )("refuses an archive missing its %s section", async (section: any, overrides: any) => {
         // Previously a 500 "Invalid backup data structure".
         mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
@@ -1306,7 +1306,7 @@ describe("Tenant Backup Service", () => {
 
       it("refuses a full backup with no users section, reading the type from the row when the archive omits it", async () => {
         mockTenantBackup.findByPk.mockResolvedValue(
-          restorableBackup({ backupType: "FULL" })
+          restorableBackup({ backupType: "FULL" }),
         );
         stubArchive(archive({ metadata: { version: "1.0" }, users: undefined }));
 
@@ -1321,7 +1321,7 @@ describe("Tenant Backup Service", () => {
         mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
         // The shape the old tests used — no firstName/lastName, both NOT NULL.
         stubArchive(
-          archive({ users: [{ username: "test1", email: "test1@example.com" }] })
+          archive({ users: [{ username: "test1", email: "test1@example.com" }] }),
         );
 
         const error = await run().catch((e: any) => e);
@@ -1337,7 +1337,7 @@ describe("Tenant Backup Service", () => {
       it("marks FAILED when the archive cannot be parsed", async () => {
         mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
         stubZipWith({
-          "tenant_data_full.json": { async: jest.fn().mockResolvedValue("{not json") }
+          "tenant_data_full.json": { async: jest.fn().mockResolvedValue("{not json") },
         });
 
         const error = await run().catch((e: any) => e);
@@ -1347,7 +1347,7 @@ describe("Tenant Backup Service", () => {
         expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
           mockBackupId,
           expect.objectContaining({ status: "FAILED" }),
-          mockModels
+          mockModels,
         );
         expect(mockSequelize.transaction).not.toHaveBeenCalled();
       });
@@ -1356,12 +1356,12 @@ describe("Tenant Backup Service", () => {
         mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
         stubArchive(archive({ users: [backedUpUser()] }));
         mockUsers.findOne.mockResolvedValue(
-          liveAccount({ update: jest.fn().mockRejectedValue(new Error("connection reset")) })
+          liveAccount({ update: jest.fn().mockRejectedValue(new Error("connection reset")) }),
         );
 
         await expect(run()).rejects.toMatchObject({
           status: 500,
-          message: "Failed to restore backup: connection reset"
+          message: "Failed to restore backup: connection reset",
         });
 
         expect(mockTransaction.rollback).toHaveBeenCalled();
@@ -1369,7 +1369,7 @@ describe("Tenant Backup Service", () => {
         expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
           mockBackupId,
           { status: "FAILED", errorMessage: "connection reset" },
-          mockModels
+          mockModels,
         );
       });
     });
@@ -1387,7 +1387,7 @@ describe("Tenant Backup Service", () => {
       status: "COMPLETED",
       update: jest.fn().mockResolvedValue(true),
       destroy: jest.fn().mockResolvedValue(true),
-      ...overrides
+      ...overrides,
     });
 
     it("marks DELETED, soft-deletes and audits in ONE transaction, then removes the file", async () => {
@@ -1408,7 +1408,7 @@ describe("Tenant Backup Service", () => {
       expect(tx).toBeDefined();
       expect(mockBackup.update).toHaveBeenCalledWith(
         { status: "DELETED", deletedBy: mockUserId },
-        { transaction: tx }
+        { transaction: tx },
       );
       expect(mockBackup.destroy).toHaveBeenCalledWith({ transaction: tx });
       expect(mockAuditLog.create).toHaveBeenCalledWith(
@@ -1422,10 +1422,10 @@ describe("Tenant Backup Service", () => {
             operation: "BACKUP_DELETE",
             fileName: "backup.zip",
             before: { status: "COMPLETED" },
-            after: { status: "DELETED" }
-          }
+            after: { status: "DELETED" },
+          },
         }),
-        expect.objectContaining({ transaction: tx })
+        expect.objectContaining({ transaction: tx }),
       );
       // No intermediate status the ENUM does not have.
       expect(mockTenantBackup.updateStatus).not.toHaveBeenCalled();
@@ -1435,7 +1435,7 @@ describe("Tenant Backup Service", () => {
       mockTenantBackup.findByPk.mockResolvedValue(null);
 
       await expect(
-        deleteBackup("nonexistent", mockUserId, mockModels)
+        deleteBackup("nonexistent", mockUserId, mockModels),
       ).rejects.toThrow("Backup not found");
     });
 
@@ -1449,7 +1449,7 @@ describe("Tenant Backup Service", () => {
       expect(mockFs.unlinkSync).not.toHaveBeenCalled();
       expect(mockAuditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({ changes: expect.objectContaining({ fileName: null }) }),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -1458,11 +1458,11 @@ describe("Tenant Backup Service", () => {
       mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
 
       await expect(deleteBackup(mockBackupId, null, mockModels)).rejects.toThrow(
-        /Failed to delete backup: An audit entry must name its actor/
+        /Failed to delete backup: An audit entry must name its actor/,
       );
       expect(mockBackup.update).toHaveBeenCalledWith(
         { status: "DELETED", deletedBy: null },
-        expect.any(Object)
+        expect.any(Object),
       );
       expect(mockFs.unlinkSync).not.toHaveBeenCalled();
     });
@@ -1472,7 +1472,7 @@ describe("Tenant Backup Service", () => {
       mockFs.existsSync.mockReturnValue(false);
 
       await expect(deleteBackup(mockBackupId, mockUserId, mockModels)).resolves.toEqual(
-        expect.objectContaining({ success: true })
+        expect.objectContaining({ success: true }),
       );
       expect(mockFs.unlinkSync).not.toHaveBeenCalled();
     });
@@ -1504,7 +1504,7 @@ describe("Tenant Backup Service", () => {
       expect(result.success).toBe(true);
       expect(logger.error).toHaveBeenCalledWith(
         "Tenant backup deleted; its file could not be removed and is left on disk",
-        expect.objectContaining({ backupId: mockBackupId, error: "EACCES" })
+        expect.objectContaining({ backupId: mockBackupId, error: "EACCES" }),
       );
     });
   });
@@ -1512,18 +1512,18 @@ describe("Tenant Backup Service", () => {
   describe("getBackupStats", () => {
     it("should return backup statistics", async () => {
       mockTenantBackup.count.
-      mockResolvedValueOnce(10) // total
-      .mockResolvedValueOnce(8) // completed
-      .mockResolvedValueOnce(2); // failed
+        mockResolvedValueOnce(10) // total
+        .mockResolvedValueOnce(8) // completed
+        .mockResolvedValueOnce(2); // failed
 
       mockTenantBackup.findAll.mockResolvedValue([
-      { dataValues: { totalSize: 1048576 } }]
+        { dataValues: { totalSize: 1048576 } }],
       );
 
       const mockDate: any = new Date("2026-01-01T00:00:00Z");
       mockTenantBackup.getLatestBackup.mockResolvedValue({
         id: "latest-backup",
-        createdAt: mockDate
+        createdAt: mockDate,
       });
 
       mockTenantBackup.hasValidBackups.mockResolvedValue(true);
@@ -1536,7 +1536,7 @@ describe("Tenant Backup Service", () => {
       expect(stats.data.totalSize).toBe(1048576);
       expect(stats.data.latestBackup).toEqual({
         id: "latest-backup",
-        createdAt: mockDate
+        createdAt: mockDate,
       });
       expect(stats.data.hasValidBackups).toBe(true);
     });
@@ -1545,7 +1545,7 @@ describe("Tenant Backup Service", () => {
       // No COMPLETED backup carries a fileSize, so the aggregate returns NULL.
       mockTenantBackup.count.mockResolvedValue(0);
       mockTenantBackup.findAll.mockResolvedValue([
-      { dataValues: { totalSize: null } }]
+        { dataValues: { totalSize: null } }],
       );
       mockTenantBackup.getLatestBackup.mockResolvedValue(null);
       mockTenantBackup.hasValidBackups.mockResolvedValue(false);
@@ -1583,7 +1583,7 @@ describe("Tenant Backup Service", () => {
       // Postgres returns SUM() of a bigint column as a string.
       mockTenantBackup.count.mockResolvedValue(1);
       mockTenantBackup.findAll.mockResolvedValue([
-      { dataValues: { totalSize: "2048.5" } }]
+        { dataValues: { totalSize: "2048.5" } }],
       );
       mockTenantBackup.getLatestBackup.mockResolvedValue(null);
       mockTenantBackup.hasValidBackups.mockResolvedValue(false);
@@ -1599,12 +1599,12 @@ describe("Tenant Backup Service", () => {
       const mockBackup1: any = {
         id: "backup-1",
         filePath: "/path/to/backup1.zip",
-        destroy: jest.fn().mockResolvedValue(undefined)
+        destroy: jest.fn().mockResolvedValue(undefined),
       };
       const mockBackup2: any = {
         id: "backup-2",
         filePath: "/path/to/backup2.zip",
-        destroy: jest.fn().mockResolvedValue(undefined)
+        destroy: jest.fn().mockResolvedValue(undefined),
       };
 
       mockTenantBackup.findAll.mockResolvedValue([mockBackup1, mockBackup2]);
@@ -1621,7 +1621,7 @@ describe("Tenant Backup Service", () => {
         success: true,
         status: 200,
         message: "Expired backups cleanup completed",
-        data: { deletedCount: 2 }
+        data: { deletedCount: 2 },
       });
     });
 
@@ -1629,7 +1629,7 @@ describe("Tenant Backup Service", () => {
       const mockBackup: any = {
         id: "backup-1",
         filePath: "/path/to/backup1.zip",
-        destroy: jest.fn().mockRejectedValue(new Error("Failed to delete"))
+        destroy: jest.fn().mockRejectedValue(new Error("Failed to delete")),
       };
 
       mockTenantBackup.findAll.mockResolvedValue([mockBackup]);
@@ -1644,7 +1644,7 @@ describe("Tenant Backup Service", () => {
       const mockBackup: any = {
         id: "backup-no-path",
         filePath: null, // short-circuits `backup.filePath && fs.existsSync(...)`
-        destroy: jest.fn().mockResolvedValue(undefined)
+        destroy: jest.fn().mockResolvedValue(undefined),
       };
       mockTenantBackup.findAll.mockResolvedValue([mockBackup]);
 
@@ -1660,7 +1660,7 @@ describe("Tenant Backup Service", () => {
       const mockBackup: any = {
         id: "backup-missing-file",
         filePath: "/path/to/gone.zip",
-        destroy: jest.fn().mockResolvedValue(undefined)
+        destroy: jest.fn().mockResolvedValue(undefined),
       };
       mockTenantBackup.findAll.mockResolvedValue([mockBackup]);
       mockFs.existsSync.mockReturnValue(false);
@@ -1678,12 +1678,12 @@ describe("Tenant Backup Service", () => {
 
       await cleanupExpiredBackups(mockTenantId, mockModels);
       expect(mockTenantBackup.findAll.mock.calls[0][0].where).toMatchObject({
-        tenantId: mockTenantId
+        tenantId: mockTenantId,
       });
 
       await cleanupExpiredBackups(null, mockModels);
       expect(
-        mockTenantBackup.findAll.mock.calls[1][0].where
+        mockTenantBackup.findAll.mock.calls[1][0].where,
       ).not.toHaveProperty("tenantId");
     });
   });
@@ -1696,14 +1696,14 @@ describe("Tenant Backup Service", () => {
         filePath: "/mock/backups/backup.zip",
         status: "COMPLETED",
         update: jest.fn().mockResolvedValue(true),
-        destroy: jest.fn().mockRejectedValue(new Error("Database deletion error"))
+        destroy: jest.fn().mockRejectedValue(new Error("Database deletion error")),
       };
 
       mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
       mockFs.existsSync.mockReturnValue(true);
 
       await expect(
-        deleteBackup(mockBackupId, mockUserId, mockModels)
+        deleteBackup(mockBackupId, mockUserId, mockModels),
       ).rejects.toThrow("Failed to delete backup: Database deletion error");
 
       // The row, the soft delete and the audit roll back together; the file
@@ -1719,7 +1719,7 @@ describe("Tenant Backup Service", () => {
     const storage = require("../../services/storage");
     const KEY = `t/${mockTenantId}/backups/tenant_stored.zip`;
     const putObject = () =>
-    storage.__objects.set(KEY, { body: Buffer.from("stored zip"), contentType: "application/zip", modifiedAt: new Date() });
+      storage.__objects.set(KEY, { body: Buffer.from("stored zip"), contentType: "application/zip", modifiedAt: new Date() });
 
     beforeEach(() => storage.__reset());
 
@@ -1745,7 +1745,7 @@ describe("Tenant Backup Service", () => {
         status: "COMPLETED",
         filePath: KEY,
         update: jest.fn().mockResolvedValue({}),
-        destroy: jest.fn().mockResolvedValue({})
+        destroy: jest.fn().mockResolvedValue({}),
       };
       mockTenantBackup.findByPk.mockResolvedValue(backup);
       await deleteBackup(mockBackupId, mockUserId);

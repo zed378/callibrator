@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-187 — tenantHierarchy#createSubOrganization on the REAL models.
  *
@@ -22,7 +22,7 @@
 jest.mock("../../services/clientFacility.service", () => ({
   SELF_FACILITY_CODE: "SELF",
   selfFacilityName: (name: any) => name,
-  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" }))
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
 }));
 
 process.env["HIERARCHY_ENABLED"] = "true";
@@ -41,7 +41,7 @@ jest.mock("../../config", () => {
       text,
       tx: options.transaction ? options.transaction.id : null,
       // The row as validated and about to be inserted.
-      row: options.instance ? options.instance.get({ plain: true }) : null
+      row: options.instance ? options.instance.get({ plain: true }) : null,
     };
     mockDb.statements.push(entry);
     if (mockDb.failOn && mockDb.failOn.test(text)) {
@@ -93,7 +93,7 @@ beforeEach(() => {
     subdomain: "hosp-a",
     email: "admin@hospital-a.example",
     status: "active",
-    plan: "business"
+    plan: "business",
   };
   jest.spyOn(logger, "error").mockImplementation(() => logger);
 });
@@ -119,7 +119,7 @@ describe("A-187 — createSubOrganization creates a valid tenant, its hierarchy 
       code: "HOSP_A_003",
       parentId: PARENT,
       plan: "business",
-      status: "active"
+      status: "active",
     });
   });
 
@@ -147,26 +147,26 @@ describe("A-187 — createSubOrganization creates a valid tenant, its hierarchy 
       resourceType: "Tenant",
       resourceId: result.tenantId,
       ipAddress: "10.0.0.9",
-      userAgent: "UA"
+      userAgent: "UA",
     });
     expect(audit.row.changes).toEqual({
       operation: "CREATE_SUB_ORGANIZATION",
       before: {},
       after: { name: "Branch A", code: "HOSP_A_003", subdomain: "hosp-a-003", parentId: PARENT, path: "/hosp_a/hosp_a_003", depth: 1 },
       // P20-07 (P19-04 spec § 4.3): the child's self facility, made in the same transaction, is named.
-      selfFacilityId: "5e1f0000-0000-4000-8000-0000000000f0"
+      selfFacilityId: "5e1f0000-0000-4000-8000-0000000000f0",
     });
     const { createSelfFacility } = require("../../services/clientFacility.service");
     expect(createSelfFacility).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Branch A" }),
       { userId: actor.userId },
-      { transaction: expect.anything() }
+      { transaction: expect.anything() },
     );
   });
 
   it("an explicit code is used, and its subdomain follows it", async () => {
     const result = await asSuperAdmin(() =>
-    svc.createSubOrganization(PARENT, { name: "Branch B", code: "HOSP_A_EAST" }, actor)
+      svc.createSubOrganization(PARENT, { name: "Branch B", code: "HOSP_A_EAST" }, actor),
     );
 
     expect(result.code).toBe("HOSP_A_EAST");
@@ -186,14 +186,14 @@ describe("A-187 — createSubOrganization creates a valid tenant, its hierarchy 
     mockDb.failWith = new Error("audit insert failed");
 
     await expect(asSuperAdmin(() => svc.createSubOrganization(PARENT, { name: "Branch A" }, actor))).rejects.toMatchObject({
-      status: 500
+      status: 500,
     });
     expect(mockDb.committed).toEqual([]);
   });
 
   it("with no actor it is refused, and nothing is committed (A-124)", async () => {
     await expect(asSuperAdmin(() => svc.createSubOrganization(PARENT, { name: "Branch A" }))).rejects.toMatchObject({
-      status: 500
+      status: 500,
     });
     expect(mockDb.committed).toEqual([]);
   });
@@ -203,7 +203,7 @@ describe("A-187 — createSubOrganization creates a valid tenant, its hierarchy 
 
     await expect(asSuperAdmin(() => svc.createSubOrganization(PARENT, { name: "Branch A" }, actor))).rejects.toMatchObject({
       status: 409,
-      message: expect.stringContaining('"HOSP_A_003"')
+      message: expect.stringContaining('"HOSP_A_003"'),
     });
     expect(mockDb.committed).toEqual([]);
   });
@@ -222,7 +222,7 @@ describe("A-187 — refusals happen before any write", () => {
     mockDb.parent.status = "suspended";
     await expect(asSuperAdmin(() => svc.createSubOrganization(PARENT, { name: "X1" }, actor))).rejects.toMatchObject({
       status: 409,
-      message: expect.stringContaining("suspended")
+      message: expect.stringContaining("suspended"),
     });
     expect(writes()).toEqual([]);
   });
@@ -237,7 +237,7 @@ describe("A-187 — refusals happen before any write", () => {
     mockDb.hierarchy = { id: "h-1", tenantId: PARENT, tenantCode: "HOSP_A", path: "/a/b/c/d/e", depth: 5 };
     await expect(asSuperAdmin(() => svc.createSubOrganization(PARENT, { name: "X1" }, actor))).rejects.toMatchObject({
       status: 409,
-      message: expect.stringContaining("Maximum hierarchy depth (5)")
+      message: expect.stringContaining("Maximum hierarchy depth (5)"),
     });
     expect(writes()).toEqual([]);
   });

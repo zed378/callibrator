@@ -1,19 +1,19 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 // P20-07: tenant creation also makes the tenant's self client facility (services/clientFacility,
 // proven on memoryDb by clientFacility.service.p2007 and on PostgreSQL by clientFacilities.p2007.live).
 // A fixture here: this suite is about the tenant, so the facility is a stand-in.
 jest.mock("../../services/clientFacility.service", () => ({
   SELF_FACILITY_CODE: "SELF",
   selfFacilityName: (name: any) => name,
-  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" }))
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     debug: jest.fn(),
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 jest.mock("../../utils/appError.util", () => ({
   AppError: class AppError extends Error {
@@ -22,7 +22,7 @@ jest.mock("../../utils/appError.util", () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 // A-187: createSubOrganization writes in a managed transaction and audits.
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn(async () => ({})) }));
@@ -33,10 +33,10 @@ jest.mock("../../config", () => ({
       Op: {
         like: { [Symbol.toStringTag]: "Op.like" },
         or: { [Symbol.toStringTag]: "Op.or" },
-        in: { [Symbol.toStringTag]: "Op.in" }
-      }
-    }
-  }
+        in: { [Symbol.toStringTag]: "Op.in" },
+      },
+    },
+  },
 }));
 
 describe("tenantHierarchy.service", () => {
@@ -60,8 +60,8 @@ describe("tenantHierarchy.service", () => {
 
       await expect(
         tenantHierarchyService.createSubOrganization("parent-1", {
-          name: "Child Org"
-        })
+          name: "Child Org",
+        }),
       ).rejects.toThrow("Tenant hierarchy is disabled");
     });
 
@@ -76,8 +76,8 @@ describe("tenantHierarchy.service", () => {
 
       await expect(
         tenantHierarchyService.createSubOrganization("nonexistent", {
-          name: "Child Org"
-        })
+          name: "Child Org",
+        }),
       ).rejects.toThrow("Parent tenant not found");
     });
 
@@ -87,8 +87,8 @@ describe("tenantHierarchy.service", () => {
         findByPk: jest.fn().mockResolvedValue({
           id: "parent-1",
           code: "PARENT",
-          status: "inactive"
-        })
+          status: "inactive",
+        }),
       };
       const mockModels: any = { Tenant: mockTenant };
       jest.doMock("../../models", () => mockModels);
@@ -98,8 +98,8 @@ describe("tenantHierarchy.service", () => {
 
       await expect(
         tenantHierarchyService.createSubOrganization("parent-1", {
-          name: "Child Org"
-        })
+          name: "Child Org",
+        }),
       ).rejects.toMatchObject({ status: 409, message: expect.stringContaining("inactive") });
     });
 
@@ -110,20 +110,20 @@ describe("tenantHierarchy.service", () => {
           id: "parent-1",
           code: "PARENT",
           status: "active",
-          plan: "professional"
+          plan: "professional",
         }),
         create: jest.fn().mockResolvedValue({
           id: "child-1",
           code: "PARENT_001",
           name: "Child Org",
-          status: "active"
-        })
+          status: "active",
+        }),
       };
       const mockHierarchy: any = {
         findOne: jest.fn().mockResolvedValue({
           tenantCode: "PARENT",
           path: "/parent",
-          depth: 0
+          depth: 0,
         }),
         create: jest.fn().mockResolvedValue({
           id: "hierarchy-1",
@@ -132,15 +132,15 @@ describe("tenantHierarchy.service", () => {
           parentCode: "PARENT",
           path: "/parent/parent_001",
           depth: 1,
-          destroy: jest.fn().mockResolvedValue(true)
+          destroy: jest.fn().mockResolvedValue(true),
         }),
-        count: jest.fn().mockResolvedValue(0)
+        count: jest.fn().mockResolvedValue(0),
       };
       const mockModels: any = {
         Tenant: mockTenant,
         TenantHierarchy: mockHierarchy,
         Role: {},
-        User: {}
+        User: {},
       };
       jest.doMock("../../models", () => mockModels);
 
@@ -150,7 +150,7 @@ describe("tenantHierarchy.service", () => {
       const result = await tenantHierarchyService.createSubOrganization(
         "parent-1",
         { name: "Child Org" },
-        { userId: "super-1" }
+        { userId: "super-1" },
       );
 
       expect(result.tenantId).toBeDefined();
@@ -162,7 +162,7 @@ describe("tenantHierarchy.service", () => {
   describe("getTenantTree", () => {
     it("should return root tree when hierarchy not found", async () => {
       const mockHierarchy: any = {
-        findOne: jest.fn().mockResolvedValue(null)
+        findOne: jest.fn().mockResolvedValue(null),
       };
       const mockModels: any = { TenantHierarchy: mockHierarchy };
       jest.doMock("../../models", () => mockModels);
@@ -179,20 +179,20 @@ describe("tenantHierarchy.service", () => {
     it("should return tree with children", async () => {
       const mockHierarchy: any = {
         findOne: jest.
-        fn().
-        mockResolvedValueOnce({
-          tenantCode: "PARENT",
-          depth: 0,
-          path: "/parent",
-          tenant: { id: "tenant-1", name: "Parent", code: "PARENT" }
-        }).
-        mockResolvedValueOnce(null),
+          fn().
+          mockResolvedValueOnce({
+            tenantCode: "PARENT",
+            depth: 0,
+            path: "/parent",
+            tenant: { id: "tenant-1", name: "Parent", code: "PARENT" },
+          }).
+          mockResolvedValueOnce(null),
         findAll: jest.fn().mockResolvedValue([
-        {
-          tenant: { id: "child-1", name: "Child 1", code: "CHILD_001" },
-          depth: 1
-        }]
-        )
+          {
+            tenant: { id: "child-1", name: "Child 1", code: "CHILD_001" },
+            depth: 1,
+          }],
+        ),
       };
       const mockModels: any = { TenantHierarchy: mockHierarchy };
       jest.doMock("../../models", () => mockModels);
@@ -210,7 +210,7 @@ describe("tenantHierarchy.service", () => {
 
     it("should return empty children on error", async () => {
       const mockHierarchy: any = {
-        findOne: jest.fn().mockRejectedValue(new Error("DB error"))
+        findOne: jest.fn().mockRejectedValue(new Error("DB error")),
       };
       const mockModels: any = { TenantHierarchy: mockHierarchy };
       jest.doMock("../../models", () => mockModels);
@@ -228,7 +228,7 @@ describe("tenantHierarchy.service", () => {
   describe("getDescendantTenants", () => {
     it("should return empty array when hierarchy not found", async () => {
       const mockHierarchy: any = {
-        findOne: jest.fn().mockResolvedValue(null)
+        findOne: jest.fn().mockResolvedValue(null),
       };
       const mockModels: any = { TenantHierarchy: mockHierarchy };
       jest.doMock("../../models", () => mockModels);
@@ -245,11 +245,11 @@ describe("tenantHierarchy.service", () => {
     it("should return descendant tenant IDs", async () => {
       const mockHierarchy: any = {
         findOne: jest.fn().mockResolvedValue({
-          path: "/parent/child"
+          path: "/parent/child",
         }),
         findAll: jest.
-        fn().
-        mockResolvedValue([{ tenantId: "desc-1" }, { tenantId: "desc-2" }])
+          fn().
+          mockResolvedValue([{ tenantId: "desc-1" }, { tenantId: "desc-2" }]),
       };
       const mockModels: any = { TenantHierarchy: mockHierarchy };
       jest.doMock("../../models", () => mockModels);
@@ -265,7 +265,7 @@ describe("tenantHierarchy.service", () => {
 
     it("should return empty array on error", async () => {
       const mockHierarchy: any = {
-        findOne: jest.fn().mockRejectedValue(new Error("DB error"))
+        findOne: jest.fn().mockRejectedValue(new Error("DB error")),
       };
       const mockModels: any = { TenantHierarchy: mockHierarchy };
       jest.doMock("../../models", () => mockModels);
@@ -283,7 +283,7 @@ describe("tenantHierarchy.service", () => {
   describe("getAncestorTenants", () => {
     it("should return empty array when hierarchy not found", async () => {
       const mockHierarchy: any = {
-        findOne: jest.fn().mockResolvedValue(null)
+        findOne: jest.fn().mockResolvedValue(null),
       };
       const mockModels: any = { TenantHierarchy: mockHierarchy };
       jest.doMock("../../models", () => mockModels);
@@ -300,33 +300,33 @@ describe("tenantHierarchy.service", () => {
     it("should return ancestor tenants", async () => {
       const mockHierarchy: any = {
         findOne: jest.
-        fn().
-        mockResolvedValueOnce({
-          path: "/parent/child/grandchild",
-          depth: 2
-        }).
-        mockResolvedValueOnce({
-          tenant: {
-            id: "parent-1",
-            code: "PARENT",
-            name: "Parent",
-            status: "active"
-          },
-          depth: 0
-        }).
-        mockResolvedValueOnce({
-          tenant: {
-            id: "child-1",
-            code: "CHILD",
-            name: "Child",
-            status: "active"
-          },
-          depth: 1
-        })
+          fn().
+          mockResolvedValueOnce({
+            path: "/parent/child/grandchild",
+            depth: 2,
+          }).
+          mockResolvedValueOnce({
+            tenant: {
+              id: "parent-1",
+              code: "PARENT",
+              name: "Parent",
+              status: "active",
+            },
+            depth: 0,
+          }).
+          mockResolvedValueOnce({
+            tenant: {
+              id: "child-1",
+              code: "CHILD",
+              name: "Child",
+              status: "active",
+            },
+            depth: 1,
+          }),
       };
       const mockModels: any = {
         TenantHierarchy: mockHierarchy,
-        Tenant: {}
+        Tenant: {},
       };
       jest.doMock("../../models", () => mockModels);
 
@@ -343,7 +343,7 @@ describe("tenantHierarchy.service", () => {
 
     it("should return empty array on error", async () => {
       const mockHierarchy: any = {
-        findOne: jest.fn().mockRejectedValue(new Error("DB error"))
+        findOne: jest.fn().mockRejectedValue(new Error("DB error")),
       };
       const mockModels: any = { TenantHierarchy: mockHierarchy };
       jest.doMock("../../models", () => mockModels);
@@ -362,18 +362,18 @@ describe("tenantHierarchy.service", () => {
     it("should return user roles across tenants", async () => {
       const mockUser: any = {
         findAll: jest.fn().mockResolvedValue([
-        {
-          tenantId: "tenant-1",
-          // the association aliases are `tenant` and `role` (A-110)
-          tenant: { name: "Tenant 1", code: "T1" },
-          role: { id: "role-1", name: "Admin", level: 3 }
-        }]
-        )
+          {
+            tenantId: "tenant-1",
+            // the association aliases are `tenant` and `role` (A-110)
+            tenant: { name: "Tenant 1", code: "T1" },
+            role: { id: "role-1", name: "Admin", level: 3 },
+          }],
+        ),
       };
       const mockModels: any = {
         User: mockUser,
         Role: {},
-        Tenant: {}
+        Tenant: {},
       };
       jest.doMock("../../models", () => mockModels);
 
@@ -390,12 +390,12 @@ describe("tenantHierarchy.service", () => {
 
     it("A-110: logs and answers 500 on error instead of an empty list", async () => {
       const mockUser: any = {
-        findAll: jest.fn().mockRejectedValue(new Error("DB error"))
+        findAll: jest.fn().mockRejectedValue(new Error("DB error")),
       };
       const mockModels: any = {
         User: mockUser,
         Role: {},
-        Tenant: {}
+        Tenant: {},
       };
       jest.doMock("../../models", () => mockModels);
 
@@ -403,7 +403,7 @@ describe("tenantHierarchy.service", () => {
       tenantHierarchyService = require("../../services/tenantHierarchy.service");
 
       await expect(
-        tenantHierarchyService.getUserRolesAcrossTenants("user-1")
+        tenantHierarchyService.getUserRolesAcrossTenants("user-1"),
       ).rejects.toMatchObject({ status: 500, message: "Failed to get user roles" });
     });
   });

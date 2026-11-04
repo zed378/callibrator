@@ -5,20 +5,20 @@ require("path");
 
 jest.mock("nodemailer", () => ({
   createTransport: jest.fn().mockReturnValue({
-    sendMail: jest.fn().mockResolvedValue({ messageId: "123" })
-  })
+    sendMail: jest.fn().mockResolvedValue({ messageId: "123" }),
+  }),
 }));
 jest.mock("mustache", () => ({
   render: jest.fn((template: any, variables: any) => {
     return `Rendered: ${template} with ${JSON.stringify(variables)}`;
-  })
+  }),
 }));
 jest.mock("fs", () => ({
   readFileSync: jest.fn().mockImplementation((filepath: any) => {
     if (filepath.includes("template.html")) {return "Mock Activation Template: {{firstName}} {{link}}";}
     if (filepath.includes("otp.html")) {return "Mock OTP Template: {{firstName}} {{otp}}";}
     return "Default Template";
-  })
+  }),
 }));
 
 // Mock process.env before requiring the service
@@ -41,7 +41,7 @@ describe("email.service", () => {
       const emailData: any = {
         to: "user@test.com",
         subject: "Test Subject",
-        html: "<p>Test HTML</p>"
+        html: "<p>Test HTML</p>",
       };
 
       const result = await sendEmail(emailData);
@@ -50,7 +50,7 @@ describe("email.service", () => {
         from: "noreply@example.com",
         to: "user@test.com",
         subject: "Test Subject",
-        html: "<p>Test HTML</p>"
+        html: "<p>Test HTML</p>",
       });
       expect(result).toEqual({ messageId: "123" });
     });
@@ -63,7 +63,7 @@ describe("email.service", () => {
         email: "newuser@test.com",
         firstName: "John",
         lastName: "Doe",
-        activationLink: "http://activate.test/123"
+        activationLink: "http://activate.test/123",
       };
 
       const result = await sendActivationEmail(emailData);
@@ -79,16 +79,16 @@ describe("email.service", () => {
           supportEmail: "noreply@example.com",
           firstName: "John",
           lastName: "Doe",
-          link: "http://activate.test/123"
-        }
+          link: "http://activate.test/123",
+        },
       );
 
       expect(mockSendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: "newuser@test.com",
           subject: "Account Activation",
-          html: expect.stringContaining("Rendered: Mock Activation Template")
-        })
+          html: expect.stringContaining("Rendered: Mock Activation Template"),
+        }),
       );
       expect(result).toEqual({ messageId: "123" });
     });
@@ -119,7 +119,7 @@ describe("email.service", () => {
         email: "a@test.com",
         firstName: "A",
         lastName: "B",
-        activationLink: "http://activate.test/1"
+        activationLink: "http://activate.test/1",
       });
 
       const ctx = require("mustache").render.mock.calls[0][1];
@@ -137,7 +137,7 @@ describe("email.service", () => {
         email: "forgot@test.com",
         firstName: "Jane",
         lastName: "Smith",
-        otp: "123456"
+        otp: "123456",
       };
 
       const result = await sendOtpEmail(emailData);
@@ -151,16 +151,16 @@ describe("email.service", () => {
           supportEmail: "noreply@example.com",
           firstName: "Jane",
           lastName: "Smith",
-          otp: "123456"
-        }
+          otp: "123456",
+        },
       );
 
       expect(mockSendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: "forgot@test.com",
           subject: "Password Reset OTP",
-          html: expect.stringContaining("Rendered: Mock OTP Template")
-        })
+          html: expect.stringContaining("Rendered: Mock OTP Template"),
+        }),
       );
       expect(result).toEqual({ messageId: "123" });
     });
@@ -174,14 +174,14 @@ describe("email.service", () => {
         firstName: "Alice",
         title: "Test Title & Special chars",
         message: "Hello <World>",
-        actionUrl: "https://view.details.com/123"
+        actionUrl: "https://view.details.com/123",
       });
 
       expect(mockSendMail).toHaveBeenCalledWith({
         from: "noreply@example.com",
         to: "recipient@test.com",
         subject: "Test Title & Special chars",
-        html: expect.stringContaining("Test Title &amp; Special chars")
+        html: expect.stringContaining("Test Title &amp; Special chars"),
       });
       expect(mockSendMail.mock.calls[0][0].html).toContain("Hi Alice");
       expect(mockSendMail.mock.calls[0][0].html).toContain("Hello &lt;World&gt;");
@@ -195,7 +195,7 @@ describe("email.service", () => {
         email: "recipient@test.com",
         title: "Title",
         message: "Message",
-        actionUrl: "invalid-url"
+        actionUrl: "invalid-url",
       });
 
       expect(mockSendMail.mock.calls[0][0].html).toContain("Hi there");

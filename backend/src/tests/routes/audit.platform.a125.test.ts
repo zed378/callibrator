@@ -53,7 +53,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
 jest.mock("../../models", () => {
   const { applyTenantWhere } = jest.requireActual<{
     applyTenantWhere: (options: { where?: Record<string, unknown> }, model: { rawAttributes: Record<string, unknown> }) => void;
-  }>("../../utils/tenantScope.util");
+      }>("../../utils/tenantScope.util");
   const matches = (row: AuditRow, where: Record<string, unknown>) =>
     Object.entries(where).every(([key, value]) => value === undefined || (row as unknown as Record<string, unknown>)[key] === value);
   return {
@@ -100,7 +100,6 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const { createTwoTenants } = require("../fixtures/twoTenants") as { createTwoTenants: typeof import("../fixtures/twoTenants").createTwoTenants };
 const RolesService = require("../../services/roles.service") as typeof import("../../services/roles.service");
 const { AuditLog } = require("../../models") as typeof import("../../models");
@@ -108,7 +107,6 @@ const { ROLE_NAMES } = require("../../constants") as typeof import("../../consta
 const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant") as typeof import("../../constants/platformTenant");
 const router = require("../../routes/api/audit.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
 const { errorHandler } = require("../../middlewares/errorHandlers.middleware") as typeof import("../../middlewares/errorHandlers.middleware");
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 interface HttpResponse {
   status: number;
@@ -253,14 +251,13 @@ describe("A-125 — the platform audit trail", () => {
 
   it("even if asked for PLATFORM's rows, the tenant hooks give a hospital principal only its own", async () => {
     currentUser = hospitalAdmin;
-    /* eslint-disable @typescript-eslint/no-require-imports */
+
     const auditService = require("../../services/audit.service") as {
       fetchAuditLogs: (query: { tenantId: string }) => Promise<{ data: { rows: AuditRow[]; meta: { total: number } } }>;
     };
     const { tenantStorage } = require("../../middlewares/tenantContext.middleware") as {
       tenantStorage: { run: <T>(ctx: object, fn: () => Promise<T>) => Promise<T> };
     };
-    /* eslint-enable @typescript-eslint/no-require-imports */
 
     const result = await tenantStorage.run(
       { tenantId: fx.tenantA.id, isSuperAdmin: false, isSystemTask: false },

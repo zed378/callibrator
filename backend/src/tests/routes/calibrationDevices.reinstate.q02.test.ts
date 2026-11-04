@@ -20,7 +20,7 @@
 import type { Request, Response, NextFunction } from "express";
 
 interface MockTx {
-  undo: Array<[MockDeviceRow, Record<string, unknown>]>;
+  undo: [MockDeviceRow, Record<string, unknown>][];
 }
 
 interface MockDeviceRow {
@@ -38,8 +38,8 @@ interface MockDeviceRow {
 interface MockState {
   principal: { tenantId: string; id: string; role?: { name: string } } | null;
   rows: MockDeviceRow[];
-  sql: Array<{ sql: string; bind: unknown[]; type: string; transaction: unknown }>;
-  audit: Array<{ entry: Record<string, unknown>; transaction: unknown }>;
+  sql: { sql: string; bind: unknown[]; type: string; transaction: unknown }[];
+  audit: { entry: Record<string, unknown>; transaction: unknown }[];
   failAudit: Error | null;
   noReqTenant: boolean;
 }
@@ -121,10 +121,8 @@ jest.mock("../../services/audit.service", () => ({
   }),
 }));
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const { createTwoTenants } = require("../fixtures/twoTenants") as { createTwoTenants: () => ReturnType<typeof import("../fixtures/twoTenants").createTwoTenants> };
 const router = require("../../routes/api/calibrationDevices.route") as { handle: (req: unknown, res: unknown, next: (err?: { status?: number; message?: string }) => void) => void };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 interface HttpResponse {
   status: number;

@@ -3,9 +3,9 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(),
     findAll: jest.fn(),
     upsert: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
-  Tenant: { findByPk: jest.fn() }
+  Tenant: { findByPk: jest.fn() },
 }));
 // A-280 (ADR-094): a setting change and its audit rows share a transaction.
 jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb: any) => cb("tx")) } }));
@@ -55,7 +55,7 @@ describe("networkSecurity.service", () => {
           resourceId: "t1",
           ipAddress: "10.9.9.9",
           userAgent: "UA",
-          changes: { operation: "SET_IP_ALLOWLIST", before: ["192.168.1.0/24"], after: ["10.0.0.0/8"] }
+          changes: { operation: "SET_IP_ALLOWLIST", before: ["192.168.1.0/24"], after: ["10.0.0.0/8"] },
         });
       }
     });
@@ -102,8 +102,8 @@ describe("networkSecurity.service", () => {
       expect(result.geofence.radiusKm).toBe(50);
       // A-280: recorded twice, with the operator (none given: null, fails closed).
       expect(auditService.logAction.mock.calls.map(([e]: any) => [e.tenantId, e.changes.operation, e.userId])).toEqual([
-      [PLATFORM_TENANT_ID, "SET_GEOFENCE", null],
-      ["t1", "SET_GEOFENCE", null]]
+        [PLATFORM_TENANT_ID, "SET_GEOFENCE", null],
+        ["t1", "SET_GEOFENCE", null]],
       );
     });
 
@@ -145,7 +145,7 @@ describe("networkSecurity.service", () => {
       TenantSettings.findOne.mockResolvedValue({ value: "}{not json" });
 
       await expect(networkSecurity.getTenantIpAllowlist("t1")).resolves.toEqual(
-        []
+        [],
       );
     });
 
@@ -160,7 +160,7 @@ describe("networkSecurity.service", () => {
       TenantSettings.findOne.mockResolvedValue({ value: null });
 
       await expect(networkSecurity.getTenantIpAllowlist("t1")).resolves.toEqual(
-        []
+        [],
       );
     });
 
@@ -173,7 +173,7 @@ describe("networkSecurity.service", () => {
 
     it("treats an unparseable CIDR as not matching rather than throwing", async () => {
       TenantSettings.findOne.mockResolvedValue({
-        value: JSON.stringify(["not-a-cidr"])
+        value: JSON.stringify(["not-a-cidr"]),
       });
 
       const result = await networkSecurity.checkIpAllowlist("t1", "10.0.0.1");
@@ -184,7 +184,7 @@ describe("networkSecurity.service", () => {
 
     it("treats a malformed IP as not matching rather than throwing", async () => {
       TenantSettings.findOne.mockResolvedValue({
-        value: JSON.stringify(["10.0.0.0/8"])
+        value: JSON.stringify(["10.0.0.0/8"]),
       });
 
       const result = await networkSecurity.checkIpAllowlist("t1", "not.an.ip");

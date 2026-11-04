@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * W-20 against a REAL PostgreSQL 18 — a tenant's hard delete cannot erase its
  * audit trail.
@@ -35,7 +35,7 @@ describe("W-20 — the audit trail survives a tenant delete (live PostgreSQL)", 
 
   const q = async (sql: any, replacements: any = {}) => (await db.query(sql, { replacements }))[0];
   const auditRows = async () =>
-  Number((await q("SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = :t", { t: T }))[0].n);
+    Number((await q("SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = :t", { t: T }))[0].n);
 
   let scratch: any;
 
@@ -48,12 +48,12 @@ describe("W-20 — the audit trail survives a tenant delete (live PostgreSQL)", 
     await q(
       `INSERT INTO tenants (id, name, subdomain, email, status, offboarded_at, offboard_retention_expires_at, created_at, updated_at)
        VALUES (:t, 'w20-live', 'w20-live', 'w20@example.test', 'deleted', now() - interval '60 days', now() - interval '30 days', now(), now())`,
-      { t: T }
+      { t: T },
     );
     await q(
       `INSERT INTO audit_logs (id, tenant_id, actor_type, actor_name, action, resource_type, resource_id, changes, created_at)
        VALUES (gen_random_uuid(), :t, 'system', 'system:tenant-lifecycle', 'UPDATE', 'Tenant', :t, '{"operation":"TENANT_OFFBOARD"}', now())`,
-      { t: T }
+      { t: T },
     );
   }, LIVE_BOOT_TIMEOUT_MS);
 
@@ -69,7 +69,7 @@ describe("W-20 — the audit trail survives a tenant delete (live PostgreSQL)", 
   it("runs as the application role, which can neither delete nor truncate an audit row", async () => {
     const [row] = await q(
       `SELECT current_user AS u, has_table_privilege('audit_logs', 'DELETE') AS d,
-              has_table_privilege('audit_logs', 'TRUNCATE') AS t`
+              has_table_privilege('audit_logs', 'TRUNCATE') AS t`,
     );
     expect(row).toEqual({ u: "callibrator_app", d: false, t: false });
     const err = await q("DELETE FROM audit_logs WHERE tenant_id = :t", { t: T }).catch((e: any) => e);
@@ -82,7 +82,7 @@ describe("W-20 — the audit trail survives a tenant delete (live PostgreSQL)", 
       `SELECT c.confdeltype
          FROM pg_constraint c
          JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
-        WHERE c.conrelid = 'audit_logs'::regclass AND c.contype = 'f' AND a.attname = 'tenant_id'`
+        WHERE c.conrelid = 'audit_logs'::regclass AND c.contype = 'f' AND a.attname = 'tenant_id'`,
     );
     expect(fk.confdeltype).toBe("r"); // r = RESTRICT (c would be CASCADE)
   });

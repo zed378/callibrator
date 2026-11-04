@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * D-23 — hardDeleteOffboardedTenant: one transaction, and never a partial purge.
  *
@@ -25,7 +25,7 @@ jest.mock("../../config", () => {
   return { db };
 });
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn(async (row: any, options: any) => mockCalls.audit.push({ row, options }))
+  logAction: jest.fn(async (row: any, options: any) => mockCalls.audit.push({ row, options })),
 }));
 
 const models: any = require("../../models");
@@ -49,7 +49,7 @@ beforeEach(() => {
     name: "Closed Hospital",
     status: "deleted",
     offboardRetentionExpiresAt: new Date(Date.now() - 86400000),
-    destroy: jest.fn(async (options: any) => mockCalls.destroyed.push(["tenants", options]))
+    destroy: jest.fn(async (options: any) => mockCalls.destroyed.push(["tenants", options])),
   };
   jest.spyOn(models.Tenant, "findByPk").mockImplementation(async () => tenantRow);
   // Every scoped model: count() answers from mockCalls.counts[table] (0 by
@@ -63,7 +63,7 @@ beforeEach(() => {
       destroy: jest.fn(async (options: any) => {
         mockCalls.destroyed.push([model.tableName, options]);
         return 2;
-      })
+      }),
     });
   }
 });
@@ -78,7 +78,7 @@ describe("D-23 — hard delete of an offboarded tenant", () => {
     expect(err.message).toBe(
       "This tenant still holds records that are retained after offboarding: " +
       "audit_logs (12), calibration_records (3), certificates (1). " +
-      "Nothing was deleted. Removing retained records is an archival decision, not part of this operation."
+      "Nothing was deleted. Removing retained records is an archival decision, not part of this operation.",
     );
     expect(mockCalls.destroyed).toEqual([]);
     expect(mockCalls.audit).toEqual([]);
@@ -88,13 +88,13 @@ describe("D-23 — hard delete of an offboarded tenant", () => {
     await tenantLifecycle.hardDeleteOffboardedTenant(TENANT, { userId: "super-1" });
 
     const counted = scoped.
-    filter((m: any) => m.unscoped.mock.results.some((r: any) => r.value.count.mock.calls.length > 0)).
-    map((m: any) => m.tableName).
-    sort();
+      filter((m: any) => m.unscoped.mock.results.some((r: any) => r.value.count.mock.calls.length > 0)).
+      map((m: any) => m.tableName).
+      sort();
     const expected = scoped.
-    map((m: any) => m.tableName).
-    filter((t: any) => !TENANT_FK_CASCADE.includes(t) && !["tenant_settings", "users", "client_facilities", "subscriptions"].includes(t)).
-    sort();
+      map((m: any) => m.tableName).
+      filter((t: any) => !TENANT_FK_CASCADE.includes(t) && !["tenant_settings", "users", "client_facilities", "subscriptions"].includes(t)).
+      sort();
     expect(counted).toEqual(expected);
     // The regulated records are among them.
     expect(counted).toEqual(expect.arrayContaining(["audit_logs", "calibration_records", "certificates", "signature_records", "invoices"]));
@@ -111,22 +111,22 @@ describe("D-23 — hard delete of an offboarded tenant", () => {
     }
     expect(mockCalls.destroyed[4][1]).toEqual({ force: true, transaction: "TX" });
     expect(mockCalls.audit).toEqual([
-    {
-      row: expect.objectContaining({
-        tenantId: PLATFORM_TENANT_ID,
-        userId: "super-1",
-        action: "DELETE",
-        resourceType: "Tenant",
-        resourceId: TENANT,
-        ipAddress: "10.0.0.1",
-        changes: {
-          operation: "TENANT_HARD_DELETE",
-          before: { name: "Closed Hospital", status: "deleted" },
-          deleted: { tenant_settings: 2, users: 2, client_facilities: 2, subscriptions: 2 }
-        }
-      }),
-      options: { transaction: "TX" }
-    }]
+      {
+        row: expect.objectContaining({
+          tenantId: PLATFORM_TENANT_ID,
+          userId: "super-1",
+          action: "DELETE",
+          resourceType: "Tenant",
+          resourceId: TENANT,
+          ipAddress: "10.0.0.1",
+          changes: {
+            operation: "TENANT_HARD_DELETE",
+            before: { name: "Closed Hospital", status: "deleted" },
+            deleted: { tenant_settings: 2, users: 2, client_facilities: 2, subscriptions: 2 },
+          },
+        }),
+        options: { transaction: "TX" },
+      }],
     );
   });
 
@@ -145,14 +145,14 @@ describe("D-23 — hard delete of an offboarded tenant", () => {
     tenantRow.status = "active";
     await expect(tenantLifecycle.hardDeleteOffboardedTenant(TENANT)).rejects.toMatchObject({
       status: 409,
-      message: 'This tenant is "active", not offboarded: offboard it before it can be deleted'
+      message: 'This tenant is "active", not offboarded: offboard it before it can be deleted',
     });
 
     tenantRow.status = "deleted";
     tenantRow.offboardRetentionExpiresAt = new Date(Date.now() + 86400000);
     await expect(tenantLifecycle.hardDeleteOffboardedTenant(TENANT)).rejects.toMatchObject({
       status: 409,
-      message: expect.stringContaining("retention period runs until")
+      message: expect.stringContaining("retention period runs until"),
     });
     expect(mockCalls.destroyed).toEqual([]);
   });

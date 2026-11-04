@@ -48,7 +48,7 @@ const createSeededAuthorization = () => {
   const roles = Object.keys(ROLE_IDS).map((key: any) => ({
     id: ROLE_IDS[key],
     name: ROLE_NAMES[key],
-    status: "active"
+    status: "active",
   }));
 
   const makeMenuRow = (payload: any) => {
@@ -60,7 +60,7 @@ const createSeededAuthorization = () => {
       },
       async destroy() {
         menuGroups.splice(menuGroups.indexOf(row), 1);
-      }
+      },
     };
     return row;
   };
@@ -69,7 +69,7 @@ const createSeededAuthorization = () => {
     // seedMenuGroups asks only for deprecated groups; there are none here.
     findAll: jest.fn(async () => []),
     findOne: jest.fn(
-      async ({ where = {} } = {}) => menuGroups.find((g: any) => g.slug === where.slug) || null
+      async ({ where = {} } = {}) => menuGroups.find((g: any) => g.slug === where.slug) || null,
     ),
     create: jest.fn(async (payload: any) => {
       if (payload.id && menuGroups.some((g: any) => g.id === payload.id)) {
@@ -78,15 +78,15 @@ const createSeededAuthorization = () => {
       const row = makeMenuRow({ id: payload.id || `generated-${menuGroups.length}`, ...payload });
       menuGroups.push(row);
       return row;
-    })
+    }),
   };
 
   const RoleMenuPermission = {
     findOne: jest.fn(
       async ({ where = {} } = {}) =>
-      grants.find(
-        (g: any) => g.roleId === where.roleId && g.menuGroupId === where.menuGroupId
-      ) || null
+        grants.find(
+          (g: any) => g.roleId === where.roleId && g.menuGroupId === where.menuGroupId,
+        ) || null,
     ),
     create: jest.fn(async (payload: any) => {
       const row = { ...payload };
@@ -97,32 +97,32 @@ const createSeededAuthorization = () => {
     // The matrix query: every grant of a role, with its menu and the menu's
     // direct children (`include: menu -> children`).
     findAll: jest.fn(async ({ where = {} } = {}) =>
-    grants.
-    filter((g: any) => g.roleId === where.roleId).
-    map((g: any) => {
-      const menu = menuGroups.find((m: any) => m.id === g.menuGroupId);
-      return {
-        permissionType: g.permissionType,
-        menu: menu ?
-        {
-          id: menu.id,
-          name: menu.name,
-          slug: menu.slug,
-          children: menuGroups.
-          filter((c: any) => c.parentId === menu.id).
-          map((c: any) => ({ name: c.name, slug: c.slug }))
-        } :
-        null
-      };
-    })
-    )
+      grants.
+        filter((g: any) => g.roleId === where.roleId).
+        map((g: any) => {
+          const menu = menuGroups.find((m: any) => m.id === g.menuGroupId);
+          return {
+            permissionType: g.permissionType,
+            menu: menu ?
+              {
+                id: menu.id,
+                name: menu.name,
+                slug: menu.slug,
+                children: menuGroups.
+                  filter((c: any) => c.parentId === menu.id).
+                  map((c: any) => ({ name: c.name, slug: c.slug })),
+              } :
+              null,
+          };
+        }),
+    ),
   };
 
   const Roles = {
     findOne: jest.fn(
-      async ({ where = {} } = {}) => roles.find((r: any) => r.name === where.name) || null
+      async ({ where = {} } = {}) => roles.find((r: any) => r.name === where.name) || null,
     ),
-    findByPk: jest.fn(async (id: any) => roles.find((r: any) => r.id === id) || null)
+    findByPk: jest.fn(async (id: any) => roles.find((r: any) => r.id === id) || null),
   };
 
   /**
@@ -162,9 +162,9 @@ const createSeededAuthorization = () => {
    * @returns {string[]}
    */
   const grantedSlugs = (name: any) =>
-  grants.
-  filter((g: any) => g.roleId === roleId(name)).
-  map((g: any) => menuGroups.find((m: any) => m.id === g.menuGroupId).slug);
+    grants.
+      filter((g: any) => g.roleId === roleId(name)).
+      map((g: any) => menuGroups.find((m: any) => m.id === g.menuGroupId).slug);
 
   return {
     MenuGroup,
@@ -174,7 +174,7 @@ const createSeededAuthorization = () => {
     roleId,
     grantedSlugs,
     menuGroups,
-    grants
+    grants,
   };
 };
 

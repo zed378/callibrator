@@ -1,39 +1,39 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 // A-41: mutations run in a managed transaction and audit through logAction.
 // In-transaction effects are asserted against a schema-enforcing ledger in
 // roles.audit.a41.test.js.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock("../../models", () => {
   const mockUser: any = {
-    findByPk: jest.fn()
+    findByPk: jest.fn(),
   };
   const mockRole: any = {
-    findAll: jest.fn()
+    findAll: jest.fn(),
   };
   const mockMenuGroup: any = {
     findByPk: jest.fn(),
-    findAll: jest.fn()
+    findAll: jest.fn(),
   };
   const mockRoleMenuPermission: any = {
-    findAll: jest.fn()
+    findAll: jest.fn(),
   };
   const mockUserMenuPermission: any = {
     findAll: jest.fn(),
     findOrCreate: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   };
   return {
     User: mockUser,
     Role: mockRole,
     MenuGroup: mockMenuGroup,
     RoleMenuPermission: mockRoleMenuPermission,
-    UserMenuPermission: mockUserMenuPermission
+    UserMenuPermission: mockUserMenuPermission,
   };
 });
 jest.mock("../../services/redis.service", () => ({
@@ -41,8 +41,8 @@ jest.mock("../../services/redis.service", () => ({
   set: jest.fn().mockResolvedValue(true),
   del: jest.fn().mockResolvedValue(true),
   cacheKeys: {
-    userPermissions: jest.fn((uid: any) => `user:perms:${uid}`)
-  }
+    userPermissions: jest.fn((uid: any) => `user:perms:${uid}`),
+  },
 }));
 jest.mock("../../utils/appError.util", () => ({
   AppError: class AppError extends Error {
@@ -51,14 +51,14 @@ jest.mock("../../utils/appError.util", () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 
 const {
   getUserPermissions,
   setUserPermission,
   removeUserPermission,
-  getUserOverrideMatrix
+  getUserOverrideMatrix,
 } = require("../../services/userPermission.service");
 
 describe("userPermission.service", () => {
@@ -72,7 +72,7 @@ describe("userPermission.service", () => {
       User.findByPk.mockResolvedValue(null);
 
       await expect(getUserPermissions("nonexistent")).rejects.toThrow(
-        "User not found"
+        "User not found",
       );
     });
 
@@ -91,51 +91,51 @@ describe("userPermission.service", () => {
           id: "role-1",
           name: "admin",
           nameToShow: "Administrator",
-          status: "active"
-        }
+          status: "active",
+        },
       });
 
       MenuGroup.findAll.mockResolvedValue([
-      {
-        id: "menu-1",
-        name: "dashboard",
-        slug: "dashboard",
-        icon: "home",
-        sortOrder: 1
-      },
-      {
-        id: "menu-2",
-        name: "reports",
-        slug: "reports",
-        icon: "chart",
-        sortOrder: 2
-      }]
-      );
-
-      const { RoleMenuPermission, UserMenuPermission } = require("../../models");
-      RoleMenuPermission.findAll.mockResolvedValue([
-      {
-        menuGroupId: "menu-1",
-        permissionType: "read",
-        menu: {
+        {
           id: "menu-1",
           name: "dashboard",
           slug: "dashboard",
           icon: "home",
-          parentId: null
-        }
-      },
-      {
-        menuGroupId: "menu-2",
-        permissionType: "write",
-        menu: {
+          sortOrder: 1,
+        },
+        {
           id: "menu-2",
           name: "reports",
           slug: "reports",
           icon: "chart",
-          parentId: null
-        }
-      }]
+          sortOrder: 2,
+        }],
+      );
+
+      const { RoleMenuPermission, UserMenuPermission } = require("../../models");
+      RoleMenuPermission.findAll.mockResolvedValue([
+        {
+          menuGroupId: "menu-1",
+          permissionType: "read",
+          menu: {
+            id: "menu-1",
+            name: "dashboard",
+            slug: "dashboard",
+            icon: "home",
+            parentId: null,
+          },
+        },
+        {
+          menuGroupId: "menu-2",
+          permissionType: "write",
+          menu: {
+            id: "menu-2",
+            name: "reports",
+            slug: "reports",
+            icon: "chart",
+            parentId: null,
+          },
+        }],
       );
       UserMenuPermission.findAll.mockResolvedValue([]);
 
@@ -166,45 +166,45 @@ describe("userPermission.service", () => {
           id: "role-1",
           name: "admin",
           nameToShow: "Administrator",
-          status: "active"
-        }
+          status: "active",
+        },
       });
 
       MenuGroup.findAll.mockResolvedValue([
-      {
-        id: "menu-1",
-        name: "dashboard",
-        slug: "dashboard",
-        icon: "home",
-        sortOrder: 1
-      }]
+        {
+          id: "menu-1",
+          name: "dashboard",
+          slug: "dashboard",
+          icon: "home",
+          sortOrder: 1,
+        }],
       );
 
       RoleMenuPermission.findAll.mockResolvedValue([
-      {
-        menuGroupId: "menu-1",
-        permissionType: "read",
-        menu: {
-          id: "menu-1",
-          name: "dashboard",
-          slug: "dashboard",
-          icon: "home",
-          parentId: null
-        }
-      }]
+        {
+          menuGroupId: "menu-1",
+          permissionType: "read",
+          menu: {
+            id: "menu-1",
+            name: "dashboard",
+            slug: "dashboard",
+            icon: "home",
+            parentId: null,
+          },
+        }],
       );
       UserMenuPermission.findAll.mockResolvedValue([
-      {
-        menuGroupId: "menu-1",
-        permissionType: "write",
-        menu: {
-          id: "menu-1",
-          name: "dashboard",
-          slug: "dashboard",
-          icon: "home",
-          parentId: null
-        }
-      }]
+        {
+          menuGroupId: "menu-1",
+          permissionType: "write",
+          menu: {
+            id: "menu-1",
+            name: "dashboard",
+            slug: "dashboard",
+            icon: "home",
+            parentId: null,
+          },
+        }],
       );
 
       const result = await getUserPermissions("user-1");
@@ -229,35 +229,35 @@ describe("userPermission.service", () => {
           id: "role-1",
           name: "admin",
           nameToShow: "Administrator",
-          status: "active"
-        }
+          status: "active",
+        },
       });
 
       MenuGroup.findAll.mockResolvedValue([
-      {
-        id: "menu-1",
-        name: "dashboard",
-        slug: "dashboard",
-        icon: "home",
-        sortOrder: 1
-      }]
+        {
+          id: "menu-1",
+          name: "dashboard",
+          slug: "dashboard",
+          icon: "home",
+          sortOrder: 1,
+        }],
       );
 
       RoleMenuPermission.findAll.mockResolvedValue([
-      {
-        menuGroupId: "menu-1",
-        permissionType: "write",
-        menu: { id: "menu-1", name: "dashboard", slug: "dashboard", icon: "home", parentId: null }
-      }]
+        {
+          menuGroupId: "menu-1",
+          permissionType: "write",
+          menu: { id: "menu-1", name: "dashboard", slug: "dashboard", icon: "home", parentId: null },
+        }],
       );
       // override revokes access, and its menu relation failed to load
       UserMenuPermission.findAll.mockResolvedValue([
-      {
-        menuGroupId: "menu-1",
-        permissionType: "none",
-        menu: null,
-        notes: "revoked"
-      }]
+        {
+          menuGroupId: "menu-1",
+          permissionType: "none",
+          menu: null,
+          notes: "revoked",
+        }],
       );
 
       const result = await getUserPermissions("user-1");
@@ -282,17 +282,17 @@ describe("userPermission.service", () => {
         lastName: "User",
         email: "test@example.com",
         tenantId: "tenant-1",
-        role: null
+        role: null,
       });
 
       MenuGroup.findAll.mockResolvedValue([
-      {
-        id: "menu-1",
-        name: "dashboard",
-        slug: "dashboard",
-        icon: "home",
-        sortOrder: 1
-      }]
+        {
+          id: "menu-1",
+          name: "dashboard",
+          slug: "dashboard",
+          icon: "home",
+          sortOrder: 1,
+        }],
       );
 
       const { UserMenuPermission } = require("../../models");
@@ -321,26 +321,26 @@ describe("userPermission.service", () => {
           id: "role-1",
           name: "admin",
           nameToShow: "Admin",
-          status: "active"
-        }
+          status: "active",
+        },
       });
 
       MenuGroup.findAll.mockResolvedValue([
-      {
-        id: "menu-1",
-        name: "dashboard",
-        slug: "dashboard",
-        icon: "home",
-        sortOrder: 1
-      }]
+        {
+          id: "menu-1",
+          name: "dashboard",
+          slug: "dashboard",
+          icon: "home",
+          sortOrder: 1,
+        }],
       );
 
       RoleMenuPermission.findAll.mockResolvedValue([
-      {
-        menuGroupId: "menu-1",
-        permissionType: "read",
-        menu: null
-      }]
+        {
+          menuGroupId: "menu-1",
+          permissionType: "read",
+          menu: null,
+        }],
       );
       const { UserMenuPermission } = require("../../models");
       UserMenuPermission.findAll.mockResolvedValue([]);
@@ -359,7 +359,7 @@ describe("userPermission.service", () => {
       MenuGroup.findByPk.mockResolvedValue({ id: "menu-1" });
 
       await expect(
-        setUserPermission("user-1", "menu-1", "invalid")
+        setUserPermission("user-1", "menu-1", "invalid"),
       ).rejects.toThrow("permissionType must be one of: read, write, none");
     });
 
@@ -368,7 +368,7 @@ describe("userPermission.service", () => {
       User.findByPk.mockResolvedValue(null);
 
       await expect(
-        setUserPermission("nonexistent", "menu-1", "read")
+        setUserPermission("nonexistent", "menu-1", "read"),
       ).rejects.toThrow("User not found");
     });
 
@@ -378,7 +378,7 @@ describe("userPermission.service", () => {
       MenuGroup.findByPk.mockResolvedValue(null);
 
       await expect(
-        setUserPermission("user-1", "nonexistent", "read")
+        setUserPermission("user-1", "nonexistent", "read"),
       ).rejects.toThrow("Menu group not found");
     });
 
@@ -389,15 +389,15 @@ describe("userPermission.service", () => {
 
       const { UserMenuPermission } = require("../../models");
       UserMenuPermission.findOrCreate.mockResolvedValue([
-      {
-        id: "perm-1",
-        userId: "user-1",
-        menuGroupId: "menu-1",
-        permissionType: "read",
-        grantedBy: "admin-1",
-        notes: "Test override"
-      },
-      true]
+        {
+          id: "perm-1",
+          userId: "user-1",
+          menuGroupId: "menu-1",
+          permissionType: "read",
+          grantedBy: "admin-1",
+          notes: "Test override",
+        },
+        true],
       );
 
       const result = await setUserPermission(
@@ -405,7 +405,7 @@ describe("userPermission.service", () => {
         "menu-1",
         "read",
         "admin-1",
-        "Test override"
+        "Test override",
       );
 
       expect(result.success).toBe(true);
@@ -424,7 +424,7 @@ describe("userPermission.service", () => {
         userId: "user-1",
         menuGroupId: "menu-1",
         permissionType: "read",
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       };
       UserMenuPermission.findOrCreate.mockResolvedValue([existingPerm, false]);
 
@@ -433,7 +433,7 @@ describe("userPermission.service", () => {
         "menu-1",
         "write",
         "admin-1",
-        "Updated override"
+        "Updated override",
       );
 
       expect(result.success).toBe(true);
@@ -442,7 +442,7 @@ describe("userPermission.service", () => {
       expect(existingPerm.update).toHaveBeenCalledWith({
         permissionType: "write",
         grantedBy: "admin-1",
-        notes: "Updated override"
+        notes: "Updated override",
       }, { transaction: "TX" });
     });
 
@@ -453,13 +453,13 @@ describe("userPermission.service", () => {
 
       const { UserMenuPermission } = require("../../models");
       UserMenuPermission.findOrCreate.mockResolvedValue([
-      {
-        id: "perm-1",
-        userId: "user-1",
-        menuGroupId: "menu-1",
-        permissionType: "read"
-      },
-      true]
+        {
+          id: "perm-1",
+          userId: "user-1",
+          menuGroupId: "menu-1",
+          permissionType: "read",
+        },
+        true],
       );
 
       await setUserPermission("user-1", "menu-1", "read");
@@ -478,15 +478,15 @@ describe("userPermission.service", () => {
 
       expect(result.success).toBe(true);
       expect(result.message).toBe(
-        "Custom permission removed — role inheritance restored"
+        "Custom permission removed — role inheritance restored",
       );
       expect(result.data).toBeNull();
       expect(UserMenuPermission.destroy).toHaveBeenCalledWith({
         where: {
           userId: "user-1",
-          menuGroupId: "menu-1"
+          menuGroupId: "menu-1",
         },
-        transaction: "TX"
+        transaction: "TX",
       });
     });
   });
@@ -507,14 +507,14 @@ describe("userPermission.service", () => {
 
       const { UserMenuPermission } = require("../../models");
       UserMenuPermission.findAll.mockResolvedValue([
-      {
-        menu: { name: "dashboard" },
-        permissionType: "read"
-      },
-      {
-        menu: { name: "reports" },
-        permissionType: "write"
-      }]
+        {
+          menu: { name: "dashboard" },
+          permissionType: "read",
+        },
+        {
+          menu: { name: "reports" },
+          permissionType: "write",
+        }],
       );
 
       const result = await getUserOverrideMatrix("user-1");
@@ -529,14 +529,14 @@ describe("userPermission.service", () => {
 
       const { UserMenuPermission } = require("../../models");
       UserMenuPermission.findAll.mockResolvedValue([
-      {
-        menu: null,
-        permissionType: "read"
-      },
-      {
-        menu: { name: "dashboard" },
-        permissionType: "write"
-      }]
+        {
+          menu: null,
+          permissionType: "read",
+        },
+        {
+          menu: { name: "dashboard" },
+          permissionType: "write",
+        }],
       );
 
       const result = await getUserOverrideMatrix("user-1");
@@ -559,7 +559,7 @@ describe("getUserOverrideMatrix — indexed by name AND slug (A-35)", () => {
   it("indexes an override under both its menu name and its slug", async () => {
     const { UserMenuPermission } = require("../../models");
     UserMenuPermission.findAll.mockResolvedValue([
-    { permissionType: "none", menu: { name: "Warehouse", slug: "warehouse" } }]
+      { permissionType: "none", menu: { name: "Warehouse", slug: "warehouse" } }],
     );
 
     const matrix = await getUserOverrideMatrix("u-a35");
@@ -571,7 +571,7 @@ describe("getUserOverrideMatrix — indexed by name AND slug (A-35)", () => {
   it("still indexes a menu that carries no slug", async () => {
     const { UserMenuPermission } = require("../../models");
     UserMenuPermission.findAll.mockResolvedValue([
-    { permissionType: "read", menu: { name: "Legacy Menu" } }]
+      { permissionType: "read", menu: { name: "Legacy Menu" } }],
     );
 
     const matrix = await getUserOverrideMatrix("u-a35b");

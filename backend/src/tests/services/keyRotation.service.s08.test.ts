@@ -26,7 +26,7 @@ beforeAll(() => {
   PEM = crypto.generateKeyPairSync("rsa", {
     modulusLength: 1024,
     publicKeyEncoding: { type: "spki", format: "pem" },
-    privateKeyEncoding: { type: "pkcs8", format: "pem" }
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
   }).privateKey;
 });
 
@@ -41,19 +41,19 @@ const fakeDb = (tables: any, { interfere }: any = {}) => {
     const s = sql.replace(/\s+/g, " ").trim();
     const b = options.bind || [];
     const r = s.startsWith("SELECT id::text AS id") ?
-    { limit: b[0], cursor: b.length > 1 ? b[1] : null } :
-    s.startsWith("UPDATE") ?
-    { next: b[0], id: b[1], tenantId: b[2], previous: b[3] } :
-    { id: b[0], tenantId: b[1] };
+      { limit: b[0], cursor: b.length > 1 ? b[1] : null } :
+      s.startsWith("UPDATE") ?
+        { next: b[0], id: b[1], tenantId: b[2], previous: b[3] } :
+        { id: b[0], tenantId: b[1] };
     const table = (/(?:FROM|UPDATE) (\w+)/.exec(s) as any)[1];
     const column = ((/SET (\w+) =/.exec(s) || /(\w+) AS value/.exec(s)) as any)[1];
     const rows = tables[table];
     if (s.startsWith("SELECT id::text AS id")) {
       return rows.
-      filter((row: any) => r.cursor === null || row.id > r.cursor).
-      sort((a: any, b: any) => a.id.localeCompare(b.id)).
-      slice(0, r.limit).
-      map((row: any) => ({ id: row.id, tenant_id: row.tenant_id, value: row[column] }));
+        filter((row: any) => r.cursor === null || row.id > r.cursor).
+        sort((a: any, b: any) => a.id.localeCompare(b.id)).
+        slice(0, r.limit).
+        map((row: any) => ({ id: row.id, tenant_id: row.tenant_id, value: row[column] }));
     }
     if (s.startsWith("UPDATE")) {
       if (interfere) {
@@ -77,26 +77,26 @@ const fakeDb = (tables: any, { interfere }: any = {}) => {
 
 const seed = (): any => ({
   tenant_settings: [
-  { id: "s1", tenant_id: T1, value: asV1(kms.encryptData(T1, "stripe")) },
-  { id: "s2", tenant_id: T1, value: "not a secret" },
-  { id: "s3", tenant_id: T2, value: kms.encryptData(T2, "already-current") },
-  { id: "s4", tenant_id: T2, value: null }],
+    { id: "s1", tenant_id: T1, value: asV1(kms.encryptData(T1, "stripe")) },
+    { id: "s2", tenant_id: T1, value: "not a secret" },
+    { id: "s3", tenant_id: T2, value: kms.encryptData(T2, "already-current") },
+    { id: "s4", tenant_id: T2, value: null }],
 
   webhooks: [{ id: "w1", tenant_id: T2, secret: asV1(kms.encryptData(T2, "whsec")) }],
   tenant_keys: [
-  { id: "k1", tenant_id: T1, private_key: encryptPrivateKeyForTest(PEM, process.env["ENCRYPT_KEY"]) },
-  { id: "k2", tenant_id: T2, private_key: kms.encryptData(T2, PEM) }],
+    { id: "k1", tenant_id: T1, private_key: encryptPrivateKeyForTest(PEM, process.env["ENCRYPT_KEY"]) },
+    { id: "k2", tenant_id: T2, private_key: kms.encryptData(T2, PEM) }],
 
   users: [
   // pre-0086 plaintext seed, operator with no tenant
-  { id: "u1", tenant_id: null, mfa_secret: SEED, mfa_pending_secret: null },
-  // a v1 envelope of a pending seed, and a live seed already current
-  {
-    id: "u2",
-    tenant_id: T1,
-    mfa_secret: mfaService.sealSecret("u2", SEED),
-    mfa_pending_secret: asV1(mfaService.sealSecret("u2", SEED))
-  }]
+    { id: "u1", tenant_id: null, mfa_secret: SEED, mfa_pending_secret: null },
+    // a v1 envelope of a pending seed, and a live seed already current
+    {
+      id: "u2",
+      tenant_id: T1,
+      mfa_secret: mfaService.sealSecret("u2", SEED),
+      mfa_pending_secret: asV1(mfaService.sealSecret("u2", SEED)),
+    }],
 
 });
 
@@ -104,11 +104,11 @@ describe("workFor", () => {
   const settings = TARGETS[0];
   const keys = TARGETS[2];
   it.each([
-  [settings, null, null],
-  [settings, "", null],
-  [settings, "plain", null],
-  [settings, "v1:a:b:c:d:e:f", "rewrap"],
-  [keys, "00ff:abcd", "convert"]]
+    [settings, null, null],
+    [settings, "", null],
+    [settings, "plain", null],
+    [settings, "v1:a:b:c:d:e:f", "rewrap"],
+    [keys, "00ff:abcd", "convert"]],
   )("%#", (target: any, value: any, expected: any) => {
     expect(workFor(target, value)).toBe(expected);
   });
@@ -135,11 +135,11 @@ describe("rewrapAll", () => {
     expect(result.failed).toBe(0);
     expect(result.keyInfo).toEqual(kms.keyInfo());
     expect(result.reports).toEqual([
-    { table: "tenant_settings", column: "value", scanned: 4, rewrapped: 1, converted: 0, skipped: 0, failed: [] },
-    { table: "webhooks", column: "secret", scanned: 1, rewrapped: 1, converted: 0, skipped: 0, failed: [] },
-    { table: "tenant_keys", column: "private_key", scanned: 2, rewrapped: 0, converted: 1, skipped: 0, failed: [] },
-    { table: "users", column: "mfa_secret", scanned: 2, rewrapped: 0, converted: 1, skipped: 0, failed: [] },
-    { table: "users", column: "mfa_pending_secret", scanned: 2, rewrapped: 1, converted: 0, skipped: 0, failed: [] }]
+      { table: "tenant_settings", column: "value", scanned: 4, rewrapped: 1, converted: 0, skipped: 0, failed: [] },
+      { table: "webhooks", column: "secret", scanned: 1, rewrapped: 1, converted: 0, skipped: 0, failed: [] },
+      { table: "tenant_keys", column: "private_key", scanned: 2, rewrapped: 0, converted: 1, skipped: 0, failed: [] },
+      { table: "users", column: "mfa_secret", scanned: 2, rewrapped: 0, converted: 1, skipped: 0, failed: [] },
+      { table: "users", column: "mfa_pending_secret", scanned: 2, rewrapped: 1, converted: 0, skipped: 0, failed: [] }],
     );
     // S-20: every seed is now a current envelope that opens under its user id.
     for (const row of tables.users) {
@@ -178,7 +178,7 @@ describe("rewrapAll", () => {
         if (row && row.secret) {
           row.secret = "rotated-by-the-app";
         }
-      }
+      },
     });
     const report = await rewrapTarget({ sequelize: db, target: TARGETS[1] });
     expect(report).toEqual(expect.objectContaining({ rewrapped: 0, skipped: 1, failed: [] }));
@@ -211,7 +211,7 @@ describe("rewrapAll", () => {
       if (sql.includes("SELECT secret AS value")) {
         return [{ value: kms.encryptData(T2, "something else") }];
       }
-      if (original) return original(sql, options);
+      if (original) {return original(sql, options);}
       return [];
     });
     const report = await rewrapTarget({ sequelize: db, target: TARGETS[1] });

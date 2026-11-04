@@ -4,16 +4,16 @@ jest.mock("../../models", () => ({
     findAll: jest.fn(),
     upsert: jest.fn(() => Promise.resolve([{}, true])),
     bulkCreate: jest.fn(),
-    destroy: jest.fn()
-  }
+    destroy: jest.fn(),
+  },
 }));
 
 // P6-11: a flag change and its audit rows commit in one managed transaction.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn((cb: any) => cb("txn")) }
+  db: { transaction: jest.fn((cb: any) => cb("txn")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn()
+  logAction: jest.fn(),
 }));
 
 const featureFlag = require("../../services/featureFlag.service");
@@ -52,7 +52,7 @@ describe("featureFlag.service", () => {
   describe("getTenantFlags", () => {
     it("returns merged flags with defaults and overrides", async () => {
       TenantSettings.findAll.mockResolvedValue([
-      { key: "feature_flag_enable_mfa", value: "true" }]
+        { key: "feature_flag_enable_mfa", value: "true" }],
       );
       const result = await featureFlag.getTenantFlags("t1");
       expect(result.enable_mfa.enabled).toBe(true);
@@ -62,8 +62,8 @@ describe("featureFlag.service", () => {
 
     it("accepts boolean-true override values and marks others disabled", async () => {
       TenantSettings.findAll.mockResolvedValue([
-      { key: "feature_flag_enable_mfa", value: true },
-      { key: "feature_flag_enable_iot", value: "false" }]
+        { key: "feature_flag_enable_mfa", value: true },
+        { key: "feature_flag_enable_iot", value: "false" }],
       );
       const result = await featureFlag.getTenantFlags("t1");
       expect(result.enable_mfa.enabled).toBe(true);
@@ -81,7 +81,7 @@ describe("featureFlag.service", () => {
         tenantId: "t1",
         key: "feature_flag_enable_mfa",
         value: "true",
-        updatedBy: "user-1"
+        updatedBy: "user-1",
       }, { transaction: "txn" });
       expect(result.enabled).toBe(true);
     });
@@ -93,7 +93,7 @@ describe("featureFlag.service", () => {
         tenantId: "t1",
         key: "feature_flag_enable_iot",
         value: "false",
-        updatedBy: "user-1"
+        updatedBy: "user-1",
       }, { transaction: "txn" });
       expect(result.enabled).toBe(false);
       expect(result.created).toBe(false);
@@ -110,7 +110,7 @@ describe("featureFlag.service", () => {
       const result = await featureFlag.resetTenantFlag("t1", "enable_mfa");
       expect(TenantSettings.destroy).toHaveBeenCalledWith({
         where: { tenantId: "t1", key: "feature_flag_enable_mfa" },
-        transaction: "txn"
+        transaction: "txn",
       });
       expect(result.reset).toBe(true);
     });
@@ -121,7 +121,7 @@ describe("featureFlag.service", () => {
       expect(result).toEqual({
         flagKey: "unknown_flag",
         reset: false,
-        defaultValue: false
+        defaultValue: false,
       });
     });
   });
@@ -157,7 +157,7 @@ describe("featureFlag.service", () => {
           action: "UPDATE",
           resourceType: "Tenant",
           resourceId: "t1",
-          changes: { operation: "FEATURE_FLAG_SET", flagKey: "enable_mfa", before: "false", after: "true" }
+          changes: { operation: "FEATURE_FLAG_SET", flagKey: "enable_mfa", before: "false", after: "true" },
         });
       }
     });
@@ -168,7 +168,7 @@ describe("featureFlag.service", () => {
       await featureFlag.setTenantFlag("t1", "enable_mfa", false, "user-9");
       expect(auditService.logAction.mock.calls[0][0]).toMatchObject({
         userId: "user-9",
-        changes: { before: null, after: "false" }
+        changes: { before: null, after: "false" },
       });
     });
 
@@ -180,7 +180,7 @@ describe("featureFlag.service", () => {
       expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({
         operation: "FEATURE_FLAG_RESET",
         before: "true",
-        after: null
+        after: null,
       });
 
       auditService.logAction.mockClear();
@@ -195,11 +195,11 @@ describe("featureFlag.service", () => {
       await featureFlag.initializeTenantFlags("t1", principal);
       expect(TenantSettings.bulkCreate).toHaveBeenCalledWith(expect.any(Array), {
         ignoreDuplicates: true,
-        transaction: "txn"
+        transaction: "txn",
       });
       expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({
         operation: "FEATURE_FLAG_INITIALIZE",
-        flagKeys: expect.arrayContaining(["enable_iot"])
+        flagKeys: expect.arrayContaining(["enable_iot"]),
       });
     });
 

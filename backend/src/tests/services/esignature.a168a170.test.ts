@@ -33,7 +33,7 @@ const mockRef: any = {
   stepsForCompletion: null,
   users: {},
   userLookupError: null,
-  reads: []
+  reads: [],
 };
 
 // ---- transports: the only email doubles ------------------------------------
@@ -41,14 +41,14 @@ const mockSendMail = jest.fn();
 const mockConnect = jest.fn();
 jest.mock("amqplib", () => ({ connect: (...args: any[]) => mockConnect(...args) }));
 jest.mock("nodemailer", () => ({
-  createTransport: () => ({ sendMail: (...args: any[]) => mockSendMail(...args) })
+  createTransport: () => ({ sendMail: (...args: any[]) => mockSendMail(...args) }),
 }));
 
 // ---- persistence -------------------------------------------------------------
 jest.mock("../../models", () => ({
   TenantKey: {
     unscoped: () => ({ findOne: async () => mockRef.keyPair }),
-    findOne: async () => mockRef.keyPair
+    findOne: async () => mockRef.keyPair,
   },
   SignatureWorkflow: {
     findByPk: async () => mockRef.workflow,
@@ -64,7 +64,7 @@ jest.mock("../../models", () => ({
       mockRef.ledger.write("signature_workflows", { op: "create", ...values }, options);
       mockRef.workflow = mockMakeWorkflow({ id: "wf-1", ...values });
       return mockRef.workflow;
-    }
+    },
   },
   SignatureWorkflowStep: {
     findByPk: async (id: any) => mockRef.steps.find((s: any) => s.id === id) || null,
@@ -73,8 +73,8 @@ jest.mock("../../models", () => ({
         // getSignerWorkflows' first read: the caller's own steps.
         return mockRef.steps.filter(
           (s: any) =>
-          s.signerId === options.where.signerId && (
-          options.where.status === undefined || s.status === options.where.status)
+            s.signerId === options.where.signerId && (
+              options.where.status === undefined || s.status === options.where.status),
         );
       }
       if (!options.transaction && mockRef.stepsForCompletion) {
@@ -87,13 +87,13 @@ jest.mock("../../models", () => ({
       const step = mockMakeStep(`step-${values.stepNumber}`, values);
       mockRef.steps.push(step);
       return step;
-    }
+    },
   },
   SignatureRecord: {
     create: async (values: any, options: any) => {
       mockRef.ledger.write("signature_records", values, options);
       return { id: "sig-1", ...values };
-    }
+    },
   },
   AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
   User: {
@@ -116,22 +116,22 @@ jest.mock("../../models", () => ({
         lastName: where.id,
         isActive: true,
         status: "ACTIVE",
-        roleId: null
+        roleId: null,
       };
-    }
+    },
   },
-  Role: { findByPk: async () => null }
+  Role: { findByPk: async () => null },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 // A-65 — signing re-authenticates the signer; the password check is doubled.
 jest.mock("../../services/auth.service", () => ({
-  passIsValid: async () => ({ data: { valid: true } })
+  passIsValid: async () => ({ data: { valid: true } }),
 }));
 // A-129 — every named signer may sign.
 jest.mock("../../middlewares/dynamicAccess.middleware", () => ({
-  principalHasMenuPermission: async () => true
+  principalHasMenuPermission: async () => true,
 }));
 
 function mockMakeWorkflow(fields: any) {
@@ -143,7 +143,7 @@ function mockMakeWorkflow(fields: any) {
     message: "",
     status: "pending",
     expiresAt: new Date(Date.now() + 86400000),
-    ...fields
+    ...fields,
   };
   workflow.update = async (values: any, options: any) => {
     mockRef.ledger.write("signature_workflows", { id: workflow.id, ...values }, options);
@@ -161,7 +161,7 @@ function mockMakeStep(id: any, fields: any) {
     signerId: "u-1",
     signerEmail: `${id}@hospital.example`,
     signerName: `Signer ${id}`,
-    ...fields
+    ...fields,
   };
   step.update = async (values: any, options: any) => {
     mockRef.ledger.write("signature_workflow_steps", { id, ...values }, options);
@@ -174,7 +174,7 @@ function mockMakeStep(id: any, fields: any) {
 const { Sequelize, DataTypes } = jest.requireActual("sequelize");
 const RealWorkflow = jest.requireActual("../../models/signatureWorkflow.model")(
   new Sequelize({ dialect: "postgres", logging: false }),
-  DataTypes
+  DataTypes,
 );
 
 const ORIGIN = "https://kalibrasi.example.test";
@@ -188,7 +188,7 @@ let envBackup: any = undefined;
 
 const mailsTo = (address: any) => mockSendMail.mock.calls.map((c: any) => c[0]).filter((m: any) => m.to === address);
 const errorLogs = (message: any) =>
-logger.error.mock.calls.filter(([m]: any) => m === message).map(([, ctx]: any) => ctx);
+  logger.error.mock.calls.filter(([m]: any) => m === message).map(([, ctx]: any) => ctx);
 
 beforeAll(() => {
   mockRef.keyPair = generateTestKeyPair({ keyId: "key-a170" });
@@ -234,15 +234,15 @@ describe("A-168 — editing an expired workflow is a 409", () => {
   "create a new workflow for the remaining signers instead.";
 
   it.each([
-  ["marked expired", { status: "expired", expiresAt: PAST }],
-  ["pending, past expiresAt, not yet marked", { status: "pending", expiresAt: PAST }],
-  ["in_progress, past expiresAt, not yet marked", { status: "in_progress", expiresAt: PAST }]]
+    ["marked expired", { status: "expired", expiresAt: PAST }],
+    ["pending, past expiresAt, not yet marked", { status: "pending", expiresAt: PAST }],
+    ["in_progress, past expiresAt, not yet marked", { status: "in_progress", expiresAt: PAST }]],
   )("refuses a workflow %s — even an edit that would extend expiresAt — and writes nothing", async (_label: any, fields: any) => {
     mockRef.workflow = mockMakeWorkflow(fields);
 
     const err = await svc.
-    updateWorkflow("wf-1", "tenant-1", { expiresAt: FUTURE, subject: "Again" }, ACTOR).
-    catch((e: any) => e);
+      updateWorkflow("wf-1", "tenant-1", { expiresAt: FUTURE, subject: "Again" }, ACTOR).
+      catch((e: any) => e);
 
     expect(err.status).toBe(409);
     expect(err.message).toBe(EXPECTED);
@@ -256,7 +256,7 @@ describe("A-168 — editing an expired workflow is a 409", () => {
     await svc.updateWorkflow("wf-1", "tenant-1", { subject: "x" }, ACTOR).catch(() => {});
 
     expect(mockRef.reads).toEqual([
-    expect.objectContaining({ where: { id: "wf-1", tenantId: "tenant-1" }, lock: true, transaction: expect.any(Object) })]
+      expect.objectContaining({ where: { id: "wf-1", tenantId: "tenant-1" }, lock: true, transaction: expect.any(Object) })],
     );
   });
 
@@ -266,7 +266,7 @@ describe("A-168 — editing an expired workflow is a 409", () => {
     await svc.updateWorkflow("wf-1", "tenant-1", { subject: "New subject" }, ACTOR);
 
     expect(mockRef.ledger.committed("signature_workflows")).toEqual([
-    expect.objectContaining({ id: "wf-1", subject: "New subject" })]
+      expect.objectContaining({ id: "wf-1", subject: "New subject" })],
     );
     expect(mockRef.ledger.auditRows()).toHaveLength(1);
   });
@@ -291,9 +291,9 @@ describe("A-168 — editing an expired workflow is a 409", () => {
 
 describe("A-168 — cancelling an expired workflow closes it, audited", () => {
   it.each([
-  ["marked expired", "expired"],
-  ["pending past expiresAt", "pending"],
-  ["in_progress past expiresAt", "in_progress"]]
+    ["marked expired", "expired"],
+    ["pending past expiresAt", "pending"],
+    ["in_progress past expiresAt", "in_progress"]],
   )("cancels a workflow %s, with one audit row saying it had expired", async (_label: any, status: any) => {
     mockRef.workflow = mockMakeWorkflow({ status, expiresAt: PAST });
 
@@ -301,7 +301,7 @@ describe("A-168 — cancelling an expired workflow closes it, audited", () => {
 
     expect(result).toEqual({ success: true });
     expect(mockRef.ledger.committed("signature_workflows")).toEqual([
-    expect.objectContaining({ id: "wf-1", status: "cancelled" })]
+      expect.objectContaining({ id: "wf-1", status: "cancelled" })],
     );
     const audit = mockRef.ledger.auditRows();
     expect(audit).toHaveLength(1);
@@ -316,8 +316,8 @@ describe("A-168 — cancelling an expired workflow closes it, audited", () => {
       changes: {
         operation: "CANCEL",
         before: { status, expired: true, expiresAt: PAST.toISOString() },
-        after: { status: "cancelled", reason: "lapsed" }
-      }
+        after: { status: "cancelled", reason: "lapsed" },
+      },
     });
   });
 
@@ -359,13 +359,13 @@ describe("A-169 — the signer view leaves out expired workflows, and flags the 
       subject: id,
       status: "pending",
       expiresAt: FUTURE,
-      ...fields
+      ...fields,
     });
     instance.steps = mySteps.map((status: any, i: any) => ({
       id: `${id}-s${i}`,
       workflowId: id,
       signerId: "u-1",
-      status
+      status,
     }));
     mockRef.steps.push(...instance.steps);
     mockRef.workflows.push(instance);
@@ -394,7 +394,7 @@ describe("A-169 — the signer view leaves out expired workflows, and flags the 
       "lapsed-i-signed": true,
       "lapsed-i-declined": true,
       // Completed before anything lapsed: closed, not expired.
-      "completed-late": false
+      "completed-late": false,
     });
   });
 
@@ -453,17 +453,17 @@ describe("A-169 — the signer view leaves out expired workflows, and flags the 
 // ---------------------------------------------------------------------------
 describe("A-170 — the requester", () => {
   const create = (data: any = {}) =>
-  svc.createSignatureWorkflow(
-    "tenant-1",
-    { documentId: "doc-1", subject: "Sign me", signers: [{ userId: "u-1" }], ...data },
-    ACTOR
-  );
+    svc.createSignatureWorkflow(
+      "tenant-1",
+      { documentId: "doc-1", subject: "Sign me", signers: [{ userId: "u-1" }], ...data },
+      ACTOR,
+    );
 
   it("is recorded at creation from the actor, inside the creating transaction", async () => {
     await create();
 
     expect(mockRef.ledger.committed("signature_workflows")).toEqual([
-    expect.objectContaining({ op: "create", requestedBy: "admin-1" })]
+      expect.objectContaining({ op: "create", requestedBy: "admin-1" })],
     );
   });
 
@@ -476,18 +476,18 @@ describe("A-170 — the requester", () => {
 
 describe("A-170 — the completion email reaches the requester", () => {
   const sign = () =>
-  svc.signDocument("step-1", "u-1", {
-    authenticationMethod: "password",
-    authPayload: "pw",
-    reason: "Approved by QA",
-    ipAddress: "10.0.0.1",
-    userAgent: "UA"
-  });
+    svc.signDocument("step-1", "u-1", {
+      authenticationMethod: "password",
+      authPayload: "pw",
+      reason: "Approved by QA",
+      ipAddress: "10.0.0.1",
+      userAgent: "UA",
+    });
 
   beforeEach(() => {
     mockRef.steps = [mockMakeStep("step-1", { status: "pending", stepNumber: 1 })];
     mockRef.stepsForCompletion = () => [
-    mockMakeStep("step-1", { status: "signed", signerEmail: "signer@hospital.example" })];
+      mockMakeStep("step-1", { status: "signed", signerEmail: "signer@hospital.example" })];
 
     mockRef.workflow = mockMakeWorkflow({ requestedBy: "admin-1" });
   });
@@ -507,14 +507,13 @@ describe("A-170 — the completion email reaches the requester", () => {
     await sign();
 
     expect(mockRef.reads.filter((r: any) => r.model === "User")).toEqual([
-    expect.objectContaining({ where: { id: "admin-1", tenantId: "tenant-1" } })]
+      expect.objectContaining({ where: { id: "admin-1", tenantId: "tenant-1" } })],
     );
   });
 
   it("a requester who is also a signer gets one email", async () => {
     mockRef.stepsForCompletion = () => [
-    mockMakeStep("step-1", { status: "signed", signerEmail: "admin-1@hospital.example" })];
-
+      mockMakeStep("step-1", { status: "signed", signerEmail: "admin-1@hospital.example" })];
 
     await sign();
 
@@ -539,7 +538,7 @@ describe("A-170 — the completion email reaches the requester", () => {
 
     expect(result.signatureId).toBe("sig-1");
     expect(errorLogs("Workflow completion email was not sent to the requester: no email address for them")).toEqual([
-    { tenantId: "tenant-1", workflowId: "wf-1", requesterId: "admin-1" }]
+      { tenantId: "tenant-1", workflowId: "wf-1", requesterId: "admin-1" }],
     );
     expect(mailsTo("signer@hospital.example")).toHaveLength(1);
   });
@@ -576,7 +575,7 @@ describe("A-170 — the completion email reaches the requester", () => {
 
     expect(result.signatureId).toBe("sig-1");
     expect(errorLogs("Workflow completion email was not sent to the requester: they could not be read")).toEqual([
-    { tenantId: "tenant-1", workflowId: "wf-1", requesterId: "admin-1", error: "connection reset" }]
+      { tenantId: "tenant-1", workflowId: "wf-1", requesterId: "admin-1", error: "connection reset" }],
     );
     expect(mailsTo("signer@hospital.example")).toHaveLength(1);
   });
@@ -593,7 +592,7 @@ describe("A-170 — the completion email reaches the requester", () => {
 
     const failures = errorLogs("Workflow completion email was not sent");
     expect(failures).toEqual([
-    expect.objectContaining({ tenantId: "tenant-1", workflowId: "wf-1", requesterId: "admin-1" })]
+      expect.objectContaining({ tenantId: "tenant-1", workflowId: "wf-1", requesterId: "admin-1" })],
     );
     expect(JSON.stringify(failures)).not.toContain("@");
     expect(mailsTo("signer@hospital.example")).toHaveLength(1);

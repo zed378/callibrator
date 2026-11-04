@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-38 / A-39 / A-49 — SCIM Groups are tenant-owned, say what they grant, and
  * cannot be probed across tenants (ADR-053).
@@ -51,10 +51,10 @@ jest.mock("../../middlewares/auth.middleware", () => {
         isApiKey: true,
         apiKeyScopes: ["scim:write"],
         tenantId: mockState.tenantId,
-        role: { name: "USER" }
+        role: { name: "USER" },
       };
       next();
-    }
+    },
   };
 });
 
@@ -97,7 +97,7 @@ jest.mock("../../models", () => {
       },
       async destroy() {
         mockState.groups = mockState.groups.filter((g: any) => g !== row);
-      }
+      },
     };
     return row;
   };
@@ -106,10 +106,10 @@ jest.mock("../../models", () => {
   const assertUnique = (next: any, selfId: any) => {
     const clash = mockState.groups.find(
       (g: any) =>
-      g.id !== selfId &&
+        g.id !== selfId &&
       g.tenantId === next.tenantId && (
-      g.displayName.toLowerCase() === next.displayName.toLowerCase() ||
-      next.roleId && g.roleId === next.roleId)
+          g.displayName.toLowerCase() === next.displayName.toLowerCase() ||
+      next.roleId && g.roleId === next.roleId),
     );
     if (clash) {
       throw new UniqueConstraintError({ message: "Validation error", parent: { code: "23505" } });
@@ -118,7 +118,7 @@ jest.mock("../../models", () => {
 
   const snapshot = () => ({
     groups: mockState.groups.map((g: any) => ({ g, fields: { displayName: g.displayName, roleId: g.roleId } })),
-    users: mockState.users.map((u: any) => ({ ...u }))
+    users: mockState.users.map((u: any) => ({ ...u })),
   });
   const restore = (snap: any) => {
     mockState.groups = snap.groups.map(({ g, fields }: any) => Object.assign(g, fields));
@@ -136,7 +136,7 @@ jest.mock("../../models", () => {
           restore(snap);
           throw error;
         }
-      }
+      },
     },
     ScimGroup: {
       findOne: jest.fn(async ({ where }: any) => mockState.groups.find((g: any) => matches(g, where)) || null),
@@ -150,7 +150,7 @@ jest.mock("../../models", () => {
         const row = groupRow({ id: `${String(mockState.seq).padStart(8, "0")}-0000-4000-8000-000000000000`, ...values });
         mockState.groups.push(row);
         return row;
-      })
+      }),
     },
     Users: {
       findAll: jest.fn(async ({ where }: any) => mockState.users.filter((u: any) => matches(u, where))),
@@ -158,18 +158,18 @@ jest.mock("../../models", () => {
         const hit = mockState.users.filter((u: any) => matches(u, where));
         hit.forEach((u: any) => Object.assign(u, values));
         return [hit.length];
-      })
+      }),
     },
     Role: {
       findOne: jest.fn(async ({ where }: any) => mockState.roles.find((r: any) => r.id === where.id) || null),
       // Any attempt to write a role is counted: SCIM must never do it (A-38).
       create: jest.fn(async () => {mockState.roleWrites += 1;}),
       update: jest.fn(async () => {mockState.roleWrites += 1;}),
-      destroy: jest.fn(async () => {mockState.roleWrites += 1;})
+      destroy: jest.fn(async () => {mockState.roleWrites += 1;}),
     },
     RoleMenuPermission: {
-      count: jest.fn(async ({ where }: any) => mockState.grants[where.roleId] || 0)
-    }
+      count: jest.fn(async ({ where }: any) => mockState.grants[where.roleId] || 0),
+    },
   };
   return models;
 });
@@ -180,45 +180,45 @@ const scimRouter = require("../../routes/api/scim.route");
 // Express's own router.handle with a minimal req/res pair (the harness of
 // scim.crossTenantOracle.a37.test.js).
 const call = (tenantId: any, method: any, url: any, body?: any): Promise<any> =>
-new Promise((resolve: any) => {
-  mockState.tenantId = tenantId;
-  const [path, qs] = url.split("?");
-  const query = qs ? Object.fromEntries(new URLSearchParams(qs)) : {};
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      // `details` carries the stack outside production (response.util), and
-      // an async stack differs by call path; what a client in production
-      // receives is everything else.
-      const { details: _details, ...wire } = payload || {};
-      resolve({ status: this.statusCode, body: payload, text: JSON.stringify(wire) });
-      return this;
-    },
-    setHeader() {
-      return this;
-    }
-  };
-  const req: any = {
-    method,
-    url: path,
-    originalUrl: `/api/v1/scim/v2${path}`,
-    body,
-    query,
-    params: {},
-    headers: {},
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  scimRouter.handle(req, res, (err: any) =>
-  resolve({ status: err ? err.status || 500 : 404, body: null, text: "" })
-  );
-});
+  new Promise((resolve: any) => {
+    mockState.tenantId = tenantId;
+    const [path, qs] = url.split("?");
+    const query = qs ? Object.fromEntries(new URLSearchParams(qs)) : {};
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        // `details` carries the stack outside production (response.util), and
+        // an async stack differs by call path; what a client in production
+        // receives is everything else.
+        const { details: _details, ...wire } = payload || {};
+        resolve({ status: this.statusCode, body: payload, text: JSON.stringify(wire) });
+        return this;
+      },
+      setHeader() {
+        return this;
+      },
+    };
+    const req: any = {
+      method,
+      url: path,
+      originalUrl: `/api/v1/scim/v2${path}`,
+      body,
+      query,
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    scimRouter.handle(req, res, (err: any) =>
+      resolve({ status: err ? err.status || 500 : 404, body: null, text: "" }),
+    );
+  });
 
 const EXT = "urn:ietf:params:scim:schemas:extension:callibrator:2.0:Group";
 
@@ -226,17 +226,17 @@ const seed = () => {
   mockState.seq = 0;
   mockState.roleWrites = 0;
   mockState.roles = [
-  { id: ROLE_TECH, name: "TECHNICIAN", nameToShow: "Technician", isSystem: true },
-  { id: ROLE_ADMIN, name: "HEALTHCARE ADMIN", nameToShow: null, isSystem: true },
-  { id: ROLE_EMPTY, name: "SCIM-LEFTOVER", nameToShow: null, isSystem: false },
-  { id: ROLE_IDS.SUPER_ADMIN, name: "SUPERADMIN", isSystem: true },
-  { id: ROLE_IDS.USER, name: "USER", isSystem: true }];
+    { id: ROLE_TECH, name: "TECHNICIAN", nameToShow: "Technician", isSystem: true },
+    { id: ROLE_ADMIN, name: "HEALTHCARE ADMIN", nameToShow: null, isSystem: true },
+    { id: ROLE_EMPTY, name: "SCIM-LEFTOVER", nameToShow: null, isSystem: false },
+    { id: ROLE_IDS.SUPER_ADMIN, name: "SUPERADMIN", isSystem: true },
+    { id: ROLE_IDS.USER, name: "USER", isSystem: true }];
 
   mockState.grants = { [ROLE_TECH]: 12, [ROLE_ADMIN]: 30, [ROLE_IDS.USER]: 3, [ROLE_IDS.SUPER_ADMIN]: 40 };
   mockState.users = [
-  { id: USER_A1, tenantId: TENANT_A, email: "a1@hospital-a.test", roleId: ROLE_IDS.USER },
-  { id: USER_A2, tenantId: TENANT_A, email: "a2@hospital-a.test", roleId: ROLE_ADMIN },
-  { id: USER_B1, tenantId: TENANT_B, email: "b1@hospital-b.test", roleId: ROLE_TECH }];
+    { id: USER_A1, tenantId: TENANT_A, email: "a1@hospital-a.test", roleId: ROLE_IDS.USER },
+    { id: USER_A2, tenantId: TENANT_A, email: "a2@hospital-a.test", roleId: ROLE_ADMIN },
+    { id: USER_B1, tenantId: TENANT_B, email: "b1@hospital-b.test", roleId: ROLE_TECH }];
 
   mockState.groups = [];
 };
@@ -263,10 +263,10 @@ describe("A-38 — SCIM Groups belong to one tenant", () => {
 
   it("every :id route answers 404 for another tenant's group, byte-identical to an id that does not exist", async () => {
     const probes: any = [
-    ["GET", undefined],
-    ["PUT", { displayName: "Taken over" }],
-    ["PATCH", { Operations: [{ op: "add", path: "members", value: [{ value: USER_A1 }] }] }],
-    ["DELETE", undefined]];
+      ["GET", undefined],
+      ["PUT", { displayName: "Taken over" }],
+      ["PATCH", { Operations: [{ op: "add", path: "members", value: [{ value: USER_A1 }] }] }],
+      ["DELETE", undefined]];
 
     for (const [method, body] of probes) {
       const foreign = await call(TENANT_A, method, `/Groups/${groupB.id}`, body);
@@ -352,7 +352,7 @@ describe("A-39 — a SCIM group says what it grants, and never grants nothing si
     const g = (await call(TENANT_A, "POST", "/Groups", { displayName: "Nurses" })).body.data;
 
     const res = await call(TENANT_A, "PATCH", `/Groups/${g.id}`, {
-      Operations: [{ op: "add", path: "members", value: [{ value: USER_A1 }] }]
+      Operations: [{ op: "add", path: "members", value: [{ value: USER_A1 }] }],
     });
 
     expect(res.status).toBe(409);
@@ -363,7 +363,7 @@ describe("A-39 — a SCIM group says what it grants, and never grants nothing si
   it("POST /Groups with members but no roleId is a 409, and no group is created", async () => {
     const res = await call(TENANT_A, "POST", "/Groups", {
       displayName: "Nurses",
-      members: [{ value: USER_A1 }]
+      members: [{ value: USER_A1 }],
     });
 
     expect(res.status).toBe(409);
@@ -374,7 +374,7 @@ describe("A-39 — a SCIM group says what it grants, and never grants nothing si
     const res = await call(TENANT_A, "POST", "/Groups", {
       displayName: "Techs",
       roleId: ROLE_TECH,
-      members: [{ value: USER_A1 }]
+      members: [{ value: USER_A1 }],
     });
 
     expect(res.status).toBe(201);
@@ -403,8 +403,8 @@ describe("A-39 — a SCIM group says what it grants, and never grants nothing si
 
     const res = await call(TENANT_A, "PATCH", `/Groups/${g.id}`, {
       Operations: [
-      { op: "replace", path: "roleId", value: ROLE_TECH },
-      { op: "add", path: "members", value: [{ value: USER_A1 }] }]
+        { op: "replace", path: "roleId", value: ROLE_TECH },
+        { op: "add", path: "members", value: [{ value: USER_A1 }] }],
 
     });
 
@@ -440,7 +440,7 @@ describe("A-39 — a SCIM group says what it grants, and never grants nothing si
 
     const created = await call(TENANT_A, "POST", "/Groups", { displayName: "Techs 2", roleId: ROLE_TECH });
     const remapped = await call(TENANT_A, "PATCH", `/Groups/${other.id}`, {
-      Operations: [{ op: "add", path: "roleId", value: ROLE_TECH }]
+      Operations: [{ op: "add", path: "roleId", value: ROLE_TECH }],
     });
 
     expect(created.status).toBe(409);
@@ -493,9 +493,9 @@ describe("A-49 — displayName is case-insensitive, patch ids are validated, and
     const g = (await call(TENANT_A, "POST", "/Groups", { displayName: "Techs", roleId: ROLE_TECH })).body.data;
 
     for (const op of [
-    { op: "add", path: "members", value: [{ value: "not-a-uuid" }] },
-    { op: "remove", path: 'members[value eq "not-a-uuid"]' },
-    { op: "replace", path: "roleId", value: "not-a-uuid" }])
+      { op: "add", path: "members", value: [{ value: "not-a-uuid" }] },
+      { op: "remove", path: 'members[value eq "not-a-uuid"]' },
+      { op: "replace", path: "roleId", value: "not-a-uuid" }])
     {
       const res = await call(TENANT_A, "PATCH", `/Groups/${g.id}`, { Operations: [op] });
       expect(res.status).toBe(400);
@@ -508,7 +508,7 @@ describe("A-49 — displayName is case-insensitive, patch ids are validated, and
     Users.findOne = jest.fn(async () => ({ id: USER_A1, update: jest.fn() }));
 
     const res = await call(TENANT_A, "PATCH", `/Users/${USER_A1}`, {
-      Operations: [{ op: "replace", path: "roleId", value: "not-a-uuid" }]
+      Operations: [{ op: "replace", path: "roleId", value: "not-a-uuid" }],
     });
 
     expect(res.status).toBe(400);
@@ -520,7 +520,7 @@ describe("A-49 — displayName is case-insensitive, patch ids are validated, and
     const g = (await call(TENANT_A, "POST", "/Groups", { displayName: "Techs", roleId: ROLE_TECH })).body.data;
 
     await call(TENANT_A, "PATCH", `/Groups/${g.id}`, {
-      Operations: [{ op: "remove", path: `members[value eq "${USER_A2}"]` }]
+      Operations: [{ op: "remove", path: `members[value eq "${USER_A2}"]` }],
     });
 
     expect(userRole(USER_A2)).toBe(ROLE_ADMIN);
@@ -531,9 +531,9 @@ describe("A-49 — displayName is case-insensitive, patch ids are validated, and
 
     const res = await call(TENANT_A, "PATCH", `/Groups/${g.id}`, {
       Operations: [
-      { op: "replace", path: "displayName", value: "Renamed" },
-      { op: "add", path: "members", value: [{ value: USER_A1 }] },
-      { op: "replace", path: "bogus", value: "x" }]
+        { op: "replace", path: "displayName", value: "Renamed" },
+        { op: "add", path: "members", value: [{ value: USER_A1 }] },
+        { op: "replace", path: "bogus", value: "x" }],
 
     });
 
@@ -569,7 +569,7 @@ describe("PATCH /Groups — the RFC 7644 shapes A-33 accepted, on tenant-owned g
 
   it("resolves a members path carrying the core Group schema URN, with members given as strings", async () => {
     const res = await patch([
-    { op: "add", path: "urn:ietf:params:scim:schemas:core:2.0:Group:members", value: [USER_A1] }]
+      { op: "add", path: "urn:ietf:params:scim:schemas:core:2.0:Group:members", value: [USER_A1] }],
     );
 
     expect(res.status).toBe(200);
@@ -578,7 +578,7 @@ describe("PATCH /Groups — the RFC 7644 shapes A-33 accepted, on tenant-owned g
 
   it("accepts the value-object form for displayName, roleId and members in one operation", async () => {
     const res = await patch([
-    { op: "replace", value: { displayName: "Admins", roleId: ROLE_ADMIN, members: [{ value: USER_A1 }] } }]
+      { op: "replace", value: { displayName: "Admins", roleId: ROLE_ADMIN, members: [{ value: USER_A1 }] } }],
     );
 
     expect(res.status).toBe(200);
@@ -603,7 +603,7 @@ describe("PATCH /Groups — the RFC 7644 shapes A-33 accepted, on tenant-owned g
     const unmapped = (await call(TENANT_A, "POST", "/Groups", { displayName: "Nurses" })).body.data;
 
     const res = await call(TENANT_A, "PATCH", `/Groups/${unmapped.id}`, {
-      Operations: [{ op: "remove", path: "members" }, { op: "remove", path: "roleId" }]
+      Operations: [{ op: "remove", path: "members" }, { op: "remove", path: "roleId" }],
     });
 
     expect(res.status).toBe(200);
@@ -614,7 +614,7 @@ describe("PATCH /Groups — the RFC 7644 shapes A-33 accepted, on tenant-owned g
     const res = await call(TENANT_A, "PUT", `/Groups/${g.id}`, {
       displayName: "Techs",
       roleId: ROLE_TECH,
-      members: [{ value: USER_A1 }]
+      members: [{ value: USER_A1 }],
     });
 
     expect(res.status).toBe(200);
@@ -622,14 +622,14 @@ describe("PATCH /Groups — the RFC 7644 shapes A-33 accepted, on tenant-owned g
   });
 
   it.each([
-  ["an unsupported path", [{ op: "replace", path: "externalId", value: "x" }]],
-  ["a non-string path", [{ op: "replace", path: 7, value: "x" }]],
-  ["an empty members value", [{ op: "add", path: "members", value: [] }]],
-  ["removing displayName", [{ op: "remove", path: "displayName" }]],
-  ["a non-string displayName", [{ op: "replace", path: "displayName", value: 7 }]],
-  ["an empty value object", [{ op: "replace", value: {} }]],
-  ["neither a path nor an object value", [{ op: "replace", value: "x" }]],
-  ["an unknown op", [{ op: "move", path: "members", value: [] }]]]
+    ["an unsupported path", [{ op: "replace", path: "externalId", value: "x" }]],
+    ["a non-string path", [{ op: "replace", path: 7, value: "x" }]],
+    ["an empty members value", [{ op: "add", path: "members", value: [] }]],
+    ["removing displayName", [{ op: "remove", path: "displayName" }]],
+    ["a non-string displayName", [{ op: "replace", path: "displayName", value: 7 }]],
+    ["an empty value object", [{ op: "replace", value: {} }]],
+    ["neither a path nor an object value", [{ op: "replace", value: "x" }]],
+    ["an unknown op", [{ op: "move", path: "members", value: [] }]]],
   )("rejects %s with 400", async (_label: any, Operations: any) => {
     const res = await patch(Operations);
 
@@ -698,20 +698,20 @@ describe("P6-11 — SCIM group writes are audited", () => {
     expect((await call(TENANT_A, "PUT", `/Groups/${id}`, { displayName: "Auditors II" })).status).toBe(200);
     expect(
       (
-      await call(TENANT_A, "PATCH", `/Groups/${id}`, {
-        schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
-        Operations: [{ op: "replace", path: "displayName", value: "Auditors III" }]
-      })).
-      status
+        await call(TENANT_A, "PATCH", `/Groups/${id}`, {
+          schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+          Operations: [{ op: "replace", path: "displayName", value: "Auditors III" }],
+        })).
+        status,
     ).toBe(200);
     expect((await call(TENANT_A, "DELETE", `/Groups/${id}`)).status).toBe(204);
 
     const rows = auditService.logAction.mock.calls.map(([entry, options]: [any, any]) => ({ entry, options }));
     expect(rows.map(({ entry }: any) => entry.changes.operation)).toEqual([
-    "SCIM_GROUP_CREATE",
-    "SCIM_GROUP_REPLACE",
-    "SCIM_GROUP_PATCH",
-    "SCIM_GROUP_DELETE"]
+      "SCIM_GROUP_CREATE",
+      "SCIM_GROUP_REPLACE",
+      "SCIM_GROUP_PATCH",
+      "SCIM_GROUP_DELETE"],
     );
     for (const { entry, options } of rows) {
       expect(options.transaction).toBeDefined();
@@ -720,7 +720,7 @@ describe("P6-11 — SCIM group writes are audited", () => {
         systemActor: "system:scim",
         resourceType: "ScimGroup",
         resourceId: id,
-        changes: expect.objectContaining({ apiKeyId: "api-key-1" })
+        changes: expect.objectContaining({ apiKeyId: "api-key-1" }),
       });
     }
     expect(rows[1].entry.changes).toMatchObject({ before: { displayName: "Auditors" }, after: { displayName: "Auditors II" } });

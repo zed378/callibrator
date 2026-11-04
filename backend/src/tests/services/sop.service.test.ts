@@ -1,29 +1,29 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 const mockSopDocument: any = {
   count: jest.fn(),
   create: jest.fn(),
   findAndCountAll: jest.fn(),
-  findOne: jest.fn()
+  findOne: jest.fn(),
 };
 
 const mockSopTrainingAcknowledgment: any = {
   bulkCreate: jest.fn(),
-  findOne: jest.fn()
+  findOne: jest.fn(),
 };
 
 const mockUser: any = {
-  findAll: jest.fn()
+  findAll: jest.fn(),
 };
 
 const mockAuditLog: any = {
-  create: jest.fn()
+  create: jest.fn(),
 };
 
 const mockModels: any = {
   SopDocument: mockSopDocument,
   SopTrainingAcknowledgment: mockSopTrainingAcknowledgment,
   User: mockUser,
-  AuditLog: mockAuditLog
+  AuditLog: mockAuditLog,
 };
 
 jest.mock("../../models", () => mockModels);
@@ -31,14 +31,14 @@ jest.mock("../../models", () => mockModels);
 // A-28: the release, its training fan-out and its audit row share one
 // transaction. The sentinel handle lets the assertions prove all three carry it.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 const sopService = require("../../services/sop.service");
@@ -52,18 +52,18 @@ describe("sop.service", () => {
     it("should create SOP document with formatted number", async () => {
       mockSopDocument.count.mockResolvedValue(5);
       mockSopDocument.create.mockImplementation((data: any) =>
-      Promise.resolve({ id: "sop-1", ...data })
+        Promise.resolve({ id: "sop-1", ...data }),
       );
 
       const result = await sopService.createDocument("tenant-1", "user-1", {
         title: "Test SOP",
         version: "1.1",
         contentUrl: "https://example.com/sop",
-        requiresTraining: false
+        requiresTraining: false,
       });
 
       expect(mockSopDocument.count).toHaveBeenCalledWith({
-        where: { tenantId: "tenant-1" }
+        where: { tenantId: "tenant-1" },
       });
       expect(mockSopDocument.create).toHaveBeenCalledWith({
         tenantId: "tenant-1",
@@ -73,7 +73,7 @@ describe("sop.service", () => {
         version: "1.1",
         contentUrl: "https://example.com/sop",
         requiresTraining: false,
-        status: "DRAFT"
+        status: "DRAFT",
       }, { transaction: "TX" });
       expect(result.id).toBe("sop-1");
     });
@@ -81,11 +81,11 @@ describe("sop.service", () => {
     it("should default version to 1.0 and requiresTraining to true", async () => {
       mockSopDocument.count.mockResolvedValue(0);
       mockSopDocument.create.mockImplementation((data: any) =>
-      Promise.resolve({ id: "sop-2", ...data })
+        Promise.resolve({ id: "sop-2", ...data }),
       );
 
       await sopService.createDocument("tenant-1", "user-1", {
-        title: "Minimal SOP"
+        title: "Minimal SOP",
       });
 
       expect(mockSopDocument.create).toHaveBeenCalledWith(
@@ -93,27 +93,27 @@ describe("sop.service", () => {
           documentNumber: "SOP-0001",
           version: "1.0",
           requiresTraining: true,
-          status: "DRAFT"
+          status: "DRAFT",
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
     it("should preserve requiresTraining:false rather than defaulting it", async () => {
       mockSopDocument.count.mockResolvedValue(0);
       mockSopDocument.create.mockImplementation((data: any) =>
-      Promise.resolve({ id: "sop-3", ...data })
+        Promise.resolve({ id: "sop-3", ...data }),
       );
 
       await sopService.createDocument("tenant-1", "user-1", {
         title: "No training",
-        requiresTraining: false
+        requiresTraining: false,
       });
 
       // `!== undefined ? x : true` must not coerce an explicit false to true.
       expect(mockSopDocument.create).toHaveBeenCalledWith(
         expect.objectContaining({ requiresTraining: false }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
   });
@@ -128,8 +128,8 @@ describe("sop.service", () => {
         expect.objectContaining({
           where: { tenantId: "tenant-1" },
           limit: 10,
-          offset: 0
-        })
+          offset: 0,
+        }),
       );
       expect(result.page).toBe(1);
       expect(result.limit).toBe(10);
@@ -141,7 +141,7 @@ describe("sop.service", () => {
       const result = await sopService.getDocuments("tenant-1", 2, 5);
 
       expect(mockSopDocument.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ offset: 5, limit: 5 })
+        expect.objectContaining({ offset: 5, limit: 5 }),
       );
       expect(result.totalPages).toBe(2);
     });
@@ -149,7 +149,7 @@ describe("sop.service", () => {
     it("should return paginated list of documents", async () => {
       mockSopDocument.findAndCountAll.mockResolvedValue({
         count: 1,
-        rows: [{ id: "sop-1", title: "SOP 1" }]
+        rows: [{ id: "sop-1", title: "SOP 1" }],
       });
 
       const result = await sopService.getDocuments("tenant-1", 1, 10, "PUBLISHED");
@@ -159,14 +159,14 @@ describe("sop.service", () => {
         limit: 10,
         offset: 0,
         include: [
-        {
-          model: mockUser,
-          as: "author",
-          attributes: ["id", "firstName", "lastName"],
-          required: false // A-90: LEFT JOIN — see includes.a90.test.js
-        }],
+          {
+            model: mockUser,
+            as: "author",
+            attributes: ["id", "firstName", "lastName"],
+            required: false, // A-90: LEFT JOIN — see includes.a90.test.js
+          }],
 
-        order: [["createdAt", "DESC"], ["id", "DESC"]]
+        order: [["createdAt", "DESC"], ["id", "DESC"]],
       });
       expect(result.total).toBe(1);
       expect(result.documents).toHaveLength(1);
@@ -185,18 +185,18 @@ describe("sop.service", () => {
         authorId: AUTHOR,
         requiresTraining: true,
         status: "DRAFT",
-        save: jest.fn().mockResolvedValue(true)
+        save: jest.fn().mockResolvedValue(true),
       };
       mockSopDocument.findOne.mockResolvedValue(mockDoc);
       mockUser.findAll.mockResolvedValue([
-      { id: "user-1" },
-      { id: "user-2" }]
+        { id: "user-1" },
+        { id: "user-2" }],
       );
 
       const result = await sopService.publishDocument("tenant-1", "sop-1", PUBLISHER);
 
       expect(mockSopDocument.findOne).toHaveBeenCalledWith({
-        where: { id: "sop-1", tenantId: "tenant-1" }
+        where: { id: "sop-1", tenantId: "tenant-1" },
       });
       expect(mockDoc.status).toBe("PUBLISHED");
       expect(mockDoc.publishedDate).toBeDefined();
@@ -207,14 +207,14 @@ describe("sop.service", () => {
         attributes: ["id"],
         order: [["id", "ASC"]],
         limit: sopService.TRAINING_FANOUT_BATCH,
-        transaction: "TX"
+        transaction: "TX",
       });
       expect(mockSopTrainingAcknowledgment.bulkCreate).toHaveBeenCalledWith(
         [
-        { tenantId: "tenant-1", documentId: "sop-1", userId: "user-1", status: "PENDING" },
-        { tenantId: "tenant-1", documentId: "sop-1", userId: "user-2", status: "PENDING" }],
+          { tenantId: "tenant-1", documentId: "sop-1", userId: "user-1", status: "PENDING" },
+          { tenantId: "tenant-1", documentId: "sop-1", userId: "user-2", status: "PENDING" }],
 
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
       // The release is attributable: who published, and who had authored it.
       expect(mockAuditLog.create).toHaveBeenCalledWith(
@@ -226,10 +226,10 @@ describe("sop.service", () => {
           resourceId: "sop-1",
           changes: expect.objectContaining({
             before: { status: "DRAFT" },
-            authorId: AUTHOR
-          })
+            authorId: AUTHOR,
+          }),
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
       expect(result.id).toBe("sop-1");
     });
@@ -241,7 +241,7 @@ describe("sop.service", () => {
         authorId: AUTHOR,
         requiresTraining: false,
         status: "UNDER_REVIEW",
-        save: jest.fn().mockResolvedValue(true)
+        save: jest.fn().mockResolvedValue(true),
       };
       mockSopDocument.findOne.mockResolvedValue(mockDoc);
 
@@ -259,7 +259,7 @@ describe("sop.service", () => {
       mockSopDocument.findOne.mockResolvedValue(null);
 
       await expect(
-        sopService.publishDocument("tenant-1", "sop-1", PUBLISHER)
+        sopService.publishDocument("tenant-1", "sop-1", PUBLISHER),
       ).rejects.toThrow("Document not found");
     });
 
@@ -272,15 +272,15 @@ describe("sop.service", () => {
         authorId: AUTHOR,
         requiresTraining: true,
         status: "DRAFT",
-        save: jest.fn()
+        save: jest.fn(),
       };
       mockSopDocument.findOne.mockResolvedValue(mockDoc);
 
       await expect(
-        sopService.publishDocument("tenant-1", "sop-2", AUTHOR)
+        sopService.publishDocument("tenant-1", "sop-2", AUTHOR),
       ).rejects.toMatchObject({
         status: 403,
-        message: expect.stringContaining("SOP-0002 was authored by you")
+        message: expect.stringContaining("SOP-0002 was authored by you"),
       });
 
       expect(mockDoc.status).toBe("DRAFT");
@@ -298,20 +298,20 @@ describe("sop.service", () => {
           authorId: AUTHOR,
           requiresTraining: true,
           status,
-          save: jest.fn()
+          save: jest.fn(),
         };
         mockSopDocument.findOne.mockResolvedValue(mockDoc);
 
         await expect(
-          sopService.publishDocument("tenant-1", "sop-3", PUBLISHER)
+          sopService.publishDocument("tenant-1", "sop-3", PUBLISHER),
         ).rejects.toMatchObject({
           status: 409,
-          message: expect.stringContaining(`SOP-0003 is ${status} and cannot be published`)
+          message: expect.stringContaining(`SOP-0003 is ${status} and cannot be published`),
         });
 
         expect(mockDoc.save).not.toHaveBeenCalled();
         expect(mockAuditLog.create).not.toHaveBeenCalled();
-      }
+      },
     );
   });
 
@@ -322,7 +322,7 @@ describe("sop.service", () => {
         userId: "user-1",
         documentId: "sop-1",
         status: "PENDING",
-        save: jest.fn().mockResolvedValue(true)
+        save: jest.fn().mockResolvedValue(true),
       };
       mockSopTrainingAcknowledgment.findOne.mockResolvedValue(mockAck);
       // F-19: the document is in force (an ARCHIVED one is a 409).
@@ -331,7 +331,7 @@ describe("sop.service", () => {
       const result = await sopService.acknowledgeTraining("tenant-1", "user-1", "sop-1");
 
       expect(mockSopTrainingAcknowledgment.findOne).toHaveBeenCalledWith({
-        where: { tenantId: "tenant-1", userId: "user-1", documentId: "sop-1" }
+        where: { tenantId: "tenant-1", userId: "user-1", documentId: "sop-1" },
       });
       expect(mockAck.status).toBe("COMPLETED");
       expect(mockAck.acknowledgedAt).toBeDefined();
@@ -347,40 +347,40 @@ describe("sop.service", () => {
           changes: expect.objectContaining({
             operation: "ACKNOWLEDGE_TRAINING",
             documentId: "sop-1",
-            before: { status: "PENDING" }
-          })
+            before: { status: "PENDING" },
+          }),
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
     it.each([
-    [new Date("2026-09-01T08:00:00.000Z"), "2026-09-01T08:00:00.000Z"],
-    [null, "an earlier date"]]
+      [new Date("2026-09-01T08:00:00.000Z"), "2026-09-01T08:00:00.000Z"],
+      [null, "an earlier date"]],
     )(
       "A-145: an acknowledgement already COMPLETED (at %s) is a 409 and is not rewritten",
       async (acknowledgedAt: any, named: any) => {
         const mockAck: any = {
           status: "COMPLETED",
           acknowledgedAt,
-          save: jest.fn()
+          save: jest.fn(),
         };
         mockSopTrainingAcknowledgment.findOne.mockResolvedValue(mockAck);
 
         await expect(
-          sopService.acknowledgeTraining("tenant-1", "user-1", "sop-1")
+          sopService.acknowledgeTraining("tenant-1", "user-1", "sop-1"),
         ).rejects.toMatchObject({ status: 409, message: expect.stringContaining(named) });
         expect(mockAck.acknowledgedAt).toBe(acknowledgedAt);
         expect(mockAck.save).not.toHaveBeenCalled();
         expect(mockAuditLog.create).not.toHaveBeenCalled();
-      }
+      },
     );
 
     it("should throw 404 AppError if training acknowledgment not found", async () => {
       mockSopTrainingAcknowledgment.findOne.mockResolvedValue(null);
 
       await expect(
-        sopService.acknowledgeTraining("tenant-1", "user-1", "sop-1")
+        sopService.acknowledgeTraining("tenant-1", "user-1", "sop-1"),
       ).rejects.toThrow("Training acknowledgment not found");
     });
   });
@@ -402,7 +402,7 @@ describe("sop.service — P6-11 createDocument audit row", () => {
       userId: "user-1",
       apiKeyId: null,
       ipAddress: "10.0.0.1",
-      userAgent: "jest"
+      userAgent: "jest",
     });
     expect(spy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -413,10 +413,10 @@ describe("sop.service — P6-11 createDocument audit row", () => {
         resourceId: "sop-9",
         changes: expect.objectContaining({
           operation: "SOP_CREATE",
-          after: expect.objectContaining({ documentNumber: "SOP-0003", status: "DRAFT", version: "1.0" })
-        })
+          after: expect.objectContaining({ documentNumber: "SOP-0003", status: "DRAFT", version: "1.0" }),
+        }),
       }),
-      { transaction: "TX" }
+      { transaction: "TX" },
     );
     spy.mockRestore();
   });

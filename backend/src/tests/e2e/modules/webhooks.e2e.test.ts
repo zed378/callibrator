@@ -13,7 +13,7 @@ async function httpPatch(path: any, data: any = {}, headers: any = {}) {
     method: "PATCH",
     headers: { ...defaultHeaders, ...headers },
     body: JSON.stringify(data),
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(15000),
   });
   const ct = resp.headers.get("content-type") || "";
   const body = ct.includes("application/json") ? await resp.json().catch(() => null) : null;
@@ -49,7 +49,7 @@ describe("E2E Webhooks (HTTP)", () => {
     const { status, body } = await httpPost(
       "/webhooks",
       { url: "https://example.com/hook", events: ["certificate.signed"], description: "e2e" },
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(201);
     expect(body.data).toHaveProperty("id");
@@ -66,7 +66,7 @@ describe("E2E Webhooks (HTTP)", () => {
     const { status, body } = await httpPatch(
       `/webhooks/${hookId}`,
       { isActive: false },
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(200);
     expect((body as any).success).toBe(true);

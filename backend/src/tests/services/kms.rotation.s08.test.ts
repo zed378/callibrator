@@ -127,12 +127,12 @@ describe("S-08 — KMS envelopes name their key, and a ring decrypts old and new
   it("isEnvelope recognises v1 and v2 only", () => {
     const kms = loadKms({ KMS_MASTER_KEY: KEY_A });
     expect([
-    kms.isEnvelope("v1:x"),
-    kms.isEnvelope("v2:x"),
-    kms.isEnvelope("v3:x"),
-    kms.isEnvelope("plain"),
-    kms.isEnvelope(null),
-    kms.isEnvelope(42)]
+      kms.isEnvelope("v1:x"),
+      kms.isEnvelope("v2:x"),
+      kms.isEnvelope("v3:x"),
+      kms.isEnvelope("plain"),
+      kms.isEnvelope(null),
+      kms.isEnvelope(42)],
     ).toEqual([true, true, false, false, false, false]);
   });
 
@@ -157,7 +157,7 @@ describe("S-08 — KMS envelopes name their key, and a ring decrypts old and new
 
   it("refuses to boot with a previous key that is not 32 bytes, naming which", () => {
     expect(() => loadKms({ KMS_MASTER_KEY: KEY_A, KMS_MASTER_KEY_PREVIOUS: `${KEY_B},abcd` })).toThrow(
-      /KMS_MASTER_KEY_PREVIOUS\[1\] must decode to 32 bytes \(got 2\)/
+      /KMS_MASTER_KEY_PREVIOUS\[1\] must decode to 32 bytes \(got 2\)/,
     );
   });
 });

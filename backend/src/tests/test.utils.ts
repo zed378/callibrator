@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
 * Test Utilities
 *
@@ -16,7 +16,7 @@ const createMockRes = () => {
     send: jest.fn().mockReturnThis(),
     set: jest.fn().mockReturnThis(),
     end: jest.fn().mockReturnThis(),
-    locals: {}
+    locals: {},
   };
   return res;
 };
@@ -34,11 +34,11 @@ const createMockReq = (options: any = {}) => {
     user: null,
     headers: {
       authorization: null,
-      "x-forwarded-for": "127.0.0.1"
+      "x-forwarded-for": "127.0.0.1",
     },
     ip: "127.0.0.1",
     requestId: "test-request-id",
-    ...options
+    ...options,
   };
   return req;
 };
@@ -66,7 +66,7 @@ const createMockModel = (options: any = {}) => {
     bulkCreate: jest.fn().mockResolvedValue([]),
     update: jest.fn().mockResolvedValue([1]),
     destroy: jest.fn().mockResolvedValue(1),
-    count: jest.fn().mockResolvedValue(0)
+    count: jest.fn().mockResolvedValue(0),
   };
   return { ...defaults, ...options };
 };
@@ -78,7 +78,7 @@ const createMockModel = (options: any = {}) => {
 const createMockTransaction = () => {
   return {
     commit: jest.fn().mockResolvedValue(undefined),
-    rollback: jest.fn().mockResolvedValue(undefined)
+    rollback: jest.fn().mockResolvedValue(undefined),
   };
 };
 
@@ -90,7 +90,7 @@ const createMockTransactionWithOptions = () => {
   const transaction = createMockTransaction();
   return {
     ...transaction,
-    toObject: jest.fn().mockReturnValue(transaction)
+    toObject: jest.fn().mockReturnValue(transaction),
   };
 };
 
@@ -149,5 +149,5 @@ module.exports = {
   wait,
   mockThrow,
   mockResolve,
-  mockResolveThenThrow
+  mockResolveThenThrow,
 };

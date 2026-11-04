@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for Risk Service
  */
@@ -6,21 +6,21 @@
 // A-278 (ADR-094): the write runs in a transaction with its audit row; the
 // double passes a marker through so the write's options can be asserted.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("tx")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("tx")) },
 }));
 
 jest.mock("../../models", () => ({
   Risk: {
     create: jest.fn(),
     findAndCountAll: jest.fn(),
-    findOne: jest.fn()
+    findOne: jest.fn(),
   },
   User: {
-    findOne: jest.fn()
-  }
+    findOne: jest.fn(),
+  },
 }));
 
 jest.mock("../../utils/appError.util", () => ({
@@ -30,7 +30,7 @@ jest.mock("../../utils/appError.util", () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 
 const riskService = require("../../services/risk.service");
@@ -42,7 +42,7 @@ function createMockInstance(overrides: any = {}) {
   const mockInstance: any = {
     update: jest.fn().mockResolvedValue({}),
     destroy: jest.fn().mockResolvedValue(true),
-    get({ plain = false } = {}) {return plain ? { ...this } : this;}
+    get({ plain = false } = {}) {return plain ? { ...this } : this;},
   };
   return { ...mockInstance, ...overrides };
 }
@@ -58,7 +58,7 @@ describe("riskService", () => {
         title: "Test Risk",
         category: "security",
         status: "open",
-        description: "A test risk"
+        description: "A test risk",
       };
       const tenantId = "tenant-1";
       const userId = "user-1";
@@ -70,7 +70,7 @@ describe("riskService", () => {
       expect(Risk.create).toHaveBeenCalledWith({
         ...riskData,
         tenantId,
-        identifiedBy: userId
+        identifiedBy: userId,
       }, { transaction: "tx" });
       expect(result).toEqual({ ...riskData, id: "risk-1" });
     });
@@ -83,16 +83,15 @@ describe("riskService", () => {
         limit: 10,
         page: 1,
         status: "open",
-        category: "security"
+        category: "security",
       };
       const mockRisks: any = [
-      { id: "risk-1", title: "Risk 1" },
-      { id: "risk-2", title: "Risk 2" }];
-
+        { id: "risk-1", title: "Risk 1" },
+        { id: "risk-2", title: "Risk 2" }];
 
       Risk.findAndCountAll.mockResolvedValueOnce({
         count: 2,
-        rows: mockRisks
+        rows: mockRisks,
       });
 
       const result = await riskService.getRisks(tenantId, query);
@@ -103,18 +102,18 @@ describe("riskService", () => {
         offset: 0,
         order: [["createdAt", "DESC"], ["id", "DESC"]],
         include: [
-        {
-          model: User,
-          as: "identifier",
-          attributes: ["id", "firstName", "lastName", "email"],
-          required: false
-        },
-        {
-          model: User,
-          as: "assignee",
-          attributes: ["id", "firstName", "lastName", "email"],
-          required: false
-        }]
+          {
+            model: User,
+            as: "identifier",
+            attributes: ["id", "firstName", "lastName", "email"],
+            required: false,
+          },
+          {
+            model: User,
+            as: "assignee",
+            attributes: ["id", "firstName", "lastName", "email"],
+            required: false,
+          }],
 
       });
 
@@ -122,7 +121,7 @@ describe("riskService", () => {
         rows: mockRisks,
         total: 2,
         page: 1,
-        totalPages: 1
+        totalPages: 1,
       });
     });
 
@@ -133,7 +132,7 @@ describe("riskService", () => {
 
       // limit = 10, page = 1 come from destructuring defaults.
       expect(Risk.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 10, offset: 0 })
+        expect.objectContaining({ limit: 10, offset: 0 }),
       );
       expect(result.page).toBe(1);
       expect(result.totalPages).toBe(0);
@@ -146,7 +145,7 @@ describe("riskService", () => {
 
       Risk.findAndCountAll.mockResolvedValueOnce({
         count: 1,
-        rows: mockRisks
+        rows: mockRisks,
       });
 
       const result = await riskService.getRisks(tenantId, query);
@@ -157,18 +156,18 @@ describe("riskService", () => {
         offset: 20,
         order: [["createdAt", "DESC"], ["id", "DESC"]],
         include: [
-        {
-          model: User,
-          as: "identifier",
-          attributes: ["id", "firstName", "lastName", "email"],
-          required: false
-        },
-        {
-          model: User,
-          as: "assignee",
-          attributes: ["id", "firstName", "lastName", "email"],
-          required: false
-        }]
+          {
+            model: User,
+            as: "identifier",
+            attributes: ["id", "firstName", "lastName", "email"],
+            required: false,
+          },
+          {
+            model: User,
+            as: "assignee",
+            attributes: ["id", "firstName", "lastName", "email"],
+            required: false,
+          }],
 
       });
 
@@ -176,7 +175,7 @@ describe("riskService", () => {
         rows: mockRisks,
         total: 1,
         page: 2,
-        totalPages: 1
+        totalPages: 1,
       });
     });
 
@@ -186,7 +185,7 @@ describe("riskService", () => {
 
       Risk.findAndCountAll.mockResolvedValueOnce({
         count: 25,
-        rows: []
+        rows: [],
       });
 
       const result = await riskService.getRisks(tenantId, query);
@@ -203,7 +202,7 @@ describe("riskService", () => {
         id: riskId,
         title: "Test Risk",
         status: "open",
-        get({ plain = false } = {}) {return plain ? { ...this } : this;}
+        get({ plain = false } = {}) {return plain ? { ...this } : this;},
       };
 
       Risk.findOne.mockResolvedValueOnce(mockRisk);
@@ -213,18 +212,18 @@ describe("riskService", () => {
       expect(Risk.findOne).toHaveBeenCalledWith({
         where: { id: riskId, tenantId },
         include: [
-        {
-          model: User,
-          as: "identifier",
-          attributes: ["id", "firstName", "lastName", "email"],
-          required: false
-        },
-        {
-          model: User,
-          as: "assignee",
-          attributes: ["id", "firstName", "lastName", "email"],
-          required: false
-        }]
+          {
+            model: User,
+            as: "identifier",
+            attributes: ["id", "firstName", "lastName", "email"],
+            required: false,
+          },
+          {
+            model: User,
+            as: "assignee",
+            attributes: ["id", "firstName", "lastName", "email"],
+            required: false,
+          }],
 
       });
       expect(result).toEqual(mockRisk);
@@ -237,13 +236,13 @@ describe("riskService", () => {
       Risk.findOne.mockResolvedValueOnce(null);
 
       await expect(riskService.getRiskById(tenantId, riskId)).rejects.toThrow(
-        "Risk not found"
+        "Risk not found",
       );
       await expect(
-        riskService.getRiskById(tenantId, riskId)
+        riskService.getRiskById(tenantId, riskId),
       ).rejects.toBeInstanceOf(AppError);
       await expect(
-        riskService.getRiskById(tenantId, riskId)
+        riskService.getRiskById(tenantId, riskId),
       ).rejects.toHaveProperty("status", 404);
     });
   });
@@ -257,7 +256,7 @@ describe("riskService", () => {
       const mockRisk: any = createMockInstance({
         id: riskId,
         title: "Test Risk",
-        status: "open"
+        status: "open",
       });
 
       // Override update to mutate the instance
@@ -288,7 +287,7 @@ describe("riskService", () => {
       Risk.findOne.mockResolvedValueOnce(null);
 
       await expect(
-        riskService.updateRisk(tenantId, riskId, updateData)
+        riskService.updateRisk(tenantId, riskId, updateData),
       ).rejects.toThrow("Risk not found");
     });
   });
@@ -300,7 +299,7 @@ describe("riskService", () => {
       const mockRisk: any = createMockInstance({
         id: riskId,
         title: "Test Risk",
-        destroy: jest.fn().mockResolvedValue(true)
+        destroy: jest.fn().mockResolvedValue(true),
       });
 
       Risk.findOne.mockResolvedValueOnce(mockRisk);
@@ -318,7 +317,7 @@ describe("riskService", () => {
       Risk.findOne.mockResolvedValueOnce(null);
 
       await expect(riskService.deleteRisk(tenantId, riskId)).rejects.toThrow(
-        "Risk not found"
+        "Risk not found",
       );
     });
   });

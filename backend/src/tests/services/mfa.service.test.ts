@@ -19,7 +19,7 @@
  */
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const mockRows = new Map();
@@ -42,8 +42,8 @@ jest.mock("../../models", () => {
         if (!row || !matches(row, where)) {return [0];}
         Object.assign(row, values);
         return [1];
-      })
-    }
+      }),
+    },
   };
 });
 
@@ -75,7 +75,7 @@ const makeUser = (overrides: any = {}) => {
     mfaEnabled: true,
     mfaSecret: SECRET,
     mfaLastUsedStep: null,
-    ...overrides
+    ...overrides,
   };
   mockRows.set(row.id, { id: row.id, mfaLastUsedStep: row.mfaLastUsedStep });
   return row;
@@ -130,7 +130,7 @@ describe("mfa.service", () => {
       await expect(mfaService.consumeCode(reloaded, code)).resolves.toBe(false);
       expect(logger.warn).toHaveBeenCalledWith(
         "TOTP code refused: its time step was already used",
-        { userId: user.id }
+        { userId: user.id },
       );
     });
 
@@ -156,13 +156,13 @@ describe("mfa.service", () => {
       const code = liveCode();
 
       const results = await Promise.all([
-      mfaService.consumeCode(first, code),
-      mfaService.consumeCode(second, code)]
+        mfaService.consumeCode(first, code),
+        mfaService.consumeCode(second, code)],
       );
 
       expect(results.sort()).toEqual([false, true]);
       expect(logger.warn).toHaveBeenCalledWith("TOTP code refused: used concurrently", {
-        userId: first.id
+        userId: first.id,
       });
     });
 
@@ -176,10 +176,10 @@ describe("mfa.service", () => {
         {
           where: {
             id: user.id,
-            [Op.or]: [{ mfaLastUsedStep: null }, { mfaLastUsedStep: { [Op.lt]: STEP } }]
+            [Op.or]: [{ mfaLastUsedStep: null }, { mfaLastUsedStep: { [Op.lt]: STEP } }],
           },
-          transaction: "TX"
-        }
+          transaction: "TX",
+        },
       );
     });
 
@@ -194,10 +194,10 @@ describe("mfa.service", () => {
       const user = makeUser();
 
       await expect(mfaService.consumeCode(user, liveCode(), { secret: pending })).resolves.toBe(
-        false
+        false,
       );
       await expect(
-        mfaService.consumeCode(user, liveCode(pending), { secret: pending })
+        mfaService.consumeCode(user, liveCode(pending), { secret: pending }),
       ).resolves.toBe(true);
     });
 
@@ -211,13 +211,13 @@ describe("mfa.service", () => {
   describe("verifyLogin", () => {
     it("rejects when MFA is not enabled", async () => {
       await expect(
-        mfaService.verifyLogin({ mfaEnabled: false, mfaSecret: null }, "123456")
+        mfaService.verifyLogin({ mfaEnabled: false, mfaSecret: null }, "123456"),
       ).rejects.toThrow("MFA is not enabled for this user.");
     });
 
     it("rejects when the MFA secret is null", async () => {
       await expect(
-        mfaService.verifyLogin({ mfaEnabled: true, mfaSecret: null }, "123456")
+        mfaService.verifyLogin({ mfaEnabled: true, mfaSecret: null }, "123456"),
       ).rejects.toThrow("MFA is not enabled for this user.");
     });
 

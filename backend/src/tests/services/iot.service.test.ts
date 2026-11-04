@@ -3,23 +3,23 @@ jest.mock("mqtt");
 jest.mock("../../models", () => ({
   CalibrationDevice: {
     unscoped: jest.fn(() => ({
-      findOne: jest.fn()
-    }))
+      findOne: jest.fn(),
+    })),
   },
   IotReading: {
-    create: jest.fn()
+    create: jest.fn(),
   },
   Notification: {
-    create: jest.fn()
-  }
+    create: jest.fn(),
+  },
 }));
 
 // W-04: an anomaly's reading, alert and audit row are one transaction.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -27,8 +27,8 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
     error: jest.fn(),
     warn: jest.fn(),
     info: jest.fn(),
-    debug: jest.fn()
-  }
+    debug: jest.fn(),
+  },
 }));
 
 const mqtt = require("mqtt");
@@ -64,7 +64,7 @@ describe("iot.service", () => {
     it("should log info and return early when MQTT_HOST not set", async () => {
       await iot.connect(1883, "broker.local");
       expect(logger.info).toHaveBeenCalledWith(
-        "MQTT broker not configured (set MQTT_HOST and MQTT_PORT to enable)"
+        "MQTT broker not configured (set MQTT_HOST and MQTT_PORT to enable)",
       );
       expect(mqtt.connect).not.toHaveBeenCalled();
     });
@@ -73,7 +73,7 @@ describe("iot.service", () => {
       process.env["MQTT_HOST"] = "broker.local";
       await iot.connect(1883, "broker.local");
       expect(logger.info).toHaveBeenCalledWith(
-        "MQTT broker not configured (set MQTT_HOST and MQTT_PORT to enable)"
+        "MQTT broker not configured (set MQTT_HOST and MQTT_PORT to enable)",
       );
     });
 
@@ -87,7 +87,7 @@ describe("iot.service", () => {
           if (event === "connect") {cb();}
           if (event === "error") {cb(new Error("fail"));}
         }),
-        subscribe: jest.fn()
+        subscribe: jest.fn(),
       };
       mqtt.connect.mockReturnValue(mockClient);
 
@@ -105,7 +105,7 @@ describe("iot.service", () => {
         once: jest.fn().mockImplementation((event: any, cb: any) => {
           if (event === "connect") {cb();}
         }),
-        subscribe: jest.fn()
+        subscribe: jest.fn(),
       };
       mqtt.connect.mockReturnValue(mockClient);
 
@@ -122,7 +122,7 @@ describe("iot.service", () => {
         once: jest.fn().mockImplementation((event: any, cb: any) => {
           if (event === "connect") {cb();}
         }),
-        subscribe: jest.fn()
+        subscribe: jest.fn(),
       };
       mqtt.connect.mockReturnValue(mockClient);
 
@@ -143,7 +143,7 @@ describe("iot.service", () => {
         }),
         subscribe: jest.fn((_topic: any, cb: any) => {
           if (typeof cb === "function") {cb(null);}
-        })
+        }),
       };
       mqtt.connect.mockReturnValue(mockClient);
 
@@ -165,7 +165,7 @@ describe("iot.service", () => {
         }),
         subscribe: jest.fn((_topic: any, cb: any) => {
           if (typeof cb === "function") {cb(new Error("subscribe failed"));}
-        })
+        }),
       };
       mqtt.connect.mockReturnValue(mockClient);
 
@@ -183,7 +183,7 @@ describe("iot.service", () => {
         }),
         once: jest.fn().mockImplementation((event: any, cb: any) => {
           if (event === "error") {setImmediate(() => cb(new Error("conn err")));}
-        })
+        }),
       };
       mqtt.connect.mockReturnValue(mockClient);
 
@@ -201,7 +201,7 @@ describe("iot.service", () => {
         }),
         once: jest.fn().mockImplementation((event: any, cb: any) => {
           if (event === "connect") {setImmediate(cb);}
-        })
+        }),
       };
       mqtt.connect.mockReturnValue(mockClient);
 
@@ -220,7 +220,7 @@ describe("iot.service", () => {
         }),
         once: jest.fn().mockImplementation((event: any, cb: any) => {
           if (event === "connect") {setImmediate(cb);}
-        })
+        }),
       };
       mqtt.connect.mockReturnValue(mockClient);
 
@@ -249,7 +249,7 @@ describe("iot.service", () => {
       await expect(iot.connect(1883, "broker.local")).rejects.toThrow("bad url");
       expect(logger.error).toHaveBeenCalledWith(
         "Failed to connect to MQTT broker",
-        { error: "bad url" }
+        { error: "bad url" },
       );
     });
 
@@ -261,7 +261,7 @@ describe("iot.service", () => {
       const mockClient: any = {
         on: jest.fn(),
         once: jest.fn(), // never fires connect or error
-        subscribe: jest.fn()
+        subscribe: jest.fn(),
       };
       mqtt.connect.mockReturnValue(mockClient);
 
@@ -284,7 +284,7 @@ describe("iot.service", () => {
           once: jest.fn((event: any, cb: any) => {
             if (event === "connect") {setImmediate(cb);}
           }),
-          subscribe: jest.fn()
+          subscribe: jest.fn(),
         };
         mqtt.connect.mockReturnValue(mockClient);
         await iot.connect(1883, "broker.local");
@@ -303,10 +303,10 @@ describe("iot.service", () => {
           // isDeleted: a decommissioned device must not ingest. `.unscoped()`
           // drops the defaultScope that would otherwise exclude it.
           where: { id: "dev1", tenantId: "t1", iotEnabled: true, isDeleted: false },
-          attributes: ["id", "name", "readingTolerance"]
+          attributes: ["id", "name", "readingTolerance"],
         });
         expect(IotReading.create).toHaveBeenCalledWith(
-          expect.objectContaining({ tenantId: "t1", deviceId: "dev1", metrics: { temperature: 22 } })
+          expect.objectContaining({ tenantId: "t1", deviceId: "dev1", metrics: { temperature: 22 } }),
         );
       });
 
@@ -331,7 +331,7 @@ describe("iot.service", () => {
         expect(onUnhandled).not.toHaveBeenCalled();
         expect(logger.error).toHaveBeenCalledWith(
           "MQTT ingest failed",
-          expect.objectContaining({ deviceId: "ghost", tenantId: "t1" })
+          expect.objectContaining({ deviceId: "ghost", tenantId: "t1" }),
         );
       });
 
@@ -366,7 +366,7 @@ describe("iot.service", () => {
 
         expect(logger.error).toHaveBeenCalledWith(
           "MQTT Message Parse Error",
-          expect.objectContaining({ topic: "device/dev1/t1" })
+          expect.objectContaining({ topic: "device/dev1/t1" }),
         );
         expect(IotReading.create).not.toHaveBeenCalled();
       });
@@ -383,7 +383,7 @@ describe("iot.service", () => {
 
     it("should publish message and resolve true", async () => {
       const mockClient: any = {
-        publish: jest.fn((_topic: any, _payload: any, _opts: any, cb: any) => cb(null))
+        publish: jest.fn((_topic: any, _payload: any, _opts: any, cb: any) => cb(null)),
       };
       iot.client = mockClient;
       iot.connected = true;
@@ -394,13 +394,13 @@ describe("iot.service", () => {
         "commands/dev1/t1",
         JSON.stringify({ cmd: "reset" }),
         { qos: 1 },
-        expect.any(Function)
+        expect.any(Function),
       );
     });
 
     it("should reject on publish error", async () => {
       const mockClient: any = {
-        publish: jest.fn((_topic: any, _payload: any, _opts: any, cb: any) => cb(new Error("publish fail")))
+        publish: jest.fn((_topic: any, _payload: any, _opts: any, cb: any) => cb(new Error("publish fail"))),
       };
       iot.client = mockClient;
       iot.connected = true;
@@ -415,8 +415,8 @@ describe("iot.service", () => {
       name: "Sensor Alpha",
       readingTolerance: {
         temperature: { min: 10, max: 50 },
-        humidity: { min: 20, max: 80 }
-      }
+        humidity: { min: 20, max: 80 },
+      },
     };
 
     beforeEach(() => {
@@ -434,7 +434,7 @@ describe("iot.service", () => {
         tenantId: "t1",
         deviceId: "dev1",
         metrics: { temperature: 25, humidity: 50 },
-        isAnomaly: false
+        isAnomaly: false,
       });
       expect(Notification.create).not.toHaveBeenCalled();
     });
@@ -449,9 +449,9 @@ describe("iot.service", () => {
           tenantId: "t1",
           title: "IoT Anomaly Alert: Sensor Alpha",
           message: expect.stringContaining("temperature"),
-          type: "SYSTEM"
+          type: "SYSTEM",
         },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
       expect(logger.warn).toHaveBeenCalledWith("IoT Anomaly detected for device dev1", expect.any(Object));
     });
@@ -466,9 +466,9 @@ describe("iot.service", () => {
           tenantId: "t1",
           title: "IoT Anomaly Alert: Sensor Alpha",
           message: expect.stringContaining("above max"),
-          type: "SYSTEM"
+          type: "SYSTEM",
         },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -487,7 +487,7 @@ describe("iot.service", () => {
 
       expect(IotReading.create).toHaveBeenCalledWith(
         { tenantId: "t1", deviceId: "dev1", metrics: { temperature: 60 }, isAnomaly: true },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
       expect(auditService.logAction).toHaveBeenCalledTimes(1);
       expect(auditService.logAction).toHaveBeenCalledWith(
@@ -502,10 +502,10 @@ describe("iot.service", () => {
             audience: "tenant",
             deviceId: "dev1",
             readingId: "reading-1",
-            anomalies: ["temperature (60) is above max (50)"]
-          }
+            anomalies: ["temperature (60) is above max (50)"],
+          },
         },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -572,14 +572,14 @@ describe("iot.service", () => {
       CalibrationDevice.unscoped().findOne.mockResolvedValue({
         id: "dev1",
         name: "Max Only",
-        readingTolerance: { temperature: { max: 50 } }
+        readingTolerance: { temperature: { max: 50 } },
       });
 
       expect((await iot.ingestReading("t1", "dev1", { temperature: -100 })).isAnomaly).toBe(false);
       expect((await iot.ingestReading("t1", "dev1", { temperature: 60 })).isAnomaly).toBe(true);
       expect(Notification.create).toHaveBeenCalledWith(
         expect.objectContaining({ message: "Anomalous readings detected: temperature (60) is above max (50)" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -587,14 +587,14 @@ describe("iot.service", () => {
       CalibrationDevice.unscoped().findOne.mockResolvedValue({
         id: "dev1",
         name: "Min Only",
-        readingTolerance: { temperature: { min: 10 } }
+        readingTolerance: { temperature: { min: 10 } },
       });
 
       expect((await iot.ingestReading("t1", "dev1", { temperature: 9999 })).isAnomaly).toBe(false);
       expect((await iot.ingestReading("t1", "dev1", { temperature: 5 })).isAnomaly).toBe(true);
       expect(Notification.create).toHaveBeenCalledWith(
         expect.objectContaining({ message: "Anomalous readings detected: temperature (5) is below min (10)" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -608,7 +608,7 @@ describe("iot.service", () => {
         title: "IoT Anomaly Alert: Sensor Alpha",
         message:
         "Anomalous readings detected: temperature (5) is below min (10), humidity (90) is above max (80)",
-        type: "SYSTEM"
+        type: "SYSTEM",
       }, { transaction: "TX" });
     });
   });
@@ -656,13 +656,13 @@ describe("iot.service — decommissioned devices", () => {
 
     const iotService = require("../../services/iot.service");
     await expect(iotService.ingestReading("t1", "dev1", { temp: 1 })).rejects.toThrow(
-      "Device not found or IoT disabled"
+      "Device not found or IoT disabled",
     );
 
     expect(findOne).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ isDeleted: false })
-      })
+        where: expect.objectContaining({ isDeleted: false }),
+      }),
     );
   });
 });

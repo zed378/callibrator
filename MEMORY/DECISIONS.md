@@ -6574,6 +6574,45 @@ Both harness defects are fixed, every plant was re-run with exit-0 baselines, an
 
 **Status:** Accepted, implemented 2026-09-28.
 
+### Amendment 1 (2026-11-04) — P9-26's converted tests lint at their `.js` level, from a frozen list that only shrinks; the gate is back at zero
+
+**Context.** P9-26 batches 03 to 10 converted 335 legacy `.js` test files to `.ts`. As `.js`, each ran only under the base rules: the `js.configs.recommended` set and the house block. The conversion put each one under `strictTypeChecked` + `stylisticTypeChecked` (the `**/*.ts` blocks). That left **78,365 errors on `main` at `3ca5ec89`**, every one in those 335 files, none in `src/` proper. Of those, **61,289 came from type-aware rules, 58,054 of them from the `no-unsafe-*` family**, the shape of a test full of `jest.mock` and `require()`. The baseline stayed 0, so `backend lint (ratchet)` was red in CI, in `make verify` and in the pre-push hook. An earlier attempt to raise the baseline to 13,076 with no ADR had been reverted (2026-11-02 record).
+
+**Decision.**
+1. **`backend/.eslint-legacy-tests.json` lists the 335 files**, generated from the lint output on 2026-11-04. That is every file with an error, and all of them are under `src/tests/`. `eslint.config.js` gives them one block:
+   - `tseslint.configs.disableTypeChecked`.
+   - The TypeScript-only rules a `.js` test never ran under switched off: `no-explicit-any`, `no-require-imports`, `no-non-null-assertion`, `no-empty-function`, `consistent-type-imports`, `consistent-type-assertions`, `no-dynamic-delete` and `explicit-module-boundary-types`.
+   - The `process.env` restriction, which is a `**/*.ts` rule, does not apply to them.
+   - `@typescript-eslint/no-unused-vars` with the base rule's options (`^_` ignored, P9-02a).
+   
+   Every base rule still applies.
+2. **The list is frozen.** It only shrinks: a file leaves it when it lints clean under the full set. A new test file is held to the full set (docs/ENGINEERING/04), and adding a path to the list is a review item that needs an amendment here.
+3. **The residue was fixed by ESLint's own fixers, then by hand:**
+   - The fixers handled 11,448 errors: `comma-dangle`, `indent`, `eol-last`, `no-multiple-empty-lines`, `array-type`, `quotes`, `curly`, `consistent-generic-constructors` and `consistent-type-definitions`.
+   - By hand: nine `no-cond-assign` in `liveContract.smoke.test.ts`. The conversion had dropped the double parentheses of `if ((m = …))`, and they are restored.
+   - 145 `eslint-disable` directives that pointed at rules now off for these files were removed.
+4. **Proof, not review.**
+   - Each of the 235 changed files was compared with its `HEAD` version. Types were erased with `ts.transpileModule`, the result was parsed with espree, and positions, `raw`, comments, one-statement blocks around an `if` or loop body and template `cooked` values were normalised.
+   - Result: **235 of 235 AST-identical**.
+   - The comparer is not vacuous: one changed string literal in `jwt.test.ts` was flagged.
+5. **`node scripts/ci/eslint-ratchet.js`: "0 error(s), 0 warning(s); baseline 0."** The baseline stays 0 and was never raised.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Raise the baseline to the count | hides every new error behind 78k old ones; ADR-092 and the 2026-11-02 record refuse it |
+| Fix the 61k type-aware errors by hand now | a rewrite of 335 suites (typing every mock), far beyond a gate repair. Each touch risks an assertion change, which P9-26 forbids. Done file by file, it is how the list shrinks |
+| Relax the type-aware rules for every test under `src/tests/**` | a new test would escape the standard that docs/ENGINEERING/04 and `CLAUDE.md` set for new code, tests included |
+| Revert the conversions to `.js` | undoes P9-26 and fails `npm run ratchet` (floor 3) |
+
+**Implications, including the bad ones.**
+- **335 test files are type-checked by `tsc` but not type-linted.** `any` and unsafe member access go unreported there. That is no worse than they were as `.js`, but it is not the 04 standard, and a reader of a `.ts` test may assume it is.
+- **`git blame` churns in 235 test files** (formatting only). The change is committed on its own.
+- The list is a path list. A renamed file falls out of it and meets the full rule set. That is the intended direction, though it can redden a rename.
+- `CLAUDE.md` § What Is Currently Failing, the backend lint row, is corrected in the same change.
+
+
 ---
 
 ## ADR-088: The Quota Read Carries the Billing Gate; RAG Answers Only From the Source Types Its Gate Covers; Phase 5's Data Lake Is Closed as Superseded; Docs That Contradicted the Code Are Corrected

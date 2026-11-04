@@ -3,38 +3,38 @@ const { describe, it, expect, beforeEach } = require("@jest/globals");
 // D-22 (ADR-070): a parent's delete soft-deletes its attachments through
 // attachment.service, in the parent's transaction.
 jest.mock("../../services/attachment.service", () => ({
-  softDeleteForResource: jest.fn().mockResolvedValue([])
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("sequelize", () => ({
   Op: {
     or: Symbol("or"),
-    iLike: Symbol("iLike")
-  }
+    iLike: Symbol("iLike"),
+  },
 }));
 
 // A-190: every write runs in a managed transaction with its audit row (the
 // ledger proof is maintenance.audit.a190.test.js); here the double runs the
 // callback with a marker transaction.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../services/webhook.service", () => ({
-  emitAfterCommit: jest.fn()
+  emitAfterCommit: jest.fn(),
 }));
 
 jest.mock("../../models", () => ({
   MaintenanceWorkOrder: {
     findAndCountAll: jest.fn(),
     findOne: jest.fn(),
-    create: jest.fn()
+    create: jest.fn(),
   },
   // A-220: references are looked up in the tenant; found by default.
   CalibrationDevice: { findOne: jest.fn(async ({ where }: any) => ({ id: where.id })) },
   Vendor: { findOne: jest.fn(async ({ where }: any) => ({ id: where.id })) },
-  User: { findOne: jest.fn(async ({ where }: any) => ({ id: where.id })) }
+  User: { findOne: jest.fn(async ({ where }: any) => ({ id: where.id })) },
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -55,7 +55,7 @@ const {
   getWorkOrderById,
   createWorkOrder,
   updateWorkOrder,
-  deleteWorkOrder
+  deleteWorkOrder,
 } = require("../../services/maintenance.service");
 
 // ---- helpers ----
@@ -77,7 +77,7 @@ const mockWorkOrder = (extra: any = {}) => ({
   type: "calibration",
   priority: "high",
   ...extra,
-  toJSON: () => ({ ...extra, id: "wo-1", title: "Calibration", status: "open", type: "calibration", priority: "high" })
+  toJSON: () => ({ ...extra, id: "wo-1", title: "Calibration", status: "open", type: "calibration", priority: "high" }),
 });
 
 // ================================================================
@@ -91,13 +91,13 @@ describe("maintenance.service", () => {
     it("should fetch work orders with pagination", async () => {
       MaintenanceWorkOrder.findAndCountAll.mockResolvedValueOnce({
         rows: [mockWorkOrder()],
-        count: 1
+        count: 1,
       });
 
       const result = await fetchWorkOrders({
         tenantId: "t-1",
         page: 1,
-        limit: 10
+        limit: 10,
       });
 
       expect(result.success).toBe(true);
@@ -112,8 +112,8 @@ describe("maintenance.service", () => {
 
       expect(MaintenanceWorkOrder.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ status: "completed" })
-        })
+          where: expect.objectContaining({ status: "completed" }),
+        }),
       );
     });
 
@@ -123,8 +123,8 @@ describe("maintenance.service", () => {
 
       expect(MaintenanceWorkOrder.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ type: "repair" })
-        })
+          where: expect.objectContaining({ type: "repair" }),
+        }),
       );
     });
 
@@ -134,8 +134,8 @@ describe("maintenance.service", () => {
 
       expect(MaintenanceWorkOrder.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ priority: "critical" })
-        })
+          where: expect.objectContaining({ priority: "critical" }),
+        }),
       );
     });
 
@@ -145,8 +145,8 @@ describe("maintenance.service", () => {
 
       expect(MaintenanceWorkOrder.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ deviceId: "dev-1" })
-        })
+          where: expect.objectContaining({ deviceId: "dev-1" }),
+        }),
       );
     });
 
@@ -188,7 +188,7 @@ describe("maintenance.service", () => {
       MaintenanceWorkOrder.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         getWorkOrderById("t-1", "missing"),
-        "Maintenance work order not found"
+        "Maintenance work order not found",
       );
     });
 
@@ -196,7 +196,7 @@ describe("maintenance.service", () => {
       MaintenanceWorkOrder.findOne.mockRejectedValueOnce(new Error("Query failed"));
       await expectRejectsWithMessage(
         getWorkOrderById("t-1", "wo-1"),
-        "Query failed"
+        "Query failed",
       );
     });
   });
@@ -210,7 +210,7 @@ describe("maintenance.service", () => {
       const result = await createWorkOrder("t-1", {
         title: "New Work Order",
         type: "repair",
-        priority: "high"
+        priority: "high",
       });
 
       expect(result.success).toBe(true);
@@ -218,9 +218,9 @@ describe("maintenance.service", () => {
       expect(MaintenanceWorkOrder.create).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: "t-1",
-          title: "New Work Order"
+          title: "New Work Order",
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -230,16 +230,16 @@ describe("maintenance.service", () => {
 
       await createWorkOrder("t-1", {
         title: "Mapped",
-        assigneeId: "user-1"
+        assigneeId: "user-1",
       });
 
       expect(MaintenanceWorkOrder.create).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: "t-1",
           title: "Mapped",
-          assignedTo: "user-1"
+          assignedTo: "user-1",
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -247,7 +247,7 @@ describe("maintenance.service", () => {
       MaintenanceWorkOrder.create.mockRejectedValueOnce(new Error("Create failed"));
       await expectRejectsWithMessage(
         createWorkOrder("t-1", { title: "X" }),
-        "Create failed"
+        "Create failed",
       );
     });
   });
@@ -261,13 +261,13 @@ describe("maintenance.service", () => {
 
       const result = await updateWorkOrder("t-1", "wo-update", {
         status: "in_progress",
-        priority: "critical"
+        priority: "critical",
       });
 
       expect(result.success).toBe(true);
       expect(order.update).toHaveBeenCalledWith({
         status: "in_progress",
-        priority: "critical"
+        priority: "critical",
       }, { transaction: "TX" });
     });
 
@@ -277,11 +277,11 @@ describe("maintenance.service", () => {
       MaintenanceWorkOrder.findOne.mockResolvedValueOnce(order);
 
       await updateWorkOrder("t-1", "wo-mapped-upd", {
-        assigneeId: "user-2"
+        assigneeId: "user-2",
       });
 
       expect(order.update).toHaveBeenCalledWith({
-        assignedTo: "user-2"
+        assignedTo: "user-2",
       }, { transaction: "TX" });
     });
 
@@ -289,7 +289,7 @@ describe("maintenance.service", () => {
       MaintenanceWorkOrder.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         updateWorkOrder("t-1", "missing", { status: "closed" }),
-        "Maintenance work order not found"
+        "Maintenance work order not found",
       );
     });
 
@@ -297,7 +297,7 @@ describe("maintenance.service", () => {
       MaintenanceWorkOrder.findOne.mockRejectedValueOnce(new Error("Update failed"));
       await expectRejectsWithMessage(
         updateWorkOrder("t-1", "wo-1", { status: "closed" }),
-        "Update failed"
+        "Update failed",
       );
     });
   });
@@ -317,7 +317,7 @@ describe("maintenance.service", () => {
         "t-1",
         "MaintenanceWorkOrder",
         "wo-del",
-        expect.objectContaining({ transaction: expect.anything() })
+        expect.objectContaining({ transaction: expect.anything() }),
       );
     });
 
@@ -325,7 +325,7 @@ describe("maintenance.service", () => {
       MaintenanceWorkOrder.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         deleteWorkOrder("t-1", "missing"),
-        "Maintenance work order not found"
+        "Maintenance work order not found",
       );
     });
 
@@ -333,7 +333,7 @@ describe("maintenance.service", () => {
       MaintenanceWorkOrder.findOne.mockRejectedValueOnce(new Error("Delete failed"));
       await expectRejectsWithMessage(
         deleteWorkOrder("t-1", "wo-1"),
-        "Delete failed"
+        "Delete failed",
       );
     });
   });
@@ -345,7 +345,7 @@ describe("maintenance.service", () => {
     it("should map a plain (non-Sequelize) row by spreading it when toJSON is absent", async () => {
       MaintenanceWorkOrder.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: "plain-1", title: "Plain WO" }],
-        count: 1
+        count: 1,
       });
 
       const result = await fetchWorkOrders({ tenantId: "t-1" });
@@ -384,8 +384,8 @@ describe("maintenance.service", () => {
 
       expect(MaintenanceWorkOrder.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ priority: "HIGH" })
-        })
+          where: expect.objectContaining({ priority: "HIGH" }),
+        }),
       );
     });
 
@@ -396,8 +396,8 @@ describe("maintenance.service", () => {
 
       expect(MaintenanceWorkOrder.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ deviceId: "dev-9" })
-        })
+          where: expect.objectContaining({ deviceId: "dev-9" }),
+        }),
       );
     });
   });
@@ -420,7 +420,7 @@ describe("maintenance.service", () => {
       expect(MaintenanceWorkOrder.create).toHaveBeenCalledWith({
         title: "X",
         assignedTo: null,
-        tenantId: "t-1"
+        tenantId: "t-1",
       }, { transaction: "TX" });
     });
 
@@ -437,12 +437,11 @@ describe("maintenance.service", () => {
     // Every exported method funnels failures through
     // `{ status: error.status || 500, message: error.message || "<default>" }`.
     const cases = [
-    ["fetchWorkOrders", () => fetchWorkOrders({ tenantId: "t-1" }), "findAndCountAll", "Failed to fetch maintenance work orders"],
-    ["getWorkOrderById", () => getWorkOrderById("t-1", "wo-1"), "findOne", "Failed to retrieve maintenance work order"],
-    ["createWorkOrder", () => createWorkOrder("t-1", { title: "X" }), "create", "Failed to create maintenance work order"],
-    ["updateWorkOrder", () => updateWorkOrder("t-1", "wo-1", { title: "X" }), "findOne", "Failed to update maintenance work order"],
-    ["deleteWorkOrder", () => deleteWorkOrder("t-1", "wo-1"), "findOne", "Failed to delete maintenance work order"]];
-
+      ["fetchWorkOrders", () => fetchWorkOrders({ tenantId: "t-1" }), "findAndCountAll", "Failed to fetch maintenance work orders"],
+      ["getWorkOrderById", () => getWorkOrderById("t-1", "wo-1"), "findOne", "Failed to retrieve maintenance work order"],
+      ["createWorkOrder", () => createWorkOrder("t-1", { title: "X" }), "create", "Failed to create maintenance work order"],
+      ["updateWorkOrder", () => updateWorkOrder("t-1", "wo-1", { title: "X" }), "findOne", "Failed to update maintenance work order"],
+      ["deleteWorkOrder", () => deleteWorkOrder("t-1", "wo-1"), "findOne", "Failed to delete maintenance work order"]];
 
     it.each(cases)(
       "%s should default to status 500 and its own message when the error carries neither",
@@ -451,9 +450,9 @@ describe("maintenance.service", () => {
 
         await expect(invoke()).rejects.toEqual({
           status: 500,
-          message: defaultMessage
+          message: defaultMessage,
         });
-      }
+      },
     );
 
     it.each(cases)(
@@ -462,7 +461,7 @@ describe("maintenance.service", () => {
         MaintenanceWorkOrder[mockFn].mockRejectedValueOnce({ status: 409, message: "Conflict" });
 
         await expect(invoke()).rejects.toEqual({ status: 409, message: "Conflict" });
-      }
+      },
     );
 
     it("getWorkOrderById should surface the 404 AppError status, not a generic 500", async () => {
@@ -470,7 +469,7 @@ describe("maintenance.service", () => {
 
       await expect(getWorkOrderById("t-1", "missing")).rejects.toEqual({
         status: 404,
-        message: "Maintenance work order not found"
+        message: "Maintenance work order not found",
       });
     });
   });

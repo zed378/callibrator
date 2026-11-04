@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * S-03 / S-14 — scheduledBackup.service, the branches the end-to-end tick in
  * tests/middlewares/backup.test.js does not reach: failures are recorded and
@@ -16,15 +16,15 @@ const mockBackupDir: any = path.join(mockRoot, "backup", "tenant-backups");
 // its tenant's storage; the double keeps the real key rules.
 jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../services/tenantBackup.service", () => ({
   BACKUP_DIR: mockBackupDir,
-  createBackup: jest.fn()
+  createBackup: jest.fn(),
 }));
 jest.mock("../../models", () => ({
   Tenant: { findAll: jest.fn() },
@@ -33,8 +33,8 @@ jest.mock("../../models", () => ({
     BACKUP_TYPES: { FULL: "full" },
     DEFAULT_RETENTION_DAYS: 30,
     update: jest.fn(),
-    findAll: jest.fn()
-  }
+    findAll: jest.fn(),
+  },
 }));
 
 const svc = require("../../services/scheduledBackup.service");
@@ -77,7 +77,7 @@ describe("effectiveExpiry and isInsideBackupDir", () => {
     expect(svc.effectiveExpiry({ expiresAt: ago(1), createdAt: ago(99) })).toEqual(ago(1));
     expect(svc.effectiveExpiry({ createdAt: ago(10), retentionDays: 7 })).toEqual(ago(3));
     expect(svc.effectiveExpiry({ createdAt: ago(10), retentionDays: null })).toEqual(
-      new Date(ago(10).getTime() + 30 * DAY)
+      new Date(ago(10).getTime() + 30 * DAY),
     );
     process.env["BACKUP_RETENTION_DAYS"] = "5";
     expect(svc.effectiveExpiry({ createdAt: ago(10), retentionDays: 0 })).toEqual(ago(5));
@@ -98,19 +98,19 @@ describe("effectiveExpiry and isInsideBackupDir", () => {
 describe("backupTenant", () => {
   it("runs createBackup, then stamps expiresAt and writes the CREATE audit row in one transaction", async () => {
     tenantBackupService.createBackup.mockResolvedValue({
-      data: { id: "b1", backupPath: inDir("tenant_t1.zip") }
+      data: { id: "b1", backupPath: inDir("tenant_t1.zip") },
     });
     process.env["BACKUP_RETENTION_DAYS"] = "14";
 
     const out = await svc.backupTenant("t1", NOW);
 
     expect(tenantBackupService.createBackup).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: "t1", createdById: null, retentionDays: 14, tag: "scheduled" })
+      expect.objectContaining({ tenantId: "t1", createdById: null, retentionDays: 14, tag: "scheduled" }),
     );
     expect(out.expiresAt).toEqual(new Date(NOW.getTime() + 14 * DAY));
     expect(TenantBackup.update).toHaveBeenCalledWith(
       { expiresAt: out.expiresAt },
-      { where: { id: "b1", tenantId: "t1" }, transaction: "TX" }
+      { where: { id: "b1", tenantId: "t1" }, transaction: "TX" },
     );
     const [entry, opts] = auditService.logAction.mock.calls[0];
     expect(opts).toEqual({ transaction: "TX" });
@@ -120,7 +120,7 @@ describe("backupTenant", () => {
       action: "CREATE",
       resourceType: "TenantBackup",
       resourceId: "b1",
-      changes: { fileName: "tenant_t1.zip", fileSize: null, recordCount: null, retentionDays: 14 }
+      changes: { fileName: "tenant_t1.zip", fileSize: null, recordCount: null, retentionDays: 14 },
     });
   });
 
@@ -130,7 +130,7 @@ describe("backupTenant", () => {
     expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({
       fileName: "",
       fileSize: "7",
-      recordCount: 0
+      recordCount: 0,
     });
   });
 
@@ -153,16 +153,16 @@ describe("runScheduledBackup", () => {
     const out = await svc.runScheduledBackup({ now: NOW });
 
     expect(seen).toEqual([
-    { tenantId: "t1", isSuperAdmin: false, isSystemTask: false },
-    { tenantId: "t2", isSuperAdmin: false, isSystemTask: false }]
+      { tenantId: "t1", isSuperAdmin: false, isSystemTask: false },
+      { tenantId: "t2", isSuperAdmin: false, isSystemTask: false }],
     );
     expect(Tenant.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ skipTenantScope: true, attributes: ["id"] })
+      expect.objectContaining({ skipTenantScope: true, attributes: ["id"] }),
     );
     expect(out.ok).toBe(true);
     expect(out.backedUp).toEqual([
-    { tenantId: "t1", backupId: "b-t1" },
-    { tenantId: "t2", backupId: "b-t2" }]
+      { tenantId: "t1", backupId: "b-t1" },
+      { tenantId: "t2", backupId: "b-t2" }],
     );
     expect(stderr).not.toHaveBeenCalled();
     expect(JSON.parse(fs.readFileSync(svc.statusFilePath(), "utf8")).ok).toBe(true);
@@ -171,8 +171,8 @@ describe("runScheduledBackup", () => {
   it("one tenant's failure does not stop the next, and fails the run visibly", async () => {
     Tenant.findAll.mockResolvedValue([{ id: "t1" }, { id: "t2" }]);
     tenantBackupService.createBackup.
-    mockRejectedValueOnce(new Error("disk full")).
-    mockResolvedValueOnce({ data: { id: "b2" } });
+      mockRejectedValueOnce(new Error("disk full")).
+      mockResolvedValueOnce({ data: { id: "b2" } });
 
     const out = await svc.runScheduledBackup({ now: NOW });
 
@@ -182,7 +182,7 @@ describe("runScheduledBackup", () => {
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining("[scheduled-backup] FAILED"));
     expect(JSON.parse(fs.readFileSync(svc.statusFilePath(), "utf8"))).toMatchObject({
       ok: false,
-      failed: [{ tenantId: "t1", error: "disk full" }]
+      failed: [{ tenantId: "t1", error: "disk full" }],
     });
   });
 
@@ -219,7 +219,7 @@ describe("pruneExpiredBackups", () => {
     const out = await svc.pruneExpiredBackups({ now: NOW, keepMin: 1 });
 
     expect(TenantBackup.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { status: "completed" }, skipTenantScope: true })
+      expect.objectContaining({ where: { status: "completed" }, skipTenantScope: true }),
     );
     expect(out.pruned).toEqual([{ tenantId: "A", backupId: "a2" }]);
     expect(out.kept).toBe(2);
@@ -234,15 +234,15 @@ describe("pruneExpiredBackups", () => {
         systemActor: "system:scheduled-backup",
         action: "DELETE",
         resourceId: "a2",
-        changes: expect.objectContaining({ operation: "BACKUP_PRUNE", fileName: "a2.zip", keepMin: 1 })
+        changes: expect.objectContaining({ operation: "BACKUP_PRUNE", fileName: "a2.zip", keepMin: 1 }),
       }),
-      { transaction: "TX" }
+      { transaction: "TX" },
     );
   });
 
   it("reads keepMin from BACKUP_KEEP_MIN, defaulting to 3", async () => {
     const rows = [0, 1, 2, 3].map((i: any) =>
-    row({ id: `r${i}`, tenantId: "A", filePath: null, createdAt: ago(100 + i) })
+      row({ id: `r${i}`, tenantId: "A", filePath: null, createdAt: ago(100 + i) }),
     );
     TenantBackup.findAll.mockResolvedValue(rows);
     expect((await svc.pruneExpiredBackups({ now: NOW })).pruned.map((p: any) => p.backupId)).toEqual(["r3"]);
@@ -250,8 +250,8 @@ describe("pruneExpiredBackups", () => {
     TenantBackup.findAll.mockResolvedValue(rows.map((r: any) => ({ ...r })));
     process.env["BACKUP_KEEP_MIN"] = "2";
     expect((await svc.pruneExpiredBackups({ now: NOW })).pruned.map((p: any) => p.backupId)).toEqual([
-    "r2",
-    "r3"]
+      "r2",
+      "r3"],
     );
   });
 
@@ -261,7 +261,7 @@ describe("pruneExpiredBackups", () => {
       pruned: [],
       kept: 0,
       refused: [],
-      errors: []
+      errors: [],
     });
   });
 
@@ -297,9 +297,9 @@ describe("pruneExpiredBackups", () => {
     TenantBackup.findAll.mockResolvedValue([gone, stuck]);
     const eperm = Object.assign(new Error("EPERM"), { code: "EPERM" });
     jest.
-    spyOn(fs.promises, "unlink").
-    mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" })).
-    mockRejectedValueOnce(eperm);
+      spyOn(fs.promises, "unlink").
+      mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" })).
+      mockRejectedValueOnce(eperm);
 
     const out = await svc.pruneExpiredBackups({ now: NOW, keepMin: 0 });
 
@@ -329,8 +329,8 @@ describe("P8-01 — pruning a backup kept in its tenant's storage", () => {
     put("t/B/backups/theirs.zip");
     put("t/A/attachments/evidence.pdf");
     TenantBackup.findAll.mockResolvedValue([
-    row({ id: "x", tenantId: "A", filePath: "t/B/backups/theirs.zip", createdAt: ago(90) }),
-    row({ id: "y", tenantId: "A", filePath: "t/A/attachments/evidence.pdf", createdAt: ago(91) })]
+      row({ id: "x", tenantId: "A", filePath: "t/B/backups/theirs.zip", createdAt: ago(90) }),
+      row({ id: "y", tenantId: "A", filePath: "t/A/attachments/evidence.pdf", createdAt: ago(91) })],
     );
 
     const out = await svc.pruneExpiredBackups({ now: NOW, keepMin: 0 });
@@ -343,14 +343,14 @@ describe("P8-01 — pruning a backup kept in its tenant's storage", () => {
   it("an object already gone is fine; a storage failure is reported at the file stage", async () => {
     put("t/A/backups/stuck.zip");
     TenantBackup.findAll.mockResolvedValue([
-    row({ id: "g", tenantId: "A", filePath: "t/A/backups/gone.zip", createdAt: ago(90) }),
-    row({ id: "s", tenantId: "A", filePath: "t/A/backups/stuck.zip", createdAt: ago(91) })]
+      row({ id: "g", tenantId: "A", filePath: "t/A/backups/gone.zip", createdAt: ago(90) }),
+      row({ id: "s", tenantId: "A", filePath: "t/A/backups/stuck.zip", createdAt: ago(91) })],
     );
     storage.__failNext.delete = null;
     const real = storage.getTenantStorage.getMockImplementation();
     storage.getTenantStorage.
-    mockImplementationOnce(real).
-    mockImplementationOnce(async (t: any) => ({ ...(await real(t)), delete: jest.fn().mockRejectedValue(new Error("bucket unreachable")) }));
+      mockImplementationOnce(real).
+      mockImplementationOnce(async (t: any) => ({ ...(await real(t)), delete: jest.fn().mockRejectedValue(new Error("bucket unreachable")) }));
 
     const out = await svc.pruneExpiredBackups({ now: NOW, keepMin: 0 });
 

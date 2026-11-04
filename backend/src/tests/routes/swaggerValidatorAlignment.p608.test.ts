@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * P6-08 — the published contract (swagger JSDoc) agrees with the enforced
  * validators (AC-29).
@@ -53,14 +53,14 @@ validationMiddleware.validate = (schema: any, ...rest: any[]) => {
 };
 
 const listJs = (dir: any) =>
-fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry: any) => {
-  const full = path.join(dir, entry.name);
-  if (entry.isDirectory()) {
-    return listJs(full);
-  }
-  // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
-  return /\.(js|ts)$/.test(entry.name) ? [full] : [];
-});
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry: any) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return listJs(full);
+    }
+    // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
+    return /\.(js|ts)$/.test(entry.name) ? [full] : [];
+  });
 
 /**
  * Mount prefixes per route module, read from index.js.
@@ -98,7 +98,7 @@ const mountsFrom = (index: any) => {
 };
 
 const toOpenApiPath = (expressPath: any) =>
-expressPath.replace(/:([A-Za-z0-9_]+)/g, "{$1}").replace(/(.)\/$/, "$1");
+  expressPath.replace(/:([A-Za-z0-9_]+)/g, "{$1}").replace(/(.)\/$/, "$1");
 
 const resolveRef = (schema: any) => {
   if (schema && schema.$ref) {
@@ -110,9 +110,9 @@ const resolveRef = (schema: any) => {
       (acc: any, part: any) => ({
         type: "object",
         properties: { ...acc.properties, ...(part.properties || {}) },
-        required: [...acc.required, ...(part.required || [])]
+        required: [...acc.required, ...(part.required || [])],
       }),
-      { properties: {}, required: [] }
+      { properties: {}, required: [] },
     );
   }
   return schema;
@@ -244,8 +244,8 @@ beforeAll(() => {
           // A router mounted twice is documented once; any mount that has an
           // operation counts.
           const operations = prefixes.
-          map((prefix: any) => spec.paths?.[toOpenApiPath(prefix + layer.route.path)]?.[method]).
-          filter(Boolean);
+            map((prefix: any) => spec.paths?.[toOpenApiPath(prefix + layer.route.path)]?.[method]).
+            filter(Boolean);
           // A validator that reads `from: ["params", "body"]` (P9-11) sees the
           // path parameters too; they are documented as parameters, not body
           // fields, so they are left out of the body comparison.
@@ -284,7 +284,7 @@ describe("P6-08 — swagger request bodies agree with the request validators", (
 
   it("every /api/v1/gdpr endpoint documents exactly what its validator enforces", () => {
     const gdpr = Object.fromEntries(
-      Object.entries(divergences).filter(([k]) => k.includes("/api/v1/gdpr"))
+      Object.entries(divergences).filter(([k]) => k.includes("/api/v1/gdpr")),
     );
     expect(gdpr).toEqual({});
   });
@@ -311,28 +311,28 @@ describe("P6-08 — swagger request bodies agree with the request validators", (
   it("compare() in both directions", () => {
     const schema = z.object({ a: z.string(), b: z.number().optional(), s: z.never().optional() });
     const op = (properties: any, required: any) => ({
-      requestBody: { content: { "application/json": { schema: { type: "object", properties, required } } } }
+      requestBody: { content: { "application/json": { schema: { type: "object", properties, required } } } },
     });
     expect(compare(op({ a: {}, b: {} }, ["a"]), schema)).toEqual([]);
     expect(compare(op({ a: {}, c: {} }, ["a"]), schema)).toEqual([
-    "documented but stripped by the validator: c",
-    "accepted by the validator but undocumented: b"]
+      "documented but stripped by the validator: c",
+      "accepted by the validator but undocumented: b"],
     );
     expect(compare(op({ a: {}, b: {} }, []), schema)).toEqual([
-    "required: documented [], validator [a]"]
+      "required: documented [], validator [a]"],
     );
     expect(compare(undefined, schema)).toEqual(["no swagger operation documents this route"]);
     expect(compare({}, schema)).toEqual(["no documented JSON body; the validator requires a"]);
     expect(compare({}, z.object({ x: z.string().optional() }))).toEqual([]);
     expect(compare(undefined, z.string())).toEqual([]);
     const union = z.discriminatedUnion("k", [
-    z.object({ k: z.literal("a"), a: z.string(), both: z.string() }),
-    z.object({ k: z.literal("b"), b: z.string().optional(), both: z.string() })]
+      z.object({ k: z.literal("a"), a: z.string(), both: z.string() }),
+      z.object({ k: z.literal("b"), b: z.string().optional(), both: z.string() })],
     );
     expect(compare(op({ k: {}, a: {}, b: {}, both: {} }, ["both", "k"]), union)).toEqual([]);
     expect(compare(undefined, z.union([z.object({ a: z.string() }), z.string()]))).toEqual([]);
     expect(
-      compare({ requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/LoginRequest" } } } } }, schema)[0]
+      compare({ requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/LoginRequest" } } } } }, schema)[0],
     ).toMatch(/documented but stripped/);
   });
 });

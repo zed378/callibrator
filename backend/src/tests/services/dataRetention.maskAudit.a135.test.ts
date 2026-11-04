@@ -30,7 +30,7 @@ jest.mock("../../config", () => {
     if (/^SELECT .* FROM "audit_logs"/.test(text) && options.model) {
       const built = options.model.bulkBuild(
         mockDb.rows.map((r: any) => ({ ...r })),
-        { raw: true, isNewRecord: false }
+        { raw: true, isNewRecord: false },
       );
       return options.plain ? built[0] || null : built;
     }
@@ -73,13 +73,13 @@ const row = (n: any, fields: any) => ({
   ipAddress: null,
   userAgent: null,
   createdAt: new Date("2026-01-01T00:00:00Z"),
-  ...fields
+  ...fields,
 });
 
 const updates = () => mockDb.statements.filter((s: any) => /^UPDATE /.test(s.text));
 /** The `changes` value an UPDATE sends: JSONB is bound as serialised JSON. */
 const changesBound = (u: any) =>
-JSON.parse(u.bind.find((v: any) => typeof v === "string" && v.startsWith("{")));
+  JSON.parse(u.bind.find((v: any) => typeof v === "string" && v.startsWith("{")));
 
 const updateOf = (n: any) => updates().find((s: any) => s.bind && s.bind.includes(ROW(n)));
 
@@ -88,31 +88,31 @@ beforeEach(() => {
   mockDb.statements = [];
   mockDb.rows = [
   // 1. The subject acted: their IP and browser, also echoed inside changes.
-  row(1, {
-    userId: SUBJECT,
-    ipAddress: "10.0.0.5",
-    userAgent: "Firefox/128",
-    changes: { before: { name: "Pump" }, after: { name: "Pump 2" }, ipAddress: "10.0.0.5" }
-  }),
-  // 2. An admin changed the subject's account: the row is ABOUT the subject.
-  //    Its IP is the admin's and is kept; the subject's details are masked.
-  row(2, {
-    userId: ADMIN,
-    resourceType: "User",
-    resourceId: SUBJECT,
-    ipAddress: "10.0.0.9",
-    userAgent: "Chrome/139",
-    changes: {
-      before: { email: "jane@hospital.test", firstName: "Jane", roleId: "r-1" },
-      after: { email: "jane.doe@hospital.test", firstName: "Jane", roleId: "r-2" }
-    }
-  }),
-  // 3. The subject is a super admin who acted through an impersonation.
-  row(3, { userId: OTHER, impersonatorId: SUBJECT, ipAddress: "10.0.0.7", userAgent: "Edge" }),
-  // 4. Someone else's row: untouched.
-  row(4, { userId: OTHER, ipAddress: "10.0.0.8", userAgent: "Safari" }),
-  // 5. Already masked: nothing to write.
-  row(5, { userId: SUBJECT, ipAddress: "[REDACTED]", userAgent: "[REDACTED]" })];
+    row(1, {
+      userId: SUBJECT,
+      ipAddress: "10.0.0.5",
+      userAgent: "Firefox/128",
+      changes: { before: { name: "Pump" }, after: { name: "Pump 2" }, ipAddress: "10.0.0.5" },
+    }),
+    // 2. An admin changed the subject's account: the row is ABOUT the subject.
+    //    Its IP is the admin's and is kept; the subject's details are masked.
+    row(2, {
+      userId: ADMIN,
+      resourceType: "User",
+      resourceId: SUBJECT,
+      ipAddress: "10.0.0.9",
+      userAgent: "Chrome/139",
+      changes: {
+        before: { email: "jane@hospital.test", firstName: "Jane", roleId: "r-1" },
+        after: { email: "jane.doe@hospital.test", firstName: "Jane", roleId: "r-2" },
+      },
+    }),
+    // 3. The subject is a super admin who acted through an impersonation.
+    row(3, { userId: OTHER, impersonatorId: SUBJECT, ipAddress: "10.0.0.7", userAgent: "Edge" }),
+    // 4. Someone else's row: untouched.
+    row(4, { userId: OTHER, ipAddress: "10.0.0.8", userAgent: "Safari" }),
+    // 5. Already masked: nothing to write.
+    row(5, { userId: SUBJECT, ipAddress: "[REDACTED]", userAgent: "[REDACTED]" })];
 
 });
 
@@ -121,7 +121,7 @@ describe("A-135 — maskPII('audit_logs') masks a data subject's audit trail", (
     const actor: any = { userId: ADMIN, ipAddress: "10.9.9.9", userAgent: "ops-console" };
 
     const result = await asSuperAdmin(() =>
-    dataRetention.maskPII(TENANT, "audit_logs", [SUBJECT], actor)
+      dataRetention.maskPII(TENANT, "audit_logs", [SUBJECT], actor),
     );
 
     // Never a DELETE (Q-12).
@@ -143,7 +143,7 @@ describe("A-135 — maskPII('audit_logs') masks a data subject's audit trail", (
     expect(changesBound(u1)).toEqual({
       before: { name: "Pump" },
       after: { name: "Pump 2" },
-      ipAddress: "[REDACTED]"
+      ipAddress: "[REDACTED]",
     });
 
     // Row 2: the admin's IP is not touched; the subject's details are.
@@ -151,7 +151,7 @@ describe("A-135 — maskPII('audit_logs') masks a data subject's audit trail", (
     expect(u2.text).not.toMatch(/"ip_address"|"user_agent"/);
     expect(changesBound(u2)).toEqual({
       before: { email: "[REDACTED]", firstName: "[REDACTED]", roleId: "r-1" },
-      after: { email: "[REDACTED]", firstName: "[REDACTED]", roleId: "r-2" }
+      after: { email: "[REDACTED]", firstName: "[REDACTED]", roleId: "r-2" },
     });
 
     // Row 3: the impersonating super admin's network identity is masked.
@@ -184,33 +184,32 @@ describe("A-135 — maskPII('audit_logs') masks a data subject's audit trail", (
           operation: "GDPR_MASK_AUDIT_PII",
           subjectIds: [SUBJECT],
           rowsMasked: 3,
-          fields: ["changes", "ipAddress", "userAgent"]
+          fields: ["changes", "ipAddress", "userAgent"],
         },
         ipAddress: "10.9.9.9",
-        userAgent: "ops-console"
+        userAgent: "ops-console",
       },
-      { transaction: mockTx }
+      { transaction: mockTx },
     );
     expect(result).toEqual({ masked: 3, fields: ["changes", "ipAddress", "userAgent"] });
   });
 
   it("masks network identity nested in arrays, and leaves nulls and already-masked values alone", async () => {
     mockDb.rows = [
-    row(6, {
-      userId: SUBJECT,
-      // No column values to mask on this row: only `changes` is written.
-      ipAddress: null,
-      userAgent: null,
-      changes: {
-        attempts: [{ ip: "10.0.0.5", at: "t1" }, "plain", 7],
+      row(6, {
+        userId: SUBJECT,
+        // No column values to mask on this row: only `changes` is written.
         ipAddress: null,
-        userAgent: "[REDACTED]"
-      }
-    })];
-
+        userAgent: null,
+        changes: {
+          attempts: [{ ip: "10.0.0.5", at: "t1" }, "plain", 7],
+          ipAddress: null,
+          userAgent: "[REDACTED]",
+        },
+      })];
 
     const result = await asSuperAdmin(() =>
-    dataRetention.maskPII(TENANT, "audit_logs", [SUBJECT], { userId: ADMIN })
+      dataRetention.maskPII(TENANT, "audit_logs", [SUBJECT], { userId: ADMIN }),
     );
 
     const [u6] = updates();
@@ -218,18 +217,18 @@ describe("A-135 — maskPII('audit_logs') masks a data subject's audit trail", (
     expect(changesBound(u6)).toEqual({
       attempts: [{ ip: "[REDACTED]", at: "t1" }, "plain", 7],
       ipAddress: null,
-      userAgent: "[REDACTED]"
+      userAgent: "[REDACTED]",
     });
     expect(result).toEqual({ masked: 1, fields: ["changes"] });
   });
 
   it("is refused while a legal hold is active, and writes nothing", async () => {
     jest.
-    spyOn(dataRetention, "isOnLegalHold").
-    mockResolvedValueOnce(true);
+      spyOn(dataRetention, "isOnLegalHold").
+      mockResolvedValueOnce(true);
 
     await expect(
-      asSuperAdmin(() => dataRetention.maskPII(TENANT, "audit_logs", [SUBJECT], {}))
+      asSuperAdmin(() => dataRetention.maskPII(TENANT, "audit_logs", [SUBJECT], {})),
     ).rejects.toMatchObject({ status: 400, message: "Cannot mask PII while legal hold is active" });
     expect(updates()).toEqual([]);
     expect(auditService.logAction).not.toHaveBeenCalled();
@@ -237,7 +236,7 @@ describe("A-135 — maskPII('audit_logs') masks a data subject's audit trail", (
 
   it("anonymizeDataset refuses audit_logs outright: the trail is never rewritten wholesale", async () => {
     await expect(
-      asSuperAdmin(() => dataRetention.anonymizeDataset(TENANT, "audit_logs"))
+      asSuperAdmin(() => dataRetention.anonymizeDataset(TENANT, "audit_logs")),
     ).rejects.toMatchObject({ status: 400, message: expect.stringMatching(/cannot be anonymized/) });
     expect(updates()).toEqual([]);
   });

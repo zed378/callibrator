@@ -43,7 +43,7 @@ jest.mock("../../config", () => {
       rollback: async () => {
         t.finished = "rollback";
       },
-      afterCommit: () => {}
+      afterCommit: () => {},
     };
     return typeof fn === "function" ? fn(t) : t;
   };
@@ -56,10 +56,10 @@ jest.mock("../../services/redis.service", () => ({
   del: jest.fn().mockResolvedValue(undefined),
   acquireLock: jest.fn(),
   releaseLock: jest.fn(),
-  cacheKeys: { userPermissions: (id: any) => `user-perms:${id}` }
+  cacheKeys: { userPermissions: (id: any) => `user-perms:${id}` },
 }));
 jest.mock("../../services/session.service", () => ({
-  createSession: jest.fn().mockResolvedValue({ id: "s-1" })
+  createSession: jest.fn().mockResolvedValue({ id: "s-1" }),
 }));
 
 const models = require("../../models");
@@ -82,7 +82,7 @@ const esc = (s: any) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** The join type Sequelize wrote for `alias` on `table`. */
 const joinType = (sql: any, table: any, alias: any) => {
   const match = sql.match(
-    new RegExp(`(LEFT OUTER|INNER) JOIN "${esc(table)}" AS "${esc(alias)}" ON`)
+    new RegExp(`(LEFT OUTER|INNER) JOIN "${esc(table)}" AS "${esc(alias)}" ON`),
   );
   if (!match) {throw new Error(`no join for ${alias} in: ${sql}`);}
   return match[1];
@@ -127,9 +127,9 @@ describe("A-109 — a user without a live role is still a user", () => {
 
   it("role assignment: the user is loaded with role LEFT-joined — the repair can reach them", async () => {
     await asTenant(() =>
-    userService.
-    userRoleUpdate({ userId: ID, roleId: ROLE, updatedBy: ACTOR, actorTenantId: TENANT }).
-    catch(() => {})
+      userService.
+        userRoleUpdate({ userId: ID, roleId: ROLE, updatedBy: ACTOR, actorTenantId: TENANT }).
+        catch(() => {}),
     );
 
     expect(joinType(rowSelects()[0], "roles", "role")).toBe("LEFT OUTER");
@@ -137,9 +137,9 @@ describe("A-109 — a user without a live role is still a user", () => {
 
   it("delete: the user is loaded with role LEFT-joined", async () => {
     await asTenant(() =>
-    userService.
-    deleteUser({ userId: ID, deletedBy: ACTOR, actorTenantId: TENANT }).
-    catch(() => {})
+      userService.
+        deleteUser({ userId: ID, deletedBy: ACTOR, actorTenantId: TENANT }).
+        catch(() => {}),
     );
 
     expect(joinType(rowSelects()[0], "roles", "role")).toBe("LEFT OUTER");
@@ -147,7 +147,7 @@ describe("A-109 — a user without a live role is still a user", () => {
 
   it("user picker (getAllUsersSimple): role LEFT-joined", async () => {
     await asTenant(() =>
-    userController.getAllUsersSimple({ user: { id: ACTOR, tenantId: TENANT } }, resDouble(), jest.fn())
+      userController.getAllUsersSimple({ user: { id: ACTOR, tenantId: TENANT } }, resDouble(), jest.fn()),
     );
 
     expect(joinType(rowSelects()[0], "roles", "role")).toBe("LEFT OUTER");
@@ -172,7 +172,7 @@ describe("A-109 — sign-in and impersonation of a user without a live role", ()
     jest.spyOn(models.Users, "findByPk").mockResolvedValueOnce({
       id: ACTOR,
       email: "root@example.com",
-      role: { name: "SUPER_ADMIN" }
+      role: { name: "SUPER_ADMIN" },
     });
     await authService.impersonateUser(ACTOR, TENANT, ID).catch(() => {});
     expect(joinType(rowSelects()[0], "roles", "role")).toBe("LEFT OUTER");

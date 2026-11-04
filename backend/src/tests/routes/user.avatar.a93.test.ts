@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-93 / A-96 — the avatar routes through the real gate and controller.
  *
@@ -27,7 +27,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
@@ -36,19 +36,19 @@ jest.mock("../../models", () => {
   return {
     Tenants: { findByPk: (...args: any[]) => mockFx.current.Tenants.findByPk(...args) },
     User: users,
-    Users: users
+    Users: users,
   };
 });
 
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
   enforceSeatQuota: () => (_req: any, _res: any, next: any) => next(),
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../utils/upload.util", () => ({
   upload: () => (req: any, _res: any, next: any) => {
@@ -58,17 +58,17 @@ jest.mock("../../utils/upload.util", () => ({
     }
     next();
   },
-  deleteUpload: jest.fn().mockResolvedValue(undefined)
+  deleteUpload: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("../../services/user.service", () => ({
   updateUserAvatar: jest.fn(async (_userId: any, filename: any) => ({
     status: 200,
-    data: { avatar: filename }
+    data: { avatar: filename },
   })),
-  removeUserAvatar: jest.fn(async () => ({ status: 200, data: { avatar: "default.svg" } }))
+  removeUserAvatar: jest.fn(async () => ({ status: 200, data: { avatar: "default.svg" } })),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -79,55 +79,55 @@ const { ROLE_NAMES } = require("../../constants");
 const router = require("../../routes/api/user.route");
 
 const http = (method: any, url: any, { body = {}, query = {} } = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const search = new URLSearchParams(query).toString();
-  const req: any = {
-    method: method.toUpperCase(),
-    url: search ? `${url}?${search}` : url,
-    originalUrl: "/api/v1/users" + url,
-    body,
-    query,
-    params: {},
-    headers: {},
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || err.statusCode || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const search = new URLSearchParams(query).toString();
+    const req: any = {
+      method: method.toUpperCase(),
+      url: search ? `${url}?${search}` : url,
+      originalUrl: "/api/v1/users" + url,
+      body,
+      query,
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || err.statusCode || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 // Seed-shaped grants: the admin roles hold `users` write; USER holds none.
 const MATRIX: any = {
   [ROLE_NAMES.HEALTCARE_ADMIN]: { Users: ["write"], users: ["write"] },
-  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"] }
+  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"] },
 };
 
 let fx: any;
@@ -143,14 +143,14 @@ beforeEach(() => {
     byRoleId.set(fx.principal(fx.tenantB, role).role.id, MATRIX[role]);
   }
   RolesService.getRolePermissionsMatrix.mockImplementation(
-    async (roleId: any) => byRoleId.get(roleId) || {}
+    async (roleId: any) => byRoleId.get(roleId) || {},
   );
 });
 
 describe("A-93 — an own tenantId does not switch the owner check off", () => {
   it.each([
-  ["query", (id: any) => ({ query: { tenantId: id } })],
-  ["body", (id: any) => ({ body: { tenantId: id } })]]
+    ["query", (id: any) => ({ query: { tenantId: id } })],
+    ["body", (id: any) => ({ body: { tenantId: id } })]],
   )(
     "DELETE /users/<tenant B user>/avatar with the caller's tenantId in the %s is 404, byte-identical to a missing user",
     async (_where: any, carry: any) => {
@@ -161,13 +161,13 @@ describe("A-93 — an own tenantId does not switch the owner check off", () => {
       const missing = await http(
         "delete",
         "/ffffffff-ffff-4fff-8fff-ffffffffffff/avatar",
-        carry(fx.tenantA.id)
+        carry(fx.tenantA.id),
       );
 
       expect(foreign.status).toBe(404);
       expect(foreign.body).toEqual(missing.body);
       expect(userService.removeUserAvatar).not.toHaveBeenCalled();
-    }
+    },
   );
 
   it("POST /users/<tenant B user>/avatar with ?tenantId=<own> is 404 and nothing is uploaded or stored", async () => {
@@ -176,7 +176,7 @@ describe("A-93 — an own tenantId does not switch the owner check off", () => {
 
     const res = await http("post", `/${victim.id}/avatar`, {
       body: { __file: true },
-      query: { tenantId: fx.tenantA.id }
+      query: { tenantId: fx.tenantA.id },
     });
 
     expect(res.status).toBe(404);
@@ -188,14 +188,14 @@ describe("A-93 — an own tenantId does not switch the owner check off", () => {
     const colleague = fx.principal(fx.tenantA, ROLE_NAMES.USER);
 
     const res = await http("delete", `/${colleague.id}/avatar`, {
-      query: { tenantId: fx.tenantA.id }
+      query: { tenantId: fx.tenantA.id },
     });
 
     expect(res.status).toBe(200);
     expect(userService.removeUserAvatar).toHaveBeenCalledWith(
       colleague.id,
       currentUser.id,
-      expect.objectContaining({ actorTenantId: fx.tenantA.id, actorIsSuperAdmin: false })
+      expect.objectContaining({ actorTenantId: fx.tenantA.id, actorIsSuperAdmin: false }),
     );
   });
 
@@ -219,7 +219,7 @@ describe("A-96 — avatar upload: the controller hands over the actor and cleans
     // A body userId naming someone else changes neither the gate's decision
     // (the path names the caller) nor the target (the path wins).
     const res = await http("post", `/${user.id}/avatar`, {
-      body: { __file: true, userId: colleague.id }
+      body: { __file: true, userId: colleague.id },
     });
 
     expect(res.status).toBe(200);
@@ -227,7 +227,7 @@ describe("A-96 — avatar upload: the controller hands over the actor and cleans
       user.id,
       "uploaded-avatar.png",
       user.id,
-      expect.objectContaining({ actorTenantId: fx.tenantA.id, ipAddress: "127.0.0.1" })
+      expect.objectContaining({ actorTenantId: fx.tenantA.id, ipAddress: "127.0.0.1" }),
     );
     expect(deleteUpload).not.toHaveBeenCalled();
   });

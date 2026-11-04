@@ -25,7 +25,7 @@ const mockDb: any = {
   takenRow: null,
   updateError: null,
   events: [],
-  updateBind: null
+  updateBind: null,
 };
 
 // P8-01 (ADR-086 Amendment 1): an export's archive and manifest are kept in
@@ -75,22 +75,22 @@ jest.mock("../../config", () => {
 });
 // archiver 8 is ESM with named classes; the service does `new ZipArchive(...)` (P6-02).
 jest.mock("archiver", () => ({ ZipArchive: function MockZipArchive() {
-    const handlers: any = {};
-    return {
-      on: (event: any, cb: any) => {
-        handlers[event] = cb;
-      },
-      pipe: () => {},
-      directory: () => {},
-      finalize: () => {
-        Promise.resolve().then(() => handlers.end());
-      }
-    };
-  } }));
+  const handlers: any = {};
+  return {
+    on: (event: any, cb: any) => {
+      handlers[event] = cb;
+    },
+    pipe: () => {},
+    directory: () => {},
+    finalize: () => {
+      Promise.resolve().then(() => handlers.end());
+    },
+  };
+} }));
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn(async () => {
     mockDb.events.push("audit");
-  })
+  }),
 }));
 jest.mock("../../services/emailQueue.service", () => ({
   queueActivationEmail: jest.fn(async () => {
@@ -100,16 +100,16 @@ jest.mock("../../services/emailQueue.service", () => ({
   queueNotificationEmail: jest.fn(async () => {
     mockDb.events.push("mail-previous-address");
     return true;
-  })
+  }),
 }));
 jest.mock("../../utils/jwt.util", () => ({
-  generatePurposeToken: jest.fn(() => "ACTIVATION-TOKEN")
+  generatePurposeToken: jest.fn(() => "ACTIVATION-TOKEN"),
 }));
 // A-214: an email change re-authenticates first; that step is proven in
 // gdpr.rectifyReauth.a214.test.js. Here it passes, as for a password holder.
 jest.mock("../../services/auth.service", () => ({
   passwordManagedBy: jest.fn(async () => null),
-  reauthenticate: jest.fn(async () => "password")
+  reauthenticate: jest.fn(async () => "password"),
 }));
 
 const fs = require("fs");
@@ -163,7 +163,7 @@ beforeEach(() => {
     firstName: "Jane",
     lastName: "Doe",
     avatarUrl: "default.svg",
-    status: "ACTIVE"
+    status: "ACTIVE",
   };
   written = {};
   jest.spyOn(fs.promises, "mkdir").mockResolvedValue(undefined);
@@ -184,7 +184,7 @@ afterAll(() => {
 });
 
 const selectFrom = (table: any) =>
-mockDb.statements.filter((s: any) => s.startsWith("SELECT") && s.includes(` FROM "${table}" `));
+  mockDb.statements.filter((s: any) => s.startsWith("SELECT") && s.includes(` FROM "${table}" `));
 
 describe("A-180 — the Article 15 export includes consent history, DSARs and sessions", () => {
   it.each([["consent_records"], ["dsar_requests"], ["sessions"]])(
@@ -199,14 +199,14 @@ describe("A-180 — the Article 15 export includes consent history, DSARs and se
       expect(sql).toMatch(new RegExp(`"user_id" = '${USER}'`));
       // D-24 (ADR-070): a keyset page at a time, not the first 1,000.
       expect(sql).toMatch(/ORDER BY "\w+"\."id" ASC LIMIT 500/);
-    }
+    },
   );
 
   it("the rows reach privacy_records.json", async () => {
     mockDb.rows = {
       consent_records: [{ id: "c1", purpose: "analytics", status: "withdrawn" }],
       dsar_requests: [{ id: "d1", type: "erasure", status: "pending" }],
-      sessions: [{ id: "s1", impersonator_id: null, ip_address: "203.0.113.7", user_agent: "Firefox" }]
+      sessions: [{ id: "s1", impersonator_id: null, ip_address: "203.0.113.7", user_agent: "Firefox" }],
     };
 
     await asTenant(() => gdprService.exportUserData(TENANT, USER));
@@ -214,7 +214,7 @@ describe("A-180 — the Article 15 export includes consent history, DSARs and se
     expect(written["privacy_records.json"]).toEqual({
       consentHistory: [{ id: "c1", purpose: "analytics", status: "withdrawn" }],
       dsarRequests: [{ id: "d1", type: "erasure", status: "pending" }],
-      sessions: [{ id: "s1", impersonator_id: null, ip_address: "203.0.113.7", user_agent: "Firefox" }]
+      sessions: [{ id: "s1", impersonator_id: null, ip_address: "203.0.113.7", user_agent: "Firefox" }],
     });
   });
 
@@ -235,28 +235,28 @@ describe("A-180 — the Article 15 export includes consent history, DSARs and se
   it("an impersonated session withholds the impersonator's network address, agent, device and id", async () => {
     mockDb.rows = {
       sessions: [
-      {
-        id: "s2",
-        impersonator_id: ADMIN,
-        ip_address: "198.51.100.1",
-        user_agent: "Admin-Chrome",
-        device: "admin-laptop",
-        created_at: "2026-09-01T00:00:00.000Z"
-      }]
+        {
+          id: "s2",
+          impersonator_id: ADMIN,
+          ip_address: "198.51.100.1",
+          user_agent: "Admin-Chrome",
+          device: "admin-laptop",
+          created_at: "2026-09-01T00:00:00.000Z",
+        }],
 
     };
 
     await asTenant(() => gdprService.exportUserData(TENANT, USER));
 
     expect(written["privacy_records.json"].sessions).toEqual([
-    {
-      id: "s2",
-      impersonated: true,
-      ip_address: null,
-      user_agent: null,
-      device: null,
-      created_at: "2026-09-01T00:00:00.000Z"
-    }]
+      {
+        id: "s2",
+        impersonated: true,
+        ip_address: null,
+        user_agent: null,
+        device: null,
+        created_at: "2026-09-01T00:00:00.000Z",
+      }],
     );
     expect(JSON.stringify(written)).not.toContain(ADMIN);
   });
@@ -266,7 +266,7 @@ describe("A-180 — the Article 15 export includes consent history, DSARs and se
     jest.spyOn(models.DsarRequest, "findAll").mockRejectedValueOnce(new Error("relation missing"));
 
     await expect(asTenant(() => gdprService.exportUserData(TENANT, USER))).rejects.toMatchObject({
-      status: 500
+      status: 500,
     });
     expect(written["privacy_records.json"]).toBeUndefined();
   });
@@ -274,9 +274,9 @@ describe("A-180 — the Article 15 export includes consent history, DSARs and se
 
 describe("A-180 — rectifying the email", () => {
   const rectify = (value: any) =>
-  asTenant(() =>
-  gdprService.rectifyData(TENANT, USER, "email", value, { ipAddress: "10.0.0.1", userAgent: "ua" })
-  );
+    asTenant(() =>
+      gdprService.rectifyData(TENANT, USER, "email", value, { ipAddress: "10.0.0.1", userAgent: "ua" }),
+    );
 
   it("an address another account holds is a 409 explaining the state — not a 500 — and nothing is written", async () => {
     mockDb.takenRow = { id: OTHER };
@@ -284,7 +284,7 @@ describe("A-180 — rectifying the email", () => {
     await expect(rectify("Taken@Hospital.test")).rejects.toMatchObject({
       status: 409,
       message:
-      "This email address is already in use by another account. Choose a different address; your current address is unchanged."
+      "This email address is already in use by another account. Choose a different address; your current address is unchanged.",
     });
     expect(mockDb.statements.some((s: any) => s.startsWith("UPDATE"))).toBe(false);
     expect(auditService.logAction).not.toHaveBeenCalled();
@@ -323,7 +323,7 @@ describe("A-180 — rectifying the email", () => {
       fields: ["email"],
       emailVerificationReset: true,
       // A-214: how the caller re-authenticated.
-      reauthenticatedWith: "password"
+      reauthenticatedWith: "password",
     });
     // The audit trail never holds the address (A-153).
     expect(JSON.stringify(auditService.logAction.mock.calls)).not.toContain("new.address");
@@ -332,23 +332,23 @@ describe("A-180 — rectifying the email", () => {
     const { activationEmailHash } = require("../../utils/activationToken.util");
     expect(generatePurposeToken).toHaveBeenCalledWith(
       { id: USER, eh: activationEmailHash("new.address@hospital.test") },
-      "activation"
+      "activation",
     );
     expect(emailQueue.queueActivationEmail).toHaveBeenCalledWith({
       email: "new.address@hospital.test",
       firstName: "Jane",
       lastName: "Doe",
-      activationLink: "https://app.hospital.test/activation?token=ACTIVATION-TOKEN"
+      activationLink: "https://app.hospital.test/activation?token=ACTIVATION-TOKEN",
     });
     expect(emailQueue.queueNotificationEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ email: "jane@hospital.test", title: "Your email address was changed" })
+      expect.objectContaining({ email: "jane@hospital.test", title: "Your email address was changed" }),
     );
     expect(mockDb.events).toEqual([
-    "update",
-    "audit",
-    "commit",
-    "mail-new-address",
-    "mail-previous-address"]
+      "update",
+      "audit",
+      "commit",
+      "mail-new-address",
+      "mail-previous-address"],
     );
     expect(result).toEqual({ rectified: true, field: "email", emailVerificationRequired: true });
   });
@@ -368,10 +368,10 @@ describe("A-180 — rectifying the email", () => {
     async (value: any) => {
       await expect(rectify(value)).rejects.toMatchObject({
         status: 400,
-        message: "email must be a valid email address"
+        message: "email must be a valid email address",
       });
       expect(mockDb.statements).toEqual([]);
-    }
+    },
   );
 
   it("a subject with no account in the tenant is a 404 and writes nothing", async () => {
@@ -390,7 +390,7 @@ describe("A-180 — rectifying the email", () => {
     expect(result.emailVerificationRequired).toBe(true);
     expect(logger.warn).toHaveBeenCalledWith("Email-change mail could not be queued", {
       userId: USER,
-      error: "broker down"
+      error: "broker down",
     });
   });
 
@@ -401,7 +401,7 @@ describe("A-180 — rectifying the email", () => {
     await rectify("new@hospital.test");
 
     expect(emailQueue.queueActivationEmail.mock.calls[0][0].activationLink).toBe(
-      "/activation?token=ACTIVATION-TOKEN"
+      "/activation?token=ACTIVATION-TOKEN",
     );
   });
 

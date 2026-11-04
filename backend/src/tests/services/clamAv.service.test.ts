@@ -32,12 +32,12 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
     debug: jest.fn(),
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 jest.mock("../../utils/circuitBreaker.util", () => ({
-  withCircuitBreaker: jest.fn((_key: any, fn: any) => fn())
+  withCircuitBreaker: jest.fn((_key: any, fn: any) => fn()),
 }));
 
 jest.mock("axios", () => ({ post: jest.fn() }), { virtual: true });
@@ -60,7 +60,7 @@ const load = (env: any = {}) => {
     CLAMAV_HOST: "127.0.0.1",
     CLAMAV_PORT: String(clamd.port),
     CLAMAV_TIMEOUT: "2000",
-    ...env
+    ...env,
   };
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined) {delete process.env[k];}
@@ -131,12 +131,12 @@ describe("S-04 — clamd INSTREAM protocol (fake clamd over TCP)", () => {
       isClean: false,
       code: "FOUND",
       result: `stream: ${FAKE_SIGNATURE} FOUND`,
-      signature: FAKE_SIGNATURE
+      signature: FAKE_SIGNATURE,
     });
     const { logger } = require("../../middlewares/activityLog.middleware");
     expect(logger.warn).toHaveBeenCalledWith(
       "Virus detected in uploaded file",
-      expect.objectContaining({ filePath: file })
+      expect.objectContaining({ filePath: file }),
     );
   });
 
@@ -168,7 +168,7 @@ describe("S-04 — clamd INSTREAM protocol (fake clamd over TCP)", () => {
 
     expect(err).toMatchObject({
       status: 500,
-      message: "File scan service unavailable. Please try again later."
+      message: "File scan service unavailable. Please try again later.",
     });
     expect(err.cause.code).toBe("CLAMAV_NO_VERDICT");
     expect(err.cause.message).toContain("UNKNOWN COMMAND");
@@ -231,8 +231,8 @@ describe("S-04 — clamd INSTREAM protocol (fake clamd over TCP)", () => {
   it("connects over a Unix socket / named pipe when CLAMAV_SOCKET_PATH is set", async () => {
     const pipe =
     process.platform === "win32" ?
-    `\\\\.\\pipe\\fake-clamd-${process.pid}-${Date.now()}` :
-    path.join(tmp, "clamd.sock");
+      `\\\\.\\pipe\\fake-clamd-${process.pid}-${Date.now()}` :
+      path.join(tmp, "clamd.sock");
     const local = await startFakeClamd({ path: pipe });
     try {
       const svc = load({ CLAMAV_SOCKET_PATH: pipe, CLAMAV_PORT: "1" });
@@ -264,9 +264,9 @@ describe("S-04 — parseClamdReply", () => {
   });
 
   it.each([
-  ["stream: OK\0", true],
-  ["stream: OK\n", true],
-  ["OK", true]]
+    ["stream: OK\0", true],
+    ["stream: OK\n", true],
+    ["OK", true]],
   )("%j is clean", (reply: any, clean: any) => {
     expect(svc.parseClamdReply(reply).isClean).toBe(clean);
   });
@@ -276,22 +276,22 @@ describe("S-04 — parseClamdReply", () => {
       isClean: false,
       code: "FOUND",
       result: "stream: Win.Test.EICAR_HDB-1 FOUND",
-      signature: "Win.Test.EICAR_HDB-1"
+      signature: "Win.Test.EICAR_HDB-1",
     });
   });
 
   it.each([
-  "UNKNOWN COMMAND",
-  "INSTREAM size limit exceeded. ERROR",
-  "stream: Can't allocate memory ERROR",
-  "stream: O",
-  "stream: OK but not really",
-  "",
-  null,
-  undefined]
+    "UNKNOWN COMMAND",
+    "INSTREAM size limit exceeded. ERROR",
+    "stream: Can't allocate memory ERROR",
+    "stream: O",
+    "stream: OK but not really",
+    "",
+    null,
+    undefined],
   )("%j is not a verdict and throws", (reply: any) => {
     expect(() => svc.parseClamdReply(reply)).toThrow(
-      expect.objectContaining({ code: "CLAMAV_NO_VERDICT" })
+      expect.objectContaining({ code: "CLAMAV_NO_VERDICT" }),
     );
   });
 
@@ -345,7 +345,7 @@ describe("S-04 — frameChunk and writeAsync", () => {
     const s = new FakeSocket(true);
     s.destroyed = true;
     await expect(svc.writeAsync(s, Buffer.from("x"))).rejects.toThrow(
-      "ClamAV connection closed while sending"
+      "ClamAV connection closed while sending",
     );
     expect(s.write).not.toHaveBeenCalled();
   });
@@ -355,8 +355,8 @@ describe("S-17 — the verdict cache is keyed by a content hash", () => {
   it("two different files of the same size and mtime do NOT share a verdict", async () => {
     const { post } = require("axios");
     post.
-    mockResolvedValueOnce({ data: "stream: OK" }).
-    mockResolvedValueOnce({ data: "stream: Eicar-Test-Signature FOUND" });
+      mockResolvedValueOnce({ data: "stream: OK" }).
+      mockResolvedValueOnce({ data: "stream: Eicar-Test-Signature FOUND" });
     const svc = load({ CLAMAV_HTTP_MODE: "true", CLAMAV_HTTP_URL: "http://clamav.local:9000" });
     svc.clearCache();
 
@@ -409,7 +409,7 @@ describe("S-17 — the verdict cache is keyed by a content hash", () => {
   it("an unreadable file is a scan error, not clean", async () => {
     const svc = load();
     await expect(svc.scanFile(path.join(tmp, "missing.bin"))).rejects.toMatchObject({
-      status: 500
+      status: 500,
     });
   });
 
@@ -463,7 +463,7 @@ describe("HTTP mode — the body is parsed like a clamd reply (S-04)", () => {
     expect(result.isClean).toBe(true);
     expect(post.mock.calls[0][2].headers).toEqual({
       "Content-Type": "application/octet-stream",
-      "X-HTTP-Key": "k"
+      "X-HTTP-Key": "k",
     });
   });
 
@@ -475,7 +475,7 @@ describe("HTTP mode — the body is parsed like a clamd reply (S-04)", () => {
     await svc.scanFile(write("a.txt", "x"), false);
 
     expect(post.mock.calls[0][2].headers).toEqual({
-      "Content-Type": "application/octet-stream"
+      "Content-Type": "application/octet-stream",
     });
   });
 
@@ -485,7 +485,7 @@ describe("HTTP mode — the body is parsed like a clamd reply (S-04)", () => {
     const svc = load(http);
 
     await expect(svc.scanFile(write("a.txt", "x"), false)).rejects.toMatchObject({
-      status: 500
+      status: 500,
     });
   });
 
@@ -497,10 +497,10 @@ describe("HTTP mode — the body is parsed like a clamd reply (S-04)", () => {
     const svc = load({ ...http, CLAMAV_DISABLE_ON_ERROR: "true" });
 
     expect((await svc.scanFile(write("a.txt", "x"), false)).result).toBe(
-      "Allowed (scan error: ClamAV HTTP error: 502)"
+      "Allowed (scan error: ClamAV HTTP error: 502)",
     );
     expect((await svc.scanFile(write("b.txt", "y"), false)).result).toBe(
-      "Allowed (scan error: ClamAV HTTP scan failed)"
+      "Allowed (scan error: ClamAV HTTP scan failed)",
     );
   });
 
@@ -509,7 +509,7 @@ describe("HTTP mode — the body is parsed like a clamd reply (S-04)", () => {
     const svc = load({ CLAMAV_HTTP_MODE: "true", CLAMAV_HTTP_URL: undefined });
 
     await expect(svc.scanFile(write("a.txt", "x"), false)).resolves.toMatchObject({
-      code: "OK"
+      code: "OK",
     });
     expect(post).not.toHaveBeenCalled();
     expect(clamd.sessions).toHaveLength(1);
@@ -522,7 +522,7 @@ describe("configuration surface", () => {
     await expect(svc.scanFile("/whatever")).resolves.toEqual({
       isClean: true,
       result: "Skipped (disabled)",
-      code: "SKIPPED"
+      code: "SKIPPED",
     });
     expect(svc.isConfigured()).toBe(false);
     expect(svc.getStatus()).toMatchObject({ enabled: false, mode: "socket" });
@@ -585,13 +585,13 @@ describe(
     beforeAll(() => {
       if (!LIVE_PORT) {
         throw new Error(
-          "CLAMAV_LIVE_PORT is not set: start a clamd (docker run -d --name clamd -p 127.0.0.1:13310:3310 clamav/clamav:1.4) and set CLAMAV_LIVE_PORT=13310"
+          "CLAMAV_LIVE_PORT is not set: start a clamd (docker run -d --name clamd -p 127.0.0.1:13310:3310 clamav/clamav:1.4) and set CLAMAV_LIVE_PORT=13310",
         );
       }
     });
 
     const live = () =>
-    load({ CLAMAV_PORT: LIVE_PORT, CLAMAV_HOST: process.env["CLAMAV_LIVE_HOST"] || "127.0.0.1", CLAMAV_TIMEOUT: "30000" });
+      load({ CLAMAV_PORT: LIVE_PORT, CLAMAV_HOST: process.env["CLAMAV_LIVE_HOST"] || "127.0.0.1", CLAMAV_TIMEOUT: "30000" });
 
     it("answers PING", async () => {
       await expect(live().ping()).resolves.toBe(true);
@@ -608,5 +608,5 @@ describe(
       expect(result.code).toBe("FOUND");
       expect(result.result).toMatch(/^stream: .*Eicar.* FOUND$/i);
     });
-  }
+  },
 );

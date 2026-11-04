@@ -82,10 +82,10 @@ const fromJsonSchema: any = (node: any, required: any = false) => {
   const add = (name: any, args: any) => rules.push(args === undefined ? { name } : { name, args });
   switch (node.type) {
     case "object":{
-        const need = new Set(node.required || []);
-        const keys: any = Object.fromEntries(Object.entries(node.properties || {}).map(([k, v]: any) => [k, fromJsonSchema(v, need.has(k))]));
-        return { type: "object", flags, keys };
-      }
+      const need = new Set(node.required || []);
+      const keys: any = Object.fromEntries(Object.entries(node.properties || {}).map(([k, v]: any) => [k, fromJsonSchema(v, need.has(k))]));
+      return { type: "object", flags, keys };
+    }
     case "array":
       if (node.minItems) {add("min", { limit: node.minItems });}
       return { type: "array", flags, rules, items: node.items ? [fromJsonSchema(node.items)] : [] };
@@ -97,12 +97,12 @@ const fromJsonSchema: any = (node: any, required: any = false) => {
     case "boolean":
       return { type: "boolean", flags };
     case "string":{
-        const format: any = ({ uuid: "guid", email: "email", uri: "uri", "date-time": "isoDate", date: "isoDate", hostname: "hostname", ipv4: "ip", ipv6: "ip" } as any)[node.format];
-        if (format) {add(format, undefined);}
-        if (node.minLength) {add("min", { limit: node.minLength });}
-        if (node.maxLength) {add("max", { limit: node.maxLength });}
-        return { type: "string", flags, rules };
-      }
+      const format: any = ({ uuid: "guid", email: "email", uri: "uri", "date-time": "isoDate", date: "isoDate", hostname: "hostname", ipv4: "ip", ipv6: "ip" } as any)[node.format];
+      if (format) {add(format, undefined);}
+      if (node.minLength) {add("min", { limit: node.minLength });}
+      if (node.maxLength) {add("max", { limit: node.maxLength });}
+      return { type: "string", flags, rules };
+    }
     default:
       return { type: "any", flags };
   }
@@ -147,21 +147,21 @@ function dumpRoutes(outFile: any) {
   const validation = mw("validation.middleware");
   const originalValidate = validation.validate;
   validation.validate = (schema: any) =>
-  Object.assign(originalValidate(schema), { __schema: describeSchema(schema) });
+    Object.assign(originalValidate(schema), { __schema: describeSchema(schema) });
   const dyn = mw("dynamicAccess.middleware");
   const originalDyn = dyn.dynamicAccess;
   dyn.dynamicAccess = (menu: any, perm: any, options: any) =>
-  Object.assign(originalDyn(menu, perm, options), {
-    __access: { menu, perm, options: options || {} }
-  });
+    Object.assign(originalDyn(menu, perm, options), {
+      __access: { menu, perm, options: options || {} },
+    });
   const rbacMod = mw("rbac.middleware");
   const originalRbac = rbacMod.rbac;
   rbacMod.rbac = (roles: any, options: any) =>
-  Object.assign(originalRbac(roles, options), { __rbac: roles });
+    Object.assign(originalRbac(roles, options), { __rbac: roles });
   const uuidMod = mw("validateUuid.middleware");
   const originalUuid = uuidMod.validateUuid;
   uuidMod.validateUuid = (...names: any[]) =>
-  Object.assign(originalUuid(...names), { __uuid: names.flat() });
+    Object.assign(originalUuid(...names), { __uuid: names.flat() });
 
   // index.js is the source of truth for the mounts.
   const indexSrc = fs.readFileSync(path.join(BACKEND_ROOT, "index.ts"), "utf8");
@@ -197,7 +197,7 @@ function dumpRoutes(outFile: any) {
       if (layer.route) {
         const paths = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
         const methods = Object.keys(layer.route.methods).filter(
-          (k: any) => layer.route.methods[k] && k !== "_all"
+          (k: any) => layer.route.methods[k] && k !== "_all",
         );
         for (const p of paths) {
           for (const method of methods) {
@@ -206,8 +206,8 @@ function dumpRoutes(outFile: any) {
               path: joinPath(prefix, String(p)),
               mount,
               middlewares: [
-              ...routerLevel,
-              ...layer.route.stack.filter((l: any) => !l.method || l.method === method).map((l: any) => describeMw(l.handle))]
+                ...routerLevel,
+                ...layer.route.stack.filter((l: any) => !l.method || l.method === method).map((l: any) => describeMw(l.handle))],
 
             });
           }
@@ -240,7 +240,7 @@ function loadRoutes() {
     // guard at the bottom of this file).
     env: Object.fromEntries(Object.entries(process.env).filter(([k]: any) => k !== "JEST_WORKER_ID")),
     encoding: "utf8",
-    timeout: 180000
+    timeout: 180000,
   });
   if (child.status !== 0) {
     throw new Error(`route dump failed (${child.status}): ${child.stderr || child.stdout}`);
@@ -258,7 +258,7 @@ const BASE_URL = (process.env["LIVE_CONTRACT_BASE_URL"] || process.env["BASE_URL
 const OPERATOR = {
   user: process.env["LIVE_CONTRACT_OPERATOR"] || "sys@mail.com",
   // P10-16 (ADR-099): no default operator password any more.
-  password: process.env["LIVE_CONTRACT_OPERATOR_PASSWORD"] || process.env["E2E_OPERATOR_PASSWORD"] || ""
+  password: process.env["LIVE_CONTRACT_OPERATOR_PASSWORD"] || process.env["E2E_OPERATOR_PASSWORD"] || "",
 };
 const DEMO_PASSWORD = "Demo123!";
 const PRINCIPAL_PASSWORD = "LiveContract#2026";
@@ -270,7 +270,7 @@ async function http(method: any, url: any, { token, body, headers = {}, timeoutM
     method,
     headers: { "Content-Type": "application/json", "User-Agent": "Callibrator-LiveContract/1.0", ...headers },
     redirect: "manual",
-    signal: AbortSignal.timeout(timeoutMs)
+    signal: AbortSignal.timeout(timeoutMs),
   };
   if (token) {init.headers.Authorization = `Bearer ${token}`;}
   if (body !== undefined && method !== "GET" && method !== "HEAD") {init.body = JSON.stringify(body);}
@@ -332,7 +332,7 @@ const harnessMfaSecret = (who: any) => {
   process.env["E2E_MFA_STATE_FILE"] ||
   path.join(
     os.tmpdir(),
-    `callibrator-e2e-mfa-${crypto.createHash("sha256").update(`${BASE_URL}\n${String(who).toLowerCase()}`).digest("hex").slice(0, 16)}.json`
+    `callibrator-e2e-mfa-${crypto.createHash("sha256").update(`${BASE_URL}\n${String(who).toLowerCase()}`).digest("hex").slice(0, 16)}.json`,
   );
   try {
     return JSON.parse(fs.readFileSync(file, "utf8")).secret;
@@ -352,7 +352,7 @@ async function signIn(credentials: any) {
     if (setup.status !== 200 || !secret) {throw new Error(`MFA setup for ${who}: ${setup.status} ${setup.text}`);}
     const verify = await http("POST", "/api/v1/auth/mfa/verify", {
       token: r.body.token,
-      body: { code: await totp(secret, who) }
+      body: { code: await totp(secret, who) },
     });
     if (verify.status !== 200) {throw new Error(`MFA verify for ${who}: ${verify.status} ${verify.text}`);}
     writeMfa({ ...readMfa(), [who]: secret });
@@ -362,7 +362,7 @@ async function signIn(credentials: any) {
     const secret = process.env["LIVE_CONTRACT_OPERATOR_TOTP_SECRET"] || readMfa()[who] || harnessMfaSecret(who);
     if (!secret) {throw new Error(`${who} has MFA and no known secret (LIVE_CONTRACT_OPERATOR_TOTP_SECRET)`);}
     r = await http("POST", "/api/v1/auth/mfa/login", {
-      body: { token: r.body.token, code: await totp(secret, who) }
+      body: { token: r.body.token, code: await totp(secret, who) },
     });
     if (r.status !== 200) {throw new Error(`MFA sign-in of ${who}: ${r.status} ${r.text}`);}
   }
@@ -456,7 +456,7 @@ function makeIdSource(state: any) {
       card: () => state.kanban.cardId,
       targetcard: () => state.kanban.cardId2 || state.kanban.cardId,
       sprint: () => state.kanban.sprintId,
-      label: () => state.kanban.labelId
+      label: () => state.kanban.labelId,
     };
     const fn: any = map[k] || map[k.replace(/s$/, "")];
     return fn ? fn() : null;
@@ -504,23 +504,23 @@ function bodyFromSchema(desc: any, ids: any, key: any = "") {
   const ruleArg = (name: any) => (desc.rules || []).find((r: any) => r.name === name)?.args;
   switch (desc.type) {
     case "object":{
-        const out: any = {};
-        for (const [k, child] of Object.entries((desc.keys as any) || {})) {
-          if ((child as any)?.flags?.presence === "required") {out[k] = bodyFromSchema(child, ids, k);}
-        }
-        return out;
+      const out: any = {};
+      for (const [k, child] of Object.entries((desc.keys as any) || {})) {
+        if ((child as any)?.flags?.presence === "required") {out[k] = bodyFromSchema(child, ids, k);}
       }
+      return out;
+    }
     case "array":{
-        const min = ruleArg("min")?.limit || 0;
-        const item = desc.items?.[0];
-        const out: any[] = [];
-        for (let i = 0; i < Math.max(min, 0); i += 1) {out.push(bodyFromSchema(item, ids, key.replace(/s$/, "")));}
-        return out;
-      }
+      const min = ruleArg("min")?.limit || 0;
+      const item = desc.items?.[0];
+      const out: any[] = [];
+      for (let i = 0; i < Math.max(min, 0); i += 1) {out.push(bodyFromSchema(item, ids, key.replace(/s$/, "")));}
+      return out;
+    }
     case "number":{
-        const min = ruleArg("min")?.limit ?? ruleArg("greater")?.limit;
-        return min !== undefined ? Number(min) + (ruleArg("greater") ? 1 : 0) : 1;
-      }
+      const min = ruleArg("min")?.limit ?? ruleArg("greater")?.limit;
+      return min !== undefined ? Number(min) + (ruleArg("greater") ? 1 : 0) : 1;
+    }
     case "boolean":
       return true;
     case "date":
@@ -528,21 +528,21 @@ function bodyFromSchema(desc: any, ids: any, key: any = "") {
     case "alternatives":
       return bodyFromSchema(desc.matches?.[0]?.schema || desc.matches?.[0]?.then, ids, key);
     case "string":{
-        if (rules.includes("guid") || rules.includes("uuid")) {return ids.byKey(key) || uuid();}
-        if (rules.includes("email")) {return `lc.${rand()}@example.com`;}
-        if (rules.includes("isoDate")) {return iso(30);}
-        if (rules.includes("uri")) {return "https://example.com/lc-hook";}
-        if (rules.includes("hostname") || rules.includes("domain")) {return `lc-${rand()}.example.com`;}
-        if (rules.includes("ip")) {return "10.0.0.1";}
-        const v = valueFor(key, ids);
-        let s = typeof v === "string" ? v : String(v);
-        if (rules.includes("alphanum")) {s = `lc${rand()}`;}
-        const min = ruleArg("min")?.limit;
-        if (min && s.length < min) {s = s.padEnd(min, "x");}
-        const max = ruleArg("max")?.limit;
-        if (max && s.length > max) {s = s.slice(0, max);}
-        return s;
-      }
+      if (rules.includes("guid") || rules.includes("uuid")) {return ids.byKey(key) || uuid();}
+      if (rules.includes("email")) {return `lc.${rand()}@example.com`;}
+      if (rules.includes("isoDate")) {return iso(30);}
+      if (rules.includes("uri")) {return "https://example.com/lc-hook";}
+      if (rules.includes("hostname") || rules.includes("domain")) {return `lc-${rand()}.example.com`;}
+      if (rules.includes("ip")) {return "10.0.0.1";}
+      const v = valueFor(key, ids);
+      let s = typeof v === "string" ? v : String(v);
+      if (rules.includes("alphanum")) {s = `lc${rand()}`;}
+      const min = ruleArg("min")?.limit;
+      if (min && s.length < min) {s = s.padEnd(min, "x");}
+      const max = ruleArg("max")?.limit;
+      if (max && s.length > max) {s = s.slice(0, max);}
+      return s;
+    }
     default:
       return valueFor(key, ids);
   }
@@ -580,10 +580,10 @@ function restate(message: any) {
   const text = String(message);
   let m: any;
   if (/received undefined$/.test(text)) {return "is required";}
-  if (m = text.match(/^Invalid option: expected one of (.*)$/)) {
+  if ((m = text.match(/^Invalid option: expected one of (.*)$/))) {
     return `must be one of [${m[1].split("|").map((v: any) => v.replace(/^"|"$/g, "")).join(", ")}]`;
   }
-  if (m = text.match(/^Invalid input: expected (\w+)/)) {
+  if ((m = text.match(/^Invalid input: expected (\w+)/))) {
     const type = m[1];
     if (type === "number" || type === "int") {return "must be a number";}
     if (type === "boolean") {return "must be a boolean";}
@@ -593,12 +593,12 @@ function restate(message: any) {
     if (type === "never") {return "is not allowed";}
     return "must be a string";
   }
-  if (m = text.match(/^Too small: expected string to have >=(\d+)/)) {return `length must be at least ${m[1]}`;}
-  if (m = text.match(/^Too big: expected string to have <=(\d+)/)) {return `length must be less than or equal to ${m[1]}`;}
-  if (m = text.match(/^Too small: expected array to have >=(\d+)/)) {return `must contain at least ${m[1]} items`;}
-  if (m = text.match(/^Too small: expected number to be >=(-?[\d.]+)/)) {return `must be greater than or equal to ${m[1]}`;}
-  if (m = text.match(/^Too small: expected number to be >(-?[\d.]+)/)) {return `must be greater than ${m[1]}`;}
-  if (m = text.match(/^Too big: expected number to be <=(-?[\d.]+)/)) {return `must be less than or equal to ${m[1]}`;}
+  if ((m = text.match(/^Too small: expected string to have >=(\d+)/))) {return `length must be at least ${m[1]}`;}
+  if ((m = text.match(/^Too big: expected string to have <=(\d+)/))) {return `length must be less than or equal to ${m[1]}`;}
+  if ((m = text.match(/^Too small: expected array to have >=(\d+)/))) {return `must contain at least ${m[1]} items`;}
+  if ((m = text.match(/^Too small: expected number to be >=(-?[\d.]+)/))) {return `must be greater than or equal to ${m[1]}`;}
+  if ((m = text.match(/^Too small: expected number to be >(-?[\d.]+)/))) {return `must be greater than ${m[1]}`;}
+  if ((m = text.match(/^Too big: expected number to be <=(-?[\d.]+)/))) {return `must be less than or equal to ${m[1]}`;}
   if (/^Invalid (UUID|GUID)/.test(text)) {return "must be a valid GUID";}
   if (/^Invalid email/.test(text)) {return "must be a valid email";}
   if (/^Invalid URL/.test(text)) {return "must be a valid uri";}
@@ -677,18 +677,18 @@ function applyComplaint(body: any, { field, message }: any, ids: any) {
   if (msg.includes("pattern")) {
     const low = key.toLowerCase();
     const guess = low.includes("color") ?
-    "#336699" :
-    low.includes("phone") ?
-    "+6281234567890" :
-    low.includes("slug") ?
-    `lc-${rand()}` :
-    low.includes("time") ?
-    "08:00" :
-    low.includes("key") ?
-    `lc_${rand()}` :
-    low.includes("period") || low.includes("month") ?
-    new Date().toISOString().slice(0, 7) :
-    `LC${rand().toUpperCase()}`;
+      "#336699" :
+      low.includes("phone") ?
+        "+6281234567890" :
+        low.includes("slug") ?
+          `lc-${rand()}` :
+          low.includes("time") ?
+            "08:00" :
+            low.includes("key") ?
+              `lc_${rand()}` :
+              low.includes("period") || low.includes("month") ?
+                new Date().toISOString().slice(0, 7) :
+                `LC${rand().toUpperCase()}`;
     setPath(body, field, guess);
     return true;
   }
@@ -731,7 +731,7 @@ const DOCUMENT_ARRAYS: any = {
   "GET /api/v1/search": ["results"],
   "POST /api/v1/ipm/sessions": ["results"],
   "POST /api/v1/ipm/sessions/:sessionId/discard": ["results"],
-  "POST /api/v1/ipm/templates/:templateId/versions": ["items"]
+  "POST /api/v1/ipm/templates/:templateId/versions": ["items"],
 };
 
 function envelopeViolations(route: any, res: any) {
@@ -772,7 +772,7 @@ const TEMP_PASSWORD = "TempPass#2026lc";
 async function ensureUser(creator: any, spec: any) {
   const created = await http("POST", "/api/v1/users/create", {
     token: creator.token,
-    body: { ...spec, password: TEMP_PASSWORD, status: "ACTIVE" }
+    body: { ...spec, password: TEMP_PASSWORD, status: "ACTIVE" },
   });
   if (created.status >= 300 && created.status !== 409) {
     throw new Error(`creating ${spec.email} (${JSON.stringify(spec)}): ${created.status} ${String(created.text).slice(0, 300)}`);
@@ -785,7 +785,7 @@ async function ensureUser(creator: any, spec: any) {
     // Otherwise (an interrupted run consumed the one-time password and never chose one): the
     // administrator-assisted reset (A-162) issues a new one-time password.
     const found = rowsOf((await http("GET", `/api/v1/users/all?find=${encodeURIComponent(spec.username)}&limit=100`, { token: creator.token })).body).
-    find((u: any) => String(u.email).toLowerCase() === spec.email);
+      find((u: any) => String(u.email).toLowerCase() === spec.email);
     if (!found) {throw new Error(`${spec.email} exists (409) but the operator cannot list it`);}
     const reset = await http("POST", `/api/v1/users/${found.id}/password/reset`, { token: creator.token, body: {} });
     oneTime = reset.body?.data?.temporaryPassword;
@@ -798,7 +798,7 @@ async function ensureUser(creator: any, spec: any) {
     throw new Error(`the one-time sign-in of ${spec.email}: ${first.status} ${String(first.text).slice(0, 300)}`);
   }
   const changed = await http("POST", "/api/v1/auth/first-sign-in/password", {
-    body: { token: first.body.token, newPassword: PRINCIPAL_PASSWORD }
+    body: { token: first.body.token, newPassword: PRINCIPAL_PASSWORD },
   });
   if (changed.status !== 200) {throw new Error(`the first-sign-in change of ${spec.email}: ${changed.status} ${changed.text}`);}
   return signIn({ user: spec.email, password: PRINCIPAL_PASSWORD });
@@ -850,7 +850,7 @@ async function runLiveContract() {
     kanban: {},
     tenantA: null,
     tenantB: null,
-    tenantC: null
+    tenantC: null,
   };
   const ids = makeIdSource(state);
   const results: any[] = [];
@@ -877,7 +877,7 @@ async function runLiveContract() {
     lastName: `Contract ${who}`,
     email: `lc.${who}@example.com`.toLowerCase(),
     roleId,
-    tenantId
+    tenantId,
   });
   P.adminB = await ensureUser(P.operator, mk("adminB", state.tenantB, adminRole));
   P.techB = await ensureUser(P.operator, mk("techB", state.tenantB, state.roles.TECHNICIAN));
@@ -888,7 +888,7 @@ async function runLiveContract() {
     techA: P.techA.user.id,
     victimA: P.victimA.user.id,
     selfA: P.selfA.user.id,
-    adminB: P.adminB.user.id
+    adminB: P.adminB.user.id,
   };
 
   // ---- path params -------------------------------------------------------
@@ -979,7 +979,7 @@ async function runLiveContract() {
       envelope: envelopeViolations(route, res),
       shape: describeShape(res),
       metaTopLevel: Boolean(res.body && res.body.meta),
-      ...extra
+      ...extra,
     };
     if (res.error) {r.error = res.error;}
     if (res.status >= 500 || res.status === 0 || res.status === 408) {
@@ -1086,23 +1086,23 @@ async function runLiveContract() {
 
   const nParams = (r: any) => (r.path.match(/:/g) || []).length;
   const unique = routes.filter(
-    (r: any, i: any) => routes.findIndex((x: any) => x.method === r.method && x.path === r.path) === i
+    (r: any, i: any) => routes.findIndex((x: any) => x.method === r.method && x.path === r.path) === i,
   );
   const gets = unique.
-  filter((r: any) => r.method === "GET").
-  sort((a: any, b: any) => nParams(a) - nParams(b) || a.path.length - b.path.length);
+    filter((r: any) => r.method === "GET").
+    sort((a: any, b: any) => nParams(a) - nParams(b) || a.path.length - b.path.length);
   const writes = unique.filter((r: any) => r.method !== "GET");
   const early = writes.
-  filter((r: any) => r.method !== "DELETE" && !LATE.test(r.path) && !LAST.test(r.path) && !SELF_DESTRUCTIVE.test(r.path)).
-  sort((a: any, b: any) => nParams(a) - nParams(b) || a.path.localeCompare(b.path));
+    filter((r: any) => r.method !== "DELETE" && !LATE.test(r.path) && !LAST.test(r.path) && !SELF_DESTRUCTIVE.test(r.path)).
+    sort((a: any, b: any) => nParams(a) - nParams(b) || a.path.localeCompare(b.path));
   const self = writes.filter((r: any) => SELF_DESTRUCTIVE.test(r.path) && !/logout|disable|erasure|restrict/.test(r.path));
   const selfEnd = writes.
-  filter((r: any) => SELF_DESTRUCTIVE.test(r.path) && /logout|disable|erasure|restrict/.test(r.path)).
-  sort((a: any, b: any) => (/logout-all|erasure/.test(a.path) ? 1 : 0) - (/logout-all|erasure/.test(b.path) ? 1 : 0));
+    filter((r: any) => SELF_DESTRUCTIVE.test(r.path) && /logout|disable|erasure|restrict/.test(r.path)).
+    sort((a: any, b: any) => (/logout-all|erasure/.test(a.path) ? 1 : 0) - (/logout-all|erasure/.test(b.path) ? 1 : 0));
   const last = writes.filter((r: any) => LAST.test(r.path));
   const late = writes.
-  filter((r: any) => !early.includes(r) && !self.includes(r) && !selfEnd.includes(r) && !last.includes(r)).
-  sort((a: any, b: any) => b.path.length - a.path.length);
+    filter((r: any) => !early.includes(r) && !self.includes(r) && !selfEnd.includes(r) && !last.includes(r)).
+    sort((a: any, b: any) => b.path.length - a.path.length);
 
   // Phase 1: every GET, as the principal who may read it.
   for (const route of gets) {
@@ -1122,7 +1122,7 @@ async function runLiveContract() {
       principal: "techA",
       status: res.status,
       envelope: envelopeViolations(route, res),
-      detail: res.status >= 500 ? (res.text || "").slice(0, 400) : undefined
+      detail: res.status >= 500 ? (res.text || "").slice(0, 400) : undefined,
     });
   }
   // Phase 1c: cross-tenant — tenant B's admin asks for tenant A's objects.
@@ -1156,7 +1156,7 @@ async function runLiveContract() {
     results,
     techResults,
     crossTenant,
-    routes: unique
+    routes: unique,
   };
 }
 
@@ -1174,19 +1174,19 @@ function extractFrontendCalls() {
     for (const m of src.matchAll(/const (\w+)\s*=\s*(["'`])(\/api[^"'`]*)\2/g)) {consts[m[1]] = m[3];}
     const re = /\b(?:api|apiClient)\s*\.\s*(get|post|put|patch|delete)\s*/g;
     let m: any;
-    while (m = re.exec(src)) {
+    while ((m = re.exec(src))) {
       let i = re.lastIndex;
       if (src[i] === "<") {
         let depth = 0;
         for (; i < src.length; i += 1) {
           if (src[i] === "<") {depth += 1;} else
-          if (src[i] === ">" && src[i - 1] !== "=") {
-            depth -= 1;
-            if (depth === 0) {
-              i += 1;
-              break;
+            if (src[i] === ">" && src[i - 1] !== "=") {
+              depth -= 1;
+              if (depth === 0) {
+                i += 1;
+                break;
+              }
             }
-          }
         }
       }
       while (/\s/.test(src[i])) {i += 1;}
@@ -1208,9 +1208,9 @@ function extractFrontendCalls() {
         }
       }
       const resolved = raw.
-      replace(/\$\{(\w+)\}/g, (_all: any, name: any) => consts[name] !== undefined ? consts[name] : ":param").
-      replace(/\$\{[^}]+\}/g, ":param").
-      split("?")[0];
+        replace(/\$\{(\w+)\}/g, (_all: any, name: any) => consts[name] !== undefined ? consts[name] : ":param").
+        replace(/\$\{[^}]+\}/g, ":param").
+        split("?")[0];
       const window = src.slice(m.index, m.index + 1400);
       calls.push({ file, line, method: m[1].toUpperCase(), raw, path: resolved, window });
     }
@@ -1232,7 +1232,7 @@ function matchRoute(call: any, routes: any) {
 function checkFrontend(routes: any, live: any) {
   const calls = extractFrontendCalls();
   const findings: any[] = [];
-  const liveByRoute: Map<string, any> = new Map(live.map((r: any) => [`${r.method} ${r.path}`, r]));
+  const liveByRoute = new Map<string, any>(live.map((r: any) => [`${r.method} ${r.path}`, r]));
   for (const call of calls) {
     if (call.unresolved) {
       findings.push({ kind: "unresolved-path", ...call });
@@ -1244,17 +1244,17 @@ function checkFrontend(routes: any, live: any) {
     matches.sort((a: any, b: any) => (a.path.match(/:/g) || []).length - (b.path.match(/:/g) || []).length);
     if (!matches.length) {
       const anyMethod = matchRoute({ ...call, method: "GET" }, routes).
-      concat(matchRoute({ ...call, method: "POST" }, routes)).
-      concat(matchRoute({ ...call, method: "PUT" }, routes)).
-      concat(matchRoute({ ...call, method: "PATCH" }, routes)).
-      concat(matchRoute({ ...call, method: "DELETE" }, routes));
+        concat(matchRoute({ ...call, method: "POST" }, routes)).
+        concat(matchRoute({ ...call, method: "PUT" }, routes)).
+        concat(matchRoute({ ...call, method: "PATCH" }, routes)).
+        concat(matchRoute({ ...call, method: "DELETE" }, routes));
       findings.push({
         kind: anyMethod.length ? "wrong-method" : "no-such-route",
         file: call.file,
         line: call.line,
         method: call.method,
         path: call.path,
-        realMethods: [...new Set(anyMethod.map((r: any) => `${r.method} ${r.path}`))]
+        realMethods: [...new Set(anyMethod.map((r: any) => `${r.method} ${r.path}`))],
       });
       continue;
     }
@@ -1270,7 +1270,7 @@ function checkFrontend(routes: any, live: any) {
         path: call.path,
         route: matches[0].path,
         reads,
-        live: `data is an array${liveRes.metaTopLevel ? ", meta top-level" : ""}`
+        live: `data is an array${liveRes.metaTopLevel ? ", meta top-level" : ""}`,
       });
     }
   }
@@ -1283,10 +1283,10 @@ function checkFrontend(routes: any, live: any) {
 
 function verdict(run: any, frontend: any) {
   const serverErrors = run.results.
-  concat(run.techResults).
-  filter((r: any) => r.status >= 500 || r.status === 0 || r.status === 408)
+    concat(run.techResults).
+    filter((r: any) => r.status >= 500 || r.status === 0 || r.status === 408)
   // /health and /ready answer 503 by design when a dependency is down.
-  .filter((r: any) => !/^\/(health|ready)$|^\/api\/v1\/health$/.test(r.path));
+    .filter((r: any) => !/^\/(health|ready)$|^\/api\/v1\/health$/.test(r.path));
   const envelope = run.results.concat(run.techResults).filter((r: any) => r.envelope && r.envelope.length);
   const crossTenantLeaks = run.crossTenant.filter((r: any) => r.status >= 200 && r.status < 300 && !r.public && !r.global);
   const crossTenant403 = run.crossTenant.filter((r: any) => r.status === 403);
@@ -1313,7 +1313,7 @@ async function main() {
     frontendFindings: frontend.findings,
     results: run.results,
     techResults: run.techResults,
-    crossTenant: run.crossTenant
+    crossTenant: run.crossTenant,
   };
   fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
   console.log(
@@ -1321,7 +1321,7 @@ async function main() {
     `  status: ${JSON.stringify(statusHistogram)}\n` +
     `  5xx/timeouts: ${v.serverErrors.length}  envelope: ${v.envelope.length}  ` +
     `cross-tenant 2xx: ${v.crossTenantLeaks.length}  cross-tenant 403: ${v.crossTenant403.length}  ` +
-    `frontend missing: ${v.frontendMissing.length}  frontend shape: ${v.frontendShape.length}`
+    `frontend missing: ${v.frontendMissing.length}  frontend shape: ${v.frontendShape.length}`,
   );
   return report;
 }
@@ -1347,7 +1347,7 @@ if (require.main === module && !process.env["JEST_WORKER_ID"]) {
       (err: any) => {
         console.error(err.stack || err.message);
         process.exit(1);
-      }
+      },
     );
   }
 } else if (typeof describe === "function") {

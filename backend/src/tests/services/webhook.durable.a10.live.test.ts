@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Durable webhook delivery against a REAL PostgreSQL (A-10, A-11).
  *
@@ -45,7 +45,7 @@ jest.mock("../../utils/ssrf.util", () => ({
     const res: any = await fetch(url, { method, headers, body, signal, redirect: "manual" });
     await res.body?.cancel();
     return { ok: res.ok, status: res.status };
-  }
+  },
 }));
 
 const { startReceiver } = require("../fixtures/webhookReceiver");
@@ -57,7 +57,7 @@ const TENANT_B = "b2b2b2b2-0000-4000-8000-00000000000b";
 /** The webhook creator in each tenant: an audit row names its actor (A-124). */
 const CREATOR: any = {
   [TENANT_A]: "a1a1a1a1-0000-4000-8000-0000000000e1",
-  [TENANT_B]: "b2b2b2b2-0000-4000-8000-0000000000e2"
+  [TENANT_B]: "b2b2b2b2-0000-4000-8000-0000000000e2",
 };
 
 /**
@@ -74,7 +74,7 @@ const startProcess = async ({ boot = false } = {}) => {
       db,
       migrator: require("../../config/migrator").migrator,
       models: require("../../models"),
-      webhookService: require("../../services/webhook.service")
+      webhookService: require("../../services/webhook.service"),
     };
   });
   if (boot) {
@@ -86,11 +86,11 @@ const startProcess = async ({ boot = false } = {}) => {
 
 /** createWebhook with the tenant's creator as the audited actor. */
 const createHook = (p: any, tenantId: any, events: any = ["*"]) =>
-p.webhookService.createWebhook(tenantId, {
-  url: "https://placeholder.invalid/",
-  events,
-  createdBy: CREATOR[tenantId]
-});
+  p.webhookService.createWebhook(tenantId, {
+    url: "https://placeholder.invalid/",
+    events,
+    createdBy: CREATOR[tenantId],
+  });
 
 const settle = () => new Promise((r: any) => setTimeout(r, 300));
 
@@ -106,14 +106,14 @@ describe("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
   };
 
   const due = (db: any, ids: any) =>
-  db.query("UPDATE webhook_deliveries SET next_attempt_at = now() - interval '1 second' WHERE id IN (:ids)", {
-    replacements: { ids }
-  });
+    db.query("UPDATE webhook_deliveries SET next_attempt_at = now() - interval '1 second' WHERE id IN (:ids)", {
+      replacements: { ids },
+    });
 
   const rowsOf = async (db: any, tenantId: any) => {
     const [rows] = await db.query(
       "SELECT id, tenant_id, webhook_id, status, attempts, next_attempt_at FROM webhook_deliveries WHERE tenant_id = :tenantId ORDER BY created_at",
-      { replacements: { tenantId } }
+      { replacements: { tenantId } },
     );
     return rows;
   };
@@ -127,13 +127,13 @@ describe("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at) VALUES
          (:a, 'Live A', 'live-a10-a', 'a10a@live.test', now(), now()),
          (:b, 'Live B', 'live-a10-b', 'a10b@live.test', now(), now())`,
-      { replacements: { a: TENANT_A, b: TENANT_B } }
+      { replacements: { a: TENANT_A, b: TENANT_B } },
     );
     for (const [tenantId, userId] of Object.entries(CREATOR) as [string, string][]) {
       await p1.db.query(
         `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, created_at, updated_at)
          VALUES (:userId, :tenantId, :name, :email, 'x', 'A10', 'Creator', now(), now())`,
-        { replacements: { userId, tenantId, name: `a10-${userId.slice(-2)}`, email: `a10-${userId.slice(-2)}@live.test` } }
+        { replacements: { userId, tenantId, name: `a10-${userId.slice(-2)}`, email: `a10-${userId.slice(-2)}@live.test` } },
       );
     }
   }, LIVE_BOOT_TIMEOUT_MS);
@@ -158,7 +158,7 @@ describe("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
   it("runs as callibrator_app, which may claim (UPDATE) deliveries but not delete an audit row", async () => {
     const [[row]] = await p1.db.query(
       `SELECT current_user AS u, has_table_privilege('webhook_deliveries', 'UPDATE') AS claim,
-              has_table_privilege('audit_logs', 'DELETE') AS erase`
+              has_table_privilege('audit_logs', 'DELETE') AS erase`,
     );
     expect(row).toEqual({ u: APP_ROLE, claim: true, erase: false });
   });
@@ -210,13 +210,13 @@ describe("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
       `INSERT INTO webhook_deliveries (id, tenant_id, webhook_id, event, payload, status, attempts, next_attempt_at, created_at, updated_at)
        SELECT gen_random_uuid(), :tenant, :hook, 'device.overdue', '{}'::jsonb, 'pending', 0, now() - interval '1 second', now(), now()
          FROM generate_series(1, 30)`,
-      { replacements: { tenant: TENANT_A, hook: hook.id } }
+      { replacements: { tenant: TENANT_A, hook: hook.id } },
     );
     const p2 = await startProcess();
     try {
       const [a, b] = await Promise.all([
-      p1.webhookService.dispatchDue({ limit: 30 }),
-      p2.webhookService.dispatchDue({ limit: 30 })]
+        p1.webhookService.dispatchDue({ limit: 30 }),
+        p2.webhookService.dispatchDue({ limit: 30 })],
       );
       expect(a.claimed + b.claimed).toBe(30);
       const ids = rx.received.map((r: any) => r.deliveryId);
@@ -233,7 +233,7 @@ describe("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
     await p1.db.query(
       `INSERT INTO webhook_deliveries (id, tenant_id, webhook_id, event, payload, status, attempts, next_attempt_at, created_at, updated_at)
        VALUES (gen_random_uuid(), :tenant, :hook, 'device.overdue', '{}'::jsonb, 'pending', 0, now() - interval '1 second', now(), now())`,
-      { replacements: { tenant: TENANT_A, hook: hook.id } }
+      { replacements: { tenant: TENANT_A, hook: hook.id } },
     );
     // Claim it the way a sender that then crashes would: claim, never report.
     const claimed = await p1.webhookService._claim({ limit: 10 });
@@ -290,7 +290,7 @@ describe("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
       p1.db.transaction(async (transaction: any) => {
         p1.webhookService.emitAfterCommit(transaction, TENANT_A, "capa.created", { capaId: "rolled-back" });
         throw new Error("the mutation failed");
-      })
+      }),
     ).rejects.toThrow("the mutation failed");
     await settle();
     expect(await rowsOf(p1.db, TENANT_A)).toHaveLength(0);
@@ -300,7 +300,7 @@ describe("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
       p1.webhookService.emitAfterCommit(transaction, TENANT_A, "capa.created", { capaId: "committed" });
       // Nothing is emitted before COMMIT.
       const [inside] = await p1.db.query("SELECT count(*)::int AS n FROM webhook_deliveries WHERE tenant_id = :t", {
-        replacements: { t: TENANT_A }
+        replacements: { t: TENANT_A },
       });
       expect(inside[0].n).toBe(0);
     });

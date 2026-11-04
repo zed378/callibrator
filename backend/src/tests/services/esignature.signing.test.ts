@@ -17,7 +17,7 @@
 // with a sentinel; the in-transaction effects are asserted against a
 // schema-enforcing ledger in esignature.audit.a41.test.js.
 jest.mock("../../config", () => ({
-  db: { transaction: async (cb: any) => cb("TX") }
+  db: { transaction: async (cb: any) => cb("TX") },
 }));
 
 const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
@@ -29,7 +29,7 @@ const mockLogger: any = {
   info: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
-  debug: jest.fn()
+  debug: jest.fn(),
 };
 
 const loadService = (models: any) => {
@@ -38,10 +38,10 @@ const loadService = (models: any) => {
   // A-65 — signing re-authenticates through certificate.service's shared
   // credential check; the password comparison is the boundary doubled here.
   jest.doMock("../../services/auth.service", () => ({
-    passIsValid: async () => ({ data: { valid: true } })
+    passIsValid: async () => ({ data: { valid: true } }),
   }));
   jest.doMock("../../middlewares/activityLog.middleware", () => ({
-    logger: mockLogger
+    logger: mockLogger,
   }));
   return require(ESIGN_PATH);
 };
@@ -65,7 +65,7 @@ describe("eSignature.service — RSA signing and verification", () => {
    */
   const buildHarness = ({
     signingKeyRow = keyPair,
-    verificationKeyRow = { keyId: keyPair.keyId, publicKey: keyPair.publicKey, deletedAt: null as any }
+    verificationKeyRow = { keyId: keyPair.keyId, publicKey: keyPair.publicKey, deletedAt: null as any },
   }: any = {}) => {
     const stored: any = {};
     const workflow: any = {
@@ -73,7 +73,7 @@ describe("eSignature.service — RSA signing and verification", () => {
       documentId: "doc-1",
       tenantId: TENANT_ID,
       subject: "Sign me",
-      update: jest.fn().mockResolvedValue(true)
+      update: jest.fn().mockResolvedValue(true),
     };
     const step: any = {
       id: "step-1",
@@ -82,7 +82,7 @@ describe("eSignature.service — RSA signing and verification", () => {
       workflowId: "wf-1",
       tenantId: TENANT_ID,
       signerId: "u-1",
-      update: jest.fn().mockResolvedValue(true)
+      update: jest.fn().mockResolvedValue(true),
     };
 
     const signingFindOne = jest.fn().mockResolvedValue(signingKeyRow);
@@ -91,27 +91,27 @@ describe("eSignature.service — RSA signing and verification", () => {
     const models: any = {
       TenantKey: {
         unscoped: jest.fn(() => ({ findOne: signingFindOne })),
-        findOne: verificationFindOne
+        findOne: verificationFindOne,
       },
       SignatureWorkflowStep: {
         findByPk: jest.fn().mockResolvedValue(step),
-        findAll: jest.fn().mockResolvedValue([{ status: "signed" }])
+        findAll: jest.fn().mockResolvedValue([{ status: "signed" }]),
       },
       SignatureWorkflow: {
-        findByPk: jest.fn().mockResolvedValue(workflow)
+        findByPk: jest.fn().mockResolvedValue(workflow),
       },
       SignatureRecord: {
         create: jest.fn(async (attrs: any) => {
           Object.assign(stored, attrs, { id: "sig-1" });
           return stored;
         }),
-        findByPk: jest.fn(async () => stored.id ? stored : null)
+        findByPk: jest.fn(async () => stored.id ? stored : null),
       },
       AuditLog: { create: jest.fn().mockResolvedValue(true) },
       User: {
         findByPk: jest.fn().mockResolvedValue({ id: "u-1", status: "ACTIVE", isActive: true }),
-        findOne: jest.fn().mockResolvedValue(null)
-      }
+        findOne: jest.fn().mockResolvedValue(null),
+      },
     };
 
     return {
@@ -121,19 +121,19 @@ describe("eSignature.service — RSA signing and verification", () => {
       step,
       signingFindOne,
       verificationFindOne,
-      svc: loadService(models)
+      svc: loadService(models),
     };
   };
 
   const signOnce = async (harness: any, data: any = {}) =>
-  harness.svc.signDocument("step-1", "u-1", {
-    authenticationMethod: "password",
-    authPayload: "pw",
-    reason: "Approved",
-    ipAddress: "10.0.0.9",
-    userAgent: "jest",
-    ...data
-  });
+    harness.svc.signDocument("step-1", "u-1", {
+      authenticationMethod: "password",
+      authPayload: "pw",
+      reason: "Approved",
+      ipAddress: "10.0.0.9",
+      userAgent: "jest",
+      ...data,
+    });
 
   // ================================================================
   describe("a genuine signature", () => {
@@ -159,7 +159,7 @@ describe("eSignature.service — RSA signing and verification", () => {
         signerId: "u-1",
         scheme: "esig-v2-rsa-sha256",
         signingKeyId: "key-esign-1",
-        signingKeyDeletedAt: null
+        signingKeyDeletedAt: null,
       });
     });
 
@@ -168,11 +168,11 @@ describe("eSignature.service — RSA signing and verification", () => {
 
       await signOnce(harness, { reason: "Approved by the quality manager" });
       expect(harness.stored.signatureReason).toBe(
-        "Approved by the quality manager"
+        "Approved by the quality manager",
       );
 
       await expect(harness.svc.verifySignature("sig-1")).resolves.toMatchObject(
-        { valid: true, details: { reason: "Approved by the quality manager" } }
+        { valid: true, details: { reason: "Approved by the quality manager" } },
       );
     });
 
@@ -185,25 +185,25 @@ describe("eSignature.service — RSA signing and verification", () => {
       await signOnce(harness);
       const signedAt = harness.stored.signedAt.toISOString();
       const payload = JSON.stringify([
-      ["scheme", "esig-v2-rsa-sha256"],
-      ["algorithm", "RS256"],
-      ["tenantId", TENANT_ID],
-      ["documentId", "doc-1"],
-      ["workflowId", "wf-1"],
-      ["workflowStepId", "step-1"],
-      ["signerUserId", "u-1"],
-      ["signedAt", signedAt],
-      ["authenticationMethod", "password"],
-      ["reason", ""]]
+        ["scheme", "esig-v2-rsa-sha256"],
+        ["algorithm", "RS256"],
+        ["tenantId", TENANT_ID],
+        ["documentId", "doc-1"],
+        ["workflowId", "wf-1"],
+        ["workflowStepId", "step-1"],
+        ["signerUserId", "u-1"],
+        ["signedAt", signedAt],
+        ["authenticationMethod", "password"],
+        ["reason", ""]],
       );
       harness.stored.signatureReason = null;
       harness.stored.signatureValue = crypto.
-      sign("sha256", Buffer.from(payload, "utf8"), keyPair.privateKeyPem).
-      toString("base64");
+        sign("sha256", Buffer.from(payload, "utf8"), keyPair.privateKeyPem).
+        toString("base64");
 
       await expect(harness.svc.verifySignature("sig-1")).resolves.toMatchObject({
         valid: true,
-        details: { reason: null }
+        details: { reason: null },
       });
     });
 
@@ -224,7 +224,7 @@ describe("eSignature.service — RSA signing and verification", () => {
 
       expect(signed.certificate).toMatchObject({
         signingKeyId: "key-esign-1",
-        signatureScheme: "esig-v2-rsa-sha256"
+        signatureScheme: "esig-v2-rsa-sha256",
       });
       // A-41: the audit row is a valid audit_logs row ("DOCUMENT_SIGNED" and
       // entityType/before/after were outside the ENUM and the schema, and
@@ -239,11 +239,11 @@ describe("eSignature.service — RSA signing and verification", () => {
             operation: "SIGN",
             after: expect.objectContaining({
               signingKeyId: "key-esign-1",
-              signatureScheme: "esig-v2-rsa-sha256"
-            })
-          })
+              signatureScheme: "esig-v2-rsa-sha256",
+            }),
+          }),
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
   });
@@ -329,8 +329,8 @@ describe("eSignature.service — RSA signing and verification", () => {
         verificationKeyRow: {
           keyId: keyPair.keyId,
           publicKey: keyPair.publicKey,
-          deletedAt
-        }
+          deletedAt,
+        },
       });
 
       await signOnce(harness);
@@ -341,7 +341,7 @@ describe("eSignature.service — RSA signing and verification", () => {
       // Load-bearing: without paranoid:false the soft-deleted key is invisible
       // and every past signature silently becomes unverifiable.
       expect(harness.verificationFindOne).toHaveBeenCalledWith(
-        expect.objectContaining({ paranoid: false })
+        expect.objectContaining({ paranoid: false }),
       );
     });
 
@@ -390,16 +390,16 @@ describe("eSignature.service — RSA signing and verification", () => {
       userAgent: "legacy",
       authenticationMethod: "password",
       polygon: null,
-      biometricData: null
+      biometricData: null,
     };
 
     it("is reported as unverifiable_legacy — neither valid nor a forgery", async () => {
       const svc = loadService({
         SignatureRecord: { findByPk: jest.fn().mockResolvedValue(legacyRecord) },
         SignatureWorkflow: {
-          findByPk: jest.fn().mockResolvedValue({ id: "wf-1", documentId: "doc-1" })
+          findByPk: jest.fn().mockResolvedValue({ id: "wf-1", documentId: "doc-1" }),
         },
-        TenantKey: { findOne: jest.fn() }
+        TenantKey: { findOne: jest.fn() },
       });
 
       const result = await svc.verifySignature("sig-legacy");
@@ -412,7 +412,7 @@ describe("eSignature.service — RSA signing and verification", () => {
         signatureId: "sig-legacy",
         scheme: null,
         signingKeyId: null,
-        reason: null
+        reason: null,
       });
     });
 
@@ -422,13 +422,13 @@ describe("eSignature.service — RSA signing and verification", () => {
           findByPk: jest.fn().mockResolvedValue({
             ...legacyRecord,
             signatureScheme: "esig-v2-rsa-sha256",
-            signatureValue: ""
-          })
+            signatureValue: "",
+          }),
         },
         SignatureWorkflow: {
-          findByPk: jest.fn().mockResolvedValue({ id: "wf-1", documentId: "doc-1" })
+          findByPk: jest.fn().mockResolvedValue({ id: "wf-1", documentId: "doc-1" }),
         },
-        TenantKey: { findOne: jest.fn() }
+        TenantKey: { findOne: jest.fn() },
       });
 
       const result = await svc.verifySignature("sig-legacy");
@@ -445,8 +445,8 @@ describe("eSignature.service — RSA signing and verification", () => {
       await expect(signOnce(harness)).rejects.toMatchObject({
         status: 409,
         message: expect.stringContaining(
-          "No e-signature key pair is provisioned for this tenant"
-        )
+          "No e-signature key pair is provisioned for this tenant",
+        ),
       });
       // Nothing was written: no half-signed record, no audit row.
       expect(harness.models.SignatureRecord.create).not.toHaveBeenCalled();
@@ -455,16 +455,16 @@ describe("eSignature.service — RSA signing and verification", () => {
 
     it("fails with 500 and a named cause when the stored private key cannot be decrypted", async () => {
       const harness = buildHarness({
-        signingKeyRow: { keyId: "key-corrupt", privateKey: "notaniv:notciphertext" }
+        signingKeyRow: { keyId: "key-corrupt", privateKey: "notaniv:notciphertext" },
       });
 
       await expect(signOnce(harness)).rejects.toMatchObject({
         status: 500,
-        message: expect.stringContaining("could not be decrypted")
+        message: expect.stringContaining("could not be decrypted"),
       });
       expect(mockLogger.error).toHaveBeenCalledWith(
         "Signing key could not be decrypted",
-        expect.objectContaining({ keyId: "key-corrupt" })
+        expect.objectContaining({ keyId: "key-corrupt" }),
       );
     });
   });

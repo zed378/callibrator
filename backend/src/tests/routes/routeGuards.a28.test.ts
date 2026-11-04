@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-28 — evidence and controlled documents can be changed by any role.
  *
@@ -32,17 +32,17 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
 // The permission matrix comes from roleConstants (the seed source of truth),
 // keyed by the role id, which these tests set to the role name.
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 
 // Models: only what dynamicAccess and the real sop.service touch.
@@ -50,7 +50,7 @@ const mockSopDocument: any = {
   findOne: jest.fn(),
   count: jest.fn(),
   create: jest.fn(),
-  findAndCountAll: jest.fn()
+  findAndCountAll: jest.fn(),
 };
 const mockSopAck: any = { bulkCreate: jest.fn(), findOne: jest.fn() };
 const mockUser: any = { findAll: jest.fn(), findByPk: jest.fn() };
@@ -60,10 +60,10 @@ jest.mock("../../models", () => ({
   SopTrainingAcknowledgment: mockSopAck,
   User: mockUser,
   AuditLog: mockAuditLog,
-  Tenants: { findByPk: jest.fn() }
+  Tenants: { findByPk: jest.fn() },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 
 // Services behind the other three routers are stubbed so a refusal can be
@@ -75,14 +75,14 @@ jest.mock("../../services/attachment.service", () => ({
   getDownload: jest.fn(),
   generateSignedUrl: jest.fn(),
   getSignedDownload: jest.fn(),
-  deleteAttachment: jest.fn()
+  deleteAttachment: jest.fn(),
 }));
 jest.mock("../../services/risk.service", () => ({
   createRisk: jest.fn(),
   getRisks: jest.fn(),
   getRiskById: jest.fn(),
   updateRisk: jest.fn(),
-  deleteRisk: jest.fn()
+  deleteRisk: jest.fn(),
 }));
 jest.mock("../../services/eSignature.service", () => ({
   getKeyPairs: jest.fn(),
@@ -95,16 +95,16 @@ jest.mock("../../services/eSignature.service", () => ({
   deleteWorkflow: jest.fn(),
   signDocument: jest.fn(),
   verifySignature: jest.fn(),
-  getSignatureHistory: jest.fn()
+  getSignatureHistory: jest.fn(),
 }));
 
 // Upload plumbing is irrelevant to authorization.
 jest.mock("../../utils/upload.util", () => ({
   upload: () => (_req: any, _res: any, next: any) => next(),
-  getUploadUrl: (name: any) => "/uploads/" + name
+  getUploadUrl: (name: any) => "/uploads/" + name,
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 const RolesService = require("../../services/roles.service");
@@ -117,58 +117,58 @@ const ROUTERS: any = {
   "/api/v1/attachments": require("../../routes/api/attachments.route"),
   "/api/v1/esignature": require("../../routes/api/eSignature.route"),
   "/api/v1/sop": require("../../routes/api/sop.route"),
-  "/api/v1/risks": require("../../routes/api/risk.route")
+  "/api/v1/risks": require("../../routes/api/risk.route"),
 };
 
 // supertest is not a dependency of this workspace, so the routers are driven
 // through Express's own `router.handle` with a minimal req/res pair. The
 // middleware chain, the controllers and the response envelope are all real.
 const http = (method: any, fullUrl: any, body: any = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const prefix = Object.keys(ROUTERS).find((p: any) => fullUrl.startsWith(p)) || "";
-  const url = fullUrl.slice(prefix.length) || "/";
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const req: any = {
-    method: method.toUpperCase(),
-    url,
-    originalUrl: fullUrl,
-    body,
-    query: {},
-    params: {},
-    headers: {},
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  (ROUTERS as any)[prefix]?.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const prefix = Object.keys(ROUTERS).find((p: any) => fullUrl.startsWith(p)) || "";
+    const url = fullUrl.slice(prefix.length) || "/";
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const req: any = {
+      method: method.toUpperCase(),
+      url,
+      originalUrl: fullUrl,
+      body,
+      query: {},
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    (ROUTERS as any)[prefix]?.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
@@ -189,7 +189,7 @@ const asRole = (roleName: any, userId: any = ID) => {
   currentUser = {
     id: userId,
     tenantId: TENANT,
-    role: { id: roleName, name: roleName }
+    role: { id: roleName, name: roleName },
   };
 };
 
@@ -199,7 +199,7 @@ const asApiKey = () => {
     tenantId: TENANT,
     isApiKey: true,
     apiKeyScopes: ["*"],
-    role: { id: "API_KEY", name: "API_KEY" }
+    role: { id: "API_KEY", name: "API_KEY" },
   };
 };
 
@@ -207,7 +207,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   currentUser = null;
   RolesService.getRolePermissionsMatrix.mockImplementation(async (roleId: any) =>
-  matrixFor(roleId)
+    matrixFor(roleId),
   );
 });
 
@@ -245,7 +245,7 @@ describe("A-28 — DELETE /api/v1/attachments/:id (calibration evidence)", () =>
     expect(attachmentService.deleteAttachment).toHaveBeenCalledWith(
       TENANT,
       ID,
-      expect.objectContaining({ userId: ID })
+      expect.objectContaining({ userId: ID }),
     );
   });
 
@@ -253,7 +253,7 @@ describe("A-28 — DELETE /api/v1/attachments/:id (calibration evidence)", () =>
     asRole(ROLE_NAMES.TECHNICIAN);
     attachmentService.listAttachments.mockResolvedValue({
       rows: [],
-      meta: { total: 0 }
+      meta: { total: 0 },
     });
 
     const res = await http("get", "/api/v1/attachments");
@@ -302,7 +302,7 @@ describe("A-28 — signature workflow management", () => {
 
     const res = await http("post", "/api/v1/esignature/workflows", {
       documentId: ID,
-      signers: [{ userId: OTHER_ID }]
+      signers: [{ userId: OTHER_ID }],
     });
 
     expect(res.status).toBe(403);
@@ -313,7 +313,7 @@ describe("A-28 — signature workflow management", () => {
     asRole(ROLE_NAMES.USER);
 
     const res = await http("put", "/api/v1/esignature/workflows/" + ID, {
-      subject: "changed"
+      subject: "changed",
     });
 
     expect(res.status).toBe(403);
@@ -351,7 +351,7 @@ describe("A-28 — SOP authoring and release (separation of duties)", () => {
     status: "DRAFT",
     requiresTraining: false,
     save: jest.fn().mockResolvedValue(true),
-    ...overrides
+    ...overrides,
   });
 
   it("refuses a USER authoring an SOP", async () => {
@@ -412,9 +412,9 @@ describe("A-28 — SOP authoring and release (separation of duties)", () => {
       expect.objectContaining({
         action: "APPROVE",
         resourceType: "SopDocument",
-        userId: OTHER_ID
+        userId: OTHER_ID,
       }),
-      { transaction: "TX" }
+      { transaction: "TX" },
     );
   });
 
@@ -427,7 +427,7 @@ describe("A-28 — SOP authoring and release (separation of duties)", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.message).toContain(
-      "SOP-0007 is PUBLISHED and cannot be published"
+      "SOP-0007 is PUBLISHED and cannot be published",
     );
     expect(doc.save).not.toHaveBeenCalled();
   });
@@ -459,7 +459,7 @@ describe("A-28 — risk register", () => {
       rows: [],
       total: 0,
       page: 1,
-      totalPages: 0
+      totalPages: 0,
     });
 
     const res = await http("get", "/api/v1/risks");

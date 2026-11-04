@@ -39,7 +39,7 @@ const mockRow = (table: any, fields: any) => {
 // D-22 (ADR-070): a parent's delete soft-deletes its attachments through
 // attachment.service, in the parent's transaction.
 jest.mock("../../services/attachment.service", () => ({
-  softDeleteForResource: jest.fn().mockResolvedValue([])
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../../models", () => ({
   MaintenanceWorkOrder: {
@@ -47,27 +47,27 @@ jest.mock("../../models", () => ({
     create: async (values: any, options: any) => {
       mockRef.ledger.write("maintenance_work_orders", values, options);
       return { id: "wo-new", ...values };
-    }
+    },
   },
   CalibrationDevice: {
     findOne: async ({ where }: any) =>
-    mockRef.devices.find(
-      (d: any) => d.id === where.id && d.tenantId === where.tenantId && (where.iotEnabled === undefined || d.iotEnabled)
-    ) || null
+      mockRef.devices.find(
+        (d: any) => d.id === where.id && d.tenantId === where.tenantId && (where.iotEnabled === undefined || d.iotEnabled),
+      ) || null,
   },
   Vendor: { findOne: async ({ where }: any) => mockOwned(mockRef.vendors, where) },
   User: { findOne: async ({ where }: any) => mockOwned(mockRef.users, where) },
   IotReading: {
-    count: async ({ where }: any) => where.isAnomaly ? mockRef.readings.anomalies : mockRef.readings.total
+    count: async ({ where }: any) => where.isAnomaly ? mockRef.readings.anomalies : mockRef.readings.total,
   },
   Notification: {
-    create: async (values: any, options: any) => mockRef.ledger.write("notifications", values, options)
+    create: async (values: any, options: any) => mockRef.ledger.write("notifications", values, options),
   },
   sequelize: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 jest.mock("../../services/webhook.service", () => ({ emitAfterCommit: jest.fn() }));
 
@@ -82,13 +82,13 @@ const actorB: any = { userId: "user-b", tenantId: TENANT_B, ipAddress: "10.0.0.2
 beforeEach(() => {
   mockRef.ledger = createLedger({ cls: false });
   mockRef.orders = [
-  mockRow("maintenance_work_orders", {
-    id: "wo-a", tenantId: TENANT_A, deviceId: "dev-a", title: "Pump service", type: "Repair", status: "Open", priority: "High", vendorId: null, assignedTo: null
-  })];
+    mockRow("maintenance_work_orders", {
+      id: "wo-a", tenantId: TENANT_A, deviceId: "dev-a", title: "Pump service", type: "Repair", status: "Open", priority: "High", vendorId: null, assignedTo: null,
+    })];
 
   mockRef.devices = [
-  mockRow("calibration_devices", { id: "dev-a", tenantId: TENANT_A, name: "Infusion pump", iotEnabled: true, calibrationIntervalDays: 30, recommendedCalibrationInterval: null, recommendationReason: null }),
-  mockRow("calibration_devices", { id: "dev-b", tenantId: TENANT_B, name: "Ventilator", iotEnabled: true, calibrationIntervalDays: 30 })];
+    mockRow("calibration_devices", { id: "dev-a", tenantId: TENANT_A, name: "Infusion pump", iotEnabled: true, calibrationIntervalDays: 30, recommendedCalibrationInterval: null, recommendationReason: null }),
+    mockRow("calibration_devices", { id: "dev-b", tenantId: TENANT_B, name: "Ventilator", iotEnabled: true, calibrationIntervalDays: 30 })];
 
   mockRef.vendors = [{ id: "ven-a", tenantId: TENANT_A }, { id: "ven-b", tenantId: TENANT_B }];
   mockRef.users = [{ id: "user-a", tenantId: TENANT_A }, { id: "user-b", tenantId: TENANT_B }];
@@ -102,61 +102,60 @@ afterEach(() => {
 });
 
 const CASES = [
-{
-  name: "createWorkOrder",
-  table: "maintenance_work_orders",
-  run: (a: any) => maintenance.createWorkOrder(TENANT_A, { deviceId: "dev-a", title: "Calibrate", type: "Preventative", status: "Open", priority: "Medium", vendorId: "ven-a", assigneeId: "user-a" }, a),
-  row: {
-    action: "CREATE",
-    resourceType: "MaintenanceWorkOrder",
-    resourceId: "wo-new",
-    changes: {
-      before: {},
-      after: { deviceId: "dev-a", title: "Calibrate", type: "Preventative", status: "Open", priority: "Medium", vendorId: "ven-a", assignedTo: "user-a" }
-    }
-  }
-},
-{
-  name: "updateWorkOrder",
-  table: "maintenance_work_orders",
-  run: (a: any) => maintenance.updateWorkOrder(TENANT_A, "wo-a", { status: "Completed", assigneeId: "user-a", description: "done" }, a),
-  row: {
-    action: "UPDATE",
-    resourceType: "MaintenanceWorkOrder",
-    resourceId: "wo-a",
-    changes: { before: { status: "Open", assignedTo: null }, after: { status: "Completed", assignedTo: "user-a" } }
-  }
-},
-{
-  name: "deleteWorkOrder",
-  table: "maintenance_work_orders",
-  run: (a: any) => maintenance.deleteWorkOrder(TENANT_A, "wo-a", a),
-  row: {
-    action: "DELETE",
-    resourceType: "MaintenanceWorkOrder",
-    resourceId: "wo-a",
-    changes: {
-      before: { deviceId: "dev-a", title: "Pump service", type: "Repair", status: "Open", priority: "High", vendorId: null, assignedTo: null },
-      after: { deleted: true }
-    }
-  }
-},
-{
-  name: "predictive analyzeDevice",
-  table: "calibration_devices",
-  run: (a: any) => predictive.analyzeDevice(TENANT_A, "dev-a", a),
-  row: {
-    action: "UPDATE",
-    resourceType: "CalibrationDevice",
-    resourceId: "dev-a",
-    changes: {
-      operation: "RECOMMEND_INTERVAL",
-      before: { recommendedCalibrationInterval: null, recommendationReason: null },
-      after: expect.objectContaining({ recommendedCalibrationInterval: 15, calibrationIntervalDays: 30, anomalyRate: 0.1, totalReadings: 200 })
-    }
-  }
-}];
-
+  {
+    name: "createWorkOrder",
+    table: "maintenance_work_orders",
+    run: (a: any) => maintenance.createWorkOrder(TENANT_A, { deviceId: "dev-a", title: "Calibrate", type: "Preventative", status: "Open", priority: "Medium", vendorId: "ven-a", assigneeId: "user-a" }, a),
+    row: {
+      action: "CREATE",
+      resourceType: "MaintenanceWorkOrder",
+      resourceId: "wo-new",
+      changes: {
+        before: {},
+        after: { deviceId: "dev-a", title: "Calibrate", type: "Preventative", status: "Open", priority: "Medium", vendorId: "ven-a", assignedTo: "user-a" },
+      },
+    },
+  },
+  {
+    name: "updateWorkOrder",
+    table: "maintenance_work_orders",
+    run: (a: any) => maintenance.updateWorkOrder(TENANT_A, "wo-a", { status: "Completed", assigneeId: "user-a", description: "done" }, a),
+    row: {
+      action: "UPDATE",
+      resourceType: "MaintenanceWorkOrder",
+      resourceId: "wo-a",
+      changes: { before: { status: "Open", assignedTo: null }, after: { status: "Completed", assignedTo: "user-a" } },
+    },
+  },
+  {
+    name: "deleteWorkOrder",
+    table: "maintenance_work_orders",
+    run: (a: any) => maintenance.deleteWorkOrder(TENANT_A, "wo-a", a),
+    row: {
+      action: "DELETE",
+      resourceType: "MaintenanceWorkOrder",
+      resourceId: "wo-a",
+      changes: {
+        before: { deviceId: "dev-a", title: "Pump service", type: "Repair", status: "Open", priority: "High", vendorId: null, assignedTo: null },
+        after: { deleted: true },
+      },
+    },
+  },
+  {
+    name: "predictive analyzeDevice",
+    table: "calibration_devices",
+    run: (a: any) => predictive.analyzeDevice(TENANT_A, "dev-a", a),
+    row: {
+      action: "UPDATE",
+      resourceType: "CalibrationDevice",
+      resourceId: "dev-a",
+      changes: {
+        operation: "RECOMMEND_INTERVAL",
+        before: { recommendedCalibrationInterval: null, recommendationReason: null },
+        after: expect.objectContaining({ recommendedCalibrationInterval: 15, calibrationIntervalDays: 30, anomalyRate: 0.1, totalReadings: 200 }),
+      },
+    },
+  }];
 
 describe("A-190 — work-order and recommendation writes carry their audit row, inside the transaction", () => {
   describe.each(CASES)("$name", ({ run, table, row }: any) => {
@@ -165,7 +164,7 @@ describe("A-190 — work-order and recommendation writes carry their audit row, 
 
       expect(mockRef.ledger.committed(table).length).toBeGreaterThan(0);
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({ tenantId: TENANT_A, userId: "user-a", actorType: "user", ipAddress: "10.0.0.1", userAgent: "UA", ...row })]
+        expect.objectContaining({ tenantId: TENANT_A, userId: "user-a", actorType: "user", ipAddress: "10.0.0.1", userAgent: "UA", ...row })],
       );
     });
 
@@ -201,10 +200,10 @@ describe("A-190 — work-order and recommendation writes carry their audit row, 
     await predictive.analyzeDevice(TENANT_A, "dev-a", actorA);
 
     expect(mockRef.ledger.committed("calibration_devices")).toEqual([
-    expect.objectContaining({ id: "dev-a", recommendedCalibrationInterval: 15 })]
+      expect.objectContaining({ id: "dev-a", recommendedCalibrationInterval: 15 })],
     );
     expect(mockRef.ledger.committed("notifications")).toEqual([
-    expect.objectContaining({ tenantId: TENANT_A, type: "MAINTENANCE" })]
+      expect.objectContaining({ tenantId: TENANT_A, type: "MAINTENANCE" })],
     );
   });
 
@@ -221,13 +220,13 @@ describe("A-190 — work-order and recommendation writes carry their audit row, 
 
 describe("A-190 — two tenants: another tenant's work order or device is 404 for every write", () => {
   it.each([
-  ["update", () => maintenance.updateWorkOrder(TENANT_B, "wo-a", { status: "Cancelled" }, actorB)],
-  ["delete", () => maintenance.deleteWorkOrder(TENANT_B, "wo-a", actorB)]]
+    ["update", () => maintenance.updateWorkOrder(TENANT_B, "wo-a", { status: "Cancelled" }, actorB)],
+    ["delete", () => maintenance.deleteWorkOrder(TENANT_B, "wo-a", actorB)]],
   )("tenant B cannot %s tenant A's work order: 404, as for one that does not exist", async (_name: any, run: any) => {
     await expect(run()).rejects.toEqual({ status: 404, message: "Maintenance work order not found" });
     await expect(maintenance.deleteWorkOrder(TENANT_B, "wo-missing", actorB)).rejects.toEqual({
       status: 404,
-      message: "Maintenance work order not found"
+      message: "Maintenance work order not found",
     });
     expect(mockRef.ledger.rows).toEqual([]);
     expect(mockRef.orders[0].status).toBe("Open");
@@ -241,12 +240,12 @@ describe("A-190 — two tenants: another tenant's work order or device is 404 fo
 
 describe("A-220 — a work order references only its own tenant's device, vendor and assignee", () => {
   it.each([
-  ["device", { deviceId: "dev-b" }, "Device not found"],
-  ["vendor", { deviceId: "dev-a", vendorId: "ven-b" }, "Vendor not found"],
-  ["assignee", { deviceId: "dev-a", assigneeId: "user-b" }, "Assignee not found"]]
+    ["device", { deviceId: "dev-b" }, "Device not found"],
+    ["vendor", { deviceId: "dev-a", vendorId: "ven-b" }, "Vendor not found"],
+    ["assignee", { deviceId: "dev-a", assigneeId: "user-b" }, "Assignee not found"]],
   )("creating one with another tenant's %s is 404 and writes nothing", async (_name: any, refs: any, message: any) => {
     await expect(
-      maintenance.createWorkOrder(TENANT_A, { title: "X", type: "Repair", ...refs }, actorA)
+      maintenance.createWorkOrder(TENANT_A, { title: "X", type: "Repair", ...refs }, actorA),
     ).rejects.toEqual({ status: 404, message });
     expect(mockRef.ledger.rows).toEqual([]);
   });
@@ -254,11 +253,11 @@ describe("A-220 — a work order references only its own tenant's device, vendor
   it("re-assigning one to another tenant's user or vendor is 404 and changes nothing", async () => {
     await expect(maintenance.updateWorkOrder(TENANT_A, "wo-a", { assigneeId: "user-b" }, actorA)).rejects.toEqual({
       status: 404,
-      message: "Assignee not found"
+      message: "Assignee not found",
     });
     await expect(maintenance.updateWorkOrder(TENANT_A, "wo-a", { vendorId: "ven-b" }, actorA)).rejects.toEqual({
       status: 404,
-      message: "Vendor not found"
+      message: "Vendor not found",
     });
     expect(mockRef.ledger.rows).toEqual([]);
     expect(mockRef.orders[0].assignedTo).toBeNull();
@@ -268,7 +267,7 @@ describe("A-220 — a work order references only its own tenant's device, vendor
     await maintenance.updateWorkOrder(TENANT_A, "wo-a", { vendorId: null, assigneeId: null }, actorA);
 
     expect(mockRef.ledger.committed("maintenance_work_orders")).toEqual([
-    expect.objectContaining({ id: "wo-a", vendorId: null, assignedTo: null })]
+      expect.objectContaining({ id: "wo-a", vendorId: null, assignedTo: null })],
     );
   });
 });

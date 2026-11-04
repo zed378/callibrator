@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-187 — POST /tenant-hierarchy/:tenantId/children (the parent; `:parentId` until
  * P9-18), through the real chain:
@@ -20,7 +20,7 @@
 jest.mock("../../services/clientFacility.service", () => ({
   SELF_FACILITY_CODE: "SELF",
   selfFacilityName: (name: any) => name,
-  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" }))
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
 }));
 
 const mockFx: any = { current: null, created: [], hierarchy: [] };
@@ -33,7 +33,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
@@ -44,7 +44,7 @@ jest.mock("../../models", () => ({
       const row: any = { id: "cccccccc-0000-4000-8000-000000000001", ...values };
       mockFx.created.push(row);
       return row;
-    }
+    },
   },
   TenantHierarchy: {
     findOne: async () => null,
@@ -52,15 +52,15 @@ jest.mock("../../models", () => ({
     create: async (values: any) => {
       mockFx.hierarchy.push(values);
       return values;
-    }
-  }
+    },
+  },
 }));
 
 jest.mock("../../config", () => ({
-  db: { transaction: async (cb: any) => cb("TX") }
+  db: { transaction: async (cb: any) => cb("TX") },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 process.env["HIERARCHY_ENABLED"] = "true";
@@ -76,36 +76,36 @@ const MISSING = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 // Express's own router.handle with a minimal req/res pair (the harness of
 // tenant.edit.a63.test.js — supertest is not a dependency here).
 const http = (method: any, url: any, body: any = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    setHeader() {
-      return this;
-    }
-  };
-  const req: any = {
-    method: method.toUpperCase(),
-    url,
-    originalUrl: "/api/v1/tenant-hierarchy" + url,
-    body,
-    query: {},
-    params: {},
-    headers: { "user-agent": "jest" },
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({ status: err ? err.status || 500 : 404, body: { message: err ? err.message : "no route" } })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      setHeader() {
+        return this;
+      },
+    };
+    const req: any = {
+      method: method.toUpperCase(),
+      url,
+      originalUrl: "/api/v1/tenant-hierarchy" + url,
+      body,
+      query: {},
+      params: {},
+      headers: { "user-agent": "jest" },
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({ status: err ? err.status || 500 : 404, body: { message: err ? err.message : "no route" } }),
+    );
+  });
 
 let fx: any;
 
@@ -167,12 +167,12 @@ describe("A-187 — POST /:tenantId/children across two tenants", () => {
     expect(res.status).toBe(201);
     expect(res.body.data).toMatchObject({ code: "HOSP-B_001", depth: 1, path: "/hosp-b/hosp-b_001" });
     expect(mockFx.created).toEqual([
-    expect.objectContaining({
-      name: "Branch B-1",
-      parentId: fx.tenantB.id,
-      subdomain: "hosp-b-001",
-      email: "admin@hospital-b.test"
-    })]
+      expect.objectContaining({
+        name: "Branch B-1",
+        parentId: fx.tenantB.id,
+        subdomain: "hosp-b-001",
+        email: "admin@hospital-b.test",
+      })],
     );
     expect(auditService.logAction).toHaveBeenCalledTimes(1);
     expect(auditService.logAction).toHaveBeenCalledWith(
@@ -180,9 +180,9 @@ describe("A-187 — POST /:tenantId/children across two tenants", () => {
         tenantId: PLATFORM_TENANT_ID,
         userId: fx.superAdmin.id,
         action: "CREATE",
-        resourceType: "Tenant"
+        resourceType: "Tenant",
       }),
-      { transaction: "TX" }
+      { transaction: "TX" },
     );
   });
 });

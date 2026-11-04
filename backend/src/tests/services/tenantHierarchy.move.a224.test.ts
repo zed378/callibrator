@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-224 — moving a tenant in the hierarchy (PUT / DELETE /tenant-hierarchy/:tenantId/parent).
  *
@@ -41,7 +41,7 @@ const mockLike: any = (value: any, pattern: any) => {
 const mockRow: any = (_store: any, row: any) => {
   Object.defineProperty(row, "update", {
     enumerable: false,
-    value: async (values: any) => Object.assign(row, values)
+    value: async (values: any) => Object.assign(row, values),
   });
   return row;
 };
@@ -63,30 +63,30 @@ jest.mock("../../config", () => ({
         mockState.audit.splice(0, Infinity, ...back.audit);
         throw err;
       }
-    }
-  }
+    },
+  },
 }));
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn(async (row: any, options: any) => {
     if (mockState.failAudit) {throw new Error("audit insert failed");}
     mockState.audit.push({ row, options });
-  })
+  }),
 }));
 jest.mock("../../models", () => ({
   Tenant: {
-    findByPk: jest.fn(async (id: any) => mockState.tenants.find((t: any) => t.id === id) || null)
+    findByPk: jest.fn(async (id: any) => mockState.tenants.find((t: any) => t.id === id) || null),
   },
   TenantHierarchy: {
     findOne: jest.fn(async ({ where }: any) =>
-    mockState.rows.find((r: any) => Object.entries(where).every(([k, v]: any) => r[k] === v)) || null
+      mockState.rows.find((r: any) => Object.entries(where).every(([k, v]: any) => r[k] === v)) || null,
     ),
     findAll: jest.fn(async ({ where }: any) => mockState.rows.filter((r: any) => mockLike(r.path, where.path[mockOp.like]))),
     create: jest.fn(async (values: any) => {
       const row = mockRow("rows", { id: `row-${values.tenantId}`, ...values });
       mockState.rows.push(row);
       return row;
-    })
-  }
+    }),
+  },
 }));
 
 const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
@@ -100,7 +100,7 @@ const ACTOR = { userId: "super-1", ipAddress: "10.0.0.9", userAgent: "jest" };
 
 const tenant = (id: any, code: any, parentId: any, name: any = code) => mockRow("tenants", { id, code, parentId, name });
 const hrow = (tenantId: any, tenantCode: any, parentCode: any, path: any, depth: any) =>
-mockRow("rows", { id: `row-${tenantId}`, tenantId, tenantCode, parentCode, path, depth });
+  mockRow("rows", { id: `row-${tenantId}`, tenantId, tenantCode, parentCode, path, depth });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -108,15 +108,15 @@ beforeEach(() => {
   mockState.failAudit = false;
   mockState.audit = [];
   mockState.tenants = [
-  tenant(HQ, "HQ", null),
-  tenant(CHILD, "HQ_001", HQ),
-  tenant(GRANDCHILD, "HQ_001_001", CHILD),
-  tenant(OTHER, "OTHER", null, "Other hospital")];
+    tenant(HQ, "HQ", null),
+    tenant(CHILD, "HQ_001", HQ),
+    tenant(GRANDCHILD, "HQ_001_001", CHILD),
+    tenant(OTHER, "OTHER", null, "Other hospital")];
 
   mockState.rows = [
-  hrow(HQ, "HQ", null, "/hq", 0),
-  hrow(CHILD, "HQ_001", "HQ", "/hq/hq_001", 1),
-  hrow(GRANDCHILD, "HQ_001_001", "HQ_001", "/hq/hq_001/hq_001_001", 2)];
+    hrow(HQ, "HQ", null, "/hq", 0),
+    hrow(CHILD, "HQ_001", "HQ", "/hq/hq_001", 1),
+    hrow(GRANDCHILD, "HQ_001_001", "HQ_001", "/hq/hq_001/hq_001_001", 2)];
 
 });
 
@@ -138,24 +138,24 @@ describe("A-224 — updateTenantParent", () => {
     await svc.updateTenantParent(CHILD, OTHER, ACTOR);
 
     expect(mockState.audit).toEqual([
-    {
-      row: {
-        tenantId: PLATFORM_TENANT_ID,
-        userId: "super-1",
-        action: "UPDATE",
-        resourceType: "Tenant",
-        resourceId: CHILD,
-        changes: {
-          operation: "MOVE_TENANT",
-          before: { parentId: HQ, path: "/hq/hq_001", depth: 1 },
-          after: { parentId: OTHER, path: "/other/hq_001", depth: 1 },
-          descendantsMoved: 1
+      {
+        row: {
+          tenantId: PLATFORM_TENANT_ID,
+          userId: "super-1",
+          action: "UPDATE",
+          resourceType: "Tenant",
+          resourceId: CHILD,
+          changes: {
+            operation: "MOVE_TENANT",
+            before: { parentId: HQ, path: "/hq/hq_001", depth: 1 },
+            after: { parentId: OTHER, path: "/other/hq_001", depth: 1 },
+            descendantsMoved: 1,
+          },
+          ipAddress: "10.0.0.9",
+          userAgent: "jest",
         },
-        ipAddress: "10.0.0.9",
-        userAgent: "jest"
-      },
-      options: { transaction: "TX" }
-    }]
+        options: { transaction: "TX" },
+      }],
     );
   });
 
@@ -174,7 +174,7 @@ describe("A-224 — updateTenantParent", () => {
 
     expect(err).toMatchObject({
       status: 409,
-      message: '"HQ_001_001" is inside this tenant\'s own subtree: moving the tenant under it would make a cycle'
+      message: '"HQ_001_001" is inside this tenant\'s own subtree: moving the tenant under it would make a cycle',
     });
     expect(tenantOf(HQ).parentId).toBeNull();
     expect(mockState.audit).toEqual([]);
@@ -183,14 +183,14 @@ describe("A-224 — updateTenantParent", () => {
   it("refuses the tenant as its own parent (409)", async () => {
     await expect(svc.updateTenantParent(CHILD, CHILD, ACTOR)).rejects.toMatchObject({
       status: 409,
-      message: "A tenant cannot be its own parent"
+      message: "A tenant cannot be its own parent",
     });
   });
 
   it("refuses a move to the parent it already has (409)", async () => {
     await expect(svc.updateTenantParent(CHILD, HQ, ACTOR)).rejects.toMatchObject({
       status: 409,
-      message: "This tenant is already under that parent"
+      message: "This tenant is already under that parent",
     });
   });
 
@@ -203,11 +203,11 @@ describe("A-224 — updateTenantParent", () => {
   it("answers 404 for an unknown tenant or parent", async () => {
     await expect(svc.updateTenantParent("00000000-0000-4000-8000-00000000dead", OTHER, ACTOR)).rejects.toMatchObject({
       status: 404,
-      message: "Tenant not found"
+      message: "Tenant not found",
     });
     await expect(svc.updateTenantParent(CHILD, "00000000-0000-4000-8000-00000000dead", ACTOR)).rejects.toMatchObject({
       status: 404,
-      message: "New parent tenant not found"
+      message: "New parent tenant not found",
     });
   });
 
@@ -217,7 +217,7 @@ describe("A-224 — updateTenantParent", () => {
     tenantOf(CHILD).code = null;
     await expect(svc.updateTenantParent(CHILD, OTHER, ACTOR)).rejects.toMatchObject({
       status: 409,
-      message: "This tenant has no code; set one before moving it in the hierarchy (its path is built from it)"
+      message: "This tenant has no code; set one before moving it in the hierarchy (its path is built from it)",
     });
   });
 
@@ -229,7 +229,7 @@ describe("A-224 — updateTenantParent", () => {
 
     await expect(svc.updateTenantParent(HQ, DEEP, ACTOR)).rejects.toMatchObject({
       status: 409,
-      message: "Moving this tenant there would put its subtree 7 levels deep; the maximum is 5"
+      message: "Moving this tenant there would put its subtree 7 levels deep; the maximum is 5",
     });
   });
 
@@ -275,7 +275,7 @@ describe("A-224 — removeTenantParent", () => {
   it('"already a root" is a 409 state conflict, not a 404', async () => {
     await expect(svc.removeTenantParent(HQ, ACTOR)).rejects.toMatchObject({
       status: 409,
-      message: "This tenant is already a root tenant: it has no parent to remove"
+      message: "This tenant is already a root tenant: it has no parent to remove",
     });
   });
 });

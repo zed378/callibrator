@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 const { Op } = require("sequelize");
 
 jest.mock("../../models", () => ({
@@ -8,33 +8,33 @@ jest.mock("../../models", () => ({
     findAll: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   Role: {
     findOne: jest.fn(),
     findAndCountAll: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   // P21-09e (§ 10.6): provisioning asks whether the tenant serves a client facility (none here).
-  ClientFacility: { count: jest.fn().mockResolvedValue(0) }
+  ClientFacility: { count: jest.fn().mockResolvedValue(0) },
 }));
 
 // A-278 (ADR-094): every user write runs in a transaction with its audit row.
 // The double passes a marker through so the write's options can be asserted.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("tx")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("tx")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 // Mirrors the real src/utils/password.util.js surface:
 //   hashPassword(password) -> Promise<string>, comparePassword(plain, hash) -> Promise<bool>
 jest.mock("../../utils/password.util", () => ({
   hashPassword: jest.fn().mockResolvedValue("hashed:mock"),
-  comparePassword: jest.fn().mockResolvedValue(true)
+  comparePassword: jest.fn().mockResolvedValue(true),
 }));
 
 const scim = require("../../services/scim.service");
@@ -56,16 +56,16 @@ describe("scim.service", () => {
       Users.findAndCountAll.mockResolvedValue({
         count: 1,
         rows: [
-        {
-          id: "u1",
-          email: "a@b.com",
-          firstName: "A",
-          lastName: "B",
-          isActive: true,
-          status: "ACTIVE",
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }]
+          {
+            id: "u1",
+            email: "a@b.com",
+            firstName: "A",
+            lastName: "B",
+            isActive: true,
+            status: "ACTIVE",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }],
 
       });
       const result = await scim.getUsers("t1");
@@ -80,9 +80,9 @@ describe("scim.service", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             isActive: true,
-            status: "ACTIVE"
-          })
-        })
+            status: "ACTIVE",
+          }),
+        }),
       );
     });
 
@@ -93,9 +93,9 @@ describe("scim.service", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             isActive: false,
-            status: "SUSPENDED"
-          })
-        })
+            status: "SUSPENDED",
+          }),
+        }),
       );
     });
 
@@ -105,9 +105,9 @@ describe("scim.service", () => {
       expect(Users.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            email: "a@b.com"
-          })
-        })
+            email: "a@b.com",
+          }),
+        }),
       );
     });
   });
@@ -120,7 +120,7 @@ describe("scim.service", () => {
         firstName: "A",
         lastName: "B",
         isActive: true,
-        status: "ACTIVE"
+        status: "ACTIVE",
       });
       const result = await scim.getUserById("t1", "u1");
       expect(result.id).toBe("u1");
@@ -141,12 +141,12 @@ describe("scim.service", () => {
         firstName: "A",
         lastName: "B",
         isActive: true,
-        status: "ACTIVE"
+        status: "ACTIVE",
       });
 
       const result = await scim.createUser("t1", {
         userName: "a@b.com",
-        name: { givenName: "A", familyName: "B" }
+        name: { givenName: "A", familyName: "B" },
       });
       expect(result.userName).toBe("a@b.com");
     });
@@ -158,7 +158,7 @@ describe("scim.service", () => {
     it("throws 409 when user already exists", async () => {
       Users.findOne.mockResolvedValue({ id: "u1" });
       await expect(
-        scim.createUser("t1", { userName: "existing@test.com" })
+        scim.createUser("t1", { userName: "existing@test.com" }),
       ).rejects.toThrow("User already exists in the system");
     });
 
@@ -173,14 +173,14 @@ describe("scim.service", () => {
         expect.objectContaining({
           where: expect.objectContaining({ email: { [Op.iLike]: "ada.lovelace@hospital-b.org" } }),
           skipTenantScope: true,
-          paranoid: false
-        })
+          paranoid: false,
+        }),
       );
       expect(Users.create).toHaveBeenCalledWith(
         expect.objectContaining({
           email: "ada.lovelace@hospital-b.org",
-          username: "ada.lovelace@hospital-b.org"
-        }), TX
+          username: "ada.lovelace@hospital-b.org",
+        }), TX,
       );
     });
 
@@ -190,11 +190,11 @@ describe("scim.service", () => {
 
       await scim.createUser("t1", {
         userName: "login-name",
-        emails: [{ value: "from-emails@test.com", primary: true }]
+        emails: [{ value: "from-emails@test.com", primary: true }],
       });
 
       expect(Users.create).toHaveBeenCalledWith(
-        expect.objectContaining({ email: "from-emails@test.com", username: "from-emails@test.com" }), TX
+        expect.objectContaining({ email: "from-emails@test.com", username: "from-emails@test.com" }), TX,
       );
     });
 
@@ -220,8 +220,8 @@ describe("scim.service", () => {
           roleId: ROLE_IDS.USER,
           isActive: true,
           status: "ACTIVE",
-          isEmailVerified: true
-        }), TX
+          isEmailVerified: true,
+        }), TX,
       );
     });
 
@@ -232,7 +232,7 @@ describe("scim.service", () => {
       const result = await scim.createUser("t1", { userName: "a@b.com", active: false, roleId: "r9" });
 
       expect(Users.create).toHaveBeenCalledWith(
-        expect.objectContaining({ isActive: false, status: "SUSPENDED", roleId: "r9" }), TX
+        expect.objectContaining({ isActive: false, status: "SUSPENDED", roleId: "r9" }), TX,
       );
       expect(result.active).toBe(false);
     });
@@ -259,13 +259,13 @@ describe("scim.service", () => {
         lastName: "B",
         isActive: true,
         status: "ACTIVE",
-        update: mockUpdate
+        update: mockUpdate,
       });
 
       await scim.updateUser("t1", "u1", {
         name: { givenName: "NewFirst", familyName: "NewLast" },
         roleId: 2,
-        active: false
+        active: false,
       });
 
       expect(mockUpdate).toHaveBeenCalledWith({
@@ -273,7 +273,7 @@ describe("scim.service", () => {
         lastName: "NewLast",
         roleId: 2,
         isActive: false,
-        status: "SUSPENDED"
+        status: "SUSPENDED",
       }, TX);
     });
 
@@ -325,14 +325,13 @@ describe("scim.service", () => {
         lastName: "B",
         isActive: true,
         status: "ACTIVE",
-        update: mockUpdate
+        update: mockUpdate,
       });
 
       const patchOps = [
-      { op: "replace", value: { name: { givenName: "X", familyName: "Y" }, active: false, roleId: "33333333-3333-4333-8333-333333333333" } },
-      { op: "add", value: { roleId: "44444444-4444-4444-8444-444444444444" } },
-      { op: "remove", path: "roleId" }];
-
+        { op: "replace", value: { name: { givenName: "X", familyName: "Y" }, active: false, roleId: "33333333-3333-4333-8333-333333333333" } },
+        { op: "add", value: { roleId: "44444444-4444-4444-8444-444444444444" } },
+        { op: "remove", path: "roleId" }];
 
       await scim.patchUser("t1", "u1", patchOps);
 
@@ -343,18 +342,18 @@ describe("scim.service", () => {
       const mockUpdate: any = jest.fn();
       Users.findOne.mockResolvedValue({
         id: "u1",
-        update: mockUpdate
+        update: mockUpdate,
       });
 
       await scim.patchUser("t1", "u1", [
-      { op: "replace", value: { name: { givenName: "X" } } },
-      { op: "replace", value: { name: { familyName: "Y" } } }]
+        { op: "replace", value: { name: { givenName: "X" } } },
+        { op: "replace", value: { name: { familyName: "Y" } } }],
       );
 
       expect(mockUpdate).toHaveBeenCalledTimes(1);
       expect(mockUpdate).toHaveBeenCalledWith({
         firstName: "X",
-        lastName: "Y"
+        lastName: "Y",
       }, TX);
     });
 
@@ -377,8 +376,8 @@ describe("scim.service", () => {
       Users.findOne.mockResolvedValue({ id: "u1", update: mockUpdate });
 
       await scim.patchUser("t1", "u1", [
-      { op: "replace", value: { unknownKey: "x" } },
-      { op: "add", value: { unknownKey: "x" } }]
+        { op: "replace", value: { unknownKey: "x" } },
+        { op: "add", value: { unknownKey: "x" } }],
       );
 
       expect(mockUpdate).toHaveBeenCalledWith({}, TX);
@@ -408,7 +407,7 @@ describe("scim.service", () => {
       const mockDestroy: any = jest.fn();
       Users.findOne.mockResolvedValue({
         id: "u1",
-        destroy: mockDestroy
+        destroy: mockDestroy,
       });
 
       const result = await scim.deleteUser("t1", "u1");
@@ -440,7 +439,7 @@ describe("scim.service — privileged role guards (A-27)", () => {
   it("refuses to create a user with the SUPERADMIN role", async () => {
     Users.findOne.mockResolvedValue(null);
     await expect(
-      scim.createUser("t1", { userName: "a@b.c", roleId: SUPERADMIN_ID })
+      scim.createUser("t1", { userName: "a@b.c", roleId: SUPERADMIN_ID }),
     ).rejects.toMatchObject({ status: 403 });
     expect(Users.create).not.toHaveBeenCalled();
   });
@@ -448,7 +447,7 @@ describe("scim.service — privileged role guards (A-27)", () => {
   it("refuses to update a user into the SUPERADMIN role", async () => {
     Users.findOne.mockResolvedValue({ id: "u1", update: jest.fn() });
     await expect(
-      scim.updateUser("t1", "u1", { roleId: SUPERADMIN_ID })
+      scim.updateUser("t1", "u1", { roleId: SUPERADMIN_ID }),
     ).rejects.toMatchObject({ status: 403 });
   });
 
@@ -458,7 +457,7 @@ describe("scim.service — privileged role guards (A-27)", () => {
     await expect(
       // The legacy value-object form. The SCIM-standard path form is covered
       // by the A-33 block below and is refused the same way.
-      scim.patchUser("t1", "u1", [{ op: "replace", value: { roleId: SUPERADMIN_ID } }])
+      scim.patchUser("t1", "u1", [{ op: "replace", value: { roleId: SUPERADMIN_ID } }]),
     ).rejects.toMatchObject({ status: 403 });
     expect(update).not.toHaveBeenCalled();
   });
@@ -469,7 +468,7 @@ describe("scim.service — privileged role guards (A-27)", () => {
     Users.findOne.mockResolvedValue(null);
     Role.findOne.mockResolvedValue({ id: "r-other", name: "superadmin", isSystem: true });
     await expect(
-      scim.createUser("t1", { userName: "a@b.c", roleId: "22222222-2222-2222-2222-222222222222" })
+      scim.createUser("t1", { userName: "a@b.c", roleId: "22222222-2222-2222-2222-222222222222" }),
     ).rejects.toMatchObject({ status: 403 });
     expect(Users.create).not.toHaveBeenCalled();
   });
@@ -478,7 +477,7 @@ describe("scim.service — privileged role guards (A-27)", () => {
     Users.findOne.mockResolvedValue(null);
     Role.findOne.mockResolvedValue(null);
     await expect(
-      scim.createUser("t1", { userName: "a@b.c", roleId: "11111111-1111-1111-1111-111111111111" })
+      scim.createUser("t1", { userName: "a@b.c", roleId: "11111111-1111-1111-1111-111111111111" }),
     ).rejects.toMatchObject({ status: 400 });
   });
 });
@@ -536,18 +535,18 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     });
 
     it.each([
-    ["an unrecognised string", "maybe"],
-    ["a number", 1]]
+      ["an unrecognised string", "maybe"],
+      ["a number", 1]],
     )("rejects %s as an active value with 400", async (_label: any, value: any) => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value }])
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value }]),
       ).rejects.toMatchObject({ status: 400 });
       expect(update).not.toHaveBeenCalled();
     });
 
     it("resolves a path carrying the core User schema URN", async () => {
       await scim.patchUser("t1", "u1", [
-      { op: "replace", path: "urn:ietf:params:scim:schemas:core:2.0:User:active", value: false }]
+        { op: "replace", path: "urn:ietf:params:scim:schemas:core:2.0:User:active", value: false }],
       );
 
       expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" }, TX);
@@ -588,13 +587,13 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
 
     it("rejects an empty string value with 400", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: "   " }])
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: "   " }]),
       ).rejects.toMatchObject({ status: 400 });
     });
 
     it("rejects a non-string value where a string is required with 400", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "replace", path: "name.givenName", value: 7 }])
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "name.givenName", value: 7 }]),
       ).rejects.toMatchObject({ status: 400 });
     });
 
@@ -608,7 +607,7 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     // way into a privileged role.
     it("refuses a path-form roleId naming SUPERADMIN with 403 and writes nothing", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "replace", path: "roleId", value: SUPERADMIN_ID }])
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "roleId", value: SUPERADMIN_ID }]),
       ).rejects.toMatchObject({ status: 403 });
       expect(update).not.toHaveBeenCalled();
     });
@@ -617,7 +616,7 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       Role.findOne.mockResolvedValue({ id: "r-other", name: "superadmin", isSystem: true });
 
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "add", path: "roleId", value: "88888888-8888-4888-8888-888888888888" }])
+        scim.patchUser("t1", "u1", [{ op: "add", path: "roleId", value: "88888888-8888-4888-8888-888888888888" }]),
       ).rejects.toMatchObject({ status: 403 });
       expect(update).not.toHaveBeenCalled();
     });
@@ -626,7 +625,7 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       Role.findOne.mockResolvedValue(null);
 
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "replace", path: "roleId", value: "99999999-9999-4999-8999-999999999999" }])
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "roleId", value: "99999999-9999-4999-8999-999999999999" }]),
       ).rejects.toMatchObject({ status: 400 });
       expect(update).not.toHaveBeenCalled();
     });
@@ -634,33 +633,33 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     it("rejects an unsupported path with 400 rather than ignoring it", async () => {
       await expect(
         scim.patchUser("t1", "u1", [
-        { op: "replace", path: 'emails[type eq "work"].value', value: "x@y.z" }]
-        )
+          { op: "replace", path: 'emails[type eq "work"].value', value: "x@y.z" }],
+        ),
       ).rejects.toMatchObject({ status: 400 });
       expect(update).not.toHaveBeenCalled();
     });
 
     it("rejects a non-string path with 400", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "replace", path: ["roleId"], value: "77777777-7777-4777-8777-777777777777" }])
+        scim.patchUser("t1", "u1", [{ op: "replace", path: ["roleId"], value: "77777777-7777-4777-8777-777777777777" }]),
       ).rejects.toMatchObject({ status: 400 });
     });
 
     it("rejects an operation with neither a path nor an object value", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "replace", value: false }])
+        scim.patchUser("t1", "u1", [{ op: "replace", value: false }]),
       ).rejects.toMatchObject({ status: 400 });
     });
 
     it("rejects an array value with no path", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "add", value: ["x"] }])
+        scim.patchUser("t1", "u1", [{ op: "add", value: ["x"] }]),
       ).rejects.toMatchObject({ status: 400 });
     });
 
     it("rejects an unrecognised op with 400", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ value: { active: false } }])
+        scim.patchUser("t1", "u1", [{ value: { active: false } }]),
       ).rejects.toMatchObject({ status: 400 });
     });
   });
@@ -668,21 +667,21 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
   describe("patchUser — remove", () => {
     it("requires a path, because RFC 7644 does", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "remove" }])
+        scim.patchUser("t1", "u1", [{ op: "remove" }]),
       ).rejects.toMatchObject({ status: 400 });
       expect(update).not.toHaveBeenCalled();
     });
 
     it("rejects removing an attribute it cannot clear, rather than pretending to", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "remove", path: "active" }])
+        scim.patchUser("t1", "u1", [{ op: "remove", path: "active" }]),
       ).rejects.toMatchObject({ status: 400 });
       expect(update).not.toHaveBeenCalled();
     });
 
     it("rejects removing an unsupported path with 400", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "remove", path: "emails" }])
+        scim.patchUser("t1", "u1", [{ op: "remove", path: "emails" }]),
       ).rejects.toMatchObject({ status: 400 });
     });
   });
@@ -692,14 +691,14 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       Users.findAndCountAll.mockResolvedValue({
         count: 1,
         rows: [
-        {
-          id: "u1",
-          email: "ada@b.com",
-          firstName: "Ada",
-          lastName: "L",
-          isActive: true,
-          status: "ACTIVE"
-        }]
+          {
+            id: "u1",
+            email: "ada@b.com",
+            firstName: "Ada",
+            lastName: "L",
+            isActive: true,
+            status: "ACTIVE",
+          }],
 
       });
     });
@@ -713,8 +712,8 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       // user whose username differs from their address was unfindable.
       expect(Users.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: "t1", [Op.or]: [{ email: "ada@b.com" }, { username: "ada@b.com" }] }
-        })
+          where: { tenantId: "t1", [Op.or]: [{ email: "ada@b.com" }, { username: "ada@b.com" }] },
+        }),
       );
       expect(result.totalResults).toBe(1);
       expect(result.Resources).toHaveLength(1);
@@ -724,14 +723,14 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     it("D-06: an email filter matches the stored (lowercased) address whatever case the IdP sends", async () => {
       await scim.getUsers("t1", 1, 100, 'emails.value eq "Ada@B.com"');
       expect(Users.findAndCountAll).toHaveBeenLastCalledWith(
-        expect.objectContaining({ where: { tenantId: "t1", email: "ada@b.com" } })
+        expect.objectContaining({ where: { tenantId: "t1", email: "ada@b.com" } }),
       );
 
       await scim.getUsers("t1", 1, 100, 'userName eq "Ada@B.com"');
       expect(Users.findAndCountAll).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          where: { tenantId: "t1", [Op.or]: [{ email: "ada@b.com" }, { username: "Ada@B.com" }] }
-        })
+          where: { tenantId: "t1", [Op.or]: [{ email: "ada@b.com" }, { username: "Ada@B.com" }] },
+        }),
       );
     });
 
@@ -739,7 +738,7 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       await scim.getUsers("t1", 1, 100, 'emails.value eq "ada@b.com"');
 
       expect(Users.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { tenantId: "t1", email: "ada@b.com" } })
+        expect.objectContaining({ where: { tenantId: "t1", email: "ada@b.com" } }),
       );
     });
 
@@ -748,8 +747,8 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
 
       expect(Users.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: "t1", isActive: false, status: "SUSPENDED" }
-        })
+          where: { tenantId: "t1", isActive: false, status: "SUSPENDED" },
+        }),
       );
     });
 
@@ -762,9 +761,9 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
             tenantId: "t1",
             [Op.or]: [{ email: "ada@b.com" }, { username: "ada@b.com" }],
             isActive: true,
-            status: "ACTIVE"
-          }
-        })
+            status: "ACTIVE",
+          },
+        }),
       );
     });
 
@@ -772,14 +771,14 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     // RFC 7644 § 3.4.2.2 calls for an invalidFilter 400.
     it("rejects an unsupported filter with 400 instead of returning the tenant", async () => {
       await expect(
-        scim.getUsers("t1", 1, 100, 'userName sw "ada"')
+        scim.getUsers("t1", 1, 100, 'userName sw "ada"'),
       ).rejects.toMatchObject({ status: 400 });
       expect(Users.findAndCountAll).not.toHaveBeenCalled();
     });
 
     it("rejects an unsupported term inside an and-filter", async () => {
       await expect(
-        scim.getUsers("t1", 1, 100, 'userName eq "ada@b.com" and title eq "x"')
+        scim.getUsers("t1", 1, 100, 'userName eq "ada@b.com" and title eq "x"'),
       ).rejects.toMatchObject({ status: 400 });
       expect(Users.findAndCountAll).not.toHaveBeenCalled();
     });

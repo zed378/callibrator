@@ -1,17 +1,17 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 jest.mock("../../services/storage", () => ({
   buildProbeDriver: jest.fn(),
   getTenantStorage: jest.fn(),
-  invalidate: jest.fn()
+  invalidate: jest.fn(),
 }));
 jest.mock("../../services/storage/config.service", () => ({
   getTenantConfig: jest.fn(),
   setTenantConfig: jest.fn(),
   clearTenantConfig: jest.fn(),
-  validateTenantConfig: jest.fn()
+  validateTenantConfig: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const storage = require("../../services/storage");
@@ -33,7 +33,7 @@ describe("storageSettings — getSettings", () => {
     storageConfig.getTenantConfig.mockResolvedValue(null);
     await expect(service.getSettings(TENANT)).resolves.toEqual({
       provider: "default",
-      usingPlatformDefault: true
+      usingPlatformDefault: true,
     });
   });
 
@@ -46,7 +46,7 @@ describe("storageSettings — getSettings", () => {
       forcePathStyle: true,
       prefix: "p",
       accessKeyId: "AK",
-      secretAccessKey: "SK"
+      secretAccessKey: "SK",
     });
     const view = await service.getSettings(TENANT);
     expect(view).toEqual({
@@ -57,7 +57,7 @@ describe("storageSettings — getSettings", () => {
       region: "eu-west-1",
       endpoint: "https://s3.example.com",
       forcePathStyle: true,
-      prefix: "p"
+      prefix: "p",
     });
     expect(JSON.stringify(view)).not.toContain("SK");
     expect(JSON.stringify(view)).not.toContain("AK");
@@ -67,7 +67,7 @@ describe("storageSettings — getSettings", () => {
     storageConfig.getTenantConfig.mockResolvedValue({
       provider: "s3",
       bucket: "b",
-      accessKeyId: "AK"
+      accessKeyId: "AK",
     });
     expect((await service.getSettings(TENANT)).hasCredentials).toBe(false);
   });
@@ -76,12 +76,12 @@ describe("storageSettings — getSettings", () => {
     storageConfig.getTenantConfig.mockResolvedValue({
       provider: "nfs",
       root: "/mnt/t1",
-      fsync: true
+      fsync: true,
     });
     expect(await service.getSettings(TENANT)).toMatchObject({
       provider: "nfs",
       root: "/mnt/t1",
-      fsync: true
+      fsync: true,
     });
   });
 
@@ -92,18 +92,18 @@ describe("storageSettings — getSettings", () => {
     expect(await service.getSettings(TENANT)).toEqual({
       provider: "local",
       usingPlatformDefault: false,
-      hasCredentials: false
+      hasCredentials: false,
     });
   });
 
   it("nulls an absent endpoint/prefix", async () => {
     storageConfig.getTenantConfig.mockResolvedValue({
       provider: "s3",
-      bucket: "b"
+      bucket: "b",
     });
     expect(await service.getSettings(TENANT)).toMatchObject({
       endpoint: null,
-      prefix: null
+      prefix: null,
     });
   });
 });
@@ -118,13 +118,13 @@ describe("storageSettings — updateSettings", () => {
 
   it("requires a tenant", async () => {
     await expect(service.updateSettings(null, s3Input)).rejects.toThrow(
-      "A tenant is required"
+      "A tenant is required",
     );
   });
 
   it("health-checks with the CANDIDATE config, then saves and invalidates", async () => {
     storage.buildProbeDriver.mockReturnValue({
-      healthCheck: jest.fn().mockResolvedValue({ ok: true })
+      healthCheck: jest.fn().mockResolvedValue({ ok: true }),
     });
 
     await service.updateSettings(TENANT, s3Input);
@@ -135,7 +135,7 @@ describe("storageSettings — updateSettings", () => {
       provider: "s3",
       bucket: "b",
       accessKeyId: "AK",
-      secretAccessKey: "SK"
+      secretAccessKey: "SK",
     });
     expect(storageConfig.setTenantConfig).toHaveBeenCalledWith(TENANT, s3Input, null);
     // Order matters: the stale cached driver must be dropped after the save.
@@ -144,11 +144,11 @@ describe("storageSettings — updateSettings", () => {
 
   it("refuses to save when the connection test fails", async () => {
     storage.buildProbeDriver.mockReturnValue({
-      healthCheck: jest.fn().mockResolvedValue({ ok: false, error: "Access Denied" })
+      healthCheck: jest.fn().mockResolvedValue({ ok: false, error: "Access Denied" }),
     });
 
     await expect(service.updateSettings(TENANT, s3Input)).rejects.toThrow(
-      "Storage connection test failed: Access Denied"
+      "Storage connection test failed: Access Denied",
     );
     // A typo'd bucket must never become the live config.
     expect(storageConfig.setTenantConfig).not.toHaveBeenCalled();
@@ -157,24 +157,24 @@ describe("storageSettings — updateSettings", () => {
 
   it("reports a generic reason when the health check gives none", async () => {
     storage.buildProbeDriver.mockReturnValue({
-      healthCheck: jest.fn().mockResolvedValue({ ok: false })
+      healthCheck: jest.fn().mockResolvedValue({ ok: false }),
     });
     await expect(service.updateSettings(TENANT, s3Input)).rejects.toThrow(
-      "unreachable"
+      "unreachable",
     );
   });
 
   it("nulls absent credentials passed to the probe", async () => {
     storageConfig.validateTenantConfig.mockReturnValue({ provider: "nfs", root: "/mnt" });
     storage.buildProbeDriver.mockReturnValue({
-      healthCheck: jest.fn().mockResolvedValue({ ok: true })
+      healthCheck: jest.fn().mockResolvedValue({ ok: true }),
     });
     await service.updateSettings(TENANT, { provider: "nfs", root: "/mnt" });
     expect(storage.buildProbeDriver).toHaveBeenCalledWith({
       provider: "nfs",
       root: "/mnt",
       accessKeyId: null,
-      secretAccessKey: null
+      secretAccessKey: null,
     });
   });
 
@@ -183,7 +183,7 @@ describe("storageSettings — updateSettings", () => {
       throw new Error("requires a bucket");
     });
     await expect(service.updateSettings(TENANT, { provider: "s3" })).rejects.toThrow(
-      "requires a bucket"
+      "requires a bucket",
     );
     expect(storage.buildProbeDriver).not.toHaveBeenCalled();
   });
@@ -210,11 +210,11 @@ describe("storageSettings — testConnection", () => {
 
   it("health-checks the ACTIVE storage", async () => {
     storage.getTenantStorage.mockResolvedValue({
-      healthCheck: jest.fn().mockResolvedValue({ ok: true, driver: "s3" })
+      healthCheck: jest.fn().mockResolvedValue({ ok: true, driver: "s3" }),
     });
     await expect(service.testConnection(TENANT)).resolves.toEqual({
       ok: true,
-      driver: "s3"
+      driver: "s3",
     });
   });
 });
@@ -227,20 +227,20 @@ describe("storageSettings — getUsage", () => {
   it("reports bytes, objects, megabytes and provider", async () => {
     storage.getTenantStorage.mockResolvedValue({
       provider: "s3",
-      usage: jest.fn().mockResolvedValue({ bytes: 5 * 1024 * 1024, objects: 3 })
+      usage: jest.fn().mockResolvedValue({ bytes: 5 * 1024 * 1024, objects: 3 }),
     });
     await expect(service.getUsage(TENANT)).resolves.toEqual({
       bytes: 5 * 1024 * 1024,
       objects: 3,
       megabytes: 5,
-      provider: "s3"
+      provider: "s3",
     });
   });
 
   it("rounds megabytes to two decimals", async () => {
     storage.getTenantStorage.mockResolvedValue({
       provider: "local",
-      usage: jest.fn().mockResolvedValue({ bytes: 1_572_864, objects: 1 }) // 1.5 MiB
+      usage: jest.fn().mockResolvedValue({ bytes: 1_572_864, objects: 1 }), // 1.5 MiB
     });
     expect((await service.getUsage(TENANT)).megabytes).toBe(1.5);
   });

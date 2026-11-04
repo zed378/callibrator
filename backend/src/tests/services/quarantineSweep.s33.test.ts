@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * S-33 — the quarantine sweep removes only regular files older than
  * QUARANTINE_MAX_AGE_MINUTES from uploads/.quarantine; it never follows a
@@ -11,10 +11,10 @@ const path = require("path");
 
 const mockRoot: any = fs.mkdtempSync(path.join(os.tmpdir(), "s33-"));
 jest.mock("../../utils/upload.util", () => ({
-  quarantinePath: (...parts: any[]) => require("path").join(mockRoot, ".quarantine", ...parts)
+  quarantinePath: (...parts: any[]) => require("path").join(mockRoot, ".quarantine", ...parts),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { logger } = require("../../middlewares/activityLog.middleware");
@@ -151,7 +151,7 @@ describe("S-33 quarantine sweep", () => {
       tenantId: null,
       isSuperAdmin: false,
       isSystemTask: true,
-      systemReason: SYSTEM_TASKS.QUARANTINE_SWEEP
+      systemReason: SYSTEM_TASKS.QUARANTINE_SWEEP,
     });
   });
 

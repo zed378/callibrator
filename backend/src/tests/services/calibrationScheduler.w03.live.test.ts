@@ -40,7 +40,7 @@ const startProcess = () => {
       models: require("../../models"),
       migrator: require("../../config/migrator").migrator,
       scheduler: require("../../services/calibrationScheduler.service"),
-      webhookService: require("../../services/webhook.service")
+      webhookService: require("../../services/webhook.service"),
     };
   });
   return graph;
@@ -81,14 +81,14 @@ describe("calibration scan — two concurrent scans, live PostgreSQL (W-03)", ()
     await p1.db.query(
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
        VALUES (:t, 'W-03 Hospital', 'w03-live', 'w03@example.test', now(), now())`,
-      { replacements: { t: TENANT } }
+      { replacements: { t: TENANT } },
     );
     // P20-07: raw-SQL tenants need their self facility before a device (0118 refuses one without — fixtures/selfFacility).
     await p1.db.query(SELF_FACILITIES_SQL);
     await p1.db.query(
       `INSERT INTO calibration_devices (id, tenant_id, name, status, next_calibration_date, created_at, updated_at)
        VALUES (:d, :t, 'Infusion pump', 'active', now() - interval '3 days', now(), now())`,
-      { replacements: { d: DEVICE, t: TENANT } }
+      { replacements: { d: DEVICE, t: TENANT } },
     );
   }, LIVE_BOOT_TIMEOUT_MS);
 
@@ -106,7 +106,7 @@ describe("calibration scan — two concurrent scans, live PostgreSQL (W-03)", ()
 
   it("the index exists, as migration 0060 builds it", async () => {
     const [rows] = await p1.db.query(
-      "SELECT indexdef FROM pg_indexes WHERE indexname = 'maintenance_work_orders_one_open_auto_per_device'"
+      "SELECT indexdef FROM pg_indexes WHERE indexname = 'maintenance_work_orders_one_open_auto_per_device'",
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].indexdef).toMatch(/UNIQUE INDEX .* \(device_id\) WHERE \(auto_scheduled AND/);
@@ -129,8 +129,8 @@ describe("calibration scan — two concurrent scans, live PostgreSQL (W-03)", ()
     }
 
     const [s1, s2] = await Promise.all([
-    p1.scheduler.runCalibrationScan({ tenantId: TENANT }),
-    p2.scheduler.runCalibrationScan({ tenantId: TENANT })]
+      p1.scheduler.runCalibrationScan({ tenantId: TENANT }),
+      p2.scheduler.runCalibrationScan({ tenantId: TENANT })],
     );
 
     // Both saw the device; one created, the other was refused by the index.
@@ -139,35 +139,35 @@ describe("calibration scan — two concurrent scans, live PostgreSQL (W-03)", ()
     expect(s1.errors + s2.errors).toBe(0);
     const loser = s1.workOrdersCreated === 0 ? s1 : s2;
     expect(loser.details).toEqual([
-    { deviceId: DEVICE, action: "skipped", reason: "created by a concurrent scan" }]
+      { deviceId: DEVICE, action: "skipped", reason: "created by a concurrent scan" }],
     );
 
     const [orders] = await p1.db.query(
       "SELECT id, auto_scheduled, status FROM maintenance_work_orders WHERE tenant_id = :t",
-      { replacements: { t: TENANT } }
+      { replacements: { t: TENANT } },
     );
     expect(orders).toHaveLength(1);
     expect(orders[0]).toMatchObject({ auto_scheduled: true, status: "Open" });
 
     const [audits] = await p1.db.query(
       "SELECT actor_type, actor_name, user_id, resource_id FROM audit_logs WHERE tenant_id = :t AND resource_type = 'MaintenanceWorkOrder'",
-      { replacements: { t: TENANT } }
+      { replacements: { t: TENANT } },
     );
     expect(audits).toEqual([
-    { actor_type: "system", actor_name: "system:calibration-scan", user_id: null, resource_id: orders[0].id }]
+      { actor_type: "system", actor_name: "system:calibration-scan", user_id: null, resource_id: orders[0].id }],
     );
 
     const [notes] = await p1.db.query("SELECT id, type FROM notifications WHERE tenant_id = :t", {
-      replacements: { t: TENANT }
+      replacements: { t: TENANT },
     });
     expect(notes).toHaveLength(1);
     // W-04 (ADR-069): the tenant-wide notification has its own audit row, by the job.
     const [noteAudits] = await p1.db.query(
       "SELECT actor_type, actor_name, user_id, resource_id FROM audit_logs WHERE tenant_id = :t AND resource_type = 'Notification'",
-      { replacements: { t: TENANT } }
+      { replacements: { t: TENANT } },
     );
     expect(noteAudits).toEqual([
-    { actor_type: "system", actor_name: "system:calibration-scan", user_id: null, resource_id: notes[0].id }]
+      { actor_type: "system", actor_name: "system:calibration-scan", user_id: null, resource_id: notes[0].id }],
     );
     expect(emitted).toHaveLength(1);
   });

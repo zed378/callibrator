@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for seedMenuGroups utility
  *
@@ -9,24 +9,24 @@ jest.mock("../../models", () => ({
   MenuGroup: {
     findAll: jest.fn(),
     findOne: jest.fn(),
-    create: jest.fn()
+    create: jest.fn(),
   },
   RoleMenuPermission: {
     destroy: jest.fn(),
     findOne: jest.fn(),
-    create: jest.fn()
+    create: jest.fn(),
   },
   Roles: {
-    findOne: jest.fn()
-  }
+    findOne: jest.fn(),
+  },
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 const { MenuGroup, RoleMenuPermission, Roles } = require("../../models");
@@ -34,7 +34,7 @@ const {
   seedMenuGroups,
   seedRoleMenuPermissions,
   seedAll,
-  getMenuGroupId
+  getMenuGroupId,
 } = require("../../utils/seedMenuGroups.util");
 
 describe("seedMenuGroups utility", () => {
@@ -98,7 +98,7 @@ describe("seedMenuGroups utility", () => {
     it("should update existing menu groups instead of creating duplicates", async () => {
       const existingGroup: any = {
         id: "mg-1",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       MenuGroup.findOne.mockResolvedValue(existingGroup);
 
@@ -113,7 +113,7 @@ describe("seedMenuGroups utility", () => {
         id: "deprecated-1",
         name: "Table Permission",
         slug: "table-permission",
-        destroy: jest.fn().mockResolvedValue(undefined)
+        destroy: jest.fn().mockResolvedValue(undefined),
       };
       MenuGroup.findAll.mockResolvedValue([deprecatedGroup]);
 
@@ -129,7 +129,7 @@ describe("seedMenuGroups utility", () => {
       await seedMenuGroups();
 
       expect(RoleMenuPermission.destroy).toHaveBeenCalledWith({
-        where: { menuGroupId: "deprecated-1" }
+        where: { menuGroupId: "deprecated-1" },
       });
       expect(deprecatedGroup.destroy).toHaveBeenCalled();
     });
@@ -147,8 +147,8 @@ describe("seedMenuGroups utility", () => {
         return Promise.resolve(null);
       });
       MenuGroup.create.
-      mockRejectedValueOnce(new Error("Unique constraint violation")).
-      mockResolvedValueOnce({ id: "mg-2" });
+        mockRejectedValueOnce(new Error("Unique constraint violation")).
+        mockResolvedValueOnce({ id: "mg-2" });
 
       await seedMenuGroups();
 
@@ -170,8 +170,8 @@ describe("seedMenuGroups utility", () => {
         slug: "table-permission",
         destroy: jest.fn().mockRejectedValue({
           message: "Destroy failed",
-          errors: [{ path: "id", message: "Foreign key constraint" }]
-        })
+          errors: [{ path: "id", message: "Foreign key constraint" }],
+        }),
       };
       MenuGroup.findAll.mockResolvedValue([deprecatedGroup]);
 
@@ -203,7 +203,7 @@ describe("seedMenuGroups utility", () => {
       await seedRoleMenuPermissions();
 
       expect(Roles.findOne).toHaveBeenCalledWith({
-        where: { name: "SUPERADMIN" }
+        where: { name: "SUPERADMIN" },
       });
       expect(RoleMenuPermission.create).toHaveBeenCalled();
     });

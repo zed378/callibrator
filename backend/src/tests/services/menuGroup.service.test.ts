@@ -5,32 +5,32 @@ jest.mock("../../models", () => ({
     findAll: jest.fn(),
     findByPk: jest.fn(),
     create: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   Role: {
     findAll: jest.fn(),
-    findByPk: jest.fn()
+    findByPk: jest.fn(),
   },
   RoleMenuPermission: {
     findAll: jest.fn(),
     findOrCreate: jest.fn(),
-    destroy: jest.fn()
-  }
+    destroy: jest.fn(),
+  },
 }));
 
 // A-173: create/update/delete run in a managed transaction, audit through
 // logAction and clear the permissions cache after the commit; those effects
 // are asserted against the schema-enforcing ledger in menuGroup.audit.a173.test.js.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../services/redis.service", () => ({
   del: jest.fn().mockResolvedValue(0),
   delPattern: jest.fn().mockResolvedValue(0),
-  cacheKeys: { permissions: (roleId: any) => `permissions:role:${roleId}` }
+  cacheKeys: { permissions: (roleId: any) => `permissions:role:${roleId}` },
 }));
 
 // ADR-102: visibility is the effective permission's (effectivePermission
@@ -42,7 +42,7 @@ jest.mock("../../services/effectivePermission.service", () => ({
   loadPermissionSources: jest.fn(async () => ({ superAdmin: false, matrix: {}, overrides: {} })),
   menuEntryVisible: jest.fn((_principal: any, _sources: any, slug: any) => mockVisible.has(slug)),
   effectivePermissionMap: jest.fn(() => ({})),
-  isBound: jest.fn(() => false) // P21-09c
+  isBound: jest.fn(() => false), // P21-09c
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -69,7 +69,7 @@ const {
   bulkAssign,
   bulkRevoke,
   mapSlugToPath,
-  formatMenuGroup
+  formatMenuGroup,
 } = require("../../services/menuGroup.service");
 
 // ---- helper ----
@@ -94,7 +94,7 @@ const mockMenuGroupInstance = (extra: any = {}) => {
     sortOrder: 1,
     parentId: null,
     children: [],
-    ...extra
+    ...extra,
   };
   return obj;
 };
@@ -139,7 +139,7 @@ describe("menuGroup.service", () => {
         name: "Settings",
         slug: "settings",
         icon: "settings",
-        sortOrder: 1
+        sortOrder: 1,
       };
       const group = mockMenuGroupInstance({ children: [child] });
       const result = formatMenuGroup(group);
@@ -171,8 +171,8 @@ describe("menuGroup.service", () => {
       const groupA = mockMenuGroupInstance({ id: "g-1" });
       MenuGroup.findAll.mockResolvedValueOnce([groupA]);
       RoleMenuPermission.findAll.mockResolvedValueOnce([
-      { menuGroupId: "g-1" },
-      { menuGroupId: "g-2" }]
+        { menuGroupId: "g-1" },
+        { menuGroupId: "g-2" }],
       );
 
       const result = await listMenuGroups("role-1");
@@ -189,7 +189,7 @@ describe("menuGroup.service", () => {
       const hidden = mockMenuGroupInstance({ id: "c-2", name: "Child 2", slug: "child-2", sortOrder: 2 });
       const parent = mockMenuGroupInstance({
         id: "p-1", name: "Parent", slug: "parent", sortOrder: 1,
-        children: [child, hidden]
+        children: [child, hidden],
       });
       MenuGroup.findAll.mockResolvedValueOnce([parent]);
       mockVisible.add("child-1");
@@ -203,7 +203,7 @@ describe("menuGroup.service", () => {
     it("a grant on the parent alone no longer shows its children (the old cascade)", async () => {
       const parent = mockMenuGroupInstance({
         id: "p-1", name: "Parent", slug: "parent", sortOrder: 1,
-        children: [mockMenuGroupInstance({ id: "c-1", slug: "c1" })]
+        children: [mockMenuGroupInstance({ id: "c-1", slug: "c1" })],
       });
       MenuGroup.findAll.mockResolvedValueOnce([parent]);
       mockVisible.add("parent");
@@ -226,7 +226,7 @@ describe("menuGroup.service", () => {
         id: "u-1",
         role: { id: "role-1", name: "Admin", roleLevel: null }, // the fields read one by one (a model instance's are getters)
         clientFacilityId: null, // P21-09c: the requester's binding (unbound here)
-        isApiKey: null
+        isApiKey: null,
       });
     });
 
@@ -235,14 +235,14 @@ describe("menuGroup.service", () => {
       MenuGroup.findAll.mockResolvedValueOnce([]);
       await getRoleMenuAssignments("role-1", { id: "sa", role: { id: "role-sa", name: "SUPERADMIN" } });
       expect(effective.loadPermissionSources).toHaveBeenCalledWith({
-        role: { id: "role-1", name: "Admin", roleLevel: 8 }
+        role: { id: "role-1", name: "Admin", roleLevel: 8 },
       });
     });
 
     it("top-level links to the same page are shown once (Home and Dashboard)", async () => {
       MenuGroup.findAll.mockResolvedValueOnce([
-      mockMenuGroupInstance({ id: "home", slug: "home", sortOrder: 0 }),
-      mockMenuGroupInstance({ id: "dash", slug: "dashboard", sortOrder: 1 })]
+        mockMenuGroupInstance({ id: "home", slug: "home", sortOrder: 0 }),
+        mockMenuGroupInstance({ id: "dash", slug: "dashboard", sortOrder: 1 })],
       );
       mockVisible.add("home").add("dashboard");
 
@@ -275,9 +275,9 @@ describe("menuGroup.service", () => {
       expect(MenuGroup.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "New Group",
-          slug: "new-group"
+          slug: "new-group",
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -288,7 +288,7 @@ describe("menuGroup.service", () => {
       await createMenuGroup({ name: "Custom", slug: "custom-slug", icon: "i" });
       expect(MenuGroup.create).toHaveBeenCalledWith(
         expect.objectContaining({ slug: "custom-slug" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
   });
@@ -305,7 +305,7 @@ describe("menuGroup.service", () => {
         parentId: null,
         isActive: true,
         children: [],
-        update: jest.fn().mockResolvedValue({})
+        update: jest.fn().mockResolvedValue({}),
       };
       MenuGroup.findByPk.mockResolvedValueOnce(group);
 
@@ -318,7 +318,7 @@ describe("menuGroup.service", () => {
       MenuGroup.findByPk.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         updateMenuGroup({ id: "missing", name: "Nope" }),
-        "Menu group not found"
+        "Menu group not found",
       );
     });
   });
@@ -328,7 +328,7 @@ describe("menuGroup.service", () => {
     it("should delete an empty menu group and its grants", async () => {
       const group: any = {
         id: "mg-1",
-        destroy: jest.fn().mockResolvedValue(1)
+        destroy: jest.fn().mockResolvedValue(1),
       };
       MenuGroup.findByPk.mockResolvedValueOnce(group);
       RoleMenuPermission.destroy.mockResolvedValueOnce(1);
@@ -359,7 +359,7 @@ describe("menuGroup.service", () => {
       MenuGroup.findByPk.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         assignMenuToRole({ roleId: "role-1", menuGroupId: "missing" }),
-        "Menu group or item not found"
+        "Menu group or item not found",
       );
     });
 
@@ -374,7 +374,7 @@ describe("menuGroup.service", () => {
       expect(RoleMenuPermission.findOrCreate).toHaveBeenCalledWith({
         where: { roleId: "role-1", menuGroupId: "mg-1" },
         defaults: { permissionType: "read" },
-        transaction: "TX"
+        transaction: "TX",
       });
     });
 
@@ -395,7 +395,7 @@ describe("menuGroup.service", () => {
       await revokeMenuFromRole({ roleId: "role-1", menuGroupId: "mg-1" }, { userId: "u1" });
       expect(RoleMenuPermission.destroy).toHaveBeenCalledWith({
         where: { roleId: "role-1", menuGroupId: "mg-1" },
-        transaction: "TX"
+        transaction: "TX",
       });
     });
   });
@@ -433,8 +433,8 @@ describe("menuGroup.service", () => {
   describe("bulkRevoke", () => {
     it("should return revoked and notFound lists", async () => {
       RoleMenuPermission.destroy.
-      mockResolvedValueOnce(1) // revoked
-      .mockResolvedValueOnce(0); // not found
+        mockResolvedValueOnce(1) // revoked
+        .mockResolvedValueOnce(0); // not found
 
       const result = await bulkRevoke("role-1", ["mg-1", "mg-2"], { userId: "u1" });
       expect(result.revoked).toEqual(["mg-1"]);
@@ -454,9 +454,9 @@ describe("menuGroup.service", () => {
         slug: "group",
         sortOrder: 1,
         children: [
-        { id: "c3", name: "Third", icon: "i3", slug: "third", sortOrder: 3 },
-        { id: "c1", name: "First", icon: "i1", slug: "first", sortOrder: 1 },
-        { id: "c2", name: "Second", icon: "i2", slug: "second", sortOrder: 2 }]
+          { id: "c3", name: "Third", icon: "i3", slug: "third", sortOrder: 3 },
+          { id: "c1", name: "First", icon: "i1", slug: "first", sortOrder: 1 },
+          { id: "c2", name: "Second", icon: "i2", slug: "second", sortOrder: 2 }],
 
       };
 
@@ -473,8 +473,8 @@ describe("menuGroup.service", () => {
         slug: "group",
         sortOrder: 1,
         children: [
-        { id: "c2", name: "Second", icon: "i2", slug: "second", sortOrder: 5 },
-        { id: "c1", name: "NoOrder", icon: "i1", slug: "first" }]
+          { id: "c2", name: "Second", icon: "i2", slug: "second", sortOrder: 5 },
+          { id: "c1", name: "NoOrder", icon: "i1", slug: "first" }],
 
       };
 
@@ -490,7 +490,7 @@ describe("menuGroup.service", () => {
         icon: "i",
         slug: "group",
         sortOrder: 1,
-        children: []
+        children: [],
       });
 
       expect(formatted.items).toEqual([]);
@@ -502,7 +502,7 @@ describe("menuGroup.service", () => {
         name: "Group",
         icon: "i",
         slug: "group",
-        sortOrder: 1
+        sortOrder: 1,
       });
 
       expect(formatted.items).toEqual([]);
@@ -515,7 +515,7 @@ describe("menuGroup.service", () => {
         icon: "i",
         slug: "group",
         sortOrder: 1,
-        children: [{ id: "c1", name: "Child", icon: "i1", slug: "child", sortOrder: 1 }]
+        children: [{ id: "c1", name: "Child", icon: "i1", slug: "child", sortOrder: 1 }],
       });
 
       expect(formatted.isAssigned).toBeUndefined();
@@ -531,11 +531,11 @@ describe("menuGroup.service", () => {
           slug: "group",
           sortOrder: 1,
           children: [
-          { id: "c1", name: "Child", icon: "i1", slug: "child", sortOrder: 1 },
-          { id: "c2", name: "Other", icon: "i2", slug: "other", sortOrder: 2 }]
+            { id: "c1", name: "Child", icon: "i1", slug: "child", sortOrder: 1 },
+            { id: "c2", name: "Other", icon: "i2", slug: "other", sortOrder: 2 }],
 
         },
-        { g1: true, c1: true }
+        { g1: true, c1: true },
       );
 
       expect(formatted.isAssigned).toBe(true);
@@ -561,14 +561,14 @@ describe("menuGroup.service", () => {
         id: "g1",
         name: "My New Group",
         slug: "my-new-group",
-        sortOrder: 1
+        sortOrder: 1,
       });
 
       await createMenuGroup({ name: "My New Group", icon: "i", sortOrder: 1 });
 
       expect(MenuGroup.create).toHaveBeenCalledWith(
         expect.objectContaining({ slug: "my-new-group" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -579,7 +579,7 @@ describe("menuGroup.service", () => {
 
       expect(MenuGroup.create).toHaveBeenCalledWith(
         expect.objectContaining({ slug: "custom" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
   });
@@ -595,7 +595,7 @@ describe("menuGroup.service", () => {
         parentId: "p1",
         sortOrder: 7,
         isActive: true,
-        update
+        update,
       });
 
       await updateMenuGroup({ id: "g1" });
@@ -606,7 +606,7 @@ describe("menuGroup.service", () => {
         icon: "old-icon",
         parentId: "p1",
         sortOrder: 7,
-        isActive: true
+        isActive: true,
       }, { transaction: "TX" });
     });
 
@@ -620,14 +620,14 @@ describe("menuGroup.service", () => {
         parentId: "p1",
         sortOrder: 7,
         isActive: true,
-        update
+        update,
       });
 
       await updateMenuGroup({ id: "g1", parentId: null, sortOrder: 0, isActive: false });
 
       expect(update).toHaveBeenCalledWith(
         expect.objectContaining({ parentId: null, sortOrder: 0, isActive: false }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
   });
@@ -658,7 +658,7 @@ describe("menuGroup.service", () => {
       RoleMenuPermission.findOrCreate.mockRejectedValueOnce(new Error("unique constraint violated"));
 
       await expect(bulkAssign("role-1", ["mg-1", "mg-2"], { userId: "u1" })).rejects.toThrow(
-        "unique constraint violated"
+        "unique constraint violated",
       );
       expect(RoleMenuPermission.findOrCreate).toHaveBeenCalledTimes(1);
     });
@@ -681,8 +681,8 @@ describe("menuGroup.service", () => {
         slug: "group",
         sortOrder: 1,
         children: [
-        { id: "c1", name: "A", icon: "i1", slug: "a" },
-        { id: "c2", name: "B", icon: "i2", slug: "b" }]
+          { id: "c1", name: "A", icon: "i1", slug: "a" },
+          { id: "c2", name: "B", icon: "i2", slug: "b" }],
 
       });
 
@@ -697,8 +697,8 @@ describe("menuGroup.service", () => {
         slug: "group",
         sortOrder: 1,
         children: [
-        { id: "c1", name: "NoOrder", icon: "i1", slug: "a" },
-        { id: "c2", name: "Ordered", icon: "i2", slug: "b", sortOrder: 4 }]
+          { id: "c1", name: "NoOrder", icon: "i1", slug: "a" },
+          { id: "c2", name: "Ordered", icon: "i2", slug: "b", sortOrder: 4 }],
 
       });
 
@@ -709,10 +709,10 @@ describe("menuGroup.service", () => {
   describe("getRoleMenuAssignments coverage gaps", () => {
     it("omits a group none of whose children is visible", async () => {
       MenuGroup.findAll.mockResolvedValueOnce([
-      {
-        id: "g1", name: "Group", icon: "i", slug: "group", sortOrder: 1,
-        children: [{ id: "c1", name: "A", icon: "i1", slug: "a" }]
-      }]
+        {
+          id: "g1", name: "Group", icon: "i", slug: "group", sortOrder: 1,
+          children: [{ id: "c1", name: "A", icon: "i1", slug: "a" }],
+        }],
       );
 
       expect(await getRoleMenuAssignments("role-1")).toEqual([]);
@@ -742,37 +742,36 @@ describe("menuGroup.service", () => {
   describe("three-level menus", () => {
     // Management → Organization → Tenants, mirroring the seeded shape.
     const threeLevelTree = () => [
-    {
-      id: "management",
-      name: "Management",
-      icon: "Settings",
-      slug: "management",
-      sortOrder: 3,
-      children: [
       {
-        id: "sub-org",
-        name: "Organization",
-        icon: "Building2",
-        slug: "mgmt-organization",
-        sortOrder: 0,
+        id: "management",
+        name: "Management",
+        icon: "Settings",
+        slug: "management",
+        sortOrder: 3,
         children: [
-        { id: "tenants", name: "Tenants", icon: "Building2", slug: "tenants", sortOrder: 0 },
-        { id: "users", name: "Users", icon: "Users", slug: "users", sortOrder: 1 }]
+          {
+            id: "sub-org",
+            name: "Organization",
+            icon: "Building2",
+            slug: "mgmt-organization",
+            sortOrder: 0,
+            children: [
+              { id: "tenants", name: "Tenants", icon: "Building2", slug: "tenants", sortOrder: 0 },
+              { id: "users", name: "Users", icon: "Users", slug: "users", sortOrder: 1 }],
 
-      },
-      {
-        id: "sub-work",
-        name: "Work & Projects",
-        icon: "KanbanSquare",
-        slug: "mgmt-work",
-        sortOrder: 1,
-        children: [
-        { id: "kanban", name: "Kanban Boards", icon: "KanbanSquare", slug: "kanban", sortOrder: 0 }]
+          },
+          {
+            id: "sub-work",
+            name: "Work & Projects",
+            icon: "KanbanSquare",
+            slug: "mgmt-work",
+            sortOrder: 1,
+            children: [
+              { id: "kanban", name: "Kanban Boards", icon: "KanbanSquare", slug: "kanban", sortOrder: 0 }],
 
-      }]
+          }],
 
-    }];
-
+      }];
 
     it("requests grandchildren from the database", async () => {
       MenuGroup.findAll.mockResolvedValueOnce([]);
@@ -811,8 +810,8 @@ describe("menuGroup.service", () => {
     it("annotates isAssigned at every depth", async () => {
       MenuGroup.findAll.mockResolvedValueOnce(threeLevelTree());
       RoleMenuPermission.findAll.mockResolvedValueOnce([
-      { menuGroupId: "sub-org" },
-      { menuGroupId: "tenants" }]
+        { menuGroupId: "sub-org" },
+        { menuGroupId: "tenants" }],
       );
 
       const [management] = await listMenuGroups("role-1");
@@ -876,14 +875,14 @@ describe("menuGroup.service", () => {
         parentId: null,
         sortOrder: 1,
         isActive: true,
-        update
+        update,
       });
 
       await updateMenuGroup({
         id: "g1",
         name: "New",
         slug: "new",
-        icon: "new-icon"
+        icon: "new-icon",
       });
 
       expect(update).toHaveBeenCalledWith({
@@ -892,7 +891,7 @@ describe("menuGroup.service", () => {
         icon: "new-icon",
         parentId: null,
         sortOrder: 1,
-        isActive: true
+        isActive: true,
       }, { transaction: "TX" });
     });
   });

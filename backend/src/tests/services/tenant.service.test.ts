@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for tenant service
  */
@@ -9,7 +9,7 @@
 jest.mock("../../services/clientFacility.service", () => ({
   SELF_FACILITY_CODE: "SELF",
   selfFacilityName: (name: any) => name,
-  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" }))
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
 }));
 
 jest.mock("../../services/redis.service", () => ({
@@ -29,8 +29,8 @@ jest.mock("../../services/redis.service", () => ({
     userPermissions: jest.fn((userId: any) => `permissions:user:${userId}`),
     session: jest.fn((sessionHash: any) => `session:${sessionHash}`),
     rateLimit: jest.fn((identifier: any) => `ratelimit:${identifier}`),
-    lock: jest.fn((resource: any) => `lock:${resource}`)
-  }
+    lock: jest.fn((resource: any) => `lock:${resource}`),
+  },
 }));
 
 // Mirrors the REAL AppError(status, message) signature from
@@ -44,24 +44,24 @@ jest.mock("../../utils/appError.util", () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     error: jest.fn(),
-    warn: jest.fn()
-  }
+    warn: jest.fn(),
+  },
 }));
 
 jest.mock("../../utils/upload.util", () => ({
-  deleteUpload: jest.fn()
+  deleteUpload: jest.fn(),
 }));
 
 jest.mock("../../constants", () => ({
   DEFAULT_LIMIT: 20,
-  MAX_LIMIT: 100
+  MAX_LIMIT: 100,
 }));
 
 // The request schemas are REAL (P9-11: Zod through validators/input).
@@ -69,7 +69,7 @@ jest.mock("../../constants", () => ({
 jest.mock("../../config", () => {
   const mockTx: any = {
     commit: jest.fn().mockResolvedValue(undefined),
-    rollback: jest.fn().mockResolvedValue(undefined)
+    rollback: jest.fn().mockResolvedValue(undefined),
   };
   return {
     db: {
@@ -81,14 +81,14 @@ jest.mock("../../config", () => {
       }),
       sequelize: {
         fn: jest.fn(),
-        op: {}
-      }
-    }
+        op: {},
+      },
+    },
   };
 });
 
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 // Mock models with proper jest mock functions
@@ -108,11 +108,11 @@ jest.mock("../../models", () => ({
     create: mockCreate,
     count: mockCount,
     update: mockUpdate,
-    destroy: mockDestroy
+    destroy: mockDestroy,
   },
   Users: {
     count: mockCount,
-    findAll: jest.fn()
+    findAll: jest.fn(),
   },
   TenantSettings: {
     findAll: jest.fn(),
@@ -120,8 +120,8 @@ jest.mock("../../models", () => ({
     create: jest.fn(),
     destroy: jest.fn(),
     bulkDestroy: jest.fn(),
-    findOrCreate: jest.fn()
-  }
+    findOrCreate: jest.fn(),
+  },
 }));
 
 // Now import after mocks are set up
@@ -165,18 +165,18 @@ describe("tenant Service", () => {
   describe("fetchTenants", () => {
     it("should return paginated tenants", async () => {
       const mockTenants: any = [
-      {
-        id: "t-1",
-        name: "Acme",
-        code: "ACM",
-        logo: "logo.png",
-        toJSON: () => ({
+        {
           id: "t-1",
           name: "Acme",
           code: "ACM",
-          logo: "logo.png"
-        })
-      }];
+          logo: "logo.png",
+          toJSON: () => ({
+            id: "t-1",
+            name: "Acme",
+            code: "ACM",
+            logo: "logo.png",
+          }),
+        }];
 
       mockFindAll.mockResolvedValue(mockTenants);
       mockCount.mockResolvedValue(1);
@@ -191,7 +191,7 @@ describe("tenant Service", () => {
     it("should return cached result for first page", async () => {
       get.mockResolvedValue({
         rows: [{ id: "t-1" }],
-        meta: { total: 1 }
+        meta: { total: 1 },
       });
 
       await tenantService.fetchTenants({ page: 1, limit: 10 });
@@ -208,8 +208,8 @@ describe("tenant Service", () => {
 
       expect(mockFindAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.any(Object)
-        })
+          where: expect.any(Object),
+        }),
       );
     });
   });
@@ -229,8 +229,8 @@ describe("tenant Service", () => {
           code: "ACM",
           status: "ACTIVE",
           settings: {},
-          users: []
-        })
+          users: [],
+        }),
       };
       mockFindByPk.mockResolvedValue(mockTenant);
       get.mockResolvedValue(null);
@@ -243,7 +243,7 @@ describe("tenant Service", () => {
 
     it("should return cached result", async () => {
       get.mockResolvedValue({
-        data: { id: "t-1", name: "Acme" }
+        data: { id: "t-1", name: "Acme" },
       });
 
       await tenantService.fetchSpecificTenant("t-1");
@@ -268,14 +268,14 @@ describe("tenant Service", () => {
         code: "ACM",
         status: "ACTIVE",
         primaryColor: "#000000",
-        logo: "logo.png"
+        logo: "logo.png",
       };
       mockFindByPk.mockResolvedValue(mockTenant);
 
       await tenantService.getTenantByIdForMiddleware("t-1");
 
       expect(mockFindByPk).toHaveBeenCalledWith("t-1", {
-        attributes: expect.any(Array)
+        attributes: expect.any(Array),
       });
     });
   });
@@ -288,7 +288,7 @@ describe("tenant Service", () => {
         code: "ACM",
         status: "ACTIVE",
         primaryColor: "#000000",
-        logo: "logo.png"
+        logo: "logo.png",
       };
       mockFindOne.mockResolvedValue(mockTenant);
 
@@ -296,8 +296,8 @@ describe("tenant Service", () => {
 
       expect(mockFindOne).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ code: "ACM" })
-        })
+          where: expect.objectContaining({ code: "ACM" }),
+        }),
       );
     });
   });
@@ -311,7 +311,7 @@ describe("tenant Service", () => {
         logo: "logo.png",
         toJSON() {
           return this;
-        }
+        },
       };
       mockFindOne.mockResolvedValue(mockTenant);
       get.mockResolvedValue(null);
@@ -323,7 +323,7 @@ describe("tenant Service", () => {
 
     it("should return cached branding", async () => {
       get.mockResolvedValue({
-        data: { id: "t-1", primaryColor: "#000000" }
+        data: { id: "t-1", primaryColor: "#000000" },
       });
 
       await tenantService.getPublicBranding("t-1");
@@ -348,9 +348,9 @@ describe("tenant Service", () => {
       expect(mockFindOne).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            status: "active"
-          })
-        })
+            status: "active",
+          }),
+        }),
       );
     });
   });
@@ -360,7 +360,7 @@ describe("tenant Service", () => {
       const mockTenant: any = {
         id: "t-new",
         name: "New Tenant",
-        code: "NT"
+        code: "NT",
       };
       mockCreate.mockResolvedValue(mockTenant);
       mockFindOne.mockResolvedValue(null);
@@ -369,7 +369,7 @@ describe("tenant Service", () => {
 
       const result = await tenantService.createTenant(
         { name: "New Tenant", code: "NT" },
-        "user-1"
+        "user-1",
       );
 
       expect(mockCreate).toHaveBeenCalled();
@@ -380,17 +380,17 @@ describe("tenant Service", () => {
       mockFindOne.mockResolvedValue({ id: "existing" });
 
       await expect(
-        tenantService.createTenant({ name: "New", code: "NT" }, "user-1")
+        tenantService.createTenant({ name: "New", code: "NT" }, "user-1"),
       ).rejects.toThrow();
     });
 
     it("should throw error for duplicate name", async () => {
       mockFindOne.
-      mockResolvedValueOnce(null).
-      mockResolvedValueOnce({ id: "existing" });
+        mockResolvedValueOnce(null).
+        mockResolvedValueOnce({ id: "existing" });
 
       await expect(
-        tenantService.createTenant({ name: "Existing", code: "NT" }, "user-1")
+        tenantService.createTenant({ name: "Existing", code: "NT" }, "user-1"),
       ).rejects.toThrow();
     });
   });
@@ -401,7 +401,7 @@ describe("tenant Service", () => {
         id: "t-1",
         name: "Old",
         code: "OLD",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       mockFindByPk.mockResolvedValue(mockTenant);
       mockFindOne.mockResolvedValue(null);
@@ -412,7 +412,7 @@ describe("tenant Service", () => {
         "t-1",
         { name: "New" },
         "user-1",
-        { actorIsSuperAdmin: true, tenantId: null }
+        { actorIsSuperAdmin: true, tenantId: null },
       );
 
       expect(mockTenant.update).toHaveBeenCalled();
@@ -423,7 +423,7 @@ describe("tenant Service", () => {
       mockFindByPk.mockResolvedValue(null);
 
       await expect(
-        tenantService.updateTenant("invalid", { name: "New" })
+        tenantService.updateTenant("invalid", { name: "New" }),
       ).rejects.toThrow();
     });
   });
@@ -433,7 +433,7 @@ describe("tenant Service", () => {
       const mockTenant: any = {
         id: "t-1",
         name: "Acme",
-        destroy: jest.fn().mockResolvedValue(undefined)
+        destroy: jest.fn().mockResolvedValue(undefined),
       };
       mockFindByPk.mockResolvedValue(mockTenant);
       mockCount.mockResolvedValue(0);
@@ -450,13 +450,13 @@ describe("tenant Service", () => {
       const mockTenant: any = {
         id: "t-1",
         name: "Acme",
-        logo: "default.svg"
+        logo: "default.svg",
       };
       mockFindByPk.mockResolvedValue(mockTenant);
       mockCount.mockResolvedValue(5);
 
       await expect(
-        tenantService.deleteTenant("t-1", "user-1")
+        tenantService.deleteTenant("t-1", "user-1"),
       ).rejects.toThrow();
     });
 
@@ -464,7 +464,7 @@ describe("tenant Service", () => {
       mockFindByPk.mockResolvedValue(null);
 
       await expect(
-        tenantService.deleteTenant("invalid", "user-1")
+        tenantService.deleteTenant("invalid", "user-1"),
       ).rejects.toThrow();
     });
   });
@@ -473,11 +473,11 @@ describe("tenant Service", () => {
     it("should return tenant settings", async () => {
       const mockTenant: any = {
         id: "t-1",
-        settings: { theme: "dark" }
+        settings: { theme: "dark" },
       };
       mockFindByPk.mockResolvedValue(mockTenant);
       TenantSettings.findAll.mockResolvedValue([
-      { key: "language", value: "en" }]
+        { key: "language", value: "en" }],
       );
 
       const result = await tenantService.getTenantSettings("t-1");
@@ -508,14 +508,14 @@ describe("tenant Service", () => {
     it("should update tenant settings", async () => {
       const mockTenant: any = {
         id: "t-1",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       mockFindByPk.mockResolvedValue(mockTenant);
       TenantSettings.findAll.mockResolvedValue([]);
       del.mockResolvedValue(undefined);
 
       const result = await tenantService.updateTenantSettings("t-1", {
-        ai_vendor: "openai"
+        ai_vendor: "openai",
       });
 
       expect(result).toBeDefined();
@@ -525,7 +525,7 @@ describe("tenant Service", () => {
       mockFindByPk.mockResolvedValue(null);
 
       await expect(
-        tenantService.updateTenantSettings("invalid", {})
+        tenantService.updateTenantSettings("invalid", {}),
       ).rejects.toThrow();
     });
   });
@@ -534,7 +534,7 @@ describe("tenant Service", () => {
     it("should return user count", async () => {
       const mockTenant: any = {
         id: "t-1",
-        maxUsers: 50
+        maxUsers: 50,
       };
       mockFindByPk.mockResolvedValue(mockTenant);
       mockCount.mockResolvedValue(25);

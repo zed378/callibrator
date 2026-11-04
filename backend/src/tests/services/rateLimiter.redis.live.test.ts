@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * rateLimiter.redis.service — against a REAL Redis (A-30)
  *
@@ -25,16 +25,16 @@
 const crypto = require("crypto");
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 jest.mock("../../models", () => ({
   Users: { update: jest.fn(() => Promise.resolve([1])) },
-  Sessions: { update: jest.fn(() => Promise.resolve([1])) }
+  Sessions: { update: jest.fn(() => Promise.resolve([1])) },
 }));
 
 jest.mock("../../utils/session.util", () => ({
-  hashToken: jest.fn((token: any) => `hash:${token}`)
+  hashToken: jest.fn((token: any) => `hash:${token}`),
 }));
 
 jest.mock("../../utils/jwt.util", () => ({ verifyAccessToken: jest.fn() }));
@@ -176,17 +176,17 @@ describe("rateLimiter.redis.service — live Redis (A-30)", () => {
     const b = await startReplica();
 
     const middlewareA = a.limiter.endpointRateLimiter("tenantCreate", {
-      maxRequests: 1000
+      maxRequests: 1000,
     });
     const middlewareB = b.limiter.endpointRateLimiter("tenantCreate", {
-      maxRequests: 1000
+      maxRequests: 1000,
     });
     const makeRes = () => {
       const res: any = {
         statusCode: 200,
         status: jest.fn(() => res),
         json: jest.fn(() => res),
-        set: jest.fn(() => res)
+        set: jest.fn(() => res),
       };
       return res;
     };
@@ -201,7 +201,7 @@ describe("rateLimiter.redis.service — live Redis (A-30)", () => {
     const status = await b.limiter.getRateLimitStatus({
       ip,
       endpoint: "tenantCreate",
-      type: "api"
+      type: "api",
     });
     // Read-then-write across two processes loses increments here; the script
     // does not. Exactly 40, not "about 40".
@@ -220,7 +220,7 @@ describe("rateLimiter.redis.service — live Redis (A-30)", () => {
         statusCode: 200,
         status: jest.fn(() => res),
         json: jest.fn(() => res),
-        set: jest.fn(() => res)
+        set: jest.fn(() => res),
       };
       return res;
     };
@@ -228,7 +228,7 @@ describe("rateLimiter.redis.service — live Redis (A-30)", () => {
     for (let i = 0; i < 10; i += 1) {
       const middleware = (i % 2 === 0 ? a : b).limiter.endpointRateLimiter(
         "tenantCreate",
-        options
+        options,
       );
       const next = jest.fn();
       await middleware({ ip, headers: {}, user: null }, makeRes(), next);
@@ -238,12 +238,12 @@ describe("rateLimiter.redis.service — live Redis (A-30)", () => {
     const res: any = makeRes();
     const next = jest.fn();
     await b.limiter.
-    endpointRateLimiter("tenantCreate", options)({ ip, headers: {}, user: null }, res, next);
+      endpointRateLimiter("tenantCreate", options)({ ip, headers: {}, user: null }, res, next);
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(429);
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 429, retryAfter: expect.any(Number) })
+      expect.objectContaining({ status: 429, retryAfter: expect.any(Number) }),
     );
 
     await inspector().del(`ratelimit:api:tenantCreate:ip:${ip}`);

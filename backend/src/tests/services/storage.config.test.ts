@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 // P6-11: a storage change and its audit row commit in one managed transaction.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn((cb: any) => cb("TX")) }
+  db: { transaction: jest.fn((cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../models", () => ({
@@ -10,8 +10,8 @@ jest.mock("../../models", () => ({
     findAll: jest.fn(),
     upsert: jest.fn(),
     findOrBuild: jest.fn(),
-    destroy: jest.fn()
-  }
+    destroy: jest.fn(),
+  },
 }));
 
 const { TenantSettings } = require("../../models");
@@ -47,7 +47,7 @@ describe("storage config — platform default", () => {
     process.env["STORAGE_LOCAL_ROOT"] = "/srv/files";
     expect(config.getGlobalConfig()).toMatchObject({
       provider: "local",
-      root: "/srv/files"
+      root: "/srv/files",
     });
   });
 
@@ -83,7 +83,7 @@ describe("storage config — platform default", () => {
         forcePathStyle: true,
         prefix: "prod",
         accessKeyId: "AK",
-        secretAccessKey: "SK"
+        secretAccessKey: "SK",
       });
     });
 
@@ -96,7 +96,7 @@ describe("storage config — platform default", () => {
         endpoint: null,
         prefix: null,
         accessKeyId: null,
-        secretAccessKey: null
+        secretAccessKey: null,
       });
     });
   });
@@ -115,7 +115,7 @@ describe("storage config — platform default", () => {
       expect(config.getGlobalConfig()).toEqual({
         provider: "nfs",
         root: "/mnt/cal",
-        fsync: true
+        fsync: true,
       });
     });
 
@@ -135,10 +135,10 @@ describe("storage config — tenant override validation", () => {
 
   it("rejects an unknown or missing provider", () => {
     expect(() => config.validateTenantConfig({ provider: "gdrive" })).toThrow(
-      'Invalid storage provider "gdrive"'
+      'Invalid storage provider "gdrive"',
     );
     expect(() => config.validateTenantConfig({})).toThrow(
-      "Invalid storage provider"
+      "Invalid storage provider",
     );
   });
 
@@ -146,23 +146,23 @@ describe("storage config — tenant override validation", () => {
     // Otherwise a tenant would have an arbitrary read/write primitive on the
     // application server's own filesystem.
     expect(() =>
-    config.validateTenantConfig({ provider: "local", root: "/etc" })
+      config.validateTenantConfig({ provider: "local", root: "/etc" }),
     ).toThrow("cannot be configured per tenant");
   });
 
   it("requires a bucket for s3 and normalizes the rest", () => {
     expect(() => config.validateTenantConfig({ provider: "s3" })).toThrow(
-      "requires a bucket"
+      "requires a bucket",
     );
     expect(
-      config.validateTenantConfig({ provider: "S3", bucket: "tenant-bucket" })
+      config.validateTenantConfig({ provider: "S3", bucket: "tenant-bucket" }),
     ).toEqual({
       provider: "s3",
       bucket: "tenant-bucket",
       region: "us-east-1",
       endpoint: null,
       forcePathStyle: true,
-      prefix: null
+      prefix: null,
     });
   });
 
@@ -174,15 +174,15 @@ describe("storage config — tenant override validation", () => {
         region: "eu-central-1",
         endpoint: "https://s3.example.com",
         prefix: "tenant-1",
-        forcePathStyle: false
-      })
+        forcePathStyle: false,
+      }),
     ).toEqual({
       provider: "s3",
       bucket: "b",
       region: "eu-central-1",
       endpoint: "https://s3.example.com",
       forcePathStyle: false,
-      prefix: "tenant-1"
+      prefix: "tenant-1",
     });
   });
 
@@ -192,17 +192,17 @@ describe("storage config — tenant override validation", () => {
       provider: "s3",
       bucket: "b",
       endpoint: "http://169.254.169.254",
-      endpointTrusted: true
+      endpointTrusted: true,
     });
     expect(result.endpointTrusted).toBeUndefined();
   });
 
   it("requires a root for nfs", () => {
     expect(() => config.validateTenantConfig({ provider: "nfs" })).toThrow(
-      "requires a mount root"
+      "requires a mount root",
     );
     expect(
-      config.validateTenantConfig({ provider: "nfs", root: "/mnt/t1", fsync: false })
+      config.validateTenantConfig({ provider: "nfs", root: "/mnt/t1", fsync: false }),
     ).toEqual({ provider: "nfs", root: "/mnt/t1", fsync: false });
   });
 });
@@ -220,52 +220,52 @@ describe("storage config — reading a tenant override", () => {
 
   it("returns null when the stored value is empty", async () => {
     TenantSettings.findAll.mockResolvedValue([
-    { key: "storage_config", value: "" }]
+      { key: "storage_config", value: "" }],
     );
     await expect(config.getTenantConfig("t1")).resolves.toBeNull();
   });
 
   it("merges the decrypted credentials into the configuration", async () => {
     TenantSettings.findAll.mockResolvedValue([
-    {
-      key: "storage_config",
-      value: JSON.stringify({ provider: "s3", bucket: "tenant-bucket" })
-    },
-    {
-      key: "storage_credentials",
-      value: JSON.stringify({ accessKeyId: "AK", secretAccessKey: "SK" })
-    }]
+      {
+        key: "storage_config",
+        value: JSON.stringify({ provider: "s3", bucket: "tenant-bucket" }),
+      },
+      {
+        key: "storage_credentials",
+        value: JSON.stringify({ accessKeyId: "AK", secretAccessKey: "SK" }),
+      }],
     );
     await expect(config.getTenantConfig("t1")).resolves.toEqual({
       provider: "s3",
       bucket: "tenant-bucket",
       accessKeyId: "AK",
-      secretAccessKey: "SK"
+      secretAccessKey: "SK",
     });
   });
 
   it("works when credentials are absent (IAM role / NFS)", async () => {
     TenantSettings.findAll.mockResolvedValue([
-    { key: "storage_config", value: JSON.stringify({ provider: "nfs", root: "/m" }) },
-    { key: "storage_credentials", value: null }]
+      { key: "storage_config", value: JSON.stringify({ provider: "nfs", root: "/m" }) },
+      { key: "storage_credentials", value: null }],
     );
     await expect(config.getTenantConfig("t1")).resolves.toEqual({
       provider: "nfs",
-      root: "/m"
+      root: "/m",
     });
   });
 
   it("fails loudly on a corrupt configuration rather than guessing", async () => {
     TenantSettings.findAll.mockResolvedValue([
-    { key: "storage_config", value: "{not json" }]
+      { key: "storage_config", value: "{not json" }],
     );
     await expect(config.getTenantConfig("t1")).rejects.toThrow("configuration is corrupt");
   });
 
   it("fails loudly on corrupt credentials", async () => {
     TenantSettings.findAll.mockResolvedValue([
-    { key: "storage_config", value: JSON.stringify({ provider: "s3", bucket: "b" }) },
-    { key: "storage_credentials", value: "{nope" }]
+      { key: "storage_config", value: JSON.stringify({ provider: "s3", bucket: "b" }) },
+      { key: "storage_credentials", value: "{nope" }],
     );
     await expect(config.getTenantConfig("t1")).rejects.toThrow("credentials are corrupt");
   });
@@ -274,13 +274,13 @@ describe("storage config — reading a tenant override", () => {
 describe("storage config — writing a tenant override", () => {
   it("requires a tenant", async () => {
     await expect(config.setTenantConfig(null, { provider: "s3" })).rejects.toThrow(
-      "A tenant is required"
+      "A tenant is required",
     );
   });
 
   it("rejects a call with no configuration at all", async () => {
     await expect(config.setTenantConfig("t1")).rejects.toThrow(
-      "Invalid storage provider"
+      "Invalid storage provider",
     );
   });
 
@@ -292,14 +292,14 @@ describe("storage config — writing a tenant override", () => {
       provider: "s3",
       bucket: "b",
       accessKeyId: "AK",
-      secretAccessKey: "SK"
+      secretAccessKey: "SK",
     });
 
     // The non-secret half goes through upsert...
     expect(TenantSettings.upsert).toHaveBeenCalledWith({
       tenantId: "t1",
       key: "storage_config",
-      value: expect.not.stringContaining("SK")
+      value: expect.not.stringContaining("SK"),
     }, { transaction: "TX" });
     // ...and the secret half through save(), because upsert() bypasses the
     // beforeSave hook that performs the envelope encryption.
@@ -318,14 +318,14 @@ describe("storage config — writing a tenant override", () => {
     await config.setTenantConfig("t1", {
       provider: "s3",
       bucket: "b",
-      secretAccessKey: "SK"
+      secretAccessKey: "SK",
     });
     expect(row.value).toBe(JSON.stringify({ secretAccessKey: "SK" }));
   });
 
   it("rejects an invalid configuration before touching the database", async () => {
     await expect(config.setTenantConfig("t1", { provider: "s3" })).rejects.toThrow(
-      "requires a bucket"
+      "requires a bucket",
     );
     expect(TenantSettings.upsert).not.toHaveBeenCalled();
   });
@@ -334,7 +334,7 @@ describe("storage config — writing a tenant override", () => {
 describe("storage config — clearing a tenant override", () => {
   it("requires a tenant", async () => {
     await expect(config.clearTenantConfig(null)).rejects.toThrow(
-      "A tenant is required"
+      "A tenant is required",
     );
   });
 
@@ -343,7 +343,7 @@ describe("storage config — clearing a tenant override", () => {
     await expect(config.clearTenantConfig("t1")).resolves.toEqual({ cleared: 2 });
     expect(TenantSettings.destroy).toHaveBeenCalledWith({
       where: { tenantId: "t1", key: ["storage_config", "storage_credentials"] },
-      transaction: "TX"
+      transaction: "TX",
     });
   });
 });
@@ -359,7 +359,7 @@ describe("storage config — P6-11 audit rows", () => {
     await config.setTenantConfig(
       "t1",
       { provider: "s3", bucket: "b", accessKeyId: "AKIAEXAMPLE", secretAccessKey: "SECRETVALUE" },
-      principal
+      principal,
     );
     expect(auditService.logAction).toHaveBeenCalledTimes(1);
     const [entry, options] = auditService.logAction.mock.calls[0];
@@ -374,8 +374,8 @@ describe("storage config — P6-11 audit rows", () => {
         operation: "STORAGE_CONFIG_SET",
         before: { provider: "s3", bucket: "old" },
         after: expect.objectContaining({ provider: "s3", bucket: "b" }),
-        credentialsSet: ["accessKeyId", "secretAccessKey"]
-      }
+        credentialsSet: ["accessKeyId", "secretAccessKey"],
+      },
     });
     expect(entry.changes.changed).toContain("bucket");
     expect(JSON.stringify(entry)).not.toMatch(/AKIAEXAMPLE|SECRETVALUE/);
@@ -397,7 +397,7 @@ describe("storage config — P6-11 audit rows", () => {
     expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({
       operation: "STORAGE_CONFIG_CLEAR",
       changed: ["provider", "root"],
-      after: null
+      after: null,
     });
     auditService.logAction.mockClear();
     TenantSettings.destroy.mockResolvedValueOnce(0);

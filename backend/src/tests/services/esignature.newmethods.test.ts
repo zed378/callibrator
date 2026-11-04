@@ -34,14 +34,14 @@ describe("eSignature.service — implemented workflow/key methods", () => {
   describe("getKeyPairs", () => {
     it("maps stored keys to public metadata only", async () => {
       const findAll = jest.fn().mockResolvedValue([
-      {
-        id: "tk-1",
-        keyId: "key-1",
-        keyType: "esignature",
-        algorithm: "RS256",
-        publicKey: "PUB",
-        createdAt: new Date("2026-01-01")
-      }]
+        {
+          id: "tk-1",
+          keyId: "key-1",
+          keyType: "esignature",
+          algorithm: "RS256",
+          publicKey: "PUB",
+          createdAt: new Date("2026-01-01"),
+        }],
       );
       const { getKeyPairs } = load({ TenantKey: { findAll } });
 
@@ -49,17 +49,17 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
       expect(findAll).toHaveBeenCalledWith({
         where: { tenantId: "tenant-1" },
-        order: [["createdAt", "DESC"]]
+        order: [["createdAt", "DESC"]],
       });
       expect(result).toEqual([
-      {
-        id: "tk-1",
-        keyId: "key-1",
-        keyType: "esignature",
-        algorithm: "RS256",
-        publicKey: "PUB",
-        createdAt: new Date("2026-01-01")
-      }]
+        {
+          id: "tk-1",
+          keyId: "key-1",
+          keyType: "esignature",
+          algorithm: "RS256",
+          publicKey: "PUB",
+          createdAt: new Date("2026-01-01"),
+        }],
       );
       // Private key must never surface.
       expect(result[0]).not.toHaveProperty("privateKey");
@@ -70,7 +70,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const { getKeyPairs } = load({ TenantKey: { findAll } });
 
       await expect(getKeyPairs("tenant-1")).rejects.toThrow(
-        "Failed to list key pairs"
+        "Failed to list key pairs",
       );
     });
   });
@@ -93,13 +93,13 @@ describe("eSignature.service — implemented workflow/key methods", () => {
           action: "DELETE",
           resourceType: "TenantKey",
           resourceId: "tk-1",
-          changes: expect.objectContaining({ operation: "ESIGNATURE_KEY_DELETE", keyId: "key-1" })
+          changes: expect.objectContaining({ operation: "ESIGNATURE_KEY_DELETE", keyId: "key-1" }),
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
 
       expect(findOne).toHaveBeenCalledWith({
-        where: { id: "tk-1", tenantId: "tenant-1" }
+        where: { id: "tk-1", tenantId: "tenant-1" },
       });
       expect(destroy).toHaveBeenCalled();
       expect(result).toEqual({ success: true });
@@ -121,7 +121,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const { deleteKeyPair } = load({ TenantKey: { findOne } });
 
       await expect(deleteKeyPair("missing", "tenant-1")).rejects.toThrow(
-        "Key pair not found"
+        "Key pair not found",
       );
     });
 
@@ -130,7 +130,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const { deleteKeyPair } = load({ TenantKey: { findOne } });
 
       await expect(deleteKeyPair("tk-1", "tenant-1")).rejects.toThrow(
-        "Failed to delete key pair"
+        "Failed to delete key pair",
       );
     });
   });
@@ -145,7 +145,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
       expect(findAll).toHaveBeenCalledWith({
         where: { tenantId: "tenant-1", status: "pending" },
-        order: [["createdAt", "DESC"]]
+        order: [["createdAt", "DESC"]],
       });
       expect(result).toHaveLength(1);
     });
@@ -158,7 +158,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
       expect(findAll).toHaveBeenCalledWith({
         where: { tenantId: "tenant-1" },
-        order: [["createdAt", "DESC"]]
+        order: [["createdAt", "DESC"]],
       });
     });
 
@@ -167,7 +167,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const { getWorkflows } = load({ SignatureWorkflow: { findAll } });
 
       await expect(getWorkflows("tenant-1")).rejects.toThrow(
-        "Failed to list workflows"
+        "Failed to list workflows",
       );
     });
   });
@@ -185,21 +185,21 @@ describe("eSignature.service — implemented workflow/key methods", () => {
         message: "hi",
         expiresAt: "2026-12-31",
         status: "completed", // must be ignored
-        documentId: "evil" // must be ignored
+        documentId: "evil", // must be ignored
       }, { userId: "u-1" }); // A-124: the audit row names its actor
 
       expect(update).toHaveBeenCalledWith(
         {
           subject: "New subject",
           message: "hi",
-          expiresAt: "2026-12-31"
+          expiresAt: "2026-12-31",
         },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
       expect(findOne).toHaveBeenCalledWith({
         where: { id: "wf-1", tenantId: "tenant-1" },
         transaction: "TX",
-        lock: true
+        lock: true,
       });
     });
 
@@ -231,15 +231,15 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const { updateWorkflow } = load({ SignatureWorkflow: { findOne } });
 
       await expect(updateWorkflow("wf-1", "tenant-1", {})).rejects.toThrow(
-        "Workflow not found"
+        "Workflow not found",
       );
     });
 
     // A-92 — a closed workflow is a state conflict: 409 with the state and why,
     // not a 400 (the same body is accepted while the workflow is open).
     it.each([
-    ["completed", "every signer has signed"],
-    ["cancelled", "cancellation is final; create a new workflow instead"]]
+      ["completed", "every signer has signed"],
+      ["cancelled", "cancellation is final; create a new workflow instead"]],
     )("refuses to update a %s workflow with a 409 that explains the state", async (status: any, why: any) => {
       const update = jest.fn();
       const findOne = jest.fn().mockResolvedValue({ status, update });
@@ -258,7 +258,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const { updateWorkflow } = load({ SignatureWorkflow: { findOne } });
 
       await expect(updateWorkflow("wf-1", "tenant-1", {})).rejects.toThrow(
-        "Failed to update workflow"
+        "Failed to update workflow",
       );
     });
   });
@@ -283,7 +283,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const { deleteWorkflow } = load({ SignatureWorkflow: { findOne } });
 
       await expect(deleteWorkflow("wf-1", "tenant-1")).rejects.toThrow(
-        "Workflow not found"
+        "Workflow not found",
       );
     });
 
@@ -292,7 +292,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const { deleteWorkflow } = load({ SignatureWorkflow: { findOne } });
 
       await expect(deleteWorkflow("wf-1", "tenant-1")).rejects.toThrow(
-        "Failed to delete workflow"
+        "Failed to delete workflow",
       );
     });
   });
@@ -317,7 +317,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       expect(arg.offset).toBe(0);
       expect(result).toEqual({
         rows: [{ id: "sig-1" }],
-        meta: { total: 1, page: 1, limit: 25, totalPages: 1 }
+        meta: { total: 1, page: 1, limit: 25, totalPages: 1 },
       });
     });
 
@@ -376,7 +376,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
       expect(findAll.mock.calls[0][0].where).toMatchObject({
         tenantId: "tenant-1",
-        userId: "u-1"
+        userId: "u-1",
       });
     });
 
@@ -387,7 +387,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
       await getSignatureHistory("tenant-1", {
         startDate: "2026-01-01",
-        endDate: "2026-02-01"
+        endDate: "2026-02-01",
       });
 
       const where = findAll.mock.calls[0][0].where;
@@ -400,7 +400,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const { getSignatureHistory } = load({ SignatureRecord: { findAndCountAll: findAll } });
 
       await expect(getSignatureHistory("tenant-1", {})).rejects.toThrow(
-        "Failed to get signature history"
+        "Failed to get signature history",
       );
     });
   });

@@ -7,8 +7,8 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
     debug: jest.fn(),
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 jest.mock("../../config", () => ({
@@ -21,9 +21,9 @@ jest.mock("../../config", () => ({
     Sequelize: {
       fn: jest.fn(),
       col: jest.fn(),
-      Op: { gte: "gte_symbol" }
-    }
-  }
+      Op: { gte: "gte_symbol" },
+    },
+  },
 }));
 
 jest.mock("../../utils/appError.util", () => ({
@@ -32,11 +32,11 @@ jest.mock("../../utils/appError.util", () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 
 jest.mock("../../utils/circuitBreaker.util", () => ({
-  withCircuitBreaker: (fn: any) => fn
+  withCircuitBreaker: (fn: any) => fn,
 }));
 
 jest.mock("../../models", () => ({
@@ -46,18 +46,18 @@ jest.mock("../../models", () => ({
     findOrCreate: jest.fn(),
     findAll: jest.fn(),
     sum: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   PlanQuota: {
     findOne: jest.fn(),
-    findAll: jest.fn()
+    findAll: jest.fn(),
   },
   Tenant: {
-    findByPk: jest.fn()
+    findByPk: jest.fn(),
   },
   TenantSettings: {
-    upsert: jest.fn()
-  }
+    upsert: jest.fn(),
+  },
 }));
 
 // A-322: a quota suspension writes two audit rows (PLATFORM and the tenant).
@@ -74,7 +74,7 @@ const {
   getPlatformAnalytics,
   resetUsage,
   clearCache,
-  getStatus
+  getStatus,
 } = meteredBillingService;
 
 const { UsageMetric, PlanQuota, Tenant, TenantSettings } = require("../../models");
@@ -136,7 +136,7 @@ describe("meteredBillingService", () => {
 
     it("should handle errors gracefully without throwing", async () => {
       await expect(
-        trackUsage("tenant-1", "api_calls", 1)
+        trackUsage("tenant-1", "api_calls", 1),
       ).resolves.not.toThrow();
     });
   });
@@ -157,7 +157,7 @@ describe("meteredBillingService", () => {
 
       const result = await getUsage("tenant-1", "api_calls", {
         period: "weekly",
-        days: 7
+        days: 7,
       });
 
       expect(result).toHaveProperty("total");
@@ -254,7 +254,7 @@ describe("meteredBillingService", () => {
     it("should return violations when quotas exceeded", async () => {
       const mockQuota: any = {
         metric: "api_calls",
-        limit: 100
+        limit: 100,
       };
       PlanQuota.findAll.mockResolvedValue([mockQuota]);
 
@@ -416,14 +416,14 @@ describe("meteredBillingService", () => {
         where: {
           tenantId: "tenant-1",
           metric: "api_calls",
-          periodStart: expect.any(Date)
+          periodStart: expect.any(Date),
         },
         defaults: {
           tenantId: "tenant-1",
           metric: "api_calls",
           periodStart: expect.any(Date),
-          count: 3
-        }
+          count: 3,
+        },
       });
       // Fresh row already carries count:3 — it must NOT be incremented again,
       // otherwise the first unit of every bucket is double-counted.
@@ -445,8 +445,8 @@ describe("meteredBillingService", () => {
     it("should truncate periodStart to the aggregation window", async () => {
       process.env["USAGE_AGGREGATION_HOURS"] = "6";
       UsageMetric.findOrCreate.mockResolvedValue([
-      { count: 0, increment: jest.fn().mockResolvedValue(undefined) },
-      true]
+        { count: 0, increment: jest.fn().mockResolvedValue(undefined) },
+        true],
       );
 
       await trackUsage("tenant-1", "api_calls", 1);
@@ -468,7 +468,7 @@ describe("meteredBillingService", () => {
       expect(logger.error).toHaveBeenCalledWith("Failed to persist usage", {
         tenantId: "tenant-1",
         metric: "api_calls",
-        error: "write failed"
+        error: "write failed",
       });
       // The in-memory counter still moved.
       expect(getStatus().storeSize).toBe(1);
@@ -480,16 +480,16 @@ describe("meteredBillingService", () => {
       const badTenantId: any = {
         toString() {
           throw new Error("bad tenant id");
-        }
+        },
       };
 
       await expect(
-        trackUsage(badTenantId, "api_calls", 1)
+        trackUsage(badTenantId, "api_calls", 1),
       ).resolves.toBeUndefined();
 
       expect(logger.error).toHaveBeenCalledWith(
         "Usage tracking failed",
-        expect.objectContaining({ metric: "api_calls", error: "bad tenant id" })
+        expect.objectContaining({ metric: "api_calls", error: "bad tenant id" }),
       );
     });
 
@@ -511,8 +511,8 @@ describe("meteredBillingService", () => {
   describe("getUsage — PostgreSQL aggregate", () => {
     it("should aggregate the raw SQL results", async () => {
       db.query.mockResolvedValue([
-      { period: "2024-01-02", total: "30" },
-      { period: "2024-01-01", total: "12" }]
+        { period: "2024-01-02", total: "30" },
+        { period: "2024-01-01", total: "12" }],
       );
 
       const result = await getUsage("tenant-1", "api_calls", { days: 7 });
@@ -523,12 +523,12 @@ describe("meteredBillingService", () => {
       // getUsage silently returned zero usage for every tenant.
       expect(db.query).toHaveBeenCalledWith(expect.stringContaining("UsageMetrics"), {
         bind: ["tenant-1", "api_calls", 7],
-        type: "SELECT"
+        type: "SELECT",
       });
       expect(result.total).toBe(42);
       expect(result.history).toEqual([
-      { period: "2024-01-02", count: 30 },
-      { period: "2024-01-01", count: 12 }]
+        { period: "2024-01-02", count: 30 },
+        { period: "2024-01-01", count: 12 }],
       );
       expect(result.current).toBe(0);
     });
@@ -548,9 +548,9 @@ describe("meteredBillingService", () => {
       await getUsage("tenant-1", "api_calls");
 
       expect(db.query.mock.calls[0][1].bind).toEqual([
-      "tenant-1",
-      "api_calls",
-      30]
+        "tenant-1",
+        "api_calls",
+        30],
       );
     });
 
@@ -582,7 +582,7 @@ describe("meteredBillingService", () => {
     const { logger } = require("../../middlewares/activityLog.middleware");
 
     const exceedingUsage = () =>
-    db.query.mockResolvedValue([{ period: "2024-03-01", total: "500" }]);
+      db.query.mockResolvedValue([{ period: "2024-03-01", total: "500" }]);
 
     // A-322: free vs paid is the tenant's plan (it read a `subscriptionId` the
     // Tenant model does not have). The suspension is marked as the system's,
@@ -599,21 +599,21 @@ describe("meteredBillingService", () => {
       expect(result).toEqual({
         enforced: true,
         violations: [
-        { metric: "api_calls", usage: 500, limit: 100, overage: 400 }]
+          { metric: "api_calls", usage: 500, limit: 100, overage: 400 }],
 
       });
       expect(tenant).toMatchObject({ status: "suspended", suspensionReason: "billing:quota", suspendedBy: null });
       expect(tenant.save).toHaveBeenCalledWith({ transaction: "txn" });
       expect(TenantSettings.upsert).toHaveBeenCalledWith(
         { tenantId: "tenant-1", key: "lifecycle_status", value: "SUSPENDED" },
-        { transaction: "txn" }
+        { transaction: "txn" },
       );
       expect(auditService.logAction).toHaveBeenCalledTimes(2);
       expect(logger.warn).toHaveBeenCalledWith("Quota exceeded", {
         tenantId: "tenant-1",
         metric: "api_calls",
         usage: 500,
-        limit: 100
+        limit: 100,
       });
     });
 
@@ -628,7 +628,7 @@ describe("meteredBillingService", () => {
       expect(result.enforced).toBe(true);
       // The returned violation carries the correctly computed overage.
       expect(result.violations).toEqual([
-      { metric: "api_calls", usage: 500, limit: 100, overage: 400 }]
+        { metric: "api_calls", usage: 500, limit: 100, overage: 400 }],
       );
       // A paid tenant is never suspended.
       expect(tenant.save).not.toHaveBeenCalled();
@@ -641,7 +641,7 @@ describe("meteredBillingService", () => {
       // fields that are correct here, deliberately NOT pinning the broken value.
       expect(logger.info).toHaveBeenCalledWith(
         "Paid tier overage - allowing",
-        expect.objectContaining({ tenantId: "tenant-1", metric: "api_calls" })
+        expect.objectContaining({ tenantId: "tenant-1", metric: "api_calls" }),
       );
     });
 
@@ -652,7 +652,7 @@ describe("meteredBillingService", () => {
 
       await expect(enforceQuotas("tenant-1")).rejects.toMatchObject({
         status: 404,
-        message: "Tenant not found"
+        message: "Tenant not found",
       });
     });
 
@@ -687,7 +687,7 @@ describe("meteredBillingService", () => {
         usage: 25,
         limit: 100,
         percentage: 25,
-        remaining: 75
+        remaining: 75,
       });
     });
 
@@ -715,12 +715,12 @@ describe("meteredBillingService", () => {
       expect(report.metrics.api_calls).toEqual({
         current: 0,
         total: 33,
-        trend: [11, 22]
+        trend: [11, 22],
       });
       expect(report.summary).toEqual({
         totalApiCalls: 33,
         totalStorageBytes: 33,
-        totalCalibrations: 33
+        totalCalibrations: 33,
       });
     });
 
@@ -728,8 +728,8 @@ describe("meteredBillingService", () => {
       db.query.mockResolvedValue(
         Array.from({ length: 10 }, (_: any, i: any) => ({
           period: `2024-03-${String(i + 1).padStart(2, "0")}`,
-          total: String(i)
-        }))
+          total: String(i),
+        })),
       );
 
       const report = await generateUsageReport("tenant-1", 30);
@@ -749,8 +749,8 @@ describe("meteredBillingService", () => {
   describe("getPlatformAnalytics — populated metrics", () => {
     it("should coerce the aggregate columns to numbers", async () => {
       UsageMetric.findAll.mockResolvedValue([
-      { metric: "api_calls", total: "1200", records: "12" },
-      { metric: "calibrations", total: "40", records: "4" }]
+        { metric: "api_calls", total: "1200", records: "12" },
+        { metric: "calibrations", total: "40", records: "4" }],
       );
 
       const analytics = await getPlatformAnalytics({ days: 7 });
@@ -758,8 +758,8 @@ describe("meteredBillingService", () => {
       expect(analytics).toEqual({
         period: 7,
         metrics: [
-        { metric: "api_calls", total: 1200, records: 12 },
-        { metric: "calibrations", total: 40, records: 4 }]
+          { metric: "api_calls", total: 1200, records: 12 },
+          { metric: "calibrations", total: 40, records: 4 }],
 
       });
     });
@@ -788,7 +788,7 @@ describe("meteredBillingService", () => {
       // the statement runs through sql(), which always passes `type: "SELECT"`.
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('DELETE FROM "UsageMetrics"'),
-        { type: "SELECT", bind: ["tenant-1", "api_calls"] }
+        { type: "SELECT", bind: ["tenant-1", "api_calls"] },
       );
       expect(UsageMetric.destroy).not.toHaveBeenCalled();
       expect(getStatus().storeSize).toBe(0);

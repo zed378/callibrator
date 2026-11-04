@@ -14,23 +14,23 @@
 // ================================================================
 
 jest.mock("../../config", () => ({
-  db: { authenticate: jest.fn() }
+  db: { authenticate: jest.fn() },
 }));
 
 jest.mock("../../services/redis.service", () => ({
-  getRedisConnection: jest.fn()
+  getRedisConnection: jest.fn(),
 }));
 
 jest.mock("amqplib", () => ({
-  connect: jest.fn()
+  connect: jest.fn(),
 }));
 
 jest.mock("../../services/iot.service", () => ({
-  connected: false
+  connected: false,
 }));
 
 jest.mock("../../services/clamAv.service", () => ({
-  isConfigured: jest.fn(() => false)
+  isConfigured: jest.fn(() => false),
 }));
 
 const amqplib = require("amqplib");
@@ -41,14 +41,13 @@ const clamAv = require("../../services/clamAv.service");
 const healthService = require("../../services/health.service");
 
 const ENV_KEYS = [
-"HEALTH_PROBE_TIMEOUT_MS",
-"HEALTH_CACHE_TTL_MS",
-"RABBITMQ_URL",
-"RABBITMQ_HOST",
-"RABBITMQ_PORT",
-"MQTT_HOST",
-"MQTT_PORT"];
-
+  "HEALTH_PROBE_TIMEOUT_MS",
+  "HEALTH_CACHE_TTL_MS",
+  "RABBITMQ_URL",
+  "RABBITMQ_HOST",
+  "RABBITMQ_PORT",
+  "MQTT_HOST",
+  "MQTT_PORT"];
 
 const originalEnv: any = {};
 
@@ -56,15 +55,15 @@ const originalEnv: any = {};
 const allDependenciesUp = () => {
   db.authenticate.mockResolvedValue(undefined);
   getRedisConnection.mockReturnValue({
-    ping: jest.fn().mockResolvedValue("PONG")
+    ping: jest.fn().mockResolvedValue("PONG"),
   });
   amqplib.connect.mockResolvedValue({
-    close: jest.fn().mockResolvedValue(undefined)
+    close: jest.fn().mockResolvedValue(undefined),
   });
 };
 
 const dependency = (report: any, name: any) =>
-report.dependencies.find((entry: any) => entry.name === name);
+  report.dependencies.find((entry: any) => entry.name === name);
 
 beforeAll(() => {
   ENV_KEYS.forEach((key: any) => {
@@ -141,7 +140,7 @@ describe("health.service — Redis probe", () => {
 
   it("reports redis unhealthy when PING answers something other than PONG", async () => {
     getRedisConnection.mockReturnValue({
-      ping: jest.fn().mockResolvedValue("LOADING")
+      ping: jest.fn().mockResolvedValue("LOADING"),
     });
 
     const result = await healthService.checkRedis();
@@ -152,7 +151,7 @@ describe("health.service — Redis probe", () => {
 
   it("reports redis unhealthy when PING throws", async () => {
     getRedisConnection.mockReturnValue({
-      ping: jest.fn().mockRejectedValue(new Error("Connection is closed."))
+      ping: jest.fn().mockRejectedValue(new Error("Connection is closed.")),
     });
 
     const result = await healthService.checkRedis();
@@ -181,7 +180,7 @@ describe("health.service — RabbitMQ probe", () => {
 
   it("stays healthy when the probe connected but hanging up failed", async () => {
     amqplib.connect.mockResolvedValue({
-      close: jest.fn().mockRejectedValue(new Error("connection already closed"))
+      close: jest.fn().mockRejectedValue(new Error("connection already closed")),
     });
 
     const result = await healthService.checkRabbitMq();
@@ -262,7 +261,7 @@ describe("health.service — MQTT probe", () => {
     iotService.connected = true;
 
     expect(healthService.checkMqtt().status).toBe(
-      healthService.STATUS.HEALTHY
+      healthService.STATUS.HEALTHY,
     );
   });
 });
@@ -301,28 +300,28 @@ describe("health.service — aggregate readiness", () => {
 
     expect(result.status).toBe(healthService.STATUS.HEALTHY);
     expect(result.dependencies.map((entry: any) => entry.name)).toEqual([
-    "postgres",
-    "redis",
-    "rabbitmq",
-    "mqtt",
-    "clamav"]
+      "postgres",
+      "redis",
+      "rabbitmq",
+      "mqtt",
+      "clamav"],
     );
     expect(typeof result.checkedAt).toBe("string");
   });
 
   it("is NOT ready when Redis is down — the defect A-15 describes", async () => {
     getRedisConnection.mockReturnValue({
-      ping: jest.fn().mockRejectedValue(new Error("Connection is closed."))
+      ping: jest.fn().mockRejectedValue(new Error("Connection is closed.")),
     });
 
     const result = await healthService.getReadiness();
 
     expect(result.status).toBe(healthService.STATUS.UNHEALTHY);
     expect(dependency(result, "redis").status).toBe(
-      healthService.STATUS.UNHEALTHY
+      healthService.STATUS.UNHEALTHY,
     );
     expect(dependency(result, "postgres").status).toBe(
-      healthService.STATUS.HEALTHY
+      healthService.STATUS.HEALTHY,
     );
     expect(await healthService.isReady({ fresh: true })).toBe(false);
   });
@@ -349,7 +348,7 @@ describe("health.service — aggregate readiness", () => {
     const result = await healthService.getReadiness();
 
     expect(dependency(result, "mqtt").status).toBe(
-      healthService.STATUS.UNHEALTHY
+      healthService.STATUS.UNHEALTHY,
     );
     expect(result.status).toBe(healthService.STATUS.HEALTHY);
     expect(await healthService.isReady({ fresh: true })).toBe(true);

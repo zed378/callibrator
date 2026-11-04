@@ -76,7 +76,7 @@ const startReceiver = async ({ secret, status = 200 }: any) => {
         event: req.headers["x-webhook-event"],
         headers: req.headers,
         body,
-        verdict
+        verdict,
       });
       const code = verdict === "ok" || verdict === "duplicate" ? nextStatus : 401;
       res.writeHead(code, { "Content-Type": "text/plain" });
@@ -111,7 +111,7 @@ const startReceiver = async ({ secret, status = 200 }: any) => {
       const res = await fetch(url, { method: "POST", headers, body: r.body });
       return res.text();
     },
-    close: () => new Promise((resolve: any) => server.close(() => resolve()))
+    close: () => new Promise((resolve: any) => server.close(() => resolve())),
   };
 };
 

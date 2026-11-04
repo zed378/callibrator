@@ -14,7 +14,7 @@
 jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").createFakeStorage());
 jest.mock("../../config", () => ({
   Sequelize: { useCLS: jest.fn() },
-  db: {}
+  db: {},
 }));
 
 // P21-15: the e-signature collaborator is outside this suite's scope; certificateEsignatures.p2115 tests it over the real models.
@@ -22,15 +22,15 @@ jest.mock("../../services/esignatureApplication.service", () => ({ autoApplyAppr
 jest.mock("../../models", () => ({
   Certificate: {
     findOne: jest.fn(),
-    update: jest.fn()
+    update: jest.fn(),
   },
   CalibrationDevice: {},
   Tenant: {},
-  User: {}
+  User: {},
 }));
 
 jest.mock("fs", () => ({
-  existsSync: jest.fn().mockReturnValue(false)
+  existsSync: jest.fn().mockReturnValue(false),
 }));
 
 jest.mock("../../utils/storagePath.util", () => (...parts: any[]) => `C:/uploads/${parts.join("/")}`);
@@ -41,12 +41,12 @@ jest.mock("crypto", () => {
     ...actual,
     createHash: jest.fn().mockReturnValue({
       update: jest.fn().mockReturnThis(),
-      digest: jest.fn().mockReturnValue("mock-hash-abc123")
+      digest: jest.fn().mockReturnValue("mock-hash-abc123"),
     }),
     createHmac: jest.fn().mockReturnValue({
       update: jest.fn().mockReturnThis(),
-      digest: jest.fn().mockReturnValue("mock-signature-xyz789")
-    })
+      digest: jest.fn().mockReturnValue("mock-signature-xyz789"),
+    }),
   };
 });
 
@@ -61,7 +61,7 @@ const {
   getVerifiedDocument,
   mintDocumentUrl,
   computeIntegrityHash,
-  computeSignature
+  computeSignature,
 } = service;
 
 // A-293 (ADR-100): the full verdict needs the certificate's own verification
@@ -70,11 +70,11 @@ const {
 // routes/certificateVerify.a293.test.ts over the real model.
 const TOKEN = "Zq3v8Xr1TtY0bN4kLmP2sW9aE6hJcF5u";
 const verifyFull = (certificateNumber: any, options: any = {}) =>
-verifyByCertificateNumber(certificateNumber, { ...options, token: TOKEN });
+  verifyByCertificateNumber(certificateNumber, { ...options, token: TOKEN });
 
 /** The token a minted capability carries. */
 const tokenFor = (certificateNumber: any) =>
-new URL(`https://h${mintDocumentUrl(certificateNumber)}`).searchParams.get("token");
+  new URL(`https://h${mintDocumentUrl(certificateNumber)}`).searchParams.get("token");
 
 describe("certificatePdf.service", () => {
   const ORIGINAL_ENV: any = { ...process.env };
@@ -112,14 +112,14 @@ describe("certificatePdf.service", () => {
         id: "c-1",
         certificateNumber: "CERT-001",
         filePath: "certificates/1758600000000-4242-aaaa.pdf",
-        fileSize: 102400
+        fileSize: 102400,
       });
 
       const result = await getStoredPdf("t-1", "c-1");
 
       expect(Certificate.findOne).toHaveBeenCalledWith({
         where: { id: "c-1", tenantId: "t-1" },
-        attributes: ["id", "certificateNumber", "filePath", "fileSize"]
+        attributes: ["id", "certificateNumber", "filePath", "fileSize"],
       });
       expect(result).toEqual({
         success: true,
@@ -127,8 +127,8 @@ describe("certificatePdf.service", () => {
         data: {
           absPath: "C:/uploads/uploads/certificates/1758600000000-4242-aaaa.pdf",
           fileName: "CERT-001.pdf",
-          fileSize: 102400
-        }
+          fileSize: 102400,
+        },
       });
     });
 
@@ -138,7 +138,7 @@ describe("certificatePdf.service", () => {
       expect(await getStoredPdf("t-1", "nope")).toEqual({
         success: false,
         status: 404,
-        message: "Certificate not found"
+        message: "Certificate not found",
       });
     });
 
@@ -156,7 +156,7 @@ describe("certificatePdf.service", () => {
       Certificate.findOne.mockResolvedValueOnce({
         id: "c-1",
         certificateNumber: "CERT-003",
-        filePath: "certificates/x.pdf"
+        filePath: "certificates/x.pdf",
       });
       fs.existsSync.mockReturnValueOnce(false);
 
@@ -171,7 +171,7 @@ describe("certificatePdf.service", () => {
       Certificate.findOne.mockResolvedValueOnce({
         id: "c-1",
         certificateNumber: "CERT/../004",
-        filePath: "../../../etc/passwd"
+        filePath: "../../../etc/passwd",
       });
 
       const result = await getStoredPdf("t-1", "c-1");
@@ -202,7 +202,7 @@ describe("certificatePdf.service", () => {
       signedByUser: { firstName: "Citra", lastName: "D" },
       signedAt: new Date("2026-01-02"),
       filePath: null,
-      ...over
+      ...over,
     });
 
     it("reads with every include required:false and paranoid off", async () => {
@@ -213,11 +213,11 @@ describe("certificatePdf.service", () => {
       const options = Certificate.findOne.mock.calls[0][0];
       expect(options).toMatchObject({ where: { certificateNumber: "CERT-100" }, paranoid: false });
       expect(options.include.map((i: any) => [i.model, i.as, i.required])).toEqual([
-      [CalibrationDevice, "device", false],
-      [Tenant, "tenant", false],
-      [User, "calibratedByUser", false],
-      [User, "approvedByUser", false],
-      [User, "signedByUser", false]]
+        [CalibrationDevice, "device", false],
+        [Tenant, "tenant", false],
+        [User, "calibratedByUser", false],
+        [User, "approvedByUser", false],
+        [User, "signedByUser", false]],
       );
       // Names only: a staff member's email is never read for a public answer.
       expect(options.include[2].attributes).toEqual(["id", "firstName", "lastName"]);
@@ -237,13 +237,13 @@ describe("certificatePdf.service", () => {
         calibratedBy: "Ani Putri",
         approvedBy: "Budi S",
         signedBy: "Citra D",
-        verifyUrl: `https://x.test/api/v1/certificates/verify/CERT-100?token=${TOKEN}`
+        verifyUrl: `https://x.test/api/v1/certificates/verify/CERT-100?token=${TOKEN}`,
       });
       expect(data.document.integrity).toEqual({
         scheme: "certificate-content-v2",
         algorithm: "SHA-256",
         hash: "mock-hash-abc123",
-        legacyHash: "mock-hash-abc123"
+        legacyHash: "mock-hash-abc123",
       });
       expect(data.integrity).toEqual(data.document.integrity);
       expect(data.integrityHash).toBe(data.document.integrity.legacyHash);
@@ -261,7 +261,7 @@ describe("certificatePdf.service", () => {
 
         expect(data.document).toBeNull();
         expect(data.integrity.hash).toBe("mock-hash-abc123");
-      }
+      },
     );
 
     it("publishes no document for a withdrawn (soft-deleted) signed certificate", async () => {
@@ -298,7 +298,7 @@ describe("certificatePdf.service", () => {
         id: "c",
         certificateNumber: "CERT-200",
         status: "revoked",
-        filePath: "certificates/a.pdf"
+        filePath: "certificates/a.pdf",
       });
       expect((await getVerifiedDocument("CERT-200", token)).status).toBe(404);
       Certificate.findOne.mockResolvedValueOnce({ id: "c", certificateNumber: "CERT-200", status: "signed", filePath: null });
@@ -320,7 +320,7 @@ describe("certificatePdf.service", () => {
       expect(await getVerifiedDocument("CERT-200", token)).toEqual({
         success: true,
         status: 200,
-        data: { absPath: "C:/uploads/uploads/certificates/a.pdf", fileName: "CERT-200.pdf" }
+        data: { absPath: "C:/uploads/uploads/certificates/a.pdf", fileName: "CERT-200.pdf" },
       });
     });
   });
@@ -342,7 +342,7 @@ describe("certificatePdf.service", () => {
         device: { name: "Micrometer", serialNumber: "SN123" },
         signedByUser: { firstName: "Bob", lastName: "Admin" },
         signedAt: new Date("2025-06-01"),
-        filePath: "/uploads/certificates/CERT-001.pdf"
+        filePath: "/uploads/certificates/CERT-001.pdf",
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -356,7 +356,7 @@ describe("certificatePdf.service", () => {
       expect(result.data.signedBy).toBe("Bob Admin");
       // ADR-042 step 4: a capability for this certificate's document, not a path.
       expect(result.data.documentUrl).toMatch(
-        /^\/api\/v1\/certificates\/verify\/CERT-001\/document\?token=\d+\./
+        /^\/api\/v1\/certificates\/verify\/CERT-001\/document\?token=\d+\./,
       );
     });
 
@@ -377,10 +377,10 @@ describe("certificatePdf.service", () => {
         tenant: { name: "Test Corp" },
         signedAt: new Date("2025-06-01"),
         filePath: "/uploads/certificates/CERT-009.pdf",
-        deletedAt: new Date("2026-09-01")
+        deletedAt: new Date("2026-09-01"),
       });
       const paranoidAware = (row: any) => async (options: any) =>
-      row.deletedAt && options.paranoid !== false ? null : row;
+        row.deletedAt && options.paranoid !== false ? null : row;
 
       it("a deleted revoked certificate still says revoked, withdrawn, and not valid", async () => {
         Certificate.findOne.mockImplementationOnce(paranoidAware(deletedRow("revoked")));
@@ -389,7 +389,7 @@ describe("certificatePdf.service", () => {
 
         expect(Certificate.findOne.mock.calls[0][0]).toMatchObject({
           where: { certificateNumber: "CERT-009" },
-          paranoid: false
+          paranoid: false,
         });
         expect(result.data).toMatchObject({
           found: true,
@@ -397,7 +397,7 @@ describe("certificatePdf.service", () => {
           status: "revoked",
           revoked: true,
           withdrawn: true,
-          documentUrl: null
+          documentUrl: null,
         });
       });
 
@@ -411,7 +411,7 @@ describe("certificatePdf.service", () => {
 
       it("a live certificate is not withdrawn", async () => {
         Certificate.findOne.mockImplementationOnce(
-          paranoidAware({ ...deletedRow("signed"), deletedAt: null })
+          paranoidAware({ ...deletedRow("signed"), deletedAt: null }),
         );
 
         const result = await verifyFull("CERT-009");
@@ -443,7 +443,7 @@ describe("certificatePdf.service", () => {
         validUntil: new Date("2027-01-01"),
         tenant: { name: "Test Corp" },
         device: null,
-        signedByUser: null
+        signedByUser: null,
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -465,7 +465,7 @@ describe("certificatePdf.service", () => {
         validUntil: new Date("2024-01-01"),
         tenant: { name: "Test Corp" },
         device: null,
-        signedByUser: null
+        signedByUser: null,
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -481,7 +481,7 @@ describe("certificatePdf.service", () => {
         certificateNumber: "CERT-005",
         verificationToken: TOKEN,
         status: "draft",
-        type: "calibration"
+        type: "calibration",
         // no standard, no tenant, no device, no validUntil, no signer
       });
 
@@ -495,7 +495,7 @@ describe("certificatePdf.service", () => {
         standard: null,
         issuedTo: null,
         device: null,
-        signedBy: null
+        signedBy: null,
       });
     });
 
@@ -505,7 +505,7 @@ describe("certificatePdf.service", () => {
         verificationToken: TOKEN,
         status: "draft",
         validUntil: new Date("2099-01-01"),
-        tenant: { name: "Acme" }
+        tenant: { name: "Acme" },
       });
 
       const result = await verifyFull("CERT-006");
@@ -518,7 +518,7 @@ describe("certificatePdf.service", () => {
       Certificate.findOne.mockResolvedValueOnce({
         certificateNumber: "CERT-007",
         verificationToken: TOKEN,
-        status: "signed"
+        status: "signed",
       });
 
       const result = await verifyFull("CERT-007", { baseUrl: "https://x.test" });
@@ -540,7 +540,7 @@ describe("certificatePdf.service", () => {
       tenant: { name: "Acme" },
       filePath:
       "/uploads/certificates/1758600000000-4242-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.pdf",
-      ...over
+      ...over,
     });
 
     it("does not publish the document of a draft certificate", async () => {
@@ -571,7 +571,7 @@ describe("certificatePdf.service", () => {
       expect(result.data.valid).toBe(true);
       // API-origin-relative: the verify page renders `${API_BASE_URL}${documentUrl}`.
       expect(result.data.documentUrl.startsWith(
-        "/api/v1/certificates/verify/CERT-20260923-ACME-0001/document?token="
+        "/api/v1/certificates/verify/CERT-20260923-ACME-0001/document?token=",
       )).toBe(true);
       // The file's own path is never published.
       expect(result.data.documentUrl).not.toContain("uploads");
@@ -635,7 +635,7 @@ describe("certificatePdf.service", () => {
       type: "calibration",
       verificationToken: TOKEN,
       device: { name: "Pump", serialNumber: "SN-8" },
-      signedByUser: { firstName: "Dewi", lastName: "S" }
+      signedByUser: { firstName: "Dewi", lastName: "S" },
     };
 
     it("a sparse certificate with no issuer: issuedTo null, and nothing identifying", async () => {
@@ -659,9 +659,9 @@ describe("certificatePdf.service", () => {
           scheme: "certificate-content-v2",
           algorithm: "SHA-256",
           hash: "mock-hash-abc123",
-          legacyHash: "mock-hash-abc123"
+          legacyHash: "mock-hash-abc123",
         },
-        disclosure: "minimal"
+        disclosure: "minimal",
       });
     });
 

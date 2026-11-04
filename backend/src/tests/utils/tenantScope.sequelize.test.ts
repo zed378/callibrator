@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Contract test for D-01 — tenant isolation on `bulkCreate` and `upsert`.
  *
@@ -28,7 +28,7 @@ const TENANT_B = "22222222-2222-4222-8222-222222222222";
 const buildDb = () => {
   const db = new Sequelize("postgres://u:p@127.0.0.1:5432/none", {
     dialect: "postgres",
-    logging: false
+    logging: false,
   });
   tenantScope.register(db);
 
@@ -40,14 +40,14 @@ const buildDb = () => {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
       tenantId: { type: DataTypes.UUID, allowNull: false },
       key: { type: DataTypes.STRING(255), allowNull: false },
-      value: { type: DataTypes.TEXT, allowNull: true }
+      value: { type: DataTypes.TEXT, allowNull: true },
     },
     {
       tableName: "tenant_settings",
       timestamps: true,
       underscored: true,
-      indexes: [{ fields: ["tenant_id", "key"], unique: true }]
-    }
+      indexes: [{ fields: ["tenant_id", "key"], unique: true }],
+    },
   );
 
   // `roles` has no tenant column at all — the seeding path in
@@ -56,9 +56,9 @@ const buildDb = () => {
     "Roles",
     {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-      name: { type: DataTypes.STRING(64), allowNull: false }
+      name: { type: DataTypes.STRING(64), allowNull: false },
     },
-    { tableName: "roles", timestamps: true, underscored: true }
+    { tableName: "roles", timestamps: true, underscored: true },
   );
 
   // Each recorded statement is the SQL text PLUS its bind values. `bulkCreate`
@@ -81,7 +81,7 @@ const buildDb = () => {
 };
 
 const asTenant = (tenantId: any, fn: any) =>
-tenantStorage.run({ tenantId, isSuperAdmin: false, isSystemTask: false }, fn);
+  tenantStorage.run({ tenantId, isSuperAdmin: false, isSystemTask: false }, fn);
 
 describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", () => {
   describe("bulkCreate", () => {
@@ -89,7 +89,7 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
       const { TenantSettings, statements } = buildDb();
 
       await asTenant(TENANT_A, () =>
-      TenantSettings.bulkCreate([{ key: "ip_allowlist", value: "[]" }])
+        TenantSettings.bulkCreate([{ key: "ip_allowlist", value: "[]" }]),
       );
 
       expect(statements).toHaveLength(1);
@@ -104,11 +104,11 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
 
       await expect(
         asTenant(TENANT_A, () =>
-        TenantSettings.bulkCreate([
-        { tenantId: TENANT_A, key: "a", value: "1" },
-        { tenantId: TENANT_B, key: "b", value: "2" }]
-        )
-        )
+          TenantSettings.bulkCreate([
+            { tenantId: TENANT_A, key: "a", value: "1" },
+            { tenantId: TENANT_B, key: "b", value: "2" }],
+          ),
+        ),
       ).rejects.toThrow("Security Violation: Attempted to bulkCreate a cross-tenant record");
 
       // Nothing at all was sent — not even the row that was legitimate.
@@ -120,8 +120,8 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
 
       await expect(
         tenantStorage.run({ tenantId: null, isSuperAdmin: false }, () =>
-        TenantSettings.bulkCreate([{ key: "a", value: "1" }])
-        )
+          TenantSettings.bulkCreate([{ key: "a", value: "1" }]),
+        ),
       ).rejects.toThrow("no resolvable tenant");
 
       expect(statements).toHaveLength(0);
@@ -133,7 +133,7 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
       // migration.service.js seeds roles from a CLI script: no CLS store at all,
       // and `roles` has no tenant column either.
       await Roles.bulkCreate([{ name: "SUPER_ADMIN" }, { name: "USER" }], {
-        ignoreDuplicates: true
+        ignoreDuplicates: true,
       });
 
       expect(statements).toHaveLength(1);
@@ -145,12 +145,12 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
       const { TenantSettings, statements } = buildDb();
 
       await tenantStorage.run({ isSystemTask: true }, () =>
-      TenantSettings.bulkCreate([{ tenantId: TENANT_B, key: "a", value: "1" }])
+        TenantSettings.bulkCreate([{ tenantId: TENANT_B, key: "a", value: "1" }]),
       );
       await asTenant(TENANT_A, () =>
-      TenantSettings.bulkCreate([{ tenantId: TENANT_B, key: "a", value: "1" }], {
-        skipTenantScope: true
-      })
+        TenantSettings.bulkCreate([{ tenantId: TENANT_B, key: "a", value: "1" }], {
+          skipTenantScope: true,
+        }),
       );
 
       expect(statements).toHaveLength(2);
@@ -164,11 +164,11 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
       const { TenantSettings, statements } = buildDb();
 
       await asTenant(TENANT_A, () =>
-      TenantSettings.upsert({
-        tenantId: TENANT_A,
-        key: "storage_credentials",
-        value: "{}"
-      })
+        TenantSettings.upsert({
+          tenantId: TENANT_A,
+          key: "storage_credentials",
+          value: "{}",
+        }),
       );
 
       expect(statements).toHaveLength(1);
@@ -182,12 +182,12 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
 
       await expect(
         asTenant(TENANT_A, () =>
-        TenantSettings.upsert({
-          tenantId: TENANT_B,
-          key: "storage_credentials",
-          value: '{"secretAccessKey":"stolen"}'
-        })
-        )
+          TenantSettings.upsert({
+            tenantId: TENANT_B,
+            key: "storage_credentials",
+            value: '{"secretAccessKey":"stolen"}',
+          }),
+        ),
       ).rejects.toThrow("Security Violation: Attempted to upsert a cross-tenant record");
 
       expect(statements).toHaveLength(0);
@@ -198,8 +198,8 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
 
       await expect(
         tenantStorage.run({ tenantId: null, isSuperAdmin: false }, () =>
-        TenantSettings.upsert({ tenantId: TENANT_B, key: "k", value: "v" })
-        )
+          TenantSettings.upsert({ tenantId: TENANT_B, key: "k", value: "v" }),
+        ),
       ).rejects.toThrow("no resolvable tenant");
 
       expect(statements).toHaveLength(0);
@@ -209,11 +209,11 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
       const { TenantSettings, statements } = buildDb();
 
       await tenantStorage.run({ isSuperAdmin: true }, () =>
-      TenantSettings.upsert({
-        tenantId: TENANT_B,
-        key: "lifecycle_status",
-        value: "SUSPENDED"
-      })
+        TenantSettings.upsert({
+          tenantId: TENANT_B,
+          key: "lifecycle_status",
+          value: "SUSPENDED",
+        }),
       );
 
       expect(statements).toHaveLength(1);
@@ -231,7 +231,7 @@ describe("tenant isolation reaches the SQL for bulkCreate and upsert (D-01)", ()
       });
 
       await asTenant(TENANT_A, () =>
-      TenantSettings.upsert({ tenantId: TENANT_A, key: "k", value: "ORIGINAL" })
+        TenantSettings.upsert({ tenantId: TENANT_A, key: "k", value: "ORIGINAL" }),
       );
 
       expect(statements[0]).toContain("ORIGINAL");

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-179 (a) — the tenant-lifecycle export returned credentials.
  *
@@ -63,7 +63,7 @@ jest.mock("../../config", () => {
 jest.mock("../../services/kms.service", () => ({
   encryptData: jest.fn((_tenantId: any, value: any) => `v1:${value}`),
   decryptData: jest.fn((_tenantId: any, value: any) => value.replace(/^v1:ENC-/, "")),
-  isEnvelope: (value: any) => typeof value === "string" && /^v[12]:/.test(value)
+  isEnvelope: (value: any) => typeof value === "string" && /^v[12]:/.test(value),
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
@@ -81,23 +81,22 @@ const asSuperAdmin = (fn: any) => tenantStorage.run({ tenantId: TENANT, isSuperA
  * one-time codes and lockout state. Hand-written (see the header).
  */
 const FORBIDDEN_USER_ATTRIBUTES = [
-"password",
-"mfaSecret",
-"mfaPendingSecret",
-"mfaPendingCreatedAt",
-"mfaLastUsedStep",
-"mfaRecoveryCodes",
-"webauthnCredentialId",
-"webauthnPublicKey",
-"webauthnSignCount",
-"otpCode",
-"otpExpiredAt",
-"otpRequestCount",
-"otpLastRequestedAt",
-"failedLoginAttempts",
-"lockedUntil",
-"passwordChangedAt"];
-
+  "password",
+  "mfaSecret",
+  "mfaPendingSecret",
+  "mfaPendingCreatedAt",
+  "mfaLastUsedStep",
+  "mfaRecoveryCodes",
+  "webauthnCredentialId",
+  "webauthnPublicKey",
+  "webauthnSignCount",
+  "otpCode",
+  "otpExpiredAt",
+  "otpRequestCount",
+  "otpLastRequestedAt",
+  "failedLoginAttempts",
+  "lockedUntil",
+  "passwordChangedAt"];
 
 /** A name that says "this is a secret or authentication state". */
 const SECRET_SHAPED = /secret|password|passwd|otp|mfa|webauthn|token|credential|recovery|hash|locked|failed/i;
@@ -115,7 +114,7 @@ const SECRETS = {
   aiKey: "sk-live-AI-API-KEY-0000",
   smtpPassword: "SMTP-PASSWORD-hunter2",
   oidcRp: "OIDC-RP-SECRET-SHA256-deadbeef",
-  mirroredAiKey: "sk-live-MIRRORED-IN-TENANTS-SETTINGS"
+  mirroredAiKey: "sk-live-MIRRORED-IN-TENANTS-SETTINGS",
 };
 
 /** A users row with EVERY column of the REAL model holding a value. */
@@ -125,10 +124,10 @@ const fullUserRow = () => {
     const key = attribute.type.key;
     row[attribute.field] =
     key === "BOOLEAN" ? true :
-    key === "INTEGER" ? 7 :
-    key === "DATE" ? new Date("2026-09-01T00:00:00Z") :
-    key === "UUID" ? USER :
-    `value-of-${attribute.fieldName}`;
+      key === "INTEGER" ? 7 :
+        key === "DATE" ? new Date("2026-09-01T00:00:00Z") :
+          key === "UUID" ? USER :
+            `value-of-${attribute.fieldName}`;
   }
   Object.assign(row, {
     id: USER,
@@ -144,7 +143,7 @@ const fullUserRow = () => {
     otp_code: SECRETS.otpCode,
     mfa_recovery_codes: [SECRETS.recoveryCode],
     is_deleted: false,
-    deleted_at: null
+    deleted_at: null,
   });
   return row;
 };
@@ -155,7 +154,7 @@ const settingRow = (key: any, value: any) => ({
   key,
   value,
   created_at: new Date("2026-09-01T00:00:00Z"),
-  updated_at: new Date("2026-09-01T00:00:00Z")
+  updated_at: new Date("2026-09-01T00:00:00Z"),
 });
 
 const tenantRow = () => ({
@@ -167,7 +166,7 @@ const tenantRow = () => ({
   status: "active",
   is_deleted: false,
   deleted_at: null,
-  settings: { ai_api_key: SECRETS.mirroredAiKey, theme: "dark" }
+  settings: { ai_api_key: SECRETS.mirroredAiKey, theme: "dark" },
 });
 
 beforeEach(() => {
@@ -178,14 +177,14 @@ beforeEach(() => {
     tenants: [tenantRow()],
     tenant_settings: [
     // Encrypted at rest; the afterFind hook decrypts them.
-    settingRow("storage_credentials", `v1:ENC-${SECRETS.s3Secret}`),
-    settingRow("ai_api_key", `v1:ENC-${SECRETS.aiKey}`),
-    // Secret by NAME (SECRET_KEY_PATTERN), stored in plaintext.
-    settingRow("smtp_password", SECRETS.smtpPassword),
-    // Redacted, not encrypted: an OIDC relying party's secret hash.
-    settingRow("oidc_rp_portal", SECRETS.oidcRp),
-    settingRow("lifecycle_status", "ACTIVE"),
-    settingRow("webhook_signing_secret", "")]
+      settingRow("storage_credentials", `v1:ENC-${SECRETS.s3Secret}`),
+      settingRow("ai_api_key", `v1:ENC-${SECRETS.aiKey}`),
+      // Secret by NAME (SECRET_KEY_PATTERN), stored in plaintext.
+      settingRow("smtp_password", SECRETS.smtpPassword),
+      // Redacted, not encrypted: an OIDC relying party's secret hash.
+      settingRow("oidc_rp_portal", SECRETS.oidcRp),
+      settingRow("lifecycle_status", "ACTIVE"),
+      settingRow("webhook_signing_secret", "")],
 
   };
 });
@@ -211,7 +210,7 @@ describe("A-179 — the tenant-lifecycle export carries no credential", () => {
       expect({ attribute, exported: keys.includes(attribute) }).toEqual({ attribute, exported: false });
     }
     expect(users[0]).toEqual(
-      expect.objectContaining({ id: USER, username: "nurse.jane", email: "jane@hospital.test" })
+      expect.objectContaining({ id: USER, username: "nurse.jane", email: "jane@hospital.test" }),
     );
   });
 
@@ -224,7 +223,7 @@ describe("A-179 — the tenant-lifecycle export carries no credential", () => {
       const column = models.User.rawAttributes[attribute].field;
       expect({ column, selected: selectList.includes(`"${column}"`) }).toEqual({
         column,
-        selected: false
+        selected: false,
       });
     }
   });
@@ -239,7 +238,7 @@ describe("A-179 — the tenant-lifecycle export carries no credential", () => {
       smtp_password: "[REDACTED]",
       oidc_rp_portal: "[REDACTED]",
       lifecycle_status: "ACTIVE",
-      webhook_signing_secret: ""
+      webhook_signing_secret: "",
     });
   });
 
@@ -272,7 +271,7 @@ describe("A-179 — the allow-list is checked against the REAL User model", () =
     for (const attribute of FORBIDDEN_USER_ATTRIBUTES) {
       expect({ attribute, isAttribute: attribute in models.User.rawAttributes }).toEqual({
         attribute,
-        isAttribute: true
+        isAttribute: true,
       });
     }
   });
@@ -283,7 +282,7 @@ describe("A-179 — the allow-list is checked against the REAL User model", () =
     // checked the day it appears.
     const secretShaped = Object.keys(models.User.rawAttributes).filter((a: any) => SECRET_SHAPED.test(a));
     expect(secretShaped).toEqual(
-      expect.arrayContaining(["password", "mfaSecret", "mfaRecoveryCodes", "otpCode", "webauthnPublicKey"])
+      expect.arrayContaining(["password", "mfaSecret", "mfaRecoveryCodes", "otpCode", "webauthnPublicKey"]),
     );
     for (const attribute of secretShaped) {
       expect({ attribute, allowed: allowed.includes(attribute) }).toEqual({ attribute, allowed: false });
@@ -292,7 +291,7 @@ describe("A-179 — the allow-list is checked against the REAL User model", () =
     for (const attribute of allowed) {
       expect({ attribute, isAttribute: attribute in models.User.rawAttributes }).toEqual({
         attribute,
-        isAttribute: true
+        isAttribute: true,
       });
     }
   });

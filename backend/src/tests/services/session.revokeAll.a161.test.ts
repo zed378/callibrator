@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-161 — session.service#revokeAllSessions revokes every live session of the
  * user it names, whatever tenant context the caller runs in.
@@ -38,7 +38,7 @@ jest.mock("../../config", () => {
   // Bind parameters ($1, $2 ...) are inlined so the statement reads as
   // PostgreSQL receives it.
   const literal = (v: any) =>
-  v === null ? "NULL" : typeof v === "boolean" || typeof v === "number" ? String(v) : `'${v instanceof Date ? "<date>" : v}'`;
+    v === null ? "NULL" : typeof v === "boolean" || typeof v === "number" ? String(v) : `'${v instanceof Date ? "<date>" : v}'`;
   db.query = async (sql: any, options: any = {}) => {
     const raw = typeof sql === "string" ? sql : sql.query;
     const bind = typeof sql === "object" && Array.isArray(sql.bind) && sql.bind || Array.isArray(options.bind) && options.bind || [];
@@ -55,7 +55,7 @@ jest.mock("../../config", () => {
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
   set: jest.fn(),
-  del: jest.fn()
+  del: jest.fn(),
 }));
 
 const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
@@ -77,7 +77,7 @@ beforeEach(() => {
 describe("A-161: revokeAllSessions is scoped by user, never by the caller's tenant", () => {
   it("a tenant-less principal that is not a super admin revokes its own sessions (was: tenant_id = NO_TENANT_UUID, nothing revoked)", async () => {
     await inContext({ tenantId: null, isSuperAdmin: false, isSystemTask: false }, () =>
-    revokeAllSessions(USER_ID, "USER_REQUESTED")
+      revokeAllSessions(USER_ID, "USER_REQUESTED"),
     );
 
     const where = whereOf(lastUpdate());
@@ -89,7 +89,7 @@ describe("A-161: revokeAllSessions is scoped by user, never by the caller's tena
 
   it("a tenant user's revocation reaches sessions whose tenant_id is NULL or another tenant (was: tenant_id = <caller's tenant>)", async () => {
     await inContext({ tenantId: TENANT, isSuperAdmin: false, isSystemTask: false }, () =>
-    revokeAllSessions(USER_ID, "PASSWORD_CHANGED")
+      revokeAllSessions(USER_ID, "PASSWORD_CHANGED"),
     );
 
     const where = whereOf(lastUpdate());
@@ -99,7 +99,7 @@ describe("A-161: revokeAllSessions is scoped by user, never by the caller's tena
 
   it("a super admin was already unaffected (its context skips the scope) and still is", async () => {
     await inContext({ tenantId: TENANT, isSuperAdmin: true, isSystemTask: false }, () =>
-    revokeAllSessions(USER_ID)
+      revokeAllSessions(USER_ID),
     );
 
     const sql = lastUpdate();
@@ -112,7 +112,7 @@ describe("A-161: revokeAllSessions is scoped by user, never by the caller's tena
     await revokeAllSessions(USER_ID, "TOKEN_MISMATCH");
 
     expect(whereOf(lastUpdate())).toBe(
-      ` WHERE "is_deleted" = false AND "user_id" = '${USER_ID}' AND "is_revoked" = false`
+      ` WHERE "is_deleted" = false AND "user_id" = '${USER_ID}' AND "is_revoked" = false`,
     );
   });
 
@@ -121,14 +121,14 @@ describe("A-161: revokeAllSessions is scoped by user, never by the caller's tena
     async (userId: any) => {
       await expect(revokeAllSessions(userId)).rejects.toThrow(/user id is required/);
       expect(mockSql.statements).toEqual([]);
-    }
+    },
   );
 });
 
 describe("A-161: revokeOtherSessions (A-141) was already scoped by user only", () => {
   it("a tenant-less principal's UPDATE carries no tenant predicate", async () => {
     await inContext({ tenantId: null, isSuperAdmin: false, isSystemTask: false }, () =>
-    revokeOtherSessions(USER_ID, "33333333-3333-4333-8333-333333333333", "MFA_DISABLED")
+      revokeOtherSessions(USER_ID, "33333333-3333-4333-8333-333333333333", "MFA_DISABLED"),
     );
 
     const where = whereOf(lastUpdate());

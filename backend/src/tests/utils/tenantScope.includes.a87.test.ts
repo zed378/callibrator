@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-87 — the tenant hooks reach includes.
  *
@@ -56,9 +56,9 @@ const asTenant = (fn: any) => tenantStorage.run({ tenantId: TENANT }, fn);
 
 /** The last row SELECT (not a count) recorded. */
 const lastSelect = () =>
-[...mockSql.statements].reverse().find((s: any) => /^SELECT (?!count\()/i.test(s));
+  [...mockSql.statements].reverse().find((s: any) => /^SELECT (?!count\()/i.test(s));
 const lastCount = () =>
-[...mockSql.statements].reverse().find((s: any) => /^SELECT count\(/i.test(s));
+  [...mockSql.statements].reverse().find((s: any) => /^SELECT count\(/i.test(s));
 
 const esc = (s: any) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const END = "(?= LEFT OUTER JOIN | INNER JOIN | WHERE | LIMIT |;|$)";
@@ -75,11 +75,11 @@ const joinOf = (sql: any, association: any) => {
   if (association.through) {
     const through = association.through.model;
     re = new RegExp(
-      `(LEFT OUTER|INNER) JOIN \\( "${esc(through.getTableName())}" AS "${esc(`${alias}->${through.name}`)}" (.*?\\) ON .*?)${END}`
+      `(LEFT OUTER|INNER) JOIN \\( "${esc(through.getTableName())}" AS "${esc(`${alias}->${through.name}`)}" (.*?\\) ON .*?)${END}`,
     );
   } else {
     re = new RegExp(
-      `(LEFT OUTER|INNER) JOIN "${esc(association.target.getTableName())}" AS "${esc(alias)}" ON (.*?)${END}`
+      `(LEFT OUTER|INNER) JOIN "${esc(association.target.getTableName())}" AS "${esc(alias)}" ON (.*?)${END}`,
     );
   }
   const match = sql.match(re);
@@ -114,10 +114,9 @@ for (const source of allModels) {
 }
 
 const VARIANTS: any = [
-["implicit (no required, no where)", (as: any) => ({ association: as })],
-["required: false", (as: any) => ({ association: as, required: false })],
-["required: true", (as: any) => ({ association: as, required: true })]];
-
+  ["implicit (no required, no where)", (as: any) => ({ association: as })],
+  ["required: false", (as: any) => ({ association: as, required: false })],
+  ["required: true", (as: any) => ({ association: as, required: true })]];
 
 describe("A-87 Part 1 — every association in the models barrel", () => {
   it("walks a meaningful number of associations (the barrel loaded)", () => {
@@ -155,7 +154,7 @@ describe("A-87 Part 1 — every association in the models barrel", () => {
           const throughPredicate = predicateFor(through, `${alias}->${through.name}`, TENANT);
           if (throughPredicate) {expect(scoped.on).toContain(throughPredicate);}
         }
-      }
+      },
     );
 
     it("super admin and system work add nothing: the SQL is the no-context SQL", async () => {
@@ -163,12 +162,12 @@ describe("A-87 Part 1 — every association in the models barrel", () => {
       const baseline = lastSelect();
 
       await tenantStorage.run({ tenantId: TENANT, isSuperAdmin: true }, () =>
-      source.findAll({ include: [{ association: alias }] })
+        source.findAll({ include: [{ association: alias }] }),
       );
       expect(lastSelect()).toBe(baseline);
 
       await tenantStorage.run({ tenantId: TENANT, isSystemTask: true }, () =>
-      source.findAll({ include: [{ association: alias }] })
+        source.findAll({ include: [{ association: alias }] }),
       );
       expect(lastSelect()).toBe(baseline);
     });
@@ -184,9 +183,9 @@ const { CalibrationDevice, Capa, NonConformance, User } = models;
 describe("A-87 Part 2 — named behaviours", () => {
   it("an include of a tenant-scoped model carries the tenant predicate", async () => {
     await asTenant(() =>
-    NonConformance.findAll({
-      include: [{ model: CalibrationDevice, as: "device", required: false }]
-    })
+      NonConformance.findAll({
+        include: [{ model: CalibrationDevice, as: "device", required: false }],
+      }),
     );
     const device = joinOf(lastSelect(), NonConformance.associations.device);
     expect(device.on).toContain(`"device"."tenant_id" = '${TENANT}'`);
@@ -206,7 +205,7 @@ describe("A-87 Part 2 — named behaviours", () => {
 
   it("an INNER JOIN the caller asked for stays INNER, predicate in its ON clause", async () => {
     await asTenant(() =>
-    NonConformance.findAll({ include: [{ association: "reporter", required: true }] })
+      NonConformance.findAll({ include: [{ association: "reporter", required: true }] }),
     );
     const reporter = joinOf(lastSelect(), NonConformance.associations.reporter);
     expect(reporter.type).toBe("INNER");
@@ -215,19 +214,19 @@ describe("A-87 Part 2 — named behaviours", () => {
 
   it("nested includes are scoped at every level", async () => {
     await asTenant(() =>
-    Capa.findAll({
-      include: [
-      {
-        association: "nonConformance",
-        required: false,
-        include: [{ model: CalibrationDevice, as: "device", required: false }]
-      }]
+      Capa.findAll({
+        include: [
+          {
+            association: "nonConformance",
+            required: false,
+            include: [{ model: CalibrationDevice, as: "device", required: false }],
+          }],
 
-    })
+      }),
     );
     const sql = lastSelect();
     expect(sql).toMatch(
-      new RegExp(`LEFT OUTER JOIN "calibration_devices" AS "nonConformance->device" ON .*"nonConformance->device"."tenant_id" = '${TENANT}'`)
+      new RegExp(`LEFT OUTER JOIN "calibration_devices" AS "nonConformance->device" ON .*"nonConformance->device"."tenant_id" = '${TENANT}'`),
     );
     expect(sql).toContain(`"nonConformance"."tenant_id" = '${TENANT}'`);
     expect(sql).not.toMatch(/INNER JOIN/);
@@ -236,16 +235,16 @@ describe("A-87 Part 2 — named behaviours", () => {
   it("an include's own where is kept and the tenant is forced over its tenant key", async () => {
     const OTHER = "22222222-2222-4222-8222-222222222222";
     await asTenant(() =>
-    NonConformance.findAll({
-      include: [
-      {
-        model: CalibrationDevice,
-        as: "device",
-        required: false,
-        where: { tenantId: OTHER, [Op.or]: [{ status: "active" }, { status: "inactive" }] }
-      }]
+      NonConformance.findAll({
+        include: [
+          {
+            model: CalibrationDevice,
+            as: "device",
+            required: false,
+            where: { tenantId: OTHER, [Op.or]: [{ status: "active" }, { status: "inactive" }] },
+          }],
 
-    })
+      }),
     );
     const device = joinOf(lastSelect(), NonConformance.associations.device);
     expect(device.on).toContain(`"device"."tenant_id" = '${TENANT}'`);
@@ -257,16 +256,16 @@ describe("A-87 Part 2 — named behaviours", () => {
   it("a non-plain where (sequelize.where) is AND-ed, never replaced", async () => {
     const db = NonConformance.sequelize;
     await asTenant(() =>
-    NonConformance.findAll({
-      include: [
-      {
-        model: CalibrationDevice,
-        as: "device",
-        required: false,
-        where: db.where(db.fn("lower", db.col("device.name")), "scale")
-      }]
+      NonConformance.findAll({
+        include: [
+          {
+            model: CalibrationDevice,
+            as: "device",
+            required: false,
+            where: db.where(db.fn("lower", db.col("device.name")), "scale"),
+          }],
 
-    })
+      }),
     );
     const device = joinOf(lastSelect(), NonConformance.associations.device);
     expect(device.on).toContain("lower(\"device\".\"name\") = 'scale'");
@@ -275,7 +274,7 @@ describe("A-87 Part 2 — named behaviours", () => {
 
   it("a principal with no resolvable tenant joins nothing (deny)", async () => {
     await tenantStorage.run({ tenantId: null }, () =>
-    NonConformance.findAll({ include: [{ association: "device", required: false }] })
+      NonConformance.findAll({ include: [{ association: "device", required: false }] }),
     );
     const device = joinOf(lastSelect(), NonConformance.associations.device);
     expect(device.on).toContain(`"device"."tenant_id" = '${NO_TENANT_UUID}'`);
@@ -283,7 +282,7 @@ describe("A-87 Part 2 — named behaviours", () => {
 
   it("skipTenantScope on the root options skips the includes too (mirrors the root)", async () => {
     await asTenant(() =>
-    NonConformance.findAll({ skipTenantScope: true, include: ["device"] })
+      NonConformance.findAll({ skipTenantScope: true, include: ["device"] }),
     );
     expect(lastSelect()).not.toMatch(/tenant_id" = '/);
   });
@@ -291,12 +290,12 @@ describe("A-87 Part 2 — named behaviours", () => {
   it("count and findAndCountAll scope their includes", async () => {
     await asTenant(() => NonConformance.count({ include: [{ association: "device", required: true }] }));
     expect(lastCount()).toMatch(
-      new RegExp(`INNER JOIN "calibration_devices" AS "device" ON .*"device"."tenant_id" = '${TENANT}'`)
+      new RegExp(`INNER JOIN "calibration_devices" AS "device" ON .*"device"."tenant_id" = '${TENANT}'`),
     );
 
     mockSql.statements = [];
     await asTenant(() =>
-    NonConformance.findAndCountAll({ include: [{ association: "reporter", required: true }], limit: 5 })
+      NonConformance.findAndCountAll({ include: [{ association: "reporter", required: true }], limit: 5 }),
     );
     expect(lastCount()).toContain(`"reporter"."tenant_id" = '${TENANT}'`);
     expect(lastSelect()).toContain(`"reporter"."tenant_id" = '${TENANT}'`);
@@ -305,7 +304,7 @@ describe("A-87 Part 2 — named behaviours", () => {
   it("a { model, as } include resolves the same way as an alias", async () => {
     await asTenant(() => NonConformance.findAll({ include: [{ model: User, as: "reporter", required: false }] }));
     expect(joinOf(lastSelect(), NonConformance.associations.reporter).on).toContain(
-      `"reporter"."tenant_id" = '${TENANT}'`
+      `"reporter"."tenant_id" = '${TENANT}'`,
     );
 
     // Tenant is not tenant-scoped: nothing is added to its join.
@@ -315,7 +314,7 @@ describe("A-87 Part 2 — named behaviours", () => {
 
   it("an include Sequelize cannot resolve still fails with Sequelize's own error", async () => {
     await expect(
-      asTenant(() => NonConformance.findAll({ include: [{ model: models.Vendor }] }))
+      asTenant(() => NonConformance.findAll({ include: [{ model: models.Vendor }] })),
     ).rejects.toThrow(/not associated/);
   });
 });
@@ -371,7 +370,7 @@ describe("A-87 Part 3 — through, separate, include-level opt-out", () => {
 
   it("an existing through where is kept alongside the tenant", async () => {
     await tenantStorage.run({ tenantId: T }, () =>
-    Doc.findAll({ include: [{ association: "tags", through: { where: { role: "primary" } } }] })
+      Doc.findAll({ include: [{ association: "tags", through: { where: { role: "primary" } } }] }),
     );
     expect(statements[0]).toContain("\"tags->DocTag\".\"role\" = 'primary'");
     expect(statements[0]).toContain(`"tags->DocTag"."tenant_id" = '${T}'`);
@@ -379,9 +378,9 @@ describe("A-87 Part 3 — through, separate, include-level opt-out", () => {
 
   it("a separate include runs as its own root query, scoped by the root hook", async () => {
     rowsFor = (text: any) =>
-    /FROM "docs"/.test(text) ? [Doc.build({ id: "d1", tenantId: T }, { isNewRecord: false, raw: true })] : [];
+      /FROM "docs"/.test(text) ? [Doc.build({ id: "d1", tenantId: T }, { isNewRecord: false, raw: true })] : [];
     await tenantStorage.run({ tenantId: T }, () =>
-    Doc.findAll({ include: [{ association: "notes", separate: true, include: ["tag"] }] })
+      Doc.findAll({ include: [{ association: "notes", separate: true, include: ["tag"] }] }),
     );
     expect(statements[0]).not.toContain("notes");
     const separate = statements[1];
@@ -393,22 +392,22 @@ describe("A-87 Part 3 — through, separate, include-level opt-out", () => {
 
   it("a hasMany include with a limit is separate too; with separate:false it is joined and scoped", async () => {
     rowsFor = (text: any) =>
-    /FROM "docs"/.test(text) ? [Doc.build({ id: "d1", tenantId: T }, { isNewRecord: false, raw: true })] : [];
+      /FROM "docs"/.test(text) ? [Doc.build({ id: "d1", tenantId: T }, { isNewRecord: false, raw: true })] : [];
     await tenantStorage.run({ tenantId: T }, () =>
-    Doc.findAll({ include: [{ association: "notes", limit: 2 }] })
+      Doc.findAll({ include: [{ association: "notes", limit: 2 }] }),
     );
     expect(statements[1]).toMatch(new RegExp(`WHERE .*"Note"."tenant_id" = '${T}'`));
 
     statements = [];
     await tenantStorage.run({ tenantId: T }, () =>
-    Doc.findAll({ include: [{ association: "notes", separate: false }] })
+      Doc.findAll({ include: [{ association: "notes", separate: false }] }),
     );
     expect(statements[0]).toMatch(new RegExp(`LEFT OUTER JOIN "notes" AS "notes" ON .*"notes"."tenant_id" = '${T}'`));
   });
 
   it("skipTenantScope on an include opts that include (and only it) out", async () => {
     await tenantStorage.run({ tenantId: T }, () =>
-    Doc.findAll({ include: [{ association: "notes", skipTenantScope: true }, "tags"] })
+      Doc.findAll({ include: [{ association: "notes", skipTenantScope: true }, "tags"] }),
     );
     expect(statements[0]).not.toContain("\"notes\".\"tenant_id\" = '");
     expect(statements[0]).toContain(`"tags"."tenant_id" = '${T}'`);

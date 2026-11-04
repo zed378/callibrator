@@ -41,8 +41,8 @@ jest.mock("../../config", () => ({
         }
         throw err;
       }
-    })
-  }
+    }),
+  },
 }));
 
 jest.mock("../../models", () => {
@@ -86,28 +86,28 @@ jest.mock("../../models", () => {
         remember(options, row, values);
         Object.assign(row, values);
         return [1];
-      })
+      }),
     },
     User: {},
     Role: {},
-    Tenants: { name: "Tenants" }
+    Tenants: { name: "Tenants" },
   };
 });
 
 jest.mock("../../utils/password.util", () => ({
   hashPassword: jest.fn(),
-  comparePassword: jest.fn(async (plain: any, hash: any) => hash === `hash:${plain}`)
+  comparePassword: jest.fn(async (plain: any, hash: any) => hash === `hash:${plain}`),
 }));
 
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
 jest.mock("../../services/session.service", () => ({
   createSession: jest.fn(),
-  revokeOtherSessions: jest.fn()
+  revokeOtherSessions: jest.fn(),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const otplib = require("otplib");
@@ -150,7 +150,7 @@ const makeUser = (overrides: any = {}) => {
     mfaLastUsedStep: null,
     mfaRecoveryCodes: null,
     role: null,
-    ...overrides
+    ...overrides,
   };
   row.update = jest.fn(async (patch: any, options: any) => {
     if (options && options.transaction) {
@@ -249,7 +249,7 @@ describe("A-141 — recovery code primitives (mfa.service)", () => {
 
     await expect(mfaService.consumeRecoveryCode(stale, codes[0])).resolves.toBe(false);
     expect(logger.warn).toHaveBeenCalledWith("MFA recovery code refused: used concurrently", {
-      userId: USER_ID
+      userId: USER_ID,
     });
   });
 
@@ -286,7 +286,7 @@ describe("A-141 — codes are issued when an authenticator is enabled or replace
     expect(revokeOtherSessions).not.toHaveBeenCalled();
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({ changes: { operation: "MFA_ENABLE", recoveryCodesIssued: 10 } }),
-      expect.anything()
+      expect.anything(),
     );
     // Never a code in the permanent trail.
     const trail = JSON.stringify(auditService.logAction.mock.calls.map(([entry]: any) => entry));
@@ -301,23 +301,23 @@ describe("A-141 — codes are issued when an authenticator is enabled or replace
 
     const setup = await authService.setupMfa(USER_ID, {
       currentPassword: PASSWORD,
-      code: codeAt(LIVE)
+      code: codeAt(LIVE),
     });
     setNow(NOW_S + 30);
     const result = await authService.verifyMfaSetup(USER_ID, codeAt(setup.secret, NOW_S + 30), {
-      sessionId: MY_SESSION
+      sessionId: MY_SESSION,
     });
 
     expect(result.recoveryCodes).toHaveLength(10);
     expect(await mfaService.consumeRecoveryCode(user, oldCodes[0])).toBe(false);
     expect(revokeOtherSessions).toHaveBeenCalledWith(USER_ID, MY_SESSION, "MFA_ROTATED", {
-      transaction: expect.any(Object)
+      transaction: expect.any(Object),
     });
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({
-        changes: { operation: "MFA_ROTATE", recoveryCodesIssued: 10, otherSessionsRevoked: 3 }
+        changes: { operation: "MFA_ROTATE", recoveryCodesIssued: 10, otherSessionsRevoked: 3 },
       }),
-      expect.anything()
+      expect.anything(),
     );
   });
 });
@@ -329,7 +329,7 @@ describe("A-141 — a recovery code at the MFA sign-in step", () => {
     const user = makeUser({ mfaRecoveryCodes: mfaService.hashRecoveryCodes(USER_ID, codes) });
 
     const result = await authService.loginMfa(USER_ID, undefined, "10.0.0.1", "ua", {
-      recoveryCode: codes[2].toLowerCase()
+      recoveryCode: codes[2].toLowerCase(),
     });
 
     expect(result.status).toBe(200);
@@ -339,14 +339,14 @@ describe("A-141 — a recovery code at the MFA sign-in step", () => {
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "LOGIN",
-        changes: { method: "password+recovery_code", recoveryCodesRemaining: 9 }
+        changes: { method: "password+recovery_code", recoveryCodesRemaining: 9 },
       }),
-      expect.anything()
+      expect.anything(),
     );
 
     createSession.mockClear();
     await expect(
-      authService.loginMfa(USER_ID, undefined, "10.0.0.1", "ua", { recoveryCode: codes[2] })
+      authService.loginMfa(USER_ID, undefined, "10.0.0.1", "ua", { recoveryCode: codes[2] }),
     ).rejects.toMatchObject({ status: 401, message: "Invalid MFA code" });
     expect(createSession).not.toHaveBeenCalled();
   });
@@ -356,8 +356,8 @@ describe("A-141 — a recovery code at the MFA sign-in step", () => {
 
     await expect(
       authService.loginMfa(USER_ID, undefined, "10.0.0.1", "ua", {
-        recoveryCode: mfaService.createRecoveryCodes()[0]
-      })
+        recoveryCode: mfaService.createRecoveryCodes()[0],
+      }),
     ).rejects.toMatchObject({ status: 401, message: "Invalid MFA code" });
     expect(createSession).not.toHaveBeenCalled();
     expect(auditService.logAction).not.toHaveBeenCalled();
@@ -369,13 +369,13 @@ describe("A-141 — a recovery code at the MFA sign-in step", () => {
     auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
 
     await expect(
-      authService.loginMfa(USER_ID, undefined, "10.0.0.1", "ua", { recoveryCode: codes[0] })
+      authService.loginMfa(USER_ID, undefined, "10.0.0.1", "ua", { recoveryCode: codes[0] }),
     ).rejects.toThrow("audit insert failed");
     expect(user.mfaRecoveryCodes).toHaveLength(10);
 
     // ...so the same code still works once the audit trail is back.
     await expect(
-      authService.loginMfa(USER_ID, undefined, "10.0.0.1", "ua", { recoveryCode: codes[0] })
+      authService.loginMfa(USER_ID, undefined, "10.0.0.1", "ua", { recoveryCode: codes[0] }),
     ).resolves.toMatchObject({ status: 200 });
   });
 
@@ -387,7 +387,7 @@ describe("A-141 — a recovery code at the MFA sign-in step", () => {
     expect(result.data).toMatchObject({ usedRecoveryCode: false, mfaRecoveryCodesRemaining: 2 });
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({ changes: { method: "password+totp" } }),
-      expect.anything()
+      expect.anything(),
     );
   });
 
@@ -395,7 +395,7 @@ describe("A-141 — a recovery code at the MFA sign-in step", () => {
     makeUser();
 
     await expect(
-      authService.loginMfa(USER_ID, codeAt(LIVE), "10.0.0.1", "ua", { recoveryCode: "" })
+      authService.loginMfa(USER_ID, codeAt(LIVE), "10.0.0.1", "ua", { recoveryCode: "" }),
     ).resolves.toMatchObject({ status: 200 });
   });
 });
@@ -408,13 +408,13 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
     const user = makeUser({
       mfaPendingSecret: "PENDINGPENDINGPENDINGPENDINGPEND",
       mfaPendingCreatedAt: new Date(),
-      mfaRecoveryCodes: ["h1"]
+      mfaRecoveryCodes: ["h1"],
     });
 
     const result = await authService.disableMfa(
       USER_ID,
       { currentPassword: PASSWORD, code: codeAt(LIVE) },
-      ctx
+      ctx,
     );
 
     expect(result).toEqual({ success: true, message: "MFA disabled", otherSessionsRevoked: 3 });
@@ -424,10 +424,10 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
       mfaPendingSecret: null,
       mfaPendingCreatedAt: null,
       mfaLastUsedStep: null,
-      mfaRecoveryCodes: null
+      mfaRecoveryCodes: null,
     });
     expect(revokeOtherSessions).toHaveBeenCalledWith(USER_ID, MY_SESSION, "MFA_DISABLED", {
-      transaction: expect.any(Object)
+      transaction: expect.any(Object),
     });
     expect(auditService.logAction).toHaveBeenCalledWith(
       {
@@ -438,9 +438,9 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
         resourceId: USER_ID,
         changes: { operation: "MFA_DISABLE", method: "totp", otherSessionsRevoked: 3 },
         ipAddress: "203.0.113.9",
-        userAgent: "jest"
+        userAgent: "jest",
       },
-      { transaction: expect.any(Object) }
+      { transaction: expect.any(Object) },
     );
     expect(JSON.stringify(auditService.logAction.mock.calls.map(([entry]: any) => entry))).not.toContain(LIVE);
 
@@ -448,7 +448,7 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
     setNow(NOW_S + 30);
     await expect(authService.loginMfa(USER_ID, codeAt(LIVE, NOW_S + 30))).rejects.toMatchObject({
       status: 400,
-      message: "MFA is not enabled for this account"
+      message: "MFA is not enabled for this account",
     });
   });
 
@@ -460,16 +460,16 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
     const result = await authService.disableMfa(
       USER_ID,
       { currentPassword: PASSWORD, recoveryCode: codes[1] },
-      ctx
+      ctx,
     );
 
     expect(result.success).toBe(true);
     expect(user.mfaEnabled).toBe(false);
     expect(auditService.logAction).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        changes: { operation: "MFA_DISABLE", method: "recovery_code", otherSessionsRevoked: 3 }
+        changes: { operation: "MFA_DISABLE", method: "recovery_code", otherSessionsRevoked: 3 },
       }),
-      expect.anything()
+      expect.anything(),
     );
   });
 
@@ -478,14 +478,14 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
     const code = codeAt(LIVE);
 
     await expect(
-      authService.disableMfa(USER_ID, { currentPassword: "guess", code }, ctx)
+      authService.disableMfa(USER_ID, { currentPassword: "guess", code }, ctx),
     ).rejects.toMatchObject({ status: 400, message: "Current password or MFA code is incorrect" });
     expect(user.mfaLastUsedStep).toBeNull();
     expect(user.mfaEnabled).toBe(true);
 
     // The same code still disables with the right password.
     await expect(
-      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code }, ctx)
+      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code }, ctx),
     ).resolves.toMatchObject({ success: true });
   });
 
@@ -495,14 +495,14 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
     const wrong = String((Number(good) + 1) % 1000000).padStart(6, "0");
 
     await expect(
-      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code: wrong }, ctx)
+      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code: wrong }, ctx),
     ).rejects.toMatchObject({ status: 400, message: "Current password or MFA code is incorrect" });
     await expect(
       authService.disableMfa(
         USER_ID,
         { currentPassword: PASSWORD, recoveryCode: mfaService.createRecoveryCodes()[0] },
-        ctx
-      )
+        ctx,
+      ),
     ).rejects.toMatchObject({ status: 400, message: "Current password or MFA code is incorrect" });
     expect(user.mfaEnabled).toBe(true);
     expect(user.mfaSecret).toBe(LIVE);
@@ -516,7 +516,7 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
     await authService.loginMfa(USER_ID, code, "10.0.0.1", "ua");
 
     await expect(
-      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code }, ctx)
+      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code }, ctx),
     ).rejects.toMatchObject({ status: 400 });
     expect(user.mfaEnabled).toBe(true);
   });
@@ -526,7 +526,7 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
     auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
 
     await expect(
-      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code: codeAt(LIVE) }, ctx)
+      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code: codeAt(LIVE) }, ctx),
     ).rejects.toThrow("audit insert failed");
     expect(user.mfaEnabled).toBe(true);
     expect(user.mfaSecret).toBe(LIVE);
@@ -534,14 +534,14 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
   });
 
   (it.each([
-  [{}, "no re-authentication"],
-  [{ currentPassword: PASSWORD }, "a password alone"],
-  [{ code: "123456" }, "a code alone"]]
+    [{}, "no re-authentication"],
+    [{ currentPassword: PASSWORD }, "a password alone"],
+    [{ code: "123456" }, "a code alone"]],
   ) as any)("%j (%s) is a 400 that says what is needed", async (reauth: any) => {
     makeUser();
     await expect(authService.disableMfa(USER_ID, reauth, ctx)).rejects.toMatchObject({
       status: 400,
-      message: "Current password and an MFA or recovery code are required"
+      message: "Current password and an MFA or recovery code are required",
     });
   });
 
@@ -553,7 +553,7 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
   it("an account without MFA is a 409; an unknown user a 404", async () => {
     makeUser({ mfaEnabled: false, mfaSecret: null });
     await expect(
-      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code: "123456" }, ctx)
+      authService.disableMfa(USER_ID, { currentPassword: PASSWORD, code: "123456" }, ctx),
     ).rejects.toMatchObject({ status: 409, message: "MFA is not enabled for this account" });
 
     Users.findByPk.mockResolvedValueOnce(null);
@@ -571,7 +571,7 @@ describe("A-141 — POST /auth/mfa/disable (authService.disableMfa)", () => {
     expect(auditService.logAction).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(
       "Credential change not audited: the user has no tenant",
-      { userId: USER_ID, operation: "MFA_DISABLE" }
+      { userId: USER_ID, operation: "MFA_DISABLE" },
     );
   });
 });

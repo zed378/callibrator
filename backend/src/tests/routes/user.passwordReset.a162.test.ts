@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-162 — POST /users/:userId/password/reset: a tenant administrator replaces
  * another user's password with a random temporary one, shown once.
@@ -35,7 +35,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
@@ -55,49 +55,49 @@ jest.mock("../../config", () => ({
             Object.assign(row, prior);
           }
           tx.finished = "rollback";
-        }
+        },
       };
       return tx;
-    })
-  }
+    }),
+  },
 }));
 
 jest.mock("../../models", () => {
   // Not tenant-scoped, like the fixture: the service's own
   // assertSameTenantOrNotFound is what is under test for the foreign row.
   const users: any = {
-    findByPk: jest.fn(async (id: any) => mockFx.rows.get(id) || null)
+    findByPk: jest.fn(async (id: any) => mockFx.rows.get(id) || null),
   };
   return {
     Tenants: { findByPk: (...args: any[]) => mockFx.current.Tenants.findByPk(...args) },
     User: users,
     Users: users,
     Roles: { name: "Roles" },
-    Role: { name: "Roles" }
+    Role: { name: "Roles" },
   };
 });
 
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
   enforceSeatQuota: () => (_req: any, _res: any, next: any) => next(),
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../utils/upload.util", () => ({
   upload: () => (_req: any, _res: any, next: any) => next(),
   deleteUpload: jest.fn(),
-  getUploadUrl: jest.fn()
+  getUploadUrl: jest.fn(),
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../services/session.service", () => ({
-  revokeOtherSessions: jest.fn()
+  revokeOtherSessions: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -108,57 +108,57 @@ const { ROLE_NAMES } = require("../../constants");
 const router = require("../../routes/api/user.route");
 
 const http = (url: any): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload, headers: this.headers });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    headers: {},
-    setHeader(name: any, value: any) {
-      this.headers[name.toLowerCase()] = value;
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const req: any = {
-    method: "POST",
-    url,
-    originalUrl: "/api/v1/users" + url,
-    body: {},
-    query: {},
-    params: {},
-    headers: { "user-agent": "jest" },
-    ip: "203.0.113.9",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload, headers: this.headers });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      headers: {},
+      setHeader(name: any, value: any) {
+        this.headers[name.toLowerCase()] = value;
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const req: any = {
+      method: "POST",
+      url,
+      originalUrl: "/api/v1/users" + url,
+      body: {},
+      query: {},
+      params: {},
+      headers: { "user-agent": "jest" },
+      ip: "203.0.113.9",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 // Seed-shaped grants: the admin roles and the technician hold `users` write.
 const MATRIX: any = {
   [ROLE_NAMES.HEALTCARE_ADMIN]: { Users: ["write"], users: ["write"] },
   [ROLE_NAMES.TECHNICIAN]: { Users: ["write"], users: ["write"] },
-  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"] }
+  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"] },
 };
 
 const { comparePassword, hashPassword } = require("../../utils/password.util");
@@ -170,7 +170,7 @@ const MFA_ON = Object.freeze({
   mfaPendingSecret: null,
   mfaPendingCreatedAt: null,
   mfaLastUsedStep: 59674800,
-  mfaRecoveryCodes: ["h1", "h2"]
+  mfaRecoveryCodes: ["h1", "h2"],
 });
 
 let OLD_HASH: any;
@@ -190,7 +190,7 @@ const rowFor = (principal: any, overrides: any = {}) => {
     mustChangePassword: false,
     failedLoginAttempts: 4,
     lockedUntil: new Date("2099-01-01T00:00:00Z"),
-    ...overrides
+    ...overrides,
   };
   row.update = jest.fn(async (values: any, options: any = {}) => {
     if (options.transaction) {
@@ -218,7 +218,7 @@ beforeEach(() => {
     byRoleId.set(fx.principal(fx.tenantB, role).role.id, MATRIX[role]);
   }
   RolesService.getRolePermissionsMatrix.mockImplementation(
-    async (roleId: any) => byRoleId.get(roleId) || {}
+    async (roleId: any) => byRoleId.get(roleId) || {},
   );
   revokeOtherSessions.mockResolvedValue(2);
   auditService.logAction.mockResolvedValue({ id: "audit-1" });
@@ -241,7 +241,7 @@ describe("A-162 — POST /users/:userId/password/reset", () => {
       mustChangePassword: true,
       // A-215: it stops signing in after 72 hours.
       temporaryPasswordExpiresAt: expect.any(Date),
-      sessionsRevoked: 2
+      sessionsRevoked: 2,
     });
     // Only the hash is stored, and it is the hash of what was shown.
     expect(target.password).not.toBe(temporaryPassword);
@@ -253,10 +253,10 @@ describe("A-162 — POST /users/:userId/password/reset", () => {
       lockedUntil: null,
       // The second factor stays: the temporary password alone does not sign in.
       mfaEnabled: true,
-      mfaSecret: MFA_ON.mfaSecret
+      mfaSecret: MFA_ON.mfaSecret,
     });
     expect(revokeOtherSessions).toHaveBeenCalledWith(target.id, null, "PASSWORD_ADMIN_RESET", {
-      transaction: expect.any(Object)
+      transaction: expect.any(Object),
     });
     const [entry, options] = auditService.logAction.mock.calls[0];
     expect(entry).toEqual({
@@ -270,10 +270,10 @@ describe("A-162 — POST /users/:userId/password/reset", () => {
         sessionsRevoked: 2,
         firstLoginChangeRequired: true,
         // A-215: when the temporary password stops signing in.
-        firstLoginChangeDeadline: expect.stringMatching(/^\d{4}-\d\d-\d\dT/)
+        firstLoginChangeDeadline: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
       },
       ipAddress: "203.0.113.9",
-      userAgent: "jest"
+      userAgent: "jest",
     });
     expect(options.transaction.finished).toBe("commit");
     const serialized = JSON.stringify(entry);
@@ -360,7 +360,7 @@ describe("A-162 — POST /users/:userId/password/reset", () => {
     currentUser = { ...named, role: { ...named.role, roleLevel: undefined } };
     RolesService.getRolePermissionsMatrix.mockImplementation(async () => ({
       Users: ["write"],
-      users: ["write"]
+      users: ["write"],
     }));
     const target = rowFor(fx.principal(fx.tenantA, ROLE_NAMES.USER));
 
@@ -401,12 +401,12 @@ describe("A-162 — userService.resetUserPassword refuses on its own (defence in
       resetBy: admin.id,
       actorIsSuperAdmin: false,
       actorTenantId: fx.tenantA.id,
-      actorRoleLevel: admin.role.roleLevel
+      actorRoleLevel: admin.role.roleLevel,
     };
 
     const missing = userService.
-    resetUserPassword({ ...actor, userId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }).
-    catch((e: any) => e);
+      resetUserPassword({ ...actor, userId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }).
+      catch((e: any) => e);
     const cross = userService.resetUserPassword({ ...actor, userId: foreign.id }).catch((e: any) => e);
 
     expect(await missing).toEqual({ status: 404, message: "User not found" });
@@ -419,7 +419,7 @@ describe("A-162 — userService.resetUserPassword refuses on its own (defence in
     db.transaction.mockRejectedValueOnce(new Error("pool exhausted"));
 
     await expect(
-      userService.resetUserPassword({ userId: "x", resetBy: "y", actorIsSuperAdmin: true })
+      userService.resetUserPassword({ userId: "x", resetBy: "y", actorIsSuperAdmin: true }),
     ).rejects.toEqual({ status: 500, message: "pool exhausted" });
   });
 
@@ -428,7 +428,7 @@ describe("A-162 — userService.resetUserPassword refuses on its own (defence in
     Users.findByPk.mockRejectedValueOnce(Object.create(Error.prototype));
 
     await expect(
-      userService.resetUserPassword({ userId: "x", resetBy: "y", actorIsSuperAdmin: true })
+      userService.resetUserPassword({ userId: "x", resetBy: "y", actorIsSuperAdmin: true }),
     ).rejects.toEqual({ status: 500, message: "Internal server error" });
   });
 

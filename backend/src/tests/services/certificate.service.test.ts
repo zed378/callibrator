@@ -7,7 +7,7 @@ const mockStatus: any = {
   PENDING_APPROVAL: "pending_approval",
   APPROVED: "approved",
   SIGNED: "signed",
-  REVOKED: "revoked"
+  REVOKED: "revoked",
 };
 
 // A-41: mutations run in a managed transaction and audit through logAction.
@@ -16,20 +16,20 @@ const mockStatus: any = {
 // D-22 (ADR-070): a parent's delete soft-deletes its attachments through
 // attachment.service, in the parent's transaction.
 jest.mock("../../services/attachment.service", () => ({
-  softDeleteForResource: jest.fn().mockResolvedValue([])
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 // A-190 — createCertificate starts the workflow inside its transaction; the
 // model layer here has no workflow models. No workflow configured.
 jest.mock("../../services/workflow.service", () => ({
   startWorkflow: jest.fn().mockResolvedValue(null),
   // A-203: no workflow pending unless a test says so.
-  findPendingInstance: jest.fn(async () => null)
+  findPendingInstance: jest.fn(async () => null),
 }));
 
 jest.mock("sequelize", () => {
@@ -41,13 +41,13 @@ jest.mock("sequelize", () => {
       in: Symbol("in"),
       like: Symbol("like"),
       gte: Symbol("gte"),
-      lte: Symbol("lte")
+      lte: Symbol("lte"),
     },
     fn: jest.fn(),
     col: jest.fn(),
     // A-157: deleteCertificate locks with Transaction.LOCK.UPDATE. The real
     // constant, so the lock assertion below checks the real value.
-    Transaction: jest.requireActual("sequelize").Transaction
+    Transaction: jest.requireActual("sequelize").Transaction,
   };
 });
 
@@ -56,7 +56,7 @@ jest.mock("sequelize", () => {
 // certificates.signSnapshot.q50.test.ts's subject, not this suite's.
 jest.mock("../../services/certificateDocument.service", () => ({
   ...jest.requireActual("../../services/certificateDocument.service"),
-  captureSignedSnapshot: jest.fn(async () => null)
+  captureSignedSnapshot: jest.fn(async () => null),
 }));
 // P21-15: the e-signature collaborator is outside this suite's scope; certificateEsignatures.p2115 tests it over the real models.
 jest.mock("../../services/esignatureApplication.service", () => ({ autoApplyApproval: jest.fn().mockResolvedValue(null), certificateMarks: jest.fn().mockResolvedValue([]) }));
@@ -69,38 +69,38 @@ jest.mock("../../models", () => ({
     findAll: jest.fn(),
     generateCertificateNumber: jest.fn(),
     countByStatus: jest.fn(),
-    STATUS: mockStatus
+    STATUS: mockStatus,
   },
   CalibrationDevice: {
-    findOne: jest.fn()
+    findOne: jest.fn(),
   },
   Tenant: {
-    findByPk: jest.fn()
+    findByPk: jest.fn(),
   },
   ESignatureRecord: {
-    create: jest.fn().mockResolvedValue({})
+    create: jest.fn().mockResolvedValue({}),
   },
   User: {
-    findByPk: jest.fn()
-  }
+    findByPk: jest.fn(),
+  },
 }));
 
 // Real signature: passIsValid(userId, password) -> { success, status, message, data: { valid } }
 jest.mock("../../services/auth.service", () => ({
-  passIsValid: jest.fn().mockResolvedValue({ data: { valid: true } })
+  passIsValid: jest.fn().mockResolvedValue({ data: { valid: true } }),
 }));
 
 // mfa.service exports a MfaService instance; verifyLogin(user, token) is
 // synchronous and returns a boolean.
 jest.mock("../../services/mfa.service", () => ({
-  verifyLogin: jest.fn()
+  verifyLogin: jest.fn(),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -129,7 +129,7 @@ const {
   submitCertificateForApproval,
   signCertificate,
   revokeCertificate,
-  getCertificateStats
+  getCertificateStats,
 } = require("../../services/certificate.service");
 
 // Ids the request schemas accept (they are uuids since P9-11 validates for real).
@@ -144,7 +144,7 @@ describe("certificate.service", () => {
     it("should fetch certificates successfully without options", async () => {
       Certificate.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: "cert-1" }],
-        count: 1
+        count: 1,
       });
 
       const result = await fetchCertificates({ tenantId: "tenant-1" });
@@ -156,7 +156,7 @@ describe("certificate.service", () => {
     it("should fetch certificates with options (deviceId, status, type, certNum, date limits, sorting)", async () => {
       Certificate.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: "cert-1" }],
-        count: 1
+        count: 1,
       });
 
       const result = await fetchCertificates({
@@ -170,7 +170,7 @@ describe("certificate.service", () => {
         sortBy: "certificate_number",
         sortOrder: "ASC",
         page: 2,
-        limit: 10
+        limit: 10,
       });
 
       expect(result.success).toBe(true);
@@ -182,12 +182,12 @@ describe("certificate.service", () => {
             status: expect.any(Object),
             type: expect.any(Object),
             certificateNumber: expect.any(Object),
-            issuedAt: expect.any(Object)
+            issuedAt: expect.any(Object),
           }),
           order: [["certificateNumber", "ASC"], ["id", "ASC"]],
           limit: 10,
-          offset: 10
-        })
+          offset: 10,
+        }),
       );
     });
 
@@ -239,11 +239,11 @@ describe("certificate.service", () => {
       await fetchCertificates({
         tenantId: "tenant-1",
         sortBy: "not_a_column",
-        sortOrder: "sideways"
+        sortOrder: "sideways",
       });
 
       expect(Certificate.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ order: [["createdAt", "DESC"], ["id", "DESC"]] })
+        expect.objectContaining({ order: [["createdAt", "DESC"], ["id", "DESC"]] }),
       );
     });
 
@@ -281,13 +281,13 @@ describe("certificate.service", () => {
   describe("createCertificate", () => {
     it("P9-11: a body the schema refuses is a 400 with the field errors, before any lookup", async () => {
       await expect(
-        createCertificate("tenant-1", "user-1", { deviceId: "dev-1", type: "repair" })
+        createCertificate("tenant-1", "user-1", { deviceId: "dev-1", type: "repair" }),
       ).rejects.toEqual({
         status: 400,
         message: "Validation failed",
         errors: [
-        { field: "deviceId", message: "Invalid GUID" },
-        { field: "type", message: 'Invalid option: expected one of "calibration"|"maintenance"|"verification"' }]
+          { field: "deviceId", message: "Invalid GUID" },
+          { field: "type", message: 'Invalid option: expected one of "calibration"|"maintenance"|"verification"' }],
 
       });
       expect(CalibrationDevice.findOne).not.toHaveBeenCalled();
@@ -308,7 +308,7 @@ describe("certificate.service", () => {
       Certificate.generateCertificateNumber.mockResolvedValueOnce("TEN-CERT-001");
       Certificate.create.mockResolvedValueOnce({
         id: "cert-1",
-        certificateNumber: "TEN-CERT-001"
+        certificateNumber: "TEN-CERT-001",
       });
 
       const result = await createCertificate("tenant-1", "user-1", { deviceId: DEV_1 });
@@ -319,8 +319,8 @@ describe("certificate.service", () => {
     });
 
     it.each([
-    ["the tenant cannot be loaded", null],
-    ["the tenant has no code", {}]]
+      ["the tenant cannot be loaded", null],
+      ["the tenant has no code", {}]],
     )("D-40: falls back to a per-tenant 'T<tenant id>' certificate-number prefix when %s", async (_case: any, tenant: any) => {
       CalibrationDevice.findOne.mockResolvedValueOnce({ id: DEV_1 });
       Tenant.findByPk.mockResolvedValueOnce(tenant);
@@ -332,7 +332,7 @@ describe("certificate.service", () => {
       // Not the shared "T" every code-less tenant used to collide on.
       expect(Certificate.generateCertificateNumber).toHaveBeenCalledWith(
         "T0A1B2C3D",
-        expect.any(Object)
+        expect.any(Object),
       );
       expect(result.status).toBe(201);
     });
@@ -341,7 +341,7 @@ describe("certificate.service", () => {
       CalibrationDevice.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expect(
-        createCertificate("tenant-1", "user-1", { deviceId: DEV_1 })
+        createCertificate("tenant-1", "user-1", { deviceId: DEV_1 }),
       ).rejects.toThrow("Db error");
     });
   });
@@ -353,7 +353,7 @@ describe("certificate.service", () => {
         message: "Validation failed",
         errors: [
         // enum-or-"" is a union, so Zod names no option here
-        { field: "status", message: "Invalid input" }]
+          { field: "status", message: "Invalid input" }],
 
       });
       expect(Certificate.findOne).not.toHaveBeenCalled();
@@ -387,13 +387,13 @@ describe("certificate.service", () => {
       const mockCert: any = {
         id: "cert-1",
         status: "draft",
-        update: jest.fn().mockResolvedValueOnce(true)
+        update: jest.fn().mockResolvedValueOnce(true),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
       const result = await updateCertificate("tenant-1", "cert-1", {
         summary: "New summary",
-        updatedBy: "user-2"
+        updatedBy: "user-2",
       });
 
       expect(result.success).toBe(true);
@@ -401,9 +401,9 @@ describe("certificate.service", () => {
       expect(mockCert.update).toHaveBeenCalledWith(
         expect.objectContaining({
           summary: "New summary",
-          updatedBy: "user-2"
+          updatedBy: "user-2",
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -411,7 +411,7 @@ describe("certificate.service", () => {
       const mockCert: any = {
         id: "cert-1",
         status: "draft",
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -419,7 +419,7 @@ describe("certificate.service", () => {
 
       expect(mockCert.update).toHaveBeenCalledWith(
         { summary: "New summary", updatedBy: null },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -433,7 +433,7 @@ describe("certificate.service", () => {
       expect(result.status).toBe(409);
       expect(result.message).toBe(
         'This certificate is "revoked" and can no longer be edited: revocation is final. ' +
-        "Issue a new certificate instead."
+        "Issue a new certificate instead.",
       );
       expect(revoked.update).not.toHaveBeenCalled();
     });
@@ -442,7 +442,7 @@ describe("certificate.service", () => {
       Certificate.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expect(
-        updateCertificate("tenant-1", "cert-1", { summary: "New summary" })
+        updateCertificate("tenant-1", "cert-1", { summary: "New summary" }),
       ).rejects.toThrow("Db error");
     });
   });
@@ -464,7 +464,7 @@ describe("certificate.service", () => {
       Certificate.findOne.mockResolvedValueOnce({
         id: "cert-1",
         status: "signed",
-        destroy
+        destroy,
       });
 
       const err = await deleteCertificate("tenant-1", "cert-1").catch((e: any) => e);
@@ -480,8 +480,8 @@ describe("certificate.service", () => {
     // `signed` was refused), and a deleted revoked certificate then read as
     // "no certificate matches" on the public verification page (F-11).
     it.each([
-    ["approved", 'This certificate is "approved" and cannot be deleted: its approval is a signed record. Revoke it with POST /certificates/:id/revoke instead.'],
-    ["revoked", 'This certificate is "revoked" and cannot be deleted: a revoked certificate is the permanent record that it was withdrawn, and its verification page goes on showing it as revoked.']]
+      ["approved", 'This certificate is "approved" and cannot be deleted: its approval is a signed record. Revoke it with POST /certificates/:id/revoke instead.'],
+      ["revoked", 'This certificate is "revoked" and cannot be deleted: a revoked certificate is the permanent record that it was withdrawn, and its verification page goes on showing it as revoked.']],
     )("A-130: refuses to delete a %s certificate with a 409 that explains the state", async (status: any, message: any) => {
       const destroy = jest.fn();
       Certificate.findOne.mockResolvedValueOnce({ id: "cert-1", status, destroy });
@@ -507,7 +507,7 @@ describe("certificate.service", () => {
       const mockCert: any = {
         id: "cert-1",
         status: "draft",
-        destroy: jest.fn().mockResolvedValueOnce(true)
+        destroy: jest.fn().mockResolvedValueOnce(true),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -521,7 +521,7 @@ describe("certificate.service", () => {
         "tenant-1",
         "Certificate",
         "cert-1",
-        expect.objectContaining({ transaction: expect.anything() })
+        expect.objectContaining({ transaction: expect.anything() }),
       );
     });
 
@@ -538,9 +538,9 @@ describe("certificate.service", () => {
         id: "cert-1",
         status:
         options.transaction === "TX" && options.lock === "UPDATE" ?
-        "approved" :
-        "pending_approval",
-        destroy
+          "approved" :
+          "pending_approval",
+        destroy,
       }));
 
       const err = await deleteCertificate("tenant-1", "cert-1").catch((e: any) => e);
@@ -548,7 +548,7 @@ describe("certificate.service", () => {
       expect(Certificate.findOne).toHaveBeenCalledWith({
         where: { id: "cert-1", tenantId: "tenant-1" },
         transaction: "TX",
-        lock: "UPDATE"
+        lock: "UPDATE",
       });
       expect(err.status).toBe(409);
       expect(err.message).toContain('This certificate is "approved" and cannot be deleted');
@@ -578,7 +578,7 @@ describe("certificate.service", () => {
         certificateNumber: "C1",
         status: "pending_approval",
         approve: jest.fn().mockResolvedValueOnce(true),
-        save: jest.fn().mockResolvedValueOnce(true)
+        save: jest.fn().mockResolvedValueOnce(true),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -607,7 +607,7 @@ describe("certificate.service", () => {
         certificateNumber: "C1",
         status: "pending_approval",
         approve: jest.fn(),
-        save: jest.fn()
+        save: jest.fn(),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
       authService.passIsValid.mockResolvedValueOnce({ data: { valid: false } });
@@ -616,8 +616,8 @@ describe("certificate.service", () => {
         approveCertificate("tenant-1", "cert-1", "user-2", {
           authMethod: "password",
           authPayload: "wrong-password",
-          meaning: "Approved"
-        })
+          meaning: "Approved",
+        }),
       ).rejects.toMatchObject({ status: 401 });
 
       expect(mockCert.approve).not.toHaveBeenCalled();
@@ -631,7 +631,7 @@ describe("certificate.service", () => {
         id: "cert-1",
         status: "pending_approval",
         approve: jest.fn(),
-        save: jest.fn()
+        save: jest.fn(),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -639,8 +639,8 @@ describe("certificate.service", () => {
         // `meaning` omitted.
         approveCertificate("tenant-1", "cert-1", "user-2", {
           authMethod: "password",
-          authPayload: "correct-password"
-        })
+          authPayload: "correct-password",
+        }),
       ).rejects.toMatchObject({ status: 400 });
 
       expect(mockCert.approve).not.toHaveBeenCalled();
@@ -653,14 +653,14 @@ describe("certificate.service", () => {
         certificateNumber: "C1",
         status: "pending_approval",
         approve: jest.fn().mockResolvedValueOnce(true),
-        save: jest.fn().mockResolvedValueOnce(true)
+        save: jest.fn().mockResolvedValueOnce(true),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
       await approveCertificate("tenant-1", "cert-1", "user-2", {
         authMethod: "password",
         authPayload: "correct-password",
-        meaning: "Reviewed and approved"
+        meaning: "Reviewed and approved",
       });
 
       expect(ESignatureRecord.create).toHaveBeenCalledWith(
@@ -671,9 +671,9 @@ describe("certificate.service", () => {
           action: "approve",
           meaning: "Reviewed and approved",
           authMethod: "password",
-          documentHash: expect.any(String)
+          documentHash: expect.any(String),
         }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -682,7 +682,7 @@ describe("certificate.service", () => {
         id: "cert-1",
         status: "draft",
         approve: jest.fn(),
-        save: jest.fn()
+        save: jest.fn(),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -690,8 +690,8 @@ describe("certificate.service", () => {
         approveCertificate("tenant-1", "cert-1", "user-2", {
           authMethod: "password",
           authPayload: "correct-password",
-          meaning: "Approved"
-        })
+          meaning: "Approved",
+        }),
       ).rejects.toMatchObject({ status: 409 });
     });
   });
@@ -708,13 +708,13 @@ describe("certificate.service", () => {
         tenantId: "tenant-1",
         status: "pending_approval",
         approve: jest.fn(),
-        save: jest.fn()
+        save: jest.fn(),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
       workflowService.findPendingInstance.mockResolvedValueOnce({
         id: "wi-1",
         currentStepOrder: 1,
-        workflow: { name: "Certificate sign-off" }
+        workflow: { name: "Certificate sign-off" },
       });
 
       const err = await approveCertificate("tenant-1", "cert-1", "user-2", REAUTH_OPTS).catch((e: any) => e);
@@ -722,13 +722,13 @@ describe("certificate.service", () => {
       expect(err).toMatchObject({ status: 409 });
       expect(err.message).toBe(
         'This certificate is in its approval workflow "Certificate sign-off" (step 1) and is approved there, ' +
-        "not directly: act on it with POST /workflows/instances/:instanceId/action. Nothing was recorded."
+        "not directly: act on it with POST /workflows/instances/:instanceId/action. Nothing was recorded.",
       );
       expect(workflowService.findPendingInstance).toHaveBeenCalledWith(
         "tenant-1",
         "Certificate",
         "cert-1",
-        expect.anything()
+        expect.anything(),
       );
       // No credential was consumed and nothing changed.
       expect(authService.passIsValid).not.toHaveBeenCalled();
@@ -742,7 +742,7 @@ describe("certificate.service", () => {
         tenantId: "tenant-1",
         status: "pending_approval",
         approve: jest.fn().mockResolvedValueOnce(true),
-        save: jest.fn().mockResolvedValueOnce(true)
+        save: jest.fn().mockResolvedValueOnce(true),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -782,7 +782,7 @@ describe("certificate.service", () => {
         id: "cert-1",
         certificateNumber: "C1",
         status: "draft",
-        submitForApproval: jest.fn().mockResolvedValueOnce(true)
+        submitForApproval: jest.fn().mockResolvedValueOnce(true),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -805,12 +805,12 @@ describe("certificate.service", () => {
     it("should throw 409 if certificate is not in draft status", async () => {
       const mockCert: any = {
         id: "cert-1",
-        status: "approved"
+        status: "approved",
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
       await expect(
-        submitCertificateForApproval("tenant-1", "cert-1")
+        submitCertificateForApproval("tenant-1", "cert-1"),
       ).rejects.toMatchObject({ status: 409 });
     });
   });
@@ -830,7 +830,7 @@ describe("certificate.service", () => {
         id: "cert-1",
         certificateNumber: "C1",
         sign: jest.fn().mockResolvedValueOnce(true),
-        save: jest.fn().mockResolvedValueOnce(true)
+        save: jest.fn().mockResolvedValueOnce(true),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -846,7 +846,7 @@ describe("certificate.service", () => {
       Certificate.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expect(
-        signCertificate("tenant-1", "cert-1", "sig", "k1", "user-2", { authMethod: "password", authPayload: "correct-password", meaning: "Signed" })
+        signCertificate("tenant-1", "cert-1", "sig", "k1", "user-2", { authMethod: "password", authPayload: "correct-password", meaning: "Signed" }),
       ).rejects.toThrow("Db error");
     });
   });
@@ -865,7 +865,7 @@ describe("certificate.service", () => {
       const mockCert: any = {
         id: "cert-1",
         certificateNumber: "C1",
-        revoke: jest.fn().mockResolvedValueOnce(true)
+        revoke: jest.fn().mockResolvedValueOnce(true),
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
@@ -880,7 +880,7 @@ describe("certificate.service", () => {
       Certificate.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expect(
-        revokeCertificate("tenant-1", "cert-1", "reason", "user-2", { authMethod: "password", authPayload: "correct-password", meaning: "Revoked" })
+        revokeCertificate("tenant-1", "cert-1", "reason", "user-2", { authMethod: "password", authPayload: "correct-password", meaning: "Revoked" }),
       ).rejects.toThrow("Db error");
     });
   });
@@ -890,13 +890,13 @@ describe("certificate.service", () => {
       Certificate.count.mockResolvedValueOnce(10);
       Certificate.countByStatus.mockResolvedValueOnce({ approved: 5, signed: 5 });
       Certificate.findAll.mockResolvedValueOnce([
-      { type: "calibration", count: "8" },
-      { type: "maintenance", count: "2" }]
+        { type: "calibration", count: "8" },
+        { type: "maintenance", count: "2" }],
       );
       Certificate.findOne.mockResolvedValueOnce({
         id: "cert-latest",
         issuedAt: new Date(),
-        device: { name: "Dev 1" }
+        device: { name: "Dev 1" },
       });
 
       const result = await getCertificateStats("tenant-1");
@@ -925,21 +925,21 @@ describe("certificate.service", () => {
       status: "pending_approval",
       digitalSignature: null,
       approve: jest.fn().mockResolvedValue(true),
-      save: jest.fn().mockResolvedValue(true)
+      save: jest.fn().mockResolvedValue(true),
     });
 
     it.each([
-    ["authMethod", { authPayload: "pw", meaning: "Approved" }],
-    ["authPayload", { authMethod: "password", meaning: "Approved" }],
-    ["meaning", { authMethod: "password", authPayload: "pw" }]]
+      ["authMethod", { authPayload: "pw", meaning: "Approved" }],
+      ["authPayload", { authMethod: "password", meaning: "Approved" }],
+      ["meaning", { authMethod: "password", authPayload: "pw" }]],
     )("rejects with 400 when %s is missing", async (_field: any, authOptions: any) => {
       Certificate.findOne.mockResolvedValueOnce(approvableCert());
 
       await expect(
-        approveCertificate("tenant-1", "cert-1", "user-2", authOptions)
+        approveCertificate("tenant-1", "cert-1", "user-2", authOptions),
       ).rejects.toMatchObject({
         status: 400,
-        message: "Missing required E-signature authentication payload."
+        message: "Missing required E-signature authentication payload.",
       });
       expect(ESignatureRecord.create).not.toHaveBeenCalled();
     });
@@ -948,7 +948,7 @@ describe("certificate.service", () => {
       Certificate.findOne.mockResolvedValueOnce(approvableCert());
 
       await expect(
-        approveCertificate("tenant-1", "cert-1", "user-2", undefined)
+        approveCertificate("tenant-1", "cert-1", "user-2", undefined),
       ).rejects.toMatchObject({ status: 400 });
       expect(ESignatureRecord.create).not.toHaveBeenCalled();
     });
@@ -961,11 +961,11 @@ describe("certificate.service", () => {
         approveCertificate("tenant-1", "cert-1", "user-2", {
           authMethod: "password",
           authPayload: "wrong-password",
-          meaning: "Approved"
-        })
+          meaning: "Approved",
+        }),
       ).rejects.toMatchObject({
         status: 401,
-        message: "Invalid password for e-signature."
+        message: "Invalid password for e-signature.",
       });
       expect(authService.passIsValid).toHaveBeenCalledWith("user-2", "wrong-password");
       expect(ESignatureRecord.create).not.toHaveBeenCalled();
@@ -979,8 +979,8 @@ describe("certificate.service", () => {
         approveCertificate("tenant-1", "cert-1", "user-2", {
           authMethod: "password",
           authPayload: "pw",
-          meaning: "Approved"
-        })
+          meaning: "Approved",
+        }),
       ).rejects.toMatchObject({ status: 401 });
     });
 
@@ -995,14 +995,14 @@ describe("certificate.service", () => {
         authPayload: "123456",
         meaning: "Approved by QA",
         ipAddress: "10.0.0.1",
-        userAgent: "jest"
+        userAgent: "jest",
       });
 
       expect(result.success).toBe(true);
       expect(User.findByPk).toHaveBeenCalledWith("user-2");
       expect(mfaService.verifyLogin).toHaveBeenCalledWith(
         { id: "user-2", mfaEnabled: true, mfaSecret: "s" },
-        "123456"
+        "123456",
       );
       expect(ESignatureRecord.create).toHaveBeenCalledWith({
         tenantId: "tenant-1",
@@ -1014,7 +1014,7 @@ describe("certificate.service", () => {
         authMethod: "mfa",
         documentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
         ipAddress: "10.0.0.1",
-        userAgent: "jest"
+        userAgent: "jest",
       }, { transaction: "TX" });
     });
 
@@ -1027,11 +1027,11 @@ describe("certificate.service", () => {
         approveCertificate("tenant-1", "cert-1", "user-2", {
           authMethod: "mfa",
           authPayload: "000000",
-          meaning: "Approved"
-        })
+          meaning: "Approved",
+        }),
       ).rejects.toMatchObject({
         status: 401,
-        message: "Invalid MFA code for e-signature."
+        message: "Invalid MFA code for e-signature.",
       });
       expect(ESignatureRecord.create).not.toHaveBeenCalled();
     });
@@ -1043,8 +1043,8 @@ describe("certificate.service", () => {
         approveCertificate("tenant-1", "cert-1", "user-2", {
           authMethod: "carrier-pigeon",
           authPayload: "coo",
-          meaning: "Approved"
-        })
+          meaning: "Approved",
+        }),
       ).rejects.toMatchObject({ status: 400, message: "Invalid auth method." });
       expect(ESignatureRecord.create).not.toHaveBeenCalled();
     });
@@ -1055,12 +1055,12 @@ describe("certificate.service", () => {
       await approveCertificate("tenant-1", "cert-1", "user-2", {
         authMethod: "password",
         authPayload: "pw",
-        meaning: "Approved"
+        meaning: "Approved",
       });
 
       expect(ESignatureRecord.create).toHaveBeenCalledWith(
         expect.objectContaining({ ipAddress: "unknown", userAgent: "unknown" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -1070,18 +1070,18 @@ describe("certificate.service", () => {
         certificateNumber: "C1",
         status: "approved",
         sign: jest.fn().mockResolvedValue(true),
-        save: jest.fn().mockResolvedValue(true)
+        save: jest.fn().mockResolvedValue(true),
       });
 
       await signCertificate("tenant-1", "cert-1", "sig", "k1", "user-2", {
         authMethod: "password",
         authPayload: "pw",
-        meaning: "Signed by approver"
+        meaning: "Signed by approver",
       });
 
       expect(ESignatureRecord.create).toHaveBeenCalledWith(
         expect.objectContaining({ action: "sign", meaning: "Signed by approver" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -1090,18 +1090,18 @@ describe("certificate.service", () => {
         id: "cert-1",
         certificateNumber: "C1",
         status: "signed",
-        revoke: jest.fn().mockResolvedValue(true)
+        revoke: jest.fn().mockResolvedValue(true),
       });
 
       await revokeCertificate("tenant-1", "cert-1", "reason", "user-2", {
         authMethod: "password",
         authPayload: "pw",
-        meaning: "Revoked"
+        meaning: "Revoked",
       });
 
       expect(ESignatureRecord.create).toHaveBeenCalledWith(
         expect.objectContaining({ action: "revoke", meaning: "Revoked" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -1111,7 +1111,7 @@ describe("certificate.service", () => {
         certificateNumber: "C1",
         status: "approved",
         sign: jest.fn().mockResolvedValue(true),
-        save: jest.fn().mockResolvedValue(true)
+        save: jest.fn().mockResolvedValue(true),
       });
       authService.passIsValid.mockResolvedValueOnce({ data: { valid: false } });
 
@@ -1119,8 +1119,8 @@ describe("certificate.service", () => {
         signCertificate("tenant-1", "cert-1", "sig", "k1", "user-2", {
           authMethod: "password",
           authPayload: "wrong",
-          meaning: "Signed"
-        })
+          meaning: "Signed",
+        }),
       ).rejects.toMatchObject({ status: 401 });
     });
   });

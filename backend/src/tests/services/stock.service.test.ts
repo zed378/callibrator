@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for stock.service.js
  */
@@ -12,14 +12,14 @@ jest.mock("sequelize", () => ({
     like: Symbol("like"),
     iLike: Symbol("iLike"), // A-320: the search matches with ILIKE
     ne: Symbol("ne"),
-    or: Symbol("or")
-  }
+    or: Symbol("or"),
+  },
 }));
 
 jest.mock("../../config", () => ({
   db: {
-    transaction: jest.fn()
-  }
+    transaction: jest.fn(),
+  },
 }));
 
 jest.mock("../../models", () => ({
@@ -27,31 +27,31 @@ jest.mock("../../models", () => ({
     findAndCountAll: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
-    findOrCreate: jest.fn()
+    findOrCreate: jest.fn(),
   },
   StockTransfer: {
     findAndCountAll: jest.fn(),
     findOne: jest.fn(),
-    create: jest.fn()
+    create: jest.fn(),
   },
   StockAdjustment: {
     findAndCountAll: jest.fn(),
-    create: jest.fn()
+    create: jest.fn(),
   },
   StockOpname: {
     findAndCountAll: jest.fn(),
     findOne: jest.fn(),
-    create: jest.fn()
+    create: jest.fn(),
   },
   Warehouse: {
-    findOne: jest.fn()
+    findOne: jest.fn(),
   },
   StorageLocation: {
-    findOne: jest.fn()
+    findOne: jest.fn(),
   },
   User: {},
   // Q-51 (ADR-100 Am. 2): the key actor is included through ApiKey.scope("includeDeleted").
-  ApiKey: { scope: jest.fn(() => "ApiKey(includeDeleted)") }
+  ApiKey: { scope: jest.fn(() => "ApiKey(includeDeleted)") },
 }));
 
 // P6-09: every quantity change audits inside its transaction.
@@ -59,18 +59,18 @@ jest.mock("../../models", () => ({
 // configured and none is pending, unless a test says otherwise.
 jest.mock("../../services/workflow.service", () => ({
   startWorkflow: jest.fn(async () => null),
-  findPendingInstance: jest.fn(async () => null)
+  findPendingInstance: jest.fn(async () => null),
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     error: jest.fn(),
-    warn: jest.fn()
-  }
+    warn: jest.fn(),
+  },
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -110,7 +110,7 @@ const {
   updateOpnameStatus,
   fetchOpnames,
   getInventoryReport,
-  exportInventoryCsv
+  exportInventoryCsv,
 } = require("../../services/stock.service");
 
 const expectRejectsWithMessage = async (promise: any, message: any) => {
@@ -132,7 +132,7 @@ const ST_1 = "44444444-4444-4444-8444-444444444444";
 
 const mockTransaction: any = () => ({
   commit: jest.fn().mockResolvedValue(undefined),
-  rollback: jest.fn().mockResolvedValue(undefined)
+  rollback: jest.fn().mockResolvedValue(undefined),
 });
 
 describe("stock.service", () => {
@@ -144,7 +144,7 @@ describe("stock.service", () => {
     it("should fetch stocks successfully with all query params", async () => {
       Stock.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: ST_1, itemName: "Item 1" }],
-        count: 1
+        count: 1,
       });
 
       const result = await fetchStocks({
@@ -153,7 +153,7 @@ describe("stock.service", () => {
         locationId: LOC_1,
         find: "search",
         page: 2,
-        limit: 10
+        limit: 10,
       });
 
       expect(result.success).toBe(true);
@@ -163,9 +163,9 @@ describe("stock.service", () => {
           where: expect.objectContaining({
             tenantId: "tenant-1",
             warehouseId: WH_1,
-            locationId: LOC_1
-          })
-        })
+            locationId: LOC_1,
+          }),
+        }),
       );
     });
 
@@ -201,8 +201,8 @@ describe("stock.service", () => {
         status: 400,
         message: "Validation failed",
         errors: [
-        { field: "itemName", message: "Too small: expected string to have >=2 characters" },
-        { field: "quantity", message: "Too small: expected number to be >=0" }]
+          { field: "itemName", message: "Too small: expected string to have >=2 characters" },
+          { field: "quantity", message: "Too small: expected number to be >=0" }],
 
       });
       expect(db.transaction).not.toHaveBeenCalled();
@@ -215,7 +215,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createStock("tenant-1", { warehouseId: WH_1, itemName: "Item" }),
-        "Warehouse not found"
+        "Warehouse not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -228,7 +228,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createStock("tenant-1", { warehouseId: WH_1, locationId: LOC_1, itemName: "Item" }),
-        "Storage location not found in this warehouse"
+        "Storage location not found in this warehouse",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -246,9 +246,9 @@ describe("stock.service", () => {
           locationId: LOC_1,
           itemName: "Item",
           sku: "SKU-1",
-          serialNumber: "SN-1"
+          serialNumber: "SN-1",
         }),
-        "Stock item with matching SKU or serial number already exists"
+        "Stock item with matching SKU or serial number already exists",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -261,7 +261,7 @@ describe("stock.service", () => {
       Stock.findOne.mockResolvedValueOnce(null); // duplicate check
       Stock.create.mockResolvedValueOnce({
         id: "st-new",
-        itemName: "Item 1"
+        itemName: "Item 1",
       });
 
       const result = await createStock("tenant-1", {
@@ -272,7 +272,7 @@ describe("stock.service", () => {
         serialNumber: "SN-1",
         quantity: 10,
         minQuantity: 2,
-        description: "Standard"
+        description: "Standard",
       });
 
       expect(result.success).toBe(true);
@@ -289,14 +289,14 @@ describe("stock.service", () => {
         itemName: "Item 1",
         warehouseId: WH_1,
         locationId: null,
-        quantity: 12
+        quantity: 12,
       });
       StockAdjustment.create.mockResolvedValueOnce({ id: "adj-open" });
 
       await createStock(
         "tenant-1",
         { warehouseId: WH_1, itemName: "Item 1", quantity: 12 },
-        { userId: "usr-1", ipAddress: "10.0.0.1" }
+        { userId: "usr-1", ipAddress: "10.0.0.1" },
       );
 
       expect(StockAdjustment.create).toHaveBeenCalledWith(
@@ -311,13 +311,13 @@ describe("stock.service", () => {
           quantityAfter: 12,
           reason: "Opening balance recorded when the stock item was created",
           adjustedBy: "usr-1",
-          apiKeyId: null // Q-51: a user, not a key
+          apiKeyId: null, // Q-51: a user, not a key
         },
-        { transaction: tx }
+        { transaction: tx },
       );
       expect(auditService.logAction.mock.calls.map(([row]: any) => [row.action, row.resourceType, row.resourceId])).toEqual([
-      ["CREATE", "Stock", "st-new"],
-      ["CREATE", "StockAdjustment", "adj-open"]]
+        ["CREATE", "Stock", "st-new"],
+        ["CREATE", "StockAdjustment", "adj-open"]],
       );
       expect(auditService.logAction.mock.calls.every(([, opts]: any) => opts.transaction === tx)).toBe(true);
     });
@@ -340,12 +340,12 @@ describe("stock.service", () => {
       Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       Stock.create.mockResolvedValueOnce({
         id: "st-new-no-loc",
-        itemName: "Item 1"
+        itemName: "Item 1",
       });
 
       const result = await createStock("tenant-1", {
         warehouseId: WH_1,
-        itemName: "Item 1"
+        itemName: "Item 1",
       });
 
       expect(result.success).toBe(true);
@@ -363,9 +363,9 @@ describe("stock.service", () => {
         createStock("tenant-1", {
           warehouseId: WH_1,
           itemName: "Item",
-          sku: "SKU-1"
+          sku: "SKU-1",
         }),
-        "Stock item with matching SKU or serial number already exists"
+        "Stock item with matching SKU or serial number already exists",
       );
     });
 
@@ -379,9 +379,9 @@ describe("stock.service", () => {
         createStock("tenant-1", {
           warehouseId: WH_1,
           itemName: "Item",
-          serialNumber: "SN-1"
+          serialNumber: "SN-1",
         }),
-        "Stock item with matching SKU or serial number already exists"
+        "Stock item with matching SKU or serial number already exists",
       );
     });
 
@@ -393,7 +393,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createStock("tenant-1", { warehouseId: WH_1, itemName: "Item 1" }),
-        "Db creation error"
+        "Db creation error",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -406,7 +406,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createStock("tenant-1", { warehouseId: WH_1, itemName: "Item 1" }),
-        "Db query error"
+        "Db query error",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -420,7 +420,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         updateStock("tenant-1", ST_1, { itemName: "Updated" }),
-        "Stock item not found"
+        "Stock item not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -436,7 +436,7 @@ describe("stock.service", () => {
         quantity: 5,
         minQuantity: 1,
         description: "Old",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
@@ -448,9 +448,9 @@ describe("stock.service", () => {
           sku: "New SKU",
           serialNumber: "New SN",
           minQuantity: 2,
-          description: "New"
+          description: "New",
         },
-        { userId: "user-1", ipAddress: "10.0.0.1" }
+        { userId: "user-1", ipAddress: "10.0.0.1" },
       );
 
       expect(result.success).toBe(true);
@@ -459,7 +459,7 @@ describe("stock.service", () => {
         sku: "New SKU",
         serialNumber: "New SN",
         minQuantity: 2,
-        description: "New"
+        description: "New",
       };
       expect(mockStock.update).toHaveBeenCalledWith(next, { transaction: tx });
       expect(auditService.logAction).toHaveBeenCalledWith(
@@ -470,10 +470,10 @@ describe("stock.service", () => {
           userId: "user-1",
           changes: {
             before: { itemName: "Old Name", sku: "Old SKU", serialNumber: "Old SN", minQuantity: 1, description: "Old" },
-            after: next
-          }
+            after: next,
+          },
         }),
-        { transaction: tx }
+        { transaction: tx },
       );
       expect(tx.commit).toHaveBeenCalled();
     });
@@ -509,13 +509,13 @@ describe("stock.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock: any = {
         id: ST_1,
-        update: jest.fn().mockRejectedValueOnce(new Error("Db update error"))
+        update: jest.fn().mockRejectedValueOnce(new Error("Db update error")),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
       await expectRejectsWithMessage(
         updateStock("tenant-1", ST_1, { itemName: "New Name" }),
-        "Db update error"
+        "Db update error",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -542,7 +542,7 @@ describe("stock.service", () => {
         warehouseId: WH_1,
         quantity: 3,
         isDeleted: false,
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
@@ -552,7 +552,7 @@ describe("stock.service", () => {
       expect(mockStock.save).toHaveBeenCalledWith({ hooks: false, transaction: tx });
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({ tenantId: "tenant-1", userId: "user-1", action: "DELETE", resourceType: "Stock", resourceId: ST_1 }),
-        { transaction: tx }
+        { transaction: tx },
       );
       expect(tx.commit).toHaveBeenCalled();
     });
@@ -563,13 +563,13 @@ describe("stock.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock: any = {
         id: ST_1,
-        save: jest.fn().mockRejectedValueOnce(new Error("Db delete error"))
+        save: jest.fn().mockRejectedValueOnce(new Error("Db delete error")),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
       await expectRejectsWithMessage(
         deleteStock("tenant-1", ST_1),
-        "Db delete error"
+        "Db delete error",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -582,7 +582,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         deleteStock("tenant-1", ST_1),
-        "Db query error"
+        "Db query error",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -596,7 +596,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createAdjustment("tenant-1", { stockId: ST_1, type: "addition", quantity: 5, reason: "Recount" }, "usr-1"),
-        "Stock item not found"
+        "Stock item not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -609,7 +609,7 @@ describe("stock.service", () => {
         warehouseId: WH_1,
         locationId: LOC_1,
         quantity: 10,
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
       StockAdjustment.create.mockResolvedValueOnce({ id: "adj-1" });
@@ -617,7 +617,7 @@ describe("stock.service", () => {
       const result = await createAdjustment(
         "tenant-1",
         { stockId: ST_1, type: "addition", quantity: 5, reason: "Excess" },
-        "usr-1"
+        "usr-1",
       );
 
       expect(result.success).toBe(true);
@@ -635,9 +635,9 @@ describe("stock.service", () => {
           quantityAfter: 15,
           reason: "Excess",
           adjustedBy: "usr-1",
-          apiKeyId: null // Q-51: a user, not a key
+          apiKeyId: null, // Q-51: a user, not a key
         },
-        { transaction: tx }
+        { transaction: tx },
       );
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -647,10 +647,10 @@ describe("stock.service", () => {
           userId: "usr-1",
           changes: {
             before: { quantity: 10 },
-            after: { stockId: ST_1, type: "addition", quantity: 15, reason: "Excess" }
-          }
+            after: { stockId: ST_1, type: "addition", quantity: 15, reason: "Excess" },
+          },
         }),
-        { transaction: tx }
+        { transaction: tx },
       );
       expect(tx.commit).toHaveBeenCalled();
     });
@@ -664,7 +664,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createAdjustment("tenant-1", { stockId: ST_1, type: "addition", quantity: 5, reason: "Excess" }, "usr-1"),
-        "audit insert failed"
+        "audit insert failed",
       );
       expect(tx.rollback).toHaveBeenCalled();
       expect(tx.commit).not.toHaveBeenCalled();
@@ -675,13 +675,13 @@ describe("stock.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock: any = {
         id: ST_1,
-        quantity: 4
+        quantity: 4,
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
       await expectRejectsWithMessage(
         createAdjustment("tenant-1", { stockId: ST_1, type: "subtraction", quantity: 5, reason: "Recount" }, "usr-1"),
-        "Insufficient stock quantity for adjustment"
+        "Insufficient stock quantity for adjustment",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -694,7 +694,7 @@ describe("stock.service", () => {
         warehouseId: WH_1,
         locationId: null,
         quantity: 10,
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
       StockAdjustment.create.mockResolvedValueOnce({ id: "adj-1" });
@@ -702,7 +702,7 @@ describe("stock.service", () => {
       const result = await createAdjustment(
         "tenant-1",
         { stockId: ST_1, type: "subtraction", quantity: 5, reason: "Recount" },
-        "usr-1"
+        "usr-1",
       );
 
       expect(result.success).toBe(true);
@@ -718,7 +718,7 @@ describe("stock.service", () => {
         warehouseId: WH_1,
         locationId: null,
         quantity: 10,
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
       StockAdjustment.create.mockResolvedValueOnce({ id: "adj-1" });
@@ -726,7 +726,7 @@ describe("stock.service", () => {
       const result = await createAdjustment(
         "tenant-1",
         { stockId: ST_1, type: "write_off", quantity: 5, reason: "Recount" },
-        "usr-1"
+        "usr-1",
       );
 
       expect(result.success).toBe(true);
@@ -742,7 +742,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createAdjustment("tenant-1", { stockId: ST_1, type: "addition", quantity: 5, reason: "Recount" }, "usr-1"),
-        "Db error"
+        "Db error",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -768,7 +768,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_1, itemName: "Item", quantity: 5 }, "usr-1"),
-        "Source and destination warehouses must be different"
+        "Source and destination warehouses must be different",
       );
     });
 
@@ -779,7 +779,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 }, "usr-1"),
-        "Source warehouse not found"
+        "Source warehouse not found",
       );
     });
 
@@ -791,7 +791,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 }, "usr-1"),
-        "Destination warehouse not found"
+        "Destination warehouse not found",
       );
     });
 
@@ -804,7 +804,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 }, "usr-1"),
-        "Insufficient stock in source warehouse"
+        "Insufficient stock in source warehouse",
       );
     });
 
@@ -819,7 +819,7 @@ describe("stock.service", () => {
       const result = await createTransfer(
         "tenant-1",
         { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item 1", quantity: 5, notes: "Transfer" },
-        "usr-1"
+        "usr-1",
       );
 
       expect(result.success).toBe(true);
@@ -835,7 +835,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 }, "usr-1"),
-        "Db error"
+        "Db error",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -871,11 +871,11 @@ describe("stock.service", () => {
           resourceId: "tf-1",
           changes: {
             before: {},
-            after: expect.objectContaining({ status: "pending", quantity: 5, workflowInstanceId: "wi-1" })
+            after: expect.objectContaining({ status: "pending", quantity: 5, workflowInstanceId: "wi-1" }),
           },
-          ipAddress: "10.0.0.1"
+          ipAddress: "10.0.0.1",
         }),
-        { transaction: tx }
+        { transaction: tx },
       );
       // The workflow and the audit row are written before the commit.
       expect(workflowService.startWorkflow.mock.invocationCallOrder[0]).toBeLessThan(tx.commit.mock.invocationCallOrder[0]);
@@ -906,7 +906,7 @@ describe("stock.service", () => {
       workflowService.findPendingInstance.mockResolvedValueOnce({
         id: "wi-1",
         currentStepOrder: 2,
-        workflow: { name: "Two-step transfer approval" }
+        workflow: { name: "Two-step transfer approval" },
       });
 
       const err = await updateTransferStatus("tenant-1", "tf-1", { status: "completed" }, "usr-1").catch((e: any) => e);
@@ -914,7 +914,7 @@ describe("stock.service", () => {
       expect(err).toMatchObject({ status: 409 });
       expect(err.message).toBe(
         'This stock transfer is awaiting approval in the workflow "Two-step transfer approval" (step 2). ' +
-        "It moves when that workflow approves it (POST /workflows/instances/:instanceId/action), not by a status change."
+        "It moves when that workflow approves it (POST /workflows/instances/:instanceId/action), not by a status change.",
       );
       expect(workflowService.findPendingInstance).toHaveBeenCalledWith("tenant-1", "StockTransfer", "tf-1", tx);
       expect(Stock.findOne).not.toHaveBeenCalled();
@@ -930,7 +930,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         updateTransferStatus("tenant-1", "tf-1", { status: "in_transit" }, "usr-1"),
-        "Stock transfer not found"
+        "Stock transfer not found",
       );
     });
 
@@ -941,7 +941,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         updateTransferStatus("tenant-1", "tf-1", { status: "cancelled" }, "usr-1"),
-        "Cannot update transfer in 'completed' status"
+        "Cannot update transfer in 'completed' status",
       );
     });
 
@@ -951,7 +951,7 @@ describe("stock.service", () => {
       const mockTransfer: any = {
         id: "tf-1",
         status: "pending",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       StockTransfer.findOne.mockResolvedValueOnce(mockTransfer);
 
@@ -959,7 +959,7 @@ describe("stock.service", () => {
       expect(result.success).toBe(true);
       expect(mockTransfer.update).toHaveBeenCalledWith(
         expect.objectContaining({ status: "in_transit" }),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -972,7 +972,7 @@ describe("stock.service", () => {
       await updateTransferStatus("tenant-1", "tf-1", { status: "cancelled" }, "usr-1");
       expect(cancelled.update).toHaveBeenCalledWith(
         { status: "cancelled", approvedBy: "usr-1" },
-        { transaction: tx1 }
+        { transaction: tx1 },
       );
 
       const tx2 = mockTransaction();
@@ -983,7 +983,7 @@ describe("stock.service", () => {
       await updateTransferStatus("tenant-1", "tf-2", { status: "in_transit" }, "usr-1");
       expect(inTransit.update).toHaveBeenCalledWith(
         { status: "in_transit", approvedBy: null },
-        { transaction: tx2 }
+        { transaction: tx2 },
       );
     });
 
@@ -996,13 +996,13 @@ describe("stock.service", () => {
         toWarehouseId: WH_2,
         itemName: "Item 1",
         quantity: 5,
-        status: "pending"
+        status: "pending",
       });
       Stock.findOne.mockResolvedValueOnce(null); // sourceStock check
 
       await expectRejectsWithMessage(
         updateTransferStatus("tenant-1", "tf-1", { status: "completed" }, "usr-1"),
-        "Insufficient stock in source warehouse to complete transfer"
+        "Insufficient stock in source warehouse to complete transfer",
       );
     });
 
@@ -1016,7 +1016,7 @@ describe("stock.service", () => {
         itemName: "Item 1",
         quantity: 5,
         status: "pending",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       const mockSourceStock: any = {
         id: "st-src",
@@ -1025,18 +1025,18 @@ describe("stock.service", () => {
         serialNumber: "SN-1",
         minQuantity: 1,
         description: "Desc",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
 
       StockTransfer.findOne.mockResolvedValueOnce(mockTransfer);
       Stock.findOne.mockResolvedValueOnce(mockSourceStock);
       Stock.findOrCreate.mockResolvedValueOnce([
-      {
-        id: "st-dest",
-        quantity: 5,
-        update: jest.fn().mockResolvedValue(undefined)
-      },
-      true // created
+        {
+          id: "st-dest",
+          quantity: 5,
+          update: jest.fn().mockResolvedValue(undefined),
+        },
+        true, // created
       ]);
 
       const result = await updateTransferStatus("tenant-1", "tf-1", { status: "completed" }, "usr-1");
@@ -1056,11 +1056,11 @@ describe("stock.service", () => {
               sourceStockId: "st-src",
               sourceQuantity: 5,
               destinationStockId: "st-dest",
-              destinationQuantity: 5
-            }
-          }
+              destinationQuantity: 5,
+            },
+          },
         }),
-        { transaction: tx }
+        { transaction: tx },
       );
       expect(tx.commit).toHaveBeenCalled();
     });
@@ -1075,24 +1075,24 @@ describe("stock.service", () => {
         itemName: "Item 1",
         quantity: 5,
         status: "pending",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       const mockSourceStock: any = {
         id: "st-src",
         quantity: 10,
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       const mockDestStock: any = {
         id: "st-dest",
         quantity: 8,
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
 
       StockTransfer.findOne.mockResolvedValueOnce(mockTransfer);
       Stock.findOne.mockResolvedValueOnce(mockSourceStock);
       Stock.findOrCreate.mockResolvedValueOnce([
-      mockDestStock,
-      false // not created, already exists
+        mockDestStock,
+        false, // not created, already exists
       ]);
 
       await updateTransferStatus("tenant-1", "tf-1", { status: "completed" }, "usr-1", { ipAddress: "10.0.0.2" });
@@ -1102,10 +1102,10 @@ describe("stock.service", () => {
           ipAddress: "10.0.0.2",
           changes: {
             before: { status: "pending", sourceQuantity: 10, destinationQuantity: 8 },
-            after: expect.objectContaining({ sourceQuantity: 5, destinationQuantity: 13 })
-          }
+            after: expect.objectContaining({ sourceQuantity: 5, destinationQuantity: 13 }),
+          },
         }),
-        { transaction: tx }
+        { transaction: tx },
       );
       expect(tx.commit).toHaveBeenCalled();
     });
@@ -1118,7 +1118,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         updateTransferStatus("tenant-1", "tf-1", { status: "in_transit" }, "usr-1"),
-        "Db error"
+        "Db error",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -1131,7 +1131,7 @@ describe("stock.service", () => {
         tenantId: "tenant-1",
         fromWarehouseId: WH_1,
         toWarehouseId: WH_2,
-        status: "completed"
+        status: "completed",
       });
       expect(result.success).toBe(true);
     });
@@ -1150,7 +1150,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createOpname("tenant-1", { warehouseId: WH_1, scheduledAt: new Date() }, "usr-1"),
-        "Warehouse not found"
+        "Warehouse not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -1164,7 +1164,7 @@ describe("stock.service", () => {
       const result = await createOpname(
         "tenant-1",
         { warehouseId: WH_1, scheduledAt: new Date(), notes: "Notes" },
-        "usr-1"
+        "usr-1",
       );
       expect(result.success).toBe(true);
       expect(result.status).toBe(201);
@@ -1179,7 +1179,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createOpname("tenant-1", { warehouseId: WH_1, scheduledAt: new Date() }, "usr-1"),
-        "Db error"
+        "Db error",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -1193,7 +1193,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         updateOpnameStatus("tenant-1", "op-1", { status: "in_progress" }, "usr-1"),
-        "Stock opname not found"
+        "Stock opname not found",
       );
     });
 
@@ -1204,7 +1204,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         updateOpnameStatus("tenant-1", "op-1", { status: "completed" }, "usr-1"),
-        "Cannot update completed stock opname"
+        "Cannot update completed stock opname",
       );
     });
 
@@ -1214,7 +1214,7 @@ describe("stock.service", () => {
       const mockOpname: any = {
         id: "op-1",
         status: "draft",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       StockOpname.findOne.mockResolvedValueOnce(mockOpname);
 
@@ -1222,7 +1222,7 @@ describe("stock.service", () => {
       expect(result.success).toBe(true);
       expect(mockOpname.update).toHaveBeenCalledWith(
         expect.objectContaining({ status: "completed" }),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -1234,7 +1234,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         updateOpnameStatus("tenant-1", "op-1", { status: "completed" }, "usr-1"),
-        "Db error"
+        "Db error",
       );
       expect(tx.rollback).toHaveBeenCalled();
     });
@@ -1256,31 +1256,30 @@ describe("stock.service", () => {
   describe("getInventoryReport", () => {
     it("should aggregate stock items, units, low stock count, and warehouse distribution successfully", async () => {
       const mockStocks: any = [
-      {
-        id: ST_1,
-        quantity: 10,
-        minQuantity: 5,
-        warehouse: { id: WH_1, name: "Warehouse 1", code: "WH1" }
-      },
-      {
-        id: "st-2",
-        quantity: 3,
-        minQuantity: 5, // low stock
-        warehouse: { id: WH_1, name: "Warehouse 1", code: "WH1" }
-      },
-      {
-        id: "st-3",
-        quantity: 15,
-        minQuantity: 10,
-        warehouse: { id: WH_2, name: "Warehouse 2", code: "WH2" }
-      },
-      {
-        id: "st-4",
-        quantity: 0,
-        minQuantity: 0,
-        warehouse: null
-      }];
-
+        {
+          id: ST_1,
+          quantity: 10,
+          minQuantity: 5,
+          warehouse: { id: WH_1, name: "Warehouse 1", code: "WH1" },
+        },
+        {
+          id: "st-2",
+          quantity: 3,
+          minQuantity: 5, // low stock
+          warehouse: { id: WH_1, name: "Warehouse 1", code: "WH1" },
+        },
+        {
+          id: "st-3",
+          quantity: 15,
+          minQuantity: 10,
+          warehouse: { id: WH_2, name: "Warehouse 2", code: "WH2" },
+        },
+        {
+          id: "st-4",
+          quantity: 0,
+          minQuantity: 0,
+          warehouse: null,
+        }];
 
       // Mock Stock.findAll
       Stock.findAll = jest.fn().mockResolvedValueOnce(mockStocks);
@@ -1307,27 +1306,26 @@ describe("stock.service", () => {
   describe("exportInventoryCsv", () => {
     it("should compile and format tenant stock levels into CSV successfully", async () => {
       const mockStocks: any = [
-      {
-        itemName: "Item A, with comma",
-        sku: 'SKU"quotes"',
-        serialNumber: "SN1",
-        quantity: 10,
-        minQuantity: 2,
-        description: "Line\nBreak",
-        warehouse: { name: "Warehouse A" },
-        location: { name: "Location A" }
-      },
-      {
-        itemName: "Item B",
-        sku: null,
-        serialNumber: null,
-        quantity: 5,
-        minQuantity: 1,
-        description: null,
-        warehouse: null,
-        location: null
-      }];
-
+        {
+          itemName: "Item A, with comma",
+          sku: 'SKU"quotes"',
+          serialNumber: "SN1",
+          quantity: 10,
+          minQuantity: 2,
+          description: "Line\nBreak",
+          warehouse: { name: "Warehouse A" },
+          location: { name: "Location A" },
+        },
+        {
+          itemName: "Item B",
+          sku: null,
+          serialNumber: null,
+          quantity: 5,
+          minQuantity: 1,
+          description: null,
+          warehouse: null,
+          location: null,
+        }];
 
       Stock.findAll = jest.fn().mockResolvedValueOnce(mockStocks);
 
@@ -1363,7 +1361,7 @@ describe("stock.service", () => {
         quantity: 5,
         minQuantity: 1,
         description: "desc",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       };
       Stock.findOne.mockResolvedValueOnce(stock);
 
@@ -1377,9 +1375,9 @@ describe("stock.service", () => {
           sku: "SKU-1",
           serialNumber: "SN-1",
           minQuantity: 1,
-          description: "desc"
+          description: "desc",
         },
-        { transaction: tx }
+        { transaction: tx },
       );
     });
 
@@ -1394,12 +1392,12 @@ describe("stock.service", () => {
       await createTransfer(
         "tenant-1",
         { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item 1", quantity: 5 },
-        "usr-1"
+        "usr-1",
       );
 
       expect(StockTransfer.create).toHaveBeenCalledWith(
         expect.objectContaining({ notes: null, status: "pending", requestedBy: "usr-1" }),
-        { transaction: tx }
+        { transaction: tx },
       );
     });
 
@@ -1419,9 +1417,9 @@ describe("stock.service", () => {
           status: "draft",
           scheduledAt,
           performedBy: "usr-1",
-          notes: null
+          notes: null,
         },
-        { transaction: tx }
+        { transaction: tx },
       );
     });
 
@@ -1434,7 +1432,7 @@ describe("stock.service", () => {
       await updateOpnameStatus("tenant-1", "op-1", { status: "completed" }, "usr-1");
       expect(completing.update).toHaveBeenCalledWith(
         { status: "completed", completedAt: expect.any(Date) },
-        { transaction: tx1 }
+        { transaction: tx1 },
       );
 
       const tx2 = mockTransaction();
@@ -1445,7 +1443,7 @@ describe("stock.service", () => {
       await updateOpnameStatus("tenant-1", "op-2", { status: "in_progress" }, "usr-1");
       expect(progressing.update).toHaveBeenCalledWith(
         { status: "in_progress", completedAt: null },
-        { transaction: tx2 }
+        { transaction: tx2 },
       );
     });
   });
@@ -1463,7 +1461,7 @@ describe("stock.service", () => {
         commit: jest.fn(async () => {
           tx.finished = "commit";
           throw new Error("Commit failed");
-        })
+        }),
       };
       return tx;
     };
@@ -1476,7 +1474,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createStock("tenant-1", { warehouseId: WH_1, itemName: "Item" }),
-        "Commit failed"
+        "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -1488,7 +1486,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         updateStock("tenant-1", ST_1, { itemName: "New" }),
-        "Commit failed"
+        "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -1500,13 +1498,13 @@ describe("stock.service", () => {
         id: ST_1,
         quantity: 10,
         warehouseId: WH_1,
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       });
       StockAdjustment.create.mockResolvedValueOnce({ id: "adj-1" });
 
       await expectRejectsWithMessage(
         createAdjustment("tenant-1", { stockId: ST_1, type: "addition", quantity: 2, reason: "Recount" }, "usr-1"),
-        "Commit failed"
+        "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -1523,9 +1521,9 @@ describe("stock.service", () => {
         createTransfer(
           "tenant-1",
           { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 },
-          "usr-1"
+          "usr-1",
         ),
-        "Commit failed"
+        "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -1536,12 +1534,12 @@ describe("stock.service", () => {
       StockTransfer.findOne.mockResolvedValueOnce({
         id: "tf-1",
         status: "pending",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       });
 
       await expectRejectsWithMessage(
         updateTransferStatus("tenant-1", "tf-1", { status: "in_transit" }, "usr-1"),
-        "Commit failed"
+        "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -1554,7 +1552,7 @@ describe("stock.service", () => {
 
       await expectRejectsWithMessage(
         createOpname("tenant-1", { warehouseId: WH_1, scheduledAt: new Date() }, "usr-1"),
-        "Commit failed"
+        "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });
@@ -1565,12 +1563,12 @@ describe("stock.service", () => {
       StockOpname.findOne.mockResolvedValueOnce({
         id: "op-1",
         status: "draft",
-        update: jest.fn().mockResolvedValue(undefined)
+        update: jest.fn().mockResolvedValue(undefined),
       });
 
       await expectRejectsWithMessage(
         updateOpnameStatus("tenant-1", "op-1", { status: "in_progress" }, "usr-1"),
-        "Commit failed"
+        "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
     });

@@ -23,14 +23,14 @@ const mockRef: any = { ledger: null, stale: null, current: null, reads: [] };
 // D-22 (ADR-070): a parent's delete soft-deletes its attachments through
 // attachment.service, in the parent's transaction.
 jest.mock("../../services/attachment.service", () => ({
-  softDeleteForResource: jest.fn().mockResolvedValue([])
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
 }));
 // ADR-107 (Q-50): the sign step's snapshot reads the tenant, device and users
 // through the models barrel this suite doubles; the snapshot itself is
 // certificates.signSnapshot.q50.test.ts's subject, not this suite's.
 jest.mock("../../services/certificateDocument.service", () => ({
   ...jest.requireActual("../../services/certificateDocument.service"),
-  captureSignedSnapshot: jest.fn(async () => null)
+  captureSignedSnapshot: jest.fn(async () => null),
 }));
 // P21-15: the e-signature collaborator is outside this suite's scope; certificateEsignatures.p2115 tests it over the real models.
 jest.mock("../../services/esignatureApplication.service", () => ({ autoApplyApproval: jest.fn().mockResolvedValue(null), certificateMarks: jest.fn().mockResolvedValue([]) }));
@@ -46,37 +46,37 @@ jest.mock("../../models", () => ({
       PENDING_APPROVAL: "pending_approval",
       APPROVED: "approved",
       SIGNED: "signed",
-      REVOKED: "revoked"
-    }
+      REVOKED: "revoked",
+    },
   },
   CalibrationDevice: {},
   CalibrationRecord: {},
   Tenant: {},
   User: { findByPk: jest.fn() },
   ESignatureRecord: {
-    create: jest.fn(async (values: any, options: any) => mockRef.ledger.write("e_signature_records", values, options))
+    create: jest.fn(async (values: any, options: any) => mockRef.ledger.write("e_signature_records", values, options)),
   },
   AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
-  Sequelize: {}
+  Sequelize: {},
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 // A-202 / A-203: the workflow engine is its own suite. Here no workflow is
 // configured and none is pending, unless a test says otherwise.
 jest.mock("../../services/workflow.service", () => ({
   startWorkflow: jest.fn(async () => null),
-  findPendingInstance: jest.fn(async () => null)
+  findPendingInstance: jest.fn(async () => null),
 }));
 jest.mock("../../services/auth.service", () => ({
-  passIsValid: jest.fn(async () => ({ data: { valid: true } }))
+  passIsValid: jest.fn(async () => ({ data: { valid: true } })),
 }));
 jest.mock("../../services/mfa.service", () => ({ verifyLogin: jest.fn(() => true) }));
 
 const { Sequelize, DataTypes } = jest.requireActual("sequelize");
 const RealCertificate = jest.requireActual("../../models/certificate.model")(
   new Sequelize({ dialect: "postgres", logging: false }),
-  DataTypes
+  DataTypes,
 );
 const authService = require("../../services/auth.service");
 const certificateService = require("../../services/certificate.service");
@@ -91,7 +91,7 @@ const makeCertificate = (fields: any) => {
     deviceId: "dev-1",
     calibrationRecordId: "rec-1",
     notes: null,
-    ...fields
+    ...fields,
   };
   const snapshot = () => Object.fromEntries(SNAPSHOT_FIELDS.map((k: any) => [k, cert[k]]));
   cert.save = async (options: any) => mockRef.ledger.write("certificates", snapshot(), options);
@@ -105,35 +105,34 @@ const auth: any = { authMethod: "password", authPayload: "pw", meaning: "I attes
 const actor: any = { userId: "user-1", ipAddress: "10.0.0.1", userAgent: "UA" };
 
 const TRANSITIONS = [
-{
-  name: "submitCertificateForApproval",
-  from: "draft",
-  to: "pending_approval",
-  reauth: false,
-  run: () => certificateService.submitCertificateForApproval("tenant-1", "cert-1", actor)
-},
-{
-  name: "approveCertificate",
-  from: "pending_approval",
-  to: "approved",
-  reauth: true,
-  run: () => certificateService.approveCertificate("tenant-1", "cert-1", "user-1", auth)
-},
-{
-  name: "signCertificate",
-  from: "approved",
-  to: "signed",
-  reauth: true,
-  run: () => certificateService.signCertificate("tenant-1", "cert-1", "sig", "key-1", "user-1", auth)
-},
-{
-  name: "revokeCertificate",
-  from: "signed",
-  to: "revoked",
-  reauth: true,
-  run: () => certificateService.revokeCertificate("tenant-1", "cert-1", "wrong device", "user-1", auth)
-}];
-
+  {
+    name: "submitCertificateForApproval",
+    from: "draft",
+    to: "pending_approval",
+    reauth: false,
+    run: () => certificateService.submitCertificateForApproval("tenant-1", "cert-1", actor),
+  },
+  {
+    name: "approveCertificate",
+    from: "pending_approval",
+    to: "approved",
+    reauth: true,
+    run: () => certificateService.approveCertificate("tenant-1", "cert-1", "user-1", auth),
+  },
+  {
+    name: "signCertificate",
+    from: "approved",
+    to: "signed",
+    reauth: true,
+    run: () => certificateService.signCertificate("tenant-1", "cert-1", "sig", "key-1", "user-1", auth),
+  },
+  {
+    name: "revokeCertificate",
+    from: "signed",
+    to: "revoked",
+    reauth: true,
+    run: () => certificateService.revokeCertificate("tenant-1", "cert-1", "wrong device", "user-1", auth),
+  }];
 
 const nothingWritten = () => {
   expect(mockRef.ledger.committed("certificates")).toEqual([]);
@@ -162,11 +161,11 @@ describe.each(TRANSITIONS)("A-167 — $name", ({ from, to, reauth, run }: any) =
 
     expect(result.status).toBe(200);
     expect(mockRef.reads).toEqual([
-    {
-      where: { id: "cert-1", tenantId: "tenant-1" },
-      transaction: expect.any(Object),
-      lock: "UPDATE"
-    }]
+      {
+        where: { id: "cert-1", tenantId: "tenant-1" },
+        transaction: expect.any(Object),
+        lock: "UPDATE",
+      }],
     );
     const saved = mockRef.ledger.committed("certificates");
     expect(saved.length).toBeGreaterThan(0);
@@ -223,13 +222,13 @@ describe.each(TRANSITIONS)("A-167 — $name", ({ from, to, reauth, run }: any) =
 
 describe("A-167 — refused transitions are explained 409s", () => {
   it.each([
-  ["approveCertificate", "draft", /cannot be approved: it has not been submitted yet; submit it with POST \/certificates\/:id\/submit first\.$/],
-  ["approveCertificate", "revoked", /cannot be approved: revocation is final; issue a new certificate instead\.$/],
-  ["signCertificate", "pending_approval", /cannot be signed: only an approved certificate can be signed; approve it/],
-  ["signCertificate", "draft", /cannot be signed: only an approved certificate can be signed; submit it/],
-  ["signCertificate", "signed", /cannot be signed: it has already been signed/],
-  ["submitCertificateForApproval", "approved", /cannot be submitted: it has already been approved/],
-  ["revokeCertificate", "revoked", /cannot be revoked: it has already been revoked, and revocation is final\.$/]]
+    ["approveCertificate", "draft", /cannot be approved: it has not been submitted yet; submit it with POST \/certificates\/:id\/submit first\.$/],
+    ["approveCertificate", "revoked", /cannot be approved: revocation is final; issue a new certificate instead\.$/],
+    ["signCertificate", "pending_approval", /cannot be signed: only an approved certificate can be signed; approve it/],
+    ["signCertificate", "draft", /cannot be signed: only an approved certificate can be signed; submit it/],
+    ["signCertificate", "signed", /cannot be signed: it has already been signed/],
+    ["submitCertificateForApproval", "approved", /cannot be submitted: it has already been approved/],
+    ["revokeCertificate", "revoked", /cannot be revoked: it has already been revoked, and revocation is final\.$/]],
   )("%s on a %s certificate", async (name: any, status: any, expected: any) => {
     mockRef.current = makeCertificate({ status });
     mockRef.stale = mockRef.current;
@@ -248,8 +247,8 @@ describe("A-167 — refused transitions are explained 409s", () => {
     mockRef.stale = mockRef.current;
 
     const err = await certificateService.
-    signCertificate("tenant-1", "cert-1", "sig", "key-1", "user-1", auth).
-    catch((e: any) => e);
+      signCertificate("tenant-1", "cert-1", "sig", "key-1", "user-1", auth).
+      catch((e: any) => e);
 
     expect(err.status).toBe(409);
   });
@@ -259,7 +258,7 @@ describe("A-167 — refused transitions are explained 409s", () => {
     mockRef.stale = mockRef.current;
 
     await expect(
-      certificateService.revokeCertificate("tenant-1", "cert-1", "again", "user-1", auth)
+      certificateService.revokeCertificate("tenant-1", "cert-1", "again", "user-1", auth),
     ).rejects.toMatchObject({ status: 409 });
 
     nothingWritten();

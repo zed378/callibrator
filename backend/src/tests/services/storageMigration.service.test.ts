@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Storage migration tool tests.
  *
@@ -14,20 +14,20 @@ const mockTx: any = { id: "TX" };
 jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb: any) => cb(mockTx)) } }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({ id: "audit-1" }) }));
 jest.mock("../../models", () => ({
-  Attachment: { findAll: jest.fn() }
+  Attachment: { findAll: jest.fn() },
 }));
 jest.mock("../../services/storage", () => ({
-  getTenantStorage: jest.fn()
+  getTenantStorage: jest.fn(),
 }));
 jest.mock("../../utils/storagePath.util", () =>
-jest.fn((...parts: any[]) => ["/srv/root", ...parts].join("/"))
+  jest.fn((...parts: any[]) => ["/srv/root", ...parts].join("/")),
 );
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 jest.mock("fs", () => ({
   existsSync: jest.fn(),
-  createReadStream: jest.fn()
+  createReadStream: jest.fn(),
 }));
 
 const fs = require("fs");
@@ -51,7 +51,7 @@ const makeScoped = () => {
     // read and the next hashStream would hang waiting for an 'end' that already
     // fired.
     get: jest.fn().mockImplementation(() => contentStream()),
-    delete: jest.fn().mockResolvedValue({ deleted: true })
+    delete: jest.fn().mockResolvedValue({ deleted: true }),
   };
   return scoped;
 };
@@ -65,7 +65,7 @@ const makeRow = (overrides: any = {}) => ({
   checksum: CHECKSUM,
   storageKey: null,
   save: jest.fn().mockResolvedValue(true),
-  ...overrides
+  ...overrides,
 });
 
 let scoped: any;
@@ -86,7 +86,7 @@ describe("migrateAttachment", () => {
     expect(scoped.put).toHaveBeenCalledWith(
       "t/tenant-1/attachments/abc.pdf",
       expect.anything(),
-      { contentType: "application/pdf" }
+      { contentType: "application/pdf" },
     );
     expect(row.storageKey).toBe("t/tenant-1/attachments/abc.pdf");
     // P8-01: in the transaction its audit row is written in (storageMigration.p801 pins the audit row).
@@ -133,7 +133,7 @@ describe("migrateAttachment", () => {
     expect(result).toMatchObject({
       status: "migrated",
       verified: true,
-      verifiedAgainst: "source-file"
+      verifiedAgainst: "source-file",
     });
     expect(row.storageKey).toBeTruthy();
   });
@@ -152,7 +152,7 @@ describe("migrateAttachment", () => {
     fs.createReadStream.mockImplementationOnce(() => Readable.from([Buffer.from("tampered")]));
     const row = makeRow();
     await expect(service.migrateAttachment(row)).rejects.toThrow(
-      "does not match its recorded checksum"
+      "does not match its recorded checksum",
     );
     expect(scoped.put).not.toHaveBeenCalled();
     expect(row.save).not.toHaveBeenCalled();
@@ -166,7 +166,7 @@ describe("migrateAttachment", () => {
   it("defaults the content type when the row has none", async () => {
     await service.migrateAttachment(makeRow({ mimeType: null }));
     expect(scoped.put).toHaveBeenCalledWith(expect.any(String), expect.anything(), {
-      contentType: "application/octet-stream"
+      contentType: "application/octet-stream",
     });
   });
 
@@ -182,37 +182,37 @@ describe("legacyPath", () => {
 
   it("builds the on-disk path from folder + fileName", () => {
     expect(service.legacyPath(makeRow())).toBe(
-      path.resolve("/srv/root/uploads/attachments/abc.pdf")
+      path.resolve("/srv/root/uploads/attachments/abc.pdf"),
     );
   });
 
   // S-15: the guard's root used to be derived from the row's own folder, so
   // a folder of "../../etc" moved the root with it and passed.
   it.each([
-  ["../../etc", "passwd"],
-  ["uploads/../../etc", "passwd"],
-  ["uploads/attachments/../../..", "secrets.env"],
-  ["..\\..\\etc", "passwd"],
-  ["backup/tenant-backups", "tenant_x.zip"],
-  ["uploads-evil", "x.pdf"]]
+    ["../../etc", "passwd"],
+    ["uploads/../../etc", "passwd"],
+    ["uploads/attachments/../../..", "secrets.env"],
+    ["..\\..\\etc", "passwd"],
+    ["backup/tenant-backups", "tenant_x.zip"],
+    ["uploads-evil", "x.pdf"]],
   )("S-15: refuses folder %j (fileName %j) outside the uploads tree", (folder: any, fileName: any) => {
     expect(() => service.legacyPath(makeRow({ folder, fileName }))).toThrow(
-      "Refusing to read outside storage root"
+      "Refusing to read outside storage root",
     );
   });
 
   it("S-15: refuses a traversal in fileName", () => {
     expect(() =>
-    service.legacyPath(makeRow({ fileName: "../../../etc/passwd" }))
+      service.legacyPath(makeRow({ fileName: "../../../etc/passwd" })),
     ).toThrow("Refusing to read outside storage root");
   });
 
   it("S-15: refuses an empty folder (a file at the storage root is not an upload)", () => {
     expect(() => service.legacyPath(makeRow({ folder: "" }))).toThrow(
-      "Refusing to read outside storage root"
+      "Refusing to read outside storage root",
     );
     expect(() => service.legacyPath(makeRow({ folder: null, fileName: null }))).toThrow(
-      "Refusing to read outside storage root"
+      "Refusing to read outside storage root",
     );
   });
 });
@@ -226,7 +226,7 @@ describe("hashStream", () => {
     const bad = new Readable({
       read() {
         this.destroy(new Error("read failed"));
-      }
+      },
     });
     await expect(service.hashStream(bad)).rejects.toThrow("read failed");
   });
@@ -248,7 +248,7 @@ describe("migrateAll", () => {
     expect(Attachment.findAll).toHaveBeenCalledWith({
       where: { storageKey: null, tenantId: "tenant-9" },
       order: [["createdAt", "ASC"], ["id", "ASC"]],
-      limit: 50
+      limit: 50,
     });
   });
 
@@ -257,7 +257,7 @@ describe("migrateAll", () => {
     await service.migrateAll({});
     expect(Attachment.findAll).toHaveBeenCalledWith({
       where: { storageKey: null },
-      order: [["createdAt", "ASC"], ["id", "ASC"]]
+      order: [["createdAt", "ASC"], ["id", "ASC"]],
     });
   });
 
@@ -273,9 +273,9 @@ describe("migrateAll", () => {
     Attachment.findAll.mockResolvedValue([bad, good]);
     let call = 0;
     scoped.get.mockImplementation(() =>
-    call++ === 0 ?
-    Readable.from([Buffer.from("corrupted")]) // bad row → mismatch
-    : contentStream()
+      call++ === 0 ?
+        Readable.from([Buffer.from("corrupted")]) // bad row → mismatch
+        : contentStream(),
     );
 
     const summary = await service.migrateAll({});
@@ -293,9 +293,9 @@ describe("migrateAll", () => {
     fs.existsSync.mockImplementation(() => true);
     // Simpler: make the third row's source missing by fileName.
     Attachment.findAll.mockResolvedValue([
-    makeRow({ id: "m", fileName: "m.pdf" }),
-    makeRow({ id: "s", storageKey: "t/tenant-1/attachments/x" }),
-    makeRow({ id: "x", fileName: "missing.pdf" })]
+      makeRow({ id: "m", fileName: "m.pdf" }),
+      makeRow({ id: "s", storageKey: "t/tenant-1/attachments/x" }),
+      makeRow({ id: "x", fileName: "missing.pdf" })],
     );
     fs.existsSync.mockImplementation((p: any) => !p.endsWith("missing.pdf"));
 
@@ -304,7 +304,7 @@ describe("migrateAll", () => {
       total: 3,
       migrated: 1,
       skipped: 1,
-      missingSource: 1
+      missingSource: 1,
     });
   });
 

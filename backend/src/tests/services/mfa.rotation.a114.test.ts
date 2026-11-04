@@ -24,7 +24,7 @@ const mockTx: any = { id: "tx-a114" };
 // A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
 jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (fn: any) => fn(mockTx)) }
+  db: { transaction: jest.fn(async (fn: any) => fn(mockTx)) },
 }));
 
 const mockTable: any = { row: null };
@@ -43,18 +43,18 @@ jest.mock("../../models", () => {
         }
         Object.assign(row, values);
         return [1];
-      })
+      }),
     },
     User: {},
     Role: {},
     Tenants: { name: "Tenants" },
-    AuditLog: { create: jest.fn() }
+    AuditLog: { create: jest.fn() },
   };
 });
 
 jest.mock("../../utils/password.util", () => ({
   hashPassword: jest.fn(),
-  comparePassword: jest.fn(async (plain: any, hash: any) => hash === `hash:${plain}`)
+  comparePassword: jest.fn(async (plain: any, hash: any) => hash === `hash:${plain}`),
 }));
 
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
@@ -62,11 +62,11 @@ jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../services/session.service", () => ({
   createSession: jest.fn(),
   // A-141: a rotation signs out the user's other sessions.
-  revokeOtherSessions: jest.fn(async () => 2)
+  revokeOtherSessions: jest.fn(async () => 2),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const otplib = require("otplib");
@@ -103,7 +103,7 @@ const makeUser = (overrides: any = {}) => {
     mfaPendingCreatedAt: null,
     mfaLastUsedStep: null,
     role: null,
-    ...overrides
+    ...overrides,
   };
   row.update = jest.fn(async (patch: any) => Object.assign(row, patch));
   mockTable.row = row;
@@ -127,14 +127,14 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
 
     await expect(authService.setupMfa(USER_ID)).rejects.toMatchObject({
       status: 409,
-      message: "MFA is already enabled; disable or rotate with your current code"
+      message: "MFA is already enabled; disable or rotate with your current code",
     });
     // A password alone, or a code alone, is not enough either.
     await expect(
-      authService.setupMfa(USER_ID, { currentPassword: PASSWORD })
+      authService.setupMfa(USER_ID, { currentPassword: PASSWORD }),
     ).rejects.toMatchObject({ status: 409 });
     await expect(
-      authService.setupMfa(USER_ID, { code: codeAt(LIVE) })
+      authService.setupMfa(USER_ID, { code: codeAt(LIVE) }),
     ).rejects.toMatchObject({ status: 409 });
 
     expect(user.update).not.toHaveBeenCalled();
@@ -148,13 +148,13 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     const wrong = String((Number(good) + 1) % 1000000).padStart(6, "0");
 
     await expect(
-      authService.setupMfa(USER_ID, { currentPassword: "guess", code: good })
+      authService.setupMfa(USER_ID, { currentPassword: "guess", code: good }),
     ).rejects.toMatchObject({ status: 400, message: "Current password or MFA code is incorrect" });
     // The wrong password did not burn the code.
     expect(user.mfaLastUsedStep).toBeNull();
 
     await expect(
-      authService.setupMfa(USER_ID, { currentPassword: PASSWORD, code: wrong })
+      authService.setupMfa(USER_ID, { currentPassword: PASSWORD, code: wrong }),
     ).rejects.toMatchObject({ status: 400, message: "Current password or MFA code is incorrect" });
 
     expect(user.update).not.toHaveBeenCalled();
@@ -167,7 +167,7 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     // Rotation starts, with the current password and a current code.
     const setup = await authService.setupMfa(USER_ID, {
       currentPassword: PASSWORD,
-      code: codeAt(LIVE)
+      code: codeAt(LIVE),
     });
     expect(setup.rotation).toBe(true);
     expect(setup.secret).not.toBe(LIVE);
@@ -180,34 +180,34 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     // does not (next step: the rotation consumed this step's code).
     setNow(NOW_S + 30);
     await expect(
-      authService.loginMfa(USER_ID, codeAt(setup.secret, NOW_S + 30))
+      authService.loginMfa(USER_ID, codeAt(setup.secret, NOW_S + 30)),
     ).rejects.toMatchObject({ status: 401 });
     await expect(authService.loginMfa(USER_ID, codeAt(LIVE, NOW_S + 30))).resolves.toMatchObject({
-      status: 200
+      status: 200,
     });
 
     // A code from the OLD secret does not complete the rotation.
     setNow(NOW_S + 60);
     await expect(
-      authService.verifyMfaSetup(USER_ID, codeAt(LIVE, NOW_S + 60))
+      authService.verifyMfaSetup(USER_ID, codeAt(LIVE, NOW_S + 60)),
     ).rejects.toMatchObject({ status: 400, message: "Invalid MFA code" });
     expect(user.mfaSecret).toBe(LIVE);
     // (The sign-in above wrote its LOGIN row; no MFA change was recorded.)
     expect(auditService.logAction).not.toHaveBeenCalledWith(
       expect.objectContaining({ resourceType: "User" }),
-      expect.anything()
+      expect.anything(),
     );
 
     // A code from the NEW secret does — and is audited in the transaction.
     const done = await authService.verifyMfaSetup(USER_ID, codeAt(setup.secret, NOW_S + 60), {
       ipAddress: "203.0.113.9",
-      userAgent: "jest"
+      userAgent: "jest",
     });
     // A-141: a fresh set of recovery codes comes back, shown this once.
     expect(done).toEqual({
       success: true,
       message: "MFA authenticator replaced successfully",
-      recoveryCodes: expect.any(Array)
+      recoveryCodes: expect.any(Array),
     });
     expect(mfaService.openSecret(USER_ID, user.mfaSecret)).toBe(setup.secret);
     expect(user.mfaPendingSecret).toBeNull();
@@ -217,9 +217,9 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
         mfaEnabled: true,
         mfaPendingSecret: null,
         mfaPendingCreatedAt: null,
-        mfaRecoveryCodes: mfaService.hashRecoveryCodes(USER_ID, done.recoveryCodes)
+        mfaRecoveryCodes: mfaService.hashRecoveryCodes(USER_ID, done.recoveryCodes),
       },
-      { transaction: mockTx }
+      { transaction: mockTx },
     );
     expect(auditService.logAction).toHaveBeenCalledWith(
       {
@@ -231,9 +231,9 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
         // A-141: the other sessions were signed out (the double revokes 2).
         changes: { operation: "MFA_ROTATE", recoveryCodesIssued: 10, otherSessionsRevoked: 2 },
         ipAddress: "203.0.113.9",
-        userAgent: "jest"
+        userAgent: "jest",
       },
-      { transaction: mockTx }
+      { transaction: mockTx },
     );
     // Never the secret in the permanent trail.
     expect(JSON.stringify(auditService.logAction.mock.calls)).not.toContain(setup.secret);
@@ -241,7 +241,7 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     // From now on the OLD authenticator is refused.
     setNow(NOW_S + 90);
     await expect(authService.loginMfa(USER_ID, codeAt(LIVE, NOW_S + 90))).rejects.toMatchObject({
-      status: 401
+      status: 401,
     });
   });
 
@@ -260,9 +260,9 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "UPDATE",
-        changes: { operation: "MFA_ENABLE", recoveryCodesIssued: 10 }
+        changes: { operation: "MFA_ENABLE", recoveryCodesIssued: 10 },
       }),
-      { transaction: mockTx }
+      { transaction: mockTx },
     );
   });
 
@@ -272,7 +272,7 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
 
     await expect(authService.verifyMfaSetup(USER_ID, codeAt(setup.secret))).rejects.toThrow(
-      "audit insert failed"
+      "audit insert failed",
     );
   });
 
@@ -283,7 +283,7 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     const later = NOW_S + authService.MFA_PENDING_TTL_MS / 1000 + 1;
     setNow(later);
     await expect(
-      authService.verifyMfaSetup(USER_ID, codeAt(setup.secret, later))
+      authService.verifyMfaSetup(USER_ID, codeAt(setup.secret, later)),
     ).rejects.toMatchObject({ status: 400, message: "MFA setup has expired; start it again" });
     expect(user.mfaPendingSecret).toBeNull();
     expect(user.mfaEnabled).toBe(false);
@@ -300,7 +300,7 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     expect(auditService.logAction).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith("Credential change not audited: the user has no tenant", {
       userId: USER_ID,
-      operation: "MFA_ENABLE"
+      operation: "MFA_ENABLE",
     });
   });
 });
@@ -311,12 +311,12 @@ describe("A-114 — edge cases", () => {
       mfaEnabled: false,
       mfaSecret: null,
       mfaPendingSecret: LIVE,
-      mfaPendingCreatedAt: null
+      mfaPendingCreatedAt: null,
     });
 
     await expect(authService.verifyMfaSetup(USER_ID, codeAt(LIVE))).rejects.toMatchObject({
       status: 400,
-      message: "MFA setup has expired; start it again"
+      message: "MFA setup has expired; start it again",
     });
     expect(user.mfaPendingSecret).toBeNull();
   });
@@ -326,7 +326,7 @@ describe("A-114 — edge cases", () => {
     makeUser({ tenantId: null });
     const setup = await authService.setupMfa(USER_ID, {
       currentPassword: PASSWORD,
-      code: codeAt(LIVE)
+      code: codeAt(LIVE),
     });
 
     setNow(NOW_S + 30);
@@ -334,7 +334,7 @@ describe("A-114 — edge cases", () => {
 
     expect(logger.error).toHaveBeenCalledWith("Credential change not audited: the user has no tenant", {
       userId: USER_ID,
-      operation: "MFA_ROTATE"
+      operation: "MFA_ROTATE",
     });
   });
 });
@@ -345,11 +345,11 @@ describe("A-115 — a TOTP code is accepted once at sign-in", () => {
     const code = codeAt(LIVE);
 
     await expect(authService.loginMfa(USER_ID, code, "203.0.113.9", "jest")).resolves.toMatchObject({
-      status: 200
+      status: 200,
     });
     await expect(authService.loginMfa(USER_ID, code, "203.0.113.9", "jest")).rejects.toMatchObject({
       status: 401,
-      message: "Invalid MFA code"
+      message: "Invalid MFA code",
     });
     expect(createSession).toHaveBeenCalledTimes(1);
     expect(Users.update).toHaveBeenCalledTimes(1);

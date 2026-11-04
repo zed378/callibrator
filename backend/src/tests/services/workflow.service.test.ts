@@ -1,43 +1,43 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 const mockTransaction: any = {
   commit: jest.fn().mockResolvedValue(undefined),
-  rollback: jest.fn().mockResolvedValue(undefined)
+  rollback: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockWorkflow: any = {
   findAll: jest.fn(),
   findOne: jest.fn(),
   create: jest.fn(),
-  update: jest.fn()
+  update: jest.fn(),
 };
 
 const mockWorkflowStep: any = {
   bulkCreate: jest.fn(),
   destroy: jest.fn(),
-  findAll: jest.fn()
+  findAll: jest.fn(),
 };
 
 const mockWorkflowInstance: any = {
   create: jest.fn(),
   findAll: jest.fn(),
   findOne: jest.fn(),
-  count: jest.fn()
+  count: jest.fn(),
 };
 
 const mockWorkflowAction: any = {
-  create: jest.fn()
+  create: jest.fn(),
 };
 
 const mockCertificate: any = {
-  findOne: jest.fn()
+  findOne: jest.fn(),
 };
 
 const mockStockTransfer: any = {
-  findOne: jest.fn()
+  findOne: jest.fn(),
 };
 
 const mockMaintenanceWorkOrder: any = {
-  findOne: jest.fn()
+  findOne: jest.fn(),
 };
 
 jest.mock("../../models", () => {
@@ -50,26 +50,26 @@ jest.mock("../../models", () => {
     StockTransfer: mockStockTransfer,
     MaintenanceWorkOrder: mockMaintenanceWorkOrder,
     sequelize: {
-      transaction: jest.fn(() => Promise.resolve(mockTransaction))
+      transaction: jest.fn(() => Promise.resolve(mockTransaction)),
     },
     db: {
       sequelize: {
-        transaction: jest.fn(() => Promise.resolve(mockTransaction))
-      }
-    }
+        transaction: jest.fn(() => Promise.resolve(mockTransaction)),
+      },
+    },
   };
 });
 
 // A-145 — submitAction writes its audit row inside the action's transaction.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 // A-183 — submitAction asks the permission gate about the record type; the
 // gate itself is tested in its own suites. Allowed unless a test says not.
 const mockPrincipalHasMenuPermission: any = jest.fn();
 jest.mock("../../middlewares/dynamicAccess.middleware", () => ({
-  principalHasMenuPermission: (...args: any[]) => mockPrincipalHasMenuPermission(...args)
+  principalHasMenuPermission: (...args: any[]) => mockPrincipalHasMenuPermission(...args),
 }));
 
 // A-182 — a Certificate decision goes through the certificate state machine;
@@ -81,7 +81,7 @@ const mockCertificateService: any = {
   refuseSelfApprovalInWorkflow: jest.fn(),
   verifyWorkflowApprovalAuth: jest.fn(),
   applyWorkflowApproval: jest.fn(),
-  applyWorkflowRejection: jest.fn()
+  applyWorkflowRejection: jest.fn(),
 };
 jest.mock("../../services/certificate.service", () => mockCertificateService);
 
@@ -92,8 +92,8 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     warn: jest.fn(),
     error: jest.fn(),
-    info: jest.fn()
-  }
+    info: jest.fn(),
+  },
 }));
 
 const workflowService = require("../../services/workflow.service");
@@ -124,8 +124,8 @@ describe("Workflow Service", () => {
       expect(result).toEqual(mockList);
       expect(Workflow.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: "tenant-1" }
-        })
+          where: { tenantId: "tenant-1" },
+        }),
       );
     });
   });
@@ -143,7 +143,7 @@ describe("Workflow Service", () => {
       Workflow.findOne.mockResolvedValue(null);
 
       await expect(
-        workflowService.getWorkflowById("tenant-1", "wf-1")
+        workflowService.getWorkflowById("tenant-1", "wf-1"),
       ).rejects.toThrow("Workflow not found");
     });
   });
@@ -161,7 +161,7 @@ describe("Workflow Service", () => {
         resourceType: "Certificate",
         isActive: true,
         steps: [
-        { stepOrder: 1, roleId: "role-1", requiredApprovals: 2 }]
+          { stepOrder: 1, roleId: "role-1", requiredApprovals: 2 }],
 
       };
 
@@ -178,7 +178,7 @@ describe("Workflow Service", () => {
       Workflow.update.mockRejectedValue(new Error("DB error"));
 
       await expect(
-        workflowService.createWorkflow("tenant-1", { steps: [] })
+        workflowService.createWorkflow("tenant-1", { steps: [] }),
       ).rejects.toThrow("DB error");
       expect(mockTransaction.rollback).toHaveBeenCalled();
     });
@@ -193,16 +193,16 @@ describe("Workflow Service", () => {
       await workflowService.createWorkflow("tenant-1", {
         name: "Defaults",
         resourceType: "Certificate",
-        steps: [{ stepOrder: 1, roleId: "role-1" }]
+        steps: [{ stepOrder: 1, roleId: "role-1" }],
       });
 
       expect(Workflow.create).toHaveBeenCalledWith(
         expect.objectContaining({ isActive: true }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
       expect(WorkflowStep.bulkCreate).toHaveBeenCalledWith(
         [{ workflowId: "wf-2", stepOrder: 1, roleId: "role-1", requiredApprovals: 1 }],
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
     });
 
@@ -217,13 +217,13 @@ describe("Workflow Service", () => {
         name: "Inactive",
         resourceType: "Certificate",
         isActive: false,
-        steps: [{ stepOrder: 1, roleId: "role-1" }]
+        steps: [{ stepOrder: 1, roleId: "role-1" }],
       });
 
       expect(Workflow.update).not.toHaveBeenCalled();
       expect(Workflow.create).toHaveBeenCalledWith(
         expect.objectContaining({ isActive: false }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
     });
   });
@@ -235,7 +235,7 @@ describe("Workflow Service", () => {
         name: "Old Name",
         isActive: false,
         resourceType: "Certificate",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       Workflow.findOne.mockResolvedValue(mockWf);
       Workflow.update.mockResolvedValue([1]);
@@ -245,7 +245,7 @@ describe("Workflow Service", () => {
       const data = {
         name: "New Name",
         isActive: true,
-        steps: [{ stepOrder: 1, roleId: "role-1" }]
+        steps: [{ stepOrder: 1, roleId: "role-1" }],
       };
 
       const result = await workflowService.updateWorkflow("tenant-1", "wf-1", data);
@@ -263,12 +263,12 @@ describe("Workflow Service", () => {
     it("should rollback on update error", async () => {
       const mockWf: any = {
         id: "wf-1",
-        save: jest.fn().mockRejectedValue(new Error("Save failed"))
+        save: jest.fn().mockRejectedValue(new Error("Save failed")),
       };
       Workflow.findOne.mockResolvedValue(mockWf);
 
       await expect(
-        workflowService.updateWorkflow("tenant-1", "wf-1", { name: "New" })
+        workflowService.updateWorkflow("tenant-1", "wf-1", { name: "New" }),
       ).rejects.toThrow("Save failed");
       expect(mockTransaction.rollback).toHaveBeenCalled();
     });
@@ -279,7 +279,7 @@ describe("Workflow Service", () => {
         name: "Old Name",
         isActive: true,
         resourceType: "Certificate",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       Workflow.findOne.mockResolvedValue(mockWf);
 
@@ -301,7 +301,7 @@ describe("Workflow Service", () => {
         name: "Old Name",
         isActive: true,
         resourceType: "Certificate",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       Workflow.findOne.mockResolvedValue(mockWf);
 
@@ -318,7 +318,7 @@ describe("Workflow Service", () => {
         name: "Old Name",
         isActive: true,
         resourceType: "Certificate",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       Workflow.findOne.mockResolvedValue(mockWf);
 
@@ -334,7 +334,7 @@ describe("Workflow Service", () => {
         name: "Old Name",
         isActive: true,
         resourceType: "Certificate",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       Workflow.findOne.mockResolvedValue(mockWf);
 
@@ -350,19 +350,19 @@ describe("Workflow Service", () => {
         name: "Old Name",
         isActive: true,
         resourceType: "Certificate",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       Workflow.findOne.mockResolvedValue(mockWf);
       WorkflowStep.destroy.mockResolvedValue(1);
       WorkflowStep.bulkCreate.mockResolvedValue([]);
 
       await workflowService.updateWorkflow("tenant-1", "wf-1", {
-        steps: [{ stepOrder: 1, roleId: "role-1" }]
+        steps: [{ stepOrder: 1, roleId: "role-1" }],
       });
 
       expect(WorkflowStep.bulkCreate).toHaveBeenCalledWith(
         [{ workflowId: "wf-1", stepOrder: 1, roleId: "role-1", requiredApprovals: 1 }],
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
     });
   });
@@ -391,7 +391,7 @@ describe("Workflow Service", () => {
       isActive: true,
       save: jest.fn().mockResolvedValue(undefined),
       destroy: jest.fn().mockResolvedValue(undefined),
-      ...fields
+      ...fields,
     });
 
     it("a create writes one CREATE audit row, with the steps, in its transaction", async () => {
@@ -401,7 +401,7 @@ describe("Workflow Service", () => {
       await workflowService.createWorkflow(
         "tenant-1",
         { name: "Cert approval", resourceType: "Certificate", steps: [{ stepOrder: 1, roleId: "r-1", requiredApprovals: 2 }] },
-        ACTOR
+        ACTOR,
       );
 
       expect(auditService.logAction).toHaveBeenCalledWith(
@@ -417,13 +417,13 @@ describe("Workflow Service", () => {
               name: "Cert approval",
               resourceType: "Certificate",
               isActive: true,
-              steps: [{ stepOrder: 1, roleId: "r-1", requiredApprovals: 2 }]
-            }
+              steps: [{ stepOrder: 1, roleId: "r-1", requiredApprovals: 2 }],
+            },
           },
           ipAddress: "10.0.0.2",
-          userAgent: "ua"
+          userAgent: "ua",
         },
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
     });
 
@@ -432,7 +432,7 @@ describe("Workflow Service", () => {
       auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
 
       await expect(
-        workflowService.createWorkflow("tenant-1", { name: "x", resourceType: "Certificate", steps: [{ stepOrder: 1, roleId: "r-1" }] })
+        workflowService.createWorkflow("tenant-1", { name: "x", resourceType: "Certificate", steps: [{ stepOrder: 1, roleId: "r-1" }] }),
       ).rejects.toThrow("audit insert failed");
       expect(mockTransaction.rollback).toHaveBeenCalled();
       expect(mockTransaction.commit).not.toHaveBeenCalled();
@@ -447,13 +447,13 @@ describe("Workflow Service", () => {
         "tenant-1",
         "wf-1",
         { name: "Renamed", steps: [{ stepOrder: 1, roleId: "r-new" }] },
-        ACTOR
+        ACTOR,
       );
 
       expect(Workflow.findOne.mock.calls[0][0]).toEqual({
         where: { id: "wf-1", tenantId: "tenant-1" },
         transaction: mockTransaction,
-        lock: "UPDATE"
+        lock: "UPDATE",
       });
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -463,10 +463,10 @@ describe("Workflow Service", () => {
           userId: "admin-1",
           changes: {
             before: { name: "Cert approval", isActive: true, steps: [{ stepOrder: 1, roleId: "r-old", requiredApprovals: 1 }] },
-            after: { name: "Renamed", isActive: true, steps: [{ stepOrder: 1, roleId: "r-new", requiredApprovals: 1 }] }
-          }
+            after: { name: "Renamed", isActive: true, steps: [{ stepOrder: 1, roleId: "r-new", requiredApprovals: 1 }] },
+          },
         }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
     });
 
@@ -475,14 +475,14 @@ describe("Workflow Service", () => {
       mockWorkflowInstance.count.mockResolvedValue(3);
 
       await expect(
-        workflowService.updateWorkflow("tenant-1", "wf-1", { steps: [{ stepOrder: 1, roleId: "r-new" }] }, ACTOR)
+        workflowService.updateWorkflow("tenant-1", "wf-1", { steps: [{ stepOrder: 1, roleId: "r-new" }] }, ACTOR),
       ).rejects.toMatchObject({ status: 409, message: expect.stringContaining("started 3 time(s)") });
 
       // Counted across soft-deleted instances too: their approvals reference the steps.
       expect(mockWorkflowInstance.count).toHaveBeenCalledWith({
         where: { workflowId: "wf-1" },
         paranoid: false,
-        transaction: mockTransaction
+        transaction: mockTransaction,
       });
       expect(WorkflowStep.destroy).not.toHaveBeenCalled();
       expect(auditService.logAction).not.toHaveBeenCalled();
@@ -509,7 +509,7 @@ describe("Workflow Service", () => {
         const args = data ? ["tenant-1", "wf-x", data, ACTOR] : ["tenant-1", "wf-x", ACTOR];
         await expect(workflowService[method](...args)).rejects.toMatchObject({ status: 404 });
         expect(auditService.logAction).not.toHaveBeenCalled();
-      }
+      },
     );
 
     it("deleting a workflow with pending approvals is 409, and nothing is deleted", async () => {
@@ -519,11 +519,11 @@ describe("Workflow Service", () => {
 
       await expect(workflowService.deleteWorkflow("tenant-1", "wf-1", ACTOR)).rejects.toMatchObject({
         status: 409,
-        message: expect.stringContaining("2 pending approval(s)")
+        message: expect.stringContaining("2 pending approval(s)"),
       });
       expect(mockWorkflowInstance.count).toHaveBeenCalledWith({
         where: { workflowId: "wf-1", status: "PENDING" },
-        transaction: mockTransaction
+        transaction: mockTransaction,
       });
       expect(wf.destroy).not.toHaveBeenCalled();
       expect(auditService.logAction).not.toHaveBeenCalled();
@@ -543,17 +543,17 @@ describe("Workflow Service", () => {
           userId: "admin-1",
           changes: {
             before: { name: "Cert approval", resourceType: "Certificate", isActive: true },
-            after: { deleted: true }
-          }
+            after: { deleted: true },
+          },
         }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
     });
 
     it("the inbox skips an instance whose workflow is gone instead of failing", async () => {
       WorkflowInstance.findAll.mockResolvedValue([
-      { id: "orphan", currentStepOrder: 1, workflow: null, actions: [] },
-      { id: "ok", currentStepOrder: 1, workflow: { steps: [{ id: "s1", stepOrder: 1, roleId: "admin" }] }, actions: [] }]
+        { id: "orphan", currentStepOrder: 1, workflow: null, actions: [] },
+        { id: "ok", currentStepOrder: 1, workflow: { steps: [{ id: "s1", stepOrder: 1, roleId: "admin" }] }, actions: [] }],
       );
 
       const result = await workflowService.getPendingTasks("tenant-1", { id: "u-1", roleId: "admin" });
@@ -572,7 +572,7 @@ describe("Workflow Service", () => {
     it("should create a WorkflowInstance if active workflow exists", async () => {
       const mockWorkflow: any = {
         id: "wf-1",
-        steps: [{ id: "step-1", stepOrder: 1, roleId: "role-1" }]
+        steps: [{ id: "step-1", stepOrder: 1, roleId: "role-1" }],
       };
       Workflow.findOne.mockResolvedValue(mockWorkflow);
       WorkflowInstance.create.mockResolvedValue({ id: "instance-1", status: "PENDING" });
@@ -595,7 +595,7 @@ describe("Workflow Service", () => {
       const tx = { id: "caller-tx" };
 
       await expect(
-        workflowService.startWorkflow("tenant-1", "Certificate", "resource-1", tx)
+        workflowService.startWorkflow("tenant-1", "Certificate", "resource-1", tx),
       ).rejects.toThrow("Query failed");
       expect(WorkflowInstance.create).not.toHaveBeenCalled();
     });
@@ -610,7 +610,7 @@ describe("Workflow Service", () => {
       expect(Workflow.findOne).toHaveBeenCalledWith(expect.objectContaining({ transaction: tx }));
       expect(WorkflowInstance.create).toHaveBeenCalledWith(
         expect.objectContaining({ resourceId: "resource-1", status: "PENDING", currentStepOrder: 3 }),
-        { transaction: tx }
+        { transaction: tx },
       );
     });
   });
@@ -618,34 +618,33 @@ describe("Workflow Service", () => {
   describe("getPendingTasks", () => {
     it("should return pending tasks requiring the user's role and not already acted upon", async () => {
       const mockInstances: any = [
-      {
-        id: "instance-1",
-        status: "PENDING",
-        currentStepOrder: 1,
-        workflow: {
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }]
+        {
+          id: "instance-1",
+          status: "PENDING",
+          currentStepOrder: 1,
+          workflow: {
+            steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }],
+          },
+          actions: [],
         },
-        actions: []
-      },
-      {
-        id: "instance-2",
-        status: "PENDING",
-        currentStepOrder: 1,
-        workflow: {
-          steps: [{ id: "step-2", stepOrder: 1, roleId: "admin" }]
+        {
+          id: "instance-2",
+          status: "PENDING",
+          currentStepOrder: 1,
+          workflow: {
+            steps: [{ id: "step-2", stepOrder: 1, roleId: "admin" }],
+          },
+          actions: [{ stepId: "step-2", userId: "user-1" }],
         },
-        actions: [{ stepId: "step-2", userId: "user-1" }]
-      },
-      {
-        id: "instance-3",
-        status: "PENDING",
-        currentStepOrder: 1,
-        workflow: {
-          steps: [{ id: "step-3", stepOrder: 2, roleId: "admin" }] // mismatch currentStepOrder
-        },
-        actions: []
-      }];
-
+        {
+          id: "instance-3",
+          status: "PENDING",
+          currentStepOrder: 1,
+          workflow: {
+            steps: [{ id: "step-3", stepOrder: 2, roleId: "admin" }], // mismatch currentStepOrder
+          },
+          actions: [],
+        }];
 
       WorkflowInstance.findAll.mockResolvedValue(mockInstances);
 
@@ -658,20 +657,20 @@ describe("Workflow Service", () => {
 
     it("should exclude instances whose current step belongs to a different role", async () => {
       WorkflowInstance.findAll.mockResolvedValue([
-      {
-        id: "instance-other-role",
-        status: "PENDING",
-        currentStepOrder: 1,
-        workflow: {
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "manager" }]
-        },
-        actions: []
-      }]
+        {
+          id: "instance-other-role",
+          status: "PENDING",
+          currentStepOrder: 1,
+          workflow: {
+            steps: [{ id: "step-1", stepOrder: 1, roleId: "manager" }],
+          },
+          actions: [],
+        }],
       );
 
       const result = await workflowService.getPendingTasks("tenant-1", {
         id: "user-1",
-        roleId: "admin"
+        roleId: "admin",
       });
 
       expect(result).toEqual([]);
@@ -683,7 +682,7 @@ describe("Workflow Service", () => {
       WorkflowInstance.findOne.mockResolvedValue(null);
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", {}, {})
+        workflowService.submitAction("tenant-1", "instance-1", {}, {}),
       ).rejects.toThrow("Workflow instance not found");
     });
 
@@ -692,10 +691,10 @@ describe("Workflow Service", () => {
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", {}, {})
+        workflowService.submitAction("tenant-1", "instance-1", {}, {}),
       ).rejects.toMatchObject({
         status: 409,
-        message: expect.stringContaining("Workflow instance is already APPROVED")
+        message: expect.stringContaining("Workflow instance is already APPROVED"),
       });
     });
 
@@ -704,12 +703,12 @@ describe("Workflow Service", () => {
         id: "instance-1",
         status: "PENDING",
         currentStepOrder: 1,
-        workflow: { steps: [] }
+        workflow: { steps: [] },
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", {}, {})
+        workflowService.submitAction("tenant-1", "instance-1", {}, {}),
       ).rejects.toThrow("Workflow step configuration error");
     });
 
@@ -719,14 +718,14 @@ describe("Workflow Service", () => {
         status: "PENDING",
         currentStepOrder: 1,
         workflow: {
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }],
         },
-        actions: []
+        actions: [],
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", { roleId: "user" }, {})
+        workflowService.submitAction("tenant-1", "instance-1", { roleId: "user" }, {}),
       ).rejects.toThrow("You do not have the required role to approve this step");
     });
 
@@ -736,17 +735,17 @@ describe("Workflow Service", () => {
         status: "PENDING",
         currentStepOrder: 1,
         workflow: {
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }],
         },
-        actions: [{ stepId: "step-1", userId: "user-1" }]
+        actions: [{ stepId: "step-1", userId: "user-1" }],
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, {})
+        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, {}),
       ).rejects.toMatchObject({
         status: 409,
-        message: "You have already submitted an action for this step"
+        message: "You have already submitted an action for this step",
       });
     });
 
@@ -757,11 +756,11 @@ describe("Workflow Service", () => {
         currentStepOrder: 1,
         workflow: {
           resourceType: "Certificate",
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }],
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -772,18 +771,18 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "REJECTED", comments: "Bad" }
+        { action: "REJECTED", comments: "Bad" },
       );
 
       expect(mockInstance.status).toBe("REJECTED");
       expect(mockInstance.save).toHaveBeenCalled();
       // A-182 — through the certificate state machine, not a blind "DRAFT".
       expect(mockCertificateService.lockForWorkflowDecision).toHaveBeenCalledWith(
-        mockTransaction, "tenant-1", "res-1", "reject"
+        mockTransaction, "tenant-1", "res-1", "reject",
       );
       expect(mockCertificateService.applyWorkflowRejection).toHaveBeenCalledWith(
         mockTransaction, lockedCert,
-        { tenantId: "tenant-1", userId: "user-1", workflowInstanceId: "instance-1", comments: "Bad" }
+        { tenantId: "tenant-1", userId: "user-1", workflowInstanceId: "instance-1", comments: "Bad" },
       );
       // A rejection is not a signature: no re-authentication.
       expect(mockCertificateService.verifyWorkflowApprovalAuth).not.toHaveBeenCalled();
@@ -802,10 +801,10 @@ describe("Workflow Service", () => {
             decision: "REJECTED",
             comments: "Bad",
             before: { status: "PENDING", currentStepOrder: 1 },
-            after: { status: "REJECTED", currentStepOrder: 1 }
-          })
+            after: { status: "REJECTED", currentStepOrder: 1 },
+          }),
         }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
     });
 
@@ -817,13 +816,13 @@ describe("Workflow Service", () => {
         workflow: {
           resourceType: "Certificate",
           steps: [
-          { id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 },
-          { id: "step-2", stepOrder: 2, roleId: "manager", requiredApprovals: 1 }]
+            { id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 },
+            { id: "step-2", stepOrder: 2, roleId: "manager", requiredApprovals: 1 }],
 
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -832,7 +831,7 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "APPROVED", ...REAUTH }
+        { action: "APPROVED", ...REAUTH },
       );
 
       expect(mockInstance.currentStepOrder).toBe(2);
@@ -841,7 +840,7 @@ describe("Workflow Service", () => {
       expect(mockCertificateService.verifyWorkflowApprovalAuth).toHaveBeenCalledWith(
         "user-1",
         expect.objectContaining(REAUTH),
-        { tenantId: "tenant-1", resourceType: "Certificate", resourceId: "res-1", operation: "workflow-approve" }
+        { tenantId: "tenant-1", resourceType: "Certificate", resourceId: "res-1", operation: "workflow-approve" },
       );
       expect(mockCertificateService.lockForWorkflowDecision).not.toHaveBeenCalled();
       expect(mockInstance.save).toHaveBeenCalled();
@@ -853,10 +852,10 @@ describe("Workflow Service", () => {
           changes: expect.objectContaining({
             operation: "WORKFLOW_APPROVE",
             comments: null,
-            after: { status: "PENDING", currentStepOrder: 2 }
-          })
+            after: { status: "PENDING", currentStepOrder: 2 },
+          }),
         }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
     });
 
@@ -868,12 +867,12 @@ describe("Workflow Service", () => {
         workflow: {
           resourceType: "StockTransfer",
           steps: [
-          { id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }]
+            { id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }],
 
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -885,7 +884,7 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "APPROVED" }
+        { action: "APPROVED" },
       );
 
       expect(mockInstance.status).toBe("APPROVED");
@@ -895,7 +894,7 @@ describe("Workflow Service", () => {
       expect(mockST.approvedBy).toBe("user-1");
       expect(mockST.save).toHaveBeenCalledWith({ transaction: mockTransaction });
       expect(StockTransfer.findOne).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: "res-1", tenantId: "tenant-1" }, transaction: mockTransaction, lock: "UPDATE" })
+        expect.objectContaining({ where: { id: "res-1", tenantId: "tenant-1" }, transaction: mockTransaction, lock: "UPDATE" }),
       );
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -905,10 +904,10 @@ describe("Workflow Service", () => {
           changes: {
             operation: "WORKFLOW_APPROVE",
             before: { status: "pending", approvedBy: null },
-            after: { status: "in_transit", approvedBy: "user-1" }
-          }
+            after: { status: "in_transit", approvedBy: "user-1" },
+          },
         }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
       expect(mockTransaction.commit).toHaveBeenCalled();
       expect(result.status).toBe("APPROVED");
@@ -922,12 +921,12 @@ describe("Workflow Service", () => {
         workflow: {
           resourceType: "MaintenanceWorkOrder",
           steps: [
-          { id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }]
+            { id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }],
 
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -939,7 +938,7 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "APPROVED" }
+        { action: "APPROVED" },
       );
 
       expect(mockWO.status).toBe("Completed");
@@ -953,12 +952,12 @@ describe("Workflow Service", () => {
         workflow: {
           resourceType: "Certificate",
           steps: [
-          { id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }]
+            { id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }],
 
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -969,27 +968,27 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "APPROVED", ...REAUTH, ipAddress: "10.0.0.1", userAgent: "jest" }
+        { action: "APPROVED", ...REAUTH, ipAddress: "10.0.0.1", userAgent: "jest" },
       );
 
       expect(mockInstance.status).toBe("APPROVED");
       expect(mockInstance.save).toHaveBeenCalled();
       expect(mockCertificateService.lockForWorkflowDecision).toHaveBeenCalledWith(
-        mockTransaction, "tenant-1", "res-1", "approve"
+        mockTransaction, "tenant-1", "res-1", "approve",
       );
       expect(mockCertificateService.applyWorkflowApproval).toHaveBeenCalledWith(mockTransaction, lockedCert, {
         tenantId: "tenant-1",
         approverId: "user-1",
         authOptions: { ...REAUTH, ipAddress: "10.0.0.1", userAgent: "jest" },
-        workflowInstanceId: "instance-1"
+        workflowInstanceId: "instance-1",
       });
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({
           ipAddress: "10.0.0.1",
           userAgent: "jest",
-          changes: expect.objectContaining({ meaning: REAUTH.meaning, reauthenticated: "password" })
+          changes: expect.objectContaining({ meaning: REAUTH.meaning, reauthenticated: "password" }),
         }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
       // The credential itself is never in the audit row.
       expect(JSON.stringify(auditService.logAction.mock.calls)).not.toContain(REAUTH.authPayload);
@@ -1004,11 +1003,11 @@ describe("Workflow Service", () => {
         currentStepOrder: 1,
         workflow: {
           resourceType: "StockTransfer",
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }],
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -1020,7 +1019,7 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "REJECTED" }
+        { action: "REJECTED" },
       );
 
       // A-201: "Rejected" is not a value of the ENUM; a rejected transfer is cancelled.
@@ -1035,11 +1034,11 @@ describe("Workflow Service", () => {
         currentStepOrder: 1,
         workflow: {
           resourceType: "StockTransfer",
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }],
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -1047,10 +1046,10 @@ describe("Workflow Service", () => {
       StockTransfer.findOne.mockResolvedValue(null);
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, { action: "REJECTED" })
+        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, { action: "REJECTED" }),
       ).rejects.toMatchObject({
         status: 409,
-        message: "The stock transfer this workflow decides on no longer exists. Nothing was recorded."
+        message: "The stock transfer this workflow decides on no longer exists. Nothing was recorded.",
       });
       expect(mockTransaction.rollback).toHaveBeenCalled();
       expect(mockTransaction.commit).not.toHaveBeenCalled();
@@ -1064,7 +1063,7 @@ describe("Workflow Service", () => {
         workflow: { resourceType: "StockTransfer", steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }] },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -1072,11 +1071,11 @@ describe("Workflow Service", () => {
       StockTransfer.findOne.mockResolvedValue(mockST);
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, { action: "APPROVED" })
+        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, { action: "APPROVED" }),
       ).rejects.toMatchObject({
         status: 409,
         message:
-        'This stock transfer is "completed" and can no longer be approved through its workflow: only a pending transfer is decided.'
+        'This stock transfer is "completed" and can no longer be approved through its workflow: only a pending transfer is decided.',
       });
       expect(mockST.save).not.toHaveBeenCalled();
       expect(mockTransaction.rollback).toHaveBeenCalled();
@@ -1088,15 +1087,15 @@ describe("Workflow Service", () => {
         status: "PENDING",
         currentStepOrder: 1,
         workflow: {
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin" }],
         },
-        actions: []
+        actions: [],
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockRejectedValue(new Error("Insert error"));
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, { action: "APPROVED" })
+        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, { action: "APPROVED" }),
       ).rejects.toThrow("Insert error");
 
       expect(mockTransaction.rollback).toHaveBeenCalled();
@@ -1113,11 +1112,11 @@ describe("Workflow Service", () => {
         currentStepOrder: 1,
         workflow: {
           resourceType: "Certificate",
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }],
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -1126,7 +1125,7 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "APPROVED", ...REAUTH }
+        { action: "APPROVED", ...REAUTH },
       );
 
       expect(WorkflowAction.create).toHaveBeenCalled();
@@ -1147,13 +1146,13 @@ describe("Workflow Service", () => {
         currentStepOrder: 1,
         workflow: {
           resourceType: "Certificate",
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }],
         },
         actions: [
-        { stepId: "step-1", userId: "user-9", action: "APPROVED" }],
+          { stepId: "step-1", userId: "user-9", action: "APPROVED" }],
 
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -1162,14 +1161,14 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "APPROVED", ...REAUTH }
+        { action: "APPROVED", ...REAUTH },
       );
 
       expect(mockInstance.status).toBe("APPROVED");
       expect(mockCertificateService.applyWorkflowApproval).toHaveBeenCalledWith(
         mockTransaction,
         { id: "res-1" },
-        expect.objectContaining({ approverId: "user-1", workflowInstanceId: "instance-1" })
+        expect.objectContaining({ approverId: "user-1", workflowInstanceId: "instance-1" }),
       );
       expect(result.status).toBe("APPROVED");
     });
@@ -1183,14 +1182,14 @@ describe("Workflow Service", () => {
         currentStepOrder: 1,
         workflow: {
           resourceType: "Certificate",
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }],
         },
         actions: [
-        { stepId: "step-2", userId: "user-9", action: "APPROVED" }, // other step
-        { stepId: "step-1", userId: "user-8", action: "COMMENTED" } // not an approval
+          { stepId: "step-2", userId: "user-9", action: "APPROVED" }, // other step
+          { stepId: "step-1", userId: "user-8", action: "COMMENTED" }, // not an approval
         ],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -1199,7 +1198,7 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "APPROVED", ...REAUTH }
+        { action: "APPROVED", ...REAUTH },
       );
 
       expect(mockInstance.status).toBe("PENDING");
@@ -1216,11 +1215,11 @@ describe("Workflow Service", () => {
         currentStepOrder: 1,
         workflow: {
           resourceType: "StockTransfer",
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }],
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -1229,12 +1228,12 @@ describe("Workflow Service", () => {
         "tenant-1",
         "instance-1",
         { id: "user-1", roleId: "admin" },
-        { action: "ESCALATED", comments: "over to you" }
+        { action: "ESCALATED", comments: "over to you" },
       );
 
       expect(WorkflowAction.create).toHaveBeenCalledWith(
         expect.objectContaining({ action: "ESCALATED", comments: "over to you" }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
       expect(mockInstance.status).toBe("PENDING");
       expect(mockInstance.save).not.toHaveBeenCalled();
@@ -1243,9 +1242,9 @@ describe("Workflow Service", () => {
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({
           action: "UPDATE",
-          changes: expect.objectContaining({ operation: "WORKFLOW_ACTION", decision: "ESCALATED" })
+          changes: expect.objectContaining({ operation: "WORKFLOW_ACTION", decision: "ESCALATED" }),
         }),
-        { transaction: mockTransaction }
+        { transaction: mockTransaction },
       );
     });
 
@@ -1256,11 +1255,11 @@ describe("Workflow Service", () => {
         currentStepOrder: 1,
         workflow: {
           resourceType: "StockTransfer",
-          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }]
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }],
         },
         actions: [],
         resourceId: "res-1",
-        save: jest.fn().mockResolvedValue(undefined)
+        save: jest.fn().mockResolvedValue(undefined),
       };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
@@ -1271,8 +1270,8 @@ describe("Workflow Service", () => {
           "tenant-1",
           "instance-1",
           { id: "user-1", roleId: "admin" },
-          { action: "APPROVED" }
-        )
+          { action: "APPROVED" },
+        ),
       ).rejects.toThrow("audit insert failed");
       expect(mockTransaction.rollback).toHaveBeenCalled();
       expect(mockTransaction.commit).not.toHaveBeenCalled();
@@ -1289,12 +1288,12 @@ describe("Workflow Service", () => {
       currentStepOrder: 1,
       workflow: {
         resourceType: "Certificate",
-        steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }]
+        steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }],
       },
       actions: [],
       resourceId: "res-1",
       save: jest.fn().mockResolvedValue(undefined),
-      ...overrides
+      ...overrides,
     });
     const APPROVER = { id: "user-1", roleId: "admin", role: { id: "admin", name: "TECHNICIAN" } };
 
@@ -1308,7 +1307,7 @@ describe("Workflow Service", () => {
       expect(first).toEqual({
         where: { id: "instance-1", tenantId: "tenant-1" },
         transaction: mockTransaction,
-        lock: "UPDATE"
+        lock: "UPDATE",
       });
       // The read with the actions and the steps is in the same transaction.
       expect(second).toEqual(expect.objectContaining({ transaction: mockTransaction }));
@@ -1319,7 +1318,7 @@ describe("Workflow Service", () => {
       mockPrincipalHasMenuPermission.mockResolvedValue(false);
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", APPROVER, { action: "APPROVED", ...REAUTH })
+        workflowService.submitAction("tenant-1", "instance-1", APPROVER, { action: "APPROVED", ...REAUTH }),
       ).rejects.toMatchObject({ status: 403, message: expect.stringContaining('"certificate"') });
 
       expect(mockPrincipalHasMenuPermission).toHaveBeenCalledWith(APPROVER, "certificate", "write");
@@ -1328,11 +1327,11 @@ describe("Workflow Service", () => {
     });
 
     it.each([
-    ["StockTransfer", "warehouse"],
-    ["MaintenanceWorkOrder", "maintenance"]]
+      ["StockTransfer", "warehouse"],
+      ["MaintenanceWorkOrder", "maintenance"]],
     )("A-183: a %s decision asks for write on %s", async (resourceType: any, menu: any) => {
       WorkflowInstance.findOne.mockResolvedValue(
-        certificateInstance({ workflow: { resourceType, steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }] } })
+        certificateInstance({ workflow: { resourceType, steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }] } }),
       );
       WorkflowAction.create.mockResolvedValue({});
 
@@ -1344,15 +1343,15 @@ describe("Workflow Service", () => {
     });
 
     it.each([
-    ["no fields", {}],
-    ["no authPayload", { authMethod: "password", meaning: "ok" }],
-    ["no meaning", { authMethod: "password", authPayload: "pw" }],
-    ["no authMethod", { authPayload: "pw", meaning: "ok" }]]
+      ["no fields", {}],
+      ["no authPayload", { authMethod: "password", meaning: "ok" }],
+      ["no meaning", { authMethod: "password", authPayload: "pw" }],
+      ["no authMethod", { authPayload: "pw", meaning: "ok" }]],
     )("A-182: a Certificate approval with %s is 400 and nothing is written", async (_label: any, fields: any) => {
       WorkflowInstance.findOne.mockResolvedValue(certificateInstance());
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", APPROVER, { action: "APPROVED", ...fields })
+        workflowService.submitAction("tenant-1", "instance-1", APPROVER, { action: "APPROVED", ...fields }),
       ).rejects.toMatchObject({ status: 400, message: workflowService.CERTIFICATE_APPROVAL_NEEDS_REAUTH });
 
       expect(mockCertificateService.verifyWorkflowApprovalAuth).not.toHaveBeenCalled();
@@ -1362,11 +1361,11 @@ describe("Workflow Service", () => {
     it("A-182: a failed re-authentication writes nothing", async () => {
       WorkflowInstance.findOne.mockResolvedValue(certificateInstance());
       mockCertificateService.verifyWorkflowApprovalAuth.mockRejectedValue(
-        Object.assign(new Error("Invalid password for e-signature."), { status: 401 })
+        Object.assign(new Error("Invalid password for e-signature."), { status: 401 }),
       );
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", APPROVER, { action: "APPROVED", ...REAUTH })
+        workflowService.submitAction("tenant-1", "instance-1", APPROVER, { action: "APPROVED", ...REAUTH }),
       ).rejects.toMatchObject({ status: 401 });
 
       expect(WorkflowAction.create).not.toHaveBeenCalled();
@@ -1377,11 +1376,11 @@ describe("Workflow Service", () => {
     it("A-182: a refused state check comes before re-authentication (no MFA code is consumed)", async () => {
       WorkflowInstance.findOne.mockResolvedValue(certificateInstance());
       mockCertificateService.lockForWorkflowDecision.mockRejectedValue(
-        Object.assign(new Error('This certificate is "draft" and cannot be approved'), { status: 409 })
+        Object.assign(new Error('This certificate is "draft" and cannot be approved'), { status: 409 }),
       );
 
       await expect(
-        workflowService.submitAction("tenant-1", "instance-1", APPROVER, { action: "APPROVED", ...REAUTH })
+        workflowService.submitAction("tenant-1", "instance-1", APPROVER, { action: "APPROVED", ...REAUTH }),
       ).rejects.toMatchObject({ status: 409 });
 
       expect(mockCertificateService.verifyWorkflowApprovalAuth).not.toHaveBeenCalled();
@@ -1405,16 +1404,16 @@ describe("Workflow Service", () => {
       expect(WorkflowInstance.findOne).toHaveBeenCalledWith({
         where: { tenantId: "tenant-1", resourceId: "cert-1", status: "PENDING" },
         include: [
-        {
-          model: Workflow,
-          as: "workflow",
-          attributes: ["id", "name", "resourceType"],
-          where: { resourceType: "Certificate" },
-          required: true
-        }],
+          {
+            model: Workflow,
+            as: "workflow",
+            attributes: ["id", "name", "resourceType"],
+            where: { resourceType: "Certificate" },
+            required: true,
+          }],
 
         order: [["createdAt", "DESC"]],
-        transaction: t
+        transaction: t,
       });
     });
 
@@ -1475,9 +1474,9 @@ describe("Workflow Service", () => {
         expect.objectContaining({
           resourceType: "MaintenanceWorkOrder",
           userId: null,
-          changes: { operation: "WORKFLOW_REJECT", before: { status: "Open" }, after: { status: "InProgress" } }
+          changes: { operation: "WORKFLOW_REJECT", before: { status: "Open" }, after: { status: "InProgress" } },
         }),
-        { transaction: t }
+        { transaction: t },
       );
     });
 
@@ -1485,7 +1484,7 @@ describe("Workflow Service", () => {
       StockTransfer.findOne.mockResolvedValue(null);
 
       await expect(
-        workflowService._updateTargetResourceStatus("tenant-1", "StockTransfer", "gone", "APPROVED", t)
+        workflowService._updateTargetResourceStatus("tenant-1", "StockTransfer", "gone", "APPROVED", t),
       ).rejects.toMatchObject({ status: 409 });
     });
 
@@ -1493,7 +1492,7 @@ describe("Workflow Service", () => {
       StockTransfer.findOne.mockResolvedValue({ id: "res-1", status: "in_transit", save: jest.fn() });
 
       await expect(
-        workflowService._updateTargetResourceStatus("tenant-1", "StockTransfer", "res-1", "REJECTED", t, { id: "u" })
+        workflowService._updateTargetResourceStatus("tenant-1", "StockTransfer", "res-1", "REJECTED", t, { id: "u" }),
       ).rejects.toMatchObject({ status: 409, message: expect.stringContaining("can no longer be rejected") });
     });
 
@@ -1501,13 +1500,13 @@ describe("Workflow Service", () => {
       MaintenanceWorkOrder.findOne.mockResolvedValue(null);
 
       await expect(
-        workflowService._updateTargetResourceStatus("tenant-1", "MaintenanceWorkOrder", "gone", "APPROVED", t)
+        workflowService._updateTargetResourceStatus("tenant-1", "MaintenanceWorkOrder", "gone", "APPROVED", t),
       ).resolves.toBeUndefined();
     });
 
     it("should no-op for an unknown resource type without querying any model", async () => {
       await expect(
-        workflowService._updateTargetResourceStatus("tenant-1", "SomethingElse", "res-1", "APPROVED", t)
+        workflowService._updateTargetResourceStatus("tenant-1", "SomethingElse", "res-1", "APPROVED", t),
       ).resolves.toBeUndefined();
 
       expect(Certificate.findOne).not.toHaveBeenCalled();

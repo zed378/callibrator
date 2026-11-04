@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for response utility
  */
@@ -12,7 +12,7 @@ const {
   unauthorized,
   forbidden,
   login,
-  sendResult
+  sendResult,
 } = require("../../utils/response.util");
 
 describe("response utils", () => {
@@ -26,7 +26,7 @@ describe("response utils", () => {
       json: jest.fn().mockImplementation((data: any) => {
         jsonCalls.push(data);
         return { send: jest.fn() };
-      })
+      }),
     };
   });
 
@@ -38,7 +38,7 @@ describe("response utils", () => {
       expect(jsonCalls[0]).toMatchObject({
         success: true,
         data: { id: "1" },
-        message: "Created"
+        message: "Created",
       });
     });
 
@@ -70,7 +70,7 @@ describe("response utils", () => {
     it("should include auth data when provided", () => {
       success(res, { user: "test" }, null, "Login", 200, {
         token: "abc123",
-        session: { id: "s1", createdAt: "2024-01-01", expiresAt: "2024-12-31" }
+        session: { id: "s1", createdAt: "2024-01-01", expiresAt: "2024-12-31" },
       });
 
       expect(jsonCalls[0]).toHaveProperty("token", "abc123");
@@ -127,7 +127,7 @@ describe("response utils", () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(jsonCalls[0]).toMatchObject({
         success: false,
-        message: "Something went wrong"
+        message: "Something went wrong",
       });
     });
 
@@ -226,7 +226,7 @@ describe("response utils", () => {
       const session: any = {
         id: "sess-123",
         createdAt: "2024-01-01T00:00:00Z",
-        expiresAt: "2024-12-31T23:59:59Z"
+        expiresAt: "2024-12-31T23:59:59Z",
       };
       login(res, { user: "test" }, "token-abc", session);
 

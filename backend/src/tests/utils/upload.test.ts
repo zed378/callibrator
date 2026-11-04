@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for upload utility - focusing on middleware behavior.
  *
@@ -13,19 +13,19 @@ const { AppError } = require("../../utils/appError.util");
 jest.mock("uuid", () => ({ v4: () => "test-uuid-1234" }));
 
 jest.mock("../../utils/storagePath.util", () =>
-jest.fn((...paths: any[]) => `C:/uploads/${paths.join("/")}`)
+  jest.fn((...paths: any[]) => `C:/uploads/${paths.join("/")}`),
 );
 
 jest.mock("../../utils/fileValidation.util", () => ({
   validateFileMagicBytes: jest.fn().mockResolvedValue("image/jpeg"),
-  sanitizeFilename: jest.fn((filename: any) => filename)
+  sanitizeFilename: jest.fn((filename: any) => filename),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 // Capture the configs passed to multer so we can exercise the
@@ -46,7 +46,7 @@ jest.mock("multer", () => {
     },
     array: () => (_req: any, _res: any, cb: any) => {
       cb(forcedError);
-    }
+    },
   };
   const multerFn: any = jest.fn((config: any) => {
     capturedMulterConfig = config;
@@ -60,7 +60,7 @@ const {
   upload,
   uploadMulti,
   deleteUpload,
-  getUploadUrl
+  getUploadUrl,
 } = require("../../utils/upload.util");
 const storagePath = require("../../utils/storagePath.util");
 const fs = require("fs");
@@ -78,11 +78,11 @@ describe("upload utility - comprehensive middleware tests", () => {
     mockReq = {
       uploadFolder: "uploads",
       allowedMimes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
-      allowedExtensions: [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+      allowedExtensions: [".jpg", ".jpeg", ".png", ".gif", ".webp"],
     };
     mockRes = {
       status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis()
+      json: jest.fn().mockReturnThis(),
     };
     mockNext = jest.fn();
     jest.clearAllMocks();
@@ -169,11 +169,11 @@ describe("upload utility - comprehensive middleware tests", () => {
   // ================================================================
   describe("fileFilter behavior", () => {
     const runFilter = (req: any, file: any): Promise<any> =>
-    new Promise((resolve: any) => {
-      capturedMulterConfig.fileFilter(req, file, (err: any, accepted: any) =>
-      resolve({ err, accepted })
-      );
-    });
+      new Promise((resolve: any) => {
+        capturedMulterConfig.fileFilter(req, file, (err: any, accepted: any) =>
+          resolve({ err, accepted }),
+        );
+      });
 
     it("should accept an allowed mime + extension (defaults)", async () => {
       const req: any = {};
@@ -186,7 +186,7 @@ describe("upload utility - comprehensive middleware tests", () => {
     it("should accept custom allowed mime + extension", async () => {
       const req: any = {
         allowedMimes: ["image/jpeg"],
-        allowedExtensions: [".jpg"]
+        allowedExtensions: [".jpg"],
       };
       const file: any = { originalname: "a.jpg", mimetype: "image/jpeg" };
       const { err, accepted } = await runFilter(req, file);
@@ -217,24 +217,24 @@ describe("upload utility - comprehensive middleware tests", () => {
   // ================================================================
   describe("upload middleware (single file)", () => {
     const runMiddleware = (middleware: any, req: any): Promise<any> =>
-    new Promise((resolve: any) => {
-      mockNext.mockImplementationOnce((arg: any) => resolve(arg));
-      middleware(req, mockRes, mockNext);
-    });
+      new Promise((resolve: any) => {
+        mockNext.mockImplementationOnce((arg: any) => resolve(arg));
+        middleware(req, mockRes, mockNext);
+      });
 
     it("should call next with no error and update mimetype for valid file", async () => {
       const middleware = upload({ validateMagicBytes: true });
       mockReq.file = {
         originalname: "test.jpg",
         mimetype: "image/jpeg",
-        path: Q + "/test.jpg"
+        path: Q + "/test.jpg",
       };
       const result = await runMiddleware(middleware, mockReq);
       expect(result).toBeUndefined();
       expect(mockReq.file.mimetype).toBe("image/jpeg");
       expect(validateFileMagicBytes).toHaveBeenCalledWith(
         Q + "/test.jpg",
-        "image/jpeg"
+        "image/jpeg",
       );
     });
 
@@ -251,7 +251,7 @@ describe("upload utility - comprehensive middleware tests", () => {
       mockReq.file = {
         originalname: "test.jpg",
         mimetype: "image/jpeg",
-        path: Q + "/test.jpg"
+        path: Q + "/test.jpg",
       };
       const result = await runMiddleware(middleware, mockReq);
       expect(result).toBeUndefined();
@@ -264,7 +264,7 @@ describe("upload utility - comprehensive middleware tests", () => {
       mockReq.file = {
         originalname: "test.jpg",
         mimetype: "image/jpeg",
-        path: Q + "/test.jpg"
+        path: Q + "/test.jpg",
       };
       const err: any = await runMiddleware(middleware, mockReq);
       expect(err).toBeInstanceOf(AppError);
@@ -276,13 +276,13 @@ describe("upload utility - comprehensive middleware tests", () => {
       const validationErr = new Error("boom");
       validateFileMagicBytes.mockRejectedValueOnce(validationErr);
       const unlinkSpy = jest.
-      spyOn(fs.promises, "unlink").
-      mockResolvedValue(undefined as any);
+        spyOn(fs.promises, "unlink").
+        mockResolvedValue(undefined as any);
       const middleware = upload({ validateMagicBytes: true });
       mockReq.file = {
         originalname: "test.jpg",
         mimetype: "image/jpeg",
-        path: Q + "/test.jpg"
+        path: Q + "/test.jpg",
       };
       const err = await runMiddleware(middleware, mockReq);
       expect(err).toBe(validationErr);
@@ -323,19 +323,19 @@ describe("upload utility - comprehensive middleware tests", () => {
   // ================================================================
   describe("uploadMulti middleware", () => {
     const runMiddleware = (middleware: any, req: any) =>
-    new Promise((resolve: any) => {
-      mockNext.mockImplementationOnce((arg: any) => resolve(arg));
-      middleware(req, mockRes, mockNext);
-    });
+      new Promise((resolve: any) => {
+        mockNext.mockImplementationOnce((arg: any) => resolve(arg));
+        middleware(req, mockRes, mockNext);
+      });
 
     it("should call next with no error and update mimetypes for valid files", async () => {
       validateFileMagicBytes.mockImplementation((_p: any, m: any) =>
-      Promise.resolve(m)
+        Promise.resolve(m),
       );
       const middleware = uploadMulti({ validateMagicBytes: true });
       mockReq.files = [
-      { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
-      { originalname: "b.png", mimetype: "image/png", path: Q + "/b.png" }];
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
+        { originalname: "b.png", mimetype: "image/png", path: Q + "/b.png" }];
 
       const result = await runMiddleware(middleware, mockReq);
       expect(result).toBeUndefined();
@@ -355,7 +355,7 @@ describe("upload utility - comprehensive middleware tests", () => {
     it("should call next with no error when validateMagicBytes is disabled", async () => {
       const middleware = uploadMulti({ validateMagicBytes: false });
       mockReq.files = [
-      { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" }];
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" }];
 
       const result = await runMiddleware(middleware, mockReq);
       expect(result).toBeUndefined();
@@ -368,7 +368,7 @@ describe("upload utility - comprehensive middleware tests", () => {
       const unlinkSpy = jest.spyOn(fs.promises, "unlink").mockResolvedValue(undefined as any);
       const middleware = uploadMulti({ validateMagicBytes: true });
       mockReq.files = [
-      { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" }];
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" }];
 
       const err: any = await runMiddleware(middleware, mockReq);
       expect(err).toBeInstanceOf(AppError);
@@ -381,12 +381,12 @@ describe("upload utility - comprehensive middleware tests", () => {
       const validationErr = new Error("boom");
       validateFileMagicBytes.mockRejectedValueOnce(validationErr);
       const unlinkSpy = jest.
-      spyOn(fs.promises, "unlink").
-      mockResolvedValue(undefined as any);
+        spyOn(fs.promises, "unlink").
+        mockResolvedValue(undefined as any);
       const middleware = uploadMulti({ validateMagicBytes: true });
       mockReq.files = [
-      { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
-      { originalname: "b.png", mimetype: "image/png", path: Q + "/b.png" }];
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
+        { originalname: "b.png", mimetype: "image/png", path: Q + "/b.png" }];
 
       const err = await runMiddleware(middleware, mockReq);
       expect(err).toBe(validationErr);
@@ -403,7 +403,7 @@ describe("upload utility - comprehensive middleware tests", () => {
       });
       const middleware = uploadMulti({ validateMagicBytes: true });
       mockReq.files = [
-      { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" }];
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" }];
 
       const err = await runMiddleware(middleware, mockReq);
       expect(err).toBe(validationErr);
@@ -442,10 +442,10 @@ describe("upload utility - comprehensive middleware tests", () => {
   // ================================================================
   describe("S-17 — promotion out of quarantine", () => {
     const runMiddleware = (middleware: any, req: any) =>
-    new Promise((resolve: any) => {
-      mockNext.mockImplementationOnce((arg: any) => resolve(arg));
-      middleware(req, mockRes, mockNext);
-    });
+      new Promise((resolve: any) => {
+        mockNext.mockImplementationOnce((arg: any) => resolve(arg));
+        middleware(req, mockRes, mockNext);
+      });
     const path = require("path");
 
     it("moves a passed single upload into its folder and repoints req.file", async () => {
@@ -483,8 +483,8 @@ describe("upload utility - comprehensive middleware tests", () => {
       validateFileMagicBytes.mockImplementation((_p: any, m: any) => Promise.resolve(m));
       const middleware = uploadMulti({ folder: "uploads/x" });
       mockReq.files = [
-      { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
-      { originalname: "b.jpg", mimetype: "image/jpeg", path: Q + "/b.jpg" }];
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
+        { originalname: "b.jpg", mimetype: "image/jpeg", path: Q + "/b.jpg" }];
 
       expect(await runMiddleware(middleware, mockReq)).toBe(renameErr);
       // the first was already moved: it is removed from where it now is
@@ -515,13 +515,13 @@ describe("upload utility - comprehensive middleware tests", () => {
 
     it("should delete a file successfully", async () => {
       const unlinkMock = jest.
-      spyOn(fs, "unlink").
-      mockImplementation((_p: any, cb: any) => cb(null));
+        spyOn(fs, "unlink").
+        mockImplementation((_p: any, cb: any) => cb(null));
       await expect(deleteUpload("test.jpg", "avatars")).resolves.toBeUndefined();
       expect(storagePath).toHaveBeenCalledWith("avatars", "test.jpg");
       expect(unlinkMock).toHaveBeenCalledWith(
         "C:/uploads/avatars/test.jpg",
-        expect.any(Function)
+        expect.any(Function),
       );
       unlinkMock.mockRestore();
     });
@@ -536,10 +536,10 @@ describe("upload utility - comprehensive middleware tests", () => {
       expect(storagePath).toHaveBeenCalledWith("avatars", "test.jpg");
       expect(unlinkMock).toHaveBeenCalledWith(
         "C:/uploads/avatars/test.jpg",
-        expect.any(Function)
+        expect.any(Function),
       );
       expect(logger.warn).toHaveBeenCalledWith(
-        "File already deleted or does not exist: C:/uploads/avatars/test.jpg"
+        "File already deleted or does not exist: C:/uploads/avatars/test.jpg",
       );
       unlinkMock.mockRestore();
     });
@@ -551,43 +551,43 @@ describe("upload utility - comprehensive middleware tests", () => {
         cb(err);
       });
       await expect(deleteUpload("test.jpg", "avatars")).rejects.toThrow(
-        "Permission denied"
+        "Permission denied",
       );
       expect(storagePath).toHaveBeenCalledWith("avatars", "test.jpg");
       expect(unlinkMock).toHaveBeenCalledWith(
         "C:/uploads/avatars/test.jpg",
-        expect.any(Function)
+        expect.any(Function),
       );
       expect(logger.error).toHaveBeenCalledWith(
         "Failed to delete file: C:/uploads/avatars/test.jpg",
-        expect.any(Error)
+        expect.any(Error),
       );
       unlinkMock.mockRestore();
     });
 
     it("should reject path traversal attempts", async () => {
       await expect(deleteUpload("../etc/passwd", "uploads")).rejects.toThrow(
-        "Invalid file path for deletion"
+        "Invalid file path for deletion",
       );
     });
 
     it("should use default folder when not specified", async () => {
       const unlinkMock = jest.
-      spyOn(fs, "unlink").
-      mockImplementation((_p: any, cb: any) => cb(null));
+        spyOn(fs, "unlink").
+        mockImplementation((_p: any, cb: any) => cb(null));
       await expect(deleteUpload("test.jpg")).resolves.toBeUndefined();
       expect(storagePath).toHaveBeenCalledWith("uploads", "test.jpg");
       expect(unlinkMock).toHaveBeenCalledWith(
         "C:/uploads/uploads/test.jpg",
-        expect.any(Function)
+        expect.any(Function),
       );
       unlinkMock.mockRestore();
     });
 
     it("should call storagePath with folder and filename", async () => {
       const unlinkMock = jest.
-      spyOn(fs, "unlink").
-      mockImplementation((_p: any, cb: any) => cb(null));
+        spyOn(fs, "unlink").
+        mockImplementation((_p: any, cb: any) => cb(null));
       await expect(deleteUpload("test.jpg", "avatars")).resolves.toBeUndefined();
       expect(storagePath).toHaveBeenCalledWith("avatars", "test.jpg");
       unlinkMock.mockRestore();
@@ -604,19 +604,19 @@ describe("upload utility - comprehensive middleware tests", () => {
 
     it("should return correct URL with custom folder", () => {
       expect(getUploadUrl("avatar.png", "avatars")).toBe(
-        "/avatars/avatar.png"
+        "/avatars/avatar.png",
       );
     });
 
     it("should handle filenames with special characters", () => {
       expect(getUploadUrl("my-file_123.png", "documents")).toBe(
-        "/documents/my-file_123.png"
+        "/documents/my-file_123.png",
       );
     });
 
     it("should handle filenames with dots", () => {
       expect(getUploadUrl("my.file.with.dots.jpg")).toBe(
-        "/uploads/my.file.with.dots.jpg"
+        "/uploads/my.file.with.dots.jpg",
       );
     });
 
@@ -626,7 +626,7 @@ describe("upload utility - comprehensive middleware tests", () => {
 
     it("should reject filenames with double dots", () => {
       expect(() => getUploadUrl("test/../evil.jpg")).toThrow(
-        "Invalid filename"
+        "Invalid filename",
       );
     });
 
@@ -636,7 +636,7 @@ describe("upload utility - comprehensive middleware tests", () => {
 
     it("should handle filename with spaces", () => {
       expect(getUploadUrl("my file.jpg", "uploads")).toBe(
-        "/uploads/my file.jpg"
+        "/uploads/my file.jpg",
       );
     });
   });
