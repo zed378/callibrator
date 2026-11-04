@@ -41,11 +41,6 @@ const ALLOWED: Readonly<Record<string, AllowedEntry>> = {
   "src/scripts/rotateKeys.ts": { reason: "CLI: `npm run keys:rotate` report" },
   "src/scripts/seedDemo.ts": { reason: "CLI: `tsx src/scripts/seedDemo.ts` summary" },
   "src/scripts/verifySchema.ts": { reason: "CLI: `npm run migrate:verify` report" },
-  "src/utils/checkMenu.util.js": {
-    reason:
-            "debug dump with no caller (A-18); deletion was not permitted in the A-42 change and is left to the owner",
-    pendingRemoval: true,
-  },
 };
 
 const MARKER = "A-42 console-allowed:";

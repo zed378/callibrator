@@ -20,7 +20,7 @@ Everything below is grounded in the code or a dated record as of 2026-10-02. If 
 
 | | |
 |---|---|
-| Backend | **Dual-Backend Target Architecture (ADR-089)** — Express/Sequelize existing backend (`backend/`, entry `backend/index.ts`) in **strict TypeScript, compiled to CommonJS** (ADR-038; toolchain ADR-087). The one source `.js` file left is the dead `src/utils/checkMenu.util.js`, whose deletion awaits the owner (A-18). The 694 `.js` files in the test trees are legacy, converted opportunistically (P9-26). Future Go backend engine (`backend-go/`) planned for **Phase 999** (strictly after Phase 9, the upstream PHP adoption Phases 12 … 31, the backend-agnostic API contract Phases 32 … 34 and the mobile plan Phases 35 … 40), porting module by module against the contract-first `contracts/` (ADR-136) |
+| Backend | **Dual-Backend Target Architecture (ADR-089)** — Express/Sequelize existing backend (`backend/`, entry `backend/index.ts`) in **strict TypeScript, compiled to CommonJS** (ADR-038; toolchain ADR-087). No source `.js` file is left: the dead `src/utils/checkMenu.util.js` was deleted on 2026-11-04 (A-18, the 2026-11 audit's ARC-02). P9-26 converted the test trees to TypeScript; 2 `.js` jest setup files are left (`src/tests/e2e/setup.js`, `src/tests/setup/nodeMajor.globalSetup.js`). Future Go backend engine (`backend-go/`) planned for **Phase 999** (strictly after Phase 9, the upstream PHP adoption Phases 12 … 31, the backend-agnostic API contract Phases 32 … 34 and the mobile plan Phases 35 … 40), porting module by module against the contract-first `contracts/` (ADR-136) |
 | Database | **PostgreSQL 18 + pgvector, only** (ADR-039 for the engine, **ADR-041** for the version) — MySQL support was removed. The repository and the reference deployment are both on 18: the VM runs **PostgreSQL 18.6** since the closing deploy of 2026-10-02, which wiped the stack and started fresh volumes (the owner's wipe decision in [`TASKS/RUNBOOK-POSTGRES-18-UPGRADE.md`](TASKS/RUNBOOK-POSTGRES-18-UPGRADE.md); [record](MEMORY/records/2026-10-02-closing-deploy-vm.md)). A data directory written by 17 still will not start under 18, so any other 17 deployment needs the runbook's dump-and-restore |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand. **Target (ADR-134, 2026-10-08):** cross-platform logic and design tokens in `packages/*` (only `packages/contracts` exists today) shared with the planned React Native app (ADR-135, Phases 35 … 40) — **no shared UI and no root `shared/`** (ADR-089's `shared/` plan superseded) |
 | Realtime | Socket.IO, both ends (ADR-031) |
@@ -242,7 +242,7 @@ Match the surrounding code. Both workspaces have standards documents:
 
 Also [`docs/ENGINEERING/09-TESTING-CONVENTIONS.md`](docs/ENGINEERING/09-TESTING-CONVENTIONS.md), [`10-TOOLING-LINT-FORMAT.md`](docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md) and the PR checklist [`14-CODE-REVIEW-CHECKLIST.md`](docs/ENGINEERING/14-CODE-REVIEW-CHECKLIST.md).
 
-**The backend source is TypeScript, compiled to CommonJS** (ADR-038, ADR-087), checked strict by TypeScript 7. The one source `.js` file left is the dead `utils/checkMenu.util.js` (A-18); `noSourceJs.p924.guard` fails on any other. **The 694 `.js` files in the test trees are legacy** (P9-26): convert one only when you already edit it for another reason or its module's change needs it, and never change an assertion while doing so — same case names, same count.
+**The backend source is TypeScript, compiled to CommonJS** (ADR-038, ADR-087), checked strict by TypeScript 7. No source `.js` file is left: the dead `utils/checkMenu.util.js` was deleted on 2026-11-04 (A-18, the 2026-11 audit's ARC-02); `noSourceJs.p924.guard` fails on any. **P9-26 converted the test trees to TypeScript**: 2 `.js` jest setup files are left (`src/tests/e2e/setup.js`, `src/tests/setup/nodeMajor.globalSetup.js`). The 335 converted test files lint at their `.js` level from a frozen list that only shrinks (`backend/.eslint-legacy-tests.json`, ADR-092 Am. 1): bring one to the full rule set only when you already edit it, and never change an assertion while doing so — same case names, same count.
 
 **All new backend code is TypeScript — tests included — held to [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md)**: `strict` plus the ADR-038 flags, no `any`, reasons on every `@ts-expect-error` and `eslint-disable`. `npm run ratchet` fails on a new `.js` file. A conversion never changes behaviour — it is proved by an identity check, not asserted (04 § Converting a Module).
 
@@ -373,4 +373,6 @@ Whenever a new upstream engine or external tool (e.g. `fastcrw/crw`, `CodeGraphC
 3. **Footer Version Number Invariant**: The current plugin release version must always be presented beside "Token Saver" in front of "• GitHub".
 
 <!-- RTK_TOKEN_SAVER_END -->
+
+
 

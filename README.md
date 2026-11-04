@@ -176,7 +176,7 @@ Phases 0–5 are shipped; Phase 9 (the TypeScript migration) has converted every
 | `calibration_records` append-only | 🟢 a **database constraint**: trigger + the application role's REVOKE (P6-03, ADR-062) |
 | CI pipeline | 🟡 **has run on GitHub, never fully green**: the second run, on `dded70c`, passed 9 of 11 jobs; the two failures (npm audit, backend coverage) are addressed in the working tree (ADR-117) — a green run awaits a push (P7-01) |
 | Helm charts | 🟡 **install, upgrade and serve on one local kind cluster** (ADR-106) — not a production cluster. A-310 (sign-in under `FORCE_HTTPS=true`) is fixed in code, not re-run on a cluster |
-| TypeScript migration | 🟡 every source module is TypeScript except the dead `utils/checkMenu.util.js` (its deletion awaits the owner, A-18); 694 legacy `.js` files in the test trees are converted opportunistically (P9-26) |
+| TypeScript migration | 🟡 every source module is TypeScript (the dead `utils/checkMenu.util.js` was deleted 2026-11-04, A-18); the test trees are TypeScript but for 2 jest setup files (P9-26) |
 
 Full board: [`TASKS/PROGRESS.md`](TASKS/PROGRESS.md). Everything unverified is listed in [`TASKS/BACKLOG.md`](TASKS/BACKLOG.md) § Unverified Claims.
 
