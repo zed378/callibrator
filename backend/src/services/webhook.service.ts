@@ -719,21 +719,21 @@ const emitEvent = async (
     if (!webhooks.length) {
       return { matched: 0 };
     }
-    const deliveries: DeliveryRow[] = [];
-    for (const webhook of webhooks) {
-      deliveries.push(
-        await WebhookDelivery.create({
-          tenantId: tenantId as TenantId,
-          webhookId: webhook.id,
-          event,
-          payload: payload as DeliveryRow["payload"],
-          status: "pending",
-          // The database's clock, not this process's: the claim compares
-          // against now(), and a skewed app clock must not delay the first try.
-          nextAttemptAt: fn("now") as unknown as Date,
-        }),
-      );
-    }
+    // DB-03: one statement for every matching webhook, not one round trip per
+    // webhook. A tenant with 500 subscriptions spent 500 round trips to write
+    // 500 rows; they are one INSERT now.
+    const deliveries = await WebhookDelivery.bulkCreate(
+      webhooks.map((webhook) => ({
+        tenantId: tenantId as TenantId,
+        webhookId: webhook.id,
+        event,
+        payload: payload as DeliveryRow["payload"],
+        status: "pending" as const,
+        // The database's clock, not this process's: the claim compares
+        // against now(), and a skewed app clock must not delay the first try.
+        nextAttemptAt: fn("now") as unknown as Date,
+      })),
+    );
     // W-17: at most EMIT_CONCURRENCY first attempts in flight per process. A
     // scan that emits for 500 devices used to start 500 detached chains.
     let deferred = 0;

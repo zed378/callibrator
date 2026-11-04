@@ -43,6 +43,17 @@ jest.mock("../../models", () => ({
       mockStore.deliveries.set(id, row);
       return row;
     }),
+    // DB-03: emitEvent writes every matching webhook's row in ONE statement;
+    // each row is stored exactly as `create` stores it.
+    bulkCreate: jest.fn(async (rows: any[]) =>
+      rows.map((values: any) => {
+        mockStore.seq += 1;
+        const id = `dddddddd-0000-4000-8000-${String(mockStore.seq).padStart(12, "0")}`;
+        const row = mockDeliveryRow({ ...values, id, nextAttemptAt: new Date() });
+        mockStore.deliveries.set(id, row);
+        return row;
+      }),
+    ),
     findOne: jest.fn(async ({ where }: any) => {
       const d = mockStore.deliveries.get(where.id);
       return d && d.tenantId === where.tenantId ? d : null;

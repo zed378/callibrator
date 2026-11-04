@@ -32,7 +32,7 @@ interface DeliveryRow {
 
 jest.mock("../../models", () => ({
   Webhook: { findAll: jest.fn(), findOne: jest.fn(), create: jest.fn(), findAndCountAll: jest.fn() },
-  WebhookDelivery: { create: jest.fn(), findOne: jest.fn(), findAndCountAll: jest.fn() },
+  WebhookDelivery: { create: jest.fn(), bulkCreate: jest.fn(), findOne: jest.fn(), findAndCountAll: jest.fn() },
   AuditLog: { create: jest.fn() },
 }));
 jest.mock("../../config", () => ({
