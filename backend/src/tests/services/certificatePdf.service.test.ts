@@ -17,6 +17,8 @@ jest.mock("../../config", () => ({
   db: {}
 }));
 
+// P21-15: the e-signature collaborator is outside this suite's scope; certificateEsignatures.p2115 tests it over the real models.
+jest.mock("../../services/esignatureApplication.service", () => ({ autoApplyApproval: jest.fn().mockResolvedValue(null), certificateMarks: jest.fn().mockResolvedValue([]) }));
 jest.mock("../../models", () => ({
   Certificate: {
     findOne: jest.fn(),

@@ -136,6 +136,12 @@ describe("P21-15 — /s/[id] (server)", () => {
     await waitFor(() => expect(screen.getByText("Match: the content is what was signed.")).toBeTruthy());
   });
 
+  it("a revoked certificate is said beside the verdict", async () => {
+    await body({ kind: "ok", verdict: { ...VERDICT, documentType: "certificate", contentScheme: "cert-data-v1", documentState: "revoked", documentStateAt: null } }, "en");
+    expect(screen.getByText("This document has been revoked.")).toBeTruthy();
+    expect(screen.getByText(/Certificate — /)).toBeTruthy();
+  });
+
   it.each([
     [{ kind: "not_found" } as const, "Tidak ditemukan", "Tidak ada tanda tangan elektronik yang menjawab tautan ini."],
     [{ kind: "rate_limited" } as const, "Terlalu banyak permintaan", "Terlalu banyak tautan dibuka dari jaringan ini. Coba lagi dalam beberapa menit."],

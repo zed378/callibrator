@@ -16,8 +16,15 @@ import {
   ESIG_STATUSES,
   ESIG_VERDICTS,
   ESIG_VERIFY_TOKEN,
+  CERT_DATA_FIELDS,
+  applyCertificateEsignature,
+  applyCertificateEsignatureBody,
   applyRecordEsignature,
   applyRecordEsignatureBody,
+  canonicalCertificateData,
+  certificateDataPairs,
+  certificateEsignatureMark,
+  certificateEsignaturesParams,
   calibrationRecordDataPairs,
   canonicalCalibrationRecordData,
   canonicalJsonOfPairs,
@@ -71,6 +78,7 @@ const GOLDEN_FULL =
   `["measurementUncertainty","0.1"],["isCompliant","true"],["entryKind","full_record"],["performedBy","${USER}"],` +
   `["calibrationVendorId",""],["externalLabName",""],["notes","Dalam toleransi"]]`;
 const GOLDEN_FULL_HASH = "56e69d620f618fec1190787ceaed5496af6ae3f7871d87a59c257a8cabc76075";
+const GOLDEN_CERT_HASH = "1f8b29e89a4c9a0584a005e576b99d5a7776cf754c4088fd5ab2aa12009a5017";
 
 const SPECIMEN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100"><path d="M10 80 C 40 10, 65 10, 95 80" fill="none" stroke="#111" stroke-width="2"/></svg>';
 
@@ -82,7 +90,7 @@ describe("@callibrator/contracts/esignatures — values", () => {
     expect([...ESIG_AUTH_METHODS]).toEqual(["password", "mfa"]);
     expect([...ESIG_STATUSES]).toEqual(["active", "superseded", "revoked"]);
     expect([...ESIG_VERDICTS]).toEqual(["valid", "content_changed", "invalid"]);
-    expect([...ESIG_DOCUMENT_STATES]).toEqual(["current", "superseded", "voided"]);
+    expect([...ESIG_DOCUMENT_STATES]).toEqual(["current", "superseded", "voided", "revoked"]);
     expect(ESIG_CODES).toMatchObject({ platform: "ESIG_PLATFORM", none: "ESIG_NONE", notPerformer: "ESIG_NOT_PERFORMER", alreadyApplied: "ESIG_ALREADY_APPLIED" });
     expect([ESIG_VERIFY_TOKEN.test("A".repeat(32)), ESIG_VERIFY_TOKEN.test("A".repeat(31)), ESIG_VERIFY_TOKEN.test(`${"A".repeat(31)}+`)]).toEqual([true, false, false]);
   });
@@ -164,6 +172,44 @@ describe("the canonical calibration-record data (calrec-data-v1) — GOLDEN", ()
   });
 });
 
+describe("the canonical certificate data (cert-data-v1) — GOLDEN", () => {
+  const CERT = "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f";
+  const FULL_CERT = {
+    tenantId: TENANT,
+    id: CERT,
+    certificateNumber: "HOSP-20300115-0001",
+    type: "calibration",
+    calibrationRecordId: RECORD,
+    deviceId: DEVICE,
+    issueDate: new Date("2030-01-16T00:00:00.000Z"),
+    validUntil: new Date("2031-01-15T00:00:00.000Z"),
+    standard: "ISO 17025",
+    summary: "Dalam toleransi",
+    conditions: "23 °C",
+    notes: null,
+    calibratedBy: USER,
+    // Flow state never enters the form:
+    status: "signed",
+    digitalSignature: "x",
+    signedAt: new Date(),
+  };
+  const GOLDEN_CERT =
+    `[["schemeVersion","cert-data-v1"],["tenantId","${TENANT}"],["certificateId","${CERT}"],["certificateNumber","HOSP-20300115-0001"],` +
+    `["type","calibration"],["calibrationRecordId","${RECORD}"],["deviceId","${DEVICE}"],["issueDate","2030-01-16"],["validUntil","2031-01-15"],` +
+    `["standard","ISO 17025"],["summary","Dalam toleransi"],["conditions","23 °C"],["notes",""],["calibratedBy","${USER}"]]`;
+
+  it("the fixed order of what the certificate says; never its status, signature or signing time", () => {
+    expect(canonicalCertificateData(FULL_CERT)).toBe(GOLDEN_CERT);
+    expect(sha256(canonicalCertificateData(FULL_CERT))).toBe(GOLDEN_CERT_HASH);
+    expect(certificateDataPairs(FULL_CERT).map(([n]) => n)).toEqual([...CERT_DATA_FIELDS]);
+    const unsigned = { ...FULL_CERT, status: "approved", digitalSignature: "", signedAt: new Date(0) };
+    expect(canonicalCertificateData(unsigned)).toBe(GOLDEN_CERT);
+    const sparse = certificateDataPairs({ tenantId: TENANT, id: CERT, certificateNumber: "N", deviceId: DEVICE });
+    expect(Object.fromEntries(sparse)).toMatchObject({ type: "", calibrationRecordId: "", issueDate: "", validUntil: "", standard: "", summary: "", conditions: "", notes: "", calibratedBy: "" });
+    expect(canonicalJsonOfPairs("cert-data-v1", JSON.parse(GOLDEN_CERT))).toBe(GOLDEN_CERT);
+  });
+});
+
 describe("the signed payload (esig-app-v1-rsa-sha256) — GOLDEN", () => {
   it("names every bound member in order; a document's absent id is written as \"\"", () => {
     const base = {
@@ -208,6 +254,16 @@ describe("the schemas", () => {
     expect(applyRecordEsignatureBody.safeParse({ meaning: "performed", ...cred, credential: "" }).success).toBe(false);
     expect(applyRecordEsignatureBody.safeParse({ meaning: "performed", ...cred, tenantId: TENANT }).success).toBe(false);
     expect(recordEsignaturesParams.safeParse({ calibrationRecordId: "nope" }).success).toBe(false);
+  });
+
+  it("apply to a certificate: `performed` or `approved` only; strict; the mark is strict too", () => {
+    const CERT = "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f";
+    expect(applyCertificateEsignature.parse({ certificateId: CERT, meaning: "approved", ...cred })).toMatchObject({ meaning: "approved" });
+    expect(applyCertificateEsignatureBody.safeParse({ meaning: "reviewed", ...cred }).success).toBe(false);
+    expect(certificateEsignaturesParams.safeParse({ certificateId: "nope" }).success).toBe(false);
+    const mark = { meaning: "approved", name: "A", role: null, organisation: null, signedAt: "2030-01-15T09:30:00.123Z", specimenSvg: SPECIMEN, verifyUrl: "https://x.test/s/1?t=y" };
+    expect(certificateEsignatureMark.parse(mark)).toEqual(mark);
+    expect(certificateEsignatureMark.safeParse({ ...mark, signerUserId: USER }).success).toBe(false);
   });
 
   it("a document by hash: a lower-case SHA-256 hex, a title, a size — never the file", () => {

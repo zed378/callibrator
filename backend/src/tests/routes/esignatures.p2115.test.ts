@@ -578,3 +578,47 @@ describe("the edges: absent optional facts read as absent, never as a failure", 
     expect(list.map((a) => [a["specimenSvg"], a["keyFingerprint"]])).toEqual([["", ""]]);
   });
 });
+
+describe("a facility-bound user holds its own e-signature (every user; FACILITY_READABLE own-user)", () => {
+  const F1 = "f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1";
+  const BOUND = "cccccccc-0000-4000-8000-0000000000f1";
+  const boundPrincipal = (): Principal => ({ ...technician, id: BOUND, username: "boundf1", role: { ...technician.role, name: "HEALTHCARE TECHNICIAN" }, clientFacilityId: F1 }) as unknown as Principal;
+
+  beforeEach(() => {
+    mdb.seed("ClientFacility", { id: F1, tenantId: tenantA, name: "Facility One", code: "F-0001", status: "active" });
+    mdb.seed("User", { id: BOUND, tenantId: tenantA, username: "boundf1", email: "boundf1@example.test", password: "x", firstName: "Bound", lastName: "One", roleId: technician.role.id, clientFacilityId: F1, status: "ACTIVE", isActive: true });
+  });
+
+  it("creates, reads, replaces and revokes its own e-signature, signs a document and lists what it signed — another user's stays hidden", async () => {
+    const bound = boundPrincipal();
+    await create(colleague);
+    expect((await callEsig(bound, "GET", "/me")).body.data).toEqual({ active: null, history: [] });
+    const created = await callEsig(bound, "POST", "/me", { specimenSvg: SPECIMEN, ...CRED });
+    expect([created.status, data(created)["version"]]).toEqual([201, 1]);
+    expect(rowsOf("UserEsignature").find((r) => r["userId"] === BOUND)).toMatchObject({ tenantId: tenantA, status: "active" });
+    expect((await callEsig(bound, "POST", "/me", { specimenSvg: SPECIMEN, ...CRED })).status).toBe(201);
+    const doc = await callEsig(bound, "POST", "/documents", { title: "Laporan.pdf", contentHash: "e".repeat(64), sizeBytes: 3, meaning: "authored", ...CRED });
+    expect(doc.status).toBe(201);
+    expect(rowsOf("ESignatureRecord")).toEqual([expect.objectContaining({ userId: BOUND, entityType: "EsignatureDocument" })]);
+    const mineList = await callEsig(bound, "GET", "/me/applications");
+    expect([(mineList.body.data as unknown[]).length, mineList.body.meta?.["total"]]).toEqual([1, 1]);
+    const state = data(await callEsig(bound, "GET", "/me"));
+    expect([(state["active"] as Record<string, unknown>)["version"], (state["history"] as unknown[]).length]).toEqual([2, 1]);
+    expect(data(await callEsig(bound, "POST", "/me/revoke", { ...CRED, reason: "Left the facility" }))["status"]).toBe("revoked");
+    expect(rowsOf("UserEsignature").find((r) => r["userId"] === colleague.id)?.["status"]).toBe("active");
+  });
+
+  it("the administrator's revoke of another user stays refused to a bound principal (403 FACILITY_ROUTE_REFUSED)", async () => {
+    const res = await callEsig(boundPrincipal(), "POST", `/users/${colleague.id}/revoke`, { reason: "Departed" });
+    expect([res.status, res.body.code]).toEqual([403, "FACILITY_ROUTE_REFUSED"]);
+  });
+
+  it("a bound reader sees who signed its facility's record (the reviewed skip), provider staff included", async () => {
+    setRow("CalibrationRecord", RECORD, { clientFacilityId: F1 });
+    setRow("CalibrationDevice", DEVICE, { clientFacilityId: F1 });
+    await signedRecord();
+    as(boundPrincipal());
+    const res = (await call(records, "GET", `/${RECORD}/esignatures`, { routeFile: "api/calibrationRecords.route.ts" })) as Res;
+    expect((res.body.data as Record<string, unknown>[])[0]?.["specimenSvg"]).toBe(SPECIMEN);
+  });
+});

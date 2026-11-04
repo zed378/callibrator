@@ -16242,6 +16242,245 @@
         }
       }
     },
+    "/api/v1/certificates/{certificateId}/esignatures": {
+      "post": {
+        "operationId": "applyCertificateEsignature",
+        "summary": "Affix the caller's e-signature to a certificate (P21-15)",
+        "tags": [
+          "Certificates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/certificates.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "certificate",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "The caller's personal e-signature, AFFIXED to the certificate — the certificate's own tenant-key digital signature (ADR-040) is not touched. `performed`: the certificate's calibrator only (else 403 `ESIG_NOT_PERFORMER`); `approved`: its approver or signer (else 403 `ESIG_NOT_APPROVER`), once the certificate is approved. The approve and sign steps already affix the actor's e-signature automatically when it has an active one. The caller re-enters a credential; the certificate's canonical content (`cert-data-v1`) is hashed and the application signed with the personal key, with its audit and e_signature_records rows in one transaction. Another tenant's certificate: 404. An API key is refused. The platform tenant authors nothing here (403, A-127/A-145).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `CERT_NOT_APPROVED` (the certificate is in `draft` or `pending_approval`), `CERT_REVOKED`, `ESIG_ALREADY_APPLIED`, `ESIG_NONE` — each the top-level `code` beside its explanation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The certificate's id",
+              "example": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f"
+            },
+            "required": true,
+            "description": "The certificate's id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "meaning": {
+                    "type": "string",
+                    "enum": [
+                      "performed",
+                      "approved"
+                    ]
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "mfa"
+                    ]
+                  },
+                  "credential": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                },
+                "required": [
+                  "meaning",
+                  "authMethod",
+                  "credential"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The application",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/EsignatureApplication"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listCertificateEsignatures",
+        "summary": "The e-signatures affixed to a certificate (P21-15)",
+        "tags": [
+          "Certificates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/certificates.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "certificate",
+          "action": "read",
+          "superAdmin": "bypasses"
+        },
+        "description": "Oldest first, each with its public verification link, the signer's specimen and `integrity` — the certificate's content hashed NOW against the signed hash (`intact` | `changed`; an approved certificate stays editable until it is signed). Another tenant's certificate: 404.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The certificate's id",
+              "example": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f"
+            },
+            "required": true,
+            "description": "The certificate's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The applications",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EsignatureApplication"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/certificates/{certificateId}/pdf": {
       "get": {
         "operationId": "downloadCertificatePdf",
@@ -80558,6 +80797,61 @@
               "string",
               "null"
             ]
+          },
+          "esignatures": {
+            "description": "Full verdict only. P21-15 (ADR-140): the personal e-signatures affixed to the certificate, each with the link to its own verification",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "meaning": {
+                  "type": "string",
+                  "enum": [
+                    "performed",
+                    "reviewed",
+                    "approved",
+                    "authored",
+                    "acknowledged"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "organisation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "signedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "specimenSvg": {
+                  "type": "string"
+                },
+                "verifyUrl": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "meaning",
+                "name",
+                "role",
+                "organisation",
+                "signedAt",
+                "specimenSvg",
+                "verifyUrl"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -83079,7 +83373,8 @@
                 "enum": [
                   "current",
                   "superseded",
-                  "voided"
+                  "voided",
+                  "revoked"
                 ]
               },
               {

@@ -35,6 +35,7 @@ import signing from "./storage/signing";
 import storage from "./storage";
 import storedFile from "./storedFile.service";
 import type { StorageObject } from "../utils/fileResponse.util";
+import type * as EsignatureApplicationService from "./esignatureApplication.service";
 import {
   computeIntegrityHash,
   computeSignature,
@@ -186,6 +187,10 @@ const getStoredPdf = async (tenantId: string, certificateId: string): Promise<Ou
  * @param certificateNumber
  * @param options - `token` as the query gave it (any type)
  */
+/** P21-15: the e-signature application service, required at call time (it reaches certificate.service). */
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- a lazy require, as this module's others
+const esignatureApplications = (): typeof EsignatureApplicationService => require("./esignatureApplication.service") as typeof EsignatureApplicationService;
+
 const verifyByCertificateNumber = async (
   certificateNumber: string,
   { baseUrl, token }: { baseUrl?: string; token?: unknown } = {},
@@ -306,6 +311,10 @@ const verifyByCertificateNumber = async (
       // a short-lived capability, verified again — status included — when it
       // is fetched (getVerifiedDocument).
       documentUrl: signed && !withdrawn && cert.filePath ? mintDocumentUrl(cert.certificateNumber) : null,
+      // P21-15 (ADR-140 § 6): the personal e-signatures affixed to the certificate — who, what it
+      // means, when, the specimen and the link to each one's own verification. The certificate's
+      // own verdict above does not depend on them.
+      esignatures: await esignatureApplications().certificateMarks(cert.tenantId, cert.id),
     },
   };
   /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */

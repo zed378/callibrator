@@ -23,6 +23,7 @@
  * @two-facility api/certificates.route.ts GET /:certificateId
  * @two-facility api/certificates.route.ts GET /:certificateId/document
  * @two-facility api/certificates.route.ts GET /:certificateId/pdf
+ * @two-facility api/certificates.route.ts GET /:certificateId/esignatures
  * @two-facility api/maintenance.route.ts GET /:orderId
  */
 import fs from "node:fs";
@@ -185,6 +186,8 @@ twoFacilitySuite({
     { key: "GET /:certificateId", method: "GET", path: (id) => `/${id}`, ownId: own("c1"), foreignId: own("c2"), unboundToo: true },
     { key: "GET /:certificateId/document", method: "GET", path: (id) => `/${id}/document`, ownId: own("c1"), foreignId: own("c2"), unboundToo: true },
     { key: "GET /:certificateId/pdf", method: "GET", path: (id) => `/${id}/pdf`, ownId: own("c1"), foreignId: own("c2"), unboundToo: true },
+    // P21-15 (ADR-140): the e-signatures affixed to a certificate — read in the caller's facility scope first.
+    { key: "GET /:certificateId/esignatures", method: "GET", path: (id) => `/${id}/esignatures`, ownId: own("c1"), foreignId: own("c2"), unboundToo: true },
   ],
   lists: [{ key: "GET /", path: "/", ownId: own("c1"), foreignId: own("c2") }],
 });

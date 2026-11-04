@@ -126,20 +126,28 @@ const CREDENTIAL_ENDPOINTS = [
   "/api/v1/auth/passkey/verify",
   "/api/v1/auth/invitation/accept",
   "/api/v1/access-requests",
-  // P21-15 (ADR-140): a personal e-signature's create, revoke and document signing re-enter a credential.
-  "/api/v1/esignature/me",
-  "/api/v1/esignature/me/revoke",
-  "/api/v1/esignature/documents",
+];
+
+/**
+ * P21-15 (ADR-140): the e-signature acts that re-enter a credential — POST only. The reads on the
+ * same paths (`GET /esignature/me`, `GET /calibration-records/:id/esignatures`, …) are ordinary
+ * session reads: an expired session there refreshes and, failing that, goes to sign-in.
+ */
+const CREDENTIAL_POSTS: readonly RegExp[] = [
+  /^\/api\/v1\/esignature\/me$/,
+  /^\/api\/v1\/esignature\/me\/revoke$/,
+  /^\/api\/v1\/esignature\/documents$/,
+  /^\/api\/v1\/calibration-records\/[^/]+\/esignatures$/,
+  /^\/api\/v1\/certificates\/[^/]+\/esignatures$/,
 ];
 
 // P23-02 (G-R12): + the one parametrised path, an IPM report signature (a 401 is a wrong credential).
-const isCredentialEndpoint = (url: string | undefined): boolean => {
+const isCredentialEndpoint = (url: string | undefined, method?: string): boolean => {
   const path = (url || "").split("?")[0] ?? "";
   return (
     CREDENTIAL_ENDPOINTS.includes(path) ||
     /^\/api\/v1\/ipm\/sessions\/[^/]+\/signatures$/.test(path) ||
-    // P21-15: an e-signature applied to a calibration record (a 401 is a wrong credential).
-    /^\/api\/v1\/calibration-records\/[^/]+\/esignatures$/.test(path)
+    ((method || "").toLowerCase() === "post" && CREDENTIAL_POSTS.some((pattern) => pattern.test(path)))
   );
 };
 
@@ -306,7 +314,7 @@ apiClient.interceptors.response.use(
       status === 401 &&
       config &&
       !config._retriedAfterRefresh &&
-      !isCredentialEndpoint(config.url)
+      !isCredentialEndpoint(config.url, config.method)
     ) {
       const refreshed = await refreshSession();
       if (refreshed) {
@@ -347,7 +355,7 @@ apiClient.interceptors.response.use(
       } else if (
         status === 403 &&
         !gateCode &&
-        !isCredentialEndpoint(config?.url) &&
+        !isCredentialEndpoint(config?.url, config?.method) &&
         MUTATING_METHODS.includes((config?.method || "").toLowerCase())
       ) {
         // F-07: an action the caller's role may not take. The screen shows

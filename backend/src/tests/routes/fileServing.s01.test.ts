@@ -71,6 +71,8 @@ const VERIFY_TOKEN = "Zq3v8Xr1TtY0bN4kLmP2sW9aE6hJcF5u";
 const mockMatch = (row: Record<string, unknown>, where: Record<string, unknown> = {}) =>
   Object.entries(where).every(([k, v]) => row[k] === v);
 
+// P21-15: the e-signature collaborator is outside this suite's scope; certificateEsignatures.p2115 tests it over the real models.
+jest.mock("../../services/esignatureApplication.service", () => ({ autoApplyApproval: jest.fn().mockResolvedValue(null), certificateMarks: jest.fn().mockResolvedValue([]) }));
 jest.mock("../../models", () => ({
   Attachment: {
     // defaultScope { isDeleted: false } — as attachment.model.js

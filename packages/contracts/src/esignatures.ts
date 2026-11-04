@@ -30,7 +30,7 @@ import { uuid } from "./fields";
 export const ESIG_APP_SCHEME = "esig-app-v1-rsa-sha256";
 /** A calibration record's canonical data. */
 export const CALREC_DATA_SCHEME = "calrec-data-v1";
-/** A certificate's canonical data (reserved: P21-15 phase 4 defines its fields). */
+/** A certificate's canonical data: what the certificate SAYS, never its flow state (ADR-140 § 6). */
 export const CERT_DATA_SCHEME = "cert-data-v1";
 /** A file hashed in the browser. */
 export const FILE_SHA256_SCHEME = "file-sha256";
@@ -50,6 +50,9 @@ export type EsigMeaning = (typeof ESIG_MEANINGS)[number];
 /** The meanings a calibration record takes: its performer's, or another person's review. */
 export const CALREC_ESIG_MEANINGS = Object.freeze(["performed", "reviewed"] as const);
 
+/** The meanings a certificate takes: its calibrator's, or its approver's or signer's approval. */
+export const CERT_ESIG_MEANINGS = Object.freeze(["performed", "approved"] as const);
+
 /** How the signer re-authenticated (§ 11.200 (a)). */
 export const ESIG_AUTH_METHODS = Object.freeze(["password", "mfa"] as const);
 export type EsigAuthMethod = (typeof ESIG_AUTH_METHODS)[number];
@@ -66,7 +69,7 @@ export const ESIG_VERDICTS = Object.freeze(["valid", "content_changed", "invalid
 export type EsigVerdict = (typeof ESIG_VERDICTS)[number];
 
 /** A signed record's lifecycle now, shown BESIDE a verdict, never in its place. */
-export const ESIG_DOCUMENT_STATES = Object.freeze(["current", "superseded", "voided"] as const);
+export const ESIG_DOCUMENT_STATES = Object.freeze(["current", "superseded", "voided", "revoked"] as const);
 export type EsigDocumentState = (typeof ESIG_DOCUMENT_STATES)[number];
 
 /** The content recomputed now against the signed hash (the staff reads). */
@@ -78,6 +81,9 @@ export const ESIG_CODES = Object.freeze({
   platform: "ESIG_PLATFORM",
   none: "ESIG_NONE",
   notPerformer: "ESIG_NOT_PERFORMER",
+  notApprover: "ESIG_NOT_APPROVER",
+  certificateNotApproved: "CERT_NOT_APPROVED",
+  certificateRevoked: "CERT_REVOKED",
   alreadyApplied: "ESIG_ALREADY_APPLIED",
   specimen: "ESIG_SPECIMEN_INVALID",
   recordVoided: "CALREC_VOIDED",
@@ -307,8 +313,84 @@ export const calibrationRecordDataPairs = (record: CalibrationRecordDataInput): 
  */
 export const canonicalCalibrationRecordData = (record: CalibrationRecordDataInput): string => JSON.stringify(calibrationRecordDataPairs(record));
 
+// ==========================================
+// THE CANONICAL CERTIFICATE DATA (§ 3, ADR-140 § 6)
+// ==========================================
+
+/**
+ * The certificate's canonical data's member names, in their fixed order: what the certificate SAYS.
+ * Never `status`, `signedAt`, `signedBy`, `approvedBy`, `digitalSignature`, `signedSnapshot` or the
+ * document's integrity hash — they change as the certificate moves through its flow (the integrity
+ * hash exists only from signing), so an approval applied before signing would read as changed.
+ */
+export const CERT_DATA_FIELDS = Object.freeze([
+  "schemeVersion",
+  "tenantId",
+  "certificateId",
+  "certificateNumber",
+  "type",
+  "calibrationRecordId",
+  "deviceId",
+  "issueDate",
+  "validUntil",
+  "standard",
+  "summary",
+  "conditions",
+  "notes",
+  "calibratedBy",
+] as const);
+export type CertDataField = (typeof CERT_DATA_FIELDS)[number];
+
+/** The certificate's members the canonical data reads (the model row satisfies it). */
+export interface CertificateDataInput {
+  readonly tenantId: string;
+  readonly id: string;
+  readonly certificateNumber: string;
+  readonly type?: string | null;
+  readonly calibrationRecordId?: string | null;
+  readonly deviceId: string;
+  readonly issueDate?: DayValue;
+  readonly validUntil?: DayValue;
+  readonly standard?: string | null;
+  readonly summary?: string | null;
+  readonly conditions?: string | null;
+  readonly notes?: string | null;
+  readonly calibratedBy?: string | null;
+}
+
+/**
+ * A certificate's data as the canonical pairs (`cert-data-v1`).
+ *
+ * @param certificate - the certificate
+ * @returns the fourteen `[name, value]` pairs, in the fixed order
+ */
+export const certificateDataPairs = (certificate: CertificateDataInput): readonly (readonly [CertDataField, string])[] => [
+  ["schemeVersion", CERT_DATA_SCHEME],
+  ["tenantId", certificate.tenantId],
+  ["certificateId", certificate.id],
+  ["certificateNumber", certificate.certificateNumber],
+  ["type", text(certificate.type)],
+  ["calibrationRecordId", text(certificate.calibrationRecordId)],
+  ["deviceId", certificate.deviceId],
+  ["issueDate", dayOf(certificate.issueDate)],
+  ["validUntil", dayOf(certificate.validUntil)],
+  ["standard", text(certificate.standard)],
+  ["summary", text(certificate.summary)],
+  ["conditions", text(certificate.conditions)],
+  ["notes", text(certificate.notes)],
+  ["calibratedBy", text(certificate.calibratedBy)],
+];
+
+/**
+ * The canonical data of a certificate: the JSON whose SHA-256 is the content hash.
+ *
+ * @param certificate - the certificate
+ * @returns the JSON text of the canonical pairs
+ */
+export const canonicalCertificateData = (certificate: CertificateDataInput): string => JSON.stringify(certificateDataPairs(certificate));
+
 /** The fields of each canonical-pairs scheme the browser can recompute. */
-const PAIR_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({ [CALREC_DATA_SCHEME]: CALREC_DATA_FIELDS });
+const PAIR_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({ [CALREC_DATA_SCHEME]: CALREC_DATA_FIELDS, [CERT_DATA_SCHEME]: CERT_DATA_FIELDS });
 
 /**
  * The canonical JSON of pairs a verdict served — what the verification page hashes in the browser,
@@ -402,6 +484,14 @@ export type RevokeUserEsignature = z.output<typeof revokeUserEsignature>;
 export const applyRecordEsignatureBody = z.strictObject({ meaning: z.enum(CALREC_ESIG_MEANINGS), ...credentialShape });
 export const applyRecordEsignature = z.strictObject({ calibrationRecordId: uuid(), meaning: z.enum(CALREC_ESIG_MEANINGS), ...credentialShape });
 export type ApplyRecordEsignature = z.output<typeof applyRecordEsignature>;
+
+/** `POST /certificates/:certificateId/esignatures` — the body alone, and params + body. */
+export const applyCertificateEsignatureBody = z.strictObject({ meaning: z.enum(CERT_ESIG_MEANINGS), ...credentialShape });
+export const applyCertificateEsignature = z.strictObject({ certificateId: uuid(), meaning: z.enum(CERT_ESIG_MEANINGS), ...credentialShape });
+export type ApplyCertificateEsignature = z.output<typeof applyCertificateEsignature>;
+
+/** `GET /certificates/:certificateId/esignatures`. */
+export const certificateEsignaturesParams = z.strictObject({ certificateId: uuid() });
 
 /** `GET /calibration-records/:calibrationRecordId/esignatures`. */
 export const recordEsignaturesParams = z.strictObject({ calibrationRecordId: uuid() });
@@ -513,3 +603,18 @@ export const publicEsignatureVerdict = z.strictObject({
     .nullable(),
 });
 export type PublicEsignatureVerdict = z.output<typeof publicEsignatureVerdict>;
+
+/**
+ * An e-signature as the certificate's full public verdict and its renderer show it: who, what it
+ * means, when, the specimen and the link to its own verification. Never an id or the token beyond the link.
+ */
+export const certificateEsignatureMark = z.strictObject({
+  meaning: z.enum(ESIG_MEANINGS),
+  name: z.string(),
+  role: z.string().nullable(),
+  organisation: z.string().nullable(),
+  signedAt: z.iso.datetime(),
+  specimenSvg: z.string(),
+  verifyUrl: z.string(),
+});
+export type CertificateEsignatureMark = z.output<typeof certificateEsignatureMark>;

@@ -146,9 +146,10 @@ describe("Certificates Routes", () => {
     });
   });
 
-  it("should have exactly 14 route endpoints", () => {
+  it("should have exactly 16 route endpoints", () => {
     const routeCount = certificatesRoutes.stack.filter((layer) => layer.route).length;
-    // 14 since ADR-042 step 4 added GET /verify/:certificateNumber/document.
-    expect(routeCount).toBe(14);
+    // 14 since ADR-042 step 4 added GET /verify/:certificateNumber/document;
+    // 16 since P21-15 (ADR-140 § 6) added POST and GET /:certificateId/esignatures.
+    expect(routeCount).toBe(16);
   });
 });

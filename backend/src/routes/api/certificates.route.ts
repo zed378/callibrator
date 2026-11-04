@@ -8,7 +8,7 @@
  * the `@swagger` JSDoc this file carried is gone.
  */
 import { Router } from "express";
-import { auth } from "../../middlewares/auth.middleware";
+import { auth, denyApiKey } from "../../middlewares/auth.middleware";
 import { dynamicAccess } from "../../middlewares/dynamicAccess.middleware";
 import { validateUuid } from "../../middlewares/validateUuid.middleware";
 import { denyPlatformAuthoring } from "../../middlewares/denyPlatformAuthoring.middleware"; // A-127, ADR-051 Q-17
@@ -17,6 +17,8 @@ import certificatePdfController from "../../controllers/certificatePdf.controlle
 import { validate } from "../../middlewares/validation.middleware";
 import { approveCertificateSchema } from "../../validators/certificate.validator";
 import { requestBudget } from "../../middlewares/requestBudget.middleware";
+import { applyCertificateEsignature, certificateEsignaturesParams } from "@callibrator/contracts/esignatures";
+import { applyToCertificateHandler, certificateApplications } from "../../controllers/userEsignature.controller";
 
 // `Router` is `express.Router` (the same function).
 const router = Router();
@@ -146,6 +148,33 @@ router.get(
   validateUuid("certificateId"),
   dynamicAccess("certificate", "read"),
   certificatePdfController.downloadPdf,
+);
+
+// P21-15 (ADR-140 § 6): a personal e-signature AFFIXED to the certificate — `performed` by its
+// calibrator, `approved` by its approver or signer once it is approved — re-entering a credential (the
+// signing budget per user and address: the A-185 class). The approve and sign steps also apply the
+// actor's e-signature automatically. The certificate's own digital signature is not touched.
+const esignatureBudget = requestBudget("esigSign", { keyOf: (req) => (req.user as { id: string }).id });
+
+router.post(
+  "/:certificateId/esignatures",
+  auth,
+  denyApiKey,
+  dynamicAccess("certificate", "write"),
+  denyPlatformAuthoring,
+  validateUuid("certificateId"),
+  validate(applyCertificateEsignature, { from: ["params", "body"] }),
+  esignatureBudget,
+  applyToCertificateHandler,
+);
+
+router.get(
+  "/:certificateId/esignatures",
+  auth,
+  validateUuid("certificateId"),
+  dynamicAccess("certificate", "read"),
+  validate(certificateEsignaturesParams, { from: "params" }),
+  certificateApplications,
 );
 
 export = router;
