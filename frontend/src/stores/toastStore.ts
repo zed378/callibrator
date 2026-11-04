@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { generateId } from "@/utils";
 
 export interface Toast {
   id: string;
@@ -17,7 +18,8 @@ interface ToastState {
 export const useToastStore = create<ToastState>()((set) => ({
   toasts: [],
   addToast: (toast) => {
-    const id = Math.random().toString(36).substring(2, 9);
+    // A11-SEC-02: a CSPRNG id, so two toasts in one burst never share a key.
+    const id = generateId();
     const duration = toast.duration ?? 5000;
 
     set((state) => ({

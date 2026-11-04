@@ -39,6 +39,8 @@ describe("utils", () => {
     const a = generateId();
     expect(a).toMatch(/^[a-z0-9]+$/);
     expect(generateId()).not.toBe(a);
+    // A11-SEC-02: 128 bits from the CSPRNG, as 32 hex characters.
+    expect(a).toMatch(/^[0-9a-f]{32}$/);
   });
 
   it("capitalize", () => {
