@@ -331,8 +331,7 @@ export const resolveVerifyUrl = (
   if (explicit) {
     return withToken(`${explicit.replace(/\/$/, "")}/${certificateNumber}`, "t");
   }
-  // `||` as built: an empty base falls through to the next one.
-  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built: an empty base falls through to the next one
   const base = (baseUrl || env("PUBLIC_BASE_URL") || "http://localhost:5000").replace(/\/$/, "");
   return withToken(`${base}/api/v1/certificates/verify/${certificateNumber}`, "token");
 };

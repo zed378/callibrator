@@ -53,6 +53,20 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 The acquire timeout matching the 30-second request timeout means a request waiting for a connection fails at roughly the moment the request itself gives up, rather than acquiring a connection nobody is waiting for.
 
+**Sizing the pool (A11-DB-01, the 2026-11 audit).** Each backend PROCESS opens its own pool of up to `DB_POOL_MAX` connections. The batch-job worker runs inside the API process (`index.ts` starts it), not as a second pool. The rule:
+
+> `DB_POOL_MAX × backend processes + reserved ≤ max_connections`
+
+Here, `reserved` covers `db-backup`'s `pg_dump` (one or two connections at 02:00), a `psql` session for an operator, and PostgreSQL's own `superuser_reserved_connections` (3). Keep at least **10** in reserve.
+
+| Topology | Backend processes | At the default `DB_POOL_MAX=20` | Against `max_connections=100` (PostgreSQL's default; the compose `postgres` service does not change it) |
+|---|---|---|---|
+| Compose (`deploy/compose`) | 1 | 20 | 80 left: fine |
+| Helm, `values-prod.yaml` | 1 API deployment with `cron.enabled` (the chart refuses `replicaCount > 1` with it) | 20 | fine |
+| Helm, the API scaled out with `cron.enabled=false` | N + 1 | 20 × (N + 1) | above **N = 3**, lower `DB_POOL_MAX` to `floor(90 / (N + 1))` or raise `max_connections`. With more than a handful of replicas, put PgBouncer (transaction pooling) in front of PostgreSQL |
+
+"Too many clients already" under load is this arithmetic, not an application fault.
+
 **pgvector is required.** pgvector is required: `document_chunks.embedding` is `vector(1536)` and retrieval is a tenant-scoped cosine-distance search. The former non-PostgreSQL branch — which returned the five most *recent* chunks as "context" regardless of relevance — was removed with MySQL support (ADR-039).
 
 ## Application
