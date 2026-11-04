@@ -8,6 +8,12 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-04 — Comprehensive audit, Wave 2: correct page totals, one definition of a live session, FK indexes, last source `.js` gone ([record](./records/2026-11-04-audit-wave2.md))
+- **Page totals:** lists with an include report the number of rows a client can page through, not the number of JOINED rows. That is 19 queries in 15 files, and a guard keeps it (BUG-01).
+- **Sessions:** a session deactivated without being revoked no longer shows as "active". The list, stats, sign-in validation and own-sessions page share one definition (BUG-02).
+- **Migration 0150:** eight foreign-key indexes built concurrently, proved on PostgreSQL 18 (DB-01). Webhook deliveries are written in one statement (DB-03).
+- **Last source `.js` gone:** `checkMenu.util.js` is deleted (A-18), and the ratchet floor goes to 2. `minimatch` is overridden to 11 under `archiver`, so production `npm audit` stays at 0. `Dockerfile`s are pinned to LF.
+
 ### 2026-11-04 — Backend lint back at 0 errors: P9-26's converted tests lint at their `.js` level ([record](./records/2026-11-04-backend-lint-zero.md), ADR-092 Am. 1)
 - `node scripts/ci/eslint-ratchet.js`: 78,365 errors → **0 errors, 0 warnings, baseline 0** (never raised).
 - The 335 converted test files (a frozen list in `backend/.eslint-legacy-tests.json` that only shrinks) keep the base rules and lose the type-aware ones. A new test file is held to the full set.

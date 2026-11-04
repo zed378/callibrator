@@ -598,7 +598,7 @@ This addendum adds **only net-new findings** from a second independent pass that
 
 ---
 
-## Implementation Status — feat/audit-2026-11 (2026-11-03)
+## Implementation Status — feat/audit-2026-11 (2026-11-03; Wave 2 on `main`, 2026-11-04 — [record](../MEMORY/records/2026-11-04-audit-wave2.md))
 
 Implemented on branch `feat/audit-2026-11`; each commit gated (eslint on changed
 files, typecheck, related tests, load:check). `certificate.service.ts` is excluded
@@ -615,16 +615,18 @@ files, typecheck, related tests, load:check). `certificate.service.ts` is exclud
 | INF-01 | FIXED | `9887de72` | container HEALTHCHECK on `/live`; "runs as root" already-fixed (`USER app`) |
 | INF-02 | NO CHANGE | `9887de72` | premise incorrect (proxy 60s >= app 30s is the correct ordering); documented |
 | SEC-03 | FIXED | `9887de72` | nginx X-Frame-Options / X-Content-Type-Options / Referrer-Policy (HSTS already present) |
-| BUG-01 | DEFERRED | — | ~20-file `distinct:true`; needs a dedicated pass + full-suite coverage (cert excluded) |
-| BUG-02 | DEFERRED | — | session `is_active` consistency; coupled refactor |
+| BUG-01 | FIXED | Wave 2 | 19 calls in 15 files; ticket already distinct; vendor/warehouse/webhook have no include; guard `findAndCountAllDistinct.bug01` |
+| BUG-02 | FIXED | Wave 2 | `utils/sessionState.util.ts`: one definition of a live session, read by list, stats, validator, ownSessions |
 | ARC-01 | DEFERRED | — | move transactions/queries out of session/sso controllers |
-| DB-01 | DEFERRED | — | FK indexes migration `0150` + live PostgreSQL 18 suite |
+| DB-01 | FIXED | Wave 2 | migration 0150 (8 indexes, CONCURRENTLY); live `t0150` 3/3 on PostgreSQL 18 |
 | DB-02 | DEFERRED | — | bound the unbounded `findAll` reads |
-| DB-03 | DEFERRED | — | bound the unbounded `findAll` reads |
+| DB-03 | FIXED (webhook) | Wave 2 | `emitEvent` writes deliveries in one `bulkCreate` |
 | PERF-01 | DEFERRED | — | remove N+1 in loops (device/maintenance/workOrder/audit/permission/storage/aiRag) |
 | A11-PERF-01 | DEFERRED | — | remove N+1 in loops |
 | A11-DB-03 | DEFERRED | — | narrow migration try/catch across 18 migrations (LOW, intentional pattern) |
 | A11-ARCH-01 | DEFERRED | — | eslint-disable sweep; done opportunistically in touched files |
+| ARC-02 | FIXED | Wave 2 | `checkMenu.util.js` + its test deleted (A-18 closed); ratchet floor 2 |
+| SEC-02 | FIXED (production) | Wave 2 | override `archiver → readdir-glob → minimatch ^11.0.1`; `npm audit --omit=dev` 0; real ZIP proved. deepmerge 4.3.2 does not exist — that half is void |
 | PERF-02 | WAVE 2 | — | frontend memoisation; excluded from this pass |
 | DEP-01 | EXCLUDED | — | production image boot; not in Wave 1 scope |
 
