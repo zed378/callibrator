@@ -10,6 +10,8 @@ jest.mock("../../models", () => ({
   },
   WebhookDelivery: {
     create: jest.fn(),
+    // DB-03: emitEvent writes every matching webhook's row in ONE statement.
+    bulkCreate: jest.fn(),
     findOne: jest.fn(),
     findAndCountAll: jest.fn(),
   },
@@ -410,7 +412,7 @@ describe("webhook.service", () => {
     it("writes a due row per matching webhook, then attempts it at once", async () => {
       Webhook.findAll.mockResolvedValue([hookRow()]);
       const row = deliveryRow();
-      WebhookDelivery.create.mockResolvedValue(row);
+      WebhookDelivery.bulkCreate.mockResolvedValue([row]);
       claims([{ id: "d1", tenantId: "t1" }]);
       WebhookDelivery.findOne.mockResolvedValue(row);
       Webhook.findOne.mockResolvedValue(hookRow());
@@ -421,7 +423,7 @@ describe("webhook.service", () => {
       await flush();
       await flush();
 
-      const created = WebhookDelivery.create.mock.calls[0][0];
+      const created = WebhookDelivery.bulkCreate.mock.calls[0][0][0];
       expect(created).toMatchObject({ tenantId: "t1", webhookId: "w1", event: "device.overdue", status: "pending" });
       expect(created.nextAttemptAt).toBeDefined(); // the database's now()
       expect(row.update).toHaveBeenCalledWith(
@@ -435,7 +437,7 @@ describe("webhook.service", () => {
     it("sends the timestamp, the delivery id and a v1 signature over `${timestamp}.${body}`", async () => {
       Webhook.findAll.mockResolvedValue([hookRow()]);
       const row = deliveryRow();
-      WebhookDelivery.create.mockResolvedValue(row);
+      WebhookDelivery.bulkCreate.mockResolvedValue([row]);
       claims([{ id: "d1", tenantId: "t1" }]);
       WebhookDelivery.findOne.mockResolvedValue(row);
       Webhook.findOne.mockResolvedValue(hookRow());
@@ -459,7 +461,7 @@ describe("webhook.service", () => {
     it("does not follow a redirect, and records it as a failure with the next attempt scheduled", async () => {
       Webhook.findAll.mockResolvedValue([hookRow()]);
       const row = deliveryRow();
-      WebhookDelivery.create.mockResolvedValue(row);
+      WebhookDelivery.bulkCreate.mockResolvedValue([row]);
       claims([{ id: "d1", tenantId: "t1" }]);
       WebhookDelivery.findOne.mockResolvedValue(row);
       Webhook.findOne.mockResolvedValue(hookRow());
@@ -486,7 +488,7 @@ describe("webhook.service", () => {
       Webhook.findAll.mockResolvedValue([]);
       const r = await webhookService.emitEvent("t1", "nothing.subscribed", {});
       expect(r.matched).toBe(0);
-      expect(WebhookDelivery.create).not.toHaveBeenCalled();
+      expect(WebhookDelivery.bulkCreate).not.toHaveBeenCalled();
     });
 
     it("never throws on a DB error (best-effort)", async () => {
@@ -498,7 +500,7 @@ describe("webhook.service", () => {
 
     it("logs, and leaves the row due for the dispatcher, when the first attempt errors", async () => {
       Webhook.findAll.mockResolvedValue([hookRow()]);
-      WebhookDelivery.create.mockResolvedValue(deliveryRow());
+      WebhookDelivery.bulkCreate.mockResolvedValue([deliveryRow()]);
       db.query.mockRejectedValueOnce(new Error("claim failed"));
 
       const r = await webhookService.emitEvent("t1", "test", {});
@@ -509,7 +511,7 @@ describe("webhook.service", () => {
 
     it("does nothing more when the row was already claimed elsewhere", async () => {
       Webhook.findAll.mockResolvedValue([hookRow()]);
-      WebhookDelivery.create.mockResolvedValue(deliveryRow());
+      WebhookDelivery.bulkCreate.mockResolvedValue([deliveryRow()]);
       claims([]);
       global.fetch = jest.fn();
 
@@ -681,6 +683,8 @@ describe("webhook.service", () => {
     it("makes one attempt and returns its result, reading the row back tenant-scoped", async () => {
       Webhook.findOne.mockResolvedValue(hookRow());
       const row = deliveryRow({ event: "webhook.test" });
+      // A test delivery is ONE row: it is a single `create`, not the emit's
+      // bulk write (DB-03).
       WebhookDelivery.create.mockResolvedValue(row);
       claims([{ id: "d1", tenantId: "t1" }]);
       WebhookDelivery.findOne.mockResolvedValue(row);

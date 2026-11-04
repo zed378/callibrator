@@ -19,6 +19,8 @@ jest.mock("../../models", () => ({
   },
   WebhookDelivery: {
     create: jest.fn(),
+    // DB-03: emitEvent writes every matching webhook's row in ONE statement.
+    bulkCreate: jest.fn(),
     findOne: jest.fn(),
     findAndCountAll: jest.fn(),
   },
@@ -68,7 +70,7 @@ const deliverOnce = async (webhook: any) => {
   const delivery = { id: "d1", tenantId: TENANT, webhookId: webhook.id, event: "test", payload: {}, attempts: 0, update: jest.fn() };
   Webhook.findAll.mockResolvedValue([webhook]);
   Webhook.findOne.mockResolvedValue({ isActive: true, ...webhook });
-  WebhookDelivery.create.mockResolvedValue(delivery);
+  WebhookDelivery.bulkCreate.mockResolvedValue([delivery]);
   WebhookDelivery.findOne.mockResolvedValue(delivery);
   db.query.mockResolvedValueOnce([{ id: "d1", tenantId: TENANT }]); // the claim (P9-18: sql() answers the rows directly)
   global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 });

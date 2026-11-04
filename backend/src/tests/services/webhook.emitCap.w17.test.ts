@@ -20,7 +20,7 @@ interface WebhookService {
 // mocks as the test.
 const mockModels = {
   Webhook: { findAll: jest.fn(), findOne: jest.fn() },
-  WebhookDelivery: { create: jest.fn(), findOne: jest.fn() },
+  WebhookDelivery: { create: jest.fn(), bulkCreate: jest.fn<Promise<{ id: string }[]>, [unknown[]]>(), findOne: jest.fn() },
   AuditLog: { create: jest.fn() },
 };
 const mockConfig = { db: { transaction: jest.fn(), query: jest.fn() } };
@@ -65,7 +65,10 @@ describe("W-17 — emitEvent caps its first attempts", () => {
       () => new Promise((resolve) => releases.push(() => { resolve([[]]); })),
     );
     let n = 0;
-    WebhookDelivery.create.mockImplementation(() => Promise.resolve({ id: `d${String(++n)}` }));
+    // DB-03: emitEvent writes every matching webhook's row in ONE statement.
+    WebhookDelivery.bulkCreate.mockImplementation((rows: unknown[]) =>
+      Promise.resolve(rows.map(() => ({ id: `d${String(++n)}` }))),
+    );
     Webhook.findAll.mockResolvedValue(
       Array.from({ length: 5 }, (_, i) => ({ id: `w${String(i)}`, tenantId: "t1", isActive: true })),
     );
@@ -76,7 +79,8 @@ describe("W-17 — emitEvent caps its first attempts", () => {
 
     const result = await service.emitEvent("t1", "device.overdue", {});
 
-    expect(WebhookDelivery.create).toHaveBeenCalledTimes(5);
+    expect(WebhookDelivery.bulkCreate).toHaveBeenCalledTimes(1);
+    expect(WebhookDelivery.bulkCreate.mock.calls[0]?.[0]).toHaveLength(5);
     expect(result).toEqual({ matched: 5, deferred: 3 });
     expect(db.query).toHaveBeenCalledTimes(2);
     expect(service._emitInFlight()).toBe(2);
