@@ -1668,8 +1668,12 @@ const getMetrics = async (user: KanbanUser, projectId: string, options: { sprint
   if (view === "backlog") {cardWhere["sprintId"] = null;}
   else if (view !== "all") {cardWhere["sprintId"] = view;}
 
+  // DB-02 (the 2026-11 audit): the metrics read five attributes of a card, not
+  // the whole row — a description is free text and a board holds every card of
+  // the project, so loading it multiplied the heap by the longest descriptions.
   const cards = await KanbanCard.findAll({
     where: whereOf<CardRow>(cardWhere),
+    attributes: ["id", "columnId", "sprintId", "priority", "dueDate"],
     include: cardInclude(),
     order: [["position", "ASC"]],
   });
