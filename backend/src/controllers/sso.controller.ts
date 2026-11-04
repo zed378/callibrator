@@ -14,16 +14,11 @@ import type { Request, Response } from "express";
 import ssoService from "../services/sso.service";
 import oidcJwks from "../services/oidcJwks";
 import tenantService from "../services/tenant.service";
-import auditService from "../services/audit.service";
 import redis from "../services/redis.service";
 import rateLimiter from "../services/rateLimiter.redis.service";
 import models from "../models";
 import authService from "../services/auth.service";
-import {
-  generateAccessToken as loadedGenerateAccessToken,
-  generateOpaqueRefreshToken as loadedGenerateOpaqueRefreshToken,
-} from "../utils/jwt.util";
-import sessionService from "../services/session.service";
+import ssoSession from "../services/ssoSession.service";
 import { ssoLoginSchema as loadedSsoLoginSchema } from "../validators/sso.validator";
 import { checkInput as loadedCheckInput } from "../validators/input";
 import { AppError as LoadedAppError } from "../utils/appError.util";
@@ -36,11 +31,8 @@ import { env, envOr, isProduction } from "../config/env";
 import type { TenantId, UserId } from "../types/ids";
 
 const { noteAuthFailure } = rateLimiter;
-const { Tenants, Users, sequelize } = models;
+const { Tenants, Users } = models;
 const { tenantInclude, tenantRefusal } = authService;
-const generateAccessToken = loadedGenerateAccessToken;
-const generateOpaqueRefreshToken = loadedGenerateOpaqueRefreshToken;
-const { createSession } = sessionService;
 const ssoLoginSchema = loadedSsoLoginSchema;
 const checkInput = loadedCheckInput;
 const AppError = LoadedAppError;
@@ -367,72 +359,8 @@ const readCookie = (header: string | undefined, name: string): string | null => 
   return null;
 };
 
-/**
- * Create the session FIRST, then sign its id into the access token (`sid`) —
- * the same order loginUser uses. A-59: these callbacks used to sign
- * `{id, email}` and discard the session, so an SSO-issued token could not be
- * revoked by logout, an administrator's revoke, or a password change (A-48
- * checks the session only when the token names one).
- *
- * A-60: runs at the code exchange, not the callback. The session row and its
- * LOGIN audit row are written in one transaction (Sequelize CLS carries it into
- * createSession), so neither exists without the other.
- *
- * @param {{userId: string, email: string, tenantId: string, ipAddress: string, userAgent: string, method: string}} entry
- * @returns {Promise<{accessToken: string, refreshToken: string, session: object}>}
- */
-const issueSsoTokens = async (entry: HandoffEntry): Promise<{ accessToken: string; refreshToken: string; session: { id: string } }> => {
-  const refreshToken = generateOpaqueRefreshToken();
-
-  const session = await sequelize.transaction(async (transaction) => {
-    const created = await createSession({
-      tenantId: entry.tenantId,
-      userId: entry.userId,
-      refreshToken,
-      ipAddress: entry.ipAddress,
-      userAgent: entry.userAgent,
-      expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-      // A-160: the session is federated; its MFA is the IdP's (0052).
-      authMethod: entry.method,
-    });
-    // A-188: an SSO sign-in is a sign-in — "last login" used to stay at the
-    // last PASSWORD sign-in, so an SSO-only account looked dormant. Written in
-    // the session's transaction; pre-auth there is no tenant context, and the
-    // row is named by id and its own tenant.
-    await Users.update(
-      { lastLoginAt: new Date() },
-      { where: { id: entry.userId, tenantId: entry.tenantId }, transaction, skipTenantScope: true },
-    );
-    await auditService.logAction(
-      {
-        tenantId: entry.tenantId,
-        userId: entry.userId,
-        action: "LOGIN",
-        resourceType: "Session",
-        resourceId: created.id,
-        changes: { method: entry.method },
-        // As built: an empty address or agent reads as null (`||`).
-        ipAddress: entry.ipAddress || null,
-        userAgent: entry.userAgent || null,
-      },
-      { transaction },
-    );
-    return created;
-  });
-
-  const accessToken = generateAccessToken({
-    id: entry.userId,
-    email: entry.email,
-    sid: session.id,
-    // A-160: read by the tenant MFA policy (auth.middleware).
-    amr: entry.method,
-  });
-
-  // P6-02 (ADR-077): the refresh token goes back too — it was generated,
-  // stored as the session's key and then dropped, so an SSO session could
-  // never be renewed (the sso-session route reads `refreshToken`).
-  return { accessToken, refreshToken, session };
-};
+// ARC-01 (the 2026-11 audit): the sign-in's session, last-login and LOGIN audit
+// row are written in one transaction by services/ssoSession.service#issueSsoTokens.
 
 /** The tenant's SSO settings, as the `.js` read them (`data?.settings || {}`). */
 const settingsOf = (settingsResult: { data?: { settings?: unknown } | null }): SsoSettings =>
@@ -777,7 +705,7 @@ const ssoExchange = asyncHandler(async (req: Request, res: Response) => {
     { ip: req.ip || null, userAgent: req.headers?.["user-agent"] || null, method: "sso" },
   );
 
-  const { accessToken, refreshToken, session } = await issueSsoTokens(entry);
+  const { accessToken, refreshToken, session } = await ssoSession.issueSsoTokens(entry);
 
   login(
     res,
