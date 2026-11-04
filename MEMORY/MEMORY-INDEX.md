@@ -10,6 +10,7 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-11-04 | AUDIT-2026-11 Wave 2 | [Comprehensive audit: Wave 2](./records/2026-11-04-audit-wave2.md) | **BUG-01, BUG-02, DB-01 (0150, live 3/3), DB-03, ARC-02 (A-18 closed), SEC-02 FIXED.** Found uncommitted, reviewed, completed. The `deepmerge` override was void (4.3.2 does not exist). New guard `findAndCountAllDistinct.bug01`. |
 | 2026-11-04 | ADR-092 Am. 1 | [The backend lint gate is back at zero](./records/2026-11-04-backend-lint-zero.md) | **0 errors, 0 warnings, baseline 0** (was 78,365, all in P9-26's 335 converted tests). Those files lint at their `.js` level from a frozen list; 235 reformatted, 235/235 AST-identical. |
 | 2026-11-03 | AUDIT-2026-11 Wave 1 | [Comprehensive audit: Wave 1 implementation](./records/2026-11-03-audit-wave1.md) | **PARTIAL — 4 commits (SEC-01, A11-SEC-01/02, A11-DB-02, INF-01/02/SEC-03).** BUG-01/02, ARC-01, DB-01/02/03, PERF, A11-DB-03 deferred with reasons. environmentSchema.p906 + full coverage + image boot not run. |
 | 2026-11-03 | P21-15 | [p21-15-operator-esignature](./records/2026-11-03-p21-15-operator-esignature.md) | DONE: personal e-signatures (KMS-held RSA key + specimen), migration 0149, applied to calibration records, documents by hash and certificates (automatic in approve/sign, cert-data-v1, renderer marks), public verification /s/[id]; bound users; /d/[token] one h1 |
