@@ -8,6 +8,13 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-04 — Comprehensive audit, Wave 3: every remaining finding closed, verified or declined ([record](./records/2026-11-04-audit-wave3.md))
+- **Faster editors:** the ticket and post editors load in a separate chunk. Their pages' first-load JS drops from 210 to 83 KB gzip.
+- **Session and SSO logic out of the controllers** (ARC-01), with a guard: no controller opens a transaction.
+- **Dependencies:** `stripe` 23, `motion` 14, and 65 in-range bumps (`xss`, `express`, `next`, `react`, TipTap and others). `moment` is removed. Production `npm audit` stays at 0.
+- **The backend image runs as numeric `997:997`.** Six migration guards that swallowed every error now tolerate only their own failure. All 63 tenant tables are proved indexed on `tenant_id`.
+- **The editor has an accessible name**, which TipTap 3.32 newly required.
+
 ### 2026-11-04 — Comprehensive audit, Wave 2: correct page totals, one definition of a live session, FK indexes, last source `.js` gone ([record](./records/2026-11-04-audit-wave2.md))
 - **Page totals:** lists with an include report the number of rows a client can page through, not the number of JOINED rows. That is 19 queries in 15 files, and a guard keeps it (BUG-01).
 - **Sessions:** a session deactivated without being revoked no longer shows as "active". The list, stats, sign-in validation and own-sessions page share one definition (BUG-02).

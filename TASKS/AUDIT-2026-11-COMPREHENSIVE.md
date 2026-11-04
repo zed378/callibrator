@@ -3,7 +3,7 @@
 **Audit Date:** 2026-11-03  
 **Auditor:** Antigravity AI  
 **Scope:** Full repository (`backend/`, `frontend/`, `packages/contracts/`, `deploy/`, `.github/workflows/`, and root configurations)  
-**Status:** AUDIT COMPLETE — PENDING EXECUTION  
+**Status:** AUDIT COMPLETE — EXECUTED 2026-11-03 … 2026-11-04 (Waves 1–3). Every finding has a status in § Implementation Status; one stays open as runtime verification (A11-PERF-01), one is declined by owner rule (A11-INFRA-01)  
 
 ---
 
@@ -610,25 +610,32 @@ files, typecheck, related tests, load:check). `certificate.service.ts` is exclud
 | SEC-01 | FIXED | `ba3ec8d2` | DB_NAME identifier validation before bootstrap DDL; mirrored in environmentSchema |
 | A11-BUG-01 | FIXED | `ba3ec8d2` | createDatabaseIfNotExists returns false on failure (retry loop now live) |
 | A11-SEC-01 | FIXED | `ad829a23` | dead `otp.util` + test deleted (proven dead; load:check 0) |
-| A11-SEC-02 | FIXED (backend) | `ad829a23` | redis/emailQueue/upload crypto ids; frontend sites deferred (LOW) |
+| A11-SEC-02 | FIXED | `ad829a23`, Wave 3 | backend: redis/emailQueue/upload crypto ids; frontend: `generateId` and the toast store use `crypto.getRandomValues` ([record](../MEMORY/records/2026-11-04-audit-wave3.md)) |
 | A11-DB-02 | FIXED | `eb5d16b1` | DB_SSL_CA / DB_SSL_REJECT_UNAUTHORIZED threaded into dialectOptions.ssl |
-| INF-01 | FIXED | `9887de72` | container HEALTHCHECK on `/live`; "runs as root" already-fixed (`USER app`) |
+| INF-01 | FIXED | `9887de72`, Wave 3 | HEALTHCHECK on `/live`; `USER 997:997` numeric with the gid pinned (image built and inspected) |
 | INF-02 | NO CHANGE | `9887de72` | premise incorrect (proxy 60s >= app 30s is the correct ordering); documented |
 | SEC-03 | FIXED | `9887de72` | nginx X-Frame-Options / X-Content-Type-Options / Referrer-Policy (HSTS already present) |
 | BUG-01 | FIXED | Wave 2 | 19 calls in 15 files; ticket already distinct; vendor/warehouse/webhook have no include; guard `findAndCountAllDistinct.bug01` |
 | BUG-02 | FIXED | Wave 2 | `utils/sessionState.util.ts`: one definition of a live session, read by list, stats, validator, ownSessions |
-| ARC-01 | DEFERRED | — | move transactions/queries out of session/sso controllers |
+| ARC-01 | FIXED | Wave 3 | `sessionAdmin.service`, `ssoSession.service`; guard `noControllerTransactions.arc01` |
 | DB-01 | FIXED | Wave 2 | migration 0150 (8 indexes, CONCURRENTLY); live `t0150` 3/3 on PostgreSQL 18 |
-| DB-02 | DEFERRED | — | bound the unbounded `findAll` reads |
+| DB-02 | FIXED / VERIFIED | Wave 3 | kanban metrics read 5 attributes; dataRetention + gdpr already keyset-paged (D-24); webhook emit bounded by configuration |
 | DB-03 | FIXED (webhook) | Wave 2 | `emitEvent` writes deliveries in one `bulkCreate` |
-| PERF-01 | DEFERRED | — | remove N+1 in loops (device/maintenance/workOrder/audit/permission/storage/aiRag) |
-| A11-PERF-01 | DEFERRED | — | remove N+1 in loops |
-| A11-DB-03 | DEFERRED | — | narrow migration try/catch across 18 migrations (LOW, intentional pattern) |
-| A11-ARCH-01 | DEFERRED | — | eslint-disable sweep; done opportunistically in touched files |
+| PERF-01 | NO CHANGE | Wave 3 | both jobs already bounded (purge 1,000/tx, 50,000/run; sweep 200/tx, 5,000/run, SKIP LOCKED) |
+| A11-PERF-01 | OPEN — runtime verification | — | needs a seeded large tenant with query logging; the static halves are DB-02/DB-03/PERF-01 |
+| A11-DB-03 | FIXED | Wave 3 | 12 of 18 already rethrew; the 6 swallowing catches narrowed; fresh boot proved on PostgreSQL 18 |
+| A11-ARCH-01 | FIXED | Wave 3 | 0 unused directives; 1 missing reason fixed; guard `eslintDisableReasons.a11arch01` |
 | ARC-02 | FIXED | Wave 2 | `checkMenu.util.js` + its test deleted (A-18 closed); ratchet floor 2 |
 | SEC-02 | FIXED (production) | Wave 2 | override `archiver → readdir-glob → minimatch ^11.0.1`; `npm audit --omit=dev` 0; real ZIP proved. deepmerge 4.3.2 does not exist — that half is void |
-| PERF-02 | WAVE 2 | — | frontend memoisation; excluded from this pass |
-| DEP-01 | EXCLUDED | — | production image boot; not in Wave 1 scope |
+| PERF-02 | FIXED | Wave 3 | TipTap via `next/dynamic`: 210.3 → 83.0 KB gzip first load; jsPDF already dynamic |
+| DEP-01 | FIXED (eslint 10, undici 8 held) | Wave 3 | stripe 23.1.0 (signature verified with the real library), motion 14.9.1; undici held at 7.30.1: 8.12.3 made seven jsdom suites run out of heap (jest.setup.ts installs its Request/Response; BACKLOG D-14) |
+| A11-DEP-01 | FIXED | Wave 3 | 65 in-range bumps; held: `@yao-pkg/pkg` (A-325 pin), `typescript-eslint` 8.70.1 (BACKLOG D-12) |
+| A11-DEP-02 | FIXED | Wave 3 | moment + moment-timezone removed; Intl proved identical on six boundary instants |
+| A11-DB-01 | FIXED (docs) | Wave 3 | sizing rule per topology in docs/BACKEND/11 |
+| A11-DB-04 | VERIFIED | Wave 3 | all 63 tenant tables have a tenant_id-leading index; live t0150 asserts it |
+| A11-ARCH-02 | NO CHANGE | — | navigation concern, as the audit says; ARC-01 thinned two controllers |
+| A11-ARCH-03 | VERIFIED | Wave 3 | tsc6 differential: one divergence class (TS2497 on `import type * as` of `export =`), recorded as BACKLOG W-13 |
+| A11-INFRA-01 | DECLINED | — | owner rule 2026-11-02: no GitHub Actions work; E2E stays a local gate (A-19) |
 
 Findings introduced only in the addendum sprint roadmap (A11-DEP-01/02, A11-DB-04,
 A11-ARCH-02/03, A11-INFRA-01) are outside the assigned Wave 1 list and were not
