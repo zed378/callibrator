@@ -36,11 +36,6 @@ jest.mock("morgan", () => {
   return fn;
 });
 
-jest.mock("moment-timezone", () => {
-  const m = () => ({ tz: () => ({ format: () => "2026-01-01" }) });
-  return m;
-});
-
 jest.mock("fs", () => ({
   existsSync: jest.fn(() => true),
   mkdirSync: jest.fn(),
@@ -101,8 +96,15 @@ describe("accessLog middleware", () => {
   });
 
   describe("custom tokens", () => {
-    it("custom-date token should format the current date", () => {
-      expect(mockTokens["custom-date"]?.({})).toBe("2026-01-01");
+    it("custom-date token writes the current moment in Jakarta as DD/MMMM/YYYY HH:mm:ss ZZ", () => {
+      // A11-DEP-02: Intl, not moment-timezone; the format is moment's, proved
+      // identical on day, month and year boundaries when the dependency left.
+      jest.useFakeTimers({ now: new Date("2025-12-31T17:00:00Z") });
+      try {
+        expect(mockTokens["custom-date"]?.({})).toBe("01/January/2026 00:00:00 +0700");
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it("request-id token should fall back to dash when absent", () => {
@@ -151,6 +153,11 @@ describe("accessLog middleware", () => {
       expect(mockRfsNameCb("2026-01-01T00:00:00Z")).toBe(
         "2026-01-01-access.log",
       );
+    });
+
+    it("names the file by the JAKARTA day, not the UTC one", () => {
+      expect(mockRfsNameCb("2025-12-31T16:59:59Z")).toBe("2025-12-31-access.log");
+      expect(mockRfsNameCb("2025-12-31T17:00:00Z")).toBe("2026-01-01-access.log");
     });
   });
 });

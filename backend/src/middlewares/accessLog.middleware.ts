@@ -1,12 +1,13 @@
 // P9-19 (ADR-087): converted from accessLog.middleware.js with no behaviour
 // change. The modules load in the same order, except rotating-file-stream
-// (below). `fs`, `morgan` and `moment-timezone` are the CommonJS module
+// (below). `fs` and `morgan` are the CommonJS module
 // objects themselves (default imports). rotating-file-stream publishes ESM types with a CommonJS build
 // behind its "require" condition, so it is loaded with require() as the .js
 // did (the utils/upload.util.ts uuid precedent) and `rfs.createStream` is
 // called once at load, as before. Babel hoists the imports above that
-// require(), so it now loads after moment-timezone instead of before it;
-// neither has a load-time effect on the other. The .js required `path` without
+// require(); neither has a load-time effect on the other. A11-DEP-02 (the
+// 2026-11 audit): the Jakarta dates come from Intl, not moment-timezone, which
+// is in maintenance mode and was used here alone. The .js required `path` without
 // using it; a bare import keeps that load (the dbReady.util precedent).
 import fs from "fs";
 import "path";
@@ -18,10 +19,48 @@ import type * as RfsModule from "rotating-file-stream" with { "resolution-mode":
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- as built: the CommonJS build, required
 const rfs = require("rotating-file-stream") as typeof RfsModule;
 
-import moment from "moment-timezone";
-
 import type { Request, Response } from "express";
 import { redactUrlForLog } from "../utils/logUrl.util";
+
+// ======================================================
+// JAKARTA TIME (Intl, A11-DEP-02)
+// ======================================================
+
+const TIME_ZONE = "Asia/Jakarta";
+const JAKARTA = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  year: "numeric",
+  month: "long",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+  timeZoneName: "longOffset",
+});
+const MONTH_NUMBER = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, month: "2-digit" });
+
+/** The parts of a moment in Jakarta, by type. */
+const jakartaParts = (time: Date): Record<string, string> =>
+  Object.fromEntries(JAKARTA.formatToParts(time).map((p) => [p.type, p.value]));
+
+/** "GMT+07:00" → "+0700" (moment's `ZZ`); a bare "GMT" is UTC. */
+const offsetZZ = (gmt: string): string => {
+  const m = /([+-])(\d{2}):(\d{2})/.exec(gmt);
+  return m ? `${m[1] ?? "+"}${m[2] ?? "00"}${m[3] ?? "00"}` : "+0000";
+};
+
+/** YYYY-MM-DD in Jakarta (the rotated file's name). */
+const jakartaDay = (time: Date): string => {
+  const p = jakartaParts(time);
+  return `${p["year"] ?? ""}-${MONTH_NUMBER.format(time)}-${p["day"] ?? ""}`;
+};
+
+/** DD/MMMM/YYYY HH:mm:ss ZZ in Jakarta (the log line's date), as moment wrote it. */
+const jakartaStamp = (time: Date): string => {
+  const p = jakartaParts(time);
+  return `${p["day"] ?? ""}/${p["month"] ?? ""}/${p["year"] ?? ""} ${p["hour"] ?? ""}:${p["minute"] ?? ""}:${p["second"] ?? ""} ${offsetZZ(p["timeZoneName"] ?? "")}`;
+};
 
 // ======================================================
 // LOG DIRECTORY
@@ -47,7 +86,7 @@ const accessLogStream = rfs.createStream(
       return "access.log";
     }
 
-    return `${moment(time).tz("Asia/Jakarta").format("YYYY-MM-DD")}-access.log`;
+    return `${jakartaDay(new Date(time))}-access.log`;
   },
 
   {
@@ -69,7 +108,7 @@ const accessLogStream = rfs.createStream(
 
 // Jakarta Time
 morgan.token("custom-date", () => {
-  return moment().tz("Asia/Jakarta").format("DD/MMMM/YYYY HH:mm:ss ZZ");
+  return jakartaStamp(new Date());
 });
 
 // Request ID

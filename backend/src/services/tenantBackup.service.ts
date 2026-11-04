@@ -2,7 +2,7 @@
 // tenantBackup.service.js with no behaviour change. `export =` keeps the exact
 // object `require()` returned (the same keys, in the same order); the
 // functions call each other directly, as before. `fs`, `path`, `crypto`,
-// JSZip, moment and the `sequelize` package are the module objects themselves
+// JSZip and the `sequelize` package are the module objects themselves
 // (default imports of CommonJS modules), so the tests' spies and mocks on them
 // still apply. The three models, `Op`, the logger, the three error classes
 // and `storagePath` are captured once at load, as the `.js` destructured them;
@@ -12,7 +12,6 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import JSZip from "jszip";
-import moment from "moment";
 import type { Transaction, WhereOptions } from "sequelize";
 
 // Simplified tenant backup service - removed deprecated models (TenantSettings, TenantRoles, TenantFeatures, TenantAuditLog, UserPermissions)
@@ -182,7 +181,11 @@ const sequelizeOf = (models: ModelsBag | null | undefined): ModelsBarrel["sequel
  * Generate a unique backup filename
  */
 function generateBackupFilename(tenantId: string, backupId: string): string {
-  const timestamp = moment().format("YYYYMMDD_HHmmss");
+  // A11-DEP-02 (the 2026-11 audit): moment().format("YYYYMMDD_HHmmss"), the
+  // process's local time, written with Date's local getters.
+  const now = new Date();
+  const two = (n: number): string => String(n).padStart(2, "0");
+  const timestamp = `${String(now.getFullYear())}${two(now.getMonth() + 1)}${two(now.getDate())}_${two(now.getHours())}${two(now.getMinutes())}${two(now.getSeconds())}`;
   return `tenant_${tenantId}_${backupId}_${timestamp}.zip`;
 }
 

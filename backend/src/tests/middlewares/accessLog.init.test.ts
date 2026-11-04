@@ -21,10 +21,6 @@ jest.mock("morgan", () => {
   return fn;
 });
 
-jest.mock("moment-timezone", () => () => ({
-  tz: () => ({ format: () => "2026-01-01" }),
-}));
-
 jest.mock("fs", () => ({
   existsSync: jest.fn(),
   mkdirSync: jest.fn(),

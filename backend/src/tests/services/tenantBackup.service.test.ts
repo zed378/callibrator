@@ -63,16 +63,6 @@ jest.mock("uuid", () => ({
   v4: jest.fn(() => "mock-uuid-123"),
 }));
 
-// Mock moment
-jest.mock("moment", () => {
-  const actual = jest.requireActual("moment");
-  const mockMoment: any = jest.fn(() => ({
-    format: jest.fn(() => "20240101_120000"),
-    subtract: jest.fn().mockReturnThis(),
-  }));
-  return Object.assign(mockMoment, actual);
-});
-
 // Mock models
 const mockTenantBackup: any = {
   // S-32: restoreBackup claims the backup with a conditional update.
@@ -576,7 +566,15 @@ describe("Tenant Backup Service", () => {
         mockTenant.findByPk.mockResolvedValue({ toJSON: () => ({ id: mockTenantId }) });
         mockUsers.findAll.mockResolvedValue([]);
 
-        const result = await createBackup({ tenantId: mockTenantId, createdById: mockUserId, models: mockModels });
+        // A11-DEP-02: the file's timestamp is the process's local time (it was
+        // moment's); only Date is faked, so the archive's timers still run.
+        jest.useFakeTimers({ now: new Date(2024, 0, 1, 12, 0, 0), doNotFake: ["nextTick", "setImmediate", "clearImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask", "hrtime", "performance"] });
+        let result: any;
+        try {
+          result = await createBackup({ tenantId: mockTenantId, createdById: mockUserId, models: mockModels });
+        } finally {
+          jest.useRealTimers();
+        }
 
         expect(result.success).toBe(true);
         const key = `t/${mockTenantId}/backups/tenant_${mockTenantId}_${mockBackupId}_20240101_120000.zip`;
