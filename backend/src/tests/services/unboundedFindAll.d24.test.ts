@@ -221,6 +221,14 @@ const OPEN = "OPEN — grows with the tenant, not paged yet (ADR-083 follow-up)"
 
 /** Each entry: [the most calls allowed under this key, why it is bounded]. */
 const REVIEWED: Record<string, [number, string]> = Object.freeze({
+  // P21-15 (ADR-140): one user's e-signature versions; the applications on one record or certificate
+  // (one per signer and meaning, append-only); the signers of a page of applications already held.
+  "userEsignature.service.ts::getMine::models.UserEsignature": [1, PARENT],
+  "userEsignature.service.ts::createOrReplace::models.UserEsignature": [1, PARENT],
+  "esignatureApplication.service.ts::listForRecord::models.EsignatureApplication": [1, PARENT],
+  "esignatureApplication.service.ts::listForCertificate::models.EsignatureApplication": [1, PARENT],
+  "esignatureApplication.service.ts::certificateMarks::models.EsignatureApplication": [1, PARENT],
+  "esignatureApplication.service.ts::esignaturesOf::models.UserEsignature": [1, IDS],
   // P21-03 (ADR-126 Am. 4): an IPM session's results are bounded by the contract (≤ 400 per session,
   // one session's rows); the published versions and active templates are the global catalogue
   // (one published version per template); a pinned version's items ≤ 300 (P19-01 § 4.5).

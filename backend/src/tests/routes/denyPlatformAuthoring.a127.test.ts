@@ -441,9 +441,13 @@ const GUARDED: string[] = [
   "calibrationRecords.route.ts POST /",
   "calibrationRecords.route.ts POST /:calibrationRecordId/corrections",
   "calibrationRecords.route.ts POST /:calibrationRecordId/void",
+  // P21-15 (ADR-140): applying an e-signature to a record is Part 11 authorship.
+  "calibrationRecords.route.ts POST /:calibrationRecordId/esignatures",
   "certificates.route.ts DELETE /:certificateId",
   "certificates.route.ts POST /",
   "certificates.route.ts POST /:certificateId/approve",
+  // P21-15 (ADR-140 § 6): affixing an e-signature to a certificate is Part 11 authorship.
+  "certificates.route.ts POST /:certificateId/esignatures",
   "certificates.route.ts POST /:certificateId/revoke",
   "certificates.route.ts POST /:certificateId/sign",
   "certificates.route.ts POST /:certificateId/submit",
@@ -454,6 +458,9 @@ const GUARDED: string[] = [
   "ipmSessions.route.ts POST /:sessionId/submit",
   "sop.route.ts PATCH /:id/publish",
   "sop.route.ts POST /:id/acknowledge",
+  // P21-15 (ADR-140): signing a document by its hash is Part 11 authorship; revoking another user's e-signature is the tenant's act.
+  "userEsignatures.route.ts POST /documents",
+  "userEsignatures.route.ts POST /users/:userId/revoke",
   "workflows.route.ts POST /instances/:instanceId/action",
 ];
 
@@ -491,6 +498,10 @@ const NOT_GUARDED: Record<string, string> = {
   "session.route.ts POST /user/:userId/revoke-all": "session revocation, not a record",
   "user.route.ts DELETE /:userId/invitation":
         "P24-09a (ADR-139 § 3): an account's invitation (matched on its `revoke` handler), not a record; the platform operator may act on it at cutover — audited",
+  "userEsignatures.route.ts POST /me":
+        "P21-15 (ADR-140): the caller creates or replaces its OWN e-signature (matched on its signing budget); it signs nothing, and the platform operator, who has no tenant, is refused by the service (403 ESIG_PLATFORM)",
+  "userEsignatures.route.ts POST /me/revoke":
+        "P21-15 (ADR-140): the caller revokes its OWN e-signature (re-authenticated, audited); it authors no record, and what it signed before still verifies",
   "workflows.route.ts DELETE /:id": "workflow definition management, not a record",
   "webauthn.route.ts DELETE /credentials/:id":
         "ADR-108 Am. 1: the caller removes one of their OWN passkeys (matched on its `revoke` handler); re-authenticated and audited, not a Part 11 record",

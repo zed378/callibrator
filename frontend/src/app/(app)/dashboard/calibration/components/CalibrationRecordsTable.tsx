@@ -1,7 +1,7 @@
 import React from "react";
 import { Calibration } from "@/api/services/calibration.service";
 import { Card, CardContent, Table, TableSkeleton, Button, Pagination } from "@/components/ui";
-import { Activity, PenTool } from "lucide-react";
+import { Activity, PenTool, Signature } from "lucide-react";
 import { PaginatedResponse } from "@/types";
 import { actorLabel } from "@/lib/actorLabel";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -23,6 +23,8 @@ interface CalibrationRecordsTableProps {
    * empty compliance history (docs/FRONTEND/10-TESTING.md § three-state).
    */
   loadFailed?: boolean;
+  /** P21-15 (ADR-140): open the record's e-signatures (read for everyone; Sign inside for calibration write). */
+  openEsignatures?: (cal: Calibration) => void;
 }
 
 export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = ({
@@ -33,6 +35,7 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
   hasWriteAccess,
   openCreateCertificateModal,
   loadFailed = false,
+  openEsignatures,
 }) => {
   const calibColumns = [
     {
@@ -92,6 +95,12 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
         const cal = asCalibration(row);
         return (
           <div className="flex items-center gap-2">
+            {openEsignatures && (
+              <Button size="sm" variant="outline" className="flex items-center gap-1 text-xs" onClick={() => openEsignatures(cal)}>
+                <Signature className="h-3.5 w-3.5" aria-hidden="true" />
+                E-signatures
+              </Button>
+            )}
             {hasWriteAccess && cal.isCompliant && (
               <Button
                 size="sm"

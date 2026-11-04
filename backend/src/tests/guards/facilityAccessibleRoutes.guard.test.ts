@@ -47,7 +47,8 @@ const CEILING_UNION: Readonly<Record<string, readonly string[]>> = {
   ipm: ["read", "write", "create", "update"],
   "ipm-templates": ["read"],
   warehouse: ["read"],
-  esignature: ["write", "create"],
+  // P21-15 (ADR-140): `write` implies `read` (effectivePermission rule 3); the own e-signature reads are marked.
+  esignature: ["read", "write", "create"],
   "profile-page": ["read", "write", "update"],
   "change-password": ["read", "write", "update"],
   notifications: ["read"],

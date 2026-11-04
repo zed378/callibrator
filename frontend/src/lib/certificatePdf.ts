@@ -184,13 +184,82 @@ export const certificatePdfFileName = (certificateNumber: string): string =>
   `${certificateNumber.replace(/[^a-zA-Z0-9._-]/g, "_")}.pdf`;
 
 /**
+ * P21-15 (ADR-140 § 6) — a personal e-signature affixed to the certificate, as the full public
+ * verdict publishes it: who, what it means, when, the specimen and its own verification link.
+ */
+export interface CertificateEsignatureMark {
+  meaning: string;
+  name: string;
+  role: string | null;
+  organisation: string | null;
+  signedAt: string;
+  specimenSvg: string;
+  verifyUrl: string;
+}
+
+/**
+ * Which mark goes in which signature block: Calibrated By takes the `performed` mark, Approved By and
+ * Signed By the `approved` marks of the approver and the signer (matched by the printed name, else in
+ * the order they were applied). A block with no mark prints exactly as before.
+ */
+export const marksForBlocks = (
+  doc: Pick<CertificateDocument, "calibratedBy" | "approvedBy" | "signedBy">,
+  marks: readonly CertificateEsignatureMark[],
+): [CertificateEsignatureMark | null, CertificateEsignatureMark | null, CertificateEsignatureMark | null] => {
+  const performed = marks.filter((m) => m.meaning === "performed");
+  const approved = marks.filter((m) => m.meaning === "approved");
+  const byName = (list: CertificateEsignatureMark[], name: string | null | undefined) => (name ? list.find((m) => m.name === name) : undefined);
+  const calibrated = byName(performed, doc.calibratedBy) ?? performed[0] ?? null;
+  const approver = byName(approved, doc.approvedBy) ?? approved[0] ?? null;
+  const signerMark = byName(approved, doc.signedBy) ?? approved.find((m) => m !== approver) ?? null;
+  return [calibrated, approver, signerMark];
+};
+
+/**
+ * A specimen SVG as a PNG data URL (jsPDF draws raster images only), drawn on a canvas in the
+ * browser. Null when the browser cannot (no canvas, a decode failure) — the block then prints
+ * without the specimen.
+ */
+export const rasterizeSpecimen = (svg: string, width = 300, height = 100): Promise<string | null> =>
+  new Promise((resolve) => {
+    try {
+      const image = new Image();
+      image.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(null);
+            return;
+          }
+          ctx.drawImage(image, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/png"));
+        } catch {
+          resolve(null);
+        }
+      };
+      image.onerror = () => resolve(null);
+      image.src = `data:image/svg+xml;base64,${btoa(String.fromCharCode(...new TextEncoder().encode(svg)))}`;
+    } catch {
+      resolve(null);
+    }
+  });
+/**
  * Render `doc` to PDF bytes.
  * @returns the PDF file's bytes (they start with `%PDF-`)
  */
-export async function renderCertificatePdf(doc: CertificateDocument): Promise<ArrayBuffer> {
+export async function renderCertificatePdf(doc: CertificateDocument, esignatures: readonly CertificateEsignatureMark[] = []): Promise<ArrayBuffer> {
   const { jsPDF } = await import("jspdf");
   const QRCode = (await import("qrcode")).default;
   const qrDataUrl = await QRCode.toDataURL(doc.verifyUrl, { margin: 1, width: 240 });
+  // P21-15: each block's e-signature — its specimen as a PNG and its own verification QR.
+  const blockMarks = await Promise.all(
+    marksForBlocks(doc, esignatures).map(async (mark) =>
+      mark ? { mark, specimen: await rasterizeSpecimen(mark.specimenSvg), qr: await QRCode.toDataURL(mark.verifyUrl, { margin: 0, width: 96 }) } : null,
+    ),
+  );
 
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
 
@@ -349,8 +418,8 @@ export async function renderCertificatePdf(doc: CertificateDocument): Promise<Ar
   y = block("Conditions", t(doc.conditions), y);
   y = block("Notes", t(doc.notes), y);
 
-  // Signatures.
-  y = Math.max(y, 620);
+  // Signatures. An affixed e-signature's specimen needs 36 pt above the line (P21-15).
+  y = Math.max(y + (blockMarks.some(Boolean) ? 36 : 0), 620);
   const sigW = (W - 2 * M) / 3;
   const signed = status === "signed" || status === "revoked";
   const sigs: [string, string][] = [
@@ -364,6 +433,19 @@ export async function renderCertificatePdf(doc: CertificateDocument): Promise<Ar
   sigs.forEach(([role, name], i) => {
     const x = M + i * sigW;
     const cx = x + (sigW - 24) / 2;
+    // P21-15 (ADR-140 § 6): the affixed e-signature — the specimen above the line, its verification
+    // QR beside it and the date under the role. A block without one prints exactly as before.
+    const affixed = blockMarks[i];
+    if (affixed) {
+      if (affixed.specimen) {
+        pdf.addImage(affixed.specimen, "PNG", x, y - 34, 90, 30);
+      }
+      pdf.addImage(affixed.qr, "PNG", x + sigW - 24 - 30, y - 34, 30, 30);
+      pdf.setTextColor(...NEUTRAL);
+      pdf.setFont(sans, "normal");
+      pdf.setFontSize(7);
+      pdf.text(`${affixed.mark.role ? `${t(affixed.mark.role)} · ` : ""}e-signed ${pdfDate(affixed.mark.signedAt)}`, cx, y + 36, { align: "center" });
+    }
     pdf.setDrawColor(156, 163, 175);
     pdf.setLineWidth(0.5);
     pdf.line(x, y, x + sigW - 24, y);
@@ -412,8 +494,8 @@ export async function renderCertificatePdf(doc: CertificateDocument): Promise<Ar
  * Render `doc` and hand it to the browser as a download
  * (`<certificateNumber>.pdf`).
  */
-export async function downloadCertificatePdf(doc: CertificateDocument): Promise<void> {
-  const bytes = await renderCertificatePdf(doc);
+export async function downloadCertificatePdf(doc: CertificateDocument, esignatures: readonly CertificateEsignatureMark[] = []): Promise<void> {
+  const bytes = await renderCertificatePdf(doc, esignatures);
   const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
   try {
     const a = document.createElement("a");

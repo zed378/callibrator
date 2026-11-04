@@ -261,6 +261,11 @@ const UNCHANGED: Readonly<Record<string, string>> = Object.freeze({
   "user_invitations.user_id": "users RESTRICT",
   "user_invitations.issued_by": "users RESTRICT",
   "user_invitations.revoked_by": "users RESTRICT",
+  // P21-15 (migration 0149; ADR-140): a personal e-signature names its owner, an application its
+  // e-signature and signer — keys and Part 11 records are never deleted, so neither may their referents be: RESTRICT.
+  "user_esignatures.user_id": "users RESTRICT",
+  "esignature_applications.esignature_id": "user_esignatures RESTRICT",
+  "esignature_applications.signer_user_id": "users RESTRICT",
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */

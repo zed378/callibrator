@@ -51,6 +51,9 @@ describe("P22-08 — /d/[token] (server)", () => {
     render(await PublicDevicePage({ params: Promise.resolve({ token: TOKEN }) }));
     expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(await screen.findByRole("status")).toBeTruthy();
+    // The streamed shell brings no <h1> of its own: the eyebrow is a paragraph, so the page has exactly one <h1> (the body's).
+    expect(screen.queryAllByRole("heading", { level: 1 })).toHaveLength(0);
+    expect(screen.getByText("Halaman publik perangkat").tagName).toBe("P");
   });
 
   it("a device: one h1 (its name), the status as a word, the allow-listed fields, the token sent with the request's headers", async () => {

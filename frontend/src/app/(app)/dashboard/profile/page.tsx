@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/authStore";
 import AvatarUpload from "./components/AvatarUpload";
 import ProfileForm from "./components/ProfileForm";
 import AppearanceSettings from "./components/AppearanceSettings";
+import EsignatureSettings from "./components/EsignatureSettings";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 
 export default function ProfilePage() {
@@ -126,6 +127,8 @@ export default function ProfilePage() {
             />
           </div>
         </div>
+
+        <EsignatureSettings />
 
         <AppearanceSettings />
       </div>

@@ -26,7 +26,8 @@ const entries = Object.entries(FACILITY_READABLE as Readonly<Record<string, Faci
 describe("G-12 — FACILITY_READABLE", () => {
   it("is frozen and holds exactly the five entries of ADR-124 Am. 1 § 5 and ADR-126 Am. 1 § 8's IdempotencyKey", () => {
     expect(Object.isFrozen(FACILITY_READABLE)).toBe(true);
-    expect(Object.keys(FACILITY_READABLE).sort()).toEqual(["ClientFacility", "ConsentRecord", "DsarRequest", "IdempotencyKey", "Notification", "Session"]);
+    // P21-15 (ADR-140) adds UserEsignature and EsignatureApplication (own-user): every user holds its own e-signature.
+    expect(Object.keys(FACILITY_READABLE).sort()).toEqual(["ClientFacility", "ConsentRecord", "DsarRequest", "EsignatureApplication", "IdempotencyKey", "Notification", "Session", "UserEsignature"]);
   });
 
   it.each(entries)("%s: a tenant model without a facility column, declaring its rule's attribute", (name, entry) => {

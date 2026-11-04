@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Certificate, calibrationService } from "@/api/services/calibration.service";
 import { Card, CardContent, Table, TableSkeleton, Badge, Button, Pagination } from "@/components/ui";
-import { FileText, PenTool, Download } from "lucide-react";
+import { FileText, PenTool, Download, Signature } from "lucide-react";
+import { personalEsignatureService } from "@/api/services/personalEsignature.service";
 import { useToastStore } from "@/stores/toastStore";
 import { downloadCertificatePdf } from "@/lib/certificatePdf";
 import { PaginatedResponse } from "@/types";
@@ -27,6 +28,8 @@ interface CertificatesTableProps {
   openApproveModal: (cert: Certificate) => void;
   openSignModal: (cert: Certificate) => void;
   openRevokeModal: (cert: Certificate) => void;
+  /** P21-15 (ADR-140 § 6): open the certificate's affixed e-signatures (read for everyone; Sign inside). */
+  openEsignatures?: (cert: Certificate) => void;
 }
 
 export const CertificatesTable: React.FC<CertificatesTableProps> = ({
@@ -40,6 +43,7 @@ export const CertificatesTable: React.FC<CertificatesTableProps> = ({
   openApproveModal,
   openSignModal,
   openRevokeModal,
+  openEsignatures,
 }) => {
   const { addToast } = useToastStore();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -50,7 +54,20 @@ export const CertificatesTable: React.FC<CertificatesTableProps> = ({
   const handleDownloadPdf = async (cert: Certificate) => {
     setDownloadingId(cert.id);
     try {
-      await downloadCertificatePdf(await calibrationService.getCertificateDocument(cert.id));
+      const document = await calibrationService.getCertificateDocument(cert.id);
+      // P21-15 (ADR-140 § 6): the affixed e-signatures go into the signature blocks; without any (or
+      // when they cannot be read) the PDF is rendered exactly as before.
+      const applications = await personalEsignatureService.certificateApplications(cert.id).catch(() => []);
+      const marks = applications.map((a) => ({
+        meaning: a.meaning,
+        name: a.signer.name,
+        role: a.signer.role,
+        organisation: a.signer.organisation,
+        signedAt: a.signedAt,
+        specimenSvg: a.specimenSvg,
+        verifyUrl: a.verifyUrl,
+      }));
+      await (marks.length ? downloadCertificatePdf(document, marks) : downloadCertificatePdf(document));
     } catch (err) {
       addToast({
         type: "error",
@@ -127,6 +144,12 @@ return <StatusBadge domain="certificate" state={status} />;
         const sodNoteId = `cert-${cert.id}-sod`;
         return (
           <div className="flex flex-wrap items-center gap-1.5">
+            {openEsignatures && (
+              <Button size="sm" variant="outline" className="flex items-center gap-1 text-xs" onClick={() => openEsignatures(cert)}>
+                <Signature className="h-3.5 w-3.5" aria-hidden="true" />
+                E-signatures
+              </Button>
+            )}
             {hasWriteAccess && onSubmitCertificate && cert.status === "draft" && (
               <Button
                 size="sm"

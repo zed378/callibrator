@@ -228,6 +228,48 @@ marked `awaiting_invitation`, and only an invitation the provider issues opens i
 
 ---
 
+## 8a. Personal E-signatures — `userEsignatures.route.ts`, `publicEsignatures.route.ts`
+
+**Decision:** ADR-140 (P21-15), spec `MEMORY/specs/P21-15-operator-esignature.md` v2. **Migration:** 0149.
+**Models:** `userEsignature`, `esignatureApplication`. **Contracts:** `@callibrator/contracts/esignatures`.
+
+Every user creates **one** e-signature: a visual specimen (sanitised SVG, allow-listed) and a personal
+RSA-3072 key whose private half is a **KMS envelope**, never returned. Each time it is **applied**, an
+application binds the signer, the meaning, the instant and the SHA-256 of the document's canonical
+content, signed with the personal key, with its own public link and QR. **It is not the certificate's
+tenant-key signature** (ADR-040), which is unchanged.
+
+- `GET/POST /esignature/me`, `POST /esignature/me/revoke`, `GET /esignature/me/applications` — the
+  caller's own (create or replace, revoke; each re-enters a credential and is audited). The platform
+  operator cannot hold one (403 `ESIG_PLATFORM`). `POST /esignature/users/:userId/revoke` — a tenant
+  administrator revokes another user's (never creates one).
+- `POST/GET /calibration-records/:calibrationRecordId/esignatures` — `performed` by the record's
+  performer, `reviewed` by anyone else with calibration write; the state 409s (`CALREC_VOIDED`,
+  `CALREC_SUPERSEDED` + `headId`, `CALREC_EXTERNAL`), `ESIG_ALREADY_APPLIED`, `ESIG_NONE`. The read
+  gives each application's `integrity` now (`intact` | `changed`).
+- `POST /esignature/documents` — any file by the SHA-256 the browser computed; **the file is never
+  uploaded**.
+- `GET /api/v1/public/esignatures/:applicationId?token=` — the one exempted read: one identical 404,
+  `no-store` / `noindex`, the ADR-100 budget pair; the verdict `valid` | `content_changed` |
+  `invalid` beside the e-signature's and the record's states; the specimen, fingerprint, public key,
+  a record's canonical pairs. The frontend page is `/s/<id>?t=<token>`.
+- Each application writes its audit row and an `e_signature_records` row in its transaction; the
+  0149 triggers refuse a change or delete of either table for every role.
+
+- `POST/GET /certificates/:certificateId/esignatures` — `performed` by the calibrator, `approved` by the
+  approver or signer once approved (`CERT_NOT_APPROVED`, `CERT_REVOKED`, `ESIG_NOT_APPROVER`); content
+  `cert-data-v1` (what the certificate says, never its flow state — ADR-140 Am. 1). The **approve and
+  sign steps affix the actor's e-signature automatically** in their own transaction when it has an active
+  one; without one they behave exactly as before. The certificate's tenant-key digital signature is
+  never touched. The certificate's FULL public verdict lists the affixed e-signatures (`esignatures`),
+  and the frontend renderer places each specimen, role, date and QR in its signature block.
+- Facility-bound users hold their own e-signature (`UserEsignature`, `EsignatureApplication` are
+  FACILITY_READABLE by own id; the `/esignature/me…` and `/documents` routes are marked).
+
+**As built:** P21-15 (2026-11-03), all four parts (ADR-140 and Am. 1).
+
+---
+
 ## 9. The Offline Field App's Backend — `field.route.ts`
 
 **Decision:** ADR-127. **Spec:** P19-08.
