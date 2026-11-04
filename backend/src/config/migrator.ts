@@ -255,6 +255,8 @@ const migrationModules: [string, MigrationModule][] = [
   ["0148-device-text-search-trgm.js", require("../migrations/0148-device-text-search-trgm")],
   // P21-15 (ADR-140): user_esignatures + esignature_applications — personal e-signatures (KMS-wrapped keys) and their append-only applications.
   ["0149-user-esignatures.js", require("../migrations/0149-user-esignatures")],
+  // DB-01 (the 2026-11 audit): the foreign-key indexes PostgreSQL does not create by itself.
+  ["0150-foreign-key-indexes-audit.js", require("../migrations/0150-foreign-key-indexes-audit")],
 ];
 /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
 
