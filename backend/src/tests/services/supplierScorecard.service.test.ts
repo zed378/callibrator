@@ -103,6 +103,7 @@ describe("supplierScorecard.service", () => {
         where: { tenantId: "tenant123" },
         limit: 10,
         offset: 0,
+        distinct: true, // BUG-01: the COUNT counts root rows, not joined rows
         order: [["evaluationDate", "DESC"], ["id", "DESC"]],
         include: [
           { model: Vendor, as: "vendor", attributes: ["id", "name"] },

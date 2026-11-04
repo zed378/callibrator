@@ -283,6 +283,9 @@ export const listTemplates = async (query: ListTemplatesQueryInput): Promise<Pag
     order: [["createdAt", "ASC"], ["id", "ASC"]],
     limit: query.limit,
     offset: (query.page - 1) * query.limit,
+    // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+    // the number of templates a client can page through, not JOINED rows.
+    distinct: true,
   });
   const versions = await models.InspectionTemplateVersion.findAll({
     where: { templateId: { [Op.in]: rows.map((r) => r.id) }, status: { [Op.in]: ["published", "draft"] } },

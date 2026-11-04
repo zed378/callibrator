@@ -406,6 +406,9 @@ const getUsers = async (
     where: where as WhereOptions<InferAttributes<UserRow>>,
     offset,
     limit,
+    // BUG-01: `distinct` counts the root's primary key, so `totalResults` is
+    // the number of users a client can page through, not JOINED rows.
+    distinct: true,
     // A page of an unordered result is whatever the planner returns: the same
     // user could appear on two pages and another on none. Oldest first, as
     // /Groups lists, with the id breaking ties.

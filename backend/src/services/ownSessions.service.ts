@@ -25,9 +25,10 @@
  * module object, read at call time.
  */
 
-import { Op, type Transaction, type WhereOptions } from "sequelize";
+import type { Transaction, WhereOptions } from "sequelize";
 import models from "../models";
 import { db as loadedDb } from "../config";
+import { liveSessionWhere, type LiveSessionWhere } from "../utils/sessionState.util";
 import auditService from "./audit.service";
 import { PLATFORM_TENANT_ID as LOADED_PLATFORM_TENANT_ID } from "../constants/platformTenant";
 import type { UserId } from "../types/ids";
@@ -94,17 +95,16 @@ const LIST_ATTRIBUTES = [
   "expired_at",
 ];
 
-/** The live predicate: the one session.service#isSessionLive applies. */
-const liveWhere = (userId: UserId, now = new Date()): {
-  user_id: UserId;
-  is_revoked: false;
-  is_active: true;
-  expired_at: { [Op.gt]: Date };
-} => ({
+/**
+ * The live predicate: the one session.service#isSessionLive applies.
+ *
+ * BUG-02: the flags come from `liveSessionWhere` — the ONE definition of a
+ * live session, shared with `session.service#validateSession` and the
+ * session list — so the three cannot drift apart.
+ */
+const liveWhere = (userId: UserId, now = new Date()): { user_id: UserId } & LiveSessionWhere => ({
   user_id: userId,
-  is_revoked: false,
-  is_active: true,
-  expired_at: { [Op.gt]: now },
+  ...liveSessionWhere(now),
 });
 
 /**

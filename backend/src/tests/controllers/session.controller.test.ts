@@ -328,10 +328,12 @@ describe("Session Controller", () => {
 
       await sessionController.getAllSessions(req, res);
 
+      // BUG-02: "revoked" is every session that is not live — revoked, or
+      // deactivated without being revoked.
       expect(mockSessions.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            is_revoked: true,
+            [Op.or]: [{ is_revoked: true }, { is_active: false }],
           }) as unknown,
         }),
       );

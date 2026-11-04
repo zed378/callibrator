@@ -158,6 +158,7 @@ describe("sop.service", () => {
         where: { tenantId: "tenant-1", status: "PUBLISHED" },
         limit: 10,
         offset: 0,
+        distinct: true, // BUG-01: the COUNT counts root rows, not joined rows
         include: [
           {
             model: mockUser,

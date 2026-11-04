@@ -162,6 +162,9 @@ const getDocuments = async (
     where: where as WhereOptions,
     limit: limit as number,
     offset,
+    // BUG-01: `distinct` counts the root's primary key, so `total` is the
+    // number of documents a client can page through, not JOINED rows.
+    distinct: true,
     include: [
       // LEFT JOIN (A-90): User's defaultScope makes this INNER otherwise, and a
       // document whose author was deleted, or is outside the tenant (the super

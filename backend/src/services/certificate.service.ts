@@ -617,6 +617,9 @@ const fetchCertificates = async ({
       order: [[orderColumn, orderDirection], ["id", orderDirection]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
+      // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+      // the number of certificates a client can page through, not JOINED rows.
+      distinct: true,
       // required:false -> LEFT JOINs. Without it these default to INNER JOINs,
       // and the User associations carry a default scope (deleted_at IS NULL),
       // so any certificate with a null optional FK (e.g. a draft with no

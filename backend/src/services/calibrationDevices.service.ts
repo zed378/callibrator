@@ -391,6 +391,9 @@ const fetchCalibrationDevices = async (query: DeviceListQuery): Promise<Outcome<
       order: [...(query.sort === "id" ? [] : BY_NAME), ["id", "ASC"]],
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
+      // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+      // the number of devices a client can page through, not JOINED rows.
+      distinct: true,
       // The field view carries no include (P19-08 § 7.2: ids only).
       include: field ? [] : READ_INCLUDES(),
     });

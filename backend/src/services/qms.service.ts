@@ -281,6 +281,9 @@ const getNCs = async (tenantId: TenantId, page = 1, limit = 10, status?: string 
       tenantInclude(CalibrationDevice, "device", ["id", "name", "serialNumber"], tenantId),
     ],
     order: [["createdAt", "DESC"], ["id", "DESC"]],
+    // BUG-01: `distinct` counts the root's primary key, so `total` is the
+    // number of non-conformances a client can page through, not JOINED rows.
+    distinct: true,
   });
 
   return {
@@ -413,6 +416,9 @@ const getCapas = async (tenantId: TenantId, page = 1, limit = 10, status?: strin
       tenantInclude(User, "assignee", ["id", "firstName", "lastName", "email"], tenantId),
     ],
     order: [["createdAt", "DESC"], ["id", "DESC"]],
+    // BUG-01: `distinct` counts the root's primary key, so `total` is the
+    // number of CAPAs a client can page through, not JOINED rows.
+    distinct: true,
   });
 
   return {

@@ -128,6 +128,9 @@ const getRisks = async (tenantId: TenantId, query: RiskQuery): Promise<RiskList>
     limit: parseInt(limit as string),
     offset: parseInt(offset as unknown as string),
     order: [["createdAt", "DESC"], ["id", "DESC"]],
+    // BUG-01: `distinct` counts the root's primary key, so `total` is the
+    // number of risks a client can page through, not JOINED rows.
+    distinct: true,
     include: [
       { model: User, as: "identifier", attributes: ["id", "firstName", "lastName", "email"], required: false },
       { model: User, as: "assignee", attributes: ["id", "firstName", "lastName", "email"], required: false },
