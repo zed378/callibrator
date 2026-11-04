@@ -26,6 +26,9 @@ interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
+  // The editing area's accessible name (TipTap 3.32 gives it role="textbox",
+  // which needs one): the visible label it sits under.
+  label?: string;
   // Tags uploaded images against a resource type so they can be found later
   // (e.g. "Ticket"). Defaults to "post" for the blog editor.
   imageResourceType?: string;
@@ -93,6 +96,7 @@ export default function RichTextEditor({
   onChange,
   placeholder = "Write your story… paste text and images straight from a document.",
   imageResourceType = "post",
+  label = "Content",
 }: RichTextEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,6 +115,8 @@ export default function RichTextEditor({
     editorProps: {
       attributes: {
         class: "article-prose max-w-none min-h-80 px-4 py-3 focus:outline-none",
+        "aria-label": label,
+        "aria-multiline": "true",
       },
     },
     onUpdate: ({ editor }) => onChange(editor.getHTML()),

@@ -380,7 +380,10 @@ describe("P8-01 identity — a tenant backup and a GDPR export", () => {
     for (const name of ["content-type", "content-length", "cache-control"]) {
       expect({ name, value: stored.headers[name] }).toEqual({ name, value: legacy.headers[name] });
     }
-    expect(stored.headers["content-disposition"]).toBe(`attachment; filename="${storedId}.zip"`);
+    // As res.download writes it, the same shape as the legacy path above. Express 5.3
+    // stopped quoting a token-safe filename (RFC 6266 allows both), so the quotes are optional.
+    expect(stored.headers["content-disposition"]).toBe(legacy.headers["content-disposition"]?.replace(legacyId, storedId));
+    expect(stored.headers["content-disposition"]).toMatch(new RegExp(`^attachment; filename="?${storedId}\\.zip"?$`));
     // Another tenant's principal: the same 404 as an unknown id.
     currentUser = { id: USER_A, tenantId: TENANT_B };
     expect((await send("GET", `/gdpr/exports/${storedId}/download`)).status).toBe(404);
