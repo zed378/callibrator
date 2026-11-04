@@ -47,12 +47,12 @@ spec:
         # directories at build, because a non-root container cannot create
         # them at runtime.
         #
-        # NUMERIC ids (S-06). The image's USER is the NAME `app`, and with
-        # runAsNonRoot and no runAsUser the kubelet refuses the container
+        # NUMERIC ids (S-06). The image's USER was the NAME `app`, and with
+        # runAsNonRoot and no runAsUser the kubelet refused the container
         # ("image has non-numeric user (app), cannot verify user is non-root").
-        # 997 is the uid backend/Dockerfile pins (`useradd -r -u 997`); its
-        # group is 997 on the bookworm-slim base (the gid is not pinned in the
-        # Dockerfile). fsGroup was 1000, which matched nothing in the image.
+        # Since INF-01 (2026-11-04) the image's USER is numeric too: 997:997, the
+        # uid and gid backend/Dockerfile pins. These stay explicit, as defence in
+        # depth. fsGroup was 1000, which matched nothing in the image.
         runAsNonRoot: true
         runAsUser: {{ .Values.podSecurityContext.runAsUser }}
         runAsGroup: {{ .Values.podSecurityContext.runAsGroup }}
