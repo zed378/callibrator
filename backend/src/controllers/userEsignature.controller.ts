@@ -22,7 +22,9 @@ import { requestBudget } from "../middlewares/requestBudget.middleware";
 import { auditPrincipal } from "../utils/auditPrincipal.util";
 import { AppError } from "../utils/appError.util";
 import {
+  applyCertificateEsignature,
   applyRecordEsignature,
+  certificateEsignaturesParams,
   createMyEsignature,
   myApplicationsQuery,
   publicEsignatureQuery,
@@ -32,7 +34,15 @@ import {
   signDocument,
 } from "@callibrator/contracts/esignatures";
 import { createOrReplace, getMine, revokeMine, revokeUser } from "../services/userEsignature.service";
-import { applyToRecord, listForRecord, myApplications, signDocument as signDocumentService, verifyPublic } from "../services/esignatureApplication.service";
+import {
+  applyToCertificate,
+  applyToRecord,
+  listForCertificate,
+  listForRecord,
+  myApplications,
+  signDocument as signDocumentService,
+  verifyPublic,
+} from "../services/esignatureApplication.service";
 import type { TenantId } from "../types/ids";
 
 const tenantOf = (req: Request): TenantId => req.tenantId as TenantId;
@@ -78,6 +88,17 @@ export const applyToRecordHandler = asyncHandler(async (req: Request, res: Respo
 export const recordApplications = asyncHandler(async (req: Request, res: Response) => {
   const { calibrationRecordId } = validated(req, recordEsignaturesParams);
   success(res, await listForRecord(calibrationRecordId), "Calibration record e-signatures", 200);
+});
+
+/** POST /certificates/:certificateId/esignatures (201). */
+export const applyToCertificateHandler = asyncHandler(async (req: Request, res: Response) => {
+  success(res, await applyToCertificate(tenantOf(req), validated(req, applyCertificateEsignature), auditPrincipal(req)), "Certificate signed", 201);
+});
+
+/** GET /certificates/:certificateId/esignatures. */
+export const certificateApplications = asyncHandler(async (req: Request, res: Response) => {
+  const { certificateId } = validated(req, certificateEsignaturesParams);
+  success(res, await listForCertificate(certificateId), "Certificate e-signatures", 200);
 });
 
 /** The public answer's headers, on every answer of the route — 200, 404 and 429. */

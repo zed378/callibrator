@@ -187,7 +187,16 @@ sandi atau kode MFA.
 **sah**, **isi berubah**, atau **tidak cocok**, lengkap dengan spesimen dan sidik kunci. Untuk dokumen,
 pembaca memilih berkasnya sendiri dan peramban membandingkan sidiknya.
 
-**Sertifikat:** penempelan e-signature ke sertifikat **belum tersedia** (ADR-140 § 6).
+**Sertifikat.** Saat Anda **menyetujui** atau **menandatangani** sertifikat dan Anda punya e-signature
+aktif, e-signature Anda otomatis dibubuhkan (makna **disetujui**). Tanpa e-signature, langkah itu tetap
+berjalan seperti biasa. Di **Kalibrasi** → tab sertifikat, tombol **E-signatures** menampilkan tanda tangan
+yang sudah dibubuhkan; pelaksana kalibrasi dapat menandatangani **as performed**. PDF sertifikat
+menampilkan spesimen, peran, tanggal, dan QR verifikasi tiap tanda tangan pada kotak tanda tangannya, dan
+halaman **/verify** sertifikat menautkan ke verifikasi masing-masing. Tanda tangan digital sertifikat itu
+sendiri tidak berubah.
+
+**Staf faskes** dengan hak e-signature (Teknisi Faskes, IPSRS) juga dapat membuat e-signature sendiri di
+**Profil** dan menandatangani dokumen.
 
 ---
 

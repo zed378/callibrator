@@ -19,7 +19,8 @@ import SignCertModal from "./components/SignCertModal";
 import RevokeCertModal from "./components/RevokeCertModal";
 import ApproveCertModal from "./components/ApproveCertModal";
 import RecordEsignaturesModal from "./components/RecordEsignaturesModal";
-import type { Calibration } from "@/api/services/calibration.service";
+import CertificateEsignaturesModal from "./components/CertificateEsignaturesModal";
+import type { Calibration, Certificate } from "@/api/services/calibration.service";
 
 export default function CalibrationPage() {
   const {
@@ -85,6 +86,7 @@ export default function CalibrationPage() {
   } = useCalibration();
   // P21-15 (ADR-140): the record whose e-signatures are open.
   const [esignatureRecord, setEsignatureRecord] = React.useState<Calibration | null>(null);
+  const [esignatureCertificate, setEsignatureCertificate] = React.useState<Certificate | null>(null);
 
   return (
     <DashboardLayout>
@@ -195,6 +197,7 @@ export default function CalibrationPage() {
               openApproveModal={openApproveModal}
               openSignModal={openSignModal}
               openRevokeModal={openRevokeModal}
+              openEsignatures={setEsignatureCertificate}
             />
           </div>
         )}
@@ -239,6 +242,8 @@ export default function CalibrationPage() {
           setForm={setSignForm}
           isLoading={isCalibLoading}
         />
+
+        <CertificateEsignaturesModal certificate={esignatureCertificate} currentUserId={user?.id} canSign={canWriteCertificates} onClose={() => setEsignatureCertificate(null)} />
 
         <RecordEsignaturesModal record={esignatureRecord} currentUserId={user?.id} canSign={canWriteRecords} onClose={() => setEsignatureRecord(null)} />
 

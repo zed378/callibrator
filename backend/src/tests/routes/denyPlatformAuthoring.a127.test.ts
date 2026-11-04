@@ -446,6 +446,8 @@ const GUARDED: string[] = [
   "certificates.route.ts DELETE /:certificateId",
   "certificates.route.ts POST /",
   "certificates.route.ts POST /:certificateId/approve",
+  // P21-15 (ADR-140 § 6): affixing an e-signature to a certificate is Part 11 authorship.
+  "certificates.route.ts POST /:certificateId/esignatures",
   "certificates.route.ts POST /:certificateId/revoke",
   "certificates.route.ts POST /:certificateId/sign",
   "certificates.route.ts POST /:certificateId/submit",

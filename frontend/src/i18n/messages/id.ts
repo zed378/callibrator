@@ -466,6 +466,15 @@ export const id = {
   "verify.error.network": "Tidak dapat terhubung untuk memeriksa sertifikat. Periksa koneksi Anda lalu coba lagi.",
   "verify.error.rateLimited": "Terlalu banyak pemeriksaan dari jaringan ini. Coba lagi dalam {minutes} menit.",
   "verify.realtime": "Diperiksa terhadap catatan penerbit saat ini.",
+  // ── P21-15 (ADR-140): the e-signatures affixed to a certificate, on /verify ──
+  "verify.esignatures": "Tanda tangan elektronik",
+  "verify.esig.lead": "Tanda tangan elektronik pribadi yang dibubuhkan pada sertifikat ini. Masing-masing dapat diverifikasi sendiri; tanda tangan digital sertifikat di atas tidak bergantung padanya.",
+  "verify.esig.verify": "Verifikasi tanda tangan ini",
+  "verify.esig.meaning.performed": "Dilaksanakan",
+  "verify.esig.meaning.reviewed": "Ditinjau",
+  "verify.esig.meaning.approved": "Disetujui",
+  "verify.esig.meaning.authored": "Disusun",
+  "verify.esig.meaning.acknowledged": "Diketahui",
   // ── Blog and news (P10-13: the public header and footer, ADR-098 §1) ──
   // Chrome only; the posts themselves are authored content, shown as written.
   "content.blog.meta.title": "Blog — Device Calibrator",
@@ -1974,6 +1983,7 @@ export const id = {
   "publicEsig.state.revoked": "Tanda tangan ini dicabut pada {date}; dokumen yang ditandatangani sebelumnya tetap dapat diverifikasi.",
   "publicEsig.doc.superseded": "Rekaman ini sudah dikoreksi pada {date}.",
   "publicEsig.doc.voided": "Rekaman ini dibatalkan pada {date}.",
+  "publicEsig.doc.revoked": "Dokumen ini telah dicabut.",
   "publicEsig.specimen": "Spesimen tanda tangan",
   "publicEsig.check.title": "Periksa sendiri",
   "publicEsig.check.record": "Hitung ulang sidik isi dari data di atas di peramban Anda.",

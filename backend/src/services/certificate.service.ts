@@ -38,6 +38,7 @@ import type * as InputValidator from "../validators/input";
 import type WorkflowService from "./workflow.service";
 import type AttachmentService from "./attachment.service";
 import type * as CertificateDocumentService from "./certificateDocument.service";
+import type * as EsignatureApplicationService from "./esignatureApplication.service";
 import type * as SequelizeModule from "sequelize";
 import type { AuditAction } from "../constants/auditActions";
 import type { TenantId, UserId } from "../types/ids";
@@ -1116,6 +1117,13 @@ const refuseWhileWorkflowPending = async (transaction: SqlTransaction, certifica
 };
 
 /**
+ * P21-15 (ADR-140 § 6): the e-signature application service, required at call time — it requires
+ * this module (verifySignerCredentials) at load, so a load-time import here would be a cycle.
+ */
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- a lazy require: the two modules require each other
+const esignatureApplications = (): typeof EsignatureApplicationService => require("./esignatureApplication.service") as typeof EsignatureApplicationService;
+
+/**
  * Approve a certificate (move from pending_approval to approved)
  */
 const approveCertificate = async (
@@ -1156,6 +1164,9 @@ const approveCertificate = async (
           ipAddress: authOptions.ipAddress,
           userAgent: authOptions.userAgent,
         });
+        // P21-15 (ADR-140 § 6): the approver's personal e-signature, affixed automatically (meaning
+        // `approved`) when it has an active one — in this transaction. Without one nothing changes.
+        await esignatureApplications().autoApplyApproval(transaction, locked, approvedBy, authOptions);
         // A-11: announced only after this transaction commits.
         webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.CERTIFICATE_APPROVED, {
           certificateId: locked.id, certificateNumber: locked.certificateNumber, deviceId: locked.deviceId, status: locked.status, approvedBy,
@@ -1473,6 +1484,10 @@ const signCertificate = async (
           ipAddress: authOptions.ipAddress,
           userAgent: authOptions.userAgent,
         });
+        // P21-15 (ADR-140 § 6): the signer's personal e-signature, affixed automatically (meaning
+        // `approved`) when it has an active one — in this transaction. Without one nothing changes;
+        // the certificate's own digital signature above is untouched.
+        await esignatureApplications().autoApplyApproval(transaction, locked, signedBy, authOptions);
         // A-11: announced only after this transaction commits.
         webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.CERTIFICATE_SIGNED, {
           certificateId: locked.id, certificateNumber: locked.certificateNumber, deviceId: locked.deviceId, status: locked.status, signedBy,

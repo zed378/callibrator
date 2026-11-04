@@ -126,6 +126,19 @@ export const FACILITY_READABLE = Object.freeze({
     reason: "own idempotency keys (a bound technician's capture writes); an API key's row has no user and is hidden",
     test: "models/idempotencyKeys.facility.test.ts",
   },
+  // P21-15 (ADR-140): every user — a bound one too — holds its own e-signature and sees what it signed.
+  UserEsignature: {
+    rule: "own-user",
+    attribute: "userId",
+    reason: "own e-signature (create, replace, revoke, read); another user's is hidden — the record's applications read specimens through a reviewed skip",
+    test: "routes/esignatures.p2115.test.ts",
+  },
+  EsignatureApplication: {
+    rule: "own-user",
+    attribute: "signerUserId",
+    reason: "own e-signature applications (a bound signer's documents, what I signed); a facility record's applications by others are read through a reviewed skip",
+    test: "routes/esignatures.p2115.test.ts",
+  },
 } as const satisfies Record<string, FacilityReadableEntry>);
 
 /** A model name with a `FACILITY_READABLE` rule. */
@@ -168,6 +181,15 @@ export const FACILITY_SCOPE_SKIPS: Readonly<Record<string, string>> = Object.fre
     "P21-02a (P18-03 § 10.2, G-13): the tenant's device policy (QR prefix and digits, the working set's cap, the due-soon window, the zone) for a bound technician's register reads and writes; five keys of the user's own tenant, parsed, never returned",
   "services/deviceReads.service.ts#labNames":
     "P21-02a (P19-03 § 4.1, AM-5): a device's calibration laboratory is a provider vendor (denied to a bound reader per include); its NAME alone is read for the facility's device display; the vendor's id and row are never returned to it",
+  // P21-15 (ADR-140):
+  "services/esignatureApplication.service.ts#listForRecord":
+    "P21-15 (ADR-140): the applications on ONE record the caller has just read in its own scope (another facility's record is the 404 first); a bound reader sees who signed its facility's record, provider staff included — the tenant predicate stays",
+  "services/esignatureApplication.service.ts#listForCertificate":
+    "P21-15 (ADR-140): the applications on ONE certificate the caller has just read in its own scope (another facility's is the 404 first); the tenant predicate stays",
+  "services/esignatureApplication.service.ts#esignaturesOf":
+    "P21-15 (ADR-140): the specimens and key fingerprints of the e-signatures behind applications the caller may already read (its own, or a record of its facility); never a private key",
+  "services/esignatureApplication.service.ts#createApplication":
+    "P21-15 (ADR-140): the Part 11 log row (e_signature_records, provider-internal) of a bound signer's OWN application, written in the application's transaction and never read back to the signer",
   "services/personDisplay.service.ts#displayPeople":
     "P21-09e (spec § 12): the author of a facility's record is provider staff or a person of another facility; the tenant predicate stays, and a bound viewer gets a redacted display for another facility's people — never an id, e-mail or username",
 });
@@ -270,6 +292,16 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
   "api/clientFacilities.route.ts": {
     "GET /mine": { kind: "self", reason: "S-8: the caller's own facility (ClientFacility is FACILITY_READABLE by id = own)" },
   },
+  // P21-15 (ADR-140): every user holds its own e-signature — UserEsignature and EsignatureApplication are FACILITY_READABLE
+  // by the caller's own id; the menu ceiling still decides (`esignature` write: HEALTHCARE TECHNICIAN, FACILITY MAINTENANCE).
+  // The administrator's revoke of another user's e-signature stays unmarked.
+  "api/userEsignatures.route.ts": {
+    "GET /me": { kind: "read", reason: "P21-15: the caller's own e-signature and its versions" },
+    "POST /me": { kind: "write", reason: "P21-15: create or replace the caller's own e-signature (re-authenticated)" },
+    "POST /me/revoke": { kind: "write", reason: "P21-15: revoke the caller's own e-signature (re-authenticated)" },
+    "GET /me/applications": { kind: "read", reason: "P21-15: what the caller has signed (own-user rule)" },
+    "POST /documents": { kind: "write", reason: "P21-15: the caller signs a document by its hash with its own e-signature; no record of any facility is touched" },
+  },
   // P21-09e — the domain rows of P18-03 § 8.2, each with its two-facility suite (G-07).
   "api/calibrationDevices.route.ts": {
     "GET /": { kind: "read", reason: "A-1: the facility's inventory (the hooks force the facility predicate)" },
@@ -355,6 +387,7 @@ export const FACILITY_ACCESSIBLE_ROUTES: Readonly<Record<string, Readonly<Record
     "GET /:certificateId": { kind: "read", reason: "A-7: one certificate of the facility" },
     "GET /:certificateId/document": { kind: "read", reason: "A-7: its document data (signed: the snapshot; unsigned: the printed names)" },
     "GET /:certificateId/pdf": { kind: "read", reason: "A-7: a stored PDF of the facility's certificate" },
+    "GET /:certificateId/esignatures": { kind: "read", reason: "P21-15 (ADR-140): the e-signatures affixed to one certificate of the facility — the certificate is read in the caller's scope first" },
   },
   "api/maintenance.route.ts": {
     "GET /": { kind: "read", reason: "A-8: the facility's work orders (vendor and assignee includes are LEFT, provider-internal)" },

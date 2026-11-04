@@ -38,13 +38,18 @@ import { logger } from "../middlewares/activityLog.middleware";
 import { runForTenant } from "../utils/jobContext.util";
 import {
   CALREC_DATA_SCHEME,
+  CERT_DATA_SCHEME,
   ESIG_CODES,
   ESIG_VERIFY_TOKEN,
   FILE_SHA256_SCHEME,
   calibrationRecordDataPairs,
   canonicalCalibrationRecordData,
+  canonicalCertificateData,
+  certificateDataPairs,
   esignatureSignedPayload,
+  type ApplyCertificateEsignature,
   type ApplyRecordEsignature,
+  type CertificateEsignatureMark,
   type EsigContentScheme,
   type EsigDocumentState,
   type EsigDocumentType,
@@ -62,8 +67,10 @@ import type { ModelInstance } from "../types/models";
 type RecordRow = ModelInstance<"CalibrationRecord">;
 type ApplicationRow = ModelInstance<"EsignatureApplication">;
 type EsignatureRow = ModelInstance<"UserEsignature">;
+type CertificateRow = ModelInstance<"Certificate">;
 
 export const RECORD_NOT_FOUND = "Calibration record not found";
+export const CERTIFICATE_NOT_FOUND = "Certificate not found";
 /** The one answer of the public verification for anything that is not a verdict. */
 export const ESIG_VERIFY_NOT_FOUND = "No e-signature matches this link.";
 
@@ -81,6 +88,9 @@ const sha256Hex = (text: string): string => createHash("sha256").update(text, "u
 /** A record's content hash now (`calrec-data-v1`). */
 export const recordContentHash = (record: RecordRow): string => sha256Hex(canonicalCalibrationRecordData(record));
 
+/** A certificate's content hash now (`cert-data-v1`). */
+export const certificateContentHash = (certificate: CertificateRow): string => sha256Hex(canonicalCertificateData(certificate));
+
 /** A new verification token: 24 CSPRNG bytes, base64url (32 characters; ADR-100). */
 export const newApplicationToken = (): string => randomBytes(24).toString("base64url");
 
@@ -94,7 +104,7 @@ export const esigVerifyUrl = (applicationId: string, token: string): string => {
   return `${base}/api/v1/public/esignatures/${applicationId}?token=${encodeURIComponent(token)}`;
 };
 
-const signerOf = (row: ApplicationRow): Record<string, unknown> => ({
+const signerOf = (row: ApplicationRow): { name: string; role: string | null; organisation: string | null } => ({
   name: row.signerSnapshot.name,
   role: row.signerSnapshot.role ?? null,
   organisation: row.signerSnapshot.organisation ?? null,
@@ -258,7 +268,8 @@ const createApplication = async (draft: ApplicationDraft, esig: EsignatureRow, s
       ipAddress: signer.ipAddress ?? "unknown",
       userAgent: signer.userAgent ? signer.userAgent.slice(0, 500) : "unknown",
     },
-    { transaction },
+    // skipFacilityScope: the Part 11 log row of a bound signer's OWN application — provider-internal, written, never read back (FACILITY_SCOPE_SKIPS).
+    { transaction, skipFacilityScope: true },
   );
   return row;
 };
@@ -372,10 +383,167 @@ export const signDocument = async (tenantId: TenantId, input: SignDocument, sign
   return applicationView(result.row, result.esig, null);
 };
 
+// ------------------------------------------------------------------
+// CERTIFICATES (§ 4, ADR-140 § 6) — the e-signature is AFFIXED to a certificate; the certificate's
+// own tenant-key digital signature (ADR-040) is never touched here.
+// ------------------------------------------------------------------
+
+const certificateTitle = (certificate: CertificateRow): string => `Certificate ${certificate.certificateNumber}`;
+
+/** Who may give which meaning on a certificate, in its current state (§ 4). */
+const assertCertificateSignable = (certificate: CertificateRow, userId: string, meaning: EsigMeaning): void => {
+  if (certificate.status === "revoked") {
+    throw conflict(ESIG_CODES.certificateRevoked, "This certificate was revoked; a revoked certificate is not signed.");
+  }
+  if (meaning === "performed" && certificate.calibratedBy !== userId) {
+    throw new CodedError(403, ESIG_CODES.notPerformer, "Only the person who performed this calibration signs its certificate as performed.");
+  }
+  if (meaning === "approved") {
+    if (certificate.status !== "approved" && certificate.status !== "signed") {
+      throw conflict(
+        ESIG_CODES.certificateNotApproved,
+        `This certificate is in \`${String(certificate.status)}\`; it must be approved (POST /certificates/:id/approve) before an approval e-signature is applied.`,
+      );
+    }
+    if (certificate.approvedBy !== userId && certificate.signedBy !== userId) {
+      throw new CodedError(403, ESIG_CODES.notApprover, "Only the person who approved or signed this certificate signs it as approved.");
+    }
+  }
+};
+
+/** The application draft of a certificate. */
+const certificateDraft = (tenantId: TenantId, certificate: CertificateRow, userId: string, meaning: EsigMeaning, authMethod: "password" | "mfa"): ApplicationDraft => ({
+  tenantId,
+  signerUserId: userId,
+  documentType: "certificate",
+  documentId: certificate.id,
+  documentTitle: certificateTitle(certificate),
+  meaning,
+  contentScheme: CERT_DATA_SCHEME,
+  contentHash: certificateContentHash(certificate),
+  authMethod,
+  auditResource: { type: "Certificate", id: certificate.id },
+  entityType: "Certificate",
+});
+
+/**
+ * `POST /certificates/:certificateId/esignatures` — apply the caller's e-signature to a certificate (201).
+ *
+ * @param tenantId - the caller's tenant
+ * @param input - the validated params + body (meaning, method, credential)
+ * @param signer - the person, the request's address and agent
+ * @returns the application
+ */
+export const applyToCertificate = async (tenantId: TenantId, input: ApplyCertificateEsignature, signer: EsigSigner): Promise<Record<string, unknown>> => {
+  const userId = personOf(signer);
+  const result = await db.transaction(async (transaction) => {
+    const certificate = await models.Certificate.findOne({ where: { id: input.certificateId, tenantId }, transaction, lock: transaction.LOCK.SHARE });
+    if (!certificate) {
+      throw new AppError(404, CERTIFICATE_NOT_FOUND);
+    }
+    assertCertificateSignable(certificate, userId, input.meaning);
+    const already = await models.EsignatureApplication.findOne({
+      where: { documentType: "certificate", documentId: certificate.id, signerUserId: userId, meaning: input.meaning },
+      attributes: ["id", "signedAt"],
+      transaction,
+    });
+    if (already) {
+      throw conflict(ESIG_CODES.alreadyApplied, `You signed this certificate as ${input.meaning} on ${day(already.signedAt)}.`);
+    }
+    const esig = await requireActive(userId, transaction);
+    await verifyCredential(tenantId, userId, input, signer, "Certificate", certificate.id);
+    const row = await createApplication(certificateDraft(tenantId, certificate, userId, input.meaning, input.authMethod), esig, signer, transaction);
+    return { certificate, row, esig };
+  });
+  emitForRow(result.certificate, "esignature:applied", { documentType: "certificate", documentId: result.certificate.id, applicationId: result.row.id });
+  return applicationView(result.row, result.esig, "intact");
+};
+
+/**
+ * The certificate's approve and sign steps apply the actor's e-signature AUTOMATICALLY, meaning
+ * `approved`, inside the step's own transaction — when the actor has an active e-signature and has
+ * not applied it as `approved` already. Without one it does nothing: the certificate flow is never
+ * blocked for lack of an e-signature. The step has just re-authenticated the actor, so no second
+ * credential is asked. Called by certificate.service after the step's state change, audit and
+ * Part 11 rows; never touches the certificate's digital signature.
+ *
+ * @param transaction - the approve or sign step's transaction
+ * @param certificate - the locked, saved certificate
+ * @param userId - the approver or signer
+ * @param auth - the step's method, address and agent
+ * @returns the application's id, or null when none was applied
+ */
+export const autoApplyApproval = async (
+  transaction: Transaction,
+  certificate: CertificateRow,
+  userId: string,
+  auth: { authMethod?: unknown; ipAddress?: string | null | undefined; userAgent?: string | null | undefined },
+): Promise<string | null> => {
+  const esig = await models.UserEsignature.findOne({ where: { userId, status: "active" }, transaction, lock: transaction.LOCK.SHARE });
+  if (!esig) {
+    return null;
+  }
+  const already = await models.EsignatureApplication.findOne({
+    where: { documentType: "certificate", documentId: certificate.id, signerUserId: userId, meaning: "approved" },
+    attributes: ["id"],
+    transaction,
+  });
+  if (already) {
+    return null;
+  }
+  const authMethod = auth.authMethod === "mfa" ? "mfa" : "password";
+  const row = await createApplication(certificateDraft(certificate.tenantId, certificate, userId, "approved", authMethod), esig, { userId, ipAddress: auth.ipAddress ?? null, userAgent: auth.userAgent ?? null }, transaction);
+  return row.id;
+};
+
+/**
+ * `GET /certificates/:certificateId/esignatures` — the certificate's applications, oldest first.
+ *
+ * @param certificateId - the certificate, read in the caller's context (another tenant's: 404)
+ * @returns each application with its link, specimen and integrity now
+ */
+export const listForCertificate = async (certificateId: string): Promise<Record<string, unknown>[]> => {
+  const certificate = await models.Certificate.findOne({ where: { id: certificateId } });
+  if (!certificate) {
+    throw new AppError(404, CERTIFICATE_NOT_FOUND);
+  }
+  const rows = await models.EsignatureApplication.findAll({
+    where: { documentType: "certificate", documentId: certificate.id },
+    order: [["signedAt", "ASC"], ["id", "ASC"]],
+    // skipFacilityScope: the applications on the one certificate just read in the caller's scope (FACILITY_SCOPE_SKIPS).
+    skipFacilityScope: true,
+  });
+  const esigs = await esignaturesOf(rows);
+  const hash = certificateContentHash(certificate);
+  return rows.map((r) => applicationView(r, esigs.get(r.esignatureId), hash === r.contentHash ? "intact" : "changed"));
+};
+
+/**
+ * The marks of a certificate's e-signatures for its FULL public verdict and its renderer: who, what
+ * it means, when, the specimen and the link to each application's own verification. Read in the
+ * certificate's own tenant (the verification has no principal).
+ *
+ * @param tenantId - the certificate's tenant
+ * @param certificateId - the certificate
+ * @returns the marks, oldest first
+ */
+export const certificateMarks = (tenantId: string, certificateId: string): Promise<CertificateEsignatureMark[]> =>
+  runForTenant(tenantId, async () => {
+    const rows = await models.EsignatureApplication.findAll({
+      where: { documentType: "certificate", documentId: certificateId },
+      order: [["signedAt", "ASC"], ["id", "ASC"]],
+    });
+    const esigs = await esignaturesOf(rows);
+    return rows.map((r) => {
+      const view = applicationView(r, esigs.get(r.esignatureId), null);
+      return { meaning: r.meaning, ...signerOf(r), signedAt: String(view["signedAt"]), specimenSvg: String(view["specimenSvg"]), verifyUrl: String(view["verifyUrl"]) };
+    });
+  });
 /** The e-signatures of some applications, by id. */
 const esignaturesOf = async (rows: readonly ApplicationRow[]): Promise<Map<string, EsignatureRow>> => {
   const ids = [...new Set(rows.map((r) => r.esignatureId))];
-  const found = ids.length ? await models.UserEsignature.findAll({ where: { id: ids } }) : [];
+  // skipFacilityScope: the specimens behind applications the caller may already read (FACILITY_SCOPE_SKIPS).
+  const found = ids.length ? await models.UserEsignature.findAll({ where: { id: ids }, skipFacilityScope: true }) : [];
   return new Map(found.map((e) => [e.id as string, e]));
 };
 
@@ -393,6 +561,8 @@ export const listForRecord = async (calibrationRecordId: string): Promise<Record
   const rows = await models.EsignatureApplication.findAll({
     where: { documentType: "calibration_record", documentId: record.id },
     order: [["signedAt", "ASC"], ["id", "ASC"]],
+    // skipFacilityScope: the applications on the one record just read in the caller's scope (FACILITY_SCOPE_SKIPS).
+    skipFacilityScope: true,
   });
   const esigs = await esignaturesOf(rows);
   const hash = recordContentHash(record);
@@ -485,6 +655,41 @@ const applicationVerifies = (row: ApplicationRow, esig: EsignatureRow): boolean 
 };
 
 /** A record's part of the verdict: its canonical content, its state and its summary. */
+/** A certificate's part of the verdict: its canonical content, its state and its summary. */
+const certificatePart = async (row: ApplicationRow): Promise<{
+  pairs: string[][];
+  hash: string;
+  state: EsigDocumentState;
+  stateAt: string | null;
+  summary: PublicEsignatureVerdict["summary"];
+} | null> => {
+  // A certificate application always names its certificate (0149's CHECK esignature_applications_document_id).
+  const certificate = await models.Certificate.findOne({ where: { id: String(row.documentId) }, paranoid: false });
+  if (!certificate) {
+    return null;
+  }
+  const device = await models.CalibrationDevice.unscoped().findOne({ where: { id: certificate.deviceId }, attributes: ["id", "name", "manufacturer", "model", "serialNumber"], paranoid: false });
+  const record = certificate.calibrationRecordId
+    ? await models.CalibrationRecord.unscoped().findOne({ where: { id: certificate.calibrationRecordId }, attributes: ["id", "calibrationDate", "isCompliant"], paranoid: false })
+    : null;
+  const pairs = certificateDataPairs(certificate).map(([name, value]) => [name, value]);
+  const state: EsigDocumentState = certificate.status === "revoked" ? "revoked" : certificate.deletedAt ? "voided" : "current";
+  return {
+    pairs,
+    hash: sha256Hex(JSON.stringify(pairs)),
+    state,
+    stateAt: state === "voided" ? dayText(certificate.deletedAt) : null,
+    summary: {
+      deviceName: device?.name ?? null,
+      brand: device?.manufacturer ?? null,
+      model: device?.model ?? null,
+      serialNumber: device?.serialNumber ?? null,
+      calibrationDate: dayText(record?.calibrationDate),
+      dueDate: dayText(certificate.validUntil),
+      isCompliant: record?.isCompliant ?? null,
+    },
+  };
+};
 const recordPart = async (row: ApplicationRow): Promise<{
   pairs: string[][];
   hash: string;
@@ -524,7 +729,7 @@ const verdictInTenant = async (row: ApplicationRow): Promise<PublicEsignatureVer
     throw notFound();
   }
   const tenant = await models.Tenant.findOne({ where: { id: row.tenantId }, attributes: ["id", "name"] });
-  const record = row.documentType === "calibration_record" ? await recordPart(row) : null;
+  const record = row.documentType === "calibration_record" ? await recordPart(row) : row.documentType === "certificate" ? await certificatePart(row) : null;
   let verdict: EsigVerdict;
   if (!applicationVerifies(row, esig)) {
     verdict = "invalid";

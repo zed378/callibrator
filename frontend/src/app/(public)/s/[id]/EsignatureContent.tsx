@@ -80,7 +80,7 @@ export async function EsignatureContent({
         {v.esignatureState !== "active" && v.esignatureStateAt && (
           <p className="mt-3 text-sm text-pub-text">{t(`publicEsig.state.${v.esignatureState}` as MessageKey, { date: formatDay(v.esignatureStateAt, locale) })}</p>
         )}
-        {v.documentState && v.documentState !== "current" && v.documentStateAt && (
+        {v.documentState && v.documentState !== "current" && (
           <p className="mt-2 text-sm text-pub-text">{t(`publicEsig.doc.${v.documentState}` as MessageKey, { date: formatDay(v.documentStateAt, locale) })}</p>
         )}
       </div>

@@ -22,6 +22,7 @@ export type CreateBody = JsonBody<Op<"/api/v1/esignature/me", "post">>;
 export type RevokeBody = JsonBody<Op<"/api/v1/esignature/me/revoke", "post">>;
 export type DocumentBody = JsonBody<Op<"/api/v1/esignature/documents", "post">>;
 export type RecordSignBody = JsonBody<Op<"/api/v1/calibration-records/{calibrationRecordId}/esignatures", "post">>;
+export type CertificateSignBody = JsonBody<Op<"/api/v1/certificates/{certificateId}/esignatures", "post">>;
 
 export const personalEsignatureService = {
   mine: async (): Promise<MyEsignatureState> => (await typedApi.GET("/api/v1/esignature/me").then(unwrap)).data,
@@ -37,4 +38,10 @@ export const personalEsignatureService = {
 
   signRecord: async (calibrationRecordId: string, body: RecordSignBody): Promise<EsignatureApplication> =>
     (await typedApi.POST("/api/v1/calibration-records/{calibrationRecordId}/esignatures", { params: { path: { calibrationRecordId } }, body }).then(unwrap)).data,
+
+  certificateApplications: async (certificateId: string): Promise<EsignatureApplication[]> =>
+    (await typedApi.GET("/api/v1/certificates/{certificateId}/esignatures", { params: { path: { certificateId } } }).then(unwrap)).data,
+
+  signCertificate: async (certificateId: string, body: CertificateSignBody): Promise<EsignatureApplication> =>
+    (await typedApi.POST("/api/v1/certificates/{certificateId}/esignatures", { params: { path: { certificateId } }, body }).then(unwrap)).data,
 };

@@ -2179,6 +2179,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/certificates/{certificateId}/esignatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The e-signatures affixed to a certificate (P21-15)
+         * @description Oldest first, each with its public verification link, the signer's specimen and `integrity` — the certificate's content hashed NOW against the signed hash (`intact` | `changed`; an approved certificate stays editable until it is signed). Another tenant's certificate: 404.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["listCertificateEsignatures"];
+        put?: never;
+        /**
+         * Affix the caller's e-signature to a certificate (P21-15)
+         * @description The caller's personal e-signature, AFFIXED to the certificate — the certificate's own tenant-key digital signature (ADR-040) is not touched. `performed`: the certificate's calibrator only (else 403 `ESIG_NOT_PERFORMER`); `approved`: its approver or signer (else 403 `ESIG_NOT_APPROVER`), once the certificate is approved. The approve and sign steps already affix the actor's e-signature automatically when it has an active one. The caller re-enters a credential; the certificate's canonical content (`cert-data-v1`) is hashed and the application signed with the personal key, with its audit and e_signature_records rows in one transaction. Another tenant's certificate: 404. An API key is refused. The platform tenant authors nothing here (403, A-127/A-145).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `CERT_NOT_APPROVED` (the certificate is in `draft` or `pending_approval`), `CERT_REVOKED`, `ESIG_ALREADY_APPLIED`, `ESIG_NONE` — each the top-level `code` beside its explanation.
+         */
+        post: operations["applyCertificateEsignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/certificates/{certificateId}/pdf": {
         parameters: {
             query?: never;
@@ -10600,6 +10630,18 @@ export interface components {
             verifyUrl?: string;
             document?: components["schemas"]["CertificateDocument"] | null;
             documentUrl?: string | null;
+            /** @description Full verdict only. P21-15 (ADR-140): the personal e-signatures affixed to the certificate, each with the link to its own verification */
+            esignatures?: {
+                /** @enum {string} */
+                meaning: "performed" | "reviewed" | "approved" | "authored" | "acknowledged";
+                name: string;
+                role: string | null;
+                organisation: string | null;
+                /** Format: date-time */
+                signedAt: string;
+                specimenSvg: string;
+                verifyUrl: string;
+            }[];
         } & {
             [key: string]: unknown;
         };
@@ -11428,7 +11470,7 @@ export interface components {
             /** @enum {string} */
             esignatureState: "active" | "superseded" | "revoked";
             esignatureStateAt: string | null;
-            documentState: ("current" | "superseded" | "voided") | null;
+            documentState: ("current" | "superseded" | "voided" | "revoked") | null;
             documentStateAt: string | null;
             /** Format: date-time */
             signedAt: string;
@@ -20844,6 +20886,87 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listCertificateEsignatures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The certificate's id */
+                certificateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The applications */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["EsignatureApplication"][];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    applyCertificateEsignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The certificate's id */
+                certificateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    meaning: "performed" | "approved";
+                    /** @enum {string} */
+                    authMethod: "password" | "mfa";
+                    credential: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The application */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["EsignatureApplication"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
         };
     };

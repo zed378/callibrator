@@ -25,6 +25,8 @@ import {
 } from "../../validators/certificate.validator";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 import { CERTIFICATE_STATUSES } from "@callibrator/contracts/states";
+import { applyCertificateEsignatureBody, certificateEsignatureMark } from "@callibrator/contracts/esignatures";
+import { EsignatureApplication } from "../../docs/openapi/esignatureSchemas";
 
 const timestamp = z.iso.datetime();
 const STATUSES = CERTIFICATE_STATUSES; // P9-05: the one list
@@ -205,6 +207,10 @@ const Verification = z
     verifyUrl: z.string().optional(),
     document: CertificateDocument.nullable().optional(),
     documentUrl: z.string().nullable().optional(),
+    esignatures: z
+      .array(certificateEsignatureMark)
+      .optional()
+      .meta({ description: "Full verdict only. P21-15 (ADR-140): the personal e-signatures affixed to the certificate, each with the link to its own verification" }),
   })
   .loose()
   .meta({
@@ -444,6 +450,39 @@ export default defineRouteDocs({
       audited: false,
       params: certificateIdParams,
       success: { status: 200, description: "The stored PDF", file: { contentType: "application/pdf" } },
+    },
+    {
+      method: "post",
+      path: "/:certificateId/esignatures",
+      operationId: "applyCertificateEsignature",
+      summary: "Affix the caller's e-signature to a certificate (P21-15)",
+      description:
+        "The caller's personal e-signature, AFFIXED to the certificate — the certificate's own tenant-key digital signature (ADR-040) is not touched. " +
+        "`performed`: the certificate's calibrator only (else 403 `ESIG_NOT_PERFORMER`); `approved`: its approver or signer (else 403 `ESIG_NOT_APPROVER`), once " +
+        "the certificate is approved. The approve and sign steps already affix the actor's e-signature automatically when it has an active one. The caller " +
+        "re-enters a credential; the certificate's canonical content (`cert-data-v1`) is hashed and the application signed with the personal key, with its " +
+        `audit and e_signature_records rows in one transaction. Another tenant's certificate: 404. An API key is refused. ${PLATFORM}`,
+      permission: gate("write"),
+      audited: true,
+      params: certificateIdParams,
+      body: applyCertificateEsignatureBody,
+      conflict:
+        "`CERT_NOT_APPROVED` (the certificate is in `draft` or `pending_approval`), `CERT_REVOKED`, `ESIG_ALREADY_APPLIED`, `ESIG_NONE` — each the top-level " +
+        "`code` beside its explanation.",
+      success: { status: 201, description: "The application", data: EsignatureApplication },
+    },
+    {
+      method: "get",
+      path: "/:certificateId/esignatures",
+      operationId: "listCertificateEsignatures",
+      summary: "The e-signatures affixed to a certificate (P21-15)",
+      description:
+        "Oldest first, each with its public verification link, the signer's specimen and `integrity` — the certificate's content hashed NOW against the " +
+        "signed hash (`intact` | `changed`; an approved certificate stays editable until it is signed). Another tenant's certificate: 404.",
+      permission: gate("read"),
+      audited: false,
+      params: certificateIdParams,
+      success: { status: 200, description: "The applications", data: z.array(EsignatureApplication) },
     },
   ],
 });

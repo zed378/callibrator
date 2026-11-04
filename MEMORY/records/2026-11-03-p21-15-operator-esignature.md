@@ -1,6 +1,6 @@
-# 2026-11-03: P21-15 — personal e-signatures, applied to calibration records and documents by hash, publicly verifiable (ADR-140) — WIP
+# 2026-11-03: P21-15 — personal e-signatures, applied to calibration records, documents by hash and certificates, publicly verifiable (ADR-140, Am. 1) — DONE
 
-**Status:** **WIP, partly built.** Parts (1) the data, my e-signature API and Profile → E-signature, (2) application to calibration records and the public verification page, and (3) documents by hash are built and tested. **Part (4), certificates, is NOT built**: `POST /certificates/:id/esignatures`, the automatic application on approve and sign, the specimen in the frontend renderer, and `cert-data-v1`'s field list. Nothing was pushed, merged or deployed.
+**Status:** **DONE**, in two commits on the worktree branch: `079cb530` (parts 1–3) and the follow-up commit (part 4, certificates; facility-bound users; the credential-endpoint fix; the v1 exports removed — § "Second commit" below). Nothing was pushed, merged or deployed.
 
 **Spec:** [`specs/P21-15-operator-esignature.md`](../specs/P21-15-operator-esignature.md) **v2** (v1, the operator's signature on a calibration record alone, was built first and then reworked into v2 the same day on the owner's third instruction; nothing of v1 survives except its canonical record form, token handling and tests, which v2 reuses). **Decision:** ADR-140.
 
@@ -107,12 +107,70 @@
 - any browser check of the pages;
 - GitHub CI (not waited on, by the owner's rule).
 
-## What is left (in order)
+## Second commit (on top of `079cb530`): part 4, bound users, the credential endpoints, the v1 exports
 
-1. **Certificates (spec § 4, § 5, ADR-140 § 6):**
-   - choose and record `cert-data-v1`'s fields (an ADR-140 amendment);
-   - `POST/GET /certificates/:certificateId/esignatures` with its state 409s and a two-tenant test;
-   - the automatic application inside the approve and sign steps' transactions when the actor has an active e-signature (never blocking without one);
-   - the specimen, name, role, date and QR in the frontend certificate renderer's signature blocks, and the signing panel;
-   - a link from `/verify` to the e-signature verifications.
-2. Optionally, mark `/esignature/me…` facility-accessible (`self`) so bound users can create one.
+**1. Certificates (ADR-140 § 6, Amendment 1).**
+- **`cert-data-v1`** is in `packages/contracts/src/esignatures.ts` (`certificateDataPairs`, `canonicalCertificateData`; golden text and hash). It has fourteen pairs, listed in ADR-140 Am. 1 § 1. It never includes the flow state or the document's integrity hash.
+- **The service** is `esignatureApplication.service`:
+  - `applyToCertificate`: `performed` by `calibratedBy`; `approved` by `approvedBy` or `signedBy` once approved. Refusals: `CERT_NOT_APPROVED`, `CERT_REVOKED`, `ESIG_NOT_APPROVER`, `ESIG_NOT_PERFORMER`, `ESIG_ALREADY_APPLIED`, `ESIG_NONE`.
+  - `listForCertificate`, with integrity `intact` | `changed`.
+  - `autoApplyApproval`, for the approve and sign steps.
+  - `certificateMarks`, for the full verdict.
+  - The public verdict recomputes `cert-data-v1` and says `documentState` `revoked` / `voided`.
+- **The routes:** `POST/GET /certificates/:certificateId/esignatures` on `certificates.route.ts`, with their OpenAPI operations. They are on the A-127 guarded list and facility-readable.
+- **`certificate.service`:** `approveCertificate` and `signCertificate` call `autoApplyApproval` inside their transition, after the audit row, through a lazy require (the two modules require each other). Nothing else in the certificate flow changed; `digitalSignature` and `digitalSignatureKeyId` are exactly what the sign request carried.
+- **`certificatePdf.service`:** the FULL verdict adds `esignatures` (the marks). The minimal verdict is unchanged.
+- **Frontend:**
+  - `lib/certificatePdf.ts`: `marksForBlocks`, `rasterizeSpecimen` (canvas → PNG; null without a canvas), and each block's specimen, role and date line and QR.
+  - `/verify/[certificateNumber]`: lists the e-signatures with links and passes them to the renderer.
+  - The certificates table: an E-signatures action, a `CertificateEsignaturesModal` (Sign as performed or approved), and the dashboard PDF carries the marks.
+  - The public page `/s/[id]` says a revoked document.
+
+**2. Facility-bound users** hold their own e-signature:
+- `UserEsignature` and `EsignatureApplication` are `FACILITY_READABLE` (own-user).
+- The `/esignature/me…` and `/documents` routes are facility-accessible (`read` / `write`).
+- There are reviewed skips for the record and certificate lists, `esignaturesOf`, and the bound signer's Part 11 row.
+- The facility guard's union lists `esignature` read, since write implies read.
+
+**3. The credential-endpoint defect is fixed.** `frontend/src/api/client.ts` treats only the e-signature POSTs as credential endpoints (`CREDENTIAL_POSTS`, method-aware). An expired session on `GET /esignature/me`, `GET /calibration-records/:id/esignatures` or `GET /certificates/:id/esignatures` refreshes once and then goes to `/login?callbackUrl=…`.
+
+**4.** `eSignature.service` no longer exports `loadSigningKey`, `loadVerificationKey` or `SIGNATURE_DIGEST`. Nothing used them, and the file is again identical to `main`.
+
+**Existing tests changed to match:** `certificates.route.test.ts` (16 routes), `facilityReadable.guard` and `tenantScope.facilityDeny` (eight readable models), `facilityAccessibleRoutes.guard` (`esignature` read in the union), `denyPlatformAuthoring.a127` (the certificate route guarded), `domainRoutes.twoFacility` (the certificate list).
+
+
+**Unit suites that mock the models.** `approveCertificate` and `signCertificate` now call `autoApplyApproval`, and the full verify verdict calls `certificateMarks`. Eight existing suites mock `models` without the e-signature models, so they failed with `Cannot read properties of undefined (reading 'findOne')`. Each now mocks the e-signature collaborator (`autoApplyApproval` resolves `null`, `certificateMarks` resolves `[]`). No assertion changed. The eight suites are `certificates.approve.a62`, `fileServing.s01`, `certificate.audit.a41`, `certificate.separationOfDuties.adr101`, `certificate.service`, `certificate.transitionLock.a167`, `certificatePdf.service` and `webhookEmit.a11`. `certificateEsignatures.p2115` tests the real path over the real models. Six new unbounded `findAll` calls are on D-24's reviewed list (`unboundedFindAll.d24`), as PARENT or IDS. Five of them have the children of one user, record or certificate; the sixth (`esignaturesOf`) has the signers of applications the caller already holds.
+
+## Evidence (second commit; every gate as run on 2026-11-04)
+
+- **Backend unit, whole tree** (`npm test -- --coverage=false`): **1,078 suites, 7 failed, 1,071 passed; 18,157 tests, 18 failed, 18,139 passed.** None of the seven failing suites is from P21-15:
+  - `roles.audit.a41` and `tenantLifecycle.w01` fail the same way on `main`;
+  - `prePushHook.a19` has the same 6 failures on `main`;
+  - `appRoutes.a253`: Express refuses to send files from a path under the worktree's `.claude` directory;
+  - `clamAv.service` needs ClamAV on `CLAMAV_LIVE_PORT`, which this run did not start;
+  - `auditLedger.fixture` (`auditSchema is not a function`) comes from the P9-26 conversion batches, and no P21-15 file is involved.
+
+  `unboundedFindAll.d24` failed in that run; with the reviewed entries it passes 8/8. The eight model-mocking suites pass **8 suites, 220 tests**.
+- **The P21-15 and guard suites, run again by name: 13 suites, 307 tests, all passed.**
+  - `certificateEsignatures.p2115` (9);
+  - `certificateEsignatures.twoTenant` (`@two-tenant` POST and GET `/:certificateId/esignatures`);
+  - `esignatures.p2115` (36);
+  - `userEsignatures.twoTenant`, `0149-user-esignatures.p2115`;
+  - `domainRoutes.twoFacility`, `denyPlatformAuthoring.a127`, `certificates.route`, `facilityReadable.guard`, `tenantScope.facilityDeny`, `facilityAccessibleRoutes.guard`;
+  - `twoTenantRoutes.guard` and `routePermissionGuard.p604`.
+- **Backend static gates:**
+  - `npm run typecheck`: exit 0.
+  - `npx eslint` on every changed or new backend `.ts` file: 0 errors in the P21-15 source and the new tests, and 0 on the lines added to the eight legacy suites. Seven of those suites carry lint debt from P9-26 that is unchanged (counts as at `079cb530`). `certificate.separationOfDuties.adr101` is now clean.
+  - `npm run ratchet`: "3 .js file(s), at the floor".
+  - `npm run build:dist`: 815 TypeScript files.
+  - `npm run load:check`: OK, dist via node (120 modules in boot order). `load:check -- --src`: OK, src via tsx.
+  - `npm run openapi:check`: current.
+- **Contracts:** `typecheck` and `lint` exit 0. Jest: **75 suites, 1,464 tests passed, 100 / 100 / 100 / 100**, with `esignatures.ts` at 100. This was run through a wrapper config that matches by regex, because the package's `testMatch` globs skip a path under the `.claude` dot directory.
+- **Frontend:**
+  - `npm run typecheck`: exit 0.
+  - `npx eslint` on the 16 changed or new files: exit 0.
+  - `api:types:check`: current.
+  - Jest with coverage, through the same regex wrapper: **411 suites, 410 passed, 1 failed; 4,209 tests, 4,208 passed**. Coverage was 95.06 / 87.47 / 91.8 / 95.64, against the gate of 90 / 81 / 86 / 91. The failure was `FieldApp.test.tsx`, timing out under load; alone it passes 14/14.
+  - `next build` OK, run with `turbopack.root` and `outputFileTracingRoot` set to the main checkout for this run only (the worktree's `node_modules` link there). `next.config.ts` was restored, and its diff is empty.
+  - `node scripts/bundle-budget.mjs`: exit 0, every route within its budget.
+- **Live** (`pgvector/pgvector:pg18` container `p2115-pg`, removed by name afterwards): `npm run test:live -- --only=p2115` gave **1 of 1 suites, 10 passed, 0 failed, 0 skipped**.

@@ -8,6 +8,11 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-03 — P21-15 DONE: e-signatures on certificates; facility staff hold their own; a sign-in fix ([record](./records/2026-11-03-p21-15-operator-esignature.md), ADR-140 Am. 1)
+- Approving or signing a certificate now affixes the person's e-signature automatically when they have one; without one nothing changes, and the certificate's digital signature is untouched. The calibrator can also sign a certificate as performed. The certificate PDF shows each signatory's specimen, role, date and verification QR, and the certificate's /verify page links to each e-signature's own verification.
+- Facility staff with e-signature rights (healthcare technician, IPSRS) can create their own e-signature and sign documents.
+- An expired session on the e-signature pages now goes to sign-in like any other page; only the signing actions treat a 401 as a wrong password.
+
 ### 2026-11-03 — P21-15 (WIP): personal e-signatures, applied to calibration records and to documents by hash, each publicly verifiable ([record](./records/2026-11-03-p21-15-operator-esignature.md), ADR-140)
 - Every user can create an e-signature in Profile → E-signature: a drawn or uploaded specimen (an allow-listed SVG) and a personal RSA-3072 key held on the server under KMS. Create, replace and revoke re-enter the password or MFA code and are audited; a revoked or replaced e-signature still verifies what it signed.
 - It is applied to a calibration record (`performed` by the performer, `reviewed` by anyone else) or to any file by its SHA-256 (the file is never uploaded); each application has its own public link and QR, `/s/<id>?t=<token>`, showing `valid`, `content changed` or `invalid` and letting the reader recompute the hash in the browser. Migration 0149 (`user_esignatures`, `esignature_applications`; append-only for every role).

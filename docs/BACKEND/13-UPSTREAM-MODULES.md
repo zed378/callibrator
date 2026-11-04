@@ -256,8 +256,17 @@ tenant-key signature** (ADR-040), which is unchanged.
 - Each application writes its audit row and an `e_signature_records` row in its transaction; the
   0149 triggers refuse a change or delete of either table for every role.
 
-**As built:** P21-15 (2026-11-03), **partly**: certificates (the application, the automatic one on
-approve and sign, the specimen in the renderer, `cert-data-v1`) are **not built** (ADR-140 § 6).
+- `POST/GET /certificates/:certificateId/esignatures` — `performed` by the calibrator, `approved` by the
+  approver or signer once approved (`CERT_NOT_APPROVED`, `CERT_REVOKED`, `ESIG_NOT_APPROVER`); content
+  `cert-data-v1` (what the certificate says, never its flow state — ADR-140 Am. 1). The **approve and
+  sign steps affix the actor's e-signature automatically** in their own transaction when it has an active
+  one; without one they behave exactly as before. The certificate's tenant-key digital signature is
+  never touched. The certificate's FULL public verdict lists the affixed e-signatures (`esignatures`),
+  and the frontend renderer places each specimen, role, date and QR in its signature block.
+- Facility-bound users hold their own e-signature (`UserEsignature`, `EsignatureApplication` are
+  FACILITY_READABLE by own id; the `/esignature/me…` and `/documents` routes are marked).
+
+**As built:** P21-15 (2026-11-03), all four parts (ADR-140 and Am. 1).
 
 ---
 
