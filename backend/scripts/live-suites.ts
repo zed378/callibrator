@@ -149,6 +149,7 @@ export const SUITES: readonly Suite[] = Object.freeze([
   { id: "p2409a", file: "src/tests/migrations/userInvitations.p2409a.live.test.ts", db: "scratch" },
   { id: "t0148", file: "src/tests/migrations/deviceTextSearch.0148.live.test.ts", db: "scratch" },
   { id: "p2115", file: "src/tests/migrations/userEsignatures.p2115.live.test.ts", db: "scratch" },
+  { id: "t0150", file: "src/tests/migrations/foreignKeyIndexes.0150.live.test.ts", db: "scratch" },
   { id: "p1707bind", file: "src/tests/services/userFacilityBinding.p1707.live.test.ts", db: "scratch" },
   { id: "c3menu", file: "src/tests/migrations/menuEntries.c3.live.test.ts", db: "scratch" },
   { id: "p803", file: "src/tests/utils/migrationLock.p803.live.test.ts", db: "scratch" },
