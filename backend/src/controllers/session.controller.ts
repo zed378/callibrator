@@ -25,6 +25,7 @@ import {
   actorChanges as loadedActorChanges,
 } from "../utils/auditPrincipal.util";
 import { PLATFORM_TENANT_ID as LOADED_PLATFORM_TENANT_ID } from "../constants/platformTenant";
+import { liveSessionWhere, sessionStatus } from "../utils/sessionState.util";
 import type { AuditAction } from "../constants/auditActions";
 import type { ModelInstance } from "../types/models";
 
@@ -147,13 +148,17 @@ const getAllSessions = asyncHandlerWithMapping(async (req: Request, res: Respons
   }
 
   // Filter by status
+  // BUG-02: "active" is `liveSessionWhere` — the ONE definition of a live
+  // session, the same one `session.service#validateSession` reads. The two
+  // can no longer drift apart.
   if (status === "active") {
-    where["is_revoked"] = false;
-    where["expired_at"] = { [Op.gte]: new Date() };
+    Object.assign(where, liveSessionWhere(new Date()));
   } else if (status === "expired") {
     where["expired_at"] = { [Op.lt]: new Date() };
   } else if (status === "revoked") {
-    where["is_revoked"] = true;
+    // BUG-02: a session that was deactivated but not revoked is ended too,
+    // so it is listed here — the same "not live" definition as the status.
+    where[Op.or] = [{ is_revoked: true }, { is_active: false }];
   }
 
   // parseInt applies ToString to its argument, so String(x) reads exactly as parseInt(x) did.
@@ -161,6 +166,10 @@ const getAllSessions = asyncHandlerWithMapping(async (req: Request, res: Respons
 
   const { count, rows } = await Sessions.findAndCountAll({
     where: whereOf(where),
+    // BUG-01: the COUNT of a joined page counts JOINED rows, not sessions.
+    // `distinct` counts the root's primary key, so `meta.total` is the number
+    // of sessions a client can page through.
+    distinct: true,
     include: [
       // A-90: LEFT JOINs. User and Role have a defaultScope `where`, so
       // without `required: false` a session of a deleted user, or of a user
@@ -441,10 +450,10 @@ const getSessionStats = asyncHandlerWithMapping(async (req: Request, res: Respon
     [
       Sessions.count({ where: whereOf(where) }),
       Sessions.count({
+        // BUG-02: the same definition as the list's "active" filter.
         where: whereOf({
           ...where,
-          is_revoked: false,
-          expired_at: { [Op.gte]: new Date() },
+          ...liveSessionWhere(new Date()),
         }),
       }),
       Sessions.count({
@@ -536,15 +545,12 @@ function detectOS(userAgent: string | null | undefined): string {
 }
 /* eslint-enable @typescript-eslint/prefer-nullish-coalescing */
 
-function getSessionStatus(session: SessionRow): "revoked" | "expired" | "active" {
-  if (session.is_revoked) {
-    return "revoked";
-  }
-  if (new Date(session.expired_at) < new Date()) {
-    return "expired";
-  }
-  return "active";
-}
+/**
+ * BUG-02: the ONE status a session has, read from the ONE definition of a
+ * live session: not revoked, not deactivated, not expired.
+ */
+const getSessionStatus = (session: SessionRow): "revoked" | "expired" | "active" =>
+  sessionStatus(session);
 
 const controller = {
   getAllSessions,

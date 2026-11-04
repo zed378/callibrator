@@ -929,6 +929,10 @@ class RolesService {
 
     const result = await MenuGroup.findAndCountAll({
       where: where as WhereOptions<InferAttributes<MenuRow>>,
+      // BUG-01: the `children` include is a hasMany, so the COUNT of the joined
+      // page is the number of JOINED rows, not the number of menu groups.
+      // `distinct` counts the root's primary key.
+      distinct: true,
       include: [
         {
           model: MenuGroup,

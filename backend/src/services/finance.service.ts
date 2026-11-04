@@ -245,6 +245,9 @@ const fetchAssetFinances = async ({
     limit: safeLimit,
     offset,
     order: [["purchaseDate", "DESC"], ["id", "DESC"]],
+    // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+    // the number of records a client can page through, not JOINED rows.
+    distinct: true,
     include: includeRelations,
   });
 

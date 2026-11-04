@@ -13,6 +13,7 @@ import { AsyncLocalStorage } from "async_hooks";
 import { Op, type InferAttributes, type InferCreationAttributes, type Transaction, type UpdateOptions, type WhereOptions } from "sequelize";
 
 import models from "../models";
+import { liveSessionFlags } from "../utils/sessionState.util";
 import redis from "./redis.service";
 import { runAsSystem, SYSTEM_TASKS } from "../utils/jobContext.util";
 import { env } from "../config/env";
@@ -89,11 +90,13 @@ const createSession = async ({
 const validateSession = async (refreshToken: string): Promise<SessionRow | null> => {
   const tokenHash = hashToken(refreshToken);
 
+  // BUG-02: `liveSessionWhere` is the ONE definition of a live session — not
+  // revoked, not deactivated. The expiry is checked below, against the clock
+  // of the moment, and revokes the session there.
   const session = await Sessions.findOne({
     where: {
       token_hash: tokenHash,
-      is_revoked: false,
-      is_active: true,
+      ...liveSessionFlags(),
     },
   });
 

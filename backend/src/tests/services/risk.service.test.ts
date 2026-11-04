@@ -100,6 +100,7 @@ describe("riskService", () => {
         where: { tenantId, status: "open", category: "security" },
         limit: 10,
         offset: 0,
+        distinct: true, // BUG-01: the COUNT counts root rows, not joined rows
         order: [["createdAt", "DESC"], ["id", "DESC"]],
         include: [
           {
@@ -154,6 +155,7 @@ describe("riskService", () => {
         where: { tenantId },
         limit: 20,
         offset: 20,
+        distinct: true, // BUG-01: the COUNT counts root rows, not joined rows
         order: [["createdAt", "DESC"], ["id", "DESC"]],
         include: [
           {

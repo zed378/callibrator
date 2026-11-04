@@ -604,6 +604,9 @@ const fetchUsers = async ({
       order: [["firstName", "ASC"], ["id", "ASC"]],
       limit: safeLimit,
       offset: offset,
+      // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+      // the number of users a client can page through, not JOINED rows.
+      distinct: true,
       include: [
         {
           model: Roles,

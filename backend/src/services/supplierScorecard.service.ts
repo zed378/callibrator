@@ -115,6 +115,9 @@ const getScorecards = async (tenantId: TenantId, query: ScorecardQuery): Promise
     limit: parseInt(limit as string),
     offset: parseInt(offset as unknown as string),
     order: [["evaluationDate", "DESC"], ["id", "DESC"]],
+    // BUG-01: `distinct` counts the root's primary key, so `total` is the
+    // number of scorecards a client can page through, not JOINED rows.
+    distinct: true,
     include: [
       { model: Vendor, as: "vendor", attributes: ["id", "name"] },
       // LEFT JOIN (A-90): without it User's defaultScope makes this INNER, and

@@ -343,6 +343,9 @@ const fetchInvoices = async ({
       limit: safeLimit,
       offset,
       order: [["createdAt", "DESC"], ["id", "DESC"]],
+      // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+      // the number of invoices a client can page through, not JOINED rows.
+      distinct: true,
       include: [
         { model: Subscription, as: "subscription", attributes: ["id", "planId"] },
       ],

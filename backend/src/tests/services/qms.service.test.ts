@@ -217,6 +217,7 @@ describe("qms.service", () => {
           where: { tenantId: "tenant-1", status: "OPEN" },
           limit: 10,
           offset: 0,
+          distinct: true, // BUG-01: the COUNT counts root rows, not joined rows
           // A-75: LEFT OUTER JOINs, each carrying the tenant predicate.
           include: [
             {
@@ -396,6 +397,7 @@ describe("qms.service", () => {
           where: { tenantId: "tenant-1", status: "DRAFT" },
           limit: 10,
           offset: 0,
+          distinct: true, // BUG-01: the COUNT counts root rows, not joined rows
           include: [
             {
               model: mockNonConformance,

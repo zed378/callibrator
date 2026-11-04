@@ -159,6 +159,9 @@ const fetchWorkOrders = async ({
       limit: safeLimit,
       offset,
       order: [["createdAt", "DESC"], ["id", "DESC"]],
+      // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+      // the number of work orders a client can page through, not JOINED rows.
+      distinct: true,
       // required:false on every include — these are optional relations
       // (vendorId/assignedTo are nullable, and User/Vendor carry scopes that
       // Sequelize would otherwise promote to an INNER JOIN, hiding work orders

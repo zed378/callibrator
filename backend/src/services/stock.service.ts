@@ -201,6 +201,9 @@ const fetchStocks = async ({ tenantId, warehouseId, locationId, find, page = 1, 
 
     const { rows, count } = await Stock.findAndCountAll({
       where: whereClause as WhereOptions,
+      // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+      // the number of stock rows a client can page through, not JOINED rows.
+      distinct: true,
       // Every Warehouse and User include in this file is `required: false`
       // (A-90): both models have a defaultScope `where`, which makes an
       // include without it an INNER JOIN that drops the stock row, adjustment,
@@ -637,6 +640,9 @@ const fetchAdjustments = async ({ tenantId, warehouseId, type, page = 1, limit =
 
     const { rows, count } = await StockAdjustment.findAndCountAll({
       where: whereClause as WhereOptions,
+      // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+      // the number of adjustments a client can page through, not JOINED rows.
+      distinct: true,
       include: [
         { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"], required: false },
         { model: User, as: "adjuster", attributes: ["id", "username", "firstName", "lastName"], required: false },
@@ -967,6 +973,9 @@ const fetchTransfers = async ({ tenantId, fromWarehouseId, toWarehouseId, status
 
     const { rows, count } = await StockTransfer.findAndCountAll({
       where: whereClause as WhereOptions,
+      // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+      // the number of transfers a client can page through, not JOINED rows.
+      distinct: true,
       include: [
         { model: Warehouse, as: "fromWarehouse", attributes: ["id", "name", "code"], required: false },
         { model: Warehouse, as: "toWarehouse", attributes: ["id", "name", "code"], required: false },
@@ -1153,6 +1162,9 @@ const fetchOpnames = async ({ tenantId, warehouseId, status, page = 1, limit = D
 
     const { rows, count } = await StockOpname.findAndCountAll({
       where: whereClause as WhereOptions,
+      // BUG-01: `distinct` counts the root's primary key, so `meta.total` is
+      // the number of opnames a client can page through, not JOINED rows.
+      distinct: true,
       include: [
         { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"], required: false },
         { model: User, as: "performer", attributes: ["id", "username", "firstName", "lastName"], required: false },
