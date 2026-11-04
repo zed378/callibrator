@@ -11,7 +11,7 @@
  * The secret keys are written out by hand.
  */
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const fs = require("fs");
@@ -27,11 +27,11 @@ const norm = (sql: any) => sql.replace(/\s+/g, " ").trim();
 const fakeQueryInterface = ({ tenants, settings, tables = ["tenants", "tenant_settings"], interfere }: any) => {
   const state = {
     tenants: tenants.map((t: any) => ({ ...t })),
-    settings: settings.map((s: any) => ({ ...s }))
+    settings: settings.map((s: any) => ({ ...s })),
   };
   const tx = { id: "tx" };
   const plaintext = () =>
-  state.settings.filter((x: any) => x.value !== null && x.value !== "" && !/^v[12]:/.test(x.value));
+    state.settings.filter((x: any) => x.value !== null && x.value !== "" && !/^v[12]:/.test(x.value));
   return {
     state,
     showAllTables: jest.fn(async () => tables),
@@ -43,8 +43,8 @@ const fakeQueryInterface = ({ tenants, settings, tables = ["tenants", "tenant_se
         if (s === "SELECT id, settings FROM tenants WHERE settings IS NOT NULL") {
           // The driver may hand JSONB back parsed or as text.
           return state.tenants.
-          filter((t: any) => t.settings !== null).
-          map((t: any) => ({ id: t.id, settings: t.asText ? JSON.stringify(t.settings) : t.settings }));
+            filter((t: any) => t.settings !== null).
+            map((t: any) => ({ id: t.id, settings: t.asText ? JSON.stringify(t.settings) : t.settings }));
         }
         if (s.startsWith("UPDATE tenants SET settings = CAST(:settings AS JSONB) WHERE id = :id AND settings = CAST(:previous AS JSONB)")) {
           expect(opts.transaction).toBe(tx);
@@ -52,7 +52,7 @@ const fakeQueryInterface = ({ tenants, settings, tables = ["tenants", "tenant_se
             interfere(state, r);
           }
           const hit = state.tenants.find(
-            (t: any) => t.id === r.id && JSON.stringify(t.settings) === r.previous
+            (t: any) => t.id === r.id && JSON.stringify(t.settings) === r.previous,
           );
           if (hit) {
             hit.settings = JSON.parse(r.settings);
@@ -68,7 +68,7 @@ const fakeQueryInterface = ({ tenants, settings, tables = ["tenants", "tenant_se
         if (s.startsWith("UPDATE tenant_settings SET value = :value WHERE id = :id AND tenant_id = :tenantId AND value = :previous")) {
           expect(opts.transaction).toBe(tx);
           const hit = state.settings.find(
-            (x: any) => x.id === r.id && x.tenant_id === r.tenantId && x.value === r.previous
+            (x: any) => x.id === r.id && x.tenant_id === r.tenantId && x.value === r.previous,
           );
           if (hit) {
             hit.value = r.value;
@@ -76,48 +76,46 @@ const fakeQueryInterface = ({ tenants, settings, tables = ["tenants", "tenant_se
           return [[], { rowCount: hit ? 1 : 0 }];
         }
         throw new Error(`unexpected query: ${s}`);
-      })
-    }
+      }),
+    },
   };
 };
 
 const seedTenants = () => [
-{
-  id: T1,
-  settings: {
-    theme: "dark",
-    oidc_client_secret: "oidc-secret",
-    ai_api_key: "sk-ai",
-    smtpPassword: "smtp",
-    "oidc_rp_33333333-3333-4333-8333-333333333333": '{"clientSecretHash":"h"}',
-    enable_iot: true
-  }
-},
-// returned as text by the driver
-// A-178: sso_idp_cert is the IdP's PUBLIC certificate — kept, not scrubbed.
-{ id: T2, settings: { sso_idp_cert: "cert", locale: "id", ai_api_key: "sk-2" }, asText: true },
-// nothing to scrub
-{ id: "t3", settings: { theme: "light" } },
-{ id: "t4", settings: null },
-// a non-object JSON value is left alone
-{ id: "t5", settings: ["legacy"] }];
-
+  {
+    id: T1,
+    settings: {
+      theme: "dark",
+      oidc_client_secret: "oidc-secret",
+      ai_api_key: "sk-ai",
+      smtpPassword: "smtp",
+      "oidc_rp_33333333-3333-4333-8333-333333333333": '{"clientSecretHash":"h"}',
+      enable_iot: true,
+    },
+  },
+  // returned as text by the driver
+  // A-178: sso_idp_cert is the IdP's PUBLIC certificate — kept, not scrubbed.
+  { id: T2, settings: { sso_idp_cert: "cert", locale: "id", ai_api_key: "sk-2" }, asText: true },
+  // nothing to scrub
+  { id: "t3", settings: { theme: "light" } },
+  { id: "t4", settings: null },
+  // a non-object JSON value is left alone
+  { id: "t5", settings: ["legacy"] }];
 
 const seedSettings = () => [
-{ id: "s1", tenant_id: T1, key: "ai_api_key", value: "sk-ai" },
-{ id: "s2", tenant_id: T2, key: "smtp_password", value: "smtp-2" },
-{ id: "s3", tenant_id: T1, key: "theme", value: "dark" },
-{ id: "s4", tenant_id: T2, key: "oidc_client_secret", value: kms.encryptData(T2, "already") },
-{ id: "s5", tenant_id: T1, key: "stripe_secret_key", value: "" },
-// A-178: a public certificate is left in plaintext.
-{ id: "s6", tenant_id: T2, key: "sso_idp_cert", value: "-----BEGIN CERTIFICATE-----MIIC" }];
-
+  { id: "s1", tenant_id: T1, key: "ai_api_key", value: "sk-ai" },
+  { id: "s2", tenant_id: T2, key: "smtp_password", value: "smtp-2" },
+  { id: "s3", tenant_id: T1, key: "theme", value: "dark" },
+  { id: "s4", tenant_id: T2, key: "oidc_client_secret", value: kms.encryptData(T2, "already") },
+  { id: "s5", tenant_id: T1, key: "stripe_secret_key", value: "" },
+  // A-178: a public certificate is left in plaintext.
+  { id: "s6", tenant_id: T2, key: "sso_idp_cert", value: "-----BEGIN CERTIFICATE-----MIIC" }];
 
 describe("migration 0035-tenant-settings-secrets", () => {
   it("is registered in migrator.js with the .js suffix", () => {
     const manifest = fs.readFileSync(path.join(__dirname, "../../config/migrator.ts"), "utf8");
     expect(manifest).toContain(
-      '["0035-tenant-settings-secrets.js", require("../migrations/0035-tenant-settings-secrets")]'
+      '["0035-tenant-settings-secrets.js", require("../migrations/0035-tenant-settings-secrets")]',
     );
   });
 
@@ -184,7 +182,7 @@ describe("migration 0035-tenant-settings-secrets", () => {
         if (r.id === T1) {
           state.tenants[0].settings = { ...state.tenants[0].settings, added: 1 };
         }
-      }
+      },
     });
 
     await expect(migration.up({ context: qi })).rejects.toThrow(/tenant row\(s\) not scrubbed: 1111/);
@@ -215,7 +213,7 @@ describe("migration 0035-tenant-settings-secrets", () => {
     });
 
     await expect(migration.up({ context: qi })).rejects.toThrow(
-      /2 tenant row\(s\) still hold a secret in settings/
+      /2 tenant row\(s\) still hold a secret in settings/,
     );
   });
 
@@ -230,7 +228,7 @@ describe("migration 0035-tenant-settings-secrets", () => {
     });
 
     await expect(migration.up({ context: qi })).rejects.toThrow(
-      /2 secret setting\(s\) remain in plaintext/
+      /2 secret setting\(s\) remain in plaintext/,
     );
   });
 
@@ -238,7 +236,7 @@ describe("migration 0035-tenant-settings-secrets", () => {
     const qi = fakeQueryInterface({ tenants: seedTenants(), settings: seedSettings() });
     const realQuery = qi.sequelize.query;
     qi.sequelize.query = jest.fn(async (sql: any, opts: any) =>
-    norm(sql).startsWith("UPDATE") ? [[], undefined] : realQuery(sql, opts)
+      norm(sql).startsWith("UPDATE") ? [[], undefined] : realQuery(sql, opts),
     );
 
     await expect(migration.up({ context: qi })).rejects.toThrow(/not scrubbed/);

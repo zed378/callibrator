@@ -113,14 +113,12 @@ jest.mock("../../services/workflow.service", () => ({
 import { Sequelize, DataTypes } from "sequelize";
 import { logger } from "../../middlewares/activityLog.middleware";
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const RealCertificate = (jest.requireActual("../../models/certificate.model") as (s: Sequelize, d: typeof DataTypes) => { prototype: { approve: (approvedBy: string, reason?: string) => Promise<void> } })(
   new Sequelize({ dialect: "postgres", logging: false }),
   DataTypes,
 );
 const authService = require("../../services/auth.service") as typeof import("../../services/auth.service");
 const router = require("../../routes/api/certificates.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 const makeCertificate = (): MockCertificate => {
   const cert: MockCertificate = {
@@ -255,8 +253,8 @@ describe("A-62 — POST /certificates/:id/approve: the approver is the caller", 
     // model.approve() saves the status transition first; the service's save
     // that stamps the approver is the final certificate write.
     const certRow = (mockRef.ledger as unknown as { committed: (tbl: string) => { at: (idx: number) => { approvedBy: string } } }).committed("certificates").at(-1);
-    const signature = ((mockRef.ledger as unknown as { committed: (tbl: string) => Array<{ userId: string }> }).committed("e_signature_records"))[0] as { userId: string };
-    const audit = (mockRef.ledger as unknown as { auditRows: () => Array<{ userId: string; changes: { after: { approvedBy: string } } }> }).auditRows();
+    const signature = ((mockRef.ledger as unknown as { committed: (tbl: string) => { userId: string }[] }).committed("e_signature_records"))[0] as { userId: string };
+    const audit = (mockRef.ledger as unknown as { auditRows: () => { userId: string; changes: { after: { approvedBy: string } } }[] }).auditRows();
 
     expect(audit).toHaveLength(1);
     const audit0 = audit[0] as { userId: string; changes: { after: { approvedBy: string } } };

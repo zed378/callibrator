@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-213 — removing a passkey needs fresh re-authentication and is audited
  * in its transaction.
@@ -22,7 +22,7 @@ const { createLedger } = require("../fixtures/auditLedger");
 const mockRef: any = { ledger: null };
 
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 
 jest.mock("../../models", () => ({
@@ -34,14 +34,14 @@ jest.mock("../../models", () => ({
   Role: {},
   User: {},
   Tenants: {},
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 
 jest.mock("../../services/redis.service", () => ({ get: jest.fn(), set: jest.fn(), del: jest.fn() }));
 
 jest.mock("../../utils/password.util", () => ({
   hashPassword: jest.fn(),
-  comparePassword: jest.fn(async (plain: any, hash: any) => plain === "Right-password-1" && hash === "hash")
+  comparePassword: jest.fn(async (plain: any, hash: any) => plain === "Right-password-1" && hash === "hash"),
 }));
 
 // The spend is faked here; that a code is accepted once is mfa.service's
@@ -61,11 +61,11 @@ jest.mock("../../services/mfa.service", () => ({
     }
     mockRef.ledger.write("mfa_spend", { recovery: code }, options);
     return true;
-  })
+  }),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const { Users } = require("../../models");
@@ -85,7 +85,7 @@ const userRow = (overrides: any = {}) => ({
   webauthnPublicKey: "pk",
   webauthnSignCount: 7,
   update: jest.fn(async (values: any, options: any) => mockRef.ledger.write("users", values, options)),
-  ...overrides
+  ...overrides,
 });
 
 let account: any;
@@ -96,12 +96,12 @@ beforeEach(() => {
   account = userRow();
   // The row exists only in its own tenant.
   Users.findOne.mockImplementation(async ({ where }: any) =>
-  where.id === account.id && where.tenantId === account.tenantId ? account : null
+    where.id === account.id && where.tenantId === account.tenantId ? account : null,
   );
 });
 
 const cleared = () =>
-mockRef.ledger.committed("users").filter((row: any) => row.webauthnEnabled === false);
+  mockRef.ledger.committed("users").filter((row: any) => row.webauthnEnabled === false);
 const auditRows = () => mockRef.ledger.auditRows();
 const context = { ipAddress: "198.51.100.4", userAgent: "ua" };
 
@@ -109,7 +109,7 @@ describe("A-213: removing a passkey re-authenticates", () => {
   it("with the session alone (no password) it is a 400 and nothing changes", async () => {
     await expect(webauthn.disable(TENANT_ID, USER_ID, {}, context)).rejects.toMatchObject({
       status: 400,
-      message: "Removing a passkey requires your current password"
+      message: "Removing a passkey requires your current password",
     });
     // The old call shape — the session and nothing else.
     await expect(webauthn.disable(TENANT_ID, USER_ID)).rejects.toMatchObject({ status: 400 });
@@ -120,7 +120,7 @@ describe("A-213: removing a passkey re-authenticates", () => {
 
   it("a wrong password is a 400 and nothing changes", async () => {
     await expect(
-      webauthn.disable(TENANT_ID, USER_ID, { currentPassword: "Wrong-password-1" }, context)
+      webauthn.disable(TENANT_ID, USER_ID, { currentPassword: "Wrong-password-1" }, context),
     ).rejects.toMatchObject({ status: 400, message: "Current password is incorrect" });
 
     expect(cleared()).toEqual([]);
@@ -133,7 +133,7 @@ describe("A-213: removing a passkey re-authenticates", () => {
     expect(result).toEqual({ success: true });
     expect(cleared()).toEqual([
     // ADR-108 Amendment 1: the flag only; the passkeys go with it (User model hook).
-    { webauthnEnabled: false }]
+      { webauthnEnabled: false }],
     );
     const [row] = auditRows();
     expect(auditRows()).toHaveLength(1);
@@ -145,7 +145,7 @@ describe("A-213: removing a passkey re-authenticates", () => {
       resourceId: USER_ID,
       changes: { operation: "WEBAUTHN_DISABLE", reauthenticatedWith: "password", passkeysRemoved: 2 },
       ipAddress: "198.51.100.4",
-      userAgent: "ua"
+      userAgent: "ua",
     });
     // Never the credential or its key.
     expect(JSON.stringify(row)).not.toMatch(/cred-1|"pk"/);
@@ -158,21 +158,21 @@ describe("A-213: removing a passkey re-authenticates", () => {
 
     it("the password alone is a 400 naming what else is needed", async () => {
       await expect(
-        webauthn.disable(TENANT_ID, USER_ID, { currentPassword: "Right-password-1" }, context)
+        webauthn.disable(TENANT_ID, USER_ID, { currentPassword: "Right-password-1" }, context),
       ).rejects.toMatchObject({
         status: 400,
-        message: "Removing a passkey requires your current password and a current MFA or recovery code"
+        message: "Removing a passkey requires your current password and a current MFA or recovery code",
       });
       expect(cleared()).toEqual([]);
     });
 
     it("a wrong code is the same combined 400 as a wrong password", async () => {
       const wrongCode = await webauthn.
-      disable(TENANT_ID, USER_ID, { currentPassword: "Right-password-1", code: "000000" }, context).
-      catch((e: any) => e);
+        disable(TENANT_ID, USER_ID, { currentPassword: "Right-password-1", code: "000000" }, context).
+        catch((e: any) => e);
       const wrongPassword = await webauthn.
-      disable(TENANT_ID, USER_ID, { currentPassword: "Wrong-password-1", code: "123456" }, context).
-      catch((e: any) => e);
+        disable(TENANT_ID, USER_ID, { currentPassword: "Wrong-password-1", code: "123456" }, context).
+        catch((e: any) => e);
 
       expect(wrongCode).toMatchObject({ status: 400, message: "Current password or MFA code is incorrect" });
       expect(wrongPassword).toMatchObject({ status: wrongCode.status, message: wrongCode.message });
@@ -191,7 +191,7 @@ describe("A-213: removing a passkey re-authenticates", () => {
 
     it("a wrong recovery code is the same combined 400, and nothing changes", async () => {
       await expect(
-        webauthn.disable(TENANT_ID, USER_ID, { currentPassword: "Right-password-1", recoveryCode: "NOTACODE" }, context)
+        webauthn.disable(TENANT_ID, USER_ID, { currentPassword: "Right-password-1", recoveryCode: "NOTACODE" }, context),
       ).rejects.toMatchObject({ status: 400, message: "Current password or MFA code is incorrect" });
       expect(cleared()).toEqual([]);
     });
@@ -201,7 +201,7 @@ describe("A-213: removing a passkey re-authenticates", () => {
         TENANT_ID,
         USER_ID,
         { currentPassword: "Right-password-1", recoveryCode: "RECOVERYCODE0001" },
-        context
+        context,
       );
 
       expect(auditRows()[0].changes.reauthenticatedWith).toBe("password+recovery_code");
@@ -211,7 +211,7 @@ describe("A-213: removing a passkey re-authenticates", () => {
       mockRef.ledger.failNext("audit_logs");
 
       await expect(
-        webauthn.disable(TENANT_ID, USER_ID, { currentPassword: "Right-password-1", code: "123456" }, context)
+        webauthn.disable(TENANT_ID, USER_ID, { currentPassword: "Right-password-1", code: "123456" }, context),
       ).rejects.toThrow();
 
       expect(cleared()).toEqual([]);
@@ -225,13 +225,13 @@ describe("A-213: removing a passkey re-authenticates", () => {
 
     await expect(webauthn.disable(TENANT_ID, USER_ID, {}, context)).rejects.toMatchObject({
       status: 409,
-      message: "No passkey is enrolled on this account, so there is nothing to remove"
+      message: "No passkey is enrolled on this account, so there is nothing to remove",
     });
   });
 
   it("a user of another tenant is a 404, not a 403", async () => {
     await expect(
-      webauthn.disable(OTHER_TENANT, USER_ID, { currentPassword: "Right-password-1" }, context)
+      webauthn.disable(OTHER_TENANT, USER_ID, { currentPassword: "Right-password-1" }, context),
     ).rejects.toMatchObject({ status: 404 });
     expect(cleared()).toEqual([]);
   });

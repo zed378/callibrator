@@ -1,18 +1,18 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 jest.mock("../../models", () => {
   const mockTenant: any = {
-    findByPk: jest.fn()
+    findByPk: jest.fn(),
   };
   const mockUser: any = {
-    count: jest.fn()
+    count: jest.fn(),
   };
   const mockAttachment: any = {
-    sum: jest.fn()
+    sum: jest.fn(),
   };
   return {
     Tenant: mockTenant,
     User: mockUser,
-    Attachment: mockAttachment
+    Attachment: mockAttachment,
   };
 });
 
@@ -25,7 +25,7 @@ const {
   checkStorageQuota,
   planHasFeature,
   checkFeature,
-  getUsageSummary
+  getUsageSummary,
 } = require("../../services/quota.service");
 
 describe("quota.service", () => {
@@ -40,33 +40,33 @@ describe("quota.service", () => {
 
     it("should have correct features for professional plan", () => {
       expect(PLAN_FEATURES.professional).toEqual([
-      "core",
-      "reports",
-      "webhooks"]
+        "core",
+        "reports",
+        "webhooks"],
       );
     });
 
     it("should have correct features for business plan", () => {
       expect(PLAN_FEATURES.business).toEqual([
-      "core",
-      "reports",
-      "webhooks",
-      "api_keys",
-      "sso",
-      "search"]
+        "core",
+        "reports",
+        "webhooks",
+        "api_keys",
+        "sso",
+        "search"],
       );
     });
 
     it("should have correct features for enterprise plan", () => {
       expect(PLAN_FEATURES.enterprise).toEqual([
-      "core",
-      "reports",
-      "webhooks",
-      "api_keys",
-      "sso",
-      "search",
-      "audit_export",
-      "custom_branding"]
+        "core",
+        "reports",
+        "webhooks",
+        "api_keys",
+        "sso",
+        "search",
+        "audit_export",
+        "custom_branding"],
       );
     });
   });
@@ -74,10 +74,10 @@ describe("quota.service", () => {
   describe("PLAN_ORDER", () => {
     it("should have correct plan order", () => {
       expect(PLAN_ORDER).toEqual([
-      "free",
-      "professional",
-      "business",
-      "enterprise"]
+        "free",
+        "professional",
+        "business",
+        "enterprise"],
       );
     });
   });
@@ -90,7 +90,7 @@ describe("quota.service", () => {
       const result = await getSeatUsage("tenant-1");
 
       expect(User.count).toHaveBeenCalledWith({
-        where: { tenantId: "tenant-1" }
+        where: { tenantId: "tenant-1" },
       });
       expect(result).toBe(10);
     });
@@ -317,7 +317,7 @@ describe("quota.service", () => {
         plan: "legacy-unknown",
         status: "active",
         limitSeats: 1,
-        limitStorageMb: 1
+        limitStorageMb: 1,
       });
       User.count.mockResolvedValue(0);
       Attachment.sum.mockResolvedValue(0);
@@ -338,7 +338,7 @@ describe("quota.service", () => {
         plan: "professional",
         status: "active",
         limitSeats: 20,
-        limitStorageMb: 100
+        limitStorageMb: 100,
       });
       User.count.mockResolvedValue(5);
       Attachment.sum.mockResolvedValue(5242880); // 5 MB

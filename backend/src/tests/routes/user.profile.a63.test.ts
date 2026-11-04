@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-63 — the user routes that used `checkSelf`, after the self bypass stopped
  * reading `req.body.userId` / `req.query.userId`.
@@ -27,7 +27,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
@@ -36,32 +36,32 @@ jest.mock("../../models", () => {
   return {
     Tenants: { findByPk: (...args: any[]) => mockFx.current.Tenants.findByPk(...args) },
     User: users,
-    Users: users
+    Users: users,
   };
 });
 
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
   enforceSeatQuota: () => (_req: any, _res: any, next: any) => next(),
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../utils/upload.util", () => ({
   upload: () => (_req: any, _res: any, next: any) => next(),
-  deleteUpload: jest.fn()
+  deleteUpload: jest.fn(),
 }));
 jest.mock("../../services/user.service", () => ({
   editUser: jest.fn(async (input: any) => ({
     status: 200,
-    data: { id: input.userId }
-  }))
+    data: { id: input.userId },
+  })),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -71,54 +71,54 @@ const { ROLE_NAMES } = require("../../constants");
 const router = require("../../routes/api/user.route");
 
 const http = (method: any, url: any, body: any = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const req: any = {
-    method: method.toUpperCase(),
-    url,
-    originalUrl: "/api/v1/users" + url,
-    body,
-    query: {},
-    params: {},
-    headers: {},
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const req: any = {
+      method: method.toUpperCase(),
+      url,
+      originalUrl: "/api/v1/users" + url,
+      body,
+      query: {},
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 // Seed-shaped grants: the admin roles hold `users` write; USER holds none.
 const MATRIX: any = {
   [ROLE_NAMES.HEALTCARE_ADMIN]: { Users: ["write"], users: ["write"] },
-  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"] }
+  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"] },
 };
 
 let fx: any;
@@ -134,7 +134,7 @@ beforeEach(() => {
     byRoleId.set(fx.principal(fx.tenantB, role).role.id, MATRIX[role]);
   }
   RolesService.getRolePermissionsMatrix.mockImplementation(
-    async (roleId: any) => byRoleId.get(roleId) || {}
+    async (roleId: any) => byRoleId.get(roleId) || {},
   );
 });
 
@@ -146,7 +146,7 @@ describe("A-63 — PATCH /users/edit has no self bypass", () => {
     const res = await http("patch", "/edit", {
       userId: user.id,
       status: "ACTIVE",
-      firstName: "Self"
+      firstName: "Self",
     });
 
     expect(res.status).toBe(403);
@@ -162,7 +162,7 @@ describe("A-63 — PATCH /users/edit has no self bypass", () => {
 
     expect(res.status).toBe(200);
     expect(userService.editUser).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: target.id, firstName: "Edited" })
+      expect.objectContaining({ userId: target.id, firstName: "Edited" }),
     );
   });
 });
@@ -178,7 +178,7 @@ describe("A-63 — PATCH /users/:userId/profile", () => {
       username: "AdaL",
       status: "ACTIVE",
       email: "new@evil.test",
-      roleId: "99999999-9999-4999-8999-999999999999"
+      roleId: "99999999-9999-4999-8999-999999999999",
     });
 
     expect(res.status).toBe(200);
@@ -191,7 +191,7 @@ describe("A-63 — PATCH /users/:userId/profile", () => {
       username: "adal",
       updatedBy: user.id,
       actorIsSuperAdmin: false,
-      actorTenantId: fx.tenantA.id
+      actorTenantId: fx.tenantA.id,
     });
     expect(input).not.toHaveProperty("status");
     expect(input).not.toHaveProperty("email");
@@ -205,7 +205,7 @@ describe("A-63 — PATCH /users/:userId/profile", () => {
 
     const res = await http("patch", `/${user.id}/profile`, {
       userId: other.id,
-      firstName: "Ada"
+      firstName: "Ada",
     });
 
     expect(res.status).toBe(200);
@@ -233,13 +233,13 @@ describe("A-63 — PATCH /users/:userId/profile", () => {
       const missing = await http(
         "patch",
         "/ffffffff-ffff-4fff-8fff-ffffffffffff/profile",
-        { firstName: "Mallory" }
+        { firstName: "Mallory" },
       );
 
       expect(foreign.status).toBe(404);
       expect(foreign.body).toEqual(missing.body);
       expect(userService.editUser).not.toHaveBeenCalled();
-    }
+    },
   );
 
   it("rejects a non-UUID path id (400) before the gate", async () => {

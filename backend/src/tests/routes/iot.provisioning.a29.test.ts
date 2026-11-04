@@ -33,8 +33,8 @@ interface MockDevice {
 
 const mockDb: {
   devices: MockDevice[];
-  readings: Array<Record<string, unknown>>;
-  notifications: Array<Record<string, unknown>>;
+  readings: Record<string, unknown>[];
+  notifications: Record<string, unknown>[];
 } = { devices: [], readings: [], notifications: [] };
 let currentUser: unknown = null;
 
@@ -93,14 +93,12 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const config = require("../../config") as typeof import("../../config");
 const { createTwoTenants } = require("../fixtures/twoTenants") as { createTwoTenants: typeof import("../fixtures/twoTenants").createTwoTenants };
 const RolesService = require("../../services/roles.service") as typeof import("../../services/roles.service");
 const auditService = require("../../services/audit.service") as typeof import("../../services/audit.service");
 const { ROLE_NAMES } = require("../../constants") as typeof import("../../constants");
 const router = require("../../routes/api/iot.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 const sha256 = (raw: string) => crypto.createHash("sha256").update(raw).digest("hex");
 
@@ -199,7 +197,7 @@ const stored = (id: string) => {
 
 let fx: ReturnType<typeof createTwoTenants>;
 let admin: ReturnType<typeof fx.principal>;
-let transactions: Array<{ LOCK: { UPDATE: string }; seq: number }>;
+let transactions: { LOCK: { UPDATE: string }; seq: number }[];
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -348,7 +346,7 @@ describe("A-29 — issuing an ingest token", () => {
 });
 
 describe("A-29 — authorization and tenant isolation", () => {
-  const routes: Array<[string, (id: string) => string, Record<string, unknown> | undefined]> = [
+  const routes: [string, (id: string) => string, Record<string, unknown> | undefined][] = [
     ["get", (id: string) => `/devices/${id}`, undefined],
     ["patch", (id: string) => `/devices/${id}`, { readingTolerance: { temperature: { max: 30 } } }],
     ["post", (id: string) => `/devices/${id}/token`, undefined],

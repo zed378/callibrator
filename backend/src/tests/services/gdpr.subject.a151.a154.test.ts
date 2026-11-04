@@ -36,7 +36,7 @@ jest.mock("../../config", () => {
       const built = options.model.build(mockDb.userRow, {
         isNewRecord: false,
         include: options.include,
-        raw: true
+        raw: true,
       });
       return options.plain ? built : [built];
     }
@@ -62,33 +62,33 @@ jest.mock("../../config", () => {
 });
 // archiver 8 is ESM with named classes; the service does `new ZipArchive(...)` (P6-02).
 jest.mock("archiver", () => ({ ZipArchive: function MockZipArchive() {
-    const handlers: any = {};
-    return {
-      on: (event: any, cb: any) => {
-        handlers[event] = cb;
-      },
-      pipe: () => {},
-      directory: () => {},
-      finalize: () => {
-        Promise.resolve().then(() => handlers.end());
-      }
-    };
-  } }));
+  const handlers: any = {};
+  return {
+    on: (event: any, cb: any) => {
+      handlers[event] = cb;
+    },
+    pipe: () => {},
+    directory: () => {},
+    finalize: () => {
+      Promise.resolve().then(() => handlers.end());
+    },
+  };
+} }));
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn(async () => {
     mockDb.events.push("audit");
-  })
+  }),
 }));
 jest.mock("../../services/session.service", () => ({
   revokeOtherSessions: jest.fn(async () => {
     mockDb.events.push("revoke-sessions");
     return 2;
-  })
+  }),
 }));
 jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(async () => {
     mockDb.events.push("delete-avatar");
-  })
+  }),
 }));
 
 const fs = require("fs");
@@ -135,7 +135,7 @@ beforeEach(() => {
     firstName: "Jane",
     lastName: "Doe",
     avatarUrl: "jane-photo.png",
-    status: "ACTIVE"
+    status: "ACTIVE",
   };
   written = {};
   jest.spyOn(fs.promises, "mkdir").mockResolvedValue(undefined);
@@ -151,7 +151,7 @@ beforeEach(() => {
 });
 
 const selectFrom = (table: any) =>
-mockDb.statements.filter((s: any) => s.startsWith("SELECT") && s.includes(` FROM "${table}" `));
+  mockDb.statements.filter((s: any) => s.startsWith("SELECT") && s.includes(` FROM "${table}" `));
 
 describe("A-151 — the export holds only records that name the subject", () => {
   // Hand-written: table -> the user-id columns that make a row the subject's.
@@ -162,7 +162,7 @@ describe("A-151 — the export holds only records that name the subject", () => 
     calibration_records: ["performed_by"],
     certificates: ["calibrated_by", "approved_by", "signed_by", "created_by", "updated_by"],
     maintenance_work_orders: ["assigned_to"],
-    notifications: ["user_id"]
+    notifications: ["user_id"],
   };
 
   it.each(Object.entries(SUBJECT_TABLES))(
@@ -182,7 +182,7 @@ describe("A-151 — the export holds only records that name the subject", () => 
       expect(sql).toMatch(new RegExp(`\\(${group}\\) AND `));
       // D-24 (ADR-070): a keyset page at a time, not the first 1,000.
       expect(sql).toMatch(/ORDER BY "\w+"\."id" ASC LIMIT 500/);
-    }
+    },
   );
 
   it("a whole-tenant table that names no user is not exported at all", async () => {
@@ -193,13 +193,13 @@ describe("A-151 — the export holds only records that name the subject", () => 
     expect(written["tenant_data.json"]).toBeUndefined();
     expect(written["calibration_data.json"]).toBeUndefined();
     expect(Object.keys(written["subject_records.json"]).sort()).toEqual([
-    "CalibrationRecord",
-    "Certificate",
-    "MaintenanceWorkOrder",
-    "Notification",
-    "StockAdjustment",
-    "StockOpname",
-    "StockTransfer"]
+      "CalibrationRecord",
+      "Certificate",
+      "MaintenanceWorkOrder",
+      "Notification",
+      "StockAdjustment",
+      "StockOpname",
+      "StockTransfer"],
     );
   });
 
@@ -218,18 +218,18 @@ describe("A-151 — the export holds only records that name the subject", () => 
 
     await expect(asTenant(() => gdprService.exportUserData(TENANT, USER))).rejects.toMatchObject({
       status: 404,
-      message: "User not found"
+      message: "User not found",
     });
     expect(fs.promises.rm).toHaveBeenCalledWith(expect.stringContaining("export-"), {
       recursive: true,
-      force: true
+      force: true,
     });
   });
 });
 
 describe("A-154 — anonymising an account removes everything that identifies or signs in as it", () => {
   const userUpdate = () =>
-  mockDb.statements.find((s: any) => s.startsWith('UPDATE "users"'));
+    mockDb.statements.find((s: any) => s.startsWith('UPDATE "users"'));
 
   it("clears the avatar, every second factor and one-time code, and deactivates the account", async () => {
     await asTenant(() => gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO }));
@@ -238,36 +238,36 @@ describe("A-154 — anonymising an account removes everything that identifies or
     expect(sql).toBeDefined();
     // Hand-written: the columns that must be overwritten.
     for (const column of [
-    "email",
-    "username",
-    "first_name",
-    "last_name",
-    "phone",
-    "avatar_url",
-    "status",
-    "is_active",
-    "mfa_enabled",
-    "mfa_secret",
-    "mfa_pending_secret",
-    "mfa_pending_created_at",
-    "mfa_last_used_step",
-    "mfa_recovery_codes",
-    "webauthn_enabled",
-    "webauthn_credential_id",
-    "webauthn_public_key",
-    "webauthn_sign_count",
-    "otp_code",
-    "otp_expired_at",
-    // D-11: the password hash and the sign-in history go too.
-    "password",
-    "password_changed_at",
-    "must_change_password",
-    "last_login_at",
-    "failed_login_attempts",
-    "locked_until",
-    "otp_request_count",
-    "otp_last_requested_at",
-    "is_email_verified"])
+      "email",
+      "username",
+      "first_name",
+      "last_name",
+      "phone",
+      "avatar_url",
+      "status",
+      "is_active",
+      "mfa_enabled",
+      "mfa_secret",
+      "mfa_pending_secret",
+      "mfa_pending_created_at",
+      "mfa_last_used_step",
+      "mfa_recovery_codes",
+      "webauthn_enabled",
+      "webauthn_credential_id",
+      "webauthn_public_key",
+      "webauthn_sign_count",
+      "otp_code",
+      "otp_expired_at",
+      // D-11: the password hash and the sign-in history go too.
+      "password",
+      "password_changed_at",
+      "must_change_password",
+      "last_login_at",
+      "failed_login_attempts",
+      "locked_until",
+      "otp_request_count",
+      "otp_last_requested_at",
+      "is_email_verified"])
     {
       expect({ column, set: sql.includes(`"${column}"=`) }).toEqual({ column, set: true });
     }
@@ -283,7 +283,7 @@ describe("A-154 — anonymising an account removes everything that identifies or
     await asTenant(() => gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO }));
 
     expect(sessionService.revokeOtherSessions).toHaveBeenCalledWith(USER, null, "GDPR_ERASURE", {
-      transaction: expect.objectContaining({ id: "tx" })
+      transaction: expect.objectContaining({ id: "tx" }),
     });
     expect(auditService.logAction).toHaveBeenCalledWith(
       {
@@ -296,10 +296,10 @@ describe("A-154 — anonymising an account removes everything that identifies or
           operation: "GDPR_ERASURE",
           method: "anonymized",
           sessionsRevoked: 2,
-          avatarRemoved: true
-        }
+          avatarRemoved: true,
+        },
       },
-      { transaction: expect.objectContaining({ id: "tx" }) }
+      { transaction: expect.objectContaining({ id: "tx" }) },
     );
   });
 
@@ -308,11 +308,11 @@ describe("A-154 — anonymising an account removes everything that identifies or
 
     expect(deleteUpload).toHaveBeenCalledWith("jane-photo.png", "uploads/public/profile");
     expect(mockDb.events).toEqual([
-    "update",
-    "revoke-sessions",
-    "audit",
-    "commit",
-    "delete-avatar"]
+      "update",
+      "revoke-sessions",
+      "audit",
+      "commit",
+      "delete-avatar"],
     );
   });
 
@@ -320,7 +320,7 @@ describe("A-154 — anonymising an account removes everything that identifies or
     auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
 
     await expect(
-      asTenant(() => gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO }))
+      asTenant(() => gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO })),
     ).rejects.toMatchObject({ status: 500 });
 
     expect(mockDb.events).toContain("rollback");
@@ -349,13 +349,13 @@ describe("A-154 — anonymising an account removes everything that identifies or
     deleteUpload.mockRejectedValueOnce(new Error("EACCES"));
 
     const result = await asTenant(() =>
-    gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO })
+      gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO }),
     );
 
     expect(result).toMatchObject({ erased: true, method: "anonymized" });
     expect(logger.warn).toHaveBeenCalledWith("Failed to delete an erased user's avatar file", {
       userId: USER,
-      error: "EACCES"
+      error: "EACCES",
     });
   });
 
@@ -363,7 +363,7 @@ describe("A-154 — anonymising an account removes everything that identifies or
     mockDb.userRow = null;
 
     await expect(
-      asTenant(() => gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO }))
+      asTenant(() => gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO })),
     ).rejects.toMatchObject({ status: 404, message: "User not found" });
 
     expect(userUpdate()).toBeUndefined();
@@ -372,20 +372,20 @@ describe("A-154 — anonymising an account removes everything that identifies or
 
   it("a soft delete is audited in its transaction too; a hardDelete request is refused before any transaction (D-11)", async () => {
     await asTenant(() =>
-    gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO, anonymize: false })
+      gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO, anonymize: false }),
     );
     await expect(
       asTenant(() =>
-      gdprService.eraseUserData(TENANT, USER, {
-        requestedBy: DPO,
-        anonymize: false,
-        hardDelete: true
-      })
-      )
+        gdprService.eraseUserData(TENANT, USER, {
+          requestedBy: DPO,
+          anonymize: false,
+          hardDelete: true,
+        }),
+      ),
     ).rejects.toMatchObject({ status: 400 });
 
     expect(auditService.logAction.mock.calls.map(([e]: any) => e.changes)).toEqual([
-    { operation: "GDPR_ERASURE", method: "soft_deleted", sessionsRevoked: 0, avatarRemoved: false }]
+      { operation: "GDPR_ERASURE", method: "soft_deleted", sessionsRevoked: 0, avatarRemoved: false }],
     );
     expect(mockDb.events.filter((e: any) => e === "commit")).toHaveLength(1);
   });

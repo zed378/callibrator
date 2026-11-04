@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-19 — the opt-in pre-push hook (scripts/git-hooks/pre-push), exercised for
  * real: each case builds a scratch git repository, copies in the hook and the
@@ -37,7 +37,7 @@ const GIT_ENV = {
   GIT_AUTHOR_EMAIL: "a19@example.invalid",
   GIT_COMMITTER_NAME: "a19",
   GIT_COMMITTER_EMAIL: "a19@example.invalid",
-  GIT_CONFIG_NOSYSTEM: "1"
+  GIT_CONFIG_NOSYSTEM: "1",
 };
 
 const run = (cmd: any, args: any, opts: any = {}) => {
@@ -57,9 +57,9 @@ const run = (cmd: any, args: any, opts: any = {}) => {
 const pathWithoutGitleaks = () => {
   const key = Object.keys(process.env).find((k: any) => k.toUpperCase() === "PATH");
   return (key && process.env[key] ? process.env[key]! : "").
-  split(path.delimiter).
-  filter((dir: any) => dir && !["gitleaks", "gitleaks.exe"].some((name: any) => fs.existsSync(path.join(dir, name)))).
-  join(path.delimiter);
+    split(path.delimiter).
+    filter((dir: any) => dir && !["gitleaks", "gitleaks.exe"].some((name: any) => fs.existsSync(path.join(dir, name)))).
+    join(path.delimiter);
 };
 
 const git = (cwd: any, ...args: any[]) => {
@@ -113,7 +113,7 @@ const stubGitleaks = (dir: any, code: any) => {
   const stub = path.join(bin, "gitleaks");
   fs.writeFileSync(
     stub,
-    `#!/usr/bin/env bash\nprintf '%s\\n' "$@" >> "${path.join(dir, "gitleaks.args").split(path.sep).join("/")}"\nexit ${code}\n`
+    `#!/usr/bin/env bash\nprintf '%s\\n' "$@" >> "${path.join(dir, "gitleaks.args").split(path.sep).join("/")}"\nexit ${code}\n`,
   );
   fs.chmodSync(stub, 0o755);
 };
@@ -121,11 +121,11 @@ const stubGitleaks = (dir: any, code: any) => {
 const pushLine = (localSha: any, remoteSha: any) => `refs/heads/main ${localSha} refs/heads/main ${remoteSha}\n`;
 
 const runHook = (dir: any, input: any, env: any = {}) =>
-run("bash", [HOOK.split(path.sep).join("/"), "origin", "file:///nowhere"], {
-  cwd: dir,
-  input,
-  env
-});
+  run("bash", [HOOK.split(path.sep).join("/"), "origin", "file:///nowhere"], {
+    cwd: dir,
+    input,
+    env,
+  });
 
 beforeEach(() => {
   ({ dir: repo, sha: base } = scratchRepo());
@@ -147,7 +147,7 @@ describe("A-19: pre-push hook", () => {
     expect(r.stdout).toContain("push refused");
     const args = fs.readFileSync(path.join(repo, "gitleaks.args"), "utf8").split("\n");
     expect(args).toEqual(
-      expect.arrayContaining(["git", "--config", ".gitleaks.toml", "--redact", `--log-opts=${base}..${head}`])
+      expect.arrayContaining(["git", "--config", ".gitleaks.toml", "--redact", `--log-opts=${base}..${head}`]),
     );
   });
 
@@ -199,7 +199,7 @@ describe("A-19: pre-push hook", () => {
     () => {
       if (!REAL_GITLEAKS) {
         throw new Error(
-          "gitleaks is not installed: run `bash scripts/git-hooks/install-gitleaks.sh` (or `make hooks`) from the repository root"
+          "gitleaks is not installed: run `bash scripts/git-hooks/install-gitleaks.sh` (or `make hooks`) from the repository root",
         );
       }
       const bin = path.join(repo, ".tools/bin");
@@ -219,7 +219,7 @@ describe("A-19: pre-push hook", () => {
       expect(r.status).toBe(1);
       expect(r.stdout).toContain("SECRET FOUND");
       expect(`${r.stdout}${r.stderr}`).not.toContain(body); // --redact
-    }
+    },
   );
 });
 
@@ -241,7 +241,7 @@ describe("A-19: make hooks installs the hook and a pinned gitleaks", () => {
         }
         return acc;
       },
-      { on: false, lines: [] }
+      { on: false, lines: [] },
     ).lines;
     expect(recipe).toContain("git config core.hooksPath scripts/git-hooks");
     expect(recipe.some((l: any) => l.includes("bash scripts/git-hooks/install-gitleaks.sh"))).toBe(true);
@@ -258,7 +258,7 @@ describe("A-19: make hooks installs the hook and a pinned gitleaks", () => {
     expect(ciVersion && ciSum).toBeTruthy();
     expect(installer).toContain(`VERSION=${ciVersion[1]}`);
     expect(installer).toContain(
-      `gitleaks_${ciVersion[1]}_linux_x64.tar.gz) sum=${ciSum[1]}`
+      `gitleaks_${ciVersion[1]}_linux_x64.tar.gz) sum=${ciSum[1]}`,
     );
   });
 

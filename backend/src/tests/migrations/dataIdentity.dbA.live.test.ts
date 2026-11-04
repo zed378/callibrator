@@ -46,7 +46,7 @@ const startProcess = () => {
       migrator: require("../../config/migrator").migrator,
       m0011: require("../../migrations/0011-add-esignature-records"),
       m0062: require("../../migrations/0062-audit-log-indexes"),
-      m0063: require("../../migrations/0063-user-identity-case-insensitive")
+      m0063: require("../../migrations/0063-user-identity-case-insensitive"),
     };
   });
   return graph;
@@ -79,7 +79,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
        VALUES (gen_random_uuid(), :tenantId, :tag, :email, '$2b$12$abcdefghijklmnopqrstuuMPbQyNKi4b3Hq0Ud0L2Q1i7bKZ4w3y',
                'Jane', :tag, '+62 811 000', 'default.svg', 'ACTIVE', false, false, now(), 2, now(), now())
        RETURNING id`,
-      { replacements: { tenantId, tag, email } }
+      { replacements: { tenantId, tag, email } },
     );
     return row.id;
   };
@@ -92,7 +92,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
                                         calibration_interval_days, created_at, updated_at)
        VALUES (gen_random_uuid(), :tenantId, 'Analyser', :serial, false, false, 365, now(), now())
        RETURNING id`,
-      { replacements: { tenantId, serial } }
+      { replacements: { tenantId, serial } },
     );
     return row.id;
   };
@@ -114,7 +114,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at) VALUES
          (:a, 'dbA A', 'dba-a', 'dbaa@live.test', now(), now()),
          (:b, 'dbA B', 'dba-b', 'dbab@live.test', now(), now())`,
-      { replacements: { a: TENANT_A, b: TENANT_B } }
+      { replacements: { a: TENANT_A, b: TENANT_B } },
     );
     ids.technician = await user(TENANT_A, "technician");
     ids.dpo = await user(TENANT_A, "dpo");
@@ -125,7 +125,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
       `INSERT INTO calibration_records (id, tenant_id, device_id, performed_by, calibration_date, is_compliant,
                                         notes, is_deleted, created_at, updated_at)
        VALUES (gen_random_uuid(), :t, :d, :u, now(), true, 'as found', false, now(), now()) RETURNING id`,
-      { replacements: { t: TENANT_A, d: ids.deviceA, u: ids.technician } }
+      { replacements: { t: TENANT_A, d: ids.deviceA, u: ids.technician } },
     );
     ids.record = record.id;
 
@@ -146,7 +146,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
 
   it("the application process runs as callibrator_app, not the owner", async () => {
     const [[row]] = await app.db.query(
-      "SELECT current_user AS u, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS s"
+      "SELECT current_user AS u, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS s",
     );
     expect(row).toEqual({ u: APP_ROLE, s: false });
   });
@@ -163,7 +163,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
       expect(err.message).toMatch(/calibration_records_performed_by_fkey|violates foreign key constraint/);
       const [[{ n }]] = await g.db.query(
         "SELECT count(*)::int AS n FROM calibration_records WHERE id = :id AND performed_by = :u",
-        { replacements: { id: ids.record, u: ids.technician } }
+        { replacements: { id: ids.record, u: ids.technician } },
       );
       expect(n).toBe(1);
     });
@@ -171,7 +171,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
     it("the constraint in the catalog says ON DELETE RESTRICT", async () => {
       const [[row]] = await g.db.query(
         `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
-          WHERE conrelid = 'calibration_records'::regclass AND conname = 'calibration_records_performed_by_fkey'`
+          WHERE conrelid = 'calibration_records'::regclass AND conname = 'calibration_records_performed_by_fkey'`,
       );
       expect(row.def).toMatch(/REFERENCES users\(id\).*ON DELETE RESTRICT/);
     });
@@ -181,7 +181,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
   describe("D-11 — an erasure pseudonymises the account and keeps the attributable record", () => {
     it("after eraseUserData, User.unscoped().findByPk(id) holds no identity or credential, and the calibration record still points at it", async () => {
       const result = await app.tenantStorage.run({ tenantId: TENANT_A }, () =>
-      app.gdpr.eraseUserData(TENANT_A, ids.technician, { requestedBy: ids.dpo })
+        app.gdpr.eraseUserData(TENANT_A, ids.technician, { requestedBy: ids.dpo }),
       );
       expect(result).toMatchObject({ erased: true, method: "anonymized" });
 
@@ -207,21 +207,21 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
         mfaSecret: null,
         mfaRecoveryCodes: null,
         webauthnCredentialId: null,
-        otpCode: null
+        otpCode: null,
       });
       // The erased hash matches no password.
       const bcrypt = require("bcryptjs");
       expect(await bcrypt.compare("", row.password)).toBe(false);
 
       const [[rec]] = await g.db.query("SELECT performed_by FROM calibration_records WHERE id = :id", {
-        replacements: { id: ids.record }
+        replacements: { id: ids.record },
       });
       expect(rec.performed_by).toBe(ids.technician);
 
       const [[audit]] = await g.db.query(
         `SELECT user_id, action, changes FROM audit_logs
           WHERE tenant_id = :t AND resource_type = 'User' AND resource_id = :id`,
-        { replacements: { t: TENANT_A, id: ids.technician } }
+        { replacements: { t: TENANT_A, id: ids.technician } },
       );
       expect(audit).toMatchObject({ user_id: ids.dpo, action: "DELETE" });
       expect(audit.changes).toMatchObject({ operation: "GDPR_ERASURE", method: "anonymized" });
@@ -230,8 +230,8 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
     it("hardDelete is refused with a 400 and the row is untouched", async () => {
       await expect(
         app.tenantStorage.run({ tenantId: TENANT_A }, () =>
-        app.gdpr.eraseUserData(TENANT_A, ids.dpo, { requestedBy: ids.dpo, hardDelete: true, anonymize: false })
-        )
+          app.gdpr.eraseUserData(TENANT_A, ids.dpo, { requestedBy: ids.dpo, hardDelete: true, anonymize: false }),
+        ),
       ).rejects.toMatchObject({ status: 400 });
       const row = await g.models.User.unscoped().findByPk(ids.dpo, { paranoid: false });
       expect(row.email).toBe("dpo@live.test");
@@ -246,7 +246,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
         g.db,
         `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, created_at, updated_at)
          VALUES (gen_random_uuid(), :t, 'freshname', 'Clinician@Hospital-B.test', 'x', 'F', 'L', now(), now())`,
-        { t: TENANT_A }
+        { t: TENANT_A },
       );
       expect(email.original.code).toBe("23505");
       expect(email.original.constraint).toBe("users_email_lower_unique");
@@ -255,7 +255,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
         g.db,
         `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, created_at, updated_at)
          VALUES (gen_random_uuid(), :t, 'CLINICIAN', 'fresh@live.test', 'x', 'F', 'L', now(), now())`,
-        { t: TENANT_A }
+        { t: TENANT_A },
       );
       expect(username.original.code).toBe("23505");
       expect(username.original.constraint).toBe("users_username_lower_unique");
@@ -267,7 +267,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
       await g.db.query(
         `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, created_at, updated_at)
          VALUES (gen_random_uuid(), :t, 'variant', 'CLINICIAN@hospital-b.test', 'x', 'F', 'L', now(), now())`,
-        { replacements: { t: TENANT_A } }
+        { replacements: { t: TENANT_A } },
       );
 
       const err = await g.m0063.up({ context: qi }).catch((e: any) => e);
@@ -276,14 +276,14 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
       expect(err.message).toContain(ids.userB);
       expect(err.message).not.toMatch(/hospital-b\.test/i);
       const [rows] = await g.db.query(
-        "SELECT indexname FROM pg_indexes WHERE tablename = 'users' AND indexname LIKE '%lower_unique'"
+        "SELECT indexname FROM pg_indexes WHERE tablename = 'users' AND indexname LIKE '%lower_unique'",
       );
       expect(rows).toEqual([]);
 
       await g.db.query("DELETE FROM users WHERE username = 'variant'");
       await g.m0063.up({ context: qi });
       const [after] = await g.db.query(
-        "SELECT indexname FROM pg_indexes WHERE tablename = 'users' AND indexname LIKE '%lower_unique' ORDER BY 1"
+        "SELECT indexname FROM pg_indexes WHERE tablename = 'users' AND indexname LIKE '%lower_unique' ORDER BY 1",
       );
       expect(after.map((r: any) => r.indexname)).toEqual(["users_email_lower_unique", "users_username_lower_unique"]);
     });
@@ -298,20 +298,20 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
                 CASE WHEN g % 2 = 0 THEN :ua::uuid ELSE :ub::uuid END, 'user', 'UPDATE', 'Certificate',
                 gen_random_uuid()::text, now() - (g || ' minutes')::interval
            FROM generate_series(1, 20000) g`,
-        { replacements: { a: TENANT_A, b: TENANT_B, ua: ids.dpo, ub: ids.userB } }
+        { replacements: { a: TENANT_A, b: TENANT_B, ua: ids.dpo, ub: ids.userB } },
       );
       await g.db.query("ANALYZE audit_logs");
 
       const plan = async (sql: any) =>
-      (await g.db.query(`EXPLAIN ${sql}`, { replacements: { t: TENANT_A, u: ids.dpo } }))[0].
-      map((r: any) => r["QUERY PLAN"]).
-      join("\n");
+        (await g.db.query(`EXPLAIN ${sql}`, { replacements: { t: TENANT_A, u: ids.dpo } }))[0].
+          map((r: any) => r["QUERY PLAN"]).
+          join("\n");
 
       expect(await plan("SELECT * FROM audit_logs WHERE tenant_id = :t ORDER BY created_at DESC LIMIT 50")).toMatch(
-        /Index Scan using audit_logs_tenant_id_created_at/
+        /Index Scan using audit_logs_tenant_id_created_at/,
       );
       expect(
-        await plan("SELECT * FROM audit_logs WHERE tenant_id = :t AND resource_type = 'Certificate' AND resource_id = 'x'")
+        await plan("SELECT * FROM audit_logs WHERE tenant_id = :t AND resource_type = 'Certificate' AND resource_id = 'x'"),
       ).toMatch(/audit_logs_tenant_id_resource/);
       expect(await plan("SELECT * FROM audit_logs WHERE user_id = :u")).toMatch(/audit_logs_user_id/);
     });
@@ -323,9 +323,9 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
       // As the controller calls it since A-282 (ADR-100): the audit actor is the principal, and a
       // call without one fails closed ("An audit entry must name its actor").
       const issue = (tenantId: any, userId: any, deviceId: any) =>
-      app.tenantStorage.run({ tenantId }, () =>
-      app.certificates.createCertificate(tenantId, userId, { deviceId }, { userId })
-      );
+        app.tenantStorage.run({ tenantId }, () =>
+          app.certificates.createCertificate(tenantId, userId, { deviceId }, { userId }),
+        );
 
       const a = await issue(TENANT_A, ids.dpo, ids.deviceA);
       const b = await issue(TENANT_B, ids.userB, ids.deviceB);
@@ -344,7 +344,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
     // A-147, 0011 would have dropped e_signature_records here.
     const rowCounts = async () => {
       const [tables] = await g.db.query(
-        "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename <> 'schema_migrations' ORDER BY 1"
+        "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename <> 'schema_migrations' ORDER BY 1",
       );
       const counts: any = {};
       for (const { tablename } of tables) {
@@ -356,7 +356,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
 
     it("migrator.up() on the sync-built database, then again with schema_migrations emptied", async () => {
       const [[{ vector }]] = await g.db.query(
-        "SELECT count(*)::int AS vector FROM pg_available_extensions WHERE name = 'vector'"
+        "SELECT count(*)::int AS vector FROM pg_available_extensions WHERE name = 'vector'",
       );
       const preRecord = async () => {
         await g.db.query("CREATE TABLE IF NOT EXISTS schema_migrations (name varchar(255) PRIMARY KEY)");
@@ -384,11 +384,11 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
            FROM pg_constraint c JOIN pg_class cl ON cl.oid = c.conrelid
            JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
           WHERE c.contype = 'f' AND c.confrelid = 'tenants'::regclass
-            AND a.attname IN ('provisioned_tenant_id', 'target_tenant_id') ORDER BY 1`
+            AND a.attname IN ('provisioned_tenant_id', 'target_tenant_id') ORDER BY 1`,
       );
       expect(refs).toEqual([
-      { t: "access_requests", c: "provisioned_tenant_id", del: "n", not_null: false },
-      { t: "upstream_file_imports", c: "target_tenant_id", del: "c", not_null: true }]
+        { t: "access_requests", c: "provisioned_tenant_id", del: "n", not_null: false },
+        { t: "upstream_file_imports", c: "target_tenant_id", del: "c", not_null: true }],
       );
       // Every migration, twice: well past jest's 10 s default on PG 18.
     }, 180000);
@@ -400,7 +400,7 @@ describe("batch-6 data identity and retention — real PostgreSQL", () => {
       await g.db.query(
         `INSERT INTO e_signature_records (id, tenant_id, entity_type, entity_id, user_id, action, meaning, auth_method, timestamp)
          VALUES (gen_random_uuid(), :t, 'Certificate', gen_random_uuid(), :u, 'sign', 'Approved', 'password', now())`,
-        { replacements: { t: TENANT_A, u: ids.dpo } }
+        { replacements: { t: TENANT_A, u: ids.dpo } },
       );
 
       const err = await g.m0011.up({ context: g.db.getQueryInterface() }).catch((e: any) => e);

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Additional branch/error coverage for tenant.service.js
  *
@@ -25,7 +25,7 @@
 jest.mock("../../services/clientFacility.service", () => ({
   SELF_FACILITY_CODE: "SELF",
   selfFacilityName: (name: any) => name,
-  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" }))
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
 }));
 
 jest.mock("../../services/redis.service", () => ({
@@ -36,40 +36,40 @@ jest.mock("../../services/redis.service", () => ({
   cacheKeys: {
     tenant: (tenantId: any) => `tenant:${tenantId}`,
     tenantByCode: (code: any) => `tenant:code:${code}`,
-    tenantSettings: (tenantId: any) => `tenant:settings:${tenantId}`
-  }
+    tenantSettings: (tenantId: any) => `tenant:settings:${tenantId}`,
+  },
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() }
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
 
 jest.mock("../../utils/upload.util", () => ({
-  deleteUpload: jest.fn()
+  deleteUpload: jest.fn(),
 }));
 
 jest.mock("../../constants", () => ({
   DEFAULT_LIMIT: 20,
-  MAX_LIMIT: 100
+  MAX_LIMIT: 100,
 }));
 
 jest.mock("../../validators/input", () => ({
   ...jest.requireActual("../../validators/input"),
   // Real signature: validateInput(body, schema) -> validated value (throws on error)
-  validateInput: jest.fn((body: any) => ({ ...body }))
+  validateInput: jest.fn((body: any) => ({ ...body })),
 }));
 
 // The audit insert (A-41) — its own suite covers logAction; here only the
 // call the service makes inside its transaction is observed.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn()
+  logAction: jest.fn(),
 }));
 
 jest.mock("../../config", () => ({
   db: {
     transaction: jest.fn(),
-    sequelize: { fn: jest.fn((name: any, col: any) => `${name}(${col})`) }
-  }
+    sequelize: { fn: jest.fn((name: any, col: any) => `${name}(${col})`) },
+  },
 }));
 
 jest.mock("../../models", () => ({
@@ -80,16 +80,16 @@ jest.mock("../../models", () => ({
     create: jest.fn(),
     count: jest.fn(),
     // A-326 (ADR-112): updateTenant reads the status ENUM from the model.
-    getAttributes: jest.fn(() => ({ status: { values: ["active", "suspended", "deleted"] } }))
+    getAttributes: jest.fn(() => ({ status: { values: ["active", "suspended", "deleted"] } })),
   },
   Users: {
     findAll: jest.fn(),
-    count: jest.fn()
+    count: jest.fn(),
   },
   TenantSettings: {
     findAll: jest.fn(),
-    findOrCreate: jest.fn()
-  }
+    findOrCreate: jest.fn(),
+  },
 }));
 
 const { db } = require("../../config");
@@ -119,7 +119,7 @@ const mockTransaction: any = () => {
     }),
     rollback: jest.fn(async () => {
       tx.finished = "rollback";
-    })
+    }),
   };
   return tx;
 };
@@ -146,7 +146,7 @@ const makeTenant = (overrides: any = {}) => ({
     const { update: _update, destroy: _destroy, toJSON: _toJSON, ...rest } = this;
     return { ...rest };
   },
-  ...overrides
+  ...overrides,
 });
 
 describe("tenant.service - branch & error coverage", () => {
@@ -178,8 +178,8 @@ describe("tenant.service - branch & error coverage", () => {
   describe("fetchTenants", () => {
     it("should map user counts onto tenants and default absent counts to 0", async () => {
       Tenants.findAll.mockResolvedValue([
-      makeTenant({ id: "t-1", logo: "a.png" }),
-      makeTenant({ id: "t-2", logo: null })]
+        makeTenant({ id: "t-1", logo: "a.png" }),
+        makeTenant({ id: "t-2", logo: null })],
       );
       Tenants.count.mockResolvedValue(2);
       Users.findAll.mockResolvedValue([{ id: "t-1", count: "7" }]);
@@ -199,13 +199,13 @@ describe("tenant.service - branch & error coverage", () => {
       const result = await tenantService.fetchTenants({ page: 3, limit: 10 });
 
       expect(Tenants.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 10, offset: 20 })
+        expect.objectContaining({ limit: 10, offset: 20 }),
       );
       expect(result.data.meta).toEqual({
         total: 55,
         page: 3,
         limit: 10,
-        totalPages: 6
+        totalPages: 6,
       });
       // Page 3 is not cacheable
       expect(set).not.toHaveBeenCalled();
@@ -221,16 +221,16 @@ describe("tenant.service - branch & error coverage", () => {
         "tenants:page:1:limit:10",
         expect.objectContaining({
           rows: expect.any(Array),
-          meta: { total: 1, page: 1, limit: 10, totalPages: 1 }
+          meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
         }),
-        300
+        300,
       );
     });
 
     it("should serve the cached first page without querying the database", async () => {
       get.mockResolvedValue({
         rows: [{ id: "t-cached" }],
-        meta: { total: 1, page: 1, limit: 10, totalPages: 1 }
+        meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
       });
 
       const result = await tenantService.fetchTenants({ page: 1, limit: 10 });
@@ -272,9 +272,9 @@ describe("tenant.service - branch & error coverage", () => {
 
       const where = Tenants.findAll.mock.calls[0][0].where;
       expect(where[Op.or]).toEqual([
-      { name: { [Op.iLike]: "%AcMe%" } },
-      { code: { [Op.iLike]: "%AcMe%" } },
-      { description: { [Op.iLike]: "%AcMe%" } }]
+        { name: { [Op.iLike]: "%AcMe%" } },
+        { code: { [Op.iLike]: "%AcMe%" } },
+        { description: { [Op.iLike]: "%AcMe%" } }],
       );
       expect(Tenants.count.mock.calls[0][0].where[Op.or]).toEqual(where[Op.or]);
     });
@@ -286,19 +286,19 @@ describe("tenant.service - branch & error coverage", () => {
       const result = await tenantService.fetchTenants({});
 
       expect(Tenants.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 20, offset: 0 })
+        expect.objectContaining({ limit: 20, offset: 0 }),
       );
       expect(result.data.meta).toEqual({
         total: 0,
         page: 1,
         limit: 20,
-        totalPages: 0
+        totalPages: 0,
       });
     });
 
     it("should handle raw rows that have no toJSON method", async () => {
       Tenants.findAll.mockResolvedValue([
-      { id: "t-raw", name: "Raw", logo: "raw.png" }]
+        { id: "t-raw", name: "Raw", logo: "raw.png" }],
       );
       Tenants.count.mockResolvedValue(1);
       Users.findAll.mockResolvedValue([]);
@@ -310,7 +310,7 @@ describe("tenant.service - branch & error coverage", () => {
         name: "Raw",
         logo: "raw.png",
         logoBaseUrl: expect.stringContaining("/uploads/public/tenant/raw.png"),
-        userCount: 0
+        userCount: 0,
       });
     });
 
@@ -322,7 +322,7 @@ describe("tenant.service - branch & error coverage", () => {
       expect(err).toEqual({ status: 500, message: "select failed" });
       expect(logger.error).toHaveBeenCalledWith(
         "Error fetching tenants",
-        expect.objectContaining({ error: "select failed" })
+        expect.objectContaining({ error: "select failed" }),
       );
     });
 
@@ -348,7 +348,7 @@ describe("tenant.service - branch & error coverage", () => {
       expect(set).toHaveBeenCalledWith(
         "tenant:t-1",
         expect.objectContaining({ id: "t-1" }),
-        600
+        600,
       );
       expect(result.data.logoBaseUrl).toContain("/uploads/public/tenant/logo.png");
     });
@@ -362,7 +362,7 @@ describe("tenant.service - branch & error coverage", () => {
         success: true,
         status: 404,
         message: "Tenant not found",
-        data: null
+        data: null,
       });
       expect(set).not.toHaveBeenCalled();
     });
@@ -376,7 +376,7 @@ describe("tenant.service - branch & error coverage", () => {
       expect(err.status).toBe(500);
       expect(err.message).toBe("Internal server error");
       expect(logger.error).toHaveBeenCalledWith("Error fetching specific tenant", {
-        error: "db down"
+        error: "db down",
       });
     });
   });
@@ -392,8 +392,8 @@ describe("tenant.service - branch & error coverage", () => {
           name: "Acme",
           code: "ACM",
           primaryColor: "#ff0000",
-          logo: "brand.png"
-        })
+          logo: "brand.png",
+        }),
       });
 
       const result = await tenantService.getPublicBranding("t-1");
@@ -403,14 +403,14 @@ describe("tenant.service - branch & error coverage", () => {
         name: "Acme",
         code: "ACM",
         primaryColor: "#ff0000",
-        logoBaseUrl: expect.stringContaining("/uploads/public/tenant/brand.png")
+        logoBaseUrl: expect.stringContaining("/uploads/public/tenant/brand.png"),
       });
       expect(set).toHaveBeenCalledWith("tenant:branding:t-1", result, 300);
     });
 
     it("should null out an absent primaryColor and logo", async () => {
       Tenants.findOne.mockResolvedValue({
-        toJSON: () => ({ id: "t-1", name: "Acme", code: "ACM" })
+        toJSON: () => ({ id: "t-1", name: "Acme", code: "ACM" }),
       });
 
       const result = await tenantService.getPublicBranding("t-1");
@@ -462,7 +462,7 @@ describe("tenant.service - branch & error coverage", () => {
         state: null,
         zipCode: null,
         country: null,
-        website: null
+        website: null,
         // A-328: no createdBy (not a Tenant attribute); the audit row names the creator.
       });
     });
@@ -487,9 +487,9 @@ describe("tenant.service - branch & error coverage", () => {
           state: "state",
           zipCode: "zip",
           country: "country",
-          website: "https://x.com"
+          website: "https://x.com",
         },
-        "creator-1"
+        "creator-1",
       );
 
       expect(Tenants.create.mock.calls[0][0]).toEqual(
@@ -499,8 +499,8 @@ describe("tenant.service - branch & error coverage", () => {
           primaryColor: "#123456",
           limitSeats: 40,
           website: "https://x.com",
-          subdomain: "custom-subdomain"
-        })
+          subdomain: "custom-subdomain",
+        }),
       );
       // Seat limit: maxUsers is not a seat count (stripped); limitSeats is.
       expect(Tenants.create.mock.calls[0][0]).not.toHaveProperty("maxUsers");
@@ -522,7 +522,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       const result = await tenantService.createTenant(
         { name: "New", code: "NEW" },
-        "creator-1"
+        "creator-1",
       );
 
       expect(tx.commit).toHaveBeenCalled();
@@ -538,7 +538,7 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.findOne.mockResolvedValue({ id: "existing" });
 
       const err = await catchErr(
-        tenantService.createTenant({ name: "New", code: "DUP" }, "creator-1")
+        tenantService.createTenant({ name: "New", code: "DUP" }, "creator-1"),
       );
 
       expect(err).toBeInstanceOf(AppError);
@@ -552,11 +552,11 @@ describe("tenant.service - branch & error coverage", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValue(tx);
       Tenants.findOne.
-      mockResolvedValueOnce(null) // code is free
-      .mockResolvedValueOnce({ id: "existing" }); // name is taken
+        mockResolvedValueOnce(null) // code is free
+        .mockResolvedValueOnce({ id: "existing" }); // name is taken
 
       const err = await catchErr(
-        tenantService.createTenant({ name: "Dup", code: "NEW" }, "creator-1")
+        tenantService.createTenant({ name: "Dup", code: "NEW" }, "creator-1"),
       );
 
       expect(err).toBeInstanceOf(AppError);
@@ -571,26 +571,26 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.create.mockRejectedValue(new Error("insert failed"));
 
       const err = await catchErr(
-        tenantService.createTenant({ name: "New", code: "NEW" }, "creator-1")
+        tenantService.createTenant({ name: "New", code: "NEW" }, "creator-1"),
       );
 
       expect(err.message).toBe("insert failed");
       expect(tx.rollback).toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledWith("Error creating tenant", {
-        error: "insert failed"
+        error: "insert failed",
       });
     });
 
     it("should swallow a secondary rollback failure and surface the original error", async () => {
       const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
-        rollback: jest.fn().mockRejectedValue(new Error("already finished"))
+        rollback: jest.fn().mockRejectedValue(new Error("already finished")),
       };
       db.transaction.mockResolvedValue(tx);
       Tenants.create.mockRejectedValue(new Error("insert failed"));
 
       const err = await catchErr(
-        tenantService.createTenant({ name: "New", code: "NEW" }, "creator-1")
+        tenantService.createTenant({ name: "New", code: "NEW" }, "creator-1"),
       );
 
       expect(err.message).toBe("insert failed");
@@ -600,14 +600,14 @@ describe("tenant.service - branch & error coverage", () => {
       const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
         rollback: jest.fn().mockResolvedValue(undefined),
-        finished: "commit"
+        finished: "commit",
       };
       db.transaction.mockResolvedValue(tx);
       Tenants.create.mockResolvedValue(makeTenant());
       set.mockRejectedValue(new Error("redis down"));
 
       const err = await catchErr(
-        tenantService.createTenant({ name: "New", code: "NEW" }, "creator-1")
+        tenantService.createTenant({ name: "New", code: "NEW" }, "creator-1"),
       );
 
       expect(err.message).toBe("redis down");
@@ -623,7 +623,7 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.create.mockResolvedValue(null);
 
       const err = await catchErr(
-        tenantService.createTenant({ name: "New", code: "NEW" }, "creator-1")
+        tenantService.createTenant({ name: "New", code: "NEW" }, "creator-1"),
       );
 
       expect(err).toBeInstanceOf(TypeError);
@@ -653,13 +653,13 @@ describe("tenant.service - branch & error coverage", () => {
         freshRedis.get.mockResolvedValue(null);
         freshRedis.set.mockResolvedValue(undefined);
         freshModels.Tenants.findOne.mockResolvedValue({
-          toJSON: () => ({ id: "t-1", name: "Acme", code: "ACM", logo: "x.png" })
+          toJSON: () => ({ id: "t-1", name: "Acme", code: "ACM", logo: "x.png" }),
         });
 
         const result = await freshService.getPublicBranding("t-1");
 
         expect(result.logoBaseUrl).toBe(
-          "http://localhost:5000/uploads/public/tenant/x.png"
+          "http://localhost:5000/uploads/public/tenant/x.png",
         );
       } finally {
         if (original === undefined) {
@@ -681,7 +681,7 @@ describe("tenant.service - branch & error coverage", () => {
     // platform-field rules have their own describe block after this one.
     const SUPER_ADMIN_ACTOR: any = { actorIsSuperAdmin: true, tenantId: null };
     const updateAsSuperAdmin = (id: any, input: any) =>
-    tenantService.updateTenant(id, input, "admin-1", SUPER_ADMIN_ACTOR);
+      tenantService.updateTenant(id, input, "admin-1", SUPER_ADMIN_ACTOR);
 
     it("should throw a 404 AppError when the tenant does not exist", async () => {
       Tenants.findByPk.mockResolvedValue(null);
@@ -706,8 +706,8 @@ describe("tenant.service - branch & error coverage", () => {
       expect(err.message).toBe("Tenant code already exists");
       expect(Tenants.findOne).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { code: "TAKEN", id: { [Op.ne]: "t-1" } }
-        })
+          where: { code: "TAKEN", id: { [Op.ne]: "t-1" } },
+        }),
       );
     });
 
@@ -775,7 +775,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "Failed to delete old logo: old.png",
-        expect.any(Error)
+        expect.any(Error),
       );
       expect(tenant.update).toHaveBeenCalled();
       expect(result.status).toBe(200);
@@ -804,7 +804,7 @@ describe("tenant.service - branch & error coverage", () => {
         state: "s",
         zipCode: "z",
         country: "co",
-        website: "https://old.com"
+        website: "https://old.com",
       });
       Tenants.findByPk.mockResolvedValue(tenant);
 
@@ -824,7 +824,7 @@ describe("tenant.service - branch & error coverage", () => {
         state: "s",
         zipCode: "z",
         country: "co",
-        website: "https://old.com"
+        website: "https://old.com",
       });
     });
 
@@ -842,7 +842,7 @@ describe("tenant.service - branch & error coverage", () => {
         state: "DKI",
         zipCode: "12345",
         country: "ID",
-        website: "https://new.example.com"
+        website: "https://new.example.com",
       });
 
       expect(tenant.update.mock.calls[0][0]).not.toHaveProperty("maxUsers");
@@ -857,8 +857,8 @@ describe("tenant.service - branch & error coverage", () => {
           state: "DKI",
           zipCode: "12345",
           country: "ID",
-          website: "https://new.example.com"
-        })
+          website: "https://new.example.com",
+        }),
       );
     });
 
@@ -930,7 +930,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValue(tx);
       Tenants.findByPk.mockResolvedValue(
-        makeTenant({ update: jest.fn().mockRejectedValue(new Error("write failed")) })
+        makeTenant({ update: jest.fn().mockRejectedValue(new Error("write failed")) }),
       );
 
       const err = await catchErr(updateAsSuperAdmin("t-1", { name: "X" }));
@@ -938,7 +938,7 @@ describe("tenant.service - branch & error coverage", () => {
       expect(err.message).toBe("write failed");
       expect(tx.rollback).toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledWith("Error updating tenant", {
-        error: "write failed"
+        error: "write failed",
       });
     });
 
@@ -946,7 +946,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
         rollback: jest.fn().mockResolvedValue(undefined),
-        finished: "commit"
+        finished: "commit",
       };
       db.transaction.mockResolvedValue(tx);
       Tenants.findByPk.mockResolvedValue(makeTenant());
@@ -961,7 +961,7 @@ describe("tenant.service - branch & error coverage", () => {
     it("should swallow a secondary rollback failure", async () => {
       const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
-        rollback: jest.fn().mockRejectedValue(new Error("rollback failed"))
+        rollback: jest.fn().mockRejectedValue(new Error("rollback failed")),
       };
       db.transaction.mockResolvedValue(tx);
       Tenants.findByPk.mockRejectedValue(new Error("lookup failed"));
@@ -982,7 +982,7 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.findByPk.mockResolvedValue(foreignTenant);
 
       const err = await catchErr(
-        tenantService.updateTenant("t-2", { name: "X" }, "u-1", OWN)
+        tenantService.updateTenant("t-2", { name: "X" }, "u-1", OWN),
       );
 
       expect(err).toBeInstanceOf(AppError);
@@ -993,7 +993,7 @@ describe("tenant.service - branch & error coverage", () => {
       expect(tx.rollback).toHaveBeenCalled();
       expect(logger.warn).toHaveBeenCalledWith(
         "tenant.service: cross-tenant update refused",
-        expect.objectContaining({ reason: "cross-tenant", tenantId: "t-2", actorTenantId: "t-1" })
+        expect.objectContaining({ reason: "cross-tenant", tenantId: "t-2", actorTenantId: "t-1" }),
       );
     });
 
@@ -1001,7 +1001,7 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.findByPk.mockResolvedValue(makeTenant({ id: "t-1" }));
 
       const err = await catchErr(
-        tenantService.updateTenant("t-1", { name: "X" }, "u-1", { actorIsSuperAdmin: false, tenantId: null })
+        tenantService.updateTenant("t-1", { name: "X" }, "u-1", { actorIsSuperAdmin: false, tenantId: null }),
       );
 
       expect(err.status).toBe(404);
@@ -1015,14 +1015,14 @@ describe("tenant.service - branch & error coverage", () => {
       expect(err.status).toBe(404);
       expect(logger.warn).not.toHaveBeenCalledWith(
         "tenant.service: cross-tenant update refused",
-        expect.anything()
+        expect.anything(),
       );
     });
 
     it.each([
-    [{ status: "SUSPENDED" }, "status"],
-    // A-303: maxUsers is stripped by the schema, so only the status is named.
-    [{ status: "INACTIVE", maxUsers: 1 }, "status"]]
+      [{ status: "SUSPENDED" }, "status"],
+      // A-303: maxUsers is stripped by the schema, so only the status is named.
+      [{ status: "INACTIVE", maxUsers: 1 }, "status"]],
     )("refuses a non-super-admin changing %j on their own tenant (403)", async (input: any, named: any) => {
       const tenant = makeTenant({ id: "t-1", status: "ACTIVE", maxUsers: 10 });
       Tenants.findByPk.mockResolvedValue(tenant);
@@ -1066,7 +1066,7 @@ describe("tenant.service - branch & error coverage", () => {
       await tenantService.updateTenant("t-1", { name: "New" }, "u-1", {
         ...OWN,
         ipAddress: "10.0.0.1",
-        userAgent: "jest"
+        userAgent: "jest",
       });
 
       expect(auditService.logAction).toHaveBeenCalledWith(
@@ -1078,13 +1078,13 @@ describe("tenant.service - branch & error coverage", () => {
           resourceId: "t-1",
           changes: { name: { before: "Old", after: "New" } },
           ipAddress: "10.0.0.1",
-          userAgent: "jest"
+          userAgent: "jest",
         },
-        { transaction: tx }
+        { transaction: tx },
       );
       // Inside the transaction: the audit write happens before the commit.
       expect(auditService.logAction.mock.invocationCallOrder[0]).toBeLessThan(
-        tx.commit.mock.invocationCallOrder[0]
+        tx.commit.mock.invocationCallOrder[0],
       );
     });
 
@@ -1095,7 +1095,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -1128,7 +1128,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({ action: "CREATE", userId: null, tenantId: PLATFORM_TENANT_ID }),
-        expect.objectContaining({ transaction: expect.any(Object) })
+        expect.objectContaining({ transaction: expect.any(Object) }),
       );
     });
 
@@ -1144,9 +1144,9 @@ describe("tenant.service - branch & error coverage", () => {
           userId: null,
           tenantId: PLATFORM_TENANT_ID,
           ipAddress: null,
-          userAgent: null
+          userAgent: null,
         }),
-        expect.objectContaining({ transaction: expect.any(Object) })
+        expect.objectContaining({ transaction: expect.any(Object) }),
       );
     });
 
@@ -1157,7 +1157,7 @@ describe("tenant.service - branch & error coverage", () => {
         userId: "u-1",
         tenantId: "home-1",
         ipAddress: "10.1.1.1",
-        userAgent: "ua"
+        userAgent: "ua",
       });
 
       expect(auditService.logAction.mock.calls[0][0]).toMatchObject({
@@ -1165,7 +1165,7 @@ describe("tenant.service - branch & error coverage", () => {
         // A-125: PLATFORM, never the actor's home tenant (F-7).
         tenantId: PLATFORM_TENANT_ID,
         ipAddress: "10.1.1.1",
-        userAgent: "ua"
+        userAgent: "ua",
       });
     });
   });
@@ -1201,7 +1201,7 @@ describe("tenant.service - branch & error coverage", () => {
       expect(tx.commit).not.toHaveBeenCalled();
       expect(Users.count).toHaveBeenCalledWith({
         where: { tenantId: "t-1" },
-        transaction: tx
+        transaction: tx,
       });
     });
 
@@ -1234,7 +1234,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "Failed to delete tenant logo: logo.png",
-        expect.any(Error)
+        expect.any(Error),
       );
       expect(tenant.destroy).toHaveBeenCalled();
       expect(result.status).toBe(200);
@@ -1254,7 +1254,7 @@ describe("tenant.service - branch & error coverage", () => {
         success: true,
         status: 200,
         message: "Tenant deleted successfully",
-        data: null
+        data: null,
       });
     });
 
@@ -1262,7 +1262,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValue(tx);
       Tenants.findByPk.mockResolvedValue(
-        makeTenant({ destroy: jest.fn().mockRejectedValue(new Error("FK constraint")) })
+        makeTenant({ destroy: jest.fn().mockRejectedValue(new Error("FK constraint")) }),
       );
 
       const err = await catchErr(tenantService.deleteTenant("t-1", "admin"));
@@ -1270,7 +1270,7 @@ describe("tenant.service - branch & error coverage", () => {
       expect(err.message).toBe("FK constraint");
       expect(tx.rollback).toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledWith("Error deleting tenant", {
-        error: "FK constraint"
+        error: "FK constraint",
       });
     });
 
@@ -1278,7 +1278,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
         rollback: jest.fn().mockResolvedValue(undefined),
-        finished: "commit"
+        finished: "commit",
       };
       db.transaction.mockResolvedValue(tx);
       Tenants.findByPk.mockResolvedValue(makeTenant());
@@ -1293,7 +1293,7 @@ describe("tenant.service - branch & error coverage", () => {
     it("should swallow a secondary rollback failure", async () => {
       const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
-        rollback: jest.fn().mockRejectedValue(new Error("rollback failed"))
+        rollback: jest.fn().mockRejectedValue(new Error("rollback failed")),
       };
       db.transaction.mockResolvedValue(tx);
       Tenants.findByPk.mockRejectedValue(new Error("lookup failed"));
@@ -1310,7 +1310,7 @@ describe("tenant.service - branch & error coverage", () => {
   describe("getTenantSettings", () => {
     it("should merge the key-value table over the JSONB column", async () => {
       Tenants.findByPk.mockResolvedValue(
-        makeTenant({ settings: { theme: "light", locale: "id" } })
+        makeTenant({ settings: { theme: "light", locale: "id" } }),
       );
       TenantSettings.findAll.mockResolvedValue([{ key: "theme", value: "dark" }]);
 
@@ -1357,7 +1357,7 @@ describe("tenant.service - branch & error coverage", () => {
       expect(err.status).toBe(500);
       expect(err.message).toBe("Internal server error");
       expect(logger.error).toHaveBeenCalledWith("Error fetching tenant settings", {
-        error: "db down"
+        error: "db down",
       });
     });
   });
@@ -1386,14 +1386,14 @@ describe("tenant.service - branch & error coverage", () => {
         {
           tenantId: "hack",
           settings: { sso_enabled: true, tenantId: "hack2", settings: "x" },
-          ai_vendor: "openai"
+          ai_vendor: "openai",
         },
-        "admin"
+        "admin",
       );
 
       expect(TenantSettings.findOrCreate.mock.calls.map((c: any) => c[0].where)).toEqual([
-      { tenantId: "t-1", key: "ai_vendor" },
-      { tenantId: "t-1", key: "sso_enabled" }]
+        { tenantId: "t-1", key: "ai_vendor" },
+        { tenantId: "t-1", key: "sso_enabled" }],
       );
     });
 
@@ -1403,11 +1403,11 @@ describe("tenant.service - branch & error coverage", () => {
       await tenantService.updateTenantSettings(
         "t-1",
         { settings: ["a"], ai_vendor: "openai" },
-        "admin"
+        "admin",
       );
 
       expect(TenantSettings.findOrCreate.mock.calls.map((c: any) => c[0].where.key)).toEqual([
-      "ai_vendor"]
+        "ai_vendor"],
       );
     });
 
@@ -1425,11 +1425,11 @@ describe("tenant.service - branch & error coverage", () => {
       await tenantService.updateTenantSettings(
         "t-1",
         { sso_idp_cert: null, mfa_required_min_role_level: 42, sso_enabled: false },
-        "admin"
+        "admin",
       );
 
       const defaults = TenantSettings.findOrCreate.mock.calls.map(
-        (c: any) => c[0].defaults.value
+        (c: any) => c[0].defaults.value,
       );
       expect(defaults).toEqual(["null", "42", "false"]);
     });
@@ -1443,7 +1443,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       expect(existing.update).toHaveBeenCalledWith(
         { value: "dark" },
-        { transaction: expect.any(Object) }
+        { transaction: expect.any(Object) },
       );
     });
 
@@ -1451,14 +1451,14 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant();
       Tenants.findByPk.mockResolvedValue(tenant);
       TenantSettings.findAll.mockResolvedValue([
-      { key: "theme", value: "dark" },
-      { key: "locale", value: "id" }]
+        { key: "theme", value: "dark" },
+        { key: "locale", value: "id" }],
       );
 
       const result = await tenantService.updateTenantSettings(
         "t-1",
         { ai_vendor: "dark" },
-        "admin"
+        "admin",
       );
 
       expect(tenant.update).not.toHaveBeenCalled();
@@ -1473,13 +1473,13 @@ describe("tenant.service - branch & error coverage", () => {
       TenantSettings.findOrCreate.mockRejectedValue(new Error("upsert failed"));
 
       const err = await catchErr(
-        tenantService.updateTenantSettings("t-1", { ai_vendor: "dark" }, "admin")
+        tenantService.updateTenantSettings("t-1", { ai_vendor: "dark" }, "admin"),
       );
 
       expect(err.message).toBe("upsert failed");
       expect(tx.rollback).toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledWith("Error updating tenant settings", {
-        error: "upsert failed"
+        error: "upsert failed",
       });
     });
 
@@ -1487,14 +1487,14 @@ describe("tenant.service - branch & error coverage", () => {
       const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
         rollback: jest.fn().mockResolvedValue(undefined),
-        finished: "commit"
+        finished: "commit",
       };
       db.transaction.mockResolvedValue(tx);
       Tenants.findByPk.mockResolvedValue(makeTenant());
       del.mockRejectedValue(new Error("redis down"));
 
       const err = await catchErr(
-        tenantService.updateTenantSettings("t-1", {}, "admin")
+        tenantService.updateTenantSettings("t-1", {}, "admin"),
       );
 
       expect(err.message).toBe("redis down");
@@ -1504,7 +1504,7 @@ describe("tenant.service - branch & error coverage", () => {
     it("should swallow a secondary rollback failure", async () => {
       const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
-        rollback: jest.fn().mockRejectedValue(new Error("rollback failed"))
+        rollback: jest.fn().mockRejectedValue(new Error("rollback failed")),
       };
       db.transaction.mockResolvedValue(tx);
       Tenants.findByPk.mockRejectedValue(new Error("lookup failed"));
@@ -1530,7 +1530,7 @@ describe("tenant.service - branch & error coverage", () => {
         userCount: 20,
         limitSeats: 50,
         remainingSlots: 30,
-        unlimited: false
+        unlimited: false,
       });
     });
 
@@ -1561,7 +1561,7 @@ describe("tenant.service - branch & error coverage", () => {
         success: true,
         status: 404,
         message: "Tenant not found",
-        data: null
+        data: null,
       });
       expect(Users.count).not.toHaveBeenCalled();
     });
@@ -1574,7 +1574,7 @@ describe("tenant.service - branch & error coverage", () => {
       expect(err).toBeInstanceOf(AppError);
       expect(err.status).toBe(500);
       expect(logger.error).toHaveBeenCalledWith("Error fetching tenant user count", {
-        error: "db down"
+        error: "db down",
       });
     });
   });
@@ -1590,7 +1590,7 @@ describe("tenant.service - branch & error coverage", () => {
       const result = await tenantService.getTenantByIdForMiddleware("t-1");
 
       expect(Tenants.findByPk).toHaveBeenCalledWith("t-1", {
-        attributes: ["id", "name", "status"]
+        attributes: ["id", "name", "status"],
       });
       expect(result).toBe(tenant);
     });
@@ -1603,7 +1603,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       expect(Tenants.findOne).toHaveBeenCalledWith({
         where: { code: "ACM", status: "active" },
-        attributes: ["id", "name", "status"]
+        attributes: ["id", "name", "status"],
       });
       expect(result).toBe(tenant);
     });
@@ -1612,7 +1612,7 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.findOne.mockResolvedValue(null);
 
       await expect(
-        tenantService.getTenantByCodeForMiddleware("NOPE")
+        tenantService.getTenantByCodeForMiddleware("NOPE"),
       ).resolves.toBeNull();
     });
   });

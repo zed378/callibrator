@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-78 — `checkTenant` is blind to multipart bodies.
  *
@@ -56,7 +56,7 @@ const path = require("path");
 const {
   stripComments,
   readBracketed,
-  splitTopLevel
+  splitTopLevel,
 } = require("../../utils/authorizationWiring.util");
 
 const ROUTES_DIR = path.join(__dirname, "..", "..", "routes");
@@ -92,7 +92,7 @@ const uploadsAfterGate = () => {
       if (gate !== -1 && upload > gate) {
         out.push({
           key: `${file} ${call.method} ${call.path}`,
-          checkTenant: /checkTenant\s*:\s*true/.test(call.args[gate])
+          checkTenant: /checkTenant\s*:\s*true/.test(call.args[gate]),
         });
       }
     }
@@ -112,7 +112,7 @@ const REVIEWED: any = {
   "content.route.ts POST /media": "no checkTenant; platform-global content, audited (contentMedia.service)",
   "tenant.route.ts PATCH /edit": "service: tenantService.updateTenant (A-63)",
   "tenant.route.ts POST /:tenantId/logo": "path param, visible to the gate",
-  "user.route.ts POST /:userId/avatar": "path param, visible to the gate"
+  "user.route.ts POST /:userId/avatar": "path param, visible to the gate",
 };
 
 describe("A-78 — every upload-after-gate route is enumerated and reviewed", () => {
@@ -132,14 +132,14 @@ describe("A-78 — every upload-after-gate route is enumerated and reviewed", ()
       const serviceEnforced = REVIEWED[route.key].startsWith("service:");
       expect({ route: route.key, safe: fromPath || serviceEnforced }).toEqual({
         route: route.key,
-        safe: true
+        safe: true,
       });
     }
   });
 
   it("PATCH /tenants/edit is the only one whose gate is genuinely blind — and its create sibling is no longer gated by dynamicAccess at all (A-76)", () => {
     const blind = found.filter(
-      (r: any) => r.checkTenant && !/:(tenantId|userId)\b/.test(r.key)
+      (r: any) => r.checkTenant && !/:(tenantId|userId)\b/.test(r.key),
     );
     expect(blind.map((r: any) => r.key)).toEqual(["tenant.route.ts PATCH /edit"]);
     expect(found.map((r: any) => r.key)).not.toContain("tenant.route.ts POST /create");

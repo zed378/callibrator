@@ -1,10 +1,10 @@
 // A-278 (ADR-094): the write runs in a transaction with its audit row; the
 // double passes a marker through so the write's options can be asserted.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("tx")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("tx")) },
 }));
 
 jest.mock("../../models", () => ({
@@ -12,10 +12,10 @@ jest.mock("../../models", () => ({
     findAndCountAll: jest.fn(),
     findOne: jest.fn(),
     findAll: jest.fn(),
-    create: jest.fn()
+    create: jest.fn(),
   },
   CalibrationDevice: { findOne: jest.fn() },
-  Vendor: {}
+  Vendor: {},
 }));
 
 const financeService = require("../../services/finance.service");
@@ -31,7 +31,7 @@ const baseRecord: any = {
   purchaseDate: "2020-01-01",
   salvageValue: "1000.00",
   usefulLifeYears: 5,
-  depreciationMethod: "straight_line"
+  depreciationMethod: "straight_line",
 };
 
 describe("finance.service", () => {
@@ -52,7 +52,7 @@ describe("finance.service", () => {
     it("treats a missing purchase price and useful life as 0 and 1 year", () => {
       const dep = financeService.computeDepreciation(
         { purchaseDate: "2020-01-01", depreciationMethod: "straight_line" },
-        new Date("2021-01-01")
+        new Date("2021-01-01"),
       );
       expect(dep.annualDepreciation).toBe(0);
       expect(dep.accumulatedDepreciation).toBe(0);
@@ -73,7 +73,7 @@ describe("finance.service", () => {
     it("straight line: zero age means zero accumulated depreciation", () => {
       const dep = financeService.computeDepreciation(
         baseRecord,
-        new Date("2020-01-01")
+        new Date("2020-01-01"),
       );
       expect(dep.accumulatedDepreciation).toBe(0);
       expect(dep.bookValue).toBe(10000);
@@ -82,11 +82,11 @@ describe("finance.service", () => {
     it("declining balance: floors at salvage value", () => {
       const record: any = {
         ...baseRecord,
-        depreciationMethod: "declining_balance"
+        depreciationMethod: "declining_balance",
       };
       const dep = financeService.computeDepreciation(
         record,
-        new Date("2050-01-01")
+        new Date("2050-01-01"),
       );
       expect(dep.bookValue).toBe(1000);
       expect(dep.fullyDepreciated).toBe(true);
@@ -95,11 +95,11 @@ describe("finance.service", () => {
     it("declining balance: uses double-declining rate on book value", () => {
       const record: any = {
         ...baseRecord,
-        depreciationMethod: "declining_balance"
+        depreciationMethod: "declining_balance",
       };
       const dep = financeService.computeDepreciation(
         record,
-        new Date("2021-01-01") // 1 year, rate = 0.4
+        new Date("2021-01-01"), // 1 year, rate = 0.4
       );
       // book ≈ 10000 * 0.6 = 6000
       expect(dep.bookValue).toBeGreaterThan(5900);
@@ -110,7 +110,7 @@ describe("finance.service", () => {
       const record: any = { ...baseRecord, salvageValue: "20000.00" };
       const dep = financeService.computeDepreciation(
         record,
-        new Date("2030-01-01")
+        new Date("2030-01-01"),
       );
       expect(dep.accumulatedDepreciation).toBe(0);
       expect(dep.bookValue).toBe(10000);
@@ -121,18 +121,18 @@ describe("finance.service", () => {
     it("returns paginated rows with computed depreciation", async () => {
       AssetFinance.findAndCountAll.mockResolvedValue({
         count: 1,
-        rows: [asRow(baseRecord)]
+        rows: [asRow(baseRecord)],
       });
       const result = await financeService.fetchAssetFinances({
         tenantId: "t1",
         page: 1,
-        limit: 10
+        limit: 10,
       });
       expect(result.status).toBe(200);
       expect(result.data.rows[0].depreciation).toBeDefined();
       expect(result.data.meta.total).toBe(1);
       expect(AssetFinance.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { tenantId: "t1" } })
+        expect.objectContaining({ where: { tenantId: "t1" } }),
       );
     });
 
@@ -141,10 +141,10 @@ describe("finance.service", () => {
       await financeService.fetchAssetFinances({
         tenantId: "t1",
         page: 1,
-        limit: "not-a-number"
+        limit: "not-a-number",
       });
       expect(AssetFinance.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 25, offset: 0 })
+        expect.objectContaining({ limit: 25, offset: 0 }),
       );
     });
 
@@ -153,16 +153,16 @@ describe("finance.service", () => {
       await financeService.fetchAssetFinances({
         tenantId: "t1",
         deviceId: "dev-1",
-        method: "straight_line"
+        method: "straight_line",
       });
       expect(AssetFinance.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             tenantId: "t1",
             deviceId: "dev-1",
-            depreciationMethod: "straight_line"
-          }
-        })
+            depreciationMethod: "straight_line",
+          },
+        }),
       );
     });
   });
@@ -171,7 +171,7 @@ describe("finance.service", () => {
     it("throws 404 when not found", async () => {
       AssetFinance.findOne.mockResolvedValue(null);
       await expect(
-        financeService.getAssetFinanceById("t1", "missing")
+        financeService.getAssetFinanceById("t1", "missing"),
       ).rejects.toMatchObject({ status: 404 });
     });
 
@@ -186,7 +186,7 @@ describe("finance.service", () => {
     it("throws 404 when the device does not exist in the tenant", async () => {
       CalibrationDevice.findOne.mockResolvedValue(null);
       await expect(
-        financeService.createAssetFinance("t1", { deviceId: "dev-x" })
+        financeService.createAssetFinance("t1", { deviceId: "dev-x" }),
       ).rejects.toMatchObject({ status: 404 });
     });
 
@@ -194,10 +194,10 @@ describe("finance.service", () => {
       CalibrationDevice.findOne.mockResolvedValue({ id: "dev-1" });
       AssetFinance.findOne.mockResolvedValue({
         id: "fin-1",
-        deletedAt: null
+        deletedAt: null,
       });
       await expect(
-        financeService.createAssetFinance("t1", { deviceId: "dev-1" })
+        financeService.createAssetFinance("t1", { deviceId: "dev-1" }),
       ).rejects.toMatchObject({ status: 409 });
     });
 
@@ -209,12 +209,12 @@ describe("finance.service", () => {
         deviceId: "dev-1",
         purchasePrice: 10000,
         purchaseDate: "2020-01-01",
-        usefulLifeYears: 5
+        usefulLifeYears: 5,
       });
       expect(result.status).toBe(201);
       expect(result.data.depreciation).toBeDefined();
       expect(AssetFinance.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: "t1", deviceId: "dev-1" }), { transaction: "tx" }
+        expect.objectContaining({ tenantId: "t1", deviceId: "dev-1" }), { transaction: "tx" },
       );
     });
 
@@ -224,14 +224,14 @@ describe("finance.service", () => {
         ...asRow(baseRecord),
         deletedAt: new Date(),
         restore: jest.fn(),
-        update: jest.fn()
+        update: jest.fn(),
       };
       AssetFinance.findOne.mockResolvedValue(softDeleted);
       const result = await financeService.createAssetFinance("t1", {
         deviceId: "dev-1",
         purchasePrice: 5000,
         purchaseDate: "2024-01-01",
-        usefulLifeYears: 4
+        usefulLifeYears: 4,
       });
       expect(softDeleted.restore).toHaveBeenCalled();
       expect(softDeleted.update).toHaveBeenCalled();
@@ -243,7 +243,7 @@ describe("finance.service", () => {
     it("throws 404 when not found", async () => {
       AssetFinance.findOne.mockResolvedValue(null);
       await expect(
-        financeService.updateAssetFinance("t1", "missing", {})
+        financeService.updateAssetFinance("t1", "missing", {}),
       ).rejects.toMatchObject({ status: 404 });
     });
 
@@ -251,7 +251,7 @@ describe("finance.service", () => {
       const record: any = { ...asRow(baseRecord), update: jest.fn() };
       AssetFinance.findOne.mockResolvedValue(record);
       const result = await financeService.updateAssetFinance("t1", "fin-1", {
-        usefulLifeYears: 6
+        usefulLifeYears: 6,
       });
       expect(record.update).toHaveBeenCalledWith({ usefulLifeYears: 6 }, { transaction: "tx" });
       expect(result.status).toBe(200);
@@ -262,7 +262,7 @@ describe("finance.service", () => {
     it("throws 404 when not found", async () => {
       AssetFinance.findOne.mockResolvedValue(null);
       await expect(
-        financeService.deleteAssetFinance("t1", "missing")
+        financeService.deleteAssetFinance("t1", "missing"),
       ).rejects.toMatchObject({ status: 404 });
     });
 
@@ -278,27 +278,27 @@ describe("finance.service", () => {
   describe("getDepreciationReport", () => {
     it("throws 400 on an invalid asOf date", async () => {
       await expect(
-        financeService.getDepreciationReport("t1", { asOf: "not-a-date" })
+        financeService.getDepreciationReport("t1", { asOf: "not-a-date" }),
       ).rejects.toMatchObject({ status: 400 });
     });
 
     it("aggregates totals and builds a CSV scaffold", async () => {
       AssetFinance.findAll.mockResolvedValue([
-      {
-        ...baseRecord,
-        device: { name: "Ventilator A", serialNumber: "SN-1" }
-      },
-      {
-        ...baseRecord,
-        id: "fin-2",
-        deviceId: "dev-2",
-        purchasePrice: "5000.00",
-        salvageValue: "0.00",
-        device: { name: "Monitor B", serialNumber: "SN-2" }
-      }]
+        {
+          ...baseRecord,
+          device: { name: "Ventilator A", serialNumber: "SN-1" },
+        },
+        {
+          ...baseRecord,
+          id: "fin-2",
+          deviceId: "dev-2",
+          purchasePrice: "5000.00",
+          salvageValue: "0.00",
+          device: { name: "Monitor B", serialNumber: "SN-2" },
+        }],
       );
       const result = await financeService.getDepreciationReport("t1", {
-        asOf: "2021-01-01"
+        asOf: "2021-01-01",
       });
       expect(result.data.count).toBe(2);
       expect(result.data.totals.totalPurchase).toBe(15000);

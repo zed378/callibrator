@@ -6,27 +6,27 @@
 jest.mock("archiver", () => jest.fn());
 const mockTx: any = { id: "tx" };
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb(mockTx)) }
+  db: { transaction: jest.fn(async (cb: any) => cb(mockTx)) },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 jest.mock("../../services/emailQueue.service", () => ({
   queueActivationEmail: jest.fn().mockResolvedValue(true),
-  queueNotificationEmail: jest.fn().mockResolvedValue(true)
+  queueNotificationEmail: jest.fn().mockResolvedValue(true),
 }));
 jest.mock("../../utils/jwt.util", () => ({ generatePurposeToken: jest.fn(() => "tok") }));
 // A-214: an email change re-authenticates first (gdpr.rectifyReauth.a214.test.js).
 jest.mock("../../services/auth.service", () => ({
   passwordManagedBy: jest.fn(async () => null),
-  reauthenticate: jest.fn(async () => "password")
+  reauthenticate: jest.fn(async () => "password"),
 }));
 jest.mock("../../models", () => ({
   ConsentRecord: {
     create: jest.fn().mockResolvedValue({ id: "c-1" }),
     update: jest.fn().mockResolvedValue([1]),
-    findAll: jest.fn().mockResolvedValue([])
+    findAll: jest.fn().mockResolvedValue([]),
   },
   DsarRequest: { create: jest.fn().mockResolvedValue({ id: "dsar-1" }) },
   User: {
@@ -36,11 +36,11 @@ jest.mock("../../models", () => ({
       id: "u1",
       email: "jane.old@example.com",
       firstName: "Jane",
-      lastName: "Doe"
+      lastName: "Doe",
     }),
-    unscoped: jest.fn(() => ({ findOne: jest.fn().mockResolvedValue(null) }))
+    unscoped: jest.fn(() => ({ findOne: jest.fn().mockResolvedValue(null) })),
   },
-  AuditLog: { create: jest.fn().mockResolvedValue({}) }
+  AuditLog: { create: jest.fn().mockResolvedValue({}) },
 }));
 
 const gdpr = require("../../services/gdpr.service");
@@ -61,9 +61,9 @@ describe("gdpr.service new methods", () => {
   describe("GDPR kill switch", () => {
     // Each entry-point guards on isGdprEnabled() and 400s with its own message.
     it.each([
-    ["updateConsent", () => gdpr.updateConsent("t1", "u1", ["analytics"], true), "Consent management is disabled"],
-    ["rectifyData", () => gdpr.rectifyData("t1", "u1", "firstName", "Jane"), "Rectification is disabled"],
-    ["restrictProcessing", () => gdpr.restrictProcessing("t1", "u1", "reason"), "Processing restriction is disabled"]]
+      ["updateConsent", () => gdpr.updateConsent("t1", "u1", ["analytics"], true), "Consent management is disabled"],
+      ["rectifyData", () => gdpr.rectifyData("t1", "u1", "firstName", "Jane"), "Rectification is disabled"],
+      ["restrictProcessing", () => gdpr.restrictProcessing("t1", "u1", "reason"), "Processing restriction is disabled"]],
     )("%s rejects with 400 when GDPR_ENABLED=false", async (_name: any, invoke: any, message: any) => {
       process.env["GDPR_ENABLED"] = "false";
 
@@ -109,11 +109,11 @@ describe("gdpr.service new methods", () => {
       const auditService = require("../../services/audit.service");
       const res = await gdpr.rectifyData("t1", "u1", "firstName", "Jane", {
         ipAddress: "10.0.0.1",
-        userAgent: "ua"
+        userAgent: "ua",
       });
       expect(User.update).toHaveBeenCalledWith(
         { firstName: "Jane" },
-        { where: { id: "u1", tenantId: "t1" }, transaction: mockTx }
+        { where: { id: "u1", tenantId: "t1" }, transaction: mockTx },
       );
       expect(auditService.logAction).toHaveBeenCalledWith(
         {
@@ -124,9 +124,9 @@ describe("gdpr.service new methods", () => {
           resourceId: "u1",
           changes: { operation: "GDPR_RECTIFICATION", fields: ["firstName"] },
           ipAddress: "10.0.0.1",
-          userAgent: "ua"
+          userAgent: "ua",
         },
-        { transaction: mockTx }
+        { transaction: mockTx },
       );
       expect(res).toEqual({ rectified: true, field: "firstName" });
     });
@@ -159,7 +159,7 @@ describe("gdpr.service new methods", () => {
       auditService.logAction.mockRejectedValueOnce(new Error("audit table down"));
 
       await expect(
-        gdpr.rectifyData("t1", "u1", "email", "jane@example.com")
+        gdpr.rectifyData("t1", "u1", "email", "jane@example.com"),
       ).rejects.toThrow("audit table down");
     });
   });
@@ -169,7 +169,7 @@ describe("gdpr.service new methods", () => {
       const res = await gdpr.restrictProcessing("t1", "u1", "no marketing");
       expect(DsarRequest.create).toHaveBeenCalledWith(
         expect.objectContaining({ tenantId: "t1", userId: "u1", type: "restriction" }),
-        { transaction: mockTx }
+        { transaction: mockTx },
       );
       expect(res).toMatchObject({ restricted: true, requestId: "dsar-1" });
     });
@@ -182,9 +182,9 @@ describe("gdpr.service new methods", () => {
           tenantId: "t1",
           userId: "u1",
           type: "restriction",
-          details: { reason: null }
+          details: { reason: null },
         }),
-        { transaction: mockTx }
+        { transaction: mockTx },
       );
     });
   });
@@ -205,9 +205,9 @@ describe("gdpr.service new methods", () => {
         expect(options).toEqual({ transaction: mockTx });
       }
       expect(rows.map(({ entry }: any) => entry.changes.operation)).toEqual([
-      "GDPR_CONSENT_GRANT",
-      "GDPR_CONSENT_GRANT",
-      "GDPR_CONSENT_WITHDRAW"]
+        "GDPR_CONSENT_GRANT",
+        "GDPR_CONSENT_GRANT",
+        "GDPR_CONSENT_WITHDRAW"],
       );
       expect(rows[0].entry).toMatchObject({
         tenantId: "t1",
@@ -216,7 +216,7 @@ describe("gdpr.service new methods", () => {
         action: "CREATE",
         resourceType: "ConsentRecord",
         resourceId: "c-1",
-        changes: { purpose: "analytics", version: "1.0", subjectId: "u1" }
+        changes: { purpose: "analytics", version: "1.0", subjectId: "u1" },
       });
       expect(rows[2].entry.changes).toMatchObject({ purpose: "analytics", withdrawn: 1 });
     });
@@ -232,7 +232,7 @@ describe("gdpr.service new methods", () => {
       expect(entry).toMatchObject({
         resourceType: "DsarRequest",
         resourceId: "dsar-1",
-        changes: { operation: "GDPR_DSAR_CREATE", type: "restriction", hasDetails: true }
+        changes: { operation: "GDPR_DSAR_CREATE", type: "restriction", hasDetails: true },
       });
       expect(JSON.stringify(entry)).not.toContain("health");
     });
@@ -254,7 +254,7 @@ describe("gdpr.service new methods", () => {
     it("a failed audit write fails the request (it cannot be granted unrecorded)", async () => {
       auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
       await expect(gdpr.recordConsent("t1", "u1", "analytics", "1.0", "", principal)).rejects.toMatchObject({
-        status: 500
+        status: 500,
       });
     });
   });

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for sso.service.js
  */
@@ -13,30 +13,30 @@ jest.mock("../../models", () => ({
     sequelize: {
       transaction: jest.fn().mockImplementation(() => ({
         commit: jest.fn(),
-        rollback: jest.fn()
-      }))
-    }
+        rollback: jest.fn(),
+      })),
+    },
   },
   Role: {
-    findOne: jest.fn()
+    findOne: jest.fn(),
   },
   // P21-09e (§ 10.6): provisioning asks whether the tenant serves a client facility (none here).
-  ClientFacility: { count: jest.fn().mockResolvedValue(0) }
+  ClientFacility: { count: jest.fn().mockResolvedValue(0) },
 }));
 
 // P6-11: a JIT-provisioned account commits with its audit row.
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
 jest.mock("../../utils/password.util", () => ({
-  hashPassword: jest.fn().mockResolvedValue("hashed-password")
+  hashPassword: jest.fn().mockResolvedValue("hashed-password"),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -64,7 +64,7 @@ describe("sso.service", () => {
       const ssoSettings = {
         sso_idp_entry_point: "https://idp.example.com/sso",
         sso_sp_entity_id: "https://sp.example.com/metadata",
-        sso_sp_callback_url: "https://sp.example.com/callback"
+        sso_sp_callback_url: "https://sp.example.com/callback",
       };
 
       const url = ssoService.generateAuthnRequest("tenant-abc", ssoSettings);
@@ -76,7 +76,7 @@ describe("sso.service", () => {
 
     it("should generate URL using default SP settings if not configured", () => {
       const ssoSettings = {
-        sso_idp_entry_point: "https://idp.example.com/sso"
+        sso_idp_entry_point: "https://idp.example.com/sso",
       };
 
       const url = ssoService.generateAuthnRequest("tenant-abc", ssoSettings);
@@ -161,12 +161,12 @@ describe("sso.service", () => {
 
       const mockVerify: any = {
         update: jest.fn(),
-        verify: jest.fn().mockReturnValue(true)
+        verify: jest.fn().mockReturnValue(true),
       };
       jest.spyOn(crypto, "createVerify").mockReturnValue(mockVerify);
 
       const result = await ssoService.parseAndVerifyResponse(signedBase64, {
-        sso_idp_cert: "mock-cert"
+        sso_idp_cert: "mock-cert",
       });
 
       expect(result.email).toBe("john.doe@hospital.com");
@@ -176,7 +176,7 @@ describe("sso.service", () => {
 
     it("should throw error if signature elements are missing but cert is provided", async () => {
       await expect(ssoService.parseAndVerifyResponse(validResponseBase64, {
-        sso_idp_cert: "mock-cert"
+        sso_idp_cert: "mock-cert",
       })).rejects.toThrow("SAML Response signature elements are missing");
     });
 
@@ -196,12 +196,12 @@ describe("sso.service", () => {
 
       const mockVerify: any = {
         update: jest.fn(),
-        verify: jest.fn().mockReturnValue(false)
+        verify: jest.fn().mockReturnValue(false),
       };
       jest.spyOn(crypto, "createVerify").mockReturnValue(mockVerify);
 
       await expect(ssoService.parseAndVerifyResponse(signedBase64, {
-        sso_idp_cert: "mock-cert"
+        sso_idp_cert: "mock-cert",
       })).rejects.toThrow("SAML signature verification failed");
     });
 
@@ -224,7 +224,7 @@ describe("sso.service", () => {
       });
 
       await expect(ssoService.parseAndVerifyResponse(signedBase64, {
-        sso_idp_cert: "mock-cert"
+        sso_idp_cert: "mock-cert",
       })).rejects.toThrow("SAML signature verification encountered an error");
     });
 
@@ -249,12 +249,12 @@ describe("sso.service", () => {
         id: "user-123",
         email: "existing@hospital.com",
         isActive: true,
-        status: "ACTIVE"
+        status: "ACTIVE",
       };
       Users.findOne.mockResolvedValueOnce(mockUser);
 
       const user = await ssoService.provisionUser("tenant-1", {
-        email: "existing@hospital.com"
+        email: "existing@hospital.com",
       });
 
       expect(user).toEqual(mockUser);
@@ -265,12 +265,12 @@ describe("sso.service", () => {
       const mockUser: any = {
         id: "user-123",
         email: "suspended@hospital.com",
-        status: "SUSPENDED"
+        status: "SUSPENDED",
       };
       Users.findOne.mockResolvedValueOnce(mockUser);
 
       await expect(ssoService.provisionUser("tenant-1", {
-        email: "suspended@hospital.com"
+        email: "suspended@hospital.com",
       })).rejects.toThrow("Account is suspended");
     });
 
@@ -279,11 +279,11 @@ describe("sso.service", () => {
         id: "user-123",
         email: "banned@hospital.com",
         isActive: false,
-        status: "ACTIVE"
+        status: "ACTIVE",
       });
 
       await expect(ssoService.provisionUser("tenant-1", {
-        email: "banned@hospital.com"
+        email: "banned@hospital.com",
       })).rejects.toMatchObject({ status: 403, message: "Account is suspended" });
     });
 
@@ -293,7 +293,7 @@ describe("sso.service", () => {
         id: "user-new",
         email: "new@hospital.com",
         isActive: true,
-        status: "ACTIVE"
+        status: "ACTIVE",
       };
       Users.create.mockResolvedValueOnce(mockCreatedUser);
       Users.findByPk.mockResolvedValueOnce(mockCreatedUser);
@@ -301,7 +301,7 @@ describe("sso.service", () => {
       const user = await ssoService.provisionUser("tenant-1", {
         email: "new@hospital.com",
         firstName: "New",
-        lastName: "User"
+        lastName: "User",
       });
 
       expect(Users.create).toHaveBeenCalledWith(
@@ -309,9 +309,9 @@ describe("sso.service", () => {
           email: "new@hospital.com",
           tenantId: "tenant-1",
           firstName: "New",
-          lastName: "User"
+          lastName: "User",
         }),
-        expect.any(Object)
+        expect.any(Object),
       );
       expect(user).toEqual(mockCreatedUser);
     });
@@ -321,7 +321,7 @@ describe("sso.service", () => {
       Users.create.mockRejectedValueOnce(new Error("Database error"));
 
       await expect(ssoService.provisionUser("tenant-1", {
-        email: "error@hospital.com"
+        email: "error@hospital.com",
       })).rejects.toThrow("Failed to provision user context");
     });
   });
@@ -347,7 +347,7 @@ describe("sso.service", () => {
       jest.spyOn(crypto, "createVerify").mockReturnValue(mockVerify);
 
       const result = await ssoService.parseAndVerifyResponse(signedBase64, {
-        sso_idp_cert: `  ${pem}  `
+        sso_idp_cert: `  ${pem}  `,
       });
 
       expect(result.email).toBe("john.doe@hospital.com");
@@ -360,13 +360,13 @@ describe("sso.service", () => {
       jest.spyOn(crypto, "createVerify").mockReturnValue(mockVerify);
 
       await ssoService.parseAndVerifyResponse(signedBase64, {
-        sso_idp_cert: "MIIBbarecert"
+        sso_idp_cert: "MIIBbarecert",
       });
 
       expect(mockVerify.verify).toHaveBeenCalledWith(
         "-----BEGIN CERTIFICATE-----\nMIIBbarecert\n-----END CERTIFICATE-----",
         "dummy-signature",
-        "base64"
+        "base64",
       );
     });
   });
@@ -384,17 +384,17 @@ describe("sso.service", () => {
         ssoService.generateOidcAuthRequest("acme", {
           oidc_client_id: "client-123",
           oidc_authority: "https://login.example.com/tenant/oauth2/v2.0",
-          oidc_redirect_uri: "https://app.example.com/callback"
-        }, FLOW)
+          oidc_redirect_uri: "https://app.example.com/callback",
+        }, FLOW),
       );
 
       expect(url.origin + url.pathname).toBe(
-        "https://login.example.com/tenant/oauth2/v2.0/authorize"
+        "https://login.example.com/tenant/oauth2/v2.0/authorize",
       );
       expect(url.searchParams.get("client_id")).toBe("client-123");
       expect(url.searchParams.get("response_type")).toBe("code");
       expect(url.searchParams.get("redirect_uri")).toBe(
-        "https://app.example.com/callback"
+        "https://app.example.com/callback",
       );
       expect(url.searchParams.get("response_mode")).toBe("query");
       expect(url.searchParams.get("scope")).toBe("openid profile email");
@@ -402,27 +402,27 @@ describe("sso.service", () => {
 
     it("defaults the authority to the Entra ID common endpoint", () => {
       const url = new URL(
-        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }, FLOW)
+        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }, FLOW),
       );
 
       expect(url.origin + url.pathname).toBe(
-        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       );
     });
 
     it("defaults the redirect URI to the per-tenant callback route", () => {
       const url = new URL(
-        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }, FLOW)
+        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }, FLOW),
       );
 
       expect(url.searchParams.get("redirect_uri")).toBe(
-        "http://localhost:5000/api/v1/auth/sso/oidc/callback/acme"
+        "http://localhost:5000/api/v1/auth/sso/oidc/callback/acme",
       );
     });
 
     it("A-68: sends the stored state, the nonce and an S256 PKCE challenge — never a verifier", () => {
       const url = new URL(
-        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }, FLOW)
+        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }, FLOW),
       );
 
       expect(url.searchParams.get("state")).toBe("state-1");
@@ -437,12 +437,12 @@ describe("sso.service", () => {
         ssoService.generateOidcAuthRequest(
           "acme",
           { oidc_client_id: "client-123", oidc_redirect_uri: "https://ignored.example.com/cb" },
-          { ...FLOW, redirectUri: "https://app.example.com/api/v1/auth/sso/oidc/callback/acme" }
-        )
+          { ...FLOW, redirectUri: "https://app.example.com/api/v1/auth/sso/oidc/callback/acme" },
+        ),
       );
 
       expect(url.searchParams.get("redirect_uri")).toBe(
-        "https://app.example.com/api/v1/auth/sso/oidc/callback/acme"
+        "https://app.example.com/api/v1/auth/sso/oidc/callback/acme",
       );
     });
   });
@@ -451,8 +451,8 @@ describe("sso.service", () => {
     it("delegates verification to the JWKS service and returns its result", async () => {
       const oidcJwks = require("../../services/oidcJwks");
       const spy = jest.
-      spyOn(oidcJwks, "verifyOidcCallback").
-      mockResolvedValue({ email: "user@example.com", firstName: "A", lastName: "B" });
+        spyOn(oidcJwks, "verifyOidcCallback").
+        mockResolvedValue({ email: "user@example.com", firstName: "A", lastName: "B" });
 
       const settings = { oidc_client_id: "c1", oidc_client_secret: "s1" };
       const flow = { nonce: "n", codeVerifier: "v" };
@@ -460,19 +460,19 @@ describe("sso.service", () => {
         "code-1",
         settings,
         "https://app.example.com/callback",
-        flow
+        flow,
       );
 
       expect(spy).toHaveBeenCalledWith(
         "code-1",
         settings,
         "https://app.example.com/callback",
-        flow
+        flow,
       );
       expect(result).toEqual({
         email: "user@example.com",
         firstName: "A",
-        lastName: "B"
+        lastName: "B",
       });
 
       spy.mockRestore();
@@ -484,7 +484,7 @@ describe("sso.service", () => {
       const spy = jest.spyOn(oidcJwks, "verifyOidcCallback").mockRejectedValue(err);
 
       await expect(
-        ssoService.verifyOidcCallback("code-1", { oidc_client_id: "c1" }, "https://cb")
+        ssoService.verifyOidcCallback("code-1", { oidc_client_id: "c1" }, "https://cb"),
       ).rejects.toMatchObject({ status: 401, message: "Invalid id_token signature" });
 
       spy.mockRestore();
@@ -506,7 +506,7 @@ describe("sso.service — P6-11 provisionUser audit row", () => {
     await ssoService.provisionUser(
       "tenant-1",
       { email: "new@hospital.com", firstName: "N", lastName: "U" },
-      { ipAddress: "10.0.0.1", userAgent: "jest" }
+      { ipAddress: "10.0.0.1", userAgent: "jest" },
     );
     expect(auditService.logAction).toHaveBeenCalledTimes(1);
     const [entry, options] = auditService.logAction.mock.calls[0];
@@ -519,7 +519,7 @@ describe("sso.service — P6-11 provisionUser audit row", () => {
       resourceId: "user-new",
       ipAddress: "10.0.0.1",
       userAgent: "jest",
-      changes: { operation: "SSO_JIT_PROVISION", isEmailVerified: true }
+      changes: { operation: "SSO_JIT_PROVISION", isEmailVerified: true },
     });
     expect(JSON.stringify(entry)).not.toContain("new@hospital.com");
   });
@@ -537,7 +537,7 @@ describe("sso.service — P6-11 provisionUser audit row", () => {
     Users.create.mockResolvedValueOnce({ id: "user-new" });
     auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
     await expect(ssoService.provisionUser("tenant-1", { email: "x@hospital.com" })).rejects.toThrow(
-      "Failed to provision user context"
+      "Failed to provision user context",
     );
     expect(rollback).toHaveBeenCalled();
   });

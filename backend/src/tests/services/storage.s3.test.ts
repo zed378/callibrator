@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * S3 driver tests.
  *
@@ -13,10 +13,10 @@ const mockS3ClientCtor: any = jest.fn();
 
 jest.mock("@aws-sdk/client-s3", () => {
   const command = (type: any) =>
-  jest.fn(function Command(input: any) {
-    this.__type = type;
-    this.input = input;
-  });
+    jest.fn(function Command(input: any) {
+      this.__type = type;
+      this.input = input;
+    });
   return {
     S3Client: jest.fn(function S3Client(config: any) {
       mockS3ClientCtor(config);
@@ -27,12 +27,12 @@ jest.mock("@aws-sdk/client-s3", () => {
     HeadObjectCommand: command("Head"),
     DeleteObjectCommand: command("Delete"),
     DeleteObjectsCommand: command("DeleteMany"),
-    ListObjectsV2Command: command("List")
+    ListObjectsV2Command: command("List"),
   };
 });
 
 jest.mock("@aws-sdk/s3-request-presigner", () => ({
-  getSignedUrl: (...args: any[]) => mockGetSignedUrl(...args)
+  getSignedUrl: (...args: any[]) => mockGetSignedUrl(...args),
 }));
 
 const S3Driver = require("../../services/storage/s3.driver");
@@ -60,7 +60,7 @@ describe("s3 driver — construction", () => {
     expect(mockS3ClientCtor).toHaveBeenLastCalledWith({
       region: "us-east-1",
       requestChecksumCalculation: "WHEN_REQUIRED",
-      responseChecksumValidation: "WHEN_REQUIRED"
+      responseChecksumValidation: "WHEN_REQUIRED",
     });
   });
 
@@ -68,8 +68,8 @@ describe("s3 driver — construction", () => {
     new S3Driver({ bucket: "b", accessKeyId: "AK", secretAccessKey: "SK" });
     expect(mockS3ClientCtor).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        credentials: { accessKeyId: "AK", secretAccessKey: "SK" }
-      })
+        credentials: { accessKeyId: "AK", secretAccessKey: "SK" },
+      }),
     );
   });
 
@@ -83,8 +83,8 @@ describe("s3 driver — construction", () => {
     expect(mockS3ClientCtor).toHaveBeenLastCalledWith(
       expect.objectContaining({
         endpoint: "https://minio.example.com",
-        forcePathStyle: true
-      })
+        forcePathStyle: true,
+      }),
     );
   });
 
@@ -92,17 +92,17 @@ describe("s3 driver — construction", () => {
     new S3Driver({
       bucket: "b",
       endpoint: "https://r2.example.com",
-      forcePathStyle: false
+      forcePathStyle: false,
     });
     expect(mockS3ClientCtor.mock.calls.at(-1)[0].forcePathStyle).toBe(false);
   });
 
   it("blocks a tenant endpoint pointed at an internal address (SSRF)", () => {
     expect(
-      () => new S3Driver({ bucket: "b", endpoint: "http://169.254.169.254/" })
+      () => new S3Driver({ bucket: "b", endpoint: "http://169.254.169.254/" }),
     ).toThrow(/disallowed \(internal\) address/);
     expect(
-      () => new S3Driver({ bucket: "b", endpoint: "http://localhost:9000" })
+      () => new S3Driver({ bucket: "b", endpoint: "http://localhost:9000" }),
     ).toThrow("URL host is not allowed");
   });
 
@@ -111,11 +111,11 @@ describe("s3 driver — construction", () => {
     // tenant-supplied endpoints, not the platform's own.
     expect(
       () =>
-      new S3Driver({
-        bucket: "b",
-        endpoint: "http://127.0.0.1:9000",
-        endpointTrusted: true
-      })
+        new S3Driver({
+          bucket: "b",
+          endpoint: "http://127.0.0.1:9000",
+          endpointTrusted: true,
+        }),
     ).not.toThrow();
   });
 });
@@ -124,14 +124,14 @@ describe("s3 driver — object operations", () => {
   it("puts an object with its content type", async () => {
     mockSend.mockResolvedValue({ ETag: '"abc"' });
     const result = await driver.put(KEY, Buffer.from("hello"), {
-      contentType: "application/pdf"
+      contentType: "application/pdf",
     });
 
     expect(lastInput()).toEqual({
       Bucket: "cal-bucket",
       Key: KEY,
       Body: expect.any(Buffer),
-      ContentType: "application/pdf"
+      ContentType: "application/pdf",
     });
     expect(result).toEqual({ key: KEY, size: 5, etag: '"abc"' });
   });
@@ -176,14 +176,14 @@ describe("s3 driver — object operations", () => {
       ContentLength: 42,
       LastModified: modified,
       ETag: '"e"',
-      ContentType: "application/pdf"
+      ContentType: "application/pdf",
     });
     await expect(driver.stat(KEY)).resolves.toEqual({
       key: KEY,
       size: 42,
       modifiedAt: modified,
       etag: '"e"',
-      contentType: "application/pdf"
+      contentType: "application/pdf",
     });
   });
 
@@ -193,13 +193,13 @@ describe("s3 driver — object operations", () => {
       size: null,
       modifiedAt: null,
       etag: null,
-      contentType: null
+      contentType: null,
     });
   });
 
   it("maps a 404 status (not just NoSuchKey) to 404 on stat", async () => {
     mockSend.mockRejectedValue(
-      Object.assign(new Error("nope"), { $metadata: { httpStatusCode: 404 } })
+      Object.assign(new Error("nope"), { $metadata: { httpStatusCode: 404 } }),
     );
     await expect(driver.stat(KEY)).rejects.toMatchObject({ status: 404 });
   });
@@ -240,7 +240,7 @@ describe("s3 driver — bucket prefix", () => {
     expect(lastInput().Key).toBe(`callibrator/${KEY}`);
 
     mockSend.mockResolvedValue({
-      Contents: [{ Key: `callibrator/${KEY}` }, { Key: "unprefixed/other" }]
+      Contents: [{ Key: `callibrator/${KEY}` }, { Key: "unprefixed/other" }],
     });
     const { keys } = await driver.list("t/tenant-1/");
     // A key outside the configured prefix is passed through untouched rather
@@ -254,7 +254,7 @@ describe("s3 driver — listing", () => {
     mockSend.mockResolvedValue({
       Contents: [{ Key: KEY }],
       IsTruncated: true,
-      NextContinuationToken: "tok"
+      NextContinuationToken: "tok",
     });
     const result = await driver.list("t/tenant-1/", { limit: 10, cursor: "prev" });
 
@@ -262,7 +262,7 @@ describe("s3 driver — listing", () => {
       Bucket: "cal-bucket",
       Prefix: "t/tenant-1",
       MaxKeys: 10,
-      ContinuationToken: "prev"
+      ContinuationToken: "prev",
     });
     expect(result).toEqual({ keys: [KEY], cursor: "tok", truncated: true });
   });
@@ -272,7 +272,7 @@ describe("s3 driver — listing", () => {
     await expect(driver.list("")).resolves.toEqual({
       keys: [],
       cursor: null,
-      truncated: false
+      truncated: false,
     });
   });
 });
@@ -284,28 +284,28 @@ describe("s3 driver — bulk delete", () => {
     // checksum trailer the SDK sends for batch delete. Still pages the listing
     // so a large tenant is fully cleaned.
     mockSend.
-    mockResolvedValueOnce({
-      Contents: [{ Key: "t/tenant-1/attachments/a" }],
-      NextContinuationToken: "tok",
-      IsTruncated: true
-    }).
-    mockResolvedValueOnce({}) // DeleteObject a
-    .mockResolvedValueOnce({
-      Contents: [{ Key: "t/tenant-1/attachments/b" }],
-      NextContinuationToken: null
-    }).
-    mockResolvedValueOnce({}); // DeleteObject b
+      mockResolvedValueOnce({
+        Contents: [{ Key: "t/tenant-1/attachments/a" }],
+        NextContinuationToken: "tok",
+        IsTruncated: true,
+      }).
+      mockResolvedValueOnce({}) // DeleteObject a
+      .mockResolvedValueOnce({
+        Contents: [{ Key: "t/tenant-1/attachments/b" }],
+        NextContinuationToken: null,
+      }).
+      mockResolvedValueOnce({}); // DeleteObject b
 
     await expect(driver.deleteMany("t/tenant-1/")).resolves.toEqual({ deleted: 2 });
 
     // Each delete is a single-object DeleteObject with the fully-qualified key.
     const deleteCalls = mockSend.mock.calls.filter(
-      (c: any) => c[0].__type === "Delete"
+      (c: any) => c[0].__type === "Delete",
     );
     expect(deleteCalls).toHaveLength(2);
     expect(deleteCalls[0][0].input).toEqual({
       Bucket: "cal-bucket",
-      Key: "t/tenant-1/attachments/a"
+      Key: "t/tenant-1/attachments/a",
     });
   });
 
@@ -321,12 +321,12 @@ describe("s3 driver — presigned URLs", () => {
     mockGetSignedUrl.mockResolvedValue("https://bucket.s3/presigned");
     const result = await driver.signedUrl(KEY, {
       ttlSec: 120,
-      disposition: 'attachment; filename="r.pdf"'
+      disposition: 'attachment; filename="r.pdf"',
     });
 
     expect(result).toMatchObject({
       url: "https://bucket.s3/presigned",
-      direct: true
+      direct: true,
     });
     expect(result.expiresAt.getTime()).toBeGreaterThan(Date.now());
 
@@ -334,7 +334,7 @@ describe("s3 driver — presigned URLs", () => {
     expect(command.input).toMatchObject({
       Bucket: "cal-bucket",
       Key: KEY,
-      ResponseContentDisposition: 'attachment; filename="r.pdf"'
+      ResponseContentDisposition: 'attachment; filename="r.pdf"',
     });
     expect(options).toEqual({ expiresIn: 120 });
   });
@@ -354,7 +354,7 @@ describe("s3 driver — health check", () => {
     await expect(driver.healthCheck()).resolves.toEqual({
       ok: true,
       driver: "s3",
-      bucket: "cal-bucket"
+      bucket: "cal-bucket",
     });
   });
 
@@ -362,7 +362,7 @@ describe("s3 driver — health check", () => {
     mockSend.mockRejectedValue(new Error("NoSuchBucket"));
     await expect(driver.healthCheck()).resolves.toMatchObject({
       ok: false,
-      error: "NoSuchBucket"
+      error: "NoSuchBucket",
     });
   });
 });

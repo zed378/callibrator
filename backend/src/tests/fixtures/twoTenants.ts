@@ -46,23 +46,22 @@ const TENANT_A_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TENANT_B_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const TENANT_FIELDS = [
-"id",
-"name",
-"code",
-"description",
-"logo",
-"primaryColor",
-"status",
-"maxUsers",
-"email",
-"phone",
-"address",
-"city",
-"state",
-"zipCode",
-"country",
-"website"];
-
+  "id",
+  "name",
+  "code",
+  "description",
+  "logo",
+  "primaryColor",
+  "status",
+  "maxUsers",
+  "email",
+  "phone",
+  "address",
+  "city",
+  "state",
+  "zipCode",
+  "country",
+  "website"];
 
 /** Resolve "USER" / "HEALTCARE_ADMIN" (ROLE_NAMES keys) or a role name. */
 const resolveRole = (role: any) => {
@@ -109,7 +108,7 @@ const createTwoTenants = () => {
         }
         Object.assign(row, values);
         return row;
-      }
+      },
     };
     return row;
   };
@@ -138,7 +137,7 @@ const createTwoTenants = () => {
     state: null,
     zipCode: null,
     country: null,
-    website: null
+    website: null,
   });
   const tenantB = makeTenantRow({
     id: TENANT_B_ID,
@@ -156,7 +155,7 @@ const createTwoTenants = () => {
     state: null,
     zipCode: null,
     country: null,
-    website: null
+    website: null,
   });
   const tenants = [tenantA, tenantB];
 
@@ -175,14 +174,14 @@ const createTwoTenants = () => {
         role: {
           id: `dddddddd-dddd-4ddd-8ddd-${hex(userSeq, 12)}`,
           name,
-          roleLevel: ROLE_LEVELS[key]
+          roleLevel: ROLE_LEVELS[key],
         },
         isActive: true,
         status: "ACTIVE",
         isApiKey: false,
         // P6-07: a platform operator (level 10) without MFA gets an
         // enrolment-only session, so the fixture's operator has enrolled.
-        ...(ROLE_LEVELS[key] >= 10 ? { mfaEnabled: true } : {})
+        ...(ROLE_LEVELS[key] >= 10 ? { mfaEnabled: true } : {}),
       });
     }
     return principals.get(cacheKey);
@@ -195,17 +194,17 @@ const createTwoTenants = () => {
     // Only the `where` shapes tenant.service uses: { code|name, id: { [Op.ne]: x } }.
     findOne: jest.fn(async ({ where = {} }: any = {}) => {
       const excluded = where.id && Object.getOwnPropertySymbols(where.id).length ?
-      (where.id as any)[Object.getOwnPropertySymbols(where.id)[0] as symbol] :
-      undefined;
+        (where.id as any)[Object.getOwnPropertySymbols(where.id)[0] as symbol] :
+        undefined;
       return (
         tenants.find(
           (t: any) =>
-          t.id !== excluded && (
-          where.code === undefined || t.code === where.code) && (
-          where.name === undefined || t.name === where.name)
+            t.id !== excluded && (
+              where.code === undefined || t.code === where.code) && (
+              where.name === undefined || t.name === where.name),
         ) || null);
 
-    })
+    }),
   };
 
   const Users = {
@@ -216,7 +215,7 @@ const createTwoTenants = () => {
         }
       }
       return null;
-    })
+    }),
   };
 
   const transaction = async () => {
@@ -235,7 +234,7 @@ const createTwoTenants = () => {
         }
         pending.delete(tx);
         tx.finished = "rollback";
-      }
+      },
     };
     pending.set(tx, []);
     return tx;
@@ -249,7 +248,7 @@ const createTwoTenants = () => {
     Tenants,
     Users,
     transaction,
-    snapshot
+    snapshot,
   };
 };
 

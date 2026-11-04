@@ -1,13 +1,13 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 jest.mock("../../models", () => {
   const mockSessions: any = {
     create: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   };
   return {
-    Sessions: mockSessions
+    Sessions: mockSessions,
   };
 });
 
@@ -19,7 +19,7 @@ const {
   revokeSession,
   revokeAllSessions,
   rotateRefreshToken,
-  cleanupExpiredSessions
+  cleanupExpiredSessions,
 } = require("../../services/session.service");
 
 describe("session.service", () => {
@@ -55,7 +55,7 @@ describe("session.service", () => {
         user_agent: "test-agent",
         device: "desktop",
         expired_at: new Date(),
-        last_activity_at: new Date()
+        last_activity_at: new Date(),
       };
       Sessions.create.mockResolvedValue(mockSession);
 
@@ -66,7 +66,7 @@ describe("session.service", () => {
         ipAddress: "127.0.0.1",
         userAgent: "test-agent",
         device: "desktop",
-        expiredAt: new Date()
+        expiredAt: new Date(),
       });
 
       expect(Sessions.create).toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe("session.service", () => {
 
       await createSession({
         userId: "user-1",
-        refreshToken: "refresh-token"
+        refreshToken: "refresh-token",
       });
 
       expect(Sessions.create).toHaveBeenCalledWith(
@@ -87,8 +87,8 @@ describe("session.service", () => {
           user_id: "user-1",
           ip_address: undefined,
           user_agent: undefined,
-          device: undefined
-        })
+          device: undefined,
+        }),
       );
     });
   });
@@ -102,7 +102,7 @@ describe("session.service", () => {
         expired_at: futureDate,
         is_revoked: false,
         is_active: true,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       };
       Sessions.findOne.mockResolvedValue(mockSession);
 
@@ -110,7 +110,7 @@ describe("session.service", () => {
 
       expect(result).toBe(mockSession);
       expect(mockSession.update).toHaveBeenCalledWith({
-        last_activity_at: expect.any(Date)
+        last_activity_at: expect.any(Date),
       });
     });
 
@@ -127,7 +127,7 @@ describe("session.service", () => {
       const mockSession: any = {
         id: "session-1",
         expired_at: pastDate,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       };
       Sessions.findOne.mockResolvedValue(mockSession);
 
@@ -137,8 +137,8 @@ describe("session.service", () => {
       expect(mockSession.update).toHaveBeenCalledWith(
         expect.objectContaining({
           is_revoked: true,
-          revoked_reason: "SESSION_EXPIRED"
-        })
+          revoked_reason: "SESSION_EXPIRED",
+        }),
       );
     });
   });
@@ -152,11 +152,11 @@ describe("session.service", () => {
       expect(Sessions.update).toHaveBeenCalledWith(
         expect.objectContaining({
           is_revoked: true,
-          revoked_reason: "LOGOUT"
+          revoked_reason: "LOGOUT",
         }),
         expect.objectContaining({
-          where: expect.any(Object)
-        })
+          where: expect.any(Object),
+        }),
       );
       expect(result).toBe(1);
     });
@@ -168,9 +168,9 @@ describe("session.service", () => {
 
       expect(Sessions.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          revoked_reason: "LOGOUT"
+          revoked_reason: "LOGOUT",
         }),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
   });
@@ -183,14 +183,14 @@ describe("session.service", () => {
 
       expect(Sessions.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          revoked_reason: "PASSWORD_CHANGE"
+          revoked_reason: "PASSWORD_CHANGE",
         }),
         expect.objectContaining({
           where: {
             user_id: "user-1",
-            is_revoked: false
-          }
-        })
+            is_revoked: false,
+          },
+        }),
       );
       expect(result).toBe(5);
     });
@@ -202,9 +202,9 @@ describe("session.service", () => {
 
       expect(Sessions.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          revoked_reason: "LOGOUT_ALL"
+          revoked_reason: "LOGOUT_ALL",
         }),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
   });
@@ -220,7 +220,7 @@ describe("session.service", () => {
         user_agent: "test-agent",
         device: "desktop",
         expired_at: futureDate,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       };
 
       Sessions.findOne.mockResolvedValue(mockSession);
@@ -230,7 +230,7 @@ describe("session.service", () => {
       const result = await rotateRefreshToken({
         oldRefreshToken: "old-token",
         newRefreshToken: "new-token",
-        expiredAt: futureDate
+        expiredAt: futureDate,
       });
 
       expect(result).toEqual({ id: "new-session" });
@@ -241,7 +241,7 @@ describe("session.service", () => {
 
       const result = await rotateRefreshToken({
         oldRefreshToken: "invalid-token",
-        newRefreshToken: "new-token"
+        newRefreshToken: "new-token",
       });
 
       expect(result).toBe(null);
@@ -256,9 +256,9 @@ describe("session.service", () => {
 
       expect(Sessions.destroy).toHaveBeenCalledWith({
         where: {
-          expired_at: expect.any(Object)
+          expired_at: expect.any(Object),
         },
-        limit: 1000
+        limit: 1000,
       });
       expect(result).toBe(10);
     });

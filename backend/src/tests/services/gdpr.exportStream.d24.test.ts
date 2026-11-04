@@ -37,14 +37,14 @@ jest.mock("../../models", () => {
       mockReads.push({ name, limit, order });
       const after = where.id ? where.id[Op.gt] : null;
       return (mockTables[name] || []).
-      filter((r: any) => after === null || r.id > after).
-      slice(0, limit).
-      map((r: any) => ({ ...r }));
-    })
+        filter((r: any) => after === null || r.id > after).
+        slice(0, limit).
+        map((r: any) => ({ ...r }));
+    }),
   });
   const models: any = {
     User: {
-      findOne: jest.fn(async () => ({ id: "subject", email: "s@example.test", role: { name: "USER" } }))
+      findOne: jest.fn(async () => ({ id: "subject", email: "s@example.test", role: { name: "USER" } })),
     },
     Role: {},
     StockTransfer: table("StockTransfer"),
@@ -56,7 +56,7 @@ jest.mock("../../models", () => {
     Notification: table("Notification"),
     ConsentRecord: table("ConsentRecord"),
     DsarRequest: table("DsarRequest"),
-    AuditLog: table("AuditLog")
+    AuditLog: table("AuditLog"),
   };
   models.Session = { unscoped: () => table("Session") };
   return models;
@@ -64,27 +64,27 @@ jest.mock("../../models", () => {
 
 // archiver 8 is ESM with named classes; the service does `new ZipArchive(...)` (P6-02).
 jest.mock("archiver", () => ({ ZipArchive: function MockZipArchive() {
-    const EventEmitter = require("events");
-    const archive = new EventEmitter();
-    archive.pipe = () => {};
-    archive.directory = () => {};
-    archive.finalize = () => setImmediate(() => archive.emit("end"));
-    return archive;
-  } }));
+  const EventEmitter = require("events");
+  const archive = new EventEmitter();
+  archive.pipe = () => {};
+  archive.directory = () => {};
+  archive.finalize = () => setImmediate(() => archive.emit("end"));
+  return archive;
+} }));
 
 // A-364: the export writes its audit row in a managed transaction; no
 // connection here, so the double runs the callback as sequelize.transaction(cb) does.
 jest.mock("../../config", () => ({ db: { transaction: async (cb: any) => cb({ id: "tx" }) } }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const fs = require("fs");
 const gdprService = require("../../services/gdpr.service");
 
 const rows = (n: any, make: any) =>
-Array.from({ length: n }, (_: any, i: any) => ({ id: `id-${String(i).padStart(7, "0")}`, ...make(i) }));
+  Array.from({ length: n }, (_: any, i: any) => ({ id: `id-${String(i).padStart(7, "0")}`, ...make(i) }));
 
 let outDir: any = undefined;
 
@@ -100,10 +100,10 @@ beforeEach(async () => {
   // The REAL writeFile, redirected into the temp directory: it consumes the
   // service's async iterable exactly as production does.
   jest.
-  spyOn(fs.promises, "writeFile").
-  mockImplementation((file: any, content: any) =>
-  realWriteFile(path.join(outDir, path.basename(file)), content)
-  );
+    spyOn(fs.promises, "writeFile").
+    mockImplementation((file: any, content: any) =>
+      realWriteFile(path.join(outDir, path.basename(file)), content),
+    );
   jest.spyOn(fs.promises, "stat").mockResolvedValue({ size: 1 });
   jest.spyOn(fs.promises, "rm").mockResolvedValue(undefined);
   jest.spyOn(fs, "createWriteStream").mockReturnValue({ on: () => {} });
@@ -159,16 +159,15 @@ describe("D-24 — DSAR export streams every row, a page at a time", () => {
 
   it("an impersonated session is still withheld, row by row, while streaming (A-180)", async () => {
     mockTables.Session = [
-    { id: "s1", impersonator_id: null, ip_address: "10.0.0.1" },
-    { id: "s2", impersonator_id: "operator", ip_address: "10.9.9.9", user_agent: "op", device: "op" }];
-
+      { id: "s1", impersonator_id: null, ip_address: "10.0.0.1" },
+      { id: "s2", impersonator_id: "operator", ip_address: "10.9.9.9", user_agent: "op", device: "op" }];
 
     await gdprService.exportUserData("tenant-1", "subject");
 
     const { sessions } = await readJson("privacy_records.json");
     expect(sessions).toEqual([
-    { id: "s1", impersonator_id: null, ip_address: "10.0.0.1" },
-    { id: "s2", ip_address: null, user_agent: null, device: null, impersonated: true }]
+      { id: "s1", impersonator_id: null, ip_address: "10.0.0.1" },
+      { id: "s2", ip_address: null, user_agent: null, device: null, impersonated: true }],
     );
   });
 
@@ -187,7 +186,7 @@ describe("D-24 — DSAR export streams every row, a page at a time", () => {
 
     await expect(gdprService.exportUserData("tenant-1", "subject")).rejects.toMatchObject({
       status: 500,
-      message: "Failed to export user data"
+      message: "Failed to export user data",
     });
     Notification.findAll.mockImplementation(real);
   });

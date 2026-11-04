@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 const { Op } = require("sequelize");
 
 jest.mock("../../models", () => ({
@@ -6,23 +6,23 @@ jest.mock("../../models", () => ({
     findByPk: jest.fn(),
     findAll: jest.fn(),
     update: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   TenantSettings: {
     findOne: jest.fn(),
     findAll: jest.fn(),
     upsert: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   User: { destroy: jest.fn(), findAll: jest.fn() },
   Subscription: { destroy: jest.fn(), findAll: jest.fn() },
-  Invoice: { destroy: jest.fn(), findAll: jest.fn() }
+  Invoice: { destroy: jest.fn(), findAll: jest.fn() },
 }));
 // Offboarding runs in a transaction with an audit row (W-01/W-04). The
 // transactional + audit contract is tested against the real model and the
 // audit ledger in tenantLifecycle.w01.test.js; here they are plumbing.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb({ id: "tx" })) }
+  db: { transaction: jest.fn(async (cb: any) => cb({ id: "tx" })) },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
@@ -39,7 +39,7 @@ describe("tenantLifecycle.service", () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
         status: "active",
-        save: mockSave
+        save: mockSave,
       });
       TenantSettings.upsert.mockResolvedValue({});
 
@@ -53,7 +53,7 @@ describe("tenantLifecycle.service", () => {
     it("returns tenant immediately if already suspended", async () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
-        status: "suspended"
+        status: "suspended",
       });
 
       const result = await tenantLifecycle.suspendTenant("t1", "non-payment", "user-1");
@@ -72,7 +72,7 @@ describe("tenantLifecycle.service", () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
         status: "suspended",
-        save: mockSave
+        save: mockSave,
       });
       TenantSettings.upsert.mockResolvedValue({});
 
@@ -85,7 +85,7 @@ describe("tenantLifecycle.service", () => {
     it("returns tenant immediately if already active", async () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
-        status: "active"
+        status: "active",
       });
 
       const result = await tenantLifecycle.resumeTenant("t1", "user-1");
@@ -104,7 +104,7 @@ describe("tenantLifecycle.service", () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
         status: "suspended", // W-21: only a suspended tenant has a grace period
-        save: mockSave
+        save: mockSave,
       });
 
       const result = await tenantLifecycle.enterGracePeriod("t1");
@@ -130,13 +130,13 @@ describe("tenantLifecycle.service", () => {
     it("returns true/false based on current date", async () => {
       Tenant.findByPk.mockResolvedValueOnce({
         id: "t1",
-        gracePeriodExpiresAt: new Date(Date.now() - 10000)
+        gracePeriodExpiresAt: new Date(Date.now() - 10000),
       });
       expect(await tenantLifecycle.checkGracePeriodExpired("t1")).toBe(true);
 
       Tenant.findByPk.mockResolvedValueOnce({
         id: "t1",
-        gracePeriodExpiresAt: new Date(Date.now() + 10000)
+        gracePeriodExpiresAt: new Date(Date.now() + 10000),
       });
       expect(await tenantLifecycle.checkGracePeriodExpired("t1")).toBe(false);
     });
@@ -148,7 +148,7 @@ describe("tenantLifecycle.service", () => {
         id: "t1",
         status: "suspended",
         save: jest.fn(),
-        toJSON: () => ({ id: "t1", status: "suspended" })
+        toJSON: () => ({ id: "t1", status: "suspended" }),
       });
       TenantSettings.upsert.mockResolvedValue({});
       User.findAll.mockResolvedValue([]);
@@ -163,12 +163,12 @@ describe("tenantLifecycle.service", () => {
       expect(result.tenant.save).toHaveBeenCalledWith({ transaction: { id: "tx" } });
       expect(TenantSettings.upsert).toHaveBeenCalledWith(
         { tenantId: "t1", key: "lifecycle_status", value: "OFFBOARDED" },
-        { transaction: { id: "tx" } }
+        { transaction: { id: "tx" } },
       );
       expect(auditService.logAction).toHaveBeenCalledWith(
         // A-124: the scheduler is the system actor, not a null user.
         expect.objectContaining({ tenantId: "t1", systemActor: "system:tenant-lifecycle", action: "DELETE" }),
-        { transaction: { id: "tx" } }
+        { transaction: { id: "tx" } },
       );
     });
 
@@ -179,7 +179,7 @@ describe("tenantLifecycle.service", () => {
         gracePeriodExpiresAt: new Date(0),
         offboardedAt: new Date(0),
         save: jest.fn(),
-        toJSON: () => ({ id: "t1" })
+        toJSON: () => ({ id: "t1" }),
       });
       User.findAll.mockResolvedValue([]);
       Subscription.findAll.mockResolvedValue([]);
@@ -193,10 +193,10 @@ describe("tenantLifecycle.service", () => {
           userId: "admin-1",
           changes: expect.objectContaining({
             force: true,
-            before: { status: "deleted", gracePeriodExpiresAt: new Date(0), offboardedAt: new Date(0) }
-          })
+            before: { status: "deleted", gracePeriodExpiresAt: new Date(0), offboardedAt: new Date(0) },
+          }),
         }),
-        { transaction: { id: "tx" } }
+        { transaction: { id: "tx" } },
       );
     });
 
@@ -217,7 +217,7 @@ describe("tenantLifecycle.service", () => {
     it("returns immediately if already offboarded and force is false", async () => {
       const mockTenant: any = {
         id: "t1",
-        status: "deleted"
+        status: "deleted",
       };
       Tenant.findByPk.mockResolvedValue(mockTenant);
 
@@ -237,7 +237,7 @@ describe("tenantLifecycle.service", () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
         status: "deleted",
-        save: mockSave
+        save: mockSave,
       });
 
       const result = await tenantLifecycle.cancelOffboarding("t1");
@@ -255,11 +255,11 @@ describe("tenantLifecycle.service", () => {
     it("throws 409 naming the state if tenant is not currently offboarded", async () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
-        status: "active"
+        status: "active",
       });
       await expect(tenantLifecycle.cancelOffboarding("t1")).rejects.toMatchObject({
         status: 409,
-        message: expect.stringContaining('This tenant is "active", not offboarded')
+        message: expect.stringContaining('This tenant is "active", not offboarded'),
       });
     });
   });
@@ -268,7 +268,7 @@ describe("tenantLifecycle.service", () => {
     it("exports tenant data successfully", async () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
-        toJSON: () => ({ id: "t1", name: "Test" })
+        toJSON: () => ({ id: "t1", name: "Test" }),
       });
       TenantSettings.findAll.mockResolvedValue([]);
       Subscription.findAll.mockResolvedValue([]);
@@ -294,7 +294,7 @@ describe("tenantLifecycle.service", () => {
         status: "active",
         gracePeriodExpiresAt: null,
         offboardedAt: null,
-        offboardRetentionExpiresAt: null
+        offboardRetentionExpiresAt: null,
       });
       TenantSettings.findOne.mockResolvedValue({ value: "ACTIVE" });
 
@@ -313,18 +313,18 @@ describe("tenantLifecycle.service", () => {
     it("offboards suspended tenants whose grace periods have expired", async () => {
       // Mock findAll to return one suspended tenant with expired grace period
       Tenant.findAll.mockResolvedValue([
-      {
-        id: "t1",
-        status: "suspended",
-        gracePeriodExpiresAt: new Date(Date.now() - 10000)
-      }]
+        {
+          id: "t1",
+          status: "suspended",
+          gracePeriodExpiresAt: new Date(Date.now() - 10000),
+        }],
       );
       // Mock findByPk for offboardTenant internal call
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
         status: "suspended",
         save: jest.fn(),
-        toJSON: () => ({ id: "t1", status: "suspended" })
+        toJSON: () => ({ id: "t1", status: "suspended" }),
       });
       User.findAll.mockResolvedValue([]);
       Subscription.findAll.mockResolvedValue([]);
@@ -354,35 +354,35 @@ describe("tenantLifecycle.service", () => {
     it("calls toJSON on the tenant and on every associated row", async () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
-        toJSON: () => ({ id: "t1", name: "Acme" })
+        toJSON: () => ({ id: "t1", name: "Acme" }),
       });
       User.findAll.mockResolvedValue([
-      { toJSON: () => ({ id: "u1", email: "a@example.com" }) },
-      { toJSON: () => ({ id: "u2", email: "b@example.com" }) }]
+        { toJSON: () => ({ id: "u1", email: "a@example.com" }) },
+        { toJSON: () => ({ id: "u2", email: "b@example.com" }) }],
       );
       TenantSettings.findAll.mockResolvedValue([
-      { toJSON: () => ({ key: "lifecycle_status", value: "ACTIVE" }) }]
+        { toJSON: () => ({ key: "lifecycle_status", value: "ACTIVE" }) }],
       );
       Subscription.findAll.mockResolvedValue([
-      { toJSON: () => ({ id: "s1", planId: "pro" }) }]
+        { toJSON: () => ({ id: "s1", planId: "pro" }) }],
       );
       Invoice.findAll.mockResolvedValue([
-      { toJSON: () => ({ id: "i1", amount: 100 }) },
-      { toJSON: () => ({ id: "i2", amount: 250 }) }]
+        { toJSON: () => ({ id: "i1", amount: 100 }) },
+        { toJSON: () => ({ id: "i2", amount: 250 }) }],
       );
 
       const result = await tenantLifecycle.exportTenantData("t1");
 
       expect(result.tenant).toEqual({ id: "t1", name: "Acme" });
       expect(result.users).toEqual([
-      { id: "u1", email: "a@example.com" },
-      { id: "u2", email: "b@example.com" }]
+        { id: "u1", email: "a@example.com" },
+        { id: "u2", email: "b@example.com" }],
       );
       expect(result.settings).toEqual([{ key: "lifecycle_status", value: "ACTIVE" }]);
       expect(result.subscriptions).toEqual([{ id: "s1", planId: "pro" }]);
       expect(result.invoices).toEqual([
-      { id: "i1", amount: 100 },
-      { id: "i2", amount: 250 }]
+        { id: "i1", amount: 100 },
+        { id: "i2", amount: 250 }],
       );
       expect(result.exportedAt).toBeInstanceOf(Date);
 
@@ -390,7 +390,7 @@ describe("tenantLifecycle.service", () => {
       // (tenantLifecycle.export.a179.test.js proves what it excludes).
       expect(User.findAll).toHaveBeenCalledWith({
         where: { tenantId: "t1" },
-        attributes: [...tenantLifecycle.EXPORTED_USER_ATTRIBUTES]
+        attributes: [...tenantLifecycle.EXPORTED_USER_ATTRIBUTES],
       });
       expect(TenantSettings.findAll).toHaveBeenCalledWith({ where: { tenantId: "t1" } });
       expect(Subscription.findAll).toHaveBeenCalledWith({ where: { tenantId: "t1" } });
@@ -405,7 +405,7 @@ describe("tenantLifecycle.service", () => {
         status: "suspended",
         gracePeriodExpiresAt: null,
         offboardedAt: null,
-        offboardRetentionExpiresAt: null
+        offboardRetentionExpiresAt: null,
       });
       TenantSettings.findOne.mockResolvedValue(null);
 
@@ -422,7 +422,7 @@ describe("tenantLifecycle.service", () => {
         status: "active",
         gracePeriodExpiresAt: null,
         offboardedAt: null,
-        offboardRetentionExpiresAt: null
+        offboardRetentionExpiresAt: null,
       });
       TenantSettings.findOne.mockResolvedValue({ value: null });
 

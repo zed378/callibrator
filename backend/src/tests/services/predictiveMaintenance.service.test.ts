@@ -1,21 +1,21 @@
 jest.mock("../../models", () => ({
   CalibrationDevice: {
-    findOne: jest.fn()
+    findOne: jest.fn(),
   },
   IotReading: {
-    count: jest.fn()
+    count: jest.fn(),
   },
   Notification: {
-    create: jest.fn()
+    create: jest.fn(),
   },
   // A-145 — approveRecommendation's managed transaction; the sentinel proves
   // both the update and the audit row carry it.
   sequelize: {
-    transaction: jest.fn(async (cb: any) => cb("TX"))
-  }
+    transaction: jest.fn(async (cb: any) => cb("TX")),
+  },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../utils/appError.util", () => ({
   AppError: class AppError extends Error {status: any;
@@ -23,13 +23,13 @@ jest.mock("../../utils/appError.util", () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 require("sequelize");
@@ -46,7 +46,7 @@ describe("predictiveMaintenance.service", () => {
       CalibrationDevice.findOne.mockResolvedValue(null);
 
       await expect(
-        predictiveMaintenanceService.analyzeDevice("tenant-1", "device-1")
+        predictiveMaintenanceService.analyzeDevice("tenant-1", "device-1"),
       ).rejects.toThrow("IoT enabled Calibration Device not found");
     });
 
@@ -57,13 +57,13 @@ describe("predictiveMaintenance.service", () => {
         name: "Test Device",
         tenantId: "tenant-1",
         iotEnabled: true,
-        calibrationIntervalDays: null
+        calibrationIntervalDays: null,
       });
 
       await expect(
-        predictiveMaintenanceService.analyzeDevice("tenant-1", "device-1")
+        predictiveMaintenanceService.analyzeDevice("tenant-1", "device-1"),
       ).rejects.toThrow(
-        "Device has no baseline calibration interval to optimize"
+        "Device has no baseline calibration interval to optimize",
       );
     });
 
@@ -74,18 +74,18 @@ describe("predictiveMaintenance.service", () => {
         name: "Test Device",
         tenantId: "tenant-1",
         iotEnabled: true,
-        calibrationIntervalDays: 30
+        calibrationIntervalDays: 30,
       });
       IotReading.count.mockResolvedValue(5);
 
       const result = await predictiveMaintenanceService.analyzeDevice(
         "tenant-1",
-        "device-1"
+        "device-1",
       );
 
       expect(result.status).toBe("skipped");
       expect(result.reason).toBe(
-        "Not enough IoT readings in the last 30 days."
+        "Not enough IoT readings in the last 30 days.",
       );
     });
 
@@ -93,7 +93,7 @@ describe("predictiveMaintenance.service", () => {
       const {
         CalibrationDevice,
         IotReading,
-        Notification
+        Notification,
       } = require("../../models");
       const { logger } = require("../../middlewares/activityLog.middleware");
 
@@ -103,15 +103,15 @@ describe("predictiveMaintenance.service", () => {
         tenantId: "tenant-1",
         iotEnabled: true,
         calibrationIntervalDays: 30,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       });
       IotReading.count.
-      mockResolvedValueOnce(100) // total readings
-      .mockResolvedValueOnce(8); // anomaly readings (8%)
+        mockResolvedValueOnce(100) // total readings
+        .mockResolvedValueOnce(8); // anomaly readings (8%)
 
       const result = await predictiveMaintenanceService.analyzeDevice(
         "tenant-1",
-        "device-1"
+        "device-1",
       );
 
       expect(result.status).toBe("recommended");
@@ -125,7 +125,7 @@ describe("predictiveMaintenance.service", () => {
       const {
         CalibrationDevice,
         IotReading,
-        Notification
+        Notification,
       } = require("../../models");
       require("../../middlewares/activityLog.middleware");
 
@@ -135,15 +135,15 @@ describe("predictiveMaintenance.service", () => {
         tenantId: "tenant-1",
         iotEnabled: true,
         calibrationIntervalDays: 30,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       });
       IotReading.count.
-      mockResolvedValueOnce(100) // total readings
-      .mockResolvedValueOnce(3); // anomaly readings (3%)
+        mockResolvedValueOnce(100) // total readings
+        .mockResolvedValueOnce(3); // anomaly readings (3%)
 
       const result = await predictiveMaintenanceService.analyzeDevice(
         "tenant-1",
-        "device-1"
+        "device-1",
       );
 
       expect(result.status).toBe("recommended");
@@ -156,7 +156,7 @@ describe("predictiveMaintenance.service", () => {
       const {
         CalibrationDevice,
         IotReading,
-        Notification
+        Notification,
       } = require("../../models");
       require("../../middlewares/activityLog.middleware");
 
@@ -166,15 +166,15 @@ describe("predictiveMaintenance.service", () => {
         tenantId: "tenant-1",
         iotEnabled: true,
         calibrationIntervalDays: 30,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       });
       IotReading.count.
-      mockResolvedValueOnce(200) // total readings (> 100)
-      .mockResolvedValueOnce(0); // zero anomalies
+        mockResolvedValueOnce(200) // total readings (> 100)
+        .mockResolvedValueOnce(0); // zero anomalies
 
       const result = await predictiveMaintenanceService.analyzeDevice(
         "tenant-1",
-        "device-1"
+        "device-1",
       );
 
       expect(result.status).toBe("recommended");
@@ -192,27 +192,27 @@ describe("predictiveMaintenance.service", () => {
         tenantId: "tenant-1",
         iotEnabled: true,
         calibrationIntervalDays: 30,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       });
       IotReading.count.
-      mockResolvedValueOnce(50) // total readings
-      .mockResolvedValueOnce(0); // 0% anomaly rate
+        mockResolvedValueOnce(50) // total readings
+        .mockResolvedValueOnce(0); // 0% anomaly rate
 
       const result = await predictiveMaintenanceService.analyzeDevice(
         "tenant-1",
-        "device-1"
+        "device-1",
       );
 
       expect(result.status).toBe("unchanged");
       expect(result.reason).toBe(
-        "Current calibration interval is optimal based on recent readings."
+        "Current calibration interval is optimal based on recent readings.",
       );
     });
 
     it("should respect minimum interval of 1 day when shortening", async () => {
       const {
         CalibrationDevice,
-        IotReading
+        IotReading,
       } = require("../../models");
 
       CalibrationDevice.findOne.mockResolvedValue({
@@ -221,13 +221,13 @@ describe("predictiveMaintenance.service", () => {
         tenantId: "tenant-1",
         iotEnabled: true,
         calibrationIntervalDays: 1,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       });
       IotReading.count.mockResolvedValueOnce(100).mockResolvedValueOnce(10); // 10% anomaly rate
 
       const result = await predictiveMaintenanceService.analyzeDevice(
         "tenant-1",
-        "device-1"
+        "device-1",
       );
 
       expect(result.newInterval).toBe(1); // Math.max(1, Math.floor(5 * 0.5)) = 1
@@ -237,7 +237,7 @@ describe("predictiveMaintenance.service", () => {
       const {
         CalibrationDevice,
         IotReading,
-        Notification
+        Notification,
       } = require("../../models");
 
       CalibrationDevice.findOne.mockResolvedValue({
@@ -246,7 +246,7 @@ describe("predictiveMaintenance.service", () => {
         tenantId: "tenant-1",
         iotEnabled: true,
         calibrationIntervalDays: 30,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       });
       IotReading.count.mockResolvedValueOnce(200).mockResolvedValueOnce(0);
 
@@ -256,9 +256,9 @@ describe("predictiveMaintenance.service", () => {
         expect.objectContaining({
           title: expect.stringContaining("Pressure Sensor A"),
           message: expect.stringContaining("Pressure Sensor A"),
-          type: "MAINTENANCE"
+          type: "MAINTENANCE",
         }),
-        { transaction: "TX" } // A-190: with the recommendation and its audit row
+        { transaction: "TX" }, // A-190: with the recommendation and its audit row
       );
     });
 
@@ -271,7 +271,7 @@ describe("predictiveMaintenance.service", () => {
         tenantId: "tenant-1",
         iotEnabled: true,
         calibrationIntervalDays: 30,
-        update: jest.fn().mockResolvedValue(true)
+        update: jest.fn().mockResolvedValue(true),
       });
       IotReading.count.mockResolvedValueOnce(50).mockResolvedValueOnce(1);
 
@@ -282,9 +282,9 @@ describe("predictiveMaintenance.service", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             deviceId: "device-1",
-            tenantId: "tenant-1"
-          })
-        })
+            tenantId: "tenant-1",
+          }),
+        }),
       );
     });
   });
@@ -299,7 +299,7 @@ describe("predictiveMaintenance.service", () => {
         Object.assign(this, values);
         return this;
       }),
-      ...overrides
+      ...overrides,
     });
 
     it("scopes the lookup to the tenant and answers 404 when the device is not there", async () => {
@@ -307,10 +307,10 @@ describe("predictiveMaintenance.service", () => {
       CalibrationDevice.findOne.mockResolvedValue(null);
 
       await expect(
-        predictiveMaintenanceService.approveRecommendation("tenant-1", "device-1", "user-1")
+        predictiveMaintenanceService.approveRecommendation("tenant-1", "device-1", "user-1"),
       ).rejects.toMatchObject({ status: 404, message: "Device not found" });
       expect(CalibrationDevice.findOne).toHaveBeenCalledWith({
-        where: { id: "device-1", tenantId: "tenant-1" }
+        where: { id: "device-1", tenantId: "tenant-1" },
       });
     });
 
@@ -320,7 +320,7 @@ describe("predictiveMaintenance.service", () => {
       CalibrationDevice.findOne.mockResolvedValue(device);
 
       await expect(
-        predictiveMaintenanceService.approveRecommendation("tenant-1", "device-1", "user-1")
+        predictiveMaintenanceService.approveRecommendation("tenant-1", "device-1", "user-1"),
       ).rejects.toMatchObject({ status: 409 });
       expect(sequelize.transaction).not.toHaveBeenCalled();
       expect(device.update).not.toHaveBeenCalled();
@@ -335,13 +335,13 @@ describe("predictiveMaintenance.service", () => {
       const result = await predictiveMaintenanceService.approveRecommendation(
         "tenant-1",
         "device-1",
-        "user-1"
+        "user-1",
       );
 
       expect(result).toBe(device);
       expect(device.update).toHaveBeenCalledWith(
         { calibrationIntervalDays: 180, recommendedCalibrationInterval: null, recommendationReason: null },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
       expect(auditService.logAction).toHaveBeenCalledWith(
         {
@@ -353,10 +353,10 @@ describe("predictiveMaintenance.service", () => {
           changes: {
             operation: "APPLY_RECOMMENDED_INTERVAL",
             before: { calibrationIntervalDays: 365, recommendedCalibrationInterval: 180, recommendationReason: "drift" },
-            after: { calibrationIntervalDays: 180 }
-          }
+            after: { calibrationIntervalDays: 180 },
+          },
         },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
   });

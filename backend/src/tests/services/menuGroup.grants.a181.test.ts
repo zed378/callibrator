@@ -36,7 +36,7 @@ jest.mock("../../models", () => ({
     count: async ({ where, transaction }: any) => {
       mockRef.ledger.write("menu_groups_read", { where }, { transaction });
       return mockRef.children.length;
-    }
+    },
   },
   RoleMenuPermission: {
     findOrCreate: async ({ where, defaults, transaction }: any) => {
@@ -58,19 +58,19 @@ jest.mock("../../models", () => ({
       }
       mockRef.ledger.write("role_menu_permissions", { destroyed: where }, { transaction });
       return 1;
-    }
+    },
   },
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
   set: jest.fn(),
   del: jest.fn(async () => undefined),
   delPattern: jest.fn(async () => undefined),
-  cacheKeys: { permissions: (id: any) => `permissions:role:${id}` }
+  cacheKeys: { permissions: (id: any) => `permissions:role:${id}` },
 }));
 
 const menuGroupService = require("../../services/menuGroup.service");
@@ -82,43 +82,42 @@ const ROLE = "role-ha";
 const actor: any = { userId: "super-1", tenantId: "home-tenant", ipAddress: "10.0.0.7", userAgent: "UA" };
 
 const auditRow = (changes: any) =>
-expect.objectContaining({
-  tenantId: PLATFORM_TENANT_ID,
-  userId: "super-1",
-  actorType: "user",
-  action: "UPDATE",
-  resourceType: "Role",
-  resourceId: ROLE,
-  ipAddress: "10.0.0.7",
-  userAgent: "UA",
-  changes
-});
+  expect.objectContaining({
+    tenantId: PLATFORM_TENANT_ID,
+    userId: "super-1",
+    actorType: "user",
+    action: "UPDATE",
+    resourceType: "Role",
+    resourceId: ROLE,
+    ipAddress: "10.0.0.7",
+    userAgent: "UA",
+    changes,
+  });
 
 const CASES = [
-{
-  name: "assignMenuToRole",
-  run: (a: any) => menuGroupService.assignMenuToRole({ roleId: ROLE, menuGroupId: "mg-1" }, a),
-  changes: { operation: "GRANT_MENU", menuGroupId: "mg-1", before: { permissionType: null }, after: { permissionType: "read" } }
-},
-{
-  name: "revokeMenuFromRole",
-  granted: ["mg-1"],
-  run: (a: any) => menuGroupService.revokeMenuFromRole({ roleId: ROLE, menuGroupId: "mg-1" }, a),
-  changes: { operation: "REVOKE_MENU", menuGroupId: "mg-1", before: { granted: true }, after: { granted: false } }
-},
-{
-  name: "bulkAssign",
-  granted: ["mg-2"],
-  run: (a: any) => menuGroupService.bulkAssign(ROLE, ["mg-1", "mg-2", "mg-missing"], a),
-  changes: { operation: "GRANT_MENU", menuGroupIds: ["mg-1"], before: { permissionType: null }, after: { permissionType: "read" } }
-},
-{
-  name: "bulkRevoke",
-  granted: ["mg-1", "mg-2"],
-  run: (a: any) => menuGroupService.bulkRevoke(ROLE, ["mg-1", "mg-2", "mg-3"], a),
-  changes: { operation: "REVOKE_MENU", menuGroupIds: ["mg-1", "mg-2"], before: { granted: true }, after: { granted: false } }
-}];
-
+  {
+    name: "assignMenuToRole",
+    run: (a: any) => menuGroupService.assignMenuToRole({ roleId: ROLE, menuGroupId: "mg-1" }, a),
+    changes: { operation: "GRANT_MENU", menuGroupId: "mg-1", before: { permissionType: null }, after: { permissionType: "read" } },
+  },
+  {
+    name: "revokeMenuFromRole",
+    granted: ["mg-1"],
+    run: (a: any) => menuGroupService.revokeMenuFromRole({ roleId: ROLE, menuGroupId: "mg-1" }, a),
+    changes: { operation: "REVOKE_MENU", menuGroupId: "mg-1", before: { granted: true }, after: { granted: false } },
+  },
+  {
+    name: "bulkAssign",
+    granted: ["mg-2"],
+    run: (a: any) => menuGroupService.bulkAssign(ROLE, ["mg-1", "mg-2", "mg-missing"], a),
+    changes: { operation: "GRANT_MENU", menuGroupIds: ["mg-1"], before: { permissionType: null }, after: { permissionType: "read" } },
+  },
+  {
+    name: "bulkRevoke",
+    granted: ["mg-1", "mg-2"],
+    run: (a: any) => menuGroupService.bulkRevoke(ROLE, ["mg-1", "mg-2", "mg-3"], a),
+    changes: { operation: "REVOKE_MENU", menuGroupIds: ["mg-1", "mg-2"], before: { granted: true }, after: { granted: false } },
+  }];
 
 beforeEach(() => {
   mockRef.ledger = createLedger({ cls: false });
@@ -200,7 +199,7 @@ describe("A-181 — menu-group grant writes audit under PLATFORM inside their tr
     expect(result).toEqual({
       assigned: [],
       alreadyAssigned: ["mg-1"],
-      failed: [{ menuGroupId: "mg-missing", error: "Menu group not found" }]
+      failed: [{ menuGroupId: "mg-missing", error: "Menu group not found" }],
     });
     expect(mockRef.ledger.rows).toEqual([]);
     expect(redis.del).not.toHaveBeenCalled();
@@ -232,7 +231,7 @@ describe("A-181 — a menu with children is not deleted (409), and nothing is wr
 
     await expect(menuGroupService.deleteMenuGroup("mg-1", actor)).rejects.toMatchObject({
       status: 409,
-      message: expect.stringMatching(/"Reports" still has 2 child menu\(s\) \(Monthly, Yearly\)/)
+      message: expect.stringMatching(/"Reports" still has 2 child menu\(s\) \(Monthly, Yearly\)/),
     });
 
     expect(mockRef.ledger.committed("menu_groups")).toEqual([]);
@@ -246,13 +245,13 @@ describe("A-181 — a menu with children is not deleted (409), and nothing is wr
 
     expect(mockRef.ledger.committed("menu_groups")).toEqual([expect.objectContaining({ id: "mg-1", destroyed: true })]);
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({
-      tenantId: PLATFORM_TENANT_ID,
-      action: "DELETE",
-      resourceType: "MenuGroup",
-      resourceId: "mg-1",
-      changes: { operation: "DELETE_MENU", before: { name: "Reports", slug: "reports" }, after: { deleted: true, revokedGrants: 1 } }
-    })]
+      expect.objectContaining({
+        tenantId: PLATFORM_TENANT_ID,
+        action: "DELETE",
+        resourceType: "MenuGroup",
+        resourceId: "mg-1",
+        changes: { operation: "DELETE_MENU", before: { name: "Reports", slug: "reports" }, after: { deleted: true, revokedGrants: 1 } },
+      })],
     );
   });
 
@@ -261,7 +260,7 @@ describe("A-181 — a menu with children is not deleted (409), and nothing is wr
 
     await expect(RolesService.deleteMenu("mg-1", actor)).rejects.toMatchObject({
       status: 409,
-      message: expect.stringMatching(/"Reports" still has 1 child menu\(s\)/)
+      message: expect.stringMatching(/"Reports" still has 1 child menu\(s\)/),
     });
 
     expect(mockRef.ledger.committed("menu_groups")).toEqual([]);

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for jwt utility - comprehensive coverage
  */
@@ -11,7 +11,7 @@ const mockDecode = jest.fn().mockReturnValue({ userId: 123 });
 jest.mock("jsonwebtoken", () => ({
   sign: mockSign,
   verify: mockVerify,
-  decode: mockDecode
+  decode: mockDecode,
 }));
 
 describe("jwt utility", () => {
@@ -33,12 +33,12 @@ describe("jwt utility", () => {
       if (type === "ec") {
         return {
           publicKey: "mock-ec-public-key",
-          privateKey: "mock-ec-private-key"
+          privateKey: "mock-ec-private-key",
         };
       }
       return {
         publicKey: "mock-public-key",
-        privateKey: "mock-private-key"
+        privateKey: "mock-private-key",
       };
     });
   });
@@ -100,7 +100,7 @@ describe("jwt utility", () => {
       expect(mockSign).toHaveBeenCalledWith(
         { id: "user-123", typ: "access" },
         expect.any(String),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -117,7 +117,7 @@ describe("jwt utility", () => {
       expect(mockSign).toHaveBeenCalledWith(
         expect.any(Object),
         "test-access-secret",
-        expect.objectContaining({ algorithm: "HS256", keyid: expect.stringMatching(/^[0-9a-f]{16}$/) })
+        expect.objectContaining({ algorithm: "HS256", keyid: expect.stringMatching(/^[0-9a-f]{16}$/) }),
       );
     });
   });
@@ -163,10 +163,10 @@ describe("jwt utility", () => {
     it("tries the PREVIOUS secret when the current one does not verify (S-26 rotation window)", () => {
       process.env["JWT_ACCESS_SECRET_PREVIOUS"] = "test-access-secret-old";
       mockVerify.
-      mockImplementationOnce(() => {
-        throw new Error("invalid");
-      }).
-      mockReturnValueOnce({ userId: 456 });
+        mockImplementationOnce(() => {
+          throw new Error("invalid");
+        }).
+        mockReturnValueOnce({ userId: 456 });
       const result = jwtUtils.verifyAccessToken("valid-token");
       expect(result).toEqual({ userId: 456 });
       expect(mockVerify).toHaveBeenLastCalledWith("valid-token", expect.anything(), { algorithms: ["HS256"] });
@@ -187,7 +187,7 @@ describe("jwt utility", () => {
         throw new Error("invalid");
       });
       expect(() => jwtUtils.verifyAccessToken("invalid-token")).toThrow(
-        "Invalid or expired access token"
+        "Invalid or expired access token",
       );
       expect(mockVerify).toHaveBeenCalledTimes(1);
     });
@@ -203,7 +203,7 @@ describe("jwt utility", () => {
       expect(result).toEqual({ userId: 123, typ: "refresh" });
       expect(mockVerify).toHaveBeenCalledTimes(1);
       expect(mockVerify).toHaveBeenCalledWith("refresh-token", "test-refresh-secret", {
-        algorithms: ["HS256"]
+        algorithms: ["HS256"],
       });
     });
 
@@ -212,20 +212,20 @@ describe("jwt utility", () => {
         throw new Error("invalid");
       });
       expect(() => jwtUtils.verifyRefreshToken("token-signed-with-access-secret")).toThrow(
-        "Invalid or expired refresh token"
+        "Invalid or expired refresh token",
       );
       expect(mockVerify).toHaveBeenCalledTimes(1);
       expect(mockVerify).not.toHaveBeenCalledWith(
         expect.anything(),
         "test-access-secret",
-        expect.anything()
+        expect.anything(),
       );
     });
 
     it("refuses a token whose type claim says access", () => {
       mockVerify.mockReturnValueOnce({ userId: 123, typ: "access" });
       expect(() => jwtUtils.verifyRefreshToken("an-access-token")).toThrow(
-        "Invalid or expired refresh token"
+        "Invalid or expired refresh token",
       );
     });
 
@@ -261,7 +261,7 @@ describe("jwt utility", () => {
         keyId: expect.stringMatching(/^[0-9a-f]{16}$/),
         algorithm: "HS256",
         previousKeyIds: [],
-        keyCount: 1
+        keyCount: 1,
       });
       expect(jwtUtils.getActiveKeyIds()).toEqual([info.keyId]);
     });
@@ -304,7 +304,7 @@ describe("jwt utility", () => {
       expect(mockSign).toHaveBeenCalledWith(
         expect.any(Object),
         expect.any(String),
-        expect.objectContaining({ expiresIn: "1h" })
+        expect.objectContaining({ expiresIn: "1h" }),
       );
     });
 
@@ -314,7 +314,7 @@ describe("jwt utility", () => {
       expect(mockSign).toHaveBeenCalledWith(
         expect.any(Object),
         expect.any(String),
-        expect.objectContaining({ expiresIn: "15m" })
+        expect.objectContaining({ expiresIn: "15m" }),
       );
     });
 
@@ -324,7 +324,7 @@ describe("jwt utility", () => {
       expect(mockSign).toHaveBeenCalledWith(
         { userId: 1, typ: "refresh" },
         "test-refresh-secret",
-        expect.objectContaining({ expiresIn: "30d", algorithm: "HS256" })
+        expect.objectContaining({ expiresIn: "30d", algorithm: "HS256" }),
       );
     });
 
@@ -334,7 +334,7 @@ describe("jwt utility", () => {
       expect(mockSign).toHaveBeenCalledWith(
         expect.any(Object),
         "test-refresh-secret",
-        expect.objectContaining({ expiresIn: "7d" })
+        expect.objectContaining({ expiresIn: "7d" }),
       );
     });
   });

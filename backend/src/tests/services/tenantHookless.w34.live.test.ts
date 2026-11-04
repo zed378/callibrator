@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * W-34 against a REAL PostgreSQL 18 — the statics that ran no tenant hook.
  *
@@ -33,7 +33,7 @@ const STOCK = {
   a1: "a34a34a3-0000-4000-8000-00000000c0a1",
   a2: "a34a34a3-0000-4000-8000-00000000c0a2",
   b1: "b34b34b3-0000-4000-8000-00000000c0b1",
-  b2: "b34b34b3-0000-4000-8000-00000000c0b2"
+  b2: "b34b34b3-0000-4000-8000-00000000c0b2",
 };
 
 describe("W-34 — hookless statics on live PostgreSQL", () => {
@@ -57,13 +57,13 @@ describe("W-34 — hookless statics on live PostgreSQL", () => {
       [STOCK.a1, A, 3],
       [STOCK.a2, A, 4],
       [STOCK.b1, B, 100],
-      [STOCK.b2, B, 1000]
+      [STOCK.b2, B, 1000],
     ];
     for (const [id, tenantId, quantity] of entries) {
       await q(
         `INSERT INTO stocks (id, tenant_id, warehouse_id, item_name, quantity, min_quantity, is_deleted, created_at, updated_at)
          VALUES (:id, :tenantId, :wh, 'w34', :quantity, 0, false, now(), now())`,
-        { id, tenantId, wh: (WH as any)[tenantId], quantity }
+        { id, tenantId, wh: (WH as any)[tenantId], quantity },
       );
     }
   };
@@ -78,18 +78,18 @@ describe("W-34 — hookless statics on live PostgreSQL", () => {
     await cleanup();
     const tenants: [string, string][] = [
       [A, "w34-live-a"],
-      [B, "w34-live-b"]
+      [B, "w34-live-b"],
     ];
     for (const [id, sub] of tenants) {
       await q(
         `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
          VALUES (:id, :sub, :sub, :email, now(), now())`,
-        { id, sub, email: `${sub}@example.test` }
+        { id, sub, email: `${sub}@example.test` },
       );
       await q(
         `INSERT INTO warehouses (id, tenant_id, name, code, is_deleted, created_at, updated_at)
          VALUES (:wh, :id, 'W34', 'W34', false, now(), now())`,
-        { wh: (WH as any)[id], id }
+        { wh: (WH as any)[id], id },
       );
     }
   });

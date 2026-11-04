@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * W-06 / W-09 / W-31 against a REAL RabbitMQ — what the in-memory fake
  * (tests/fixtures/fakeAmqp.js) cannot settle.
@@ -29,15 +29,15 @@ const docker = promisify(execFile);
 
 jest.mock("../../services/redis.service", () => ({
   getRedisConnection: jest.fn(() => null),
-  del: jest.fn()
+  del: jest.fn(),
 }));
 jest.mock("../../services/email.service", () => ({
   sendOtpEmail: jest.fn(),
   sendActivationEmail: jest.fn(),
-  sendNotificationEmail: jest.fn()
+  sendNotificationEmail: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const waitFor = async (predicate: any, ms: any = 30000) => {
@@ -95,7 +95,7 @@ describe("RabbitMQ live (W-06, W-09, W-31)", () => {
     expect(email.sendActivationEmail).toHaveBeenCalledTimes(4);
     expect(logger.error).not.toHaveBeenCalledWith(
       expect.stringContaining("channel error"),
-      expect.anything()
+      expect.anything(),
     );
   });
 
@@ -122,7 +122,7 @@ describe("RabbitMQ live (W-06, W-09, W-31)", () => {
         received.push(JSON.parse(msg.content.toString()));
         rabbitmq.ack(ch, msg);
       },
-      { setup: (ch: any) => rabbitmq.assertQueue(QUEUE, undefined, ch) }
+      { setup: (ch: any) => rabbitmq.assertQueue(QUEUE, undefined, ch) },
     );
     await rabbitmq.publish(QUEUE, { n: "before" });
     await waitFor(() => received.length === 1);
@@ -133,7 +133,7 @@ describe("RabbitMQ live (W-06, W-09, W-31)", () => {
     // Both consumers (this queue's and the email queue's) say they are back.
     await waitFor(
       () => logger.info.mock.calls.filter(([m]: any) => /re-registered after \d+ attempt/.test(m)).length >= 2,
-      60000
+      60000,
     );
     expect(rabbitmq.consumerStatus().every((c: any) => c.registered)).toBe(true);
     await rabbitmq.publish(QUEUE, { n: "after" });
@@ -141,7 +141,7 @@ describe("RabbitMQ live (W-06, W-09, W-31)", () => {
 
     expect(received).toEqual([{ n: "before" }, { n: "after" }]);
     expect(rabbitmq.consumerStatus()).toEqual(
-      expect.arrayContaining([{ queue: QUEUE, registered: true, attempt: 0 }])
+      expect.arrayContaining([{ queue: QUEUE, registered: true, attempt: 0 }]),
     );
   });
 

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-63 — any authenticated user could edit, or suspend, any tenant.
  *
@@ -28,7 +28,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
@@ -41,35 +41,35 @@ jest.mock("../../models", () => {
       findByPk: (...args: any[]) => mockFx.current.Tenants.findByPk(...args),
       findOne: (...args: any[]) => mockFx.current.Tenants.findOne(...args),
       // A-326 (ADR-112): updateTenant reads the status ENUM from the model.
-      getAttributes: () => ({ status: { values: ["active", "suspended", "deleted"] } })
+      getAttributes: () => ({ status: { values: ["active", "suspended", "deleted"] } }),
     },
     User: users,
     Users: users,
-    TenantSettings: {}
+    TenantSettings: {},
   };
 });
 
 jest.mock("../../config", () => ({
   db: {
-    transaction: (...args: any[]) => mockFx.current.transaction(...args)
-  }
+    transaction: (...args: any[]) => mockFx.current.transaction(...args),
+  },
 }));
 
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../services/rateLimiter.redis.service", () => ({
-  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next()
+  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../utils/upload.util", () => ({
   upload: () => (_req: any, _res: any, next: any) => next(),
-  deleteUpload: jest.fn()
+  deleteUpload: jest.fn(),
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn().mockResolvedValue(null),
@@ -78,14 +78,14 @@ jest.mock("../../services/redis.service", () => ({
   delPattern: jest.fn().mockResolvedValue(undefined),
   cacheKeys: {
     tenant: (id: any) => `tenant:${id}`,
-    tenantByCode: (code: any) => `tenant:code:${code}`
-  }
+    tenantByCode: (code: any) => `tenant:code:${code}`,
+  },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -97,49 +97,49 @@ const router = require("../../routes/api/tenant.route");
 // Express's own router.handle with a minimal req/res pair (the harness of
 // workflows.access.a58.test.js — supertest is not a dependency here).
 const http = (method: any, url: any, body: any = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const req: any = {
-    method: method.toUpperCase(),
-    url,
-    originalUrl: "/api/v1/tenants" + url,
-    body,
-    query: {},
-    params: {},
-    headers: {},
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const req: any = {
+      method: method.toUpperCase(),
+      url,
+      originalUrl: "/api/v1/tenants" + url,
+      body,
+      query: {},
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 // The seeded grants that matter here (seedMenuGroups.util.js): the admin
 // roles hold `management`; USER holds none. The matrix is keyed by menu name
@@ -147,7 +147,7 @@ new Promise((resolve: any) => {
 const MATRIX: any = {
   [ROLE_NAMES.HEALTCARE_ADMIN]: { Management: ["write"], management: ["write"] },
   [ROLE_NAMES.CALIBRATOR_ADMIN]: { Management: ["write"], management: ["write"] },
-  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"], Account: ["read"], account: ["read"] }
+  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"], Account: ["read"], account: ["read"] },
 };
 
 let fx: any;
@@ -163,7 +163,7 @@ beforeEach(() => {
     byRoleId.set(fx.principal(fx.tenantB, role).role.id, MATRIX[role]);
   }
   RolesService.getRolePermissionsMatrix.mockImplementation(
-    async (roleId: any) => byRoleId.get(roleId) || {}
+    async (roleId: any) => byRoleId.get(roleId) || {},
   );
 });
 
@@ -178,7 +178,7 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
       tenantId: fx.tenantB.id,
       status: "suspended",
       maxUsers: 1,
-      name: "Pwned"
+      name: "Pwned",
     });
 
     expect(res.status).toBe(404);
@@ -192,11 +192,11 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
 
     const foreign = await http("patch", "/edit", {
       tenantId: fx.tenantB.id,
-      name: "Renamed by A"
+      name: "Renamed by A",
     });
     const missing = await http("patch", "/edit", {
       tenantId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-      name: "Renamed by A"
+      name: "Renamed by A",
     });
 
     expect(foreign.status).toBe(404);
@@ -212,7 +212,7 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
     const before = fx.snapshot(fx.tenantB);
     const parsed: any = { tenantId: fx.tenantB.id, name: "Via multipart" };
     const layer = router.stack.find(
-      (l: any) => l.route && l.route.path === "/edit" && l.route.methods.patch
+      (l: any) => l.route && l.route.path === "/edit" && l.route.methods.patch,
     );
     // upload() is the layer just before the controller.
     const uploadLayer = layer.route.stack[layer.route.stack.length - 2];
@@ -236,8 +236,8 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
     const before = fx.snapshot(fx.tenantA);
 
     for (const body of [
-    { userId: user.id, tenantId: fx.tenantA.id, status: "suspended" },
-    { userId: user.id, tenantId: fx.tenantA.id, maxUsers: 500 }])
+      { userId: user.id, tenantId: fx.tenantA.id, status: "suspended" },
+      { userId: user.id, tenantId: fx.tenantA.id, maxUsers: 500 }])
     {
       const res = await http("patch", "/edit", body);
       expect(res.status).toBe(403);
@@ -275,7 +275,7 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
       tenantId: fx.tenantA.id,
       name: "Hospital A (North)",
       status: "active",
-      maxUsers: fx.tenantA.maxUsers
+      maxUsers: fx.tenantA.maxUsers,
     });
 
     expect(res.status).toBe(200);
@@ -289,7 +289,7 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
       action: "UPDATE",
       resourceType: "Tenant",
       resourceId: fx.tenantA.id,
-      changes: { name: { before: "Hospital A", after: "Hospital A (North)" } }
+      changes: { name: { before: "Hospital A", after: "Hospital A (North)" } },
     });
     expect(options.transaction).toBeDefined();
   });
@@ -301,7 +301,7 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
     const res = await http("patch", "/edit", {
       tenantId: fx.tenantB.id,
       name: "Renamed by the platform",
-      maxUsers: 50
+      maxUsers: 50,
     });
 
     expect(res.status).toBe(200);
@@ -327,7 +327,7 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
     const res = await http("patch", "/edit", {
       userId: user.id,
       tenantId: fx.tenantA.id,
-      name: "Renamed by a user"
+      name: "Renamed by a user",
     });
 
     expect(res.status).toBe(403);

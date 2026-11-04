@@ -4,25 +4,25 @@
 jest.mock("../../services/clientFacility.service", () => ({
   SELF_FACILITY_CODE: "SELF",
   selfFacilityName: (name: any) => name,
-  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" }))
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
 }));
 const { Op } = require("sequelize");
 
 jest.mock("bcryptjs", () => ({
   genSalt: jest.fn().mockResolvedValue("salt"),
-  hash: jest.fn().mockResolvedValue("hashedPassword")
+  hash: jest.fn().mockResolvedValue("hashedPassword"),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 jest.mock("../../utils/seedMenuGroups.util", () => ({
-  seedMenuGroups: jest.fn().mockResolvedValue(true)
+  seedMenuGroups: jest.fn().mockResolvedValue(true),
 }));
 
 // src/models/index.js exports singular model names plus plural aliases; the
@@ -32,45 +32,45 @@ jest.mock("../../models", () => ({
   Users: {
     findOne: jest.fn(),
     create: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   Roles: {
     findAll: jest.fn(),
     bulkCreate: jest.fn(),
     findOne: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   MenuGroup: {
     findOne: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   RoleMenuPermission: {
     findOne: jest.fn(),
     create: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   Tenant: {
     findOne: jest.fn(),
     create: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   Warehouse: { destroy: jest.fn() },
   StorageLocation: { destroy: jest.fn() },
   Stock: { destroy: jest.fn() },
   StockTransfer: { destroy: jest.fn() },
   StockAdjustment: { destroy: jest.fn() },
-  StockOpname: { destroy: jest.fn() }
+  StockOpname: { destroy: jest.fn() },
 }));
 
 jest.mock("../../config", () => ({
-  db: { sync: jest.fn() }
+  db: { sync: jest.fn() },
 }));
 
 // P10-16 (ADR-099): the system super admin's creation and its one-time
 // password belong to bootstrapCredential.service (tested over the real models
 // in services/bootstrapCredential.p1016.test.ts); here, only the delegation.
 jest.mock("../../services/bootstrapCredential.service", () => ({
-  ensureSystemSuperAdmin: jest.fn()
+  ensureSystemSuperAdmin: jest.fn(),
 }));
 
 const {
@@ -78,7 +78,7 @@ const {
   Roles,
   MenuGroup,
   RoleMenuPermission,
-  Tenant
+  Tenant,
 } = require("../../models");
 const { db } = require("../../config");
 const { seedMenuGroups } = require("../../utils/seedMenuGroups.util");
@@ -192,7 +192,7 @@ describe("migration.service", () => {
       const result = await migrationService.seedAllRoles();
 
       expect(result.rolesCreated).toBe(
-        migrationService.DEFAULT_ROLES.length + migrationService.APPLICATION_ROLES.length
+        migrationService.DEFAULT_ROLES.length + migrationService.APPLICATION_ROLES.length,
       );
       expect(result.errors.length).toBe(0);
     });
@@ -309,13 +309,13 @@ describe("migration.service", () => {
       bootstrapCredential.ensureSystemSuperAdmin.mockResolvedValue({
         created: true,
         updated: false,
-        bootstrapPasswordFile: "/app/.bootstrap/superadmin-password"
+        bootstrapPasswordFile: "/app/.bootstrap/superadmin-password",
       });
 
       const result = await migrationService.seedUsers();
 
       expect(bootstrapCredential.ensureSystemSuperAdmin).toHaveBeenCalledWith(
-        expect.objectContaining({ email: "sys@mail.com", username: "sys", isEmailVerified: true })
+        expect.objectContaining({ email: "sys@mail.com", username: "sys", isEmailVerified: true }),
       );
       // P10-16: the seed carries no password of its own.
       expect(bootstrapCredential.ensureSystemSuperAdmin.mock.calls[0][0]).not.toHaveProperty("password");
@@ -324,7 +324,7 @@ describe("migration.service", () => {
         usersCreated: 1,
         usersSkipped: 0,
         bootstrapPasswordFile: "/app/.bootstrap/superadmin-password",
-        errors: []
+        errors: [],
       });
     });
 
@@ -332,7 +332,7 @@ describe("migration.service", () => {
       bootstrapCredential.ensureSystemSuperAdmin.mockResolvedValue({
         created: false,
         updated: true,
-        bootstrapPasswordFile: null
+        bootstrapPasswordFile: null,
       });
 
       const result = await migrationService.seedUsers();
@@ -543,10 +543,10 @@ describe("migration.service", () => {
       await migrationService.seedAll();
 
       expect(Tenant.findOne).toHaveBeenCalledWith(
-        expect.objectContaining({ paranoid: false })
+        expect.objectContaining({ paranoid: false }),
       );
       expect(Tenant.create).toHaveBeenCalledWith(
-        expect.objectContaining({ subdomain: "default" })
+        expect.objectContaining({ subdomain: "default" }),
       );
     });
 
@@ -582,19 +582,19 @@ describe("migration.service", () => {
       await migrationService.unseedAll();
 
       const expectedRoleNames = [
-      ...migrationService.DEFAULT_ROLES.map((r: any) => r.name),
-      ...migrationService.APPLICATION_ROLES.map((r: any) => r.name)];
+        ...migrationService.DEFAULT_ROLES.map((r: any) => r.name),
+        ...migrationService.APPLICATION_ROLES.map((r: any) => r.name)];
 
       expect(Roles.destroy).toHaveBeenCalledWith({
-        where: { name: { [Op.in]: expectedRoleNames } }
+        where: { name: { [Op.in]: expectedRoleNames } },
       });
       expect(Users.destroy).toHaveBeenCalledWith({
         where: { email: { [Op.in]: ["sys@mail.com"] } },
-        force: true
+        force: true,
       });
       expect(Tenant.destroy).toHaveBeenCalledWith({
         where: { id: expect.any(String) },
-        force: true
+        force: true,
       });
     });
   });

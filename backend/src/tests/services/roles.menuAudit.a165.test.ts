@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-165 (ADR-051 Q-14, A-41) — a global menu group is what every role grant
  * points at, so creating, changing or deleting one is a platform operation:
@@ -35,25 +35,25 @@ jest.mock("../../models", () => ({
     },
     findByPk: async () => mockRef.menu,
     // A-181: deleteMenu refuses a menu with children; these menus have none.
-    count: async () => 0
+    count: async () => 0,
   },
   RoleMenuPermission: {
     destroy: async ({ where, transaction }: any) => {
       mockRef.ledger.write("role_menu_permissions", { destroyed: where }, { transaction });
       return mockRef.revoked;
-    }
+    },
   },
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
   set: jest.fn(),
   del: jest.fn(),
   delPattern: jest.fn(async () => undefined),
-  cacheKeys: { permissions: (id: any) => `perm:${id}` }
+  cacheKeys: { permissions: (id: any) => `perm:${id}` },
 }));
 
 const RolesService = require("../../services/roles.service");
@@ -63,40 +63,39 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 const actor = { userId: "super-1", tenantId: "home-tenant", ipAddress: "10.0.0.7", userAgent: "UA" };
 
 const CASES = [
-{
-  name: "createMenu",
-  run: (a: any) => RolesService.createMenu({ name: " Reports ", parent_id: "menu-parent" }, a),
-  action: "CREATE",
-  resourceId: "menu-new",
-  changes: {
-    operation: "CREATE_MENU",
-    before: {},
-    after: { name: "Reports", slug: "reports", parent_id: "menu-parent", is_active: true }
-  }
-},
-{
-  name: "updateMenu",
-  run: (a: any) => RolesService.updateMenu("menu-1", { name: "Renamed", is_active: false }, a),
-  action: "UPDATE",
-  resourceId: "menu-1",
-  changes: {
-    operation: "UPDATE_MENU",
-    before: { name: "Dashboard", isActive: true },
-    after: { name: "Renamed", isActive: false }
-  }
-},
-{
-  name: "deleteMenu",
-  run: (a: any) => RolesService.deleteMenu("menu-1", a),
-  action: "DELETE",
-  resourceId: "menu-1",
-  changes: {
-    operation: "DELETE_MENU",
-    before: { name: "Dashboard", slug: "dashboard" },
-    after: { deleted: true, revokedGrants: 2 }
-  }
-}];
-
+  {
+    name: "createMenu",
+    run: (a: any) => RolesService.createMenu({ name: " Reports ", parent_id: "menu-parent" }, a),
+    action: "CREATE",
+    resourceId: "menu-new",
+    changes: {
+      operation: "CREATE_MENU",
+      before: {},
+      after: { name: "Reports", slug: "reports", parent_id: "menu-parent", is_active: true },
+    },
+  },
+  {
+    name: "updateMenu",
+    run: (a: any) => RolesService.updateMenu("menu-1", { name: "Renamed", is_active: false }, a),
+    action: "UPDATE",
+    resourceId: "menu-1",
+    changes: {
+      operation: "UPDATE_MENU",
+      before: { name: "Dashboard", isActive: true },
+      after: { name: "Renamed", isActive: false },
+    },
+  },
+  {
+    name: "deleteMenu",
+    run: (a: any) => RolesService.deleteMenu("menu-1", a),
+    action: "DELETE",
+    resourceId: "menu-1",
+    changes: {
+      operation: "DELETE_MENU",
+      before: { name: "Dashboard", slug: "dashboard" },
+      after: { deleted: true, revokedGrants: 2 },
+    },
+  }];
 
 describe("A-165 — global menu changes audit under PLATFORM inside their transaction", () => {
   beforeEach(() => {
@@ -113,17 +112,17 @@ describe("A-165 — global menu changes audit under PLATFORM inside their transa
 
       expect(mockRef.ledger.committed("menu_groups").length).toBeGreaterThan(0);
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        tenantId: PLATFORM_TENANT_ID,
-        userId: "super-1",
-        actorType: "user",
-        action,
-        resourceType: "MenuGroup",
-        resourceId,
-        ipAddress: "10.0.0.7",
-        userAgent: "UA",
-        changes
-      })]
+        expect.objectContaining({
+          tenantId: PLATFORM_TENANT_ID,
+          userId: "super-1",
+          actorType: "user",
+          action,
+          resourceType: "MenuGroup",
+          resourceId,
+          ipAddress: "10.0.0.7",
+          userAgent: "UA",
+          changes,
+        })],
       );
       expect(redis.delPattern).toHaveBeenCalledWith("permissions:role:*");
     });

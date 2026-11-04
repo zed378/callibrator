@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-37 (ADR-075, Q-18 for SCIM) — SCIM user creation was a cross-tenant
  * existence oracle.
@@ -54,10 +54,10 @@ jest.mock("../../config", () => {
     const unescape = (pattern: any) => pattern.replace(/''/g, "'").replace(/\\(.)/g, "$1").toLowerCase();
     const found = mockDb.rows.filter(
       (row: any) =>
-      (!tenant || row.tenantId === tenant) && (
-      showsDeleted || !row.isDeleted) && (
-      !like || String(row[like[1]!]).toLowerCase() === unescape(like[2])) && (
-      !id || row.id === id)
+        (!tenant || row.tenantId === tenant) && (
+          showsDeleted || !row.isDeleted) && (
+          !like || String(row[like[1]!]).toLowerCase() === unescape(like[2])) && (
+          !id || row.id === id),
     );
     const built = options.model.bulkBuild(found.map((row: any) => ({ ...row })), { raw: true, isNewRecord: false });
     return options.plain ? built[0] || null : built;
@@ -75,14 +75,14 @@ jest.mock("../../middlewares/auth.middleware", () => {
       req.user = mockDb.principal;
       tenantStorage.run(
         { tenantId: mockDb.principal.tenantId, isSuperAdmin: !mockDb.principal.isApiKey, isSystemTask: false },
-        next
+        next,
       );
-    }
+    },
   };
 });
 
 jest.mock("../../utils/password.util", () => ({
-  hashPassword: jest.fn().mockResolvedValue("hashed:mock")
+  hashPassword: jest.fn().mockResolvedValue("hashed:mock"),
 }));
 
 const { UniqueConstraintError, ConnectionError } = require("sequelize");
@@ -99,73 +99,73 @@ const apiKey = (id: any, tenantId: any) => ({
   tenantId,
   isApiKey: true,
   apiKeyScopes: ["scim:write"],
-  role: { id: null, name: "API_KEY" }
+  role: { id: null, name: "API_KEY" },
 });
 const superAdmin: any = { id: SUPER_ADMIN, tenantId: TENANT_A, isApiKey: false, role: { name: "SUPERADMIN" } };
 
 const uniqueViolation = (field: any, value: any) =>
-new UniqueConstraintError({
-  message: "Validation error",
-  fields: { [field]: value },
-  parent: { code: "23505", constraint: `users_${field}_lower_unique` }
-});
+  new UniqueConstraintError({
+    message: "Validation error",
+    fields: { [field]: value },
+    parent: { code: "23505", constraint: `users_${field}_lower_unique` },
+  });
 
 /** The unique index as migration 0063 declares it: GLOBAL, case-insensitive, deleted rows included. */
 const clash = (values: any, exceptId?: any) =>
-mockDb.rows.find(
-  (row: any) =>
-  row.id !== exceptId &&
+  mockDb.rows.find(
+    (row: any) =>
+      row.id !== exceptId &&
   ["email", "username"].some(
-    (field: any) => values[field] && String(row[field]).toLowerCase() === String(values[field]).toLowerCase()
-  )
-);
+    (field: any) => values[field] && String(row[field]).toLowerCase() === String(values[field]).toLowerCase(),
+  ),
+  );
 
 // Express's own router.handle with a minimal req/res pair; `text` is the
 // serialized body, so "byte-identical" is asserted on what goes on the wire.
 const request = (principal: any, method: string, url: string, body?: any): Promise<any> =>
-new Promise((resolve: any) => {
-  mockDb.principal = principal;
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: number) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload, text: JSON.stringify(payload) });
-      return this;
-    },
-    setHeader() {
-      return this;
-    }
-  };
-  const req: any = {
-    method,
-    url,
-    originalUrl: `/api/v1/scim/v2${url}`,
-    body,
-    query: {},
-    params: {},
-    headers: { "user-agent": "okta-scim/1.0" },
-    ip: "198.51.100.7",
-    get: () => undefined
-  };
-  scimRouter.handle(req, res, (err: any) => resolve({ status: err ? err.status || 500 : 404, body: null, text: "" }));
-});
+  new Promise((resolve: any) => {
+    mockDb.principal = principal;
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload, text: JSON.stringify(payload) });
+        return this;
+      },
+      setHeader() {
+        return this;
+      },
+    };
+    const req: any = {
+      method,
+      url,
+      originalUrl: `/api/v1/scim/v2${url}`,
+      body,
+      query: {},
+      params: {},
+      headers: { "user-agent": "okta-scim/1.0" },
+      ip: "198.51.100.7",
+      get: () => undefined,
+    };
+    scimRouter.handle(req, res, (err: any) => resolve({ status: err ? err.status || 500 : 404, body: null, text: "" }));
+  });
 
 const provision = (principal: any, email: string): Promise<any> =>
-request(principal, "POST", "/Users", { userName: email, name: { givenName: "Ada", familyName: "Lovelace" } });
+  request(principal, "POST", "/Users", { userName: email, name: { givenName: "Ada", familyName: "Lovelace" } });
 
 const rename = (principal: any, userId: string, email: string): Promise<any> =>
-request(principal, "PATCH", `/Users/${userId}`, {
-  schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
-  Operations: [{ op: "replace", path: "userName", value: email }]
-});
+  request(principal, "PATCH", `/Users/${userId}`, {
+    schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    Operations: [{ op: "replace", path: "userName", value: email }],
+  });
 
 const conflictRows = () =>
-(mockDb.ledger?.auditRows() || []).filter((row: any) => row.changes && row.changes.operation === "IDENTITY_CONFLICT");
+  (mockDb.ledger?.auditRows() || []).filter((row: any) => row.changes && row.changes.operation === "IDENTITY_CONFLICT");
 
 /** The identity checks' SELECTs (the ILIKE ones) issued so far. */
 const identitySelects = () => mockDb.sql.filter((sql: string) => /FROM "users"/.test(sql) && /ILIKE/.test(sql));
@@ -178,9 +178,9 @@ beforeEach(() => {
   mockDb.failNextInsertWith = null;
   clearMemoryStore();
   mockDb.rows = [
-  { id: "b0000000-0000-4000-8000-000000000001", tenantId: TENANT_B, email: "clinician@hospital-b.example.com", username: "clinician@hospital-b.example.com", isDeleted: false },
-  { id: "b0000000-0000-4000-8000-000000000002", tenantId: TENANT_B, email: "left@hospital-b.example.com", username: "left@hospital-b.example.com", isDeleted: true },
-  { id: USER_A, tenantId: TENANT_A, email: "own@hospital-a.example.com", username: "own@hospital-a.example.com", firstName: "Own", lastName: "User", isActive: true, status: "ACTIVE", isDeleted: false }];
+    { id: "b0000000-0000-4000-8000-000000000001", tenantId: TENANT_B, email: "clinician@hospital-b.example.com", username: "clinician@hospital-b.example.com", isDeleted: false },
+    { id: "b0000000-0000-4000-8000-000000000002", tenantId: TENANT_B, email: "left@hospital-b.example.com", username: "left@hospital-b.example.com", isDeleted: true },
+    { id: USER_A, tenantId: TENANT_A, email: "own@hospital-a.example.com", username: "own@hospital-a.example.com", firstName: "Own", lastName: "User", isActive: true, status: "ACTIVE", isDeleted: false }];
 
   jest.spyOn(models.Users, "create").mockImplementation(async (values: any) => {
     if (mockDb.failNextInsertWith) {
@@ -271,7 +271,7 @@ describe("A-37 — each conflict is audited in the key's tenant", () => {
       resourceId: null,
       changes: { operation: "IDENTITY_CONFLICT", outcome: "refused", field: "userName", apiKeyId: KEY_A },
       ipAddress: "198.51.100.7",
-      userAgent: "okta-scim/1.0"
+      userAgent: "okta-scim/1.0",
     });
     expect(JSON.stringify(rows)).not.toMatch(/clinician|hospital-b|bbbbbbbb/);
     expect(mockDb.ledger.auditRows().filter((row: any) => row.tenantId === TENANT_B)).toEqual([]);
@@ -282,7 +282,7 @@ describe("A-37 — each conflict is audited in the key's tenant", () => {
 
     expect(warn).toHaveBeenCalledWith(
       "scim: identity conflict refused (A-37)",
-      expect.objectContaining({ tenantId: TENANT_A, apiKeyId: KEY_A, action: "CREATE" })
+      expect.objectContaining({ tenantId: TENANT_A, apiKeyId: KEY_A, action: "CREATE" }),
     );
     expect(JSON.stringify(warn.mock.calls)).not.toMatch(/clinician@hospital-b/);
   });
@@ -315,7 +315,7 @@ describe("A-37 — each conflict is audited in the key's tenant", () => {
     expect(conflictRows()).toEqual([]);
     expect(warn).toHaveBeenCalledWith(
       "scim: user provisioning failed",
-      expect.objectContaining({ tenantId: TENANT_A, reason: "insert-error", errorName: "SequelizeConnectionError" })
+      expect.objectContaining({ tenantId: TENANT_A, reason: "insert-error", errorName: "SequelizeConnectionError" }),
     );
     expect(JSON.stringify(warn.mock.calls)).not.toMatch(/nobody@hospital-a/);
   });
@@ -325,7 +325,7 @@ describe("A-37 — each conflict is audited in the key's tenant", () => {
     mockDb.failNextInsertWith = new UniqueConstraintError({
       message: "Validation error",
       fields: {},
-      parent: { code: "23505", constraint: "users_username_lower_unique" }
+      parent: { code: "23505", constraint: "users_username_lower_unique" },
     });
 
     const res = await provision(apiKey(KEY_A, TENANT_A), "nobody@hospital-a.example.com");
@@ -350,8 +350,8 @@ describe("A-37 — each conflict is audited in the key's tenant", () => {
 
     await expect(
       tenantStorage.run({ tenantId: TENANT_A, isSuperAdmin: false, isSystemTask: false }, () =>
-      scim.createUser(TENANT_A, { userName: "clinician@hospital-b.example.com" }, { apiKeyId: KEY_A })
-      )
+        scim.createUser(TENANT_A, { userName: "clinician@hospital-b.example.com" }, { apiKeyId: KEY_A }),
+      ),
     ).rejects.toMatchObject({ status: 409 });
     expect(conflictRows()[0]).toMatchObject({ ipAddress: null, userAgent: null });
   });

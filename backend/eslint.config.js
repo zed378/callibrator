@@ -34,6 +34,9 @@ const EXPORT_EQUALS_ALONE = [
   },
 ];
 
+// ADR-092 Amendment 1 — the frozen list of P9-26's converted test files (see the block below).
+const LEGACY_CONVERTED_TESTS = require("./.eslint-legacy-tests.json");
+
 const RAW_QUERY_OUTSIDE_THE_HELPER = [
   { selector: "CallExpression[callee.type='MemberExpression'][callee.property.name='query'][callee.object.name=/^(sequelize|db|database)$/]", message: RAW_QUERY_MESSAGE },
   { selector: "CallExpression[callee.type='MemberExpression'][callee.property.name='query'][callee.object.property.name='sequelize']", message: RAW_QUERY_MESSAGE },
@@ -192,6 +195,32 @@ module.exports = [
     },
   },
   {
+    // ADR-092 Amendment 1: the 335 test files P9-26 converted from .js carried only the base rules
+    // as .js; the conversion put them under strictTypeChecked (78,365 errors, none in src/ proper).
+    // They keep the base rules and lose the type-aware ones, exactly their .js level. The list is
+    // FROZEN: it only shrinks (a file leaves it when it lints clean under the full set), and every
+    // new test file is held to the full set (docs/ENGINEERING/04).
+    files: LEGACY_CONVERTED_TESTS,
+    ...tseslint.configs.disableTypeChecked,
+    rules: {
+      ...tseslint.configs.disableTypeChecked.rules,
+      // TypeScript-only rules that a .js test never ran under.
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/no-empty-function": "off",
+      "@typescript-eslint/consistent-type-imports": "off",
+      "@typescript-eslint/consistent-type-assertions": "off",
+      "@typescript-eslint/no-dynamic-delete": "off",
+      "@typescript-eslint/explicit-module-boundary-types": "off",
+      // The base no-unused-vars these files ran under as .js, with its `_` convention (P9-02a).
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", vars: "all" },
+      ],
+    },
+  },
+  {
     // P9-07: the helper itself, the tests (live probes and fakes query directly), and
     // migrations (DDL through the QueryInterface, outside any tenant; the helper is SELECT-only).
     files: ["src/utils/sql.util.ts", "src/tests/**/*.ts", "src/migrations/**/*.ts"],
@@ -219,7 +248,8 @@ module.exports = [
   {
     // process.env is read raw only inside src/config/ (docs/ENGINEERING/04).
     files: ["**/*.ts"],
-    ignores: ["src/config/**"],
+    // ADR-092 Am. 1: the converted tests set env for the module under test, as they did as .js.
+    ignores: ["src/config/**", ...LEGACY_CONVERTED_TESTS],
     rules: {
       "no-restricted-properties": [
         "error",

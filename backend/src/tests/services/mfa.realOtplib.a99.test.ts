@@ -20,7 +20,7 @@ const mockTx: any = { id: "tx-a99" };
 // A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
 jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (fn: any) => fn(mockTx)) }
+  db: { transaction: jest.fn(async (fn: any) => fn(mockTx)) },
 }));
 
 // A-115: consumeCode stamps the used step with a conditional Users.update;
@@ -33,20 +33,20 @@ jest.mock("../../models", () => ({
     update: jest.fn(async (values: any) => {
       Object.assign(mockTable.row, values);
       return [1];
-    })
+    }),
   },
   User: {},
   Role: {},
   Tenants: { name: "Tenants" },
-  AuditLog: { create: jest.fn() }
+  AuditLog: { create: jest.fn() },
 }));
 
 jest.mock("../../services/session.service", () => ({
-  createSession: jest.fn()
+  createSession: jest.fn(),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const otplib = require("otplib");
@@ -76,7 +76,7 @@ const makeUser = (overrides: any = {}) => {
     mfaEnabled: false,
     mfaSecret: null,
     role: null,
-    ...overrides
+    ...overrides,
   };
   row.update = jest.fn(async (patch: any) => Object.assign(row, patch));
   mockTable.row = row;
@@ -116,7 +116,7 @@ describe("A-99: the real otplib, not a mock", () => {
     // S-20: stored as a KMS envelope under the user id, never the seed.
     expect(user.update).toHaveBeenCalledWith({
       mfaPendingSecret: expect.stringMatching(/^v2:/),
-      mfaPendingCreatedAt: expect.any(Date)
+      mfaPendingCreatedAt: expect.any(Date),
     });
     expect(user.mfaPendingSecret).not.toContain(setup.secret);
     expect(mfaService.openSecret(USER_ID, user.mfaPendingSecret)).toBe(setup.secret);
@@ -129,7 +129,7 @@ describe("A-99: the real otplib, not a mock", () => {
     expect(verified).toEqual({
       success: true,
       message: "MFA enabled successfully",
-      recoveryCodes: expect.any(Array)
+      recoveryCodes: expect.any(Array),
     });
     expect(user.mfaEnabled).toBe(true);
     expect(user.mfaSecret).toMatch(/^v2:/);
@@ -138,7 +138,7 @@ describe("A-99: the real otplib, not a mock", () => {
     // 3. MFA login with the enrolled secret. A-115: the code that verified the
     // setup was consumed, so sign-in uses the NEXT step's code.
     await expect(
-      authService.loginMfa(USER_ID, codeAt(setup.secret, NOW_S), "203.0.113.9", "jest")
+      authService.loginMfa(USER_ID, codeAt(setup.secret, NOW_S), "203.0.113.9", "jest"),
     ).rejects.toMatchObject({ status: 401 });
     const login = await authService.loginMfa(USER_ID, codeAt(setup.secret, NOW_S + 30), "203.0.113.9", "jest");
     expect(login.status).toBe(200);
@@ -151,7 +151,7 @@ describe("A-99: the real otplib, not a mock", () => {
     const uri = mfaService.buildOtpauthUri("ada@hospital.example.com", secret);
     expect(uri).toBe(
       // Q-43: the issuer an authenticator app shows is the product name.
-      `otpauth://totp/Device%20Calibrator:ada%40hospital.example.com?secret=${secret}&issuer=Device%20Calibrator`
+      `otpauth://totp/Device%20Calibrator:ada%40hospital.example.com?secret=${secret}&issuer=Device%20Calibrator`,
     );
   });
 
@@ -164,7 +164,7 @@ describe("A-99: the real otplib, not a mock", () => {
     const pending = makeUser({ mfaPendingSecret: secret, mfaPendingCreatedAt: new Date(NOW_MS) });
     await expect(authService.verifyMfaSetup(USER_ID, wrong)).rejects.toMatchObject({
       status: 400,
-      message: "Invalid MFA code"
+      message: "Invalid MFA code",
     });
     expect(pending.mfaEnabled).toBe(false);
 
@@ -172,7 +172,7 @@ describe("A-99: the real otplib, not a mock", () => {
     makeUser({ mfaEnabled: true, mfaSecret: secret });
     await expect(authService.loginMfa(USER_ID, wrong)).rejects.toMatchObject({
       status: 401,
-      message: "Invalid MFA code"
+      message: "Invalid MFA code",
     });
     expect(createSession).not.toHaveBeenCalled();
 
@@ -189,25 +189,25 @@ describe("A-99: the real otplib, not a mock", () => {
     makeUser({ mfaEnabled: true, mfaSecret: secret });
 
     await expect(authService.loginMfa(USER_ID, codeAt(other, NOW_S))).rejects.toMatchObject({
-      status: 401
+      status: 401,
     });
   });
 
   it.each([
-  ["five digits", "12345"],
-  ["seven digits", "1234567"],
-  ["letters", "12ab56"],
-  ["empty", ""],
-  ["undefined", undefined],
-  ["null", null],
-  ["an object", { code: "123456" }]]
+    ["five digits", "12345"],
+    ["seven digits", "1234567"],
+    ["letters", "12ab56"],
+    ["empty", ""],
+    ["undefined", undefined],
+    ["null", null],
+    ["an object", { code: "123456" }]],
   )("a malformed code (%s) is a refusal, not a 500", async (_label: any, code: any) => {
     const secret = mfaService.createSecret();
     makeUser({ mfaEnabled: true, mfaSecret: secret });
 
     await expect(authService.loginMfa(USER_ID, code)).rejects.toMatchObject({
       status: 401,
-      message: "Invalid MFA code"
+      message: "Invalid MFA code",
     });
   });
 
@@ -230,11 +230,11 @@ describe("A-99: clock drift — exactly ±1 time step", () => {
   const secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
 
   it.each([
-  ["the previous step (phone 30s behind)", -30, true],
-  ["the next step (phone 30s ahead)", 30, true],
-  ["two steps back", -60, false],
-  ["two steps ahead", 60, false],
-  ["five minutes old", -300, false]]
+    ["the previous step (phone 30s behind)", -30, true],
+    ["the next step (phone 30s ahead)", 30, true],
+    ["two steps back", -60, false],
+    ["two steps ahead", 60, false],
+    ["five minutes old", -300, false]],
   )("a code from %s: accepted=%s", (_label: any, offset: any, accepted: any) => {
     expect(mfaService.checkCode(codeAt(secret, NOW_S + offset), secret)).toBe(accepted);
   });
@@ -248,7 +248,7 @@ describe("A-99: secrets already stored stay verifiable", () => {
     const code = otplib.generateSync({
       secret: legacy,
       epoch: NOW_S,
-      guardrails: otplib.createGuardrails({ MIN_SECRET_BYTES: 10 })
+      guardrails: otplib.createGuardrails({ MIN_SECRET_BYTES: 10 }),
     });
     expect(mfaService.checkCode(code, legacy)).toBe(true);
   });
@@ -258,7 +258,7 @@ describe("A-99: secrets already stored stay verifiable", () => {
     expect(mfaService.checkCode("123456", "not base32!")).toBe(false);
     expect(logger.error).toHaveBeenCalledWith(
       "TOTP verification failed on the stored secret",
-      expect.objectContaining({ error: expect.any(String) })
+      expect.objectContaining({ error: expect.any(String) }),
     );
   });
 

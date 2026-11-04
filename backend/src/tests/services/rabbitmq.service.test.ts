@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * rabbitmq.service — the one connection (W-18), the publishing channel, and
  * supervised consumers (W-06, W-07, W-31).
@@ -13,10 +13,10 @@
 jest.mock("amqplib", () => ({ connect: jest.fn() }));
 jest.mock("../../services/redis.service", () => ({
   getRedisConnection: jest.fn(() => null),
-  del: jest.fn()
+  del: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const { createBroker, settle } = require("../fixtures/fakeAmqp");
@@ -145,7 +145,7 @@ describe("connection and publishing channel (W-18)", () => {
   it("publishes persistent JSON, with extra properties", async () => {
     await svc.publish("work", { a: 1 }, { messageId: "m1" });
     expect(broker.messages("work")).toEqual([
-    expect.objectContaining({ body: { a: 1 }, properties: { persistent: true, messageId: "m1" } })]
+      expect.objectContaining({ body: { a: 1 }, properties: { persistent: true, messageId: "m1" } })],
     );
     await svc.publish("work", { b: 2 });
     expect(broker.messages("work")[1].properties).toEqual({ persistent: true });
@@ -218,9 +218,9 @@ describe("supervised consumers (W-06)", () => {
     await svc.startConsumer("work", jest.fn());
     await waitFor(() => broker.connectCount >= 5, 2000);
     const delays = logger.warn.mock.calls.
-    map(([line]: any) => /retry \d+ in (\d+)ms/.exec(line)).
-    filter(Boolean).
-    map((m: any) => Number(m[1]));
+      map(([line]: any) => /retry \d+ in (\d+)ms/.exec(line)).
+      filter(Boolean).
+      map((m: any) => Number(m[1]));
     expect(delays.slice(0, 4)).toEqual([5, 10, 20, 20]);
   });
 

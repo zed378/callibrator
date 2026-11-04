@@ -23,7 +23,7 @@ jest.mock("../../services/storage", () => require("../fixtures/fakeStorage").cre
 jest.mock("../../utils/storagePath.util", () => (...parts: any[]) => require("path").join(mockRoot, ...parts));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const auditService = require("../../services/audit.service");
@@ -42,8 +42,8 @@ const writeExport = ({ id, tenantId = "t1", userId = "u1", expiresAt, manifest =
     fs.writeFileSync(
       path.join(DIR, `${id}.json`),
       typeof manifest === "string" ?
-      manifest :
-      JSON.stringify({ exportId: id, tenantId, userId, createdAt: new Date(T0).toISOString(), expiresAt })
+        manifest :
+        JSON.stringify({ exportId: id, tenantId, userId, createdAt: new Date(T0).toISOString(), expiresAt }),
     );
   }
   if (zip) {fs.writeFileSync(path.join(DIR, `${id}.zip`), "PK personal data");}
@@ -90,8 +90,8 @@ describe("W-15 — the retention sweep deletes expired GDPR exports", () => {
         actor: "system:retention-purge",
         subjectUserId: "u1",
         createdAt: new Date(T0).toISOString(),
-        expiresAt: new Date(T0 + 168 * HOUR).toISOString()
-      }
+        expiresAt: new Date(T0 + 168 * HOUR).toISOString(),
+      },
     });
     // Written in the export's own tenant context (W-12).
     expect(context).toMatchObject({ tenantId: "t1" });

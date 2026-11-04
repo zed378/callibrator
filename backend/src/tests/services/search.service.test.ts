@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 jest.mock("../../config", () => ({ db: { query: jest.fn() } }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const search = require("../../services/search.service");
@@ -18,9 +18,9 @@ describe("search.service", () => {
 
   it("runs FTS across types and merges results ranked by relevance", async () => {
     db.query.
-    mockResolvedValueOnce([{ id: "d1", name: "X", rank: 0.5 }]) // device
-    .mockResolvedValueOnce([{ id: "s1", itemName: "Y", rank: 0.9 }]) // stock
-    .mockResolvedValueOnce([]); // certificate
+      mockResolvedValueOnce([{ id: "d1", name: "X", rank: 0.5 }]) // device
+      .mockResolvedValueOnce([{ id: "s1", itemName: "Y", rank: 0.9 }]) // stock
+      .mockResolvedValueOnce([]); // certificate
     const r = await search.search("t1", { q: "widget" });
     expect(r.total).toBe(2);
     expect(r.results[0].id).toBe("s1"); // higher rank first
@@ -29,8 +29,8 @@ describe("search.service", () => {
 
   it("falls back to ILIKE when the FTS query throws", async () => {
     db.query.
-    mockRejectedValueOnce(new Error("column search_vector does not exist")).
-    mockResolvedValueOnce([{ id: "d1", name: "X", rank: 0 }]);
+      mockRejectedValueOnce(new Error("column search_vector does not exist")).
+      mockResolvedValueOnce([{ id: "d1", name: "X", rank: 0 }]);
     const r = await search.search("t1", { q: "widget", types: ["device"] });
     expect(r.total).toBe(1);
     expect(db.query).toHaveBeenCalledTimes(2); // FTS then ILIKE
@@ -48,12 +48,12 @@ describe("search.service", () => {
   it("A-56: fails the search with a non-operational 500 when BOTH FTS and ILIKE fail, logging both causes", async () => {
     const { logger } = require("../../middlewares/activityLog.middleware");
     db.query.
-    mockRejectedValueOnce(new Error("column search_vector does not exist")).
-    mockRejectedValueOnce(new Error("permission denied for table calibration_devices"));
+      mockRejectedValueOnce(new Error("column search_vector does not exist")).
+      mockRejectedValueOnce(new Error("permission denied for table calibration_devices"));
 
     const err = await search.
-    search("t1", { q: "widget", types: ["device"] }).
-    then(() => null, (e: any) => e);
+      search("t1", { q: "widget", types: ["device"] }).
+      then(() => null, (e: any) => e);
 
     expect(err).not.toBeNull();
     expect(err.status).toBe(500);
@@ -67,21 +67,21 @@ describe("search.service", () => {
       expect.objectContaining({
         type: "device",
         ftsError: "column search_vector does not exist",
-        ilikeError: "permission denied for table calibration_devices"
-      })
+        ilikeError: "permission denied for table calibration_devices",
+      }),
     );
   });
 
   it("A-56: one failing type fails the whole search instead of returning the others as a complete answer", async () => {
     db.query.mockImplementation(async (sql: any) =>
-    sql.includes('"certificates"') ?
-    Promise.reject(new Error("boom")) :
-    [{ id: "x", rank: 0.1 }]
+      sql.includes('"certificates"') ?
+        Promise.reject(new Error("boom")) :
+        [{ id: "x", rank: 0.1 }],
     );
 
     await expect(search.search("t1", { q: "widget" })).rejects.toMatchObject({
       status: 500,
-      message: "Search failed for certificate"
+      message: "Search failed for certificate",
     });
   });
 
@@ -90,7 +90,7 @@ describe("search.service", () => {
     // execution would issue only the first and then wait forever on it.
     const pending: any[] = [];
     db.query.mockImplementation(
-      () => new Promise((resolve: any) => pending.push(resolve))
+      () => new Promise((resolve: any) => pending.push(resolve)),
     );
 
     const run = search.search("t1", { q: "widget" });
@@ -191,12 +191,12 @@ describe("search.service", () => {
 
   it("treats a missing rank on the left-hand row as 0 when sorting", async () => {
     db.query.
-    mockResolvedValueOnce([{ id: "d1", name: "no rank" }]).
-    mockResolvedValueOnce([{ id: "s1", itemName: "ranked", rank: 0.9 }]);
+      mockResolvedValueOnce([{ id: "d1", name: "no rank" }]).
+      mockResolvedValueOnce([{ id: "s1", itemName: "ranked", rank: 0.9 }]);
 
     const r = await search.search("t1", {
       q: "a",
-      types: ["device", "stock"]
+      types: ["device", "stock"],
     });
 
     expect(r.total).toBe(2);
@@ -207,12 +207,12 @@ describe("search.service", () => {
   it("treats a missing rank on the right-hand row as 0 when sorting", async () => {
     // Reversed order so the comparator hits `Number(b.rank) || 0`.
     db.query.
-    mockResolvedValueOnce([{ id: "d1", name: "ranked", rank: 0.9 }]).
-    mockResolvedValueOnce([{ id: "s1", itemName: "no rank" }]);
+      mockResolvedValueOnce([{ id: "d1", name: "ranked", rank: 0.9 }]).
+      mockResolvedValueOnce([{ id: "s1", itemName: "no rank" }]);
 
     const r = await search.search("t1", {
       q: "a",
-      types: ["device", "stock"]
+      types: ["device", "stock"],
     });
 
     expect(r.total).toBe(2);

@@ -13,40 +13,40 @@ jest.mock("crypto", () => ({
     update: jest.fn().mockReturnThis(),
     // Valid 64-char hex (== 32 bytes) so the service's master-key length
     // validation passes with the mocked crypto.
-    digest: jest.fn().mockReturnValue("a".repeat(64))
+    digest: jest.fn().mockReturnValue("a".repeat(64)),
   })),
   randomBytes: jest.fn().mockImplementation((size: any) => {
     // Return unique buffer each time by using call count
     return Buffer.from(
-      `random-bytes-${encryptCallCount + decryptCallCount}-${size}`
+      `random-bytes-${encryptCallCount + decryptCallCount}-${size}`,
     );
   }),
   createCipheriv: jest.fn().mockImplementation(() => {
     encryptCallCount++;
     return {
       update: jest.
-      fn().
-      mockReturnValue(Buffer.from(`encrypted-data-${encryptCallCount}`)),
+        fn().
+        mockReturnValue(Buffer.from(`encrypted-data-${encryptCallCount}`)),
       final: jest.
-      fn().
-      mockReturnValue(Buffer.from(`auth-tag-${encryptCallCount}`)),
+        fn().
+        mockReturnValue(Buffer.from(`auth-tag-${encryptCallCount}`)),
       getAuthTag: jest.
-      fn().
-      mockReturnValue(Buffer.from(`auth-tag-${encryptCallCount}`)),
-      setAAD: jest.fn()
+        fn().
+        mockReturnValue(Buffer.from(`auth-tag-${encryptCallCount}`)),
+      setAAD: jest.fn(),
     };
   }),
   createDecipheriv: jest.fn().mockImplementation(() => {
     decryptCallCount++;
     return {
       update: jest.
-      fn().
-      mockReturnValue(Buffer.from(`decrypted-data-${decryptCallCount}`)),
+        fn().
+        mockReturnValue(Buffer.from(`decrypted-data-${decryptCallCount}`)),
       final: jest.fn().mockReturnValue(Buffer.from("")),
       setAuthTag: jest.fn(),
-      setAAD: jest.fn()
+      setAAD: jest.fn(),
     };
-  })
+  }),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -54,8 +54,8 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
     info: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
-    debug: jest.fn()
-  }
+    debug: jest.fn(),
+  },
 }));
 
 const kmsService = require("../../services/kms.service");
@@ -108,7 +108,7 @@ describe("kmsService", () => {
       });
 
       expect(() => kmsService.encryptData("tenant-1", "test-data")).toThrow(
-        "Failed to encrypt data"
+        "Failed to encrypt data",
       );
     });
 
@@ -129,7 +129,7 @@ describe("kmsService", () => {
   describe("decryptData", () => {
     it("should return plaintext as-is for non-encrypted payload", () => {
       expect(kmsService.decryptData("tenant-1", "plain-text")).toBe(
-        "plain-text"
+        "plain-text",
       );
       expect(kmsService.decryptData("tenant-1", null)).toBeNull();
       expect(kmsService.decryptData("tenant-1", "")).toBe("");
@@ -137,7 +137,7 @@ describe("kmsService", () => {
 
     it("should return a value that is not a v1/v2 envelope as-is", () => {
       expect(kmsService.decryptData("tenant-1", "v3:some:payload")).toBe(
-        "v3:some:payload"
+        "v3:some:payload",
       );
     });
 
@@ -161,7 +161,7 @@ describe("kmsService", () => {
       const invalidPayload = "v1:invalid:structure";
 
       expect(() => kmsService.decryptData("tenant-1", invalidPayload)).toThrow(
-        "Failed to decrypt data"
+        "Failed to decrypt data",
       );
     });
 
@@ -181,7 +181,7 @@ describe("kmsService", () => {
       });
 
       expect(() => kmsService.decryptData(tenantId, corruptedPayload)).toThrow(
-        "Failed to decrypt data"
+        "Failed to decrypt data",
       );
     });
 
@@ -190,20 +190,20 @@ describe("kmsService", () => {
       let throwOnFirstCall = true;
 
       jest.
-      spyOn(require("crypto"), "createDecipheriv").
-      mockImplementation((..._args: any[]) => {
-        if (throwOnFirstCall) {
-          throwOnFirstCall = false;
-          const err = new Error("Invalid key");
-          throw err;
-        }
-        return {
-          update: jest.fn().mockReturnValue(Buffer.from("decrypted")),
-          final: jest.fn().mockReturnValue(Buffer.from("")),
-          setAuthTag: jest.fn(),
-          setAAD: jest.fn()
-        };
-      });
+        spyOn(require("crypto"), "createDecipheriv").
+        mockImplementation((..._args: any[]) => {
+          if (throwOnFirstCall) {
+            throwOnFirstCall = false;
+            const err = new Error("Invalid key");
+            throw err;
+          }
+          return {
+            update: jest.fn().mockReturnValue(Buffer.from("decrypted")),
+            final: jest.fn().mockReturnValue(Buffer.from("")),
+            setAuthTag: jest.fn(),
+            setAAD: jest.fn(),
+          };
+        });
 
       const tenantId = "tenant-1";
       const plaintext = "test-data";
@@ -213,7 +213,7 @@ describe("kmsService", () => {
       // the initial decryption attempt before the DEK unwrapping, so the error
       // message will be "Failed to decrypt data" instead of "Failed to unwrap DEK"
       expect(() => kmsService.decryptData(tenantId, encryptedPayload)).toThrow(
-        "Failed to decrypt data"
+        "Failed to decrypt data",
       );
     });
 
@@ -229,7 +229,7 @@ describe("kmsService", () => {
         update: jest.fn().mockReturnValue(Buffer.from("decrypted-data")),
         final: jest.fn().mockReturnValue(Buffer.from("")),
         setAuthTag: jest.fn(),
-        setAAD: jest.fn()
+        setAAD: jest.fn(),
       }));
 
       kmsService.decryptData(tenantId, encryptedPayload);
@@ -265,7 +265,7 @@ describe("kmsService", () => {
       delete process.env["KMS_MASTER_KEY"];
 
       expect(() => loadFresh()).toThrow(
-        /KMS_MASTER_KEY must be set in production/
+        /KMS_MASTER_KEY must be set in production/,
       );
     });
 
@@ -282,7 +282,7 @@ describe("kmsService", () => {
       process.env["KMS_MASTER_KEY"] = "abcd"; // 2 bytes
 
       expect(() => loadFresh()).toThrow(
-        /KMS_MASTER_KEY must decode to 32 bytes \(got 2\)/
+        /KMS_MASTER_KEY must decode to 32 bytes \(got 2\)/,
       );
     });
 

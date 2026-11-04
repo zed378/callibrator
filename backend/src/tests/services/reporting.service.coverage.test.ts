@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Branch/line coverage tests for reporting.service.js
  *
@@ -12,7 +12,7 @@ jest.mock("../../models", () => ({
   CalibrationRecord: { findAll: jest.fn() },
   Certificate: { findAll: jest.fn() },
   MaintenanceWorkOrder: { findAll: jest.fn() },
-  Stock: { findAll: jest.fn() }
+  Stock: { findAll: jest.fn() },
 }));
 
 const { Op } = require("sequelize");
@@ -22,7 +22,7 @@ const {
   CalibrationRecord,
   Certificate,
   MaintenanceWorkOrder,
-  Stock
+  Stock,
 } = require("../../models");
 
 describe("reporting.service (coverage)", () => {
@@ -40,7 +40,7 @@ describe("reporting.service (coverage)", () => {
     it("renders empty cells for null/undefined values", () => {
       const csv = reporting.toCsv(
         [{ key: "a", label: "A" }, { key: "b", label: "B" }],
-        [{ a: null, b: undefined }]
+        [{ a: null, b: undefined }],
       );
       expect(csv).toBe('"A","B"\r\n"",""');
     });
@@ -67,16 +67,16 @@ describe("reporting.service (coverage)", () => {
       expect(r).toEqual({
         total: 0,
         rows: [],
-        csv: { headers: expect.any(Array), rows: [] }
+        csv: { headers: expect.any(Array), rows: [] },
       });
       expect(CalibrationDevice.findAll).toHaveBeenCalledWith({
         where: {
           status: "active",
           nextCalibrationDate: { [Op.ne]: null, [Op.lt]: now },
-          tenantId: "t1"
+          tenantId: "t1",
         },
         attributes: ["id", "name", "serialNumber", "category", "nextCalibrationDate"],
-        order: [["nextCalibrationDate", "ASC"]]
+        order: [["nextCalibrationDate", "ASC"]],
       });
     });
 
@@ -91,13 +91,13 @@ describe("reporting.service (coverage)", () => {
 
     it("defaults `now` to the current time when no options are passed", async () => {
       CalibrationDevice.findAll.mockResolvedValue([
-      {
-        id: "d1",
-        name: "Dev",
-        serialNumber: "s1",
-        category: "c1",
-        nextCalibrationDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
-      }]
+        {
+          id: "d1",
+          name: "Dev",
+          serialNumber: "s1",
+          category: "c1",
+          nextCalibrationDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        }],
       );
 
       const r = await reporting.getOverdueDevices("t1");
@@ -109,13 +109,13 @@ describe("reporting.service (coverage)", () => {
     it("blanks out a missing serial number and category", async () => {
       const now = new Date("2026-01-11T00:00:00Z");
       CalibrationDevice.findAll.mockResolvedValue([
-      {
-        id: "d1",
-        name: "Dev",
-        serialNumber: null,
-        category: undefined,
-        nextCalibrationDate: new Date("2026-01-04T00:00:00Z")
-      }]
+        {
+          id: "d1",
+          name: "Dev",
+          serialNumber: null,
+          category: undefined,
+          nextCalibrationDate: new Date("2026-01-04T00:00:00Z"),
+        }],
       );
 
       const r = await reporting.getOverdueDevices("t1", { now });
@@ -124,20 +124,20 @@ describe("reporting.service (coverage)", () => {
         serialNumber: "",
         category: "",
         nextCalibrationDate: "2026-01-04",
-        daysOverdue: 7
+        daysOverdue: 7,
       });
     });
 
     it("blanks out the formatted date when nextCalibrationDate is null", async () => {
       const now = new Date("2026-01-11T00:00:00Z");
       CalibrationDevice.findAll.mockResolvedValue([
-      {
-        id: "d1",
-        name: "Dev",
-        serialNumber: "s",
-        category: "c",
-        nextCalibrationDate: null
-      }]
+        {
+          id: "d1",
+          name: "Dev",
+          serialNumber: "s",
+          category: "c",
+          nextCalibrationDate: null,
+        }],
       );
 
       const r = await reporting.getOverdueDevices("t1", { now });
@@ -153,7 +153,7 @@ describe("reporting.service (coverage)", () => {
 
       await reporting.getCompliance("t1", {
         from: "2026-01-01",
-        to: "2026-02-01"
+        to: "2026-02-01",
       });
 
       expect(CalibrationRecord.findAll).toHaveBeenCalledWith({
@@ -161,12 +161,12 @@ describe("reporting.service (coverage)", () => {
           tenantId: "t1",
           calibrationDate: {
             [Op.gte]: new Date("2026-01-01"),
-            [Op.lte]: new Date("2026-02-01")
-          }
+            [Op.lte]: new Date("2026-02-01"),
+          },
         },
         attributes: ["isCompliant", [expect.anything(), "count"]],
         group: ["isCompliant"],
-        raw: true
+        raw: true,
       });
     });
 
@@ -196,7 +196,7 @@ describe("reporting.service (coverage)", () => {
       await reporting.getCompliance("t1");
 
       expect(CalibrationRecord.findAll.mock.calls[0][0].where).toEqual({
-        tenantId: "t1"
+        tenantId: "t1",
       });
     });
 
@@ -210,21 +210,21 @@ describe("reporting.service (coverage)", () => {
         compliant: 0,
         nonCompliant: 0,
         unknown: 0,
-        complianceRate: 0
+        complianceRate: 0,
       });
       expect(r.csv.rows).toEqual([
-      { metric: "total", value: 0 },
-      { metric: "compliant", value: 0 },
-      { metric: "nonCompliant", value: 0 },
-      { metric: "unknown", value: 0 },
-      { metric: "complianceRate", value: 0 }]
+        { metric: "total", value: 0 },
+        { metric: "compliant", value: 0 },
+        { metric: "nonCompliant", value: 0 },
+        { metric: "unknown", value: 0 },
+        { metric: "complianceRate", value: 0 }],
       );
     });
 
     it("rounds the compliance rate to two decimals", async () => {
       CalibrationRecord.findAll.mockResolvedValue([
-      { isCompliant: true, count: "1" },
-      { isCompliant: false, count: "2" }]
+        { isCompliant: true, count: "1" },
+        { isCompliant: false, count: "2" }],
       );
 
       const r = await reporting.getCompliance("t1");
@@ -237,7 +237,7 @@ describe("reporting.service (coverage)", () => {
   describe("getInventory", () => {
     it("coerces null quantities to zero and flags them as low stock", async () => {
       Stock.findAll.mockResolvedValue([
-      { itemName: "A", sku: null, quantity: null, minQuantity: null }]
+        { itemName: "A", sku: null, quantity: null, minQuantity: null }],
       );
 
       const r = await reporting.getInventory("t1");
@@ -245,14 +245,14 @@ describe("reporting.service (coverage)", () => {
       expect(r.summary).toEqual({
         totalItems: 1,
         totalQuantity: 0,
-        lowStockCount: 1
+        lowStockCount: 1,
       });
       expect(r.rows[0]).toEqual({
         itemName: "A",
         sku: "",
         quantity: 0,
         minQuantity: 0,
-        lowStock: true
+        lowStock: true,
       });
     });
 
@@ -264,13 +264,13 @@ describe("reporting.service (coverage)", () => {
       expect(r.summary).toEqual({
         totalItems: 0,
         totalQuantity: 0,
-        lowStockCount: 0
+        lowStockCount: 0,
       });
       expect(r.lowStock).toEqual([]);
       expect(Stock.findAll).toHaveBeenCalledWith({
         where: { tenantId: "t1" },
         attributes: ["id", "itemName", "sku", "quantity", "minQuantity"],
-        raw: true
+        raw: true,
       });
     });
   });
@@ -280,16 +280,16 @@ describe("reporting.service (coverage)", () => {
     it("groups work orders and counts the 30/60/90-day due windows", async () => {
       const now = new Date("2026-01-01T00:00:00Z");
       MaintenanceWorkOrder.findAll.
-      mockResolvedValueOnce([
-      { status: "open", count: "4" },
-      { status: "closed", count: "6" }]
-      ).
-      mockResolvedValueOnce([{ type: "calibration", count: "10" }]).
-      mockResolvedValueOnce([{ priority: "high", count: "3" }]);
+        mockResolvedValueOnce([
+          { status: "open", count: "4" },
+          { status: "closed", count: "6" }],
+        ).
+        mockResolvedValueOnce([{ type: "calibration", count: "10" }]).
+        mockResolvedValueOnce([{ priority: "high", count: "3" }]);
       CalibrationDevice.count.
-      mockResolvedValueOnce(1).
-      mockResolvedValueOnce(2).
-      mockResolvedValueOnce(3);
+        mockResolvedValueOnce(1).
+        mockResolvedValueOnce(2).
+        mockResolvedValueOnce(3);
 
       const r = await reporting.getCalibrationWorkload("t1", { now });
 
@@ -297,15 +297,15 @@ describe("reporting.service (coverage)", () => {
         workOrders: {
           byStatus: { open: 4, closed: 6 },
           byType: { calibration: 10 },
-          byPriority: { high: 3 }
+          byPriority: { high: 3 },
         },
-        upcomingDue: { in30Days: 1, in60Days: 2, in90Days: 3 }
+        upcomingDue: { in30Days: 1, in60Days: 2, in90Days: 3 },
       });
       expect(MaintenanceWorkOrder.findAll).toHaveBeenNthCalledWith(1, {
         where: { tenantId: "t1" },
         attributes: ["status", [expect.anything(), "count"]],
         group: ["status"],
-        raw: true
+        raw: true,
       });
       expect(CalibrationDevice.count).toHaveBeenNthCalledWith(1, {
         where: {
@@ -313,31 +313,31 @@ describe("reporting.service (coverage)", () => {
           status: "active",
           nextCalibrationDate: {
             [Op.gte]: now,
-            [Op.lte]: new Date("2026-01-31T00:00:00Z")
-          }
-        }
+            [Op.lte]: new Date("2026-01-31T00:00:00Z"),
+          },
+        },
       });
       expect(CalibrationDevice.count).toHaveBeenNthCalledWith(
         3,
         expect.objectContaining({
           where: expect.objectContaining({
             nextCalibrationDate: expect.objectContaining({
-              [Op.lte]: new Date("2026-04-01T00:00:00Z")
-            })
-          })
-        })
+              [Op.lte]: new Date("2026-04-01T00:00:00Z"),
+            }),
+          }),
+        }),
       );
     });
 
     it("buckets null and undefined group keys under 'unknown'", async () => {
       MaintenanceWorkOrder.findAll.
-      mockResolvedValueOnce([{ status: null, count: "2" }]).
-      mockResolvedValueOnce([{ type: undefined, count: "5" }]).
-      mockResolvedValueOnce([]);
+        mockResolvedValueOnce([{ status: null, count: "2" }]).
+        mockResolvedValueOnce([{ type: undefined, count: "5" }]).
+        mockResolvedValueOnce([]);
       CalibrationDevice.count.mockResolvedValue(0);
 
       const r = await reporting.getCalibrationWorkload("t1", {
-        now: new Date("2026-01-01T00:00:00Z")
+        now: new Date("2026-01-01T00:00:00Z"),
       });
 
       expect(r.workOrders.byStatus).toEqual({ unknown: 2 });
@@ -360,29 +360,29 @@ describe("reporting.service (coverage)", () => {
   describe("getSummary", () => {
     it("rolls up devices, certificates, work orders, compliance and inventory", async () => {
       CalibrationDevice.findAll.
-      mockResolvedValueOnce([
-      { status: "active", count: "7" },
-      { status: "retired", count: "1" }]
-      ) // groupCount(CalibrationDevice)
-      .mockResolvedValueOnce([
-      {
-        id: "d1",
-        name: "Dev",
-        serialNumber: "s",
-        category: "c",
-        nextCalibrationDate: new Date("2020-01-01T00:00:00Z")
-      }]
-      ); // getOverdueDevices
+        mockResolvedValueOnce([
+          { status: "active", count: "7" },
+          { status: "retired", count: "1" }],
+        ) // groupCount(CalibrationDevice)
+        .mockResolvedValueOnce([
+          {
+            id: "d1",
+            name: "Dev",
+            serialNumber: "s",
+            category: "c",
+            nextCalibrationDate: new Date("2020-01-01T00:00:00Z"),
+          }],
+        ); // getOverdueDevices
       Certificate.findAll.mockResolvedValue([{ status: "issued", count: "3" }]);
       MaintenanceWorkOrder.findAll.mockResolvedValue([
-      { status: "open", count: "2" }]
+        { status: "open", count: "2" }],
       );
       CalibrationRecord.findAll.mockResolvedValue([
-      { isCompliant: true, count: "1" },
-      { isCompliant: false, count: "1" }]
+        { isCompliant: true, count: "1" },
+        { isCompliant: false, count: "1" }],
       );
       Stock.findAll.mockResolvedValue([
-      { itemName: "A", sku: "s1", quantity: 5, minQuantity: 1 }]
+        { itemName: "A", sku: "s1", quantity: 5, minQuantity: 1 }],
       );
 
       const r = await reporting.getSummary("t1");
@@ -396,9 +396,9 @@ describe("reporting.service (coverage)", () => {
           compliant: 1,
           nonCompliant: 1,
           unknown: 0,
-          complianceRate: 50
+          complianceRate: 50,
         },
-        inventory: { totalItems: 1, totalQuantity: 5, lowStockCount: 0 }
+        inventory: { totalItems: 1, totalQuantity: 5, lowStockCount: 0 },
       });
     });
   });

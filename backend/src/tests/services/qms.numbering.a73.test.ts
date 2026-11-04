@@ -97,11 +97,11 @@ const fakePg = () => {
       Math.max(
         0,
         ...committed[table].
-        filter((r: any) => r.tenantId === tenantId).
-        map((r: any) => {
-          const m = String(r[numberColumn[table]]).match(re);
-          return m ? Number(m[1]) : 0;
-        })
+          filter((r: any) => r.tenantId === tenantId).
+          map((r: any) => {
+            const m = String(r[numberColumn[table]]).match(re);
+            return m ? Number(m[1]) : 0;
+          }),
       ) + 1;
       const current = transaction.counters.has(key) ? transaction.counters.get(key) : counters.get(key);
       const seq = current === undefined ? seed : Math.max(current + 1, seed);
@@ -122,9 +122,9 @@ const fakePg = () => {
           transaction.staged.push({ table, row });
           return row;
         }),
-        findOne: jest.fn(async ({ where }: any) => ({ id: where.id, tenantId: where.tenantId, ncNumber: "NC-00001" }))
+        findOne: jest.fn(async ({ where }: any) => ({ id: where.id, tenantId: where.tenantId, ncNumber: "NC-00001" })),
       };
-    }
+    },
   };
   return pg;
 };
@@ -133,13 +133,13 @@ jest.mock("../../models", () => ({
   NonConformance: new Proxy({}, { get: (_t: any, k: any) => mockPg.current.models.NonConformance[k] }),
   Capa: new Proxy({}, { get: (_t: any, k: any) => mockPg.current.models.Capa[k] }),
   User: { findOne: async ({ where }: any) => ({ id: where.id }) },
-  CalibrationDevice: { findOne: async ({ where }: any) => ({ id: where.id }) }
+  CalibrationDevice: { findOne: async ({ where }: any) => ({ id: where.id }) },
 }));
 jest.mock("../../config", () => ({
   db: {
     transaction: (...args: any[]) => mockPg.current.transaction(...args),
-    query: (...args: any[]) => mockPg.current.query(...args)
-  }
+    query: (...args: any[]) => mockPg.current.query(...args),
+  },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn(async () => ({})) }));
 
@@ -157,7 +157,7 @@ beforeEach(() => {
 
 const createNC = (tenantId: any, title: any) => service.createNC(tenantId, "user-1", { title, description: "d" });
 const numbers = (table: any, tenantId: any, col: any) =>
-mockPg.current.committed[table].filter((r: any) => r.tenantId === tenantId).map((r: any) => r[col]).sort();
+  mockPg.current.committed[table].filter((r: any) => r.tenantId === tenantId).map((r: any) => r[col]).sort();
 
 describe("A-73 — per-tenant QMS numbering under concurrency", () => {
   it("two concurrent creates get distinct numbers", async () => {
@@ -171,24 +171,24 @@ describe("A-73 — per-tenant QMS numbering under concurrency", () => {
     await Promise.all(Array.from({ length: 20 }, (_: any, i: any) => createNC(TENANT_A, `nc ${i}`)));
     await Promise.all(
       Array.from({ length: 10 }, (_: any, i: any) =>
-      service.createCapa(TENANT_A, { ncId: "nc-1", title: `capa ${i}`, actionPlan: "p" })
-      )
+        service.createCapa(TENANT_A, { ncId: "nc-1", title: `capa ${i}`, actionPlan: "p" }),
+      ),
     );
 
     expect(numbers("non_conformances", TENANT_A, "ncNumber")).toEqual(
-      Array.from({ length: 20 }, (_: any, i: any) => `NC-${String(i + 1).padStart(5, "0")}`)
+      Array.from({ length: 20 }, (_: any, i: any) => `NC-${String(i + 1).padStart(5, "0")}`),
     );
     expect(numbers("capas", TENANT_A, "capaNumber")).toEqual(
-      Array.from({ length: 10 }, (_: any, i: any) => `CAPA-${String(i + 1).padStart(5, "0")}`)
+      Array.from({ length: 10 }, (_: any, i: any) => `CAPA-${String(i + 1).padStart(5, "0")}`),
     );
   });
 
   it("each tenant numbers independently — the same number in two tenants is not a collision", async () => {
     await Promise.all([
-    createNC(TENANT_A, "a1"),
-    createNC(TENANT_B, "b1"),
-    createNC(TENANT_A, "a2"),
-    createNC(TENANT_B, "b2")]
+      createNC(TENANT_A, "a1"),
+      createNC(TENANT_B, "b1"),
+      createNC(TENANT_A, "a2"),
+      createNC(TENANT_B, "b2")],
     );
 
     expect(numbers("non_conformances", TENANT_A, "ncNumber")).toEqual(["NC-00001", "NC-00002"]);
@@ -211,7 +211,7 @@ describe("A-73 — per-tenant QMS numbering under concurrency", () => {
     mockPg.current.committed.non_conformances.push(
       { tenantId: TENANT_A, ncNumber: "NC-00041" },
       { tenantId: TENANT_A, ncNumber: "legacy-7" },
-      { tenantId: TENANT_B, ncNumber: "NC-00900" }
+      { tenantId: TENANT_B, ncNumber: "NC-00900" },
     );
 
     await createNC(TENANT_A, "next");

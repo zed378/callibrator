@@ -15,13 +15,13 @@
 jest.mock("../../config", () => ({
   Sequelize: { useCLS: jest.fn() },
   db: {
-    transaction: jest.fn()
-  }
+    transaction: jest.fn(),
+  },
 }));
 
 jest.mock("sanitize-html", () => {
   const mockDefaults: any = {
-    allowedTags: ["p", "b", "i", "em", "strong", "a", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "br", "img", "div", "span", "code", "pre", "blockquote", "figure", "figcaption", "u", "s", "table", "thead", "tbody", "tr", "td", "th"]
+    allowedTags: ["p", "b", "i", "em", "strong", "a", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "br", "img", "div", "span", "code", "pre", "blockquote", "figure", "figcaption", "u", "s", "table", "thead", "tbody", "tr", "td", "th"],
   };
   const mock = (html: any, _opts: any) => String(html || "");
   mock.defaults = mockDefaults;
@@ -31,7 +31,7 @@ jest.mock("sanitize-html", () => {
 
 jest.mock("../../constants", () => ({
   DEFAULT_LIMIT: 10,
-  MAX_LIMIT: 100
+  MAX_LIMIT: 100,
 }));
 
 jest.mock("../../models", () => ({
@@ -41,7 +41,7 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(),
     create: jest.fn(),
     softDelete: jest.fn(),
-    unscoped: jest.fn(function () {return this;})
+    unscoped: jest.fn(function () {return this;}),
   },
   Category: {
     findAll: jest.fn(),
@@ -49,13 +49,13 @@ jest.mock("../../models", () => ({
     create: jest.fn(),
     update: jest.fn(),
     softDelete: jest.fn(),
-    unscoped: jest.fn(function () {return this;})
-  }
+    unscoped: jest.fn(function () {return this;}),
+  },
 }));
 
 // P6-11: every CMS write commits with one audit row in its transaction.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn()
+  logAction: jest.fn(),
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -93,7 +93,7 @@ const mockPost = (extra: any = {}) => {
     ...extra,
     toJSON() {
       return { ...this };
-    }
+    },
   };
   return post;
 };
@@ -104,7 +104,7 @@ const mockCategory = (id: any = "c-1", name: any = "Tech", slug: any = "tech"): 
   slug,
   toJSON() {
     return { id: this.id, name: this.name, slug: this.slug };
-  }
+  },
 });
 
 beforeEach(() => {
@@ -123,7 +123,7 @@ describe("listPosts", () => {
   it("should return paginated posts", async () => {
     Post.findAndCountAll.mockResolvedValue({
       count: 3,
-      rows: [mockPost({ id: "p-1" }), mockPost({ id: "p-2" })]
+      rows: [mockPost({ id: "p-1" }), mockPost({ id: "p-2" })],
     });
 
     const result = await contentService.listPosts({ page: 1, limit: 10 });
@@ -141,8 +141,8 @@ describe("listPosts", () => {
 
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ type: "ARTICLE", status: "PUBLISHED" })
-      })
+        where: expect.objectContaining({ type: "ARTICLE", status: "PUBLISHED" }),
+      }),
     );
   });
 
@@ -153,8 +153,8 @@ describe("listPosts", () => {
 
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({
-        include: [expect.objectContaining({ required: true })]
-      })
+        include: [expect.objectContaining({ required: true })],
+      }),
     );
   });
 
@@ -182,7 +182,7 @@ describe("getPostById", () => {
 
     await expect(contentService.getPostById("nonexistent")).rejects.toMatchObject({
       status: 404,
-      message: "Post not found"
+      message: "Post not found",
     });
   });
 });
@@ -198,7 +198,7 @@ describe("createPost", () => {
 
     const result = await contentService.createPost(
       { title: "Pub Post", contentHtml: "<p>Hi</p>", status: "PUBLISHED", categoryIds: ["c-1"] },
-      "user-1"
+      "user-1",
     );
 
     expect(result.success).toBe(true);
@@ -216,7 +216,7 @@ describe("createPost", () => {
 
     const result = await contentService.createPost(
       { title: "Pub Post", contentHtml: "<p>Hi</p>", status: "PUBLISHED", categoryIds: ["c-1"] },
-      "user-1"
+      "user-1",
     );
 
     expect(result.success).toBe(true);
@@ -234,7 +234,7 @@ describe("createPost", () => {
 
     await contentService.createPost(
       { title: "Pub Post", contentHtml: "<p>Hi</p>", status: "PUBLISHED", categoryIds: ["c-1"] },
-      "user-1"
+      "user-1",
     );
 
     const callArgs = Post.create.mock.calls[0][0];
@@ -262,7 +262,7 @@ describe("updatePost", () => {
     Post.findByPk.mockResolvedValue(null);
 
     await expect(contentService.updatePost("nonexistent", { title: "x" })).rejects.toMatchObject({
-      status: 404
+      status: 404,
     });
   });
 });
@@ -283,7 +283,7 @@ describe("deletePost", () => {
     Post.findByPk.mockResolvedValue(null);
 
     await expect(contentService.deletePost("nonexistent")).rejects.toMatchObject({
-      status: 404
+      status: 404,
     });
   });
 });
@@ -302,8 +302,8 @@ describe("checkSlug", () => {
     // ensureUniqueSlug queries by slug; only the exact slug is "taken".
     Post.unscoped.mockReturnValue({
       findOne: jest.fn(({ where }: any) =>
-      Promise.resolve(where.slug === "taken-slug" ? { id: "x" } : null)
-      )
+        Promise.resolve(where.slug === "taken-slug" ? { id: "x" } : null),
+      ),
     });
 
     const result = await contentService.checkSlug("taken-slug");
@@ -328,7 +328,7 @@ describe("listPublishedPosts", () => {
   it("should return only published posts", async () => {
     Post.findAndCountAll.mockResolvedValue({
       count: 2,
-      rows: [mockPost({ id: "p-1" }), mockPost({ id: "p-2" })]
+      rows: [mockPost({ id: "p-1" }), mockPost({ id: "p-2" })],
     });
 
     const result = await contentService.listPublishedPosts({ page: 1, limit: 10 });
@@ -336,7 +336,7 @@ describe("listPublishedPosts", () => {
     expect(result.success).toBe(true);
     expect(result.data.length).toBe(2);
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ status: "PUBLISHED" }) })
+      expect.objectContaining({ where: expect.objectContaining({ status: "PUBLISHED" }) }),
     );
   });
 });
@@ -356,7 +356,7 @@ describe("getPublishedPostBySlug", () => {
     Post.findOne.mockResolvedValue(null);
 
     await expect(contentService.getPublishedPostBySlug("missing")).rejects.toMatchObject({
-      status: 404
+      status: 404,
     });
   });
 });
@@ -389,7 +389,7 @@ describe("createCategory", () => {
     expect(result.data.name).toBe("New Cat");
     expect(Category.create).toHaveBeenCalledWith(
       expect.objectContaining({ name: "New Cat", slug: "new-cat" }),
-      { transaction: expect.anything() }
+      { transaction: expect.anything() },
     );
   });
 });
@@ -414,7 +414,7 @@ describe("updateCategory", () => {
     Category.findByPk.mockResolvedValue(null);
 
     await expect(contentService.updateCategory("missing", { name: "x" })).rejects.toMatchObject({
-      status: 404
+      status: 404,
     });
   });
 });
@@ -435,7 +435,7 @@ describe("deleteCategory", () => {
     Category.findByPk.mockResolvedValue(null);
 
     await expect(contentService.deleteCategory("missing")).rejects.toMatchObject({
-      status: 404
+      status: 404,
     });
   });
 
@@ -446,7 +446,7 @@ describe("deleteCategory", () => {
 
     await expect(contentService.deleteCategory("c-1")).rejects.toMatchObject({
       status: 500,
-      message: "FK constraint"
+      message: "FK constraint",
     });
   });
 
@@ -457,7 +457,7 @@ describe("deleteCategory", () => {
 
     await expect(contentService.deleteCategory("c-1")).rejects.toMatchObject({
       status: 500,
-      message: "Failed to delete category"
+      message: "Failed to delete category",
     });
   });
 });
@@ -473,7 +473,7 @@ describe("listPosts — pagination and filters", () => {
     const result = await contentService.listPosts({});
 
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 10, offset: 0 })
+      expect.objectContaining({ limit: 10, offset: 0 }),
     );
     expect(result.meta).toEqual({ total: 0, page: 1, limit: 10, totalPages: 1 });
   });
@@ -485,7 +485,7 @@ describe("listPosts — pagination and filters", () => {
 
     // MAX_LIMIT (100) wins over the requested 500; offset = (3-1)*100.
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 100, offset: 200 })
+      expect.objectContaining({ limit: 100, offset: 200 }),
     );
     expect(result.meta).toEqual({ total: 250, page: 3, limit: 100, totalPages: 3 });
   });
@@ -496,7 +496,7 @@ describe("listPosts — pagination and filters", () => {
     const result = await contentService.listPosts({ page: 0, limit: 10 });
 
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
-      expect.objectContaining({ offset: 0 })
+      expect.objectContaining({ offset: 0 }),
     );
     expect(result.meta.page).toBe(1);
   });
@@ -507,7 +507,7 @@ describe("listPosts — pagination and filters", () => {
     await contentService.listPosts({ limit: "abc" });
 
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 10 })
+      expect.objectContaining({ limit: 10 }),
     );
   });
 
@@ -518,8 +518,8 @@ describe("listPosts — pagination and filters", () => {
 
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { title: { [Op.like]: "%sensor%" } }
-      })
+        where: { title: { [Op.like]: "%sensor%" } },
+      }),
     );
   });
 
@@ -533,12 +533,12 @@ describe("listPosts — pagination and filters", () => {
 
   it("should preserve an error's own status and message", async () => {
     Post.findAndCountAll.mockRejectedValue(
-      Object.assign(new Error("bad request"), { status: 422 })
+      Object.assign(new Error("bad request"), { status: 422 }),
     );
 
     await expect(contentService.listPosts({})).rejects.toMatchObject({
       status: 422,
-      message: "bad request"
+      message: "bad request",
     });
   });
 
@@ -547,7 +547,7 @@ describe("listPosts — pagination and filters", () => {
 
     await expect(contentService.listPosts({})).rejects.toMatchObject({
       status: 500,
-      message: "Failed to fetch posts"
+      message: "Failed to fetch posts",
     });
   });
 });
@@ -558,7 +558,7 @@ describe("getPostById — error normalisation", () => {
 
     await expect(contentService.getPostById("p-1")).rejects.toMatchObject({
       status: 500,
-      message: "Failed to retrieve post"
+      message: "Failed to retrieve post",
     });
   });
 });
@@ -581,7 +581,7 @@ describe("createPost — branches", () => {
 
     await contentService.createPost(
       { title: "Some Long Title", slug: "Chosen Slug", contentHtml: "<p>x</p>" },
-      "u-1"
+      "u-1",
     );
 
     expect(Post.create.mock.calls[0][0].slug).toBe("chosen-slug");
@@ -604,7 +604,7 @@ describe("createPost — branches", () => {
 
     await contentService.createPost(
       { title: "Empty Cats", contentHtml: "<p>x</p>", categoryIds: [] },
-      "u-1"
+      "u-1",
     );
 
     expect(created.setCategories).not.toHaveBeenCalled();
@@ -618,7 +618,7 @@ describe("createPost — branches", () => {
 
     await contentService.createPost(
       { title: "T", contentHtml: "<p>x</p>", status: "PUBLISHED", publishedAt: when },
-      "u-1"
+      "u-1",
     );
 
     expect(Post.create.mock.calls[0][0].publishedAt).toBe(when);
@@ -631,7 +631,7 @@ describe("createPost — branches", () => {
 
     await contentService.createPost(
       { title: "T", contentHtml: "<p>x</p>", status: "DRAFT" },
-      "u-1"
+      "u-1",
     );
 
     expect(Post.create.mock.calls[0][0].publishedAt).toBeNull();
@@ -645,7 +645,7 @@ describe("createPost — branches", () => {
 
     await contentService.createPost(
       { title: "T", contentHtml: "<p>x</p>", status: "DRAFT", publishedAt: when },
-      "u-1"
+      "u-1",
     );
 
     expect(Post.create.mock.calls[0][0].publishedAt).toBe(when);
@@ -693,7 +693,7 @@ describe("createPost — branches", () => {
 
     await expect(contentService.createPost({ title: "T" }, "u-1")).rejects.toMatchObject({
       status: 500,
-      message: "insert failed"
+      message: "insert failed",
     });
     expect(t.rollback).toHaveBeenCalled();
     expect(t.commit).not.toHaveBeenCalled();
@@ -707,7 +707,7 @@ describe("createPost — branches", () => {
 
     await expect(contentService.createPost({ title: "T" }, "u-1")).rejects.toMatchObject({
       status: 500,
-      message: "Failed to create post"
+      message: "Failed to create post",
     });
     expect(t.rollback).toHaveBeenCalled();
   });
@@ -748,7 +748,7 @@ describe("updatePost — branches", () => {
 
     expect(findOne).toHaveBeenCalledWith({
       where: { slug: "new-slug", id: { [Op.ne]: "p-1" } },
-      paranoid: false
+      paranoid: false,
     });
   });
 
@@ -819,7 +819,7 @@ describe("updatePost — branches", () => {
 
     expect(p.setCategories).toHaveBeenCalledWith(
       ["c-1", "c-2"],
-      expect.objectContaining({ transaction: expect.anything() })
+      expect.objectContaining({ transaction: expect.anything() }),
     );
   });
 
@@ -850,7 +850,7 @@ describe("updatePost — branches", () => {
 
     await expect(contentService.updatePost("p-1", { title: "x" })).rejects.toMatchObject({
       status: 500,
-      message: "update failed"
+      message: "update failed",
     });
     expect(t.rollback).toHaveBeenCalled();
     expect(t.commit).not.toHaveBeenCalled();
@@ -865,7 +865,7 @@ describe("updatePost — branches", () => {
 
     await expect(contentService.updatePost("p-1", { title: "x" })).rejects.toMatchObject({
       status: 500,
-      message: "Failed to update post"
+      message: "Failed to update post",
     });
     expect(t.rollback).toHaveBeenCalled();
   });
@@ -879,7 +879,7 @@ describe("deletePost — error normalisation", () => {
 
     await expect(contentService.deletePost("p-1")).rejects.toMatchObject({
       status: 500,
-      message: "Failed to delete post"
+      message: "Failed to delete post",
     });
   });
 });
@@ -897,7 +897,7 @@ describe("checkSlug — branches", () => {
 
     expect(findOne).toHaveBeenCalledWith({
       where: { slug: "my-slug", id: { [Op.ne]: "p-1" } },
-      paranoid: false
+      paranoid: false,
     });
     expect(result.data.available).toBe(true);
   });
@@ -922,8 +922,8 @@ describe("checkSlug — branches", () => {
   it("should walk past several taken slugs to find a free suggestion", async () => {
     Post.unscoped.mockReturnValue({
       findOne: jest.fn(({ where }: any) =>
-      Promise.resolve(["busy", "busy-2", "busy-3"].includes(where.slug) ? { id: "x" } : null)
-      )
+        Promise.resolve(["busy", "busy-2", "busy-3"].includes(where.slug) ? { id: "x" } : null),
+      ),
     });
 
     const result = await contentService.checkSlug("busy");
@@ -945,8 +945,8 @@ describe("listPublishedPosts — branches", () => {
 
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { status: "PUBLISHED", type: "NEWS" }
-      })
+        where: { status: "PUBLISHED", type: "NEWS" },
+      }),
     );
   });
 
@@ -957,8 +957,8 @@ describe("listPublishedPosts — branches", () => {
 
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({
-        include: [expect.objectContaining({ required: true, where: { slug: "tech" } })]
-      })
+        include: [expect.objectContaining({ required: true, where: { slug: "tech" } })],
+      }),
     );
   });
 
@@ -968,7 +968,7 @@ describe("listPublishedPosts — branches", () => {
     const result = await contentService.listPublishedPosts({});
 
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 10, offset: 0 })
+      expect.objectContaining({ limit: 10, offset: 0 }),
     );
     expect(result.meta.page).toBe(1);
   });
@@ -978,7 +978,7 @@ describe("listPublishedPosts — branches", () => {
 
     await expect(contentService.listPublishedPosts({})).rejects.toMatchObject({
       status: 500,
-      message: "DB down"
+      message: "DB down",
     });
   });
 
@@ -987,7 +987,7 @@ describe("listPublishedPosts — branches", () => {
 
     await expect(contentService.listPublishedPosts({})).rejects.toMatchObject({
       status: 500,
-      message: "Failed to fetch posts"
+      message: "Failed to fetch posts",
     });
   });
 });
@@ -998,7 +998,7 @@ describe("getPublishedPostBySlug — error normalisation", () => {
 
     await expect(contentService.getPublishedPostBySlug("s")).rejects.toMatchObject({
       status: 500,
-      message: "DB down"
+      message: "DB down",
     });
   });
 
@@ -1007,7 +1007,7 @@ describe("getPublishedPostBySlug — error normalisation", () => {
 
     await expect(contentService.getPublishedPostBySlug("s")).rejects.toMatchObject({
       status: 500,
-      message: "Failed to fetch post"
+      message: "Failed to fetch post",
     });
   });
 });
@@ -1022,7 +1022,7 @@ describe("listCategories — errors", () => {
 
     await expect(contentService.listCategories()).rejects.toMatchObject({
       status: 500,
-      message: "DB down"
+      message: "DB down",
     });
   });
 
@@ -1031,7 +1031,7 @@ describe("listCategories — errors", () => {
 
     await expect(contentService.listCategories()).rejects.toMatchObject({
       status: 500,
-      message: "Failed to fetch categories"
+      message: "Failed to fetch categories",
     });
   });
 });
@@ -1045,13 +1045,13 @@ describe("createCategory — branches", () => {
     await contentService.createCategory({
       name: "Tech",
       slug: "Custom Slug",
-      description: "All things tech"
+      description: "All things tech",
     });
 
     expect(Category.create).toHaveBeenCalledWith({
       name: "Tech",
       description: "All things tech",
-      slug: "custom-slug"
+      slug: "custom-slug",
     }, { transaction: expect.anything() });
   });
 
@@ -1063,7 +1063,7 @@ describe("createCategory — branches", () => {
 
     expect(Category.create).toHaveBeenCalledWith(
       expect.objectContaining({ description: null }),
-      { transaction: expect.anything() }
+      { transaction: expect.anything() },
     );
   });
 
@@ -1073,7 +1073,7 @@ describe("createCategory — branches", () => {
 
     await expect(contentService.createCategory({ name: "Tech" })).rejects.toMatchObject({
       status: 500,
-      message: "duplicate"
+      message: "duplicate",
     });
   });
 
@@ -1083,7 +1083,7 @@ describe("createCategory — branches", () => {
 
     await expect(contentService.createCategory({ name: "Tech" })).rejects.toMatchObject({
       status: 500,
-      message: "Failed to create category"
+      message: "Failed to create category",
     });
   });
 });
@@ -1136,7 +1136,7 @@ describe("updateCategory — branches", () => {
     expect(cat.update).toHaveBeenCalledWith({ slug: "fresh-slug" }, { transaction: expect.anything() });
     expect(findOne).toHaveBeenCalledWith({
       where: { slug: "fresh-slug", id: { [Op.ne]: "c-1" } },
-      paranoid: false
+      paranoid: false,
     });
   });
 
@@ -1147,7 +1147,7 @@ describe("updateCategory — branches", () => {
 
     await expect(contentService.updateCategory("c-1", { name: "x" })).rejects.toMatchObject({
       status: 500,
-      message: "locked"
+      message: "locked",
     });
   });
 
@@ -1158,7 +1158,7 @@ describe("updateCategory — branches", () => {
 
     await expect(contentService.updateCategory("c-1", { name: "x" })).rejects.toMatchObject({
       status: 500,
-      message: "Failed to update category"
+      message: "Failed to update category",
     });
   });
 });

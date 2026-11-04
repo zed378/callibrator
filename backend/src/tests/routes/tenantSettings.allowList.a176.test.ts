@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-176 — `PATCH /tenants/settings` accepted ANY key.
  *
@@ -28,21 +28,21 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = { id: "u-admin", tenantId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
       next();
-    }
+    },
   };
 });
 jest.mock("../../middlewares/dynamicAccess.middleware", () => ({
-  dynamicAccess: () => (_req: any, _res: any, next: any) => next()
+  dynamicAccess: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../services/rateLimiter.redis.service", () => ({
-  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next()
+  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../utils/upload.util", () => ({
   upload: () => (_req: any, _res: any, next: any) => next(),
-  deleteUpload: jest.fn()
+  deleteUpload: jest.fn(),
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn().mockResolvedValue(null),
@@ -52,8 +52,8 @@ jest.mock("../../services/redis.service", () => ({
   cacheKeys: {
     tenant: (id: any) => `tenant:${id}`,
     tenantByCode: (code: any) => `tenant:code:${code}`,
-    tenantSettings: (id: any) => `tenant:settings:${id}`
-  }
+    tenantSettings: (id: any) => `tenant:settings:${id}`,
+  },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../config", () => ({
@@ -67,16 +67,16 @@ jest.mock("../../config", () => ({
         },
         async rollback() {
           tx.finished = "rollback";
-        }
+        },
       };
       return tx;
     }),
-    sequelize: { fn: jest.fn() }
-  }
+    sequelize: { fn: jest.fn() },
+  },
 }));
 jest.mock("../../models", () => ({
   Tenants: {
-    findByPk: jest.fn(async () => ({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", settings: {} }))
+    findByPk: jest.fn(async () => ({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", settings: {} })),
   },
   Users: {},
   TenantSettings: {
@@ -85,8 +85,8 @@ jest.mock("../../models", () => ({
       mockStore.writes.push(where.key);
       mockStore.rows.set(where.key, defaults.value);
       return [{ key: where.key, value: defaults.value }, true];
-    })
-  }
+    }),
+  },
 }));
 
 const tenantRouter = require("../../routes/api/tenant.route");
@@ -94,49 +94,49 @@ const tenantRouter = require("../../routes/api/tenant.route");
 // Express's own router.handle with a minimal req/res pair — supertest is not a
 // dependency of this workspace (same harness as certificates.approve.a62).
 const patch = (body: any): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const req: any = {
-    method: "PATCH",
-    url: "/settings",
-    originalUrl: "/api/v1/tenants/settings",
-    body,
-    query: {},
-    params: {},
-    headers: { "user-agent": "jest-agent" },
-    ip: "10.0.0.7",
-    get: () => undefined
-  };
-  tenantRouter.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || err.statusCode || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const req: any = {
+      method: "PATCH",
+      url: "/settings",
+      originalUrl: "/api/v1/tenants/settings",
+      body,
+      query: {},
+      params: {},
+      headers: { "user-agent": "jest-agent" },
+      ip: "10.0.0.7",
+      get: () => undefined,
+    };
+    tenantRouter.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || err.statusCode || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 beforeEach(() => {
   mockStore.rows = new Map();
@@ -146,24 +146,23 @@ beforeEach(() => {
 
 // Keys owned by a gated endpoint or a super admin — or by nothing at all.
 const REFUSED = [
-"legal_hold_enabled",
-"legal_hold_reason",
-"legal_hold_enabled_by",
-"retention_policy_notifications",
-"retention_policy_sessions",
-"lifecycle_status",
-"feature_flag_enable_mfa",
-"ip_allowlist",
-"geofence",
-"oidc_rp_33333333-3333-4333-8333-333333333333",
-"storage_config",
-"storage_credentials",
-"stripe_secret_key",
-"webhook_signing_secret",
-"smtp_password",
-"theme",
-"__proto__x"];
-
+  "legal_hold_enabled",
+  "legal_hold_reason",
+  "legal_hold_enabled_by",
+  "retention_policy_notifications",
+  "retention_policy_sessions",
+  "lifecycle_status",
+  "feature_flag_enable_mfa",
+  "ip_allowlist",
+  "geofence",
+  "oidc_rp_33333333-3333-4333-8333-333333333333",
+  "storage_config",
+  "storage_credentials",
+  "stripe_secret_key",
+  "webhook_signing_secret",
+  "smtp_password",
+  "theme",
+  "__proto__x"];
 
 // What the SSO form writes, and what the SSO/MFA/AI code reads with no other writer.
 const ACCEPTED: any = {
@@ -181,7 +180,7 @@ const ACCEPTED: any = {
   mfa_required_min_role_level: 3,
   ai_vendor: "openai",
   ai_base_url: "https://ai.example/v1",
-  ai_api_key: "sk-ai"
+  ai_api_key: "sk-ai",
 };
 
 describe("A-176 — PATCH /tenants/settings takes only tenant-admin keys", () => {
@@ -205,7 +204,7 @@ describe("A-176 — PATCH /tenants/settings takes only tenant-admin keys", () =>
   it("one refused key refuses the whole request — no partial save", async () => {
     const res = await patch({
       tenantId: TENANT,
-      settings: { sso_enabled: true, retention_policy_notifications: "1" }
+      settings: { sso_enabled: true, retention_policy_notifications: "1" },
     });
 
     expect(res.status).toBe(400);
@@ -213,8 +212,8 @@ describe("A-176 — PATCH /tenants/settings takes only tenant-admin keys", () =>
   });
 
   it.each([
-  ["an object", { a: 1 }],
-  ["an array", ["a"]]]
+    ["an object", { a: 1 }],
+    ["an array", ["a"]]],
   )("refuses an allowed key whose value is %s", async (_name: any, value: any) => {
     const res = await patch({ tenantId: TENANT, settings: { sso_idp_entry_point: value } });
 
@@ -235,15 +234,15 @@ describe("A-176 — PATCH /tenants/settings takes only tenant-admin keys", () =>
   });
 
   it.each([
-  ["required, with a minimum level", "true", "3"],
-  ["not required, no level", "false", ""],
-  // A-160: a level that is not a whole number makes the policy apply to everyone.
-  ["a non-integer level", "true", "abc"]]
+    ["required, with a minimum level", "true", "3"],
+    ["not required, no level", "false", ""],
+    // A-160: a level that is not a whole number makes the policy apply to everyone.
+    ["a non-integer level", "true", "abc"]],
   )("the exact body the MFA policy panel (A-160) sends is accepted — %s", async (_n: any, required: any, level: any) => {
     // frontend/src/app/(app)/dashboard/tenants/components/MfaPolicyPanel.tsx#save
     const res = await patch({
       tenantId: TENANT,
-      settings: { mfa_required: required, mfa_required_min_role_level: level }
+      settings: { mfa_required: required, mfa_required_min_role_level: level },
     });
 
     expect(res.status).toBe(200);
@@ -260,8 +259,8 @@ describe("A-176 — PATCH /tenants/settings takes only tenant-admin keys", () =>
         sso_idp_entity_id: "",
         sso_idp_cert: "",
         sso_sp_entity_id: "",
-        sso_sp_callback_url: ""
-      }
+        sso_sp_callback_url: "",
+      },
     });
 
     expect(res.status).toBe(200);
@@ -279,12 +278,12 @@ describe("A-176 — a server-called URL setting is checked when it is saved", ()
   });
 
   it.each([
-  ["oidc_authority", "http://169.254.169.254/latest", "disallowed (internal) address"],
-  ["oidc_authority", "http://localhost:8080/realms/x", "URL host is not allowed"],
-  ["ai_base_url", "http://10.0.0.5:11434/v1", "disallowed (internal) address"],
-  ["ai_base_url", "http://[::ffff:a9fe:a9fe]/v1", "disallowed (internal) address"],
-  ["ai_base_url", "gopher://ai.example/", "URL must use http or https"],
-  ["oidc_authority", "not a url", "oidc_authority is not a valid URL"]]
+    ["oidc_authority", "http://169.254.169.254/latest", "disallowed (internal) address"],
+    ["oidc_authority", "http://localhost:8080/realms/x", "URL host is not allowed"],
+    ["ai_base_url", "http://10.0.0.5:11434/v1", "disallowed (internal) address"],
+    ["ai_base_url", "http://[::ffff:a9fe:a9fe]/v1", "disallowed (internal) address"],
+    ["ai_base_url", "gopher://ai.example/", "URL must use http or https"],
+    ["oidc_authority", "not a url", "oidc_authority is not a valid URL"]],
   )("refuses %s = %s with a 400, writing nothing", async (key: any, value: any, message: any) => {
     const res = await patch({ tenantId: TENANT, settings: { [key]: value } });
 

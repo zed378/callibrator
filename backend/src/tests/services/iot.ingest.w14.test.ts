@@ -13,12 +13,12 @@ jest.mock("mqtt");
 jest.mock("../../models", () => ({
   CalibrationDevice: { unscoped: jest.fn() },
   IotReading: { create: jest.fn() },
-  Notification: { create: jest.fn() }
+  Notification: { create: jest.fn() },
 }));
 jest.mock("../../config", () => ({ db: { transaction: jest.fn() } }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() }
+  logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
 const mqtt = require("mqtt");
@@ -40,7 +40,7 @@ const connect = async () => {
     once: jest.fn((event: any, cb: any) => {
       if (event === "connect") {setImmediate(cb);}
     }),
-    subscribe: jest.fn()
+    subscribe: jest.fn(),
   };
   mqtt.connect.mockReturnValue(client);
   await iot.connect();
@@ -105,7 +105,7 @@ describe("W-14 — MQTT ingest", () => {
     const pendingIngests = () => {
       const releases: any[] = [];
       jest.spyOn(iot, "ingestReading").mockImplementation(
-        () => new Promise((resolve: any) => releases.push(resolve))
+        () => new Promise((resolve: any) => releases.push(resolve)),
       );
       return releases;
     };
@@ -177,7 +177,7 @@ describe("W-14 — MQTT ingest", () => {
       expect(iot.inFlight).toBe(0);
       expect(logger.error).toHaveBeenCalledWith(
         "MQTT ingest failed",
-        expect.objectContaining({ deviceId: "ghost", tenantId: "t1" })
+        expect.objectContaining({ deviceId: "ghost", tenantId: "t1" }),
       );
     });
 

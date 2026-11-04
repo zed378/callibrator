@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-150 — tenant secrets were copied into `tenants.settings` in plaintext.
  *
@@ -25,19 +25,19 @@ jest.mock("../../services/redis.service", () => ({
   cacheKeys: {
     tenant: (id: any) => `tenant:${id}`,
     tenantByCode: (code: any) => `tenant:code:${code}`,
-    tenantSettings: (id: any) => `tenant:settings:${id}`
-  }
+    tenantSettings: (id: any) => `tenant:settings:${id}`,
+  },
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() }
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
 jest.mock("../../utils/upload.util", () => ({ deleteUpload: jest.fn() }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../config", () => ({
   db: {
     transaction: jest.fn(),
-    sequelize: { fn: jest.fn((name: any, col: any) => `${name}(${col})`) }
-  }
+    sequelize: { fn: jest.fn((name: any, col: any) => `${name}(${col})`) },
+  },
 }));
 
 const mockStore: any = { rows: new Map(), tenant: null };
@@ -46,13 +46,13 @@ jest.mock("../../models", () => ({
   Tenants: {
     findAll: jest.fn(async () => [mockStore.tenant]),
     findByPk: jest.fn(async () => mockStore.tenant),
-    count: jest.fn(async () => 1)
+    count: jest.fn(async () => 1),
   },
   Users: { findAll: jest.fn(async () => []), count: jest.fn(async () => 0) },
   TenantSettings: {
     // Values come back decrypted, as the real afterFind hook returns them.
     findAll: jest.fn(async () =>
-      [...mockStore.rows].map(([key, value]: any) => ({ key, value }))
+      [...mockStore.rows].map(([key, value]: any) => ({ key, value })),
     ),
     findOrCreate: jest.fn(async ({ where, defaults }: any) => {
       if (mockStore.rows.has(where.key)) {
@@ -61,14 +61,14 @@ jest.mock("../../models", () => ({
           value: mockStore.rows.get(where.key),
           update: jest.fn(async ({ value }: any) => {
             mockStore.rows.set(where.key, value);
-          })
+          }),
         };
         return [row, false];
       }
       mockStore.rows.set(where.key, defaults.value);
       return [{ key: where.key, value: defaults.value }, true];
-    })
-  }
+    }),
+  },
 }));
 
 const { db } = require("../../config");
@@ -93,7 +93,7 @@ const SECRETS = {
   private_key: "private-key-value",
   aws_access_key_id: "aws-access-key-id-value",
   ldap_bind_credentials: "ldap-bind-credentials-value",
-  "oidc_rp_11111111-1111-4111-8111-111111111111": '{"clientSecretHash":"rp-hash-value"}'
+  "oidc_rp_11111111-1111-4111-8111-111111111111": '{"clientSecretHash":"rp-hash-value"}',
 };
 const PLAIN = {
   theme: "dark",
@@ -103,7 +103,7 @@ const PLAIN = {
   oidc_client_id: "client-id-value",
   ai_base_url: "https://ai.example",
   ai_vendor: "openai",
-  storage_config: '{"provider":"s3"}'
+  storage_config: '{"provider":"s3"}',
 };
 
 const makeTenant = (settings: any) => {
@@ -113,14 +113,14 @@ const makeTenant = (settings: any) => {
     code: "HOSPA",
     logo: null,
     settings,
-    update: jest.fn(async (values: any) => Object.assign(row, values))
+    update: jest.fn(async (values: any) => Object.assign(row, values)),
   };
   row.toJSON = () => ({
     id: row.id,
     name: row.name,
     code: row.code,
     logo: row.logo,
-    settings: row.settings
+    settings: row.settings,
   });
   return row;
 };
@@ -132,7 +132,7 @@ const tx = () => ({
   }),
   rollback: jest.fn(async function rollback() {
     this.finished = "rollback";
-  })
+  }),
 });
 
 /** Every secret VALUE that appears anywhere in `payload`. */
@@ -163,7 +163,7 @@ describe("A-150 — updateTenantSettings never copies settings into tenants.sett
       TENANT_ID,
       { tenantId: TENANT_ID, settings: { ai_api_key: "sk-new", ai_vendor: "anthropic" } },
       "u-admin",
-      { userId: "u-admin" }
+      { userId: "u-admin" },
     );
 
     expect(mockStore.tenant.update).not.toHaveBeenCalled();
@@ -177,7 +177,7 @@ describe("A-150 — updateTenantSettings never copies settings into tenants.sett
       TENANT_ID,
       { settings: { oidc_client_secret: "[REDACTED]", ai_vendor: "anthropic" } },
       "u-admin",
-      { userId: "u-admin" }
+      { userId: "u-admin" },
     );
 
     expect(mockStore.rows.get("oidc_client_secret")).toBe(SECRETS.oidc_client_secret);
@@ -189,7 +189,7 @@ describe("A-150 — updateTenantSettings never copies settings into tenants.sett
       TENANT_ID,
       { ai_vendor: "[REDACTED]" },
       "u-admin",
-      { userId: "u-admin" }
+      { userId: "u-admin" },
     );
 
     expect(mockStore.rows.get("ai_vendor")).toBe("[REDACTED]");
@@ -203,8 +203,8 @@ describe("A-150 — no tenant or settings response carries a secret", () => {
     "getTenantSettings (POST /tenants/settings)": () => tenantService.getTenantSettings(TENANT_ID),
     "updateTenantSettings (PATCH /tenants/settings)": () =>
       tenantService.updateTenantSettings(TENANT_ID, { ai_vendor: "anthropic" }, "u-admin", {
-        userId: "u-admin"
-      })
+        userId: "u-admin",
+      }),
   };
 
   it.each(Object.keys(responses))("%s", async (name: any) => {

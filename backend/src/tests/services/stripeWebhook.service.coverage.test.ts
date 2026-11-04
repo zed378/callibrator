@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Branch/line coverage tests for stripeWebhook.service.js
  *
@@ -10,7 +10,7 @@
 
 const mockStripeConstructEvent: any = jest.fn();
 const mockStripeFactory: any = jest.fn(() => ({
-  webhooks: { constructEvent: mockStripeConstructEvent }
+  webhooks: { constructEvent: mockStripeConstructEvent },
 }));
 
 jest.mock("stripe", () => mockStripeFactory);
@@ -20,7 +20,7 @@ jest.mock("../../models", () => ({
   // A-276 (ADR-094): status decisions read the tenant and save it in a
   // transaction with their audit rows. No tenant row unless a test sets one.
   Tenant: { update: jest.fn(), findByPk: jest.fn().mockResolvedValue(null) },
-  TenantSettings: { upsert: jest.fn() }
+  TenantSettings: { upsert: jest.fn() },
 }));
 jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb: any) => cb("tx")) } }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
@@ -28,7 +28,7 @@ jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockReso
 /** A tenant row as the webhook reads it, whose save() records nothing. */
 const tenantRow = (values: any = {}) => ({ id: "t1", status: "active", suspensionReason: null, suspendedBy: null, save: jest.fn(), ...values });
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const stripeWebhook = require("../../services/stripeWebhook.service");
@@ -40,7 +40,7 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 const loadWith = (env: any) => {
   const saved = {
     STRIPE_WEBHOOK_SECRET: process.env["STRIPE_WEBHOOK_SECRET"],
-    NODE_ENV: process.env["NODE_ENV"]
+    NODE_ENV: process.env["NODE_ENV"],
   };
   let mod: any;
   try {
@@ -88,7 +88,7 @@ describe("stripeWebhook.service (coverage)", () => {
       expect(mockStripeConstructEvent).toHaveBeenCalledWith(
         raw,
         "t=1,v1=abc",
-        "whsec_test"
+        "whsec_test",
       );
     });
 
@@ -111,7 +111,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       try {
         expect(() => svc.constructEvent(Buffer.from("{}"), "sig")).toThrow(
-          "STRIPE_WEBHOOK_SECRET is not configured"
+          "STRIPE_WEBHOOK_SECRET is not configured",
         );
       } finally {
         process.env["NODE_ENV"] = savedNodeEnv;
@@ -124,18 +124,18 @@ describe("stripeWebhook.service (coverage)", () => {
     it("accepts an unverified string body off-production and warns", () => {
       const svc = loadWith({
         STRIPE_WEBHOOK_SECRET: undefined,
-        NODE_ENV: "test"
+        NODE_ENV: "test",
       });
 
       const event = svc.constructEvent(
         JSON.stringify({ type: "invoice.paid", data: { object: { id: "in1" } } }),
-        "sig"
+        "sig",
       );
 
       expect(event.type).toBe("invoice.paid");
       expect(event.data.object.id).toBe("in1");
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("STRIPE_WEBHOOK_SECRET not set")
+        expect.stringContaining("STRIPE_WEBHOOK_SECRET not set"),
       );
     });
   });
@@ -145,27 +145,27 @@ describe("stripeWebhook.service (coverage)", () => {
     it("falls back to the customer lookup when the subscription id misses", async () => {
       const sub = { id: "sub1", tenantId: "t1", status: "Active", update: jest.fn() };
       Subscription.findOne.
-      mockResolvedValueOnce(null) // by stripeSubscriptionId
-      .mockResolvedValueOnce(sub); // by stripeCustomerId
+        mockResolvedValueOnce(null) // by stripeSubscriptionId
+        .mockResolvedValueOnce(sub); // by stripeCustomerId
 
       const r = await stripeWebhook.handleEvent({
         type: "invoice.paid",
-        data: { object: { id: "in1", subscription: "sub_x", customer: "cus_1" } }
+        data: { object: { id: "in1", subscription: "sub_x", customer: "cus_1" } },
       });
 
       expect(r).toEqual({ handled: true, subscriptionId: "sub1", tenant: "no-tenant" });
       expect(Subscription.findOne).toHaveBeenNthCalledWith(1, {
-        where: { stripeSubscriptionId: "sub_x" }
+        where: { stripeSubscriptionId: "sub_x" },
       });
       expect(Subscription.findOne).toHaveBeenNthCalledWith(2, {
-        where: { stripeCustomerId: "cus_1" }
+        where: { stripeCustomerId: "cus_1" },
       });
     });
 
     it("does not query at all when neither subscription nor customer id is present", async () => {
       const r = await stripeWebhook.handleEvent({
         type: "invoice.paid",
-        data: { object: { id: "in1" } }
+        data: { object: { id: "in1" } },
       });
 
       expect(r).toEqual({ handled: false, reason: "subscription not found" });
@@ -188,11 +188,11 @@ describe("stripeWebhook.service (coverage)", () => {
 
       await stripeWebhook.handleEvent({
         type: "invoice.payment_succeeded",
-        data: { object: { id: "in_bare", subscription: "sub_x" } }
+        data: { object: { id: "in_bare", subscription: "sub_x" } },
       });
 
       expect(Invoice.findOne).toHaveBeenCalledWith({
-        where: { stripeInvoiceId: "in_bare" }
+        where: { stripeInvoiceId: "in_bare" },
       });
       expect(Invoice.create).toHaveBeenCalledWith({
         tenantId: "t1",
@@ -202,7 +202,7 @@ describe("stripeWebhook.service (coverage)", () => {
         currency: "USD",
         status: "Paid",
         invoiceUrl: null,
-        stripeInvoiceId: "in_bare"
+        stripeInvoiceId: "in_bare",
       });
     });
 
@@ -219,9 +219,9 @@ describe("stripeWebhook.service (coverage)", () => {
             amount_due: 12345,
             amount_paid: 12345,
             currency: "eur",
-            hosted_invoice_url: "https://stripe.test/i/1"
-          }
-        }
+            hosted_invoice_url: "https://stripe.test/i/1",
+          },
+        },
       });
 
       expect(Invoice.create).toHaveBeenCalledWith(
@@ -229,8 +229,8 @@ describe("stripeWebhook.service (coverage)", () => {
           amountDue: 123.45,
           amountPaid: 123.45,
           currency: "EUR",
-          invoiceUrl: "https://stripe.test/i/1"
-        })
+          invoiceUrl: "https://stripe.test/i/1",
+        }),
       );
     });
 
@@ -240,7 +240,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "invoice.paid",
-        data: { object: { id: "in1", subscription: "sub_x" } }
+        data: { object: { id: "in1", subscription: "sub_x" } },
       });
 
       expect(r.handled).toBe(true);
@@ -258,7 +258,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "invoice.payment_failed",
-        data: { object: { id: "in3", subscription: "sub_x", attempt_count: 3 } }
+        data: { object: { id: "in3", subscription: "sub_x", attempt_count: 3 } },
       });
 
       expect(r).toEqual({ handled: true, subscriptionId: "sub1", suspended: true });
@@ -273,7 +273,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "invoice.payment_failed",
-        data: { object: { id: "in7", subscription: "sub_x", attempt_count: 3 } }
+        data: { object: { id: "in7", subscription: "sub_x", attempt_count: 3 } },
       });
 
       expect(r.suspended).toBe(false);
@@ -286,13 +286,13 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "invoice.payment_failed",
-        data: { object: { id: "in4", subscription: "sub_x", attempt_count: 1 } }
+        data: { object: { id: "in4", subscription: "sub_x", attempt_count: 1 } },
       });
 
       expect(r).toEqual({ handled: true, subscriptionId: "sub1", suspended: false });
       expect(Tenant.update).not.toHaveBeenCalled();
       expect(Invoice.create).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "Open" })
+        expect.objectContaining({ status: "Open" }),
       );
     });
 
@@ -302,7 +302,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "invoice.payment_failed",
-        data: { object: { id: "in5", subscription: "sub_x" } }
+        data: { object: { id: "in5", subscription: "sub_x" } },
       });
 
       expect(r.suspended).toBe(false);
@@ -314,7 +314,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "invoice.payment_failed",
-        data: { object: { id: "in6", subscription: "nope" } }
+        data: { object: { id: "in6", subscription: "nope" } },
       });
 
       expect(r).toEqual({ handled: false, reason: "subscription not found" });
@@ -341,9 +341,9 @@ describe("stripeWebhook.service (coverage)", () => {
             status: "trialing",
             current_period_start: start,
             current_period_end: end,
-            items: { data: [{ price: { nickname: "enterprise" } }] }
-          }
-        }
+            items: { data: [{ price: { nickname: "enterprise" } }] },
+          },
+        },
       });
 
       expect(r.status).toBe("Active");
@@ -351,7 +351,7 @@ describe("stripeWebhook.service (coverage)", () => {
         status: "Active",
         currentPeriodStart: new Date(start * 1000),
         currentPeriodEnd: new Date(end * 1000),
-        planId: "enterprise"
+        planId: "enterprise",
       });
       // A-305: written on the row in a transaction, with its audit rows.
       expect(tenant.plan).toBe("enterprise");
@@ -365,7 +365,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       await stripeWebhook.handleEvent({
         type: "customer.subscription.updated",
-        data: { object: { id: "sub_x", status: "past_due", metadata: { plan: "business" } } }
+        data: { object: { id: "sub_x", status: "past_due", metadata: { plan: "business" } } },
       });
 
       expect(Tenant.update).not.toHaveBeenCalled();
@@ -377,7 +377,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "customer.subscription.updated",
-        data: { object: { id: "sub_x", status: "paused" } }
+        data: { object: { id: "sub_x", status: "paused" } },
       });
 
       expect(r.status).toBe("PastDue");
@@ -392,7 +392,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "customer.subscription.updated",
-        data: { object: { id: "sub_x", status: "unpaid", metadata: { plan: "gold" } } }
+        data: { object: { id: "sub_x", status: "unpaid", metadata: { plan: "gold" } } },
       });
 
       expect(r.status).toBe("Unpaid");
@@ -408,7 +408,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       await stripeWebhook.handleEvent({
         type: "customer.subscription.updated",
-        data: { object: { id: "sub_x", status: "active", items: { data: [] } } }
+        data: { object: { id: "sub_x", status: "active", items: { data: [] } } },
       });
 
       expect(sub.update).toHaveBeenCalledWith({ status: "Active" });
@@ -420,7 +420,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "customer.subscription.updated",
-        data: { object: { id: "sub_x" } }
+        data: { object: { id: "sub_x" } },
       });
 
       expect(r).toEqual({ handled: false, reason: "subscription not found" });
@@ -437,7 +437,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "customer.subscription.deleted",
-        data: { object: { id: "sub_x", customer: "cus_1" } }
+        data: { object: { id: "sub_x", customer: "cus_1" } },
       });
 
       expect(r).toEqual({ handled: true, subscriptionId: "sub1" });
@@ -452,7 +452,7 @@ describe("stripeWebhook.service (coverage)", () => {
 
       const r = await stripeWebhook.handleEvent({
         type: "customer.subscription.deleted",
-        data: { object: { id: "sub_x" } }
+        data: { object: { id: "sub_x" } },
       });
 
       expect(r).toEqual({ handled: false, reason: "subscription not found" });
@@ -465,12 +465,12 @@ describe("stripeWebhook.service (coverage)", () => {
     it("reports the event type back as unhandled", async () => {
       const r = await stripeWebhook.handleEvent({
         type: "customer.created",
-        data: { object: { id: "cus_1" } }
+        data: { object: { id: "cus_1" } },
       });
 
       expect(r).toEqual({
         handled: false,
-        reason: "unhandled event type: customer.created"
+        reason: "unhandled event type: customer.created",
       });
       expect(Subscription.findOne).not.toHaveBeenCalled();
     });

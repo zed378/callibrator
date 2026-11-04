@@ -1,25 +1,25 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 // A-278 (ADR-094): the write runs in a transaction with its audit row; the
 // double passes a marker through so the write's options can be asserted.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("tx")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("tx")) },
 }));
 
 jest.mock("../../models", () => ({
   SupplierScorecard: {
     create: jest.fn(),
     findAndCountAll: jest.fn(),
-    findOne: jest.fn()
+    findOne: jest.fn(),
   },
   Vendor: {
-    findOne: jest.fn()
+    findOne: jest.fn(),
   },
   User: {
-    name: "User"
-  }
+    name: "User",
+  },
 }));
 
 jest.mock("../../utils/appError.util", () => ({
@@ -30,7 +30,7 @@ jest.mock("../../utils/appError.util", () => ({
       this.statusCode = statusCode;
       this.name = "AppError";
     }
-  }
+  },
 }));
 
 const {
@@ -38,7 +38,7 @@ const {
   getScorecards,
   getScorecardById,
   updateScorecard,
-  deleteScorecard
+  deleteScorecard,
 } = require("../../services/supplierScorecard.service");
 
 describe("supplierScorecard.service", () => {
@@ -57,7 +57,7 @@ describe("supplierScorecard.service", () => {
       const result = await createScorecard("tenant123", {
         vendorId: "v1",
         score: 85,
-        status: "active"
+        status: "active",
       }, "user456");
 
       expect(Vendor.findOne).toHaveBeenCalledWith({ where: { id: "v1", tenantId: "tenant123" } });
@@ -66,7 +66,7 @@ describe("supplierScorecard.service", () => {
         score: 85,
         status: "active",
         tenantId: "tenant123",
-        evaluatedBy: "user456"
+        evaluatedBy: "user456",
       }, { transaction: "tx" });
       expect(result).toEqual({ id: "s1", score: 85 });
     });
@@ -75,7 +75,7 @@ describe("supplierScorecard.service", () => {
       Vendor.findOne.mockResolvedValue(null);
 
       await expect(
-        createScorecard("tenant123", { vendorId: "v999", score: 90 }, "user1")
+        createScorecard("tenant123", { vendorId: "v999", score: 90 }, "user1"),
       ).rejects.toThrow("Vendor not found");
     });
 
@@ -86,7 +86,7 @@ describe("supplierScorecard.service", () => {
       const result = await createScorecard("t1", { vendorId: "v1" }, "u1");
 
       expect(SupplierScorecard.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: "t1", evaluatedBy: "u1" }), { transaction: "tx" }
+        expect.objectContaining({ tenantId: "t1", evaluatedBy: "u1" }), { transaction: "tx" },
       );
       expect(result).toEqual({ id: "s2" });
     });
@@ -105,16 +105,16 @@ describe("supplierScorecard.service", () => {
         offset: 0,
         order: [["evaluationDate", "DESC"], ["id", "DESC"]],
         include: [
-        { model: Vendor, as: "vendor", attributes: ["id", "name"] },
-        // A-90: LEFT JOIN — see includes.a90.test.js for the SQL.
-        { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false }]
+          { model: Vendor, as: "vendor", attributes: ["id", "name"] },
+          // A-90: LEFT JOIN — see includes.a90.test.js for the SQL.
+          { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false }],
 
       });
       expect(result).toEqual({
         rows: mockRows,
         total: 1,
         page: 1,
-        totalPages: 1
+        totalPages: 1,
       });
     });
 
@@ -125,8 +125,8 @@ describe("supplierScorecard.service", () => {
 
       expect(SupplierScorecard.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: "t1", vendorId: "v1", status: "active" }
-        })
+          where: { tenantId: "t1", vendorId: "v1", status: "active" },
+        }),
       );
     });
 
@@ -138,8 +138,8 @@ describe("supplierScorecard.service", () => {
       expect(SupplierScorecard.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
           limit: 15,
-          offset: 30
-        })
+          offset: 30,
+        }),
       );
       expect(result.totalPages).toBe(3);
     });
@@ -162,9 +162,9 @@ describe("supplierScorecard.service", () => {
       expect(SupplierScorecard.findOne).toHaveBeenCalledWith({
         where: { id: "s1", tenantId: "tenant123" },
         include: [
-        { model: Vendor, as: "vendor", attributes: ["id", "name"] },
-        // A-90: LEFT JOIN — see includes.a90.test.js for the SQL.
-        { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false }]
+          { model: Vendor, as: "vendor", attributes: ["id", "name"] },
+          // A-90: LEFT JOIN — see includes.a90.test.js for the SQL.
+          { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false }],
 
       });
       expect(result).toEqual(mock);
@@ -185,7 +185,7 @@ describe("supplierScorecard.service", () => {
         update: jest.fn((data: any) => {
           Object.assign(mock, data);
           return Promise.resolve(mock);
-        })
+        }),
       };
       SupplierScorecard.findOne.mockResolvedValue(mock);
 
@@ -206,7 +206,7 @@ describe("supplierScorecard.service", () => {
     it("should delete scorecard and return true", async () => {
       const mock: any = {
         id: "s1",
-        destroy: jest.fn().mockResolvedValue(true)
+        destroy: jest.fn().mockResolvedValue(true),
       };
       SupplierScorecard.findOne.mockResolvedValue(mock);
 

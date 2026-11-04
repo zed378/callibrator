@@ -78,7 +78,7 @@ jest.mock("../../controllers/eSignature.controller", () => controllerMock);
 
 import fs from "fs";
 import path from "path";
-/* eslint-disable @typescript-eslint/no-require-imports */
+
 const RolesService = require("../../services/roles.service") as typeof import("../../services/roles.service");
 const { getUserOverrideMatrix } = require("../../services/userPermission.service") as typeof import("../../services/userPermission.service");
 const controller = require("../../controllers/eSignature.controller") as typeof controllerMock;
@@ -89,7 +89,6 @@ const {
   seededMenuVocabulary,
 } = require("../../utils/authorizationWiring.util") as typeof import("../../utils/authorizationWiring.util");
 const router = require("../../routes/api/eSignature.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 interface HttpResponse {
   status: number;

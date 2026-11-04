@@ -16,7 +16,7 @@ jest.mock("fs", () => {
       mkdir: jest.fn(),
       writeFile: jest.fn(),
       stat: jest.fn(),
-      rm: jest.fn()
+      rm: jest.fn(),
     },
     createWriteStream: jest.fn().mockImplementation(() => {
       const ws: any = {
@@ -26,13 +26,13 @@ jest.mock("fs", () => {
           }
           return ws;
         }),
-        triggerClose: true
+        triggerClose: true,
       };
       return ws;
     }),
     existsSync: jest.fn(),
     rmSync: jest.fn(),
-    unlinkSync: jest.fn()
+    unlinkSync: jest.fn(),
   };
 });
 
@@ -54,7 +54,7 @@ jest.mock("archiver", () => {
       directory: jest.fn(),
       finalize: jest.fn(),
       triggerEnd: true,
-      triggerError: false
+      triggerError: false,
     };
     return arch;
   });
@@ -66,24 +66,24 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
     info: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
-    debug: jest.fn()
-  }
+    debug: jest.fn(),
+  },
 }));
 
 jest.mock("../../config", () => ({
   db: {
     // A-153/A-154: the erasure runs in a managed transaction.
-    transaction: jest.fn(async (cb: any) => cb({ id: "tx" }))
-  }
+    transaction: jest.fn(async (cb: any) => cb({ id: "tx" })),
+  },
 }));
 
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../utils/upload.util", () => ({ deleteUpload: jest.fn() }));
 jest.mock("../../services/session.service", () => ({
-  revokeOtherSessions: jest.fn().mockResolvedValue(0)
+  revokeOtherSessions: jest.fn().mockResolvedValue(0),
 }));
 jest.mock("../../services/mfa.service", () => ({
-  MFA_CLEARED: { mfaEnabled: false, mfaSecret: null }
+  MFA_CLEARED: { mfaEnabled: false, mfaSecret: null },
 }));
 
 jest.mock("../../utils/appError.util", () => ({
@@ -92,7 +92,7 @@ jest.mock("../../utils/appError.util", () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 
 jest.mock("../../models", () => {
@@ -103,7 +103,7 @@ jest.mock("../../models", () => {
     create: jest.fn().mockResolvedValue({ id: "rec-1" }),
     update: jest.fn().mockResolvedValue([1]),
     destroy: jest.fn().mockResolvedValue(1),
-    ...overrides
+    ...overrides,
   });
   return {
     User: model({
@@ -116,12 +116,12 @@ jest.mock("../../models", () => {
         status: "active",
         createdAt: new Date().toISOString(),
         lastLoginAt: new Date().toISOString(),
-        Role: { name: "USER" }
+        Role: { name: "USER" },
       }),
       findByPk: jest.fn().mockResolvedValue({
         id: "user-1",
-        privacyPreferences: { marketing: false }
-      })
+        privacyPreferences: { marketing: false },
+      }),
     }),
     Role: model(),
     AuditLog: model(),
@@ -141,7 +141,7 @@ jest.mock("../../models", () => {
     StockTransfer: model(),
     StockAdjustment: model(),
     StockOpname: model(),
-    MaintenanceWorkOrder: model()
+    MaintenanceWorkOrder: model(),
   };
 });
 
@@ -149,7 +149,7 @@ const gdprService = require("../../services/gdpr.service");
 const {
   User,
   ConsentRecord,
-  DsarRequest
+  DsarRequest,
 } = require("../../models");
 const fs = require("fs");
 
@@ -186,7 +186,7 @@ describe("gdprService", () => {
       jest.useRealTimers();
       process.env["GDPR_ENABLED"] = "false";
       await expect(
-        gdprService.exportUserData("tenant-1", "user-1")
+        gdprService.exportUserData("tenant-1", "user-1"),
       ).rejects.toThrow("Data export is disabled");
     });
 
@@ -204,11 +204,11 @@ describe("gdprService", () => {
       jest.useRealTimers();
       User.findOne.mockResolvedValueOnce(null);
       await expect(
-        gdprService.exportUserData("tenant-1", "nonexistent")
+        gdprService.exportUserData("tenant-1", "nonexistent"),
       ).rejects.toMatchObject({ status: 404, message: "User not found" });
       expect(fs.promises.rm).toHaveBeenCalledWith(expect.any(String), {
         recursive: true,
-        force: true
+        force: true,
       });
     });
 
@@ -229,7 +229,7 @@ describe("gdprService", () => {
 
       await expect(gdprService.exportUserData("tenant-1", "user-1")).rejects.toMatchObject({
         status: 500,
-        message: "Failed to export user data"
+        message: "Failed to export user data",
       });
     });
 
@@ -240,7 +240,7 @@ describe("gdprService", () => {
       });
 
       await expect(
-        gdprService.exportUserData("tenant-1", "user-1")
+        gdprService.exportUserData("tenant-1", "user-1"),
       ).rejects.toThrow("Failed to export user data");
     });
 
@@ -259,13 +259,13 @@ describe("gdprService", () => {
           }),
           pipe: jest.fn(),
           directory: jest.fn(),
-          finalize: jest.fn()
+          finalize: jest.fn(),
         };
         return arch;
       });
 
       await expect(
-        gdprService.exportUserData("tenant-1", "user-1")
+        gdprService.exportUserData("tenant-1", "user-1"),
       ).rejects.toThrow("Failed to export user data");
     });
 
@@ -293,11 +293,11 @@ describe("gdprService", () => {
         tenantId: "tenant-1",
         userId: "user-1",
         createdAt: expect.any(String),
-        expiresAt: result.expiresAt
+        expiresAt: result.expiresAt,
       });
       expect(fs.promises.rm).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`${result.exportId}$`)), {
         recursive: true,
-        force: true
+        force: true,
       });
       const longTimers = setTimeoutSpy.mock.calls.filter(([, ms]: any) => ms >= 3600000);
       expect(longTimers).toEqual([]);
@@ -326,7 +326,7 @@ describe("gdprService", () => {
       const real = storage.getTenantStorage.getMockImplementation();
       storage.getTenantStorage.mockImplementationOnce(async (t: any) => ({
         ...(await real(t)),
-        delete: jest.fn().mockRejectedValue(new Error("bucket unreachable"))
+        delete: jest.fn().mockRejectedValue(new Error("bucket unreachable")),
       }));
       const { CalibrationRecord } = require("../../models");
       CalibrationRecord.findAll.mockRejectedValueOnce(new Error("table gone"));
@@ -360,7 +360,7 @@ describe("gdprService", () => {
     it("should throw error when GDPR is disabled", async () => {
       process.env["GDPR_ENABLED"] = "false";
       await expect(
-        gdprService.eraseUserData("tenant-1", "user-1")
+        gdprService.eraseUserData("tenant-1", "user-1"),
       ).rejects.toThrow("Data erasure is disabled");
     });
 
@@ -368,7 +368,7 @@ describe("gdprService", () => {
     it("refuses an erasure that names no requester, and erases nothing", async () => {
       await expect(gdprService.eraseUserData("tenant-1", "user-1")).rejects.toMatchObject({
         status: 400,
-        message: "An erasure must name the user who requested it"
+        message: "An erasure must name the user who requested it",
       });
       expect(User.update).not.toHaveBeenCalled();
     });
@@ -379,7 +379,7 @@ describe("gdprService", () => {
 
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({ userId: "dpo-1", resourceId: "user-1", action: "DELETE" }),
-        { transaction: { id: "tx" } }
+        { transaction: { id: "tx" } },
       );
     });
 
@@ -394,7 +394,7 @@ describe("gdprService", () => {
     it("should soft delete when anonymize is false", async () => {
       const result = await gdprService.eraseUserData("tenant-1", "user-1", {
         anonymize: false,
-        requestedBy: "user-1"
+        requestedBy: "user-1",
       });
 
       expect(result.method).toBe("soft_deleted");
@@ -403,14 +403,14 @@ describe("gdprService", () => {
     // D-11: there is no physical delete. The flag used to run a paranoid
     // (soft) destroy that left every column readable and report "hard_deleted".
     it.each([
-    [{ hardDelete: true, anonymize: false }],
-    [{ hardDelete: true }]]
+      [{ hardDelete: true, anonymize: false }],
+      [{ hardDelete: true }]],
     )("D-11: refuses hardDelete (%j) with a 400 that says what an erasure does instead, and touches nothing", async (flags: any) => {
       await expect(
-        gdprService.eraseUserData("tenant-1", "user-1", { ...flags, requestedBy: "user-1" })
+        gdprService.eraseUserData("tenant-1", "user-1", { ...flags, requestedBy: "user-1" }),
       ).rejects.toMatchObject({
         status: 400,
-        message: expect.stringMatching(/^A physical delete of an account is not offered: .*pseudonymises the account in place/)
+        message: expect.stringMatching(/^A physical delete of an account is not offered: .*pseudonymises the account in place/),
       });
       expect(User.update).not.toHaveBeenCalled();
       expect(User.destroy).not.toHaveBeenCalled();
@@ -419,7 +419,7 @@ describe("gdprService", () => {
     it("should throw AppError on database exception during erasure", async () => {
       User.update.mockRejectedValueOnce(new Error("Update failed"));
       await expect(
-        gdprService.eraseUserData("tenant-1", "user-1", { requestedBy: "user-1" })
+        gdprService.eraseUserData("tenant-1", "user-1", { requestedBy: "user-1" }),
       ).rejects.toThrow("Failed to erase user data");
     });
   });
@@ -428,7 +428,7 @@ describe("gdprService", () => {
     it("should throw error when GDPR is disabled", async () => {
       process.env["GDPR_ENABLED"] = "false";
       await expect(
-        gdprService.recordConsent("tenant-1", "user-1", "analytics")
+        gdprService.recordConsent("tenant-1", "user-1", "analytics"),
       ).rejects.toThrow("Consent management is disabled");
     });
 
@@ -436,7 +436,7 @@ describe("gdprService", () => {
       const result = await gdprService.recordConsent(
         "tenant-1",
         "user-1",
-        "analytics"
+        "analytics",
       );
       expect(result).toHaveProperty("consentId");
     });
@@ -444,7 +444,7 @@ describe("gdprService", () => {
     it("should throw error when consent creation fails", async () => {
       ConsentRecord.create.mockRejectedValueOnce(new Error("DB error"));
       await expect(
-        gdprService.recordConsent("tenant-1", "user-1", "analytics")
+        gdprService.recordConsent("tenant-1", "user-1", "analytics"),
       ).rejects.toThrow("Failed to record consent");
     });
   });
@@ -453,7 +453,7 @@ describe("gdprService", () => {
     it("should throw error when GDPR is disabled", async () => {
       process.env["GDPR_ENABLED"] = "false";
       await expect(
-        gdprService.withdrawConsent("tenant-1", "user-1", "analytics")
+        gdprService.withdrawConsent("tenant-1", "user-1", "analytics"),
       ).rejects.toThrow("Consent management is disabled");
     });
 
@@ -461,7 +461,7 @@ describe("gdprService", () => {
       const result = await gdprService.withdrawConsent(
         "tenant-1",
         "user-1",
-        "analytics"
+        "analytics",
       );
       expect(result).toHaveProperty("withdrawn", true);
     });
@@ -469,7 +469,7 @@ describe("gdprService", () => {
     it("should throw error when consent withdraw fails", async () => {
       ConsentRecord.update.mockRejectedValueOnce(new Error("DB error"));
       await expect(
-        gdprService.withdrawConsent("tenant-1", "user-1", "analytics")
+        gdprService.withdrawConsent("tenant-1", "user-1", "analytics"),
       ).rejects.toThrow("Failed to withdraw consent");
     });
   });
@@ -477,7 +477,7 @@ describe("gdprService", () => {
   describe("getConsentHistory", () => {
     it("should return consent history", async () => {
       ConsentRecord.findAll.mockResolvedValueOnce([
-      { id: "consent-1", purpose: "analytics" }]
+        { id: "consent-1", purpose: "analytics" }],
       );
       const result = await gdprService.getConsentHistory("tenant-1", "user-1");
       expect(result).toHaveLength(1);
@@ -500,7 +500,7 @@ describe("gdprService", () => {
       const result = await gdprService.createDsar(
         "tenant-1",
         "user-1",
-        "export"
+        "export",
       );
       expect(result).toHaveProperty("dsarId");
     });
@@ -508,7 +508,7 @@ describe("gdprService", () => {
     it("should throw error if DSAR creation throws database exception", async () => {
       DsarRequest.create.mockRejectedValueOnce(new Error("DB error"));
       await expect(
-        gdprService.createDsar("tenant-1", "user-1", "export")
+        gdprService.createDsar("tenant-1", "user-1", "export"),
       ).rejects.toThrow("Failed to create DSAR");
     });
   });
@@ -517,7 +517,7 @@ describe("gdprService", () => {
     it("should return dsar record", async () => {
       DsarRequest.findOne.mockResolvedValueOnce({
         id: "dsar-1",
-        status: "pending"
+        status: "pending",
       });
       const result = await gdprService.getDsarStatus("tenant-1", "dsar-1");
       expect(result.status).toBe("pending");
@@ -536,7 +536,7 @@ describe("gdprService", () => {
 
       expect(result).toBeNull();
       expect(DsarRequest.findOne).toHaveBeenCalledWith({
-        where: { tenantId: "tenant-1", id: "nonexistent" }
+        where: { tenantId: "tenant-1", id: "nonexistent" },
       });
     });
   });

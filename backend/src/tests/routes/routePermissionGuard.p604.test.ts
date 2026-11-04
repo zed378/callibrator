@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * P6-04 — no route without a permission gate.
  *
@@ -52,7 +52,7 @@ const {
   ROUTE_GATE_EXEMPTIONS,
   KINDS,
   EXEMPTION_KINDS,
-  publicRoutes
+  publicRoutes,
 } = require("../../constants/routeGateExemptions");
 
 const SRC = path.join(__dirname, "..", "..");
@@ -80,8 +80,8 @@ tagFactory(rbacMiddleware, "checkRoleLevel");
 tagFactory(abacMiddleware, "abac");
 
 const DIRECT_GATES = new Map([
-[authMiddleware.superAdminOnly, "superAdminOnly"],
-[dynamicAccessMiddleware.hasDynamicPermission, "hasDynamicPermission"]]
+  [authMiddleware.superAdminOnly, "superAdminOnly"],
+  [dynamicAccessMiddleware.hasDynamicPermission, "hasDynamicPermission"]],
 );
 const AUTHENTICATORS = new Set([authMiddleware.auth, authMiddleware.optionalAuth]);
 
@@ -104,16 +104,16 @@ const gateOf = (fn: any) => {
 // ---------------------------------------------------------------------------
 
 const listJs = (dir: any) =>
-fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry: any) => {
-  const full = path.join(dir, entry.name);
-  if (entry.isDirectory()) {
-    return listJs(full);
-  }
-  // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
-  // P9-25 (ADR-103): a route's `*.openapi.ts` contract module and a `.d.ts`
-  // are not route modules — they export no router.
-  return /\.(js|ts)$/.test(entry.name) && !/\.(openapi|d)\.ts$/.test(entry.name) ? [full] : [];
-});
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry: any) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return listJs(full);
+    }
+    // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
+    // P9-25 (ADR-103): a route's `*.openapi.ts` contract module and a `.d.ts`
+    // are not route modules — they export no router.
+    return /\.(js|ts)$/.test(entry.name) && !/\.(openapi|d)\.ts$/.test(entry.name) ? [full] : [];
+  });
 
 const isRouter = (value: any) => typeof value === "function" && Array.isArray(value.stack);
 
@@ -124,7 +124,7 @@ const isRouter = (value: any) => typeof value === "function" && Array.isArray(va
  * @returns {Function[]} routers
  */
 const routersOf = (exported: any) =>
-isRouter(exported) ? [exported] : Object.values(exported || {}).filter(isRouter);
+  isRouter(exported) ? [exported] : Object.values(exported || {}).filter(isRouter);
 
 /**
  * Walk one router's stack into routes, each with the full chain Express runs:
@@ -206,7 +206,7 @@ const serviceCheckExists = (check: any, readSource: any) => {
   }
   const escaped = fn.replace(/[$]/g, "\\$");
   return new RegExp(
-    `(?:\\bfunction\\s+${escaped}\\s*\\(|\\b(?:const|let)\\s+${escaped}\\s*=|\\bexports\\.${escaped}\\s*=|\\bstatic\\s+(?:async\\s+)?${escaped}\\s*\\()`
+    `(?:\\bfunction\\s+${escaped}\\s*\\(|\\b(?:const|let)\\s+${escaped}\\s*=|\\bexports\\.${escaped}\\s*=|\\bstatic\\s+(?:async\\s+)?${escaped}\\s*\\()`,
   ).test(source);
 };
 
@@ -253,7 +253,7 @@ const checkRoutes = ({ routes, appRoutes, exemptions, slugs, readSource }: any) 
     if (!entry) {
       violations.push(
         `${id}: no permission gate (dynamicAccess / rbac / checkRoleLevel / abac / superAdminOnly) and no exemption in constants/routeGateExemptions.js — ` +
-        "every principal with a token can call it"
+        "every principal with a token can call it",
       );
       continue;
     }
@@ -354,8 +354,8 @@ beforeAll(() => {
     routerCount,
     appRoutes: {
       "index.ts": appRoutesIn(fs.readFileSync(INDEX_FILE, "utf8")),
-      "docs/apiDocs.ts": appRoutesIn(fs.readFileSync(API_DOCS_FILE, "utf8"))
-    }
+      "docs/apiDocs.ts": appRoutesIn(fs.readFileSync(API_DOCS_FILE, "utf8")),
+    },
   };
 });
 
@@ -380,7 +380,7 @@ describe("P6-04 — every route carries a permission gate or a reviewed exemptio
       appRoutes: tree.appRoutes,
       exemptions: ROUTE_GATE_EXEMPTIONS,
       slugs: seededMenuSlugs(),
-      readSource: readSrc
+      readSource: readSrc,
     });
     expect(violations).toEqual([]);
   });
@@ -391,7 +391,7 @@ describe("P6-04 — every route carries a permission gate or a reviewed exemptio
     // P9-25 (ADR-103): the API reference's routers are mounted by docs/apiDocs.ts,
     // under SWAGGER_ENABLED — imported there, and each app.use()d there.
     const MOUNTED_BY_API_DOCS: any = {
-      "./src/routes/internal/apiDocs.route": ["apiDocsRoutes", "apiDocsSpecRoutes"]
+      "./src/routes/internal/apiDocs.route": ["apiDocsRoutes", "apiDocsSpecRoutes"],
     };
     const apiDocsSource = fs.readFileSync(API_DOCS_FILE, "utf8");
     for (const file of ROUTE_FILES) {
@@ -408,15 +408,15 @@ describe("P6-04 — every route carries a permission gate or a reviewed exemptio
         continue;
       }
       const req = index.match(
-        new RegExp(`const\\s+(\\{[^}]*\\}|[A-Za-z_$][\\w$]*)\\s*=\\s*require\\(["']${rel.replace(/[.]/g, "\\.")}(?:\\.js)?["']\\)`)
+        new RegExp(`const\\s+(\\{[^}]*\\}|[A-Za-z_$][\\w$]*)\\s*=\\s*require\\(["']${rel.replace(/[.]/g, "\\.")}(?:\\.js)?["']\\)`),
       );
       if (!req) {
         unmounted.push(`${rel}: not required by index.js`);
         continue;
       }
       const names = req[1].startsWith("{") ?
-      req[1].replace(/[{}\s]/g, "").split(",").filter(Boolean) :
-      [req[1]];
+        req[1].replace(/[{}\s]/g, "").split(",").filter(Boolean) :
+        [req[1]];
       for (const name of names) {
         if (!new RegExp(`app\\.use\\((?:\\s*["'][^"']+["']\\s*,)?\\s*${name}\\s*\\)`).test(index)) {
           unmounted.push(`${rel}: ${name} required but never app.use()d`);
@@ -432,8 +432,8 @@ describe("P6-04 — every route carries a permission gate or a reviewed exemptio
     expect(listed).toContain("index.ts GET /");
     expect(listed).not.toContain("api/auth.route.ts POST /logout");
     const count = Object.values(ROUTE_GATE_EXEMPTIONS).
-    flatMap((r: any) => Object.values(r)).
-    filter((e: any) => e.kind === EXEMPTION_KINDS.PUBLIC).length;
+      flatMap((r: any) => Object.values(r)).
+      filter((e: any) => e.kind === EXEMPTION_KINDS.PUBLIC).length;
     expect(listed).toHaveLength(count);
   });
 
@@ -467,7 +467,7 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
   };
   const SLUGS = new Set(["reports", "users"]);
   const sources: any = {
-    "services/fake.service.js": "exports.assertThing = async () => {};\nconst helper = () => 1;"
+    "services/fake.service.js": "exports.assertThing = async () => {};\nconst helper = () => 1;",
   };
   const readSource = (rel: any) => {
     if (!(rel in sources)) {
@@ -476,13 +476,13 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
     return sources[rel];
   };
   const run = (router: any, exemptions: any = {}, appRoutes: any = {}) =>
-  checkRoutes({
-    routes: walkRouter(router, "api/fake.route.js").routes,
-    appRoutes,
-    exemptions,
-    slugs: SLUGS,
-    readSource
-  });
+    checkRoutes({
+      routes: walkRouter(router, "api/fake.route.js").routes,
+      appRoutes,
+      exemptions,
+      slugs: SLUGS,
+      readSource,
+    });
 
   it("passes a route gated by dynamicAccess, rbac, superAdminOnly or a router-level gate", () => {
     const r = express.Router();
@@ -513,8 +513,8 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
     r.get("/y", auth, dynamicAccessMiddleware.dynamicAccess(["users", "AuditLogs"], "read"), handler);
     const violations = run(r);
     expect(violations).toEqual([
-    expect.stringMatching(/GET \/x: dynamicAccess\("Reports"\) names no seeded menu slug/),
-    expect.stringMatching(/GET \/y: dynamicAccess\("AuditLogs"\) names no seeded menu slug/)]
+      expect.stringMatching(/GET \/x: dynamicAccess\("Reports"\) names no seeded menu slug/),
+      expect.stringMatching(/GET \/y: dynamicAccess\("AuditLogs"\) names no seeded menu slug/)],
     );
   });
 
@@ -527,8 +527,8 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
       "api/fake.route.js": {
         "POST /login": { kind: "public", reason: "the login surface, rate limited" },
         "GET /me": { kind: "self", reason: "the caller's own profile, req.user.id" },
-        "GET /svc": { kind: "service", check: "services/fake.service.js#assertThing", reason: "checked below the route by assertThing" }
-      }
+        "GET /svc": { kind: "service", check: "services/fake.service.js#assertThing", reason: "checked below the route by assertThing" },
+      },
     };
     expect(run(r, ex)).toEqual([]);
   });
@@ -537,10 +537,10 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
     const r = express.Router();
     r.get("/svc", auth, handler);
     const bad = (check: any) => ({
-      "api/fake.route.js": { "GET /svc": { kind: "service", check, reason: "checked below the route, allegedly" } }
+      "api/fake.route.js": { "GET /svc": { kind: "service", check, reason: "checked below the route, allegedly" } },
     });
     expect(run(r, bad("services/fake.service.js#noSuchCheck"))).toEqual([
-    expect.stringMatching(/does not name a function in that file/)]
+      expect.stringMatching(/does not name a function in that file/)],
     );
     expect(run(r, bad("services/missing.service.js#assertThing"))).toHaveLength(1);
     expect(run(r, bad("no-hash-here"))).toHaveLength(1);
@@ -554,13 +554,13 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
     const ex: any = {
       "api/fake.route.js": {
         "GET /gated": { kind: "self", reason: "was self-service before it was gated" },
-        "GET /gone": { kind: "self", reason: "a route that was deleted since" }
-      }
+        "GET /gone": { kind: "self", reason: "a route that was deleted since" },
+      },
     };
     const violations = run(r, ex);
     expect(violations).toEqual([
-    expect.stringMatching(/GET \/gated: carries superAdminOnly AND an exemption/),
-    expect.stringMatching(/GET \/gone: exemption for a route that does not exist/)]
+      expect.stringMatching(/GET \/gated: carries superAdminOnly AND an exemption/),
+      expect.stringMatching(/GET \/gone: exemption for a route that does not exist/)],
     );
   });
 
@@ -581,18 +581,18 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
         "GET /pend": { kind: "pending", reason: "pending, but on which card?" },
         "GET /acc": { kind: "accepted", reason: "accepted, but by which decision?" },
         "GET /why": { kind: "self", reason: "short" },
-        "GET /k": { kind: "whatever", reason: "not a kind the list knows about" }
-      }
+        "GET /k": { kind: "whatever", reason: "not a kind the list knows about" },
+      },
     };
     const violations = run(r, ex);
     expect(violations).toEqual([
-    expect.stringMatching(/GET \/p: listed as public but its chain authenticates/),
-    expect.stringMatching(/GET \/s: listed as self but its chain has no auth/),
-    expect.stringMatching(/GET \/i: inline gate "missingGuard" is not in the route's chain/),
-    expect.stringMatching(/GET \/pend: a pending exemption must name the card/),
-    expect.stringMatching(/GET \/acc: an accepted exemption must name the decision/),
-    expect.stringMatching(/GET \/why: an exemption needs a reason/),
-    expect.stringMatching(/GET \/k: unknown exemption kind/)]
+      expect.stringMatching(/GET \/p: listed as public but its chain authenticates/),
+      expect.stringMatching(/GET \/s: listed as self but its chain has no auth/),
+      expect.stringMatching(/GET \/i: inline gate "missingGuard" is not in the route's chain/),
+      expect.stringMatching(/GET \/pend: a pending exemption must name the card/),
+      expect.stringMatching(/GET \/acc: an accepted exemption must name the decision/),
+      expect.stringMatching(/GET \/why: an exemption needs a reason/),
+      expect.stringMatching(/GET \/k: unknown exemption kind/)],
     );
   });
 
@@ -607,8 +607,8 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
       "api/fake.route.js": {
         "GET /i": { kind: "inline", gate: "ownThingOnly", reason: "an inline guard defined in the router" },
         "GET /pend": { kind: "pending", card: "A-999", reason: "another change closes this gap" },
-        "GET /acc": { kind: "accepted", decision: "ADR-000", reason: "left at auth by a recorded decision" }
-      }
+        "GET /acc": { kind: "accepted", decision: "ADR-000", reason: "left at auth by a recorded decision" },
+      },
     };
     expect(run(r, ex)).toEqual([]);
   });
@@ -617,20 +617,20 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
     const ex: any = { "index.js": { "GET /listed": { kind: "self", reason: "app routes cannot be self-service" } } };
     const violations = run(express.Router(), ex, { "index.js": ["GET /unlisted", "GET /listed"] });
     expect(violations).toEqual([
-    expect.stringMatching(/index\.js GET \/unlisted: registered directly on the app with no exemption/),
-    expect.stringMatching(/index\.js GET \/listed: app-level routes can only be listed as public/)]
+      expect.stringMatching(/index\.js GET \/unlisted: registered directly on the app with no exemption/),
+      expect.stringMatching(/index\.js GET \/listed: app-level routes can only be listed as public/)],
     );
   });
 
   it("reads app-level routes from source, skipping router mounts and static directories", () => {
     const source = [
-    'app.get("/", (req, res) => res.end());',
-    "app.post('/hook', h);",
-    'app.use("/api/v1/users", userRoutes);',
-    'app.use("/public", express.static(p));',
-    'app.use("/docs", swaggerUi.serve, x);',
-    "app.use(notFound);"].
-    join("\n");
+      'app.get("/", (req, res) => res.end());',
+      "app.post('/hook', h);",
+      'app.use("/api/v1/users", userRoutes);',
+      'app.use("/public", express.static(p));',
+      'app.use("/docs", swaggerUi.serve, x);',
+      "app.use(notFound);"].
+      join("\n");
     expect(appRoutesIn(source)).toEqual(["GET /", "POST /hook", "USE /docs"]);
   });
 
@@ -639,7 +639,7 @@ describe("P6-04 — the guard fails what it must and passes what it must", () =>
     r.use("/admin", superAdminOnly);
     r.get("/admin/x", auth, handler);
     expect(walkRouter(r, "api/fake.route.js").problems).toEqual([
-    expect.stringMatching(/path-scoped router\.use layer/)]
+      expect.stringMatching(/path-scoped router\.use layer/)],
     );
   });
 

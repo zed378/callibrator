@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for fileValidation utility
  */
@@ -15,7 +15,7 @@ const {
   validateFileType,
   validateUpload,
   FILE_SIZES,
-  ALLOWED_TYPES
+  ALLOWED_TYPES,
 } = require("../../utils/fileValidation.util");
 
 describe("fileValidation", () => {
@@ -31,7 +31,7 @@ describe("fileValidation", () => {
       jest.spyOn(fs.promises, "stat").mockResolvedValue(mockStat);
       mockFd = {
         read: jest.fn(),
-        close: jest.fn().mockResolvedValue(undefined)
+        close: jest.fn().mockResolvedValue(undefined),
       };
       jest.spyOn(fs.promises, "open").mockResolvedValue(mockFd);
     });
@@ -39,22 +39,22 @@ describe("fileValidation", () => {
     it("should reject empty files", async () => {
       jest.spyOn(fs.promises, "stat").mockResolvedValue({ size: 0 });
       await expect(
-        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg")
+        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg"),
       ).rejects.toThrow("empty");
     });
 
     it("should reject unreadable files", async () => {
       mockFd.read.mockResolvedValue({ bytesRead: 0, buffer: Buffer.alloc(0) });
       await expect(
-        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg")
+        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg"),
       ).rejects.toThrow("Unable to read");
     });
 
     it("should return MIME type for matching magic bytes", async () => {
       // JPEG magic bytes: FF D8 FF
       const jpegBuffer = Buffer.from([
-      0xff, 0xd8, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00, 0x00]
+        0xff, 0xd8, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00],
       );
 
       mockFd.read.mockImplementation(async (buf: any) => {
@@ -64,7 +64,7 @@ describe("fileValidation", () => {
 
       const result = await validateFileMagicBytes(
         "/path/to/file.jpg",
-        "image/jpeg"
+        "image/jpeg",
       );
       expect(result).toBe("image/jpeg");
     });
@@ -76,7 +76,7 @@ describe("fileValidation", () => {
       });
       const result = await validateFileMagicBytes(
         "/path/to/file.bin",
-        "application/octet-stream"
+        "application/octet-stream",
       );
       expect(result).toBe("application/octet-stream");
     });
@@ -87,29 +87,29 @@ describe("fileValidation", () => {
         return { bytesRead: 1, buffer: buf };
       });
       await expect(
-        validateFileMagicBytes("/path/to/file.jpg", "image/png")
+        validateFileMagicBytes("/path/to/file.jpg", "image/png"),
       ).rejects.toThrow("File content does not match");
     });
 
     it("should handle AppError by re-throwing", async () => {
       jest.spyOn(fs.promises, "stat").mockRejectedValue(new Error("DB error"));
       await expect(
-        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg")
+        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg"),
       ).rejects.toThrow();
     });
 
     it("should handle generic errors with 500 status", async () => {
       jest.spyOn(fs.promises, "stat").mockRejectedValue(new Error("Unknown"));
       await expect(
-        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg")
+        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg"),
       ).rejects.toThrow();
     });
 
     it("should handle WebP custom check", async () => {
       // WebP: RIFF....WEBP
       const webpBuffer = Buffer.from([
-      0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42,
-      0x50, 0x00, 0x00, 0x00, 0x00]
+        0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42,
+        0x50, 0x00, 0x00, 0x00, 0x00],
       );
 
       mockFd.read.mockImplementation(async (buf: any) => {
@@ -119,7 +119,7 @@ describe("fileValidation", () => {
 
       const result = await validateFileMagicBytes(
         "/path/to/file.webp",
-        "image/webp"
+        "image/webp",
       );
       expect(result).toBe("image/webp");
     });
@@ -131,7 +131,7 @@ describe("fileValidation", () => {
         return { bytesRead: Math.min(16, shortBuffer.length), buffer: buf };
       });
       await expect(
-        validateFileMagicBytes("/path/to/file.webp", "image/webp")
+        validateFileMagicBytes("/path/to/file.webp", "image/webp"),
       ).rejects.toThrow("File content does not match");
     });
 
@@ -141,7 +141,7 @@ describe("fileValidation", () => {
         return { bytesRead: 10, buffer: buf };
       });
       await expect(
-        validateFileMagicBytes("/path/to/file.webp", "image/webp")
+        validateFileMagicBytes("/path/to/file.webp", "image/webp"),
       ).rejects.toThrow("File content does not match");
     });
 
@@ -152,21 +152,21 @@ describe("fileValidation", () => {
         return { bytesRead: 5, buffer: buf };
       });
       await expect(
-        validateFileMagicBytes("/path/to/file.jpg", "image/png")
+        validateFileMagicBytes("/path/to/file.jpg", "image/png"),
       ).rejects.toThrow("File content does not match");
     });
 
     it("should throw when customCheck matches but declared MIME is different", async () => {
       const webpBuffer = Buffer.from([
-      0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42,
-      0x50, 0x00, 0x00, 0x00, 0x00]
+        0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42,
+        0x50, 0x00, 0x00, 0x00, 0x00],
       );
       mockFd.read.mockImplementation(async (buf: any) => {
         webpBuffer.copy(buf);
         return { bytesRead: 16, buffer: buf };
       });
       await expect(
-        validateFileMagicBytes("/path/to/file.webp", "image/png")
+        validateFileMagicBytes("/path/to/file.webp", "image/png"),
       ).rejects.toThrow("File content does not match");
     });
 
@@ -178,7 +178,7 @@ describe("fileValidation", () => {
         return { bytesRead: 2, buffer: buf };
       });
       await expect(
-        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg")
+        validateFileMagicBytes("/path/to/file.jpg", "image/jpeg"),
       ).rejects.toThrow("File content does not match");
     });
   });
@@ -251,16 +251,16 @@ describe("fileValidation", () => {
 
     it("should reject dangerous extensions", () => {
       expect(() => sanitizeFilename("malware.php")).toThrow(
-        "File type not allowed"
+        "File type not allowed",
       );
       expect(() => sanitizeFilename("malware.exe")).toThrow(
-        "File type not allowed"
+        "File type not allowed",
       );
     });
 
     it("should reject path traversal", () => {
       expect(() => sanitizeFilename("../etc/passwd")).toThrow(
-        "path traversal detected"
+        "path traversal detected",
       );
     });
 
@@ -280,13 +280,13 @@ describe("fileValidation", () => {
 
     it("should check against allowed extensions", () => {
       expect(() => sanitizeFilename("script.php", [".jpg", ".png"])).toThrow(
-        "File type not allowed"
+        "File type not allowed",
       );
     });
 
     it("should reject safe extension if not in allowedExtensions list", () => {
       expect(() => sanitizeFilename("document.pdf", [".jpg", ".png"])).toThrow(
-        "File type not allowed. Allowed: .jpg, .png"
+        "File type not allowed. Allowed: .jpg, .png",
       );
     });
 
@@ -313,7 +313,7 @@ describe("fileValidation", () => {
       const err = new Error("DB connection failed");
       const result = sanitizeError(err, true);
       expect(result.message).toBe(
-        "An unexpected error occurred. Please try again later."
+        "An unexpected error occurred. Please try again later.",
       );
     });
 
@@ -408,7 +408,7 @@ describe("fileValidation", () => {
       const originalJsonMock = jest.fn();
       const mockRes: any = {
         headersSent: false,
-        json: originalJsonMock
+        json: originalJsonMock,
       };
       const wrapped = createSanitizedErrorHandler((_err: any, _req: any, res: any, _next: any) => {
         setImmediate(() => {
@@ -434,7 +434,7 @@ describe("fileValidation", () => {
       const originalJsonMock = jest.fn();
       const mockRes: any = {
         headersSent: false,
-        json: originalJsonMock
+        json: originalJsonMock,
       };
       const wrapped = createSanitizedErrorHandler((_err: any, _req: any, res: any, _next: any) => {
         setImmediate(() => {
@@ -454,7 +454,7 @@ describe("fileValidation", () => {
       const originalJsonMock = jest.fn();
       const mockRes: any = {
         headersSent: false,
-        json: originalJsonMock
+        json: originalJsonMock,
       };
       const origEnv = process.env["NODE_ENV"];
       process.env["NODE_ENV"] = "production";
@@ -566,7 +566,7 @@ describe("fileValidation", () => {
       const file: any = {
         size: 1024 * 1024 * 20,
         mimetype: "image/jpeg",
-        originalname: "photo.jpg"
+        originalname: "photo.jpg",
       };
       const result = validateUpload(file, { maxSize: FILE_SIZES.MB });
       expect(result.valid).toBe(false);
@@ -576,10 +576,10 @@ describe("fileValidation", () => {
       const file: any = {
         size: 1024,
         mimetype: "application/executable",
-        originalname: "app.exe"
+        originalname: "app.exe",
       };
       const result = validateUpload(file, {
-        allowedTypes: ALLOWED_TYPES.IMAGE
+        allowedTypes: ALLOWED_TYPES.IMAGE,
       });
       expect(result.valid).toBe(false);
     });
@@ -588,11 +588,11 @@ describe("fileValidation", () => {
       const file: any = {
         size: 1024,
         mimetype: "image/jpeg",
-        originalname: "photo.jpg"
+        originalname: "photo.jpg",
       };
       const result = validateUpload(file, {
         maxSize: 2048,
-        allowedTypes: ["image/jpeg"]
+        allowedTypes: ["image/jpeg"],
       });
       expect(result.valid).toBe(true);
       expect(result.message).toBe("Upload is valid");

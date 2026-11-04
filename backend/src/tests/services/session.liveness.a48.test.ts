@@ -1,17 +1,17 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-48 — session.service liveness cache: the branches the request-path seam
  * test (middlewares/auth.sessionRevocation.a48.test.js) does not reach.
  */
 
 jest.mock("../../models", () => ({
-  Sessions: { findOne: jest.fn(), update: jest.fn() }
+  Sessions: { findOne: jest.fn(), update: jest.fn() },
 }));
 
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
   set: jest.fn().mockResolvedValue(true),
-  del: jest.fn().mockResolvedValue(true)
+  del: jest.fn().mockResolvedValue(true),
 }));
 
 const { Sessions } = require("../../models");
@@ -21,7 +21,7 @@ const {
   livenessKey,
   registerLivenessInvalidation,
   runWithSession,
-  getCurrentSessionId
+  getCurrentSessionId,
 } = require("../../services/session.service");
 
 const fakeModel = () => {
@@ -31,7 +31,7 @@ const fakeModel = () => {
       hooks[type] = fn;
     }),
     unscoped: jest.fn(() => model),
-    findAll: jest.fn()
+    findAll: jest.fn(),
   };
   return { model, hooks };
 };
@@ -42,14 +42,14 @@ describe("isSessionLive", () => {
     Sessions.findOne.mockResolvedValue({
       id: "s1",
       user_id: "u1",
-      expired_at: new Date(Date.now() + 3600 * 1000)
+      expired_at: new Date(Date.now() + 3600 * 1000),
     });
 
     await expect(isSessionLive("s1", "u1")).resolves.toBe(true);
     expect(Sessions.findOne).toHaveBeenCalledWith({
       where: { id: "s1", is_revoked: false, is_active: true },
       attributes: ["id", "user_id", "expired_at"],
-      skipTenantScope: true
+      skipTenantScope: true,
     });
   });
 
@@ -71,7 +71,7 @@ describe("isSessionLive", () => {
     Sessions.findOne.mockResolvedValue({
       id: "s3",
       user_id: "u1",
-      expired_at: new Date(Date.now() + 10 * 1000)
+      expired_at: new Date(Date.now() + 10 * 1000),
     });
 
     await expect(isSessionLive("s3", "u1")).resolves.toBe(true);
@@ -95,7 +95,7 @@ describe("registerLivenessInvalidation", () => {
     const transaction = {
       afterCommit: jest.fn((fn: any) => {
         commit = fn;
-      })
+      }),
     };
     await hooks.afterUpdate({ id: "s1" }, { transaction });
     expect(redis.del).not.toHaveBeenCalled();
@@ -112,13 +112,13 @@ describe("registerLivenessInvalidation", () => {
     const options = { where: { user_id: "u1", is_revoked: false } };
     await hooks.beforeBulkUpdate(options);
     expect(model.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ where: options.where, skipTenantScope: true, raw: true })
+      expect.objectContaining({ where: options.where, skipTenantScope: true, raw: true }),
     );
     await hooks.afterBulkUpdate(options);
 
     expect(redis.del.mock.calls.map(([k]: any) => k)).toEqual([
-    livenessKey("s1"),
-    livenessKey("s2")]
+      livenessKey("s1"),
+      livenessKey("s2")],
     );
   });
 

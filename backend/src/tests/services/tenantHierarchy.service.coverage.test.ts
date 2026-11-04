@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Branch/line coverage tests for tenantHierarchy.service.js
  *
@@ -16,7 +16,7 @@
 jest.mock("../../services/clientFacility.service", () => ({
   SELF_FACILITY_CODE: "SELF",
   selfFacilityName: (name: any) => name,
-  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" }))
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
 }));
 
 // Every mocked value below is defined OUTSIDE its factory so it keeps a stable
@@ -27,10 +27,10 @@ const mockLogger: any = {
   debug: jest.fn(),
   info: jest.fn(),
   warn: jest.fn(),
-  error: jest.fn()
+  error: jest.fn(),
 };
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: mockLogger
+  logger: mockLogger,
 }));
 
 // Mirrors the real AppError: (status, message) with a `.status` property.
@@ -47,14 +47,14 @@ jest.mock("../../utils/appError.util", () => ({ AppError: MockAppError }));
 const mockOp: any = {
   like: Symbol("Op.like"),
   or: Symbol("Op.or"),
-  in: Symbol("Op.in")
+  in: Symbol("Op.in"),
 };
 // A-187: createSubOrganization writes in a managed transaction and audits;
 // the real-model proof is tenantHierarchy.createSub.a187.test.js.
 const mockTransaction: any = jest.fn(async (cb: any) => cb("TX"));
 const mockLogAction: any = jest.fn(async () => ({}));
 jest.mock("../../config", () => ({
-  db: { Sequelize: { Op: mockOp }, transaction: mockTransaction }
+  db: { Sequelize: { Op: mockOp }, transaction: mockTransaction },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: mockLogAction }));
 const ACTOR: any = { userId: "super-1", tenantId: "t-home", ipAddress: null, userAgent: null };
@@ -64,9 +64,9 @@ const logger = mockLogger;
 // Load the service with the given env + mocked models.
 const loadService = (env: any, models: any) => {
   for (const key of [
-  "HIERARCHY_ENABLED",
-  "HIERARCHY_MAX_DEPTH",
-  "HIERARCHY_CASCADE_ROLES"])
+    "HIERARCHY_ENABLED",
+    "HIERARCHY_MAX_DEPTH",
+    "HIERARCHY_CASCADE_ROLES"])
   {
     if (env[key] === undefined) {
       delete process.env[key];
@@ -97,21 +97,21 @@ describe("tenantHierarchy.service (coverage)", () => {
       code: "PARENT",
       email: "admin@parent.example",
       status: "active",
-      plan: "business"
+      plan: "business",
     };
 
     it("derives the path from the parent code when the parent has no hierarchy row", async () => {
       const Tenant = {
         findByPk: jest.fn().mockResolvedValue(activeParent),
-        create: jest.fn().mockResolvedValue({ id: "child-1" })
+        create: jest.fn().mockResolvedValue({ id: "child-1" }),
       };
       const TenantHierarchy = {
         findOne: jest.fn().mockResolvedValue(null), // parent is not in the hierarchy table
         count: jest.fn().mockResolvedValue(2),
         create: jest.fn().mockResolvedValue({
           path: "/parent/parent_003",
-          depth: 1
-        })
+          depth: 1,
+        }),
       };
       const svc = loadService({ HIERARCHY_ENABLED: "true" }, { Tenant, TenantHierarchy });
 
@@ -121,7 +121,7 @@ describe("tenantHierarchy.service (coverage)", () => {
         tenantId: "child-1",
         code: "PARENT_003",
         path: "/parent/parent_003",
-        depth: 1
+        depth: 1,
       });
       expect(Tenant.create).toHaveBeenCalledWith({
         name: "Branch C",
@@ -130,7 +130,7 @@ describe("tenantHierarchy.service (coverage)", () => {
         email: "admin@parent.example",
         status: "active",
         parentId: "parent-1",
-        plan: "business"
+        plan: "business",
       }, { transaction: "TX" });
       // depth falls back to 0 + 1 and the path is derived from the parent code
       expect(TenantHierarchy.create).toHaveBeenCalledWith({
@@ -138,11 +138,11 @@ describe("tenantHierarchy.service (coverage)", () => {
         tenantCode: "PARENT_003",
         parentCode: "PARENT",
         path: "/parent/parent_003",
-        depth: 1
+        depth: 1,
       }, { transaction: "TX" });
       expect(mockLogAction).toHaveBeenCalledWith(
         expect.objectContaining({ action: "CREATE", resourceType: "Tenant", resourceId: "child-1", userId: "super-1" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -152,24 +152,24 @@ describe("tenantHierarchy.service (coverage)", () => {
     it("refuses (409) past max depth before writing anything", async () => {
       const Tenant = {
         findByPk: jest.fn().mockResolvedValue(activeParent),
-        create: jest.fn()
+        create: jest.fn(),
       };
       const TenantHierarchy = {
         findOne: jest.fn().mockResolvedValue({
           tenantCode: "PARENT",
           path: "/root/parent",
-          depth: 2
+          depth: 2,
         }),
         count: jest.fn(),
-        create: jest.fn()
+        create: jest.fn(),
       };
       const svc = loadService(
         { HIERARCHY_ENABLED: "true", HIERARCHY_MAX_DEPTH: "2" },
-        { Tenant, TenantHierarchy }
+        { Tenant, TenantHierarchy },
       );
 
       await expect(
-        svc.createSubOrganization("parent-1", { name: "Too Deep" }, ACTOR)
+        svc.createSubOrganization("parent-1", { name: "Too Deep" }, ACTOR),
       ).rejects.toMatchObject({ status: 409 });
 
       expect(Tenant.create).not.toHaveBeenCalled();
@@ -180,25 +180,25 @@ describe("tenantHierarchy.service (coverage)", () => {
     it("wraps an unexpected model failure and logs it", async () => {
       const Tenant = {
         findByPk: jest.fn().mockResolvedValue(activeParent),
-        create: jest.fn().mockRejectedValue(new Error("unique violation"))
+        create: jest.fn().mockRejectedValue(new Error("unique violation")),
       };
       const TenantHierarchy = {
         findOne: jest.fn().mockResolvedValue(null),
         count: jest.fn().mockResolvedValue(0),
-        create: jest.fn()
+        create: jest.fn(),
       };
       const svc = loadService({ HIERARCHY_ENABLED: "true" }, { Tenant, TenantHierarchy });
 
       await expect(
-        svc.createSubOrganization("parent-1", { name: "Boom" }, ACTOR)
+        svc.createSubOrganization("parent-1", { name: "Boom" }, ACTOR),
       ).rejects.toMatchObject({
         status: 500,
-        message: "Failed to create sub-organization"
+        message: "Failed to create sub-organization",
       });
 
       expect(logger.error).toHaveBeenCalledWith("Failed to create sub-organization", {
         parentTenantId: "parent-1",
-        error: "unique violation"
+        error: "unique violation",
       });
       expect(TenantHierarchy.create).not.toHaveBeenCalled();
     });
@@ -214,21 +214,21 @@ describe("tenantHierarchy.service (coverage)", () => {
           id: "parent-1",
           code: "PARENT",
           status: "active",
-          plan: "free"
+          plan: "free",
         }),
-        create: jest.fn().mockResolvedValue({ id: "child-1" })
+        create: jest.fn().mockResolvedValue({ id: "child-1" }),
       };
       const TenantHierarchy = {
         findOne: jest.fn().mockResolvedValue(null),
         count: jest.fn().mockResolvedValue(0),
-        create: jest.fn().mockResolvedValue({ path: "/parent/parent_001", depth: 1 })
+        create: jest.fn().mockResolvedValue({ path: "/parent/parent_001", depth: 1 }),
       };
       const Role = { findByPk: jest.fn(), findOne: jest.fn(), create: jest.fn() };
       const RoleMenuPermission = { findAll: jest.fn(), findOrCreate: jest.fn() };
       const User = { findAll: jest.fn() };
       const svc = loadService(
         { HIERARCHY_ENABLED: "true", HIERARCHY_CASCADE_ROLES: "true" },
-        { Tenant, TenantHierarchy, Role, User, RoleMenuPermission }
+        { Tenant, TenantHierarchy, Role, User, RoleMenuPermission },
       );
 
       const result = await svc.createSubOrganization("parent-1", { name: "Branch A" }, ACTOR);
@@ -247,10 +247,10 @@ describe("tenantHierarchy.service (coverage)", () => {
     it("skips path segments with no hierarchy row and no loaded tenant", async () => {
       const TenantHierarchy = {
         findOne: jest.
-        fn().
-        mockResolvedValueOnce({ path: "/root/mid/leaf", depth: 2 }).
-        mockResolvedValueOnce(null) // "/root" has no hierarchy row
-        .mockResolvedValueOnce({ depth: 1, tenant: null }) // "/root/mid" row without tenant
+          fn().
+          mockResolvedValueOnce({ path: "/root/mid/leaf", depth: 2 }).
+          mockResolvedValueOnce(null) // "/root" has no hierarchy row
+          .mockResolvedValueOnce({ depth: 1, tenant: null }), // "/root/mid" row without tenant
       };
       const svc = loadService({}, { TenantHierarchy, Tenant: {} });
 
@@ -268,20 +268,20 @@ describe("tenantHierarchy.service (coverage)", () => {
     it("reads a missing tenant and role (LEFT JOIN, A-110) as null", async () => {
       const User = {
         findAll: jest.fn().mockResolvedValue([
-        { tenantId: "tenant-1", tenant: null, role: null }]
-        )
+          { tenantId: "tenant-1", tenant: null, role: null }],
+        ),
       };
       const svc = loadService({}, { User, Role: {}, Tenant: {} });
 
       const result = await svc.getUserRolesAcrossTenants("user-1");
 
       expect(result).toEqual([
-      {
-        tenantId: "tenant-1",
-        tenantName: null,
-        tenantCode: null,
-        role: null
-      }]
+        {
+          tenantId: "tenant-1",
+          tenantName: null,
+          tenantCode: null,
+          role: null,
+        }],
       );
     });
   });
@@ -293,7 +293,7 @@ describe("tenantHierarchy.service (coverage)", () => {
 
       expect(svc.getStatus()).toEqual({
         enabled: false,
-        maxDepth: 5
+        maxDepth: 5,
       });
     });
 

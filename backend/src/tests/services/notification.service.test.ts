@@ -4,8 +4,8 @@ jest.mock("sequelize", () => ({
   Op: {
     or: Symbol("or"),
     iLike: Symbol("iLike"),
-    in: Symbol("in")
-  }
+    in: Symbol("in"),
+  },
 }));
 
 // --- Mock socket.io: getIo harus mock function agar .toHaveBeenCalled() bekerja ---
@@ -19,20 +19,20 @@ const mockSocket: any = {
   }),
   emit: jest.fn((event: any, data: any) => {
     _mockEmitArgs = [event, data];
-  })
+  }),
 };
 
 // A-42: failures are logged through winston (and its redactor), not console.
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 jest.mock("../../config/socket", () => ({
-  getIo: jest.fn(() => mockSocket)
+  getIo: jest.fn(() => mockSocket),
 }));
 
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn() }
+  db: { transaction: jest.fn() },
 }));
 
 jest.mock("../../models", () => ({
@@ -43,22 +43,22 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(),
     update: jest.fn(),
     destroy: jest.fn(),
-    count: jest.fn()
+    count: jest.fn(),
   },
   NotificationState: {
     findOrCreate: jest.fn(),
     findAll: jest.fn(),
     bulkCreate: jest.fn(),
-    update: jest.fn()
+    update: jest.fn(),
   },
   User: {
-    findByPk: jest.fn()
-  }
+    findByPk: jest.fn(),
+  },
 }));
 
 jest.mock("../../services/notificationChannels.service", () => ({
   dispatch: jest.fn().mockResolvedValue({ email: "queued" }),
-  DEFAULT_CHANNELS: ["realtime"]
+  DEFAULT_CHANNELS: ["realtime"],
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -84,7 +84,7 @@ const {
   markAllAsRead,
   deleteNotification,
   deleteAllNotifications,
-  deleteManyNotifications
+  deleteManyNotifications,
 } = require("../../services/notification.service");
 
 // ---- helpers ----
@@ -108,7 +108,7 @@ const mockNotification = (extra: any = {}) => ({
   isRead: false,
   type: "info",
   ...extra,
-  toJSON: () => ({ ...extra })
+  toJSON: () => ({ ...extra }),
 });
 
 // A NotificationState row as returned by findOrCreate (the instance half).
@@ -119,7 +119,7 @@ const mockStateRow = (extra: any = {}) => ({
   readAt: null,
   deletedAt: null,
   update: jest.fn().mockResolvedValue(undefined),
-  ...extra
+  ...extra,
 });
 
 // ================================================================
@@ -149,7 +149,7 @@ describe("notification.service", () => {
         title: "Test",
         message: "Hello",
         userId: "u-1",
-        tenantId: "t-1"
+        tenantId: "t-1",
       });
 
       expect(Notification.create).toHaveBeenCalledWith(
@@ -157,8 +157,8 @@ describe("notification.service", () => {
           title: "Test",
           message: "Hello",
           userId: "u-1",
-          tenantId: "t-1"
-        })
+          tenantId: "t-1",
+        }),
       );
       expect(getIo).toHaveBeenCalled();
       expect(mockSocket.emit).toHaveBeenCalled();
@@ -173,7 +173,7 @@ describe("notification.service", () => {
       await emitNotification({
         title: "Tenant-wide",
         message: "All tenants",
-        tenantId: "t-2"
+        tenantId: "t-2",
       });
 
       expect(getIo).toHaveBeenCalled();
@@ -184,7 +184,7 @@ describe("notification.service", () => {
 
     it("should not fail when socket.io throws", async () => {
       Notification.create.mockResolvedValueOnce(
-        mockNotification({ id: "n-throw", userId: "u-1" })
+        mockNotification({ id: "n-throw", userId: "u-1" }),
       );
       // Force emit to throw
       mockSocket.emit.mockImplementation(() => {
@@ -198,7 +198,7 @@ describe("notification.service", () => {
       expect(result.id).toBe("n-throw");
       expect(logger.warn).toHaveBeenCalledWith(
         "Socket.io emit failed (server might be booting)",
-        { notificationId: "n-throw", error: "Socket not ready" }
+        { notificationId: "n-throw", error: "Socket not ready" },
       );
     });
 
@@ -209,7 +209,7 @@ describe("notification.service", () => {
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith(
         "Failed to emit notification",
-        expect.objectContaining({ tenantId: "t-1", userId: undefined, error: "DB down" })
+        expect.objectContaining({ tenantId: "t-1", userId: undefined, error: "DB down" }),
       );
     });
 
@@ -218,7 +218,7 @@ describe("notification.service", () => {
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith(
         "Failed to emit notification",
-        expect.objectContaining({ tenantId: undefined, userId: undefined })
+        expect.objectContaining({ tenantId: undefined, userId: undefined }),
       );
     });
 
@@ -231,7 +231,7 @@ describe("notification.service", () => {
 
       expect(Notification.create).toHaveBeenCalledWith(
         { title: "T", message: "M", tenantId: "t-3" },
-        { transaction }
+        { transaction },
       );
       expect(result.id).toBe("n-tx");
       expect(mockSocket.emit).not.toHaveBeenCalled(); // not before the commit
@@ -257,7 +257,7 @@ describe("notification.service", () => {
         message: "Test",
         userId: "u-1",
         channels: ["email"],
-        recipientEmail: "test@example.com"
+        recipientEmail: "test@example.com",
       });
 
       expect(notificationChannels.dispatch).toHaveBeenCalled();
@@ -277,13 +277,13 @@ describe("notification.service", () => {
         userId: "u-1",
         channels: ["email"],
         recipientEmail: "a@b.com",
-        recipientName: "Ann"
+        recipientName: "Ann",
       });
 
       expect(Notification.create).toHaveBeenCalledWith({
         title: "T",
         message: "M",
-        userId: "u-1"
+        userId: "u-1",
       });
     });
 
@@ -298,36 +298,36 @@ describe("notification.service", () => {
 
     it("should resolve recipient contact details from the target user when not supplied", async () => {
       Notification.create.mockResolvedValueOnce(
-        mockNotification({ id: "n-res", userId: "u-7" })
+        mockNotification({ id: "n-res", userId: "u-7" }),
       );
       User.findByPk.mockResolvedValueOnce({
         email: "looked-up@test.com",
-        firstName: "Looked"
+        firstName: "Looked",
       });
 
       await emitNotification({
         title: "T",
         message: "M",
         userId: "u-7",
-        channels: ["email"]
+        channels: ["email"],
       });
 
       expect(User.findByPk).toHaveBeenCalledWith("u-7", {
-        attributes: ["email", "firstName"]
+        attributes: ["email", "firstName"],
       });
       expect(notificationChannels.dispatch).toHaveBeenCalledWith(
         expect.any(Object),
         {
           channels: ["email"],
           recipientEmail: "looked-up@test.com",
-          recipientName: "Looked"
-        }
+          recipientName: "Looked",
+        },
       );
     });
 
     it("should prefer explicitly supplied recipient details over the user lookup", async () => {
       Notification.create.mockResolvedValueOnce(
-        mockNotification({ id: "n-pref", userId: "u-7" })
+        mockNotification({ id: "n-pref", userId: "u-7" }),
       );
 
       await emitNotification({
@@ -336,7 +336,7 @@ describe("notification.service", () => {
         userId: "u-7",
         channels: ["email"],
         recipientEmail: "explicit@test.com",
-        recipientName: "Explicit"
+        recipientName: "Explicit",
       });
 
       // The email was supplied, so no user lookup is needed.
@@ -346,14 +346,14 @@ describe("notification.service", () => {
         {
           channels: ["email"],
           recipientEmail: "explicit@test.com",
-          recipientName: "Explicit"
-        }
+          recipientName: "Explicit",
+        },
       );
     });
 
     it("should dispatch with undefined contact details when the target user no longer exists", async () => {
       Notification.create.mockResolvedValueOnce(
-        mockNotification({ id: "n-nouser", userId: "gone" })
+        mockNotification({ id: "n-nouser", userId: "gone" }),
       );
       User.findByPk.mockResolvedValueOnce(null);
 
@@ -361,7 +361,7 @@ describe("notification.service", () => {
         title: "T",
         message: "M",
         userId: "gone",
-        channels: ["email"]
+        channels: ["email"],
       });
 
       expect(notificationChannels.dispatch).toHaveBeenCalledWith(
@@ -369,14 +369,14 @@ describe("notification.service", () => {
         {
           channels: ["email"],
           recipientEmail: undefined,
-          recipientName: undefined
-        }
+          recipientName: undefined,
+        },
       );
     });
 
     it("should skip the user lookup for a tenant-wide notification with no userId", async () => {
       Notification.create.mockResolvedValueOnce(
-        mockNotification({ id: "n-tenant", tenantId: "t-9" })
+        mockNotification({ id: "n-tenant", tenantId: "t-9" }),
       );
 
       await emitNotification({
@@ -384,7 +384,7 @@ describe("notification.service", () => {
         message: "M",
         tenantId: "t-9",
         channels: ["email"],
-        recipientEmail: "ops@test.com"
+        recipientEmail: "ops@test.com",
       });
 
       expect(User.findByPk).not.toHaveBeenCalled();
@@ -394,7 +394,7 @@ describe("notification.service", () => {
     it("should swallow a channel dispatch failure and still return the notification", async () => {
       const warnSpy = logger.warn;
       Notification.create.mockResolvedValueOnce(
-        mockNotification({ id: "n-chfail", userId: "u-1" })
+        mockNotification({ id: "n-chfail", userId: "u-1" }),
       );
       notificationChannels.dispatch.mockRejectedValueOnce(new Error("SMTP down"));
 
@@ -403,7 +403,7 @@ describe("notification.service", () => {
         message: "M",
         userId: "u-1",
         channels: ["email"],
-        recipientEmail: "a@b.com"
+        recipientEmail: "a@b.com",
       });
 
       // Dispatch failures must never block the caller's main flow.
@@ -411,7 +411,7 @@ describe("notification.service", () => {
       expect(warnSpy).toHaveBeenCalledWith("Notification channel dispatch failed", {
         notificationId: "n-chfail",
         channels: ["email"],
-        error: "SMTP down"
+        error: "SMTP down",
       });
     });
 
@@ -431,7 +431,7 @@ describe("notification.service", () => {
 
     it("emits only to the addressed user, never to super_admins", async () => {
       Notification.create.mockResolvedValueOnce(
-        mockNotification({ id: "n-1", userId: "u-9" })
+        mockNotification({ id: "n-1", userId: "u-9" }),
       );
 
       await emitNotification({ userId: "u-9", tenantId: "t-1", title: "T", message: "M" });
@@ -443,7 +443,7 @@ describe("notification.service", () => {
 
     it("emits to the tenant room for tenant-wide notifications", async () => {
       Notification.create.mockResolvedValueOnce(
-        mockNotification({ id: "n-2", userId: null })
+        mockNotification({ id: "n-2", userId: null }),
       );
 
       await emitNotification({ tenantId: "t-7", title: "T", message: "M" });
@@ -458,7 +458,7 @@ describe("notification.service", () => {
     it("should fetch notifications with pagination for a user", async () => {
       Notification.findAndCountAll.mockResolvedValueOnce({
         rows: [mockNotification()],
-        count: 1
+        count: 1,
       });
       Notification.count.mockResolvedValueOnce(0);
 
@@ -466,7 +466,7 @@ describe("notification.service", () => {
         tenantId: "t-1",
         userId: "u-1",
         page: 1,
-        limit: 10
+        limit: 10,
       });
 
       expect(result.success).toBe(true);
@@ -488,13 +488,13 @@ describe("notification.service", () => {
         // every tenant). That leaked other users' notifications into their
         // bell and 404'd on mark-as-read, since the mutations are recipient
         // scoped. The feed must always filter by tenant + recipient.
-        isSuperAdmin: true
+        isSuperAdmin: true,
       });
 
       expect(Notification.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ tenantId: "t-1" })
-        })
+          where: expect.objectContaining({ tenantId: "t-1" }),
+        }),
       );
       const { where } = Notification.findAndCountAll.mock.calls[0][0];
       expect(where).not.toEqual({});
@@ -509,13 +509,13 @@ describe("notification.service", () => {
       await fetchUserNotifications({
         tenantId: "t-1",
         userId: "u-1",
-        isRead: true
+        isRead: true,
       });
 
       expect(Notification.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ "$states.is_read$": true })
-        })
+          where: expect.objectContaining({ "$states.is_read$": true }),
+        }),
       );
     });
 
@@ -526,13 +526,13 @@ describe("notification.service", () => {
       await fetchUserNotifications({
         tenantId: "t-1",
         userId: "u-1",
-        type: "alert"
+        type: "alert",
       });
 
       expect(Notification.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ type: "alert" })
-        })
+          where: expect.objectContaining({ type: "alert" }),
+        }),
       );
     });
 
@@ -543,7 +543,7 @@ describe("notification.service", () => {
       await fetchUserNotifications({
         tenantId: "t-1",
         userId: "u-1",
-        limit: 9999
+        limit: 9999,
       });
 
       const callArgs = Notification.findAndCountAll.mock.calls[0][0];
@@ -554,7 +554,7 @@ describe("notification.service", () => {
       Notification.findAndCountAll.mockRejectedValueOnce(new Error("DB failure"));
       await expectRejectsWithMessage(
         fetchUserNotifications({ tenantId: "t-1", userId: "u-1" }),
-        "DB failure"
+        "DB failure",
       );
     });
   });
@@ -580,9 +580,9 @@ describe("notification.service", () => {
             notificationId: "n-read",
             userId: "u-1",
             isRead: true,
-            readAt: expect.any(Date)
-          })
-        })
+            readAt: expect.any(Date),
+          }),
+        }),
       );
       // The response is forced read regardless of the shared row's column.
       expect(result.data.isRead).toBe(true);
@@ -592,13 +592,13 @@ describe("notification.service", () => {
       const state = mockStateRow({ notificationId: "n-read" });
       NotificationState.findOrCreate.mockResolvedValueOnce([state, false]);
       Notification.findOne.mockResolvedValueOnce(
-        mockNotification({ id: "n-read" })
+        mockNotification({ id: "n-read" }),
       );
 
       await markAsRead("t-1", "u-1", "n-read");
 
       expect(state.update).toHaveBeenCalledWith(
-        expect.objectContaining({ isRead: true, readAt: expect.any(Date) })
+        expect.objectContaining({ isRead: true, readAt: expect.any(Date) }),
       );
     });
 
@@ -606,7 +606,7 @@ describe("notification.service", () => {
       const state = mockStateRow({ notificationId: "n-read" });
       NotificationState.findOrCreate.mockResolvedValueOnce([state, true]);
       Notification.findOne.mockResolvedValueOnce(
-        mockNotification({ id: "n-read" })
+        mockNotification({ id: "n-read" }),
       );
 
       await markAsRead("t-1", "u-1", "n-read");
@@ -618,7 +618,7 @@ describe("notification.service", () => {
       Notification.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         markAsRead("t-1", "u-1", "missing"),
-        "Notification not found"
+        "Notification not found",
       );
       expect(NotificationState.findOrCreate).not.toHaveBeenCalled();
     });
@@ -640,10 +640,10 @@ describe("notification.service", () => {
       // No state rows existed => everything is bulk-created, nothing updated.
       expect(NotificationState.bulkCreate).toHaveBeenCalledWith(
         [
-        expect.objectContaining({ notificationId: "n-1", userId: "u-1", isRead: true }),
-        expect.objectContaining({ notificationId: "n-2", userId: "u-1", isRead: true })],
+          expect.objectContaining({ notificationId: "n-1", userId: "u-1", isRead: true }),
+          expect.objectContaining({ notificationId: "n-2", userId: "u-1", isRead: true })],
 
-        { ignoreDuplicates: true }
+        { ignoreDuplicates: true },
       );
       expect(NotificationState.update).not.toHaveBeenCalled();
       // The shared rows themselves are never written.
@@ -652,36 +652,36 @@ describe("notification.service", () => {
 
     it("updates existing state rows and creates only the missing ones", async () => {
       Notification.findAll.mockResolvedValueOnce([
-      { id: "n-1" },
-      { id: "n-2" },
-      { id: "n-3" }]
+        { id: "n-1" },
+        { id: "n-2" },
+        { id: "n-3" }],
       );
       NotificationState.findAll.mockResolvedValueOnce([
-      { notificationId: "n-2" }]
+        { notificationId: "n-2" }],
       );
 
       await markAllAsRead("t-1", "u-1");
 
       expect(NotificationState.bulkCreate).toHaveBeenCalledWith(
         [
-        expect.objectContaining({ notificationId: "n-1" }),
-        expect.objectContaining({ notificationId: "n-3" })],
+          expect.objectContaining({ notificationId: "n-1" }),
+          expect.objectContaining({ notificationId: "n-3" })],
 
-        { ignoreDuplicates: true }
+        { ignoreDuplicates: true },
       );
       expect(NotificationState.update).toHaveBeenCalledWith(
         expect.objectContaining({ isRead: true, readAt: expect.any(Date) }),
         expect.objectContaining({
-          where: expect.objectContaining({ userId: "u-1" })
-        })
+          where: expect.objectContaining({ userId: "u-1" }),
+        }),
       );
     });
 
     it("only updates when every visible notification already has a state row", async () => {
       Notification.findAll.mockResolvedValueOnce([{ id: "n-1" }, { id: "n-2" }]);
       NotificationState.findAll.mockResolvedValueOnce([
-      { notificationId: "n-1" },
-      { notificationId: "n-2" }]
+        { notificationId: "n-1" },
+        { notificationId: "n-2" }],
       );
 
       await markAllAsRead("t-1", "u-1");
@@ -705,7 +705,7 @@ describe("notification.service", () => {
       Notification.findAll.mockRejectedValueOnce(new Error("Update failed"));
       await expectRejectsWithMessage(
         markAllAsRead("t-1", "u-1"),
-        "Update failed"
+        "Update failed",
       );
     });
   });
@@ -739,13 +739,13 @@ describe("notification.service", () => {
       expect(Notification.destroy).not.toHaveBeenCalled();
       expect(NotificationState.bulkCreate).toHaveBeenCalledWith(
         [
-        expect.objectContaining({
-          notificationId: "n-shared",
-          userId: "u-1",
-          deletedAt: expect.any(Date)
-        })],
+          expect.objectContaining({
+            notificationId: "n-shared",
+            userId: "u-1",
+            deletedAt: expect.any(Date),
+          })],
 
-        { ignoreDuplicates: true }
+        { ignoreDuplicates: true },
       );
     });
 
@@ -753,7 +753,7 @@ describe("notification.service", () => {
       Notification.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
         deleteNotification("t-1", "u-1", "missing"),
-        "Notification not found"
+        "Notification not found",
       );
     });
 
@@ -761,7 +761,7 @@ describe("notification.service", () => {
       Notification.findOne.mockRejectedValueOnce(new Error("Delete failed"));
       await expectRejectsWithMessage(
         deleteNotification("t-1", "u-1", "n-1"),
-        "Delete failed"
+        "Delete failed",
       );
     });
   });
@@ -769,10 +769,10 @@ describe("notification.service", () => {
   describe("deleteAllNotifications", () => {
     it("removes every notification in the caller's scope", async () => {
       Notification.findAll.mockResolvedValueOnce([
-      { id: "n-1", userId: "u-1" },
-      { id: "n-2", userId: "u-1" },
-      { id: "n-3", userId: null },
-      { id: "n-4", userId: null }]
+        { id: "n-1", userId: "u-1" },
+        { id: "n-2", userId: "u-1" },
+        { id: "n-3", userId: null },
+        { id: "n-4", userId: null }],
       );
 
       const result = await deleteAllNotifications("t-1", "u-1");
@@ -791,8 +791,8 @@ describe("notification.service", () => {
 
     it("destroys personal rows and writes no state when nothing is shared", async () => {
       Notification.findAll.mockResolvedValueOnce([
-      { id: "n-1", userId: "u-1" },
-      { id: "n-2", userId: "u-1" }]
+        { id: "n-1", userId: "u-1" },
+        { id: "n-2", userId: "u-1" }],
       );
 
       const result = await deleteAllNotifications("t-1", "u-1");
@@ -806,12 +806,12 @@ describe("notification.service", () => {
 
     it("hides shared rows without destroying anything", async () => {
       Notification.findAll.mockResolvedValueOnce([
-      { id: "n-3", userId: null },
-      { id: "n-4", userId: null }]
+        { id: "n-3", userId: null },
+        { id: "n-4", userId: null }],
       );
       // n-4 was already interacted with, so it is updated rather than created.
       NotificationState.findAll.mockResolvedValueOnce([
-      { notificationId: "n-4" }]
+        { notificationId: "n-4" }],
       );
 
       const result = await deleteAllNotifications("t-1", "u-1");
@@ -820,18 +820,18 @@ describe("notification.service", () => {
       expect(Notification.destroy).not.toHaveBeenCalled();
       expect(NotificationState.bulkCreate).toHaveBeenCalledWith(
         [
-        expect.objectContaining({
-          notificationId: "n-3",
-          deletedAt: expect.any(Date)
-        })],
+          expect.objectContaining({
+            notificationId: "n-3",
+            deletedAt: expect.any(Date),
+          })],
 
-        { ignoreDuplicates: true }
+        { ignoreDuplicates: true },
       );
       expect(NotificationState.update).toHaveBeenCalledWith(
         expect.objectContaining({ deletedAt: expect.any(Date) }),
         expect.objectContaining({
-          where: expect.objectContaining({ userId: "u-1" })
-        })
+          where: expect.objectContaining({ userId: "u-1" }),
+        }),
       );
     });
 
@@ -839,7 +839,7 @@ describe("notification.service", () => {
       // Defensive: such a row cannot match the scoped query, and it is neither
       // destroyed nor hidden if it somehow appears.
       Notification.findAll.mockResolvedValueOnce([
-      { id: "n-other", userId: "u-2" }]
+        { id: "n-other", userId: "u-2" }],
       );
 
       const result = await deleteAllNotifications("t-1", "u-1");
@@ -866,7 +866,7 @@ describe("notification.service", () => {
       Notification.findAll.mockRejectedValueOnce(new Error("boom"));
       await expectRejectsWithMessage(
         deleteAllNotifications("t-1", "u-1"),
-        "boom"
+        "boom",
       );
     });
 
@@ -881,13 +881,13 @@ describe("notification.service", () => {
   describe("deleteManyNotifications", () => {
     it("removes only the ids within the caller's scope", async () => {
       Notification.findAll.mockResolvedValueOnce([
-      { id: "n-1", userId: "u-1" },
-      { id: "n-2", userId: null }]
+        { id: "n-1", userId: "u-1" },
+        { id: "n-2", userId: null }],
       );
 
       const result = await deleteManyNotifications("t-1", "u-1", [
-      "n-1",
-      "n-2"]
+        "n-1",
+        "n-2"],
       );
 
       expect(result.data).toEqual({ deleted: 2, requested: 2 });
@@ -903,8 +903,8 @@ describe("notification.service", () => {
       Notification.findAll.mockResolvedValueOnce([{ id: "mine", userId: "u-1" }]);
 
       const result = await deleteManyNotifications("t-1", "u-1", [
-      "mine",
-      "someone-elses"]
+        "mine",
+        "someone-elses"],
       );
 
       expect(result.data).toEqual({ deleted: 1, requested: 2 });
@@ -914,7 +914,7 @@ describe("notification.service", () => {
     it("rejects an empty id list with 400", async () => {
       await expectRejectsWithMessage(
         deleteManyNotifications("t-1", "u-1", []),
-        "No notification ids provided"
+        "No notification ids provided",
       );
       expect(Notification.findAll).not.toHaveBeenCalled();
       expect(Notification.destroy).not.toHaveBeenCalled();
@@ -923,7 +923,7 @@ describe("notification.service", () => {
     it("rejects a non-array payload with 400", async () => {
       await expectRejectsWithMessage(
         deleteManyNotifications("t-1", "u-1", undefined),
-        "No notification ids provided"
+        "No notification ids provided",
       );
     });
 
@@ -931,7 +931,7 @@ describe("notification.service", () => {
       Notification.findAll.mockResolvedValueOnce([]);
       await expectRejectsWithMessage(
         deleteManyNotifications("t-1", "u-1", ["nope"]),
-        "No matching notifications found"
+        "No matching notifications found",
       );
       expect(Notification.destroy).not.toHaveBeenCalled();
     });
@@ -940,14 +940,14 @@ describe("notification.service", () => {
       Notification.findAll.mockRejectedValueOnce(new Error("kaboom"));
       await expectRejectsWithMessage(
         deleteManyNotifications("t-1", "u-1", ["n-1"]),
-        "kaboom"
+        "kaboom",
       );
     });
 
     it("defaults to 500 and its own message when the error carries neither", async () => {
       Notification.findAll.mockRejectedValueOnce({});
       const err = await deleteManyNotifications("t-1", "u-1", ["n-1"]).catch(
-        (e: any) => e
+        (e: any) => e,
       );
       expect(err.status).toBe(500);
       expect(err.message).toBe("Failed to delete notifications");
@@ -965,7 +965,7 @@ describe("notification.service", () => {
     it("should map a plain (non-Sequelize) row by spreading it when toJSON is absent", async () => {
       Notification.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: "plain-1", title: "Plain" }],
-        count: 1
+        count: 1,
       });
 
       const result = await fetchUserNotifications({ tenantId: "t-1", userId: "u-1" });
@@ -1025,7 +1025,7 @@ describe("notification.service", () => {
       await fetchUserNotifications({ tenantId: "t-1", userId: "u-1", isRead: "true" });
 
       expect(
-        Notification.findAndCountAll.mock.calls[0][0].where["$states.is_read$"]
+        Notification.findAndCountAll.mock.calls[0][0].where["$states.is_read$"],
       ).toBe(true);
     });
 
@@ -1035,7 +1035,7 @@ describe("notification.service", () => {
       await fetchUserNotifications({ tenantId: "t-1", userId: "u-1", isRead: true });
 
       expect(
-        Notification.findAndCountAll.mock.calls[0][0].where["$states.is_read$"]
+        Notification.findAndCountAll.mock.calls[0][0].where["$states.is_read$"],
       ).toBe(true);
     });
 
@@ -1051,11 +1051,11 @@ describe("notification.service", () => {
       expect(args.subQuery).toBe(false);
       expect(args.distinct).toBe(true);
       expect(args.include[0]).toEqual(
-        expect.objectContaining({ as: "states", required: false, where: { userId: "u-1" } })
+        expect.objectContaining({ as: "states", required: false, where: { userId: "u-1" } }),
       );
       // The unread count must apply the same join, else it counts hidden rows.
       expect(Notification.count).toHaveBeenCalledWith(
-        expect.objectContaining({ subQuery: false, distinct: true })
+        expect.objectContaining({ subQuery: false, distinct: true }),
       );
     });
 
@@ -1063,14 +1063,14 @@ describe("notification.service", () => {
       const readAt = new Date("2026-01-01T00:00:00Z");
       Notification.findAndCountAll.mockResolvedValueOnce({
         rows: [
-        {
-          toJSON: () => ({
-            id: "n-1",
-            states: [{ isRead: true, readAt, deletedAt: null }]
-          })
-        }],
+          {
+            toJSON: () => ({
+              id: "n-1",
+              states: [{ isRead: true, readAt, deletedAt: null }],
+            }),
+          }],
 
-        count: 1
+        count: 1,
       });
 
       const result = await fetchUserNotifications({ tenantId: "t-1", userId: "u-1" });
@@ -1084,7 +1084,7 @@ describe("notification.service", () => {
       // No state row for this user = unread + visible.
       Notification.findAndCountAll.mockResolvedValueOnce({
         rows: [{ toJSON: () => ({ id: "n-2", states: [] }) }],
-        count: 1
+        count: 1,
       });
 
       const result = await fetchUserNotifications({ tenantId: "t-1", userId: "u-1" });
@@ -1095,7 +1095,7 @@ describe("notification.service", () => {
     it("treats a non-array states value as unread", async () => {
       Notification.findAndCountAll.mockResolvedValueOnce({
         rows: [{ toJSON: () => ({ id: "n-3", states: null }) }],
-        count: 1
+        count: 1,
       });
 
       const result = await fetchUserNotifications({ tenantId: "t-1", userId: "u-1" });
@@ -1106,7 +1106,7 @@ describe("notification.service", () => {
     it("leaves a row without a states property untouched", async () => {
       Notification.findAndCountAll.mockResolvedValueOnce({
         rows: [{ toJSON: () => ({ id: "n-4", title: "No join" }) }],
-        count: 1
+        count: 1,
       });
 
       const result = await fetchUserNotifications({ tenantId: "t-1", userId: "u-1" });
@@ -1120,11 +1120,10 @@ describe("notification.service", () => {
     // `{ status: error.status || 500, message: error.message || "<default>" }`.
     // (emitNotification deliberately swallows and returns null instead.)
     const cases = [
-    ["fetchUserNotifications", () => fetchUserNotifications({ tenantId: "t-1", userId: "u-1" }), "findAndCountAll", "Failed to fetch notifications"],
-    ["markAsRead", () => markAsRead("t-1", "u-1", "n-1"), "findOne", "Failed to mark notification as read"],
-    ["markAllAsRead", () => markAllAsRead("t-1", "u-1"), "findAll", "Failed to mark all notifications as read"],
-    ["deleteNotification", () => deleteNotification("t-1", "u-1", "n-1"), "findOne", "Failed to delete notification"]];
-
+      ["fetchUserNotifications", () => fetchUserNotifications({ tenantId: "t-1", userId: "u-1" }), "findAndCountAll", "Failed to fetch notifications"],
+      ["markAsRead", () => markAsRead("t-1", "u-1", "n-1"), "findOne", "Failed to mark notification as read"],
+      ["markAllAsRead", () => markAllAsRead("t-1", "u-1"), "findAll", "Failed to mark all notifications as read"],
+      ["deleteNotification", () => deleteNotification("t-1", "u-1", "n-1"), "findOne", "Failed to delete notification"]];
 
     // These now reject with a real AppError (not a bare object literal), so the
     // global handler gets a usable stack — previously `details` in the HTTP
@@ -1134,7 +1133,7 @@ describe("notification.service", () => {
         () => {
           throw new Error("expected the call to reject");
         },
-        (e: any) => e
+        (e: any) => e,
       );
       expect(err).toBeInstanceOf(Error);
       expect(err.status).toBe(status);
@@ -1149,7 +1148,7 @@ describe("notification.service", () => {
         Notification[mockFn].mockRejectedValueOnce({});
 
         await expectAppError(invoke, 500, defaultMessage);
-      }
+      },
     );
 
     it.each(cases)(
@@ -1158,7 +1157,7 @@ describe("notification.service", () => {
         Notification[mockFn].mockRejectedValueOnce({ status: 409, message: "Conflict" });
 
         await expectAppError(invoke, 409, "Conflict");
-      }
+      },
     );
 
     it("markAsRead should surface the 404 AppError status, not a generic 500", async () => {
@@ -1167,7 +1166,7 @@ describe("notification.service", () => {
       await expectAppError(
         () => markAsRead("t-1", "u-1", "missing"),
         404,
-        "Notification not found"
+        "Notification not found",
       );
     });
   });

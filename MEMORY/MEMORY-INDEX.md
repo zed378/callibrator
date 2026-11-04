@@ -10,6 +10,7 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-11-04 | ADR-092 Am. 1 | [The backend lint gate is back at zero](./records/2026-11-04-backend-lint-zero.md) | **0 errors, 0 warnings, baseline 0** (was 78,365, all in P9-26's 335 converted tests). Those files lint at their `.js` level from a frozen list; 235 reformatted, 235/235 AST-identical. |
 | 2026-11-03 | AUDIT-2026-11 Wave 1 | [Comprehensive audit: Wave 1 implementation](./records/2026-11-03-audit-wave1.md) | **PARTIAL — 4 commits (SEC-01, A11-SEC-01/02, A11-DB-02, INF-01/02/SEC-03).** BUG-01/02, ARC-01, DB-01/02/03, PERF, A11-DB-03 deferred with reasons. environmentSchema.p906 + full coverage + image boot not run. |
 | 2026-11-03 | P21-15 | [p21-15-operator-esignature](./records/2026-11-03-p21-15-operator-esignature.md) | DONE: personal e-signatures (KMS-held RSA key + specimen), migration 0149, applied to calibration records, documents by hash and certificates (automatic in approve/sign, cert-data-v1, renderer marks), public verification /s/[id]; bound users; /d/[token] one h1 |
 | 2026-11-03 | U-05; ADR-116 Am. 1 | [The backup verifier restores every source role](./records/2026-11-03-backup-verify-roles.md) | **The VM's nightly restore verification failed 2026-10-27 … 11-01** on `GRANT … TO callibrator_transform`; the manifest now records the source's roles and the verifier creates them. Released image fails, rebuilt one passes all seven checks on PostgreSQL 18. **Not deployed.** |

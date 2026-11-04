@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for rate limiter Redis service (coverage boost)
  *
@@ -15,7 +15,7 @@ process.env["REDIS_URL"] = "";
 let mockSessions: any = { update: jest.fn().mockResolvedValue([1]) };
 let mockUsers: any = {
   findByPk: jest.fn().mockResolvedValue(null),
-  update: jest.fn().mockResolvedValue({})
+  update: jest.fn().mockResolvedValue({}),
 };
 
 jest.mock("../../services/emailQueue.service", () => ({
@@ -24,15 +24,15 @@ jest.mock("../../services/emailQueue.service", () => ({
   queueOtpEmail: jest.fn(),
   getQueueStats: jest.fn(),
   clearQueue: jest.fn(),
-  closeRabbitMQ: jest.fn()
+  closeRabbitMQ: jest.fn(),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
-  }
+    error: jest.fn(),
+  },
 }));
 
 // This suite is the in-memory FALLBACK's tests, so the shared client is parked
@@ -42,30 +42,30 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 // The Redis path has its own suites: rateLimiter.redis.path.test.js (mocked
 // client) and rateLimiter.redis.live.test.js (a real server).
 jest.mock("../../services/redis.service", () => ({
-  getRedisConnection: jest.fn(() => ({ status: "wait" }))
+  getRedisConnection: jest.fn(() => ({ status: "wait" })),
 }));
 
 jest.mock("../../models", () => {
   mockSessions = {
-    update: jest.fn().mockResolvedValue([1])
+    update: jest.fn().mockResolvedValue([1]),
   };
   mockUsers = {
     findByPk: jest.fn().mockResolvedValue(null),
-    update: jest.fn().mockResolvedValue({})
+    update: jest.fn().mockResolvedValue({}),
   };
   return {
     Users: mockUsers,
-    Sessions: mockSessions
+    Sessions: mockSessions,
   };
 });
 
 jest.mock("../../utils/session.util", () => ({
-  hashToken: jest.fn((token: any) => `hash:${token}`)
+  hashToken: jest.fn((token: any) => `hash:${token}`),
 }));
 
 jest.mock("../../utils/jwt.util", () => ({
   generateAccessToken: jest.fn(),
-  verifyAccessToken: jest.fn()
+  verifyAccessToken: jest.fn(),
 }));
 
 describe("rateLimiter.redis.service - coverage boost", () => {
@@ -95,7 +95,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     it("should record a failed attempt for a user and return remaining attempts", async () => {
       const result = await rl.recordAuthFailure({
         userId: "user-1",
-        endpoint: "login"
+        endpoint: "login",
       });
       expect(result.allowed).toBe(true);
       expect(result.remainingAttempts).toBe(4);
@@ -104,7 +104,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     it("should return a result with default config for unknown endpoint", async () => {
       const result = await rl.recordAuthFailure({
         userId: "user-1",
-        endpoint: "unknownEndpoint"
+        endpoint: "unknownEndpoint",
       });
       expect(result.allowed).toBe(true);
       // unknown endpoint defaults to login config (maxAttempts: 5)
@@ -135,7 +135,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     it("should handle token-based rate limiting", async () => {
       const result = await rl.recordAuthFailure({
         tokenHash: "hash:token123",
-        endpoint: "login"
+        endpoint: "login",
       });
       expect(result.allowed).toBe(true);
       // First attempt, remaining = 4 (max 5)
@@ -165,7 +165,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     it("should handle IP-based rate limiting", async () => {
       const result = await rl.recordAuthFailure({
         ip: "192.168.1.1",
-        endpoint: "login"
+        endpoint: "login",
       });
       expect(result.allowed).toBe(true);
     });
@@ -340,7 +340,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const res: any = {
         status: jest.fn().mockReturnThis(),
         json: jest.fn(),
-        set: jest.fn()
+        set: jest.fn(),
       };
       const next = jest.fn();
 
@@ -348,8 +348,8 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       expect(next).toHaveBeenCalled();
       expect(res.set).toHaveBeenCalledWith(
         expect.objectContaining({
-          "X-RateLimit-Limit": "10"
-        })
+          "X-RateLimit-Limit": "10",
+        }),
       );
     });
 
@@ -359,7 +359,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const res: any = {
         status: jest.fn().mockReturnThis(),
         json: jest.fn(),
-        set: jest.fn()
+        set: jest.fn(),
       };
       const next = jest.fn();
 
@@ -371,8 +371,8 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           success: false,
-          status: 429
-        })
+          status: 429,
+        }),
       );
     });
 
@@ -382,7 +382,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const res: any = {
         status: jest.fn().mockReturnThis(),
         json: jest.fn(),
-        set: jest.fn()
+        set: jest.fn(),
       };
       const next = jest.fn();
 
@@ -494,7 +494,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const before = await rl.getRateLimitStatus({
         userId: "ttl-user",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(before.user.count).toBe(1);
 
@@ -505,14 +505,14 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const after = await rl.getRateLimitStatus({
         userId: "ttl-user",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(after.user).toBeNull();
 
       // A fresh failure after expiry starts the counter over at 1
       const result = await rl.recordAuthFailure({
         userId: "ttl-user",
-        endpoint: "login"
+        endpoint: "login",
       });
       expect(result.remainingAttempts).toBe(4);
       expect(result.allowed).toBe(true);
@@ -523,14 +523,14 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         await rl.recordAuthFailure({ userId: "ttl-lock", endpoint: "login" });
       }
       expect(
-        (await rl.checkAuthLockout({ userId: "ttl-lock", endpoint: "login" })).locked
+        (await rl.checkAuthLockout({ userId: "ttl-lock", endpoint: "login" })).locked,
       ).toBe(true);
 
       const realNow = Date.now();
       jest.spyOn(Date, "now").mockReturnValue(realNow + 16 * 60 * 1000);
 
       expect(
-        (await rl.checkAuthLockout({ userId: "ttl-lock", endpoint: "login" })).locked
+        (await rl.checkAuthLockout({ userId: "ttl-lock", endpoint: "login" })).locked,
       ).toBe(false);
     });
   });
@@ -542,7 +542,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     it("should use api config and never report isLocked for type=api", async () => {
       const middleware = rl.endpointRateLimiter("tenantCreate", {
         maxRequests: 10,
-        windowMs: 60000
+        windowMs: 60000,
       });
       const req: any = { ip: "9.9.9.9", headers: {}, user: null };
       const res: any = { status: jest.fn().mockReturnThis(), json: jest.fn(), set: jest.fn() };
@@ -551,11 +551,11 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const status = await rl.getRateLimitStatus({
         ip: "9.9.9.9",
         endpoint: "tenantCreate",
-        type: "api"
+        type: "api",
       });
       expect(status.ip).toEqual({
         count: 1,
-        expiresAt: expect.any(Date)
+        expiresAt: expect.any(Date),
       });
       expect(status.user).toBeNull();
       expect(status.token).toBeNull();
@@ -566,7 +566,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const status = await rl.getRateLimitStatus({
         tokenHash: "hash:soft",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.token.isBlocked).toBe(false);
     });
@@ -578,7 +578,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const status = await rl.getRateLimitStatus({
         tokenHash: "hash:hard",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.token.isBlocked).toBe(true);
     });
@@ -593,13 +593,13 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     const makeRes = () => ({
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
-      set: jest.fn()
+      set: jest.fn(),
     });
 
     it("should track by user id when req.user is authenticated", async () => {
       const middleware = rl.endpointRateLimiter("tenantCreate", {
         maxRequests: 10,
-        windowMs: 60000
+        windowMs: 60000,
       });
       const req: any = { ip: "5.5.5.5", headers: {}, user: { id: "auth-user" } };
       const next = jest.fn();
@@ -611,7 +611,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const status = await rl.getRateLimitStatus({
         userId: "auth-user",
         endpoint: "tenantCreate",
-        type: "api"
+        type: "api",
       });
       expect(status.user.count).toBe(1);
     });
@@ -619,12 +619,12 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     it("should track by token hash when an Authorization header is present", async () => {
       const middleware = rl.endpointRateLimiter("tenantCreate", {
         maxRequests: 10,
-        windowMs: 60000
+        windowMs: 60000,
       });
       const req: any = {
         ip: "5.5.5.6",
         headers: { authorization: "Bearer abc123" },
-        user: null
+        user: null,
       };
       const next = jest.fn();
 
@@ -635,7 +635,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const status = await rl.getRateLimitStatus({
         tokenHash: "hash:abc123",
         endpoint: "tenantCreate",
-        type: "api"
+        type: "api",
       });
       expect(status.token.count).toBe(1);
     });
@@ -643,12 +643,12 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     it("should set X-RateLimit headers from the first key only", async () => {
       const middleware = rl.endpointRateLimiter("tenantCreate", {
         maxRequests: 10,
-        windowMs: 60000
+        windowMs: 60000,
       });
       const req: any = {
         ip: "5.5.5.7",
         headers: { authorization: "Bearer tok" },
-        user: { id: "hdr-user" }
+        user: { id: "hdr-user" },
       };
       const res: any = makeRes();
 
@@ -659,7 +659,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       expect(res.set).toHaveBeenCalledWith({
         "X-RateLimit-Limit": "10",
         "X-RateLimit-Remaining": "9",
-        "X-RateLimit-Reset": expect.any(String)
+        "X-RateLimit-Reset": expect.any(String),
       });
     });
 
@@ -668,12 +668,12 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         maxRequests: 10,
         windowMs: 60000,
         byUser: false,
-        byToken: false
+        byToken: false,
       });
       const req: any = {
         ip: "5.5.5.8",
         headers: { authorization: "Bearer skipme" },
-        user: { id: "skip-user" }
+        user: { id: "skip-user" },
       };
       const next = jest.fn();
 
@@ -685,7 +685,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         tokenHash: "hash:skipme",
         ip: "5.5.5.8",
         endpoint: "tenantCreate",
-        type: "api"
+        type: "api",
       });
       expect(status.user).toBeNull();
       expect(status.token).toBeNull();
@@ -697,19 +697,19 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         maxRequests: 10,
         windowMs: 60000,
         byUser: false,
-        byToken: false
+        byToken: false,
       });
       const req: any = {
         headers: {},
         user: null,
-        socket: { remoteAddress: "7.7.7.7" }
+        socket: { remoteAddress: "7.7.7.7" },
       };
       await middleware(req, makeRes(), jest.fn());
 
       const status = await rl.getRateLimitStatus({
         ip: "7.7.7.7",
         endpoint: "tenantCreate",
-        type: "api"
+        type: "api",
       });
       expect(status.ip.count).toBe(1);
     });
@@ -723,14 +723,14 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       await middleware(req, res, jest.fn());
 
       expect(res.set).toHaveBeenCalledWith(
-        expect.objectContaining({ "X-RateLimit-Limit": "10" })
+        expect.objectContaining({ "X-RateLimit-Limit": "10" }),
       );
     });
 
     it("should include retryAfter seconds derived from the window when blocking", async () => {
       const middleware = rl.endpointRateLimiter("tenantCreate", {
         maxRequests: 1,
-        windowMs: 60000
+        windowMs: 60000,
       });
       const req: any = { ip: "5.5.6.0", headers: {}, user: null };
       const res: any = makeRes();
@@ -744,7 +744,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         success: false,
         status: 429,
         message: "Too many requests. Tenant creation limit exceeded.",
-        retryAfter: 60
+        retryAfter: 60,
       });
       // next() is NOT called for the blocked request
       expect(next).toHaveBeenCalledTimes(1);
@@ -762,7 +762,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       expect(next).toHaveBeenCalledTimes(1);
       expect(res.status).not.toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Rate limiter error:")
+        expect.stringContaining("Rate limiter error:"),
       );
     });
   });
@@ -777,7 +777,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     const makeRes = () => ({
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
-      set: jest.fn() // ADR-100: a 429 carries Retry-After
+      set: jest.fn(), // ADR-100: a 429 carries Retry-After
     });
 
     it("should attach rateLimitContext and call next when not locked", async () => {
@@ -794,7 +794,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         userId: null,
         tokenHash: null,
         ip: "2.2.2.1",
-        endpoint: "login"
+        endpoint: "login",
       });
     });
 
@@ -804,7 +804,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const req: any = {
         headers: { authorization: "Bearer good-token" },
         ip: "2.2.2.2",
-        socket: {}
+        socket: {},
       };
       const next = jest.fn();
 
@@ -815,7 +815,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         userId: "jwt-user",
         tokenHash: "hash:good-token",
         ip: "2.2.2.2",
-        endpoint: "login"
+        endpoint: "login",
       });
       expect(next).toHaveBeenCalled();
     });
@@ -828,7 +828,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const req: any = {
         headers: { authorization: "Bearer bad-token" },
         ip: "2.2.2.3",
-        socket: {}
+        socket: {},
       };
       const next = jest.fn();
 
@@ -838,7 +838,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         userId: null,
         tokenHash: "hash:bad-token",
         ip: "2.2.2.3",
-        endpoint: "login"
+        endpoint: "login",
       });
       expect(next).toHaveBeenCalled();
     });
@@ -853,7 +853,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const req: any = {
         headers: { authorization: "Bearer locked" },
         ip: "2.2.2.4",
-        socket: {}
+        socket: {},
       };
       const res: any = makeRes();
       const next = jest.fn();
@@ -884,7 +884,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       expect(next).toHaveBeenCalledTimes(1);
       expect(res.status).not.toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Auth pre-check error:")
+        expect.stringContaining("Auth pre-check error:"),
       );
       expect(req.rateLimitContext).toBeUndefined();
     });
@@ -909,7 +909,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const status = await rl.getRateLimitStatus({
         userId: "pf-user",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.user.count).toBe(1);
     });
@@ -926,15 +926,15 @@ describe("rateLimiter.redis.service - coverage boost", () => {
           userId: {
             toString() {
               throw new Error("boom");
-            }
-          }
-        }
+            },
+          },
+        },
       };
 
       await expect(rl.noteAuthFailure(req, "login")).resolves.toBeUndefined();
 
       expect(logger.error).toHaveBeenCalledWith(
-        "Auth failure recording error on login: boom"
+        "Auth failure recording error on login: boom",
       );
     });
   });
@@ -946,7 +946,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       await rl.recordAuthFailure({ userId: "ps-user", endpoint: "login" });
       expect(
         (await rl.getRateLimitStatus({ userId: "ps-user", endpoint: "login", type: "auth" })).
-        user.count
+          user.count,
       ).toBe(1);
 
       await rl.noteAuthSuccess({ rateLimitContext: { userId: "ps-user", tokenHash: null } }, "login");
@@ -954,12 +954,12 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const status = await rl.getRateLimitStatus({
         userId: "ps-user",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.user).toBeNull();
       expect(mockUsers.update).toHaveBeenCalledWith(
         { failedLoginAttempts: 0, lockedUntil: null },
-        { where: { id: "ps-user" } }
+        { where: { id: "ps-user" } },
       );
     });
 
@@ -971,7 +971,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const status = await rl.getRateLimitStatus({
         ip: "203.0.113.9",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.ip.count).toBe(1);
     });
@@ -988,9 +988,9 @@ describe("rateLimiter.redis.service - coverage boost", () => {
           userId: {
             toString() {
               throw new Error("boom");
-            }
-          }
-        }
+            },
+          },
+        },
       };
 
       await expect(rl.noteAuthSuccess(req, "login")).resolves.toBeUndefined();
@@ -1011,9 +1011,9 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       expect(mockUsers.update).toHaveBeenCalledWith(
         expect.objectContaining({
           failedLoginAttempts: 5,
-          lockedUntil: expect.any(Date)
+          lockedUntil: expect.any(Date),
         }),
-        { where: { id: "persist-user" } }
+        { where: { id: "persist-user" } },
       );
     });
 
@@ -1021,14 +1021,14 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       await rl.recordAuthFailure({
         userId: "combo-user",
         ip: "3.3.3.1",
-        endpoint: "login"
+        endpoint: "login",
       });
 
       const status = await rl.getRateLimitStatus({
         userId: "combo-user",
         ip: "3.3.3.1",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.user.count).toBe(1);
       expect(status.ip).toBeNull();
@@ -1038,14 +1038,14 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       await rl.recordAuthFailure({
         tokenHash: "hash:combo",
         ip: "3.3.3.2",
-        endpoint: "login"
+        endpoint: "login",
       });
 
       const status = await rl.getRateLimitStatus({
         tokenHash: "hash:combo",
         ip: "3.3.3.2",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.token.count).toBe(1);
       expect(status.ip).toBeNull();
@@ -1067,7 +1067,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       // still preserved on the entry.
       const lockout = await rl.checkAuthLockout({
         userId: "first-user",
-        endpoint: "login"
+        endpoint: "login",
       });
       expect(lockout.locked).toBe(true);
       expect(lockout.lockoutUntil.getTime()).toBe(realNow + 1000 + 15 * 60 * 1000);
@@ -1076,7 +1076,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     it("should use the register config for the register endpoint", async () => {
       const result = await rl.recordAuthFailure({
         userId: "reg-user",
-        endpoint: "register"
+        endpoint: "register",
       });
       // register: maxAttempts 3
       expect(result.remainingAttempts).toBe(2);
@@ -1129,7 +1129,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       await rl.recordAuthFailure({ tokenHash: "hash:notrevoked", endpoint: "login" });
       const result = await rl.checkAuthLockout({
         tokenHash: "hash:notrevoked",
-        endpoint: "login"
+        endpoint: "login",
       });
       expect(result).toEqual({ locked: false });
     });
@@ -1148,7 +1148,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       const result = await rl.checkAuthLockout({
         userId: "clean-user",
         ip: "4.4.4.2",
-        endpoint: "login"
+        endpoint: "login",
       });
       expect(result).toEqual({ locked: false });
     });
@@ -1172,11 +1172,11 @@ describe("rateLimiter.redis.service - coverage boost", () => {
 
       expect(
         (await rl.getRateLimitStatus({ userId: "multi", endpoint: "login", type: "auth" })).
-        user
+          user,
       ).toBeNull();
       expect(
         (await rl.getRateLimitStatus({ userId: "multi", endpoint: "register", type: "auth" })).
-        user
+          user,
       ).toBeNull();
     });
   });
@@ -1188,18 +1188,18 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         maxRequests: 10,
         windowMs: 60000,
         byToken: false,
-        byIp: false
+        byIp: false,
       });
       await middleware(
         { headers: {}, user: { id: "default-type-user" } },
         { status: jest.fn().mockReturnThis(), json: jest.fn(), set: jest.fn() },
-        jest.fn()
+        jest.fn(),
       );
 
       // ...then read it back without passing `type` at all.
       const status = await rl.getRateLimitStatus({
         userId: "default-type-user",
-        endpoint: "tenantCreate"
+        endpoint: "tenantCreate",
       });
       expect(status.user.count).toBe(1);
       // type defaults to "api", so the auth-only isLocked flag must be false
@@ -1213,7 +1213,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       for (let i = 0; i < 10; i++) {
         await rl.recordAuthFailure({
           tokenHash: "hash:no-endpoint",
-          endpoint: null
+          endpoint: null,
         });
       }
 
@@ -1237,16 +1237,16 @@ describe("rateLimiter.redis.service - coverage boost", () => {
       // expiresAt computes to NaN, i.e. the entry carries no usable expiry.
       const middleware = rl.endpointRateLimiter("tenantCreate", {
         maxRequests: 10,
-        windowMs: NaN
+        windowMs: NaN,
       });
       await middleware(
         {
           ip: "8.8.4.4",
           headers: { authorization: "Bearer nanwin" },
-          user: { id: "nan-window-user" }
+          user: { id: "nan-window-user" },
         },
         { status: jest.fn().mockReturnThis(), json: jest.fn(), set: jest.fn() },
-        jest.fn()
+        jest.fn(),
       );
 
       const status = await rl.getRateLimitStatus({
@@ -1254,19 +1254,19 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         tokenHash: "hash:nanwin",
         ip: "8.8.4.4",
         endpoint: "tenantCreate",
-        type: "api"
+        type: "api",
       });
 
       // All three trackers recorded the request but expose no expiry date.
       expect(status.user).toEqual({
         count: 1,
         expiresAt: null,
-        isLocked: false
+        isLocked: false,
       });
       expect(status.token).toEqual({
         count: 1,
         expiresAt: null,
-        isBlocked: false
+        isBlocked: false,
       });
       expect(status.ip).toEqual({ count: 1, expiresAt: null });
     });
@@ -1278,13 +1278,13 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         maxRequests: 10,
         windowMs: 60000,
         byToken: false,
-        byIp: false
+        byIp: false,
       });
       const next = jest.fn();
       await middleware(
         { ip: "9.9.9.9", headers: {}, user: { id: "no-ip-user" } },
         { status: jest.fn().mockReturnThis(), json: jest.fn(), set: jest.fn() },
-        next
+        next,
       );
       expect(next).toHaveBeenCalled();
 
@@ -1292,7 +1292,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         userId: "no-ip-user",
         ip: "9.9.9.9",
         endpoint: "tenantCreate",
-        type: "api"
+        type: "api",
       });
       expect(status.user.count).toBe(1);
       expect(status.ip).toBeNull();
@@ -1304,18 +1304,18 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         windowMs: 60000,
         byUser: false,
         byToken: false,
-        byIp: false
+        byIp: false,
       });
       const res: any = {
         status: jest.fn().mockReturnThis(),
         json: jest.fn(),
-        set: jest.fn()
+        set: jest.fn(),
       };
       const next = jest.fn();
       await middleware(
         { ip: "9.9.9.10", headers: {}, user: { id: "none-user" } },
         res,
-        next
+        next,
       );
 
       expect(next).toHaveBeenCalled();
@@ -1325,7 +1325,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         userId: "none-user",
         ip: "9.9.9.10",
         endpoint: "tenantCreate",
-        type: "api"
+        type: "api",
       });
       expect(status.user).toBeNull();
       expect(status.ip).toBeNull();
@@ -1335,14 +1335,14 @@ describe("rateLimiter.redis.service - coverage boost", () => {
   describe("authPreCheck - client IP resolution", () => {
     const makeRes = () => ({
       status: jest.fn().mockReturnThis(),
-      json: jest.fn()
+      json: jest.fn(),
     });
 
     it("A-16: a client-supplied x-forwarded-for cannot choose the limiter's key", async () => {
       const middleware = rl.authPreCheck("login");
       const req: any = {
         headers: { "x-forwarded-for": "6.6.6.6" },
-        socket: { remoteAddress: "4.4.4.5" }
+        socket: { remoteAddress: "4.4.4.5" },
       };
       const next = jest.fn();
 
@@ -1353,7 +1353,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
         userId: null,
         tokenHash: null,
         ip: "4.4.4.5",
-        endpoint: "login"
+        endpoint: "login",
       });
     });
 

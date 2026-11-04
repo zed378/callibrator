@@ -4,15 +4,15 @@ const { Op } = require("sequelize");
 // logAction. Its in-transaction effects are asserted against a
 // schema-enforcing ledger in dataRetention.audit.w04.test.js.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 // W-15: the sweep ends by deleting expired GDPR exports; that is tested in
 // gdpr.exportSweep.w15.test.js, and here it must not touch the real directory.
 jest.mock("../../services/gdpr.service", () => ({
-  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 })
+  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 }),
 }));
 // A-180: a masked account's photo file is deleted after the commit.
 jest.mock("../../utils/upload.util", () => ({ deleteUpload: jest.fn().mockResolvedValue(true) }));
@@ -24,8 +24,8 @@ jest.mock("../../models", () => {
     rawAttributes: {
       id: { fieldName: "id", type: { key: "INTEGER" } },
       email: { fieldName: "email", type: { key: "STRING" } },
-      createdAt: { fieldName: "createdAt", type: { key: "DATE" } }
-    }
+      createdAt: { fieldName: "createdAt", type: { key: "DATE" } },
+    },
   };
   // A-135: there is no `Audit_log` model. This mock used to invent one, so
   // the tests passed while maskPII("audit_logs") answered 400 on every real
@@ -42,9 +42,9 @@ jest.mock("../../models", () => {
       findOne: jest.fn(),
       findAll: jest.fn(),
       upsert: jest.fn(),
-      destroy: jest.fn()
+      destroy: jest.fn(),
     },
-    User: mockUser
+    User: mockUser,
   };
 });
 
@@ -66,7 +66,7 @@ describe("dataRetention.service", () => {
 
     it("returns custom policies when overrides exist", async () => {
       TenantSettings.findAll.mockResolvedValue([
-      { key: "retention_policy_notifications", value: "180" }]
+        { key: "retention_policy_notifications", value: "180" }],
       );
       const result = await dataRetention.getRetentionPolicy("t1");
       expect(result.notifications).toBe(180);
@@ -82,12 +82,12 @@ describe("dataRetention.service", () => {
       const result = await dataRetention.setRetentionPolicy("t1", "notifications", 180, {
         userId: "admin-1",
         ipAddress: "10.0.0.1",
-        userAgent: "ua"
+        userAgent: "ua",
       });
 
       expect(TenantSettings.upsert).toHaveBeenCalledWith(
         { tenantId: "t1", key: "retention_policy_notifications", value: "180" },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
       // A-153: audited in the same transaction, with the period before and after.
       expect(auditService.logAction).toHaveBeenCalledWith(
@@ -103,10 +103,10 @@ describe("dataRetention.service", () => {
             operation: "SET_RETENTION_POLICY",
             policyKey: "notifications",
             before: { days: 90 },
-            after: { days: 180 }
-          }
+            after: { days: 180 },
+          },
         },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
       expect(result.days).toBe(180);
     });
@@ -125,7 +125,7 @@ describe("dataRetention.service", () => {
       auditService.logAction.mockRejectedValueOnce(new Error("audit down"));
 
       await expect(dataRetention.setRetentionPolicy("t1", "sessions", 60)).rejects.toThrow(
-        "audit down"
+        "audit down",
       );
     });
 
@@ -157,9 +157,9 @@ describe("dataRetention.service", () => {
 
       expect(result).toEqual({ tenantId: "t1", enabled: true, reason: " litigation", enabledBy: "user-1" });
       expect(TenantSettings.upsert.mock.calls).toEqual([
-      [{ tenantId: "t1", key: "legal_hold_enabled", value: "true" }, { transaction: "TX" }],
-      [{ tenantId: "t1", key: "legal_hold_reason", value: " litigation" }, { transaction: "TX" }],
-      [{ tenantId: "t1", key: "legal_hold_enabled_by", value: "user-1" }, { transaction: "TX" }]]
+        [{ tenantId: "t1", key: "legal_hold_enabled", value: "true" }, { transaction: "TX" }],
+        [{ tenantId: "t1", key: "legal_hold_reason", value: " litigation" }, { transaction: "TX" }],
+        [{ tenantId: "t1", key: "legal_hold_enabled_by", value: "user-1" }, { transaction: "TX" }]],
       );
       expect(auditService.logAction).toHaveBeenCalledWith(
         {
@@ -173,10 +173,10 @@ describe("dataRetention.service", () => {
           changes: {
             operation: "LEGAL_HOLD_ENABLE",
             before: { onHold: false },
-            after: { onHold: true, reason: " litigation" }
-          }
+            after: { onHold: true, reason: " litigation" },
+          },
         },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -187,7 +187,7 @@ describe("dataRetention.service", () => {
 
       expect(TenantSettings.upsert).toHaveBeenCalledWith(
         { tenantId: "t1", key: "legal_hold_reason", value: "Legal hold enabled" },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
       const [entry] = auditService.logAction.mock.calls[0];
       expect(entry.changes.before).toEqual({ onHold: true });
@@ -206,14 +206,14 @@ describe("dataRetention.service", () => {
       expect(TenantSettings.destroy).toHaveBeenCalledWith({
         where: {
           tenantId: "t1",
-          key: ["legal_hold_enabled", "legal_hold_reason", "legal_hold_enabled_by"]
+          key: ["legal_hold_enabled", "legal_hold_reason", "legal_hold_enabled_by"],
         },
-        transaction: "TX"
+        transaction: "TX",
       });
       expect(auditService.logAction.mock.calls[0][0].changes).toEqual({
         operation: "LEGAL_HOLD_RELEASE",
         before: { onHold: true, reason: "litigation" },
-        after: { onHold: false }
+        after: { onHold: false },
       });
       expect(auditService.logAction.mock.calls[0][1]).toEqual({ transaction: "TX" });
     });
@@ -226,7 +226,7 @@ describe("dataRetention.service", () => {
 
       expect(auditService.logAction.mock.calls[0][0].changes.before).toEqual({
         onHold: false,
-        reason: null
+        reason: null,
       });
     });
 
@@ -256,7 +256,7 @@ describe("dataRetention.service", () => {
     it("D-19: purges a tenant's IoT readings older than its opted-in period, by tenant and timestamp, in the transaction", async () => {
       TenantSettings.findOne.mockResolvedValue(null);
       TenantSettings.findAll.mockResolvedValue([
-      { key: "retention_policy_iot_readings", value: "1000" }]
+        { key: "retention_policy_iot_readings", value: "1000" }],
       );
       Notification.destroy.mockResolvedValue(0);
       Session.destroy.mockResolvedValue(0);
@@ -275,7 +275,7 @@ describe("dataRetention.service", () => {
     it("D-19: an IoT period below the 730-day floor purges at the floor", async () => {
       TenantSettings.findOne.mockResolvedValue(null);
       TenantSettings.findAll.mockResolvedValue([
-      { key: "retention_policy_iot_readings", value: "30" }]
+        { key: "retention_policy_iot_readings", value: "30" }],
       );
       Notification.destroy.mockResolvedValue(0);
       Session.destroy.mockResolvedValue(0);
@@ -289,14 +289,14 @@ describe("dataRetention.service", () => {
 
     it("D-19: setting an IoT period below the floor is refused with 400", async () => {
       await expect(
-        dataRetention.setRetentionPolicy("t1", "iot_readings", 90, { userId: "u1" })
+        dataRetention.setRetentionPolicy("t1", "iot_readings", 90, { userId: "u1" }),
       ).rejects.toMatchObject({ status: 400 });
     });
 
     it("never purges sooner than an entity's floor, whatever is stored", async () => {
       TenantSettings.findOne.mockResolvedValue(null);
       TenantSettings.findAll.mockResolvedValue([
-      { key: "retention_policy_notifications", value: "1" }]
+        { key: "retention_policy_notifications", value: "1" }],
       );
       Notification.destroy.mockResolvedValue(0);
       Session.destroy.mockResolvedValue(0);
@@ -314,7 +314,7 @@ describe("dataRetention.service", () => {
     it("purges an entity whose stored period does not parse on the platform default", async () => {
       TenantSettings.findOne.mockResolvedValue(null);
       TenantSettings.findAll.mockResolvedValue([
-      { key: "retention_policy_sessions", value: "forever" }]
+        { key: "retention_policy_sessions", value: "forever" }],
       );
       Notification.destroy.mockResolvedValue(0);
       Session.destroy.mockResolvedValue(0);
@@ -324,7 +324,7 @@ describe("dataRetention.service", () => {
       const cutoff = Session.destroy.mock.calls[0][0].where.createdAt[Op.lt];
       expect(Math.round((Date.now() - cutoff.getTime()) / 86400000)).toBe(30);
       expect(result.anomalies).toEqual([
-      { entity: "sessions", source: "tenant_settings", value: "forever", appliedDays: 30 }]
+        { entity: "sessions", source: "tenant_settings", value: "forever", appliedDays: 30 }],
       );
     });
 
@@ -351,7 +351,7 @@ describe("dataRetention.service", () => {
     it("skips purge for an entity if retention days <= 0", async () => {
       TenantSettings.findOne.mockResolvedValue(null);
       TenantSettings.findAll.mockResolvedValue([
-      { key: "retention_policy_sessions", value: "0" }]
+        { key: "retention_policy_sessions", value: "0" }],
       );
       Notification.destroy.mockResolvedValue(0);
 
@@ -382,7 +382,7 @@ describe("dataRetention.service", () => {
       const result = await dataRetention.maskPII("t1", "users", ["u1", "u2"], {
         userId: "admin-1",
         ipAddress: "10.0.0.1",
-        userAgent: "ua"
+        userAgent: "ua",
       });
 
       expect(User.update).toHaveBeenNthCalledWith(
@@ -394,14 +394,14 @@ describe("dataRetention.service", () => {
           firstName: "[REDACTED]",
           lastName: "[REDACTED]",
           phone: "[REDACTED]",
-          avatarUrl: "default.svg"
+          avatarUrl: "default.svg",
         },
-        { where: { id: "u1", tenantId: "t1" }, transaction: "TX" }
+        { where: { id: "u1", tenantId: "t1" }, transaction: "TX" },
       );
       expect(User.update).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({ email: "redacted_u2@redacted.invalid" }),
-        { where: { id: "u2", tenantId: "t1" }, transaction: "TX" }
+        { where: { id: "u2", tenantId: "t1" }, transaction: "TX" },
       );
       // The count is what the database changed, not what was asked for.
       expect(result).toEqual({ masked: 1, fields: ["email", "username", "firstName", "lastName", "phone", "avatarUrl"] });
@@ -416,12 +416,12 @@ describe("dataRetention.service", () => {
             operation: "GDPR_MASK_PII",
             recordIds: ["u1", "u2"],
             masked: 1,
-            fields: ["email", "username", "firstName", "lastName", "phone", "avatarUrl"]
+            fields: ["email", "username", "firstName", "lastName", "phone", "avatarUrl"],
           },
           ipAddress: "10.0.0.1",
-          userAgent: "ua"
+          userAgent: "ua",
         },
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -434,7 +434,7 @@ describe("dataRetention.service", () => {
 
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -450,10 +450,10 @@ describe("dataRetention.service", () => {
       deleteUpload.mockImplementation(async (file: any) => order.push(`delete ${file}`));
       TenantSettings.findOne.mockResolvedValue(null);
       User.findAll.mockResolvedValue([
-      { id: "u1", avatarUrl: "u1-photo.png" },
-      { id: "u2", avatarUrl: "http://host/uploads/public/profile/u2-photo.jpg" },
-      { id: "u3", avatarUrl: "default.svg" },
-      { id: "u4", avatarUrl: null }]
+        { id: "u1", avatarUrl: "u1-photo.png" },
+        { id: "u2", avatarUrl: "http://host/uploads/public/profile/u2-photo.jpg" },
+        { id: "u3", avatarUrl: "default.svg" },
+        { id: "u4", avatarUrl: null }],
       );
       User.update.mockResolvedValue([1]);
 
@@ -462,7 +462,7 @@ describe("dataRetention.service", () => {
       expect(User.findAll).toHaveBeenCalledWith({
         where: { id: ["u1", "u2", "u3", "u4"], tenantId: "t1" },
         attributes: ["id", "avatarUrl"],
-        transaction: "TX"
+        transaction: "TX",
       });
       // The shared "no photo" placeholder and a null avatar are never deleted.
       expect(order).toEqual(["commit", "delete u1-photo.png", "delete u2-photo.jpg"]);
@@ -483,7 +483,7 @@ describe("dataRetention.service", () => {
       expect(result.masked).toBe(1);
       expect(warn).toHaveBeenCalledWith("Failed to delete a masked user's avatar file", {
         tenantId: "t1",
-        error: "EACCES"
+        error: "EACCES",
       });
       warn.mockRestore();
     });
@@ -496,7 +496,7 @@ describe("dataRetention.service", () => {
       auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
 
       await expect(
-        dataRetention.maskPII("t1", "users", ["u1"], { userId: "admin-1" })
+        dataRetention.maskPII("t1", "users", ["u1"], { userId: "admin-1" }),
       ).rejects.toThrow("audit insert failed");
       expect(deleteUpload).not.toHaveBeenCalled();
     });
@@ -519,12 +519,12 @@ describe("dataRetention.service", () => {
       async (entityType: any) => {
         await expect(dataRetention.anonymizeDataset("t1", entityType)).rejects.toMatchObject({
           status: 400,
-          message: expect.stringContaining("mask-pii")
+          message: expect.stringContaining("mask-pii"),
         });
         expect(User.findAll).not.toHaveBeenCalled();
         expect(User.update).not.toHaveBeenCalled();
         expect(TenantSettings.findOne).not.toHaveBeenCalled();
-      }
+      },
     );
   });
 
@@ -534,9 +534,9 @@ describe("dataRetention.service", () => {
     it("aggregates purged counts and skips across all tenants", async () => {
       Tenant.findAll.mockResolvedValue([{ id: "t1" }, { id: "t2" }]);
       const spy = jest.
-      spyOn(dataRetention, "purgeExpiredRecords").
-      mockResolvedValueOnce({ purged: { notifications: 5, sessions: 2 }, skipped: false }).
-      mockResolvedValueOnce({ skipped: true, reason: "legal_hold" });
+        spyOn(dataRetention, "purgeExpiredRecords").
+        mockResolvedValueOnce({ purged: { notifications: 5, sessions: 2 }, skipped: false }).
+        mockResolvedValueOnce({ skipped: true, reason: "legal_hold" });
 
       const summary = await dataRetention.runRetentionSweep();
 
@@ -548,8 +548,8 @@ describe("dataRetention.service", () => {
     it("treats a missing purged map as zero", async () => {
       Tenant.findAll.mockResolvedValue([{ id: "t1" }]);
       jest.
-      spyOn(dataRetention, "purgeExpiredRecords").
-      mockResolvedValue({ skipped: false });
+        spyOn(dataRetention, "purgeExpiredRecords").
+        mockResolvedValue({ skipped: false });
 
       const summary = await dataRetention.runRetentionSweep();
 
@@ -559,9 +559,9 @@ describe("dataRetention.service", () => {
     it("counts and logs a per-tenant failure without aborting the sweep", async () => {
       Tenant.findAll.mockResolvedValue([{ id: "t1" }, { id: "t2" }]);
       jest.
-      spyOn(dataRetention, "purgeExpiredRecords").
-      mockRejectedValueOnce(new Error("boom")).
-      mockResolvedValueOnce({ purged: { sessions: 3 }, skipped: false });
+        spyOn(dataRetention, "purgeExpiredRecords").
+        mockRejectedValueOnce(new Error("boom")).
+        mockResolvedValueOnce({ purged: { sessions: 3 }, skipped: false });
 
       const summary = await dataRetention.runRetentionSweep();
 

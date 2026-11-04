@@ -23,7 +23,7 @@ const mockRecord = (over: any = {}) => {
     isDefault: false,
     sslEnabled: true,
     verificationToken: "callibrator-verify=abc",
-    ...over
+    ...over,
   };
   rec.update = async (values: any, options: any) => {
     mockRef.ledger.write("custom_domains", { id: rec.id, ...values }, options);
@@ -41,30 +41,30 @@ jest.mock("../../models", () => ({
       }
       // loadOwned: the tenant predicate is part of the lookup.
       return mockRef.record && where.id === mockRef.record.id && where.tenantId === mockRef.record.tenantId ?
-      mockRef.record :
-      null;
+        mockRef.record :
+        null;
     },
     create: async (values: any, options: any) => {
       mockRef.ledger.write("custom_domains", values, options);
       return { id: "d-new", ...values };
     },
-    update: async (values: any, options: any) => mockRef.ledger.write("custom_domains", { ...values, where: options.where }, options)
+    update: async (values: any, options: any) => mockRef.ledger.write("custom_domains", { ...values, where: options.where }, options),
   },
   User: {
     findOne: async () => mockRef.requester,
     findAll: async (args: any) => {
       mockRef.findAllArgs = args;
       return mockRef.admins;
-    }
+    },
   },
   Role: { name: "Role" },
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 jest.mock("../../config", () => ({
   db: {
     transaction: (...args: any[]) => mockRef.ledger.transaction(...args),
-    Sequelize: { Op: { ne: Symbol("ne") } }
-  }
+    Sequelize: { Op: { ne: Symbol("ne") } },
+  },
 }));
 jest.mock("../../services/emailQueue.service", () => ({ queueNotificationEmail: jest.fn() }));
 jest.mock("dns", () => ({ promises: { resolveTxt: jest.fn() } }));
@@ -98,54 +98,53 @@ afterAll(() => {
 });
 
 const CASES = [
-{
-  name: "addDomain",
-  run: (a: any) => svc.addDomain("tenant-a", { domain: "portal.hospital-a.example" }, undefined, a),
-  action: "CREATE",
-  resourceId: "d-new",
-  changes: {
-    operation: "ADD_DOMAIN",
-    before: {},
-    after: { domain: "portal.hospital-a.example", domainType: "subdomain", sslEnabled: true, status: "pending_verification" }
-  }
-},
-{
-  name: "verifyDomain",
-  run: (a: any) => svc.verifyDomain("tenant-a", "d-1", a),
-  action: "UPDATE",
-  resourceId: "d-1",
-  changes: {
-    operation: "VERIFY_DOMAIN",
-    domain: "portal.hospital-a.example",
-    before: { status: "pending_verification" },
-    after: { status: "active", verified: true }
-  }
-},
-{
-  name: "removeDomain",
-  run: (a: any) => svc.removeDomain("tenant-a", "d-1", a),
-  action: "DELETE",
-  resourceId: "d-1",
-  changes: {
-    operation: "REMOVE_DOMAIN",
-    domain: "portal.hospital-a.example",
-    before: { status: "pending_verification", isDefault: false },
-    after: { status: "deleted", isDefault: false }
-  }
-},
-{
-  name: "setDefaultDomain",
-  run: (a: any) => svc.setDefaultDomain("tenant-a", "d-1", a),
-  action: "UPDATE",
-  resourceId: "d-1",
-  changes: {
-    operation: "SET_DEFAULT_DOMAIN",
-    domain: "portal.hospital-a.example",
-    before: { isDefault: false },
-    after: { isDefault: true }
-  }
-}];
-
+  {
+    name: "addDomain",
+    run: (a: any) => svc.addDomain("tenant-a", { domain: "portal.hospital-a.example" }, undefined, a),
+    action: "CREATE",
+    resourceId: "d-new",
+    changes: {
+      operation: "ADD_DOMAIN",
+      before: {},
+      after: { domain: "portal.hospital-a.example", domainType: "subdomain", sslEnabled: true, status: "pending_verification" },
+    },
+  },
+  {
+    name: "verifyDomain",
+    run: (a: any) => svc.verifyDomain("tenant-a", "d-1", a),
+    action: "UPDATE",
+    resourceId: "d-1",
+    changes: {
+      operation: "VERIFY_DOMAIN",
+      domain: "portal.hospital-a.example",
+      before: { status: "pending_verification" },
+      after: { status: "active", verified: true },
+    },
+  },
+  {
+    name: "removeDomain",
+    run: (a: any) => svc.removeDomain("tenant-a", "d-1", a),
+    action: "DELETE",
+    resourceId: "d-1",
+    changes: {
+      operation: "REMOVE_DOMAIN",
+      domain: "portal.hospital-a.example",
+      before: { status: "pending_verification", isDefault: false },
+      after: { status: "deleted", isDefault: false },
+    },
+  },
+  {
+    name: "setDefaultDomain",
+    run: (a: any) => svc.setDefaultDomain("tenant-a", "d-1", a),
+    action: "UPDATE",
+    resourceId: "d-1",
+    changes: {
+      operation: "SET_DEFAULT_DOMAIN",
+      domain: "portal.hospital-a.example",
+      before: { isDefault: false },
+      after: { isDefault: true },
+    },
+  }];
 
 describe("A-186 — domain changes are audited in the tenant's trail, inside their transaction", () => {
   describe.each(CASES)("$name", ({ run, action, resourceId, changes }: any) => {
@@ -154,17 +153,17 @@ describe("A-186 — domain changes are audited in the tenant's trail, inside the
 
       expect(mockRef.ledger.committed("custom_domains").length).toBeGreaterThan(0);
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        tenantId: "tenant-a",
-        userId: "user-requester",
-        actorType: "user",
-        action,
-        resourceType: "CustomDomain",
-        resourceId,
-        ipAddress: "10.1.2.3",
-        userAgent: "UA",
-        changes
-      })]
+        expect.objectContaining({
+          tenantId: "tenant-a",
+          userId: "user-requester",
+          actorType: "user",
+          action,
+          resourceType: "CustomDomain",
+          resourceId,
+          ipAddress: "10.1.2.3",
+          userAgent: "UA",
+          changes,
+        })],
       );
     });
 
@@ -188,9 +187,9 @@ describe("A-186 — domain changes are audited in the tenant's trail, inside the
   it("another tenant's domain id is 404 for every write, and nothing is written", async () => {
     const other: any = { ...actor, userId: "user-b", tenantId: "tenant-b" };
     for (const run of [
-    () => svc.verifyDomain("tenant-b", "d-1", other),
-    () => svc.removeDomain("tenant-b", "d-1", other),
-    () => svc.setDefaultDomain("tenant-b", "d-1", other)])
+      () => svc.verifyDomain("tenant-b", "d-1", other),
+      () => svc.removeDomain("tenant-b", "d-1", other),
+      () => svc.setDefaultDomain("tenant-b", "d-1", other)])
     {
       await expect(run()).rejects.toMatchObject({ status: 404 });
     }
@@ -204,9 +203,9 @@ describe("A-186 — domain changes are audited in the tenant's trail, inside the
 
     expect(result.verified).toBe(false);
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({
-      changes: expect.objectContaining({ after: { status: "verification_failed", verified: false } })
-    })]
+      expect.objectContaining({
+        changes: expect.objectContaining({ after: { status: "verification_failed", verified: false } }),
+      })],
     );
   });
 });
@@ -216,10 +215,9 @@ describe("A-186 — who is told that a domain was added", () => {
 
   it("the requester and every active tenant administrator, each once", async () => {
     mockRef.admins = [
-    { id: "user-admin", email: "admin@hospital-a.example", firstName: "Ada" },
-    // the requester is also an admin: one email, not two
-    { id: "user-requester", email: "IT.Lead@hospital-a.example", firstName: "Ira" }];
-
+      { id: "user-admin", email: "admin@hospital-a.example", firstName: "Ada" },
+      // the requester is also an admin: one email, not two
+      { id: "user-requester", email: "IT.Lead@hospital-a.example", firstName: "Ira" }];
 
     await svc.addDomain("tenant-a", { domain: "portal.hospital-a.example" }, undefined, actor);
 
@@ -227,16 +225,16 @@ describe("A-186 — who is told that a domain was added", () => {
     // The admin query is the tenant's, active users only, filtered by the admin roles.
     expect(mockRef.findAllArgs.where).toEqual({ tenantId: "tenant-a", isActive: true });
     expect(mockRef.findAllArgs.include).toEqual([
-    expect.objectContaining({
-      as: "role",
-      required: true,
-      where: { name: [ROLE_NAMES.HEALTCARE_ADMIN, ROLE_NAMES.CALIBRATOR_ADMIN] }
-    })]
+      expect.objectContaining({
+        as: "role",
+        required: true,
+        where: { name: [ROLE_NAMES.HEALTCARE_ADMIN, ROLE_NAMES.CALIBRATOR_ADMIN] },
+      })],
     );
     expect(logger.info).toHaveBeenCalledWith("Domain verification email queued", {
       tenantId: "tenant-a",
       domain: "portal.hospital-a.example",
-      recipients: 2
+      recipients: 2,
     });
   });
 
@@ -257,7 +255,7 @@ describe("A-186 — who is told that a domain was added", () => {
       tenantId: "tenant-a",
       domain: "portal.hospital-a.example",
       accepted: 1,
-      recipients: 2
+      recipients: 2,
     });
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain("@");
   });

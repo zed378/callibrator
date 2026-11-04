@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for ticket.service.js
  */
@@ -12,8 +12,8 @@ jest.mock("sequelize", () => ({
     or: Symbol("or"),
     and: Symbol("and"),
     like: Symbol("like"),
-    iLike: Symbol("iLike") // A-320: the search matches with ILIKE
-  }
+    iLike: Symbol("iLike"), // A-320: the search matches with ILIKE
+  },
 }));
 
 jest.mock("../../models", () => {
@@ -22,7 +22,7 @@ jest.mock("../../models", () => {
     findByPk: jest.fn(),
     findAll: jest.fn(),
     findAndCountAll: jest.fn(),
-    create: jest.fn()
+    create: jest.fn(),
   });
   return {
     Ticket: model(),
@@ -31,23 +31,23 @@ jest.mock("../../models", () => {
     Tenant: {},
     sequelize: {
       transaction: jest.fn(async (cb: any) => cb("txn")),
-      query: jest.fn()
-    }
+      query: jest.fn(),
+    },
   };
 });
 
 jest.mock("../../services/notification.service", () => ({
-  emitNotification: jest.fn()
+  emitNotification: jest.fn(),
 }));
 
 // P6-11: every write commits with one audit row in its transaction.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn()
+  logAction: jest.fn(),
 }));
 
 jest.mock("../../constants", () => ({
   DEFAULT_LIMIT: 25,
-  MAX_LIMIT: 100
+  MAX_LIMIT: 100,
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -81,7 +81,7 @@ const superAdmin: any = {
   role: { name: "SUPER_ADMIN" },
   firstName: "Super",
   lastName: "Admin",
-  email: "sa@x.c"
+  email: "sa@x.c",
 };
 
 // A per-tenant responder: works only their own tenant's queue, may post
@@ -92,7 +92,7 @@ const responder = {
   role: { name: "HEALTHCARE ADMIN" },
   firstName: "Res",
   lastName: "Ponder",
-  email: "resp@x.c"
+  email: "resp@x.c",
 };
 
 // A plain requester: sees only the tickets they are party to, no internal notes.
@@ -100,7 +100,7 @@ const requester = {
   id: "req1",
   tenantId: TID,
   role: { name: "USER" },
-  email: "req@x.c"
+  email: "req@x.c",
 };
 
 const makeTicket = (over: any = {}) => ({
@@ -125,7 +125,7 @@ const makeTicket = (over: any = {}) => ({
   comments: [],
   update: jest.fn().mockResolvedValue(undefined),
   destroy: jest.fn().mockResolvedValue(undefined),
-  ...over
+  ...over,
 });
 
 const makeComment = (over: any = {}) => ({
@@ -135,7 +135,7 @@ const makeComment = (over: any = {}) => ({
   isInternal: false,
   createdAt: new Date(),
   author: { id: "u1", firstName: "A", lastName: "B", email: "a@b.c" },
-  ...over
+  ...over,
 });
 
 const expectReject = async (promise: any, message: any) => {
@@ -164,7 +164,7 @@ describe("listTickets", () => {
   it("applies every filter and the search term, with explicit page/limit", async () => {
     Ticket.findAndCountAll.mockResolvedValueOnce({
       count: 3,
-      rows: [makeTicket()]
+      rows: [makeTicket()],
     });
     const res: any = await svc.listTickets(superAdmin, {
       status: "open",
@@ -174,7 +174,7 @@ describe("listTickets", () => {
       mine: true,
       q: "  Hello  ",
       page: 2,
-      limit: 10
+      limit: 10,
     });
     const arg = Ticket.findAndCountAll.mock.calls[0][0];
     expect(arg.where.status).toBe("open");
@@ -182,8 +182,8 @@ describe("listTickets", () => {
     expect(arg.where.category).toBe("bug");
     expect(arg.where.assignedTo).toBe("agent");
     expect(arg.where[Op.or]).toEqual([
-    { createdBy: "sa" },
-    { assignedTo: "sa" }]
+      { createdBy: "sa" },
+      { assignedTo: "sa" }],
     );
     expect(arg.where[Op.and]).toBeDefined();
     expect(arg.limit).toBe(10);
@@ -222,7 +222,7 @@ describe("listTickets", () => {
 describe("getTicket", () => {
   it("returns a serialized ticket when found", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ comments: [makeComment()] })
+      makeTicket({ comments: [makeComment()] }),
     );
     const res: any = await svc.getTicket(superAdmin, "t1");
     expect(res.id).toBe("t1");
@@ -244,7 +244,7 @@ describe("createTicket", () => {
   it("blocks a super admin from raising a ticket", async () => {
     await expectReject(
       svc.createTicket(superAdmin, { subject: "x" }),
-      "cannot raise"
+      "cannot raise",
     );
     expect(Ticket.create).not.toHaveBeenCalled();
   });
@@ -255,12 +255,12 @@ describe("createTicket", () => {
         id: "t9",
         assignedTo: "agent",
         ticketKey: "TKT-9",
-        createdBy: "req1"
-      })
+        createdBy: "req1",
+      }),
     );
     // The trailing getTicket runs as the requester, who must be party to it.
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ id: "t9", createdBy: "req1", assignedTo: "agent" })
+      makeTicket({ id: "t9", createdBy: "req1", assignedTo: "agent" }),
     );
     const dueDate = new Date();
     const res: any = await svc.createTicket(requester, {
@@ -269,7 +269,7 @@ describe("createTicket", () => {
       priority: "high",
       category: "bug",
       assignedTo: "agent",
-      dueDate
+      dueDate,
     });
     const createArg = Ticket.create.mock.calls[0][0];
     expect(createArg).toEqual(
@@ -283,8 +283,8 @@ describe("createTicket", () => {
         status: "open",
         ticketKey: "TKT-1",
         number: 1,
-        createdBy: "req1"
-      })
+        createdBy: "req1",
+      }),
     );
     expect(notificationService.emitNotification).toHaveBeenCalledTimes(1);
     expect(res.id).toBe("t9");
@@ -292,7 +292,7 @@ describe("createTicket", () => {
 
   it("applies fallbacks and does not notify when unassigned", async () => {
     Ticket.create.mockResolvedValueOnce(
-      makeTicket({ assignedTo: null, createdBy: "req1" })
+      makeTicket({ assignedTo: null, createdBy: "req1" }),
     );
     Ticket.findOne.mockResolvedValueOnce(makeTicket({ createdBy: "req1" }));
     await svc.createTicket(requester, { subject: "Only subject" });
@@ -302,9 +302,9 @@ describe("createTicket", () => {
         priority: "medium",
         category: "support",
         assignedTo: null,
-        dueDate: null
+        dueDate: null,
       }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
     expect(notificationService.emitNotification).not.toHaveBeenCalled();
   });
@@ -318,17 +318,17 @@ describe("updateTicket", () => {
     Ticket.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.updateTicket(superAdmin, "t1", { subject: "x" }),
-      "Ticket not found"
+      "Ticket not found",
     );
   });
 
   it("throws 403 when the caller may not manage the ticket", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "creator", assignedTo: "agent" })
+      makeTicket({ createdBy: "creator", assignedTo: "agent" }),
     );
     await expectReject(
       svc.updateTicket({ id: "other", tenantId: TID }, "t1", { subject: "x" }),
-      "do not have permission"
+      "do not have permission",
     );
   });
 
@@ -336,7 +336,7 @@ describe("updateTicket", () => {
     const ticket = makeTicket({
       createdBy: "creator",
       assignedTo: "oldAgent",
-      status: "open"
+      status: "open",
     });
     Ticket.findOne.mockResolvedValueOnce(ticket);
     Ticket.findOne.mockResolvedValueOnce(makeTicket());
@@ -348,7 +348,7 @@ describe("updateTicket", () => {
       category: "incident",
       dueDate,
       assignedTo: "newAgent",
-      status: "resolved"
+      status: "resolved",
     });
     const patch = ticket.update.mock.calls[0][0];
     expect(patch).toEqual(
@@ -359,8 +359,8 @@ describe("updateTicket", () => {
         category: "incident",
         dueDate,
         assignedTo: "newAgent",
-        status: "resolved"
-      })
+        status: "resolved",
+      }),
     );
     expect(patch.resolvedAt).toBeInstanceOf(Date);
     expect(patch.closedAt).toBeNull();
@@ -425,7 +425,7 @@ describe("updateTicket", () => {
     Ticket.findOne.mockResolvedValueOnce(ticket);
     Ticket.findOne.mockResolvedValueOnce(makeTicket());
     await svc.updateTicket({ id: "creator", tenantId: TID }, "t1", {
-      subject: "x"
+      subject: "x",
     });
     expect(ticket.update).toHaveBeenCalled();
   });
@@ -436,10 +436,10 @@ describe("updateTicket", () => {
     // The trailing getTicket runs as the same actor ("agent"), who must be a
     // party to the ticket it re-reads or it 404s.
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "creator", assignedTo: "agent" })
+      makeTicket({ createdBy: "creator", assignedTo: "agent" }),
     );
     await svc.updateTicket({ id: "agent", tenantId: TID }, "t1", {
-      subject: "x"
+      subject: "x",
     });
     expect(ticket.update).toHaveBeenCalled();
   });
@@ -456,7 +456,7 @@ describe("assignTicket", () => {
     await svc.assignTicket(superAdmin, "t1", "newAgent");
     expect(ticket.update).toHaveBeenCalledWith(
       expect.objectContaining({ assignedTo: "newAgent" }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
     expect(notificationService.emitNotification).toHaveBeenCalledTimes(1);
   });
@@ -487,7 +487,7 @@ describe("deleteTicket", () => {
     Ticket.findOne.mockResolvedValueOnce(ticket);
     await expectReject(
       svc.deleteTicket({ id: "agent", tenantId: TID }, "t1"),
-      "Only the requester or an admin"
+      "Only the requester or an admin",
     );
     expect(ticket.destroy).not.toHaveBeenCalled();
   });
@@ -499,14 +499,14 @@ describe("deleteTicket", () => {
 describe("addComment", () => {
   it("public comment notifies both parties and returns the serialized comment", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "creator", assignedTo: "agent" })
+      makeTicket({ createdBy: "creator", assignedTo: "agent" }),
     );
     TicketComment.create.mockResolvedValueOnce({ id: "cm1" });
     TicketComment.findByPk.mockResolvedValueOnce(makeComment());
     const res: any = await svc.addComment(superAdmin, "t1", { body: "hi" });
     expect(TicketComment.create).toHaveBeenCalledWith(
       expect.objectContaining({ isInternal: false, body: "hi" }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
     expect(notificationService.emitNotification).toHaveBeenCalledTimes(2);
     expect(res.author.id).toBe("u1");
@@ -514,17 +514,17 @@ describe("addComment", () => {
 
   it("internal comment notifies only the assignee and coerces isInternal", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "creator", assignedTo: "agent" })
+      makeTicket({ createdBy: "creator", assignedTo: "agent" }),
     );
     TicketComment.create.mockResolvedValueOnce({ id: "cm1" });
     TicketComment.findByPk.mockResolvedValueOnce(makeComment({ author: null }));
     const res: any = await svc.addComment(superAdmin, "t1", {
       body: "note",
-      isInternal: 1
+      isInternal: 1,
     });
     expect(TicketComment.create).toHaveBeenCalledWith(
       expect.objectContaining({ isInternal: true }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
     expect(notificationService.emitNotification).toHaveBeenCalledTimes(1);
     expect(res.author).toBeNull();
@@ -533,7 +533,7 @@ describe("addComment", () => {
   it("excludes the actor and null recipients from notifications", async () => {
     // creator === actor, assignee null -> both recipients drop out
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "u1", assignedTo: null })
+      makeTicket({ createdBy: "u1", assignedTo: null }),
     );
     TicketComment.create.mockResolvedValueOnce({ id: "cm1" });
     TicketComment.findByPk.mockResolvedValueOnce(makeComment());
@@ -543,14 +543,14 @@ describe("addComment", () => {
 
   it("builds the actor label from the email when names are absent", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "u1", assignedTo: "agent" })
+      makeTicket({ createdBy: "u1", assignedTo: "agent" }),
     );
     TicketComment.create.mockResolvedValueOnce({ id: "cm1" });
     TicketComment.findByPk.mockResolvedValueOnce(makeComment());
     await svc.addComment(
       { id: "u1", tenantId: TID, email: "u1@x.c" },
       "t1",
-      { body: "hi" }
+      { body: "hi" },
     );
     const call = notificationService.emitNotification.mock.calls[0][0];
     expect(call.message).toContain("u1@x.c");
@@ -558,7 +558,7 @@ describe("addComment", () => {
 
   it("falls back to 'Someone' when the actor has no name or email", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "u1", assignedTo: "agent" })
+      makeTicket({ createdBy: "u1", assignedTo: "agent" }),
     );
     TicketComment.create.mockResolvedValueOnce({ id: "cm1" });
     TicketComment.findByPk.mockResolvedValueOnce(makeComment());
@@ -576,13 +576,13 @@ describe("getMetrics", () => {
     const past = new Date(Date.now() - 86400000);
     const future = new Date(Date.now() + 86400000);
     Ticket.findAll.mockResolvedValueOnce([
-    { status: "open", priority: "low", category: "support", dueDate: past },
-    { status: "in_progress", priority: "medium", category: "bug", dueDate: null },
-    { status: "resolved", priority: "high", category: "feature", dueDate: past },
-    { status: "closed", priority: "urgent", category: "incident", dueDate: null },
-    { status: "open", priority: "low", category: "question", dueDate: future },
-    // unknown enum values exercise the `v in out` miss branch
-    { status: "archived", priority: "trivial", category: "misc", dueDate: null }]
+      { status: "open", priority: "low", category: "support", dueDate: past },
+      { status: "in_progress", priority: "medium", category: "bug", dueDate: null },
+      { status: "resolved", priority: "high", category: "feature", dueDate: past },
+      { status: "closed", priority: "urgent", category: "incident", dueDate: null },
+      { status: "open", priority: "low", category: "question", dueDate: future },
+      // unknown enum values exercise the `v in out` miss branch
+      { status: "archived", priority: "trivial", category: "misc", dueDate: null }],
     );
     const res: any = await svc.getMetrics(superAdmin);
     expect(res.total).toBe(6);
@@ -590,7 +590,7 @@ describe("getMetrics", () => {
       open: 2,
       in_progress: 1,
       resolved: 1,
-      closed: 1
+      closed: 1,
     });
     expect(res.byPriority).toEqual({ low: 2, medium: 1, high: 1, urgent: 1 });
     expect(res.byCategory).toEqual({
@@ -598,7 +598,7 @@ describe("getMetrics", () => {
       bug: 1,
       feature: 1,
       incident: 1,
-      question: 1
+      question: 1,
     });
     expect(res.open).toBe(3);
     expect(res.resolved).toBe(1);
@@ -626,37 +626,37 @@ describe("helpers", () => {
 
   it("_assertCanManage allows a SUPERADMIN (alt spelling)", () => {
     expect(() =>
-    svc._assertCanManage(
-      { id: "x", role: { name: "SUPERADMIN" } },
-      makeTicket()
-    )
+      svc._assertCanManage(
+        { id: "x", role: { name: "SUPERADMIN" } },
+        makeTicket(),
+      ),
     ).not.toThrow();
   });
 
   it("_assertCanManage allows the creator", () => {
     expect(() =>
-    svc._assertCanManage({ id: "creator" }, makeTicket({ createdBy: "creator" }))
+      svc._assertCanManage({ id: "creator" }, makeTicket({ createdBy: "creator" })),
     ).not.toThrow();
   });
 
   it("_assertCanManage allows the assignee", () => {
     expect(() =>
-    svc._assertCanManage({ id: "agent" }, makeTicket({ assignedTo: "agent" }))
+      svc._assertCanManage({ id: "agent" }, makeTicket({ assignedTo: "agent" })),
     ).not.toThrow();
   });
 
   it("_assertCanManage throws 403 for anyone else (no role object)", () => {
     expect(() =>
-    svc._assertCanManage(
-      { id: "nobody" },
-      makeTicket({ createdBy: "creator", assignedTo: "agent" })
-    )
+      svc._assertCanManage(
+        { id: "nobody" },
+        makeTicket({ createdBy: "creator", assignedTo: "agent" }),
+      ),
     ).toThrow("do not have permission");
   });
 
   it("_serializeTicket maps comments and a present requester", () => {
     const out = svc._serializeTicket(
-      makeTicket({ comments: [makeComment()] })
+      makeTicket({ comments: [makeComment()] }),
     );
     expect(out.requester.email).toBe("c@x.c");
     expect(out.assignee).toBeNull();
@@ -665,7 +665,7 @@ describe("helpers", () => {
 
   it("_serializeTicket surfaces the tenant when present", () => {
     const out = svc._serializeTicket(
-      makeTicket({ tenant: { id: TID, name: "Acme" } })
+      makeTicket({ tenant: { id: TID, name: "Acme" } }),
     );
     expect(out.tenantId).toBe(TID);
     expect(out.tenant).toEqual({ id: TID, name: "Acme" });
@@ -673,7 +673,7 @@ describe("helpers", () => {
 
   it("_serializeTicket defaults missing comments and tenant to empty/null", () => {
     const out = svc._serializeTicket(
-      makeTicket({ comments: undefined, assignee: { id: "agent", firstName: "Ag", lastName: "Ent", email: "ag@x.c" } })
+      makeTicket({ comments: undefined, assignee: { id: "agent", firstName: "Ag", lastName: "Ent", email: "ag@x.c" } }),
     );
     expect(out.comments).toEqual([]);
     expect(out.assignee.id).toBe("agent");
@@ -721,8 +721,8 @@ describe("requester vs responder point of view", () => {
     const arg = Ticket.findAndCountAll.mock.calls[0][0];
     expect(arg.where.tenantId).toBe(TID);
     expect(arg.where[Op.or]).toEqual([
-    { createdBy: "req1" },
-    { assignedTo: "req1" }]
+      { createdBy: "req1" },
+      { assignedTo: "req1" }],
     );
     // A requester cannot browse the queue by another agent's assignment.
     expect(arg.where.assignedTo).toBeUndefined();
@@ -733,10 +733,10 @@ describe("requester vs responder point of view", () => {
       makeTicket({
         createdBy: "req1",
         comments: [
-        makeComment({ id: "pub", isInternal: false }),
-        makeComment({ id: "int", isInternal: true })]
+          makeComment({ id: "pub", isInternal: false }),
+          makeComment({ id: "int", isInternal: true })],
 
-      })
+      }),
     );
     const res: any = await svc.getTicket(requester, "t1");
     expect(res.comments).toHaveLength(1);
@@ -745,14 +745,14 @@ describe("requester vs responder point of view", () => {
 
   it("404s a requester opening a ticket they are not party to", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "someone", assignedTo: "other" })
+      makeTicket({ createdBy: "someone", assignedTo: "other" }),
     );
     await expectReject(svc.getTicket(requester, "t1"), "Ticket not found");
   });
 
   it("handles a requester's ticket with no comments", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "req1", comments: undefined })
+      makeTicket({ createdBy: "req1", comments: undefined }),
     );
     const res: any = await svc.getTicket(requester, "t1");
     expect(res.comments).toEqual([]);
@@ -760,7 +760,7 @@ describe("requester vs responder point of view", () => {
 
   it("forces a requester's comment to public even when isInternal is set", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "req1", assignedTo: "agent" })
+      makeTicket({ createdBy: "req1", assignedTo: "agent" }),
     );
     await svc.addComment(requester, "t1", { body: "hi", isInternal: true });
     expect(TicketComment.create.mock.calls[0][0].isInternal).toBe(false);
@@ -768,11 +768,11 @@ describe("requester vs responder point of view", () => {
 
   it("404s a requester commenting on a ticket they are not party to", async () => {
     Ticket.findOne.mockResolvedValueOnce(
-      makeTicket({ createdBy: "x", assignedTo: "y" })
+      makeTicket({ createdBy: "x", assignedTo: "y" }),
     );
     await expectReject(
       svc.addComment(requester, "t1", { body: "hi" }),
-      "Ticket not found"
+      "Ticket not found",
     );
   });
 
@@ -781,8 +781,8 @@ describe("requester vs responder point of view", () => {
     await svc.getMetrics(requester);
     const arg = Ticket.findAll.mock.calls[0][0];
     expect(arg.where[Op.or]).toEqual([
-    { createdBy: "req1" },
-    { assignedTo: "req1" }]
+      { createdBy: "req1" },
+      { assignedTo: "req1" }],
     );
   });
 });
@@ -807,9 +807,9 @@ describe("P6-11 — audit rows", () => {
         action: "CREATE",
         resourceType: "Ticket",
         resourceId: "t1",
-        changes: expect.objectContaining({ operation: "TICKET_CREATE", ticketKey: "TKT-1" })
+        changes: expect.objectContaining({ operation: "TICKET_CREATE", ticketKey: "TKT-1" }),
       }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
   });
 
@@ -817,7 +817,7 @@ describe("P6-11 — audit rows", () => {
     await svc.deleteTicket(superAdmin, "t1");
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "sa", action: "DELETE", tenantId: TID }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
   });
 

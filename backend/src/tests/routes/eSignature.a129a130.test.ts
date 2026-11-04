@@ -195,12 +195,10 @@ jest.mock("../../models", () => ({
 
 // ---- the harness ---------------------------------------------------------
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const RolesService = require("../../services/roles.service") as typeof import("../../services/roles.service");
 const { getUserOverrideMatrix } = require("../../services/userPermission.service") as typeof import("../../services/userPermission.service");
 const { ROLE_MENU_ASSIGNMENTS, MENU_SLUGS } = require("../../constants") as typeof import("../../constants");
 const router = require("../../routes/api/eSignature.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 interface HttpResponse {
   status: number;
@@ -356,7 +354,7 @@ describe("A-129 — POST /workflows: signers are users of the tenant who may sig
     });
 
     expect(res.status).toBe(201);
-    const steps = mockRef.ledger!.committed("signature_workflow_steps") as Array<{ tenantId: string; stepNumber: number; signerId: string; signerEmail: string; signerName: string; status: string; ipAddress?: string }>;
+    const steps = mockRef.ledger!.committed("signature_workflow_steps") as { tenantId: string; stepNumber: number; signerId: string; signerEmail: string; signerName: string; status: string; ipAddress?: string }[];
     expect(steps).toEqual([
       expect.objectContaining({
         tenantId: fx.tenantA.id,
@@ -372,7 +370,7 @@ describe("A-129 — POST /workflows: signers are users of the tenant who may sig
     // A step no longer carries an IP address or user agent from the body.
     expect((steps[0] as unknown as { ipAddress?: unknown }).ipAddress).toBeUndefined();
 
-    const [workflow] = mockRef.ledger!.committed("signature_workflows") as Array<{ id: string }>;
+    const [workflow] = mockRef.ledger!.committed("signature_workflows") as { id: string }[];
     expect(mockRef.ledger!.auditRows()).toEqual([
       expect.objectContaining({
         tenantId: fx.tenantA.id,

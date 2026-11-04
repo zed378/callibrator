@@ -15,7 +15,7 @@ jest.mock("../../models", () => ({
   MaintenanceWorkOrder: { bulkCreate: jest.fn(), findAll: jest.fn() },
   CalibrationDevice: { findAll: jest.fn() },
   Vendor: {},
-  User: {}
+  User: {},
 }));
 
 const { Op } = require("sequelize");
@@ -35,7 +35,7 @@ beforeEach(() => {
   MaintenanceWorkOrder.bulkCreate.mockResolvedValue([]);
   // By default every inserted row is read back.
   MaintenanceWorkOrder.findAll.mockImplementation(async () =>
-  MaintenanceWorkOrder.bulkCreate.mock.calls[0][0].map((r: any) => row(r))
+    MaintenanceWorkOrder.bulkCreate.mock.calls[0][0].map((r: any) => row(r)),
   );
 });
 
@@ -61,21 +61,21 @@ describe("W-17 — createAutoScheduledWorkOrders", () => {
 
     const ids = MaintenanceWorkOrder.bulkCreate.mock.calls[0][0].map((r: any) => r.id);
     expect(auditService.logAction.mock.calls.map(([entry, opts]: any) => [entry.resourceId, entry.systemActor, entry.changes.after.deviceId, opts])).toEqual([
-    [ids[0], "system:calibration-scan", "d1", { transaction: "TX" }],
-    [ids[1], "system:calibration-scan", "d2", { transaction: "TX" }]]
+      [ids[0], "system:calibration-scan", "d1", { transaction: "TX" }],
+      [ids[1], "system:calibration-scan", "d2", { transaction: "TX" }]],
     );
     expect(auditService.logAction.mock.calls[0][0]).toMatchObject({
       tenantId: "t1",
       action: "CREATE",
       resourceType: "MaintenanceWorkOrder",
-      changes: { before: {}, after: expect.objectContaining({ type: "Preventative", status: "Open" }) }
+      changes: { before: {}, after: expect.objectContaining({ type: "Preventative", status: "Open" }) },
     });
     expect(webhookService.emitAfterCommit).toHaveBeenCalledTimes(2);
     expect(webhookService.emitAfterCommit).toHaveBeenCalledWith(
       "TX",
       "t1",
       "work_order.created",
-      expect.objectContaining({ workOrderId: ids[0], deviceId: "d1" })
+      expect.objectContaining({ workOrderId: ids[0], deviceId: "d1" }),
     );
   });
 
@@ -100,7 +100,7 @@ describe("W-17 — createAutoScheduledWorkOrders", () => {
     expect(CalibrationDevice.findAll).toHaveBeenCalledWith({
       where: { id: { [Op.in]: ["d1", "d2"] }, tenantId: "t1" },
       attributes: ["id"],
-      transaction: "TX"
+      transaction: "TX",
     });
     expect(MaintenanceWorkOrder.bulkCreate.mock.calls[0][0].map((r: any) => r.deviceId)).toEqual(["d2"]);
     expect(result.missing).toEqual(["d1"]);

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Q-05 (ADR-084) — a parent tenant never sees a child tenant's data.
  *
@@ -31,16 +31,15 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
 // Tenant A is B's parent. The hierarchy rows are what the service would read;
 // they are reached only for the caller's OWN tenant.
 const mockHierarchyRows = () => [
-{ tenantId: mockFx.current.tenantA.id, tenantCode: "HOSP-A", parentCode: null, path: "/hosp-a", depth: 0 },
-{ tenantId: mockFx.current.tenantB.id, tenantCode: "HOSP-B", parentCode: "HOSP-A", path: "/hosp-a/hosp-b", depth: 1 }];
-
+  { tenantId: mockFx.current.tenantA.id, tenantCode: "HOSP-A", parentCode: null, path: "/hosp-a", depth: 0 },
+  { tenantId: mockFx.current.tenantB.id, tenantCode: "HOSP-B", parentCode: "HOSP-A", path: "/hosp-a/hosp-b", depth: 1 }];
 
 jest.mock("../../models", () => ({
   TenantHierarchy: {
@@ -48,23 +47,23 @@ jest.mock("../../models", () => ({
       const row = mockHierarchyRows().find((r: any) => r.tenantId === where.tenantId);
       return row ? { ...row } : null;
     }),
-    findAll: jest.fn(async () => [])
+    findAll: jest.fn(async () => []),
   },
-  Tenant: {}
+  Tenant: {},
 }));
 
 jest.mock("../../config", () => ({
   db: {
     transaction: (...args: any[]) => mockFx.current.transaction(...args),
-    Sequelize: { Op: { like: Symbol("like") } }
-  }
+    Sequelize: { Op: { like: Symbol("like") } },
+  },
 }));
 
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -74,39 +73,39 @@ const hierarchyService = require("../../services/tenantHierarchy.service");
 // Express's own router.handle with a minimal req/res pair (the harness of
 // tenant.edit.a63.test.js — supertest is not a dependency here).
 const http = (method: any, url: any): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    }
-  };
-  const req: any = {
-    method: method.toUpperCase(),
-    url,
-    originalUrl: "/api/v1/tenant-hierarchy" + url,
-    body: {},
-    query: {},
-    params: {},
-    headers: {},
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({ status: err ? err.status || 500 : 404, body: { message: err ? err.message : "no route" } })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+    };
+    const req: any = {
+      method: method.toUpperCase(),
+      url,
+      originalUrl: "/api/v1/tenant-hierarchy" + url,
+      body: {},
+      query: {},
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({ status: err ? err.status || 500 : 404, body: { message: err ? err.message : "no route" } }),
+    );
+  });
 
 const NO_SUCH_TENANT = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const READS = ["children", "parent", "descendants", "ancestors"];
@@ -130,7 +129,7 @@ describe("Q-05 (ADR-084): the hierarchy grants no visibility across tenants", ()
 
         expect(child.status).toBe(404);
         expect(child).toEqual(nobody);
-      }
+      },
     );
 
     it.each(READS)("the child's administrator reading the parent's /%s gets 404 too", async (read: any) => {
@@ -171,10 +170,10 @@ describe("Q-05 (ADR-084): the hierarchy grants no visibility across tenants", ()
             }
           } else if (entry.name.endsWith(".js") || entry.name.endsWith(".ts")) {
             const code = fs.
-            readFileSync(full, "utf8")
+              readFileSync(full, "utf8")
             // comments may name the removed helpers; code may not
-            .replace(/\/\*[\s\S]*?\*\//g, "").
-            replace(/\/\/.*$/gm, "");
+              .replace(/\/\*[\s\S]*?\*\//g, "").
+              replace(/\/\/.*$/gm, "");
             if (/getDataVisibilityScope|buildTenantFilter|HIERARCHY_SCOPE|scope:\s*["']subtree["']/.test(code)) {
               offenders.push(path.relative(root, full));
             }
@@ -191,7 +190,7 @@ describe("Q-05 (ADR-084): the hierarchy grants no visibility across tenants", ()
         // P9-05a (ADR-087 Amendment 2): the module is TypeScript now; the same
         // assertions, on the same source.
         path.resolve(__dirname, "../../middlewares/tenantContext.middleware.ts"),
-        "utf8"
+        "utf8",
       );
 
       expect(source).not.toMatch(/hierarch/i);

@@ -37,8 +37,8 @@ const ENCRYPT = "legacy-encrypt-key";
 // S-20: tenant 0's user has an enrolled seed and a pending one, both sealed;
 // tenant 1's user has a pre-0086 PLAINTEXT seed (keys:rotate converts it).
 const SEEDS = Object.freeze([
-Object.freeze({ secret: "JBSWY3DPEHPK3PXP", pending: "GEZDGNBVGY3TQOJQ" }),
-Object.freeze({ secret: "KRSXG5CTMVRXEZLU", pending: null })]
+  Object.freeze({ secret: "JBSWY3DPEHPK3PXP", pending: "GEZDGNBVGY3TQOJQ" }),
+  Object.freeze({ secret: "KRSXG5CTMVRXEZLU", pending: null })],
 );
 const TENANTS = ["a8a8a8a8-0000-4000-8000-00000000000a", "b8b8b8b8-0000-4000-8000-00000000000b"];
 const idOf = (hex: any) => keyIdOf(Buffer.from(hex, "hex"));
@@ -62,7 +62,7 @@ const boot = (env: any) => {
         rotation: require("../../services/keyRotation.service"),
         mfa: require("../../services/mfa.service"),
         m0058: require("../../migrations/0058-tenant-keys-kms-envelope"),
-        models: require("../../models")
+        models: require("../../models"),
       };
     });
   } finally {
@@ -96,7 +96,7 @@ describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
     // under the user's AAD; a pre-0086 plaintext seed reads as it is).
     for (const r of await read(
       p,
-      "SELECT id::text AS id, username, mfa_secret, mfa_pending_secret FROM users ORDER BY username"
+      "SELECT id::text AS id, username, mfa_secret, mfa_pending_secret FROM users ORDER BY username",
     )) {
       out[`mfa:${r.username}`] = p.mfa.openSecret(r.id, r.mfa_secret);
       if (r.mfa_pending_secret !== null) {
@@ -117,7 +117,7 @@ describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
       await owner.db.query(
         `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
          VALUES (:id, :name, :sub, :email, now(), now())`,
-        { replacements: { id: tenantId, name: `Rot ${i}`, sub: `rot-${i}`, email: `rot${i}@live.test` } }
+        { replacements: { id: tenantId, name: `Rot ${i}`, sub: `rot-${i}`, email: `rot${i}@live.test` } },
       );
       // A v1 envelope, as kms.service wrote them before key ids.
       const v1 = owner.kms.encryptData(tenantId, `stripe-${i}`).split(":");
@@ -126,12 +126,12 @@ describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
       await owner.db.query(
         `INSERT INTO tenant_settings (id, tenant_id, key, value, created_at, updated_at)
          VALUES (gen_random_uuid(), :t, :key, :value, now(), now())`,
-        { replacements: { t: tenantId, key: `stripe_secret_key_${i}`, value: legacyV1 } }
+        { replacements: { t: tenantId, key: `stripe_secret_key_${i}`, value: legacyV1 } },
       );
       await owner.db.query(
         `INSERT INTO tenant_settings (id, tenant_id, key, value, created_at, updated_at)
          VALUES (gen_random_uuid(), :t, :key, 'plain, not secret', now(), now())`,
-        { replacements: { t: tenantId, key: `display_name_${i}` } }
+        { replacements: { t: tenantId, key: `display_name_${i}` } },
       );
       secrets[`setting:display_name_${i}`] = "plain, not secret";
       secrets[`webhook:https://hook-${i}.example`] = `whsec-${i}`;
@@ -142,14 +142,14 @@ describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
           replacements: {
             t: tenantId,
             url: `https://hook-${i}.example`,
-            secret: owner.kms.encryptData(tenantId, `whsec-${i}`)
-          }
-        }
+            secret: owner.kms.encryptData(tenantId, `whsec-${i}`),
+          },
+        },
       );
       const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
         modulusLength: 1024,
         publicKeyEncoding: { type: "spki", format: "pem" },
-        privateKeyEncoding: { type: "pkcs8", format: "pem" }
+        privateKeyEncoding: { type: "pkcs8", format: "pem" },
       });
       pems[i] = privateKey;
       secrets[`key:key-${i}`] = privateKey;
@@ -161,9 +161,9 @@ describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
             t: tenantId,
             kid: `key-${i}`,
             pub: publicKey,
-            priv: encryptPrivateKeyForTest(privateKey, ENCRYPT)
-          }
-        }
+            priv: encryptPrivateKeyForTest(privateKey, ENCRYPT),
+          },
+        },
       );
       const userId = crypto.randomUUID();
       const seed = (SEEDS as any)[i];
@@ -181,9 +181,9 @@ describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
             email: `rot-user-${i}@live.test`,
             // tenant 0: sealed under A (S-20); tenant 1: the pre-0086 plaintext form.
             secret: i === 0 ? owner.mfa.sealSecret(userId, seed.secret) : seed.secret,
-            pending: seed.pending === null ? null : owner.mfa.sealSecret(userId, seed.pending)
-          }
-        }
+            pending: seed.pending === null ? null : owner.mfa.sealSecret(userId, seed.pending),
+          },
+        },
       );
       secrets[`mfa:rot-user-${i}`] = seed.secret;
       if (seed.pending !== null) {
@@ -219,11 +219,11 @@ describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
       const dry = await rotating.rotation.rewrapAll({ sequelize: rotating.db, dryRun: true });
       expect(dry.failed).toBe(0);
       expect(dry.reports.map((r: any) => [r.table, r.column, r.rewrapped, r.converted])).toEqual([
-      ["tenant_settings", "value", 2, 0], // the two secrets; the plain setting is not an envelope
-      ["webhooks", "secret", 2, 0],
-      ["tenant_keys", "private_key", 2, 0], // 0058 already converted them (test 1)
-      ["users", "mfa_secret", 1, 1], // S-20: one sealed seed re-wrapped, one plaintext seed converted
-      ["users", "mfa_pending_secret", 1, 0]]
+        ["tenant_settings", "value", 2, 0], // the two secrets; the plain setting is not an envelope
+        ["webhooks", "secret", 2, 0],
+        ["tenant_keys", "private_key", 2, 0], // 0058 already converted them (test 1)
+        ["users", "mfa_secret", 1, 1], // S-20: one sealed seed re-wrapped, one plaintext seed converted
+        ["users", "mfa_pending_secret", 1, 0]],
       );
       expect(await read(rotating, "SELECT value FROM tenant_settings ORDER BY id")).toEqual(before);
 
@@ -242,11 +242,11 @@ describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
     try {
       expect(await readAll(onlyB)).toEqual(secrets);
       const values = [
-      ...(await read(onlyB, "SELECT value AS v FROM tenant_settings WHERE key LIKE 'stripe%'")),
-      ...(await read(onlyB, "SELECT secret AS v FROM webhooks")),
-      ...(await read(onlyB, "SELECT private_key AS v FROM tenant_keys")),
-      ...(await read(onlyB, "SELECT mfa_secret AS v FROM users")),
-      ...(await read(onlyB, "SELECT mfa_pending_secret AS v FROM users WHERE mfa_pending_secret IS NOT NULL"))];
+        ...(await read(onlyB, "SELECT value AS v FROM tenant_settings WHERE key LIKE 'stripe%'")),
+        ...(await read(onlyB, "SELECT secret AS v FROM webhooks")),
+        ...(await read(onlyB, "SELECT private_key AS v FROM tenant_keys")),
+        ...(await read(onlyB, "SELECT mfa_secret AS v FROM users")),
+        ...(await read(onlyB, "SELECT mfa_pending_secret AS v FROM users WHERE mfa_pending_secret IS NOT NULL"))];
 
       expect(values).toHaveLength(9); // 2 settings, 2 webhooks, 2 signing keys, 2 seeds, 1 pending seed
       expect(values.every((r: any) => r.v.startsWith(`v2:${idOf(KEY_B)}:`))).toBe(true);
@@ -301,11 +301,11 @@ describe("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
     const p = boot({ KMS_MASTER_KEY: KEY_A, ENCRYPT_KEY: "the-wrong-key" });
     try {
       await p.db.query("UPDATE tenant_keys SET private_key = :legacy WHERE key_id = 'key-1'", {
-        replacements: { legacy: encryptPrivateKeyForTest(pems[1], ENCRYPT) }
+        replacements: { legacy: encryptPrivateKeyForTest(pems[1], ENCRYPT) },
       });
       const before = await read(p, "SELECT key_id, private_key FROM tenant_keys ORDER BY key_id");
       await expect(p.m0058.up({ context: p.db.getQueryInterface() })).rejects.toThrow(
-        /0058: 1 tenant signing key\(s\) could not be moved/
+        /0058: 1 tenant signing key\(s\) could not be moved/,
       );
       expect(await read(p, "SELECT key_id, private_key FROM tenant_keys ORDER BY key_id")).toEqual(before);
     } finally {

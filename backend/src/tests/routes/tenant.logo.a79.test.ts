@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-79 — tenant edit mishandled logo files.
  *
@@ -31,23 +31,23 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
 jest.mock("../../models", () => {
   const users: any = {
     findByPk: (...args: any[]) => mockFx.current.Users.findByPk(...args),
-    count: async () => 0
+    count: async () => 0,
   };
   return {
     Tenants: {
       findByPk: (...args: any[]) => mockFx.current.Tenants.findByPk(...args),
-      findOne: (...args: any[]) => mockFx.current.Tenants.findOne(...args)
+      findOne: (...args: any[]) => mockFx.current.Tenants.findOne(...args),
     },
     User: users,
     Users: users,
-    TenantSettings: {}
+    TenantSettings: {},
   };
 });
 
@@ -67,21 +67,21 @@ jest.mock("../../config", () => ({
         return rollback();
       };
       return tx;
-    }
-  }
+    },
+  },
 }));
 
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../services/rateLimiter.redis.service", () => ({
-  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next()
+  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../utils/upload.util", () => ({
   // What multer + upload.util leave on the request for a stored file.
@@ -97,7 +97,7 @@ jest.mock("../../utils/upload.util", () => ({
   },
   deleteUpload: jest.fn(async (name: any) => {
     mockEvents.push(`unlink:${name}`);
-  })
+  }),
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn().mockResolvedValue(null),
@@ -106,14 +106,14 @@ jest.mock("../../services/redis.service", () => ({
   delPattern: jest.fn().mockResolvedValue(undefined),
   cacheKeys: {
     tenant: (id: any) => `tenant:${id}`,
-    tenantByCode: (code: any) => `tenant:code:${code}`
-  }
+    tenantByCode: (code: any) => `tenant:code:${code}`,
+  },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn()
+  logAction: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -125,49 +125,49 @@ const { ROLE_NAMES } = require("../../constants");
 const router = require("../../routes/api/tenant.route");
 
 const http = (method: any, url: any, body: any = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const req: any = {
-    method: method.toUpperCase(),
-    url,
-    originalUrl: "/api/v1/tenants" + url,
-    body,
-    query: {},
-    params: {},
-    headers: {},
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || err.statusCode || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const req: any = {
+      method: method.toUpperCase(),
+      url,
+      originalUrl: "/api/v1/tenants" + url,
+      body,
+      query: {},
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || err.statusCode || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 const MATRIX: any = { Management: ["write"], management: ["write"] };
 const NEW_LOGO = "new-logo-123.png";
@@ -248,7 +248,7 @@ describe("A-79 — a refused edit removes the logo it uploaded", () => {
     expect(res.status).toBe(404);
     expect(logger.warn).toHaveBeenCalledWith(
       `Failed to delete uploaded file after failure: ${NEW_LOGO}`,
-      expect.any(Error)
+      expect.any(Error),
     );
   });
 
@@ -286,7 +286,7 @@ describe("A-79 — the logo cannot be set from the body", () => {
   it("a body `logo` naming another tenant's file is ignored, and no file is deleted", async () => {
     const res = await http("patch", "/edit", {
       tenantId: fx.tenantA.id,
-      logo: "logo-of-b.png"
+      logo: "logo-of-b.png",
     });
 
     expect(res.status).toBe(200);
@@ -342,7 +342,7 @@ describe("A-78 — POST /tenants/:tenantId/logo takes the tenant from the path",
         },
         setHeader() {
           return this;
-        }
+        },
       };
       router.handle(
         {
@@ -353,10 +353,10 @@ describe("A-78 — POST /tenants/:tenantId/logo takes the tenant from the path",
           query: {},
           headers: {},
           ip: "127.0.0.1",
-          get: () => undefined
+          get: () => undefined,
         },
         response,
-        (err: any) => resolve({ status: err ? 500 : 404, body: null })
+        (err: any) => resolve({ status: err ? 500 : 404, body: null }),
       );
     });
 

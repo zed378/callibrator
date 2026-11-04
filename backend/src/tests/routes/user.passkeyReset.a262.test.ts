@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-262 — DELETE /users/:userId/webauthn: a tenant administrator removes
  * another user's passkey.
@@ -35,7 +35,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
@@ -55,49 +55,49 @@ jest.mock("../../config", () => ({
             Object.assign(row, prior);
           }
           tx.finished = "rollback";
-        }
+        },
       };
       return tx;
-    })
-  }
+    }),
+  },
 }));
 
 jest.mock("../../models", () => {
   // Not tenant-scoped, like the fixture: the service's own
   // assertSameTenantOrNotFound is what is under test for the foreign row.
   const users: any = {
-    findByPk: jest.fn(async (id: any) => mockFx.rows.get(id) || null)
+    findByPk: jest.fn(async (id: any) => mockFx.rows.get(id) || null),
   };
   return {
     Tenants: { findByPk: (...args: any[]) => mockFx.current.Tenants.findByPk(...args) },
     User: users,
     Users: users,
     Roles: { name: "Roles" },
-    Role: { name: "Roles" }
+    Role: { name: "Roles" },
   };
 });
 
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
   enforceSeatQuota: () => (_req: any, _res: any, next: any) => next(),
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../utils/upload.util", () => ({
   upload: () => (_req: any, _res: any, next: any) => next(),
   deleteUpload: jest.fn(),
-  getUploadUrl: jest.fn()
+  getUploadUrl: jest.fn(),
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../services/session.service", () => ({
-  revokeOtherSessions: jest.fn()
+  revokeOtherSessions: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -109,62 +109,62 @@ const router = require("../../routes/api/user.route");
 const userService = require("../../services/user.service");
 
 const http = (url: any, method: any = "DELETE"): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const req: any = {
-    method,
-    url,
-    originalUrl: "/api/v1/users" + url,
-    body: {},
-    query: {},
-    params: {},
-    headers: { "user-agent": "jest" },
-    ip: "203.0.113.9",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const req: any = {
+      method,
+      url,
+      originalUrl: "/api/v1/users" + url,
+      body: {},
+      query: {},
+      params: {},
+      headers: { "user-agent": "jest" },
+      ip: "203.0.113.9",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 // Seed-shaped grants: the admin roles and the technician hold `users` write.
 const MATRIX: any = {
   [ROLE_NAMES.HEALTCARE_ADMIN]: { Users: ["write"], users: ["write"] },
   [ROLE_NAMES.TECHNICIAN]: { Users: ["write"], users: ["write"] },
-  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"] }
+  [ROLE_NAMES.USER]: { Home: ["read"], home: ["read"] },
 };
 
 const PASSKEY_ON = Object.freeze({
   webauthnEnabled: true,
   webauthnCredentialId: "cred-abc",
   webauthnPublicKey: "public-key-bytes",
-  webauthnSignCount: 7
+  webauthnSignCount: 7,
 });
 
 /** A users-table row for a fixture principal. */
@@ -178,7 +178,7 @@ const rowFor = (principal: any, overrides: any = {}) => {
     password: "old-hash",
     mfaEnabled: true,
     mfaSecret: "JBSWY3DPEHPK3PXP",
-    ...overrides
+    ...overrides,
   };
   row.update = jest.fn(async (values: any, options: any = {}) => {
     if (options.transaction) {
@@ -208,7 +208,7 @@ beforeEach(() => {
     byRoleId.set(fx.principal(fx.tenantB, role).role.id, MATRIX[role]);
   }
   RolesService.getRolePermissionsMatrix.mockImplementation(
-    async (roleId: any) => byRoleId.get(roleId) || {}
+    async (roleId: any) => byRoleId.get(roleId) || {},
   );
   revokeOtherSessions.mockResolvedValue(3);
   auditService.logAction.mockResolvedValue({ id: "audit-1" });
@@ -231,10 +231,10 @@ describe("A-262 — DELETE /users/:userId/webauthn", () => {
       webauthnSignCount: 0,
       password: "old-hash",
       mfaEnabled: true,
-      mfaSecret: "JBSWY3DPEHPK3PXP"
+      mfaSecret: "JBSWY3DPEHPK3PXP",
     });
     expect(revokeOtherSessions).toHaveBeenCalledWith(target.id, null, "WEBAUTHN_ADMIN_RESET", {
-      transaction: expect.any(Object)
+      transaction: expect.any(Object),
     });
     const [entry, options] = auditService.logAction.mock.calls[0];
     expect(entry).toEqual({
@@ -245,7 +245,7 @@ describe("A-262 — DELETE /users/:userId/webauthn", () => {
       resourceId: target.id,
       changes: { operation: "WEBAUTHN_ADMIN_RESET", sessionsRevoked: 3 },
       ipAddress: "203.0.113.9",
-      userAgent: "jest"
+      userAgent: "jest",
     });
     expect(options.transaction.finished).toBe("commit");
     const serialized = JSON.stringify(entry);
@@ -366,12 +366,12 @@ describe("A-262 — userService.resetUserPasskey refuses on its own (defence in 
       resetBy: admin.id,
       actorIsSuperAdmin: false,
       actorTenantId: fx.tenantA.id,
-      actorRoleLevel: admin.role.roleLevel
+      actorRoleLevel: admin.role.roleLevel,
     };
 
     const missing = userService.
-    resetUserPasskey({ ...actor, userId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }).
-    catch((e: any) => e);
+      resetUserPasskey({ ...actor, userId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }).
+      catch((e: any) => e);
     const cross = userService.resetUserPasskey({ ...actor, userId: foreign.id }).catch((e: any) => e);
 
     expect(await missing).toEqual({ status: 404, message: "User not found" });
@@ -384,7 +384,7 @@ describe("A-262 — userService.resetUserPasskey refuses on its own (defence in 
     db.transaction.mockRejectedValueOnce(new Error("pool exhausted"));
 
     await expect(
-      userService.resetUserPasskey({ userId: "x", resetBy: "y", actorIsSuperAdmin: true })
+      userService.resetUserPasskey({ userId: "x", resetBy: "y", actorIsSuperAdmin: true }),
     ).rejects.toEqual({ status: 500, message: "pool exhausted" });
   });
 
@@ -393,7 +393,7 @@ describe("A-262 — userService.resetUserPasskey refuses on its own (defence in 
     Users.findByPk.mockRejectedValueOnce(Object.create(Error.prototype));
 
     await expect(
-      userService.resetUserPasskey({ userId: "x", resetBy: "y", actorIsSuperAdmin: true })
+      userService.resetUserPasskey({ userId: "x", resetBy: "y", actorIsSuperAdmin: true }),
     ).rejects.toEqual({ status: 500, message: "Internal server error" });
   });
 });

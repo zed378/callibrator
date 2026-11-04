@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * The memoryDb fixture enforces tenant isolation through the REAL hooks —
  * proven here, because every *.twoTenant.test.js leans on it.
@@ -23,13 +23,13 @@ const DEVICE_A = "a2000000-0000-4000-8000-000000000001";
 const USER_B = "b3000000-0000-4000-8000-000000000001";
 
 const inTenant = (tenantId: any, fn: any, extra: any = {}) =>
-tenantStorage.run({ tenantId, isSuperAdmin: false, isSystemTask: false, ...extra }, fn);
+  tenantStorage.run({ tenantId, isSuperAdmin: false, isSystemTask: false, ...extra }, fn);
 
 beforeEach(() => {
   mdb.reset();
   mdb.seed("Tenant", [
-  { id: TENANT_A, name: "A", code: "A", status: "ACTIVE" },
-  { id: TENANT_B, name: "B", code: "B", status: "ACTIVE" }]
+    { id: TENANT_A, name: "A", code: "A", status: "ACTIVE" },
+    { id: TENANT_B, name: "B", code: "B", status: "ACTIVE" }],
   );
   mdb.seed("Vendor", { id: VENDOR_A, tenantId: TENANT_A, name: "Lab A" });
 });
@@ -77,8 +77,8 @@ describe("memoryDb — includes are scoped by the real A-87 hook", () => {
 
   beforeEach(() => {
     mdb.seed("CalibrationDevice", [
-    { id: DEVICE_A, tenantId: TENANT_A, name: "Device A", serialNumber: "SN-A" },
-    { id: DEVICE_B, tenantId: TENANT_B, name: "Device B", serialNumber: "SN-B" }]
+      { id: DEVICE_A, tenantId: TENANT_A, name: "Device A", serialNumber: "SN-A" },
+      { id: DEVICE_B, tenantId: TENANT_B, name: "Device B", serialNumber: "SN-B" }],
     );
     // A record of tenant A that (wrongly) references tenant B's device.
     mdb.seed("CalibrationRecord", { id: RECORD_A, tenantId: TENANT_A, deviceId: DEVICE_B });
@@ -86,9 +86,9 @@ describe("memoryDb — includes are scoped by the real A-87 hook", () => {
 
   it("a LEFT include of another tenant's row joins null and keeps the parent", async () => {
     const record = await inTenant(TENANT_A, () =>
-    models.CalibrationRecord.findByPk(RECORD_A, {
-      include: [{ model: models.CalibrationDevice.unscoped(), as: "device", required: false }]
-    })
+      models.CalibrationRecord.findByPk(RECORD_A, {
+        include: [{ model: models.CalibrationDevice.unscoped(), as: "device", required: false }],
+      }),
     );
     expect(record).not.toBeNull();
     expect(record.device).toBeNull();
@@ -96,9 +96,9 @@ describe("memoryDb — includes are scoped by the real A-87 hook", () => {
 
   it("an INNER include of another tenant's row drops the parent (the A-90 shape)", async () => {
     const record = await inTenant(TENANT_A, () =>
-    models.CalibrationRecord.findByPk(RECORD_A, {
-      include: [{ model: models.CalibrationDevice.unscoped(), as: "device", required: true }]
-    })
+      models.CalibrationRecord.findByPk(RECORD_A, {
+        include: [{ model: models.CalibrationDevice.unscoped(), as: "device", required: true }],
+      }),
     );
     expect(record).toBeNull();
   });
@@ -106,9 +106,9 @@ describe("memoryDb — includes are scoped by the real A-87 hook", () => {
   it("the same include joins when the referenced row is in the tenant", async () => {
     mdb.seed("CalibrationRecord", { id: USER_B, tenantId: TENANT_A, deviceId: DEVICE_A });
     const record = await inTenant(TENANT_A, () =>
-    models.CalibrationRecord.findByPk(USER_B, {
-      include: [{ model: models.CalibrationDevice.unscoped(), as: "device", required: true }]
-    })
+      models.CalibrationRecord.findByPk(USER_B, {
+        include: [{ model: models.CalibrationDevice.unscoped(), as: "device", required: true }],
+      }),
     );
     expect(record.device.id).toBe(DEVICE_A);
   });
@@ -117,7 +117,7 @@ describe("memoryDb — includes are scoped by the real A-87 hook", () => {
 describe("memoryDb — it refuses what it cannot evaluate", () => {
   it("a column the model does not define is PostgreSQL's error (the is_deleted trap)", async () => {
     await expect(models.Vendor.findAll({ where: { is_deleted: false } })).rejects.toThrow(
-      'column "is_deleted" does not exist'
+      'column "is_deleted" does not exist',
     );
   });
 
@@ -127,7 +127,7 @@ describe("memoryDb — it refuses what it cannot evaluate", () => {
 
   it("an unknown operator throws rather than matching", async () => {
     await expect(
-      models.Vendor.findAll({ where: { name: { [models.Sequelize.Op.regexp]: "x" } } })
+      models.Vendor.findAll({ where: { name: { [models.Sequelize.Op.regexp]: "x" } } }),
     ).rejects.toThrow("memoryDb: cannot evaluate");
   });
 });
@@ -153,7 +153,7 @@ describe("memoryDb — transactions", () => {
       models.sequelize.transaction(async () => {
         await inTenant(TENANT_A, () => models.Vendor.update({ name: "gone" }, { where: { id: VENDOR_A } }));
         throw new Error("boom");
-      })
+      }),
     ).rejects.toThrow("boom");
     expect(mdb.rows("Vendor")[0].name).toBe("Lab A");
   });

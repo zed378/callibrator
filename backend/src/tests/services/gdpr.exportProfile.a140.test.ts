@@ -40,7 +40,7 @@ jest.mock("../../config", () => {
       const built = options.model.build(mockDb.profileRow, {
         isNewRecord: false,
         include: options.include,
-        raw: true
+        raw: true,
       });
       return options.plain ? built : [built];
     }
@@ -58,20 +58,20 @@ jest.mock("../../config", () => {
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn(async () => ({})) }));
 // archiver 8 is ESM with named classes; the service does `new ZipArchive(...)` (P6-02).
 jest.mock("archiver", () => ({ ZipArchive: function MockZipArchive() {
-    const handlers: any = {};
-    return {
-      on: (event: any, cb: any) => {
-        handlers[event] = cb;
-      },
-      pipe: () => {},
-      directory: () => {},
-      // The service registers its "end" handler AFTER finalize(), as archiver
-      // allows, so the event is emitted on a later tick.
-      finalize: () => {
-        Promise.resolve().then(() => handlers.end());
-      }
-    };
-  } }));
+  const handlers: any = {};
+  return {
+    on: (event: any, cb: any) => {
+      handlers[event] = cb;
+    },
+    pipe: () => {},
+    directory: () => {},
+    // The service registers its "end" handler AFTER finalize(), as archiver
+    // allows, so the event is emitted on a later tick.
+    finalize: () => {
+      Promise.resolve().then(() => handlers.end());
+    },
+  };
+} }));
 
 const fs = require("fs");
 const models = require("../../models");
@@ -114,7 +114,7 @@ beforeEach(() => {
     status: "ACTIVE",
     createdAt: new Date("2026-01-01T00:00:00Z"),
     lastLoginAt: new Date("2026-09-01T00:00:00Z"),
-    role: { id: ROLE, name: "TECHNICIAN" }
+    role: { id: ROLE, name: "TECHNICIAN" },
   };
   written = {};
   jest.spyOn(fs.promises, "mkdir").mockResolvedValue(undefined);
@@ -145,7 +145,7 @@ describe("A-140 — GDPR Article 15 profile export", () => {
       role: "TECHNICIAN",
       status: "ACTIVE",
       createdAt: "2026-01-01T00:00:00.000Z",
-      lastLoginAt: "2026-09-01T00:00:00.000Z"
+      lastLoginAt: "2026-09-01T00:00:00.000Z",
     });
   });
 
@@ -164,17 +164,17 @@ describe("A-140 — GDPR Article 15 profile export", () => {
 
     const selectList = profileSelect().split(" FROM ")[0];
     for (const column of [
-    "password",
-    "mfa_secret",
-    "mfa_pending_secret",
-    "mfa_recovery_codes",
-    "otp_code",
-    "webauthn_public_key",
-    "webauthn_credential_id"])
+      "password",
+      "mfa_secret",
+      "mfa_pending_secret",
+      "mfa_recovery_codes",
+      "otp_code",
+      "webauthn_public_key",
+      "webauthn_credential_id"])
     {
       expect({ column, selected: selectList.includes(`"${column}"`) }).toEqual({
         column,
-        selected: false
+        selected: false,
       });
     }
   });
@@ -196,7 +196,7 @@ describe("A-140 — GDPR Article 15 profile export", () => {
     // A-151: "no such subject" stays a 404; it was rewritten into a 500.
     await expect(asTenant(() => gdprService.exportUserData(TENANT, USER))).rejects.toMatchObject({
       status: 404,
-      message: "User not found"
+      message: "User not found",
     });
     expect(written["user_profile.json"]).toBeUndefined();
   });

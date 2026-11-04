@@ -14,7 +14,7 @@
 jest.setTimeout(60000);
 
 jest.mock("../../config", () => ({
-  db: { transaction: async (cb: any) => cb("TX") }
+  db: { transaction: async (cb: any) => cb("TX") },
 }));
 
 const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
@@ -27,10 +27,10 @@ const load = (models: any) => {
   jest.doMock("../../models", () => ({ AuditLog: { create: jest.fn(async (v: any) => v) }, ...models }));
   jest.doMock("../../middlewares/activityLog.middleware", () => ({ logger: mockLogger }));
   jest.doMock("../../services/auth.service", () => ({
-    passIsValid: jest.fn(async () => ({ data: { valid: true } }))
+    passIsValid: jest.fn(async () => ({ data: { valid: true } })),
   }));
   jest.doMock("../../middlewares/dynamicAccess.middleware", () => ({
-    principalHasMenuPermission: mockMaySign
+    principalHasMenuPermission: mockMaySign,
   }));
   return require("../../services/eSignature.service");
 };
@@ -38,27 +38,27 @@ const load = (models: any) => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockMaySign.mockImplementation(async (principal: any) =>
-  Boolean(principal.role) && ["TECHNICIAN", "SUPERVISOR"].includes(principal.role.name)
+    Boolean(principal.role) && ["TECHNICIAN", "SUPERVISOR"].includes(principal.role.name),
   );
 });
 
 // ==========================================================================
 describe("signDocument — the meaning of the signature is mandatory (A-129)", () => {
   it.each([
-  ["missing", {}],
-  ["empty", { reason: "" }],
-  ["blank", { reason: "   " }],
-  ["not a string", { reason: 42 }]]
+    ["missing", {}],
+    ["empty", { reason: "" }],
+    ["blank", { reason: "   " }],
+    ["not a string", { reason: 42 }]],
   )("a %s meaning is 400 before anything is looked up or signed", async (_label: any, extra: any) => {
     const models: any = {
       SignatureWorkflowStep: { findByPk: jest.fn() },
-      SignatureRecord: { create: jest.fn() }
+      SignatureRecord: { create: jest.fn() },
     };
     const svc = load(models);
 
     const err = await svc.
-    signDocument("step-1", "u-1", { authPayload: "pw", ...extra }).
-    catch((e: any) => e);
+      signDocument("step-1", "u-1", { authPayload: "pw", ...extra }).
+      catch((e: any) => e);
 
     expect(err.status).toBe(400);
     expect(err.message).toMatch(/^The meaning of the signature is required/);
@@ -74,24 +74,24 @@ describe("signDocument — the meaning of the signature is mandatory (A-129)", (
       workflowId: "wf-1",
       tenantId: "t-1",
       signerId: "u-1",
-      update: jest.fn()
+      update: jest.fn(),
     };
     const models: any = {
       SignatureWorkflowStep: {
         findByPk: jest.fn().mockResolvedValue(step),
-        findAll: jest.fn().mockResolvedValue([{ ...step, status: "signed" }])
+        findAll: jest.fn().mockResolvedValue([{ ...step, status: "signed" }]),
       },
       SignatureWorkflow: {
-        findByPk: jest.fn().mockResolvedValue({ id: "wf-1", documentId: "d-1", status: "pending", update: jest.fn() })
+        findByPk: jest.fn().mockResolvedValue({ id: "wf-1", documentId: "d-1", status: "pending", update: jest.fn() }),
       },
       SignatureRecord: {
-        create: jest.fn(async (attrs: any) => ({ id: "sig-1", ...attrs }))
+        create: jest.fn(async (attrs: any) => ({ id: "sig-1", ...attrs })),
       },
       TenantKey: { unscoped: () => ({ findOne: jest.fn().mockResolvedValue(keyPair) }) },
       User: {
         findByPk: jest.fn().mockResolvedValue({ id: "u-1", isActive: true, status: "ACTIVE" }),
-        findOne: jest.fn().mockResolvedValue(null)
-      }
+        findOne: jest.fn().mockResolvedValue(null),
+      },
     };
     const svc = load(models);
 
@@ -111,24 +111,24 @@ describe("signDocument — a cancelled workflow cannot be signed (A-130)", () =>
           status: "pending",
           workflowId: "wf-1",
           tenantId: "t-1",
-          signerId: "u-1"
-        })
+          signerId: "u-1",
+        }),
       },
       SignatureWorkflow: {
-        findByPk: jest.fn().mockResolvedValue({ id: "wf-1", status: "cancelled" })
+        findByPk: jest.fn().mockResolvedValue({ id: "wf-1", status: "cancelled" }),
       },
       SignatureRecord: { create: jest.fn() },
-      User: { findByPk: jest.fn().mockResolvedValue({ id: "u-1", isActive: true, status: "ACTIVE" }) }
+      User: { findByPk: jest.fn().mockResolvedValue({ id: "u-1", isActive: true, status: "ACTIVE" }) },
     };
     const svc = load(models);
 
     const err = await svc.
-    signDocument("step-1", "u-1", { authPayload: "pw", reason: "Approved" }).
-    catch((e: any) => e);
+      signDocument("step-1", "u-1", { authPayload: "pw", reason: "Approved" }).
+      catch((e: any) => e);
 
     expect(err.status).toBe(409);
     expect(err.message).toBe(
-      'This signature workflow is "cancelled" and cannot be signed: cancellation is final; create a new workflow instead.'
+      'This signature workflow is "cancelled" and cannot be signed: cancellation is final; create a new workflow instead.',
     );
     expect(models.SignatureRecord.create).not.toHaveBeenCalled();
   });
@@ -147,17 +147,17 @@ describe("createSignatureWorkflow — signer resolution edges (A-129)", () => {
           lastName: "Role",
           isActive: true,
           status: "ACTIVE",
-          roleId: null
-        })
+          roleId: null,
+        }),
       },
       Role: { findByPk: jest.fn() },
-      SignatureWorkflow: { create: jest.fn() }
+      SignatureWorkflow: { create: jest.fn() },
     };
     const svc = load(models);
 
     const err = await svc.
-    createSignatureWorkflow("t-1", { documentId: "d-1", signers: [{ userId: "u-9" }] }, { userId: "a-1" }).
-    catch((e: any) => e);
+      createSignatureWorkflow("t-1", { documentId: "d-1", signers: [{ userId: "u-9" }] }, { userId: "a-1" }).
+      catch((e: any) => e);
 
     expect(err.status).toBe(400);
     expect(err.message).toMatch(/^Signer 1 \(No Role\) does not hold the e-signature signing permission/);
@@ -176,17 +176,17 @@ describe("createSignatureWorkflow — signer resolution edges (A-129)", () => {
           lastName: "Y",
           isActive: true,
           status: "ACTIVE",
-          roleId: "gone"
-        })
+          roleId: "gone",
+        }),
       },
       Role: { findByPk: jest.fn().mockResolvedValue(null) },
-      SignatureWorkflow: { create: jest.fn() }
+      SignatureWorkflow: { create: jest.fn() },
     };
     const svc = load(models);
 
     const err = await svc.
-    createSignatureWorkflow("t-1", { documentId: "d-1", signers: [{ userId: "u-9" }] }, { userId: "a-1" }).
-    catch((e: any) => e);
+      createSignatureWorkflow("t-1", { documentId: "d-1", signers: [{ userId: "u-9" }] }, { userId: "a-1" }).
+      catch((e: any) => e);
 
     expect(err.status).toBe(400);
     expect(mockMaySign).toHaveBeenCalledWith({ id: "u-9", role: null }, "esignature", "write");
@@ -195,18 +195,18 @@ describe("createSignatureWorkflow — signer resolution edges (A-129)", () => {
   it("looks the signer up in the caller's tenant, explicitly, inside the transaction", async () => {
     const models: any = {
       User: { findOne: jest.fn().mockResolvedValue(null) },
-      SignatureWorkflow: { create: jest.fn() }
+      SignatureWorkflow: { create: jest.fn() },
     };
     const svc = load(models);
 
     const err = await svc.
-    createSignatureWorkflow("t-1", { documentId: "d-1", signers: [{ userId: "u-x" }] }, { userId: "a-1" }).
-    catch((e: any) => e);
+      createSignatureWorkflow("t-1", { documentId: "d-1", signers: [{ userId: "u-x" }] }, { userId: "a-1" }).
+      catch((e: any) => e);
 
     expect(err).toMatchObject({ status: 404, message: "Signer not found" });
     expect(models.User.findOne).toHaveBeenCalledWith({
       where: { id: "u-x", tenantId: "t-1" },
-      transaction: "TX"
+      transaction: "TX",
     });
   });
 
@@ -214,8 +214,8 @@ describe("createSignatureWorkflow — signer resolution edges (A-129)", () => {
     const svc = load({ User: { findOne: jest.fn() } });
 
     const err = await svc.
-    createSignatureWorkflow("t-1", { documentId: "d-1", signers: [null] }, { userId: "a-1" }).
-    catch((e: any) => e);
+      createSignatureWorkflow("t-1", { documentId: "d-1", signers: [null] }, { userId: "a-1" }).
+      catch((e: any) => e);
 
     expect(err.status).toBe(400);
     expect(err.message).toMatch(/^Signer 1: Signers must be users of this organisation/);
@@ -231,40 +231,40 @@ describe("getEligibleSigners (A-129)", () => {
     lastName: "",
     username: null,
     roleId: "r-tech",
-    ...fields
+    ...fields,
   });
 
   it("returns only users who may sign, as { id, name, email }, sorted by name — the name falling back to username, then email", async () => {
     const models: any = {
       User: {
         findAll: jest.fn().mockResolvedValue([
-        user("u-3", { firstName: "Zara", lastName: "Tech" }),
-        user("u-1", { username: "bob.tech" }),
-        user("u-2", {}),
-        user("u-4", { firstName: "Ward", lastName: "User", roleId: "r-user" }),
-        user("u-5", { firstName: "No", lastName: "Role", roleId: null })]
-        )
+          user("u-3", { firstName: "Zara", lastName: "Tech" }),
+          user("u-1", { username: "bob.tech" }),
+          user("u-2", {}),
+          user("u-4", { firstName: "Ward", lastName: "User", roleId: "r-user" }),
+          user("u-5", { firstName: "No", lastName: "Role", roleId: null })],
+        ),
       },
       Role: {
         findAll: jest.fn().mockResolvedValue([
-        { id: "r-tech", name: "TECHNICIAN" },
-        { id: "r-user", name: "USER" }]
-        )
-      }
+          { id: "r-tech", name: "TECHNICIAN" },
+          { id: "r-user", name: "USER" }],
+        ),
+      },
     };
     const svc = load(models);
 
     const rows = await svc.getEligibleSigners("t-1");
 
     expect(rows).toEqual([
-    { id: "u-1", name: "bob.tech", email: "u-1@example.com" },
-    { id: "u-2", name: "u-2@example.com", email: "u-2@example.com" },
-    { id: "u-3", name: "Zara Tech", email: "u-3@example.com" }]
+      { id: "u-1", name: "bob.tech", email: "u-1@example.com" },
+      { id: "u-2", name: "u-2@example.com", email: "u-2@example.com" },
+      { id: "u-3", name: "Zara Tech", email: "u-3@example.com" }],
     );
     expect(models.User.findAll.mock.calls[0][0].where).toEqual({
       tenantId: "t-1",
       isActive: true,
-      status: "ACTIVE"
+      status: "ACTIVE",
     });
     expect(models.Role.findAll.mock.calls[0][0].where).toEqual({ id: ["r-tech", "r-user"] });
   });

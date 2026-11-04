@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for sessionCleanup middleware
  */
@@ -11,19 +11,19 @@ const mockSchedule: any = jest.fn();
 const mockValidate: any = jest.requireActual("node-cron").validate;
 jest.mock("node-cron", () => ({
   schedule: mockSchedule,
-  validate: mockValidate
+  validate: mockValidate,
 }));
 
 // P7-02: every scheduler records its runs through jobMonitor.service; the
 // pass-through fixture keeps this test about session cleanup.
 jest.mock("../../services/jobMonitor.service", () =>
-require("../fixtures/jobMonitorMock").create()
+  require("../fixtures/jobMonitorMock").create(),
 );
 
 // Mock session service - revokeAllSessions returns [affectedCount] like Sequelize
 jest.mock("../../services/session.service", () => ({
   cleanupExpiredSessions: jest.fn(),
-  revokeAllSessions: jest.fn()
+  revokeAllSessions: jest.fn(),
 }));
 
 // Mock activityLog
@@ -32,13 +32,13 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
     info: jest.fn(),
     error: jest.fn(),
     warn: jest.fn(),
-    http: jest.fn()
-  }
+    http: jest.fn(),
+  },
 }));
 
 const {
   cleanupExpiredSessions,
-  revokeAllSessions
+  revokeAllSessions,
 } = require("../../services/session.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
 
@@ -48,17 +48,17 @@ const loadSessionCleanup = () => {
   // Re-apply mocks after reset
   jest.mock("node-cron", () => ({
     schedule: mockSchedule,
-    validate: mockValidate
+    validate: mockValidate,
   }));
   jest.mock("../../services/jobMonitor.service", () =>
-  require("../fixtures/jobMonitorMock").create()
+    require("../fixtures/jobMonitorMock").create(),
   );
   jest.mock("../../services/session.service", () => ({
     cleanupExpiredSessions: cleanupExpiredSessions,
-    revokeAllSessions: revokeAllSessions
+    revokeAllSessions: revokeAllSessions,
   }));
   jest.mock("../../middlewares/activityLog.middleware", () => ({
-    logger: logger
+    logger: logger,
   }));
   return require("../../middlewares/sessionCleanup.middleware");
 };
@@ -91,22 +91,22 @@ describe("sessionCleanup middleware", () => {
       expect(cleanupExpiredSessions).toHaveBeenCalled();
       expect(result).toBe(5);
       expect(logger.info).toHaveBeenCalledWith(
-        "Session cleanup completed: 5 expired sessions deleted"
+        "Session cleanup completed: 5 expired sessions deleted",
       );
     });
 
     it("should log error when cleanup fails", async () => {
       cleanupExpiredSessions.mockRejectedValue(
-        new Error("DB connection failed")
+        new Error("DB connection failed"),
       );
       const { cleanupExpiredSessionsJob } = loadSessionCleanup();
 
       await expect(cleanupExpiredSessionsJob()).rejects.toThrow(
-        "DB connection failed"
+        "DB connection failed",
       );
 
       expect(logger.error).toHaveBeenCalledWith(
-        "Error during session cleanup: DB connection failed"
+        "Error during session cleanup: DB connection failed",
       );
     });
   });
@@ -120,11 +120,11 @@ describe("sessionCleanup middleware", () => {
 
       expect(revokeAllSessions).toHaveBeenCalledWith(
         "user-123",
-        "PASSWORD_CHANGE"
+        "PASSWORD_CHANGE",
       );
       expect(result).toBe(3);
       expect(logger.info).toHaveBeenCalledWith(
-        "Revoked 3 sessions for user user-123: PASSWORD_CHANGE"
+        "Revoked 3 sessions for user user-123: PASSWORD_CHANGE",
       );
     });
 
@@ -136,7 +136,7 @@ describe("sessionCleanup middleware", () => {
 
       expect(revokeAllSessions).toHaveBeenCalledWith(
         "user-456",
-        "ACCOUNT_SECURITY"
+        "ACCOUNT_SECURITY",
       );
     });
 
@@ -145,12 +145,12 @@ describe("sessionCleanup middleware", () => {
       const { revokeUserSessions } = loadSessionCleanup();
 
       await expect(revokeUserSessions("user-123")).rejects.toThrow(
-        "DB connection failed"
+        "DB connection failed",
       );
 
       expect(logger.error).toHaveBeenCalledWith(
         "Error revoking sessions for user user-123:",
-        "DB connection failed"
+        "DB connection failed",
       );
     });
   });
@@ -163,13 +163,13 @@ describe("sessionCleanup middleware", () => {
 
       expect(mockSchedule).toHaveBeenCalledWith(
         "0 2 * * *",
-        expect.any(Function)
+        expect.any(Function),
       );
       expect(result).toEqual(
         expect.objectContaining({
           cleanupExpiredSessions: expect.any(Function),
-          revokeUserSessions: expect.any(Function)
-        })
+          revokeUserSessions: expect.any(Function),
+        }),
       );
     });
 
@@ -180,7 +180,7 @@ describe("sessionCleanup middleware", () => {
 
       expect(mockSchedule).toHaveBeenCalledWith(
         "0 3 * * *",
-        expect.any(Function)
+        expect.any(Function),
       );
     });
 
@@ -190,7 +190,7 @@ describe("sessionCleanup middleware", () => {
       initSessionCleanup();
 
       expect(logger.info).toHaveBeenCalledWith(
-        "Session cleanup scheduled with: 0 4 * * *"
+        "Session cleanup scheduled with: 0 4 * * *",
       );
     });
 
@@ -200,7 +200,7 @@ describe("sessionCleanup middleware", () => {
       initSessionCleanup();
 
       expect(logger.info).toHaveBeenCalledWith(
-        "Session cleanup scheduled at 2:00 AM daily"
+        "Session cleanup scheduled at 2:00 AM daily",
       );
     });
   });

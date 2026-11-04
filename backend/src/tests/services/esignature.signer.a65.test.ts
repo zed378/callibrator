@@ -19,7 +19,7 @@
  */
 
 jest.mock("../../config", () => ({
-  db: { transaction: async (cb: any) => cb("TX") }
+  db: { transaction: async (cb: any) => cb("TX") },
 }));
 
 const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
@@ -56,44 +56,44 @@ describe("A-65 — eSignature.service#signDocument", () => {
       tenantId: TENANT_ID,
       signerId: SIGNER,
       update: jest.fn().mockResolvedValue(true),
-      ...stepFields
+      ...stepFields,
     };
     const workflow: any = {
       id: "wf-1",
       documentId: "doc-1",
       tenantId: TENANT_ID,
       status: "in_progress",
-      update: jest.fn().mockResolvedValue(true)
+      update: jest.fn().mockResolvedValue(true),
     };
     const userRows: any = {
       [SIGNER]: { id: SIGNER, status: "ACTIVE", isActive: true, mfaEnabled: true, mfaSecret: "S" },
       "u-2": { id: "u-2", status: "ACTIVE", isActive: true, mfaEnabled: true, mfaSecret: "S2" },
-      ...users
+      ...users,
     };
     const models: any = {
       TenantKey: {
         unscoped: jest.fn(() => ({ findOne: jest.fn().mockResolvedValue(keyPair) })),
-        findOne: jest.fn()
+        findOne: jest.fn(),
       },
       SignatureWorkflowStep: {
         // The global tenant hook is what makes another tenant's step null here.
         findByPk: jest.fn(async (id: any) => id === step.id ? step : null),
-        findAll: jest.fn().mockResolvedValue([{ status: "signed" }])
+        findAll: jest.fn().mockResolvedValue([{ status: "signed" }]),
       },
       SignatureWorkflow: { findByPk: jest.fn().mockResolvedValue(workflow) },
       SignatureRecord: {
-        create: jest.fn(async (attrs: any) => ({ ...attrs, id: "sig-1" }))
+        create: jest.fn(async (attrs: any) => ({ ...attrs, id: "sig-1" })),
       },
       AuditLog: { create: jest.fn().mockResolvedValue(true) },
       User: {
         findByPk: jest.fn(async (id: any) => userRows[id] || null),
-        findOne: jest.fn().mockResolvedValue(null)
-      }
+        findOne: jest.fn().mockResolvedValue(null),
+      },
     };
 
     // The boundary doubles: a password is right only if it IS the password.
     const passIsValid = jest.fn(async (userId: any, password: any) => ({
-      data: { valid: userId === SIGNER && password === PASSWORD }
+      data: { valid: userId === SIGNER && password === PASSWORD },
     }));
     const verifyLogin = jest.fn((_user: any, code: any) => code === MFA_CODE);
 
@@ -123,7 +123,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
 
       // u-2 is in the same tenant and holds valid credentials of their own.
       await expect(
-        h.svc.signDocument("step-1", "u-2", { authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Approved" })
+        h.svc.signDocument("step-1", "u-2", { authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Approved" }),
       ).rejects.toMatchObject({ status: 403 });
 
       expectNothingPersisted(h);
@@ -133,7 +133,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness({ stepFields: { signerId: null } });
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" })
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" }),
       ).rejects.toMatchObject({ status: 403 });
 
       expectNothingPersisted(h);
@@ -146,8 +146,8 @@ describe("A-65 — eSignature.service#signDocument", () => {
         h.svc.signDocument("step-of-another-tenant", "u-2", {
           authenticationMethod: "password",
           authPayload: PASSWORD,
-          reason: "Approved"
-        })
+          reason: "Approved",
+        }),
       ).rejects.toMatchObject({ status: 404 });
 
       expectNothingPersisted(h);
@@ -157,7 +157,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness({ stepFields: { status: "signed" } });
 
       await expect(
-        h.svc.signDocument("step-1", "u-2", { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" })
+        h.svc.signDocument("step-1", "u-2", { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" }),
       ).rejects.toMatchObject({ status: 403 });
     });
   });
@@ -167,17 +167,17 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness();
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", reason: "Approved" })
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", reason: "Approved" }),
       ).rejects.toMatchObject({ status: 401 });
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: "wrong", reason: "Approved" })
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: "wrong", reason: "Approved" }),
       ).rejects.toMatchObject({ status: 401 });
       expectNothingPersisted(h);
 
       const signed = await h.svc.signDocument("step-1", SIGNER, {
         authenticationMethod: "password",
         authPayload: PASSWORD,
-        reason: "Approved"
+        reason: "Approved",
       });
 
       expect(signed.signatureId).toBe("sig-1");
@@ -189,7 +189,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness();
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: "000000", reason: "Approved" })
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: "000000", reason: "Approved" }),
       ).rejects.toMatchObject({ status: 401 });
       expectNothingPersisted(h);
 
@@ -197,11 +197,11 @@ describe("A-65 — eSignature.service#signDocument", () => {
 
       expect(h.verifyLogin).toHaveBeenLastCalledWith(
         expect.objectContaining({ id: SIGNER }),
-        MFA_CODE
+        MFA_CODE,
       );
       expect(h.models.SignatureRecord.create).toHaveBeenCalledWith(
         expect.objectContaining({ authenticationMethod: "mfa", userId: SIGNER }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -209,7 +209,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness({ users: { [SIGNER]: { id: SIGNER, status: "ACTIVE", isActive: true, mfaEnabled: false } } });
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Approved" })
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Approved" }),
       ).rejects.toMatchObject({ status: 400 });
       expectNothingPersisted(h);
     });
@@ -219,7 +219,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness();
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: "wrong", reason: "Approved" })
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: "wrong", reason: "Approved" }),
       ).rejects.toMatchObject({ status: 401 });
       expectNothingPersisted(h);
       expect(h.svc.getStatus().reauthenticationRequired).toBe(true);
@@ -231,7 +231,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       await h.svc.signDocument("step-1", SIGNER, {
         authenticationMethod: "password",
         authPayload: PASSWORD,
-        reason: "Approved"
+        reason: "Approved",
       });
 
       expect(JSON.stringify(h.models.SignatureRecord.create.mock.calls)).not.toContain(PASSWORD);
@@ -256,7 +256,7 @@ describe("A-65 — POST /esignature/sign (validator + controller)", () => {
       query: {},
       user: { id: SIGNER, tenantId: TENANT_ID },
       ip: connection.ip,
-      get: (h: any) => h.toLowerCase() === "user-agent" ? connection.userAgent : undefined
+      get: (h: any) => h.toLowerCase() === "user-agent" ? connection.userAgent : undefined,
     };
     const res: any = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
     const next = jest.fn();
@@ -277,15 +277,15 @@ describe("A-65 — POST /esignature/sign (validator + controller)", () => {
         authPayload: PASSWORD,
         reason: "Approved",
         ipAddress: "198.51.100.4",
-        userAgent: "Forged/1.0"
+        userAgent: "Forged/1.0",
       },
-      { ip: "203.0.113.9", userAgent: "Mozilla/5.0" }
+      { ip: "203.0.113.9", userAgent: "Mozilla/5.0" },
     );
 
     expect(signDocument).toHaveBeenCalledWith(
       STEP,
       SIGNER,
-      expect.objectContaining({ ipAddress: "203.0.113.9", userAgent: "Mozilla/5.0" })
+      expect.objectContaining({ ipAddress: "203.0.113.9", userAgent: "Mozilla/5.0" }),
     );
   });
 
@@ -297,9 +297,9 @@ describe("A-65 — POST /esignature/sign (validator + controller)", () => {
         authPayload: PASSWORD,
         reason: "Approved",
         ipAddress: "198.51.100.4",
-        userAgent: "Forged/1.0"
+        userAgent: "Forged/1.0",
       },
-      { ip: undefined, userAgent: undefined }
+      { ip: undefined, userAgent: undefined },
     );
 
     const [,, data] = signDocument.mock.calls[0];
@@ -310,20 +310,20 @@ describe("A-65 — POST /esignature/sign (validator + controller)", () => {
   it("the credential and the meaning reach the service", async () => {
     const { signDocument } = await runRoute(
       { stepId: STEP, authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Reviewed" },
-      { ip: "203.0.113.9", userAgent: "Mozilla/5.0" }
+      { ip: "203.0.113.9", userAgent: "Mozilla/5.0" },
     );
 
     expect(signDocument).toHaveBeenCalledWith(
       STEP,
       SIGNER,
-      expect.objectContaining({ authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Reviewed" })
+      expect.objectContaining({ authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Reviewed" }),
     );
   });
 
   it("a signing request without a credential is a 400 and never reaches the service", async () => {
     const { signDocument, res } = await runRoute(
       { stepId: STEP, authenticationMethod: "password", reason: "Approved" },
-      { ip: "203.0.113.9", userAgent: "Mozilla/5.0" }
+      { ip: "203.0.113.9", userAgent: "Mozilla/5.0" },
     );
 
     expect(res.status).toHaveBeenCalledWith(400);

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-95 / A-96 — tenant mutations that wrote no audit row.
  *
@@ -26,7 +26,7 @@
 jest.mock("../../services/clientFacility.service", () => ({
   SELF_FACILITY_CODE: "SELF",
   selfFacilityName: (name: any) => name,
-  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" }))
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
 }));
 
 const mockFx: any = { current: null };
@@ -43,14 +43,14 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
 jest.mock("../../models", () => {
   const users: any = {
     findByPk: (...args: any[]) => mockFx.current.Users.findByPk(...args),
-    count: async () => 0
+    count: async () => 0,
   };
   return {
     Tenants: {
@@ -59,11 +59,11 @@ jest.mock("../../models", () => {
       create: jest.fn(async (values: any) => {
         mockEvents.push("create");
         return { id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", ...values };
-      })
+      }),
     },
     User: users,
     Users: users,
-    TenantSettings: {}
+    TenantSettings: {},
   };
 });
 
@@ -84,21 +84,21 @@ jest.mock("../../config", () => ({
       };
       mockFx.current.lastTx = tx;
       return tx;
-    }
-  }
+    },
+  },
 }));
 
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../services/rateLimiter.redis.service", () => ({
-  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next()
+  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../utils/upload.util", () => ({
   upload: () => (req: any, _res: any, next: any) => {
@@ -111,7 +111,7 @@ jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(async (name: any) => {
     mockEvents.push(`unlink:${name}`);
   }),
-  getUploadUrl: jest.fn()
+  getUploadUrl: jest.fn(),
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn().mockResolvedValue(null),
@@ -120,14 +120,14 @@ jest.mock("../../services/redis.service", () => ({
   delPattern: jest.fn().mockResolvedValue(undefined),
   cacheKeys: {
     tenant: (id: any) => `tenant:${id}`,
-    tenantByCode: (code: any) => `tenant:code:${code}`
-  }
+    tenantByCode: (code: any) => `tenant:code:${code}`,
+  },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn()
+  logAction: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -140,50 +140,50 @@ const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
 const router = require("../../routes/api/tenant.route");
 
 const http = (method: any, url: any, { body = {}, query = {} } = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const search = new URLSearchParams(query).toString();
-  const req: any = {
-    method: method.toUpperCase(),
-    url: search ? `${url}?${search}` : url,
-    originalUrl: "/api/v1/tenants" + url,
-    body,
-    query,
-    params: {},
-    headers: { "user-agent": "jest-a95" },
-    ip: "127.0.0.9",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || err.statusCode || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const search = new URLSearchParams(query).toString();
+    const req: any = {
+      method: method.toUpperCase(),
+      url: search ? `${url}?${search}` : url,
+      originalUrl: "/api/v1/tenants" + url,
+      body,
+      query,
+      params: {},
+      headers: { "user-agent": "jest-a95" },
+      ip: "127.0.0.9",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || err.statusCode || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 const MATRIX: any = { Management: ["write"], management: ["write"] };
 const OLD_LOGO = "old-logo-a.png";
@@ -221,7 +221,7 @@ describe("A-95 — POST /tenants/create is audited inside its transaction", () =
     currentUser = fx.superAdmin;
 
     const res = await http("post", "/create", {
-      body: { name: "New Hospital", code: "NEW-H", createdBy: FORGED_ACTOR }
+      body: { name: "New Hospital", code: "NEW-H", createdBy: FORGED_ACTOR },
     });
 
     expect(res.status).toBe(201);
@@ -233,7 +233,7 @@ describe("A-95 — POST /tenants/create is audited inside its transaction", () =
       resourceType: "Tenant",
       resourceId: NEW_TENANT_ID,
       ipAddress: "127.0.0.9",
-      userAgent: "jest-a95"
+      userAgent: "jest-a95",
     });
     expect(entry.tenantId).not.toBe(fx.superAdmin.tenantId);
     expect(entry.changes).toMatchObject({ after: { name: "New Hospital", code: "NEW-H" } });
@@ -262,7 +262,7 @@ describe("A-95 — DELETE /tenants/delete: audited, and the actor is the caller"
 
     const res = await http("delete", "/delete", {
       body: { deletedBy: FORGED_ACTOR },
-      query: { tenantId: fx.tenantB.id, deletedBy: FORGED_ACTOR }
+      query: { tenantId: fx.tenantB.id, deletedBy: FORGED_ACTOR },
     });
 
     expect(res.status).toBe(200);
@@ -274,10 +274,10 @@ describe("A-95 — DELETE /tenants/delete: audited, and the actor is the caller"
       action: "DELETE",
       resourceType: "Tenant",
       resourceId: fx.tenantB.id,
-      ipAddress: "127.0.0.9"
+      ipAddress: "127.0.0.9",
     });
     expect(entry.changes).toMatchObject({
-      before: { name: fx.tenantB.name, code: fx.tenantB.code }
+      before: { name: fx.tenantB.name, code: fx.tenantB.code },
     });
     expect(JSON.stringify(entry)).not.toContain(FORGED_ACTOR);
     expect(options).toEqual({ transaction: fx.lastTx });
@@ -311,7 +311,7 @@ describe("A-96 — POST /tenants/:tenantId/logo", () => {
       action: "UPDATE",
       resourceType: "Tenant",
       resourceId: fx.tenantA.id,
-      changes: { operation: "UPDATE_LOGO", logo: { before: OLD_LOGO, after: NEW_LOGO } }
+      changes: { operation: "UPDATE_LOGO", logo: { before: OLD_LOGO, after: NEW_LOGO } },
     });
     expect(options).toEqual({ transaction: fx.lastTx });
     expect(mockEvents).toEqual(["audit", "commit", `unlink:${OLD_LOGO}`]);
@@ -372,7 +372,7 @@ describe("A-96 — DELETE /tenants/:tenantId/logo", () => {
       action: "UPDATE",
       resourceType: "Tenant",
       resourceId: fx.tenantA.id,
-      changes: { operation: "REMOVE_LOGO", logo: { before: OLD_LOGO, after: null } }
+      changes: { operation: "REMOVE_LOGO", logo: { before: OLD_LOGO, after: null } },
     });
     expect(options).toEqual({ transaction: fx.lastTx });
     expect(mockEvents).toEqual(["audit", "commit", `unlink:${OLD_LOGO}`]);

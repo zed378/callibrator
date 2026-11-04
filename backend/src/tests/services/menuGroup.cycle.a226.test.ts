@@ -37,20 +37,20 @@ jest.mock("../../models", () => ({
     create: async (values: any, options: any) => {
       mockRef.ledger.write("menu_groups", values, options);
       return { id: "mg-new", children: [], ...values };
-    }
+    },
   },
   RoleMenuPermission: {},
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
   set: jest.fn(),
   del: jest.fn(),
   delPattern: jest.fn(async () => undefined),
-  cacheKeys: { permissions: (id: any) => `perm:${id}` }
+  cacheKeys: { permissions: (id: any) => `perm:${id}` },
 }));
 
 const menuGroupService = require("../../services/menuGroup.service");
@@ -69,12 +69,12 @@ beforeEach(() => {
   mockRef.ledger = createLedger({ cls: false });
   mockRef.tree = Object.fromEntries(
     [
-    mockRow({ id: ROOT, name: "Root", parentId: null }),
-    mockRow({ id: REPORTS, name: "Reports", parentId: ROOT }),
-    mockRow({ id: MONTHLY, name: "Monthly", parentId: REPORTS }),
-    mockRow({ id: ARCHIVE, name: "Archive", parentId: MONTHLY }),
-    mockRow({ id: SETTINGS, name: "Settings", parentId: ROOT })].
-    map((r: any) => [r.id, r])
+      mockRow({ id: ROOT, name: "Root", parentId: null }),
+      mockRow({ id: REPORTS, name: "Reports", parentId: ROOT }),
+      mockRow({ id: MONTHLY, name: "Monthly", parentId: REPORTS }),
+      mockRow({ id: ARCHIVE, name: "Archive", parentId: MONTHLY }),
+      mockRow({ id: SETTINGS, name: "Settings", parentId: ROOT })].
+      map((r: any) => [r.id, r]),
   );
 });
 
@@ -84,15 +84,14 @@ const nothingWritten = () => {
 };
 
 const PATHS = [
-["menuGroup.service#updateMenuGroup", (id: any, parentId: any) => menuGroupService.updateMenuGroup({ id, parentId }, actor)],
-["roles.service#updateMenu (A-271)", (id: any, parentId: any) => RolesService.updateMenu(id, { parent_id: parentId }, actor)]];
-
+  ["menuGroup.service#updateMenuGroup", (id: any, parentId: any) => menuGroupService.updateMenuGroup({ id, parentId }, actor)],
+  ["roles.service#updateMenu (A-271)", (id: any, parentId: any) => RolesService.updateMenu(id, { parent_id: parentId }, actor)]];
 
 describe.each(PATHS)("%s", (_name: any, move: any) => {
   it("refuses a group as its own parent: 409, nothing written", async () => {
     await expect(move(REPORTS, REPORTS)).rejects.toMatchObject({
       status: 409,
-      message: expect.stringMatching(/cannot be its own parent/)
+      message: expect.stringMatching(/cannot be its own parent/),
     });
     nothingWritten();
     expect(mockRef.tree[REPORTS].parentId).toBe(ROOT);
@@ -101,7 +100,7 @@ describe.each(PATHS)("%s", (_name: any, move: any) => {
   it("refuses a direct child as the parent: 409 naming it", async () => {
     await expect(move(REPORTS, MONTHLY)).rejects.toMatchObject({
       status: 409,
-      message: expect.stringMatching(/"Monthly" is inside the group being moved/)
+      message: expect.stringMatching(/"Monthly" is inside the group being moved/),
     });
     nothingWritten();
   });
@@ -109,7 +108,7 @@ describe.each(PATHS)("%s", (_name: any, move: any) => {
   it("refuses a deeper descendant as the parent", async () => {
     await expect(move(ROOT, ARCHIVE)).rejects.toMatchObject({
       status: 409,
-      message: expect.stringMatching(/"Archive" is inside the group being moved/)
+      message: expect.stringMatching(/"Archive" is inside the group being moved/),
     });
     nothingWritten();
   });
@@ -149,10 +148,10 @@ describe.each(PATHS)("%s", (_name: any, move: any) => {
 describe("A-226 — creating a group", () => {
   it("under a parent that does not exist is 404, nothing written", async () => {
     await expect(menuGroupService.createMenuGroup({ name: "Orphan", parentId: MISSING }, actor)).rejects.toMatchObject({
-      status: 404
+      status: 404,
     });
     await expect(RolesService.createMenu({ name: "Orphan", parent_id: MISSING }, actor)).rejects.toMatchObject({
-      status: 404
+      status: 404,
     });
     nothingWritten();
   });

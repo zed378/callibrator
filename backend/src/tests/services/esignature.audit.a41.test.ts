@@ -20,11 +20,11 @@ const mockRef: any = { ledger: null, keyPair: null, steps: null, signature: null
 jest.mock("../../models", () => ({
   TenantKey: {
     unscoped: () => ({ findOne: async () => mockRef.keyPair }),
-    findOne: async () => mockRef.keyPair
+    findOne: async () => mockRef.keyPair,
   },
   SignatureWorkflowStep: {
     findByPk: async () => mockRef.steps[0],
-    findAll: async () => mockRef.steps
+    findAll: async () => mockRef.steps,
   },
   SignatureWorkflow: {
     findByPk: async () => ({
@@ -33,33 +33,33 @@ jest.mock("../../models", () => ({
       tenantId: "tenant-1",
       subject: "Sign me",
       update: (values: any, options: any) =>
-      mockRef.ledger.write("signature_workflows", { id: "wf-1", ...values }, options)
-    })
+        mockRef.ledger.write("signature_workflows", { id: "wf-1", ...values }, options),
+    }),
   },
   SignatureRecord: {
     create: async (values: any, options: any) => {
       mockRef.ledger.write("signature_records", values, options);
       return { id: "sig-1", ...values };
     },
-    findOne: async () => mockRef.signature
+    findOne: async () => mockRef.signature,
   },
   AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
   User: {
     findByPk: async () => ({ id: "u-1", status: "ACTIVE", isActive: true }),
-    findOne: async () => null
-  }
+    findOne: async () => null,
+  },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 // A-65 — signing re-authenticates the signer; the password check is doubled.
 jest.mock("../../services/auth.service", () => ({
-  passIsValid: async () => ({ data: { valid: true } })
+  passIsValid: async () => ({ data: { valid: true } }),
 }));
 // A-158: the real export — emailQueueService.queueEmail never existed. That
 // this module really exports it is asserted in esignature.a158a159.test.js.
 jest.mock("../../services/emailQueue.service", () => ({
-  queueNotificationEmail: jest.fn(async () => true)
+  queueNotificationEmail: jest.fn(async () => true),
 }));
 
 const eSignatureService = require("../../services/eSignature.service");
@@ -77,13 +77,13 @@ const makeStep = (id: any, status: any, stepNumber: any) => {
 };
 
 const sign = () =>
-eSignatureService.signDocument("step-1", "u-1", {
-  authenticationMethod: "password",
-  authPayload: "pw",
-  reason: "Approved by QA",
-  ipAddress: "10.0.0.1",
-  userAgent: "UA"
-});
+  eSignatureService.signDocument("step-1", "u-1", {
+    authenticationMethod: "password",
+    authPayload: "pw",
+    reason: "Approved by QA",
+    ipAddress: "10.0.0.1",
+    userAgent: "UA",
+  });
 
 describe("A-41 — e-signature audit inside the signing transaction", () => {
   beforeAll(() => {
@@ -106,31 +106,31 @@ describe("A-41 — e-signature audit inside the signing transaction", () => {
       expect(result.signatureId).toBe("sig-1");
       expect(mockRef.ledger.committed("signature_records")).toHaveLength(1);
       expect(mockRef.ledger.committed("signature_workflow_steps")).toEqual([
-      expect.objectContaining({ id: "step-1", status: "signed" })]
+        expect.objectContaining({ id: "step-1", status: "signed" })],
       );
       expect(mockRef.ledger.committed("signature_workflows")).toEqual([
-      expect.objectContaining({ status: "completed" })]
+        expect.objectContaining({ status: "completed" })],
       );
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        tenantId: "tenant-1",
-        userId: "u-1",
-        action: "APPROVE",
-        resourceType: "SignatureWorkflow",
-        resourceId: "wf-1",
-        ipAddress: "10.0.0.1",
-        userAgent: "UA",
-        changes: expect.objectContaining({
-          operation: "SIGN",
-          before: { stepId: "step-1", status: "pending" },
-          after: expect.objectContaining({
-            signatureId: "sig-1",
-            signingKeyId: "key-a41",
-            signatureScheme: "esig-v2-rsa-sha256",
-            reason: "Approved by QA"
-          })
-        })
-      })]
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: "u-1",
+          action: "APPROVE",
+          resourceType: "SignatureWorkflow",
+          resourceId: "wf-1",
+          ipAddress: "10.0.0.1",
+          userAgent: "UA",
+          changes: expect.objectContaining({
+            operation: "SIGN",
+            before: { stepId: "step-1", status: "pending" },
+            after: expect.objectContaining({
+              signatureId: "sig-1",
+              signingKeyId: "key-a41",
+              signatureScheme: "esig-v2-rsa-sha256",
+              reason: "Approved by QA",
+            }),
+          }),
+        })],
       );
       // The signature value is not a secret, but it is not what the audit row is for.
       expect(JSON.stringify(mockRef.ledger.auditRows()[0].changes)).not.toContain("signatureValue");
@@ -162,12 +162,12 @@ describe("A-41 — e-signature audit inside the signing transaction", () => {
       await sign();
 
       expect(mockRef.ledger.committed("signature_workflow_steps")).toEqual([
-      expect.objectContaining({ id: "step-1", status: "signed" }),
-      expect.objectContaining({ id: "step-2", status: "pending" })]
+        expect.objectContaining({ id: "step-1", status: "signed" }),
+        expect.objectContaining({ id: "step-2", status: "pending" })],
       );
       expect(mockRef.ledger.committed("signature_workflows")).toEqual([]);
       expect(queueNotificationEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ email: "step-2@x", title: "Signature request: Sign me" })
+        expect.objectContaining({ email: "step-2@x", title: "Signature request: Sign me" }),
       );
       expect(mockRef.ledger.auditRows()).toHaveLength(1);
     });

@@ -41,25 +41,25 @@ jest.mock("../../models", () => ({
       return mockRef.children;
     },
     destroy: async ({ where, transaction }: any) =>
-    mockRef.ledger.write("menu_groups", { destroyed: where }, { transaction })
+      mockRef.ledger.write("menu_groups", { destroyed: where }, { transaction }),
   },
   RoleMenuPermission: {
     destroy: async ({ where, transaction }: any) => {
       mockRef.ledger.write("role_menu_permissions", { destroyed: where }, { transaction });
       return mockRef.revoked;
-    }
+    },
   },
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
   set: jest.fn(),
   del: jest.fn(),
   delPattern: jest.fn(async () => undefined),
-  cacheKeys: { permissions: (id: any) => `perm:${id}` }
+  cacheKeys: { permissions: (id: any) => `perm:${id}` },
 }));
 
 const menuGroupService = require("../../services/menuGroup.service");
@@ -69,41 +69,40 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 const actor: any = { userId: "super-1", tenantId: "home-tenant", ipAddress: "10.0.0.7", userAgent: "UA" };
 
 const CASES = [
-{
-  name: "createMenuGroup",
-  run: (a: any) => menuGroupService.createMenuGroup({ name: "Reports Hub", parentId: "mg-parent", isActive: true }, a),
-  action: "CREATE",
-  resourceId: "mg-new",
-  changes: {
-    operation: "CREATE_MENU",
-    before: {},
-    after: { name: "Reports Hub", slug: "reports-hub", parentId: "mg-parent", isActive: true }
-  }
-},
-{
-  name: "updateMenuGroup",
-  run: (a: any) => menuGroupService.updateMenuGroup({ id: "mg-1", name: "Renamed", isActive: false }, a),
-  action: "UPDATE",
-  resourceId: "mg-1",
-  changes: {
-    operation: "UPDATE_MENU",
-    before: { name: "Dashboard", isActive: true },
-    after: { name: "Renamed", isActive: false }
-  }
-},
-{
-  name: "deleteMenuGroup",
-  run: (a: any) => menuGroupService.deleteMenuGroup("mg-1", a),
-  action: "DELETE",
-  resourceId: "mg-1",
-  changes: {
-    operation: "DELETE_MENU",
-    before: { name: "Dashboard", slug: "dashboard" },
-    // A-181: a group with children is refused (409), so none are deleted.
-    after: { deleted: true, revokedGrants: 3 }
-  }
-}];
-
+  {
+    name: "createMenuGroup",
+    run: (a: any) => menuGroupService.createMenuGroup({ name: "Reports Hub", parentId: "mg-parent", isActive: true }, a),
+    action: "CREATE",
+    resourceId: "mg-new",
+    changes: {
+      operation: "CREATE_MENU",
+      before: {},
+      after: { name: "Reports Hub", slug: "reports-hub", parentId: "mg-parent", isActive: true },
+    },
+  },
+  {
+    name: "updateMenuGroup",
+    run: (a: any) => menuGroupService.updateMenuGroup({ id: "mg-1", name: "Renamed", isActive: false }, a),
+    action: "UPDATE",
+    resourceId: "mg-1",
+    changes: {
+      operation: "UPDATE_MENU",
+      before: { name: "Dashboard", isActive: true },
+      after: { name: "Renamed", isActive: false },
+    },
+  },
+  {
+    name: "deleteMenuGroup",
+    run: (a: any) => menuGroupService.deleteMenuGroup("mg-1", a),
+    action: "DELETE",
+    resourceId: "mg-1",
+    changes: {
+      operation: "DELETE_MENU",
+      before: { name: "Dashboard", slug: "dashboard" },
+      // A-181: a group with children is refused (409), so none are deleted.
+      after: { deleted: true, revokedGrants: 3 },
+    },
+  }];
 
 describe("A-173 — menu-group changes audit under PLATFORM inside their transaction", () => {
   beforeEach(() => {
@@ -121,17 +120,17 @@ describe("A-173 — menu-group changes audit under PLATFORM inside their transac
 
       expect(mockRef.ledger.committed("menu_groups").length).toBeGreaterThan(0);
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        tenantId: PLATFORM_TENANT_ID,
-        userId: "super-1",
-        actorType: "user",
-        action,
-        resourceType: "MenuGroup",
-        resourceId,
-        ipAddress: "10.0.0.7",
-        userAgent: "UA",
-        changes
-      })]
+        expect.objectContaining({
+          tenantId: PLATFORM_TENANT_ID,
+          userId: "super-1",
+          actorType: "user",
+          action,
+          resourceType: "MenuGroup",
+          resourceId,
+          ipAddress: "10.0.0.7",
+          userAgent: "UA",
+          changes,
+        })],
       );
       expect(redis.delPattern).toHaveBeenCalledWith("permissions:role:*");
     });
@@ -178,7 +177,7 @@ describe("A-173 — menu-group changes audit under PLATFORM inside their transac
     await menuGroupService.deleteMenuGroup("mg-1", actor);
 
     expect(mockRef.ledger.committed("role_menu_permissions")).toEqual([
-    expect.objectContaining({ destroyed: { menuGroupId: "mg-1" } })]
+      expect.objectContaining({ destroyed: { menuGroupId: "mg-1" } })],
     );
   });
 
@@ -186,9 +185,9 @@ describe("A-173 — menu-group changes audit under PLATFORM inside their transac
     await menuGroupService.createMenuGroup({ name: "Top" }, actor);
 
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({
-      changes: { operation: "CREATE_MENU", before: {}, after: { name: "Top", slug: "top", parentId: null, isActive: null } }
-    })]
+      expect.objectContaining({
+        changes: { operation: "CREATE_MENU", before: {}, after: { name: "Top", slug: "top", parentId: null, isActive: null } },
+      })],
     );
     expect(redis.delPattern).not.toHaveBeenCalled();
   });
@@ -199,7 +198,7 @@ describe("A-173 — menu-group changes audit under PLATFORM inside their transac
     await menuGroupService.updateMenuGroup({ id: "mg-1", icon: "chart" }, actor);
 
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({ changes: { operation: "UPDATE_MENU", before: { icon: null }, after: { icon: "chart" } } })]
+      expect.objectContaining({ changes: { operation: "UPDATE_MENU", before: { icon: null }, after: { icon: "chart" } } })],
     );
   });
 

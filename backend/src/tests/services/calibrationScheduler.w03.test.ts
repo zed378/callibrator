@@ -20,18 +20,18 @@
  */
 jest.mock("../../models", () => ({
   CalibrationDevice: { findAll: jest.fn() },
-  MaintenanceWorkOrder: { findAll: jest.fn() }
+  MaintenanceWorkOrder: { findAll: jest.fn() },
 }));
 jest.mock("../../services/maintenance.service", () => ({ createAutoScheduledWorkOrders: jest.fn() }));
 jest.mock("../../services/notification.service", () => ({ emitNotification: jest.fn() }));
 jest.mock("../../services/webhook.service", () => ({ emitEvent: jest.fn() }));
 // W-04: the tenant-wide notification and its audit row are one transaction.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { Op } = require("sequelize");
@@ -45,18 +45,18 @@ const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
 // W-17 (ADR-073): the scan hands each tenant's chunk to ONE batch call. By
 // default the batch creates every item, numbering the orders wo1, wo2, ...
 const createsAll = (ids: any = null) =>
-jest.fn(async (_tenantId: any, items: any) => ({
-  created: items.map((item: any, i: any) => ({ id: ids ? ids[i] : `wo${i + 1}`, deviceId: item.deviceId })),
-  conflicted: [],
-  missing: []
-}));
+  jest.fn(async (_tenantId: any, items: any) => ({
+    created: items.map((item: any, i: any) => ({ id: ids ? ids[i] : `wo${i + 1}`, deviceId: item.deviceId })),
+    conflicted: [],
+    missing: [],
+  }));
 
 const device = (id: any, tenantId: any = "t1") => ({
   id,
   tenantId,
   name: `Dev ${id}`,
   serialNumber: null,
-  nextCalibrationDate: new Date("2020-01-01")
+  nextCalibrationDate: new Date("2020-01-01"),
 });
 
 beforeEach(() => {
@@ -76,7 +76,7 @@ describe("W-30 — the scheduled scan's work orders name an actor", () => {
     expect(maintenanceService.createAutoScheduledWorkOrders).toHaveBeenCalledWith(
       "t1",
       [expect.objectContaining({ deviceId: "d1", title: "Overdue calibration: Dev d1" })],
-      { systemActor: "system:calibration-scan" }
+      { systemActor: "system:calibration-scan" },
     );
   });
 
@@ -95,7 +95,7 @@ describe("W-30 — the scheduled scan's work orders name an actor", () => {
     await scheduler.runCalibrationScan({ actor: { userId: null } });
 
     expect(maintenanceService.createAutoScheduledWorkOrders.mock.calls[0][2]).toEqual({
-      systemActor: "system:calibration-scan"
+      systemActor: "system:calibration-scan",
     });
   });
 });
@@ -109,7 +109,7 @@ describe("W-03 — a concurrent scan's work order is a skip, not an error", () =
 
     expect(summary).toMatchObject({ scanned: 1, skipped: 1, errors: 0, workOrdersCreated: 0 });
     expect(summary.details).toEqual([
-    { deviceId: "d1", action: "skipped", reason: "created by a concurrent scan" }]
+      { deviceId: "d1", action: "skipped", reason: "created by a concurrent scan" }],
     );
     expect(notificationService.emitNotification).not.toHaveBeenCalled();
     expect(webhookService.emitEvent).not.toHaveBeenCalled();
@@ -146,8 +146,8 @@ describe("W-12 — tenant context", () => {
     await scheduler.runCalibrationScan();
 
     expect(seen).toEqual([
-    { tenantId: "tA", isSuperAdmin: false, isSystemTask: false },
-    { tenantId: "tB", isSuperAdmin: false, isSystemTask: false }]
+      { tenantId: "tA", isSuperAdmin: false, isSystemTask: false },
+      { tenantId: "tB", isSuperAdmin: false, isSystemTask: false }],
     );
   });
 
@@ -161,7 +161,7 @@ describe("W-12 — tenant context", () => {
     await scheduler.runCalibrationScan();
 
     expect(ctx).toEqual(
-      expect.objectContaining({ isSystemTask: true, systemReason: expect.stringContaining("calibration-scan") })
+      expect.objectContaining({ isSystemTask: true, systemReason: expect.stringContaining("calibration-scan") }),
     );
   });
 
@@ -181,11 +181,11 @@ describe("W-12 — tenant context", () => {
 describe("W-17 — bounded reads", () => {
   it("reads due devices in keyset pages and open work orders once per page", async () => {
     CalibrationDevice.findAll.
-    mockResolvedValueOnce([device("d1"), device("d2")]).
-    mockResolvedValueOnce([device("d3")]);
+      mockResolvedValueOnce([device("d1"), device("d2")]).
+      mockResolvedValueOnce([device("d3")]);
     MaintenanceWorkOrder.findAll.
-    mockResolvedValueOnce([{ id: "open-wo", deviceId: "d2" }]).
-    mockResolvedValueOnce([]);
+      mockResolvedValueOnce([{ id: "open-wo", deviceId: "d2" }]).
+      mockResolvedValueOnce([]);
 
     const summary = await scheduler.runCalibrationScan({ batchSize: 2 });
 
@@ -211,22 +211,22 @@ describe("W-17 — bounded reads", () => {
 describe("W-17 (ADR-073) — work orders and notifications in one transaction per tenant chunk", () => {
   it("one batch call per chunk of one tenant's devices; two tenants never share one", async () => {
     CalibrationDevice.findAll.mockResolvedValue([
-    device("d1", "tA"),
-    device("d2", "tB"),
-    device("d3", "tA"),
-    device("d4", "tA")]
+      device("d1", "tA"),
+      device("d2", "tB"),
+      device("d3", "tA"),
+      device("d4", "tA")],
     );
 
     const summary = await scheduler.runCalibrationScan({ txBatchSize: 2 });
 
     const calls = maintenanceService.createAutoScheduledWorkOrders.mock.calls.map(([tenantId, items]: any) => [
-    tenantId,
-    items.map((item: any) => item.deviceId)]
+      tenantId,
+      items.map((item: any) => item.deviceId)],
     );
     expect(calls).toEqual([
-    ["tA", ["d1", "d3"]],
-    ["tA", ["d4"]],
-    ["tB", ["d2"]]]
+      ["tA", ["d1", "d3"]],
+      ["tA", ["d4"]],
+      ["tB", ["d2"]]],
     );
     expect(summary).toMatchObject({ scanned: 4, workOrdersCreated: 4, notificationsCreated: 4, errors: 0 });
   });
@@ -236,15 +236,15 @@ describe("W-17 (ADR-073) — work orders and notifications in one transaction pe
     const auditService = require("../../services/audit.service");
     CalibrationDevice.findAll.mockResolvedValue([device("d1"), device("d2")]);
     notificationService.emitNotification.
-    mockResolvedValueOnce({ id: "n1" }).
-    mockResolvedValueOnce({ id: "n2" });
+      mockResolvedValueOnce({ id: "n1" }).
+      mockResolvedValueOnce({ id: "n2" });
 
     await scheduler.runCalibrationScan();
 
     expect(db.transaction).toHaveBeenCalledTimes(1);
     expect(auditService.logAction.mock.calls.map(([entry, opts]: any) => [entry.resourceId, entry.changes.deviceId, entry.changes.workOrderId, opts])).toEqual([
-    ["n1", "d1", "wo1", { transaction: "TX" }],
-    ["n2", "d2", "wo2", { transaction: "TX" }]]
+      ["n1", "d1", "wo1", { transaction: "TX" }],
+      ["n2", "d2", "wo2", { transaction: "TX" }]],
     );
     expect(webhookService.emitEvent.mock.calls.map(([,, payload]: any) => payload.workOrderId)).toEqual(["wo1", "wo2"]);
   });

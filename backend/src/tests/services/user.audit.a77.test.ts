@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-77 — user mutations wrote no audit row inside their transaction.
  *
@@ -21,20 +21,20 @@ const events: any[] = [];
 jest.mock("../../config", () => ({ db: { transaction: jest.fn() } }));
 jest.mock("../../models", () => ({
   Users: { findByPk: jest.fn(), findOne: jest.fn(), create: jest.fn() },
-  Roles: { findByPk: jest.fn() }
+  Roles: { findByPk: jest.fn() },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 jest.mock("../../utils/password.util", () => ({
-  hashPassword: jest.fn().mockResolvedValue("hashed")
+  hashPassword: jest.fn().mockResolvedValue("hashed"),
 }));
 jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(async (name: any) => {
     events.push(`unlink:${name}`);
   }),
-  getUploadUrl: jest.fn()
+  getUploadUrl: jest.fn(),
 }));
 
 const { db } = require("../../config");
@@ -54,7 +54,7 @@ const actor = {
   actorIsSuperAdmin: false,
   actorTenantId: TENANT_A,
   ipAddress: "10.0.0.7",
-  userAgent: "jest-agent"
+  userAgent: "jest-agent",
 };
 
 let tx: any;
@@ -68,7 +68,7 @@ const makeTx = () => {
     rollback: jest.fn(async () => {
       events.push("rollback");
       t.finished = "rollback";
-    })
+    }),
   };
   return t;
 };
@@ -89,7 +89,7 @@ const makeUser = (overrides: any = {}) => {
     role_id: ROLE_OLD,
     picture: null,
     role: { id: ROLE_OLD, name: "USER" },
-    ...overrides
+    ...overrides,
   };
   row.update = jest.fn(async (values: any, options: any = {}) => {
     events.push(options.transaction ? "update:tx" : "update:no-tx");
@@ -127,7 +127,7 @@ describe("A-77 — editUser (PATCH /users/edit, PATCH /users/:userId/profile)", 
       firstName: "New",
       status: "SUSPENDED",
       updatedBy: ACTOR_ID,
-      ...actor
+      ...actor,
     });
 
     expect(events).toEqual(["update:tx", "audit:tx", "commit"]);
@@ -141,11 +141,11 @@ describe("A-77 — editUser (PATCH /users/edit, PATCH /users/:userId/profile)", 
       resourceType: "User",
       resourceId: TARGET_ID,
       ipAddress: "10.0.0.7",
-      userAgent: "jest-agent"
+      userAgent: "jest-agent",
     });
     expect(entry.changes).toEqual({
       firstName: { before: "Old", after: "New" },
-      status: { before: "ACTIVE", after: "SUSPENDED" }
+      status: { before: "ACTIVE", after: "SUSPENDED" },
     });
   });
 
@@ -154,7 +154,7 @@ describe("A-77 — editUser (PATCH /users/edit, PATCH /users/:userId/profile)", 
     auditService.logAction.mockRejectedValue(new Error("audit insert failed"));
 
     await expect(
-      userService.editUser({ userId: TARGET_ID, status: "SUSPENDED", updatedBy: ACTOR_ID, ...actor })
+      userService.editUser({ userId: TARGET_ID, status: "SUSPENDED", updatedBy: ACTOR_ID, ...actor }),
     ).rejects.toMatchObject({ status: 500 });
 
     expect(tx.commit).not.toHaveBeenCalled();
@@ -165,7 +165,7 @@ describe("A-77 — editUser (PATCH /users/edit, PATCH /users/:userId/profile)", 
     Users.findByPk.mockResolvedValue(makeUser({ tenantId: TENANT_B }));
 
     await expect(
-      userService.editUser({ userId: TARGET_ID, firstName: "Pwned", updatedBy: ACTOR_ID, ...actor })
+      userService.editUser({ userId: TARGET_ID, firstName: "Pwned", updatedBy: ACTOR_ID, ...actor }),
     ).rejects.toMatchObject({ status: 404 });
 
     expect(auditService.logAction).not.toHaveBeenCalled();
@@ -179,7 +179,7 @@ describe("A-77 — editUser (PATCH /users/edit, PATCH /users/:userId/profile)", 
       firstName: "New",
       updatedBy: ACTOR_ID,
       ...actor,
-      actorIsSuperAdmin: true
+      actorIsSuperAdmin: true,
     });
 
     expect(auditService.logAction.mock.calls[0][0].tenantId).toBe(TENANT_A);
@@ -203,7 +203,7 @@ describe("A-77 — userCreate", () => {
       password: "Str0ng!Pass",
       roleId: ROLE_NEW,
       createdBy: ACTOR_ID,
-      ...actor
+      ...actor,
     });
 
     expect(events).toEqual(["create:tx", "audit:tx", "commit"]);
@@ -215,7 +215,7 @@ describe("A-77 — userCreate", () => {
       action: "CREATE",
       resourceType: "User",
       resourceId: TARGET_ID,
-      ipAddress: "10.0.0.7"
+      ipAddress: "10.0.0.7",
     });
     expect(JSON.stringify(entry.changes)).not.toMatch(/password|hashed|Str0ng/i);
     expect(entry.changes.after).toMatchObject({ username: "tech1", roleId: ROLE_NEW });
@@ -235,8 +235,8 @@ describe("A-77 — userCreate", () => {
         password: "Str0ng!Pass",
         roleId: ROLE_NEW,
         createdBy: ACTOR_ID,
-        ...actor
-      })
+        ...actor,
+      }),
     ).rejects.toMatchObject({ status: 500 });
 
     expect(tx.commit).not.toHaveBeenCalled();
@@ -253,7 +253,7 @@ describe("A-77 — userRoleUpdate", () => {
       userId: TARGET_ID,
       roleId: ROLE_NEW,
       updatedBy: ACTOR_ID,
-      ...actor
+      ...actor,
     });
 
     expect(events).toEqual(["update:tx", "audit:tx", "commit"]);
@@ -265,7 +265,7 @@ describe("A-77 — userRoleUpdate", () => {
       action: "UPDATE",
       resourceType: "User",
       resourceId: TARGET_ID,
-      changes: { roleId: { before: ROLE_OLD, after: ROLE_NEW } }
+      changes: { roleId: { before: ROLE_OLD, after: ROLE_NEW } },
     });
   });
 });
@@ -285,7 +285,7 @@ describe("A-77 — deleteUser", () => {
       action: "DELETE",
       resourceType: "User",
       resourceId: TARGET_ID,
-      userAgent: "jest-agent"
+      userAgent: "jest-agent",
     });
   });
 
@@ -294,7 +294,7 @@ describe("A-77 — deleteUser", () => {
     auditService.logAction.mockRejectedValue(new Error("audit insert failed"));
 
     await expect(
-      userService.deleteUser({ userId: TARGET_ID, deletedBy: ACTOR_ID, ...actor })
+      userService.deleteUser({ userId: TARGET_ID, deletedBy: ACTOR_ID, ...actor }),
     ).rejects.toMatchObject({ status: 500 });
 
     expect(tx.commit).not.toHaveBeenCalled();
@@ -310,7 +310,7 @@ describe("A-77 — deleteUser", () => {
     });
 
     await expect(
-      userService.deleteUser({ userId: TARGET_ID, deletedBy: ACTOR_ID, ...actor })
+      userService.deleteUser({ userId: TARGET_ID, deletedBy: ACTOR_ID, ...actor }),
     ).rejects.toMatchObject({ status: 500, message: "commit failed" });
 
     expect(tx.rollback).not.toHaveBeenCalled();
@@ -321,7 +321,7 @@ describe("A-77 — deleteUser", () => {
     Users.findByPk.mockResolvedValue(makeUser({ tenantId: TENANT_B }));
 
     await expect(
-      userService.deleteUser({ userId: TARGET_ID, deletedBy: ACTOR_ID, ...actor })
+      userService.deleteUser({ userId: TARGET_ID, deletedBy: ACTOR_ID, ...actor }),
     ).rejects.toMatchObject({ status: 404 });
 
     expect(auditService.logAction).not.toHaveBeenCalled();

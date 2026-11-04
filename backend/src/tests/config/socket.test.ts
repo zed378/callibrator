@@ -7,8 +7,6 @@
  * not the transport.
  */
 
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
-
 jest.mock("socket.io", () => ({ Server: jest.fn() }));
 
 jest.mock("../../utils/jwt.util", () => ({

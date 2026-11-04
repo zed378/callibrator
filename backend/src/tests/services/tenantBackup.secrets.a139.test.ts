@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-139 — tenant backup archives carried second-factor secrets.
  *
@@ -85,25 +85,24 @@ const asTenant = (fn: any) => tenantStorage.run({ tenantId: TENANT }, fn);
  * codes and lockout state. Hand-written (see the header).
  */
 const FORBIDDEN_USER_ATTRIBUTES = [
-"password",
-"mfaSecret",
-"mfaPendingSecret",
-"mfaPendingCreatedAt",
-"mfaLastUsedStep",
-// A-141 (migration 0031): hashes of the one-time recovery codes. Added
-// after the deny-list was written — the shape an allow-list exists for.
-"mfaRecoveryCodes",
-"webauthnCredentialId",
-"webauthnPublicKey",
-"webauthnSignCount",
-"otpCode",
-"otpExpiredAt",
-"otpRequestCount",
-"otpLastRequestedAt",
-"failedLoginAttempts",
-"lockedUntil",
-"passwordChangedAt"];
-
+  "password",
+  "mfaSecret",
+  "mfaPendingSecret",
+  "mfaPendingCreatedAt",
+  "mfaLastUsedStep",
+  // A-141 (migration 0031): hashes of the one-time recovery codes. Added
+  // after the deny-list was written — the shape an allow-list exists for.
+  "mfaRecoveryCodes",
+  "webauthnCredentialId",
+  "webauthnPublicKey",
+  "webauthnSignCount",
+  "otpCode",
+  "otpExpiredAt",
+  "otpRequestCount",
+  "otpLastRequestedAt",
+  "failedLoginAttempts",
+  "lockedUntil",
+  "passwordChangedAt"];
 
 /** A name that says "this is a secret or authentication state". */
 const SECRET_SHAPED = /secret|password|passwd|otp|mfa|webauthn|token|credential|recovery|hash|locked|failed/i;
@@ -118,7 +117,7 @@ const SECRETS = {
   otpCode: "OTP-HASH-918273",
   recoveryCode: "RECOVERY-CODE-HASH-5e884898da2804",
   s3Secret: "S3-SECRET-ACCESS-KEY-wJalrXUtnFEMI",
-  aiKey: "sk-live-AI-API-KEY-0000"
+  aiKey: "sk-live-AI-API-KEY-0000",
 };
 
 /** A users row with EVERY column holding a value — the worst case the export must survive. */
@@ -128,10 +127,10 @@ const fullUserRow = () => {
     const key = attribute.type.key;
     row[attribute.field] =
     key === "BOOLEAN" ? true :
-    key === "INTEGER" ? 7 :
-    key === "DATE" ? new Date("2026-09-01T00:00:00Z") :
-    key === "UUID" ? USER :
-    `value-of-${attribute.fieldName}`;
+      key === "INTEGER" ? 7 :
+        key === "DATE" ? new Date("2026-09-01T00:00:00Z") :
+          key === "UUID" ? USER :
+            `value-of-${attribute.fieldName}`;
   }
   Object.assign(row, {
     id: USER,
@@ -147,7 +146,7 @@ const fullUserRow = () => {
     otp_code: SECRETS.otpCode,
     mfa_recovery_codes: [SECRETS.recoveryCode],
     is_deleted: false,
-    deleted_at: null
+    deleted_at: null,
   });
   return row;
 };
@@ -166,8 +165,8 @@ const tenantRow = () => ({
   settings: {
     storage_credentials: JSON.stringify({ accessKeyId: "AKIA", secretAccessKey: SECRETS.s3Secret }),
     ai_api_key: SECRETS.aiKey,
-    theme: "dark"
-  }
+    theme: "dark",
+  },
 });
 
 /** Run createBackup for real and return the parsed archive the service wrote. */
@@ -181,17 +180,17 @@ const takeBackup = async () => {
   jest.spyOn(models.TenantBackup, "findByPk").mockResolvedValue({ id: BACKUP });
   jest.spyOn(fs, "existsSync").mockReturnValue(true);
   jest.
-  spyOn(fs, "createReadStream").
-  mockImplementation(() => Readable.from([Buffer.from("zip")]));
+    spyOn(fs, "createReadStream").
+    mockImplementation(() => Readable.from([Buffer.from("zip")]));
 
   const result = await asTenant(() =>
-  tenantBackupService.createBackup({
-    tenantId: TENANT,
-    createdById: USER,
-    name: "nightly",
-    backupType: models.TenantBackup.BACKUP_TYPES.FULL,
-    models
-  })
+    tenantBackupService.createBackup({
+      tenantId: TENANT,
+      createdById: USER,
+      name: "nightly",
+      backupType: models.TenantBackup.BACKUP_TYPES.FULL,
+      models,
+    }),
   );
   expect(result.status).toBe(201);
   // P8-01: the archive is in the tenant's storage, not written to disk.
@@ -229,13 +228,13 @@ describe("A-139 — the tenant backup export is an allow-list", () => {
     for (const attribute of FORBIDDEN_USER_ATTRIBUTES) {
       expect({ attribute, exported: exportedKeys.includes(attribute) }).toEqual({
         attribute,
-        exported: false
+        exported: false,
       });
     }
     // The archive still identifies the account, which is what a restore
     // matches on.
     expect(data.users[0]).toEqual(
-      expect.objectContaining({ id: USER, username: "nurse.jane", email: "jane@hospital.test" })
+      expect.objectContaining({ id: USER, username: "nurse.jane", email: "jane@hospital.test" }),
     );
 
     // The tenant section carries no settings: neither the mirrored plaintext
@@ -253,7 +252,7 @@ describe("A-139 — the tenant backup export is an allow-list", () => {
       const column = models.Users.rawAttributes[attribute].field;
       expect({ column, selected: selectList.includes(`"${column}"`) }).toEqual({
         column,
-        selected: false
+        selected: false,
       });
     }
   });
@@ -264,7 +263,7 @@ describe("A-139 — the tenant backup export is an allow-list", () => {
     for (const attribute of FORBIDDEN_USER_ATTRIBUTES) {
       expect({ attribute, isColumn: attribute in models.Users.rawAttributes }).toEqual({
         attribute,
-        isColumn: true
+        isColumn: true,
       });
     }
   });
@@ -282,7 +281,7 @@ describe("A-139 — the tenant backup export is an allow-list", () => {
     for (const attribute of allowed) {
       expect({ attribute, isColumn: attribute in models.Users.rawAttributes }).toEqual({
         attribute,
-        isColumn: true
+        isColumn: true,
       });
     }
   });
@@ -293,7 +292,7 @@ describe("A-139 — the tenant backup export is an allow-list", () => {
     for (const attribute of allowed) {
       expect({ attribute, isColumn: attribute in models.Tenant.rawAttributes }).toEqual({
         attribute,
-        isColumn: true
+        isColumn: true,
       });
     }
   });

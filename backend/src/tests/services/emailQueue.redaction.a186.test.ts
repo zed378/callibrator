@@ -16,7 +16,7 @@ jest.mock("amqplib", () => ({ connect: jest.fn() }));
 jest.mock("../../services/email.service", () => ({
   sendOtpEmail: jest.fn(),
   sendActivationEmail: jest.fn(),
-  sendNotificationEmail: jest.fn()
+  sendNotificationEmail: jest.fn(),
 }));
 // W-18: the email queue now uses rabbitmq.service's one connection. This
 // stand-in routes it to the amqplib mock below, so the paths under test (queued,
@@ -45,11 +45,11 @@ jest.mock("../../services/rabbitmq.service", () => {
     nack: (c: any, msg: any) => c.nack(msg, false, false),
     closeRabbitMQ: async () => {
       ch = null;
-    }
+    },
   };
 });
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const ADDRESS = "Dr.Jane.Doe@Hospital-A.example";
@@ -59,7 +59,7 @@ const ACTIVATION_LINK = `https://app.example/activate?t=${TOKEN}`;
 
 const leaks = (logger: any) => {
   const text = JSON.stringify(
-    ["info", "warn", "error", "debug"].flatMap((level: any) => logger[level].mock.calls)
+    ["info", "warn", "error", "debug"].flatMap((level: any) => logger[level].mock.calls),
   ).toLowerCase();
   return ["dr.jane.doe", OTP, TOKEN].filter((secret: any) => text.includes(secret.toLowerCase()));
 };
@@ -86,12 +86,12 @@ describe("A-186 — the email queue logs no recipient address and no payload", (
       ack: jest.fn(),
       nack: jest.fn(),
       close: jest.fn().mockResolvedValue(true),
-      on: jest.fn()
+      on: jest.fn(),
     };
     amqplib.connect.mockResolvedValue({
       createChannel: jest.fn().mockResolvedValue(channel),
       on: jest.fn(),
-      close: jest.fn().mockResolvedValue(true)
+      close: jest.fn().mockResolvedValue(true),
     });
   });
 
@@ -101,13 +101,13 @@ describe("A-186 — the email queue logs no recipient address and no payload", (
 
   it("queued: logs the job id, type and recipient domain only", async () => {
     await expect(
-      svc.queueActivationEmail({ email: ADDRESS, firstName: "Jane", activationLink: ACTIVATION_LINK })
+      svc.queueActivationEmail({ email: ADDRESS, firstName: "Jane", activationLink: ACTIVATION_LINK }),
     ).resolves.toBe(true);
 
     expect(logger.info).toHaveBeenCalledWith("Email job added to queue", {
       jobId: expect.any(String),
       type: "activation",
-      recipientDomain: "hospital-a.example"
+      recipientDomain: "hospital-a.example",
     });
     expect(leaks(logger)).toEqual([]);
   });
@@ -117,17 +117,17 @@ describe("A-186 — the email queue logs no recipient address and no payload", (
     emailService.sendActivationEmail.mockResolvedValue(true);
 
     await expect(
-      svc.queueActivationEmail({ email: ADDRESS, firstName: "Jane", activationLink: ACTIVATION_LINK })
+      svc.queueActivationEmail({ email: ADDRESS, firstName: "Jane", activationLink: ACTIVATION_LINK }),
     ).resolves.toBe(true);
 
     expect(logger.error).toHaveBeenCalledWith("Failed to add email job to queue", {
       error: expect.any(String),
       type: "activation",
-      recipientDomain: "hospital-a.example"
+      recipientDomain: "hospital-a.example",
     });
     expect(logger.info).toHaveBeenCalledWith("Email sent successfully", {
       type: "activation",
-      recipientDomain: "hospital-a.example"
+      recipientDomain: "hospital-a.example",
     });
     expect(leaks(logger)).toEqual([]);
   });
@@ -141,7 +141,7 @@ describe("A-186 — the email queue logs no recipient address and no payload", (
     expect(logger.error).toHaveBeenCalledWith("Failed to send email", {
       error: "SMTP 550",
       type: "otp",
-      recipientDomain: "hospital-a.example"
+      recipientDomain: "hospital-a.example",
     });
     expect(leaks(logger)).toEqual([]);
   });
@@ -153,15 +153,15 @@ describe("A-186 — the email queue logs no recipient address and no payload", (
 
     await processJob({
       content: Buffer.from(
-        JSON.stringify({ id: "job-1", type: "notification", data: { email: ADDRESS, title: "t" }, retries: 0, maxRetries: 3 })
-      )
+        JSON.stringify({ id: "job-1", type: "notification", data: { email: ADDRESS, title: "t" }, retries: 0, maxRetries: 3 }),
+      ),
     });
 
     expect(channel.ack).toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith("Email sent successfully", {
       jobId: "job-1",
       type: "notification",
-      recipientDomain: "hospital-a.example"
+      recipientDomain: "hospital-a.example",
     });
     expect(leaks(logger)).toEqual([]);
   });
@@ -172,8 +172,8 @@ describe("A-186 — the email queue logs no recipient address and no payload", (
     await svc.queueNotificationEmail({ email: undefined, title: "t", message: "m" });
 
     const domains = logger.info.mock.calls.
-    filter(([message]: any) => message === "Email job added to queue").
-    map(([, meta]: any) => meta.recipientDomain);
+      filter(([message]: any) => message === "Email job added to queue").
+      map(([, meta]: any) => meta.recipientDomain);
     expect(domains).toEqual([null, null, null]);
     expect(JSON.stringify(logger.info.mock.calls)).not.toContain("not-an-address");
   });

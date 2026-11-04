@@ -23,39 +23,39 @@ const mockRef: any = { ledger: null, account: null, settings: [] };
 
 jest.mock("archiver", () => jest.fn());
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 
 jest.mock("../../models", () => ({
   User: {
     findOne: jest.fn(async ({ where }: any) =>
-    mockRef.account && where.id === mockRef.account.id && where.tenantId === mockRef.account.tenantId ?
-    mockRef.account :
-    null
+      mockRef.account && where.id === mockRef.account.id && where.tenantId === mockRef.account.tenantId ?
+        mockRef.account :
+        null,
     ),
     update: jest.fn(async (values: any, options: any) => {
       mockRef.ledger.write("users", values, options);
       return [1];
     }),
-    unscoped: jest.fn(() => ({ findOne: jest.fn(async () => null) }))
+    unscoped: jest.fn(() => ({ findOne: jest.fn(async () => null) })),
   },
   Users: { findOne: jest.fn(), findByPk: jest.fn(), update: jest.fn() },
   TenantSettings: { findAll: jest.fn(async () => mockRef.settings) },
   Role: {},
   Tenants: {},
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 
 jest.mock("../../services/emailQueue.service", () => ({
   queueActivationEmail: jest.fn(async () => true),
   queueNotificationEmail: jest.fn(async () => true),
-  queueOtpEmail: jest.fn()
+  queueOtpEmail: jest.fn(),
 }));
 jest.mock("../../utils/jwt.util", () => ({ generatePurposeToken: jest.fn(() => "tok") }));
 
 jest.mock("../../utils/password.util", () => ({
   hashPassword: jest.fn(),
-  comparePassword: jest.fn(async (plain: any, hash: any) => plain === "Right-password-1" && hash === "hash")
+  comparePassword: jest.fn(async (plain: any, hash: any) => plain === "Right-password-1" && hash === "hash"),
 }));
 
 jest.mock("../../services/mfa.service", () => ({
@@ -66,11 +66,11 @@ jest.mock("../../services/mfa.service", () => ({
     mockRef.ledger.write("mfa_spend", { code }, options);
     return true;
   }),
-  consumeRecoveryCode: jest.fn(async () => false)
+  consumeRecoveryCode: jest.fn(async () => false),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const emailQueue = require("../../services/emailQueue.service");
@@ -89,7 +89,7 @@ const userRow = (overrides: any = {}) => ({
   password: "hash",
   mfaEnabled: false,
   mustChangePassword: false,
-  ...overrides
+  ...overrides,
 });
 
 const actor: any = { ipAddress: "198.51.100.3", userAgent: "ua" };
@@ -97,7 +97,7 @@ const emailWrites = () => mockRef.ledger.committed("users").filter((row: any) =>
 const auditRows = () => mockRef.ledger.auditRows();
 
 const rectifyEmail = (reauth: any, tenantId: any = TENANT_ID) =>
-gdpr.rectifyData(tenantId, USER_ID, "email", "attacker@evil.test", actor, reauth);
+  gdpr.rectifyData(tenantId, USER_ID, "email", "attacker@evil.test", actor, reauth);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -115,11 +115,11 @@ describe("A-214: a stolen session cannot move the address", () => {
   it("with the session alone it is a 400: nothing written, nothing mailed", async () => {
     await expect(rectifyEmail({})).rejects.toMatchObject({
       status: 400,
-      message: "Changing your email address requires your current password"
+      message: "Changing your email address requires your current password",
     });
     // The pre-A-214 call shape — no re-authentication argument at all.
     await expect(
-      gdpr.rectifyData(TENANT_ID, USER_ID, "email", "attacker@evil.test", actor)
+      gdpr.rectifyData(TENANT_ID, USER_ID, "email", "attacker@evil.test", actor),
     ).rejects.toMatchObject({ status: 400 });
 
     expect(emailWrites()).toEqual([]);
@@ -131,7 +131,7 @@ describe("A-214: a stolen session cannot move the address", () => {
   it("a wrong password is a 400 and changes nothing", async () => {
     await expect(rectifyEmail({ currentPassword: "Wrong-password-1" })).rejects.toMatchObject({
       status: 400,
-      message: "Current password is incorrect"
+      message: "Current password is incorrect",
     });
     expect(emailWrites()).toEqual([]);
     expect(emailQueue.queueActivationEmail).not.toHaveBeenCalled();
@@ -147,7 +147,7 @@ describe("A-214: a stolen session cannot move the address", () => {
       operation: "GDPR_RECTIFICATION",
       fields: ["email"],
       emailVerificationReset: true,
-      reauthenticatedWith: "password"
+      reauthenticatedWith: "password",
     });
     // The previous address is still told (A-180).
     expect(emailQueue.queueNotificationEmail).toHaveBeenCalled();
@@ -161,7 +161,7 @@ describe("A-214: a stolen session cannot move the address", () => {
     it("the password alone is not enough", async () => {
       await expect(rectifyEmail({ currentPassword: "Right-password-1" })).rejects.toMatchObject({
         status: 400,
-        message: "Changing your email address requires your current password and a current MFA or recovery code"
+        message: "Changing your email address requires your current password and a current MFA or recovery code",
       });
       expect(emailWrites()).toEqual([]);
     });
@@ -169,7 +169,7 @@ describe("A-214: a stolen session cannot move the address", () => {
     it("a wrong code is the combined 400", async () => {
       await expect(rectifyEmail({ currentPassword: "Right-password-1", code: "000000" })).rejects.toMatchObject({
         status: 400,
-        message: "Current password or MFA code is incorrect"
+        message: "Current password or MFA code is incorrect",
       });
       expect(emailWrites()).toEqual([]);
     });
@@ -197,11 +197,11 @@ describe("A-214: a stolen session cannot move the address", () => {
     mockRef.settings = [{ key: "oidc_authority", value: "https://login.microsoftonline.com/tenant-guid/v2.0" }];
 
     await expect(
-      rectifyEmail({ currentPassword: "Right-password-1", signInMethod: "oidc" })
+      rectifyEmail({ currentPassword: "Right-password-1", signInMethod: "oidc" }),
     ).rejects.toMatchObject({
       status: 409,
       message:
-      "You signed in through your organisation's identity provider (OIDC, login.microsoftonline.com). Your email address is managed there: change it with that provider, not here."
+      "You signed in through your organisation's identity provider (OIDC, login.microsoftonline.com). Your email address is managed there: change it with that provider, not here.",
     });
     expect(emailWrites()).toEqual([]);
   });
@@ -209,13 +209,13 @@ describe("A-214: a stolen session cannot move the address", () => {
   it("with no provider configured, the 409 names the protocol alone", async () => {
     await expect(rectifyEmail({ signInMethod: "saml" })).rejects.toMatchObject({
       status: 409,
-      message: expect.stringContaining("identity provider (SAML). Your email address is managed there")
+      message: expect.stringContaining("identity provider (SAML). Your email address is managed there"),
     });
   });
 
   it("the caller's own row only: another tenant's id is a 404", async () => {
     await expect(rectifyEmail({ currentPassword: "Right-password-1" }, OTHER_TENANT)).rejects.toMatchObject({
-      status: 404
+      status: 404,
     });
     expect(emailWrites()).toEqual([]);
   });

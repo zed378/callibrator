@@ -30,13 +30,13 @@ import type { Request, Response, NextFunction } from "express";
 import { createLedger } from "../fixtures/auditLedger";
 
 interface MockStore {
-  users: Array<{ id: string; tenantId: string }>;
-  sop_documents: Array<{ id: string; tenantId: string; authorId: string; documentNumber: string; version: string; status: string; requiresTraining: boolean; [key: string]: unknown }>;
-  sop_training_acknowledgments: Array<{ id: string; tenantId: string; userId: string; documentId: string; status: string; acknowledgedAt: Date | null; [key: string]: unknown }>;
-  workflow_instances: Array<{ id: string; tenantId: string; status: string; currentStepOrder: number; resourceId: string; workflow: unknown; actions: unknown[]; [key: string]: unknown }>;
-  stock_transfers: Array<{ id: string; tenantId: string; status: string; approvedBy: string | null; [key: string]: unknown }>;
-  devices: Array<{ id: string; tenantId: string; calibrationIntervalDays: number; recommendedCalibrationInterval: number | null; recommendationReason: string | null; [key: string]: unknown }>;
-  [key: string]: Array<Record<string, unknown>>;
+  users: { id: string; tenantId: string }[];
+  sop_documents: { id: string; tenantId: string; authorId: string; documentNumber: string; version: string; status: string; requiresTraining: boolean; [key: string]: unknown }[];
+  sop_training_acknowledgments: { id: string; tenantId: string; userId: string; documentId: string; status: string; acknowledgedAt: Date | null; [key: string]: unknown }[];
+  workflow_instances: { id: string; tenantId: string; status: string; currentStepOrder: number; resourceId: string; workflow: unknown; actions: unknown[]; [key: string]: unknown }[];
+  stock_transfers: { id: string; tenantId: string; status: string; approvedBy: string | null; [key: string]: unknown }[];
+  devices: { id: string; tenantId: string; calibrationIntervalDays: number; recommendedCalibrationInterval: number | null; recommendationReason: string | null; [key: string]: unknown }[];
+  [key: string]: Record<string, unknown>[];
 }
 
 interface MockRefHolder {
@@ -98,7 +98,7 @@ const mockPlain = (inst: Record<string, unknown>) => {
 /** findOne over a store table: every key of `where` must match exactly. */
 const mockFindOne = (table: string) =>
   jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
-    const list = (mockRef.store as unknown as Record<string, Array<Record<string, unknown>>>)[table] ?? [];
+    const list = (mockRef.store as unknown as Record<string, Record<string, unknown>[]>)[table] ?? [];
     const row = list.find((r) =>
       Object.entries(where).every(([k, v]) => r[k] === v),
     );
@@ -109,7 +109,7 @@ jest.mock("../../models", () => ({
   SopDocument: { findOne: mockFindOne("sop_documents") },
   SopTrainingAcknowledgment: {
     findOne: mockFindOne("sop_training_acknowledgments"),
-    bulkCreate: jest.fn(async (rows: Array<Record<string, unknown>>, options: unknown) =>
+    bulkCreate: jest.fn(async (rows: Record<string, unknown>[], options: unknown) =>
       rows.map((r) => mockRef.ledger!.write("sop_training_acknowledgments", r, options)),
     ),
   },
@@ -156,15 +156,13 @@ import { tenantStorage } from "../../middlewares/tenantContext.middleware";
 import { logger } from "../../middlewares/activityLog.middleware";
 import { MESSAGES } from "../../middlewares/denyPlatformAuthoring.middleware";
 
-type RouterHandler = { handle: (req: unknown, res: unknown, next: (err?: { status?: number; statusCode?: number; message?: string }) => void) => void };
+interface RouterHandler { handle: (req: unknown, res: unknown, next: (err?: { status?: number; statusCode?: number; message?: string }) => void) => void }
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const ROUTERS: Record<string, RouterHandler> = {
   sop: require("../../routes/api/sop.route") as RouterHandler,
   workflows: require("../../routes/api/workflows.route") as RouterHandler,
   "predictive-maintenance": require("../../routes/api/predictiveMaintenance.route") as RouterHandler,
 };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -386,7 +384,7 @@ describe("A-145 — POST /sop/:id/acknowledge", () => {
     expect(mockRef.ledger!.committed("sop_training_acknowledgments")).toEqual([
       expect.objectContaining({ id: ACK_A, status: "COMPLETED", acknowledgedAt: expect.any(Date) }),
     ]);
-    const [row] = mockRef.ledger!.auditRows() as Array<Record<string, unknown>>;
+    const [row] = mockRef.ledger!.auditRows() as Record<string, unknown>[];
     expect(mockRef.ledger!.auditRows()).toHaveLength(1);
     expect(row).toMatchObject({
       tenantId: TENANT_A,
@@ -415,7 +413,7 @@ describe("A-145 — POST /sop/:id/acknowledge", () => {
 
   it("a second acknowledgement is a 409 naming the recorded date, and the record is not rewritten", async () => {
     const recordedDate = new Date("2026-09-01T08:00:00.000Z");
-    Object.assign((mockRef.store as unknown as { sop_training_acknowledgments: Array<Record<string, unknown>> }).sop_training_acknowledgments[0] as Record<string, unknown>, { status: "COMPLETED", acknowledgedAt: recordedDate });
+    Object.assign((mockRef.store as unknown as { sop_training_acknowledgments: Record<string, unknown>[] }).sop_training_acknowledgments[0] as Record<string, unknown>, { status: "COMPLETED", acknowledgedAt: recordedDate });
     as(member(TECH_A, TENANT_A));
     const res = await http("sop", "POST", `/${SOP_A}/acknowledge`);
 
@@ -425,7 +423,7 @@ describe("A-145 — POST /sop/:id/acknowledge", () => {
   });
 
   it("a completed acknowledgement with no recorded date still refuses, without inventing one", async () => {
-    Object.assign((mockRef.store as unknown as { sop_training_acknowledgments: Array<Record<string, unknown>> }).sop_training_acknowledgments[0] as Record<string, unknown>, { status: "COMPLETED", acknowledgedAt: null });
+    Object.assign((mockRef.store as unknown as { sop_training_acknowledgments: Record<string, unknown>[] }).sop_training_acknowledgments[0] as Record<string, unknown>, { status: "COMPLETED", acknowledgedAt: null });
     as(member(TECH_A, TENANT_A));
     const res = await http("sop", "POST", `/${SOP_A}/acknowledge`);
 
@@ -556,7 +554,7 @@ describe("A-145 — POST /workflows/instances/:instanceId/action", () => {
   });
 
   it("a closed instance is a 409 that names its state", async () => {
-    ((mockRef.store as unknown as { workflow_instances: Array<Record<string, unknown>> }).workflow_instances[0] as Record<string, unknown>)["status"] = "APPROVED";
+    ((mockRef.store as unknown as { workflow_instances: Record<string, unknown>[] }).workflow_instances[0] as Record<string, unknown>)["status"] = "APPROVED";
     as(member(ADMIN_A, TENANT_A));
     const res = await http("workflows", "POST", `/instances/${INSTANCE_A}/action`, { action: "APPROVED" });
 
@@ -566,7 +564,7 @@ describe("A-145 — POST /workflows/instances/:instanceId/action", () => {
   });
 
   it("acting twice on one step is a 409", async () => {
-    ((mockRef.store as unknown as { workflow_instances: Array<Record<string, unknown>> }).workflow_instances[0] as Record<string, unknown>)["actions"] = [
+    ((mockRef.store as unknown as { workflow_instances: Record<string, unknown>[] }).workflow_instances[0] as Record<string, unknown>)["actions"] = [
       { stepId: `${TENANT_A}-s1`, userId: ADMIN_A, action: "APPROVED" },
     ];
     as(member(ADMIN_A, TENANT_A));
@@ -635,7 +633,7 @@ describe("A-145 — POST /predictive-maintenance/recommendations/:deviceId/appro
   });
 
   it("no pending recommendation is a 409 state explanation", async () => {
-    ((mockRef.store as unknown as { devices: Array<Record<string, unknown>> }).devices[0] as Record<string, unknown>)["recommendedCalibrationInterval"] = null;
+    ((mockRef.store as unknown as { devices: Record<string, unknown>[] }).devices[0] as Record<string, unknown>)["recommendedCalibrationInterval"] = null;
     as(member(ADMIN_A, TENANT_A));
     const res = await http("predictive-maintenance", "POST", `/recommendations/${DEVICE_A}/approve`);
 
@@ -646,11 +644,11 @@ describe("A-145 — POST /predictive-maintenance/recommendations/:deviceId/appro
 
   it("is deliberately not refused while impersonating (A-145: equipment master data), and the audit row carries the impersonator", async () => {
     // auth.middleware opens this context for an impersonation token (F-8).
-    /* eslint-disable @typescript-eslint/no-require-imports */
+
     const { runWithImpersonator } = require("../../utils/auditActor.util") as {
       runWithImpersonator: <T>(impersonatorId: string, fn: () => Promise<T>) => Promise<T>;
     };
-    /* eslint-enable @typescript-eslint/no-require-imports */
+
     as(member(ADMIN_A, TENANT_A), { impersonatorId: OPERATOR });
     const res = await runWithImpersonator(OPERATOR, () =>
       http("predictive-maintenance", "POST", `/recommendations/${DEVICE_A}/approve`),

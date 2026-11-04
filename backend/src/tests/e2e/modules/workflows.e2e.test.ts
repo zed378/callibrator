@@ -44,7 +44,7 @@ describe("E2E Workflows (HTTP)", () => {
     const payload = {
       name: "E2E WF " + Date.now(),
       resourceType: "Certificate",
-      steps: [{ stepOrder: 1, roleId, requiredApprovals: 1 }]
+      steps: [{ stepOrder: 1, roleId, requiredApprovals: 1 }],
     };
     const { status, body } = await httpPost("/workflows", payload, authHeader(token));
     expect(status).toBe(201);
@@ -59,7 +59,7 @@ describe("E2E Workflows (HTTP)", () => {
     const { status } = await httpPost(
       "/workflows/instances/not-a-uuid/action",
       { action: "APPROVED" },
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(400);
   });
@@ -68,7 +68,7 @@ describe("E2E Workflows (HTTP)", () => {
     const { status, body } = await httpPost(
       "/workflows",
       { name: "no steps", resourceType: "Certificate" },
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(400);
     expect(body.success).toBe(false);

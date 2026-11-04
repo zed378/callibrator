@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * ADR-043 step 5 — the authorization wiring assertion.
  *
@@ -23,7 +23,7 @@ const os = require("os");
 const path = require("path");
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { logger } = require("../../middlewares/activityLog.middleware");
@@ -32,7 +32,7 @@ const {
   ROLE_IDS,
   ROLE_LEVELS,
   MENU_SLUGS,
-  ROLE_MENU_ASSIGNMENTS
+  ROLE_MENU_ASSIGNMENTS,
 } = require("../../constants");
 const wiring = require("../../utils/authorizationWiring.util");
 
@@ -51,14 +51,14 @@ const {
   resolveNames,
   splitTopLevel,
   readBracketed,
-  stripComments
+  stripComments,
 } = wiring;
 
 const fakeLog = () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() });
 
 /** Rows exactly as the seed writes them: every ROLE_IDS role at its level. */
 const seededRows = () =>
-Object.keys(ROLE_IDS).map((key: any) => ({ name: ROLE_NAMES[key], role_level: ROLE_LEVELS[key] }));
+  Object.keys(ROLE_IDS).map((key: any) => ({ name: ROLE_NAMES[key], role_level: ROLE_LEVELS[key] }));
 
 const dbReturning = (rows: any) => ({ query: jest.fn().mockResolvedValue(rows) });
 
@@ -77,15 +77,15 @@ describe("the real repository", () => {
 
     expect(gates.map((g: any) => g.names)).toEqual([
     // A-183 — GET /instances/pending
-    ["workflows"],
-    // A-183 — POST /instances/:instanceId/action: write on a record type a
-    // workflow decides on; the service then requires the instance's own.
-    ["certificate", "warehouse", "maintenance"],
-    ["workflows"],
-    ["workflows"],
-    ["workflows"],
-    ["workflows"],
-    ["workflows"]]
+      ["workflows"],
+      // A-183 — POST /instances/:instanceId/action: write on a record type a
+      // workflow decides on; the service then requires the instance's own.
+      ["certificate", "warehouse", "maintenance"],
+      ["workflows"],
+      ["workflows"],
+      ["workflows"],
+      ["workflows"],
+      ["workflows"]],
     );
     for (const slug of ["certificate", "warehouse", "maintenance"]) {
       expect(seededMenuVocabulary().has(slug)).toBe(true);
@@ -120,7 +120,7 @@ describe("the real repository", () => {
     expect(result.gates).toBeGreaterThan(100);
     expect(log.error).not.toHaveBeenCalled();
     expect(log.info).toHaveBeenCalledWith(
-      expect.stringMatching(/^Authorization wiring validated: \d+ dynamicAccess gate\(s\)/)
+      expect.stringMatching(/^Authorization wiring validated: \d+ dynamicAccess gate\(s\)/),
     );
   });
 
@@ -134,21 +134,21 @@ describe("the real repository", () => {
 // ===========================================================================
 describe("A-58 reproduced: a gate on an unseeded slug refuses the boot", () => {
   const typo = [
-  'router.get("/", auth, dynamicAccess("workflow", "read"), ctrl.list);',
-  'router.post("/", auth, dynamicAccess("workflows", "write"), ctrl.create);'].
-  join("\n");
+    'router.get("/", auth, dynamicAccess("workflow", "read"), ctrl.list);',
+    'router.post("/", auth, dynamicAccess("workflows", "write"), ctrl.create);'].
+    join("\n");
 
   it("names the file, the line and the unseeded name", () => {
     const log = fakeLog();
 
     expect(() =>
-    assertStaticAuthorizationWiring({
-      log,
-      collect: () => parseGates(typo, "src/routes/api/workflows.route.js"),
-      vocabulary: seededMenuVocabulary
-    })
+      assertStaticAuthorizationWiring({
+        log,
+        collect: () => parseGates(typo, "src/routes/api/workflows.route.js"),
+        vocabulary: seededMenuVocabulary,
+      }),
     ).toThrow(
-      /AUTHZ_WIRING_FAILURE: refusing to start — 1 authorization wiring defect\(s\):\n {2}- src\/routes\/api\/workflows\.route\.js:1 dynamicAccess\("workflow", …\) matches no seeded menu group/
+      /AUTHZ_WIRING_FAILURE: refusing to start — 1 authorization wiring defect\(s\):\n {2}- src\/routes\/api\/workflows\.route\.js:1 dynamicAccess\("workflow", …\) matches no seeded menu group/,
     );
     expect(log.error).toHaveBeenCalledWith(expect.stringContaining('"workflow"'));
   });
@@ -163,12 +163,12 @@ describe("assertStaticAuthorizationWiring — when the scan cannot run", () => {
       log,
       collect: () => {
         throw new Error("ENOENT: no such file or directory, scandir '/snapshot/src/routes'");
-      }
+      },
     });
 
     expect(result.gates).toBe(0);
     expect(log.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/route sources could not be scanned \(ENOENT.*no dynamicAccess gate was verified/)
+      expect.stringMatching(/route sources could not be scanned \(ENOENT.*no dynamicAccess gate was verified/),
     );
   });
 
@@ -178,11 +178,11 @@ describe("assertStaticAuthorizationWiring — when the scan cannot run", () => {
     const result = assertStaticAuthorizationWiring({
       log,
       collect: () => [],
-      vocabulary: () => new Set()
+      vocabulary: () => new Set(),
     });
 
     expect(result.warnings).toEqual([
-    "the route sources were scanned but no dynamicAccess gate was found — no gate was verified in this build"]
+      "the route sources were scanned but no dynamicAccess gate was found — no gate was verified in this build"],
     );
     expect(log.warn).toHaveBeenCalledTimes(1);
   });
@@ -196,7 +196,7 @@ describe("assertSeededRoles — the database phase", () => {
     const log = fakeLog();
 
     await expect(assertSeededRoles({ sequelize: dbReturning(rows), log })).rejects.toThrow(
-      `roles."${ROLE_NAMES.HEALTCARE_ADMIN}".role_level is 1, ROLE_LEVELS.HEALTCARE_ADMIN is ${ROLE_LEVELS.HEALTCARE_ADMIN}`
+      `roles."${ROLE_NAMES.HEALTCARE_ADMIN}".role_level is 1, ROLE_LEVELS.HEALTCARE_ADMIN is ${ROLE_LEVELS.HEALTCARE_ADMIN}`,
     );
     expect(log.error).toHaveBeenCalled();
   });
@@ -208,7 +208,7 @@ describe("assertSeededRoles — the database phase", () => {
 
     expect(result).toEqual({ skipped: null });
     expect(log.info).toHaveBeenCalledWith(
-      expect.stringMatching(/roles table agrees with ROLE_LEVELS for \d+ seeded role/)
+      expect.stringMatching(/roles table agrees with ROLE_LEVELS for \d+ seeded role/),
     );
     expect(log.warn).not.toHaveBeenCalled();
   });
@@ -248,7 +248,7 @@ describe("checkSeededRoles", () => {
 
     expect(result.skipped).toBeNull();
     expect(result.errors).toEqual([
-    expect.stringContaining(`no row named "${ROLE_NAMES.USER}" (ROLE_IDS.USER)`)]
+      expect.stringContaining(`no row named "${ROLE_NAMES.USER}" (ROLE_IDS.USER)`)],
     );
   });
 
@@ -265,7 +265,7 @@ describe("checkSeededRoles", () => {
     const sequelize = dbReturning(seededRows());
     await checkSeededRoles(sequelize);
     expect(sequelize.query.mock.calls[0][0]).toBe(
-      "SELECT name, role_level FROM roles WHERE is_deleted = false AND deleted_at IS NULL"
+      "SELECT name, role_level FROM roles WHERE is_deleted = false AND deleted_at IS NULL",
     );
   });
 });
@@ -295,7 +295,7 @@ describe("checkRouteGates", () => {
     line: 7,
     expression: "X",
     names,
-    requireAll
+    requireAll,
   });
 
   it("passes a gate whose every name is seeded", () => {
@@ -305,8 +305,8 @@ describe("checkRouteGates", () => {
   it("refuses an OR gate in which nothing is seeded", () => {
     const { errors } = checkRouteGates([gate(["workflow", "Workflow"])], vocabulary);
     expect(errors).toEqual([
-    'r.js:7 dynamicAccess("workflow", "Workflow", …) matches no seeded menu group name or slug — ' +
-    "the gate grants nobody but SUPERADMIN, silently (A-58)"]
+      'r.js:7 dynamicAccess("workflow", "Workflow", …) matches no seeded menu group name or slug — ' +
+    "the gate grants nobody but SUPERADMIN, silently (A-58)"],
     );
   });
 
@@ -314,7 +314,7 @@ describe("checkRouteGates", () => {
     const { errors, warnings } = checkRouteGates([gate(["AuditLogs", "audit"])], vocabulary);
     expect(errors).toEqual([]);
     expect(warnings).toEqual([
-    'r.js:7 dynamicAccess names "AuditLogs", which no seeded menu group provides; the gate still resolves through "audit"']
+      'r.js:7 dynamicAccess names "AuditLogs", which no seeded menu group provides; the gate still resolves through "audit"'],
     );
   });
 
@@ -334,7 +334,7 @@ describe("checkRouteGates", () => {
 describe("checkRoleLevels", () => {
   it("refuses a role name with no usable level", () => {
     expect(checkRoleLevels({ A: "Alpha", B: "Beta" }, { A: 3, B: "3" })).toEqual([
-    'ROLE_NAMES.B ("Beta") has no usable ROLE_LEVELS entry (got: 3) — every gate that compares role levels refuses it, silently']
+      'ROLE_NAMES.B ("Beta") has no usable ROLE_LEVELS entry (got: 3) — every gate that compares role levels refuses it, silently'],
     );
   });
 });
@@ -343,28 +343,28 @@ describe("checkRoleLevels", () => {
 describe("parseGates", () => {
   it("reads the first argument, the line, and requireAll", () => {
     const source = [
-    "const WF = MENU_SLUGS.WORKFLOWS;",
-    'router.get("/", dynamicAccess(WF, "read"), h);',
-    "router.post(",
-    '  "/",',
-    '  dynamicAccess(["a", \'b\'], ["read", "write"], { requireAll: true }),',
-    ");"].
-    join("\n");
+      "const WF = MENU_SLUGS.WORKFLOWS;",
+      'router.get("/", dynamicAccess(WF, "read"), h);',
+      "router.post(",
+      '  "/",',
+      '  dynamicAccess(["a", \'b\'], ["read", "write"], { requireAll: true }),',
+      ");"].
+      join("\n");
 
     expect(parseGates(source, "f.js")).toEqual([
-    { file: "f.js", line: 2, expression: "WF", names: ["workflows"], requireAll: false },
-    { file: "f.js", line: 5, expression: '["a", \'b\']', names: ["a", "b"], requireAll: true }]
+      { file: "f.js", line: 2, expression: "WF", names: ["workflows"], requireAll: false },
+      { file: "f.js", line: 5, expression: '["a", \'b\']', names: ["a", "b"], requireAll: true }],
     );
   });
 
   it("does not count a gate inside a comment", () => {
     const source = [
-    "/**",
-    ' * router.get("/", dynamicAccess("ghost", "read"))',
-    " */",
-    '// dynamicAccess("ghost", "read")',
-    'dynamicAccess("real", "read");'].
-    join("\n");
+      "/**",
+      ' * router.get("/", dynamicAccess("ghost", "read"))',
+      " */",
+      '// dynamicAccess("ghost", "read")',
+      'dynamicAccess("real", "read");'].
+      join("\n");
 
     const gates = parseGates(source, "f.js");
     expect(gates.map((g: any) => [g.line, g.names])).toEqual([[5, ["real"]]]);
@@ -379,21 +379,21 @@ describe("parseGates", () => {
 // ===========================================================================
 describe("resolveNames", () => {
   it.each([
-  ['"workflows"', ["workflows"]],
-  ["'workflows'", ["workflows"]],
-  ["`workflows`", ["workflows"]],
-  ['["a", "b"]', ["a", "b"]],
-  ["MENU_SLUGS.WORKFLOWS", [MENU_SLUGS.WORKFLOWS]],
-  ["MENU_SLUGS.WORKFLOW", ["MENU_SLUGS.WORKFLOW (undefined)"]]]
+    ['"workflows"', ["workflows"]],
+    ["'workflows'", ["workflows"]],
+    ["`workflows`", ["workflows"]],
+    ['["a", "b"]', ["a", "b"]],
+    ["MENU_SLUGS.WORKFLOWS", [MENU_SLUGS.WORKFLOWS]],
+    ["MENU_SLUGS.WORKFLOW", ["MENU_SLUGS.WORKFLOW (undefined)"]]],
   )("%s -> %j", (expression: any, names: any) => {
     expect(resolveNames(expression, "", 1)).toEqual(names);
   });
 
   it.each([
-  ["`${prefix}s`", "an interpolated template"],
-  ['["a", computed()]', "an array with a computed element"],
-  ["NOT_DECLARED", "an identifier with no const declaration"],
-  ["items.map((x) => x.menu)", "an expression"]]
+    ["`${prefix}s`", "an interpolated template"],
+    ['["a", computed()]', "an array with a computed element"],
+    ["NOT_DECLARED", "an identifier with no const declaration"],
+    ["items.map((x) => x.menu)", "an expression"]],
   )("%s is unresolvable (%s)", (expression: any) => {
     expect(resolveNames(expression, "const OTHER = 'x';", 1)).toBeNull();
   });
@@ -410,10 +410,10 @@ describe("resolveNames", () => {
 describe("source helpers", () => {
   it("splitTopLevel splits at top-level commas only, respecting quotes and escapes", () => {
     expect(splitTopLevel('"a,b", [1, 2], { k: (1, 2) }, "q\\"x,", ')).toEqual([
-    '"a,b"',
-    " [1, 2]",
-    " { k: (1, 2) }",
-    ' "q\\"x,"']
+      '"a,b"',
+      " [1, 2]",
+      " { k: (1, 2) }",
+      ' "q\\"x,"'],
     );
   });
 
@@ -458,14 +458,14 @@ describe("collectRouteGates / seededMenuVocabulary on injected inputs", () => {
 
   it("builds the vocabulary from both menu names and slugs", () => {
     const vocabulary = seededMenuVocabulary(
-      'const menuData = [\n  { name: "Work Flows", slug: "workflows", children: [{ name: "Kid", slug: "kid" }] },\n];'
+      'const menuData = [\n  { name: "Work Flows", slug: "workflows", children: [{ name: "Kid", slug: "kid" }] },\n];',
     );
     expect([...vocabulary].sort()).toEqual(["Kid", "Work Flows", "kid", "workflows"]);
   });
 
   it("refuses to guess when the seed changes shape", () => {
     expect(() => seededMenuVocabulary("module.exports = {};")).toThrow(
-      /could not find `const menuData = \[` .* must be updated, not deleted/
+      /could not find `const menuData = \[` .* must be updated, not deleted/,
     );
   });
 });
@@ -494,14 +494,14 @@ describe("A-80 — ROLE_MENU_ASSIGNMENTS against the seeded menu slugs", () => {
 
     expect(errors).toHaveLength(ROLE_MENU_ASSIGNMENTS.length);
     expect(errors[0]).toMatch(
-      /^ROLE_MENU_ASSIGNMENTS\["SUPERADMIN"\] grants "profile", which is not the slug of any seeded menu group .*\(A-80\)$/
+      /^ROLE_MENU_ASSIGNMENTS\["SUPERADMIN"\] grants "profile", which is not the slug of any seeded menu group .*\(A-80\)$/,
     );
   });
 
   it("a menu NAME is not a slug: `Profile` is refused although the matrix would accept it from a gate", () => {
     const errors = checkRoleMenuAssignments(
       [{ roleName: "USER", menus: { Profile: "write" } }],
-      seededMenuSlugs()
+      seededMenuSlugs(),
     );
     expect(errors).toHaveLength(1);
     expect(seededMenuVocabulary().has("Profile")).toBe(true);
@@ -511,13 +511,13 @@ describe("A-80 — ROLE_MENU_ASSIGNMENTS against the seeded menu slugs", () => {
     const log = fakeLog();
 
     expect(() =>
-    assertStaticAuthorizationWiring({
-      log,
-      collect: () => [],
-      assignments: [{ roleName: "TECHNICIAN", menus: { profile: "write" } }]
-    })
+      assertStaticAuthorizationWiring({
+        log,
+        collect: () => [],
+        assignments: [{ roleName: "TECHNICIAN", menus: { profile: "write" } }],
+      }),
     ).toThrow(
-      /AUTHZ_WIRING_FAILURE: refusing to start — 1 authorization wiring defect\(s\):\n {2}- ROLE_MENU_ASSIGNMENTS\["TECHNICIAN"\] grants "profile"/
+      /AUTHZ_WIRING_FAILURE: refusing to start — 1 authorization wiring defect\(s\):\n {2}- ROLE_MENU_ASSIGNMENTS\["TECHNICIAN"\] grants "profile"/,
     );
   });
 
@@ -529,18 +529,18 @@ describe("A-80 — ROLE_MENU_ASSIGNMENTS against the seeded menu slugs", () => {
       collect: () => [],
       slugs: () => {
         throw new Error("ENOENT: seedMenuGroups.util.js");
-      }
+      },
     });
 
     expect(log.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/menu seed could not be read \(ENOENT.*ROLE_MENU_ASSIGNMENTS was not verified/)
+      expect.stringMatching(/menu seed could not be read \(ENOENT.*ROLE_MENU_ASSIGNMENTS was not verified/),
     );
     expect(log.error).not.toHaveBeenCalled();
   });
 
   it("seededMenuSlugs reads slugs only, never names", () => {
     const slugs = seededMenuSlugs(
-      'const menuData = [\n  { name: "Profile", slug: "profile-page" },\n];'
+      'const menuData = [\n  { name: "Profile", slug: "profile-page" },\n];',
     );
     expect([...slugs]).toEqual(["profile-page"]);
   });

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-58 — five workflow routes gated on a menu slug that does not exist.
  *
@@ -26,31 +26,31 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../models", () => ({
   User: { findByPk: jest.fn() },
-  Tenants: { findByPk: jest.fn() }
+  Tenants: { findByPk: jest.fn() },
 }));
 
 // Body validation runs AFTER the gate and is not what is under test; letting it
 // through keeps a 200 unambiguous ("the gate admitted it") instead of a 400
 // that could come from either side of the gate.
 jest.mock("../../middlewares/validation.middleware", () => ({
-  validate: () => (_req: any, _res: any, next: any) => next()
+  validate: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 // The controller is where "reached" is observed.
 const reached = (name: any) =>
-jest.fn((_req: any, res: any) => res.status(200).json({ success: true, handler: name }));
+  jest.fn((_req: any, res: any) => res.status(200).json({ success: true, handler: name }));
 jest.mock("../../controllers/workflow.controller", () => ({
   getWorkflows: reached("getWorkflows"),
   createWorkflow: reached("createWorkflow"),
@@ -58,7 +58,7 @@ jest.mock("../../controllers/workflow.controller", () => ({
   updateWorkflow: reached("updateWorkflow"),
   deleteWorkflow: reached("deleteWorkflow"),
   getPendingTasks: reached("getPendingTasks"),
-  submitAction: reached("submitAction")
+  submitAction: reached("submitAction"),
 }));
 
 const RolesService = require("../../services/roles.service");
@@ -69,49 +69,49 @@ const router = require("../../routes/api/workflows.route");
 // Express's own router.handle with a minimal req/res pair — supertest is not a
 // dependency of this workspace (same harness as routeGuards.a28.test.js).
 const http = (method: any, url: any, body: any = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const req: any = {
-    method: method.toUpperCase(),
-    url,
-    originalUrl: "/api/v1/workflows" + url,
-    body,
-    query: {},
-    params: {},
-    headers: {},
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const req: any = {
+      method: method.toUpperCase(),
+      url,
+      originalUrl: "/api/v1/workflows" + url,
+      body,
+      query: {},
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const TENANT = "33333333-3333-4333-8333-333333333333";
@@ -131,18 +131,17 @@ const asRole = (roleName: any) => {
 
 // The five routes A-58 names, with the handler each must reach.
 const GATED: any = [
-["get", "/", "getWorkflows", "read"],
-["post", "/", "createWorkflow", "write"],
-["get", "/" + ID, "getWorkflowById", "read"],
-["put", "/" + ID, "updateWorkflow", "write"],
-["delete", "/" + ID, "deleteWorkflow", "write"]];
-
+  ["get", "/", "getWorkflows", "read"],
+  ["post", "/", "createWorkflow", "write"],
+  ["get", "/" + ID, "getWorkflowById", "read"],
+  ["put", "/" + ID, "updateWorkflow", "write"],
+  ["delete", "/" + ID, "deleteWorkflow", "write"]];
 
 beforeEach(() => {
   jest.clearAllMocks();
   currentUser = null;
   RolesService.getRolePermissionsMatrix.mockImplementation(async (roleId: any) =>
-  matrixFor(roleId)
+    matrixFor(roleId),
   );
 });
 
@@ -167,7 +166,7 @@ describe("A-58 — workflow routes gate on the seeded slug", () => {
         expect(res.body.handler).toBe(handler);
         expect(workflowController[handler]).toHaveBeenCalledTimes(1);
       });
-    }
+    },
   );
 
   describe(`a read-only role (${ROLE_NAMES.ENGINEERING_MANAGER})`, () => {
@@ -189,7 +188,7 @@ describe("A-58 — workflow routes gate on the seeded slug", () => {
 
   it("a role with no workflows grant is refused on every gated route", async () => {
     const without = ROLE_MENU_ASSIGNMENTS.find(
-      (a: any) => !Object.prototype.hasOwnProperty.call(a.menus, MENU_SLUGS.WORKFLOWS)
+      (a: any) => !Object.prototype.hasOwnProperty.call(a.menus, MENU_SLUGS.WORKFLOWS),
     );
     expect(without).toBeDefined();
     asRole(without.roleName);

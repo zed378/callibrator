@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * redis.service — client lifecycle against the REAL ioredis (W-05)
  *
@@ -22,7 +22,7 @@
 const net = require("net");
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 jest.setTimeout(20000);
@@ -45,10 +45,10 @@ const createFakeRedis = () => {
         store.set(args[1], args[3]);
         return socket.write("+OK\r\n");
       case "GET":{
-          const v = store.get(args[1]);
-          if (v === undefined) {return socket.write("$-1\r\n");}
-          return socket.write(bulk(v));
-        }
+        const v = store.get(args[1]);
+        if (v === undefined) {return socket.write("$-1\r\n");}
+        return socket.write(bulk(v));
+      }
       case "QUIT":
         socket.write("+OK\r\n");
         return socket.end();
@@ -82,16 +82,16 @@ const createFakeRedis = () => {
   return {
     store,
     listen: (port: any = 0) =>
-    new Promise((resolve: any) => {
-      server = net.createServer(onConnection);
-      server.listen(port, "127.0.0.1", () => resolve(server.address().port));
-    }),
+      new Promise((resolve: any) => {
+        server = net.createServer(onConnection);
+        server.listen(port, "127.0.0.1", () => resolve(server.address().port));
+      }),
     // A Redis restart as the client sees it: live sockets drop, new ones are refused.
     crash: () =>
-    new Promise((resolve: any) => {
-      for (const s of sockets) {s.destroy();}
-      server.close(() => resolve());
-    })
+      new Promise((resolve: any) => {
+        for (const s of sockets) {s.destroy();}
+        server.close(() => resolve());
+      }),
   };
 };
 
@@ -157,10 +157,10 @@ describe("redis.service reconnects after an outage longer than the old budget (W
     await expect(service.acquireLock("res")).resolves.toEqual(expect.any(String));
 
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Redis connection lost")
+      expect.stringContaining("Redis connection lost"),
     );
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Redis reconnected")
+      expect.stringContaining("Redis reconnected"),
     );
   });
 
@@ -171,7 +171,7 @@ describe("redis.service reconnects after an outage longer than the old budget (W
     await new Promise((r: any) => setTimeout(r, 2500));
     expect(client.status).toBe("end");
     expect(logger.warn).not.toHaveBeenCalledWith(
-      expect.stringContaining("Redis connection lost")
+      expect.stringContaining("Redis connection lost"),
     );
   });
 });

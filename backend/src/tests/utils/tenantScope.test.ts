@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for tenantScope.util — application-level tenant isolation.
  *
@@ -8,7 +8,7 @@
  */
 
 jest.mock("../../middlewares/tenantContext.middleware", () => ({
-  tenantStorage: { getStore: jest.fn() }
+  tenantStorage: { getStore: jest.fn() },
 }));
 
 const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
@@ -21,7 +21,7 @@ const {
   applyTenantAssignmentBulk,
   assertUpsertTenant,
   assertSameTenant,
-  register
+  register,
 } = require("../../utils/tenantScope.util");
 
 // Minimal model doubles.
@@ -30,7 +30,7 @@ const scopedSnake: any = { rawAttributes: { tenant_id: {} } };
 const unscoped: any = { rawAttributes: { id: {} } };
 
 const asTenant = (tenantId: any) =>
-tenantStorage.getStore.mockReturnValue({ tenantId, isSuperAdmin: false });
+  tenantStorage.getStore.mockReturnValue({ tenantId, isSuperAdmin: false });
 
 describe("tenantScope.util", () => {
   beforeEach(() => {
@@ -133,7 +133,7 @@ describe("tenantScope.util", () => {
       // Valid UUID syntax so the DB returns zero rows instead of a type error.
       expect(options.where).toEqual({ tenantId: NO_TENANT_UUID });
       expect(NO_TENANT_UUID).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       );
     });
   });
@@ -178,7 +178,7 @@ describe("tenantScope.util", () => {
       asTenant("tenant-a");
       const rows: any = [{ key: "a" }, { key: "b", tenantId: "tenant-b" }];
       expect(() => applyTenantAssignmentBulk(rows, scopedCamel, {})).toThrow(
-        "Security Violation: Attempted to bulkCreate a cross-tenant record"
+        "Security Violation: Attempted to bulkCreate a cross-tenant record",
       );
       // The offending row is NOT quietly re-owned by tenant A.
       expect(rows[1].tenantId).toBe("tenant-b");
@@ -188,7 +188,7 @@ describe("tenantScope.util", () => {
       tenantStorage.getStore.mockReturnValue({ tenantId: null, isSuperAdmin: false });
       const rows: any = [{ key: "a" }];
       expect(() => applyTenantAssignmentBulk(rows, scopedCamel, {})).toThrow(
-        "no resolvable tenant"
+        "no resolvable tenant",
       );
       expect(rows[0].tenantId).toBeUndefined();
       expect(rows[0][NO_TENANT_UUID]).toBeUndefined();
@@ -220,7 +220,7 @@ describe("tenantScope.util", () => {
       asTenant("t1");
       const optOut: any = [{ tenantId: "someone-else" }];
       expect(() =>
-      applyTenantAssignmentBulk(optOut, scopedCamel, { skipTenantScope: true })
+        applyTenantAssignmentBulk(optOut, scopedCamel, { skipTenantScope: true }),
       ).not.toThrow();
       expect(optOut[0].tenantId).toBe("someone-else");
 
@@ -228,7 +228,7 @@ describe("tenantScope.util", () => {
       tenantStorage.getStore.mockReturnValue({ isSystemTask: true });
       const systemRows: any = [{ tenantId: "someone-else" }];
       expect(() =>
-      applyTenantAssignmentBulk(systemRows, scopedCamel, {})
+        applyTenantAssignmentBulk(systemRows, scopedCamel, {}),
       ).not.toThrow();
       expect(systemRows[0].tenantId).toBe("someone-else");
 
@@ -236,7 +236,7 @@ describe("tenantScope.util", () => {
       tenantStorage.getStore.mockReturnValue({ isSuperAdmin: true });
       const adminRows: any = [{ tenantId: "someone-else" }];
       expect(() =>
-      applyTenantAssignmentBulk(adminRows, scopedCamel, {})
+        applyTenantAssignmentBulk(adminRows, scopedCamel, {}),
       ).not.toThrow();
       expect(adminRows[0].tenantId).toBe("someone-else");
     });
@@ -252,7 +252,7 @@ describe("tenantScope.util", () => {
       asTenant("t1");
       expect(() => applyTenantAssignmentBulk([], scopedCamel, {})).not.toThrow();
       expect(() =>
-      applyTenantAssignmentBulk(undefined, scopedCamel, {})
+        applyTenantAssignmentBulk(undefined, scopedCamel, {}),
       ).not.toThrow();
       const rows: any = [null, { key: "a" }];
       applyTenantAssignmentBulk(rows, scopedCamel, {});
@@ -276,7 +276,7 @@ describe("tenantScope.util", () => {
       expect(noFields.fields).toBeUndefined();
 
       expect(() =>
-      applyTenantAssignmentBulk([{}], scopedCamel, undefined)
+        applyTenantAssignmentBulk([{}], scopedCamel, undefined),
       ).not.toThrow();
     });
   });
@@ -285,11 +285,11 @@ describe("tenantScope.util", () => {
     it("allows an upsert whose values name the caller's own tenant", () => {
       asTenant("t1");
       expect(() =>
-      assertUpsertTenant(
-        { tenantId: "t1", key: "storage_credentials", value: "{}" },
-        scopedCamel,
-        {}
-      )
+        assertUpsertTenant(
+          { tenantId: "t1", key: "storage_credentials", value: "{}" },
+          scopedCamel,
+          {},
+        ),
       ).not.toThrow();
     });
 
@@ -299,41 +299,41 @@ describe("tenantScope.util", () => {
       // it overwrites tenant B's storage credentials.
       asTenant("tenant-a");
       expect(() =>
-      assertUpsertTenant(
-        { tenantId: "tenant-b", key: "storage_credentials", value: "{}" },
-        scopedCamel,
-        {}
-      )
+        assertUpsertTenant(
+          { tenantId: "tenant-b", key: "storage_credentials", value: "{}" },
+          scopedCamel,
+          {},
+        ),
       ).toThrow("Security Violation: Attempted to upsert a cross-tenant record");
     });
 
     it("writes NOTHING for a principal with no resolvable tenant", () => {
       tenantStorage.getStore.mockReturnValue({ tenantId: null, isSuperAdmin: false });
       expect(() =>
-      assertUpsertTenant({ tenantId: "tenant-b", key: "k" }, scopedCamel, {})
+        assertUpsertTenant({ tenantId: "tenant-b", key: "k" }, scopedCamel, {}),
       ).toThrow("no resolvable tenant");
     });
 
     it("refuses values with no tenant id at all (a hook cannot stamp an upsert)", () => {
       asTenant("t1");
       expect(() => assertUpsertTenant({ key: "k" }, scopedCamel, {})).toThrow(
-        "Security Violation: Attempted to upsert a row with no tenant"
+        "Security Violation: Attempted to upsert a row with no tenant",
       );
       expect(() =>
-      assertUpsertTenant({ tenantId: null, key: "k" }, scopedCamel, {})
+        assertUpsertTenant({ tenantId: null, key: "k" }, scopedCamel, {}),
       ).toThrow("with no tenant");
       expect(() => assertUpsertTenant(undefined, scopedCamel, {})).toThrow(
-        "with no tenant"
+        "with no tenant",
       );
     });
 
     it("uses the snake_case column when that is the model's shape", () => {
       asTenant("t1");
       expect(() =>
-      assertUpsertTenant({ tenant_id: "t1" }, scopedSnake, {})
+        assertUpsertTenant({ tenant_id: "t1" }, scopedSnake, {}),
       ).not.toThrow();
       expect(() =>
-      assertUpsertTenant({ tenant_id: "t2" }, scopedSnake, {})
+        assertUpsertTenant({ tenant_id: "t2" }, scopedSnake, {}),
       ).toThrow("cross-tenant");
     });
 
@@ -345,26 +345,26 @@ describe("tenantScope.util", () => {
     it("leaves the seed/system-task path alone (skip)", () => {
       // no context - migrations, schedulers, CLI seeding
       expect(() =>
-      assertUpsertTenant({ tenantId: "anyone" }, scopedCamel, {})
+        assertUpsertTenant({ tenantId: "anyone" }, scopedCamel, {}),
       ).not.toThrow();
 
       asTenant("t1");
       expect(() =>
-      assertUpsertTenant({ tenantId: "someone-else" }, scopedCamel, {
-        skipTenantScope: true
-      })
+        assertUpsertTenant({ tenantId: "someone-else" }, scopedCamel, {
+          skipTenantScope: true,
+        }),
       ).not.toThrow();
 
       tenantStorage.getStore.mockReturnValue({ isSystemTask: true });
       expect(() =>
-      assertUpsertTenant({ tenantId: "someone-else" }, scopedCamel, {})
+        assertUpsertTenant({ tenantId: "someone-else" }, scopedCamel, {}),
       ).not.toThrow();
 
       // super admin: every TenantSettings.upsert route (feature flags, data
       // retention, tenant lifecycle) is superAdminOnly and lands here.
       tenantStorage.getStore.mockReturnValue({ isSuperAdmin: true });
       expect(() =>
-      assertUpsertTenant({ tenantId: "someone-else" }, scopedCamel, {})
+        assertUpsertTenant({ tenantId: "someone-else" }, scopedCamel, {}),
       ).not.toThrow();
     });
   });
@@ -373,14 +373,14 @@ describe("tenantScope.util", () => {
     it("allows destroying a row owned by the active tenant", () => {
       asTenant("t1");
       expect(() =>
-      assertSameTenant({ tenantId: "t1" }, scopedCamel, {})
+        assertSameTenant({ tenantId: "t1" }, scopedCamel, {}),
       ).not.toThrow();
     });
 
     it("blocks destroying another tenant's row", () => {
       asTenant("t1");
       expect(() =>
-      assertSameTenant({ tenantId: "t2" }, scopedCamel, {})
+        assertSameTenant({ tenantId: "t2" }, scopedCamel, {}),
       ).toThrow("cross-tenant");
     });
 
@@ -394,7 +394,7 @@ describe("tenantScope.util", () => {
     it("does not police when the scope is skipped (super admin / system)", () => {
       tenantStorage.getStore.mockReturnValue({ isSuperAdmin: true });
       expect(() =>
-      assertSameTenant({ tenantId: "t2" }, scopedCamel, {})
+        assertSameTenant({ tenantId: "t2" }, scopedCamel, {}),
       ).not.toThrow();
     });
   });
@@ -406,18 +406,18 @@ describe("tenantScope.util", () => {
 
       const hooks = db.addHook.mock.calls.map(([name]: any) => name);
       expect(hooks).toEqual([
-      "afterDefine",
-      "beforeFind",
-      "beforeCount",
-      "beforeBulkUpdate",
-      "beforeBulkDestroy",
-      "beforeBulkRestore",
-      "beforeRestore",
-      "beforeCreate",
-      "beforeBulkCreate",
-      "beforeUpdate",
-      "beforeUpsert",
-      "beforeDestroy"]
+        "afterDefine",
+        "beforeFind",
+        "beforeCount",
+        "beforeBulkUpdate",
+        "beforeBulkDestroy",
+        "beforeBulkRestore",
+        "beforeRestore",
+        "beforeCreate",
+        "beforeBulkCreate",
+        "beforeUpdate",
+        "beforeUpsert",
+        "beforeDestroy"],
       );
     });
 
@@ -451,7 +451,7 @@ describe("tenantScope.util", () => {
       registered.beforeBulkCreate.call(scopedCamel, bulkCreated, {});
       expect(bulkCreated.map((r: any) => r.tenantId)).toEqual(["t1", "t1"]);
       expect(() =>
-      registered.beforeBulkCreate.call(scopedCamel, [{ tenantId: "t2" }], {})
+        registered.beforeBulkCreate.call(scopedCamel, [{ tenantId: "t2" }], {}),
       ).toThrow("cross-tenant");
 
       const updated: any = {};
@@ -459,14 +459,14 @@ describe("tenantScope.util", () => {
       expect(updated.tenantId).toBe("t1");
 
       expect(() =>
-      registered.beforeUpsert.call(scopedCamel, { tenantId: "t1" }, {})
+        registered.beforeUpsert.call(scopedCamel, { tenantId: "t1" }, {}),
       ).not.toThrow();
       expect(() =>
-      registered.beforeUpsert.call(scopedCamel, { tenantId: "t2" }, {})
+        registered.beforeUpsert.call(scopedCamel, { tenantId: "t2" }, {}),
       ).toThrow("cross-tenant");
 
       expect(() =>
-      registered.beforeDestroy.call(scopedCamel, { tenantId: "t2" }, {})
+        registered.beforeDestroy.call(scopedCamel, { tenantId: "t2" }, {}),
       ).toThrow("cross-tenant");
     });
   });

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Q-08 (ADR-084) — GET /sessions/mine and POST /sessions/mine/:id/revoke.
  *
@@ -23,11 +23,11 @@ jest.mock("../../middlewares/auth.middleware", () => {
       req.user = mockState.principal;
       req.sessionId = mockState.sessionId;
       next();
-    }
+    },
   };
 });
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const mockMatches = (row: any, where: any) => {
@@ -47,8 +47,8 @@ jest.mock("../../models", () => ({
       expect(skipTenantScope).toBe(true);
       return mockState.rows.filter((r: any) => mockMatches(r, where)).slice(0, limit);
     }),
-    findOne: jest.fn(async ({ where }: any) => mockState.rows.find((r: any) => mockMatches(r, where)) || null)
-  }
+    findOne: jest.fn(async ({ where }: any) => mockState.rows.find((r: any) => mockMatches(r, where)) || null),
+  },
 }));
 
 jest.mock("../../config", () => ({
@@ -63,8 +63,8 @@ jest.mock("../../config", () => ({
         }
         throw error;
       }
-    }
-  }
+    },
+  },
 }));
 
 jest.mock("../../services/audit.service", () => ({
@@ -74,7 +74,7 @@ jest.mock("../../services/audit.service", () => ({
     }
     mockState.audit.push({ entry, transaction: options.transaction });
     return {};
-  })
+  }),
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -82,39 +82,39 @@ const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
 const router = require("../../routes/api/session.route");
 
 const http = (method: any, url: any): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    }
-  };
-  const req: any = {
-    method: method.toUpperCase(),
-    url,
-    originalUrl: "/api/v1/sessions" + url,
-    body: {},
-    query: {},
-    params: {},
-    headers: { "user-agent": "jest" },
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({ status: err ? err.status || 500 : 404, body: { message: err ? err.message : "no route" } })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+    };
+    const req: any = {
+      method: method.toUpperCase(),
+      url,
+      originalUrl: "/api/v1/sessions" + url,
+      body: {},
+      query: {},
+      params: {},
+      headers: { "user-agent": "jest" },
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({ status: err ? err.status || 500 : 404, body: { message: err ? err.message : "no route" } }),
+    );
+  });
 
 const sid = (n: any) => `55555555-5555-4555-8555-${String(n).padStart(12, "0")}`;
 const FUTURE = new Date(Date.now() + 86400000);
@@ -136,7 +136,7 @@ const session = (n: any, user: any, overrides: any = {}) => {
     expired_at: FUTURE,
     is_revoked: false,
     is_active: true,
-    ...overrides
+    ...overrides,
   };
   row.update = async (values: any, options: any) => {
     const prior: any = {};
@@ -165,11 +165,11 @@ describe("Q-08 (ADR-084): a user's own sessions — listed, and ended one at a t
     mockState.audit = [];
     mockState.failAudit = null;
     mockState.rows = [
-    session(1, alice),
-    session(2, alice, { auth_method: "oidc", impersonator_id: "99999999-9999-4999-8999-999999999999" }),
-    session(3, alice, { is_revoked: true, is_active: false }),
-    session(4, alice, { expired_at: PAST }),
-    session(5, bob)];
+      session(1, alice),
+      session(2, alice, { auth_method: "oidc", impersonator_id: "99999999-9999-4999-8999-999999999999" }),
+      session(3, alice, { is_revoked: true, is_active: false }),
+      session(4, alice, { expired_at: PAST }),
+      session(5, bob)];
 
   });
 
@@ -186,7 +186,7 @@ describe("Q-08 (ADR-084): a user's own sessions — listed, and ended one at a t
         ipAddress: "198.51.100.1",
         userAgent: "Browser 1",
         signInMethod: "password",
-        impersonated: false
+        impersonated: false,
       });
       const [two] = res.body.data.filter((s: any) => s.id === sid(2));
       expect(two).toMatchObject({ current: false, signInMethod: "oidc", impersonated: true });
@@ -231,7 +231,7 @@ describe("Q-08 (ADR-084): a user's own sessions — listed, and ended one at a t
         resourceId: sid(2),
         changes: { operation: "REVOKE_OWN_SESSION", current: false, reason: "USER_REVOKED" },
         ipAddress: "127.0.0.1",
-        userAgent: "jest"
+        userAgent: "jest",
       });
     });
 

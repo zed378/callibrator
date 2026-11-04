@@ -18,7 +18,7 @@ const { createLedger } = require("../fixtures/auditLedger");
 
 const mockRef: any = { ledger: null };
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 
 const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
@@ -55,43 +55,43 @@ describe("A-184 — eSignature.service#signDocument reads under the lock", () =>
     const unlocked: any = { step: row("signature_workflow_steps", stepBase), workflow: row("signature_workflows", workflowBase) };
     const locked: any = {
       step: row("signature_workflow_steps", { ...stepBase, ...lockedStep }),
-      workflow: row("signature_workflows", { ...workflowBase, ...lockedWorkflow })
+      workflow: row("signature_workflows", { ...workflowBase, ...lockedWorkflow }),
     };
     const reads: any[] = [];
     const read = (kind: any) =>
-    jest.fn(async (_id: any, options: any = {}) => {
-      reads.push({ kind, transaction: options.transaction, lock: options.lock });
-      return options.lock ? locked[kind] : unlocked[kind];
-    });
+      jest.fn(async (_id: any, options: any = {}) => {
+        reads.push({ kind, transaction: options.transaction, lock: options.lock });
+        return options.lock ? locked[kind] : unlocked[kind];
+      });
 
     const models: any = {
       TenantKey: {
         unscoped: jest.fn(() => ({ findOne: jest.fn().mockResolvedValue(keyPair) })),
-        findOne: jest.fn()
+        findOne: jest.fn(),
       },
       SignatureWorkflowStep: {
         findByPk: read("step"),
-        findAll: jest.fn(async () => [{ status: "signed" }])
+        findAll: jest.fn(async () => [{ status: "signed" }]),
       },
       SignatureWorkflow: { findByPk: read("workflow") },
       SignatureRecord: {
         create: jest.fn(async (attrs: any, options: any) => ({
           ...mockRef.ledger.write("signature_records", attrs, options),
-          id: "sig-1"
-        }))
+          id: "sig-1",
+        })),
       },
       AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
       User: {
         findByPk: jest.fn(async () => ({ id: SIGNER, status: "ACTIVE", isActive: true })),
-        findOne: jest.fn().mockResolvedValue(null)
-      }
+        findOne: jest.fn().mockResolvedValue(null),
+      },
     };
 
     jest.resetModules();
     jest.doMock("../../models", () => models);
     jest.doMock("../../middlewares/activityLog.middleware", () => ({ logger: mockLogger }));
     jest.doMock("../../services/auth.service", () => ({
-      passIsValid: jest.fn(async (_userId: any, password: any) => ({ data: { valid: password === PASSWORD } }))
+      passIsValid: jest.fn(async (_userId: any, password: any) => ({ data: { valid: password === PASSWORD } })),
     }));
     jest.doMock("../../services/mfa.service", () => ({ verifyLogin: jest.fn(() => false) }));
     const svc = require("../../services/eSignature.service");
@@ -99,7 +99,7 @@ describe("A-184 — eSignature.service#signDocument reads under the lock", () =>
   };
 
   const sign = (svc: any) =>
-  svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" });
+    svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" });
 
   it("a workflow cancelled after the step was read is refused 409, and nothing is committed", async () => {
     const h = buildHarness({ lockedWorkflow: { status: "cancelled" } });
@@ -131,12 +131,12 @@ describe("A-184 — eSignature.service#signDocument reads under the lock", () =>
     expect(err.message).toContain('"expired"');
     expect(mockRef.ledger.committed("signature_workflows")).toEqual([{ id: "wf-1", status: "expired" }]);
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({
-      action: "UPDATE",
-      resourceType: "SignatureWorkflow",
-      resourceId: "wf-1",
-      changes: expect.objectContaining({ operation: "EXPIRE", after: { status: "expired" } })
-    })]
+      expect.objectContaining({
+        action: "UPDATE",
+        resourceType: "SignatureWorkflow",
+        resourceId: "wf-1",
+        changes: expect.objectContaining({ operation: "EXPIRE", after: { status: "expired" } }),
+      })],
     );
     expect(mockRef.ledger.committed("signature_records")).toEqual([]);
   });
@@ -154,7 +154,7 @@ describe("A-184 — eSignature.service#signDocument reads under the lock", () =>
     // And the signature, its step and its audit row committed together.
     expect(mockRef.ledger.committed("signature_records")).toHaveLength(1);
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({ action: "APPROVE", changes: expect.objectContaining({ operation: "SIGN" }) })]
+      expect.objectContaining({ action: "APPROVE", changes: expect.objectContaining({ operation: "SIGN" }) })],
     );
   });
 });

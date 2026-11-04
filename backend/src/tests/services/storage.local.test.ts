@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Local/NFS driver tests. These run against a REAL temporary directory rather
  * than a mocked `fs`: the guarantees being tested (traversal refusal, symlink
@@ -34,10 +34,10 @@ const KEY = "t/tenant-1/attachments/report.pdf";
 describe("local driver — construction", () => {
   it("refuses to start without a root", () => {
     expect(() => new LocalDriver({})).toThrow(
-      "Local storage driver requires a root path"
+      "Local storage driver requires a root path",
     );
     expect(() => new LocalDriver()).toThrow(
-      "Local storage driver requires a root path"
+      "Local storage driver requires a root path",
     );
   });
 
@@ -49,12 +49,12 @@ describe("local driver — construction", () => {
     const rootDriver = new LocalDriver({ root: fsRoot });
 
     expect(rootDriver._resolve("t/tenant-1/attachments/a.pdf")).toBe(
-      path.join(fsRoot, "t", "tenant-1", "attachments", "a.pdf")
+      path.join(fsRoot, "t", "tenant-1", "attachments", "a.pdf"),
     );
     // Reaches the same separator handling on the realpath side, then 404s
     // because nothing is actually there.
     await expect(
-      rootDriver.stat("t/tenant-1/attachments/a.pdf")
+      rootDriver.stat("t/tenant-1/attachments/a.pdf"),
     ).rejects.toMatchObject({ status: 404 });
   });
 
@@ -97,7 +97,7 @@ describe("local driver — round trip", () => {
     const broken = new Readable({
       read() {
         this.destroy(new Error("source exploded"));
-      }
+      },
     });
     await expect(driver.put(KEY, broken)).rejects.toThrow("source exploded");
   });
@@ -132,7 +132,7 @@ describe("local driver — missing objects", () => {
 
   it("propagates an unexpected stat failure from exists", async () => {
     jest.spyOn(driver, "stat").mockRejectedValue(
-      Object.assign(new Error("EACCES"), { status: 500 })
+      Object.assign(new Error("EACCES"), { status: 500 }),
     );
     await expect(driver.exists(KEY)).rejects.toThrow("EACCES");
   });
@@ -140,13 +140,13 @@ describe("local driver — missing objects", () => {
   it("treats deleting a missing object as success", async () => {
     await expect(driver.delete(KEY)).resolves.toEqual({
       key: KEY,
-      deleted: true
+      deleted: true,
     });
   });
 
   it("propagates a non-ENOENT stat failure", async () => {
     jest.spyOn(fsp, "stat").mockRejectedValueOnce(
-      Object.assign(new Error("EIO"), { code: "EIO" })
+      Object.assign(new Error("EIO"), { code: "EIO" }),
     );
     await expect(driver.stat(KEY)).rejects.toThrow("EIO");
   });
@@ -155,7 +155,7 @@ describe("local driver — missing objects", () => {
 describe("local driver — escape refusal", () => {
   it("refuses a traversal key", async () => {
     await expect(
-      driver.put("t/tenant-1/../../etc/passwd", Buffer.from("x"))
+      driver.put("t/tenant-1/../../etc/passwd", Buffer.from("x")),
     ).rejects.toThrow("Invalid storage key");
   });
 
@@ -168,10 +168,10 @@ describe("local driver — escape refusal", () => {
     await fsp.symlink(outside, linkDir, "junction");
 
     await expect(driver.put(KEY, Buffer.from("x"))).rejects.toThrow(
-      "escapes the storage root"
+      "escapes the storage root",
     );
     expect(fs.existsSync(path.join(outside, "attachments", "report.pdf"))).toBe(
-      false
+      false,
     );
   });
 
@@ -194,7 +194,7 @@ describe("local driver — escape refusal", () => {
 
   it("propagates an unexpected realpath failure", async () => {
     jest.spyOn(fsp, "realpath").mockRejectedValueOnce(
-      Object.assign(new Error("EIO"), { code: "EIO" })
+      Object.assign(new Error("EIO"), { code: "EIO" }),
     );
     await expect(driver.put(KEY, Buffer.from("x"))).rejects.toThrow("EIO");
   });
@@ -204,9 +204,9 @@ describe("local driver — escape refusal", () => {
     // (istanbul-ignored for that reason); what IS worth asserting is the
     // property it protects — no admissible key ever resolves outside.
     for (const key of [
-    "t/tenant-1/attachments/a.pdf",
-    "global/branding/logo.png",
-    "t/t/t/t/deep.bin"])
+      "t/tenant-1/attachments/a.pdf",
+      "global/branding/logo.png",
+      "t/t/t/t/deep.bin"])
     {
       expect(driver._resolve(key).startsWith(root + path.sep)).toBe(true);
     }
@@ -224,8 +224,8 @@ describe("local driver — listing and bulk delete", () => {
   it("lists only the requested prefix", async () => {
     const { keys } = await driver.list("t/tenant-1/attachments/");
     expect(keys.sort()).toEqual([
-    "t/tenant-1/attachments/a.pdf",
-    "t/tenant-1/attachments/b.pdf"]
+      "t/tenant-1/attachments/a.pdf",
+      "t/tenant-1/attachments/b.pdf"],
     );
   });
 
@@ -270,7 +270,7 @@ describe("local driver — listing and bulk delete", () => {
 
   it("propagates an unexpected readdir failure", async () => {
     jest.spyOn(fsp, "readdir").mockRejectedValueOnce(
-      Object.assign(new Error("EIO"), { code: "EIO" })
+      Object.assign(new Error("EIO"), { code: "EIO" }),
     );
     await expect(driver.list("t/tenant-1/")).rejects.toThrow("EIO");
   });
@@ -286,14 +286,14 @@ describe("local driver — health check", () => {
   it("passes for a writable root", async () => {
     await expect(driver.healthCheck()).resolves.toMatchObject({
       ok: true,
-      driver: "local"
+      driver: "local",
     });
   });
 
   it("fails for a missing mount (NFS not mounted)", async () => {
     const missing = new LocalDriver({
       root: path.join(root, "not-mounted"),
-      name: "nfs"
+      name: "nfs",
     });
     const result = await missing.healthCheck();
     expect(result).toMatchObject({ ok: false, driver: "nfs" });
@@ -304,7 +304,7 @@ describe("local driver — health check", () => {
     jest.spyOn(fsp, "access").mockRejectedValueOnce(new Error("mount is stale"));
     await expect(driver.healthCheck()).resolves.toMatchObject({
       ok: false,
-      error: "mount is stale"
+      error: "mount is stale",
     });
   });
 });
@@ -314,7 +314,7 @@ describe("local driver — signed URLs", () => {
     const result = driver.signedUrl(KEY, {
       ttlSec: 60,
       baseUrl: "https://app.example.com/",
-      secret: "s3cret"
+      secret: "s3cret",
     });
     expect(result.direct).toBe(false);
     expect(result.url).toContain("https://app.example.com/api/v1/storage/object");
@@ -329,19 +329,19 @@ describe("local driver — signed URLs", () => {
 
   it("refuses to sign without a secret rather than emitting a forgeable link", () => {
     expect(() => driver.signedUrl(KEY, { baseUrl: "http://x" })).toThrow(
-      "Signed URL secret is not configured"
+      "Signed URL secret is not configured",
     );
     // Same refusal when called with no options at all.
     expect(() => driver.signedUrl(KEY)).toThrow(
-      "Signed URL secret is not configured"
+      "Signed URL secret is not configured",
     );
   });
 
   it("produces a different signature for a different key", () => {
     const a = driver.signedUrl(KEY, { secret: "s" }).url;
     const b = driver.
-    signedUrl("t/tenant-1/attachments/other.pdf", { secret: "s" }).
-    url;
+      signedUrl("t/tenant-1/attachments/other.pdf", { secret: "s" }).
+      url;
     expect(a).not.toBe(b);
   });
 });

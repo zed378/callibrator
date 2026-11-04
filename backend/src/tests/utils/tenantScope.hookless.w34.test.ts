@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * W-34 — the Sequelize statics that run NO tenant hook.
  *
@@ -34,7 +34,7 @@ describe("W-34 — hookless statics on a tenant-scoped model", () => {
     Owner = db.define(
       "Owner",
       { id: { type: DataTypes.UUID, primaryKey: true }, tenantId: { type: DataTypes.UUID } },
-      { tableName: "owners", underscored: true, timestamps: false }
+      { tableName: "owners", underscored: true, timestamps: false },
     );
     Item = db.define(
       "Item",
@@ -42,15 +42,15 @@ describe("W-34 — hookless statics on a tenant-scoped model", () => {
         id: { type: DataTypes.UUID, primaryKey: true },
         tenantId: { type: DataTypes.UUID },
         ownerId: { type: DataTypes.UUID },
-        qty: { type: DataTypes.INTEGER }
+        qty: { type: DataTypes.INTEGER },
       },
-      { tableName: "items", underscored: true, paranoid: true }
+      { tableName: "items", underscored: true, paranoid: true },
     );
     Item.belongsTo(Owner, { as: "owner", foreignKey: "ownerId" });
     Global = db.define(
       "Global",
       { id: { type: DataTypes.UUID, primaryKey: true }, qty: { type: DataTypes.INTEGER } },
-      { tableName: "globals", timestamps: false }
+      { tableName: "globals", timestamps: false },
     );
   });
 
@@ -85,7 +85,7 @@ describe("W-34 — hookless statics on a tenant-scoped model", () => {
 
     it("an include inside sum is scoped in its ON clause too", async () => {
       await runForTenant(A, () =>
-      Item.sum("qty", { include: [{ model: Owner, as: "owner", attributes: [] }] })
+        Item.sum("qty", { include: [{ model: Owner, as: "owner", attributes: [] }] }),
       );
 
       expect(sql[0]).toMatch(new RegExp(`LEFT OUTER JOIN "owners" AS "owner" ON .*"owner"."tenant_id" = '${A}'`));
@@ -159,7 +159,7 @@ describe("W-34 — hookless statics on a tenant-scoped model", () => {
 
     it("a principal with no resolvable tenant increments nothing (deny)", async () => {
       await tenantStorage.run({ tenantId: null, isSuperAdmin: false }, () =>
-      Item.increment("qty", { where: { id: "i1" } })
+        Item.increment("qty", { where: { id: "i1" } }),
       );
 
       expect(sql[0]).toContain(`"tenant_id" = '${NO_TENANT_UUID}'`);
@@ -197,7 +197,7 @@ describe("W-34 — hookless statics on a tenant-scoped model", () => {
 
     it("a truncate inside a tenant context is refused; outside one it runs", async () => {
       await expect(runForTenant(A, () => Item.destroy({ truncate: true, force: true }))).rejects.toThrow(
-        "truncate a tenant-scoped table"
+        "truncate a tenant-scoped table",
       );
       expect(sql).toEqual([]);
 

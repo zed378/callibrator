@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * SCIM Routes Tests (full)
  *
@@ -23,7 +23,7 @@ describe("SCIM Routes (full coverage)", () => {
 
   it("should have middleware layers (router.use)", () => {
     const middlewareLayers = scimRoutes.stack.filter(
-      (layer: any) => !layer.route
+      (layer: any) => !layer.route,
     );
     expect(middlewareLayers.length).toBeGreaterThan(0);
   });
@@ -37,10 +37,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have GET /Users route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Users" &&
       layer.route.methods &&
-      layer.route.methods.get
+      layer.route.methods.get,
     );
     expect(route).toBeDefined();
   });
@@ -49,10 +49,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have GET /Users/:id route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Users/:id" &&
       layer.route.methods &&
-      layer.route.methods.get
+      layer.route.methods.get,
     );
     expect(route).toBeDefined();
   });
@@ -61,10 +61,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have POST /Users route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Users" &&
       layer.route.methods &&
-      layer.route.methods.post
+      layer.route.methods.post,
     );
     expect(route).toBeDefined();
   });
@@ -73,10 +73,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have PUT /Users/:id route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Users/:id" &&
       layer.route.methods &&
-      layer.route.methods.put
+      layer.route.methods.put,
     );
     expect(route).toBeDefined();
   });
@@ -85,10 +85,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have PATCH /Users/:id route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Users/:id" &&
       layer.route.methods &&
-      layer.route.methods.patch
+      layer.route.methods.patch,
     );
     expect(route).toBeDefined();
   });
@@ -97,10 +97,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have DELETE /Users/:id route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Users/:id" &&
       layer.route.methods &&
-      layer.route.methods.delete
+      layer.route.methods.delete,
     );
     expect(route).toBeDefined();
   });
@@ -109,10 +109,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have GET /Groups route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Groups" &&
       layer.route.methods &&
-      layer.route.methods.get
+      layer.route.methods.get,
     );
     expect(route).toBeDefined();
   });
@@ -121,10 +121,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have GET /Groups/:id route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Groups/:id" &&
       layer.route.methods &&
-      layer.route.methods.get
+      layer.route.methods.get,
     );
     expect(route).toBeDefined();
   });
@@ -133,10 +133,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have POST /Groups route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Groups" &&
       layer.route.methods &&
-      layer.route.methods.post
+      layer.route.methods.post,
     );
     expect(route).toBeDefined();
   });
@@ -145,10 +145,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have PUT /Groups/:id route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Groups/:id" &&
       layer.route.methods &&
-      layer.route.methods.put
+      layer.route.methods.put,
     );
     expect(route).toBeDefined();
   });
@@ -157,10 +157,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have PATCH /Groups/:id route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Groups/:id" &&
       layer.route.methods &&
-      layer.route.methods.patch
+      layer.route.methods.patch,
     );
     expect(route).toBeDefined();
   });
@@ -169,10 +169,10 @@ describe("SCIM Routes (full coverage)", () => {
   it("should have DELETE /Groups/:id route", () => {
     const route = scimRoutes.stack.find(
       (layer: any) =>
-      layer.route &&
+        layer.route &&
       layer.route.path === "/Groups/:id" &&
       layer.route.methods &&
-      layer.route.methods.delete
+      layer.route.methods.delete,
     );
     expect(route).toBeDefined();
   });
@@ -197,7 +197,7 @@ describe("SCIM Routes (full coverage)", () => {
   /** router.use() layers, in registration order: shim, auth, requireApiKeyOrAdmin. */
   const useLayers = () => scimRoutes.stack.filter((l: any) => !l.route);
   const layerNamed = (name: any) =>
-  useLayers().find((l: any) => l.handle && l.handle.name === name)?.handle;
+    useLayers().find((l: any) => l.handle && l.handle.name === name)?.handle;
 
   const JWT_LIKE =
   "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.sig";
@@ -267,7 +267,7 @@ describe("SCIM Routes (full coverage)", () => {
     const guard = () => layerNamed("requireApiKeyOrAdmin");
     const makeRes = () => ({
       status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis()
+      json: jest.fn().mockReturnThis(),
     });
 
     it("is registered as a router.use layer", () => {
@@ -276,11 +276,11 @@ describe("SCIM Routes (full coverage)", () => {
 
     // A-250: a key is a SCIM service account only with the `scim` scope.
     it.each([
-    ["GET", ["scim:read"]],
-    ["GET", ["scim:write"]],
-    ["POST", ["scim:write"]],
-    ["PATCH", ["stock:read", "scim:write"]],
-    ["DELETE", ["scim:write"]]]
+      ["GET", ["scim:read"]],
+      ["GET", ["scim:write"]],
+      ["POST", ["scim:write"]],
+      ["PATCH", ["stock:read", "scim:write"]],
+      ["DELETE", ["scim:write"]]],
     )("A-250: allows a %s by an API key scoped %j", (method: any, apiKeyScopes: any) => {
       const next = jest.fn();
       const res = makeRes();
@@ -294,11 +294,11 @@ describe("SCIM Routes (full coverage)", () => {
     });
 
     it.each([
-    ["GET", ["stock:read"]],
-    ["POST", ["scim:read"]],
-    ["PUT", ["users:write"]],
-    ["DELETE", []],
-    ["GET", undefined]]
+      ["GET", ["stock:read"]],
+      ["POST", ["scim:read"]],
+      ["PUT", ["users:write"]],
+      ["DELETE", []],
+      ["GET", undefined]],
     )("A-250: refuses a %s by an API key scoped %j", (method: any, apiKeyScopes: any) => {
       const next = jest.fn();
       const res = makeRes();
@@ -331,8 +331,8 @@ describe("SCIM Routes (full coverage)", () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
           schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"],
-          status: "403"
-        })
+          status: "403",
+        }),
       );
     });
 

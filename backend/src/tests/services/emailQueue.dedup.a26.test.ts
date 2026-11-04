@@ -26,12 +26,12 @@ jest.mock("../../services/redis.service", () => ({
       }
       store.set(key, value);
       return "OK";
-    })
+    }),
   })),
   del: jest.fn(async (key: any) => {
     store.delete(key);
     return true;
-  })
+  }),
 }));
 
 jest.mock("amqplib", () => ({ connect: jest.fn() }));
@@ -39,11 +39,11 @@ jest.mock("amqplib", () => ({ connect: jest.fn() }));
 jest.mock("../../services/email.service", () => ({
   sendOtpEmail: jest.fn(),
   sendActivationEmail: jest.fn(),
-  sendNotificationEmail: jest.fn()
+  sendNotificationEmail: jest.fn(),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const msgFor = (job: any) => ({ content: Buffer.from(JSON.stringify(job)) });
@@ -83,13 +83,13 @@ describe("email consumer deduplication (A-26)", () => {
       ack: jest.fn(),
       nack: jest.fn(),
       close: jest.fn().mockResolvedValue(true),
-      on: jest.fn()
+      on: jest.fn(),
     };
 
     amqplib.connect.mockResolvedValue({
       createChannel: jest.fn().mockResolvedValue(channel),
       on: jest.fn(),
-      close: jest.fn().mockResolvedValue(true)
+      close: jest.fn().mockResolvedValue(true),
     });
   });
 
@@ -110,7 +110,7 @@ describe("email consumer deduplication (A-26)", () => {
       type: "activation",
       data: { email: "a@mail.com" },
       retries: 0,
-      maxRetries: 3
+      maxRetries: 3,
     };
 
     await processJob(msgFor(job)); // first delivery
@@ -123,7 +123,7 @@ describe("email consumer deduplication (A-26)", () => {
     expect(channel.nack).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith("Duplicate email job ignored", {
       jobId: "job-abc",
-      type: "activation"
+      type: "activation",
     });
   });
 
@@ -134,7 +134,7 @@ describe("email consumer deduplication (A-26)", () => {
       type: "activation",
       data: { email: "a@mail.com" },
       retries: 0,
-      maxRetries: 3
+      maxRetries: 3,
     };
 
     await processJob(msgFor({ ...base, id: "job-1" }));
@@ -150,7 +150,7 @@ describe("email consumer deduplication (A-26)", () => {
       type: "activation",
       data: { email: "a@mail.com" },
       retries: 0,
-      maxRetries: 3
+      maxRetries: 3,
     };
 
     sendActivationEmail.mockResolvedValueOnce(false); // first attempt fails
@@ -167,7 +167,7 @@ describe("email consumer deduplication (A-26)", () => {
     // dead-lettered — and the successful retry was acked too.
     expect(channel.sendToQueue).toHaveBeenCalledWith("email_retry_2000", expect.any(Buffer), {
       persistent: true,
-      messageId: "job-retry"
+      messageId: "job-retry",
     });
     expect(channel.nack).not.toHaveBeenCalled();
     expect(channel.ack).toHaveBeenCalledTimes(2);
@@ -178,12 +178,12 @@ describe("email consumer deduplication (A-26)", () => {
     const processJob = await startConsumer();
 
     await processJob(
-      msgFor({ type: "activation", data: { email: "a@mail.com" } })
+      msgFor({ type: "activation", data: { email: "a@mail.com" } }),
     );
 
     expect(sendActivationEmail).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
-      "Email job has no id; processing without deduplication"
+      "Email job has no id; processing without deduplication",
     );
   });
 
@@ -192,7 +192,7 @@ describe("email consumer deduplication (A-26)", () => {
     const processJob = await startConsumer();
 
     await processJob(
-      msgFor({ type: "activation", data: { email: "a@mail.com" } })
+      msgFor({ type: "activation", data: { email: "a@mail.com" } }),
     );
 
     // W-09: a first failure is a retry (delay queue + ack), not a DLQ entry.

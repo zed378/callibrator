@@ -21,7 +21,7 @@ describe("E2E WebAuthn (HTTP)", () => {
   beforeAll(async () => {
     const { body } = await httpPost("/auth/login", {
       user: "sys@mail.com",
-      password: OPERATOR_PASSWORD
+      password: OPERATOR_PASSWORD,
     });
     token = extractToken(body);
     expect(token).toBeTruthy();

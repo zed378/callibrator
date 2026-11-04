@@ -12,7 +12,7 @@
  */
 jest.mock("axios", () => ({ get: jest.fn(), post: jest.fn() }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const axios = require("axios");
@@ -24,12 +24,12 @@ const METADATA = Object.freeze({
   issuer: `${TENANT}/v2.0`,
   authorization_endpoint: `${TENANT}/oauth2/v2.0/authorize`,
   token_endpoint: `${TENANT}/oauth2/v2.0/token`,
-  jwks_uri: "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/discovery/v2.0/keys"
+  jwks_uri: "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/discovery/v2.0/keys",
 });
 const FLOW = Object.freeze({ nonce: "n-1", codeVerifier: "v-1" });
 
 const httpError = (status: any) => Object.assign(new Error(`Request failed with status code ${status}`), {
-  response: { status, data: {} }
+  response: { status, data: {} },
 });
 
 beforeEach(() => {
@@ -47,14 +47,14 @@ describe("A-188: discover()", () => {
 
     expect(axios.get).toHaveBeenCalledWith(
       `${TENANT}/v2.0/.well-known/openid-configuration`,
-      expect.objectContaining({ timeout: 10000 })
+      expect.objectContaining({ timeout: 10000 }),
     );
     expect(provider).toEqual({
       issuer: METADATA.issuer,
       authorizationEndpoint: METADATA.authorization_endpoint,
       tokenEndpoint: METADATA.token_endpoint,
       jwksUri: METADATA.jwks_uri,
-      discovered: true
+      discovered: true,
     });
   });
 
@@ -82,7 +82,7 @@ describe("A-188: discover()", () => {
   it("refuses a missing authority with 400 — the old silent default was Entra's multi-tenant /common", async () => {
     await expect(oidcJwks.discover({})).rejects.toMatchObject({
       status: 400,
-      message: "OIDC authority is not configured for this tenant"
+      message: "OIDC authority is not configured for this tenant",
     });
     await expect(oidcJwks.discover({ oidc_authority: "   " })).rejects.toMatchObject({ status: 400 });
     expect(axios.get).not.toHaveBeenCalled();
@@ -90,11 +90,11 @@ describe("A-188: discover()", () => {
 
   it("refuses a multi-tenant issuer ({tenantid} placeholder) with 400", async () => {
     axios.get.mockResolvedValueOnce({
-      data: { ...METADATA, issuer: "https://login.microsoftonline.com/{tenantid}/v2.0" }
+      data: { ...METADATA, issuer: "https://login.microsoftonline.com/{tenantid}/v2.0" },
     });
 
     await expect(
-      oidcJwks.discover({ oidc_authority: "https://login.microsoftonline.com/common/v2.0" })
+      oidcJwks.discover({ oidc_authority: "https://login.microsoftonline.com/common/v2.0" }),
     ).rejects.toMatchObject({ status: 400, message: expect.stringMatching(/multi-tenant/) });
   });
 
@@ -110,41 +110,41 @@ describe("A-188: discover()", () => {
       authorizationEndpoint: "https://idp.example.com/oauth/authorize",
       tokenEndpoint: "https://idp.example.com/oauth/token",
       jwksUri: "https://idp.example.com/oauth/.well-known/jwks.json",
-      discovered: false
+      discovered: false,
     });
     expect(logger.warn).toHaveBeenCalledWith(
       "OIDC provider publishes no discovery document; deriving its endpoints",
-      { authority: "https://idp.example.com/oauth" }
+      { authority: "https://idp.example.com/oauth" },
     );
     expect(axios.get).toHaveBeenCalledTimes(1);
   });
 
   it.each([
-  ["a server error", httpError(500)],
-  ["a network error", new Error("getaddrinfo ENOTFOUND")]]
+    ["a server error", httpError(500)],
+    ["a network error", new Error("getaddrinfo ENOTFOUND")]],
   )("any other failure (%s) is a 502, never a fallback", async (_label: any, err: any) => {
     axios.get.mockRejectedValueOnce(err);
 
     await expect(oidcJwks.discover({ oidc_authority: TENANT })).rejects.toMatchObject({
       status: 502,
-      message: "The identity provider could not be reached"
+      message: "The identity provider could not be reached",
     });
   });
 
   it.each([
-  ["no body", undefined],
-  ["no issuer", { ...METADATA, issuer: undefined }],
-  ["an issuer that is not a string", { ...METADATA, issuer: 42 }],
-  ["no jwks_uri", { ...METADATA, jwks_uri: undefined }],
-  ["an empty token_endpoint", { ...METADATA, token_endpoint: "" }],
-  ["a token_endpoint that is not a URL", { ...METADATA, token_endpoint: "not a url" }],
-  ["an authorization_endpoint that is not http(s)", { ...METADATA, authorization_endpoint: "javascript:alert(1)" }]]
+    ["no body", undefined],
+    ["no issuer", { ...METADATA, issuer: undefined }],
+    ["an issuer that is not a string", { ...METADATA, issuer: 42 }],
+    ["no jwks_uri", { ...METADATA, jwks_uri: undefined }],
+    ["an empty token_endpoint", { ...METADATA, token_endpoint: "" }],
+    ["a token_endpoint that is not a URL", { ...METADATA, token_endpoint: "not a url" }],
+    ["an authorization_endpoint that is not http(s)", { ...METADATA, authorization_endpoint: "javascript:alert(1)" }]],
   )("an incomplete document (%s) is a 502", async (_label: any, data: any) => {
     axios.get.mockResolvedValueOnce({ data });
 
     await expect(oidcJwks.discover({ oidc_authority: TENANT })).rejects.toMatchObject({
       status: 502,
-      message: "The identity provider's discovery document is incomplete"
+      message: "The identity provider's discovery document is incomplete",
     });
   });
 });
@@ -155,7 +155,7 @@ describe("A-188: the token request of a public and a confidential client", () =>
     authorizationEndpoint: METADATA.authorization_endpoint,
     tokenEndpoint: METADATA.token_endpoint,
     jwksUri: METADATA.jwks_uri,
-    discovered: true
+    discovered: true,
   };
 
   const tokenBody = async (settings: any) => {
@@ -163,16 +163,16 @@ describe("A-188: the token request of a public and a confidential client", () =>
     // The request is what is under test; the answer ends the flow at once.
     axios.post.mockResolvedValueOnce({ data: {} });
     await oidcJwks.
-    verifyOidcCallback("code-1", { oidc_client_id: "client-1", ...settings }, "https://sp/cb", FLOW).
-    catch(() => undefined);
+      verifyOidcCallback("code-1", { oidc_client_id: "client-1", ...settings }, "https://sp/cb", FLOW).
+      catch(() => undefined);
     expect(axios.post.mock.calls[0][0]).toBe(PROVIDER.tokenEndpoint);
     return new URLSearchParams(axios.post.mock.calls[0][1]);
   };
 
   it.each([
-  ["absent", {}],
-  ["empty", { oidc_client_secret: "" }],
-  ["null", { oidc_client_secret: null }]]
+    ["absent", {}],
+    ["empty", { oidc_client_secret: "" }],
+    ["null", { oidc_client_secret: null }]],
   )("with the secret %s, the request carries no client_secret at all", async (_label: any, settings: any) => {
     const body = await tokenBody(settings);
 
@@ -189,7 +189,7 @@ describe("A-188: the token request of a public and a confidential client", () =>
 
   it("a discovery failure propagates as its own AppError — no token request is made", async () => {
     await expect(
-      oidcJwks.verifyOidcCallback("code-1", { oidc_client_id: "client-1" }, "https://sp/cb", FLOW)
+      oidcJwks.verifyOidcCallback("code-1", { oidc_client_id: "client-1" }, "https://sp/cb", FLOW),
     ).rejects.toMatchObject({ status: 400 });
     expect(axios.post).not.toHaveBeenCalled();
   });

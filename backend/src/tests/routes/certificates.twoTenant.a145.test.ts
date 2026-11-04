@@ -107,9 +107,8 @@ jest.mock("../../config", () => ({
 import { tenantStorage } from "../../middlewares/tenantContext.middleware";
 import { logger } from "../../middlewares/activityLog.middleware";
 import { MESSAGES } from "../../middlewares/denyPlatformAuthoring.middleware";
-/* eslint-disable @typescript-eslint/no-require-imports */
+
 const router = require("../../routes/api/certificates.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 const TENANT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TENANT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";

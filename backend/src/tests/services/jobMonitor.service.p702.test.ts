@@ -12,18 +12,18 @@ const os = require("os");
 const path = require("path");
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 jest.mock("../../services/alert.service", () => ({
   SEVERITY: { CRITICAL: "critical", WARNING: "warning", RESOLVED: "resolved" },
   raiseAlert: jest.fn(async () => ({ webhook: "not-configured", email: "not-configured" })),
-  describeRouting: jest.fn(() => ({ routed: true, webhook: "hooks.example.test", email: "off" }))
+  describeRouting: jest.fn(() => ({ routed: true, webhook: "hooks.example.test", email: "off" })),
 }));
 jest.mock("../../services/redis.service", () => ({ getRedisConnection: jest.fn() }));
 jest.mock("../../models", () => ({ BatchJob: { findAll: jest.fn() } }));
 jest.mock("node-cron", () => ({
   schedule: jest.fn(() => ({ stop: jest.fn() })),
-  validate: jest.requireActual("node-cron").validate
+  validate: jest.requireActual("node-cron").validate,
 }));
 
 const cron = require("node-cron");
@@ -76,8 +76,8 @@ describe("P7-02 jobMonitor.service", () => {
           lastError: null,
           consecutiveFailures: 0,
           nextExpectedAt: next.toISOString(),
-          runs: { success: 1, failure: 0, skipped: 0 }
-        })
+          runs: { success: 1, failure: 0, skipped: 0 },
+        }),
       );
       expect(onDisk.lastSuccessAt).toBeTruthy();
       expect(raiseAlert).not.toHaveBeenCalled();
@@ -90,7 +90,7 @@ describe("P7-02 jobMonitor.service", () => {
 
       expect(run).toEqual({ outcome: "failure", result: undefined, error: 'column "tenantId" does not exist' });
       expect(readStatus("retention-sweep")).toEqual(
-        expect.objectContaining({ lastOutcome: "failure", consecutiveFailures: 1, alerting: true })
+        expect.objectContaining({ lastOutcome: "failure", consecutiveFailures: 1, alerting: true }),
       );
       expect(raiseAlert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -99,8 +99,8 @@ describe("P7-02 jobMonitor.service", () => {
           title: "Data-retention purge FAILED",
           meaning: expect.stringContaining("data past its retention window was NOT purged"),
           action: expect.stringContaining("run the purge by hand"),
-          detail: expect.stringContaining("last success: never recorded")
-        })
+          detail: expect.stringContaining("last success: never recorded"),
+        }),
       );
     });
 
@@ -122,7 +122,7 @@ describe("P7-02 jobMonitor.service", () => {
 
     it("a partial failure reported in the result (isFailure) is a FAILED run", async () => {
       const run = await monitor.runMonitored("calibration-scan", async () => ({ errors: 2 }), {
-        isFailure: (s: any) => s.errors ? `${s.errors} device(s) failed` : null
+        isFailure: (s: any) => s.errors ? `${s.errors} device(s) failed` : null,
       });
       expect(run).toEqual({ outcome: "failure", result: { errors: 2 }, error: "2 device(s) failed" });
     });
@@ -136,10 +136,10 @@ describe("P7-02 jobMonitor.service", () => {
 
       expect(raiseAlert).toHaveBeenCalledTimes(2);
       expect(raiseAlert).toHaveBeenLastCalledWith(
-        expect.objectContaining({ severity: "resolved", title: "Expired-session cleanup recovered" })
+        expect.objectContaining({ severity: "resolved", title: "Expired-session cleanup recovered" }),
       );
       expect(stateOf("session-cleanup")).toEqual(
-        expect.objectContaining({ alerting: false, consecutiveFailures: 0, runs: { success: 2, failure: 1, skipped: 0 } })
+        expect.objectContaining({ alerting: false, consecutiveFailures: 0, runs: { success: 2, failure: 1, skipped: 0 } }),
       );
     });
 
@@ -148,7 +148,7 @@ describe("P7-02 jobMonitor.service", () => {
         throw new Error("x");
       });
       expect(raiseAlert).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Scheduled job "brand-new-job" FAILED' })
+        expect.objectContaining({ title: 'Scheduled job "brand-new-job" FAILED' }),
       );
     });
 
@@ -173,7 +173,7 @@ describe("P7-02 jobMonitor.service", () => {
       expect(stateOf("webhook-dispatch").persistError).toBeTruthy();
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining('Could not persist job status for "webhook-dispatch"'),
-        { file: path.join(blocker, "webhook-dispatch.json") }
+        { file: path.join(blocker, "webhook-dispatch.json") },
       );
     });
   });
@@ -197,7 +197,7 @@ describe("P7-02 jobMonitor.service", () => {
       fs.writeFileSync(path.join(dir, "retention-sweep.json"), "{not json");
       await monitor.runMonitored("retention-sweep", async () => ({}));
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('Job status for "retention-sweep" is unreadable and was reset')
+        expect.stringContaining('Job status for "retention-sweep" is unreadable and was reset'),
       );
       expect(readStatus("retention-sweep").runs).toEqual({ success: 1, failure: 0, skipped: 0 });
     });
@@ -206,7 +206,7 @@ describe("P7-02 jobMonitor.service", () => {
       const missed = new Date(Date.now() - 3 * HOUR).toISOString();
       fs.writeFileSync(
         path.join(dir, "scheduled-backup.json"),
-        JSON.stringify({ nextExpectedAt: missed, lastStartedAt: new Date(Date.now() - 27 * HOUR).toISOString() })
+        JSON.stringify({ nextExpectedAt: missed, lastStartedAt: new Date(Date.now() - 27 * HOUR).toISOString() }),
       );
 
       monitor.registerJob("scheduled-backup", task(new Date(Date.now() + HOUR)), "0 0 * * *");
@@ -214,7 +214,7 @@ describe("P7-02 jobMonitor.service", () => {
 
       expect(await monitor.checkOverdue()).toEqual(["scheduled-backup"]);
       expect(raiseAlert).toHaveBeenCalledWith(
-        expect.objectContaining({ key: "job.scheduled-backup.missed", title: "Scheduled tenant backup DID NOT RUN" })
+        expect.objectContaining({ key: "job.scheduled-backup.missed", title: "Scheduled tenant backup DID NOT RUN" }),
       );
     });
 
@@ -222,7 +222,7 @@ describe("P7-02 jobMonitor.service", () => {
       const past = new Date(Date.now() - 3 * HOUR);
       fs.writeFileSync(
         path.join(dir, "scheduled-backup.json"),
-        JSON.stringify({ nextExpectedAt: past.toISOString(), lastSkippedAt: new Date(past.getTime() + 1000).toISOString() })
+        JSON.stringify({ nextExpectedAt: past.toISOString(), lastSkippedAt: new Date(past.getTime() + 1000).toISOString() }),
       );
       const next = new Date(Date.now() + HOUR);
       monitor.registerJob("scheduled-backup", task(next), "0 0 * * *");
@@ -244,7 +244,7 @@ describe("P7-02 jobMonitor.service", () => {
         expect.any(String),
         "PX",
         monitor.CLAIM_TTL_MS,
-        "NX"
+        "NX",
       );
     });
 
@@ -255,21 +255,21 @@ describe("P7-02 jobMonitor.service", () => {
       expect(await monitor.runMonitored("scheduled-backup", fn)).toEqual({ outcome: "skipped" });
       expect(fn).not.toHaveBeenCalled();
       expect(readStatus("scheduled-backup")).toEqual(
-        expect.objectContaining({ runs: { success: 0, failure: 0, skipped: 1 }, lastOutcome: null })
+        expect.objectContaining({ runs: { success: 0, failure: 0, skipped: 1 }, lastOutcome: null }),
       );
     });
 
     it.each([
-    ["Redis not ready", () => ({ status: "reconnecting" }), "Redis unavailable"],
-    ["no client at all", () => null, "Redis unavailable"],
-    [
-    "getRedisConnection throws",
-    () => {
-      throw new Error("no url");
-    },
-    "Redis unavailable"],
+      ["Redis not ready", () => ({ status: "reconnecting" }), "Redis unavailable"],
+      ["no client at all", () => null, "Redis unavailable"],
+      [
+        "getRedisConnection throws",
+        () => {
+          throw new Error("no url");
+        },
+        "Redis unavailable"],
 
-    ["SET fails", () => ({ status: "ready", set: jest.fn().mockRejectedValue(new Error("READONLY")) }), "claim failed (READONLY)"]]
+      ["SET fails", () => ({ status: "ready", set: jest.fn().mockRejectedValue(new Error("READONLY")) }), "claim failed (READONLY)"]],
     )("%s: runs anyway (a duplicate backup is waste, a missing one is loss) and warns", async (_label: any, impl: any, warning: any) => {
       getRedisConnection.mockImplementation(impl);
       const fn = jest.fn(async () => ({}));
@@ -291,7 +291,7 @@ describe("P7-02 jobMonitor.service", () => {
       monitor.registerJob("retention-sweep", task(new Date(Date.now() - 5 * HOUR)), "0 2 * * *");
       monitor.markDisabled("retention-sweep", "disabled via RETENTION_SCHEDULER");
       expect(stateOf("retention-sweep")).toEqual(
-        expect.objectContaining({ enabled: false, schedule: "disabled via RETENTION_SCHEDULER" })
+        expect.objectContaining({ enabled: false, schedule: "disabled via RETENTION_SCHEDULER" }),
       );
       expect(await monitor.checkOverdue()).toEqual([]);
     });
@@ -302,8 +302,8 @@ describe("P7-02 jobMonitor.service", () => {
         expect.objectContaining({
           key: "job.retention-sweep.not-scheduled",
           title: "Data-retention purge is NOT SCHEDULED",
-          meaning: expect.stringContaining('RETENTION_SCHEDULER="nonsense" is not a valid cron expression')
-        })
+          meaning: expect.stringContaining('RETENTION_SCHEDULER="nonsense" is not a valid cron expression'),
+        }),
       );
       expect(stateOf("retention-sweep").enabled).toBe(false);
     });
@@ -335,7 +335,7 @@ describe("P7-02 jobMonitor.service", () => {
       monitor.reset();
       fs.writeFileSync(
         path.join(dir, "calibration-scan.json"),
-        JSON.stringify({ nextExpectedAt: new Date(Date.now() - 3 * HOUR).toISOString(), overdueSince: later.toISOString() })
+        JSON.stringify({ nextExpectedAt: new Date(Date.now() - 3 * HOUR).toISOString(), overdueSince: later.toISOString() }),
       );
       monitor.registerJob("calibration-scan", task(null), "0 1 * * *");
       raiseAlert.mockClear();
@@ -389,7 +389,7 @@ describe("P7-02 jobMonitor.service", () => {
       expect(query.skipTenantScope).toBe(true);
       expect(query.where.status).toBe("PROCESSING");
       expect(Object.getOwnPropertySymbols(query.where.updatedAt).map((s: any) => query.where.updatedAt[s])).toEqual([
-      new Date("2026-09-25T11:00:00Z")]
+        new Date("2026-09-25T11:00:00Z")],
       );
       expect(raiseAlert).not.toHaveBeenCalled();
     });
@@ -406,8 +406,8 @@ describe("P7-02 jobMonitor.service", () => {
           key: "batch-jobs.stuck",
           severity: "warning",
           meaning: expect.stringContaining("2 batch job(s) have been PROCESSING for more than 15 minutes"),
-          detail: "b1, b2"
-        })
+          detail: "b1, b2",
+        }),
       );
       await monitor.checkStuckBatchJobs(new Date(now.getTime() + 25 * HOUR));
       expect(raiseAlert).toHaveBeenCalledTimes(2);

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-25 — `upsertInvoice` never updated.
  *
@@ -20,13 +20,13 @@ jest.mock("../../models", () => ({
   // A-276 (ADR-094): status decisions read the tenant and save it in a
   // transaction with their audit rows. No tenant row unless a test sets one.
   Tenant: { update: jest.fn(), findByPk: jest.fn().mockResolvedValue(null) },
-  TenantSettings: { upsert: jest.fn() }
+  TenantSettings: { upsert: jest.fn() },
 }));
 jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb: any) => cb("tx")) } }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const stripeWebhook = require("../../services/stripeWebhook.service");
@@ -48,7 +48,7 @@ const makeStore = () => {
       update: jest.fn(async (patch: any) => {
         Object.assign(row, patch);
         return row;
-      })
+      }),
     };
     rows.push(row);
     return row;
@@ -61,7 +61,7 @@ const sub = () => ({
   id: "sub1",
   tenantId: "t1",
   status: "Active",
-  update: jest.fn()
+  update: jest.fn(),
 });
 
 const paymentFailed = (over: any = {}) => ({
@@ -74,9 +74,9 @@ const paymentFailed = (over: any = {}) => ({
       amount_paid: 0,
       currency: "usd",
       hosted_invoice_url: "https://stripe.test/i/1",
-      ...over
-    }
-  }
+      ...over,
+    },
+  },
 });
 
 const invoicePaid = (over: any = {}) => ({
@@ -89,9 +89,9 @@ const invoicePaid = (over: any = {}) => ({
       amount_paid: 5000,
       currency: "usd",
       hosted_invoice_url: "https://stripe.test/i/1",
-      ...over
-    }
-  }
+      ...over,
+    },
+  },
 });
 
 describe("stripeWebhook upsertInvoice (A-25)", () => {
@@ -115,7 +115,7 @@ describe("stripeWebhook upsertInvoice (A-25)", () => {
       status: "Paid",
       amountDue: 50,
       amountPaid: 50,
-      currency: "USD"
+      currency: "USD",
     });
   });
 
@@ -143,14 +143,14 @@ describe("stripeWebhook upsertInvoice (A-25)", () => {
   it("refreshes amounts and currency on an existing Open invoice", async () => {
     await stripeWebhook.handleEvent(paymentFailed());
     await stripeWebhook.handleEvent(
-      paymentFailed({ amount_due: 7500, currency: "eur" })
+      paymentFailed({ amount_due: 7500, currency: "eur" }),
     );
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       status: "Open",
       amountDue: 75,
-      currency: "EUR"
+      currency: "EUR",
     });
   });
 
@@ -172,7 +172,7 @@ describe("stripeWebhook upsertInvoice (A-25)", () => {
       invoiceUrl: null,
       update: jest.fn(function (patch: any) {
         Object.assign(this, patch);
-      })
+      }),
     });
 
     await stripeWebhook.handleEvent(paymentFailed());
@@ -189,7 +189,7 @@ describe("stripeWebhook upsertInvoice (A-25)", () => {
       invoiceUrl: null,
       update: jest.fn(function (patch: any) {
         Object.assign(this, patch);
-      })
+      }),
     });
 
     await stripeWebhook.handleEvent(invoicePaid());
@@ -209,7 +209,7 @@ describe("stripeWebhook upsertInvoice (A-25)", () => {
       currency: "USD",
       status: "Paid",
       invoiceUrl: "https://stripe.test/i/1",
-      stripeInvoiceId: "in_1"
+      stripeInvoiceId: "in_1",
     });
   });
 });

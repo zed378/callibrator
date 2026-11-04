@@ -148,7 +148,7 @@ async function startFakeClamd({ streamMaxLength = 25 * 1024 * 1024, path }: any 
   });
 
   await new Promise((resolve: any) =>
-  path ? server.listen(path, resolve) : server.listen(0, "127.0.0.1", resolve)
+    path ? server.listen(path, resolve) : server.listen(0, "127.0.0.1", resolve),
   );
 
   return {
@@ -158,10 +158,10 @@ async function startFakeClamd({ streamMaxLength = 25 * 1024 * 1024, path }: any 
       mode = m;
     },
     close: () =>
-    new Promise((resolve: any) => {
-      for (const s of sockets) {s.destroy();}
-      server.close(() => resolve());
-    })
+      new Promise((resolve: any) => {
+        for (const s of sockets) {s.destroy();}
+        server.close(() => resolve());
+      }),
   };
 }
 

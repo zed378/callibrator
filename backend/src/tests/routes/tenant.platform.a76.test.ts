@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-76 — tenant administrators held platform operations.
  *
@@ -28,7 +28,7 @@
 jest.mock("../../services/clientFacility.service", () => ({
   SELF_FACILITY_CODE: "SELF",
   selfFacilityName: (name: any) => name,
-  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" }))
+  createSelfFacility: jest.fn(async () => ({ id: "5e1f0000-0000-4000-8000-0000000000f0" })),
 }));
 
 const mockFx: any = { current: null };
@@ -42,7 +42,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
@@ -50,11 +50,11 @@ jest.mock("../../models", () => {
   const users: any = {
     findByPk: (...args: any[]) => mockFx.current.Users.findByPk(...args),
     findAll: jest.fn(async () => []),
-    count: jest.fn(async () => 0)
+    count: jest.fn(async () => 0),
   };
   const roles: any = {
     findOne: (...args: any[]) => mockSeed.current.Roles.findOne(...args),
-    findByPk: (...args: any[]) => mockSeed.current.Roles.findByPk(...args)
+    findByPk: (...args: any[]) => mockSeed.current.Roles.findByPk(...args),
   };
   return {
     Tenants: {
@@ -62,7 +62,7 @@ jest.mock("../../models", () => {
       findOne: (...args: any[]) => mockFx.current.Tenants.findOne(...args),
       findAll: jest.fn(async () => [mockFx.current.tenantA, mockFx.current.tenantB]),
       count: jest.fn(async () => 2),
-      create: jest.fn(async (values: any) => ({ id: "ffffffff-ffff-4fff-8fff-ffffffffffff", ...values }))
+      create: jest.fn(async (values: any) => ({ id: "ffffffff-ffff-4fff-8fff-ffffffffffff", ...values })),
     },
     User: users,
     Users: users,
@@ -72,22 +72,22 @@ jest.mock("../../models", () => {
     MenuGroup: {
       findAll: (...args: any[]) => mockSeed.current.MenuGroup.findAll(...args),
       findOne: (...args: any[]) => mockSeed.current.MenuGroup.findOne(...args),
-      create: (...args: any[]) => mockSeed.current.MenuGroup.create(...args)
+      create: (...args: any[]) => mockSeed.current.MenuGroup.create(...args),
     },
     RoleMenuPermission: {
       findAll: (...args: any[]) => mockSeed.current.RoleMenuPermission.findAll(...args),
       findOne: (...args: any[]) => mockSeed.current.RoleMenuPermission.findOne(...args),
       create: (...args: any[]) => mockSeed.current.RoleMenuPermission.create(...args),
-      destroy: (...args: any[]) => mockSeed.current.RoleMenuPermission.destroy(...args)
-    }
+      destroy: (...args: any[]) => mockSeed.current.RoleMenuPermission.destroy(...args),
+    },
   };
 });
 
 jest.mock("../../config", () => ({
   db: {
     transaction: (...args: any[]) => mockFx.current.transaction(...args),
-    sequelize: { fn: () => ({}) }
-  }
+    sequelize: { fn: () => ({}) },
+  },
 }));
 
 // Pulled in by migration.service (the real seed); not exercised here.
@@ -95,17 +95,17 @@ jest.mock("../../services/featureFlag.service", () => ({}));
 jest.mock("../../utils/password.util", () => ({ hashPassword: jest.fn() }));
 
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../services/rateLimiter.redis.service", () => ({
-  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next()
+  endpointRateLimiter: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../middlewares/enforceQuota.middleware", () => ({
-  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next()
+  enforceStorageQuota: () => (_req: any, _res: any, next: any) => next(),
 }));
 jest.mock("../../utils/upload.util", () => ({
   upload: () => (_req: any, _res: any, next: any) => next(),
-  deleteUpload: jest.fn()
+  deleteUpload: jest.fn(),
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn().mockResolvedValue(null),
@@ -115,14 +115,14 @@ jest.mock("../../services/redis.service", () => ({
   cacheKeys: {
     tenant: (id: any) => `tenant:${id}`,
     tenantByCode: (code: any) => `tenant:code:${code}`,
-    permissions: (id: any) => `permissions:${id}`
-  }
+    permissions: (id: any) => `permissions:${id}`,
+  },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const { createTwoTenants } = require("../fixtures/twoTenants");
@@ -134,50 +134,50 @@ const router = require("../../routes/api/tenant.route");
 // Express's own router.handle with a minimal req/res pair (the harness of
 // tenant.edit.a63.test.js), with a query string.
 const http = (method: any, url: any, { body = {}, query = {} } = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const search = new URLSearchParams(query).toString();
-  const req: any = {
-    method: method.toUpperCase(),
-    url: search ? `${url}?${search}` : url,
-    originalUrl: "/api/v1/tenants" + url,
-    body,
-    query,
-    params: {},
-    headers: {},
-    ip: "127.0.0.1",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || err.statusCode || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const search = new URLSearchParams(query).toString();
+    const req: any = {
+      method: method.toUpperCase(),
+      url: search ? `${url}?${search}` : url,
+      originalUrl: "/api/v1/tenants" + url,
+      body,
+      query,
+      params: {},
+      headers: {},
+      ip: "127.0.0.1",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || err.statusCode || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 /** A principal whose role id is the SEEDED id for its role name. */
 const seededPrincipal = (tenant: any, role: any) => {
@@ -206,12 +206,12 @@ describe("A-76 — the premise, from the real seed", () => {
     "the seed grants %s `management` — so a Management gate alone admits them",
     (role: any) => {
       expect(mockSeed.current.grantedSlugs(role)).toContain("management");
-    }
+    },
   );
 
   it("the seed grants ENGINEERING MANAGER `management` (read)", () => {
     expect(mockSeed.current.grantedSlugs(ROLE_NAMES.ENGINEERING_MANAGER)).toContain(
-      "management"
+      "management",
     );
   });
 });
@@ -221,7 +221,7 @@ describe("A-76 — a tenant admin gets 403 on create, list-all and delete", () =
     currentUser = seededPrincipal(fx.tenantA, role);
 
     const res = await http("post", "/create", {
-      body: { name: "Rogue Hospital", code: "ROGUE" }
+      body: { name: "Rogue Hospital", code: "ROGUE" },
     });
 
     expect(res.status).toBe(403);
@@ -247,7 +247,7 @@ describe("A-76 — a tenant admin gets 403 on create, list-all and delete", () =
 
       expect(res.status).toBe(403);
       expect(fx.tenantA.destroy).not.toHaveBeenCalled();
-    }
+    },
   );
 
   it("ENGINEERING MANAGER (Management read): GET /tenants/all is 403", async () => {
@@ -274,7 +274,7 @@ describe("A-76 — what a tenant admin keeps, and what the super admin keeps", (
     currentUser = seededPrincipal(fx.tenantA, ROLE_NAMES.HEALTCARE_ADMIN);
 
     const res = await http("patch", "/edit", {
-      body: { tenantId: fx.tenantA.id, name: "Hospital A Renamed" }
+      body: { tenantId: fx.tenantA.id, name: "Hospital A Renamed" },
     });
 
     expect(res.status).toBe(200);

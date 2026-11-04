@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-41 — role and permission changes decide who can do what; each writes its
  * audit row inside the same transaction as the change
@@ -34,7 +34,7 @@ jest.mock("../../models", () => ({
       mockRef.ledger.write("roles", values, options);
       return { id: "role-new", ...values };
     },
-    findByPk: async () => mockRef.role
+    findByPk: async () => mockRef.role,
   },
   RoleMenuPermission: {
     findOrCreate: async ({ where, defaults, transaction }: any) => {
@@ -45,7 +45,7 @@ jest.mock("../../models", () => ({
     destroy: async ({ where, transaction }: any) => {
       mockRef.ledger.write("role_menu_permissions", { destroyed: where }, { transaction });
       return mockRef.removed;
-    }
+    },
   },
   MenuGroup: { findByPk: async () => ({ id: "menu-1" }) },
   User: { findByPk: async () => mockRef.user },
@@ -58,12 +58,12 @@ jest.mock("../../models", () => ({
     destroy: async ({ where, transaction }: any) => {
       mockRef.ledger.write("user_menu_permissions", { destroyed: where }, { transaction });
       return mockRef.removed;
-    }
+    },
   },
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
@@ -72,8 +72,8 @@ jest.mock("../../services/redis.service", () => ({
   delPattern: jest.fn(),
   cacheKeys: {
     permissions: (id: any) => `perm:${id}`,
-    userPermissions: (id: any) => `uperm:${id}`
-  }
+    userPermissions: (id: any) => `uperm:${id}`,
+  },
 }));
 
 const RolesService = require("../../services/roles.service");
@@ -84,127 +84,126 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 const actor = { userId: "admin-1", tenantId: "tenant-admin", ipAddress: "10.0.0.1", userAgent: "UA" };
 
 const CASES = [
-{
-  name: "createRole",
-  run: () => RolesService.createRole({ name: "Auditor", roleLevel: 3 }, actor),
-  table: "roles",
-  action: "CREATE",
-  resourceType: "Role",
-  resourceId: "role-new",
-  tenantId: PLATFORM_TENANT_ID
-},
-{
-  name: "updateRole",
-  run: () => RolesService.updateRole("role-1", { status: "inactive" }, actor),
-  table: "roles",
-  action: "UPDATE",
-  resourceType: "Role",
-  resourceId: "role-1",
-  tenantId: PLATFORM_TENANT_ID,
-  invalidates: "perm:role-1"
-},
-{
-  name: "deleteRole (custom role)",
-  run: () => RolesService.deleteRole("role-1", actor),
-  table: "roles",
-  action: "DELETE",
-  resourceType: "Role",
-  resourceId: "role-1",
-  tenantId: PLATFORM_TENANT_ID,
-  invalidates: "perm:role-1"
-},
-{
-  name: "deleteRole (system role → deactivate and revoke grants)",
-  setup: () => {mockRef.role.isSystem = true;},
-  run: () => RolesService.deleteRole("role-1", actor),
-  table: "role_menu_permissions",
-  action: "DELETE",
-  resourceType: "Role",
-  resourceId: "role-1",
-  tenantId: PLATFORM_TENANT_ID,
-  invalidates: "perm:role-1"
-},
-{
-  name: "assignMenuToRole (new grant)",
-  run: () => RolesService.assignMenuToRole("role-1", "menu-1", "write", actor),
-  table: "role_menu_permissions",
-  action: "UPDATE",
-  resourceType: "Role",
-  resourceId: "role-1",
-  tenantId: PLATFORM_TENANT_ID,
-  invalidates: "perm:role-1"
-},
-{
-  name: "assignMenuToRole (changed grant)",
-  setup: () => {mockRef.grant = mockRow("role_menu_permissions", { id: "g-1", permissionType: "read" });},
-  run: () => RolesService.assignMenuToRole("role-1", "menu-1", "write", actor),
-  table: "role_menu_permissions",
-  action: "UPDATE",
-  resourceType: "Role",
-  resourceId: "role-1",
-  tenantId: PLATFORM_TENANT_ID,
-  invalidates: "perm:role-1"
-},
-{
-  name: "removeMenuFromRole",
-  run: () => RolesService.removeMenuFromRole("role-1", "menu-1", actor),
-  table: "role_menu_permissions",
-  action: "UPDATE",
-  resourceType: "Role",
-  resourceId: "role-1",
-  tenantId: PLATFORM_TENANT_ID,
-  invalidates: "perm:role-1"
-},
-{
-  name: "assignRoleToUser",
-  run: () => RolesService.assignRoleToUser("user-9", "role-1", actor),
-  table: "users",
-  action: "UPDATE",
-  resourceType: "User",
-  resourceId: "user-9",
-  tenantId: "tenant-user"
-},
-{
-  name: "removeRoleFromUser",
-  run: () => RolesService.removeRoleFromUser("user-9", actor),
-  table: "users",
-  action: "UPDATE",
-  resourceType: "User",
-  resourceId: "user-9",
-  tenantId: "tenant-user"
-},
-{
-  name: "setUserPermission",
-  run: () => userPermissionService.setUserPermission("user-9", "menu-1", "none", "admin-1", "revoked", actor),
-  table: "user_menu_permissions",
-  action: "UPDATE",
-  resourceType: "User",
-  resourceId: "user-9",
-  tenantId: "tenant-user",
-  invalidates: "uperm:user-9"
-},
-{
-  name: "setUserPermission (changed override)",
-  setup: () => {mockRef.grant = mockRow("user_menu_permissions", { id: "o-1", permissionType: "read" });},
-  run: () => userPermissionService.setUserPermission("user-9", "menu-1", "write", "admin-1", null, actor),
-  table: "user_menu_permissions",
-  action: "UPDATE",
-  resourceType: "User",
-  resourceId: "user-9",
-  tenantId: "tenant-user",
-  invalidates: "uperm:user-9"
-},
-{
-  name: "removeUserPermission",
-  run: () => userPermissionService.removeUserPermission("user-9", "menu-1", actor),
-  table: "user_menu_permissions",
-  action: "UPDATE",
-  resourceType: "User",
-  resourceId: "user-9",
-  tenantId: "tenant-user",
-  invalidates: "uperm:user-9"
-}];
-
+  {
+    name: "createRole",
+    run: () => RolesService.createRole({ name: "Auditor", roleLevel: 3 }, actor),
+    table: "roles",
+    action: "CREATE",
+    resourceType: "Role",
+    resourceId: "role-new",
+    tenantId: PLATFORM_TENANT_ID,
+  },
+  {
+    name: "updateRole",
+    run: () => RolesService.updateRole("role-1", { status: "inactive" }, actor),
+    table: "roles",
+    action: "UPDATE",
+    resourceType: "Role",
+    resourceId: "role-1",
+    tenantId: PLATFORM_TENANT_ID,
+    invalidates: "perm:role-1",
+  },
+  {
+    name: "deleteRole (custom role)",
+    run: () => RolesService.deleteRole("role-1", actor),
+    table: "roles",
+    action: "DELETE",
+    resourceType: "Role",
+    resourceId: "role-1",
+    tenantId: PLATFORM_TENANT_ID,
+    invalidates: "perm:role-1",
+  },
+  {
+    name: "deleteRole (system role → deactivate and revoke grants)",
+    setup: () => {mockRef.role.isSystem = true;},
+    run: () => RolesService.deleteRole("role-1", actor),
+    table: "role_menu_permissions",
+    action: "DELETE",
+    resourceType: "Role",
+    resourceId: "role-1",
+    tenantId: PLATFORM_TENANT_ID,
+    invalidates: "perm:role-1",
+  },
+  {
+    name: "assignMenuToRole (new grant)",
+    run: () => RolesService.assignMenuToRole("role-1", "menu-1", "write", actor),
+    table: "role_menu_permissions",
+    action: "UPDATE",
+    resourceType: "Role",
+    resourceId: "role-1",
+    tenantId: PLATFORM_TENANT_ID,
+    invalidates: "perm:role-1",
+  },
+  {
+    name: "assignMenuToRole (changed grant)",
+    setup: () => {mockRef.grant = mockRow("role_menu_permissions", { id: "g-1", permissionType: "read" });},
+    run: () => RolesService.assignMenuToRole("role-1", "menu-1", "write", actor),
+    table: "role_menu_permissions",
+    action: "UPDATE",
+    resourceType: "Role",
+    resourceId: "role-1",
+    tenantId: PLATFORM_TENANT_ID,
+    invalidates: "perm:role-1",
+  },
+  {
+    name: "removeMenuFromRole",
+    run: () => RolesService.removeMenuFromRole("role-1", "menu-1", actor),
+    table: "role_menu_permissions",
+    action: "UPDATE",
+    resourceType: "Role",
+    resourceId: "role-1",
+    tenantId: PLATFORM_TENANT_ID,
+    invalidates: "perm:role-1",
+  },
+  {
+    name: "assignRoleToUser",
+    run: () => RolesService.assignRoleToUser("user-9", "role-1", actor),
+    table: "users",
+    action: "UPDATE",
+    resourceType: "User",
+    resourceId: "user-9",
+    tenantId: "tenant-user",
+  },
+  {
+    name: "removeRoleFromUser",
+    run: () => RolesService.removeRoleFromUser("user-9", actor),
+    table: "users",
+    action: "UPDATE",
+    resourceType: "User",
+    resourceId: "user-9",
+    tenantId: "tenant-user",
+  },
+  {
+    name: "setUserPermission",
+    run: () => userPermissionService.setUserPermission("user-9", "menu-1", "none", "admin-1", "revoked", actor),
+    table: "user_menu_permissions",
+    action: "UPDATE",
+    resourceType: "User",
+    resourceId: "user-9",
+    tenantId: "tenant-user",
+    invalidates: "uperm:user-9",
+  },
+  {
+    name: "setUserPermission (changed override)",
+    setup: () => {mockRef.grant = mockRow("user_menu_permissions", { id: "o-1", permissionType: "read" });},
+    run: () => userPermissionService.setUserPermission("user-9", "menu-1", "write", "admin-1", null, actor),
+    table: "user_menu_permissions",
+    action: "UPDATE",
+    resourceType: "User",
+    resourceId: "user-9",
+    tenantId: "tenant-user",
+    invalidates: "uperm:user-9",
+  },
+  {
+    name: "removeUserPermission",
+    run: () => userPermissionService.removeUserPermission("user-9", "menu-1", actor),
+    table: "user_menu_permissions",
+    action: "UPDATE",
+    resourceType: "User",
+    resourceId: "user-9",
+    tenantId: "tenant-user",
+    invalidates: "uperm:user-9",
+  }];
 
 describe("A-41 — role and permission changes audit inside their transaction", () => {
   beforeEach(() => {
@@ -227,20 +226,20 @@ describe("A-41 — role and permission changes audit inside their transaction", 
 
       expect(mockRef.ledger.committed(table).length).toBeGreaterThan(0);
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        tenantId,
-        userId: "admin-1",
-        action,
-        resourceType,
-        resourceId,
-        ipAddress: "10.0.0.1",
-        userAgent: "UA",
-        changes: expect.objectContaining({
-          operation: expect.any(String),
-          before: expect.any(Object),
-          after: expect.any(Object)
-        })
-      })]
+        expect.objectContaining({
+          tenantId,
+          userId: "admin-1",
+          action,
+          resourceType,
+          resourceId,
+          ipAddress: "10.0.0.1",
+          userAgent: "UA",
+          changes: expect.objectContaining({
+            operation: expect.any(String),
+            before: expect.any(Object),
+            after: expect.any(Object),
+          }),
+        })],
       );
       if (invalidates) {expect(redis.del).toHaveBeenCalledWith(invalidates);}
     });
@@ -279,7 +278,7 @@ describe("A-41 — role and permission changes audit inside their transaction", 
     await userPermissionService.removeUserPermission("user-gone", "menu-1", actor);
 
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({ tenantId: "tenant-admin", resourceId: "user-gone" })]
+      expect.objectContaining({ tenantId: "tenant-admin", resourceId: "user-gone" })],
     );
   });
 
@@ -289,7 +288,7 @@ describe("A-41 — role and permission changes audit inside their transaction", 
     await RolesService.assignRoleToUser("user-9", "role-1", actor);
 
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({ tenantId: "tenant-admin", resourceId: "user-9" })]
+      expect.objectContaining({ tenantId: "tenant-admin", resourceId: "user-9" })],
     );
   });
 
@@ -297,7 +296,7 @@ describe("A-41 — role and permission changes audit inside their transaction", 
     mockRef.user.tenantId = null;
 
     await expect(RolesService.assignRoleToUser("user-9", "role-1", { userId: "admin-1" })).rejects.toThrow(
-      /tenantId cannot be null/
+      /tenantId cannot be null/,
     );
 
     expect(mockRef.ledger.committed("users")).toEqual([]);

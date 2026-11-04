@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * P8-03 (ADR-086) — two backend instances starting together, against a REAL
  * PostgreSQL: one migration run, the other instance waits, and the result is
@@ -31,13 +31,13 @@ const startInstance = (label: any, messages: any) => {
       db,
       migrator: require("../../config/migrator").migrator,
       lock: require("../../utils/migrationLock.util"),
-      schemaVerify: require("../../utils/schemaVerify.util")
+      schemaVerify: require("../../utils/schemaVerify.util"),
     };
   });
   graph.logger = {
     info: (m: any) => messages.push({ label, at: Date.now(), m }),
     warn: (m: any) => messages.push({ label, at: Date.now(), m }),
-    error: (m: any) => messages.push({ label, at: Date.now(), m })
+    error: (m: any) => messages.push({ label, at: Date.now(), m }),
   };
   return graph;
 };
@@ -65,8 +65,8 @@ describe("P8-03 schema lock — two instances, real PostgreSQL", () => {
 
   test("P8-03: two instances starting simultaneously produce ONE migration run; the other waits and applies nothing", async () => {
     const [appliedA, appliedB] = await Promise.all([
-    a.lock.runSchemaSetup({ sequelize: a.db, migrator: a.migrator, logger: a.logger, lockOptions: { pollMs: 50 } }),
-    b.lock.runSchemaSetup({ sequelize: b.db, migrator: b.migrator, logger: b.logger, lockOptions: { pollMs: 50 } })]
+      a.lock.runSchemaSetup({ sequelize: a.db, migrator: a.migrator, logger: a.logger, lockOptions: { pollMs: 50 } }),
+      b.lock.runSchemaSetup({ sequelize: b.db, migrator: b.migrator, logger: b.logger, lockOptions: { pollMs: 50 } })],
     );
 
     const namesA = appliedA.map((m: any) => m.name);
@@ -99,7 +99,7 @@ describe("P8-03 schema lock — two instances, real PostgreSQL", () => {
     const result = await a.schemaVerify.assertSchemaMatchesModels({
       sequelize: a.db,
       logger: a.logger,
-      mode: "strict"
+      mode: "strict",
     });
     expect(result.problems).toEqual([]);
     expect(result.tables).toBeGreaterThan(60);
@@ -112,7 +112,7 @@ describe("P8-03 schema lock — two instances, real PostgreSQL", () => {
     expect(applied).toEqual([]);
     expect(messages.slice(before).some((x: any) => /another instance is migrating/.test(x.m))).toBe(false);
     const [[{ n }]] = await a.db.query(
-      "SELECT COUNT(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'"
+      "SELECT COUNT(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'",
     );
     expect(n).toBe(0);
   });
@@ -126,7 +126,7 @@ describe("P8-03 schema lock — two instances, real PostgreSQL", () => {
     // (the logger among them); plain `node` cannot resolve them.
     const child = spawn(process.execPath, ["--import", "tsx", path.join(__dirname, "../../scripts/migrate.ts"), "up"], {
       cwd: path.join(__dirname, "../../.."),
-      env: { ...process.env, NODE_ENV: "test" }
+      env: { ...process.env, NODE_ENV: "test" },
     });
     child.stdout.on("data", (d: any) => output += d);
     child.stderr.on("data", (d: any) => output += d);

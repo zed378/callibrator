@@ -102,7 +102,7 @@ interface MockStep {
 interface MockStore {
   workflows: MockWorkflow[];
   steps: MockStep[];
-  records: Array<Record<string, unknown>>;
+  records: Record<string, unknown>[];
   users: Record<string, { id: string; status: string; isActive: boolean }>;
   key: { keyId: string; privateKey: string } | null;
 }
@@ -134,7 +134,7 @@ const mockPick = <T extends Record<string, unknown>>(row: T, attributes?: string
 // `where`, and — load-bearing — `required`. An include with a `where` and no
 // `required: false` is an INNER JOIN, which would drop a workflow with no
 // matching step (CLAUDE.md, the first trap); the double refuses it outright.
-const mockHydrate = (wf: MockWorkflow, options: { attributes?: string[]; include?: Array<{ where?: Record<string, unknown>; required?: boolean; attributes?: string[] }> }): MockWorkflow => {
+const mockHydrate = (wf: MockWorkflow, options: { attributes?: string[]; include?: { where?: Record<string, unknown>; required?: boolean; attributes?: string[] }[] }): MockWorkflow => {
   const out = mockPick(wf, options.attributes);
   for (const inc of options.include || []) {
     if (inc.required !== false) {
@@ -155,13 +155,13 @@ jest.mock("../../models", () => ({
   },
   Tenants: { findByPk: jest.fn() },
   SignatureWorkflow: {
-    findAll: jest.fn(async (options: { where?: Record<string, unknown>; attributes?: string[]; include?: Array<{ where?: Record<string, unknown>; required?: boolean; attributes?: string[] }> }) =>
+    findAll: jest.fn(async (options: { where?: Record<string, unknown>; attributes?: string[]; include?: { where?: Record<string, unknown>; required?: boolean; attributes?: string[] }[] }) =>
       mockStore.workflows
         .filter((w) => mockInTenant(w) && mockMatches(w, options.where))
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         .map((w) => mockHydrate(w, options)),
     ),
-    findOne: jest.fn(async (options: { where?: Record<string, unknown>; attributes?: string[]; include?: Array<{ where?: Record<string, unknown>; required?: boolean; attributes?: string[] }> }) => {
+    findOne: jest.fn(async (options: { where?: Record<string, unknown>; attributes?: string[]; include?: { where?: Record<string, unknown>; required?: boolean; attributes?: string[] }[] }) => {
       const wf = mockStore.workflows.find((w) => mockInTenant(w) && mockMatches(w, options.where));
       return wf ? mockHydrate(wf, options) : null;
     }),
@@ -192,11 +192,9 @@ jest.mock("../../models", () => ({
 
 // ---- the harness ---------------------------------------------------------
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const RolesService = require("../../services/roles.service") as typeof import("../../services/roles.service");
 const { ROLE_NAMES, ROLE_MENU_ASSIGNMENTS, MENU_SLUGS } = require("../../constants") as typeof import("../../constants");
 const router = require("../../routes/api/eSignature.route") as { handle: (req: unknown, res: unknown, next: (err?: unknown) => void) => void };
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 interface HttpResponse {
   status: number;
@@ -548,12 +546,11 @@ describe("A-91 — the signer view of e-signature workflows", () => {
       return matrix;
     });
     as(technicianA);
-    /* eslint-disable @typescript-eslint/no-require-imports */
+
     const models = require("../../models") as {
       SignatureWorkflowStep: { findAll: jest.Mock };
       SignatureWorkflow: { findOne: jest.Mock };
     };
-    /* eslint-enable @typescript-eslint/no-require-imports */
 
     expect((await http("get", "/my-workflows")).status).toBe(403);
     expect((await http("get", `/my-workflows/${WF_A}`)).status).toBe(403);

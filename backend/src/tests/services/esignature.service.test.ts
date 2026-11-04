@@ -12,7 +12,7 @@ jest.mock("../../config", () => {
 const {
   getStatus,
   SIGNATURE_STATUS,
-  WORKFLOW_STATUS
+  WORKFLOW_STATUS,
 } = require("../../services/eSignature.service");
 const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
 
@@ -32,7 +32,7 @@ describe("eSignature.service", () => {
       process.env["ESIGN_ENABLED"] = "false";
       jest.resetModules();
       const {
-        generateKeyPair: gkp
+        generateKeyPair: gkp,
       } = require("../../services/eSignature.service");
 
       await expect(gkp("tenant-1")).rejects.toThrow("E-signature is disabled");
@@ -53,16 +53,16 @@ describe("eSignature.service", () => {
       });
       mockGkp[Symbol.for("nodejs.util.promisify.custom")] = jest.fn().mockResolvedValue({
         publicKey: "mock-public-key",
-        privateKey: "mock-private-key"
+        privateKey: "mock-private-key",
       });
       const spy: any = jest.spyOn(require("crypto"), "generateKeyPair").mockImplementation(mockGkp);
       spy[Symbol.for("nodejs.util.promisify.custom")] = jest.fn().mockResolvedValue({
         publicKey: "mock-public-key",
-        privateKey: "mock-private-key"
+        privateKey: "mock-private-key",
       });
 
       const {
-        generateKeyPair: gkp2
+        generateKeyPair: gkp2,
       } = require("../../services/eSignature.service");
       const result = await gkp2("tenant-1", { userId: "user-1" });
 
@@ -79,10 +79,10 @@ describe("eSignature.service", () => {
       });
 
       const {
-        generateKeyPair: gkp3
+        generateKeyPair: gkp3,
       } = require("../../services/eSignature.service");
       await expect(gkp3("tenant-1")).rejects.toThrow(
-        "Failed to generate key pair"
+        "Failed to generate key pair",
       );
     });
   });
@@ -92,35 +92,35 @@ describe("eSignature.service", () => {
       jest.resetModules();
       process.env["ESIGN_ENABLED"] = "false";
       const {
-        createSignatureWorkflow: csw
+        createSignatureWorkflow: csw,
       } = require("../../services/eSignature.service");
 
       await expect(csw("tenant-1", {})).rejects.toThrow(
-        "E-signature is disabled"
+        "E-signature is disabled",
       );
     });
 
     it("should throw error when documentId or signers missing", async () => {
       jest.resetModules();
       const {
-        createSignatureWorkflow: csw2
+        createSignatureWorkflow: csw2,
       } = require("../../services/eSignature.service");
 
       await expect(csw2("tenant-1", {})).rejects.toThrow(
-        "documentId and signers are required"
+        "documentId and signers are required",
       );
       await expect(csw2("tenant-1", { documentId: "doc-1" })).rejects.toThrow(
-        "documentId and signers are required"
+        "documentId and signers are required",
       );
       await expect(
-        csw2("tenant-1", { documentId: "doc-1", signers: [] })
+        csw2("tenant-1", { documentId: "doc-1", signers: [] }),
       ).rejects.toThrow("documentId and signers are required");
     });
 
     it("should create workflow with signers", async () => {
       const mockCreate = jest.
-      fn().
-      mockResolvedValue({ id: "wf-1", status: "pending" });
+        fn().
+        mockResolvedValue({ id: "wf-1", status: "pending" });
       const mockWorkflow: any = { create: mockCreate };
       const mockStepCreate = jest.fn().mockResolvedValue({ id: "step-1" });
       const mockStep: any = { create: mockStepCreate };
@@ -136,31 +136,31 @@ describe("eSignature.service", () => {
             lastName: "B",
             isActive: true,
             status: "ACTIVE",
-            roleId: "r-1"
-          })
+            roleId: "r-1",
+          }),
         },
         Role: { findByPk: jest.fn().mockResolvedValue({ id: "r-1", name: "TECHNICIAN" }) },
-        AuditLog: { create: jest.fn().mockResolvedValue(true) }
+        AuditLog: { create: jest.fn().mockResolvedValue(true) },
       };
 
       jest.doMock("../../models", () => mockModels);
       jest.doMock("../../middlewares/dynamicAccess.middleware", () => ({
-        principalHasMenuPermission: jest.fn().mockResolvedValue(true)
+        principalHasMenuPermission: jest.fn().mockResolvedValue(true),
       }));
       jest.doMock("../../services/emailQueue.service", () => ({
         // A-158: the real export (emailQueueService never existed).
-        queueNotificationEmail: jest.fn().mockResolvedValue(true)
+        queueNotificationEmail: jest.fn().mockResolvedValue(true),
       }));
 
       jest.resetModules();
       const {
-        createSignatureWorkflow: csw3
+        createSignatureWorkflow: csw3,
       } = require("../../services/eSignature.service");
 
       const result = await csw3(
         "tenant-1",
         { documentId: "doc-1", signers: [{ userId: "u-1", email: "a@b.com", name: "A" }] },
-        { userId: "admin-1" }
+        { userId: "admin-1" },
       );
 
       expect(result.workflowId).toBeDefined();
@@ -178,24 +178,24 @@ describe("eSignature.service", () => {
           tenantId: "tenant-1",
           signerId: "u-1",
           stepNumber: 1,
-          update: jest.fn().mockResolvedValue(true)
+          update: jest.fn().mockResolvedValue(true),
         }),
-        findAll: jest.fn().mockResolvedValue([])
+        findAll: jest.fn().mockResolvedValue([]),
       };
       const mockWorkflow: any = {
         findByPk: jest.fn().mockResolvedValue({
           id: "wf-1",
           documentId: "doc-1",
           tenantId: "tenant-1",
-          update: jest.fn().mockResolvedValue(true)
+          update: jest.fn().mockResolvedValue(true),
         }),
-        findAll: jest.fn().mockResolvedValue([])
+        findAll: jest.fn().mockResolvedValue([]),
       };
       const mockSigRecord: any = {
         create: jest.fn().mockResolvedValue({
           id: "sig-1",
-          signedAt: new Date()
-        })
+          signedAt: new Date(),
+        }),
       };
       const mockAuditLog: any = { create: jest.fn().mockResolvedValue(true) };
       // Signing loads and decrypts the tenant's real key pair (ADR-040).
@@ -203,7 +203,7 @@ describe("eSignature.service", () => {
       const mockModels: any = {
         TenantKey: {
           unscoped: () => ({ findOne: jest.fn().mockResolvedValue(keyPair) }),
-          findOne: jest.fn()
+          findOne: jest.fn(),
         },
         SignatureWorkflowStep: mockStep,
         SignatureWorkflow: mockWorkflow,
@@ -211,27 +211,27 @@ describe("eSignature.service", () => {
         AuditLog: mockAuditLog,
         User: {
           findByPk: jest.
-          fn().
-          mockResolvedValue({ id: "u-1", status: "ACTIVE", isActive: true })
-        }
+            fn().
+            mockResolvedValue({ id: "u-1", status: "ACTIVE", isActive: true }),
+        },
       };
 
       jest.doMock("../../models", () => mockModels);
       // A-65 — signing re-authenticates the signer's password.
       jest.doMock("../../services/auth.service", () => ({
-        passIsValid: async () => ({ data: { valid: true } })
+        passIsValid: async () => ({ data: { valid: true } }),
       }));
 
       jest.resetModules();
       const {
-        signDocument: sd
+        signDocument: sd,
       } = require("../../services/eSignature.service");
 
       const result = await sd("step-1", "u-1", {
         polygon: { x: 10, y: 20 },
         authenticationMethod: "password",
         authPayload: "pw",
-        reason: "Approved"
+        reason: "Approved",
       });
 
       expect(result.signatureId).toBeDefined();
@@ -247,7 +247,7 @@ describe("eSignature.service", () => {
 
       jest.resetModules();
       const {
-        verifySignature: vs
+        verifySignature: vs,
       } = require("../../services/eSignature.service");
 
       const result = await vs("nonexistent");
@@ -271,24 +271,24 @@ describe("eSignature.service", () => {
           userAgent: "test",
           authenticationMethod: "password",
           polygon: null,
-          biometricData: null
-        })
+          biometricData: null,
+        }),
       };
       const mockWorkflow: any = {
         findByPk: jest.fn().mockResolvedValue({
           id: "wf-1",
-          documentId: "doc-1"
-        })
+          documentId: "doc-1",
+        }),
       };
       const mockModels: any = {
         SignatureRecord: mockSigRecord,
-        SignatureWorkflow: mockWorkflow
+        SignatureWorkflow: mockWorkflow,
       };
       jest.doMock("../../models", () => mockModels);
 
       jest.resetModules();
       const {
-        verifySignature: vs2
+        verifySignature: vs2,
       } = require("../../services/eSignature.service");
 
       const result = await vs2("sig-1");
@@ -303,18 +303,18 @@ describe("eSignature.service", () => {
       const mockWorkflow: any = {
         findOne: jest.fn().mockResolvedValue({
           id: "wf-1",
-          steps: [{ id: "step-1", stepNumber: 1 }]
-        })
+          steps: [{ id: "step-1", stepNumber: 1 }],
+        }),
       };
       const mockModels: any = {
         SignatureWorkflow: mockWorkflow,
-        SignatureWorkflowStep: {}
+        SignatureWorkflowStep: {},
       };
       jest.doMock("../../models", () => mockModels);
 
       jest.resetModules();
       const {
-        getWorkflow: gw
+        getWorkflow: gw,
       } = require("../../services/eSignature.service");
 
       const result = await gw("wf-1", "tenant-1");
@@ -325,9 +325,9 @@ describe("eSignature.service", () => {
         expect.objectContaining({
           where: { id: "wf-1", tenantId: "tenant-1" },
           include: [
-          expect.objectContaining({ where: { tenantId: "tenant-1" }, required: false })]
+            expect.objectContaining({ where: { tenantId: "tenant-1" }, required: false })],
 
-        })
+        }),
       );
     });
 
@@ -338,12 +338,12 @@ describe("eSignature.service", () => {
 
       jest.resetModules();
       const {
-        getWorkflow: gw2
+        getWorkflow: gw2,
       } = require("../../services/eSignature.service");
 
       await expect(gw2("not-found", "tenant-1")).rejects.toMatchObject({
         status: 404,
-        message: "Workflow not found"
+        message: "Workflow not found",
       });
     });
   });
@@ -351,18 +351,18 @@ describe("eSignature.service", () => {
   describe("cancelWorkflow", () => {
     it("should throw error when workflow not found", async () => {
       const mockWorkflow: any = {
-        findOne: jest.fn().mockResolvedValue(null)
+        findOne: jest.fn().mockResolvedValue(null),
       };
       const mockModels: any = { SignatureWorkflow: mockWorkflow };
       jest.doMock("../../models", () => mockModels);
 
       jest.resetModules();
       const {
-        cancelWorkflow: cw
+        cancelWorkflow: cw,
       } = require("../../services/eSignature.service");
 
       await expect(cw("wf-1", "u-1", "tenant-1")).rejects.toThrow(
-        "Workflow not found"
+        "Workflow not found",
       );
     });
 
@@ -371,15 +371,15 @@ describe("eSignature.service", () => {
       const mockWorkflow: any = {
         findOne: jest.fn().mockResolvedValue({
           status: "completed",
-          update: mockUpdate
-        })
+          update: mockUpdate,
+        }),
       };
       const mockModels: any = { SignatureWorkflow: mockWorkflow };
       jest.doMock("../../models", () => mockModels);
 
       jest.resetModules();
       const {
-        cancelWorkflow: cw2
+        cancelWorkflow: cw2,
       } = require("../../services/eSignature.service");
 
       // A-92 — a state conflict: 409, explained, and nothing written.
@@ -387,7 +387,7 @@ describe("eSignature.service", () => {
       expect(err.status).toBe(409);
       expect(err.message).toBe(
         'This signature workflow is "completed" and cannot be cancelled: every signer has signed, ' +
-        "and the signatures cover the workflow as it was signed."
+        "and the signatures cover the workflow as it was signed.",
       );
       expect(mockUpdate).not.toHaveBeenCalled();
     });
@@ -397,8 +397,8 @@ describe("eSignature.service", () => {
       const mockWorkflow: any = {
         findOne: jest.fn().mockResolvedValue({
           status: "pending",
-          update: mockUpdate
-        })
+          update: mockUpdate,
+        }),
       };
       // A-104 — the cancellation writes its audit row (audit.service reads
       // AuditLog from the models barrel).
@@ -408,7 +408,7 @@ describe("eSignature.service", () => {
 
       jest.resetModules();
       const {
-        cancelWorkflow: cw3
+        cancelWorkflow: cw3,
       } = require("../../services/eSignature.service");
 
       const result = await cw3("wf-1", "u-1", "tenant-1");
@@ -417,7 +417,7 @@ describe("eSignature.service", () => {
       expect(mockUpdate).toHaveBeenCalledWith({ status: "cancelled" }, { transaction: "TX" });
       expect(mockAuditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({ action: "UPDATE", resourceId: "wf-1", userId: "u-1" }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
   });
@@ -436,7 +436,7 @@ describe("eSignature.service", () => {
       process.env["ESIGN_ENABLED"] = "false";
       jest.resetModules();
       const {
-        getStatus: gs2
+        getStatus: gs2,
       } = require("../../services/eSignature.service");
 
       const result = gs2();

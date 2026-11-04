@@ -27,7 +27,7 @@ const create = () => ({
   }),
   registerJob: jest.fn(),
   markDisabled: jest.fn(),
-  refuseSchedule: jest.fn(() => Promise.resolve())
+  refuseSchedule: jest.fn(() => Promise.resolve()),
 });
 
 module.exports = { create };

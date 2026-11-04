@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-182 / A-183 — a workflow decision on a Certificate is a Part 11 act.
  *
@@ -34,7 +34,7 @@ const mockRef: any = {
   tenantId: null,
   grants: new Map(), // userId -> Set of menus held with write
   gates: [], // every dynamicAccess(...) the router declared
-  lockedReads: []
+  lockedReads: [],
 };
 
 jest.mock("../../middlewares/auth.middleware", () => {
@@ -46,7 +46,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
       req.tenantId = mockRef.tenantId;
       req.impersonatorId = null;
       next();
-    }
+    },
   };
 });
 
@@ -59,15 +59,15 @@ jest.mock("../../middlewares/dynamicAccess.middleware", () => ({
   dynamicAccess: (menus: any, permission: any) => {
     mockRef.gates.push({ menus, permission });
     return (req: any, res: any, next: any) =>
-    mockAllowed(req.user, menus) ?
-    next() :
-    res.status(403).json({ success: false, status: 403, message: "Forbidden: Insufficient permissions" });
+      mockAllowed(req.user, menus) ?
+        next() :
+        res.status(403).json({ success: false, status: 403, message: "Forbidden: Insufficient permissions" });
   },
-  principalHasMenuPermission: async (principal: any, menu: any) => mockAllowed(principal, menu)
+  principalHasMenuPermission: async (principal: any, menu: any) => mockAllowed(principal, menu),
 }));
 
 jest.mock("../../services/auth.service", () => ({
-  passIsValid: jest.fn(async (_userId: any, password: any) => ({ data: { valid: password === "correct-password" } }))
+  passIsValid: jest.fn(async (_userId: any, password: any) => ({ data: { valid: password === "correct-password" } })),
 }));
 jest.mock("../../services/mfa.service", () => ({ verifyLogin: jest.fn(async () => false) }));
 jest.mock("../../services/webhook.service", () => ({ emitAfterCommit: jest.fn() }));
@@ -110,7 +110,7 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(async ({ where, transaction, lock }: any) => {
       if (lock) {mockRef.lockedReads.push({ table: "workflow_instances", transaction, lock });}
       const row = mockRef.store.workflow_instances.find(
-        (r: any) => r.id === where.id && r.tenantId === where.tenantId
+        (r: any) => r.id === where.id && r.tenantId === where.tenantId,
       );
       if (!row) {return null;}
       const inst = mockInstance("workflow_instances", row);
@@ -119,10 +119,10 @@ jest.mock("../../models", () => ({
       return inst;
     }),
     findAll: jest.fn(async () => []),
-    count: jest.fn(async () => 0)
+    count: jest.fn(async () => 0),
   },
   WorkflowAction: {
-    create: jest.fn(async (values: any, options: any) => mockRef.ledger.write("workflow_actions", values, options))
+    create: jest.fn(async (values: any, options: any) => mockRef.ledger.write("workflow_actions", values, options)),
   },
   Workflow: {
     findOne: jest.fn(async ({ where }: any) => {
@@ -131,16 +131,16 @@ jest.mock("../../models", () => ({
       const inst = mockInstance("workflows", row);
       Object.defineProperty(inst, "destroy", {
         enumerable: false,
-        value: async (options: any) => mockRef.ledger.write("workflows", { id: inst.id, deleted: true }, options)
+        value: async (options: any) => mockRef.ledger.write("workflows", { id: inst.id, deleted: true }, options),
       });
       return inst;
     }),
-    update: jest.fn(async () => [0])
+    update: jest.fn(async () => [0]),
   },
   WorkflowStep: {
     findAll: jest.fn(async () => []),
     destroy: jest.fn(async () => 0),
-    bulkCreate: jest.fn(async () => [])
+    bulkCreate: jest.fn(async () => []),
   },
   Role: {},
   StockTransfer: { findOne: jest.fn(async () => null) },
@@ -149,13 +149,13 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(async ({ where, transaction, lock }: any) => {
       if (lock) {mockRef.lockedReads.push({ table: "certificates", transaction, lock });}
       const row = mockRef.store.certificates.find(
-        (r: any) => r.id === where.id && r.tenantId === where.tenantId
+        (r: any) => r.id === where.id && r.tenantId === where.tenantId,
       );
       return row ? mockInstance("certificates", row) : null;
-    })
+    }),
   },
   ESignatureRecord: {
-    create: jest.fn(async (values: any, options: any) => mockRef.ledger.write("esignature_records", values, options))
+    create: jest.fn(async (values: any, options: any) => mockRef.ledger.write("esignature_records", values, options)),
   },
   CalibrationDevice: {},
   CalibrationRecord: {},
@@ -163,10 +163,10 @@ jest.mock("../../models", () => ({
   User: { findByPk: jest.fn(async () => null) },
   Sequelize: {},
   AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
-  sequelize: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  sequelize: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 
 const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
@@ -205,8 +205,8 @@ const certificateWorkflow = (tenantId: any, { requiredApprovals = 1, steps = 1 }
     id: `${tenantId}-s${i + 1}`,
     stepOrder: i + 1,
     roleId: tenantId === TENANT_A ? APPROVER_A.roleId : APPROVER_B.roleId,
-    requiredApprovals
-  }))
+    requiredApprovals,
+  })),
 });
 
 const as = (user: any) => {
@@ -216,57 +216,57 @@ const as = (user: any) => {
 
 /** Drive the real router inside the tenant context auth would open. */
 const http = (method: any, url: any, body: any = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    }
-  };
-  const req: any = {
-    method,
-    url,
-    originalUrl: `/api/v1/workflows${url}`,
-    body,
-    query: {},
-    params: {},
-    headers: { "user-agent": "jest-a182" },
-    ip: "10.1.2.3",
-    get: () => undefined
-  };
-  tenantStorage.run(
-    { tenantId: mockRef.tenantId, isSuperAdmin: false, isSystemTask: false },
-    () =>
-    router.handle(req, res, (err: any) =>
-    resolve({
-      status: err ? err.status || err.statusCode || 500 : 404,
-      body: { message: err ? err.message : "no route" }
-    })
-    )
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+    };
+    const req: any = {
+      method,
+      url,
+      originalUrl: `/api/v1/workflows${url}`,
+      body,
+      query: {},
+      params: {},
+      headers: { "user-agent": "jest-a182" },
+      ip: "10.1.2.3",
+      get: () => undefined,
+    };
+    tenantStorage.run(
+      { tenantId: mockRef.tenantId, isSuperAdmin: false, isSystemTask: false },
+      () =>
+        router.handle(req, res, (err: any) =>
+          resolve({
+            status: err ? err.status || err.statusCode || 500 : 404,
+            body: { message: err ? err.message : "no route" },
+          }),
+        ),
+    );
+  });
 
 const approve = (instanceId: any, extra: any = REAUTH) =>
-http("POST", `/instances/${instanceId}/action`, { action: "APPROVED", ...extra });
+  http("POST", `/instances/${instanceId}/action`, { action: "APPROVED", ...extra });
 const reject = (instanceId: any) =>
-http("POST", `/instances/${instanceId}/action`, { action: "REJECTED", comments: "rework" });
+  http("POST", `/instances/${instanceId}/action`, { action: "REJECTED", comments: "rework" });
 
 const certA = () => mockRef.store.certificates.find((c: any) => c.id === CERT_A);
 const committedCertificateA = () =>
-mockRef.ledger.committed("certificates").filter((r: any) => r.id === CERT_A);
+  mockRef.ledger.committed("certificates").filter((r: any) => r.id === CERT_A);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -276,20 +276,20 @@ beforeEach(() => {
   mockRef.ledger = createLedger({ cls: false });
   mockRef.lockedReads = [];
   mockRef.grants = new Map([
-  [APPROVER_A.id, new Set(["certificate", "workflows"])],
-  [APPROVER_A2.id, new Set(["certificate", "workflows"])],
-  [APPROVER_B.id, new Set(["certificate", "workflows"])],
-  [ADMIN_B.id, new Set(["workflows"])]]
+    [APPROVER_A.id, new Set(["certificate", "workflows"])],
+    [APPROVER_A2.id, new Set(["certificate", "workflows"])],
+    [APPROVER_B.id, new Set(["certificate", "workflows"])],
+    [ADMIN_B.id, new Set(["workflows"])]],
   );
   mockRef.store = {
     workflows: [{ id: WORKFLOW_A, tenantId: TENANT_A, name: "Cert approval", resourceType: "Certificate", isActive: true }],
     workflow_instances: [
-    { id: INSTANCE_A, tenantId: TENANT_A, status: "PENDING", currentStepOrder: 1, resourceId: CERT_A, workflow: certificateWorkflow(TENANT_A), actions: [] },
-    { id: INSTANCE_B, tenantId: TENANT_B, status: "PENDING", currentStepOrder: 1, resourceId: CERT_B, workflow: certificateWorkflow(TENANT_B), actions: [] }],
+      { id: INSTANCE_A, tenantId: TENANT_A, status: "PENDING", currentStepOrder: 1, resourceId: CERT_A, workflow: certificateWorkflow(TENANT_A), actions: [] },
+      { id: INSTANCE_B, tenantId: TENANT_B, status: "PENDING", currentStepOrder: 1, resourceId: CERT_B, workflow: certificateWorkflow(TENANT_B), actions: [] }],
 
     certificates: [
-    { id: CERT_A, tenantId: TENANT_A, certificateNumber: "CERT-A-1", status: "pending_approval", approvedBy: null, deviceId: "dev-a" },
-    { id: CERT_B, tenantId: TENANT_B, certificateNumber: "CERT-B-1", status: "pending_approval", approvedBy: null, deviceId: "dev-b" }]
+      { id: CERT_A, tenantId: TENANT_A, certificateNumber: "CERT-A-1", status: "pending_approval", approvedBy: null, deviceId: "dev-a" },
+      { id: CERT_B, tenantId: TENANT_B, certificateNumber: "CERT-B-1", status: "pending_approval", approvedBy: null, deviceId: "dev-b" }],
 
   };
 });
@@ -298,9 +298,9 @@ describe("A-183 — the routes are gated", () => {
   it("POST /instances/:instanceId/action declares a write gate on the record types a workflow decides on", () => {
     expect(mockRef.gates).toEqual(
       expect.arrayContaining([
-      { menus: ["certificate", "warehouse", "maintenance"], permission: "write" },
-      { menus: "workflows", permission: "read" }]
-      )
+        { menus: ["certificate", "warehouse", "maintenance"], permission: "write" },
+        { menus: "workflows", permission: "read" }],
+      ),
     );
   });
 
@@ -386,14 +386,14 @@ describe("A-182 — approving a certificate re-authenticates", () => {
     expect(committedCertificateA()).toEqual([]);
     expect(mockRef.ledger.committed("esignature_records")).toEqual([]);
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({
-      action: "SIGNATURE_AUTH_FAILED",
-      userId: APPROVER_A.id,
-      tenantId: TENANT_A,
-      resourceType: "Certificate",
-      resourceId: CERT_A,
-      changes: { method: "password", operation: "workflow-approve" }
-    })]
+      expect.objectContaining({
+        action: "SIGNATURE_AUTH_FAILED",
+        userId: APPROVER_A.id,
+        tenantId: TENANT_A,
+        resourceType: "Certificate",
+        resourceId: CERT_A,
+        changes: { method: "password", operation: "workflow-approve" },
+      })],
     );
   });
 
@@ -406,42 +406,42 @@ describe("A-182 — approving a certificate re-authenticates", () => {
 
     // A-200 — the approver is recorded, in the real column.
     expect(committedCertificateA().pop()).toEqual(
-      expect.objectContaining({ status: "approved", approvedBy: APPROVER_A.id })
+      expect.objectContaining({ status: "approved", approvedBy: APPROVER_A.id }),
     );
     expect(mockRef.ledger.committed("esignature_records")).toEqual([
-    expect.objectContaining({
-      tenantId: TENANT_A,
-      entityType: "Certificate",
-      entityId: CERT_A,
-      userId: APPROVER_A.id,
-      action: "approve",
-      meaning: REAUTH.meaning,
-      authMethod: "password",
-      ipAddress: "10.1.2.3",
-      userAgent: "jest-a182"
-    })]
+      expect.objectContaining({
+        tenantId: TENANT_A,
+        entityType: "Certificate",
+        entityId: CERT_A,
+        userId: APPROVER_A.id,
+        action: "approve",
+        meaning: REAUTH.meaning,
+        authMethod: "password",
+        ipAddress: "10.1.2.3",
+        userAgent: "jest-a182",
+      })],
     );
     const audit = mockRef.ledger.auditRows();
     expect(audit).toEqual(
       expect.arrayContaining([
-      expect.objectContaining({
-        action: "APPROVE",
-        resourceType: "Certificate",
-        resourceId: CERT_A,
-        userId: APPROVER_A.id,
-        changes: expect.objectContaining({
-          operation: "APPROVE",
-          before: { status: "pending_approval" },
-          after: expect.objectContaining({ status: "approved", approvedBy: APPROVER_A.id, workflowInstanceId: INSTANCE_A })
-        })
-      }),
-      expect.objectContaining({
-        action: "APPROVE",
-        resourceType: "WorkflowInstance",
-        resourceId: INSTANCE_A,
-        changes: expect.objectContaining({ meaning: REAUTH.meaning, reauthenticated: "password" })
-      })]
-      )
+        expect.objectContaining({
+          action: "APPROVE",
+          resourceType: "Certificate",
+          resourceId: CERT_A,
+          userId: APPROVER_A.id,
+          changes: expect.objectContaining({
+            operation: "APPROVE",
+            before: { status: "pending_approval" },
+            after: expect.objectContaining({ status: "approved", approvedBy: APPROVER_A.id, workflowInstanceId: INSTANCE_A }),
+          }),
+        }),
+        expect.objectContaining({
+          action: "APPROVE",
+          resourceType: "WorkflowInstance",
+          resourceId: INSTANCE_A,
+          changes: expect.objectContaining({ meaning: REAUTH.meaning, reauthenticated: "password" }),
+        })],
+      ),
     );
     expect(audit).toHaveLength(2);
     // Never the credential.
@@ -461,10 +461,10 @@ describe("A-182 — approving a certificate re-authenticates", () => {
   });
 
   it.each([
-  ["draft", "has not been submitted yet"],
-  ["approved", "has already been approved"],
-  ["signed", "already been approved and signed"],
-  ["revoked", "revocation is final"]]
+    ["draft", "has not been submitted yet"],
+    ["approved", "has already been approved"],
+    ["signed", "already been approved and signed"],
+    ["revoked", "revocation is final"]],
   )("a final approval of a %s certificate is 409 with the state explanation, and nothing is written", async (status: any, why: any) => {
     certA().status = status;
     as(APPROVER_A);
@@ -499,7 +499,7 @@ describe("A-182 — a rejection only from a state it can undo", () => {
       expect(res.body.message).toContain(`This certificate is "${status}" and cannot be rejected`);
       expect(mockRef.ledger.rows).toEqual([]);
       expect(certA().status).toBe(status);
-    }
+    },
   );
 
   it("rejecting a pending_approval certificate returns it to draft, audited in the same transaction", async () => {
@@ -510,19 +510,19 @@ describe("A-182 — a rejection only from a state it can undo", () => {
     expect(committedCertificateA().pop()).toEqual(expect.objectContaining({ status: "draft" }));
     expect(mockRef.ledger.auditRows()).toEqual(
       expect.arrayContaining([
-      expect.objectContaining({
-        action: "UPDATE",
-        resourceType: "Certificate",
-        resourceId: CERT_A,
-        userId: APPROVER_A.id,
-        changes: expect.objectContaining({
-          operation: "WORKFLOW_REJECT",
-          before: { status: "pending_approval" },
-          after: { status: "draft", workflowInstanceId: INSTANCE_A, comments: "rework" }
-        })
-      }),
-      expect.objectContaining({ resourceType: "WorkflowInstance", changes: expect.objectContaining({ operation: "WORKFLOW_REJECT" }) })]
-      )
+        expect.objectContaining({
+          action: "UPDATE",
+          resourceType: "Certificate",
+          resourceId: CERT_A,
+          userId: APPROVER_A.id,
+          changes: expect.objectContaining({
+            operation: "WORKFLOW_REJECT",
+            before: { status: "pending_approval" },
+            after: { status: "draft", workflowInstanceId: INSTANCE_A, comments: "rework" },
+          }),
+        }),
+        expect.objectContaining({ resourceType: "WorkflowInstance", changes: expect.objectContaining({ operation: "WORKFLOW_REJECT" }) })],
+      ),
     );
   });
 
@@ -543,7 +543,7 @@ describe("A-182 — a rejection only from a state it can undo", () => {
     expect(res.status).toBe(200);
     expect(committedCertificateA()).toEqual([]);
     expect(mockRef.ledger.committed("workflow_instances")).toEqual([
-    expect.objectContaining({ id: INSTANCE_A, status: "REJECTED" })]
+      expect.objectContaining({ id: INSTANCE_A, status: "REJECTED" })],
     );
   });
 });
@@ -578,7 +578,7 @@ describe("A-183 — the decision reads under the instance lock", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({ status: "APPROVED" });
     expect(committedCertificateA().pop()).toEqual(
-      expect.objectContaining({ status: "approved", approvedBy: APPROVER_A.id })
+      expect.objectContaining({ status: "approved", approvedBy: APPROVER_A.id }),
     );
   });
 });
@@ -614,7 +614,7 @@ describe("A-204 — PUT and DELETE /workflows/:id, two tenants", () => {
     expect(res.status).toBe(200);
     expect(mockRef.ledger.committed("workflows")).toEqual([{ id: WORKFLOW_A, deleted: true }]);
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({ action: "DELETE", resourceType: "Workflow", resourceId: WORKFLOW_A, userId: ADMIN_A.id, tenantId: TENANT_A })]
+      expect.objectContaining({ action: "DELETE", resourceType: "Workflow", resourceId: WORKFLOW_A, userId: ADMIN_A.id, tenantId: TENANT_A })],
     );
   });
 });

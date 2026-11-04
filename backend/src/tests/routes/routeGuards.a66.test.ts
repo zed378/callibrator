@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-66 — QMS had no permission gate.
  *
@@ -30,7 +30,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
     auth: (req: any, _res: any, next: any) => {
       req.user = currentUser;
       next();
-    }
+    },
   };
 });
 
@@ -43,19 +43,19 @@ jest.mock("../../middlewares/dynamicAccess.middleware", () => {
       const middleware = actual.dynamicAccess(menuGroup, permissionType, options);
       middleware.gate = { menuGroup, permissionType };
       return middleware;
-    }
+    },
   };
 });
 
 jest.mock("../../services/roles.service", () => ({
-  getRolePermissionsMatrix: jest.fn()
+  getRolePermissionsMatrix: jest.fn(),
 }));
 jest.mock("../../services/userPermission.service", () => ({
-  getUserOverrideMatrix: jest.fn().mockResolvedValue({})
+  getUserOverrideMatrix: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../models", () => ({
   User: { findByPk: jest.fn() },
-  Tenants: { findByPk: jest.fn() }
+  Tenants: { findByPk: jest.fn() },
 }));
 jest.mock("../../services/qms.service", () => ({
   createNC: jest.fn(),
@@ -63,7 +63,7 @@ jest.mock("../../services/qms.service", () => ({
   updateNC: jest.fn(),
   createCapa: jest.fn(),
   getCapas: jest.fn(),
-  updateCapa: jest.fn()
+  updateCapa: jest.fn(),
 }));
 
 const fs = require("fs");
@@ -75,53 +75,53 @@ const { ROLE_NAMES, ROLE_MENU_ASSIGNMENTS, MENU_SLUGS } = require("../../constan
 const {
   seededMenuVocabulary,
   parseGates,
-  checkRouteGates
+  checkRouteGates,
 } = require("../../utils/authorizationWiring.util");
 
 const http = (method: any, url: any, body: any = {}): Promise<any> =>
-new Promise((resolve: any) => {
-  const res: any = {
-    statusCode: 200,
-    headersSent: false,
-    status(code: any) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: any) {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: payload });
-      return this;
-    },
-    send(payload: any) {
-      return this.json(payload);
-    },
-    setHeader() {
-      return this;
-    },
-    end() {
-      this.headersSent = true;
-      resolve({ status: this.statusCode, body: null });
-      return this;
-    }
-  };
-  const req: any = {
-    method: method.toUpperCase(),
-    url,
-    originalUrl: "/api/v1/qms" + url,
-    body,
-    query: {},
-    params: {},
-    headers: { "user-agent": "jest-UA" },
-    ip: "10.0.0.7",
-    get: () => undefined
-  };
-  router.handle(req, res, (err: any) =>
-  resolve({
-    status: err ? err.status || 500 : 404,
-    body: { message: err ? err.message : "no route" }
-  })
-  );
-});
+  new Promise((resolve: any) => {
+    const res: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(code: any) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: any) {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: payload });
+        return this;
+      },
+      send(payload: any) {
+        return this.json(payload);
+      },
+      setHeader() {
+        return this;
+      },
+      end() {
+        this.headersSent = true;
+        resolve({ status: this.statusCode, body: null });
+        return this;
+      },
+    };
+    const req: any = {
+      method: method.toUpperCase(),
+      url,
+      originalUrl: "/api/v1/qms" + url,
+      body,
+      query: {},
+      params: {},
+      headers: { "user-agent": "jest-UA" },
+      ip: "10.0.0.7",
+      get: () => undefined,
+    };
+    router.handle(req, res, (err: any) =>
+      resolve({
+        status: err ? err.status || 500 : 404,
+        body: { message: err ? err.message : "no route" },
+      }),
+    );
+  });
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const TENANT = "33333333-3333-4333-8333-333333333333";
@@ -145,7 +145,7 @@ const asApiKey = (scopes: any) => {
     tenantId: TENANT,
     isApiKey: true,
     apiKeyScopes: scopes,
-    role: { id: "API_KEY", name: "API_KEY" }
+    role: { id: "API_KEY", name: "API_KEY" },
   };
 };
 
@@ -160,7 +160,6 @@ const READS: [string, string, any, string][] = [
   ["get", "/nc", {}, "getNCs"],
   ["get", "/capa", {}, "getCapas"],
 ];
-
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -195,7 +194,7 @@ describe("A-66 — QMS route wiring", () => {
       // dynamicAccess normalizes to write.
       expect({ where, reads: permissionType === "read" }).toEqual({
         where,
-        reads: method === "get"
+        reads: method === "get",
       });
     }
   });
@@ -210,8 +209,8 @@ describe("A-66 — QMS route wiring", () => {
   it("the A-58 boot assertion's source scan finds a resolvable gate on every QMS route", () => {
     // P9-21: the route module is .js until it converts and .ts after; read the one that exists.
     const [file] = [".ts", ".js"].
-    map((ext: any) => path.join(__dirname, "..", "..", "routes", "api", `qms.route${ext}`)).
-    filter((candidate: any) => fs.existsSync(candidate));
+      map((ext: any) => path.join(__dirname, "..", "..", "routes", "api", `qms.route${ext}`)).
+      filter((candidate: any) => fs.existsSync(candidate));
     const gates = parseGates(fs.readFileSync(file, "utf8"), path.relative(path.join(__dirname, "..", "..", ".."), file));
 
     expect(gates).toHaveLength(MUTATIONS.length + READS.length);
@@ -235,9 +234,9 @@ describe("A-66 — QMS permission behaviour", () => {
           expect(res.status).toBe(403);
           expect(res.body.message).toMatch(/Forbidden: Insufficient permissions/);
           expect(qmsService[fn]).not.toHaveBeenCalled();
-        }
+        },
       );
-    }
+    },
   );
 
   (it.each(MUTATIONS) as any)(
@@ -249,7 +248,7 @@ describe("A-66 — QMS permission behaviour", () => {
 
       expect(res.status).toBe(403);
       expect(qmsService[fn]).not.toHaveBeenCalled();
-    }
+    },
   );
 
   (it.each(READS) as any)("ENGINEERING MANAGER can still %s %s", async (method: any, url: any, body: any, fn: any) => {
@@ -281,7 +280,7 @@ describe("A-66 — QMS permission behaviour", () => {
       TENANT,
       ID,
       { approvedBy: TENANT },
-      { userId: ID, tenantId: TENANT, ipAddress: "10.0.0.7", userAgent: "jest-UA" }
+      { userId: ID, tenantId: TENANT, ipAddress: "10.0.0.7", userAgent: "jest-UA" },
     );
   });
 
@@ -294,6 +293,6 @@ describe("A-66 — QMS permission behaviour", () => {
 
       expect(res.status).toBe(403);
       expect(qmsService[fn]).not.toHaveBeenCalled();
-    }
+    },
   );
 });

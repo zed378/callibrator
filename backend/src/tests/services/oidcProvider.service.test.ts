@@ -4,30 +4,30 @@ jest.mock("../../models", () => ({
     findAll: jest.fn(),
     upsert: jest.fn(),
     update: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
   },
   Users: {
-    findByPk: jest.fn()
+    findByPk: jest.fn(),
   },
   Tenant: {
-    findByPk: jest.fn()
-  }
+    findByPk: jest.fn(),
+  },
 }));
 
 // A-275 / A-280 (ADR-094): client changes and consent decisions are audited
 // inside a transaction. The transaction double passes a marker through, so a
 // test can see that the write and the audit row share it.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("tx")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("tx")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
   set: jest.fn().mockResolvedValue(true),
-  del: jest.fn().mockResolvedValue(true)
+  del: jest.fn().mockResolvedValue(true),
 }));
 
 const crypto = require("crypto");
@@ -73,13 +73,13 @@ describe("oidcProvider.service", () => {
       const keys = crypto.generateKeyPairSync("rsa", {
         modulusLength,
         publicKeyEncoding: { type: "spki", format: "pem" },
-        privateKeyEncoding: { type: "pkcs8", format: "pem" }
+        privateKeyEncoding: { type: "pkcs8", format: "pem" },
       });
       let mod: any = undefined;
       jest.isolateModules(() => {
         const spy = jest.
-        spyOn(crypto, "generateKeyPairSync").
-        mockReturnValue(keys);
+          spyOn(crypto, "generateKeyPairSync").
+          mockReturnValue(keys);
         mod = require("../../services/oidcProvider.service");
         spy.mockRestore();
       });
@@ -94,8 +94,8 @@ describe("oidcProvider.service", () => {
     it("publishes the real modulus and exponent, base64url-encoded", () => {
       const { mod, keys } = loadWithKey(2048);
       const expected = crypto.
-      createPublicKey(keys.publicKey).
-      export({ format: "jwk" });
+        createPublicKey(keys.publicKey).
+        export({ format: "jwk" });
 
       const [key] = mod.jwks().keys;
 
@@ -110,8 +110,8 @@ describe("oidcProvider.service", () => {
       // mishandled.
       const { mod, keys } = loadWithKey(512);
       const expected = crypto.
-      createPublicKey(keys.publicKey).
-      export({ format: "jwk" });
+        createPublicKey(keys.publicKey).
+        export({ format: "jwk" });
 
       const [key] = mod.jwks().keys;
 
@@ -141,7 +141,7 @@ describe("oidcProvider.service", () => {
 
       const stored = JSON.parse(row.value);
       expect(stored.clientSecretHash).toBe(
-        crypto.createHash("sha256").update(result.clientSecret).digest("hex")
+        crypto.createHash("sha256").update(result.clientSecret).digest("hex"),
       );
       expect(row.value).not.toContain(result.clientSecret);
     });
@@ -165,7 +165,7 @@ describe("oidcProvider.service", () => {
         name: "App",
         scopes: ["openid"],
         grantTypes: ["refresh_token"],
-        redirectUris: ["http://cb"]
+        redirectUris: ["http://cb"],
       });
 
       expect(result.scopes).toEqual(["openid"]);
@@ -177,7 +177,7 @@ describe("oidcProvider.service", () => {
   describe("getClients", () => {
     it("lists registered clients", async () => {
       TenantSettings.findAll.mockResolvedValue([
-      { value: JSON.stringify({ clientId: "c1", name: "App", redirectUris: [], scopes: [], grantTypes: [] }) }]
+        { value: JSON.stringify({ clientId: "c1", name: "App", redirectUris: [], scopes: [], grantTypes: [] }) }],
       );
       const result = await oidc.getClients("t1");
       expect(result).toHaveLength(1);
@@ -190,37 +190,37 @@ describe("oidcProvider.service", () => {
       await oidc.getClients("t1");
 
       expect(TenantSettings.findAll).toHaveBeenCalledWith({
-        where: { tenantId: "t1", key: { [Op.like]: "oidc_rp_%" } }
+        where: { tenantId: "t1", key: { [Op.like]: "oidc_rp_%" } },
       });
     });
 
     it("skips corrupt, foreign and empty rows instead of throwing", async () => {
       TenantSettings.findAll.mockResolvedValue([
-      { value: "this-is-not-json" }, // e.g. an encrypted SSO secret
-      { value: "null" }, // parses, but is not an object
-      { value: "\"a string\"" }, // parses to a non-object
-      {}, // no value at all -> treated as {}
-      { value: JSON.stringify({ name: "no client id" }) },
-      { value: JSON.stringify({ clientId: "c1", name: "Real", redirectUris: ["u"], scopes: ["openid"], grantTypes: ["authorization_code"], createdAt: "2025-01-01" }) }]
+        { value: "this-is-not-json" }, // e.g. an encrypted SSO secret
+        { value: "null" }, // parses, but is not an object
+        { value: "\"a string\"" }, // parses to a non-object
+        {}, // no value at all -> treated as {}
+        { value: JSON.stringify({ name: "no client id" }) },
+        { value: JSON.stringify({ clientId: "c1", name: "Real", redirectUris: ["u"], scopes: ["openid"], grantTypes: ["authorization_code"], createdAt: "2025-01-01" }) }],
       );
 
       const result = await oidc.getClients("t1");
 
       expect(result).toEqual([
-      {
-        clientId: "c1",
-        name: "Real",
-        redirectUris: ["u"],
-        scopes: ["openid"],
-        grantTypes: ["authorization_code"],
-        createdAt: "2025-01-01"
-      }]
+        {
+          clientId: "c1",
+          name: "Real",
+          redirectUris: ["u"],
+          scopes: ["openid"],
+          grantTypes: ["authorization_code"],
+          createdAt: "2025-01-01",
+        }],
       );
     });
 
     it("never exposes the stored secret hash", async () => {
       TenantSettings.findAll.mockResolvedValue([
-      { value: JSON.stringify({ clientId: "c1", name: "App", clientSecretHash: "deadbeef" }) }]
+        { value: JSON.stringify({ clientId: "c1", name: "App", clientSecretHash: "deadbeef" }) }],
       );
 
       const result = await oidc.getClients("t1");
@@ -240,7 +240,7 @@ describe("oidcProvider.service", () => {
 
     it("persists the new hash and a rotatedAt stamp, preserving other fields", async () => {
       TenantSettings.findOne.mockResolvedValue({
-        value: JSON.stringify({ clientId: "c1", name: "App", clientSecretHash: "old" })
+        value: JSON.stringify({ clientId: "c1", name: "App", clientSecretHash: "old" }),
       });
       TenantSettings.update.mockResolvedValue([1]);
 
@@ -249,7 +249,7 @@ describe("oidcProvider.service", () => {
       const [values, options] = TenantSettings.update.mock.calls[0];
       const stored = JSON.parse(values.value);
       expect(stored.clientSecretHash).toBe(
-        crypto.createHash("sha256").update(result.clientSecret).digest("hex")
+        crypto.createHash("sha256").update(result.clientSecret).digest("hex"),
       );
       expect(stored.clientSecretHash).not.toBe("old");
       expect(stored.name).toBe("App");
@@ -272,7 +272,7 @@ describe("oidcProvider.service", () => {
 
       await expect(oidc.rotateSecret("t1", "nope")).rejects.toMatchObject({
         status: 404,
-        message: "OIDC client not found"
+        message: "OIDC client not found",
       });
     });
   });
@@ -284,7 +284,7 @@ describe("oidcProvider.service", () => {
       expect(result.deleted).toBe(true);
       expect(TenantSettings.destroy).toHaveBeenCalledWith({
         where: { tenantId: "t1", key: "oidc_rp_c1" },
-        transaction: "tx"
+        transaction: "tx",
       });
     });
 
@@ -316,7 +316,7 @@ describe("oidcProvider.service", () => {
           resourceType: "OidcClient",
           resourceId: result.clientId,
           ipAddress: "10.0.0.1",
-          userAgent: "UA"
+          userAgent: "UA",
         });
         expect(JSON.stringify(entry)).not.toContain(result.clientSecret);
       }
@@ -329,8 +329,8 @@ describe("oidcProvider.service", () => {
 
       const rows = rowsFor();
       expect(rows.map((r: any) => [r.entry.tenantId, r.entry.action])).toEqual([
-      [PLATFORM_TENANT_ID, "UPDATE"],
-      ["t1", "UPDATE"]]
+        [PLATFORM_TENANT_ID, "UPDATE"],
+        ["t1", "UPDATE"]],
       );
       expect(JSON.stringify(rows)).not.toContain(result.clientSecret);
     });
@@ -339,8 +339,8 @@ describe("oidcProvider.service", () => {
       TenantSettings.destroy.mockResolvedValue(1);
       await oidc.deleteClient("t1", "c1", ACTOR);
       expect(rowsFor().map((r: any) => [r.entry.tenantId, r.entry.action])).toEqual([
-      [PLATFORM_TENANT_ID, "DELETE"],
-      ["t1", "DELETE"]]
+        [PLATFORM_TENANT_ID, "DELETE"],
+        ["t1", "DELETE"]],
       );
     });
 
@@ -377,7 +377,7 @@ describe("oidcProvider.service", () => {
       testKeys = crypto.generateKeyPairSync("rsa", {
         modulusLength: 2048,
         publicKeyEncoding: { type: "spki", format: "pem" },
-        privateKeyEncoding: { type: "pkcs8", format: "pem" }
+        privateKeyEncoding: { type: "pkcs8", format: "pem" },
       });
       jest.isolateModules(() => {
         const spy = jest.spyOn(crypto, "generateKeyPairSync").mockReturnValue(testKeys);
@@ -407,7 +407,7 @@ describe("oidcProvider.service", () => {
         email: "a@b.com",
         tenant_id: "t1",
         scope: "openid profile",
-        typ: "access"
+        typ: "access",
       });
 
       const id = jwt.verify(result.id_token, pub, { algorithms: ["RS256"] });
@@ -415,12 +415,12 @@ describe("oidcProvider.service", () => {
         sub: "u1",
         given_name: "A",
         family_name: "B",
-        aud: "a@b.com"
+        aud: "a@b.com",
       });
 
       expect(jwt.decode(result.access_token, { complete: true }).header).toMatchObject({
         alg: "RS256",
-        kid: process.env["OIDC_JWKS_KID"] || "callibrator-oidc-key-1"
+        kid: process.env["OIDC_JWKS_KID"] || "callibrator-oidc-key-1",
       });
     });
 
@@ -460,7 +460,7 @@ describe("oidcProvider.service", () => {
     it("returns false rather than throwing when the stored hash length differs", async () => {
       // timingSafeEqual throws on a length mismatch — the guard must catch this first.
       TenantSettings.findOne.mockResolvedValue({
-        value: JSON.stringify({ clientSecretHash: "abcd" })
+        value: JSON.stringify({ clientSecretHash: "abcd" }),
       });
       expect(await oidc.verifySecret("t1", "c1", "s")).toBe(false);
     });
@@ -475,29 +475,29 @@ describe("oidcProvider.service", () => {
       tenantId: "t1",
       email: "a@b.c",
       firstName: "Ada",
-      lastName: "Lovelace"
+      lastName: "Lovelace",
     };
     const CLIENT: any = {
       clientId: "c1",
       name: "Acme RP",
       redirectUris: ["https://rp.example/cb"],
-      scopes: ["openid", "email"]
+      scopes: ["openid", "email"],
     };
     const b64url = (buf: any) =>
-    buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     const s256 = (v: any) => b64url(crypto.createHash("sha256").update(v).digest());
 
     /** Make TenantSettings.findOne resolve a valid client row (optionally with a secret). */
     const mockClientRow = (secret: any = null) =>
-    TenantSettings.findOne.mockResolvedValue({
-      tenantId: "t1",
-      value: JSON.stringify({
-        ...CLIENT,
-        ...(secret ?
-        { clientSecretHash: crypto.createHash("sha256").update(secret).digest("hex") } :
-        {})
-      })
-    });
+      TenantSettings.findOne.mockResolvedValue({
+        tenantId: "t1",
+        value: JSON.stringify({
+          ...CLIENT,
+          ...(secret ?
+            { clientSecretHash: crypto.createHash("sha256").update(secret).digest("hex") } :
+            {}),
+        }),
+      });
 
     describe("findClientByClientId", () => {
       it("returns null without a clientId", async () => {
@@ -531,7 +531,7 @@ describe("oidcProvider.service", () => {
       const base: any = {
         client_id: "c1",
         redirect_uri: "https://rp.example/cb",
-        response_type: "code"
+        response_type: "code",
       };
 
       it("rejects an unknown client", async () => {
@@ -542,21 +542,21 @@ describe("oidcProvider.service", () => {
       it("rejects a redirect_uri that is not registered", async () => {
         mockClientRow();
         await expect(
-          oidc.beginAuthorization({ ...base, redirect_uri: "https://evil/cb" })
+          oidc.beginAuthorization({ ...base, redirect_uri: "https://evil/cb" }),
         ).rejects.toThrow("redirect_uri is not registered");
       });
 
       it("rejects a missing redirect_uri", async () => {
         mockClientRow();
         await expect(
-          oidc.beginAuthorization({ ...base, redirect_uri: undefined })
+          oidc.beginAuthorization({ ...base, redirect_uri: undefined }),
         ).rejects.toThrow("redirect_uri is not registered");
       });
 
       it("rejects a response_type other than code", async () => {
         mockClientRow();
         await expect(
-          oidc.beginAuthorization({ ...base, response_type: "token" })
+          oidc.beginAuthorization({ ...base, response_type: "token" }),
         ).rejects.toThrow("response_type=code");
       });
 
@@ -566,8 +566,8 @@ describe("oidcProvider.service", () => {
           oidc.beginAuthorization({
             ...base,
             code_challenge: "abc",
-            code_challenge_method: "S1"
-          })
+            code_challenge_method: "S1",
+          }),
         ).rejects.toThrow("Unsupported code_challenge_method");
       });
 
@@ -578,7 +578,7 @@ describe("oidcProvider.service", () => {
           scope: "openid email",
           state: "st8",
           nonce: "n1",
-          code_challenge: "chal"
+          code_challenge: "chal",
         });
 
         expect(result.requestId).toEqual(expect.any(String));
@@ -593,7 +593,7 @@ describe("oidcProvider.service", () => {
           state: "st8",
           nonce: "n1",
           codeChallenge: "chal",
-          codeChallengeMethod: "S256" // defaulted
+          codeChallengeMethod: "S256", // defaulted
         });
       });
 
@@ -624,12 +624,12 @@ describe("oidcProvider.service", () => {
           tenantId: "t1",
           clientName: "Acme RP",
           scope: ["openid"],
-          redirectUri: "https://rp.example/cb"
+          redirectUri: "https://rp.example/cb",
         });
         expect(await oidc.getAuthRequest("r1", USER)).toEqual({
           clientName: "Acme RP",
           scope: ["openid"],
-          redirectUri: "https://rp.example/cb"
+          redirectUri: "https://rp.example/cb",
         });
       });
       // A-275 (ADR-094)
@@ -646,7 +646,7 @@ describe("oidcProvider.service", () => {
         redis.get.mockResolvedValue(null);
         await expect(oidc.decideAuthorization("r1", USER, true)).rejects.toMatchObject({
           status: 404,
-          message: "Authorization request not found"
+          message: "Authorization request not found",
         });
       });
 
@@ -655,7 +655,7 @@ describe("oidcProvider.service", () => {
         redis.get.mockResolvedValue({ tenantId: "t2", clientId: "c9", redirectUri: "https://rp.example/cb" });
         await expect(oidc.decideAuthorization("r1", USER, true)).rejects.toMatchObject({
           status: 404,
-          message: "Authorization request not found"
+          message: "Authorization request not found",
         });
         expect(redis.del).not.toHaveBeenCalled();
         expect(redis.set).not.toHaveBeenCalled();
@@ -675,9 +675,9 @@ describe("oidcProvider.service", () => {
             resourceId: "c1",
             ipAddress: "10.0.0.2",
             userAgent: "UA",
-            changes: expect.objectContaining({ outcome: "approved", clientName: "Acme" })
+            changes: expect.objectContaining({ outcome: "approved", clientName: "Acme" }),
           }),
-          { transaction: "tx" }
+          { transaction: "tx" },
         );
       });
 
@@ -691,7 +691,7 @@ describe("oidcProvider.service", () => {
         redis.get.mockResolvedValue({
           tenantId: "t1",
           redirectUri: "https://rp.example/cb",
-          state: "st8"
+          state: "st8",
         });
         const { redirectTo } = await oidc.decideAuthorization("r1", USER, false);
         expect(redirectTo).toBe("https://rp.example/cb?state=st8&error=access_denied");
@@ -700,9 +700,9 @@ describe("oidcProvider.service", () => {
           expect.objectContaining({
             action: "UPDATE",
             userAgent: null,
-            changes: expect.objectContaining({ outcome: "denied", clientName: null })
+            changes: expect.objectContaining({ outcome: "denied", clientName: null }),
           }),
-          { transaction: "tx" }
+          { transaction: "tx" },
         );
       });
 
@@ -715,7 +715,7 @@ describe("oidcProvider.service", () => {
           state: null,
           nonce: "n1",
           codeChallenge: "chal",
-          codeChallengeMethod: "S256"
+          codeChallengeMethod: "S256",
         });
         const { redirectTo } = await oidc.decideAuthorization("r1", USER, true);
         expect(redirectTo).toMatch(/^https:\/\/rp\.example\/cb\?code=/);
@@ -731,13 +731,13 @@ describe("oidcProvider.service", () => {
         userId: "user-1",
         redirectUri: "https://rp.example/cb",
         scope: ["openid", "email"],
-        nonce: "n1"
+        nonce: "n1",
       };
 
       it("rejects a missing/expired code", async () => {
         redis.get.mockResolvedValue(null);
         await expect(
-          oidc.exchangeAuthorizationCode({ code: "x", clientId: "c1" })
+          oidc.exchangeAuthorizationCode({ code: "x", clientId: "c1" }),
         ).rejects.toThrow("invalid_grant");
       });
 
@@ -747,8 +747,8 @@ describe("oidcProvider.service", () => {
           oidc.exchangeAuthorizationCode({
             code: "x",
             clientId: "c1",
-            redirectUri: "https://evil/cb"
-          })
+            redirectUri: "https://evil/cb",
+          }),
         ).rejects.toThrow("redirect_uri mismatch");
       });
 
@@ -758,8 +758,8 @@ describe("oidcProvider.service", () => {
           oidc.exchangeAuthorizationCode({
             code: "x",
             clientId: "other",
-            redirectUri: codeData.redirectUri
-          })
+            redirectUri: codeData.redirectUri,
+          }),
         ).rejects.toThrow("invalid_client");
       });
 
@@ -768,7 +768,7 @@ describe("oidcProvider.service", () => {
         redis.get.mockResolvedValue({
           ...codeData,
           codeChallenge: s256(verifier),
-          codeChallengeMethod: "S256"
+          codeChallengeMethod: "S256",
         });
         Users.findByPk.mockResolvedValue(USER);
 
@@ -776,7 +776,7 @@ describe("oidcProvider.service", () => {
           code: "x",
           clientId: "c1",
           redirectUri: codeData.redirectUri,
-          codeVerifier: verifier
+          codeVerifier: verifier,
         });
 
         expect(tokens.token_type).toBe("Bearer");
@@ -789,14 +789,14 @@ describe("oidcProvider.service", () => {
         redis.get.mockResolvedValue({
           ...codeData,
           codeChallenge: "plain-value",
-          codeChallengeMethod: "plain"
+          codeChallengeMethod: "plain",
         });
         Users.findByPk.mockResolvedValue(USER);
         const tokens = await oidc.exchangeAuthorizationCode({
           code: "x",
           clientId: "c1",
           redirectUri: codeData.redirectUri,
-          codeVerifier: "plain-value"
+          codeVerifier: "plain-value",
         });
         expect(tokens.access_token).toEqual(expect.any(String));
       });
@@ -805,15 +805,15 @@ describe("oidcProvider.service", () => {
         redis.get.mockResolvedValue({
           ...codeData,
           codeChallenge: s256("right"),
-          codeChallengeMethod: "S256"
+          codeChallengeMethod: "S256",
         });
         await expect(
           oidc.exchangeAuthorizationCode({
             code: "x",
             clientId: "c1",
             redirectUri: codeData.redirectUri,
-            codeVerifier: "wrong"
-          })
+            codeVerifier: "wrong",
+          }),
         ).rejects.toThrow("invalid_client");
       });
 
@@ -821,14 +821,14 @@ describe("oidcProvider.service", () => {
         redis.get.mockResolvedValue({
           ...codeData,
           codeChallenge: s256("v"),
-          codeChallengeMethod: "S256"
+          codeChallengeMethod: "S256",
         });
         await expect(
           oidc.exchangeAuthorizationCode({
             code: "x",
             clientId: "c1",
-            redirectUri: codeData.redirectUri
-          })
+            redirectUri: codeData.redirectUri,
+          }),
         ).rejects.toThrow("invalid_client");
       });
 
@@ -841,7 +841,7 @@ describe("oidcProvider.service", () => {
           code: "x",
           clientId: "c1",
           clientSecret: "s3cret",
-          redirectUri: codeData.redirectUri
+          redirectUri: codeData.redirectUri,
         });
         expect(tokens.id_token).toEqual(expect.any(String));
       });
@@ -854,8 +854,8 @@ describe("oidcProvider.service", () => {
             code: "x",
             clientId: "c1",
             redirectUri: codeData.redirectUri,
-            codeVerifier: "v"
-          })
+            codeVerifier: "v",
+          }),
         ).rejects.toThrow("user no longer exists");
       });
     });
@@ -866,14 +866,14 @@ describe("oidcProvider.service", () => {
       it("rejects an unknown refresh token", async () => {
         redis.get.mockResolvedValue(null);
         await expect(
-          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "c1" })
+          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "c1" }),
         ).rejects.toThrow("invalid_grant");
       });
 
       it("rejects a client mismatch", async () => {
         redis.get.mockResolvedValue(stored);
         await expect(
-          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "other" })
+          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "other" }),
         ).rejects.toThrow("invalid_client");
       });
 
@@ -881,7 +881,7 @@ describe("oidcProvider.service", () => {
         redis.get.mockResolvedValue(stored);
         mockClientRow("right-secret");
         await expect(
-          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "c1", clientSecret: "wrong" })
+          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "c1", clientSecret: "wrong" }),
         ).rejects.toThrow("invalid_client");
       });
 
@@ -890,7 +890,7 @@ describe("oidcProvider.service", () => {
         mockClientRow("s3cret");
         Users.findByPk.mockResolvedValue(null);
         await expect(
-          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "c1", clientSecret: "s3cret" })
+          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "c1", clientSecret: "s3cret" }),
         ).rejects.toThrow("user no longer exists");
       });
 
@@ -902,7 +902,7 @@ describe("oidcProvider.service", () => {
         const tokens = await oidc.refreshAccessToken({
           refreshToken: "rt",
           clientId: "c1",
-          clientSecret: "s3cret"
+          clientSecret: "s3cret",
         });
 
         expect(redis.del).toHaveBeenCalledWith("oidc:refresh:rt"); // rotated
@@ -937,7 +937,7 @@ describe("oidcProvider.service", () => {
         expect(claims).toMatchObject({
           given_name: "Ada",
           family_name: "Lovelace",
-          name: "Ada Lovelace"
+          name: "Ada Lovelace",
         });
       });
 
@@ -964,26 +964,26 @@ describe("oidcProvider.service", () => {
       it("treats a client with no redirectUris as unregistered", async () => {
         TenantSettings.findOne.mockResolvedValue({
           tenantId: "t1",
-          value: JSON.stringify({ clientId: "c1", name: "No URIs" })
+          value: JSON.stringify({ clientId: "c1", name: "No URIs" }),
         });
         await expect(
           oidc.beginAuthorization({
             client_id: "c1",
             redirect_uri: "https://rp.example/cb",
-            response_type: "code"
-          })
+            response_type: "code",
+          }),
         ).rejects.toThrow("redirect_uri is not registered");
       });
 
       it("decideAuthorization rejects a missing requestId", async () => {
         await expect(oidc.decideAuthorization("", USER, true)).rejects.toThrow(
-          "Authorization request not found"
+          "Authorization request not found",
         );
       });
 
       it("exchange rejects a missing code without hitting redis", async () => {
         await expect(
-          oidc.exchangeAuthorizationCode({ clientId: "c1" })
+          oidc.exchangeAuthorizationCode({ clientId: "c1" }),
         ).rejects.toThrow("invalid_grant");
       });
 
@@ -993,21 +993,21 @@ describe("oidcProvider.service", () => {
           tenantId: "t1",
           userId: "user-1",
           redirectUri: "https://rp.example/cb",
-          scope: ["openid"]
+          scope: ["openid"],
         }); // no codeChallenge -> secret required
         mockClientRow("s3cret");
         await expect(
           oidc.exchangeAuthorizationCode({
             code: "x",
             clientId: "c1",
-            redirectUri: "https://rp.example/cb"
-          })
+            redirectUri: "https://rp.example/cb",
+          }),
         ).rejects.toThrow("invalid_client");
       });
 
       it("refresh rejects a missing refresh token without hitting redis", async () => {
         await expect(
-          oidc.refreshAccessToken({ clientId: "c1" })
+          oidc.refreshAccessToken({ clientId: "c1" }),
         ).rejects.toThrow("invalid_grant");
       });
 
@@ -1016,11 +1016,11 @@ describe("oidcProvider.service", () => {
           tenantId: "t1",
           userId: "user-1",
           clientId: "c1",
-          scope: "openid"
+          scope: "openid",
         });
         mockClientRow("s3cret");
         await expect(
-          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "c1" })
+          oidc.refreshAccessToken({ refreshToken: "rt", clientId: "c1" }),
         ).rejects.toThrow("invalid_client");
       });
     });

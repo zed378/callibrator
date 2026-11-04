@@ -3,7 +3,7 @@
  * functional (the tenant-facing billing API consumed by the controller).
  */
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 jest.mock("../../config", () => ({
   db: {
@@ -12,12 +12,12 @@ jest.mock("../../config", () => ({
     Sequelize: { Op: { gte: "gte", lte: "lte", ne: "ne" }, fn: jest.fn(), col: jest.fn() },
     query: jest.fn(),
     // P6-11: the usage-alert writes run in a managed transaction.
-    transaction: jest.fn((cb: any) => cb("txn"))
-  }
+    transaction: jest.fn((cb: any) => cb("txn")),
+  },
 }));
 // P6-11: every usage-alert write commits with one audit row in its transaction.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn()
+  logAction: jest.fn(),
 }));
 jest.mock("../../utils/appError.util", () => ({
   AppError: class AppError extends Error {status: any;
@@ -25,16 +25,16 @@ jest.mock("../../utils/appError.util", () => ({
       super(message);
       this.status = status;
     }
-  }
+  },
 }));
 jest.mock("../../utils/circuitBreaker.util", () => ({
-  withCircuitBreaker: (_name: any, fn: any) => fn
+  withCircuitBreaker: (_name: any, fn: any) => fn,
 }));
 jest.mock("../../models", () => ({
   UsageMetric: { findAll: jest.fn().mockResolvedValue([]), findOrCreate: jest.fn() },
   UsageAlert: { findAll: jest.fn(), create: jest.fn(), findOne: jest.fn() },
   Invoice: { findAndCountAll: jest.fn() },
-  Tenant: { findByPk: jest.fn() }
+  Tenant: { findByPk: jest.fn() },
 }));
 
 const svc = require("../../services/meteredBilling.service");
@@ -74,7 +74,7 @@ describe("meteredBilling.service new methods", () => {
         plan: "professional",
         limitSeats: 25,
         limitStorageMb: 10240,
-        billingCycle: "monthly"
+        billingCycle: "monthly",
       });
       const res = await svc.getPlanDetails("t-1");
       expect(res.plan).toBe("professional");
@@ -101,9 +101,9 @@ describe("meteredBilling.service new methods", () => {
           metricName: "api_calls",
           threshold: 5000,
           comparison: "gte",
-          notificationChannels: ["email"]
+          notificationChannels: ["email"],
         }),
-        { transaction: "txn" }
+        { transaction: "txn" },
       );
     });
     it("400s creating an alert without metricName/threshold", async () => {
@@ -145,10 +145,10 @@ describe("meteredBilling.service new methods", () => {
             tenantId: "t-1",
             createdAt: {
               gte: new Date("2024-01-01"),
-              lte: new Date("2024-02-01")
-            }
-          }
-        })
+              lte: new Date("2024-02-01"),
+            },
+          },
+        }),
       );
     });
 
@@ -158,7 +158,7 @@ describe("meteredBilling.service new methods", () => {
       await svc.getBillingHistory("t-1", 1, 20, "2024-01-01");
 
       expect(Invoice.findAndCountAll.mock.calls[0][0].where.createdAt).toEqual({
-        gte: new Date("2024-01-01")
+        gte: new Date("2024-01-01"),
       });
     });
 
@@ -168,7 +168,7 @@ describe("meteredBilling.service new methods", () => {
       await svc.getBillingHistory("t-1", 1, 20, undefined, "2024-02-01");
 
       expect(Invoice.findAndCountAll.mock.calls[0][0].where.createdAt).toEqual({
-        lte: new Date("2024-02-01")
+        lte: new Date("2024-02-01"),
       });
     });
 
@@ -178,7 +178,7 @@ describe("meteredBilling.service new methods", () => {
       await svc.getBillingHistory("t-1");
 
       expect(Invoice.findAndCountAll.mock.calls[0][0].where).toEqual({
-        tenantId: "t-1"
+        tenantId: "t-1",
       });
     });
 
@@ -188,7 +188,7 @@ describe("meteredBilling.service new methods", () => {
       const res = await svc.getBillingHistory("t-1");
 
       expect(Invoice.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 20, offset: 0 })
+        expect.objectContaining({ limit: 20, offset: 0 }),
       );
       expect(res.meta).toEqual({ total: 0, page: 1, limit: 20, totalPages: 0 });
     });
@@ -199,7 +199,7 @@ describe("meteredBilling.service new methods", () => {
       const res = await svc.getBillingHistory("t-1", -5, 500);
 
       expect(Invoice.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 100, offset: 0 })
+        expect.objectContaining({ limit: 100, offset: 0 }),
       );
       expect(res.meta).toEqual({ total: 250, page: 1, limit: 100, totalPages: 3 });
     });
@@ -210,7 +210,7 @@ describe("meteredBilling.service new methods", () => {
       await svc.getBillingHistory("t-1", "abc", "xyz");
 
       expect(Invoice.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 20, offset: 0 })
+        expect.objectContaining({ limit: 20, offset: 0 }),
       );
     });
 
@@ -220,7 +220,7 @@ describe("meteredBilling.service new methods", () => {
       await svc.getBillingHistory("t-1", 3, 10);
 
       expect(Invoice.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 10, offset: 20 })
+        expect.objectContaining({ limit: 10, offset: 20 }),
       );
     });
   });
@@ -238,7 +238,7 @@ describe("meteredBilling.service new methods", () => {
         metric: "calibrations",
         rate: 0.5,
         quantity: 10,
-        cost: 5
+        cost: 5,
       });
       expect(res.total).toBe(5);
     });
@@ -250,7 +250,7 @@ describe("meteredBilling.service new methods", () => {
         metric: "unknown_metric",
         rate: 0,
         quantity: 1000,
-        cost: 0
+        cost: 0,
       });
       expect(res.total).toBe(0);
     });
@@ -266,7 +266,7 @@ describe("meteredBilling.service new methods", () => {
       const res = await svc.estimateCost(
         "t-1",
         { api_calls: 10000, users: 10 },
-        1
+        1,
       );
 
       // 0.0001*10000 = 1, 2.0*10 = 20
@@ -284,7 +284,7 @@ describe("meteredBilling.service new methods", () => {
     it("400s when metrics is a non-object", async () => {
       await expect(svc.estimateCost("t-1", "api_calls", 1)).rejects.toMatchObject({
         status: 400,
-        message: "metrics object is required"
+        message: "metrics object is required",
       });
     });
   });
@@ -299,7 +299,7 @@ describe("meteredBilling.service new methods", () => {
         plan: null,
         limitSeats: 5,
         limitStorageMb: 1024,
-        billingCycle: "monthly"
+        billingCycle: "monthly",
       });
 
       const res = await svc.getPlanDetails("t-1");
@@ -311,7 +311,7 @@ describe("meteredBilling.service new methods", () => {
         calibrations: 50,
         users: 5,
         seats: 5,
-        storageMb: 1024
+        storageMb: 1024,
       });
     });
 
@@ -320,7 +320,7 @@ describe("meteredBilling.service new methods", () => {
         plan: "platinum",
         limitSeats: 1,
         limitStorageMb: 1,
-        billingCycle: "annual"
+        billingCycle: "annual",
       });
 
       const res = await svc.getPlanDetails("t-1");
@@ -334,7 +334,7 @@ describe("meteredBilling.service new methods", () => {
         plan: "enterprise",
         limitSeats: null,
         limitStorageMb: null,
-        billingCycle: "annual"
+        billingCycle: "annual",
       });
 
       const res = await svc.getPlanDetails("t-1");
@@ -358,7 +358,7 @@ describe("meteredBilling.service new methods", () => {
         comparison: "lte",
         notificationChannels: ["sms", "webhook"],
         isEnabled: false,
-        description: "Storage watch"
+        description: "Storage watch",
       });
 
       expect(UsageAlert.create).toHaveBeenCalledWith({
@@ -368,7 +368,7 @@ describe("meteredBilling.service new methods", () => {
         comparison: "lte",
         notificationChannels: ["sms", "webhook"],
         isEnabled: false,
-        description: "Storage watch"
+        description: "Storage watch",
       }, { transaction: "txn" });
     });
 
@@ -379,20 +379,20 @@ describe("meteredBilling.service new methods", () => {
 
       expect(UsageAlert.create).toHaveBeenCalledWith(
         expect.objectContaining({ threshold: 0, isEnabled: true, description: "" }),
-        { transaction: "txn" }
+        { transaction: "txn" },
       );
     });
 
     it("400s when threshold is null", async () => {
       await expect(
-        svc.createUsageAlert("t-1", { metricName: "api_calls", threshold: null })
+        svc.createUsageAlert("t-1", { metricName: "api_calls", threshold: null }),
       ).rejects.toMatchObject({ status: 400 });
     });
 
     it("400s when alertData is omitted entirely", async () => {
       await expect(svc.createUsageAlert("t-1")).rejects.toMatchObject({
         status: 400,
-        message: "metricName and threshold are required"
+        message: "metricName and threshold are required",
       });
     });
   });
@@ -405,7 +405,7 @@ describe("meteredBilling.service new methods", () => {
 
       expect(UsageAlert.findAll).toHaveBeenCalledWith({
         where: { tenantId: "t-1" },
-        order: [["createdAt", "DESC"]]
+        order: [["createdAt", "DESC"]],
       });
     });
   });
@@ -417,7 +417,7 @@ describe("meteredBilling.service new methods", () => {
       await svc.deleteUsageAlert("t-1", "a1");
 
       expect(UsageAlert.findOne).toHaveBeenCalledWith({
-        where: { id: "a1", tenantId: "t-1" }
+        where: { id: "a1", tenantId: "t-1" },
       });
     });
   });
@@ -471,10 +471,10 @@ describe("meteredBilling.service — P6-11 audit rows", () => {
         resourceId: "a1",
         changes: expect.objectContaining({
           operation: "USAGE_ALERT_CREATE",
-          after: expect.objectContaining({ metricName: "api_calls", threshold: 5, comparison: null })
-        })
+          after: expect.objectContaining({ metricName: "api_calls", threshold: 5, comparison: null }),
+        }),
       }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
   });
 
@@ -487,9 +487,9 @@ describe("meteredBilling.service — P6-11 audit rows", () => {
       expect.objectContaining({
         systemActor: "system:api-key",
         action: "DELETE",
-        changes: expect.objectContaining({ operation: "USAGE_ALERT_DELETE", apiKeyId: "key-1", before: expect.any(Object) })
+        changes: expect.objectContaining({ operation: "USAGE_ALERT_DELETE", apiKeyId: "key-1", before: expect.any(Object) }),
       }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
   });
 
@@ -497,7 +497,7 @@ describe("meteredBilling.service — P6-11 audit rows", () => {
     UsageAlert.create.mockResolvedValueOnce({ id: "a1" });
     auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
     await expect(svc.createUsageAlert("t-1", { metricName: "api_calls", threshold: 5 }, principal)).rejects.toThrow(
-      "audit insert failed"
+      "audit insert failed",
     );
   });
 });

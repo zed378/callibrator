@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * A-68 / A-69 — an OIDC sign-in, end to end, against a REAL identity provider
  * running in this process.
@@ -69,7 +69,7 @@ const idp: any = {
   /** A-188: "plain" (no discovery), "entra" (tenant-specific), "entra-common" */
   shape: "plain",
   /** A-188: a public client — a client_secret in the token request is refused */
-  publicClient: false
+  publicClient: false,
 };
 
 // A-188: Entra ID's shape. TID is the directory (tenant) id.
@@ -83,18 +83,18 @@ const idpPath = (kind: any) => {
   return ({
     jwks: `/${TID}/discovery/v2.0/keys`,
     authorize: `/${TID}/oauth2/v2.0/authorize`,
-    token: `/${TID}/oauth2/v2.0/token`
+    token: `/${TID}/oauth2/v2.0/token`,
   } as any)[kind];
 };
 
 const readBody = (req: any) =>
-new Promise((resolve: any) => {
-  let raw = "";
-  req.on("data", (chunk: any) => {
-    raw += chunk;
+  new Promise((resolve: any) => {
+    let raw = "";
+    req.on("data", (chunk: any) => {
+      raw += chunk;
+    });
+    req.on("end", () => resolve(raw));
   });
-  req.on("end", () => resolve(raw));
-});
 
 const idpHandler = async (req: any, res: any) => {
   const url = new URL(req.url, idp.base);
@@ -104,8 +104,8 @@ const idpHandler = async (req: any, res: any) => {
   };
 
   if (
-  req.method === "GET" && (
-  idp.shape === "entra" && url.pathname === `/${TID}/v2.0/.well-known/openid-configuration` ||
+    req.method === "GET" && (
+      idp.shape === "entra" && url.pathname === `/${TID}/v2.0/.well-known/openid-configuration` ||
   idp.shape === "entra-common" && url.pathname === "/common/v2.0/.well-known/openid-configuration"))
   {
     return send(200, {
@@ -113,13 +113,13 @@ const idpHandler = async (req: any, res: any) => {
       authorization_endpoint: `${idp.base}${idpPath("authorize")}`,
       token_endpoint: `${idp.base}${idpPath("token")}`,
       jwks_uri: `${idp.base}${idpPath("jwks")}`,
-      response_modes_supported: ["query", "fragment", "form_post"]
+      response_modes_supported: ["query", "fragment", "form_post"],
     });
   }
 
   if (req.method === "GET" && url.pathname === idpPath("jwks")) {
     return send(200, {
-      keys: [{ ...idpKeys.publicKey.export({ format: "jwk" }), kid: KID, alg: "RS256", use: "sig" }]
+      keys: [{ ...idpKeys.publicKey.export({ format: "jwk" }), kid: KID, alg: "RS256", use: "sig" }],
     });
   }
 
@@ -147,12 +147,12 @@ const idpHandler = async (req: any, res: any) => {
     crypto.createHash("sha256").update(body.code_verifier).digest("base64url") ===
     issued.code_challenge;
     if (
-    !issued ||
+      !issued ||
     !challengeOk ||
     body.client_id !== CLIENT_ID || (
-    // A-188: a public client must send NO secret (Entra: AADSTS700025);
-    // a confidential one must send the right one.
-    idp.publicClient ? "client_secret" in body : body.client_secret !== CLIENT_SECRET) ||
+      // A-188: a public client must send NO secret (Entra: AADSTS700025);
+      // a confidential one must send the right one.
+        idp.publicClient ? "client_secret" in body : body.client_secret !== CLIENT_SECRET) ||
     body.redirect_uri !== issued.redirect_uri)
     {
       return send(400, { error: "invalid_grant" });
@@ -163,10 +163,10 @@ const idpHandler = async (req: any, res: any) => {
         email: USER.email,
         given_name: "Nurse",
         family_name: "Acme",
-        nonce: idp.nonceOverride || issued.nonce
+        nonce: idp.nonceOverride || issued.nonce,
       },
       idpKeys.privateKey,
-      { algorithm: "RS256", keyid: KID, issuer: issuerOf(), audience: CLIENT_ID, expiresIn: "5m" }
+      { algorithm: "RS256", keyid: KID, issuer: issuerOf(), audience: CLIENT_ID, expiresIn: "5m" },
     );
     return send(200, { access_token: "at", token_type: "Bearer", id_token: idToken });
   }
@@ -181,9 +181,9 @@ const idpHandler = async (req: any, res: any) => {
 const rp: any = { server: null, base: "" };
 
 const listen = (server: any) =>
-new Promise((resolve: any) => {
-  server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${server.address().port}`));
-});
+  new Promise((resolve: any) => {
+    server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${server.address().port}`));
+  });
 
 const close = (server: any) => new Promise((resolve: any) => server.close(resolve));
 
@@ -210,12 +210,12 @@ const storeCookies = (response: any) => {
 };
 
 const cookieHeader = () =>
-[...jar.entries()].map(([name, { value }]) => `${name}=${value}`).join("; ");
+  [...jar.entries()].map(([name, { value }]) => `${name}=${value}`).join("; ");
 
 const browserGet = async (url: any, { withCookies = true } = {}) => {
   const response = await fetch(url, {
     redirect: "manual",
-    headers: withCookies && jar.size ? { cookie: cookieHeader() } : {}
+    headers: withCookies && jar.size ? { cookie: cookieHeader() } : {},
   });
   storeCookies(response);
   return response;
@@ -238,7 +238,7 @@ const startSignIn = async () => {
   const started = await fetch(`${rp.base}/api/v1/auth/sso/oidc/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ tenantCode: TENANT.code })
+    body: JSON.stringify({ tenantCode: TENANT.code }),
   });
   storeCookies(started);
   expect(started.status).toBe(200);
@@ -289,8 +289,8 @@ beforeEach(() => {
   process.env["SSRF_DEV_ALLOW_HOSTS"] = "127.0.0.1";
 
   jest.
-  spyOn(models.Tenants, "findOne").
-  mockImplementation(async ({ where }: any) => where.code === TENANT.code ? TENANT : null);
+    spyOn(models.Tenants, "findOne").
+    mockImplementation(async ({ where }: any) => where.code === TENANT.code ? TENANT : null);
   jest.spyOn(tenantService, "getTenantSettings").mockResolvedValue({
     data: {
       settings: {
@@ -298,9 +298,9 @@ beforeEach(() => {
         oidc_client_id: CLIENT_ID,
         oidc_client_secret: CLIENT_SECRET,
         oidc_authority: idp.base,
-        oidc_redirect_uri: `${rp.base}/api/v1/auth/sso/oidc/callback/${TENANT.code}`
-      }
-    }
+        oidc_redirect_uri: `${rp.base}/api/v1/auth/sso/oidc/callback/${TENANT.code}`,
+      },
+    },
   });
   jest.spyOn(ssoService, "provisionUser").mockResolvedValue(USER);
 });
@@ -334,7 +334,7 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
     const binding = jar.get("sso_oidc_binding");
     expect(binding).toBeDefined();
     expect(binding.attributes).toEqual(
-      expect.arrayContaining(["Path=/api/v1/auth/sso/oidc", "HttpOnly", "SameSite=Lax"])
+      expect.arrayContaining(["Path=/api/v1/auth/sso/oidc", "HttpOnly", "SameSite=Lax"]),
     );
 
     // The IdP returns the browser with a GET — the route must exist for GET.
@@ -348,13 +348,13 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
     // it refuses anything else), and the binding cookie is spent.
     expect(idp.tokenRequests).toHaveLength(1);
     expect(
-      crypto.createHash("sha256").update(idp.tokenRequests[0].code_verifier).digest("base64url")
+      crypto.createHash("sha256").update(idp.tokenRequests[0].code_verifier).digest("base64url"),
     ).toBe(authorize.get("code_challenge"));
     expect(jar.has("sso_oidc_binding")).toBe(false);
     expect(ssoService.provisionUser).toHaveBeenCalledWith(
       TENANT.id,
       expect.objectContaining({ email: USER.email }),
-      expect.objectContaining({ ipAddress: expect.any(String) })
+      expect.objectContaining({ ipAddress: expect.any(String) }),
     );
   });
 
@@ -389,7 +389,7 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
     // Replay the exact request, cookie included.
     const replay = await fetch(callbackUrl!, {
       redirect: "manual",
-      headers: { cookie: cookieAtCallback }
+      headers: { cookie: cookieAtCallback },
     });
 
     expectLoginRefusal(replay, "sso_state");
@@ -446,14 +446,14 @@ describe("A-188: discovery, Entra ID's shape and public clients, against the rea
         oidc_client_id: CLIENT_ID,
         oidc_client_secret: CLIENT_SECRET,
         oidc_redirect_uri: `${rp.base}/api/v1/auth/sso/oidc/callback/${TENANT.code}`,
-        ...overrides
-      }
-    }
+        ...overrides,
+      },
+    },
   });
 
   it.each([
-  ["the tenant-specific v2.0 issuer", () => `${entraBase()}/v2.0`],
-  ["the /oauth2/v2.0 endpoint base this client used to document", () => `${entraBase()}/oauth2/v2.0`]]
+    ["the tenant-specific v2.0 issuer", () => `${entraBase()}/v2.0`],
+    ["the /oauth2/v2.0 endpoint base this client used to document", () => `${entraBase()}/oauth2/v2.0`]],
   )("an Entra-shaped IdP completes when the authority is %s", async (_label: any, authority: any) => {
     idp.shape = "entra";
     tenantService.getTenantSettings.mockResolvedValue(settingsWith({ oidc_authority: authority() }));
@@ -472,20 +472,20 @@ describe("A-188: discovery, Entra ID's shape and public clients, against the rea
     expect(ssoService.provisionUser).toHaveBeenCalledWith(
       TENANT.id,
       expect.objectContaining({ email: USER.email }),
-      expect.objectContaining({ ipAddress: expect.any(String) })
+      expect.objectContaining({ ipAddress: expect.any(String) }),
     );
   });
 
   it("a multi-tenant authority (/common) is refused before the browser is sent anywhere", async () => {
     idp.shape = "entra-common";
     tenantService.getTenantSettings.mockResolvedValue(
-      settingsWith({ oidc_authority: `${idp.base}/common/v2.0` })
+      settingsWith({ oidc_authority: `${idp.base}/common/v2.0` }),
     );
 
     const started = await fetch(`${rp.base}/api/v1/auth/sso/oidc/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tenantCode: TENANT.code })
+      body: JSON.stringify({ tenantCode: TENANT.code }),
     });
 
     expect(started.status).toBe(400);
@@ -496,7 +496,7 @@ describe("A-188: discovery, Entra ID's shape and public clients, against the rea
   it("a public client (no secret configured) sends no client_secret — not the string 'undefined'", async () => {
     idp.publicClient = true;
     tenantService.getTenantSettings.mockResolvedValue(
-      settingsWith({ oidc_authority: idp.base, oidc_client_secret: undefined })
+      settingsWith({ oidc_authority: idp.base, oidc_client_secret: undefined }),
     );
 
     const { callbackUrl } = await startSignIn();
@@ -516,7 +516,7 @@ describe("A-188: discovery, Entra ID's shape and public clients, against the rea
 
   it("an IdP that refuses the token request sends the browser to /login?error=sso_failed", async () => {
     tenantService.getTenantSettings.mockResolvedValue(
-      settingsWith({ oidc_authority: idp.base, oidc_client_secret: "wrong-secret" })
+      settingsWith({ oidc_authority: idp.base, oidc_client_secret: "wrong-secret" }),
     );
 
     const { callbackUrl } = await startSignIn();

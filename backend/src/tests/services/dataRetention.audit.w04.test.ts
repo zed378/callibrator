@@ -20,21 +20,21 @@ const mockPurge = (table: any) => async ({ where, transaction }: any) => {
 jest.mock("../../models", () => ({
   AuditLog: {
     create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args),
-    destroy: mockPurge("audit_logs")
+    destroy: mockPurge("audit_logs"),
   },
   Notification: { destroy: mockPurge("notifications") },
   Session: { destroy: mockPurge("sessions") },
   TenantSettings: {
     findAll: async () => mockRef.settings,
-    findOne: async () => mockRef.legalHold
-  }
+    findOne: async () => mockRef.legalHold,
+  },
 }));
 // W-15: the sweep ends with the GDPR export sweep (gdpr.exportSweep.w15.test.js).
 jest.mock("../../services/gdpr.service", () => ({
-  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 })
+  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 }),
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 
 const dataRetention = require("../../services/dataRetention.service");
@@ -57,26 +57,26 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
     expect(mockRef.ledger.committed("purge:notifications")).toHaveLength(1);
     expect(mockRef.ledger.committed("purge:audit_logs")).toEqual([]);
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({
-      tenantId: "tenant-1",
-      userId: null,
-      action: "DELETE",
-      resourceType: "DataRetention",
-      changes: expect.objectContaining({
-        operation: "RETENTION_PURGE",
-        actor: "system:retention-purge",
-        before: {
-          retentionDays: { notifications: 90, sessions: 30, iot_readings: 0 }
-        },
-        after: {
-          purged: { notifications: 7, sessions: 3 },
-          cutoffs: {
-            notifications: expect.any(String),
-            sessions: expect.any(String)
-          }
-        }
-      })
-    })]
+      expect.objectContaining({
+        tenantId: "tenant-1",
+        userId: null,
+        action: "DELETE",
+        resourceType: "DataRetention",
+        changes: expect.objectContaining({
+          operation: "RETENTION_PURGE",
+          actor: "system:retention-purge",
+          before: {
+            retentionDays: { notifications: 90, sessions: 30, iot_readings: 0 },
+          },
+          after: {
+            purged: { notifications: 7, sessions: 3 },
+            cutoffs: {
+              notifications: expect.any(String),
+              sessions: expect.any(String),
+            },
+          },
+        }),
+      })],
     );
   });
 
@@ -127,7 +127,7 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
 
     expect(summary).toEqual({ tenants: 2, purged: 10, skipped: 0, errors: 1, incomplete: 0, anomalies: 0, exportsDeleted: 0, exportErrors: 0 });
     expect(mockRef.ledger.auditRows()).toEqual([
-    expect.objectContaining({ tenantId: "tenant-2", action: "DELETE" })]
+      expect.objectContaining({ tenantId: "tenant-2", action: "DELETE" })],
     );
     require("../../models").Tenant = Tenant;
   });

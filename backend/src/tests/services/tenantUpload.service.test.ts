@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * Tests for tenantUpload.service.js (A-96).
  *
@@ -16,15 +16,15 @@ const mockEvents: any[] = [];
 jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(async (name: any) => {
     mockEvents.push(`unlink:${name}`);
-  })
+  }),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() }
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
 
 jest.mock("../../models", () => ({
-  Tenants: { findByPk: jest.fn() }
+  Tenants: { findByPk: jest.fn() },
 }));
 
 jest.mock("../../config", () => ({
@@ -35,16 +35,16 @@ jest.mock("../../config", () => ({
       }),
       rollback: jest.fn(async () => {
         mockEvents.push("rollback");
-      })
-    }))
-  }
+      }),
+    })),
+  },
 }));
 
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn(async () => {
     mockEvents.push("audit");
     return {};
-  })
+  }),
 }));
 
 const { deleteUpload } = require("../../utils/upload.util");
@@ -68,7 +68,7 @@ const tenantRow = (fields: any = {}) => {
       mockEvents.push("update");
       Object.assign(row, values);
       return row;
-    })
+    }),
   };
   return row;
 };
@@ -97,16 +97,16 @@ describe("updateTenantLogo", () => {
         resourceId: TENANT,
         changes: { operation: "UPDATE_LOGO", logo: { before: "old-logo.png", after: "new.png" } },
         ipAddress: "1.2.3.4",
-        userAgent: "ua"
+        userAgent: "ua",
       },
-      { transaction: tx }
+      { transaction: tx },
     );
     expect(mockEvents).toEqual(["update", "audit", "commit", "unlink:old-logo.png"]);
     expect(deleteUpload).toHaveBeenCalledWith("old-logo.png", "uploads/public/tenant");
     expect(result).toEqual({
       data: { logo: "new.png" },
       message: "Tenant logo updated successfully",
-      status: 200
+      status: 200,
     });
   });
 
@@ -127,7 +127,7 @@ describe("updateTenantLogo", () => {
 
       expect(auditService.logAction).toHaveBeenCalledTimes(1);
       expect(deleteUpload).not.toHaveBeenCalled();
-    }
+    },
   );
 
   it("a failed unlink after the commit is logged, not reported as a failure", async () => {
@@ -135,11 +135,11 @@ describe("updateTenantLogo", () => {
     deleteUpload.mockRejectedValueOnce(new Error("EPERM"));
 
     await expect(updateTenantLogo(TENANT, "new.png", "user-1", own)).resolves.toMatchObject({
-      status: 200
+      status: 200,
     });
     expect(logger.warn).toHaveBeenCalledWith(
       "Failed to delete replaced logo: old-logo.png",
-      expect.any(Error)
+      expect.any(Error),
     );
   });
 
@@ -170,7 +170,7 @@ describe("updateTenantLogo", () => {
     expect(auditService.logAction).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(
       "tenantUpload.service: cross-tenant logo change refused",
-      expect.objectContaining({ reason: "cross-tenant", tenantId: OTHER })
+      expect.objectContaining({ reason: "cross-tenant", tenantId: OTHER }),
     );
   });
 
@@ -191,7 +191,7 @@ describe("updateTenantLogo", () => {
       tenantId: OTHER,
       userId: null,
       ipAddress: null,
-      userAgent: null
+      userAgent: null,
     });
   });
 });
@@ -206,14 +206,14 @@ describe("removeTenantLogo", () => {
     expect(row.logo).toBeNull();
     expect(auditService.logAction.mock.calls[0][0].changes).toEqual({
       operation: "REMOVE_LOGO",
-      logo: { before: "old-logo.png", after: null }
+      logo: { before: "old-logo.png", after: null },
     });
     expect(mockEvents).toEqual(["update", "audit", "commit", "unlink:old-logo.png"]);
     expect(logger.info).toHaveBeenCalledWith(`Tenant logo removed: ${TENANT} by user-1`);
     expect(result).toEqual({
       data: { logo: null },
       message: "Tenant logo removed successfully",
-      status: 200
+      status: 200,
     });
   });
 
@@ -230,7 +230,7 @@ describe("removeTenantLogo", () => {
       expect(deleteUpload).not.toHaveBeenCalled();
       expect(mockEvents).toEqual(["rollback"]);
       expect(result.status).toBe(200);
-    }
+    },
   );
 
   it("with no actor at all, refuses (the actor defaults to nobody)", async () => {
@@ -259,7 +259,7 @@ describe("removeTenantLogo", () => {
     expect(err.status).toBe(500);
     expect(err.message).toBe("Failed to remove tenant logo");
     expect(logger.error).toHaveBeenCalledWith("Error removing tenant logo", {
-      error: "db down"
+      error: "db down",
     });
     expect(mockEvents).toEqual(["rollback"]);
   });
@@ -268,7 +268,7 @@ describe("removeTenantLogo", () => {
     Tenants.findByPk.mockRejectedValue(new Error("db down"));
     db.transaction.mockResolvedValueOnce({
       commit: jest.fn(),
-      rollback: jest.fn().mockRejectedValue(new Error("already finished"))
+      rollback: jest.fn().mockRejectedValue(new Error("already finished")),
     });
 
     const err = await removeTenantLogo(TENANT, "user-1", own).catch((e: any) => e);

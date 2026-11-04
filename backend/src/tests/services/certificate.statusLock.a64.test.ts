@@ -24,8 +24,8 @@ jest.mock("../../models", () => ({
       PENDING_APPROVAL: "pending_approval",
       APPROVED: "approved",
       SIGNED: "signed",
-      REVOKED: "revoked"
-    }
+      REVOKED: "revoked",
+    },
   },
   CalibrationDevice: {},
   CalibrationRecord: {},
@@ -33,24 +33,24 @@ jest.mock("../../models", () => ({
   User: { findByPk: jest.fn() },
   ESignatureRecord: {
     create: jest.fn(async (values: any, options: any) =>
-    mockRef.ledger.write("e_signature_records", values, options)
-    )
+      mockRef.ledger.write("e_signature_records", values, options),
+    ),
   },
   AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
-  Sequelize: {}
+  Sequelize: {},
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 jest.mock("../../services/auth.service", () => ({
-  passIsValid: jest.fn(async () => ({ data: { valid: true } }))
+  passIsValid: jest.fn(async () => ({ data: { valid: true } })),
 }));
 jest.mock("../../services/mfa.service", () => ({ verifyLogin: jest.fn(() => true) }));
 
 const { Sequelize, DataTypes } = jest.requireActual("sequelize");
 const RealCertificate = jest.requireActual("../../models/certificate.model")(
   new Sequelize({ dialect: "postgres", logging: false }),
-  DataTypes
+  DataTypes,
 );
 const certificateService = require("../../services/certificate.service");
 const { validateInput: validate } = require("../../validators/input");
@@ -64,10 +64,10 @@ const makeCertificate = (fields: any) => {
     deviceId: "dev-1",
     calibrationRecordId: "rec-1",
     summary: "old summary",
-    ...fields
+    ...fields,
   };
   cert.save = async (options: any) =>
-  mockRef.ledger.write("certificates", { id: cert.id, status: cert.status, summary: cert.summary }, options);
+    mockRef.ledger.write("certificates", { id: cert.id, status: cert.status, summary: cert.summary }, options);
   cert.update = async (values: any, options: any) => {
     Object.assign(cert, values);
     return cert.save(options);
@@ -82,12 +82,12 @@ const actor: any = { userId: "user-1", ipAddress: "10.0.0.1", userAgent: "UA" };
 
 /** What PUT /certificates/:id does: the controller validates, then the service. */
 const put = (body: any) =>
-certificateService.updateCertificate(
-  "tenant-1",
-  "cert-1",
-  { ...validate(body, updateCertificateSchema), updatedBy: "user-1" },
-  actor
-);
+  certificateService.updateCertificate(
+    "tenant-1",
+    "cert-1",
+    { ...validate(body, updateCertificateSchema), updatedBy: "user-1" },
+    actor,
+  );
 
 describe("A-64 — PUT /certificates/:id cannot change status", () => {
   beforeEach(() => {
@@ -97,19 +97,19 @@ describe("A-64 — PUT /certificates/:id cannot change status", () => {
   });
 
   describe.each([
-  ["draft", "approved"],
-  ["draft", "signed"],
-  ["draft", "pending_approval"],
-  ["pending_approval", "approved"],
-  ["approved", "signed"],
-  ["approved", "revoked"],
-  ["pending_approval", "draft"]]
+    ["draft", "approved"],
+    ["draft", "signed"],
+    ["draft", "pending_approval"],
+    ["pending_approval", "approved"],
+    ["approved", "signed"],
+    ["approved", "revoked"],
+    ["pending_approval", "draft"]],
   )("from %s to %s", (from: any, to: any) => {
     it("a PUT carrying status does not change the status", async () => {
       mockRef.certificate = makeCertificate({ status: from });
 
       await expect(put({ status: to, summary: "new summary" })).rejects.toMatchObject({
-        status: 409
+        status: 409,
       });
 
       expect(mockRef.certificate.status).toBe(from);
@@ -131,8 +131,8 @@ describe("A-64 — PUT /certificates/:id cannot change status", () => {
   });
 
   it.each([
-  ["pending_approval", "/approve"],
-  ["approved", "/sign"]]
+    ["pending_approval", "/approve"],
+    ["approved", "/sign"]],
   )("a %s certificate's 409 points at %s", async (from: any, route: any) => {
     mockRef.certificate = makeCertificate({ status: from });
 
@@ -149,7 +149,7 @@ describe("A-64 — PUT /certificates/:id cannot change status", () => {
     await put({ status: "draft", summary: "new summary" });
 
     expect(mockRef.ledger.committed("certificates")).toEqual([
-    { id: "cert-1", status: "draft", summary: "new summary" }]
+      { id: "cert-1", status: "draft", summary: "new summary" }],
     );
     const [row] = mockRef.ledger.auditRows();
     expect(row.action).toBe("UPDATE");
@@ -186,7 +186,7 @@ describe("A-64 — PUT /certificates/:id cannot change status", () => {
     expect(caught).toEqual({
       status: 400,
       message: "Validation failed",
-      errors: [{ field: "status", message: "Invalid input" }]
+      errors: [{ field: "status", message: "Invalid input" }],
     });
   });
 });

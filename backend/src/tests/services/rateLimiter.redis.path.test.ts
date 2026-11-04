@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * rateLimiter.redis.service — the Redis path (A-30)
  *
@@ -24,24 +24,24 @@ let mockGetConnection: any = () => mockClient;
 let mockConnectedReads: any = 0;
 
 jest.mock("../../services/redis.service", () => ({
-  getRedisConnection: jest.fn(() => mockGetConnection())
+  getRedisConnection: jest.fn(() => mockGetConnection()),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 jest.mock("../../models", () => ({
   Users: { update: jest.fn(() => Promise.resolve([1])) },
-  Sessions: { update: jest.fn(() => Promise.resolve([1])) }
+  Sessions: { update: jest.fn(() => Promise.resolve([1])) },
 }));
 
 jest.mock("../../utils/session.util", () => ({
-  hashToken: jest.fn((token: any) => `hash:${token}`)
+  hashToken: jest.fn((token: any) => `hash:${token}`),
 }));
 
 jest.mock("../../utils/jwt.util", () => ({
-  verifyAccessToken: jest.fn()
+  verifyAccessToken: jest.fn(),
 }));
 
 /**
@@ -56,7 +56,7 @@ function makeClient(overrides: any = {}) {
     del: jest.fn(() => Promise.resolve(1)),
     eval: jest.fn(() => Promise.resolve("")),
     pttl: jest.fn(() => Promise.resolve(60000)),
-    ...overrides
+    ...overrides,
   };
   // Tripwire, not a feature: real ioredis has no `connected`. If the limiter
   // ever guards on it again, "never reads a `connected` property" fails.
@@ -64,7 +64,7 @@ function makeClient(overrides: any = {}) {
     get() {
       mockConnectedReads += 1;
       return false;
-    }
+    },
   });
   return client;
 }
@@ -74,7 +74,7 @@ function makeRes() {
     statusCode: 200,
     status: jest.fn(() => res),
     json: jest.fn(() => res),
-    set: jest.fn(() => res)
+    set: jest.fn(() => res),
   };
   return res;
 }
@@ -143,7 +143,7 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
 
       expect(result.remainingAttempts).toBe(4);
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("could not reach the shared Redis client")
+        expect.stringContaining("could not reach the shared Redis client"),
       );
     });
   });
@@ -170,7 +170,7 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
 
     it("continues from a count another replica already wrote", async () => {
       mockClient.eval.mockResolvedValue(
-        JSON.stringify({ count: 3, firstAttempt: Date.now() - 1000 })
+        JSON.stringify({ count: 3, firstAttempt: Date.now() - 1000 }),
       );
 
       const result = await rl.recordAuthFailure({ userId: "u-6", endpoint: "login" });
@@ -181,7 +181,7 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
 
     it("locks the account out on the fifth failure even when the first four were another replica's", async () => {
       mockClient.eval.mockResolvedValue(
-        JSON.stringify({ count: 4, firstAttempt: Date.now() - 1000 })
+        JSON.stringify({ count: 4, firstAttempt: Date.now() - 1000 }),
       );
 
       const result = await rl.recordAuthFailure({ userId: "u-7", endpoint: "login" });
@@ -192,7 +192,7 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
       const { Users } = require("../../models");
       expect(Users.update).toHaveBeenCalledWith(
         expect.objectContaining({ failedLoginAttempts: 5 }),
-        { where: { id: "u-7" } }
+        { where: { id: "u-7" } },
       );
     });
 
@@ -213,13 +213,13 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
       expect(first.remainingAttempts).toBe(4);
       expect(second.remainingAttempts).toBe(3);
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Redis INCR failed, counting in memory")
+        expect.stringContaining("Redis INCR failed, counting in memory"),
       );
     });
 
     it("reads an existing lockout back out of Redis", async () => {
       mockClient.get.mockResolvedValue(
-        JSON.stringify({ count: 5, firstAttempt: Date.now(), expiresAt: Date.now() + 60000 })
+        JSON.stringify({ count: 5, firstAttempt: Date.now(), expiresAt: Date.now() + 60000 }),
       );
 
       const lockout = await rl.checkAuthLockout({ userId: "u-10", endpoint: "login" });
@@ -269,19 +269,19 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
       // Degraded to one process, but still locked — not un-rate-limited.
       expect(lockout.locked).toBe(true);
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Redis GET failed, reading the memory fallback")
+        expect.stringContaining("Redis GET failed, reading the memory fallback"),
       );
     });
 
     it("writes an absolute expiresAt to Redis so a blocked token reads as blocked on either backend", async () => {
       mockClient.eval.mockResolvedValue(
-        JSON.stringify({ count: 9, firstAttempt: Date.now() - 5000 })
+        JSON.stringify({ count: 9, firstAttempt: Date.now() - 5000 }),
       );
 
       await rl.recordAuthFailure({ tokenHash: "th-1", endpoint: "login" });
 
       const blockedWrite = mockClient.set.mock.calls.find(([, value]: any) =>
-      JSON.parse(value).blocked === true
+        JSON.parse(value).blocked === true,
       );
       expect(blockedWrite).toBeDefined();
       const [key, value, pxFlag, ttl] = blockedWrite;
@@ -301,20 +301,20 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
 
     it("records a revocation in memory when the Redis SET fails", async () => {
       mockClient.eval.mockResolvedValue(
-        JSON.stringify({ count: 2, firstAttempt: Date.now() - 500 })
+        JSON.stringify({ count: 2, firstAttempt: Date.now() - 500 }),
       );
       mockClient.set.mockRejectedValue(new Error("READONLY replica"));
 
       await rl.recordAuthFailure({ tokenHash: "th-2", endpoint: "login" });
 
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Redis SET failed, counting in memory")
+        expect.stringContaining("Redis SET failed, counting in memory"),
       );
       mockClient.status = "end";
       const status = await rl.getRateLimitStatus({
         tokenHash: "th-2",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.token.count).toBe(3);
     });
@@ -332,7 +332,7 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
       const status = await rl.getRateLimitStatus({
         userId: "u-13",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.user).toBeNull();
     });
@@ -345,13 +345,13 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
       await rl.resetAuthFailures({ userId: "u-14", endpoint: "login" });
 
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Redis DEL failed")
+        expect.stringContaining("Redis DEL failed"),
       );
       mockClient.status = "end";
       const status = await rl.getRateLimitStatus({
         userId: "u-14",
         endpoint: "login",
-        type: "auth"
+        type: "auth",
       });
       expect(status.user).toBeNull();
     });
@@ -377,7 +377,7 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
         1,
         "ratelimit:api:tenantCreate:ip:203.0.113.7",
         String(60000),
-        expect.any(String)
+        expect.any(String),
       );
     });
 
@@ -433,8 +433,8 @@ describe("rateLimiter.redis.service — the Redis path (A-30)", () => {
       expect(res.set).toHaveBeenCalledWith(
         expect.objectContaining({
           "X-RateLimit-Limit": "10",
-          "X-RateLimit-Remaining": "7"
-        })
+          "X-RateLimit-Remaining": "7",
+        }),
       );
     });
   });

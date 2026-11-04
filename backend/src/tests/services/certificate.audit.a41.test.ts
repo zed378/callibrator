@@ -19,14 +19,14 @@ const mockRef: any = { ledger: null, certificate: null };
 // D-22 (ADR-070): a parent's delete soft-deletes its attachments through
 // attachment.service, in the parent's transaction.
 jest.mock("../../services/attachment.service", () => ({
-  softDeleteForResource: jest.fn().mockResolvedValue([])
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
 }));
 // ADR-107 (Q-50): the sign step's snapshot reads the tenant, device and users
 // through the models barrel this suite doubles; the snapshot itself is
 // certificates.signSnapshot.q50.test.ts's subject, not this suite's.
 jest.mock("../../services/certificateDocument.service", () => ({
   ...jest.requireActual("../../services/certificateDocument.service"),
-  captureSignedSnapshot: jest.fn(async () => null)
+  captureSignedSnapshot: jest.fn(async () => null),
 }));
 // P21-15: the e-signature collaborator is outside this suite's scope; certificateEsignatures.p2115 tests it over the real models.
 jest.mock("../../services/esignatureApplication.service", () => ({ autoApplyApproval: jest.fn().mockResolvedValue(null), certificateMarks: jest.fn().mockResolvedValue([]) }));
@@ -43,8 +43,8 @@ jest.mock("../../models", () => ({
       PENDING_APPROVAL: "pending_approval",
       APPROVED: "approved",
       SIGNED: "signed",
-      REVOKED: "revoked"
-    }
+      REVOKED: "revoked",
+    },
   },
   CalibrationDevice: { findOne: jest.fn(async () => ({ id: "dev-1" })) },
   CalibrationRecord: {},
@@ -52,30 +52,30 @@ jest.mock("../../models", () => ({
   User: { findByPk: jest.fn() },
   ESignatureRecord: {
     create: jest.fn(async (values: any, options: any) =>
-    mockRef.ledger.write("e_signature_records", values, options)
-    )
+      mockRef.ledger.write("e_signature_records", values, options),
+    ),
   },
   AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
-  Sequelize: {}
+  Sequelize: {},
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 jest.mock("../../services/auth.service", () => ({
-  passIsValid: jest.fn(async () => ({ data: { valid: true } }))
+  passIsValid: jest.fn(async () => ({ data: { valid: true } })),
 }));
 jest.mock("../../services/mfa.service", () => ({ verifyLogin: jest.fn(() => true) }));
 jest.mock("../../services/workflow.service", () => ({
   startWorkflow: jest.fn(async () => undefined),
   // A-203: no workflow pending unless a test says so.
-  findPendingInstance: jest.fn(async () => null)
+  findPendingInstance: jest.fn(async () => null),
 }));
 // The create / update schemas are REAL (P9-11: Zod through validators/input).
 
 const { Sequelize, DataTypes } = jest.requireActual("sequelize");
 const RealCertificate = jest.requireActual("../../models/certificate.model")(
   new Sequelize({ dialect: "postgres", logging: false }),
-  DataTypes
+  DataTypes,
 );
 const certificateService = require("../../services/certificate.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
@@ -92,7 +92,7 @@ const makeCertificate = (fields: any) => {
     deviceId: "dev-1",
     calibrationRecordId: "rec-1",
     notes: null,
-    ...fields
+    ...fields,
   };
   const snapshot = () => Object.fromEntries(SNAPSHOT_FIELDS.map((k: any) => [k, cert[k]]));
   cert.save = async (options: any) => mockRef.ledger.write("certificates", snapshot(), options);
@@ -101,7 +101,7 @@ const makeCertificate = (fields: any) => {
     return cert.save(options);
   };
   cert.destroy = async (options: any) =>
-  mockRef.ledger.write("certificates", { id: cert.id, deleted: true }, options);
+    mockRef.ledger.write("certificates", { id: cert.id, deleted: true }, options);
   for (const method of ["submitForApproval", "approve", "sign", "revoke"]) {
     cert[method] = RealCertificate.prototype[method];
   }
@@ -113,59 +113,58 @@ const actor: any = { userId: "user-1", ipAddress: "10.0.0.1", userAgent: "UA" };
 
 // Each case: the starting status, how to invoke, and the audit row expected.
 const CASES = [
-{
-  name: "createCertificate (issue)",
-  status: null,
-  run: () => certificateService.createCertificate("tenant-1", "user-1", { deviceId: DEVICE_ID }, actor),
-  action: "CREATE",
-  resourceId: "cert-new"
-},
-{
-  name: "updateCertificate",
-  status: "draft",
-  run: () => certificateService.updateCertificate("tenant-1", "cert-1", { notes: "n", updatedBy: "user-1" }, actor),
-  action: "UPDATE",
-  resourceId: "cert-1"
-},
-{
-  name: "deleteCertificate",
-  status: "draft",
-  run: () => certificateService.deleteCertificate("tenant-1", "cert-1", actor),
-  action: "DELETE",
-  resourceId: "cert-1"
-},
-{
-  name: "submitCertificateForApproval",
-  status: "draft",
-  run: () => certificateService.submitCertificateForApproval("tenant-1", "cert-1", actor),
-  action: "UPDATE",
-  resourceId: "cert-1"
-},
-{
-  name: "approveCertificate",
-  status: "pending_approval",
-  run: () => certificateService.approveCertificate("tenant-1", "cert-1", "user-1", auth),
-  action: "APPROVE",
-  resourceId: "cert-1",
-  signs: true
-},
-{
-  name: "signCertificate",
-  status: "approved",
-  run: () => certificateService.signCertificate("tenant-1", "cert-1", "sig", "key-1", "user-1", auth),
-  action: "APPROVE",
-  resourceId: "cert-1",
-  signs: true
-},
-{
-  name: "revokeCertificate",
-  status: "signed",
-  run: () => certificateService.revokeCertificate("tenant-1", "cert-1", "wrong device", "user-1", auth),
-  action: "UPDATE",
-  resourceId: "cert-1",
-  signs: true
-}];
-
+  {
+    name: "createCertificate (issue)",
+    status: null,
+    run: () => certificateService.createCertificate("tenant-1", "user-1", { deviceId: DEVICE_ID }, actor),
+    action: "CREATE",
+    resourceId: "cert-new",
+  },
+  {
+    name: "updateCertificate",
+    status: "draft",
+    run: () => certificateService.updateCertificate("tenant-1", "cert-1", { notes: "n", updatedBy: "user-1" }, actor),
+    action: "UPDATE",
+    resourceId: "cert-1",
+  },
+  {
+    name: "deleteCertificate",
+    status: "draft",
+    run: () => certificateService.deleteCertificate("tenant-1", "cert-1", actor),
+    action: "DELETE",
+    resourceId: "cert-1",
+  },
+  {
+    name: "submitCertificateForApproval",
+    status: "draft",
+    run: () => certificateService.submitCertificateForApproval("tenant-1", "cert-1", actor),
+    action: "UPDATE",
+    resourceId: "cert-1",
+  },
+  {
+    name: "approveCertificate",
+    status: "pending_approval",
+    run: () => certificateService.approveCertificate("tenant-1", "cert-1", "user-1", auth),
+    action: "APPROVE",
+    resourceId: "cert-1",
+    signs: true,
+  },
+  {
+    name: "signCertificate",
+    status: "approved",
+    run: () => certificateService.signCertificate("tenant-1", "cert-1", "sig", "key-1", "user-1", auth),
+    action: "APPROVE",
+    resourceId: "cert-1",
+    signs: true,
+  },
+  {
+    name: "revokeCertificate",
+    status: "signed",
+    run: () => certificateService.revokeCertificate("tenant-1", "cert-1", "wrong device", "user-1", auth),
+    action: "UPDATE",
+    resourceId: "cert-1",
+    signs: true,
+  }];
 
 describe("A-41 — certificate mutations audit inside their transaction", () => {
   beforeEach(() => {
@@ -184,15 +183,15 @@ describe("A-41 — certificate mutations audit inside their transaction", () => 
 
       expect(mockRef.ledger.committed("certificates").length).toBeGreaterThan(0);
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        tenantId: "tenant-1",
-        userId: "user-1",
-        action,
-        resourceType: "Certificate",
-        resourceId,
-        ipAddress: "10.0.0.1",
-        userAgent: "UA"
-      })]
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: "user-1",
+          action,
+          resourceType: "Certificate",
+          resourceId,
+          ipAddress: "10.0.0.1",
+          userAgent: "UA",
+        })],
       );
       const [row] = mockRef.ledger.auditRows();
       expect(row.changes).toEqual(expect.objectContaining({ before: expect.any(Object), after: expect.any(Object) }));
@@ -239,7 +238,7 @@ describe("A-41 — certificate mutations audit inside their transaction", () => 
 
     it("the workflow instance commits with the certificate, and the ISSUE row names it", async () => {
       workflowService.startWorkflow.mockImplementation(async (tenantId: any, _type: any, resourceId: any, transaction: any) =>
-      mockRef.ledger.write("workflow_instances", { id: "wfi-1", tenantId, resourceId, status: "PENDING" }, { transaction })
+        mockRef.ledger.write("workflow_instances", { id: "wfi-1", tenantId, resourceId, status: "PENDING" }, { transaction }),
       );
 
       await certificateService.createCertificate("tenant-1", "user-1", { deviceId: DEVICE_ID }, actor);
@@ -247,7 +246,7 @@ describe("A-41 — certificate mutations audit inside their transaction", () => 
       const [,,, transaction] = workflowService.startWorkflow.mock.calls[0];
       expect(transaction).toBeTruthy();
       expect(mockRef.ledger.committed("workflow_instances")).toEqual([
-      expect.objectContaining({ id: "wfi-1", resourceId: "cert-new" })]
+        expect.objectContaining({ id: "wfi-1", resourceId: "cert-new" })],
       );
       const [row] = mockRef.ledger.auditRows();
       expect(row.changes.after).toEqual(expect.objectContaining({ workflowInstanceId: "wfi-1" }));
@@ -259,7 +258,7 @@ describe("A-41 — certificate mutations audit inside their transaction", () => 
       });
 
       await expect(
-        certificateService.createCertificate("tenant-1", "user-1", { deviceId: DEVICE_ID }, actor)
+        certificateService.createCertificate("tenant-1", "user-1", { deviceId: DEVICE_ID }, actor),
       ).rejects.toThrow("workflow lookup failed");
 
       expect(mockRef.ledger.committed("certificates")).toEqual([]);

@@ -9,7 +9,7 @@
 // D-22 (ADR-070): a parent's delete soft-deletes its attachments through
 // attachment.service, in the parent's transaction.
 jest.mock("../../services/attachment.service", () => ({
-  softDeleteForResource: jest.fn().mockResolvedValue([])
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("sequelize", () => ({
   Op: {
@@ -17,8 +17,8 @@ jest.mock("sequelize", () => ({
     in: Symbol("in"),
     notIn: Symbol("notIn"),
     ne: Symbol("ne"),
-    gt: Symbol("gt")
-  }
+    gt: Symbol("gt"),
+  },
 }));
 
 jest.mock("../../models", () => {
@@ -30,7 +30,7 @@ jest.mock("../../models", () => {
     create: jest.fn(),
     update: jest.fn(),
     destroy: jest.fn(),
-    bulkCreate: jest.fn()
+    bulkCreate: jest.fn(),
   });
   return {
     KanbanProject: model(),
@@ -44,26 +44,26 @@ jest.mock("../../models", () => {
     KanbanCardRelation: model(),
     User: model(),
     Role: model(),
-    sequelize: { transaction: jest.fn(), query: jest.fn() }
+    sequelize: { transaction: jest.fn(), query: jest.fn() },
   };
 });
 
 jest.mock("../../config/socket", () => ({
   emitToBoard: jest.fn(),
-  getIo: jest.fn()
+  getIo: jest.fn(),
 }));
 
 jest.mock("../../services/notification.service", () => ({
-  emitNotification: jest.fn()
+  emitNotification: jest.fn(),
 }));
 
 // P6-11: every board write commits with one audit row in its transaction.
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn()
+  logAction: jest.fn(),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() }
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -91,7 +91,7 @@ const {
   KanbanCardLabel,
   KanbanSprint,
   KanbanCardRelation,
-  sequelize
+  sequelize,
 } = models;
 const { emitToBoard } = require("../../config/socket");
 const notificationService = require("../../services/notification.service");
@@ -110,7 +110,7 @@ const baseProject = () => ({
   name: "Board",
   description: "d",
   color: "#fff",
-  createdAt: new Date()
+  createdAt: new Date(),
 });
 
 const makeCard = (over: any = {}) => ({
@@ -136,7 +136,7 @@ const makeCard = (over: any = {}) => ({
   update: jest.fn().mockResolvedValue(undefined),
   save: jest.fn().mockResolvedValue(undefined),
   destroy: jest.fn().mockResolvedValue(undefined),
-  ...over
+  ...over,
 });
 
 const expectReject = async (promise: any, message: any) => {
@@ -144,16 +144,15 @@ const expectReject = async (promise: any, message: any) => {
 };
 
 const ALL_MODELS = [
-KanbanProject,
-KanbanProjectMember,
-KanbanColumn,
-KanbanCard,
-KanbanLabel,
-KanbanCardAssignee,
-KanbanCardLabel,
-KanbanSprint,
-KanbanCardRelation];
-
+  KanbanProject,
+  KanbanProjectMember,
+  KanbanColumn,
+  KanbanCard,
+  KanbanLabel,
+  KanbanCardAssignee,
+  KanbanCardLabel,
+  KanbanSprint,
+  KanbanCardRelation];
 
 beforeEach(() => {
   jest.resetAllMocks();
@@ -195,7 +194,7 @@ describe("resolveAccess / assertAccess", () => {
   it("treats SUPERADMIN as owner", async () => {
     const res = await svc._resolveAccess(
       { id: "sa", tenantId: TID, role: { name: "SUPERADMIN" } },
-      PID
+      PID,
     );
     expect(res.level).toBe("owner");
   });
@@ -203,7 +202,7 @@ describe("resolveAccess / assertAccess", () => {
   it("treats the creator as owner", async () => {
     KanbanProject.findOne.mockResolvedValueOnce({
       ...baseProject(),
-      createdBy: "creator"
+      createdBy: "creator",
     });
     const res = await svc._resolveAccess({ id: "creator", tenantId: TID }, PID);
     expect(res.level).toBe("owner");
@@ -211,12 +210,12 @@ describe("resolveAccess / assertAccess", () => {
 
   it("resolves the highest membership level (with role id)", async () => {
     KanbanProjectMember.findAll.mockResolvedValueOnce([
-    { accessLevel: "editor" },
-    { accessLevel: "bogus" }]
+      { accessLevel: "editor" },
+      { accessLevel: "bogus" }],
     );
     const res = await svc._resolveAccess(
       { id: "u", tenantId: TID, role: { id: "r1", name: "USER" } },
-      PID
+      PID,
     );
     expect(res.level).toBe("editor");
   });
@@ -237,7 +236,7 @@ describe("resolveAccess / assertAccess", () => {
     KanbanProjectMember.findAll.mockResolvedValueOnce([]);
     await expectReject(
       svc.assertAccess({ id: "u", tenantId: TID }, PID, "viewer"),
-      "Project not found"
+      "Project not found",
     );
   });
 
@@ -245,7 +244,7 @@ describe("resolveAccess / assertAccess", () => {
     KanbanProjectMember.findAll.mockResolvedValueOnce([{ accessLevel: "viewer" }]);
     await expectReject(
       svc.assertAccess({ id: "u", tenantId: TID, role: { id: "r1" } }, PID, "owner"),
-      "Requires owner access"
+      "Requires owner access",
     );
   });
 
@@ -303,11 +302,11 @@ describe("createProject", () => {
       code: "mgt",
       description: "d",
       color: "#fff",
-      members: [{ userId: "u2", accessLevel: "editor" }, { roleId: "r2" }, {}]
+      members: [{ userId: "u2", accessLevel: "editor" }, { roleId: "r2" }, {}],
     });
     expect(KanbanProject.create).toHaveBeenCalledWith(
       expect.objectContaining({ code: "MGT" }),
-      expect.any(Object)
+      expect.any(Object),
     );
     // creator + 3 supplied members
     expect(KanbanProjectMember.create).toHaveBeenCalledTimes(4);
@@ -321,7 +320,7 @@ describe("createProject", () => {
     await svc.createProject(superAdmin, { name: "Board" });
     expect(KanbanProject.create).toHaveBeenCalledWith(
       expect.objectContaining({ code: null }),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 });
@@ -329,30 +328,30 @@ describe("createProject", () => {
 describe("getProject sprint selection", () => {
   const fullBoardMocks = () => {
     KanbanColumn.findAll.mockResolvedValueOnce([
-    { id: "col1", name: "To Do", position: 0, wipLimit: null, isDone: false }]
+      { id: "col1", name: "To Do", position: 0, wipLimit: null, isDone: false }],
     );
     KanbanCard.findAll.mockResolvedValueOnce([
-    makeCard({
-      assignees: [{ id: "u2", firstName: "A", lastName: "B", email: "a@b.c" }],
-      labels: [{ id: "l1", name: "bug", color: "#f00" }],
-      relations: undefined
-    })]
+      makeCard({
+        assignees: [{ id: "u2", firstName: "A", lastName: "B", email: "a@b.c" }],
+        labels: [{ id: "l1", name: "bug", color: "#f00" }],
+        relations: undefined,
+      })],
     );
     KanbanLabel.findAll.mockResolvedValueOnce([{ id: "l1", name: "bug", color: "#f00" }]);
     KanbanProjectMember.findAll.mockResolvedValueOnce([
-    {
-      id: "m1",
-      accessLevel: "owner",
-      user: { id: "u2", firstName: "A", lastName: "B", email: "a@b.c" },
-      role: { id: "r1", name: "USER" }
-    },
-    { id: "m2", accessLevel: "viewer", user: null, role: null }]
+      {
+        id: "m1",
+        accessLevel: "owner",
+        user: { id: "u2", firstName: "A", lastName: "B", email: "a@b.c" },
+        role: { id: "r1", name: "USER" },
+      },
+      { id: "m2", accessLevel: "viewer", user: null, role: null }],
     );
   };
 
   it("defaults to the active sprint", async () => {
     KanbanSprint.findAll.mockResolvedValueOnce([
-    { id: "sp1", status: "active", position: 0 }]
+      { id: "sp1", status: "active", position: 0 }],
     );
     fullBoardMocks();
     const res = await svc.getProject(superAdmin, PID);
@@ -403,16 +402,16 @@ describe("updateProject", () => {
       code: "xy",
       description: "dd",
       color: "cc",
-      archived: true
+      archived: true,
     });
     expect(KanbanProject.update).toHaveBeenCalledWith(
       expect.objectContaining({ code: "XY", archivedAt: expect.any(Date) }),
-      { where: { id: PID }, transaction: "txn" }
+      { where: { id: PID }, transaction: "txn" },
     );
     expect(emitToBoard).toHaveBeenCalledWith(
       PID,
       "kanban:project:updated",
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -421,7 +420,7 @@ describe("updateProject", () => {
     await svc.updateProject(superAdmin, PID, { code: null, archived: false });
     expect(KanbanProject.update).toHaveBeenCalledWith(
       expect.objectContaining({ code: null, archivedAt: null }),
-      { where: { id: PID }, transaction: "txn" }
+      { where: { id: PID }, transaction: "txn" },
     );
   });
 
@@ -454,12 +453,12 @@ describe("deleteProject", () => {
       attributes: ["id"],
       order: [["id", "ASC"]],
       limit: 500,
-      transaction: "txn"
+      transaction: "txn",
     });
     expect(softDeleteForResource()).toHaveBeenCalledWith(TID, "KanbanCard", ["c1", "c2"], {
       transaction: "txn",
       actor: { userId: superAdmin.id },
-      via: { type: "KanbanProject", id: PID }
+      via: { type: "KanbanProject", id: PID },
     });
   });
 
@@ -506,7 +505,7 @@ describe("members", () => {
     await svc.addMember(superAdmin, PID, { roleId: "r2", accessLevel: "editor" });
     expect(KanbanProjectMember.create).toHaveBeenCalledWith(
       expect.objectContaining({ userId: null, roleId: "r2", accessLevel: "editor" }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
   });
 
@@ -514,7 +513,7 @@ describe("members", () => {
     KanbanProjectMember.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.updateMember(superAdmin, PID, "m1", { accessLevel: "editor" }),
-      "Member not found"
+      "Member not found",
     );
   });
 
@@ -536,7 +535,7 @@ describe("members", () => {
     KanbanProjectMember.count.mockResolvedValueOnce(1);
     await expectReject(
       svc.removeMember(superAdmin, PID, "m1"),
-      "must keep at least one owner"
+      "must keep at least one owner",
     );
   });
 
@@ -571,7 +570,7 @@ describe("columns", () => {
       name: "New",
       position: 2,
       wipLimit: 5,
-      isDone: false
+      isDone: false,
     });
     const res = await svc.createColumn(superAdmin, PID, { name: "New", wipLimit: 5 });
     expect(done.update).toHaveBeenCalledWith({ position: 3 }, expect.any(Object));
@@ -586,7 +585,7 @@ describe("columns", () => {
       name: "X",
       position: 3,
       wipLimit: null,
-      isDone: false
+      isDone: false,
     });
     const res = await svc.createColumn(superAdmin, PID, { name: "X" });
     expect(res.position).toBe(3);
@@ -596,7 +595,7 @@ describe("columns", () => {
     KanbanColumn.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.updateColumn(superAdmin, PID, "c1", { name: "N" }),
-      "Column not found"
+      "Column not found",
     );
   });
 
@@ -606,11 +605,11 @@ describe("columns", () => {
     await svc.updateColumn(superAdmin, PID, "c1", {
       name: "N",
       wipLimit: 3,
-      position: 1
+      position: 1,
     });
     expect(column.update).toHaveBeenCalledWith(
       expect.objectContaining({ name: "N", wipLimit: 3, position: 1 }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
   });
 
@@ -638,7 +637,7 @@ describe("columns", () => {
     KanbanColumn.findOne.mockResolvedValueOnce({ id: "c1", isDone: true });
     await expectReject(
       svc.deleteColumn(superAdmin, PID, "c1"),
-      "Done column cannot be deleted"
+      "Done column cannot be deleted",
     );
   });
 
@@ -647,7 +646,7 @@ describe("columns", () => {
     KanbanColumn.count.mockResolvedValueOnce(1);
     await expectReject(
       svc.deleteColumn(superAdmin, PID, "c1"),
-      "must keep at least one column"
+      "must keep at least one column",
     );
   });
 
@@ -662,33 +661,33 @@ describe("columns", () => {
 
   it("reorderColumns forces the Done column last", async () => {
     KanbanColumn.findAll.mockResolvedValueOnce([
-    { id: "a", isDone: false },
-    { id: "b", isDone: false },
-    { id: "done", isDone: true }]
+      { id: "a", isDone: false },
+      { id: "b", isDone: false },
+      { id: "done", isDone: true }],
     );
     KanbanColumn.findAll.mockResolvedValueOnce([
-    { id: "a", name: "A", position: 0, wipLimit: null, isDone: false },
-    { id: "b", name: "B", position: 1, wipLimit: null, isDone: false },
-    { id: "done", name: "Done", position: 2, wipLimit: null, isDone: true }]
+      { id: "a", name: "A", position: 0, wipLimit: null, isDone: false },
+      { id: "b", name: "B", position: 1, wipLimit: null, isDone: false },
+      { id: "done", name: "Done", position: 2, wipLimit: null, isDone: true }],
     );
     const res = await svc.reorderColumns(superAdmin, PID, ["done", "a", "b"]);
     expect(KanbanColumn.update).toHaveBeenCalledTimes(3);
     // done pushed to the end
     expect(KanbanColumn.update).toHaveBeenLastCalledWith(
       { position: 2 },
-      expect.objectContaining({ where: { id: "done", projectId: PID } })
+      expect.objectContaining({ where: { id: "done", projectId: PID } }),
     );
     expect(res).toHaveLength(3);
   });
 
   it("reorderColumns works when there is no Done column", async () => {
     KanbanColumn.findAll.mockResolvedValueOnce([
-    { id: "a", isDone: false },
-    { id: "b", isDone: false }]
+      { id: "a", isDone: false },
+      { id: "b", isDone: false }],
     );
     KanbanColumn.findAll.mockResolvedValueOnce([
-    { id: "a", name: "A", position: 0, wipLimit: null, isDone: false },
-    { id: "b", name: "B", position: 1, wipLimit: null, isDone: false }]
+      { id: "a", name: "A", position: 0, wipLimit: null, isDone: false },
+      { id: "b", name: "B", position: 1, wipLimit: null, isDone: false }],
     );
     const res = await svc.reorderColumns(superAdmin, PID, ["b", "a"]);
     expect(KanbanColumn.update).toHaveBeenCalledTimes(2);
@@ -704,7 +703,7 @@ describe("createCard", () => {
     KanbanColumn.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.createCard(superAdmin, PID, { columnId: "col1", title: "T" }),
-      "Column not found"
+      "Column not found",
     );
   });
 
@@ -714,7 +713,7 @@ describe("createCard", () => {
 
     await expectReject(
       svc.createCard(superAdmin, PID, { columnId: "col1", title: "T" }),
-      "Project not found"
+      "Project not found",
     );
 
     const [sql, options] = sequelize.query.mock.calls[0];
@@ -729,14 +728,14 @@ describe("createCard", () => {
     KanbanSprint.findOne.mockResolvedValueOnce({ id: "sp1" });
     KanbanCard.create.mockResolvedValueOnce({ id: "cd1" });
     KanbanCard.findByPk.mockResolvedValueOnce(
-      makeCard({ getAssignees: jest.fn().mockResolvedValue([{ id: "u2" }]) })
+      makeCard({ getAssignees: jest.fn().mockResolvedValue([{ id: "u2" }]) }),
     );
     const res = await svc.createCard(superAdmin, PID, {
       columnId: "col1",
       sprintId: "sp1",
       title: "T",
       assigneeIds: ["u2", "sa"],
-      labelIds: ["l1"]
+      labelIds: ["l1"],
     });
     expect(KanbanCardAssignee.bulkCreate).toHaveBeenCalled();
     expect(KanbanCardLabel.bulkCreate).toHaveBeenCalled();
@@ -752,11 +751,11 @@ describe("createCard", () => {
     await svc.createCard(superAdmin, PID, {
       columnId: "col1",
       sprintId: "backlog",
-      title: "T"
+      title: "T",
     });
     expect(KanbanCard.create).toHaveBeenCalledWith(
       expect.objectContaining({ sprintId: null }),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -767,11 +766,11 @@ describe("createCard", () => {
     await svc.createCard(superAdmin, PID, {
       columnId: "col1",
       sprintId: null,
-      title: "T"
+      title: "T",
     });
     expect(KanbanCard.create).toHaveBeenCalledWith(
       expect.objectContaining({ sprintId: null }),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -780,7 +779,7 @@ describe("createCard", () => {
     KanbanSprint.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.createCard(superAdmin, PID, { columnId: "col1", sprintId: "sp1", title: "T" }),
-      "Sprint not found"
+      "Sprint not found",
     );
   });
 
@@ -792,7 +791,7 @@ describe("createCard", () => {
     await svc.createCard(superAdmin, PID, { columnId: "col1", title: "T" });
     expect(KanbanCard.create).toHaveBeenCalledWith(
       expect.objectContaining({ sprintId: "spA" }),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -800,7 +799,7 @@ describe("createCard", () => {
     KanbanProject.findOne.mockResolvedValueOnce({
       ...baseProject(),
       code: null,
-      name: "!!!"
+      name: "!!!",
     });
     KanbanColumn.findOne.mockResolvedValueOnce({ id: "col1" });
     KanbanSprint.findOne.mockResolvedValueOnce(null); // no active sprint
@@ -809,7 +808,7 @@ describe("createCard", () => {
     await svc.createCard(superAdmin, PID, { columnId: "col1", title: "T" });
     expect(KanbanCard.create).toHaveBeenCalledWith(
       expect.objectContaining({ sprintId: null, cardKey: "CARD-1" }),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -817,7 +816,7 @@ describe("createCard", () => {
     KanbanProject.findOne.mockResolvedValueOnce({
       ...baseProject(),
       code: null,
-      name: null
+      name: null,
     });
     KanbanColumn.findOne.mockResolvedValueOnce({ id: "col1" });
     KanbanSprint.findOne.mockResolvedValueOnce({ id: "spA" });
@@ -826,7 +825,7 @@ describe("createCard", () => {
     await svc.createCard(superAdmin, PID, { columnId: "col1", title: "T" });
     expect(KanbanCard.create).toHaveBeenCalledWith(
       expect.objectContaining({ cardKey: "CARD-1" }),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 });
@@ -836,25 +835,25 @@ describe("updateCard", () => {
     KanbanCard.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.updateCard(superAdmin, PID, "cd1", { title: "T" }),
-      "Card not found"
+      "Card not found",
     );
   });
 
   it("updates fields, sprint, assignees, labels and notifies", async () => {
     KanbanCard.findOne.mockResolvedValueOnce(
-      makeCard({ assignees: [{ id: "old1" }] })
+      makeCard({ assignees: [{ id: "old1" }] }),
     );
     KanbanCard.findByPk.mockResolvedValueOnce(
       makeCard({
         title: "T",
-        getAssignees: jest.fn().mockResolvedValue([{ id: "old1" }, { id: "sa" }])
-      })
+        getAssignees: jest.fn().mockResolvedValue([{ id: "old1" }, { id: "sa" }]),
+      }),
     );
     await svc.updateCard(superAdmin, PID, "cd1", {
       title: "T",
       sprintId: "sp2",
       assigneeIds: ["old1", "new1"],
-      labelIds: ["l1"]
+      labelIds: ["l1"],
     });
     expect(KanbanCardAssignee.destroy).toHaveBeenCalled();
     expect(KanbanCardAssignee.bulkCreate).toHaveBeenCalled();
@@ -870,7 +869,7 @@ describe("updateCard", () => {
     await svc.updateCard(superAdmin, PID, "cd1", {
       sprintId: "backlog",
       assigneeIds: [],
-      labelIds: []
+      labelIds: [],
     });
     // sprintId backlog -> null patch is applied (non-empty patch)
     expect(KanbanCardAssignee.destroy).toHaveBeenCalled();
@@ -885,7 +884,7 @@ describe("updateCard", () => {
     await svc.updateCard(superAdmin, PID, "cd1", { sprintId: null });
     expect(card.update).toHaveBeenCalledWith(
       expect.objectContaining({ sprintId: null }),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -904,7 +903,7 @@ describe("moveCard", () => {
     KanbanCard.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.moveCard(superAdmin, PID, "cd1", { columnId: "col2", position: 0 }),
-      "Card not found"
+      "Card not found",
     );
   });
 
@@ -913,7 +912,7 @@ describe("moveCard", () => {
     KanbanColumn.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.moveCard(superAdmin, PID, "cd1", { columnId: "col2", position: 0 }),
-      "Destination column not found"
+      "Destination column not found",
     );
   });
 
@@ -922,8 +921,8 @@ describe("moveCard", () => {
     KanbanCard.findOne.mockResolvedValueOnce(card);
     KanbanColumn.findOne.mockResolvedValueOnce({ id: "col1", name: "Same" });
     KanbanCard.findAll.mockResolvedValueOnce([
-    { id: "cd2", position: 0 },
-    { id: "cd3", position: 1 }]
+      { id: "cd2", position: 0 },
+      { id: "cd3", position: 1 }],
     );
     KanbanCard.findByPk.mockResolvedValueOnce(makeCard());
     await svc.moveCard(superAdmin, PID, "cd1", { columnId: "col1", position: 5 });
@@ -940,7 +939,7 @@ describe("moveCard", () => {
     KanbanCard.findAll.mockResolvedValueOnce([]); // dest siblings
     KanbanCard.findAll.mockResolvedValueOnce([{ id: "cd9", position: 3 }]); // source siblings (needs renumber)
     KanbanCard.findByPk.mockResolvedValueOnce(
-      makeCard({ getAssignees: jest.fn().mockResolvedValue([{ id: "watcher" }]) })
+      makeCard({ getAssignees: jest.fn().mockResolvedValue([{ id: "watcher" }]) }),
     );
     await svc.moveCard(superAdmin, PID, "cd1", { columnId: "col2", position: 0 });
     expect(notificationService.emitNotification).toHaveBeenCalled();
@@ -963,7 +962,7 @@ describe("deleteCard", () => {
       card.tenantId,
       "KanbanCard",
       card.id,
-      { transaction: "txn", actor: { userId: superAdmin.id } }
+      { transaction: "txn", actor: { userId: superAdmin.id } },
     );
     expect(res).toEqual({ deleted: true });
   });
@@ -984,7 +983,7 @@ describe("labels", () => {
     await svc.createLabel(superAdmin, PID, { name: "bug" });
     expect(KanbanLabel.create).toHaveBeenCalledWith(
       expect.objectContaining({ color: null }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
   });
 
@@ -992,7 +991,7 @@ describe("labels", () => {
     KanbanLabel.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.updateLabel(superAdmin, PID, "l1", { name: "x" }),
-      "Label not found"
+      "Label not found",
     );
   });
 
@@ -1039,8 +1038,8 @@ describe("sprints", () => {
     KanbanSprint.findAll.mockResolvedValueOnce([{ id: "sp1", name: "S1" }]);
     // P8-04 (ADR-096): one count grouped by sprint; the NULL group is the backlog.
     KanbanCard.count.mockResolvedValueOnce([
-    { sprintId: "sp1", count: "4" },
-    { sprintId: null, count: "2" }]
+      { sprintId: "sp1", count: "4" },
+      { sprintId: null, count: "2" }],
     );
     const res = await svc.listSprints(superAdmin, PID);
     expect(res.sprints[0].cardCount).toBe(4);
@@ -1056,11 +1055,11 @@ describe("sprints", () => {
       status: "active",
       startDate: "2026-01-01",
       endDate: "2026-02-01",
-      position: 2
+      position: 2,
     });
     expect(KanbanSprint.create).toHaveBeenCalledWith(
       expect.objectContaining({ status: "active", position: 2 }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
   });
 
@@ -1070,7 +1069,7 @@ describe("sprints", () => {
     await svc.createSprint(superAdmin, PID, { name: "S1" });
     expect(KanbanSprint.create).toHaveBeenCalledWith(
       expect.objectContaining({ status: "planned", position: 5, goal: null }),
-      { transaction: "txn" }
+      { transaction: "txn" },
     );
   });
 
@@ -1078,7 +1077,7 @@ describe("sprints", () => {
     KanbanSprint.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.updateSprint(superAdmin, PID, "sp1", { name: "N" }),
-      "Sprint not found"
+      "Sprint not found",
     );
   });
 
@@ -1111,7 +1110,7 @@ describe("migrateCards", () => {
     KanbanCard.update.mockResolvedValueOnce([3]);
     const res = await svc.migrateCards(superAdmin, PID, {
       cardIds: ["cd1", "cd2"],
-      targetSprintId: "backlog"
+      targetSprintId: "backlog",
     });
     expect(res).toEqual({ migrated: 3, targetSprintId: null });
   });
@@ -1123,7 +1122,7 @@ describe("migrateCards", () => {
     const res = await svc.migrateCards(superAdmin, PID, {
       allNotDone: true,
       fromSprintId: "spS",
-      targetSprintId: "spT"
+      targetSprintId: "spT",
     });
     expect(res).toEqual({ migrated: 5, targetSprintId: "spT" });
   });
@@ -1134,7 +1133,7 @@ describe("migrateCards", () => {
     const res = await svc.migrateCards(superAdmin, PID, {
       allNotDone: true,
       fromSprintId: "backlog",
-      targetSprintId: "backlog"
+      targetSprintId: "backlog",
     });
     expect(res.migrated).toBe(1);
   });
@@ -1144,7 +1143,7 @@ describe("migrateCards", () => {
     KanbanCard.update.mockResolvedValueOnce([2]);
     const res = await svc.migrateCards(superAdmin, PID, {
       allNotDone: true,
-      targetSprintId: "backlog"
+      targetSprintId: "backlog",
     });
     expect(res.migrated).toBe(2);
   });
@@ -1152,7 +1151,7 @@ describe("migrateCards", () => {
   it("rejects when neither cardIds nor allNotDone provided", async () => {
     await expectReject(
       svc.migrateCards(superAdmin, PID, { targetSprintId: "backlog" }),
-      "Provide cardIds or set allNotDone"
+      "Provide cardIds or set allNotDone",
     );
   });
 
@@ -1160,7 +1159,7 @@ describe("migrateCards", () => {
     KanbanSprint.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.migrateCards(superAdmin, PID, { cardIds: ["cd1"], targetSprintId: "spT" }),
-      "Target sprint not found"
+      "Target sprint not found",
     );
   });
 });
@@ -1172,14 +1171,14 @@ describe("relations", () => {
   it("addRelation rejects an unknown type", async () => {
     await expectReject(
       svc.addRelation(superAdmin, PID, "cd1", { targetCardId: "cd2", type: "nope" }),
-      "Unknown relation type"
+      "Unknown relation type",
     );
   });
 
   it("addRelation rejects a self relation", async () => {
     await expectReject(
       svc.addRelation(superAdmin, PID, "cd1", { targetCardId: "cd1", type: "blocks" }),
-      "cannot relate to itself"
+      "cannot relate to itself",
     );
   });
 
@@ -1187,7 +1186,7 @@ describe("relations", () => {
     KanbanCard.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(makeCard());
     await expectReject(
       svc.addRelation(superAdmin, PID, "cd1", { targetCardId: "cd2", type: "blocks" }),
-      "Card not found"
+      "Card not found",
     );
   });
 
@@ -1195,32 +1194,32 @@ describe("relations", () => {
     KanbanCard.findOne.mockResolvedValueOnce(makeCard()).mockResolvedValueOnce(null);
     await expectReject(
       svc.addRelation(superAdmin, PID, "cd1", { targetCardId: "cd2", type: "blocks" }),
-      "Target card not found"
+      "Target card not found",
     );
   });
 
   it("addRelation writes both directions and returns hydrated relations", async () => {
     KanbanCard.findOne.
-    mockResolvedValueOnce(makeCard({ id: "cd1" })).
-    mockResolvedValueOnce(makeCard({ id: "cd2" }));
+      mockResolvedValueOnce(makeCard({ id: "cd1" })).
+      mockResolvedValueOnce(makeCard({ id: "cd2" }));
     KanbanCardRelation.findAll.mockResolvedValueOnce([
-    {
-      id: "rel1",
-      type: "blocks",
-      targetCard: { id: "cd2", cardKey: "MGT-2", title: "T2", columnId: "col1" }
-    },
-    { id: "rel2", type: "blocks", targetCard: null }]
+      {
+        id: "rel1",
+        type: "blocks",
+        targetCard: { id: "cd2", cardKey: "MGT-2", title: "T2", columnId: "col1" },
+      },
+      { id: "rel2", type: "blocks", targetCard: null }],
     );
     const res = await svc.addRelation(superAdmin, PID, "cd1", {
       targetCardId: "cd2",
-      type: "blocks"
+      type: "blocks",
     });
     expect(KanbanCardRelation.bulkCreate).toHaveBeenCalledWith(
       expect.arrayContaining([
-      expect.objectContaining({ type: "blocks" }),
-      expect.objectContaining({ type: "blocked_by" })]
+        expect.objectContaining({ type: "blocks" }),
+        expect.objectContaining({ type: "blocked_by" })],
       ),
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(res[0].card.cardKey).toBe("MGT-2");
     expect(res[1].card).toBeNull();
@@ -1230,7 +1229,7 @@ describe("relations", () => {
     KanbanCardRelation.findOne.mockResolvedValueOnce(null);
     await expectReject(
       svc.removeRelation(superAdmin, PID, "cd1", "rel1"),
-      "Relation not found"
+      "Relation not found",
     );
   });
 
@@ -1240,7 +1239,7 @@ describe("relations", () => {
       sourceCardId: "cd1",
       targetCardId: "cd2",
       type: "blocks",
-      destroy: jest.fn().mockResolvedValue(undefined)
+      destroy: jest.fn().mockResolvedValue(undefined),
     };
     KanbanCardRelation.findOne.mockResolvedValueOnce(relation);
     await svc.removeRelation(superAdmin, PID, "cd1", "rel1");
@@ -1254,14 +1253,13 @@ describe("relations", () => {
 // ================================================================
 describe("getMetrics", () => {
   const columns = () => [
-  { id: "col1", name: "To Do", position: 0, wipLimit: 1, isDone: false },
-  { id: "col2", name: "In Progress", position: 1, wipLimit: null, isDone: false },
-  { id: "done", name: "Done", position: 2, wipLimit: null, isDone: true }];
+    { id: "col1", name: "To Do", position: 0, wipLimit: 1, isDone: false },
+    { id: "col2", name: "In Progress", position: 1, wipLimit: null, isDone: false },
+    { id: "done", name: "Done", position: 2, wipLimit: null, isDone: true }];
 
   const labels = () => [{ id: "l1", name: "bug", color: "#f00" }];
   const sprints = () => [
-  { id: "sp1", name: "Sprint 1", status: "active", position: 0 }];
-
+    { id: "sp1", name: "Sprint 1", status: "active", position: 0 }];
 
   const stubMeta = (over: any = {}) => {
     KanbanColumn.findAll.mockResolvedValueOnce(over.columns || columns());
@@ -1275,31 +1273,31 @@ describe("getMetrics", () => {
     const cards = [
     // Two cards in To Do -> exceeds wipLimit 1 (overWip true); one overdue,
     // one with no due date; both assigned (fallback name paths).
-    {
-      columnId: "col1",
-      sprintId: "sp1",
-      priority: "high",
-      dueDate: past,
-      assignees: [{ id: "u1", firstName: "Ann", lastName: "Lee", email: "a@x.c" }],
-      labels: [{ id: "l1" }]
-    },
-    {
-      columnId: "col1",
-      sprintId: "sp1",
-      priority: null,
-      dueDate: null,
-      assignees: [{ id: "u2", firstName: null, lastName: null, email: "b@x.c" }],
-      labels: []
-    },
-    // Done card: not overdue even though it has a past dueDate.
-    {
-      columnId: "done",
-      sprintId: null,
-      priority: "urgent",
-      dueDate: past,
-      assignees: [],
-      labels: [{ id: "l1" }]
-    }];
+      {
+        columnId: "col1",
+        sprintId: "sp1",
+        priority: "high",
+        dueDate: past,
+        assignees: [{ id: "u1", firstName: "Ann", lastName: "Lee", email: "a@x.c" }],
+        labels: [{ id: "l1" }],
+      },
+      {
+        columnId: "col1",
+        sprintId: "sp1",
+        priority: null,
+        dueDate: null,
+        assignees: [{ id: "u2", firstName: null, lastName: null, email: "b@x.c" }],
+        labels: [],
+      },
+      // Done card: not overdue even though it has a past dueDate.
+      {
+        columnId: "done",
+        sprintId: null,
+        priority: "urgent",
+        dueDate: past,
+        assignees: [],
+        labels: [{ id: "l1" }],
+      }];
 
     stubMeta({ cards });
     const res = await svc.getMetrics(superAdmin, PID);
@@ -1324,7 +1322,7 @@ describe("getMetrics", () => {
     // byAssignee: sorted, name from firstName+lastName vs email fallback
     expect(res.byAssignee).toHaveLength(2);
     expect(res.byAssignee.map((a: any) => a.name)).toEqual(
-      expect.arrayContaining(["Ann Lee", "b@x.c"])
+      expect.arrayContaining(["Ann Lee", "b@x.c"]),
     );
 
     expect(res.byLabel[0].count).toBe(2);
@@ -1355,7 +1353,7 @@ describe("getMetrics", () => {
     const res = await svc.getMetrics(superAdmin, PID, { sprintId: "backlog" });
     expect(res.view).toBe("backlog");
     expect(KanbanCard.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ sprintId: null }) })
+      expect.objectContaining({ where: expect.objectContaining({ sprintId: null }) }),
     );
     expect(res.bySprint).toEqual([]);
   });
@@ -1365,7 +1363,7 @@ describe("getMetrics", () => {
     const res = await svc.getMetrics(superAdmin, PID, { sprintId: "sp9" });
     expect(res.view).toBe("sp9");
     expect(KanbanCard.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ sprintId: "sp9" }) })
+      expect.objectContaining({ where: expect.objectContaining({ sprintId: "sp9" }) }),
     );
     expect(res.bySprint).toEqual([]);
   });
@@ -1397,11 +1395,11 @@ describe("getCard", () => {
   it("returns the serialized card with relations", async () => {
     KanbanCard.findByPk.mockResolvedValueOnce(makeCard());
     KanbanCardRelation.findAll.mockResolvedValueOnce([
-    {
-      id: "rel1",
-      type: "blocks",
-      targetCard: { id: "cd2", cardKey: "MGT-2", title: "T2", columnId: "col1" }
-    }]
+      {
+        id: "rel1",
+        type: "blocks",
+        targetCard: { id: "cd2", cardKey: "MGT-2", title: "T2", columnId: "col1" },
+      }],
     );
     const res = await svc.getCard(superAdmin, PID, "cd1");
     expect(res.id).toBe("cd1");
@@ -1422,7 +1420,7 @@ describe("helpers", () => {
   it("notifyCardActivity skips when the card has no assignees array", async () => {
     await svc.notifyCardActivity(makeCard({ assignees: undefined }), "sa", {
       title: "t",
-      message: "m"
+      message: "m",
     });
     expect(notificationService.emitNotification).not.toHaveBeenCalled();
   });
@@ -1431,8 +1429,8 @@ describe("helpers", () => {
     const out = svc._serializeCard(
       makeCard({
         assignees: [{ id: "u2", firstName: "A", lastName: "B", email: "a@b.c" }],
-        labels: [{ id: "l1", name: "bug", color: "#f00" }]
-      })
+        labels: [{ id: "l1", name: "bug", color: "#f00" }],
+      }),
     );
     expect(out.assignees[0].id).toBe("u2");
     expect(out.labels[0].name).toBe("bug");
@@ -1454,7 +1452,7 @@ describe("P6-11 — audit rows", () => {
 
   it("updateCard records the card before and after, and never its description", async () => {
     KanbanCard.findOne.mockResolvedValueOnce(
-      makeCard({ labels: undefined, assignees: [{ id: "a1" }], description: "private notes" })
+      makeCard({ labels: undefined, assignees: [{ id: "a1" }], description: "private notes" }),
     );
     KanbanCard.findByPk.mockResolvedValueOnce(makeCard());
     await svc.updateCard(superAdmin, PID, "cd1", { title: "New", description: "more notes" }, principal);
@@ -1473,8 +1471,8 @@ describe("P6-11 — audit rows", () => {
         projectId: PID,
         cardKey: "MGT-1",
         before: { title: "Card", assigneeIds: ["a1"], labelIds: [] },
-        descriptionChanged: true
-      }
+        descriptionChanged: true,
+      },
     });
     expect(JSON.stringify(entry.changes)).not.toMatch(/notes/);
   });
@@ -1485,7 +1483,7 @@ describe("P6-11 — audit rows", () => {
     await svc.updateCard(superAdmin, PID, "cd1", { labelIds: [] }, principal);
     expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({
       before: { labelIds: ["l9"] },
-      after: { labelIds: [] }
+      after: { labelIds: [] },
     });
   });
 

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * batchJob.worker — the consumer that drives batch jobs (W-06, W-07, W-31).
  *
@@ -23,17 +23,17 @@ jest.mock("../../services/batchJob.service", () => ({
   BATCH_DLQ: "batch_jobs_dlq",
   runJob: jest.fn(),
   failAbandonedJobs: jest.fn(),
-  failInterruptedJobs: jest.fn()
+  failInterruptedJobs: jest.fn(),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 jest.mock("amqplib", () => ({ connect: jest.fn() }));
 jest.mock("../../services/redis.service", () => ({
   getRedisConnection: jest.fn(() => null),
-  del: jest.fn()
+  del: jest.fn(),
 }));
 
 const { createBroker, settle } = require("../fixtures/fakeAmqp");
@@ -66,7 +66,7 @@ describe("handleMessage (mocked broker)", () => {
       nack: jest.fn(),
       assertQueue: jest.fn(),
       startConsumer: jest.fn(),
-      stopConsumers: jest.fn()
+      stopConsumers: jest.fn(),
     }));
     rabbitmq = require("../../services/rabbitmq.service");
     batchJobService = require("../../services/batchJob.service");
@@ -100,7 +100,7 @@ describe("handleMessage (mocked broker)", () => {
     expect(rabbitmq.ack).toHaveBeenCalledWith(ch, msg);
     expect(logger.info).toHaveBeenCalledWith("Batch job message settled without running", {
       jobId: "j1",
-      reason: "job is COMPLETED"
+      reason: "job is COMPLETED",
     });
   });
 
@@ -125,9 +125,9 @@ describe("handleMessage (mocked broker)", () => {
   });
 
   it.each([
-  ["not JSON", "not json"],
-  ["JSON null", "null"],
-  ["a JSON number", "42"]]
+    ["not JSON", "not json"],
+    ["JSON null", "null"],
+    ["a JSON number", "42"]],
   )("drops a message whose body is %s, without running anything", async (_label: any, body: any) => {
     const msg = { content: Buffer.from(body) };
 
@@ -215,7 +215,7 @@ describe("handleMessage (mocked broker)", () => {
     expect(batchJobService.failInterruptedJobs).toHaveBeenCalledWith(["j7"]);
     expect(logger.error).toHaveBeenCalledWith(
       "Could not mark interrupted batch jobs FAILED; the sweep will",
-      { error: "db gone" }
+      { error: "db gone" },
     );
     finish({ ran: true });
     await inFlight;
@@ -236,7 +236,7 @@ describe("the worker on rabbitmq.service over an in-memory broker (W-06, W-07, W
       RABBITMQ_RECONNECT_BASE_MS: "5",
       RABBITMQ_RECONNECT_MAX_MS: "20",
       RABBITMQ_DRAIN_TIMEOUT_MS: "20",
-      BATCH_JOBS_INLINE: "false"
+      BATCH_JOBS_INLINE: "false",
     };
     broker = createBroker();
     require("amqplib").connect.mockImplementation(broker.connect);

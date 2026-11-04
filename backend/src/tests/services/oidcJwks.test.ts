@@ -4,19 +4,19 @@
 
 jest.mock("axios", () => ({
   get: jest.fn(),
-  post: jest.fn()
+  post: jest.fn(),
 }));
 jest.mock("jsonwebtoken", () => ({
   decode: jest.fn(),
-  verify: jest.fn()
+  verify: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
-    debug: jest.fn()
-  }
+    debug: jest.fn(),
+  },
 }));
 
 const crypto = require("crypto");
@@ -26,11 +26,11 @@ const oidcJwks = require("../../services/oidcJwks");
 // fixtures must be real key material, not placeholder strings (a mock of the
 // old jwk-to-pem package hid that the fixtures were not keys at all).
 const RSA_JWK = crypto.
-generateKeyPairSync("rsa", { modulusLength: 2048 }).
-publicKey.export({ format: "jwk" });
+  generateKeyPairSync("rsa", { modulusLength: 2048 }).
+  publicKey.export({ format: "jwk" });
 const EC_JWK = crypto.
-generateKeyPairSync("ec", { namedCurve: "P-256" }).
-publicKey.export({ format: "jwk" });
+  generateKeyPairSync("ec", { namedCurve: "P-256" }).
+  publicKey.export({ format: "jwk" });
 require("../../utils/appError.util");
 const axios = require("axios");
 
@@ -47,7 +47,7 @@ const PROVIDER = Object.freeze({
   authorizationEndpoint: "https://login.example.com/t1/oauth2/v2.0/authorize",
   tokenEndpoint: "https://login.example.com/t1/oauth2/v2.0/token",
   jwksUri: "https://login.example.com/t1/discovery/v2.0/keys",
-  discovered: true
+  discovered: true,
 });
 const useProvider = () => jest.spyOn(oidcJwks, "discover").mockResolvedValue(PROVIDER);
 
@@ -64,19 +64,19 @@ describe("oidcJwks", () => {
   describe("verifyIdToken", () => {
     it("should throw error when idToken is missing", async () => {
       await expect(
-        oidcJwks.verifyIdToken(null, "https://issuer.com", "client-1")
+        oidcJwks.verifyIdToken(null, "https://issuer.com", "client-1"),
       ).rejects.toThrow("id_token is required");
     });
 
     it("should throw error when issuer is missing", async () => {
       await expect(
-        oidcJwks.verifyIdToken("token", null, "client-1")
+        oidcJwks.verifyIdToken("token", null, "client-1"),
       ).rejects.toThrow("OIDC issuer URL is required");
     });
 
     it("should throw error when clientId is missing", async () => {
       await expect(
-        oidcJwks.verifyIdToken("token", "https://issuer.com", null)
+        oidcJwks.verifyIdToken("token", "https://issuer.com", null),
       ).rejects.toThrow("OIDC client ID is required");
     });
 
@@ -87,18 +87,18 @@ describe("oidcJwks", () => {
         oidcJwks.verifyIdToken(
           "invalid-token",
           "https://issuer.com",
-          "client-1"
-        )
+          "client-1",
+        ),
       ).rejects.toThrow("Invalid id_token format");
     });
 
     it("should throw error for unsupported algorithm", async () => {
       jwt.decode.mockReturnValue({
-        header: { kid: "key-1", alg: "HS256" }
+        header: { kid: "key-1", alg: "HS256" },
       });
 
       await expect(
-        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1")
+        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1"),
       ).rejects.toThrow("Unsupported or insecure JWT algorithm");
     });
 
@@ -107,25 +107,25 @@ describe("oidcJwks", () => {
         sub: "user-1",
         email: "user@example.com",
         given_name: "John",
-        family_name: "Doe"
+        family_name: "Doe",
       };
 
       jwt.decode.mockReturnValue({
-        header: { kid: "key-1", alg: "RS256" }
+        header: { kid: "key-1", alg: "RS256" },
       });
 
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          {
-            kid: "key-1",
-            alg: "RS256",
-            kty: "RSA",
-            n: RSA_JWK.n,
-            e: RSA_JWK.e
-          }]
+            {
+              kid: "key-1",
+              alg: "RS256",
+              kty: "RSA",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
+            }],
 
-        }
+        },
       });
 
       jwt.verify.mockReturnValue(decodedToken);
@@ -133,13 +133,13 @@ describe("oidcJwks", () => {
       const result = await oidcJwks.verifyIdToken(
         "valid-token",
         "https://issuer.com",
-        "client-1"
+        "client-1",
       );
 
       expect(result).toEqual(decodedToken);
       expect(axios.get).toHaveBeenCalledWith(
         "https://issuer.com/.well-known/jwks.json",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -147,15 +147,15 @@ describe("oidcJwks", () => {
       const decodedToken: any = { sub: "user-1" };
 
       jwt.decode.mockReturnValue({
-        header: { kid: "key-1", alg: "ES256" }
+        header: { kid: "key-1", alg: "ES256" },
       });
 
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          { kid: "key-1", alg: "ES256", kty: "EC", crv: EC_JWK.crv, x: EC_JWK.x, y: EC_JWK.y }]
+            { kid: "key-1", alg: "ES256", kty: "EC", crv: EC_JWK.crv, x: EC_JWK.x, y: EC_JWK.y }],
 
-        }
+        },
       });
 
       jwt.verify.mockReturnValue(decodedToken);
@@ -163,7 +163,7 @@ describe("oidcJwks", () => {
       const result = await oidcJwks.verifyIdToken(
         "token",
         "https://issuer.com",
-        "client-1"
+        "client-1",
       );
 
       expect(result).toEqual(decodedToken);
@@ -175,45 +175,45 @@ describe("oidcJwks", () => {
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          {
-            kid: "key-1",
-            alg: "RS256",
-            kty: "RSA",
-            n: RSA_JWK.n,
-            e: RSA_JWK.e
-          }]
+            {
+              kid: "key-1",
+              alg: "RS256",
+              kty: "RSA",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
+            }],
 
-        }
+        },
       });
 
       await expect(
-        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1")
+        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1"),
       ).rejects.toThrow("JWT missing 'kid' header");
     });
 
     it("should throw error when no matching key found for kid", async () => {
       jwt.decode.mockReturnValue({
-        header: { kid: "unknown-key", alg: "RS256" }
+        header: { kid: "unknown-key", alg: "RS256" },
       });
 
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          {
-            kid: "key-1",
-            alg: "RS256",
-            kty: "RSA",
-            n: RSA_JWK.n,
-            e: RSA_JWK.e
-          }]
+            {
+              kid: "key-1",
+              alg: "RS256",
+              kty: "RSA",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
+            }],
 
-        }
+        },
       });
 
       await expect(
-        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1")
+        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1"),
       ).rejects.toThrow(
-        "No matching public key found for JWT with kid: unknown-key"
+        "No matching public key found for JWT with kid: unknown-key",
       );
     });
 
@@ -221,21 +221,21 @@ describe("oidcJwks", () => {
       const decodedToken: any = { sub: "user-1" };
 
       jwt.decode.mockReturnValue({
-        header: { kid: "key-1", alg: "RS256" }
+        header: { kid: "key-1", alg: "RS256" },
       });
 
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          {
-            kid: "key-1",
-            alg: "RS256",
-            kty: "RSA",
-            n: RSA_JWK.n,
-            e: RSA_JWK.e
-          }]
+            {
+              kid: "key-1",
+              alg: "RS256",
+              kty: "RSA",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
+            }],
 
-        }
+        },
       });
 
       jwt.verify.mockReturnValue(decodedToken);
@@ -251,21 +251,21 @@ describe("oidcJwks", () => {
 
     it("should throw TokenExpiredError as AppError", async () => {
       jwt.decode.mockReturnValue({
-        header: { kid: "key-1", alg: "RS256" }
+        header: { kid: "key-1", alg: "RS256" },
       });
 
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          {
-            kid: "key-1",
-            alg: "RS256",
-            kty: "RSA",
-            n: RSA_JWK.n,
-            e: RSA_JWK.e
-          }]
+            {
+              kid: "key-1",
+              alg: "RS256",
+              kty: "RSA",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
+            }],
 
-        }
+        },
       });
 
       const TokenExpiredError = new Error("token expired");
@@ -275,27 +275,27 @@ describe("oidcJwks", () => {
       });
 
       await expect(
-        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1")
+        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1"),
       ).rejects.toThrow("id_token has expired");
     });
 
     it("should throw JsonWebTokenError as AppError", async () => {
       jwt.decode.mockReturnValue({
-        header: { kid: "key-1", alg: "RS256" }
+        header: { kid: "key-1", alg: "RS256" },
       });
 
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          {
-            kid: "key-1",
-            alg: "RS256",
-            kty: "RSA",
-            n: RSA_JWK.n,
-            e: RSA_JWK.e
-          }]
+            {
+              kid: "key-1",
+              alg: "RS256",
+              kty: "RSA",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
+            }],
 
-        }
+        },
       });
 
       const JsonWebTokenError = new Error("invalid token");
@@ -305,7 +305,7 @@ describe("oidcJwks", () => {
       });
 
       await expect(
-        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1")
+        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1"),
       ).rejects.toThrow("Invalid id_token signature");
     });
   });
@@ -321,8 +321,8 @@ describe("oidcJwks", () => {
           "auth-code",
           {},
           "http://localhost/callback",
-          FLOW
-        )
+          FLOW,
+        ),
       ).rejects.toThrow("No id_token returned from token endpoint");
     });
 
@@ -338,29 +338,29 @@ describe("oidcJwks", () => {
         auth_time: 1234567890,
         acr: "urn:mace:incommon:iap:silver",
         amr: ["pwd"],
-        sub: "user-123"
+        sub: "user-123",
       };
 
       axios.post.mockResolvedValueOnce({
-        data: { id_token: "valid-token" }
+        data: { id_token: "valid-token" },
       });
 
       jwt.decode.mockReturnValue({
-        header: { kid: "key-1", alg: "RS256" }
+        header: { kid: "key-1", alg: "RS256" },
       });
 
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          {
-            kid: "key-1",
-            alg: "RS256",
-            kty: "RSA",
-            n: RSA_JWK.n,
-            e: RSA_JWK.e
-          }]
+            {
+              kid: "key-1",
+              alg: "RS256",
+              kty: "RSA",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
+            }],
 
-        }
+        },
       });
 
       jwt.verify.mockReturnValue(decodedToken);
@@ -368,14 +368,14 @@ describe("oidcJwks", () => {
       const ssoSettings: any = {
         oidc_client_id: "client-1",
         oidc_client_secret: "secret",
-        oidc_authority: "https://login.microsoftonline.com/common/oauth2/v2.0"
+        oidc_authority: "https://login.microsoftonline.com/common/oauth2/v2.0",
       };
 
       const result = await oidcJwks.verifyOidcCallback(
         "auth-code",
         ssoSettings,
         "http://localhost/callback",
-        FLOW
+        FLOW,
       );
 
       expect(result.email).toBe("user@example.com");
@@ -388,43 +388,43 @@ describe("oidcJwks", () => {
     it("should use default values when name fields are missing", async () => {
       const decodedToken: any = {
         email: "test@example.com",
-        nonce: FLOW.nonce
+        nonce: FLOW.nonce,
       };
 
       axios.post.mockResolvedValueOnce({
-        data: { id_token: "valid-token" }
+        data: { id_token: "valid-token" },
       });
 
       jwt.decode.mockReturnValue({
-        header: { kid: "key-1", alg: "RS256" }
+        header: { kid: "key-1", alg: "RS256" },
       });
 
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          {
-            kid: "key-1",
-            alg: "RS256",
-            kty: "RSA",
-            n: RSA_JWK.n,
-            e: RSA_JWK.e
-          }]
+            {
+              kid: "key-1",
+              alg: "RS256",
+              kty: "RSA",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
+            }],
 
-        }
+        },
       });
 
       jwt.verify.mockReturnValue(decodedToken);
 
       const ssoSettings: any = {
         oidc_client_id: "client-1",
-        oidc_client_secret: "secret"
+        oidc_client_secret: "secret",
       };
 
       const result = await oidcJwks.verifyOidcCallback(
         "auth-code",
         ssoSettings,
         "http://localhost/callback",
-        FLOW
+        FLOW,
       );
 
       expect(result.email).toBe("test@example.com");
@@ -434,11 +434,11 @@ describe("oidcJwks", () => {
 
     it("should throw AppError on OIDC verification failure", async () => {
       axios.post.mockResolvedValueOnce({
-        data: { id_token: "invalid-token" }
+        data: { id_token: "invalid-token" },
       });
 
       jwt.decode.mockReturnValue({
-        header: { kid: "key-1", alg: "RS256" }
+        header: { kid: "key-1", alg: "RS256" },
       });
 
       axios.get.mockRejectedValueOnce(new Error("Network error"));
@@ -446,7 +446,7 @@ describe("oidcJwks", () => {
       const ssoSettings: any = {
         oidc_client_id: "client-1",
         oidc_client_secret: "secret",
-        oidc_authority: "https://login.microsoftonline.com/common/oauth2/v2.0"
+        oidc_authority: "https://login.microsoftonline.com/common/oauth2/v2.0",
       };
 
       await expect(
@@ -454,8 +454,8 @@ describe("oidcJwks", () => {
           "auth-code",
           ssoSettings,
           "http://localhost/callback",
-          FLOW
-        )
+          FLOW,
+        ),
       ).rejects.toThrow("Failed to fetch IdP public keys");
     });
   });
@@ -465,21 +465,21 @@ describe("oidcJwks", () => {
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-          {
-            kid: "key-1",
-            alg: "RS256",
-            use: "sig",
-            key_ops: ["verify"],
-            kty: "RSA"
-          },
-          {
-            kid: "key-2",
-            alg: "ES256",
-            use: "sig",
-            kty: "EC"
-          }]
+            {
+              kid: "key-1",
+              alg: "RS256",
+              use: "sig",
+              key_ops: ["verify"],
+              kty: "RSA",
+            },
+            {
+              kid: "key-2",
+              alg: "ES256",
+              use: "sig",
+              kty: "EC",
+            }],
 
-        }
+        },
       });
 
       const result = await oidcJwks.getJwksInfo("https://issuer.com");
@@ -491,7 +491,7 @@ describe("oidcJwks", () => {
         kid: "key-1",
         alg: "RS256",
         use: "sig",
-        keyOps: ["verify"]
+        keyOps: ["verify"],
       });
     });
   });
@@ -557,7 +557,7 @@ describe("oidcJwks", () => {
 
       expect(axios.get).toHaveBeenCalledWith(
         "https://issuer.com/.well-known/jwks.json",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
   });
@@ -568,7 +568,7 @@ describe("oidcJwks", () => {
 
       await expect(oidcJwks.getJwksInfo("https://issuer.com")).rejects.toMatchObject({
         status: 500,
-        message: "Invalid JWKS response from IdP"
+        message: "Invalid JWKS response from IdP",
       });
     });
 
@@ -577,7 +577,7 @@ describe("oidcJwks", () => {
 
       await expect(oidcJwks.getJwksInfo("https://issuer.com")).rejects.toMatchObject({
         status: 500,
-        message: "Invalid JWKS response from IdP"
+        message: "Invalid JWKS response from IdP",
       });
     });
 
@@ -586,7 +586,7 @@ describe("oidcJwks", () => {
 
       await expect(oidcJwks.getJwksInfo("https://issuer.com")).rejects.toMatchObject({
         status: 500,
-        message: "Invalid JWKS response from IdP"
+        message: "Invalid JWKS response from IdP",
       });
     });
 
@@ -597,13 +597,13 @@ describe("oidcJwks", () => {
 
       await expect(oidcJwks.getJwksInfo("https://issuer.com")).rejects.toMatchObject({
         status: 500,
-        message: "Failed to fetch IdP public keys"
+        message: "Failed to fetch IdP public keys",
       });
 
       const { logger } = require("../../middlewares/activityLog.middleware");
       expect(logger.error).toHaveBeenCalledWith(
         "JWKS fetch failed",
-        expect.objectContaining({ status: 404 })
+        expect.objectContaining({ status: 404 }),
       );
       expect(oidcJwks.getCacheStats().size).toBe(0);
     });
@@ -613,13 +613,13 @@ describe("oidcJwks", () => {
 
       await expect(oidcJwks.getJwksInfo("https://issuer.com")).rejects.toMatchObject({
         status: 500,
-        message: "Failed to fetch IdP public keys"
+        message: "Failed to fetch IdP public keys",
       });
 
       const { logger } = require("../../middlewares/activityLog.middleware");
       expect(logger.error).toHaveBeenCalledWith(
         "JWKS fetch error",
-        expect.objectContaining({ error: "ETIMEDOUT" })
+        expect.objectContaining({ error: "ETIMEDOUT" }),
       );
     });
   });
@@ -628,7 +628,7 @@ describe("oidcJwks", () => {
     it("rethrows an error that is neither an AppError nor a JWT error", async () => {
       jwt.decode.mockReturnValue({ header: { kid: "k1", alg: "RS256" } });
       axios.get.mockResolvedValue({
-        data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] }
+        data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] },
       });
       const boom = new TypeError("jwkToPem exploded");
       jwt.verify.mockImplementation(() => {
@@ -636,7 +636,7 @@ describe("oidcJwks", () => {
       });
 
       await expect(
-        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1")
+        oidcJwks.verifyIdToken("token", "https://issuer.com", "client-1"),
       ).rejects.toBe(boom);
     });
   });
@@ -654,8 +654,8 @@ describe("oidcJwks", () => {
           "code-1",
           { oidc_client_id: "c1", oidc_client_secret: "s1" },
           "https://sp/callback",
-          FLOW
-        )
+          FLOW,
+        ),
       ).rejects.toMatchObject({ status: 401, message: "OIDC authentication failed" });
 
       const { logger } = require("../../middlewares/activityLog.middleware");
@@ -663,8 +663,8 @@ describe("oidcJwks", () => {
         "OIDC verification error",
         expect.objectContaining({
           error: "socket hang up",
-          response: { error: "invalid_grant" }
-        })
+          response: { error: "invalid_grant" },
+        }),
       );
     });
 
@@ -676,8 +676,8 @@ describe("oidcJwks", () => {
           "code-1",
           { oidc_client_id: "c1", oidc_client_secret: "s1" },
           "https://sp/callback",
-          FLOW
-        )
+          FLOW,
+        ),
       ).rejects.toMatchObject({ status: 401, message: "OIDC authentication failed" });
     });
   });
@@ -692,7 +692,7 @@ describe("oidcJwks", () => {
       axios.post.mockResolvedValue({ data: { id_token: "tok" } });
       jwt.decode.mockReturnValue({ header: { kid: "k1", alg: "RS256" } });
       axios.get.mockResolvedValue({
-        data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] }
+        data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] },
       });
       jwt.verify.mockReturnValue({ nonce: FLOW.nonce, ...claims });
     };
@@ -748,7 +748,7 @@ describe("oidcJwks", () => {
         auth_time: 1700000000,
         acr: "1",
         amr: ["pwd"],
-        sub: "sub-1"
+        sub: "sub-1",
       });
 
       const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW);
@@ -761,7 +761,7 @@ describe("oidcJwks", () => {
         authTime: 1700000000,
         acr: "1",
         amr: ["pwd"],
-        sub: "sub-1"
+        sub: "sub-1",
       });
     });
 
@@ -773,13 +773,13 @@ describe("oidcJwks", () => {
       expect(axios.post).toHaveBeenCalledWith(
         PROVIDER.tokenEndpoint,
         expect.stringContaining("code=code-9"),
-        expect.any(Object)
+        expect.any(Object),
       );
       expect(axios.get).toHaveBeenCalledWith(PROVIDER.jwksUri, expect.any(Object));
       expect(jwt.verify).toHaveBeenCalledWith(
         "tok",
         expect.any(String),
-        expect.objectContaining({ issuer: PROVIDER.issuer, audience: "c1" })
+        expect.objectContaining({ issuer: PROVIDER.issuer, audience: "c1" }),
       );
     });
   });
@@ -792,18 +792,18 @@ describe("oidcJwks", () => {
       axios.post.mockResolvedValue({ data: { id_token: "tok" } });
       jwt.decode.mockReturnValue({ header: { kid: "k1", alg: "RS256" } });
       axios.get.mockResolvedValue({
-        data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] }
+        data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] },
       });
       jwt.verify.mockReturnValue(claims);
     };
 
     it.each([
-    ["no flow at all", undefined],
-    ["no nonce", { codeVerifier: "v" }],
-    ["no code_verifier", { nonce: "n" }]]
+      ["no flow at all", undefined],
+      ["no nonce", { codeVerifier: "v" }],
+      ["no code_verifier", { nonce: "n" }]],
     )("refuses a callback with %s before any request to the IdP", async (_label: any, flow: any) => {
       await expect(
-        oidcJwks.verifyOidcCallback("c", settings, "https://cb", flow)
+        oidcJwks.verifyOidcCallback("c", settings, "https://cb", flow),
       ).rejects.toMatchObject({ status: 401, message: "OIDC sign-in state is incomplete" });
       expect(axios.post).not.toHaveBeenCalled();
     });
@@ -822,10 +822,10 @@ describe("oidcJwks", () => {
       withClaims({ email: "d@e.com", nonce: "someone-elses-nonce" });
 
       await expect(
-        oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW)
+        oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW),
       ).rejects.toMatchObject({
         status: 401,
-        message: "id_token nonce does not match the sign-in request"
+        message: "id_token nonce does not match the sign-in request",
       });
     });
 
@@ -833,7 +833,7 @@ describe("oidcJwks", () => {
       withClaims({ email: "d@e.com" });
 
       await expect(
-        oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW)
+        oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW),
       ).rejects.toMatchObject({ status: 401 });
     });
   });

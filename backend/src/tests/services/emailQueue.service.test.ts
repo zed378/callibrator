@@ -22,28 +22,28 @@ const mockRedis: any = { ready: true };
 jest.mock("amqplib", () => ({ connect: jest.fn() }));
 jest.mock("../../services/redis.service", () => ({
   getRedisConnection: jest.fn(() =>
-  mockRedis.ready ?
-  {
-    status: "ready",
-    set: jest.fn(async (key: any, value: any, _ex: any, _ttl: any, nx: any) => {
-      if (nx === "NX" && mockDedup.has(key)) {
-        return null;
-      }
-      mockDedup.set(key, value);
-      return "OK";
-    })
-  } :
-  null
+    mockRedis.ready ?
+      {
+        status: "ready",
+        set: jest.fn(async (key: any, value: any, _ex: any, _ttl: any, nx: any) => {
+          if (nx === "NX" && mockDedup.has(key)) {
+            return null;
+          }
+          mockDedup.set(key, value);
+          return "OK";
+        }),
+      } :
+      null,
   ),
-  del: jest.fn(async (key: any) => mockDedup.delete(key))
+  del: jest.fn(async (key: any) => mockDedup.delete(key)),
 }));
 jest.mock("../../services/email.service", () => ({
   sendOtpEmail: jest.fn(),
   sendActivationEmail: jest.fn(),
-  sendNotificationEmail: jest.fn()
+  sendNotificationEmail: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const { createBroker, settle } = require("../fixtures/fakeAmqp");
@@ -63,7 +63,7 @@ const load = () => {
     RABBITMQ_RECONNECT_BASE_MS: "5",
     RABBITMQ_RECONNECT_MAX_MS: "20",
     RABBITMQ_DRAIN_TIMEOUT_MS: "20",
-    EMAIL_RETRY_BASE_MS: "5"
+    EMAIL_RETRY_BASE_MS: "5",
   };
   require("amqplib").connect.mockImplementation(broker.connect);
   email = require("../../services/email.service");
@@ -88,7 +88,7 @@ const job = (overrides: any = {}) => ({
   data: { email: "nurse@hospital.example", firstName: "A" },
   retries: 0,
   maxRetries: 3,
-  ...overrides
+  ...overrides,
 });
 
 beforeEach(() => {
@@ -129,7 +129,7 @@ describe("retry schedule", () => {
 describe("producer (W-18: one connection, the shared publishing channel)", () => {
   it("queues each type as a persistent message whose messageId is the job id", async () => {
     await expect(
-      svc.queueActivationEmail({ email: "a@hospital.example", firstName: "A", lastName: "B", activationLink: "l" })
+      svc.queueActivationEmail({ email: "a@hospital.example", firstName: "A", lastName: "B", activationLink: "l" }),
     ).resolves.toBe(true);
     await svc.queueOtpEmail({ email: "b@hospital.example", firstName: "A", lastName: "B", otp: "123456" });
     await svc.queueNotificationEmail({
@@ -137,7 +137,7 @@ describe("producer (W-18: one connection, the shared publishing channel)", () =>
       firstName: "C",
       title: "Device due",
       message: "Calibration is due",
-      actionUrl: "https://app.example/d/1"
+      actionUrl: "https://app.example/d/1",
     });
 
     const queued = broker.messages("email_queue");
@@ -151,7 +151,7 @@ describe("producer (W-18: one connection, the shared publishing channel)", () =>
       firstName: "C",
       title: "Device due",
       message: "Calibration is due",
-      actionUrl: "https://app.example/d/1"
+      actionUrl: "https://app.example/d/1",
     });
     expect(broker.connectCount).toBe(1);
     expect(broker.openConnections()).toBe(1);
@@ -163,13 +163,13 @@ describe("producer (W-18: one connection, the shared publishing channel)", () =>
 
     expect(broker.queueArgs("email_queue")).toEqual({
       "x-dead-letter-exchange": "",
-      "x-dead-letter-routing-key": "email_dlq"
+      "x-dead-letter-routing-key": "email_dlq",
     });
     for (const n of [1, 2, 3]) {
       expect(broker.queueArgs(svc.retryQueueOf(n))).toEqual({
         "x-message-ttl": svc.retryDelayMs(n),
         "x-dead-letter-exchange": "",
-        "x-dead-letter-routing-key": "email_queue"
+        "x-dead-letter-routing-key": "email_queue",
       });
     }
   });
@@ -180,7 +180,7 @@ describe("producer (W-18: one connection, the shared publishing channel)", () =>
     expect(logger.info).toHaveBeenCalledWith("Email job added to queue", {
       jobId: expect.any(String),
       type: "otp",
-      recipientDomain: "hospital.example"
+      recipientDomain: "hospital.example",
     });
     expect(JSON.stringify(logger.info.mock.calls)).not.toMatch(/Nurse@|999111/);
   });
@@ -189,9 +189,9 @@ describe("producer (W-18: one connection, the shared publishing channel)", () =>
     beforeEach(() => broker.refuseConnections(true));
 
     it.each([
-    ["activation", () => svc.queueActivationEmail({ email: "a@h.example" }), "sendActivationEmail"],
-    ["otp", () => svc.queueOtpEmail({ email: "a@h.example", otp: "1" }), "sendOtpEmail"],
-    ["notification", () => svc.queueNotificationEmail({ email: "a@h.example", title: "t" }), "sendNotificationEmail"]]
+      ["activation", () => svc.queueActivationEmail({ email: "a@h.example" }), "sendActivationEmail"],
+      ["otp", () => svc.queueOtpEmail({ email: "a@h.example", otp: "1" }), "sendOtpEmail"],
+      ["notification", () => svc.queueNotificationEmail({ email: "a@h.example", title: "t" }), "sendNotificationEmail"]],
     )("%s is sent directly and its result returned", async (_type: any, queue: any, fn: any) => {
       email[fn].mockResolvedValueOnce(true);
 
@@ -202,7 +202,7 @@ describe("producer (W-18: one connection, the shared publishing channel)", () =>
       expect(logger.error).toHaveBeenCalledWith("Failed to add email job to queue", {
         error: expect.stringContaining("ECONNREFUSED"),
         type: _type,
-        recipientDomain: "h.example"
+        recipientDomain: "h.example",
       });
     });
 
@@ -214,7 +214,7 @@ describe("producer (W-18: one connection, the shared publishing channel)", () =>
       expect(logger.error).toHaveBeenCalledWith("Failed to send email", {
         error: "SMTP down",
         type: "activation",
-        recipientDomain: null
+        recipientDomain: null,
       });
     });
   });
@@ -246,9 +246,9 @@ describe("consumer (W-06: supervised)", () => {
   });
 
   it.each([
-  ["activation", "sendActivationEmail"],
-  ["otp", "sendOtpEmail"],
-  ["notification", "sendNotificationEmail"]]
+    ["activation", "sendActivationEmail"],
+    ["otp", "sendOtpEmail"],
+    ["notification", "sendNotificationEmail"]],
   )("sends a %s job and acks it", async (type: any, fn: any) => {
     email[fn].mockResolvedValue(true);
     await svc.processEmailQueue();
@@ -263,7 +263,7 @@ describe("consumer (W-06: supervised)", () => {
     expect(logger.info).toHaveBeenCalledWith("Email sent successfully", {
       jobId: "job-1",
       type,
-      recipientDomain: "hospital.example"
+      recipientDomain: "hospital.example",
     });
   });
 
@@ -311,7 +311,7 @@ describe("consumer (W-06: supervised)", () => {
     expect(logger.info).toHaveBeenCalledWith("Email sent successfully", {
       jobId: undefined,
       type: "otp",
-      recipientDomain: null
+      recipientDomain: null,
     });
   });
 });
@@ -319,9 +319,9 @@ describe("consumer (W-06: supervised)", () => {
 describe("retries live in the broker (W-09)", () => {
   it("a job that fails twice and then succeeds is sent once, and nothing reaches the DLQ", async () => {
     email.sendActivationEmail.
-    mockRejectedValueOnce(new Error("SMTP 421")).
-    mockResolvedValueOnce(false).
-    mockResolvedValueOnce(true);
+      mockRejectedValueOnce(new Error("SMTP 421")).
+      mockResolvedValueOnce(false).
+      mockResolvedValueOnce(true);
     await svc.processEmailQueue();
 
     broker.publish("email_queue", job());
@@ -392,11 +392,11 @@ describe("retries live in the broker (W-09)", () => {
 
   it("the channel closing mid-send cannot throw out of the consumer: the job is redelivered and sent", async () => {
     email.sendActivationEmail.
-    mockImplementationOnce(async () => {
-      broker.restart(); // the consumer's channel is gone when the retry is sent
-      throw new Error("SMTP 421");
-    }).
-    mockResolvedValue(true);
+      mockImplementationOnce(async () => {
+        broker.restart(); // the consumer's channel is gone when the retry is sent
+        throw new Error("SMTP 421");
+      }).
+      mockResolvedValue(true);
     await svc.processEmailQueue();
 
     broker.publish("email_queue", job());
@@ -405,7 +405,7 @@ describe("retries live in the broker (W-09)", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       "Email retry not scheduled (channel closed); the broker redelivers the job",
-      { jobId: "job-1", error: "Channel closed" }
+      { jobId: "job-1", error: "Channel closed" },
     );
     expect(broker.messages("email_dlq")).toHaveLength(0);
     expect(broker.messages("email_queue")).toHaveLength(0);
@@ -419,7 +419,7 @@ describe("stats, purge and close", () => {
     await expect(svc.getQueueStats()).resolves.toMatchObject({
       emailQueueMessages: 1,
       dlqMessages: 0,
-      status: "connected"
+      status: "connected",
     });
   });
 

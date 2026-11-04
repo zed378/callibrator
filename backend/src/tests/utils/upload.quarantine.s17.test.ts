@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 /**
  * S-17 — uploads land in a quarantine the static mount does not serve, and
  * reach their public folder only after they have passed.
@@ -26,11 +26,11 @@ const mockStorageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "s17-storage-"));
 fs.mkdirSync(path.join(mockStorageRoot, "storage"));
 
 jest.mock("../../utils/storagePath.util", () => (...parts: any[]) =>
-  require("path").join(mockStorageRoot, ...parts)
+  require("path").join(mockStorageRoot, ...parts),
 );
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 // attachment.service collaborators — the database is not what is under test.
@@ -40,10 +40,10 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 jest.mock("../../models", () => ({
   Attachment: { create: jest.fn() },
   Certificate: { findOne: jest.fn() },
-  TenantSettings: { findAll: jest.fn(async () => []) }
+  TenantSettings: { findAll: jest.fn(async () => []) },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../services/virusScan.service", () => ({ scanFile: jest.fn() }));
@@ -54,7 +54,7 @@ const {
   quarantinePath,
   QUARANTINE_DIRNAME,
   PUBLIC_UPLOADS_STATIC_OPTIONS,
-  mountPublicUploads
+  mountPublicUploads,
 } = require("../../utils/upload.util");
 const storagePath = require("../../utils/storagePath.util");
 const attachmentService = require("../../services/attachment.service");
@@ -71,8 +71,8 @@ let onHeld: (file?: any) => Promise<any> = async () => ({});
 const listFiles = (...parts: any[]) => {
   const dir = storagePath(...parts);
   return fs.existsSync(dir) ?
-  fs.readdirSync(dir, { withFileTypes: true }).filter((e: any) => e.isFile()).map((e: any) => e.name) :
-  [];
+    fs.readdirSync(dir, { withFileTypes: true }).filter((e: any) => e.isFile()).map((e: any) => e.name) :
+    [];
 };
 
 const post = async (route: any, name: any, type: any, content: any): Promise<{ status: number; body: any }> => {
@@ -95,7 +95,7 @@ beforeAll(async () => {
       allowedMimes: ["text/plain"],
       allowedExtensions: [".txt"],
       validateMagicBytes: false,
-      holdInQuarantine: true
+      holdInQuarantine: true,
     }),
     async (req: any, res: any, next: any) => {
       try {
@@ -103,14 +103,14 @@ beforeAll(async () => {
       } catch (err: any) {
         next(err);
       }
-    }
+    },
   );
 
   // A route that does not hold (avatars, logos): promoted by the middleware.
   app.post(
     "/direct",
     upload({ folder: "uploads/public/profile" }),
-    (req: any, res: any) => res.json({ path: req.file.path, filename: req.file.filename })
+    (req: any, res: any) => res.json({ path: req.file.path, filename: req.file.filename }),
   );
 
   app.use((err: any, _req: any, res: any, _next: any) => res.status(err.status || 500).json({ message: err.message }));
@@ -141,7 +141,7 @@ describe("S-17 — the quarantine and the static mount", () => {
         dir: path.dirname(file.path),
         onDisk: fs.existsSync(file.path),
         quarantineStatus: q.status,
-        finalStatus: final.status
+        finalStatus: final.status,
       };
       await promoteFromQuarantine(file, "uploads/attachments");
       return { name };
@@ -205,7 +205,7 @@ describe("S-17 — the quarantine and the static mount", () => {
     fs.writeFileSync(outside, "x");
 
     await expect(
-      promoteFromQuarantine({ path: outside, filename: "already-public.txt" }, "uploads/public/profile")
+      promoteFromQuarantine({ path: outside, filename: "already-public.txt" }, "uploads/public/profile"),
     ).rejects.toMatchObject({ status: 500 });
     expect(fs.existsSync(outside)).toBe(true);
   });
@@ -221,7 +221,7 @@ describe("S-17 — attachment.service scans the file IN quarantine, then promote
       filename: name,
       originalname: name,
       mimetype: "text/plain",
-      size: Buffer.byteLength(content)
+      size: Buffer.byteLength(content),
     };
   };
   // P8-01: a clean attachment's final place is the tenant's storage — on the
@@ -239,7 +239,7 @@ describe("S-17 — attachment.service scans the file IN quarantine, then promote
       during = {
         scannedPath: p,
         inQuarantine: fs.existsSync(quarantinePath("clean-1.txt")),
-        public: fs.existsSync(finalPath("clean-1.txt"))
+        public: fs.existsSync(finalPath("clean-1.txt")),
       };
       return { clean: true };
     });
@@ -249,7 +249,7 @@ describe("S-17 — attachment.service scans the file IN quarantine, then promote
     expect(during).toEqual({
       scannedPath: quarantinePath("clean-1.txt"),
       inQuarantine: true,
-      public: false
+      public: false,
     });
     expect(fs.existsSync(finalPath("clean-1.txt"))).toBe(true);
     expect(fs.existsSync(quarantinePath("clean-1.txt"))).toBe(false);
@@ -263,7 +263,7 @@ describe("S-17 — attachment.service scans the file IN quarantine, then promote
     virusScan.scanFile.mockResolvedValue({ clean: false, reason: "Eicar-Test-Signature FOUND" });
 
     await expect(attachmentService.createAttachment("t-1", file, {})).rejects.toMatchObject({
-      status: 422
+      status: 422,
     });
     expect(fs.existsSync(quarantinePath("bad-1.txt"))).toBe(false);
     expect(fs.existsSync(finalPath("bad-1.txt"))).toBe(false);
@@ -275,7 +275,7 @@ describe("S-17 — attachment.service scans the file IN quarantine, then promote
     db.transaction.mockRejectedValueOnce(new Error("insert failed"));
 
     await expect(attachmentService.createAttachment("t-1", file, {})).rejects.toThrow(
-      "insert failed"
+      "insert failed",
     );
     expect(fs.existsSync(finalPath("tx-1.txt"))).toBe(false);
     expect(fs.existsSync(quarantinePath("tx-1.txt"))).toBe(false);
@@ -293,8 +293,8 @@ describe("S-17 — attachment.service scans the file IN quarantine, then promote
         filename: "stray.txt",
         originalname: "stray.txt",
         mimetype: "text/plain",
-        size: 1
-      }, {})
+        size: 1,
+      }, {}),
     ).rejects.toMatchObject({ status: 500 });
     expect(fs.existsSync(p)).toBe(false);
     expect(Attachment.create).not.toHaveBeenCalled();

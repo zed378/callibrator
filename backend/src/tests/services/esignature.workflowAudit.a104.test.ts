@@ -17,14 +17,14 @@ const mockRef: any = { ledger: null, workflow: null };
 
 jest.mock("../../models", () => ({
   SignatureWorkflow: {
-    findOne: async () => mockRef.workflow
+    findOne: async () => mockRef.workflow,
   },
   // A-130: deletion counts signatures first; these workflows have none.
   SignatureRecord: { count: async () => 0 },
-  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) }
+  AuditLog: { create: (...args: any[]) => mockRef.ledger.AuditLog.create(...args) },
 }));
 jest.mock("../../config", () => ({
-  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) }
+  db: { transaction: (...args: any[]) => mockRef.ledger.transaction(...args) },
 }));
 
 const eSignatureService = require("../../services/eSignature.service");
@@ -40,7 +40,7 @@ const makeWorkflow = (status: any = "pending") => {
     subject: "Old subject",
     message: "Old message",
     expiresAt: null,
-    status
+    status,
   };
   workflow.update = async (values: any, options: any) => {
     mockRef.ledger.write("signature_workflows", { id: "wf-1", ...values }, options);
@@ -48,7 +48,7 @@ const makeWorkflow = (status: any = "pending") => {
     return workflow;
   };
   workflow.destroy = async (options: any) =>
-  mockRef.ledger.write("signature_workflows", { id: "wf-1", deletedAt: new Date() }, options);
+    mockRef.ledger.write("signature_workflows", { id: "wf-1", deletedAt: new Date() }, options);
   return workflow;
 };
 
@@ -66,25 +66,25 @@ describe("A-104 — e-signature workflow management audits inside the transactio
 
   describe("updateWorkflow", () => {
     const update = () =>
-    eSignatureService.updateWorkflow("wf-1", "tenant-1", { subject: "New subject" }, ACTOR);
+      eSignatureService.updateWorkflow("wf-1", "tenant-1", { subject: "New subject" }, ACTOR);
 
     it("commits the edit with exactly one valid audit row naming the actor, before and after", async () => {
       await update();
 
       expect(mockRef.ledger.committed("signature_workflows")).toEqual([
-      { id: "wf-1", subject: "New subject" }]
+        { id: "wf-1", subject: "New subject" }],
       );
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        tenantId: "tenant-1",
-        userId: "u-9",
-        action: "UPDATE",
-        resourceType: "SignatureWorkflow",
-        resourceId: "wf-1",
-        ipAddress: "10.0.0.7",
-        userAgent: "UA-a104",
-        changes: { before: { subject: "Old subject" }, after: { subject: "New subject" } }
-      })]
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: "u-9",
+          action: "UPDATE",
+          resourceType: "SignatureWorkflow",
+          resourceId: "wf-1",
+          ipAddress: "10.0.0.7",
+          userAgent: "UA-a104",
+          changes: { before: { subject: "Old subject" }, after: { subject: "New subject" } },
+        })],
       );
     });
 
@@ -117,7 +117,7 @@ describe("A-104 — e-signature workflow management audits inside the transactio
     // actor-less change is refused inside its transaction — not recorded unattributed.
     it("an actor-less call is refused and nothing commits", async () => {
       await expect(
-        eSignatureService.updateWorkflow("wf-1", "tenant-1", { message: "m" })
+        eSignatureService.updateWorkflow("wf-1", "tenant-1", { message: "m" }),
       ).rejects.toBeDefined();
 
       expect(mockRef.ledger.committed("signature_workflows")).toEqual([]);
@@ -132,23 +132,23 @@ describe("A-104 — e-signature workflow management audits inside the transactio
       await cancel();
 
       expect(mockRef.ledger.committed("signature_workflows")).toEqual([
-      { id: "wf-1", status: "cancelled" }]
+        { id: "wf-1", status: "cancelled" }],
       );
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        tenantId: "tenant-1",
-        userId: "u-9",
-        action: "UPDATE",
-        resourceType: "SignatureWorkflow",
-        resourceId: "wf-1",
-        ipAddress: "10.0.0.7",
-        userAgent: "UA-a104",
-        changes: {
-          operation: "CANCEL",
-          before: { status: "pending" },
-          after: { status: "cancelled" }
-        }
-      })]
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: "u-9",
+          action: "UPDATE",
+          resourceType: "SignatureWorkflow",
+          resourceId: "wf-1",
+          ipAddress: "10.0.0.7",
+          userAgent: "UA-a104",
+          changes: {
+            operation: "CANCEL",
+            before: { status: "pending" },
+            after: { status: "cancelled" },
+          },
+        })],
       );
     });
 
@@ -183,17 +183,17 @@ describe("A-104 — e-signature workflow management audits inside the transactio
       await remove();
 
       expect(mockRef.ledger.committed("signature_workflows")).toEqual([
-      expect.objectContaining({ id: "wf-1", deletedAt: expect.any(Date) })]
+        expect.objectContaining({ id: "wf-1", deletedAt: expect.any(Date) })],
       );
       expect(mockRef.ledger.auditRows()).toEqual([
-      expect.objectContaining({
-        tenantId: "tenant-1",
-        userId: "u-9",
-        action: "DELETE",
-        resourceType: "SignatureWorkflow",
-        resourceId: "wf-1",
-        changes: { before: { status: "pending", documentId: "doc-1" } }
-      })]
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: "u-9",
+          action: "DELETE",
+          resourceType: "SignatureWorkflow",
+          resourceId: "wf-1",
+          changes: { before: { status: "pending", documentId: "doc-1" } },
+        })],
       );
     });
 

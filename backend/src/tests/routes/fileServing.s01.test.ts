@@ -24,7 +24,7 @@ const mockStorageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "s01-storage-"));
 // P8-01 (ADR-086 Amendment 1): stored files are looked for in storage first;
 // the double holds none, so every file here is read from its legacy path.
 jest.mock("../../services/storage", () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+
   const { createFakeStorage } = require("../fixtures/fakeStorage") as { createFakeStorage: () => unknown };
   return createFakeStorage();
 });
@@ -101,14 +101,12 @@ jest.mock("../../config", () => ({
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn(async () => ({ id: 1 })) }));
 jest.mock("../../services/virusScan.service", () => ({ scanFile: jest.fn() }));
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const { createTwoTenants } = require("../fixtures/twoTenants") as { createTwoTenants: typeof import("../fixtures/twoTenants").createTwoTenants };
 const storagePath = require("../../utils/storagePath.util") as typeof import("../../utils/storagePath.util");
 const { mountPublicUploads } = require("../../utils/upload.util") as typeof import("../../utils/upload.util");
 const attachmentController = require("../../controllers/attachment.controller") as typeof import("../../controllers/attachment.controller");
 const attachmentService = require("../../services/attachment.service") as typeof import("../../services/attachment.service");
 const certificatePdfController = require("../../controllers/certificatePdf.controller") as typeof import("../../controllers/certificatePdf.controller");
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 const fx = createTwoTenants();
 const userA = fx.principal(fx.tenantA, "USER");
@@ -352,9 +350,9 @@ describe("S-01 — attachments are reached only through the gated route", () => 
   });
 
   it("ADR-042 step 6: a delete whose transaction fails keeps both the row and the file", async () => {
-    /* eslint-disable @typescript-eslint/no-require-imports */
+
     const { db } = require("../../config") as { db: { transaction: jest.Mock } };
-    /* eslint-enable @typescript-eslint/no-require-imports */
+
     db.transaction.mockRejectedValueOnce(new Error("audit insert failed"));
     await expect(
       attachmentService.deleteAttachment(fx.tenantA.id, ATT_A, { userId: userA.id }),
@@ -363,9 +361,9 @@ describe("S-01 — attachments are reached only through the gated route", () => 
   });
 
   it("ADR-042 step 6: a committed delete whose file cannot be resolved is logged, not failed", async () => {
-    /* eslint-disable @typescript-eslint/no-require-imports */
+
     const { logger } = require("../../middlewares/activityLog.middleware") as { logger: { warn: jest.Mock } };
-    /* eslint-enable @typescript-eslint/no-require-imports */
+
     (mockDb.attachments[0] as MockAttachment).folder = "../../outside"; // resolveAbsPath refuses it
     await expect(
       attachmentService.deleteAttachment(fx.tenantA.id, ATT_A, { userId: userA.id }),

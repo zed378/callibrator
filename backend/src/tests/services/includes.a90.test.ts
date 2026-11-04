@@ -51,16 +51,16 @@ jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 // sanitize-html pulls an ESM-only htmlparser2 that this jest config does not
 // transform; content.service only needs it for writes.
 jest.mock("sanitize-html", () =>
-Object.assign((html: any) => String(html || ""), {
-  defaults: { allowedTags: [], allowedAttributes: {} },
-  simpleTransform: () => () => ({})
-})
+  Object.assign((html: any) => String(html || ""), {
+    defaults: { allowedTags: [], allowedAttributes: {} },
+    simpleTransform: () => () => ({}),
+  }),
 );
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn().mockResolvedValue(null),
   set: jest.fn().mockResolvedValue(undefined),
   del: jest.fn().mockResolvedValue(undefined),
-  cacheKeys: { userPermissions: (id: any) => `user-perms:${id}` }
+  cacheKeys: { userPermissions: (id: any) => `user-perms:${id}` },
 }));
 
 const fs = require("fs");
@@ -113,7 +113,7 @@ const expectLeft = (sql: any, spec: any) => {
     if (tenantScoped) {
       expect({ alias, tenantInOn: on.includes(`"${alias}"."tenant_id" = '${TENANT}'`) }).toEqual({
         alias,
-        tenantInOn: true
+        tenantInOn: true,
       });
     }
   }
@@ -144,8 +144,8 @@ describe("A-90 — a row with a null, soft-deleted or foreign reference is still
 
     const [list, detail] = rowSelects();
     const spec = [
-    ["calibration_devices", "device", true],
-    ["users", "performer", true]];
+      ["calibration_devices", "device", true],
+      ["users", "performer", true]];
 
     expectLeft(list, spec);
     expectLeft(detail, spec);
@@ -175,18 +175,18 @@ describe("A-90 — a row with a null, soft-deleted or foreign reference is still
     expectLeft(stocks, [["warehouses", "warehouse", true]]);
     expectLeft(stock, [["warehouses", "warehouse", true]]);
     expectLeft(adjustments, [
-    ["warehouses", "warehouse", true],
-    ["users", "adjuster", true]]
+      ["warehouses", "warehouse", true],
+      ["users", "adjuster", true]],
     );
     expectLeft(transfers, [
-    ["warehouses", "fromWarehouse", true],
-    ["warehouses", "toWarehouse", true],
-    ["users", "requester", true],
-    ["users", "approver", true]]
+      ["warehouses", "fromWarehouse", true],
+      ["warehouses", "toWarehouse", true],
+      ["users", "requester", true],
+      ["users", "approver", true]],
     );
     expectLeft(opnames, [
-    ["warehouses", "warehouse", true],
-    ["users", "performer", true]]
+      ["warehouses", "warehouse", true],
+      ["users", "performer", true]],
     );
     expectLeft(report, [["warehouses", "warehouse", true]]);
     expectLeft(csv, [["warehouses", "warehouse", true]]);
@@ -226,7 +226,7 @@ describe("A-90 — a row with a null, soft-deleted or foreign reference is still
     // `creator` association every one of these includes names did not exist,
     // so createBackup wrote the archive and then marked the backup FAILED.
     const created = await asTenant(() =>
-    tenantBackupService.createBackup({ tenantId: TENANT, createdById: ID, name: "b", models })
+      tenantBackupService.createBackup({ tenantId: TENANT, createdById: ID, name: "b", models }),
     );
     expect(created.status).toBe(201);
     const creator = models.TenantBackup.associations.creator;
@@ -237,19 +237,19 @@ describe("A-90 — a row with a null, soft-deleted or foreign reference is still
     const [reread, download] = rowSelects();
     expectLeft(reread, [["users", "creator", true]]);
     expectLeft(download, [
-    ["users", "creator", true],
-    ["tenants", "tenant", false]]
+      ["users", "creator", true],
+      ["tenants", "tenant", false]],
     );
   });
 
   it("tenantBackup controller: getBackup LEFT-joins creator and tenant", async () => {
     await asTenant(() =>
-    tenantBackupController.getBackup({ params: { backupId: ID }, user: {} }, resDouble(), jest.fn())
+      tenantBackupController.getBackup({ params: { backupId: ID }, user: {} }, resDouble(), jest.fn()),
     );
 
     expectLeft(rowSelects()[0], [
-    ["users", "creator", true],
-    ["tenants", "tenant", false]]
+      ["users", "creator", true],
+      ["tenants", "tenant", false]],
     );
   });
 
@@ -258,7 +258,7 @@ describe("A-90 — a row with a null, soft-deleted or foreign reference is still
       query: {},
       params: { id: ID },
       body: {},
-      user: { id: ID, role: { name: "SUPER_ADMIN" } }
+      user: { id: ID, role: { name: "SUPER_ADMIN" } },
     };
     await asTenant(() => sessionController.getAllSessions(req, resDouble(), jest.fn()));
     await asTenant(() => sessionController.getSessionById(req, resDouble(), jest.fn()));
@@ -266,8 +266,8 @@ describe("A-90 — a row with a null, soft-deleted or foreign reference is still
 
     const [list, detail, revoke] = rowSelects();
     const spec = [
-    ["users", "user", true],
-    ["roles", "user->role", false]];
+      ["users", "user", true],
+      ["roles", "user->role", false]];
 
     expectLeft(list, spec);
     expectLeft(detail, spec);

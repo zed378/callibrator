@@ -54,7 +54,7 @@ const UNREADABLE_INDEX_SITES = Object.freeze({
   "0070-custom-domain-partial-uniqueness.ts":
   'DROP INDEX "<legacy.index_name>": the legacy global unique index on custom_domains.domain; the same migration adds the partial per-tenant ones',
   "0128-device-extensions.ts":
-  "warehouses_room_name_unique is an EXPRESSION index (lower(btrim(name)), coalesce(lower(btrim(floor)), '')) — a uniqueness rule of live rooms per facility, not a foreign-key index; warehouses (tenant_id, client_facility_id) is indexed by 0123"
+  "warehouses_room_name_unique is an EXPRESSION index (lower(btrim(name)), coalesce(lower(btrim(floor)), '')) — a uniqueness rule of live rooms per facility, not a foreign-key index; warehouses (tenant_id, client_facility_id) is indexed by 0123",
 });
 
 /**
@@ -62,9 +62,9 @@ const UNREADABLE_INDEX_SITES = Object.freeze({
  * migration drops by name (a drop and re-create in one file is a rebuild).
  */
 const migrationIndexes = (scan: any) =>
-scan.indexes.filter(
-  (index: any) => !index.partial && !scan.dropped.some((d: any) => d.name === index.name && d.file > index.file)
-);
+  scan.indexes.filter(
+    (index: any) => !index.partial && !scan.dropped.some((d: any) => d.name === index.name && d.file > index.file),
+  );
 
 const SCAN = scanMigrations();
 const MIGRATION_INDEXES = migrationIndexes(SCAN);
@@ -109,18 +109,18 @@ const columnsNeedingIndex = (models: any) => {
 /** Whether `table.column` leads an index: the model's own, 0067's list, or one a migration creates. */
 const isIndexed = (model: any, table: any, column: any, created: any) => {
   const rows = [
-  ...asRows(table, modelIndexes(model)),
-  ...INDEXES.filter((x: any) => x.table === table).map((x: any) => ({ table_name: table, columns: x.columns })),
-  ...created.filter((x: any) => x.table === table).map((x: any) => ({ table_name: table, columns: x.columns }))];
+    ...asRows(table, modelIndexes(model)),
+    ...INDEXES.filter((x: any) => x.table === table).map((x: any) => ({ table_name: table, columns: x.columns })),
+    ...created.filter((x: any) => x.table === table).map((x: any) => ({ table_name: table, columns: x.columns }))];
 
   return isCovered(rows, { table, columns: [column] });
 };
 
 /** The core check: every FK / tenant column of `models` that no index leads. */
 const unindexed = (models: any, created: any) =>
-columnsNeedingIndex(models).
-filter(([table, column]: any) => !isIndexed(models.find((m: any) => m.getTableName() === table), table, column, created)).
-map(([table, column]: any) => `${table}.${column}`);
+  columnsNeedingIndex(models).
+    filter(([table, column]: any) => !isIndexed(models.find((m: any) => m.getTableName() === table), table, column, created)).
+    map(([table, column]: any) => `${table}.${column}`);
 
 const indexedColumnsNeeded = columnsNeedingIndex(allModels);
 
@@ -144,12 +144,12 @@ describe("D-20 — the migration side is read, not listed (ADR-100 Amendment 3)"
   it("is not vacuous: it finds indexes that only a migration creates", () => {
     const keys = new Set(MIGRATION_INDEXES.map((x: any) => `${x.table}(${x.columns.join(",")})`));
     for (const key of [
-    "calibration_records(api_key_id)", // 0105 — the Amendment 3 case: no model index
-    "stock_adjustments(api_key_id)", // 0105
-    "stock_transfers(api_key_id)", // 0105
-    "audit_logs(impersonator_id)", // 0029
-    "certificates(submitted_by)", // 0095 (ADR-101)
-    "access_requests(admin_user_id)" // 0099 (P10-05), a .map over FK_COLUMNS
+      "calibration_records(api_key_id)", // 0105 — the Amendment 3 case: no model index
+      "stock_adjustments(api_key_id)", // 0105
+      "stock_transfers(api_key_id)", // 0105
+      "audit_logs(impersonator_id)", // 0029
+      "certificates(submitted_by)", // 0095 (ADR-101)
+      "access_requests(admin_user_id)", // 0099 (P10-05), a .map over FK_COLUMNS
     ]) {
       expect(`${key}: ${keys.has(key)}`).toBe(`${key}: true`);
     }
@@ -170,9 +170,9 @@ describe("D-20 — the migration side is read, not listed (ADR-100 Amendment 3)"
       {
         id: { type: DataTypes.UUID, primaryKey: true },
         tenantId: { type: DataTypes.UUID, field: "tenant_id" },
-        widgetId: { type: DataTypes.UUID, field: "widget_id", references: { model: "widgets", key: "id" } }
+        widgetId: { type: DataTypes.UUID, field: "widget_id", references: { model: "widgets", key: "id" } },
       },
-      { tableName: "gadgets", underscored: true }
+      { tableName: "gadgets", underscored: true },
     );
     return [Widget, Gadget];
   };
@@ -219,7 +219,7 @@ describe("D-20 — the migration side is read, not listed (ADR-100 Amendment 3)"
         down: async () => undefined };`);
     const merged = {
       indexes: [...scan1.indexes, ...scan2.indexes],
-      dropped: [...scan1.dropped, ...scan2.dropped]
+      dropped: [...scan1.dropped, ...scan2.dropped],
     };
     expect(unindexed(fixtureModel(), migrationIndexes(merged))).toEqual(["gadgets.widget_id"]);
   });
@@ -241,11 +241,11 @@ describe("migration 0067 — the INDEXES list", () => {
 
   it("no entry is already served by the model on a fresh database — except the two iot_readings indexes the model also declares", () => {
     const redundant = INDEXES.filter((x: any) => isCovered(asRows(x.table, modelIndexes(byTable(x.table))), x)).map(
-      (x: any) => x.name
+      (x: any) => x.name,
     );
     expect(redundant).toEqual([
-    "iot_readings_tenant_id_device_id_timestamp",
-    "iot_readings_tenant_id_timestamp"]
+      "iot_readings_tenant_id_device_id_timestamp",
+      "iot_readings_tenant_id_timestamp"],
     );
   });
 

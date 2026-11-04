@@ -1,14 +1,14 @@
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
 const { Op } = require("sequelize");
 
 // A-41: mutations run in a managed transaction and audit through logAction.
 // In-transaction effects are asserted against a schema-enforcing ledger in
 // roles.audit.a41.test.js.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn(async (cb: any) => cb("TX")) }
+  db: { transaction: jest.fn(async (cb: any) => cb("TX")) },
 }));
 jest.mock("../../services/audit.service", () => ({
-  logAction: jest.fn().mockResolvedValue({})
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock("../../services/redis.service", () => ({
@@ -17,8 +17,8 @@ jest.mock("../../services/redis.service", () => ({
   del: jest.fn(),
   delPattern: jest.fn(),
   cacheKeys: {
-    permissions: jest.fn((id: any) => `permissions:role:${id}`)
-  }
+    permissions: jest.fn((id: any) => `permissions:role:${id}`),
+  },
 }));
 
 jest.mock("../../models", () => {
@@ -29,23 +29,23 @@ jest.mock("../../models", () => {
       findOne: jest.fn(),
       findAndCountAll: jest.fn(),
       update: jest.fn(),
-      destroy: jest.fn()
+      destroy: jest.fn(),
     },
     RoleMenuPermission: {
       findOrCreate: jest.fn(),
       destroy: jest.fn(),
-      findAll: jest.fn()
+      findAll: jest.fn(),
     },
     MenuGroup: {
       findByPk: jest.fn(),
       findAndCountAll: jest.fn(),
       create: jest.fn(),
       findOne: jest.fn(),
-      count: jest.fn().mockResolvedValue(0)
+      count: jest.fn().mockResolvedValue(0),
     },
     User: {
-      findByPk: jest.fn()
-    }
+      findByPk: jest.fn(),
+    },
   };
 });
 
@@ -67,7 +67,7 @@ describe("RolesService", () => {
         description: "Desc",
         isSystem: true,
         roleLevel: 6,
-        status: "active"
+        status: "active",
       }, { transaction: "TX" });
       expect(result.id).toBe("role1");
     });
@@ -83,7 +83,7 @@ describe("RolesService", () => {
         // ADR-043: a role with no level fails every privileged gate silently,
         // so an unspecified level is persisted as the model default, not left out.
         roleLevel: 1,
-        status: "active"
+        status: "active",
       }, { transaction: "TX" });
     });
 
@@ -95,7 +95,7 @@ describe("RolesService", () => {
       await RolesService.createRole({ name: "Sneaky", roleLevel: 10 });
       expect(mockRole.create).toHaveBeenCalledWith(
         expect.objectContaining({ roleLevel: 8 }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -104,7 +104,7 @@ describe("RolesService", () => {
       await RolesService.createRole({ name: "Negative", roleLevel: -3 });
       expect(mockRole.create).toHaveBeenCalledWith(
         expect.objectContaining({ roleLevel: 1 }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
 
@@ -113,7 +113,7 @@ describe("RolesService", () => {
       await RolesService.createRole({ name: "Fuzzy", roleLevel: "8" });
       expect(mockRole.create).toHaveBeenCalledWith(
         expect.objectContaining({ roleLevel: 1 }),
-        { transaction: "TX" }
+        { transaction: "TX" },
       );
     });
   });
@@ -144,19 +144,19 @@ describe("RolesService", () => {
         is_system: true,
         search: "Admin",
         limit: 10,
-        offset: 0
+        offset: 0,
       });
       expect(mockRole.findAndCountAll).toHaveBeenCalledWith(expect.objectContaining({
         where: {
           status: "active",
           is_system: true,
           [Op.or]: [
-          { name: { [Op.iLike]: "%Admin%" } },
-          { description: { [Op.iLike]: "%Admin%" } }]
+            { name: { [Op.iLike]: "%Admin%" } },
+            { description: { [Op.iLike]: "%Admin%" } }],
 
         },
         limit: 10,
-        offset: 0
+        offset: 0,
       }));
       expect(result.data.length).toBe(1);
       expect(result.count).toBe(1);
@@ -169,7 +169,7 @@ describe("RolesService", () => {
       expect(mockRole.findAndCountAll).toHaveBeenCalledWith(expect.objectContaining({
         where: {},
         limit: 100,
-        offset: 0
+        offset: 0,
       }));
     });
   });
@@ -192,7 +192,7 @@ describe("RolesService", () => {
       expect(mockUpdate).toHaveBeenCalledWith({
         name: "NewName",
         description: "NewDesc",
-        status: "inactive"
+        status: "inactive",
       }, { transaction: "TX" });
     });
 
@@ -278,7 +278,7 @@ describe("RolesService", () => {
   describe("getRoleMenus", () => {
     it("should return formatted menus", async () => {
       mockRoleMenuPermission.findAll.mockResolvedValue([
-      { menu: { slug: "dashboard" }, permission_type: "read" }]
+        { menu: { slug: "dashboard" }, permission_type: "read" }],
       );
       const result = await RolesService.getRoleMenus("r1");
       expect(result[0].menu.slug).toBe("dashboard");
@@ -309,8 +309,8 @@ describe("RolesService", () => {
       mockUser.findByPk.mockResolvedValue({
         role: {
           status: "active",
-          permissions: [{ permission_type: "read" }]
-        }
+          permissions: [{ permission_type: "read" }],
+        },
       });
       const res: any = await RolesService.hasPermission("u1", "dash", "read");
       expect(res).toBe(true);
@@ -320,8 +320,8 @@ describe("RolesService", () => {
       mockUser.findByPk.mockResolvedValue({
         role: {
           status: "active",
-          permissions: [{ permission_type: "write" }]
-        }
+          permissions: [{ permission_type: "write" }],
+        },
       });
       const res: any = await RolesService.hasPermission("u1", "dash", "read");
       expect(res).toBe(true);
@@ -331,8 +331,8 @@ describe("RolesService", () => {
       mockUser.findByPk.mockResolvedValue({
         role: {
           status: "active",
-          permissions: [{ permission_type: "read" }]
-        }
+          permissions: [{ permission_type: "read" }],
+        },
       });
       const res: any = await RolesService.hasPermission("u1", "dash", "write");
       expect(res).toBe(false);
@@ -342,8 +342,8 @@ describe("RolesService", () => {
       mockUser.findByPk.mockResolvedValue({
         role: {
           status: "active",
-          permissions: [{ permission_type: "write" }]
-        }
+          permissions: [{ permission_type: "write" }],
+        },
       });
       const res: any = await RolesService.hasPermission("u1", "dash", "write");
       expect(res).toBe(true);
@@ -355,8 +355,8 @@ describe("RolesService", () => {
       mockUser.findByPk.mockResolvedValue({
         role: {
           status: "active",
-          permissions: [{ permission_type: "read" }]
-        }
+          permissions: [{ permission_type: "read" }],
+        },
       });
 
       const res: any = await RolesService.hasPermission("u1", "child-slug", "read");
@@ -369,39 +369,39 @@ describe("RolesService", () => {
       mockMenuGroup.findOne.mockResolvedValue({ parentId: "parent-uuid" });
       mockMenuGroup.findByPk.mockResolvedValue(null);
       mockUser.findByPk.mockResolvedValue({
-        role: { status: "active", permissions: [{ permission_type: "read" }] }
+        role: { status: "active", permissions: [{ permission_type: "read" }] },
       });
 
       expect(await RolesService.hasPermission("u1", "child-slug", "read")).toBe(true);
       // Only the requested slug is used when no parent slug can be resolved.
       expect(mockUser.findByPk.mock.calls[0][1].include[0].include[0].include[0].where).toEqual({
-        slug: { [Op.in]: ["child-slug"] }
+        slug: { [Op.in]: ["child-slug"] },
       });
 
       mockUser.findByPk.mockClear();
       mockMenuGroup.findByPk.mockResolvedValue({ slug: null });
       expect(await RolesService.hasPermission("u1", "child-slug", "read")).toBe(true);
       expect(mockUser.findByPk.mock.calls[0][1].include[0].include[0].include[0].where).toEqual({
-        slug: { [Op.in]: ["child-slug"] }
+        slug: { [Op.in]: ["child-slug"] },
       });
     });
 
     it("should fall back safely when the menu lookup throws", async () => {
       mockMenuGroup.findOne.mockRejectedValue(new Error("db down"));
       mockUser.findByPk.mockResolvedValue({
-        role: { status: "active", permissions: [{ permission_type: "write" }] }
+        role: { status: "active", permissions: [{ permission_type: "write" }] },
       });
 
       expect(await RolesService.hasPermission("u1", "dash", "write")).toBe(true);
       expect(mockUser.findByPk.mock.calls[0][1].include[0].include[0].include[0].where).toEqual({
-        slug: { [Op.in]: ["dash"] }
+        slug: { [Op.in]: ["dash"] },
       });
     });
 
     it("should not look up a parent when the menu has no parentId", async () => {
       mockMenuGroup.findOne.mockResolvedValue({ parentId: null });
       mockUser.findByPk.mockResolvedValue({
-        role: { status: "active", permissions: [{ permission_type: "read" }] }
+        role: { status: "active", permissions: [{ permission_type: "read" }] },
       });
 
       expect(await RolesService.hasPermission("u1", "dash")).toBe(true);
@@ -410,14 +410,14 @@ describe("RolesService", () => {
 
     it("should prefer the camelCase permissionType field when present", async () => {
       mockUser.findByPk.mockResolvedValue({
-        role: { status: "active", permissions: [{ permissionType: "write" }] }
+        role: { status: "active", permissions: [{ permissionType: "write" }] },
       });
       expect(await RolesService.hasPermission("u1", "dash", "write")).toBe(true);
     });
 
     it("should return false for an unrecognised permission type", async () => {
       mockUser.findByPk.mockResolvedValue({
-        role: { status: "active", permissions: [{ permission_type: "none" }] }
+        role: { status: "active", permissions: [{ permission_type: "none" }] },
       });
       expect(await RolesService.hasPermission("u1", "dash", "read")).toBe(false);
     });
@@ -439,7 +439,7 @@ describe("RolesService", () => {
       redis.get.mockResolvedValue(null);
       mockRole.findByPk.mockResolvedValue(null);
       mockRoleMenuPermission.findAll.mockResolvedValue([
-      { menu: { name: "Dashboard", slug: "dash" }, permissionType: "write" }]
+        { menu: { name: "Dashboard", slug: "dash" }, permissionType: "write" }],
       );
 
       await expect(RolesService.getRolePermissionsMatrix("gone")).resolves.toEqual({});
@@ -453,7 +453,7 @@ describe("RolesService", () => {
       redis.get.mockResolvedValue(null);
       mockRole.findByPk.mockResolvedValue({ id: "r", status: "inactive" });
       mockRoleMenuPermission.findAll.mockResolvedValue([
-      { menu: { name: "Dashboard", slug: "dash" }, permissionType: "write" }]
+        { menu: { name: "Dashboard", slug: "dash" }, permissionType: "write" }],
       );
 
       await expect(RolesService.getRolePermissionsMatrix("r")).resolves.toEqual({});
@@ -469,8 +469,8 @@ describe("RolesService", () => {
     it("should build and cache matrix if not cached", async () => {
       require("../../services/redis.service").get.mockResolvedValue(null);
       mockRoleMenuPermission.findAll.mockResolvedValue([
-      { menu: { name: "Dashboard", slug: "dash" }, permission_type: "read" },
-      { menu: null, permission_type: "read" } // should skip null menu
+        { menu: { name: "Dashboard", slug: "dash" }, permission_type: "read" },
+        { menu: null, permission_type: "read" }, // should skip null menu
       ]);
       const result = await RolesService.getRolePermissionsMatrix("r2");
       expect(result).toEqual({ Dashboard: ["read"], dash: ["read"] });
@@ -480,17 +480,17 @@ describe("RolesService", () => {
     it("should inherit permissions for child menu groups in matrix", async () => {
       require("../../services/redis.service").get.mockResolvedValue(null);
       mockRoleMenuPermission.findAll.mockResolvedValue([
-      {
-        menu: {
-          name: "Parent Group",
-          slug: "parent-slug",
-          children: [
-          { name: "Child One", slug: "child-one-slug" },
-          { name: "Child Two", slug: "child-two-slug" }]
+        {
+          menu: {
+            name: "Parent Group",
+            slug: "parent-slug",
+            children: [
+              { name: "Child One", slug: "child-one-slug" },
+              { name: "Child Two", slug: "child-two-slug" }],
 
-        },
-        permission_type: "write"
-      }]
+          },
+          permission_type: "write",
+        }],
       );
       const result = await RolesService.getRolePermissionsMatrix("r3");
       expect(result).toEqual({
@@ -499,14 +499,14 @@ describe("RolesService", () => {
         "Child One": ["write"],
         "child-one-slug": ["write"],
         "Child Two": ["write"],
-        "child-two-slug": ["write"]
+        "child-two-slug": ["write"],
       });
     });
 
     it("should omit the slug key for a menu that has no slug", async () => {
       require("../../services/redis.service").get.mockResolvedValue(null);
       mockRoleMenuPermission.findAll.mockResolvedValue([
-      { menu: { name: "Slugless", slug: null, children: [] }, permission_type: "read" }]
+        { menu: { name: "Slugless", slug: null, children: [] }, permission_type: "read" }],
       );
       const result = await RolesService.getRolePermissionsMatrix("r4");
       expect(result).toEqual({ Slugless: ["read"] });
@@ -515,9 +515,9 @@ describe("RolesService", () => {
     it("should not duplicate a permission type already recorded for a menu", async () => {
       require("../../services/redis.service").get.mockResolvedValue(null);
       mockRoleMenuPermission.findAll.mockResolvedValue([
-      { menu: { name: "Dashboard", slug: "dash" }, permissionType: "read" },
-      { menu: { name: "Dashboard", slug: "dash" }, permissionType: "read" },
-      { menu: { name: "Dashboard", slug: "dash" }, permissionType: "write" }]
+        { menu: { name: "Dashboard", slug: "dash" }, permissionType: "read" },
+        { menu: { name: "Dashboard", slug: "dash" }, permissionType: "read" },
+        { menu: { name: "Dashboard", slug: "dash" }, permissionType: "write" }],
       );
       const result = await RolesService.getRolePermissionsMatrix("r5");
       expect(result).toEqual({ Dashboard: ["read", "write"], dash: ["read", "write"] });
@@ -528,8 +528,8 @@ describe("RolesService", () => {
       const child = { name: "Child", slug: "child-slug" };
       const childNoSlug: any = { name: "Orphan", slug: null };
       mockRoleMenuPermission.findAll.mockResolvedValue([
-      { menu: { name: "P1", slug: "p1", children: [child, childNoSlug] }, permission_type: "read" },
-      { menu: { name: "P2", slug: "p2", children: [child, childNoSlug] }, permission_type: "read" }]
+        { menu: { name: "P1", slug: "p1", children: [child, childNoSlug] }, permission_type: "read" },
+        { menu: { name: "P2", slug: "p2", children: [child, childNoSlug] }, permission_type: "read" }],
       );
       const result = await RolesService.getRolePermissionsMatrix("r6");
       expect(result).toEqual({
@@ -539,14 +539,14 @@ describe("RolesService", () => {
         p2: ["read"],
         Child: ["read"],
         "child-slug": ["read"],
-        Orphan: ["read"]
+        Orphan: ["read"],
       });
     });
 
     it("should skip child inheritance when the children array is empty", async () => {
       require("../../services/redis.service").get.mockResolvedValue(null);
       mockRoleMenuPermission.findAll.mockResolvedValue([
-      { menu: { name: "Leaf", slug: "leaf", children: [] }, permission_type: "write" }]
+        { menu: { name: "Leaf", slug: "leaf", children: [] }, permission_type: "write" }],
       );
       const result = await RolesService.getRolePermissionsMatrix("r7");
       expect(result).toEqual({ Leaf: ["write"], leaf: ["write"] });
@@ -665,10 +665,10 @@ describe("RolesService", () => {
       mockUser.findByPk.mockResolvedValue({
         role: {
           permissions: [
-          { menu: { slug: "dash" }, permission_type: "read" },
-          { menu: null } // should skip
-          ]
-        }
+            { menu: { slug: "dash" }, permission_type: "read" },
+            { menu: null }, // should skip
+          ],
+        },
       });
       const result = await RolesService.getUserMenus("u1");
       expect(result.length).toBe(1);
@@ -682,13 +682,13 @@ describe("RolesService", () => {
 
     it("should prefer the camelCase permissionType field when present", async () => {
       mockUser.findByPk.mockResolvedValue({
-        role: { permissions: [{ menu: { slug: "dash" }, permissionType: "write" }] }
+        role: { permissions: [{ menu: { slug: "dash" }, permissionType: "write" }] },
       });
       const result = await RolesService.getUserMenus("u1");
       expect(result[0]).toEqual({
         menu: { slug: "dash" },
         permissionType: "write",
-        permission_type: "write"
+        permission_type: "write",
       });
     });
   });
@@ -746,16 +746,16 @@ describe("RolesService", () => {
           is_active: true,
           search: "Dash",
           limit: 10,
-          offset: 0
+          offset: 0,
         });
         expect(mockMenuGroup.findAndCountAll).toHaveBeenCalledWith(expect.objectContaining({
           where: {
             is_active: true,
             [Op.or]: [
-            { name: { [Op.iLike]: "%Dash%" } },
-            { slug: { [Op.iLike]: "%Dash%" } }]
+              { name: { [Op.iLike]: "%Dash%" } },
+              { slug: { [Op.iLike]: "%Dash%" } }],
 
-          }
+          },
         }));
       });
 
@@ -765,7 +765,7 @@ describe("RolesService", () => {
         expect(mockMenuGroup.findAndCountAll).toHaveBeenCalledWith(expect.objectContaining({
           where: {},
           limit: 100,
-          offset: 0
+          offset: 0,
         }));
       });
     });
@@ -791,7 +791,7 @@ describe("RolesService", () => {
           icon: undefined,
           parentId: undefined, // the attribute (A-148); the API field stays parent_id
           sortOrder: 0,
-          isActive: true
+          isActive: true,
         }, { transaction: "TX" });
       });
 
@@ -813,7 +813,7 @@ describe("RolesService", () => {
         await RolesService.createMenu({ name: "Dash", slug: "custom-slug", is_active: false });
         expect(mockMenuGroup.create).toHaveBeenCalledWith(expect.objectContaining({
           slug: "custom-slug",
-          isActive: false
+          isActive: false,
         }), { transaction: "TX" });
       });
     });
@@ -830,7 +830,7 @@ describe("RolesService", () => {
         await RolesService.updateMenu("m1", { name: " NewName ", is_active: false });
         expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
           name: "NewName",
-          isActive: false
+          isActive: false,
         }), { transaction: "TX" });
         expect(require("../../services/redis.service").delPattern).toHaveBeenCalledWith("permissions:role:*");
       });
@@ -845,7 +845,7 @@ describe("RolesService", () => {
           icon: "chart",
           parent_id: "p1",
           sort_order: 5,
-          is_active: true
+          is_active: true,
         });
 
         expect(mockUpdate).toHaveBeenCalledWith({
@@ -854,7 +854,7 @@ describe("RolesService", () => {
           icon: "chart",
           parentId: "p1", // the attribute (A-148)
           sortOrder: 5,
-          isActive: true
+          isActive: true,
         }, { transaction: "TX" });
       });
 

@@ -48,22 +48,21 @@ describe("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () 
   let userId: any = undefined;
 
   const columnsOf = async () =>
-  (
-  await db.query(
-    `SELECT column_name, data_type, is_nullable FROM information_schema.columns
+    (
+      await db.query(
+        `SELECT column_name, data_type, is_nullable FROM information_schema.columns
           WHERE table_schema = current_schema() AND table_name = 'webhooks'
             AND column_name IN (:cols) ORDER BY column_name`,
-    { type: "SELECT", replacements: { cols: COLUMNS } }
-  )).
-  map((c: any) => `${c.column_name}:${c.data_type}:${c.is_nullable}`);
+        { type: "SELECT", replacements: { cols: COLUMNS } },
+      )).
+      map((c: any) => `${c.column_name}:${c.data_type}:${c.is_nullable}`);
 
   const EXPECTED = [
-  "previous_secret:text:YES",
-  "previous_secret_expires_at:timestamp with time zone:YES"];
-
+    "previous_secret:text:YES",
+    "previous_secret_expires_at:timestamp with time zone:YES"];
 
   const asTenant = (fn: any) =>
-  tenantStorage.run({ tenantId: TENANT, isSuperAdmin: false, isSystemTask: false }, fn);
+    tenantStorage.run({ tenantId: TENANT, isSuperAdmin: false, isSystemTask: false }, fn);
 
   beforeAll(async () => {
     const name = process.env["DB_NAME"] || "";
@@ -100,7 +99,7 @@ describe("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () 
     await db.query(
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
        VALUES (:t, 'P6-13', 'p6-13', 'p613@live.test', now(), now())`,
-      { replacements: { t: TENANT } }
+      { replacements: { t: TENANT } },
     );
     const [[user]] = await db.query(
       `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url,
@@ -108,14 +107,14 @@ describe("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () 
        VALUES (gen_random_uuid(), :t, 'p613', 'p613@live.test', 'x', 'P6', '13', 'default.svg',
                'ACTIVE', false, false, now(), now())
        RETURNING id`,
-      { replacements: { t: TENANT } }
+      { replacements: { t: TENANT } },
     );
     userId = user.id;
     const sealed = kms.encryptData(TENANT, "0".repeat(64));
     await db.query(
       `INSERT INTO webhooks (id, tenant_id, url, events, secret, is_active, is_deleted, created_at, updated_at)
        VALUES (:id, :t, 'https://receiver.example.com/hook', '["*"]', :s, true, false, now(), now())`,
-      { replacements: { id: HOOK, t: TENANT, s: sealed } }
+      { replacements: { id: HOOK, t: TENANT, s: sealed } },
     );
     // The database as it was before this change.
     await db.query("ALTER TABLE webhooks DROP COLUMN previous_secret, DROP COLUMN previous_secret_expires_at");
@@ -127,7 +126,7 @@ describe("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () 
     expect(await columnsOf()).toEqual(EXPECTED);
     const [[row]] = await db.query(
       "SELECT secret, previous_secret, previous_secret_expires_at FROM webhooks WHERE id = :id",
-      { replacements: { id: HOOK } }
+      { replacements: { id: HOOK } },
     );
     expect(row).toEqual({ secret: sealed, previous_secret: null, previous_secret_expires_at: null });
     expect((await verifySchema(db)).problems).toEqual([]);
@@ -178,7 +177,7 @@ describe("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () 
 
     const [[row]] = await db.query(
       "SELECT secret, previous_secret, previous_secret_expires_at FROM webhooks WHERE id = :id",
-      { replacements: { id: HOOK } }
+      { replacements: { id: HOOK } },
     );
     expect(row.previous_secret.startsWith("v2:")).toBe(true);
     expect(kms.decryptData(TENANT, row.previous_secret)).toBe("0".repeat(64));
@@ -188,7 +187,7 @@ describe("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () 
     const audits = await db.query(
       `SELECT user_id, actor_type, action, changes::text AS changes FROM audit_logs
         WHERE resource_type = 'Webhook' AND resource_id = :id ORDER BY created_at`,
-      { type: "SELECT", replacements: { id: HOOK } }
+      { type: "SELECT", replacements: { id: HOOK } },
     );
     expect(audits).toHaveLength(1);
     expect(audits[0]).toMatchObject({ user_id: userId, action: "UPDATE" });
@@ -199,20 +198,20 @@ describe("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () 
   it("a url change on the real schema clears the previous secret, audited", async () => {
     const actor = { userId, ipAddress: "127.0.0.1", userAgent: "p613-live" };
     await asTenant(() =>
-    webhookService.updateWebhook(TENANT, HOOK, { url: "https://new.example.com/hook" }, actor)
+      webhookService.updateWebhook(TENANT, HOOK, { url: "https://new.example.com/hook" }, actor),
     );
     const [[row]] = await db.query(
       "SELECT url, previous_secret, previous_secret_expires_at FROM webhooks WHERE id = :id",
-      { replacements: { id: HOOK } }
+      { replacements: { id: HOOK } },
     );
     expect(row).toEqual({
       url: "https://new.example.com/hook",
       previous_secret: null,
-      previous_secret_expires_at: null
+      previous_secret_expires_at: null,
     });
     const [[{ n }]] = await db.query(
       "SELECT count(*)::int AS n FROM audit_logs WHERE resource_type = 'Webhook' AND resource_id = :id",
-      { replacements: { id: HOOK } }
+      { replacements: { id: HOOK } },
     );
     expect(n).toBe(2);
   }, 60000);
