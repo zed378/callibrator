@@ -49,10 +49,17 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
 }
 
 /**
- * Generate random ID
+ * A random id: 128 bits from the platform CSPRNG, as 32 hex characters.
+ *
+ * A11-SEC-02 (the 2026-11 audit): it was `Math.random()` + the clock, which
+ * can repeat under a burst. `getRandomValues`, not `randomUUID`: the latter
+ * exists only in a secure context, and the app is also reached over plain
+ * HTTP on a LAN.
  */
 export function generateId(): string {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
