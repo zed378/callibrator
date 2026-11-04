@@ -18,6 +18,8 @@ import {
   getCalibrationRecordsQuery,
   voidCalibrationRecordSchema,
 } from "../../validators/calibrationRecords.validator";
+import { applyRecordEsignatureBody } from "@callibrator/contracts/esignatures";
+import { EsignatureApplication } from "../../docs/openapi/esignatureSchemas";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 
 const timestamp = z.iso.datetime();
@@ -193,6 +195,39 @@ export default defineRouteDocs({
       body: voidCalibrationRecordSchema,
       conflict: "The record was already voided, or a correction has superseded it.",
       success: { status: 200, description: "Voided; the record is kept (no body in `data`)", empty: true },
+    },
+    {
+      method: "post",
+      path: "/:calibrationRecordId/esignatures",
+      operationId: "applyCalibrationRecordEsignature",
+      summary: "Apply the caller's e-signature to a calibration record (P21-15)",
+      description:
+        "The caller's personal e-signature (Profile → E-signature) affixed to the record — not the certificate's signature (ADR-140). `performed`: the record's " +
+        "`performedBy` only (else 403 `ESIG_NOT_PERFORMER`); `reviewed`: anyone else with calibration write. The caller re-enters a credential (password or a " +
+        "current MFA code; a wrong one is 401 and a `SIGNATURE_AUTH_FAILED` audit row). The record's canonical data (`calrec-data-v1`) is hashed and the " +
+        "application signed with the caller's personal key; the application, its audit row and its `e_signature_records` row are written in one transaction. " +
+        `Another tenant's or a missing record: 404. An API key is refused (403). Per user and address 10 per 15 minutes. ${PLATFORM}`,
+      permission: write,
+      audited: true,
+      params: recordIdParams,
+      body: applyRecordEsignatureBody,
+      conflict:
+        "`ESIG_NONE` (create your e-signature first), `CALREC_VOIDED`, `CALREC_SUPERSEDED` (with `headId`: sign the latest version), `CALREC_EXTERNAL` " +
+        "(an external-lab or imported record), `ESIG_ALREADY_APPLIED` — each the top-level `code` beside its explanation.",
+      success: { status: 201, description: "The application (never the signer's id, address, agent or token outside its link)", data: EsignatureApplication },
+    },
+    {
+      method: "get",
+      path: "/:calibrationRecordId/esignatures",
+      operationId: "listCalibrationRecordEsignatures",
+      summary: "The e-signatures applied to a calibration record (P21-15)",
+      description:
+        "Oldest first, each with its public verification link, the signer's specimen and `integrity` — the record's data hashed NOW against the signed hash " +
+        "(`intact` | `changed`). Another tenant's or a missing record: 404. Reachable by a facility-bound account: its facility's records only.",
+      permission: read,
+      audited: false,
+      params: recordIdParams,
+      success: { status: 200, description: "The applications", data: z.array(EsignatureApplication) },
     },
   ],
 });

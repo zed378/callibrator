@@ -27,6 +27,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { CircleCheck, CircleX, CircleAlert, CircleHelp, FileText, ExternalLink, Download } from "@/components/icons/static";
 import { toSameOriginApiPath } from "@/lib/uploadUrl";
 import type { CertificateDocument, CertificateIntegrity } from "@/api/services/calibration.service";
+import type { CertificateEsignatureMark } from "@/lib/certificatePdf";
 import { useI18n } from "@/i18n/MessagesProvider";
 import { minutesFrom } from "@/i18n/apiErrors";
 import type { MessageKey } from "@/i18n";
@@ -63,6 +64,8 @@ interface VerifyData {
   document?: CertificateDocument | null;
   /** A PDF the backend stored before M-11, behind a short-lived capability. */
   documentUrl?: string | null;
+  /** P21-15 (ADR-140): full verdict only — the personal e-signatures affixed to the certificate. */
+  esignatures?: CertificateEsignatureMark[];
   message?: string;
 }
 
@@ -115,7 +118,7 @@ function Row({ label, value, mono = false }: { label: string; value: React.React
 }
 
 /** Render the published document to a PDF, in the browser, and download it. */
-function DownloadCertificate({ document: doc }: { document: CertificateDocument }) {
+function DownloadCertificate({ document: doc, esignatures = [] }: { document: CertificateDocument; esignatures?: CertificateEsignatureMark[] }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -126,7 +129,8 @@ function DownloadCertificate({ document: doc }: { document: CertificateDocument 
       // P10-13: loaded on the click, not with the page — the renderer (and the
       // jspdf and qrcode it pulls in) is needed only by someone who downloads.
       const { downloadCertificatePdf } = await import("@/lib/certificatePdf");
-      await downloadCertificatePdf(doc);
+      // P21-15: the affixed e-signatures go into the signature blocks; none, and the call is as before.
+      await (esignatures.length ? downloadCertificatePdf(doc, esignatures) : downloadCertificatePdf(doc));
     } catch {
       setFailed(true);
     } finally {
@@ -148,6 +152,30 @@ function DownloadCertificate({ document: doc }: { document: CertificateDocument 
           {t("verify.downloadFailed")}
         </p>
       )}
+    </section>
+  );
+}
+
+/** P21-15 (ADR-140 § 6): the affixed e-signatures, each linking to its own verification page. */
+function Esignatures({ marks, fmtDate }: { marks: CertificateEsignatureMark[]; fmtDate: (d?: string | null) => string }) {
+  const { t } = useI18n();
+  return (
+    <section aria-labelledby="verify-esignatures" className="pub-card p-5">
+      <h2 id="verify-esignatures" className="text-base font-semibold text-pub-text">
+        {t("verify.esignatures")}
+      </h2>
+      <p className="mt-1 text-sm text-pub-muted">{t("verify.esig.lead")}</p>
+      <ul className="mt-3 space-y-2 text-sm text-pub-text">
+        {marks.map((mark) => (
+          <li key={mark.verifyUrl}>
+            <span className="font-semibold">{t(`verify.esig.meaning.${mark.meaning}` as MessageKey)}</span>: {mark.name}
+            {mark.role ? ` (${mark.role})` : ""} · {fmtDate(mark.signedAt)} ·{" "}
+            <a href={mark.verifyUrl} rel="noreferrer" className="pub-link inline-flex items-center gap-1">
+              {t("verify.esig.verify")} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -273,7 +301,9 @@ export function VerifyContent() {
                 {minimal && <p className="pt-4 text-sm text-pub-muted">{t("verify.minimalNote")}</p>}
               </section>
 
-              {data.document && <DownloadCertificate document={data.document} />}
+              {data.esignatures && data.esignatures.length > 0 && <Esignatures marks={data.esignatures} fmtDate={fmtDate} />}
+
+              {data.document && <DownloadCertificate document={data.document} esignatures={data.esignatures} />}
 
               {/* A PDF the backend stored before M-11. */}
               {pdfUrl && (

@@ -11,6 +11,17 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 ### 2026-11-03 — Comprehensive audit, Wave 1: config, security and infra fixes ([record](./records/2026-11-03-audit-wave1.md))
 - On branch `feat/audit-2026-11`: SEC-01 (bootstrap `CREATE DATABASE` identifier validation) and A11-BUG-01 (`createDatabaseIfNotExists` reports failure so the retry loop engages); A11-SEC-01 (deleted the dead `otp.util`) and A11-SEC-02 (CSPRNG identifiers for redis locks, email jobs, upload names); A11-DB-02 (`DB_SSL_CA` / `DB_SSL_REJECT_UNAUTHORIZED` for managed-Postgres TLS); INF-01 (container HEALTHCHECK on `/live`), SEC-03 (nginx baseline security headers) and INF-02 (documented the proxy/app timeout relationship). BUG-01/02, ARC-01, DB-01/02/03, PERF and A11-DB-03 are deferred with reasons in the record.
 
+### 2026-11-03 — P21-15 DONE: e-signatures on certificates; facility staff hold their own; a sign-in fix ([record](./records/2026-11-03-p21-15-operator-esignature.md), ADR-140 Am. 1)
+- Approving or signing a certificate now affixes the person's e-signature automatically when they have one; without one nothing changes, and the certificate's digital signature is untouched. The calibrator can also sign a certificate as performed. The certificate PDF shows each signatory's specimen, role, date and verification QR, and the certificate's /verify page links to each e-signature's own verification.
+- Facility staff with e-signature rights (healthcare technician, IPSRS) can create their own e-signature and sign documents.
+- An expired session on the e-signature pages now goes to sign-in like any other page; only the signing actions treat a 401 as a wrong password.
+
+### 2026-11-03 — P21-15 (WIP): personal e-signatures, applied to calibration records and to documents by hash, each publicly verifiable ([record](./records/2026-11-03-p21-15-operator-esignature.md), ADR-140)
+- Every user can create an e-signature in Profile → E-signature: a drawn or uploaded specimen (an allow-listed SVG) and a personal RSA-3072 key held on the server under KMS. Create, replace and revoke re-enter the password or MFA code and are audited; a revoked or replaced e-signature still verifies what it signed.
+- It is applied to a calibration record (`performed` by the performer, `reviewed` by anyone else) or to any file by its SHA-256 (the file is never uploaded); each application has its own public link and QR, `/s/<id>?t=<token>`, showing `valid`, `content changed` or `invalid` and letting the reader recompute the hash in the browser. Migration 0149 (`user_esignatures`, `esignature_applications`; append-only for every role).
+- **Not yet:** e-signatures on certificates (part 4 of the spec). The certificate's own signature is unchanged.
+- The public device page `/d/[token]` no longer renders a second `<h1>` in its loading shell.
+
 ### 2026-11-03 — Backup verifier: every source role is restored before `pg_restore` ([record](./records/2026-11-03-backup-verify-roles.md))
 - The nightly restore verification failed on the reference deployment from 2026-10-27 to 2026-11-01: the scratch server lacked `callibrator_transform` (migration 0133). The manifest now records the source's roles (`facts.roles`) and the verifier creates them all (ADR-116 Am. 1); `docs/DEVOPS/04` § Restore Order step 4b creates all three roles. Proven against PostgreSQL 18: the released image fails, the rebuilt one passes all seven checks. Not yet deployed.
 

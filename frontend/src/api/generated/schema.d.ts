@@ -1982,6 +1982,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/calibration-records/{calibrationRecordId}/esignatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The e-signatures applied to a calibration record (P21-15)
+         * @description Oldest first, each with its public verification link, the signer's specimen and `integrity` — the record's data hashed NOW against the signed hash (`intact` | `changed`). Another tenant's or a missing record: 404. Reachable by a facility-bound account: its facility's records only.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["listCalibrationRecordEsignatures"];
+        put?: never;
+        /**
+         * Apply the caller's e-signature to a calibration record (P21-15)
+         * @description The caller's personal e-signature (Profile → E-signature) affixed to the record — not the certificate's signature (ADR-140). `performed`: the record's `performedBy` only (else 403 `ESIG_NOT_PERFORMER`); `reviewed`: anyone else with calibration write. The caller re-enters a credential (password or a current MFA code; a wrong one is 401 and a `SIGNATURE_AUTH_FAILED` audit row). The record's canonical data (`calrec-data-v1`) is hashed and the application signed with the caller's personal key; the application, its audit row and its `e_signature_records` row are written in one transaction. Another tenant's or a missing record: 404. An API key is refused (403). Per user and address 10 per 15 minutes. The platform tenant authors nothing here (403, A-127).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `ESIG_NONE` (create your e-signature first), `CALREC_VOIDED`, `CALREC_SUPERSEDED` (with `headId`: sign the latest version), `CALREC_EXTERNAL` (an external-lab or imported record), `ESIG_ALREADY_APPLIED` — each the top-level `code` beside its explanation.
+         */
+        post: operations["applyCalibrationRecordEsignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calibration-records/{calibrationRecordId}/void": {
         parameters: {
             query?: never;
@@ -2143,6 +2173,36 @@ export interface paths {
         get: operations["getCertificateDocument"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates/{certificateId}/esignatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The e-signatures affixed to a certificate (P21-15)
+         * @description Oldest first, each with its public verification link, the signer's specimen and `integrity` — the certificate's content hashed NOW against the signed hash (`intact` | `changed`; an approved certificate stays editable until it is signed). Another tenant's certificate: 404.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["listCertificateEsignatures"];
+        put?: never;
+        /**
+         * Affix the caller's e-signature to a certificate (P21-15)
+         * @description The caller's personal e-signature, AFFIXED to the certificate — the certificate's own tenant-key digital signature (ADR-040) is not touched. `performed`: the certificate's calibrator only (else 403 `ESIG_NOT_PERFORMER`); `approved`: its approver or signer (else 403 `ESIG_NOT_APPROVER`), once the certificate is approved. The approve and sign steps already affix the actor's e-signature automatically when it has an active one. The caller re-enters a credential; the certificate's canonical content (`cert-data-v1`) is hashed and the application signed with the personal key, with its audit and e_signature_records rows in one transaction. Another tenant's certificate: 404. An API key is refused. The platform tenant authors nothing here (403, A-127/A-145).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `CERT_NOT_APPROVED` (the certificate is in `draft` or `pending_approval`), `CERT_REVOKED`, `ESIG_ALREADY_APPLIED`, `ESIG_NONE` — each the top-level `code` beside its explanation.
+         */
+        post: operations["applyCertificateEsignature"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2871,6 +2931,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/esignature/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign any document by its SHA-256
+         * @description The browser hashes the file; the server receives only the hash, the title and the size — the file is never uploaded or stored. The application is signed with the caller's personal key and gets its own public verification link. The platform tenant authors nothing here (403, A-127). The caller re-enters a credential (password or a current MFA code); a wrong one is 401 and a `SIGNATURE_AUTH_FAILED` audit row. Per user and address 10 per 15 minutes.
+         *
+         *     **409** — `ESIG_NONE`: create your e-signature first, in Profile → E-signature.
+         */
+        post: operations["signDocumentByHash"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/esignature/history": {
         parameters: {
             query?: never;
@@ -2929,6 +3011,72 @@ export interface paths {
          *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
          */
         delete: operations["deleteSigningKeyPair"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/esignature/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My e-signature and its earlier versions
+         * @description The active e-signature (specimen, key fingerprint, version) or null, and the earlier versions. Never a private key.
+         */
+        get: operations["getMyEsignature"];
+        put?: never;
+        /**
+         * Create my e-signature, or replace the active one
+         * @description The specimen is sanitised SVG (paths and shapes only, or one PNG/JPEG data-URI image; no script, text or external reference; ≤ 64 KB, ≤ 256 KB with an image) — anything else is 400 `ESIG_SPECIMEN_INVALID`. An RSA-3072 key pair is generated on the server and its private half wrapped under the KMS ring; it is never returned. A replacement makes the old version `superseded` (it still verifies what it signed). The platform operator has no tenant (403 `ESIG_PLATFORM`). The caller re-enters a credential (password or a current MFA code); a wrong one is 401 and a `SIGNATURE_AUTH_FAILED` audit row. Per user and address 10 per 15 minutes.
+         */
+        post: operations["createMyEsignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/esignature/me/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What I have signed
+         * @description Newest first; rows in `data`, the page in the top-level `meta`. `integrity` is null here (not recomputed).
+         */
+        get: operations["listMyEsignatureApplications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/esignature/me/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke my e-signature
+         * @description "Do not use from now on": past applications still verify, and their public page shows the revocation. The caller re-enters a credential (password or a current MFA code); a wrong one is 401 and a `SIGNATURE_AUTH_FAILED` audit row. Per user and address 10 per 15 minutes.
+         *
+         *     **409** — `ESIG_NONE`: there is no active e-signature to revoke.
+         */
+        post: operations["revokeMyEsignature"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3009,6 +3157,30 @@ export interface paths {
         get: operations["listEligibleSigners"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/esignature/users/{userId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke another user's e-signature (tenant administrator)
+         * @description A tenant administrator (`rbac`) who also holds `qms` write revokes a user's active e-signature (a departed employee). It never creates or replaces one. Another tenant's or a missing user: 404. The platform tenant authors nothing here (403, A-127).
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         *
+         *     **409** — `ESIG_NONE`: the user has no active e-signature.
+         */
+        post: operations["revokeUserEsignature"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6159,6 +6331,28 @@ export interface paths {
          *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
          */
         get: operations["readPublicDevice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/esignatures/{applicationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify an e-signature application (no auth)
+         * @description The target of an application's link and QR. Shows the verdict (`valid`, `content_changed`, `invalid`; a document is `valid` or `invalid`, the reader compares the file) and its explanation in Indonesian and English, the e-signature's state (`active`, `superseded`, `revoked` with its day), the record's state, the signer's name, role and organisation, the specimen, the key fingerprint and public key, the meaning, the time, the organisation, the document type and title, the content hash, the canonical content of a record and a minimal summary. Never an e-mail, an address, an agent, the token, or an internal id outside the canonical content. A malformed, unknown or mismatched link answers the same 404. Every answer carries `Cache-Control: no-store` and `X-Robots-Tag: noindex`. Per client address every request counts against 300 per 15 minutes and every answer that is not a verdict also against 60; beyond either, 429 with Retry-After.
+         *
+         *     Tenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.
+         */
+        get: operations["verifyEsignatureApplication"];
         put?: never;
         post?: never;
         delete?: never;
@@ -10436,6 +10630,18 @@ export interface components {
             verifyUrl?: string;
             document?: components["schemas"]["CertificateDocument"] | null;
             documentUrl?: string | null;
+            /** @description Full verdict only. P21-15 (ADR-140): the personal e-signatures affixed to the certificate, each with the link to its own verification */
+            esignatures?: {
+                /** @enum {string} */
+                meaning: "performed" | "reviewed" | "approved" | "authored" | "acknowledged";
+                name: string;
+                role: string | null;
+                organisation: string | null;
+                /** Format: date-time */
+                signedAt: string;
+                specimenSvg: string;
+                verifyUrl: string;
+            }[];
         } & {
             [key: string]: unknown;
         };
@@ -11126,6 +11332,55 @@ export interface components {
             message?: string;
             errors?: string[];
         };
+        /**
+         * @description P21-15: one application of a personal e-signature to a document, with its public verification link
+         * @example {
+         *       "id": "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a",
+         *       "documentType": "calibration_record",
+         *       "documentId": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+         *       "documentTitle": "Calibration record Pompa infus sintetis 2030-01-15",
+         *       "meaning": "performed",
+         *       "signer": {
+         *         "name": "Teknisi Sintetis",
+         *         "role": "HEALTHCARE TECHNICIAN",
+         *         "organisation": "Lab Sintetis"
+         *       },
+         *       "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+         *       "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+         *       "contentScheme": "calrec-data-v1",
+         *       "contentHash": "56e69d620f618fec1190787ceaed5496af6ae3f7871d87a59c257a8cabc76075",
+         *       "authMethod": "password",
+         *       "signedAt": "2030-01-15T09:30:00.123Z",
+         *       "verifyUrl": "https://app.example.test/s/4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a?t=q3kZ0x9VbN2mP4rT6wY8aC1dE3fG5hJ7",
+         *       "integrity": "intact"
+         *     }
+         */
+        EsignatureApplication: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            documentType: "calibration_record" | "certificate" | "document";
+            documentId: string | null;
+            documentTitle: string;
+            /** @enum {string} */
+            meaning: "performed" | "reviewed" | "approved" | "authored" | "acknowledged";
+            signer: {
+                name: string;
+                role: string | null;
+                organisation: string | null;
+            };
+            specimenSvg: string;
+            keyFingerprint: string;
+            /** @enum {string} */
+            contentScheme: "calrec-data-v1" | "cert-data-v1" | "file-sha256";
+            contentHash: string;
+            /** @enum {string} */
+            authMethod: "password" | "mfa";
+            /** Format: date-time */
+            signedAt: string;
+            verifyUrl: string;
+            integrity: ("intact" | "changed") | null;
+        };
         ESignatureGeneratedKeyPair: {
             /** Format: uuid */
             id: string;
@@ -11154,6 +11409,100 @@ export interface components {
             publicKey: string;
             /** Format: date-time */
             createdAt: string;
+        };
+        /**
+         * @description P21-15: the verdict on an e-signature application. `verdict` is the field to branch on; `esignatureState` and `documentState` are shown beside it, never in its place. For a record, `canonicalContent` hashes (SHA-256 of its JSON) to `contentHash` when unchanged; for a document the reader hashes the file. `publicKeyPem` lets anyone check the RSA signature offline.
+         * @example {
+         *       "verdict": "valid",
+         *       "explanation": {
+         *         "id": "Tanda tangan elektronik sah dan isi dokumen tidak berubah sejak ditandatangani.",
+         *         "en": "The e-signature is valid and the document's content has not changed since it was signed."
+         *       },
+         *       "esignatureState": "active",
+         *       "esignatureStateAt": null,
+         *       "documentState": "current",
+         *       "documentStateAt": null,
+         *       "signedAt": "2030-01-15T09:30:00.123Z",
+         *       "meaning": "performed",
+         *       "signer": {
+         *         "name": "Teknisi Sintetis",
+         *         "role": "HEALTHCARE TECHNICIAN",
+         *         "organisation": "Lab Sintetis"
+         *       },
+         *       "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+         *       "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+         *       "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA\n-----END PUBLIC KEY-----\n",
+         *       "organisation": {
+         *         "name": "Lab Sintetis"
+         *       },
+         *       "documentType": "calibration_record",
+         *       "documentTitle": "Calibration record Pompa infus sintetis 2030-01-15",
+         *       "contentScheme": "calrec-data-v1",
+         *       "contentHash": "56e69d620f618fec1190787ceaed5496af6ae3f7871d87a59c257a8cabc76075",
+         *       "canonicalContent": [
+         *         [
+         *           "schemeVersion",
+         *           "calrec-data-v1"
+         *         ],
+         *         [
+         *           "tenantId",
+         *           "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f"
+         *         ]
+         *       ],
+         *       "summary": {
+         *         "deviceName": "Pompa infus sintetis",
+         *         "brand": "Pembuat",
+         *         "model": "P-1",
+         *         "serialNumber": "SN-0001",
+         *         "calibrationDate": "2030-01-15",
+         *         "dueDate": "2031-01-15",
+         *         "isCompliant": true
+         *       }
+         *     }
+         */
+        EsignatureVerification: {
+            /** @enum {string} */
+            verdict: "valid" | "content_changed" | "invalid";
+            explanation: {
+                id: string;
+                en: string;
+            };
+            /** @enum {string} */
+            esignatureState: "active" | "superseded" | "revoked";
+            esignatureStateAt: string | null;
+            documentState: ("current" | "superseded" | "voided" | "revoked") | null;
+            documentStateAt: string | null;
+            /** Format: date-time */
+            signedAt: string;
+            /** @enum {string} */
+            meaning: "performed" | "reviewed" | "approved" | "authored" | "acknowledged";
+            signer: {
+                name: string;
+                role: string | null;
+                organisation: string | null;
+            };
+            specimenSvg: string;
+            keyFingerprint: string;
+            publicKeyPem: string;
+            organisation: {
+                name: string | null;
+            };
+            /** @enum {string} */
+            documentType: "calibration_record" | "certificate" | "document";
+            documentTitle: string;
+            /** @enum {string} */
+            contentScheme: "calrec-data-v1" | "cert-data-v1" | "file-sha256";
+            contentHash: string;
+            canonicalContent: string[][] | null;
+            summary: {
+                deviceName: string | null;
+                brand: string | null;
+                model: string | null;
+                serialNumber: string | null;
+                calibrationDate: string | null;
+                dueDate: string | null;
+                isCompliant: boolean | null;
+            } | null;
         };
         ExternalCalibrationRecord: {
             /** Format: uuid */
@@ -12357,6 +12706,87 @@ export interface components {
             } & {
                 [key: string]: unknown;
             })[];
+        };
+        /**
+         * @description P21-15: a personal e-signature as its owner sees it — the specimen and the key's fingerprint, never the private key
+         * @example {
+         *       "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+         *       "version": 2,
+         *       "status": "active",
+         *       "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+         *       "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+         *       "createdAt": "2030-01-10T08:00:00.000Z",
+         *       "supersededAt": null,
+         *       "revokedAt": null
+         *     }
+         */
+        MyEsignature: {
+            /** Format: uuid */
+            id: string;
+            version: number;
+            /** @enum {string} */
+            status: "active" | "superseded" | "revoked";
+            specimenSvg: string;
+            keyFingerprint: string;
+            /** Format: date-time */
+            createdAt: string;
+            supersededAt: string | null;
+            revokedAt: string | null;
+        };
+        /**
+         * @description P21-15: the caller's active e-signature (or null) and its earlier versions, newest first
+         * @example {
+         *       "active": {
+         *         "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+         *         "version": 2,
+         *         "status": "active",
+         *         "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+         *         "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+         *         "createdAt": "2030-01-10T08:00:00.000Z",
+         *         "supersededAt": null,
+         *         "revokedAt": null
+         *       },
+         *       "history": [
+         *         {
+         *           "id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+         *           "version": 1,
+         *           "status": "superseded",
+         *           "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+         *           "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+         *           "createdAt": "2030-01-10T08:00:00.000Z",
+         *           "supersededAt": "2030-01-10T08:00:00.000Z",
+         *           "revokedAt": null
+         *         }
+         *       ]
+         *     }
+         */
+        MyEsignatureState: {
+            active: {
+                /** Format: uuid */
+                id: string;
+                version: number;
+                /** @enum {string} */
+                status: "active" | "superseded" | "revoked";
+                specimenSvg: string;
+                keyFingerprint: string;
+                /** Format: date-time */
+                createdAt: string;
+                supersededAt: string | null;
+                revokedAt: string | null;
+            } | null;
+            history: {
+                /** Format: uuid */
+                id: string;
+                version: number;
+                /** @enum {string} */
+                status: "active" | "superseded" | "revoked";
+                specimenSvg: string;
+                keyFingerprint: string;
+                /** Format: date-time */
+                createdAt: string;
+                supersededAt: string | null;
+                revokedAt: string | null;
+            }[];
         };
         /** @description A recorded non-conformance (ISO 13485 §8.3). */
         NonConformance: {
@@ -19962,6 +20392,87 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    listCalibrationRecordEsignatures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration record's id */
+                calibrationRecordId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The applications */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["EsignatureApplication"][];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    applyCalibrationRecordEsignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The calibration record's id */
+                calibrationRecordId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    meaning: "performed" | "reviewed";
+                    /** @enum {string} */
+                    authMethod: "password" | "mfa";
+                    credential: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The application (never the signer's id, address, agent or token outside its link) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["EsignatureApplication"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     voidCalibrationRecord: {
         parameters: {
             query?: never;
@@ -20375,6 +20886,87 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listCertificateEsignatures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The certificate's id */
+                certificateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The applications */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["EsignatureApplication"][];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    applyCertificateEsignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The certificate's id */
+                certificateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    meaning: "performed" | "approved";
+                    /** @enum {string} */
+                    authMethod: "password" | "mfa";
+                    credential: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The application */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["EsignatureApplication"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -22078,6 +22670,51 @@ export interface operations {
             429: components["responses"]["RateLimited"];
         };
     };
+    signDocumentByHash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                    contentHash: string;
+                    sizeBytes: number;
+                    /** @enum {string} */
+                    meaning: "performed" | "reviewed" | "approved" | "authored" | "acknowledged";
+                    /** @enum {string} */
+                    authMethod: "password" | "mfa";
+                    credential: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The application */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["EsignatureApplication"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
     getSignatureHistory: {
         parameters: {
             query?: {
@@ -22222,6 +22859,152 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getMyEsignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description My e-signature state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["MyEsignatureState"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createMyEsignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    specimenSvg: string;
+                    /** @enum {string} */
+                    authMethod: "password" | "mfa";
+                    credential: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The new version */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["MyEsignature"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    listMyEsignatureApplications: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of my applications */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["EsignatureApplication"][];
+                        meta: components["schemas"]["PaginationMeta"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    revokeMyEsignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    authMethod: "password" | "mfa";
+                    credential: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The revoked version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["MyEsignature"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -22373,6 +23156,48 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    revokeUserEsignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The revoked version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["MyEsignature"];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -30193,6 +31018,42 @@ export interface operations {
                                 verifyUrl: string;
                             } | null;
                         };
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    verifyEsignatureApplication: {
+        parameters: {
+            query?: {
+                /** @description The link's token (32 base64url characters) */
+                token?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The application's id */
+                applicationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verdict */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        success: true;
+                        /** @description The HTTP status, repeated in the body */
+                        status: number;
+                        message: string;
+                        data: components["schemas"]["EsignatureVerification"];
                     };
                 };
             };

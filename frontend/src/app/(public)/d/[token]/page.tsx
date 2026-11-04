@@ -44,7 +44,8 @@ export default async function PublicDevicePage({ params }: { params: Promise<{ t
           <Suspense
             fallback={
               <>
-                <h1 className="pub-eyebrow">{t("publicDevice.eyebrow")}</h1>
+                {/* A paragraph, not a heading: the body brings the page's one <h1>, and the streamed shell must not add a second. */}
+                <p className="pub-eyebrow">{t("publicDevice.eyebrow")}</p>
                 <p role="status" className="mt-6 text-pub-muted">
                   {t("publicDevice.loading")}
                 </p>

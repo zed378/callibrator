@@ -80,6 +80,8 @@ import defineInspectionSessionSignature from "./inspectionSessionSignature.model
 import defineIdempotencyKey from "./idempotencyKey.model";
 import definePublicDeviceToken from "./publicDeviceToken.model";
 import defineUserInvitation from "./userInvitation.model";
+import defineUserEsignature from "./userEsignature.model";
+import defineEsignatureApplication from "./esignatureApplication.model";
 import defineApiKey from "./apiKey.model";
 import defineAssetFinance from "./assetFinance.model";
 import defineAttachment from "./attachment.model";
@@ -270,6 +272,9 @@ const models: Models = {
   PublicDeviceToken: define(definePublicDeviceToken),
   // P24-09a (ADR-139 § 3): an imported user's invitation (tenant-scoped; the hash only) — last, as above.
   UserInvitation: define(defineUserInvitation),
+  // P21-15 (ADR-140): personal e-signatures and their applications (tenant-scoped; append-mostly / append-only) — last, as above.
+  UserEsignature: define(defineUserEsignature),
+  EsignatureApplication: define(defineEsignatureApplication),
 };
 
 // Association Mapping: Iterate models, execute associate method if exists.
@@ -515,6 +520,11 @@ const barrel = Object.assign(database, {
   // P24-09a (ADR-139 § 3): the invitations of imported users (tenant-scoped).
   UserInvitation: models.UserInvitation,
   UserInvitations: models.UserInvitation,
+  // P21-15 (ADR-140): personal e-signatures and their applications (tenant-scoped).
+  UserEsignature: models.UserEsignature,
+  UserEsignatures: models.UserEsignature,
+  EsignatureApplication: models.EsignatureApplication,
+  EsignatureApplications: models.EsignatureApplication,
 });
 
 // A pure `export =` module, like every model file: no other export may sit beside it (a

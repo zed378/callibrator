@@ -593,7 +593,8 @@ describe("D-12 — the phantom brand on converted models equals the runtime defa
     // InspectionSessionSignature and IdempotencyKey, none paranoid nor with a defaultScope — 87.
     // P21-08 (ADR-138) adds PublicDeviceToken, neither paranoid nor default-scoped — 88.
     // P24-09a (ADR-139) adds UserInvitation, neither paranoid nor default-scoped — 89.
-    expect(converted.length).toBe(89);
+    // P21-15 (ADR-140) adds UserEsignature and EsignatureApplication, neither paranoid nor default-scoped — 91.
+    expect(converted.length).toBe(91);
     expect(branded).toEqual([...DEFAULT_SCOPED]);
     const runtimeScoped = scopedModels.map((m) => m.name).filter((n) => converted.includes(n)).sort();
     expect(branded).toEqual(runtimeScoped);

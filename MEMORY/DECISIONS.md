@@ -12984,6 +12984,98 @@ Both paths bypass the pre-invitation gate (the facility scope proved before any 
 
 **Implications.** An administrator cannot help an imported person in by a temporary password before cutover. That is intended. The 409's machine code is lost on this route's legacy error path (only the status and the message survive), so the page shows the message.
 
+## ADR-140: Every User Holds a Personal E-signature — a Visual Specimen and a Personal RSA Key Held Under KMS — Applied to Calibration Records, Documents by Hash and (Later) Certificates, Each Application Signed Over a Canonical Content Hash and Verifiable at Its Own Public Link; It Is Not the Certificate's Tenant-Key Signature
+
+**Date:** 2026-11-03 · **Status:** Accepted, **BUILT** (P21-15, [record](./records/2026-11-03-p21-15-operator-esignature.md)): § 1 – § 8, with § 6 (certificates) settled and built by Amendment 1. Decided under the owner's standing delegation (decide by best practice, record it) on the owner's words of 2026-11-03 · **Card:** P21-15 · **Spec:** [`specs/P21-15-operator-esignature.md`](./specs/P21-15-operator-esignature.md) v2 (v1 of the same day, the operator's signature on a calibration record alone, is superseded) · **Works with:** ADR-040 (the certificate's tenant-key digital signature, unchanged), ADR-100 (capability tokens, request budgets), ADR-138 § 2 (the reviewed global-unique exception for a random capability), ADR-126 Am. 2 (the IPM report's performer signature, whose design this follows), A-65 (one credential re-entry for every signature), S-08 (signing keys at rest are a KMS envelope)
+
+**Context.** The owner asked for an e-signature verifiable through a public endpoint, distinct from the certificate, first to attest the operator who performed a calibration, then for every user to create one and affix it to certificates or any other document. Three signing mechanisms existed: the certificate's tenant-key digital signature (ADR-040), the generic workflow (`/esignature/workflows`, `signature_workflows`), which binds a free `documentId` with no content hash and verifies only signed in, and the IPM report's performer signature (P21-04), which binds a content hash but carries no key of its own and no public link per signature.
+
+**Decision.**
+
+1. **Two tables (migration 0149).** `user_esignatures`: per user, a version, the specimen as sanitised SVG, an RSA-3072 public key, the private key as a KMS envelope (`signingKeyWrap.service`, as `tenant_keys`), the key's SHA-256 fingerprint (of the SPKI DER), a lifecycle `active` → `superseded` | `revoked`; ONE active row per user (partial UNIQUE). `esignature_applications`: one application of one e-signature version to one document — signer snapshot (name, role, organisation; no e-mail or phone), document type and id (null for a document signed by hash), a public title, the meaning, the content scheme and hash, the method, the RSA-SHA256 signature over the signed payload, the instant, a 192-bit verification token; once per (document, signer, meaning).
+2. **The database is the floor.** Both tables have ENABLE ALWAYS triggers (42501 for every role, the owner included): a key or specimen is never deleted, and only an active row's lifecycle changes, once; an application is never changed or deleted, and is inserted only by its signer's ACTIVE e-signature of the same tenant, on an effective full record of the tenant, `performed` by the record's performer and `reviewed` by anyone else. The application role has SELECT and INSERT (plus UPDATE of the four lifecycle columns on `user_esignatures`). The token is UNIQUE globally — ADR-138 § 2's reviewed exception, since the public verification arrives with no tenant.
+3. **Canonical forms in `packages/contracts/src/esignatures.ts`**, pinned by golden tests: `calrec-data-v1` (sixteen `[name, value]` string pairs in a fixed order, `results`' keys sorted at every depth), `file-sha256` (computed in the browser; the file is never uploaded) and the signed payload `esig-app-v1-rsa-sha256` (thirteen pairs naming the scheme, tenant, application, e-signature, key fingerprint, document type and id, content scheme and hash, meaning, signer, instant to the millisecond, method). A change is a new scheme, never an edit. The browser recomputes the record hash from the served pairs (`canonicalJsonOfPairs` refuses pairs that are not exactly canonical).
+4. **My e-signature** (`/api/v1/esignature/me…`, mounted before the generic workflows at the same prefix): create or replace (the key generated on the server; the old version `superseded`), revoke, what I signed; each act re-enters a credential through `certificate.service#verifySignerCredentials` and writes its audit row in the transaction. The specimen is checked against an allow-list (`specimenProblem`: one `<svg>` root, path and shape elements, presentation attributes, one PNG/JPEG data-URI `<image>`; no text, entity, `url()`, script or external reference; ≤ 64 KB, ≤ 256 KB with an image) and anything else is a 400 — refused, never repaired. The platform operator has no tenant and cannot hold one (403 `ESIG_PLATFORM`). A tenant administrator (`rbac`, `qms` write) may revoke another user's, never create or replace one.
+5. **Application** to a calibration record (`POST /calibration-records/:calibrationRecordId/esignatures`) and to a document by hash (`POST /esignature/documents`): the state refusals first (`CALREC_VOIDED`, `CALREC_SUPERSEDED` + `headId`, `CALREC_EXTERNAL`), then who may give the meaning (403 `ESIG_NOT_PERFORMER`), then once (409 `ESIG_ALREADY_APPLIED`), then the active e-signature (409 `ESIG_NONE`), then the credential. The application, its audit row and its `e_signature_records` row (the Part 11 log; a document's entity is the application itself, `EsignatureDocument`) are written in one transaction; `esignature:applied` goes to the record's rooms after it.
+6. **Certificates (built: Amendment 1).** Decided: `POST /certificates/:certificateId/esignatures` (`performed` by `calibratedBy`, `approved` by the approver or signer once the certificate has reached that state, else a 409 naming the state); the approve and sign steps apply the actor's active e-signature automatically (meaning `approved`) in the step's transaction, and **without one the step works exactly as today** — nothing in the certificate flow is ever blocked for lack of an e-signature; the frontend renderer places each applicable specimen, name, role, date and a verification QR in its signature blocks. `cert-data-v1`'s fields are to be chosen from what the certificate SAYS (number, record, device, issue date, validity, the certificate's own integrity hash where it has one), never `status`, `signedAt` or `digitalSignature`, and recorded here as an amendment. The certificate's tenant-key signature (ADR-040) and its `/verify` page do not change.
+7. **Public verification** `GET /api/v1/public/esignatures/:applicationId?token=`, and the page `/s/<id>?t=<token>`: one identical 404 for a malformed, unknown or mismatched link (constant-time comparison under the reviewed `skipTenantScope`; every later read in the row's tenant); `Cache-Control: no-store`, `X-Robots-Tag: noindex`; the ADR-100 budget pair (`esigVerifyToken` 300, `esigVerify` 60 per address per 15 minutes). The verdict: `valid`, `content_changed` (the signature verifies, the record no longer hashes — logged at warn and counted), `invalid`; a document is `valid` or `invalid` and the reader compares the file in the browser. Beside it, never in its place: the e-signature's state (revoked or superseded, with its day) and the record's state. Shown: the signer snapshot, the specimen, the fingerprint and public key PEM, the meaning, the instant, the organisation, the document type and title, the content hash, a record's canonical pairs and summary. Never: an e-mail, the address, the agent, the token, an internal id outside the canonical content.
+8. **The link** is built from configuration only: `PUBLIC_APP_URL` (new; the frontend page `/s/<id>?t=`), else the API on `PUBLIC_BASE_URL`, as `ipmVerifyUrl`.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Sign with the tenant key (ADR-040's) instead of personal keys | the signature would prove the organisation, not the person; a replaced or revoked person could not be told apart, and the owner asked that every user hold their own |
+| Store the uploaded document and hash it on the server | a file store of arbitrary customer documents, their retention and privacy, for nothing the browser cannot do; the owner's rule that documents render or hash in the browser (frontend-rendered documents) |
+| Extend the generic workflow tables (`signature_workflows`, `signature_records`) | they bind a free `documentId` with no content hash, verify only signed in, need a requester naming signers, and their records are keyed to workflow steps; a person signing their own record needs none of that |
+| A visual specimen only, without a key | a picture of a signature proves nothing; anyone with the image can paste it. The key makes each application checkable offline from the public key |
+| (v1) One table for the operator's signature on a calibration record, signed with the tenant key | superseded the same day by the owner's third instruction (every user, any document) |
+| Store only the token's hash (as ADR-138 does) | the signer's link and QR must be shown again later (the record panel, "what I signed", a re-printed sheet); stored like the IPM report's token (G-R3), never serialised, never logged |
+| Run the state refusals after the performer check (v1's list order) | a record with no performer (an API key's) could never reach `CALREC_EXTERNAL`; the state first is the IPM order and leaks nothing (the caller is in the record's tenant) |
+
+**Implications, including the bad ones.**
+
+- **Server-held private keys are not a qualified electronic signature** (tanda tangan elektronik tersertifikasi, PSrE/BSrE) under Indonesian law (UU ITE, PP 71/2019). The operator holds the keys under KMS and unlocks one only after the person re-authenticates; that is an uncertified electronic signature, attributable through the re-authentication and the audit trail, not a certificate from an Indonesian CA. Public copy must not call it certified.
+- **KMS loss means no new applications** (the private keys cannot be unwrapped; 500 with an explanation). Verification still works: it needs only the stored public keys.
+- A replaced or revoked e-signature still verifies what it signed; the public page says "revoked on <day>" beside it. Revocation does not invalidate the past, by design.
+- The specimen allow-list refuses some legitimate SVGs (text, gradients, `url()` fills, comments). The pad and the upload produce only what it accepts.
+- A facility-bound account cannot reach `/esignature/me` yet (not facility-accessible); it can read a facility record's applications.
+- `/api/v1/esignature/me` is in the frontend's credential-endpoint list by path, so an expired session on `GET /me` shows an error instead of redirecting to sign-in.
+- `esignature:write` was already held by every role that performs, approves or signs (0025, 0032: USER, ROOM USER and WAREHOUSE STAFF were withdrawn on purpose), so no grant migration was needed.
+- Each application stores the signer's address and agent (never returned) — personal data kept with a Part 11 record, as the certificate's signature records do.
+
+**`docs/` amended:** `BACKEND/13-UPSTREAM-MODULES.md` § 8a (new); `UPSTREAM/13-USER-GUIDES-ID.md` § 1.8 "Membuat e-signature" and § 1.9 "Menandatangani rekaman kalibrasi dan dokumen" (new); `backend/.env.example` (`PUBLIC_APP_URL`).
+
+### ADR-140 Amendment 1 (2026-11-03, P21-15 completed): certificates, the `cert-data-v1` field list, facility-bound users, and the credential endpoints by method
+
+**Status:** Accepted, BUILT · **Card:** P21-15 · **Record:** [`records/2026-11-03-p21-15-operator-esignature.md`](./records/2026-11-03-p21-15-operator-esignature.md)
+
+**Decision.**
+
+1. **`cert-data-v1` is fourteen `[name, value]` string pairs, in this order:** `schemeVersion`, `tenantId`, `certificateId`, `certificateNumber`, `type`, `calibrationRecordId`, `deviceId`, `issueDate` (YYYY-MM-DD), `validUntil`, `standard`, `summary`, `conditions`, `notes`, `calibratedBy`. These are what the certificate SAYS (`certificate.model`, and the renderer `frontend/src/lib/certificatePdf.ts`).
+   - **Excluded:** `status`, `approvedBy`, `submittedBy`, `signedBy`, `signedAt`, `digitalSignature`, `digitalSignatureKeyId`, `signedSnapshot`, `filePath`, `verificationToken`. They move with the flow.
+   - **Also excluded:** the document's own integrity hash (A-241, `certificateDocument.service`). It exists only from signing, and binds the signing snapshot. An approval affixed before signing would read as changed the moment the certificate is signed.
+   - An approved certificate stays editable until it is signed (A-145), so an edit after an affixed approval reads `changed` / `content_changed`. That is intended: the approval was given to other content.
+   - Golden tests pin the form (`packages/contracts/test/esignatures.p2115.test.ts`).
+2. **`POST/GET /certificates/:certificateId/esignatures`.**
+   - `performed`: the certificate's `calibratedBy` only (403 `ESIG_NOT_PERFORMER`).
+   - `approved`: its `approvedBy` or `signedBy` (403 `ESIG_NOT_APPROVER`), and only once the certificate is `approved` or `signed`. Otherwise 409 `CERT_NOT_APPROVED`, naming the state.
+   - A revoked certificate: 409 `CERT_REVOKED`.
+   - Gated `certificate` write. `denyPlatformAuthoring` and `denyApiKey` apply. Two-tenant tested.
+3. **Automatic application in approve and sign.** `certificate.service#approveCertificate` and `#signCertificate` call `esignatureApplication.service#autoApplyApproval` after their audit row, inside the step's own transaction.
+   - When the actor has an active e-signature, and has not affixed it as `approved` already, an `approved` application is written with its audit and Part 11 rows. The step has just re-authenticated the actor, so no second credential is asked.
+   - Without an active e-signature it does nothing, and the step is unchanged. The certificate's `digitalSignature` and `digitalSignatureKeyId` are exactly what the sign request carried.
+   - The two modules require each other, so `certificate.service` requires the e-signature service at call time.
+4. **The certificate's FULL public verdict** gains `esignatures`: the marks, each with a link to its own verification. The minimal verdict is unchanged. The `/verify` page lists them with links and passes them to the renderer. The certificate's own verdict does not depend on them.
+5. **The renderer** places each mark in its signature block:
+   - Calibrated By ← `performed`; Approved By / Signed By ← the `approved` marks, matched by printed name, else in application order.
+   - Each mark shows the specimen rasterised on a canvas (jsPDF draws raster images only), its own verification QR, and the role and e-signing date.
+   - A block with no mark prints as before.
+6. **Facility-bound users hold their own e-signature.**
+   - `UserEsignature` and `EsignatureApplication` are `FACILITY_READABLE` by the caller's own id.
+   - `GET/POST /esignature/me`, `/me/revoke`, `/me/applications` and `POST /esignature/documents` are facility-accessible (`read` / `write`; they are gated on the `esignature` slug, not self exemptions).
+   - Bound readers see who signed their facility's record or certificate through reviewed `skipFacilityScope`s (`listForRecord`, `listForCertificate`, `esignaturesOf`). The Part 11 row of a bound signer's own application is written through one more (`createApplication`).
+   - The menu ceiling still decides: HEALTHCARE TECHNICIAN and FACILITY MAINTENANCE hold `esignature` write; bound HEALTCARE ADMIN and ROOM USER do not (P18-03 Matrix B, unchanged).
+   - The administrator's revoke stays unmarked.
+7. **The frontend's credential endpoints are matched by method.** Only the e-signature POSTs (`/esignature/me`, `/me/revoke`, `/documents`, `/calibration-records/:id/esignatures`, `/certificates/:id/esignatures`) are credential endpoints. The reads on the same paths refresh an expired session and, failing that, go to sign-in, like every other read. This fixes the defect recorded as the last bad implication above.
+8. `eSignature.service` no longer exports `loadSigningKey`, `loadVerificationKey` or `SIGNATURE_DIGEST` (nothing used them after v2). Its export object is again the same as before P21-15.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+|---|---|
+| Include the document's integrity hash (A-241) in `cert-data-v1` | it exists only from signing and changes with the signing snapshot; an approval affixed at approve time would always read as changed |
+| Block approve or sign without an e-signature | the owner's rule: nothing in the certificate flow is blocked for lack of one |
+| Ask the credential again for the automatic application | the step has just re-authenticated the same person, in the same transaction |
+| Embed the specimen SVG directly in the PDF | jsPDF draws PNG and JPEG only; rasterising on a canvas keeps the renderer in the browser and loaded on demand |
+| Add `esignature` to the bound HEALTCARE ADMIN and ROOM USER ceilings | a policy change to Matrix B, which is the owner's; ROOM USER lost `esignature` on purpose (A-129) |
+
+**Implications, including the bad ones.**
+- A certificate approved and signed by the same person carries one `approved` application, not two.
+- Name matching in the renderer can place a mark in the wrong block when two signatories share a printed name. The order fallback is used only when no name matches.
+- A browser without a canvas (or one that refuses to draw the image) prints the block without the specimen, with the QR and date still present.
+- `GET /esignature/me` and the record and certificate reads now redirect to sign-in on an expired session, as they should.
+
 ---
 
 End of ADRs. Update this document as new decisions are made, and record a deviation as an ADR rather than editing a `docs/` document quietly.

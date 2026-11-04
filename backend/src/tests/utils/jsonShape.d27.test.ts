@@ -81,8 +81,9 @@ describe("D-27 — every JSON column is declared", () => {
   // .deviceSnapshot, .facilitySnapshot, .sideEffects, .issuerSnapshot, InspectionSessionSignature.signerSnapshot.
   // P20-02 adds CalibrationDevice.registrantSnapshot and CalibrationRecord.performerSnapshot (migration 0128).
   // P24-01 adds UpstreamSqlImport.transformSummary, counts and codes only (migration 0133).
-  it("finds the thirty-two JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's three, P20-07's move counts, P20-04's six IPM snapshots, P20-02's two)", () => {
-    expect(jsonAttributes()).toHaveLength(32);
+  // P21-15 (ADR-140) adds EsignatureApplication.signerSnapshot, name, role and organisation only (migration 0149).
+  it("finds the thirty-three JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports, P20-03's proposedItems, the rsync import's three, the SQL-dump import's three, P20-07's move counts, P20-04's six IPM snapshots, P20-02's two, P21-15's signer snapshot)", () => {
+    expect(jsonAttributes()).toHaveLength(33);
   });
 
   it("each JSON attribute validates against its OWN declared shape", () => {
@@ -227,6 +228,7 @@ const GOOD: Record<string, unknown[]> = {
     { version: 1, name: "Penyedia", email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: "ID", website: null, timeZone: "Asia/Jakarta" },
   ],
   "InspectionSessionSignature.signerSnapshot": [{ name: "IPSRS Sintetis", role: "FACILITY MAINTENANCE", organisation: "Rumah Sakit Sintetis" }],
+  "EsignatureApplication.signerSnapshot": [{ name: "Teknisi Sintetis", role: "HEALTHCARE TECHNICIAN", organisation: null }],
   "CalibrationDevice.registrantSnapshot": [{ name: "Teknisi Sintetis", role: "TECHNICIAN", organisation: null }],
   "CalibrationRecord.performerSnapshot": [
     { name: "Teknisi Sintetis", role: "TECHNICIAN", organisation: "Penyedia Sintetis" },
@@ -324,6 +326,7 @@ const BAD: Record<string, unknown[]> = {
     { version: 1, name: null, email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: null, website: null },
   ],
   "InspectionSessionSignature.signerSnapshot": [{ name: "A", role: null, organisation: null, userId: "x" }, "A"],
+  "EsignatureApplication.signerSnapshot": [{ name: "A", role: null, organisation: null, email: "a@b.test" }, { name: "", role: null, organisation: null }],
   "CalibrationDevice.registrantSnapshot": [{ name: "A", role: null, organisation: null, email: "a@example.test" }, { name: "" , role: null, organisation: null }],
   "CalibrationRecord.performerSnapshot": [{ name: "A", role: null, organisation: null, source: "manual" }, { role: null, organisation: null }],
 };

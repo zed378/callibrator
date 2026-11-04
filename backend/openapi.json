@@ -172,12 +172,20 @@
       "description": "Granular permission management endpoints for defining module:action permissions"
     },
     {
+      "name": "Personal E-signatures",
+      "description": "Every user's own e-signature — a specimen and a personal key — applied to records and documents, each application publicly verifiable (ADR-140)"
+    },
+    {
       "name": "PredictiveMaintenance",
       "description": "Predictive maintenance endpoints: IoT anomaly analysis and calibration-interval recommendations"
     },
     {
       "name": "Public Device Page",
       "description": "The page a device's sticker opens, by its revocable capability token (ADR-138)"
+    },
+    {
+      "name": "Public E-signature Verification",
+      "description": "The verification of one e-signature application, by its link's capability token (ADR-140)"
     },
     {
       "name": "QMS",
@@ -14567,6 +14575,245 @@
         }
       }
     },
+    "/api/v1/calibration-records/{calibrationRecordId}/esignatures": {
+      "post": {
+        "operationId": "applyCalibrationRecordEsignature",
+        "summary": "Apply the caller's e-signature to a calibration record (P21-15)",
+        "tags": [
+          "CalibrationRecords"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/calibrationRecords.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "calibration",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "The caller's personal e-signature (Profile → E-signature) affixed to the record — not the certificate's signature (ADR-140). `performed`: the record's `performedBy` only (else 403 `ESIG_NOT_PERFORMER`); `reviewed`: anyone else with calibration write. The caller re-enters a credential (password or a current MFA code; a wrong one is 401 and a `SIGNATURE_AUTH_FAILED` audit row). The record's canonical data (`calrec-data-v1`) is hashed and the application signed with the caller's personal key; the application, its audit row and its `e_signature_records` row are written in one transaction. Another tenant's or a missing record: 404. An API key is refused (403). Per user and address 10 per 15 minutes. The platform tenant authors nothing here (403, A-127).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `ESIG_NONE` (create your e-signature first), `CALREC_VOIDED`, `CALREC_SUPERSEDED` (with `headId`: sign the latest version), `CALREC_EXTERNAL` (an external-lab or imported record), `ESIG_ALREADY_APPLIED` — each the top-level `code` beside its explanation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "calibrationRecordId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The calibration record's id",
+              "example": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d"
+            },
+            "required": true,
+            "description": "The calibration record's id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "meaning": {
+                    "type": "string",
+                    "enum": [
+                      "performed",
+                      "reviewed"
+                    ]
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "mfa"
+                    ]
+                  },
+                  "credential": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                },
+                "required": [
+                  "meaning",
+                  "authMethod",
+                  "credential"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The application (never the signer's id, address, agent or token outside its link)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/EsignatureApplication"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listCalibrationRecordEsignatures",
+        "summary": "The e-signatures applied to a calibration record (P21-15)",
+        "tags": [
+          "CalibrationRecords"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/calibrationRecords.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "calibration",
+          "action": "read",
+          "superAdmin": "bypasses"
+        },
+        "description": "Oldest first, each with its public verification link, the signer's specimen and `integrity` — the record's data hashed NOW against the signed hash (`intact` | `changed`). Another tenant's or a missing record: 404. Reachable by a facility-bound account: its facility's records only.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "calibrationRecordId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The calibration record's id",
+              "example": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d"
+            },
+            "required": true,
+            "description": "The calibration record's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The applications",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EsignatureApplication"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/calibration-records/{calibrationRecordId}/void": {
       "post": {
         "operationId": "voidCalibrationRecord",
@@ -15964,6 +16211,245 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/CertificateDocument"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/certificates/{certificateId}/esignatures": {
+      "post": {
+        "operationId": "applyCertificateEsignature",
+        "summary": "Affix the caller's e-signature to a certificate (P21-15)",
+        "tags": [
+          "Certificates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/certificates.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "certificate",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "The caller's personal e-signature, AFFIXED to the certificate — the certificate's own tenant-key digital signature (ADR-040) is not touched. `performed`: the certificate's calibrator only (else 403 `ESIG_NOT_PERFORMER`); `approved`: its approver or signer (else 403 `ESIG_NOT_APPROVER`), once the certificate is approved. The approve and sign steps already affix the actor's e-signature automatically when it has an active one. The caller re-enters a credential; the certificate's canonical content (`cert-data-v1`) is hashed and the application signed with the personal key, with its audit and e_signature_records rows in one transaction. Another tenant's certificate: 404. An API key is refused. The platform tenant authors nothing here (403, A-127/A-145).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `CERT_NOT_APPROVED` (the certificate is in `draft` or `pending_approval`), `CERT_REVOKED`, `ESIG_ALREADY_APPLIED`, `ESIG_NONE` — each the top-level `code` beside its explanation.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The certificate's id",
+              "example": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f"
+            },
+            "required": true,
+            "description": "The certificate's id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "meaning": {
+                    "type": "string",
+                    "enum": [
+                      "performed",
+                      "approved"
+                    ]
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "mfa"
+                    ]
+                  },
+                  "credential": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                },
+                "required": [
+                  "meaning",
+                  "authMethod",
+                  "credential"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The application",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/EsignatureApplication"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listCertificateEsignatures",
+        "summary": "The e-signatures affixed to a certificate (P21-15)",
+        "tags": [
+          "Certificates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/certificates.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "certificate",
+          "action": "read",
+          "superAdmin": "bypasses"
+        },
+        "description": "Oldest first, each with its public verification link, the signer's specimen and `integrity` — the certificate's content hashed NOW against the signed hash (`intact` | `changed`; an approved certificate stays editable until it is signed). Another tenant's certificate: 404.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The certificate's id",
+              "example": "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f"
+            },
+            "required": true,
+            "description": "The certificate's id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The applications",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EsignatureApplication"
+                      }
                     }
                   },
                   "required": [
@@ -21200,6 +21686,147 @@
         }
       }
     },
+    "/api/v1/esignature/documents": {
+      "post": {
+        "operationId": "signDocumentByHash",
+        "summary": "Sign any document by its SHA-256",
+        "tags": [
+          "Personal E-signatures"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/userEsignatures.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "esignature",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "The browser hashes the file; the server receives only the hash, the title and the size — the file is never uploaded or stored. The application is signed with the caller's personal key and gets its own public verification link. The platform tenant authors nothing here (403, A-127). The caller re-enters a credential (password or a current MFA code); a wrong one is 401 and a `SIGNATURE_AUTH_FAILED` audit row. Per user and address 10 per 15 minutes.\n\n**409** — `ESIG_NONE`: create your e-signature first, in Profile → E-signature.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "contentHash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "sizeBytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "meaning": {
+                    "type": "string",
+                    "enum": [
+                      "performed",
+                      "reviewed",
+                      "approved",
+                      "authored",
+                      "acknowledged"
+                    ]
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "mfa"
+                    ]
+                  },
+                  "credential": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                },
+                "required": [
+                  "title",
+                  "contentHash",
+                  "sizeBytes",
+                  "meaning",
+                  "authMethod",
+                  "credential"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The application",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/EsignatureApplication"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/esignature/history": {
       "get": {
         "operationId": "getSignatureHistory",
@@ -21639,6 +22266,427 @@
         }
       }
     },
+    "/api/v1/esignature/me": {
+      "get": {
+        "operationId": "getMyEsignature",
+        "summary": "My e-signature and its earlier versions",
+        "tags": [
+          "Personal E-signatures"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/userEsignatures.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "esignature",
+          "action": "read",
+          "superAdmin": "bypasses"
+        },
+        "description": "The active e-signature (specimen, key fingerprint, version) or null, and the earlier versions. Never a private key.",
+        "responses": {
+          "200": {
+            "description": "My e-signature state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MyEsignatureState"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMyEsignature",
+        "summary": "Create my e-signature, or replace the active one",
+        "tags": [
+          "Personal E-signatures"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/userEsignatures.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "esignature",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "The specimen is sanitised SVG (paths and shapes only, or one PNG/JPEG data-URI image; no script, text or external reference; ≤ 64 KB, ≤ 256 KB with an image) — anything else is 400 `ESIG_SPECIMEN_INVALID`. An RSA-3072 key pair is generated on the server and its private half wrapped under the KMS ring; it is never returned. A replacement makes the old version `superseded` (it still verifies what it signed). The platform operator has no tenant (403 `ESIG_PLATFORM`). The caller re-enters a credential (password or a current MFA code); a wrong one is 401 and a `SIGNATURE_AUTH_FAILED` audit row. Per user and address 10 per 15 minutes.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "specimenSvg": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 262144
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "mfa"
+                    ]
+                  },
+                  "credential": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                },
+                "required": [
+                  "specimenSvg",
+                  "authMethod",
+                  "credential"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MyEsignature"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/esignature/me/applications": {
+      "get": {
+        "operationId": "listMyEsignatureApplications",
+        "summary": "What I have signed",
+        "tags": [
+          "Personal E-signatures"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/userEsignatures.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "esignature",
+          "action": "read",
+          "superAdmin": "bypasses"
+        },
+        "description": "Newest first; rows in `data`, the page in the top-level `meta`. `integrity` is null here (not recomputed).",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of my applications",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EsignatureApplication"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data",
+                    "meta"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/esignature/me/revoke": {
+      "post": {
+        "operationId": "revokeMyEsignature",
+        "summary": "Revoke my e-signature",
+        "tags": [
+          "Personal E-signatures"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/userEsignatures.openapi.ts",
+        "x-permission": {
+          "gate": "dynamicAccess",
+          "resource": "esignature",
+          "action": "write",
+          "superAdmin": "bypasses"
+        },
+        "description": "\"Do not use from now on\": past applications still verify, and their public page shows the revocation. The caller re-enters a credential (password or a current MFA code); a wrong one is 401 and a `SIGNATURE_AUTH_FAILED` audit row. Per user and address 10 per 15 minutes.\n\n**409** — `ESIG_NONE`: there is no active e-signature to revoke.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "mfa"
+                    ]
+                  },
+                  "credential": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "authMethod",
+                  "credential",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The revoked version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MyEsignature"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
     "/api/v1/esignature/my-workflows": {
       "get": {
         "operationId": "listMySignatureWorkflows",
@@ -22068,6 +23116,131 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/esignature/users/{userId}/revoke": {
+      "post": {
+        "operationId": "revokeUserEsignature",
+        "summary": "Revoke another user's e-signature (tenant administrator)",
+        "tags": [
+          "Personal E-signatures"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-audited": true,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/userEsignatures.openapi.ts",
+        "x-permission": {
+          "gate": "rbac",
+          "roles": [
+            "TENANT_ADMIN"
+          ],
+          "higherRoles": "allowed",
+          "superAdmin": "bypasses"
+        },
+        "description": "A tenant administrator (`rbac`) who also holds `qms` write revokes a user's active e-signature (a departed employee). It never creates or replaces one. Another tenant's or a missing user: 404. The platform tenant authors nothing here (403, A-127).\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.\n\n**409** — `ESIG_NONE`: the user has no active e-signature.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+              "description": "The user",
+              "example": "7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f"
+            },
+            "required": true,
+            "description": "The user"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The revoked version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MyEsignature"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -46988,6 +48161,98 @@
                         "report"
                       ],
                       "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "status",
+                    "message",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/public/esignatures/{applicationId}": {
+      "get": {
+        "operationId": "verifyEsignatureApplication",
+        "summary": "Verify an e-signature application (no auth)",
+        "tags": [
+          "Public E-signature Verification"
+        ],
+        "security": [],
+        "x-audited": false,
+        "x-rate-limit": {
+          "policy": "default",
+          "scope": "per client address",
+          "windowSeconds": 900,
+          "limitProduction": 5000,
+          "limitOtherwise": 100000,
+          "overriddenBy": "RATE_LIMIT_MAX",
+          "headers": "RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset"
+        },
+        "x-source": "code-first: src/routes/api/publicEsignatures.openapi.ts",
+        "x-public": true,
+        "description": "The target of an application's link and QR. Shows the verdict (`valid`, `content_changed`, `invalid`; a document is `valid` or `invalid`, the reader compares the file) and its explanation in Indonesian and English, the e-signature's state (`active`, `superseded`, `revoked` with its day), the record's state, the signer's name, role and organisation, the specimen, the key fingerprint and public key, the meaning, the time, the organisation, the document type and title, the content hash, the canonical content of a record and a minimal summary. Never an e-mail, an address, an agent, the token, or an internal id outside the canonical content. A malformed, unknown or mismatched link answers the same 404. Every answer carries `Cache-Control: no-store` and `X-Robots-Tag: noindex`. Per client address every request counts against 300 per 15 minutes and every answer that is not a verdict also against 60; beyond either, 429 with Retry-After.\n\nTenant-scoped: the row is looked up inside the caller's tenant. Another tenant's id answers **404**, exactly like an id that does not exist — never 403.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "applicationId",
+            "schema": {
+              "type": "string",
+              "description": "The application's id",
+              "example": "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a"
+            },
+            "required": true,
+            "description": "The application's id"
+          },
+          {
+            "in": "query",
+            "name": "token",
+            "schema": {
+              "description": "The link's token (32 base64url characters)",
+              "example": "q3kZ0x9VbN2mP4rT6wY8aC1dE3fG5hJ7",
+              "type": "string"
+            },
+            "description": "The link's token (32 base64url characters)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "The HTTP status, repeated in the body"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/EsignatureVerification"
                     }
                   },
                   "required": [
@@ -79532,6 +80797,61 @@
               "string",
               "null"
             ]
+          },
+          "esignatures": {
+            "description": "Full verdict only. P21-15 (ADR-140): the personal e-signatures affixed to the certificate, each with the link to its own verification",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "meaning": {
+                  "type": "string",
+                  "enum": [
+                    "performed",
+                    "reviewed",
+                    "approved",
+                    "authored",
+                    "acknowledged"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "organisation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "signedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "specimenSvg": {
+                  "type": "string"
+                },
+                "verifyUrl": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "meaning",
+                "name",
+                "role",
+                "organisation",
+                "signedAt",
+                "specimenSvg",
+                "verifyUrl"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -81780,6 +83100,159 @@
           }
         }
       },
+      "EsignatureApplication": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "documentType": {
+            "type": "string",
+            "enum": [
+              "calibration_record",
+              "certificate",
+              "document"
+            ]
+          },
+          "documentId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "documentTitle": {
+            "type": "string"
+          },
+          "meaning": {
+            "type": "string",
+            "enum": [
+              "performed",
+              "reviewed",
+              "approved",
+              "authored",
+              "acknowledged"
+            ]
+          },
+          "signer": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "role": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "organisation": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "role",
+              "organisation"
+            ],
+            "additionalProperties": false
+          },
+          "specimenSvg": {
+            "type": "string"
+          },
+          "keyFingerprint": {
+            "type": "string"
+          },
+          "contentScheme": {
+            "type": "string",
+            "enum": [
+              "calrec-data-v1",
+              "cert-data-v1",
+              "file-sha256"
+            ]
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "authMethod": {
+            "type": "string",
+            "enum": [
+              "password",
+              "mfa"
+            ]
+          },
+          "signedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "verifyUrl": {
+            "type": "string"
+          },
+          "integrity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "intact",
+                  "changed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "documentType",
+          "documentId",
+          "documentTitle",
+          "meaning",
+          "signer",
+          "specimenSvg",
+          "keyFingerprint",
+          "contentScheme",
+          "contentHash",
+          "authMethod",
+          "signedAt",
+          "verifyUrl",
+          "integrity"
+        ],
+        "additionalProperties": false,
+        "description": "P21-15: one application of a personal e-signature to a document, with its public verification link",
+        "example": {
+          "id": "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a",
+          "documentType": "calibration_record",
+          "documentId": "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+          "documentTitle": "Calibration record Pompa infus sintetis 2030-01-15",
+          "meaning": "performed",
+          "signer": {
+            "name": "Teknisi Sintetis",
+            "role": "HEALTHCARE TECHNICIAN",
+            "organisation": "Lab Sintetis"
+          },
+          "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+          "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+          "contentScheme": "calrec-data-v1",
+          "contentHash": "56e69d620f618fec1190787ceaed5496af6ae3f7871d87a59c257a8cabc76075",
+          "authMethod": "password",
+          "signedAt": "2030-01-15T09:30:00.123Z",
+          "verifyUrl": "https://app.example.test/s/4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a?t=q3kZ0x9VbN2mP4rT6wY8aC1dE3fG5hJ7",
+          "integrity": "intact"
+        }
+      },
       "ESignatureGeneratedKeyPair": {
         "type": "object",
         "properties": {
@@ -81850,6 +83323,310 @@
           "algorithm": "RS256",
           "publicKey": "-----BEGIN PUBLIC KEY-----\\n...\\n-----END PUBLIC KEY-----",
           "createdAt": "2030-01-15T09:00:00.000Z"
+        }
+      },
+      "EsignatureVerification": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "content_changed",
+              "invalid"
+            ]
+          },
+          "explanation": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "en": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "en"
+            ],
+            "additionalProperties": false
+          },
+          "esignatureState": {
+            "type": "string",
+            "enum": [
+              "active",
+              "superseded",
+              "revoked"
+            ]
+          },
+          "esignatureStateAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "documentState": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "current",
+                  "superseded",
+                  "voided",
+                  "revoked"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "documentStateAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "meaning": {
+            "type": "string",
+            "enum": [
+              "performed",
+              "reviewed",
+              "approved",
+              "authored",
+              "acknowledged"
+            ]
+          },
+          "signer": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "role": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "organisation": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "role",
+              "organisation"
+            ],
+            "additionalProperties": false
+          },
+          "specimenSvg": {
+            "type": "string"
+          },
+          "keyFingerprint": {
+            "type": "string"
+          },
+          "publicKeyPem": {
+            "type": "string"
+          },
+          "organisation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "documentType": {
+            "type": "string",
+            "enum": [
+              "calibration_record",
+              "certificate",
+              "document"
+            ]
+          },
+          "documentTitle": {
+            "type": "string"
+          },
+          "contentScheme": {
+            "type": "string",
+            "enum": [
+              "calrec-data-v1",
+              "cert-data-v1",
+              "file-sha256"
+            ]
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "canonicalContent": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "deviceName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "brand": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "model": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "serialNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "calibrationDate": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "dueDate": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "isCompliant": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "deviceName",
+                  "brand",
+                  "model",
+                  "serialNumber",
+                  "calibrationDate",
+                  "dueDate",
+                  "isCompliant"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "verdict",
+          "explanation",
+          "esignatureState",
+          "esignatureStateAt",
+          "documentState",
+          "documentStateAt",
+          "signedAt",
+          "meaning",
+          "signer",
+          "specimenSvg",
+          "keyFingerprint",
+          "publicKeyPem",
+          "organisation",
+          "documentType",
+          "documentTitle",
+          "contentScheme",
+          "contentHash",
+          "canonicalContent",
+          "summary"
+        ],
+        "additionalProperties": false,
+        "description": "P21-15: the verdict on an e-signature application. `verdict` is the field to branch on; `esignatureState` and `documentState` are shown beside it, never in its place. For a record, `canonicalContent` hashes (SHA-256 of its JSON) to `contentHash` when unchanged; for a document the reader hashes the file. `publicKeyPem` lets anyone check the RSA signature offline.",
+        "example": {
+          "verdict": "valid",
+          "explanation": {
+            "id": "Tanda tangan elektronik sah dan isi dokumen tidak berubah sejak ditandatangani.",
+            "en": "The e-signature is valid and the document's content has not changed since it was signed."
+          },
+          "esignatureState": "active",
+          "esignatureStateAt": null,
+          "documentState": "current",
+          "documentStateAt": null,
+          "signedAt": "2030-01-15T09:30:00.123Z",
+          "meaning": "performed",
+          "signer": {
+            "name": "Teknisi Sintetis",
+            "role": "HEALTHCARE TECHNICIAN",
+            "organisation": "Lab Sintetis"
+          },
+          "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+          "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+          "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA\n-----END PUBLIC KEY-----\n",
+          "organisation": {
+            "name": "Lab Sintetis"
+          },
+          "documentType": "calibration_record",
+          "documentTitle": "Calibration record Pompa infus sintetis 2030-01-15",
+          "contentScheme": "calrec-data-v1",
+          "contentHash": "56e69d620f618fec1190787ceaed5496af6ae3f7871d87a59c257a8cabc76075",
+          "canonicalContent": [
+            [
+              "schemeVersion",
+              "calrec-data-v1"
+            ],
+            [
+              "tenantId",
+              "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f"
+            ]
+          ],
+          "summary": {
+            "deviceName": "Pompa infus sintetis",
+            "brand": "Pembuat",
+            "model": "P-1",
+            "serialNumber": "SN-0001",
+            "calibrationDate": "2030-01-15",
+            "dueDate": "2031-01-15",
+            "isCompliant": true
+          }
         }
       },
       "ExternalCalibrationRecord": {
@@ -87255,6 +89032,269 @@
         ],
         "additionalProperties": false,
         "description": "A menu group with its direct children (id, name, slug, icon, order)."
+      },
+      "MyEsignature": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "superseded",
+              "revoked"
+            ]
+          },
+          "specimenSvg": {
+            "type": "string"
+          },
+          "keyFingerprint": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "supersededAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revokedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "status",
+          "specimenSvg",
+          "keyFingerprint",
+          "createdAt",
+          "supersededAt",
+          "revokedAt"
+        ],
+        "additionalProperties": false,
+        "description": "P21-15: a personal e-signature as its owner sees it — the specimen and the key's fingerprint, never the private key",
+        "example": {
+          "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+          "version": 2,
+          "status": "active",
+          "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+          "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+          "createdAt": "2030-01-10T08:00:00.000Z",
+          "supersededAt": null,
+          "revokedAt": null
+        }
+      },
+      "MyEsignatureState": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "superseded",
+                      "revoked"
+                    ]
+                  },
+                  "specimenSvg": {
+                    "type": "string"
+                  },
+                  "keyFingerprint": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "supersededAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "revokedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "version",
+                  "status",
+                  "specimenSvg",
+                  "keyFingerprint",
+                  "createdAt",
+                  "supersededAt",
+                  "revokedAt"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "superseded",
+                    "revoked"
+                  ]
+                },
+                "specimenSvg": {
+                  "type": "string"
+                },
+                "keyFingerprint": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "supersededAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "revokedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "version",
+                "status",
+                "specimenSvg",
+                "keyFingerprint",
+                "createdAt",
+                "supersededAt",
+                "revokedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "active",
+          "history"
+        ],
+        "additionalProperties": false,
+        "description": "P21-15: the caller's active e-signature (or null) and its earlier versions, newest first",
+        "example": {
+          "active": {
+            "id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+            "version": 2,
+            "status": "active",
+            "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+            "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+            "createdAt": "2030-01-10T08:00:00.000Z",
+            "supersededAt": null,
+            "revokedAt": null
+          },
+          "history": [
+            {
+              "id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+              "version": 1,
+              "status": "superseded",
+              "specimenSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><path d=\"M10 80 C 40 10, 65 10, 95 80\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\"/></svg>",
+              "keyFingerprint": "9f2b6c1d4e8a7b3c5d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+              "createdAt": "2030-01-10T08:00:00.000Z",
+              "supersededAt": "2030-01-10T08:00:00.000Z",
+              "revokedAt": null
+            }
+          ]
+        }
       },
       "NonConformance": {
         "type": "object",

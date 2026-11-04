@@ -162,6 +162,13 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
         "IPM report verification by capability token (ADR-126 Am. 2): the printed report's QR carries a 192-bit token; a malformed, unknown or mismatched link is one identical 404; per-address request budgets (ADR-100)",
     },
   },
+  "api/publicEsignatures.route.ts": {
+    "GET /:applicationId": {
+      kind: PUBLIC,
+      reason:
+        "public verification of an e-signature application (P21-15, ADR-140): the link and QR carry a 192-bit token, compared in constant time; a malformed, unknown or mismatched link is one identical 404; per-address request budgets (ADR-100)",
+    },
+  },
   "api/publicDevices.route.ts": {
     "GET /:token": {
       kind: PUBLIC,
