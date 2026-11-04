@@ -91,6 +91,24 @@ describe("0150 — the audit's foreign-key indexes on live PostgreSQL 18", () =>
     expect([...map.values()].filter((x) => x.valid)).toHaveLength(8);
   });
 
+  it("A11-DB-04: every table with a tenant_id column has an index whose LEADING column is tenant_id", async () => {
+    const unindexed = await rows(`
+      SELECT DISTINCT c.table_name AS name
+        FROM information_schema.columns c
+       WHERE c.table_schema = current_schema() AND c.column_name = 'tenant_id'
+         AND NOT EXISTS (
+           SELECT 1 FROM pg_index ix
+             JOIN pg_class t ON t.oid = ix.indrelid
+             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ix.indkey[0]
+            WHERE t.relname = c.table_name AND a.attname = 'tenant_id')
+       ORDER BY 1`);
+    const [{ n }] = (await rows(
+      "SELECT count(DISTINCT table_name)::int AS n FROM information_schema.columns WHERE table_schema = current_schema() AND column_name = 'tenant_id'",
+    )) as [{ n: number }];
+    expect(n).toBeGreaterThan(50);
+    expect(unindexed.map((r) => r["name"])).toEqual([]);
+  });
+
   it("an INVALID index of the same name is dropped and rebuilt, never accepted", async () => {
     const first = g.migration.INDEXES[0];
     if (first === undefined) {

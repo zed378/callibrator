@@ -77,8 +77,11 @@ export = {
       await context.addIndex(TABLE, ["webauthn_credential_id"], {
         name: "users_webauthn_credential_id",
       });
-    } catch {
-      // index already exists
+    } catch (err) {
+      // A11-DB-03: an index that already exists is the only failure to tolerate.
+      if (!/already exists/i.test((err as Error).message)) {
+        throw err;
+      }
     }
   },
 
@@ -90,8 +93,11 @@ export = {
 
     try {
       await context.removeIndex(TABLE, "users_webauthn_credential_id");
-    } catch {
-      // index absent
+    } catch (err) {
+      // A11-DB-03: an absent index is the only failure to tolerate.
+      if (!/does not exist/i.test((err as Error).message)) {
+        throw err;
+      }
     }
 
     for (const column of Object.keys(COLUMNS)) {

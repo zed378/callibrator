@@ -9,7 +9,12 @@ export = {
   up: async ({ context }: { context: Context }): Promise<void> => {
     try {
       await context.describeTable(TABLE);
-    } catch {
+    } catch (err) {
+      // A11-DB-03: only an absent table is created here; any other failure
+      // (permission, connection) propagates instead of reading as "absent".
+      if (!/no description found|does not exist/i.test((err as Error).message)) {
+        throw err;
+      }
       // Create table if it doesn't exist
       const DataTypes = context.sequelize.Sequelize.DataTypes;
       await context.createTable(TABLE, {
