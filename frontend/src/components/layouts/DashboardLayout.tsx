@@ -154,7 +154,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       />
 
       <div
-        className={`transition-all duration-300 flex flex-col min-h-screen ${isMobile ? "" : "lg:ml-72"}`}
+        className={`transition-all duration-300 flex flex-col min-h-screen ${isMobile ? "" : "lg:ml-60"}`}
       >
         <TopBar
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
