@@ -78,6 +78,7 @@ interface Graph {
   m0127: Migration;
   m0128: Migration;
   m0129: Migration;
+  m0150: Migration;
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports -- the graph is loaded per "process" with jest.isolateModules; typed by the members used */
@@ -96,6 +97,7 @@ const startProcess = (): Graph => {
       m0127: require("../../migrations/0127-ipm-immutability") as Migration,
       m0128: require("../../migrations/0128-device-extensions") as Migration,
       m0129: require("../../migrations/0129-attachment-purpose") as Migration,
+      m0150: require("../../migrations/0150-foreign-key-indexes-audit") as Migration,
     };
   });
   if (!graph) {
@@ -398,6 +400,8 @@ describe("P20-04 — migration 0126 on live PostgreSQL 18 (with 0127, as the boo
     await g.m0127.up({ context: qi });
     await g.m0128.up({ context: qi });
     await g.m0129.up({ context: qi });
+    // 0150 (DB-01) indexes inspection_results(tenant_id, session_id); dropping the table took it.
+    await g.m0150.up({ context: qi });
     expect(await objects()).toEqual(before);
     expect((await g.schemaVerify.verifySchema(g.db)).problems).toEqual([]);
   });
