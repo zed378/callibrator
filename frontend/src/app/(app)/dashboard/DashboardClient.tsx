@@ -11,11 +11,9 @@ import React, { useEffect } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { useAuthStore } from "@/stores/authStore";
 import { useUserStore } from "@/stores/userStore";
-import { Sparkles, Globe, Building2 } from "lucide-react";
+import { Globe, Building2 } from "lucide-react";
 import { Alert } from "@/components/ui";
 import {
-  RealTimeClock,
-  GridBackground,
   DashboardStats,
   DashboardQuickActions,
   DashboardSystemHealth,
@@ -92,17 +90,12 @@ export function DashboardClient() {
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        <GridBackground />
-
         {/* Hero Section */}
         <div className="relative">
           <div className="rounded-3xl p-8 border overflow-hidden border-border bg-card shadow-sm">
-            <div className="absolute top-0 right-0 w-80 h-80 bg-linear-to-br from-primary/10 to-primary/5 rounded-full blur-3xl hidden dark:block" />
-            <div className="absolute bottom-0 left-1/2 w-60 h-60 bg-linear-to-tr from-info/10 to-info/10 rounded-full blur-3xl hidden dark:block" />
             <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <Sparkles className="w-5 h-5 text-primary" />
                   <span className="text-sm font-semibold uppercase tracking-wider text-primary">
                     Dashboard Overview
                   </span>
@@ -122,8 +115,7 @@ export function DashboardClient() {
                 <h1 className="text-4xl lg:text-5xl font-bold mb-3 tracking-tight text-foreground">
                   {greeting}
                   <span className="block mt-1">
-                    {userName}{" "}
-                    <span className="inline-block animate-bounce">👋</span>
+                    {userName}
                   </span>
                 </h1>
                 <p className="text-lg max-w-xl text-muted-foreground">
@@ -134,7 +126,6 @@ export function DashboardClient() {
                   <DashboardUpdatedAt generatedAt={metrics.generatedAt} />
                 )}
               </div>
-              <RealTimeClock />
             </div>
           </div>
         </div>

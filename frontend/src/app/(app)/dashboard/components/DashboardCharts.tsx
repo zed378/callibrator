@@ -138,14 +138,13 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
             {recentUsers.length > 0 ? (
               recentUsers
                 .slice(0, 4)
-                .map((u, i) => (
+                .map((u) => (
                   <ActivityTimelineItem
                     key={u.id}
                     name={u.username || u.email}
                     action={u.email || 'User'}
                     time={u.createdAt ? `Joined ${new Date(u.createdAt).toLocaleDateString()}` : ''}
                     color="bg-primary/10"
-                    delay={500 + i * 100}
                   />
                 ))
             ) : (

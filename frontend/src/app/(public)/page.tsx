@@ -240,7 +240,6 @@ async function HomeContent() {
           <HeroPointer className="lp-hero">
             <div className="lp-hero-text flex flex-col justify-center px-4 pb-14 pt-10 sm:px-6 lg:py-20">
               <p className="lp-enter lp-chip lp-greeting-chip self-start" style={cssVars({ "--lp-i": 0 })}>
-                <span className="mt-[0.45em] inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-pub-gold sm:mt-0" aria-hidden="true" />
                 <span className="lp-greeting-text">
                   <TimeGreeting
                     words={{
