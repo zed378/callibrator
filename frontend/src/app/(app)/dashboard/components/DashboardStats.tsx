@@ -185,7 +185,7 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 relative">
-      {shown.map((stat, i) => (
+      {shown.map((stat) => (
         <StatCard
           key={stat.title}
           title={stat.title}
@@ -195,7 +195,6 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
           color={stat.color}
           bgColor={stat.bgColor}
           borderColor={stat.borderColor}
-          delay={100 + i * 75}
         />
       ))}
     </div>
