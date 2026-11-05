@@ -34,15 +34,14 @@ const SidebarLeaf: React.FC<{ node: MenuItemType; pathname: string }> = ({
   return (
     <Link
       href={node.path || "#"}
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm ${
+      className={`flex items-center gap-2.5 px-2.5 py-2.5 lg:py-1.5 rounded-md transition-colors text-[13px] [&_svg]:size-4 [&_svg]:shrink-0 ${
         active
           ? "text-primary bg-surface-selected font-medium"
           : "text-muted-foreground hover:text-foreground hover:bg-surface-hover"
       }`}
     >
-      <span className="w-4 h-4" />
       {node.icon}
-      <span>{node.label}</span>
+      <span className="truncate">{node.label}</span>
     </Link>
   );
 };
@@ -62,16 +61,15 @@ const SidebarSubGroup: React.FC<{ node: MenuItemType; pathname: string }> = ({
     <div>
       <button
         onClick={() => setIsExpanded((prev) => !prev)}
-        className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm ${
+        className={`w-full flex items-center justify-between gap-2.5 px-2.5 py-2.5 lg:py-1.5 rounded-md transition-colors text-[13px] [&_svg]:size-4 [&_svg]:shrink-0 ${
           hasActiveChild
             ? "text-primary"
             : "text-muted-foreground hover:text-foreground hover:bg-surface-hover"
         }`}
       >
-        <div className="flex items-center gap-3">
-          <span className="w-4 h-4" />
+        <div className="flex items-center gap-2.5 min-w-0">
           {node.icon}
-          <span>{node.label}</span>
+          <span className="truncate">{node.label}</span>
         </div>
         <ChevronDown
           className={`w-4 h-4 transition-transform duration-200 ${
@@ -82,7 +80,7 @@ const SidebarSubGroup: React.FC<{ node: MenuItemType; pathname: string }> = ({
         />
       </button>
       {isExpanded && (
-        <div className="ml-3 mt-1 space-y-0.5">
+        <div className="ml-[17px] mt-0.5 pl-1.5 border-l border-border space-y-px">
           {children.map((child) => (
             <SidebarLeaf
               key={child.path || child.label}
@@ -130,17 +128,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 flex flex-col bg-sidebar border-r border-border backdrop-blur-2xl shadow-lg transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 w-60 flex flex-col bg-sidebar border-r border-border shadow-lg lg:shadow-none transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <BrandIcon className="w-10 h-10 shrink-0 text-logo-ink" />
+        <div className="flex items-center justify-between px-4 h-14 border-b border-border">
+          <Link href="/dashboard" className="flex items-center gap-2.5">
+            <BrandIcon className="w-8 h-8 shrink-0 text-logo-ink" />
             {/* Q-43 (ADR-098 §8.1): the product is "Device Calibrator"; "Callibrator" is the codename only.
                 Not a heading: each page has ONE <h1>, in its <main> (ADR-090). */}
-            <p className="text-lg font-bold text-foreground tracking-tight leading-tight">
+            <p className="text-base font-bold text-foreground tracking-tight leading-tight">
               Device Calibrator
             </p>
           </Link>
@@ -154,12 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto overflow-x-hidden">
-          <div className="pt-3 pb-1">
-            <p className="px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
-              Menu
-            </p>
-          </div>
+        <nav aria-label="Main" className="flex-1 px-2 py-2 space-y-px overflow-y-auto overflow-x-hidden [&_svg]:size-4 [&_svg]:shrink-0">
           {filteredMenu.map((item) => {
             const isActive =
               item.path &&
@@ -171,9 +164,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {item.path && !hasChildren ? (
                   <Link
                     href={item.path}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                    className={`flex items-center gap-2.5 px-2.5 py-2.5 lg:py-1.5 rounded-md transition-colors ${
                       isActive
-                        ? "bg-surface-selected text-primary shadow-sm"
+                        ? "bg-surface-selected text-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-surface-hover"
                     }`}
                   >
@@ -182,28 +175,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     >
                       {item.icon}
                     </span>
-                    <span className="text-sm font-medium">{item.label}</span>
-                    {isActive && (
-                      <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />
-                    )}
+                    <span className="text-[13px] font-medium truncate">{item.label}</span>
                   </Link>
                 ) : (
                   <div>
                     <button
                       onClick={() => onToggleExpand(item.label)}
-                      className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                      className={`w-full flex items-center justify-between gap-2.5 px-2.5 py-2.5 lg:py-1.5 rounded-md transition-colors ${
                         isActive
                           ? "bg-surface-selected text-primary"
                           : "text-muted-foreground hover:text-foreground hover:bg-surface-hover"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         <span
                           className={`transition-colors ${isActive ? "text-primary" : "text-muted-foreground"}`}
                         >
                           {item.icon}
                         </span>
-                        <span className="text-sm font-medium">
+                        <span className="text-[13px] font-medium truncate">
                           {item.label}
                         </span>
                       </div>
@@ -218,7 +208,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       )}
                     </button>
                     {hasChildren && isExpanded && (
-                      <div className="ml-3 mt-1 space-y-0.5">
+                      <div className="ml-[17px] mt-0.5 mb-1 pl-1.5 border-l border-border space-y-px">
                         {item.items?.map((child) =>
                           child.items && child.items.length > 0 ? (
                             <SidebarSubGroup
@@ -243,21 +233,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
         {/* User Profile */}
-        <div className="border-t border-border p-3">
-          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-muted">
+        <div className="border-t border-border p-2">
+          <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-md">
             <Image
               {...avatarImageProps(user?.picture || avatarUrl)}
               alt={displayName}
-              width={36}
-              height={36}
-              className="w-9 h-9 rounded-lg object-cover flex-shrink-0"
+              width={28}
+              height={28}
+              className="w-7 h-7 rounded-md object-cover flex-shrink-0"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">
+              <p className="text-[13px] font-medium text-foreground truncate leading-tight">
                 {displayName}
               </p>
               {user?.email && (
-                <p className="text-[11px] text-muted-foreground truncate">
+                <p className="text-[11px] text-muted-foreground truncate leading-tight">
                   {user.email}
                 </p>
               )}
@@ -266,6 +256,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={handleLogout}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0 cursor-pointer"
               title="Logout"
+              aria-label="Logout"
             >
               <LogOut className="w-4 h-4" />
             </button>
