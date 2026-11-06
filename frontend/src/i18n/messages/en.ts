@@ -788,6 +788,7 @@ export const en: Messages = {
   "ipmCatalogue.editor.add": "Add",
   "ipmCatalogue.editor.added": "Added",
   "ipmCatalogue.editor.addNamed": "Add {name}",
+  "ipmCatalogue.editor.addedNamed": "Added {name}",
   "ipmCatalogue.editor.libraryFailed": "The library could not be loaded.",
   "ipmCatalogue.editor.changeNote": "Change note",
   "ipmCatalogue.editor.changeNoteHelp": "Required to publish, 3–2000 characters: what changed and why.",
