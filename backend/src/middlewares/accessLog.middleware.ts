@@ -40,26 +40,26 @@ const JAKARTA = new Intl.DateTimeFormat("en-GB", {
 });
 const MONTH_NUMBER = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, month: "2-digit" });
 
-/** The parts of a moment in Jakarta, by type. */
-const jakartaParts = (time: Date): Record<string, string> =>
-  Object.fromEntries(JAKARTA.formatToParts(time).map((p) => [p.type, p.value]));
+/** The parts of a moment in Jakarta, by type (every type the format above asks for is present). */
+const jakartaParts = (time: Date): Record<Intl.DateTimeFormatPartTypes, string> =>
+  Object.fromEntries(JAKARTA.formatToParts(time).map((p) => [p.type, p.value])) as Record<Intl.DateTimeFormatPartTypes, string>;
 
-/** "GMT+07:00" → "+0700" (moment's `ZZ`); a bare "GMT" is UTC. */
-const offsetZZ = (gmt: string): string => {
-  const m = /([+-])(\d{2}):(\d{2})/.exec(gmt);
-  return m ? `${m[1] ?? "+"}${m[2] ?? "00"}${m[3] ?? "00"}` : "+0000";
-};
+/**
+ * "GMT+07:00" → "+0700" (moment's `ZZ`). Asia/Jakarta is UTC+7 with no daylight
+ * saving, so the offset is never the bare "GMT" that UTC itself would read.
+ */
+const offsetZZ = (gmt: string): string => gmt.slice(3).replace(":", "");
 
 /** YYYY-MM-DD in Jakarta (the rotated file's name). */
 const jakartaDay = (time: Date): string => {
   const p = jakartaParts(time);
-  return `${p["year"] ?? ""}-${MONTH_NUMBER.format(time)}-${p["day"] ?? ""}`;
+  return `${p.year}-${MONTH_NUMBER.format(time)}-${p.day}`;
 };
 
 /** DD/MMMM/YYYY HH:mm:ss ZZ in Jakarta (the log line's date), as moment wrote it. */
 const jakartaStamp = (time: Date): string => {
   const p = jakartaParts(time);
-  return `${p["day"] ?? ""}/${p["month"] ?? ""}/${p["year"] ?? ""} ${p["hour"] ?? ""}:${p["minute"] ?? ""}:${p["second"] ?? ""} ${offsetZZ(p["timeZoneName"] ?? "")}`;
+  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}:${p.second} ${offsetZZ(p.timeZoneName)}`;
 };
 
 // ======================================================
