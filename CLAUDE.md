@@ -30,6 +30,7 @@ Everything below is grounded in the code or a dated record as of 2026-10-02. If 
 
 ## Before You Start
 
+0. **[`SOUL.md`](SOUL.md)** — the project's principles in one page: the evidence is the compliance, deny-by-default tenancy, the code wins, name the test, nothing is DONE without its record.
 1. **[`docs/README.md`](docs/README.md)** — the map.
 2. **[`docs/PLAN/00-PROJECT-OVERVIEW.md`](docs/PLAN/00-PROJECT-OVERVIEW.md)** — what this is and what it deliberately is not.
 3. **[`docs/SECURITY/05-MULTI-TENANCY-SECURITY.md`](docs/SECURITY/05-MULTI-TENANCY-SECURITY.md)** — **mandatory, no exceptions.**
