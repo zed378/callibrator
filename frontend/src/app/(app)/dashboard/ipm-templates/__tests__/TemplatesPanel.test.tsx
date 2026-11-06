@@ -134,7 +134,7 @@ describe("P22-01 — the operator's checklists", () => {
     expect(screen.getByRole("button", { name: "Save items" })).toBeDisabled();
 
     const add = await screen.findByRole("button", { name: "Add Earth leakage" });
-    expect(screen.getByRole("button", { name: "Add Alarm sounds" })).toBeDisabled(); // already in the draft
+    expect(screen.getByRole("button", { name: "Added Alarm sounds" })).toBeDisabled(); // already in the draft: its name starts with the visible "Added" (WCAG 2.5.3)
     fireEvent.click(add);
     expect(screen.getByRole("region", { name: "Electrical safety" })).toBeInTheDocument();
     expect(screen.getByText("There are unsaved changes.")).toBeInTheDocument();

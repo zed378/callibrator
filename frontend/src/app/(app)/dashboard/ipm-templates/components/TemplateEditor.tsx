@@ -382,7 +382,9 @@ export function TemplateEditor({ template, name, onBack, onChanged }: Props) {
                           size="sm"
                           variant="outline"
                           disabled={inDraft.has(d.id)}
-                          aria-label={t("ipmCatalogue.editor.addNamed", { name: d.label })}
+                          // WCAG 2.5.3 (label in name): the accessible name starts with the visible
+                          // text in both states, so a voice command for "Added" still finds it.
+                          aria-label={t(inDraft.has(d.id) ? "ipmCatalogue.editor.addedNamed" : "ipmCatalogue.editor.addNamed", { name: d.label })}
                           leftIcon={<Plus className="h-4 w-4" aria-hidden="true" />}
                           onClick={() => edit([...rows, draftRowOfDefinition(d)])}
                         >

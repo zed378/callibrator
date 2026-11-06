@@ -803,6 +803,7 @@ export const id = {
   "ipmCatalogue.editor.add": "Tambah",
   "ipmCatalogue.editor.added": "Sudah ada",
   "ipmCatalogue.editor.addNamed": "Tambah {name}",
+  "ipmCatalogue.editor.addedNamed": "Sudah ada {name}",
   "ipmCatalogue.editor.libraryFailed": "Pustaka tidak dapat dimuat.",
   "ipmCatalogue.editor.changeNote": "Catatan perubahan",
   "ipmCatalogue.editor.changeNoteHelp": "Wajib untuk menerbitkan, 3–2000 karakter: apa yang berubah dan mengapa.",
