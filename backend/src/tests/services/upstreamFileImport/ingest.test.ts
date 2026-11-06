@@ -104,6 +104,12 @@ afterEach(() => {
 });
 
 describe("ingestStaged — 08-FILE-POLICY § 2 over synthetic files", () => {
+  // These cases decode and re-encode real images through sharp. Alone they take
+  // a few seconds; in the full parallel coverage run (2026-11-06) the first one
+  // passed jest's 10 s default and failed by timeout. The ceiling only matters
+  // when a case is already stuck; it changes nothing any assertion accepts.
+  jest.setTimeout(60_000);
+
   it("ingests JPEG and PNG (GPS removed), quarantines everything else by reason, and writes the manifest", async () => {
     const gpsJpeg = syntheticJpeg({ pixels: true, gps: true, seed: 1 });
     const png = syntheticPng({ pixels: true, exif: true, seed: 2 });

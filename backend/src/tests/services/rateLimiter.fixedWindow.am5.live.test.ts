@@ -67,7 +67,18 @@ describe("fixed request windows — live Redis (ADR-100 Amendment 5)", () => {
     expect(ttl).toBeGreaterThan(0);
     expect(ttl).toBeLessThanOrEqual(WINDOW - 800 + 50);
 
-    await sleep(Math.max(0, first.expiresAt - Date.now()) + 30);
+    // Redis starts the window when the SET ARRIVES, one round trip after the
+    // client's `now`, so its key outlives `first.expiresAt` by that latency: ~5 ms
+    // on a Linux runner, 60–90 ms through Docker Desktop on Windows (measured
+    // 2026-11-06, where a fixed `+ 30` failed every run). Wait for Redis itself
+    // to expire the key, and bound the wait: the window must reopen within a
+    // round trip of the expiry it promised, never a window later.
+    await sleep(Math.max(0, first.expiresAt - Date.now()));
+    const reopenBy = first.expiresAt + 500;
+    while ((await redisService.getRedisConnection().pttl(k)) > 0 && Date.now() < reopenBy) {
+      await sleep(10);
+    }
+    expect(Date.now()).toBeLessThan(reopenBy);
     const reopened = await limiter.storeIncrFixed(k, WINDOW);
     expect(reopened.count).toBe(1);
     expect(reopened.expiresAt).toBeGreaterThan(first.expiresAt);
