@@ -39,6 +39,7 @@ async function httpPatch(path: any,  data: any = {},  headers: any = {}) {
 }
 
 let token: any = null;
+let operatorTenantId: any = null;
 
 async function login() {
   if (token) {return token;}
@@ -47,6 +48,7 @@ async function login() {
     password: OPERATOR_PASSWORD,
   });
   token = extractToken(body);
+  operatorTenantId = (body as any)?.data?.tenantId ?? null;
   return token;
 }
 
@@ -58,8 +60,13 @@ describe("E2E Users (/api/v1/users)", () => {
   beforeAll(async () => {
     await waitForServer();
     await login();
-    const { body } = await httpGet("/roles?limit=5", authHeader(token));
-    const rows = Array.isArray((body as any).data) ? (body as any).data : [];
+    const { body } = await httpGet("/roles?limit=50", authHeader(token));
+    // Two TENANT roles, never the super admin's: an account created without a
+    // tenant is valid only for the super admin role (A-369), so reassigning it to a
+    // tenant role is rightly refused 400. The list's first rows used to decide it.
+    const rows = (Array.isArray((body as any).data) ? (body as any).data : []).filter(
+      (r: any) => !/^SUPER_?ADMIN$/i.test(String(r.name)),
+    );
     roleId = rows[0] && rows[0].id;
     // A DIFFERENT role for the reassignment test — reassigning the same role
     // correctly returns 400 "User already has this role".
@@ -102,6 +109,7 @@ describe("E2E Users (/api/v1/users)", () => {
         email: `e2e${stamp}@example.com`,
         password: "Password123!",
         roleId,
+        tenantId: operatorTenantId,
       },
       authHeader(token),
     );

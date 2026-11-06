@@ -78,13 +78,19 @@ describe("E2E Tenants (HTTP)", () => {
 
   test("POST /tenants/create -> 201 with a valid body (DEFECT: 500 observed live)", async () => {
     const code = "e2e" + Date.now().toString().slice(-8);
-    const { status, body } = await httpPost(
-      "/tenants/create",
-      { name: "E2E Tenant " + code, code, description: "e2e" },
-      authHeader(token),
-    );
+    const create = () =>
+      httpPost("/tenants/create", { name: "E2E Tenant " + code, code, description: "e2e" }, authHeader(token));
+    let { status, body, headers } = await create();
+    // tenantCreate allows 10 a minute, and other specs in the same run create
+    // tenants too (P17-07, P21-10, the lifecycle and P10 specs): a 429 here is the
+    // limiter working, not an answer about creation. Honour Retry-After once.
+    if (status === 429) {
+      const wait = Number((headers as Record<string, string> | undefined)?.["retry-after"] ?? 60);
+      await new Promise((resolve) => setTimeout(resolve, (Number.isFinite(wait) ? wait : 60) * 1000 + 500));
+      ({ status, body, headers } = await create());
+    }
     // 201 is the contract; 409 if re-run; 500 is the observed defect.
     expect([201, 409, 500]).toContain(status);
     if (status === 201) {expect((body as any).data).toHaveProperty("id");}
-  });
+  }, 90_000);
 });
