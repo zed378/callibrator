@@ -39,8 +39,8 @@
 # file server for an offline build); the checksum still decides whether it is used.
 FROM node:26.10.0-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS pkg-base
 ARG PKG_BASE_TAG=v3.6
-ARG PKG_BASE_NAME=node-v26.5.1-linux-x64
-ARG PKG_BASE_SHA256=02b77b99449f9781b88698a94bdb7dd5e396c75eacc977639591d69a72c9e436
+ARG PKG_BASE_NAME=node-v26.12.1-linux-x64
+ARG PKG_BASE_SHA256=9a2dcecdbce93a065d495a9185ef734501735a000951dc869543e602918a5e81
 ARG PKG_BASE_URL=https://github.com/yao-pkg/pkg-fetch/releases/download/${PKG_BASE_TAG}/${PKG_BASE_NAME}
 RUN set -eu; \
     ok=""; \

@@ -15,6 +15,12 @@
 const config = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testEnvironment: 'jest-environment-jsdom',
+  // jest.useFakeTimers() fakes timers, never the microtask queue. Jest's default
+  // also fakes process.nextTick and queueMicrotask; undici 8 (jest.setup.ts gives
+  // jsdom its Request/Response) reads a body over microtasks, so under that
+  // default a Response read inside a faked block never settled and the suite ran
+  // out of heap (7 suites, 2026-11-06). Timers stay controllable; promises settle.
+  fakeTimers: { doNotFake: ['nextTick', 'queueMicrotask'] },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
