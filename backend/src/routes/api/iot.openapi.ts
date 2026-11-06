@@ -18,7 +18,7 @@ import { updateIotConfigSchema } from "../../validators/iot.validator";
 
 const tenantAdmin = { kind: "rbac", roles: ["TENANT_ADMIN"] } as const;
 /** The path, as the controller checks it (`deviceIdSchema`), with an example. */
-const deviceParams = z.object({ deviceId: z.guid().meta({ description: "The calibration device", example: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f" }) });
+const deviceParams = z.object({ deviceId: z.guid().meta({ description: "The calibration device", examples: ["3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f"] }) });
 const ADMIN = "TENANT_ADMIN with `calibration` write, JWT only (an API key is refused).";
 
 const IotConfig = z
@@ -33,14 +33,14 @@ const IotConfig = z
   .meta({
     id: "DeviceIotConfig",
     description: "A device's IoT provisioning state. The token itself is never answered here.",
-    example: {
+    examples: [{
       deviceId: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
       name: "Infusion pump",
       iotEnabled: true,
       readingTolerance: { temperature: { min: 2, max: 8 } },
       hasToken: true,
       tokenIssuedAt: "2030-01-15T09:00:00.000Z",
-    },
+    }],
   });
 
 export default defineRouteDocs({
@@ -61,7 +61,7 @@ export default defineRouteDocs({
       body: z
         .object({
           token: z.string().optional().meta({ description: "When the header is not sent" }),
-          payload: z.object({}).loose().meta({ description: "The reading: metric names and values", example: { temperature: 4.2 } }),
+          payload: z.object({}).loose().meta({ description: "The reading: metric names and values", examples: [{ temperature: 4.2 }] }),
         })
         .meta({ description: "Read by the controller; not validated by a schema on the route." }),
       errors: [429],

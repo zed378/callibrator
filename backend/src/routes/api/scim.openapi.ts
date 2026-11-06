@@ -21,12 +21,12 @@ const scimKey = {
   reason: "an API key scoped scim:read (GET) or scim:write, or the super admin (this router's requireApiKeyOrAdmin, A-250)",
 } as const;
 
-const params = z.object({ id: z.string().meta({ description: "The resource's id (not shape-checked)", example: "8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f" }) });
+const params = z.object({ id: z.string().meta({ description: "The resource's id (not shape-checked)", examples: ["8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f"] }) });
 
 const listQuery = z.object({
-  startIndex: z.string().optional().meta({ description: "1-based", example: "1" }),
-  count: z.string().optional().meta({ example: "100" }),
-  filter: z.string().optional().meta({ description: "A SCIM filter the service supports (else 400)", example: 'userName eq "a.user@hospital.example"' }),
+  startIndex: z.string().optional().meta({ description: "1-based", examples: ["1"] }),
+  count: z.string().optional().meta({ examples: ["100"] }),
+  filter: z.string().optional().meta({ description: "A SCIM filter the service supports (else 400)", examples: ['userName eq "a.user@hospital.example"'] }),
 });
 
 const resourceMeta = z.object({ resourceType: z.string(), created: z.iso.datetime(), lastModified: z.iso.datetime() });

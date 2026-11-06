@@ -18,17 +18,17 @@ const USER_ID = "8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f";
 const MENU_ID = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
 
 const userParams = z.object({
-  userId: z.guid().meta({ description: "The user's id", example: USER_ID }),
+  userId: z.guid().meta({ description: "The user's id", examples: [USER_ID] }),
 });
 const overrideParams = userParams.extend({
-  menuGroupId: z.guid().meta({ description: "The menu group's id", example: MENU_ID }),
+  menuGroupId: z.guid().meta({ description: "The menu group's id", examples: [MENU_ID] }),
 });
 
 const PERMISSION_TYPES = ["read", "write", "none"] as const;
 
 /** POST /:userId — read raw. `none` denies the menu even when the role grants it. */
 const setBody = z.object({
-  menuGroupId: z.string().meta({ description: "The menu group (an unknown id is a 404)", example: MENU_ID }),
+  menuGroupId: z.string().meta({ description: "The menu group (an unknown id is a 404)", examples: [MENU_ID] }),
   permissionType: z.enum(PERMISSION_TYPES),
   notes: z.string().optional().meta({ description: "Why; an empty value is stored as null" }),
 });

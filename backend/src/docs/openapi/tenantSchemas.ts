@@ -23,8 +23,8 @@ const nullableDate = z.iso.datetime().nullable();
 
 const tenantFields = {
   id: z.guid(),
-  name: z.string().meta({ example: "General Hospital Example" }),
-  subdomain: z.string().meta({ example: "general-hospital" }),
+  name: z.string().meta({ examples: ["General Hospital Example"] }),
+  subdomain: z.string().meta({ examples: ["general-hospital"] }),
   email: z.string(),
   domain: nullableString,
   logo: nullableString,
@@ -78,5 +78,5 @@ export const storedTenantRow = z
 
 /** `:tenantId`, with an example (the controllers check the UUID shape). */
 export const tenantIdParams = z.object({
-  tenantId: z.guid().meta({ description: "The tenant's id", example: "2b7c9e41-5d3a-4f6e-8a1b-0c9d8e7f6a5b" }),
+  tenantId: z.guid().meta({ description: "The tenant's id", examples: ["2b7c9e41-5d3a-4f6e-8a1b-0c9d8e7f6a5b"] }),
 });

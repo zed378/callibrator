@@ -46,7 +46,7 @@ const Workflow = z
   .meta({
     id: "Workflow",
     description: "An approval chain for one kind of record. Its steps cannot be replaced while an instance is pending.",
-    example: {
+    examples: [{
       id: "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a",
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       name: "Certificate approval",
@@ -54,7 +54,7 @@ const Workflow = z
       isActive: true,
       createdAt: "2030-01-15T09:00:00.000Z",
       updatedAt: "2030-01-15T09:00:00.000Z",
-    },
+    }],
   });
 
 /** A pending decision the caller's role may take. */
@@ -79,10 +79,10 @@ const PendingTask = z
   .meta({ id: "WorkflowPendingTask", description: "A PENDING workflow instance at a step the caller's role decides." });
 
 const idParams = z.object({
-  id: z.guid().meta({ description: "The workflow's id", example: "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a" }),
+  id: z.guid().meta({ description: "The workflow's id", examples: ["4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a"] }),
 });
 const instanceParams = z.object({
-  instanceId: z.guid().meta({ description: "The workflow instance's id", example: "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b" }),
+  instanceId: z.guid().meta({ description: "The workflow instance's id", examples: ["5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b"] }),
 });
 const read = { kind: "dynamicAccess", resource: "workflows", action: "read" } as const;
 const write = { kind: "dynamicAccess", resource: "workflows", action: "write" } as const;
@@ -120,7 +120,7 @@ export default defineRouteDocs({
       success: {
         status: 200,
         description: "The instance's new status; the message says what happened",
-        data: z.object({ status: z.string() }).meta({ id: "WorkflowDecision", example: { status: "APPROVED" } }),
+        data: z.object({ status: z.string() }).meta({ id: "WorkflowDecision", examples: [{ status: "APPROVED" }] }),
       },
     },
     {

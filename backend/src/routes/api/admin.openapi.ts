@@ -47,14 +47,14 @@ import { TemplateProposal, TemplateProposalQueueRow } from "../../docs/openapi/i
 const superAdmin = { kind: "rbac", roles: ["SUPER_ADMIN", "SUPERADMIN"] } as const;
 
 const proposalParams = z.object({
-  proposalId: proposalIdParams.shape.proposalId.meta({ description: "The proposal's id", example: "c4c4c4c4-c4c4-4c4c-8c4c-c4c4c4c4c4c4" }),
+  proposalId: proposalIdParams.shape.proposalId.meta({ description: "The proposal's id", examples: ["c4c4c4c4-c4c4-4c4c-8c4c-c4c4c4c4c4c4"] }),
 });
 
 const tenantParams = z.object({
-  id: z.guid().meta({ description: "The tenant's id", example: "2b7c9e41-5d3a-4f6e-8a1b-0c9d8e7f6a5b" }),
+  id: z.guid().meta({ description: "The tenant's id", examples: ["2b7c9e41-5d3a-4f6e-8a1b-0c9d8e7f6a5b"] }),
 });
 const requestParams = z.object({
-  id: z.guid().meta({ description: "The access request's id", example: "0d9c8b7a-6f5e-4d3c-8b2a-19f8e7d6c5b4" }),
+  id: z.guid().meta({ description: "The access request's id", examples: ["0d9c8b7a-6f5e-4d3c-8b2a-19f8e7d6c5b4"] }),
 });
 
 /** One request as the queue lists it (accessRequest.service#toQueueRow). */
@@ -92,11 +92,11 @@ const queueAnswer = z.object({
   }),
 });
 
-const domains = z.object({ domains: z.array(z.string()).meta({ example: ["hospital.example"] }) });
+const domains = z.object({ domains: z.array(z.string()).meta({ examples: [["hospital.example"]] }) });
 
 /** P24-06 — `:id` of an upstream SQL import run. */
 const sqlImportParams = z.object({
-  id: z.guid().meta({ description: "The import run's id", example: "6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b" }),
+  id: z.guid().meta({ description: "The import run's id", examples: ["6f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b"] }),
 });
 
 const count = z.number().int().min(0);
@@ -106,7 +106,7 @@ const codeCounts = z.record(z.string(), count);
 const sqlImportTable = z.object({
   table: z.string().meta({
     description: "The upstream table's name (structure, not data); `#invalid` for a name that is not a plain identifier",
-    example: "mst_faskes",
+    examples: ["mst_faskes"],
   }),
   staged: z.boolean().meta({ description: "Whether the minimisation policy stages this table (docs/UPSTREAM/07)" }),
   reason: z.string().nullable().meta({ description: "Why its rows were not loaded: the policy's, the parser's or `schema_conflict`" }),
@@ -115,8 +115,8 @@ const sqlImportTable = z.object({
   rowsLoaded: count,
   rowsRejected: count,
   rowsNotExtracted: count,
-  rejections: codeCounts.meta({ description: "Rejected rows by reason", example: { invalid_date: 2 } }),
-  notes: codeCounts.meta({ description: "Values loaded with a note (a zero date loaded as NULL)", example: { zero_date: 5 } }),
+  rejections: codeCounts.meta({ description: "Rejected rows by reason", examples: [{ invalid_date: 2 }] }),
+  notes: codeCounts.meta({ description: "Values loaded with a note (a zero date loaded as NULL)", examples: [{ zero_date: 5 }] }),
 });
 
 /** A run as upstreamSqlImport.service#view answers it: never the file's path or name. */
@@ -127,7 +127,7 @@ const sqlImportRun = z
     dataClass: z.enum(UPSTREAM_SQL_IMPORT_DATA_CLASSES),
     compression: z.enum(UPSTREAM_SQL_IMPORT_COMPRESSIONS),
     sizeBytes: count,
-    sha256: z.string().meta({ example: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" }),
+    sha256: z.string().meta({ examples: ["9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"] }),
     bytesRead: count,
     uncompressedBytes: count,
     progress: z.number().min(0).max(1).meta({ description: "Bytes of the file read, over its size" }),
@@ -162,15 +162,15 @@ const sqlImportRun = z
         durationMs: count,
         steps: z.array(
           z.object({
-            step: z.string().meta({ example: "calibration_devices" }),
+            step: z.string().meta({ examples: ["calibration_devices"] }),
             durationMs: count,
             sources: z.array(
               z.object({
-                table: z.string().meta({ example: "trx_inventory" }),
+                table: z.string().meta({ examples: ["trx_inventory"] }),
                 staged: count,
                 mapped: count.meta({ description: "Rows this run wrote to the id map" }),
                 unchanged: count.meta({ description: "Rows mapped by an earlier run with the same row hash (skipped)" }),
-                quarantined: codeCounts.meta({ description: "Quarantined rows by reason", example: { no_device: 3 } }),
+                quarantined: codeCounts.meta({ description: "Quarantined rows by reason", examples: [{ no_device: 3 }] }),
               }),
             ),
           }),
@@ -210,8 +210,8 @@ export default defineRouteDocs({
       permission: superAdmin,
       audited: false,
       query: z.object({
-        page: z.string().optional().meta({ example: "1" }),
-        limit: z.string().optional().meta({ example: "10" }),
+        page: z.string().optional().meta({ examples: ["1"] }),
+        limit: z.string().optional().meta({ examples: ["10"] }),
         search: z.string().optional(),
       }),
       success: {

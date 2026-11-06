@@ -13,13 +13,13 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 
 /** `:id` — NOT checked by the route (no `validateUuid`); a risk id is a uuid. */
 const params = z.object({
-  id: z.string().meta({ description: "The risk's id (a uuid; the route does not check its shape)", example: "8e7d6c5b-4a3f-4e2d-9c1b-0a9f8e7d6c5b" }),
+  id: z.string().meta({ description: "The risk's id (a uuid; the route does not check its shape)", examples: ["8e7d6c5b-4a3f-4e2d-9c1b-0a9f8e7d6c5b"] }),
 });
 
 /** The filters `risk.service#getRisks` reads, raw from `req.query`. */
 const listQuery = z.object({
-  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page (default 1)", example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (default 10; not capped)", example: 10 }),
+  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page (default 1)", examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (default 10; not capped)", examples: [10] }),
   status: z.string().optional().meta({ description: "Exact status, e.g. OPEN" }),
   category: z.string().optional().meta({ description: "Exact category, e.g. SAFETY" }),
 });

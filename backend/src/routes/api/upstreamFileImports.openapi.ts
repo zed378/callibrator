@@ -97,7 +97,7 @@ const checkAnswer = z
   .meta({ id: "UpstreamConnectionCheck", description: "A connection check's outcome (a failed connection is an answer, not an error)" });
 
 const params = importIdSchema.extend({
-  id: z.guid().meta({ description: "The import's id", example: "5f0c2b8e-3a4d-4c6b-9e1f-7a8b9c0d1e2f" }),
+  id: z.guid().meta({ description: "The import's id", examples: ["5f0c2b8e-3a4d-4c6b-9e1f-7a8b9c0d1e2f"] }),
 });
 
 export default defineRouteDocs({

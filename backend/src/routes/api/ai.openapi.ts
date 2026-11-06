@@ -35,7 +35,7 @@ export default defineRouteDocs({
       success: {
         status: 200,
         description: "The fields the provider extracted",
-        data: z.object({}).loose().meta({ id: "CertificateOcrResult", example: { certificateNumber: "CAL-2030-0042", calibrationDate: "2030-01-15" } }),
+        data: z.object({}).loose().meta({ id: "CertificateOcrResult", examples: [{ certificateNumber: "CAL-2030-0042", calibrationDate: "2030-01-15" }] }),
       },
     },
     {
@@ -46,12 +46,12 @@ export default defineRouteDocs({
       description: `400 without a question. ${UPSTREAM}`,
       permission: { kind: "dynamicAccess", resource: "sop", action: "read" },
       audited: false,
-      body: z.object({ question: z.string().meta({ example: "How often are infusion pumps calibrated?" }) }).meta({ description: "Read by the controller; not validated by a schema on the route." }),
+      body: z.object({ question: z.string().meta({ examples: ["How often are infusion pumps calibrated?"] }) }).meta({ description: "Read by the controller; not validated by a schema on the route." }),
       conflict: NOT_CONFIGURED,
       success: {
         status: 200,
         description: "The answer",
-        data: z.object({ answer: z.string() }).meta({ id: "RagAnswer", example: { answer: "Every 12 months, per SOP-0003." } }),
+        data: z.object({ answer: z.string() }).meta({ id: "RagAnswer", examples: [{ answer: "Every 12 months, per SOP-0003." }] }),
       },
     },
   ],

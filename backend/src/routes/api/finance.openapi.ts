@@ -18,21 +18,21 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 
 /** `:financeId`, checked by `validateUuid` before `auth` (the SHAPE: `z.guid()`). */
 const params = z.object({
-  financeId: z.guid().meta({ description: "The finance record's id", example: "6a5b4c3d-2e1f-4a0b-9c8d-7e6f5a4b3c2d" }),
+  financeId: z.guid().meta({ description: "The finance record's id", examples: ["6a5b4c3d-2e1f-4a0b-9c8d-7e6f5a4b3c2d"] }),
 });
 
 /** The filters `finance.service#fetchAssetFinances` reads, raw from `req.query`. */
 const listQuery = z.object({
-  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (capped by the server)", example: 25 }),
+  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (capped by the server)", examples: [25] }),
   deviceId: z.guid().optional().meta({ description: "Only this device's record" }),
   method: z.enum(DEPRECIATION_METHODS).optional(),
 });
 
 /** The report's options, read raw from `req.query`. */
 const reportQuery = z.object({
-  asOf: z.string().optional().meta({ description: "Report date, any date `new Date()` reads (default: now); unreadable is a 400", example: "2026-09-30" }),
-  format: z.string().optional().meta({ description: "`csv` (any case) answers a CSV file; anything else, JSON", example: "csv" }),
+  asOf: z.string().optional().meta({ description: "Report date, any date `new Date()` reads (default: now); unreadable is a 400", examples: ["2026-09-30"] }),
+  format: z.string().optional().meta({ description: "`csv` (any case) answers a CSV file; anything else, JSON", examples: ["csv"] }),
 });
 
 const access = (action: string) => ({ kind: "dynamicAccess", resource: "finance", action }) as const;

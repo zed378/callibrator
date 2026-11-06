@@ -66,7 +66,7 @@ export const resolveSource = async (host: string): Promise<ResolvedSource> => {
     addresses = [host];
   } else {
     try {
-      addresses = (await dns.promises.lookup(host, { all: true, verbatim: false })).map((a) => a.address);
+      addresses = (await dns.promises.lookup(host, { all: true, order: "ipv4first" })).map((a) => a.address);
     } catch {
       throw new AppError(400, "The host could not be resolved");
     }

@@ -83,7 +83,7 @@ const CalibrationRecord = z
     id: "CalibrationRecord",
     description:
       "An ISO 17025 §7.5 technical record. Append-only: a correction supersedes it (supersededById) and a void hides it with its reason.",
-    example: {
+    examples: [{
       id: "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       deviceId: "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
@@ -107,14 +107,14 @@ const CalibrationRecord = z
       voidedBy: null,
       createdAt: "2030-01-15T09:00:00.000Z",
       updatedAt: "2030-01-15T09:00:00.000Z",
-    },
+    }],
   });
 
 /** `:calibrationRecordId`, the validator's own field (`.meta()` clones it) with a synthetic example. */
 const recordIdParams = z.object({
   calibrationRecordId: calibrationRecordIdSchema.shape.calibrationRecordId.meta({
     description: "The calibration record's id",
-    example: "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
+    examples: ["6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d"],
   }),
 });
 

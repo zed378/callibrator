@@ -24,7 +24,7 @@ const v = { createCategory, createPost, updateCategory, updatePost };
 const timestamp = z.iso.datetime();
 const POST = "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e";
 const content = (action: string) => ({ kind: "dynamicAccess", resource: "content", action }) as const;
-const idParams = z.object({ id: z.guid().meta({ description: "The post or category", example: POST }) });
+const idParams = z.object({ id: z.guid().meta({ description: "The post or category", examples: [POST] }) });
 
 // P9-25 item 11: exact, from the Post / Category models and content.service
 // (they were open objects naming a `body` no answer carries — the column is
@@ -47,7 +47,7 @@ const Category = z
   })
   .meta({
     id: "ContentCategory",
-    example: {
+    examples: [{
       id: "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
       name: "Calibration",
       slug: "calibration",
@@ -55,7 +55,7 @@ const Category = z
       isDeleted: false,
       createdAt: "2030-01-10T09:00:00.000Z",
       updatedAt: "2030-01-10T09:00:00.000Z",
-    },
+    }],
   });
 
 /** A post's categories, as the join selects them (`CATEGORY_INCLUDE`: id, name, slug). */
@@ -102,7 +102,7 @@ const PublicPost = z
     ...publicPostFields,
     contentHtml: z.string().nullable().optional().meta({ description: "Sanitized rich text (A-298); on the read by slug only" }),
   })
-  .meta({ id: "ContentPublicPost", example: exampleFields });
+  .meta({ id: "ContentPublicPost", examples: [exampleFields] });
 
 /** A post on the admin surface: the whole row (`findPostWithCategories`, `findAndCountAll`). */
 const Post = z
@@ -117,7 +117,7 @@ const Post = z
   })
   .meta({
     id: "ContentPost",
-    example: {
+    examples: [{
       ...exampleFields,
       contentHtml: "<p>Calibration intervals decide how long a reading can be trusted.</p>",
       status: "PUBLISHED",
@@ -125,14 +125,14 @@ const Post = z
       isDeleted: false,
       updatedAt: "2030-01-15T09:00:00.000Z",
       deletedAt: null,
-    },
+    }],
   });
 
 const listQuery = z.object({
   type: z.enum(["BLOG", "NEWS", "blog", "news"]).optional(),
   category: z.string().optional().meta({ description: "Category slug" }),
-  page: z.coerce.number().int().min(1).optional().meta({ example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ example: 25 }),
+  page: z.coerce.number().int().min(1).optional().meta({ examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ examples: [25] }),
 });
 
 export default defineRouteDocs({
@@ -159,7 +159,7 @@ export default defineRouteDocs({
       summary: "Get a published post by slug (public)",
       permission: null,
       audited: false,
-      params: z.object({ slug: z.string().meta({ description: "The post's slug", example: "why-calibration-intervals-matter" }) }),
+      params: z.object({ slug: z.string().meta({ description: "The post's slug", examples: ["why-calibration-intervals-matter"] }) }),
       success: { status: 200, description: "The post", data: PublicPost },
     },
     {
@@ -179,7 +179,7 @@ export default defineRouteDocs({
       permission: content("read"),
       audited: false,
       query: listQuery.extend({
-        status: z.string().optional().meta({ example: "DRAFT" }),
+        status: z.string().optional().meta({ examples: ["DRAFT"] }),
         find: z.string().optional().meta({ description: "Text in the title" }),
       }),
       success: { status: 200, description: "A page of posts; pagination in the top-level `meta`", list: Post },
@@ -193,7 +193,7 @@ export default defineRouteDocs({
       permission: content("read"),
       audited: false,
       query: z.object({
-        slug: z.string().meta({ description: "Raw slug or title text", example: "Why calibration intervals matter" }),
+        slug: z.string().meta({ description: "Raw slug or title text", examples: ["Why calibration intervals matter"] }),
         excludeId: z.guid().optional().meta({ description: "The post being edited keeps its own slug" }),
       }),
       success: {

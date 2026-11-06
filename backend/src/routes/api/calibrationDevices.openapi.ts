@@ -108,7 +108,7 @@ const CalibrationDevice = z
   .meta({
     id: "CalibrationDevice",
     description: "An instrument in the tenant's calibration register (ISO 17025 §6.4.13).",
-    example: {
+    examples: [{
       id: "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       name: "Infusion pump",
@@ -126,7 +126,7 @@ const CalibrationDevice = z
       isDeleted: false,
       createdAt: "2029-03-01T09:00:00.000Z",
       updatedAt: "2029-03-01T09:00:00.000Z",
-    },
+    }],
   });
 
 /** The CSV import's report (`calibrationDevices.service#bulkImportCalibrationDevices`). */
@@ -146,14 +146,14 @@ const ImportReport = z
   .meta({
     id: "CalibrationDeviceImportReport",
     description: "What was imported, and why each rejected row was rejected (row numbers count the header as row 1).",
-    example: { successCount: 2, failedCount: 1, totalCount: 3, errors: [{ row: 3, errors: [{ field: "serialNumber", message: "Duplicate serial number: SN-0001" }] }] },
+    examples: [{ successCount: 2, failedCount: 1, totalCount: 3, errors: [{ row: 3, errors: [{ field: "serialNumber", message: "Duplicate serial number: SN-0001" }] }] }],
   });
 
 /** `:calibrationDeviceId`, the validator's own field (`.meta()` clones it) with a synthetic example. */
 const deviceIdParams = z.object({
   calibrationDeviceId: calibrationDeviceIdSchema.shape.calibrationDeviceId.meta({
     description: "The calibration device's id",
-    example: "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    examples: ["1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d"],
   }),
 });
 
@@ -161,11 +161,11 @@ const deviceIdParams = z.object({
 const photoParams = z.object({
   calibrationDeviceId: devicePhotoParams.shape.calibrationDeviceId.meta({
     description: "The calibration device's id",
-    example: "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    examples: ["1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d"],
   }),
   attachmentId: devicePhotoParams.shape.attachmentId.meta({
     description: "The photo's attachment id",
-    example: "7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d",
+    examples: ["7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d"],
   }),
 });
 
@@ -277,7 +277,7 @@ export default defineRouteDocs({
         "Unknown, deleted, another facility's and another tenant's QR answer the same 404; a value that is no QR is a 400. Reachable by a facility-bound account.",
       permission: read,
       audited: false,
-      params: z.object({ qrCode: deviceQrParams.shape.qrCode.meta({ description: "The sticker as scanned or typed", example: "TST000042" }) }),
+      params: z.object({ qrCode: deviceQrParams.shape.qrCode.meta({ description: "The sticker as scanned or typed", examples: ["TST000042"] }) }),
       success: { status: 200, description: "The device, as `GET /:calibrationDeviceId` answers it", data: CalibrationDevice },
     },
     {

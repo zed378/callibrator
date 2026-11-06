@@ -24,14 +24,14 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 
 /** `:orderId`, checked by `validateUuid` (the SHAPE: `z.guid()`). */
 const params = z.object({
-  orderId: z.guid().meta({ description: "The work order's id", example: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f" }),
+  orderId: z.guid().meta({ description: "The work order's id", examples: ["3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f"] }),
 });
 
 /** The filters `maintenance.service#fetchWorkOrders` reads, raw from `req.query`. */
 const listQuery = z.object({
   find: z.string().optional().meta({ description: "Substring of the title (case-insensitive)" }),
-  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (capped by the server)", example: 25 }),
+  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (capped by the server)", examples: [25] }),
   status: z.enum(WORK_ORDER_STATUSES).optional(),
   type: z.enum(WORK_ORDER_TYPES).optional(),
   priority: z.enum(WORK_ORDER_PRIORITIES).optional(),

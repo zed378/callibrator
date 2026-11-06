@@ -11,7 +11,7 @@ const FieldWipeRecord = z
   .meta({
     id: "FieldWipeRecord",
     description: "A recorded wipe of another user's offline data on a phone — counts only",
-    example: { wipedUserId: "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2", captures: 2, photos: 5, recordedAt: "2026-10-09T03:00:00.000Z" },
+    examples: [{ wipedUserId: "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2", captures: 2, photos: 5, recordedAt: "2026-10-09T03:00:00.000Z" }],
   });
 
 export default defineRouteDocs({

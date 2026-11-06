@@ -20,7 +20,7 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 import { IpmReportDocument, IpmReportSignature, IpmSession, IpmSessionSummary } from "../../docs/openapi/ipmSessionSchemas";
 
 const params = z.object({
-  sessionId: ipmSessionIdParams.shape.sessionId.meta({ description: "The IPM session's id", example: "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1" }),
+  sessionId: ipmSessionIdParams.shape.sessionId.meta({ description: "The IPM session's id", examples: ["a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1"] }),
 });
 const read = { kind: "dynamicAccess", resource: "ipm", action: "read" } as const;
 const write = { kind: "dynamicAccess", resource: "ipm", action: "write" } as const;

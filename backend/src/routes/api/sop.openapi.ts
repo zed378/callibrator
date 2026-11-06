@@ -42,7 +42,7 @@ const SopDocument = z
   .meta({
     id: "SopDocument",
     description: "A controlled procedure (ISO 13485 §4.2.4). Its number is issued per tenant.",
-    example: {
+    examples: [{
       id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       documentNumber: "SOP-0001",
@@ -55,7 +55,7 @@ const SopDocument = z
       requiresTraining: true,
       createdAt: "2030-01-15T09:00:00.000Z",
       updatedAt: "2030-01-15T09:00:00.000Z",
-    },
+    }],
   });
 
 /** A training acknowledgment (the caller's own training record, ISO 13485 §6.2). */
@@ -73,7 +73,7 @@ const TrainingAcknowledgment = z
   .meta({ id: "SopTrainingAcknowledgment" });
 
 const idParams = z.object({
-  id: z.guid().meta({ description: "The SOP document's id", example: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f" }),
+  id: z.guid().meta({ description: "The SOP document's id", examples: ["3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f"] }),
 });
 const NO_API_KEY = "An API key is refused (403).";
 const PLATFORM = "The platform tenant authors nothing here (403, A-145).";
@@ -103,8 +103,8 @@ export default defineRouteDocs({
       permission: { kind: "dynamicAccess", resource: "sop", action: "read" },
       audited: false,
       query: z.object({
-        page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", example: 1 }),
-        limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page", example: 10 }),
+        page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", examples: [1] }),
+        limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page", examples: [10] }),
         status: z.enum(DOC_STATUSES).optional(),
       }),
       success: { status: 200, description: "A page of documents; pagination in the top-level `meta`", list: SopDocument },

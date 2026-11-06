@@ -23,7 +23,7 @@ const superAdmin = { kind: "superAdminOnly" } as const;
 
 /** POST /:tenantId/children: the path's tenant is the PARENT of the one created. */
 const parentParams = z.object({
-  tenantId: z.guid().meta({ description: "The parent tenant's id", example: "2b7c9e41-5d3a-4f6e-8a1b-0c9d8e7f6a5b" }),
+  tenantId: z.guid().meta({ description: "The parent tenant's id", examples: ["2b7c9e41-5d3a-4f6e-8a1b-0c9d8e7f6a5b"] }),
 });
 
 const treeChild = z.object({
@@ -39,7 +39,7 @@ const tree = z.union([
   z.object({
     isRoot: z.boolean(),
     depth: z.number().int(),
-    path: z.string().meta({ example: "/gh/gh-icu" }),
+    path: z.string().meta({ examples: ["/gh/gh-icu"] }),
     tenant: tenantRow.optional(),
     children: z.array(treeChild),
   }),

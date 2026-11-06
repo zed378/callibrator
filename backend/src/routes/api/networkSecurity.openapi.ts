@@ -25,11 +25,11 @@ const geofence = z
     longitude: z.number().min(-180).max(180),
     radiusKm: z.number().positive().meta({ description: "50 when not given" }),
   })
-  .meta({ id: "Geofence", example: { latitude: -6.2, longitude: 106.8, radiusKm: 50 } });
+  .meta({ id: "Geofence", examples: [{ latitude: -6.2, longitude: 106.8, radiusKm: 50 }] });
 
 const allowlist = z
   .array(z.string())
-  .meta({ description: "Normalised addresses and CIDRs; empty: no restriction", example: ["192.0.2.0/24", "198.51.100.7"] });
+  .meta({ description: "Normalised addresses and CIDRs; empty: no restriction", examples: [["192.0.2.0/24", "198.51.100.7"]] });
 
 /**
  * PUT /geofence — `geofenceSchema`, plus the caller's own `currentLocation`,

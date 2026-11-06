@@ -29,7 +29,7 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 
 /** `:alertId`, checked by `validateUuid` (the SHAPE: `z.guid()`). */
 const params = z.object({
-  alertId: z.guid().meta({ description: "The usage alert's id", example: "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b" }),
+  alertId: z.guid().meta({ description: "The usage alert's id", examples: ["5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b"] }),
 });
 
 const access = (action: "read" | "write") => ({ kind: "dynamicAccess", resource: "metered-billing", action }) as const;

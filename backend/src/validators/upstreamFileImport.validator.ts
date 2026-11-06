@@ -32,7 +32,7 @@ export const sourceHost = z
   .max(253)
   .transform((h) => h.toLowerCase())
   .refine((h) => net.isIP(h) !== 0 || HOSTNAME.test(h), { error: "Enter a host name or an IP address" })
-  .meta({ description: "The source server: a DNS name or an IP address", example: "upstream.example.org" });
+  .meta({ description: "The source server: a DNS name or an IP address", examples: ["upstream.example.org"] });
 
 /** An absolute remote directory, normalised (no trailing slash). */
 export const remotePath = z
@@ -53,7 +53,7 @@ export const remotePath = z
   .transform((p) => (p.length > 1 && p.endsWith("/") ? p.slice(0, -1) : p))
   .meta({
     description: "The upstream `public/uploads` directory; each file class is one folder under it",
-    example: "/var/www/app/public/uploads",
+    examples: ["/var/www/app/public/uploads"],
   });
 
 const password = z
@@ -74,12 +74,12 @@ const privateKey = z
 /** The fields of a source, shared by check and start. */
 const sourceShape = {
   host: sourceHost,
-  port: z.number().int().min(1).max(65_535).default(22).meta({ example: 22 }),
+  port: z.number().int().min(1).max(65_535).default(22).meta({ examples: [22] }),
   username: z
     .string()
     .trim()
     .regex(USERNAME, { error: "Enter a user name: a letter or _ first, then letters, digits, . _ -" })
-    .meta({ example: "importer" }),
+    .meta({ examples: ["importer"] }),
   authMethod: z.enum(UPSTREAM_AUTH_METHODS).meta({ description: "`key` is recommended" }),
   password: password.optional(),
   privateKey: privateKey.optional(),
@@ -92,7 +92,7 @@ const sourceShape = {
     .meta({
       description:
         "`front` = foto_depan, `serial` = foto_sn. Certificate PDFs are never imported (archive-only, owner rule 2026-10-07)",
-      example: ["front", "serial"],
+      examples: [["front", "serial"]],
     }),
   syntheticSource: z
     .boolean()
@@ -114,7 +114,7 @@ const fingerprint = z
   .string()
   .trim()
   .regex(FINGERPRINT_PATTERN, { error: "A fingerprint looks like SHA256: followed by 43 characters" })
-  .meta({ description: "The host-key fingerprint the operator confirmed", example: "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU" });
+  .meta({ description: "The host-key fingerprint the operator confirmed", examples: ["SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU"] });
 
 /** `POST /admin/upstream-file-imports/check-connection`. Without a fingerprint: scan the host keys only. */
 export const checkConnectionSchema = z
@@ -134,7 +134,7 @@ export const startImportSchema = z
       .min(64)
       .max(1_000_000)
       .nullish()
-      .meta({ description: "rsync --bwlimit, in KiB/s; empty for none", example: 20_480 }),
+      .meta({ description: "rsync --bwlimit, in KiB/s; empty for none", examples: [20_480] }),
   })
   .superRefine(credentialMatches);
 

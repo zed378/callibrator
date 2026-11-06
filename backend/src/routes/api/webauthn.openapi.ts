@@ -17,7 +17,7 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 const own = { kind: "authenticated", reason: "the caller's own passkeys (user and tenant from the token)" } as const;
 
 const params = z.object({
-  id: z.guid().meta({ description: "The passkey's row id (never the credential id)", example: "7d6c5b4a-3928-4f17-8e6d-5c4b3a291807" }),
+  id: z.guid().meta({ description: "The passkey's row id (never the credential id)", examples: ["7d6c5b4a-3928-4f17-8e6d-5c4b3a291807"] }),
 });
 
 const passkey = z

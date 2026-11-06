@@ -37,14 +37,14 @@ const KeyPair = z
   .meta({
     id: "ESignatureKeyPair",
     description: "A tenant signing key (RS256). Its private key is a KMS envelope at rest and is never returned.",
-    example: {
+    examples: [{
       id: "9e0f1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b",
       keyId: "key-1900000000000-07070707",
       keyType: "esignature",
       algorithm: "RS256",
       publicKey: "-----BEGIN PUBLIC KEY-----\\n...\\n-----END PUBLIC KEY-----",
       createdAt: "2030-01-15T09:00:00.000Z",
-    },
+    }],
   });
 
 /** A newly generated key: its id, keyId and public key (`privateKey` is always "[REDACTED]"). */
@@ -85,7 +85,7 @@ const Workflow = z
   .meta({
     id: "SignatureWorkflow",
     description: "A document to be signed by named users of the tenant, in order (21 CFR Part 11).",
-    example: {
+    examples: [{
       id: "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
       documentId: "SOP-0042",
       subject: "Please sign this document",
@@ -94,7 +94,7 @@ const Workflow = z
       expiresAt: "2030-01-22T09:00:00.000Z",
       createdAt: "2030-01-15T09:00:00.000Z",
       updatedAt: "2030-01-15T09:00:00.000Z",
-    },
+    }],
   });
 
 const CreatedWorkflow = z
@@ -137,7 +137,7 @@ const Verification = z
   .meta({
     id: "SignatureVerification",
     description: "`valid` is true ONLY for a cryptographically verified signature; branch on `verificationStatus`.",
-    example: { valid: true, verificationStatus: "valid", reason: "Signature verified against tenant key key-1900000000000-07070707." },
+    examples: [{ valid: true, verificationStatus: "valid", reason: "Signature verified against tenant key key-1900000000000-07070707." }],
   });
 
 const SignatureRecord = z
@@ -168,7 +168,7 @@ const EligibleSigner = z
   .meta({ id: "EligibleSigner", description: "An active user of the tenant holding `esignature:write`." });
 
 const uuidParam = (name: string, what: string, example: string): z.ZodObject =>
-  z.object({ [name]: z.guid().meta({ description: what, example }) });
+  z.object({ [name]: z.guid().meta({ description: what, examples: [example] }) });
 const keyPairParams = uuidParam("keyPairId", "The key pair's row id", "9e0f1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b");
 const workflowParams = uuidParam("workflowId", "The signature workflow's id", "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e");
 

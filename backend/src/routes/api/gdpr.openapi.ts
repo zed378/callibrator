@@ -80,7 +80,7 @@ export default defineRouteDocs({
         exportId: z
           .string()
           .regex(/^export-\d+-[0-9a-f]{8}$/)
-          .meta({ description: "The export's id, from `POST /export`", example: "export-1790000000000-0a1b2c3d" }),
+          .meta({ description: "The export's id, from `POST /export`", examples: ["export-1790000000000-0a1b2c3d"] }),
       }),
       success: { status: 200, description: "The archive", file: { contentType: "application/zip" } },
     },
@@ -103,7 +103,7 @@ export default defineRouteDocs({
       description: "The caller's own request, or any in the tenant for a privacy officer (`gdpr` read); anything else is 404 (A-252).",
       permission: OWN,
       audited: false,
-      params: z.object({ requestId: z.guid().meta({ description: "The erasure request", example: "4e5f6a7b-8c9d-4e0f-9a1b-2c3d4e5f6a7b" }) }),
+      params: z.object({ requestId: z.guid().meta({ description: "The erasure request", examples: ["4e5f6a7b-8c9d-4e0f-9a1b-2c3d4e5f6a7b"] }) }),
       success: {
         status: 200,
         description: "The request",

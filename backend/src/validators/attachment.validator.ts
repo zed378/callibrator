@@ -34,12 +34,12 @@ export const createSignedUrlSchema = z
       .meta({
         description:
           "Lifetime in seconds: an integer from 30 to the configured cap (ATTACHMENT_URL_MAX_TTL_SEC, default 900, never above 3600). Without it, ATTACHMENT_URL_TTL_SEC applies (default 300). Above the cap: 400",
-        example: 300,
+        examples: [300],
       }),
     variant: z.enum(ATTACHMENT_VARIANTS).optional().meta({
       description:
         "P21-02b: which stored form the link opens — `original` (default), or a device photo's metadata-free `display` (1,600 px) or `thumb` (320 px) derivative. A derivative of a file that has none: 404",
-      example: "thumb",
+      examples: ["thumb"],
     }),
   })
   .meta({ description: "Optional; an empty body takes the default lifetime" });

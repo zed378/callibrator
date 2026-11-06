@@ -78,7 +78,7 @@ const StorageSettings = z
   .meta({
     id: "StorageSettings",
     description: "The tenant's storage configuration, without its secrets: only whether credentials are set.",
-    example: {
+    examples: [{
       provider: "s3",
       usingPlatformDefault: false,
       hasCredentials: true,
@@ -87,7 +87,7 @@ const StorageSettings = z
       endpoint: null,
       forcePathStyle: false,
       prefix: null,
-    },
+    }],
   });
 
 export default defineRouteDocs({
@@ -106,8 +106,8 @@ export default defineRouteDocs({
       permission: null,
       audited: false,
       query: z.object({
-        key: z.string().meta({ description: "The object key (it names the owning tenant)", example: "t/0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f/report.pdf" }),
-        token: z.string().meta({ description: "The HMAC token from the signed URL", example: "1893456000.3f2a" }),
+        key: z.string().meta({ description: "The object key (it names the owning tenant)", examples: ["t/0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f/report.pdf"] }),
+        token: z.string().meta({ description: "The HMAC token from the signed URL", examples: ["1893456000.3f2a"] }),
       }),
       success: { status: 200, description: "The object itself", file: { contentType: "application/octet-stream" } },
     },

@@ -19,7 +19,7 @@ const superAdmin = { kind: "superAdminOnly" } as const;
 /** One flag as the tenant has it: its definition merged with the tenant's override. */
 const flagState = z.object({
   enabled: z.boolean(),
-  category: z.string().meta({ example: "calibration" }),
+  category: z.string().meta({ examples: ["calibration"] }),
   description: z.string(),
   defaultValue: z.boolean(),
   tenantOverride: z.boolean().meta({ description: "Whether the tenant overrides the default" }),
@@ -35,10 +35,10 @@ const tenantFlags = z
  * in the controller (a UUID shape; a non-empty key), with examples.
  */
 const tenantParams = z.object({
-  tenantId: z.guid().meta({ description: "The tenant's id", example: "2b7c9e41-5d3a-4f6e-8a1b-0c9d8e7f6a5b" }),
+  tenantId: z.guid().meta({ description: "The tenant's id", examples: ["2b7c9e41-5d3a-4f6e-8a1b-0c9d8e7f6a5b"] }),
 });
 const flagParams = tenantParams.extend({
-  flagKey: z.string().min(1).meta({ description: "The flag's key", example: "enable_iot" }),
+  flagKey: z.string().min(1).meta({ description: "The flag's key", examples: ["enable_iot"] }),
 });
 
 /** POST /:tenantId/:flagKey — the body part of `flagValueSchema`. */
