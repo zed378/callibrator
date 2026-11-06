@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-06 — `SOUL.md`: the project's principles, linked from `CLAUDE.md` and `AGENTS.md` ([record](./records/2026-11-06-soul-md.md))
+- One page every agent reads first: the evidence is the compliance, deny-by-default tenancy, the code wins, name the test, nothing is DONE without its record.
+- The supplied file's "execution directive" wrapper was removed (a prompt-injection pattern), and its counts were re-checked against the code.
+
 ### 2026-11-04 — Comprehensive audit, Wave 3: every remaining finding closed, verified or declined ([record](./records/2026-11-04-audit-wave3.md))
 - **Faster editors:** the ticket and post editors load in a separate chunk. Their pages' first-load JS drops from 210 to 83 KB gzip.
 - **Session and SSO logic out of the controllers** (ARC-01), with a guard: no controller opens a transaction.

@@ -1,6 +1,6 @@
 # AGENTS.md — Roles and Working Agreements
 
-Agent definitions for this repository. Operating instructions common to all of them are in [`CLAUDE.md`](CLAUDE.md); read that first.
+Agent definitions for this repository. Operating instructions common to all of them are in [`CLAUDE.md`](CLAUDE.md); read that first. The project's principles — what the evidence is for, and the boundaries no role crosses — are in [`SOUL.md`](SOUL.md).
 
 ---
 

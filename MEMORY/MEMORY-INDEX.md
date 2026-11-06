@@ -10,6 +10,7 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-11-06 | SOUL.md | [`SOUL.md` integrated](./records/2026-11-06-soul-md.md) | Principles page at the root, linked from CLAUDE.md § Before You Start (item 0) and AGENTS.md. The supplied jailbreak-style wrapper was removed; the Scale row was re-counted (65 / 91 / 1,208 / 817). |
 | 2026-11-04 | AUDIT-2026-11 Wave 3 | [Comprehensive audit: Wave 3](./records/2026-11-04-audit-wave3.md) | **Every audit finding has a status.** Fixed: ARC-01, DB-02, INF-01 (numeric UID), PERF-02 (210→83 KB), DEP-01 majors, A11-DEP-01/02, A11-DB-01/03/04, A11-ARCH-01, A11-SEC-02 FE. Verified: PERF-01, A11-ARCH-02/03. Declined: A11-INFRA-01 (owner: no CI work). Open: A11-PERF-01 (runtime). Held: typescript-eslint 8.70.1, pkg 6.22.0. |
 | 2026-11-04 | AUDIT-2026-11 Wave 2 | [Comprehensive audit: Wave 2](./records/2026-11-04-audit-wave2.md) | **BUG-01, BUG-02, DB-01 (0150, live 3/3), DB-03, ARC-02 (A-18 closed), SEC-02 FIXED.** Found uncommitted, reviewed, completed. The `deepmerge` override was void (4.3.2 does not exist). New guard `findAndCountAllDistinct.bug01`. |
 | 2026-11-04 | ADR-092 Am. 1 | [The backend lint gate is back at zero](./records/2026-11-04-backend-lint-zero.md) | **0 errors, 0 warnings, baseline 0** (was 78,365, all in P9-26's 335 converted tests). Those files lint at their `.js` level from a frozen list; 235 reformatted, 235/235 AST-identical. |
