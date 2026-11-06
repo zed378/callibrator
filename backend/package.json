@@ -128,7 +128,7 @@
     "@types/sanitize-html": "^2.16.2",
     "@typescript-eslint/typescript-estree": "^8.72.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "@yao-pkg/pkg": "^6.22.0",
+    "@yao-pkg/pkg": "^6.25.0",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "jest": "^30.5.2",

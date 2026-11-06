@@ -18,8 +18,8 @@ Built from the **repository root** — `docker build -f backend/Dockerfile .` �
 # ── pkg base binary (A-325) ──────────────────
 FROM node:26-alpine AS pkg-base
 ARG PKG_BASE_TAG=v3.6
-ARG PKG_BASE_NAME=node-v26.5.1-linux-x64
-ARG PKG_BASE_SHA256=02b77b99…c9e436
+ARG PKG_BASE_NAME=node-v26.12.1-linux-x64
+ARG PKG_BASE_SHA256=9a2dcecd…918a5e81
 RUN wget (5 tries, 60 s timeout) && sha256sum -c   # → /pkg-cache/<tag>/fetched-<node>-linux-x64
 
 # ── builder ──────────────────────────────────
@@ -75,7 +75,7 @@ The builder hands the file to pkg through `PKG_CACHE_PATH`, where pkg-fetch look
 
 **The pins are pkg-fetch's own:** its release tag, the newest node26 it knows, and the sha256 in its `expected-shas.json`. `backend/src/tests/guards/pkgBasePin.a325.guard.test.ts` fails when a pkg-fetch upgrade moves any of them. To move them, update the three `ARG` defaults to what the guard reports.
 
-**An offline or mirrored build** passes `--build-arg PKG_BASE_URL=<mirror>/node-v26.5.1-linux-x64`. The URL only changes where the file comes from; the checksum still decides whether it is used.
+**An offline or mirrored build** passes `--build-arg PKG_BASE_URL=<mirror>/node-v26.12.1-linux-x64`. The URL only changes where the file comes from; the checksum still decides whether it is used.
 
 ### Five details that will look strange
 
