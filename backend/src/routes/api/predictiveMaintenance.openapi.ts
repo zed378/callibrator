@@ -13,7 +13,7 @@ import { z } from "zod";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 
 const DEVICE = "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f";
-const params = z.object({ deviceId: z.guid().meta({ description: "The calibration device", example: DEVICE }) });
+const params = z.object({ deviceId: z.guid().meta({ description: "The calibration device", examples: [DEVICE] }) });
 
 const DeviceAnalysis = z
   .object({
@@ -24,7 +24,7 @@ const DeviceAnalysis = z
   .meta({
     id: "PredictiveDeviceAnalysis",
     description: "The outcome of the analysis. A recommendation is stored on the device, notified and audited under the caller, together (A-190); `skipped` and `unchanged` write nothing.",
-    example: { status: "recommended", newInterval: 180, reason: "Drift above tolerance in 2 of the last 30 readings" },
+    examples: [{ status: "recommended", newInterval: 180, reason: "Drift above tolerance in 2 of the last 30 readings" }],
   });
 
 const Recommendation = z
@@ -38,14 +38,14 @@ const Recommendation = z
   })
   .meta({
     id: "CalibrationIntervalRecommendation",
-    example: {
+    examples: [{
       id: DEVICE,
       name: "Infusion pump",
       serialNumber: "SN-0001",
       calibrationIntervalDays: 365,
       recommendedCalibrationInterval: 180,
       recommendationReason: "Drift above tolerance in 2 of the last 30 readings",
-    },
+    }],
   });
 
 export default defineRouteDocs({

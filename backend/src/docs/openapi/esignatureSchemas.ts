@@ -23,19 +23,19 @@ const MINE = {
 export const MyEsignature = myEsignatureView.meta({
   id: "MyEsignature",
   description: "P21-15: a personal e-signature as its owner sees it — the specimen and the key's fingerprint, never the private key",
-  example: MINE,
+  examples: [MINE],
 });
 
 export const MyEsignatureState = myEsignatureState.meta({
   id: "MyEsignatureState",
   description: "P21-15: the caller's active e-signature (or null) and its earlier versions, newest first",
-  example: { active: MINE, history: [{ ...MINE, id: "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e", version: 1, status: "superseded", supersededAt: "2030-01-10T08:00:00.000Z" }] },
+  examples: [{ active: MINE, history: [{ ...MINE, id: "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e", version: 1, status: "superseded", supersededAt: "2030-01-10T08:00:00.000Z" }] }],
 });
 
 export const EsignatureApplication = esignatureApplicationView.meta({
   id: "EsignatureApplication",
   description: "P21-15: one application of a personal e-signature to a document, with its public verification link",
-  example: {
+  examples: [{
     id: "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a",
     documentType: "calibration_record",
     documentId: "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
@@ -50,7 +50,7 @@ export const EsignatureApplication = esignatureApplicationView.meta({
     signedAt: "2030-01-15T09:30:00.123Z",
     verifyUrl: "https://app.example.test/s/4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a?t=q3kZ0x9VbN2mP4rT6wY8aC1dE3fG5hJ7",
     integrity: "intact",
-  },
+  }],
 });
 
 export const EsignatureVerification = publicEsignatureVerdict.meta({
@@ -59,7 +59,7 @@ export const EsignatureVerification = publicEsignatureVerdict.meta({
     "P21-15: the verdict on an e-signature application. `verdict` is the field to branch on; `esignatureState` and `documentState` are shown beside it, " +
     "never in its place. For a record, `canonicalContent` hashes (SHA-256 of its JSON) to `contentHash` when unchanged; for a document the reader hashes the " +
     "file. `publicKeyPem` lets anyone check the RSA signature offline.",
-  example: {
+  examples: [{
     verdict: "valid",
     explanation: {
       id: "Tanda tangan elektronik sah dan isi dokumen tidak berubah sejak ditandatangani.",
@@ -93,5 +93,5 @@ export const EsignatureVerification = publicEsignatureVerdict.meta({
       dueDate: "2031-01-15",
       isCompliant: true,
     },
-  },
+  }],
 });

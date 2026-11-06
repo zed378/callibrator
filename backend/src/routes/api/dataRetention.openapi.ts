@@ -24,7 +24,7 @@ const policies = z
     sessions: z.number().int().min(0),
     iot_readings: z.number().int().min(0),
   })
-  .meta({ description: "Retention in days per purgeable entity; 0 keeps forever", example: { notifications: 90, sessions: 30, iot_readings: 0 } });
+  .meta({ description: "Retention in days per purgeable entity; 0 keeps forever", examples: [{ notifications: 90, sessions: 30, iot_readings: 0 }] });
 
 const anomaly = z.object({
   entity: z.string(),

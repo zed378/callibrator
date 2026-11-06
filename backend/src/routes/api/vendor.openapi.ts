@@ -17,7 +17,7 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 
 /** `validateUuid` checks the 8-4-4-4-12 SHAPE, not an RFC version (P6-02): `z.guid()`, not `z.uuid()`. */
 const params = z.object({
-  vendorId: z.guid().meta({ description: "The vendor's id", example: "5f0c2a8e-7c1d-4b6a-9e2f-3d4c5b6a7e81" }),
+  vendorId: z.guid().meta({ description: "The vendor's id", examples: ["5f0c2a8e-7c1d-4b6a-9e2f-3d4c5b6a7e81"] }),
 });
 
 /**
@@ -26,8 +26,8 @@ const params = z.object({
  * reads them.
  */
 const listQuery = z.object({
-  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (capped by the server)", example: 25 }),
+  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (capped by the server)", examples: [25] }),
   find: z.string().optional().meta({ description: "Substring of the vendor name" }),
   status: z.enum(VENDOR_STATUSES).optional(),
   type: z.enum(VENDOR_TYPES).optional(),

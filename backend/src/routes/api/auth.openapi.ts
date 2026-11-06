@@ -63,7 +63,7 @@ const reauth = {
   recoveryCode: z.string().optional(),
 };
 
-const tenantCodeParams = z.object({ tenantCode: z.string().meta({ description: "The tenant's code", example: "gh" }) });
+const tenantCodeParams = z.object({ tenantCode: z.string().meta({ description: "The tenant's code", examples: ["gh"] }) });
 
 const THROTTLED = "Throttled (A-67) and budgeted (ADR-100): a spent budget or a locked-out caller is a 429.";
 

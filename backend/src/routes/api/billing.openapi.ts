@@ -20,8 +20,8 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 
 /** The filters `billing.service#fetchInvoices` reads, raw from `req.query`. */
 const invoiceQuery = z.object({
-  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (capped by the server)", example: 20 }),
+  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (capped by the server)", examples: [20] }),
   status: z.enum(INVOICE_STATUSES).optional(),
 });
 

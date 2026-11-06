@@ -31,7 +31,7 @@ import { issueUserInvitationBody, userInvitationIssued, userInvitationState } fr
 const users = (action: "read" | "create" | "update" | "delete") => ({ kind: "dynamicAccess", resource: "users", action }) as const;
 
 const userParams = z.object({
-  userId: z.guid().meta({ description: "The user's id", example: "8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f" }),
+  userId: z.guid().meta({ description: "The user's id", examples: ["8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f"] }),
 });
 
 /** A user as user.service answers one: the row without its secrets, the role, and `avatarUrl`. */
@@ -44,7 +44,7 @@ const user = z
     email: z.string(),
     firstName: z.string().nullable(),
     lastName: z.string().nullable(),
-    status: z.string().meta({ example: "ACTIVE" }),
+    status: z.string().meta({ examples: ["ACTIVE"] }),
     avatarUrl: z.string().nullable(),
     mfaEnabled: z.boolean().optional(),
     webauthnEnabled: z.boolean().optional(),

@@ -45,7 +45,7 @@ const AuditLog = z
   .meta({
     id: "AuditLogEntry",
     description: "One immutable audit row. Secrets in `changes` are redacted before they are written.",
-    example: {
+    examples: [{
       id: "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b",
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       userId: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
@@ -67,7 +67,7 @@ const AuditLog = z
         email: "a.admin@hospital.example",
       },
       impersonator: null,
-    },
+    }],
   });
 
 export default defineRouteDocs({
@@ -87,12 +87,12 @@ export default defineRouteDocs({
       audited: false,
       query: z.object({
         scope: z.enum(["platform"]).optional().meta({ description: "Super admin only: the platform tenant's trail" }),
-        page: z.coerce.number().int().min(1).optional().meta({ example: 1 }),
-        limit: z.coerce.number().int().min(1).optional().meta({ example: 25 }),
+        page: z.coerce.number().int().min(1).optional().meta({ examples: [1] }),
+        limit: z.coerce.number().int().min(1).optional().meta({ examples: [25] }),
         userId: z.guid().optional(),
         actorType: z.enum(["user", "system", "unknown"]).optional(),
-        action: z.string().optional().meta({ example: "UPDATE" }),
-        resourceType: z.string().optional().meta({ example: "CalibrationDevice" }),
+        action: z.string().optional().meta({ examples: ["UPDATE"] }),
+        resourceType: z.string().optional().meta({ examples: ["CalibrationDevice"] }),
         resourceId: z.string().optional(),
         startDate: z.iso.datetime().optional(),
         endDate: z.iso.datetime().optional(),

@@ -22,7 +22,7 @@ const docs = defineRouteDocs({
       summary: "Get a thing",
       permission: { kind: "authenticated", reason: "own" },
       audited: false,
-      params: z.object({ thingId: z.guid().meta({ example: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f" }) }),
+      params: z.object({ thingId: z.guid().meta({ examples: ["3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f"] }) }),
       success: { status: 200, description: "The thing", data: z.object({ id: z.guid() }) },
     },
   ],

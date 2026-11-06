@@ -27,9 +27,9 @@ export default defineRouteDocs({
         "minutes and every answer that is not a verdict also against 60 per 15 minutes; beyond either, 429 with Retry-After.",
       permission: null,
       audited: false,
-      params: z.object({ reportNumber: z.string().meta({ description: "The report number", example: "IPM-F-0001-20261008-003" }) }),
+      params: z.object({ reportNumber: z.string().meta({ description: "The report number", examples: ["IPM-F-0001-20261008-003"] }) }),
       query: z.object({
-        token: z.string().optional().meta({ description: "The report's verification token (from its QR code)", example: "q3kZ0x9VbN2mP4rT6wY8aC1dE3fG5hJ7" }),
+        token: z.string().optional().meta({ description: "The report's verification token (from its QR code)", examples: ["q3kZ0x9VbN2mP4rT6wY8aC1dE3fG5hJ7"] }),
       }),
       success: { status: 200, description: "The verdict", data: IpmVerification },
     },

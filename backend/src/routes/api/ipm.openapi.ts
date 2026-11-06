@@ -34,7 +34,7 @@ import {
   TemplateVersionSummary,
 } from "../../docs/openapi/inspectionCatalogueSchemas";
 
-const id = (schema: z.ZodType, description: string): z.ZodType => schema.meta({ description, example: "c4c4c4c4-c4c4-4c4c-8c4c-c4c4c4c4c4c4" });
+const id = (schema: z.ZodType, description: string): z.ZodType => schema.meta({ description, examples: ["c4c4c4c4-c4c4-4c4c-8c4c-c4c4c4c4c4c4"] });
 const versionParams = z.object({ versionId: id(templateVersionIdParams.shape.versionId, "The checklist version's id") });
 const templateParams = z.object({ templateId: id(templateIdParams.shape.templateId, "The checklist template's id") });
 const definitionParams = z.object({ itemDefinitionId: id(itemDefinitionIdParams.shape.itemDefinitionId, "The item definition's id") });

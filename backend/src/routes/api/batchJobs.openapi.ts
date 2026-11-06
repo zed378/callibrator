@@ -33,7 +33,7 @@ const BatchJob = z
   .loose()
   .meta({
     id: "BatchJob",
-    example: {
+    examples: [{
       id: JOB,
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       userId: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
@@ -45,7 +45,7 @@ const BatchJob = z
       resultUrl: null,
       createdAt: "2030-01-15T09:00:00.000Z",
       updatedAt: "2030-01-15T09:01:00.000Z",
-    },
+    }],
   });
 
 const READ = { kind: "dynamicAccess", resource: "batch-jobs", action: "read" } as const;
@@ -65,8 +65,8 @@ export default defineRouteDocs({
       permission: READ,
       audited: false,
       query: z.object({
-        page: z.coerce.number().int().min(1).optional().meta({ example: 1 }),
-        limit: z.coerce.number().int().min(1).optional().meta({ example: 10 }),
+        page: z.coerce.number().int().min(1).optional().meta({ examples: [1] }),
+        limit: z.coerce.number().int().min(1).optional().meta({ examples: [10] }),
       }),
       success: { status: 200, description: "A page of jobs; pagination in the top-level `meta`", list: BatchJob },
     },
@@ -77,7 +77,7 @@ export default defineRouteDocs({
       summary: "Get a job's status and progress",
       permission: READ,
       audited: false,
-      params: z.object({ id: z.guid().meta({ description: "The job", example: JOB }) }),
+      params: z.object({ id: z.guid().meta({ description: "The job", examples: [JOB] }) }),
       success: { status: 200, description: "The job", data: BatchJob },
     },
     {
@@ -90,8 +90,8 @@ export default defineRouteDocs({
       audited: false,
       body: z
         .object({
-          type: z.string().optional().meta({ description: "Defaults to EXPORT_CSV", example: "EXPORT_CSV" }),
-          totalItems: z.number().int().optional().meta({ description: "Defaults to 10", example: 10 }),
+          type: z.string().optional().meta({ description: "Defaults to EXPORT_CSV", examples: ["EXPORT_CSV"] }),
+          totalItems: z.number().int().optional().meta({ description: "Defaults to 10", examples: [10] }),
         })
         .meta({ description: "Read by the controller; not validated by a schema on the route." }),
       success: { status: 201, description: "The job", data: BatchJob },

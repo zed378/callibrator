@@ -16473,10 +16473,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /**
-                     * @description The source server: a DNS name or an IP address
-                     * @example upstream.example.org
-                     */
+                    /** @description The source server: a DNS name or an IP address */
                     host: string;
                     /**
                      * @default 22
@@ -16494,10 +16491,7 @@ export interface operations {
                     password?: string;
                     /** @description Unencrypted SSH private key (auth `key`, recommended). Write-only: never stored in clear, logged or returned */
                     privateKey?: string;
-                    /**
-                     * @description The upstream `public/uploads` directory; each file class is one folder under it
-                     * @example /var/www/app/public/uploads
-                     */
+                    /** @description The upstream `public/uploads` directory; each file class is one folder under it */
                     remotePath: string;
                     /**
                      * @description `front` = foto_depan, `serial` = foto_sn. Certificate PDFs are never imported (archive-only, owner rule 2026-10-07)
@@ -16635,10 +16629,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /**
-                     * @description The source server: a DNS name or an IP address
-                     * @example upstream.example.org
-                     */
+                    /** @description The source server: a DNS name or an IP address */
                     host: string;
                     /**
                      * @default 22
@@ -16656,10 +16647,7 @@ export interface operations {
                     password?: string;
                     /** @description Unencrypted SSH private key (auth `key`, recommended). Write-only: never stored in clear, logged or returned */
                     privateKey?: string;
-                    /**
-                     * @description The upstream `public/uploads` directory; each file class is one folder under it
-                     * @example /var/www/app/public/uploads
-                     */
+                    /** @description The upstream `public/uploads` directory; each file class is one folder under it */
                     remotePath: string;
                     /**
                      * @description `front` = foto_depan, `serial` = foto_sn. Certificate PDFs are never imported (archive-only, owner rule 2026-10-07)

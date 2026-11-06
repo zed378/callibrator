@@ -91,7 +91,7 @@ export default defineRouteDocs({
         "Another tenant's or a missing user: 404. The platform tenant authors nothing here (403, A-127).",
       permission: tenantAdmin,
       audited: true,
-      params: z.object({ userId: z.guid().meta({ description: "The user", example: "7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f" }) }),
+      params: z.object({ userId: z.guid().meta({ description: "The user", examples: ["7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f"] }) }),
       body: revokeUserEsignatureBody,
       conflict: "`ESIG_NONE`: the user has no active e-signature.",
       success: { status: 200, description: "The revoked version", data: MyEsignature },

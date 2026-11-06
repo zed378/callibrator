@@ -9,7 +9,7 @@ import { z } from "zod";
 import { defineRouteDocs } from "../../docs/openapi/operation";
 
 const count = z.number().int();
-const byMonth = z.array(z.object({ month: z.string().meta({ example: "2030-01" }), count }));
+const byMonth = z.array(z.object({ month: z.string().meta({ examples: ["2030-01"] }), count }));
 const byStatus = z.record(z.string(), count);
 const tenantRef = z.object({ id: z.guid(), name: z.string(), code: z.string().nullable(), status: z.string() });
 
@@ -75,7 +75,7 @@ const DashboardMetrics = z
   .meta({
     id: "DashboardMetrics",
     description: "Counts for the home page: users, devices (due soon, overdue), calibrations and compliance, certificates, inventory, maintenance and 12-month trends. The global view (super admin) adds tenant totals and a per-tenant breakdown.",
-    example: {
+    examples: [{
       scope: "tenant",
       generatedAt: "2030-01-15T09:00:00.000Z",
       users: { total: 24, verified: 22 },
@@ -87,7 +87,7 @@ const DashboardMetrics = z
       ipm: { sessionsLast30Days: 41, due: { scheduled: 290, due: 37, neverInspected: 5 } },
       trends: { calibrations: [{ month: "2030-01", count: 96 }], certificates: [{ month: "2030-01", count: 90 }] },
       tenant: { id: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f", name: "Example Hospital", code: "EXH", status: "active" },
-    },
+    }],
   });
 
 export default defineRouteDocs({
@@ -107,7 +107,7 @@ export default defineRouteDocs({
       permission: { kind: "dynamicAccess", resource: "home", action: "read" },
       audited: false,
       query: z.object({
-        tenantId: z.guid().optional().meta({ description: "Super admin only: scope to one tenant", example: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f" }),
+        tenantId: z.guid().optional().meta({ description: "Super admin only: scope to one tenant", examples: ["0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f"] }),
       }),
       success: { status: 200, description: "The metrics", data: DashboardMetrics },
     },

@@ -50,12 +50,12 @@ const KanbanColumn = z
   .meta({
     id: "KanbanColumn",
     description: "A board column. The terminal Done column is kept last and cannot be deleted.",
-    example: { id: "7d3a4e5f-6a7b-4c8d-8e9f-1a2b3c4d5e6f", name: "In Progress", position: 1, wipLimit: 3, isDone: false },
+    examples: [{ id: "7d3a4e5f-6a7b-4c8d-8e9f-1a2b3c4d5e6f", name: "In Progress", position: 1, wipLimit: 3, isDone: false }],
   });
 
 const KanbanLabel = z
   .object({ id: z.guid(), name: z.string(), color: z.string().nullable() })
-  .meta({ id: "KanbanLabel", example: { id: "8e4b5f6a-7b8c-4d9e-9f0a-2b3c4d5e6f7a", name: "Bug", color: "#d14343" } });
+  .meta({ id: "KanbanLabel", examples: [{ id: "8e4b5f6a-7b8c-4d9e-9f0a-2b3c4d5e6f7a", name: "Bug", color: "#d14343" }] });
 
 const KanbanSprint = z
   .object({
@@ -69,7 +69,7 @@ const KanbanSprint = z
   })
   .meta({
     id: "KanbanSprint",
-    example: { id: "9f5c6a7b-8c9d-4e0f-8a1b-3c4d5e6f7a8b", name: "Sprint 1", goal: null, status: "active", startDate: null, endDate: null, position: 0 },
+    examples: [{ id: "9f5c6a7b-8c9d-4e0f-8a1b-3c4d5e6f7a8b", name: "Sprint 1", goal: null, status: "active", startDate: null, endDate: null, position: 0 }],
   });
 
 const KanbanRelation = z
@@ -103,7 +103,7 @@ const KanbanCard = z
   .meta({
     id: "KanbanCard",
     description: "A card. Its key is the project's code (or a prefix of its name) and a per-project number.",
-    example: {
+    examples: [{
       id: CARD,
       projectId: PROJECT,
       columnId: "7d3a4e5f-6a7b-4c8d-8e9f-1a2b3c4d5e6f",
@@ -120,7 +120,7 @@ const KanbanCard = z
       updatedAt: "2030-01-15T09:00:00.000Z",
       assignees: [{ id: "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e", firstName: "Ana", lastName: "Tech", email: "ana@example.test" }],
       labels: [{ id: "8e4b5f6a-7b8c-4d9e-9f0a-2b3c4d5e6f7a", name: "Bug", color: "#d14343" }],
-    },
+    }],
   });
 
 const KanbanMember = z
@@ -148,7 +148,7 @@ const KanbanProjectSummary = z
   })
   .meta({
     id: "KanbanProjectSummary",
-    example: {
+    examples: [{
       id: PROJECT,
       name: "ICU devices",
       code: "ICU",
@@ -158,7 +158,7 @@ const KanbanProjectSummary = z
       createdAt: "2030-01-15T09:00:00.000Z",
       cardCount: 12,
       myAccess: "owner",
-    },
+    }],
   });
 
 const KanbanBoard = z
@@ -215,7 +215,7 @@ const PERMISSION: Permission = {
     "Per-project access, checked by kanban.service#assertAccess on every call (viewer / editor / owner, by user or by role). No access at all answers 404, never 403.",
 };
 
-const guid = (description: string, example: string) => z.guid().meta({ description, example });
+const guid = (description: string, example: string) => z.guid().meta({ description, examples: [example] });
 const projectId = guid("The project (board)", PROJECT);
 const p = z.object({ projectId });
 const memberParams = z.object({ projectId, memberId: guid("The membership", "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f") });
@@ -229,7 +229,7 @@ const relationParams = z.object({
   relationId: guid("The relation (the card's outgoing row)", "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a"),
 });
 const sprintQuery = z.object({
-  sprintId: z.string().optional().meta({ description: "A sprint id, `backlog` or `all`", example: "backlog" }),
+  sprintId: z.string().optional().meta({ description: "A sprint id, `backlog` or `all`", examples: ["backlog"] }),
 });
 
 const OWNER = "Requires owner access to the board (403 for a lower level).";

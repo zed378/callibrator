@@ -18,7 +18,7 @@ import { createSignedUrlSchema } from "../../validators/attachment.validator";
 const timestamp = z.iso.datetime();
 const FILE = "8c9d0e1f-2a3b-4c4d-9e5f-6a7b8c9d0e1f";
 const equipment = (action: string) => ({ kind: "dynamicAccess", resource: "equipment", action }) as const;
-const params = z.object({ id: z.guid().meta({ description: "The attachment", example: FILE }) });
+const params = z.object({ id: z.guid().meta({ description: "The attachment", examples: [FILE] }) });
 
 const Attachment = z
   .object({
@@ -39,7 +39,7 @@ const Attachment = z
   .loose()
   .meta({
     id: "Attachment",
-    example: {
+    examples: [{
       id: FILE,
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       resourceType: "Certificate",
@@ -52,11 +52,11 @@ const Attachment = z
       uploadedBy: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
       url: "/api/v1/attachments/8c9d0e1f-2a3b-4c4d-9e5f-6a7b8c9d0e1f/download",
       createdAt: "2030-01-15T09:00:00.000Z",
-    },
+    }],
   });
 const paging = {
-  page: z.coerce.number().int().min(1).optional().meta({ example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ example: 20 }),
+  page: z.coerce.number().int().min(1).optional().meta({ examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ examples: [20] }),
 };
 const FILE_ANSWER = "The file itself (inline for images and PDF, otherwise a download; ETag and Range honoured)";
 
@@ -79,7 +79,7 @@ export default defineRouteDocs({
       query: z.object({
         token: z.string().meta({
           description: "`<expiry>.<tenantId>.<issuer>.<signature>` (A-365); the older `<expiry>.<signature>` shape is refused",
-          example: "1893456000.0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f.u1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d.3f2a",
+          examples: ["1893456000.0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f.u1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d.3f2a"],
         }),
       }),
       success: { status: 200, description: FILE_ANSWER, file: { contentType: "application/octet-stream" } },
@@ -96,7 +96,7 @@ export default defineRouteDocs({
       bodyMediaType: "multipart/form-data",
       body: z.object({
         file: z.string().meta({ format: "binary" }),
-        resourceType: z.string().meta({ description: "What the file is evidence for", example: "Certificate" }),
+        resourceType: z.string().meta({ description: "What the file is evidence for", examples: ["Certificate"] }),
         resourceId: z.guid(),
       }),
       success: { status: 201, description: "The attachment", data: Attachment },

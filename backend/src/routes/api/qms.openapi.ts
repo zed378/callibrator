@@ -22,13 +22,13 @@ import { CAPA_STATUSES } from "@callibrator/contracts/states";
 
 /** `:id` — read without `validateUuid` here; an unknown id is the service's 404. */
 const idParams = (what: string, example: string): z.ZodObject<{ id: z.ZodString }> =>
-  z.object({ id: z.string().meta({ description: `The ${what}'s id`, example }) });
+  z.object({ id: z.string().meta({ description: `The ${what}'s id`, examples: [example] }) });
 
 /** The paging and filter the lists read raw (the service's defaults: page 1, limit 10). */
 const listQuery = (statuses: readonly [string, ...string[]]): z.ZodObject =>
   z.object({
-    page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", example: 1 }),
-    limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page", example: 10 }),
+    page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", examples: [1] }),
+    limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page", examples: [10] }),
     status: z.enum(statuses).optional(),
   });
 

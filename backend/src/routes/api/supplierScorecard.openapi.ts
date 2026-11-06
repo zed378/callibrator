@@ -20,13 +20,13 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
  * (P6-02), so `z.guid()`, not `z.uuid()`. A malformed id is a 400 "Invalid id: must be a valid UUID".
  */
 const params = z.object({
-  id: z.guid().meta({ description: "The scorecard's id (a uuid; a malformed id is a 400)", example: "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e" }),
+  id: z.guid().meta({ description: "The scorecard's id (a uuid; a malformed id is a 400)", examples: ["2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e"] }),
 });
 
 /** The filters `supplierScorecard.service#getScorecards` reads, raw from `req.query`. */
 const listQuery = z.object({
-  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page (default 1)", example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (default 10; not capped)", example: 10 }),
+  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page (default 1)", examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (default 10; not capped)", examples: [10] }),
   vendorId: z.string().optional().meta({ description: "Only this vendor's scorecards" }),
   status: z.string().optional().meta({ description: "Exact status, e.g. PROBATION" }),
 });

@@ -102,13 +102,19 @@ rules:
       field: "404"
       function: truthy
 
+  # The schema keyword is `examples` (an array): OpenAPI 3.1 deprecates a schema's `example`
+  # (typescript-eslint 8.72 reports it; the *.openapi.ts modules moved, 2026-11-06).
   cf-path-parameter-example:
     description: Every path parameter of a code-first operation carries a realistic synthetic example.
     severity: error
     given: "$.paths[*][?(@ && @['x-source'])].parameters[?(@.in == 'path')].schema"
     then:
-      field: example
-      function: defined
+      field: examples
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          minItems: 1
 
   cf-error-example:
     description: Every error response component carries an example (what a client will actually see).

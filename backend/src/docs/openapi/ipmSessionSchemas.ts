@@ -16,7 +16,7 @@ import {
 } from "@callibrator/contracts/inspectionValues";
 import { INSPECTION_SESSION_STATUSES } from "@callibrator/contracts/states";
 
-const decimal = z.string().nullable().meta({ description: "An exact decimal as a string (never a binary float)", example: "0.5" });
+const decimal = z.string().nullable().meta({ description: "An exact decimal as a string (never a binary float)", examples: ["0.5"] });
 const text = z.string().nullable();
 const at = z.iso.datetime();
 const id = z.guid();
@@ -125,7 +125,7 @@ export const IpmSession = z
 
 // ── P21-04: the report document, its signatures, the public verdict and "due" (P19-06 § 9, § 10) ──
 
-const hash = z.string().regex(/^[0-9a-f]{64}$/).meta({ example: "0".repeat(64) });
+const hash = z.string().regex(/^[0-9a-f]{64}$/).meta({ examples: ["0".repeat(64)] });
 
 /** A signature as the document prints it: never the signer's id, address or agent (FT-71). */
 export const IpmReportSignature = z
@@ -147,7 +147,7 @@ export const IpmReportDocument = z
     scheme: z.literal("ipm-report-v1"),
     kind: z.enum(["issued", "preview"]),
     sessionId: id,
-    reportNumber: text.meta({ example: "IPM-F-0001-20261008-003" }),
+    reportNumber: text.meta({ examples: ["IPM-F-0001-20261008-003"] }),
     verifyUrl: text.meta({ description: "The QR's link (issued only; absent from the public verdict's copy)" }),
     status: z.enum(["draft", "submitted", "superseded", "voided"]),
     lineage: z.object({ supersedesReportNumber: text, supersededByReportNumber: text, supersededAt: at.nullable(), voidedAt: at.nullable() }),
@@ -211,7 +211,7 @@ export const IpmDueDevice = z
     ipmDue: z
       .object({
         state: z.enum(["not_scheduled", "never_inspected", "due", "ok"]),
-        dueMonth: z.string().optional().meta({ example: "2026-11" }),
+        dueMonth: z.string().optional().meta({ examples: ["2026-11"] }),
         lastPerformedAt: at.optional(),
         intervalMonths: z.number().int().optional(),
       })

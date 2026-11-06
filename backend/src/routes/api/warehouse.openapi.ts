@@ -29,10 +29,10 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
  * RFC version: `z.guid()`), with the synthetic example Spectral requires.
  */
 const warehouseIdSchema = z.object({
-  warehouseId: z.guid().meta({ description: "The warehouse's id", example: "5f0c2a8e-7c1d-4b6a-9e2f-3d4c5b6a7e81" }),
+  warehouseId: z.guid().meta({ description: "The warehouse's id", examples: ["5f0c2a8e-7c1d-4b6a-9e2f-3d4c5b6a7e81"] }),
 });
 const locationIdSchema = z.object({
-  locationId: z.guid().meta({ description: "The storage location's id", example: "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" }),
+  locationId: z.guid().meta({ description: "The storage location's id", examples: ["7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"] }),
 });
 
 const read = { kind: "dynamicAccess", resource: "warehouse", action: "read" } as const;

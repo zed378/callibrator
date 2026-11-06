@@ -18,7 +18,7 @@ const superAdmin = { kind: "rbac", roles: ["SUPERADMIN"] } as const;
 const own = { kind: "authenticated", reason: "the caller's own sessions (a JWT; API keys are refused)" } as const;
 
 const idParams = z.object({
-  id: z.guid().meta({ description: "The session's id", example: "4e3d2c1b-0a99-4b88-8c77-6d5e4f3a2b1c" }),
+  id: z.guid().meta({ description: "The session's id", examples: ["4e3d2c1b-0a99-4b88-8c77-6d5e4f3a2b1c"] }),
 });
 
 const SESSION_STATUSES = ["active", "expired", "revoked"] as const;
@@ -58,7 +58,7 @@ const ownSession = z.object({
   ipAddress: z.string().nullable(),
   userAgent: z.string().nullable(),
   device: z.string().nullable(),
-  signInMethod: z.string().meta({ example: "password" }),
+  signInMethod: z.string().meta({ examples: ["password"] }),
   impersonated: z.boolean().meta({ description: "A platform operator's support session in this account (A-146)" }),
   createdAt: z.iso.datetime().meta({ description: "When the session signed in (A-339: absent before 2026-10-01)" }),
   lastActivityAt: z.iso.datetime().nullable(),
@@ -66,8 +66,8 @@ const ownSession = z.object({
 });
 
 const listQuery = z.object({
-  page: z.string().optional().meta({ example: "1" }),
-  limit: z.string().optional().meta({ example: "20" }),
+  page: z.string().optional().meta({ examples: ["1"] }),
+  limit: z.string().optional().meta({ examples: ["20"] }),
   search: z.string().optional().meta({ description: "Substring of the address, device or user agent" }),
   status: z.enum(SESSION_STATUSES).optional(),
   userId: z.string().optional().meta({ description: "One user's sessions" }),
@@ -161,7 +161,7 @@ export default defineRouteDocs({
       summary: "Revoke every session of a user",
       permission: superAdmin,
       audited: true,
-      params: z.object({ userId: z.string().meta({ description: "The user's id (not shape-checked on this route)", example: "8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f" }) }),
+      params: z.object({ userId: z.string().meta({ description: "The user's id (not shape-checked on this route)", examples: ["8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f"] }) }),
       body: revokeAllSessionsSchema,
       success: { status: 200, description: "How many sessions were revoked", data: z.object({ revokedCount: z.number().int() }) },
     },

@@ -28,7 +28,7 @@ export default defineRouteDocs({
         "against 120 per 15 minutes and every 404 also against 30; all addresses together against 3,000; beyond any, 429 with Retry-After.",
       permission: null,
       audited: false,
-      params: z.object({ token: z.string().meta({ description: "The sticker's token (22 base64url characters)", example: "Zx3kQ9vN2mP4rT6wY8aC1d" }) }),
+      params: z.object({ token: z.string().meta({ description: "The sticker's token (22 base64url characters)", examples: ["Zx3kQ9vN2mP4rT6wY8aC1d"] }) }),
       success: { status: 200, description: "The page's data", data: publicDeviceView },
     },
   ],

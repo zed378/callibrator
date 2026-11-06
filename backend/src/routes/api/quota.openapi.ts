@@ -21,13 +21,13 @@ const QuotaUsage = z
   .meta({
     id: "QuotaUsage",
     description: "The caller's tenant: its plan and status, seats used against the limit, storage used against the limit (MB), and the features the plan unlocks.",
-    example: {
+    examples: [{
       plan: "professional",
       status: "active",
       features: ["calibration", "certificates", "qms"],
       seats: { used: 12, limit: 50 },
       storage: { usedMb: 812.45, limitMb: 10240 },
-    },
+    }],
   });
 
 export default defineRouteDocs({

@@ -22,12 +22,12 @@ const Discovery = z
   .meta({
     id: "SignInDiscovery",
     description: "The step after the identifier. Decided by the email DOMAIN only — never by the account.",
-    example: { next: "sso", redirectUrl: "https://idp.rs-contoh.example/sso?SAMLRequest=fZJNT8MwDIb&RelayState=RSCONTOH" },
+    examples: [{ next: "sso", redirectUrl: "https://idp.rs-contoh.example/sso?SAMLRequest=fZJNT8MwDIb&RelayState=RSCONTOH" }],
   });
 
 const Redirect = z
   .object({ redirectUrl: z.url() })
-  .meta({ id: "SsoRedirect", example: { redirectUrl: "https://login.rs-contoh.example/authorize?client_id=callibrator&state=abc" } });
+  .meta({ id: "SsoRedirect", examples: [{ redirectUrl: "https://login.rs-contoh.example/authorize?client_id=callibrator&state=abc" }] });
 
 const PasskeyOptions = z
   .object({

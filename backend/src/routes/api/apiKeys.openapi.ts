@@ -17,12 +17,12 @@ const tenantAdmin = { kind: "rbac", roles: ["TENANT_ADMIN"] } as const;
 
 /** `:id`, checked by `validateUuid` (the SHAPE: `z.guid()`). */
 const params = z.object({
-  id: z.guid().meta({ description: "The API key's id", example: "3c2b1a09-8f7e-4d6c-9b5a-4f3e2d1c0b9a" }),
+  id: z.guid().meta({ description: "The API key's id", examples: ["3c2b1a09-8f7e-4d6c-9b5a-4f3e2d1c0b9a"] }),
 });
 
 /** POST / — read raw; apiKey.service checks it (400 on a missing name or a bad scope). */
 const createBody = z.object({
-  name: z.string().meta({ description: "A label for the key", example: "LIMS integration" }),
+  name: z.string().meta({ description: "A label for the key", examples: ["LIMS integration"] }),
   scopes: z
     .array(z.string())
     .min(1)
@@ -30,7 +30,7 @@ const createBody = z.object({
       description:
         "`<resource>:<read|write>` (an absent action is `write`); the resource is one of " +
         `${String(API_KEY_SCOPE_RESOURCES.length)} menu slugs. A wildcard resource or action is refused.`,
-      example: ["equipment:read", "certificate:read"],
+      examples: [["equipment:read", "certificate:read"]],
     }),
   expiresAt: z.iso.datetime().nullable().optional().meta({ description: "Absent, null or empty: the key does not expire" }),
 });
@@ -41,7 +41,7 @@ const apiKeyPublic = z
     id: z.guid(),
     tenantId: z.guid(),
     name: z.string(),
-    keyPrefix: z.string().meta({ description: "The key's first 12 characters, to recognise it", example: "cbk_1a2b3c4d" }),
+    keyPrefix: z.string().meta({ description: "The key's first 12 characters, to recognise it", examples: ["cbk_1a2b3c4d"] }),
     scopes: z.array(z.string()),
     lastUsedAt: z.iso.datetime().nullable(),
     expiresAt: z.iso.datetime().nullable(),
@@ -52,7 +52,7 @@ const apiKeyPublic = z
   .meta({ id: "ApiKey", description: "An API key, without its secret" });
 
 const listQuery = z.object({
-  page: z.string().optional().meta({ description: "1-based page", example: "1" }),
+  page: z.string().optional().meta({ description: "1-based page", examples: ["1"] }),
   limit: z.string().optional().meta({ description: "Rows per page; capped by MAX_LIMIT, anything not a number reads as the default" }),
 });
 

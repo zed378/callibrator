@@ -64,14 +64,14 @@ const MenuGroup: z.ZodType<MenuEntryShape> = z
   })
   .meta({
     id: "MenuGroupNode",
-    example: {
+    examples: [{
       id: "6f7a8b9c-0d1e-4f2a-8b3c-4d5e6f7a8b9c",
       label: "Calibration",
       icon: "gauge",
       path: "/dashboard/calibration",
       sortOrder: 2,
       items: [],
-    },
+    }],
   });
 const MenuTree = z.array(MenuGroup);
 const roleQuery = z.object({ roleId: z.guid().optional().meta({ description: "The role whose assignments to mark (the caller's own, unless super admin)" }) });

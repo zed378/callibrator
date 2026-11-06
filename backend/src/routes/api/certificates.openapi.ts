@@ -96,7 +96,7 @@ const Certificate = z
     description:
       "A calibration certificate (ISO 17025 §7.8): draft → pending_approval → approved → signed, or revoked. " +
       "Reads include the device, the people and (detail) the record and tenant.",
-    example: {
+    examples: [{
       id: "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       calibrationRecordId: "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d",
@@ -120,7 +120,7 @@ const Certificate = z
       createdBy: "7c8d9e0f-1a2b-4c3d-9e4f-5a6b7c8d9e0f",
       createdAt: "2030-01-15T09:00:00.000Z",
       updatedAt: "2030-01-15T09:00:00.000Z",
-    },
+    }],
   });
 
 /** The integrity block a verdict carries (Q-50: v3 for a certificate signed with a snapshot). */
@@ -219,7 +219,7 @@ const Verification = z
       "The MINIMAL verdict (no token, or a wrong one) carries found, valid, status, revoked, expired, withdrawn, number, type, " +
       "issuedTo, the dates and the integrity hashes; the FULL verdict (the certificate's own verification token) adds the device, " +
       "the signer, the published document, its verifyUrl and, for a PDF stored before M-11, a short-lived documentUrl.",
-    example: {
+    examples: [{
       found: true,
       valid: true,
       status: "signed",
@@ -233,7 +233,7 @@ const Verification = z
       validUntil: "2031-01-15T00:00:00.000Z",
       integrity: { scheme: "certificate-content-v3", algorithm: "SHA-256", hash: "0".repeat(64), legacyHash: "1".repeat(64) },
       disclosure: "minimal",
-    },
+    }],
   });
 
 /** The certificate statistics (`certificate.service#getCertificateStats`). */
@@ -250,11 +250,11 @@ const CertificateStats = z
 const certificateIdParams = z.object({
   certificateId: certificateIdSchema.shape.certificateId.meta({
     description: "The certificate's id",
-    example: "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
+    examples: ["8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f"],
   }),
 });
 const numberParams = z.object({
-  certificateNumber: z.string().meta({ description: "The printed certificate number", example: "HOSP-20300115-0001" }),
+  certificateNumber: z.string().meta({ description: "The printed certificate number", examples: ["HOSP-20300115-0001"] }),
 });
 
 const gate = (action: string): { kind: "dynamicAccess"; resource: string; action: string } => ({
@@ -286,7 +286,7 @@ export default defineRouteDocs({
       audited: false,
       params: numberParams,
       query: z.object({
-        token: z.string().optional().meta({ description: "The certificate's verification token (from its QR code)", example: "q3kZ0x9VbN2mP4rT6wY8aC1dE3fG5hJ7" }),
+        token: z.string().optional().meta({ description: "The certificate's verification token (from its QR code)", examples: ["q3kZ0x9VbN2mP4rT6wY8aC1dE3fG5hJ7"] }),
       }),
       success: { status: 200, description: "The verdict", data: Verification },
     },
@@ -303,7 +303,7 @@ export default defineRouteDocs({
       audited: false,
       params: numberParams,
       query: z.object({
-        token: z.string().meta({ description: "The capability the verification verdict's documentUrl carries", example: "eyJleHAiOjE5MDAwMDAwMDB9.c2lnbmF0dXJl" }),
+        token: z.string().meta({ description: "The capability the verification verdict's documentUrl carries", examples: ["eyJleHAiOjE5MDAwMDAwMDB9.c2lnbmF0dXJl"] }),
       }),
       errors: [403],
       success: { status: 200, description: "The PDF", file: { contentType: "application/pdf" } },

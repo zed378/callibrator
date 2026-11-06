@@ -27,7 +27,7 @@ const DueDevice = z
   .meta({
     id: "DueCalibrationDevice",
     description: "A calibration device whose next calibration is due within the window.",
-    example: {
+    examples: [{
       id: "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
       name: "Infusion pump",
       serialNumber: "SN-0001",
@@ -35,7 +35,7 @@ const DueDevice = z
       nextCalibrationDate: "2030-01-15T00:00:00.000Z",
       calibrationIntervalDays: 365,
       overdue: true,
-    },
+    }],
   });
 
 /** A scan's report (`calibrationScheduler.service#runCalibrationScan`). */
@@ -65,7 +65,7 @@ const ScanSummary = z
     description:
       "Counts and per-device lines. Idempotent: a device with an open preventative work order is skipped, " +
       "and one a concurrent scan created first is a skip too (W-03).",
-    example: {
+    examples: [{
       scanned: 2,
       workOrdersCreated: 1,
       notificationsCreated: 1,
@@ -76,7 +76,7 @@ const ScanSummary = z
         { deviceId: "1d2c3b4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d", action: "created", overdue: true, workOrderId: "2e3d4c5b-6f7a-4b8c-9d0e-1f2a3b4c5d6e" },
         { deviceId: "3f4e5d6c-7a8b-4c9d-8e0f-2a3b4c5d6e7f", action: "skipped", reason: "open work order exists", workOrderId: "4a5b6c7d-8e9f-4a0b-9c1d-3e4f5a6b7c8d" },
       ],
-    },
+    }],
   });
 
 export default defineRouteDocs({
@@ -95,7 +95,7 @@ export default defineRouteDocs({
       permission: { kind: "dynamicAccess", resource: "maintenance", action: "read" },
       audited: false,
       query: z.object({
-        leadDays: z.coerce.number().optional().meta({ description: LEAD_DAYS, example: 14 }),
+        leadDays: z.coerce.number().optional().meta({ description: LEAD_DAYS, examples: [14] }),
         allTenants: z.enum(["true", "false"]).optional().meta({ description: ALL_TENANTS }),
       }),
       success: { status: 200, description: "The due devices, earliest first", data: z.array(DueDevice) },
@@ -112,7 +112,7 @@ export default defineRouteDocs({
       audited: true,
       body: z
         .object({
-          leadDays: z.number().optional().meta({ description: LEAD_DAYS, example: 7 }),
+          leadDays: z.number().optional().meta({ description: LEAD_DAYS, examples: [7] }),
           allTenants: z.boolean().optional().meta({ description: ALL_TENANTS }),
           tenantId: z.guid().optional().meta({ description: "Super admin only: the one tenant to scan." }),
         })

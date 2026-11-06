@@ -16,7 +16,7 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 
 /** `validateUuid` checks the 8-4-4-4-12 SHAPE, not an RFC version: `z.guid()`. */
 const params = z.object({
-  domainId: z.guid().meta({ description: "The custom domain record's id", example: "5f0c2a8e-7c1d-4b6a-9e2f-3d4c5b6a7e81" }),
+  domainId: z.guid().meta({ description: "The custom domain record's id", examples: ["5f0c2a8e-7c1d-4b6a-9e2f-3d4c5b6a7e81"] }),
 });
 
 const DOMAIN_STATUSES = ["pending_verification", "active", "verification_failed", "deleting", "deleted"] as const;
@@ -25,7 +25,7 @@ const domainRow = z
   .object({
     id: z.guid(),
     tenantId: z.guid(),
-    domain: z.string().meta({ example: "app.hospital.example" }),
+    domain: z.string().meta({ examples: ["app.hospital.example"] }),
     domainType: z.enum(["custom", "subdomain", "vanity"]),
     status: z.enum(DOMAIN_STATUSES),
     isDefault: z.boolean(),
@@ -42,13 +42,13 @@ const dnsInstructions = z
   .object({
     verification: z.object({
       type: z.literal("TXT"),
-      name: z.string().meta({ example: "_domain_verify.app.hospital.example" }),
-      value: z.string().meta({ example: "callibrator-verify=0123456789abcdef0123456789abcdef" }),
+      name: z.string().meta({ examples: ["_domain_verify.app.hospital.example"] }),
+      value: z.string().meta({ examples: ["callibrator-verify=0123456789abcdef0123456789abcdef"] }),
     }),
     cname: z.object({
       type: z.literal("CNAME"),
-      name: z.string().meta({ example: "app.hospital.example" }),
-      value: z.string().meta({ example: "cname.callibrator.io." }),
+      name: z.string().meta({ examples: ["app.hospital.example"] }),
+      value: z.string().meta({ examples: ["cname.callibrator.io."] }),
     }),
     instructions: z.array(z.string()),
   })

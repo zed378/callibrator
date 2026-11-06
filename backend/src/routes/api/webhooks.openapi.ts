@@ -20,7 +20,7 @@ import { createWebhookSchema, rotateWebhookSecretSchema, updateWebhookSchema } f
 const timestamp = z.iso.datetime();
 const HOOK = "7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d";
 const tenantAdmin = { kind: "rbac", roles: ["TENANT_ADMIN"] } as const;
-const params = z.object({ id: z.guid().meta({ description: "The webhook", example: HOOK }) });
+const params = z.object({ id: z.guid().meta({ description: "The webhook", examples: [HOOK] }) });
 
 const Webhook = z
   .object({
@@ -37,7 +37,7 @@ const Webhook = z
   .meta({
     id: "Webhook",
     description: "A webhook as the API answers it: never its secret.",
-    example: {
+    examples: [{
       id: HOOK,
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       url: "https://hooks.example.test/callibrator",
@@ -47,7 +47,7 @@ const Webhook = z
       createdBy: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
       createdAt: "2030-01-15T09:00:00.000Z",
       previousSecretExpiresAt: null,
-    },
+    }],
   });
 const WebhookWithSecret = Webhook.extend({ secret: z.string().meta({ description: "The signing secret, answered once" }) }).meta({
   id: "WebhookWithSecret",
@@ -86,8 +86,8 @@ const documented = <S extends z.ZodType>(schema: S): S =>
   });
 
 const paging = z.object({
-  page: z.coerce.number().int().min(1).optional().meta({ example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ example: 20 }),
+  page: z.coerce.number().int().min(1).optional().meta({ examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ examples: [20] }),
 });
 
 export default defineRouteDocs({

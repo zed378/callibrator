@@ -16,7 +16,7 @@ import { defineRouteDocs, type DocumentedOperation } from "../../docs/openapi/op
 const counts = z.record(z.string(), z.number().int());
 const ComplianceSummary = z
   .object({ total: z.number().int(), compliant: z.number().int(), nonCompliant: z.number().int(), unknown: z.number().int(), complianceRate: z.number() })
-  .meta({ id: "ReportComplianceSummary", example: { total: 120, compliant: 112, nonCompliant: 6, unknown: 2, complianceRate: 93.33 } });
+  .meta({ id: "ReportComplianceSummary", examples: [{ total: 120, compliant: 112, nonCompliant: 6, unknown: 2, complianceRate: 93.33 }] });
 const InventorySummary = z.object({ totalItems: z.number().int(), totalQuantity: z.number(), lowStockCount: z.number().int() });
 const InventoryRow = z.object({}).loose();
 
@@ -56,7 +56,7 @@ const InventoryReport = z
   .meta({ id: "InventoryStockReport", description: "As built (A-343): the rows are at `data.rows`." });
 
 const csvQuery = z.object({
-  format: z.enum(["json", "csv"]).optional().meta({ description: "`csv` answers a CSV download (text/csv) instead of JSON", example: "json" }),
+  format: z.enum(["json", "csv"]).optional().meta({ description: "`csv` answers a CSV download (text/csv) instead of JSON", examples: ["json"] }),
 });
 const PERMISSION = { kind: "dynamicAccess", resource: "reports", action: "read" } as const;
 const report = (op: Omit<DocumentedOperation, "method" | "permission" | "audited">): DocumentedOperation => ({
@@ -84,8 +84,8 @@ export default defineRouteDocs({
       operationId: "getReportsCompliance",
       summary: "Calibration compliance rate (JSON or CSV via ?format=csv)",
       query: csvQuery.extend({
-        from: z.string().optional().meta({ description: "Calibration date from (inclusive)", example: "2030-01-01" }),
-        to: z.string().optional().meta({ description: "Calibration date to (inclusive)", example: "2030-03-31" }),
+        from: z.string().optional().meta({ description: "Calibration date from (inclusive)", examples: ["2030-01-01"] }),
+        to: z.string().optional().meta({ description: "Calibration date to (inclusive)", examples: ["2030-03-31"] }),
       }),
       success: { status: 200, description: "The report", data: ComplianceReport },
     }),

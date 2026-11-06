@@ -14,7 +14,7 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 import { DeviceType } from "../../docs/openapi/inspectionCatalogueSchemas";
 
 const params = z.object({
-  deviceTypeId: deviceTypeIdParams.shape.deviceTypeId.meta({ description: "The device type's id", example: "d7d7d7d7-d7d7-4d7d-8d7d-d7d7d7d7d7d7" }),
+  deviceTypeId: deviceTypeIdParams.shape.deviceTypeId.meta({ description: "The device type's id", examples: ["d7d7d7d7-d7d7-4d7d-8d7d-d7d7d7d7d7d7"] }),
 });
 
 const read = { kind: "dynamicAccess", resource: ["calibration", "ipm", "ipm-templates"], action: "read" } as const;

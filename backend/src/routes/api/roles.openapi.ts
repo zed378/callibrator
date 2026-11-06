@@ -36,16 +36,16 @@ const USER_ID = "8f7e6d5c-4b3a-4c2d-9e1f-0a9b8c7d6e5f";
 
 /** `:id`, checked by `validateUuid` (the SHAPE: `z.guid()`). */
 const idParams = (what: string, example: string): z.ZodObject<{ id: z.ZodGUID }> =>
-  z.object({ id: z.guid().meta({ description: `The ${what}'s id`, example }) });
+  z.object({ id: z.guid().meta({ description: `The ${what}'s id`, examples: [example] }) });
 
 /** Parameters the permission and assignment routes read UNCHECKED (no `validateUuid`): an unknown id is the service's 404. */
 const rawId = (what: string, example: string): z.ZodString =>
-  z.string().meta({ description: `The ${what}'s id (not shape-checked on this route)`, example });
+  z.string().meta({ description: `The ${what}'s id (not shape-checked on this route)`, examples: [example] });
 
 /** The two lists' raw filters (no schema): `limit` and `page` fall back to 20 and 1 when absent or not numbers. */
 const listQuery = z.object({
-  page: z.string().optional().meta({ description: "1-based page; anything not a number reads as 1", example: "1" }),
-  limit: z.string().optional().meta({ description: "Rows per page; anything not a number reads as 20", example: "20" }),
+  page: z.string().optional().meta({ description: "1-based page; anything not a number reads as 1", examples: ["1"] }),
+  limit: z.string().optional().meta({ description: "Rows per page; anything not a number reads as 20", examples: ["20"] }),
   search: z.string().optional().meta({ description: "Substring of the name or description" }),
 });
 

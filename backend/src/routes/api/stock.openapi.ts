@@ -34,7 +34,7 @@ import {
 import { defineRouteDocs } from "../../docs/openapi/operation";
 import { STOCK_OPNAME_STATUSES, STOCK_TRANSFER_STATUSES } from "@callibrator/contracts/states";
 
-const idOf = (what: string, example: string): z.ZodGUID => z.guid().meta({ description: `The ${what}'s id`, example });
+const idOf = (what: string, example: string): z.ZodGUID => z.guid().meta({ description: `The ${what}'s id`, examples: [example] });
 
 /** Path parameters, as `validateUuid` checks them (the SHAPE: `z.guid()`), with synthetic examples. */
 const stockIdParams = z.object({ stockId: idOf("stock item", "9c8b7a6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d") });
@@ -43,8 +43,8 @@ const opnameIdParams = z.object({ opnameId: idOf("opname", "4d5e6f7a-8b9c-4d0e-9
 
 /** The paging every history list reads raw (the service applies its defaults). */
 const paging = {
-  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", example: 1 }),
-  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (the service's default applies)", example: 25 }),
+  page: z.coerce.number().int().min(1).optional().meta({ description: "1-based page", examples: [1] }),
+  limit: z.coerce.number().int().min(1).optional().meta({ description: "Rows per page (the service's default applies)", examples: [25] }),
 };
 const adjustmentHistoryQuery = z.object({
   warehouseId: z.guid().optional(),

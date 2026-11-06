@@ -14,7 +14,7 @@ import { deleteManySchema } from "../../validators/notification.validator";
 
 const NOTE = "3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a6b";
 const OWN: Permission = { kind: "authenticated", reason: "The caller's own inbox: their notifications and the tenant-wide broadcasts they can see." };
-const params = z.object({ notificationId: z.guid().meta({ description: "The notification", example: NOTE }) });
+const params = z.object({ notificationId: z.guid().meta({ description: "The notification", examples: [NOTE] }) });
 
 const Notification = z
   .object({
@@ -31,7 +31,7 @@ const Notification = z
   .loose()
   .meta({
     id: "Notification",
-    example: {
+    examples: [{
       id: NOTE,
       tenantId: "0b7e6d5c-4a3b-4c2d-8e1f-9a8b7c6d5e4f",
       userId: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
@@ -41,7 +41,7 @@ const Notification = z
       actionUrl: "/dashboard/calibration",
       isRead: false,
       createdAt: "2030-01-15T09:00:00.000Z",
-    },
+    }],
   });
 const Deleted = z.object({ deleted: z.number().int() });
 /** P9-25: deleteNotifications answers both counts (notification.service#deleteNotifications). */
@@ -64,10 +64,10 @@ export default defineRouteDocs({
       permission: OWN,
       audited: false,
       query: z.object({
-        page: z.coerce.number().int().min(1).optional().meta({ example: 1 }),
-        limit: z.coerce.number().int().min(1).optional().meta({ example: 20 }),
+        page: z.coerce.number().int().min(1).optional().meta({ examples: [1] }),
+        limit: z.coerce.number().int().min(1).optional().meta({ examples: [20] }),
         isRead: z.enum(["true", "false"]).optional(),
-        type: z.string().optional().meta({ example: "SYSTEM" }),
+        type: z.string().optional().meta({ examples: ["SYSTEM"] }),
       }),
       success: {
         status: 200,
@@ -104,7 +104,7 @@ export default defineRouteDocs({
             .meta({ description: "`tenant` broadcasts; anything else (the default) targets the caller" }),
           title: z.string().optional(),
           message: z.string().optional(),
-          type: z.string().optional().meta({ example: "SYSTEM" }),
+          type: z.string().optional().meta({ examples: ["SYSTEM"] }),
         })
         .meta({ description: "Read by the controller; not validated by a schema on the route." }),
       success: { status: 201, description: "The notification", data: Notification.nullable() },

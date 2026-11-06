@@ -17,7 +17,7 @@ import {
 } from "@callibrator/contracts/inspectionValues";
 import { CATALOGUE_LIFECYCLE_STATUSES, TEMPLATE_PROPOSAL_STATUSES, TEMPLATE_VERSION_STATUSES } from "@callibrator/contracts/states";
 
-const decimal = z.string().nullable().meta({ description: "An exact decimal as a string (never a binary float)", example: "0.5" });
+const decimal = z.string().nullable().meta({ description: "An exact decimal as a string (never a binary float)", examples: ["0.5"] });
 const nullableText = z.string().nullable();
 const at = z.iso.datetime();
 
@@ -26,7 +26,7 @@ export const DeviceType = z
   .meta({
     id: "DeviceType",
     description: "A device type of the global inspection catalogue (ADR-125)",
-    example: { id: "d7d7d7d7-d7d7-4d7d-8d7d-d7d7d7d7d7d7", name: "Test Device Type A", status: "active" },
+    examples: [{ id: "d7d7d7d7-d7d7-4d7d-8d7d-d7d7d7d7d7d7", name: "Test Device Type A", status: "active" }],
   });
 
 const content = {

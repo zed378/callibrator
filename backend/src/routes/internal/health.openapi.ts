@@ -41,7 +41,7 @@ const Readiness = z
   .meta({
     id: "ReadinessBreakdown",
     description: "Built by hand so the breakdown survives the failure case (503).",
-    example: {
+    examples: [{
       success: true,
       status: 200,
       message: "All required dependencies are healthy",
@@ -50,7 +50,7 @@ const Readiness = z
         checkedAt: "2030-01-15T09:00:00.000Z",
         dependencies: [{ name: "postgres", required: true, status: "healthy", latencyMs: 3 }],
       },
-    },
+    }],
   });
 
 const JobStates = z
@@ -62,12 +62,12 @@ const JobStates = z
   })
   .meta({
     id: "ScheduledJobStates",
-    example: {
+    examples: [{
       success: true,
       status: 200,
       message: "No scheduled job is failing or overdue",
       data: [{ job: "certificateExpiry", lastOutcome: "success", overdueSince: null }],
-    },
+    }],
   });
 
 export default defineRouteDocs({
@@ -87,7 +87,7 @@ export default defineRouteDocs({
       success: {
         status: 200,
         description: "Ready",
-        body: z.object({ status: z.enum(["ok", "unavailable"]) }).meta({ example: { status: "ok" } }),
+        body: z.object({ status: z.enum(["ok", "unavailable"]) }).meta({ examples: [{ status: "ok" }] }),
       },
     },
     {

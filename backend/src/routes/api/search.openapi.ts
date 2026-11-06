@@ -58,12 +58,12 @@ const SearchResults = z
   .meta({
     id: "SearchResults",
     description: "Ranked rows across the permitted types, and the same rows grouped by type. An empty `q` answers no rows.",
-    example: {
+    examples: [{
       query: "infusion",
       total: 1,
       results: [{ type: "device", id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f", name: "Infusion pump", serialNumber: "SN-0001", qrCode: "TST000001", manufacturer: "Acme", model: "IP-2", category: "Infusion", rank: 0.61 }],
       byType: { device: [{ type: "device", id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f", name: "Infusion pump", serialNumber: "SN-0001", qrCode: "TST000001", manufacturer: "Acme", model: "IP-2", category: "Infusion", rank: 0.61 }] },
-    },
+    }],
   });
 
 export default defineRouteDocs({
@@ -82,9 +82,9 @@ export default defineRouteDocs({
       permission: { kind: "dynamicAccess", resource: ["calibration", "warehouse", "certificate"], action: "read" },
       audited: false,
       query: z.object({
-        q: z.string().meta({ description: "The search text", example: "infusion" }),
-        types: z.string().optional().meta({ description: "Comma-separated subset of device, stock, certificate", example: "device,stock" }),
-        limit: z.coerce.number().int().min(1).max(50).optional().meta({ description: "Rows per type (1-50, default 10)", example: 10 }),
+        q: z.string().meta({ description: "The search text", examples: ["infusion"] }),
+        types: z.string().optional().meta({ description: "Comma-separated subset of device, stock, certificate", examples: ["device,stock"] }),
+        limit: z.coerce.number().int().min(1).max(50).optional().meta({ description: "Rows per type (1-50, default 10)", examples: [10] }),
       }),
       success: { status: 200, description: "The results", data: SearchResults },
     },

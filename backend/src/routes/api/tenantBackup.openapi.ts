@@ -19,7 +19,7 @@ import { defineRouteDocs } from "../../docs/openapi/operation";
 const admins = { kind: "rbac", roles: ["SUPERADMIN", "TENANT_ADMIN"] } as const;
 
 const backupParams = tenantIdParams.extend({
-  backupId: z.guid().meta({ description: "The backup's id", example: "6f5e4d3c-2b1a-4f09-8e7d-6c5b4a3f2e1d" }),
+  backupId: z.guid().meta({ description: "The backup's id", examples: ["6f5e4d3c-2b1a-4f09-8e7d-6c5b4a3f2e1d"] }),
 });
 
 const BACKUP_STATUSES = ["pending", "in_progress", "completed", "failed", "deleted"] as const;
@@ -60,8 +60,8 @@ const listQuery = z.object({
   status: z.enum(BACKUP_STATUSES).optional(),
   backupType: z.string().optional(),
   tag: z.string().optional(),
-  page: z.string().optional().meta({ example: "1" }),
-  limit: z.string().optional().meta({ example: "20" }),
+  page: z.string().optional().meta({ examples: ["1"] }),
+  limit: z.string().optional().meta({ examples: ["20"] }),
 });
 
 export default defineRouteDocs({

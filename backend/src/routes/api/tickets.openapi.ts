@@ -57,7 +57,7 @@ const Ticket = z
   })
   .meta({
     id: "Ticket",
-    example: {
+    examples: [{
       id: TICKET,
       number: 42,
       ticketKey: "TKT-42",
@@ -78,7 +78,7 @@ const Ticket = z
       requester: { id: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", firstName: "Ana", lastName: "Lab", email: "ana@example.test" },
       assignee: null,
       comments: [],
-    },
+    }],
   });
 
 const tally = z.record(z.string(), z.number().int());
@@ -99,7 +99,7 @@ const PERMISSION: Permission = {
   kind: "authenticated",
   reason: "Scoped inside ticket.service: a raiser their own tickets, a responder role the tenant's queue, a super admin every tenant's (routeGateExemptions.ts).",
 };
-const params = z.object({ ticketId: z.guid().meta({ description: "The ticket", example: TICKET }) });
+const params = z.object({ ticketId: z.guid().meta({ description: "The ticket", examples: [TICKET] }) });
 
 export default defineRouteDocs({
   router: "api/tickets.route",
@@ -121,9 +121,9 @@ export default defineRouteDocs({
         category: z.enum(v.CATEGORIES).optional(),
         assignedTo: z.guid().optional(),
         mine: z.enum(["true", "false"]).optional().meta({ description: "Only tickets the caller raised or is assigned" }),
-        q: z.string().optional().meta({ description: "Case-insensitive text in the subject or key (A-320)", example: "printer" }),
-        page: z.coerce.number().int().min(1).optional().meta({ example: 1 }),
-        limit: z.coerce.number().int().min(1).optional().meta({ example: 20 }),
+        q: z.string().optional().meta({ description: "Case-insensitive text in the subject or key (A-320)", examples: ["printer"] }),
+        page: z.coerce.number().int().min(1).optional().meta({ examples: [1] }),
+        limit: z.coerce.number().int().min(1).optional().meta({ examples: [20] }),
       }),
       success: { status: 200, description: "A page of tickets; pagination in the top-level `meta`", list: Ticket },
     },

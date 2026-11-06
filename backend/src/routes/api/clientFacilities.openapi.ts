@@ -50,7 +50,7 @@ const ClientFacility = z
   .meta({
     id: "ClientFacility",
     description: "A health facility the tenant serves (ADR-124). Never carries the import key.",
-    example: {
+    examples: [{
       id: "f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1",
       name: "Facility One",
       code: "F-0001",
@@ -69,7 +69,7 @@ const ClientFacility = z
       contactPhone: null,
       createdAt: "2026-10-08T00:00:00.000Z",
       updatedAt: "2026-10-08T00:00:00.000Z",
-    },
+    }],
   });
 
 const ClientFacilityOption = z
@@ -90,7 +90,7 @@ const ClientFacilityUser = z
 const params = z.object({
   clientFacilityId: clientFacilityIdParams.shape.clientFacilityId.meta({
     description: "The client facility's id",
-    example: "f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1",
+    examples: ["f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1"],
   }),
 });
 

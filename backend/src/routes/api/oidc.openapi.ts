@@ -28,7 +28,7 @@ const ownDecision = {
 } as const;
 
 const clientParams = z.object({
-  clientId: z.string().meta({ description: "The client id", example: "cbc_3f2e1d0c9b8a7f6e" }),
+  clientId: z.string().meta({ description: "The client id", examples: ["cbc_3f2e1d0c9b8a7f6e"] }),
 });
 const tenantClientParams = tenantIdParams.extend(clientParams.shape);
 
@@ -181,7 +181,7 @@ export default defineRouteDocs({
       summary: "Get a staged authorization request (the consent screen)",
       permission: ownDecision,
       audited: false,
-      params: z.object({ requestId: z.string().meta({ description: "The staged request's id", example: "a1b2c3d4e5f60718" }) }),
+      params: z.object({ requestId: z.string().meta({ description: "The staged request's id", examples: ["a1b2c3d4e5f60718"] }) }),
       success: {
         status: 200,
         description: "What the user is asked to approve",
