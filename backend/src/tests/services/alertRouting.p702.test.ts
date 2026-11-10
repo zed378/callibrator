@@ -86,6 +86,10 @@ describe("P7-02 / ADR-082 alert routing — a real HTTP receiver gets the alert"
       ...saved,
       JOB_STATUS_DIR: statusDir,
       ALERT_WEBHOOK_URL: `http://127.0.0.1:${server.address().port}/hooks/services/T000/B000/slack-compatible`,
+      // These cases test the ROUTE, not the abandonment of a hanging webhook (alert.service.p702 does).
+      // The production ceiling is 5 s; a loopback POST that waited that long in the full parallel run
+      // was abandoned and recorded as a failed sink, so the receiver saw nothing (2026-11-10).
+      ALERT_WEBHOOK_TIMEOUT_MS: "60000",
     };
     for (const key of [
       "ALERT_EMAIL_TO",
