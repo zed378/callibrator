@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-10 — backend coverage gate green again ([record](./records/2026-11-10-coverage-gate-green.md))
+- 1,085 suites, 18,215 tests, 100 % on all four figures. Fixes were test infrastructure only: a restored fixture, a 30 s ceiling, an `emit` on the request double, a clamd timeout, 75 % of the cores.
+
 ### 2026-11-10 — `./backend import-key`: the operator's way to give a tenant its upstream import key ([record](./records/2026-11-10-import-key-cli.md), ADR-133 Am. 6)
 - `provision`, `status` and `revoke`, run inside the backend container. Without a key the upstream transform fails `IMPORT_KEY_MISSING`, and until now nothing in a deployment could create one.
 - The cutover runbook (§§ 5 and 10) now gives the exact commands. No HTTP route, by design; the command prints at most the key's prefix.
