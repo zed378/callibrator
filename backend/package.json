@@ -54,6 +54,7 @@
     "migrate:verify": "tsx src/scripts/verifySchema.ts",
     "keys:rotate": "tsx src/scripts/rotateKeys.ts",
     "bootstrap:rotate": "tsx src/scripts/rotateBootstrapPassword.ts",
+    "import-key": "tsx src/scripts/importKey.ts",
     "lint": "eslint src/ scripts/build-dist.ts --ext .js,.ts",
     "lint:fix": "eslint src/ scripts/build-dist.ts --ext .js,.ts --fix",
     "prettier": "prettier --check \"src/**/*.{js,ts}\"",
