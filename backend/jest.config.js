@@ -155,7 +155,12 @@ module.exports = {
   // "js" before "ts": a module is never both (scripts/build-dist.ts refuses
   // the build if one is), and the order keeps every existing resolution as it was.
   moduleFileExtensions: ["js", "ts", "json"],
-  testTimeout: 10000,
+  // 30 s, not jest's 10 s. The full coverage run (about 1,080 suites on ~15 workers) starves a
+  // loaded workstation: on 2026-11-10 three suites that pass in seconds alone (sharp image
+  // re-encoding, a loopback CORS preflight, a loopback alert POST) ran past 10 s and failed, and
+  // each failure also cost the coverage gate its 100 % (the lines they exercise went unreached).
+  // A ceiling only matters to a test that is already stuck: it fails at 30 s instead of 10 s.
+  testTimeout: 30000,
   // 2026-10-05 (MEMORY/records/2026-10-05-ci-second-run.md): a worker keeps
   // ~20 MB of heap per route suite it has run, after a forced GC (measured:
   // 150 → 1,302 MB over 60 route suites in one process, no coverage), and
