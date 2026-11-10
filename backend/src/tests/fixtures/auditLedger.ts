@@ -177,34 +177,38 @@ const createLedger = ({ cls = true }: any = {}) => {
     },
 
     AuditLog: {
-      create: async (values: any, options: any) => {
-        const schema = auditSchema();
-        if (values && values.action && !schema.actions.includes(values.action)) {
-          throw new Error(
-            `invalid input value for enum enum_audit_logs_action: "${values.action}"`,
-          );
-        }
-        if (values && values.actorType && !schema.actorTypes.includes(values.actorType)) {
-          throw new Error(
-            `invalid input value for enum enum_audit_logs_actor_type: "${values.actorType}"`,
-          );
-        }
-        for (const col of schema.notNull) {
-          if (!values || values[col] === undefined || values[col] === null) {
-            throw new Error(`null value in column "${col}" of relation "audit_logs" violates not-null constraint`);
+      // The original fixture's behaviour (P9-26 batch 07 had rewritten it: other messages, no
+      // aborted-transaction marking, no id/createdAt, no toJSON — three suites went red). Each
+      // refusal aborts the enclosing transaction, as PostgreSQL does, and carries Sequelize's name.
+      async create(values: any, options: any) {
+        const { actions, notNull, actorTypes } = auditSchema();
+        const tx = ledger.resolveTransaction(options);
+        const refuse = (message: string, name: string): never => {
+          if (tx) {tx.aborted = true;}
+          const err = new Error(message);
+          err.name = name;
+          throw err;
+        };
+        for (const column of notNull) {
+          if (values[column] === undefined || values[column] === null) {
+            refuse(`notNull Violation: AuditLog.${column} cannot be null`, "SequelizeValidationError");
           }
         }
-        if (values && !actorCheckHolds(values)) {
-          throw new Error('new row for relation "audit_logs" violates check constraint "audit_logs_actor_check"');
+        if (!actorTypes.includes(values.actorType)) {
+          refuse(`invalid input value for enum enum_audit_logs_actor_type: "${values.actorType}"`, "SequelizeDatabaseError");
         }
-        return ledger.write("audit_logs", values, options);
-      },
-      bulkCreate: async (rows: any, options: any) => {
-        const created: any[] = [];
-        for (const r of rows || []) {
-          created.push(await ledger.AuditLog.create(r, options));
+        if (!actorCheckHolds(values)) {
+          refuse('new row for relation "audit_logs" violates check constraint "audit_logs_actor_check"', "SequelizeDatabaseError");
         }
-        return created;
+        if (!actions.includes(values.action)) {
+          refuse(`invalid input value for enum enum_audit_logs_action: "${values.action}"`, "SequelizeDatabaseError");
+        }
+        const row = ledger.write(
+          "audit_logs",
+          { id: `audit-${ledger.rows.length + 1}`, createdAt: new Date(), ...values },
+          options,
+        );
+        return { ...row, toJSON: () => ({ ...row }) };
       },
     },
   };
@@ -212,5 +216,5 @@ const createLedger = ({ cls = true }: any = {}) => {
   return ledger;
 };
 
-export { createLedger, LedgerTransaction };
-module.exports = { createLedger, LedgerTransaction };
+export { createLedger, auditSchema };
+module.exports = { createLedger, auditSchema };
