@@ -38,11 +38,6 @@ const SVG_TAGS = new Set(["svg", "circle", "path", "rect", "g", "line", "polylin
 
 /** Reviewed findings: an element with opacity that holds no text. */
 const EXEMPT: ReadonlyArray<{ file: string; literal: string; reason: string }> = [
-  { file: "app/(app)/dashboard/components/grid-background.tsx", literal: "opacity-30", reason: "decorative grid layer, no text" },
-  { file: "app/(app)/dashboard/components/grid-background.tsx", literal: "opacity-20", reason: "decorative orb, no text" },
-  { file: "app/(app)/dashboard/components/grid-background.tsx", literal: "opacity-15", reason: "decorative orb, no text" },
-  { file: "app/(app)/dashboard/components/grid-background.tsx", literal: "opacity-10", reason: "decorative orb, no text" },
-  { file: "app/(app)/dashboard/components/stat-card.tsx", literal: "opacity-60", reason: "a 2 px gradient bar, no text" },
   { file: "app/(app)/not-found.tsx", literal: "opacity-75", reason: "the ping ring of a status dot, no text" },
   { file: "components/motion/AuroraBackground.tsx", literal: "opacity-60", reason: "decorative background layer, no text" },
   { file: "components/motion/AuroraBackground.tsx", literal: "dark:opacity-40", reason: "the same layer in the dark theme" },

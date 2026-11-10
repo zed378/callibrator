@@ -83,7 +83,7 @@ const fetchPanelState = async (): Promise<PanelState> => {
 
 const formatCheckedAt = (iso: string): string => {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleTimeString();
+  return Number.isNaN(date.getTime()) ? "n/a" : date.toLocaleTimeString();
 };
 
 export interface DashboardSystemHealthProps {

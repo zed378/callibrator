@@ -11,7 +11,6 @@ import React, { useEffect } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { useAuthStore } from "@/stores/authStore";
 import { useUserStore } from "@/stores/userStore";
-import { Globe, Building2 } from "lucide-react";
 import { Alert } from "@/components/ui";
 import {
   DashboardStats,
@@ -33,15 +32,16 @@ const greetingForHour = (h: number): string =>
   h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 const greetingForNow = () => greetingForHour(new Date().getHours());
 
+/** The loading shape of DashboardStats: a three-figure band, then the ledger rows. */
 function StatsSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div
-          key={i}
-          className="h-44 rounded-2xl border border-border bg-card shadow-sm animate-pulse"
-        />
-      ))}
+    <div className="space-y-6" aria-hidden="true">
+      <div className="h-36 rounded-2xl border border-border bg-card motion-safe:animate-pulse" />
+      <div className="grid gap-x-10 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-14 border-b border-border" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -76,7 +76,7 @@ export function DashboardClient() {
 
   const scopeLabel =
     metrics?.scope === "global"
-      ? "Global overview — all tenants"
+      ? "Global overview: all tenants"
       : metrics?.tenant?.name
         ? `Overview for ${metrics.tenant.name}`
         : "Overview for your organization";
@@ -90,46 +90,16 @@ export function DashboardClient() {
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        {/* Hero Section */}
-        <div className="relative">
-          <div className="rounded-3xl p-8 border overflow-hidden border-border bg-card shadow-sm">
-            <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-sm font-semibold uppercase tracking-wider text-primary">
-                    Dashboard Overview
-                  </span>
-                  {metrics && (
-                    <span className="ml-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary">
-                      {metrics.scope === "global" ? (
-                        <Globe className="w-3.5 h-3.5" />
-                      ) : (
-                        <Building2 className="w-3.5 h-3.5" />
-                      )}
-                      {metrics.scope === "global"
-                        ? "Global"
-                        : metrics.tenant?.name || "Tenant"}
-                    </span>
-                  )}
-                </div>
-                <h1 className="text-4xl lg:text-5xl font-bold mb-3 tracking-tight text-foreground">
-                  {greeting}
-                  <span className="block mt-1">
-                    {userName}
-                  </span>
-                </h1>
-                <p className="text-lg max-w-xl text-muted-foreground">
-                  {scopeLabel}. Here&apos;s what&apos;s happening across your
-                  devices, calibrations, and inventory.
-                </p>
-                {metrics?.generatedAt && (
-                  <DashboardUpdatedAt generatedAt={metrics.generatedAt} />
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
+        {/* Header: who, where, and how fresh the figures are. A 5xl greeting card with an
+            eyebrow, a scope pill and a filler sentence pushed the figures below the fold. */}
+        <header className="flex flex-col gap-1">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+            {greeting}
+            <span className="block">{userName}</span>
+          </h1>
+          <p className="text-base text-muted-foreground">{scopeLabel}</p>
+          {metrics?.generatedAt && <DashboardUpdatedAt generatedAt={metrics.generatedAt} />}
+        </header>
         {error && (
           <Alert variant="error">
             {error}{" "}

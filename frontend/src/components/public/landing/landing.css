@@ -89,18 +89,6 @@
   line-height: 1.4;
   color: var(--pub-text-subtle);
 }
-[data-surface="public"] .lp-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  border-radius: 999px;
-  border: 1px solid var(--pub-border);
-  background: var(--pub-raised);
-  padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--pub-text-muted);
-}
 [data-surface="public"] .lp-sample-tag {
   display: inline-flex;
   align-items: center;
@@ -172,14 +160,17 @@
   font-weight: 700;
   letter-spacing: 0.04em;
 }
-/* The greeting chip: below 640 px it reserves two lines, so the client's
+/* The greeting: plain text. Below 380 px it reserves two lines, so the client's
    time-of-day word (longer than the server's "Halo") never re-wraps it and
    pushes the hero down (CLS). */
-[data-surface="public"] .lp-greeting-chip { align-items: flex-start; border-radius: 14px; }
-[data-surface="public"] .lp-greeting-chip > .lp-greeting-text { min-height: 2lh; }
+[data-surface="public"] .lp-greeting {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: var(--pub-text-muted);
+}
+[data-surface="public"] .lp-greeting > .lp-greeting-text { display: block; min-height: 2lh; }
 @media (min-width: 380px) {
-  [data-surface="public"] .lp-greeting-chip { align-items: center; border-radius: 999px; }
-  [data-surface="public"] .lp-greeting-chip > .lp-greeting-text { min-height: 0; }
+  [data-surface="public"] .lp-greeting > .lp-greeting-text { min-height: 0; }
 }
 
 /* ── Story: moments as type, a full-bleed human moment ───────────────── */

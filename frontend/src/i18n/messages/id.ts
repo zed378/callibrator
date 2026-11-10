@@ -45,7 +45,7 @@ export const id = {
   "pub.footer.copyright": "© {year} Device Calibrator",
 
   // ── Landing (doc 20 §11.1) ───────────────────────────────────────────
-  "landing.meta.title": "Device Calibrator — Kalibrasi alat kesehatan, tercatat dan terdokumentasi",
+  "landing.meta.title": "Device Calibrator: kalibrasi alat kesehatan, tercatat dan terdokumentasi",
   "landing.meta.description":
     "Jadwalkan kalibrasi, catat hasil beserta standar acuan dan ketidakpastian pengukuran, dan terbitkan sertifikat bertanda tangan elektronik yang dapat diperiksa lewat kode QR.",
   "landing.hero.eyebrow": "Mendukung alur kerja ISO/IEC 17025 · Multi-fasilitas",
@@ -70,7 +70,7 @@ export const id = {
   "landing.flow.title": "Dari daftar alat sampai sertifikat yang dapat diperiksa",
   "landing.flow.deviceTitle": "Alat",
   "landing.flow.device":
-    "Impor seluruh alat dari CSV atau tambahkan satu per satu — merek, model, lokasi, dan interval kalibrasi dalam satu catatan.",
+    "Impor seluruh alat dari CSV atau tambahkan satu per satu. Merek, model, lokasi, dan interval kalibrasi dalam satu catatan.",
   "landing.flow.scheduleTitle": "Jadwal",
   "landing.flow.schedule":
     "Tetapkan interval per alat; sistem membuat perintah kerja untuk alat yang jatuh tempo atau terlambat dan memberi tahu tim Anda.",
@@ -95,7 +95,7 @@ export const id = {
   "landing.caps.stock": "Gudang, stok, mutasi dan stok opname.",
   "landing.caps.maintenance": "Perintah kerja pemeliharaan.",
   "landing.caps.multisite": "Setiap fasilitas terpisah datanya, dengan peran, pengguna, dan branding masing-masing.",
-  "landing.caps.reports": "Laporan kepatuhan, beban kerja, dan alat terlambat — dapat diekspor ke CSV.",
+  "landing.caps.reports": "Laporan kepatuhan, beban kerja, dan alat terlambat, dapat diekspor ke CSV.",
   "landing.caps.api": "REST API dengan API key dan webhook untuk integrasi dengan sistem Anda.",
   "landing.caps.qms": "Ketidaksesuaian, CAPA, SOP, dan daftar risiko.",
   "landing.caps.audit": "Setiap perubahan tercatat di jejak audit dengan pelaku, waktu, dan nilai sebelum/sesudah.",
@@ -106,7 +106,7 @@ export const id = {
   "landing.compliance.title": "Dirancang untuk catatan yang diperiksa auditor",
   "landing.compliance.standardsTitle": "Standar yang didukung catatannya",
   "landing.compliance.iso17025":
-    "ISO/IEC 17025 — mendukung pencatatan ketidakpastian dan standar acuan yang diperiksa asesor, serta hasil yang ditandatangani.",
+    "ISO/IEC 17025: mendukung pencatatan ketidakpastian dan standar acuan yang diperiksa asesor, serta hasil yang ditandatangani.",
   "landing.compliance.part11":
     "Tanda tangan elektronik dan jejak audit yang dirancang untuk mendukung persyaratan 21 CFR Part 11.",
   "landing.compliance.accreditation": "Mendukung persiapan akreditasi rumah sakit (standar akreditasi Kemenkes).",
@@ -171,7 +171,7 @@ export const id = {
   "landing.hero.photoCaption": "Foto ilustrasi · Tampilan produk: contoh data",
   "landing.hero.mock.certificate": "Sertifikat kalibrasi",
   "landing.photo.caption": "Foto ilustrasi",
-  "landing.moments.lead": "Tiga momen yang mungkin Anda kenal — dan bagaimana rasanya bila catatannya sudah rapi.",
+  "landing.moments.lead": "Tiga momen yang mungkin Anda kenal, dan bagaimana rasanya bila catatannya sudah rapi.",
   "landing.moments.1.when": "Pagi hari survei",
   "landing.moments.2.when": "Ruang arsip",
   "landing.moments.3.when": "Pertanyaan surveyor",
@@ -179,7 +179,7 @@ export const id = {
   "landing.moments.2.after": "Setiap sertifikat terhubung ke alat dan catatan kalibrasinya, jadi tidak ada lagi yang dicari di map.",
   "landing.moments.3.after": "Catatan kalibrasi menyimpan teknisi, standar acuan, dan ketidakpastian pengukurannya; koreksi dibuat sebagai catatan baru.",
   "landing.moments.afterLabel": "Dengan Device Calibrator",
-  "landing.flow.lead": "Enam langkah, satu catatan yang utuh — dari alat masuk daftar sampai auditor memindai kode QR.",
+  "landing.flow.lead": "Enam langkah, satu catatan yang utuh: dari alat masuk daftar sampai auditor memindai kode QR.",
   "landing.flow.progress": "Langkah {n} dari {total}",
   "landing.flow.fx.device": "Impor CSV",
   "landing.flow.fx.schedule": "Jatuh tempo",
@@ -205,8 +205,8 @@ export const id = {
   "landing.work.step2Text": "Coba dengan sebagian alat dan satu tim, supaya Anda menilai sendiri sebelum memutuskan.",
   "landing.work.step3Text": "Penerapan bertahap bersama tim Anda, dengan orang yang bisa Anda hubungi saat ada pertanyaan.",
   "landing.work.photoAlt": "Seorang staf, terlihat dari belakang, mengatur monitor yang terpasang di dinding ruang perawatan (foto ilustrasi)",
-  "landing.work.photoCaption": "Foto ilustrasi — orang dan tempat dalam foto ini tidak terkait dengan Device Calibrator.",
-  "landing.hero.gaugeHint": "Gerakkan kursor — jarum mengikuti, pita menandai batas toleransi.",
+  "landing.work.photoCaption": "Foto ilustrasi. Orang dan tempat dalam foto ini tidak terkait dengan Device Calibrator.",
+  "landing.hero.gaugeHint": "Gerakkan kursor: jarum mengikuti, pita menandai batas toleransi.",
   "landing.story.eyebrow": "Menjelang survei",
   "landing.story.human": "Di balik setiap map ada seseorang yang lembur mencarinya.",
   "landing.story.transformEyebrow": "Yang berubah",
@@ -218,7 +218,7 @@ export const id = {
   "landing.cert.eyebrow": "Sertifikat Anda",
   "landing.cert.title": "Setiap baris punya asal-usulnya.",
   "landing.cert.lead": "Arahkan atau ketuk penanda untuk melihat dari mana setiap bagian sertifikat berasal.",
-  "landing.cert.sample": "Contoh data — rumah sakit, alat, dan nama di sini rekaan.",
+  "landing.cert.sample": "Contoh data: rumah sakit, alat, dan nama di sini rekaan.",
   "landing.cert.spot": "Penanda",
   "landing.cert.docTitle": "Sertifikat Kalibrasi",
   "landing.cert.facility": "Fasilitas",
@@ -235,7 +235,7 @@ export const id = {
   "landing.cert.signer": "Ditandatangani oleh",
   "landing.cert.signerValue": "Kepala Laboratorium Contoh",
   "landing.cert.slide": "Penjelasan {n} dari {total}",
-  "landing.cert.carousel": "Penjelasan bagian sertifikat — geser atau pakai panah kiri/kanan",
+  "landing.cert.carousel": "Penjelasan bagian sertifikat: geser atau pakai panah kiri/kanan",
   "landing.cert.hs.1.title": "Dari catatan alat",
   "landing.cert.hs.1.text": "Merek, model, lokasi, dan interval kalibrasi diambil dari catatan alat yang sama.",
   "landing.cert.hs.2.title": "Dari catatan kalibrasi",
@@ -425,7 +425,7 @@ export const id = {
   "reset.backToLogin": "Kembali ke halaman masuk",
 
   // ── Certificate verification (doc 20 §10) ────────────────────────────
-  "verify.meta.title": "Verifikasi sertifikat — Device Calibrator",
+  "verify.meta.title": "Verifikasi sertifikat | Device Calibrator",
   "verify.eyebrow": "Verifikasi sertifikat",
   "verify.loading": "Memeriksa sertifikat…",
   "verify.valid": "SAH",

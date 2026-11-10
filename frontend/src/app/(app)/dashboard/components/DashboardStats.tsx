@@ -2,19 +2,6 @@
 "use client";
 
 import React from "react";
-import {
-  Users,
-  Building2,
-  Cpu,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  FileText,
-  Package,
-  Wrench,
-  RefreshCw,
-} from "lucide-react";
-import StatCard from "./stat-card";
 import type { DashboardMetrics } from "@/api/services/dashboard.service";
 
 interface DashboardStatsProps {
@@ -31,15 +18,26 @@ interface DashboardStatsProps {
 /** The cards that count provider-internal records (hidden for a bound user). */
 const PROVIDER_INTERNAL = new Set(["Warehouses", "Low Stock", "Pending Transfers"]);
 
+/**
+ * The three figures an operator acts on: is the fleet in tolerance, what falls due, what is
+ * already late. They lead the page at a larger size; the rest are a reference ledger below.
+ * Eight equal cards in eight hues gave the one overdue device the same weight as a stock count.
+ */
+const ATTENTION = ["Compliance Rate", "Due in 30 Days", "Overdue"] as const;
+
+/** Colour carries state only: a non-zero overdue or due-soon count, nothing else. */
+const ALERT_TEXT: Record<string, string> = {
+  "Due in 30 Days": "text-warning",
+  Overdue: "text-destructive",
+};
+
 interface StatDef {
   title: string;
   value: number | string;
   subtitle?: string;
-  icon: React.ReactNode;
-  color: string;
-  bgColor: string;
-  borderColor: string;
 }
+
+const formatValue = (value: number | string) => (typeof value === "number" ? value.toLocaleString() : value);
 
 export const DashboardStats: React.FC<DashboardStatsProps> = ({
   metrics,
@@ -50,29 +48,22 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
   const complianceValue =
     metrics.calibrations.complianceRate !== null
       ? `${metrics.calibrations.complianceRate}%`
-      : "—";
+      : "n/a";
+  const global = isSuperAdmin && metrics.scope === "global";
 
   const stats: StatDef[] = [];
 
-  if (isSuperAdmin && metrics.scope === "global") {
+  if (global) {
     stats.push(
       {
         title: "Tenants",
         value: metrics.tenants?.total ?? 0,
         subtitle: `${metrics.tenants?.active ?? 0} active`,
-        icon: <Building2 className="w-7 h-7 text-chart-2" />,
-        color: "text-chart-2",
-        bgColor: "bg-chart-2/15",
-        borderColor: "bg-linear-to-r from-chart-2 to-chart-2",
       },
       {
         title: "Users",
         value: metrics.users.total,
         subtitle: `${metrics.users.verified} verified`,
-        icon: <Users className="w-7 h-7 text-primary" />,
-        color: "text-primary",
-        bgColor: "bg-primary/15",
-        borderColor: "bg-linear-to-r from-primary to-primary",
       },
     );
   } else {
@@ -81,19 +72,11 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
         title: "Team Members",
         value: metrics.users.total,
         subtitle: `${metrics.users.verified} verified`,
-        icon: <Users className="w-7 h-7 text-primary" />,
-        color: "text-primary",
-        bgColor: "bg-primary/15",
-        borderColor: "bg-linear-to-r from-primary to-primary",
       },
       {
         title: "Warehouses",
         value: metrics.inventory.warehouses,
         subtitle: `${metrics.inventory.stockItems} stock items`,
-        icon: <Building2 className="w-7 h-7 text-chart-4" />,
-        color: "text-chart-4",
-        bgColor: "bg-chart-4/15",
-        borderColor: "bg-linear-to-r from-chart-4 to-chart-4",
       },
     );
   }
@@ -103,37 +86,21 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
       title: "Devices",
       value: metrics.devices.total,
       subtitle: `${activeDevices} active`,
-      icon: <Cpu className="w-7 h-7 text-chart-2" />,
-      color: "text-chart-2",
-      bgColor: "bg-chart-2/15",
-      borderColor: "bg-linear-to-r from-chart-2 to-chart-2",
     },
     {
       title: "Compliance Rate",
       value: complianceValue,
       subtitle: `${metrics.calibrations.compliant} of ${metrics.calibrations.total} calibrations`,
-      icon: <CheckCircle className="w-7 h-7 text-success" />,
-      color: "text-success",
-      bgColor: "bg-success/15",
-      borderColor: "bg-linear-to-r from-success to-success",
     },
     {
       title: "Due in 30 Days",
       value: metrics.devices.dueSoon,
       subtitle: "calibrations coming up",
-      icon: <Clock className="w-7 h-7 text-warning" />,
-      color: "text-warning",
-      bgColor: "bg-warning/15",
-      borderColor: "bg-linear-to-r from-warning to-warning",
     },
     {
       title: "Overdue",
       value: metrics.devices.overdue,
       subtitle: "past calibration date",
-      icon: <AlertCircle className="w-7 h-7 text-destructive" />,
-      color: "text-destructive",
-      bgColor: "bg-destructive/15",
-      borderColor: "bg-linear-to-r from-destructive to-destructive",
     },
     {
       title: "Certificates",
@@ -142,61 +109,66 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
         .map(([k, v]) => `${v} ${k}`)
         .slice(0, 3)
         .join(" · "),
-      icon: <FileText className="w-7 h-7 text-accent" />,
-      color: "text-accent",
-      bgColor: "bg-accent/15",
-      borderColor: "bg-linear-to-r from-accent to-accent",
     },
     {
       title: "Low Stock",
       value: metrics.inventory.lowStockItems,
       subtitle: `of ${metrics.inventory.stockItems} stock items`,
-      icon: <Package className="w-7 h-7 text-warning" />,
-      color: "text-warning",
-      bgColor: "bg-warning/15",
-      borderColor: "bg-linear-to-r from-warning to-warning",
     },
   );
 
   // Last card differs by scope: operational backlog
   stats.push(
-    isSuperAdmin && metrics.scope === "global"
+    global
       ? {
           title: "Open Work Orders",
           value: metrics.maintenance.openWorkOrders,
           subtitle: `${metrics.inventory.pendingTransfers} pending transfers`,
-          icon: <Wrench className="w-7 h-7 text-chart-3" />,
-          color: "text-chart-3",
-          bgColor: "bg-chart-3/15",
-          borderColor: "bg-linear-to-r from-chart-3 to-chart-3",
         }
       : {
           title: "Pending Transfers",
           value: metrics.inventory.pendingTransfers,
           subtitle: `${metrics.maintenance.openWorkOrders} open work orders · ${metrics.inventory.openOpnames} opnames`,
-          icon: <RefreshCw className="w-7 h-7 text-chart-3" />,
-          color: "text-chart-3",
-          bgColor: "bg-chart-3/15",
-          borderColor: "bg-linear-to-r from-chart-3 to-chart-3",
         },
   );
 
   const shown = facilityBound ? stats.filter((s) => !PROVIDER_INTERNAL.has(s.title)) : stats;
+  const attention = ATTENTION.map((title) => shown.find((s) => s.title === title)).filter(
+    (s): s is StatDef => s !== undefined,
+  );
+  const ledger = shown.filter((s) => !(ATTENTION as readonly string[]).includes(s.title));
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 relative">
-      {shown.map((stat) => (
-        <StatCard
-          key={stat.title}
-          title={stat.title}
-          value={stat.value}
-          subtitle={stat.subtitle}
-          icon={stat.icon}
-          color={stat.color}
-          bgColor={stat.bgColor}
-          borderColor={stat.borderColor}
-        />
-      ))}
+    <div className="space-y-6">
+      <section
+        aria-label="Calibration status"
+        className="grid divide-y divide-border rounded-2xl border border-border bg-card sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+      >
+        {attention.map((stat) => {
+          const raised = typeof stat.value === "number" && stat.value > 0 ? ALERT_TEXT[stat.title] : undefined;
+          return (
+            <div key={stat.title} className="p-6">
+              <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
+              <p className={`mt-2 text-5xl font-semibold tabular-nums tracking-tight ${raised ?? "text-foreground"}`}>
+                {formatValue(stat.value)}
+              </p>
+              {stat.subtitle && <p className="mt-2 text-sm text-muted-foreground">{stat.subtitle}</p>}
+            </div>
+          );
+        })}
+      </section>
+
+      <section aria-label="Registry totals">
+        <dl className="grid gap-x-10 sm:grid-cols-2 lg:grid-cols-3">
+          {ledger.map((stat) => (
+            <div key={stat.title} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 border-b border-border py-3">
+              <dt className="text-sm font-medium text-foreground">{stat.title}</dt>
+              <dd className="row-span-2 text-xl font-semibold tabular-nums text-foreground">{formatValue(stat.value)}</dd>
+              {stat.subtitle && <dd className="truncate text-xs text-muted-foreground">{stat.subtitle}</dd>}
+            </div>
+          ))}
+        </dl>
+      </section>
     </div>
   );
 };

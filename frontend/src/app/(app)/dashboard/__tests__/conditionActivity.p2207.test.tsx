@@ -206,7 +206,7 @@ describe("P22-07 — technician activity (F-73)", () => {
     sessions = ok([{ ...visit, recommendation: null, deviceSnapshot: null, facilitySnapshot: { name: " " }, performerDisplay: null }], { total: 1, page: 1, limit: 5, totalPages: 1 });
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     const row = (await screen.findAllByRole("row"))[1] as HTMLElement;
-    expect(within(row).getAllByText("—")).toHaveLength(6);
+    expect(within(row).getAllByText("n/a")).toHaveLength(6);
   });
 
   it("is not shown without `ipm` read, and the IPM panel offers no history link", async () => {
