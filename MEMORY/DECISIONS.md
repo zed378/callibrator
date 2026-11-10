@@ -12430,6 +12430,38 @@ Today `createCalibrationRecord` sets the device's `nextCalibrationDate` from whi
 - R-7 of the reconciliation counts `trx_kalibrasi` only. The device dates are accounted by the runner (no row unaccounted), not reconciled per facility yet.
 - Proven on synthetic data on PostgreSQL 18 (`upstreamTransform.p2402f.live`); real volumes in P24-05.
 
+### ADR-133 Amendment 6 (2026-11-10, P24-04): the operator CLI `./backend import-key` — provisioning, reading and revoking the import key had no caller in a deployment
+
+**Date:** 2026-11-10 · **Status:** Accepted, **built** (no migration, no route). Decided by the implementing agent under the owner's standing delegation · **Card:** P24-04 (follow-up) · **Works with:** Am. 4 (the key), Am. 5 (the device date that always needs it) · **Record:** `MEMORY/records/2026-11-10-import-key-cli.md`
+
+**Context.** Am. 4 built `provisionImportKey` and left out "a new route or CLI to provision and revoke", because the ETL runner did not exist yet. The runner exists now. Since Am. 5 (P24-02h) the transform's calibration step needs the tenant's import key for **every** device that names a calibration date, so a transform into a tenant without a key fails `IMPORT_KEY_MISSING`. The only caller of `provisionImportKey` was `scripts/upstream-dry-run.ts`, a development script. The cutover runbook (§ 5) says "the import key provisioned" and gives the operator no way to do it. The P21-10 live E2E spec found the gap: it passed 15/15 on 2026-10-23 and fails on every run since 2026-10-28.
+
+**Decision.**
+1. **One command in the compiled binary:** `./backend import-key provision | status | revoke`, registered in `cliDispatch` beside `rotate-bootstrap-password`; `npm run import-key` from a checkout. `provision` takes `--tenant`, `--user`, `--sign-off YYYY-MM-DD` and `--data-class synthetic|real`. `status` takes `--tenant` and changes nothing. `revoke` takes `--tenant` and `--user`, revokes every live import key, then runs `importKeyRevoked` and exits 1 if one remains.
+2. **Still no HTTP route.** The key's secret is discarded at creation (Am. 4), so nothing can present it over HTTP, and a route would add an authorisation surface for an act done a handful of times in a project's life. The authority is the one the other CLIs have: the database credentials, or `docker exec` on the backend.
+3. **The actor is a named person.** `--user` is an ACTIVE user of that tenant (e-mail or username); `importKey.ts#importOperator` refuses (404, the same answer as no user) anyone else, including a user of another tenant. The key's `created_by` and the audit rows (`IMPORT_KEY_CREATE`, `API_KEY_REVOKE`) are theirs.
+4. **Confined to the tenant.** The command runs inside `runForTenant(tenant)`; the operator lookup also names the tenant. `--tenant` must be an existing tenant's id.
+5. **`--data-class` has no default.** The operator declares what the run loads; `real` is refused while `UPSTREAM_REAL_DATA_ALLOWED` is off (Am. 4 item 4).
+6. **Prints no secret.** It prints the key's prefix (`cbk_xxxxxxxx…`), scope and expiry; stdout reaches `docker logs`. Exit codes: 0 done, 1 refused, 2 usage.
+7. **The live E2E spec provisions the key through the CLI** (`E2E_BACKEND_CONTAINER`), so the compiled binary's command is exercised on every full run.
+
+**Alternatives considered.**
+| Alternative | Why not |
+|---|---|
+| `POST`/`DELETE` routes under `/admin/upstream-sql-imports` | an authorisation surface (a gate, a two-tenant test, an OpenAPI entry, a client) for an act done once per project; the CLI already has the right authority |
+| The transform provisions the key itself when it is missing | an unattended step would mint a credential nobody asked for, with a sign-off date nobody gave; the key's expiry is the operator's decision (UD-18 (a)) |
+| Keep the dry-run script as the only provisioner | it is a development tool that creates its own tenant and user |
+| A default `--data-class` of `synthetic` | a forgotten flag would silently declare real data synthetic |
+
+**Implications, including the bad ones.**
+- The command needs shell access to the backend container. A deployment without it (a managed platform with no exec) cannot provision the key until it has some.
+- `status` and `revoke` duplicate what the key routes already offer (list, revoke). They stay in the CLI so the cutover has one interface and the revocation is followed by the runbook check.
+- The compiled binary's command was first run in the live E2E; the unit suite proves the code over an in-memory database, not the `pkg` bundling.
+
+**`docs/` amended:** `TASKS/RUNBOOK-UPSTREAM-CUTOVER.md` § 5 and § 10 (the commands), the P19-05 spec § 9.2 (an as-built note referencing this amendment).
+
+---
+
 ## ADR-134: Shared Packages Hold Logic and Design Tokens Only, in `packages/*` (No Root `shared/`, No Shared UI, No Per-Backend Client Adapter); the Backend Serves Native Clients Through a Token-Returning Ingress, Install Sessions With Reuse Detection, an App-Link SSO Exchange, Native Passkey Origins, a Push Registry, a 426 Version Floor and a Tenant Lookup by Code
 
 **Date:** 2026-10-08 · **Status:** Accepted as the **PLAN — nothing here is built.** "React Native with Expo + EAS beside the PWA", "share logic + design tokens only, each platform renders its own UI", "same monorepo, workspaces (`apps/mobile`, `packages/*`)", the native capabilities and sign-in methods, the roadmap (as revised the same day: the backend-agnostic contract first, Phases 32 … 34; the mobile plan Phases 35 … 40; the Go variant of the backend for mobile after Phase 999) and **tenant setup before sign-in** are the **owner's** decisions of 2026-10-08 (`TASKS/BACKLOG.md` D-11; the tenant-setup decision relayed by the coordinator the same day). The mechanisms are decided by the shared-packages documentation agent under the owner's standing delegation; the owner questions are Q-58 … Q-61 · **Documents:** [`docs/SHARED/`](../docs/SHARED/00-README.md) `00` … `08`, `90`; [`docs/MOBILE/20`](../docs/MOBILE/20-BACKEND-FOR-MOBILE-NODE.md), [`21`](../docs/MOBILE/21-BACKEND-FOR-MOBILE-GO.md) · **Plan:** [`TASKS/PHASE-35-SHARED-PACKAGES.md`](../TASKS/PHASE-35-SHARED-PACKAGES.md) … `PHASE-40-MOBILE-RELEASE.md` — **one plan**, Phases 35 … 40, after the backend-agnostic contract group (Phases 32 … 34, ADR-136); only the backend for mobile has a second (Go) variant, after Phase 999 · **Works with:** ADR-135 (the app), ADR-097 + Am. 1–6 (contracts), ADR-103 (code-first OpenAPI), ADR-059 / A-71 (the browser never holds a token), ADR-122 (tones), ADR-124 + Am. 1–3, ADR-127 + Am. 1 (the PWA engine), ADR-100 (budgets, one refusal), ADR-098 (the discovery residual) · **Supersedes:** ADR-089's root `shared/` area, shared UI components and per-backend frontend adapter; the Q-48 working decision to move `packages/contracts` into `shared/contracts` at Phase 999 · **Record:** `MEMORY/records/2026-10-08-shared-packages-mobile-backend-docs.md`

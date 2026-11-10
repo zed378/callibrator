@@ -18,7 +18,7 @@ const COMMANDS: Readonly<Record<string, () => Command>> = Object.freeze({
   "verify-schema": () => (require("./verifySchema") as { main: Command }).main,
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy: loaded only for this command
   "backup-alert": () => (require("./backupAlert") as { main: Command }).main,
-  // P24-04 (ADR-133 Am. 5): provision / read / revoke a tenant's upstream import key.
+  // P24-04 (ADR-133 Am. 6): provision / read / revoke a tenant's upstream import key.
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy: loaded only for this command
   "import-key": () => (require("./importKey") as { main: Command }).main,
 });

@@ -1,5 +1,5 @@
 /**
- * P24-04 (ADR-133 Am. 5) — `./backend import-key provision | status | revoke`.
+ * P24-04 (ADR-133 Am. 6) — `./backend import-key provision | status | revoke`.
  *
  * REAL: the CLI's `main`, the import-key service, the ApiKey, User and Tenant models and the tenant
  * hooks over memoryDb, the audit service and `apiKey.service#revokeApiKey`. Mocked: only
