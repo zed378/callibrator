@@ -582,6 +582,11 @@ const LIVE_PORT = process.env["CLAMAV_LIVE_PORT"];
 describe(
   "S-04 — against a REAL clamd (CLAMAV_LIVE_PORT)",
   () => {
+    // A real clamd shared with other suites that scan in parallel, on a host the full run starves:
+    // twice in a row the 30 s ceiling (jest's and the service's own CLAMAV_TIMEOUT, which coincided)
+    // was missed on 2026-11-10 by a 300 KB scan that takes well under a second alone.
+    jest.setTimeout(150_000);
+
     beforeAll(() => {
       if (!LIVE_PORT) {
         throw new Error(
@@ -591,7 +596,7 @@ describe(
     });
 
     const live = () =>
-      load({ CLAMAV_PORT: LIVE_PORT, CLAMAV_HOST: process.env["CLAMAV_LIVE_HOST"] || "127.0.0.1", CLAMAV_TIMEOUT: "30000" });
+      load({ CLAMAV_PORT: LIVE_PORT, CLAMAV_HOST: process.env["CLAMAV_LIVE_HOST"] || "127.0.0.1", CLAMAV_TIMEOUT: "120000" });
 
     it("answers PING", async () => {
       await expect(live().ping()).resolves.toBe(true);

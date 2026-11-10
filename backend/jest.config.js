@@ -170,4 +170,9 @@ module.exports = {
   // file (its finished results and coverage are already reported), so no
   // worker's heap depends on which files the scheduler happened to give it.
   workerIdleMemoryLimit: "2GB",
+  // 75 % of the cores, not jest's default of all but one. The full coverage run shares the machine with
+  // the real services some suites need (a clamd, a loopback receiver); with every core taken, a service
+  // answered after a suite's ceiling and the run failed on a different suite each time (2026-11-10).
+  // On a 2-core CI runner this is still one worker, as before.
+  maxWorkers: "75%",
 };
