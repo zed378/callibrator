@@ -7,7 +7,7 @@
  * only (C-12). Shown to an `ipm` reader; the whole history is one link away.
  *
  * Each row prints the visit's own snapshots (device name, QR, serial number, facility) as submitted,
- * and the performer as the server displays them (a redacted performer reads as "—").
+ * and the performer as the server displays them (a redacted performer reads as "n/a").
  */
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -37,7 +37,7 @@ export const snapshotText = (snapshot: Record<string, unknown> | null, key: stri
   return typeof value === "string" && value.trim() ? value : null;
 };
 
-const DASH = "—";
+const DASH = "n/a";
 
 interface Props {
   /** The caller's user id, for "only my visits"; null hides the toggle. */

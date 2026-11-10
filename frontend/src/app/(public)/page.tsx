@@ -239,7 +239,9 @@ async function HomeContent() {
         <section aria-labelledby="hero-title" className="lp-section">
           <HeroPointer className="lp-hero">
             <div className="lp-hero-text flex flex-col justify-center px-4 pb-14 pt-10 sm:px-6 lg:py-20">
-              <p className="lp-enter lp-chip lp-greeting-chip self-start" style={cssVars({ "--lp-i": 0 })}>
+              {/* A greeting is a sentence, not a status: plain text keeps the H1 the only
+                  focal point (a bordered pill above it read as a template badge, R-09). */}
+              <p className="lp-enter lp-greeting self-start" style={cssVars({ "--lp-i": 0 })}>
                 <span className="lp-greeting-text">
                   <TimeGreeting
                     words={{
@@ -265,15 +267,12 @@ async function HomeContent() {
               <div className="lp-enter mt-9" style={cssVars({ "--lp-i": 4 })}>
                 <ContactButtons t={t} />
               </div>
-              <div
-                className="lp-enter mt-10 flex flex-col gap-3 text-[0.9375rem] sm:flex-row sm:items-center sm:justify-between"
-                style={cssVars({ "--lp-i": 5 })}
-              >
-                <p className="flex flex-1 items-center gap-2 text-pub-muted">
-                  <ShieldCheck className="h-4 w-4 shrink-0 text-pub-accent" aria-hidden="true" />
+              <div className="lp-enter mt-10 flex flex-col gap-1 text-[0.9375rem]" style={cssVars({ "--lp-i": 5 })}>
+                <p className="flex items-start gap-2 text-pub-muted">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-pub-accent" aria-hidden="true" />
                   {t("landing.hero.eyebrow")}
                 </p>
-                <Link href="/login" className="pub-link-quiet inline-flex min-h-11 items-center gap-1.5">
+                <Link href="/login" className="pub-link-quiet inline-flex min-h-11 items-center gap-1.5 self-start">
                   {t("landing.hero.signin")}
                   <ArrowRight className="pub-arrow h-4 w-4" aria-hidden="true" />
                 </Link>

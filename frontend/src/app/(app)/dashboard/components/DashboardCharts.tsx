@@ -42,7 +42,7 @@ const monthLabel = (month: string) => {
 
 /** Month-over-month change of the last two points, e.g. "+25%". */
 const trendChange = (trend: TrendPoint[]): { label: string; up: boolean } => {
-  if (trend.length < 2) return { label: '—', up: true };
+  if (trend.length < 2) return { label: 'n/a', up: true };
   const prev = trend[trend.length - 2].count;
   const last = trend[trend.length - 1].count;
   if (prev === 0) return { label: last > 0 ? `+${last}` : '0', up: last >= 0 };

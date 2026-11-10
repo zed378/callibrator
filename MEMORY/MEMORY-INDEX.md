@@ -10,6 +10,7 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-11-10 | antislop audit | [landing and dashboard home](./records/2026-11-10-antislop-landing-dashboard.md) | **Em dashes out of landing copy, hero pill removed, dashboard home rebuilt around overdue / due / compliance.** 202 suites pass; dashboard not seen rendered; screenshots and photos open. |
 | 2026-11-10 | coverage gate | [gate green](./records/2026-11-10-coverage-gate-green.md) | **Full coverage run exits 0**: 1,085 suites, 18,215 tests, 100 %. Fixture, timeout and worker-count fixes only. |
 | 2026-11-10 | P24-04 follow-up; ADR-133 Am. 6 | [`./backend import-key`](./records/2026-11-10-import-key-cli.md) | **Provision / status / revoke the tenant's upstream import key from the binary.** The transform needs it (Am. 5) and no deployment path created it; the P21-10 E2E case failed on this. Tested over memoryDb (30 + 8) and, in the compiled binary, by the E2E spec. |
 | 2026-11-06 | SOUL.md | [`SOUL.md` integrated](./records/2026-11-06-soul-md.md) | Principles page at the root, linked from CLAUDE.md § Before You Start (item 0) and AGENTS.md. The supplied jailbreak-style wrapper was removed; the Scale row was re-counted (65 / 91 / 1,208 / 817). |

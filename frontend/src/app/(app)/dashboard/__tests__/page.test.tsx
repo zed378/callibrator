@@ -138,7 +138,7 @@ describe("Dashboard page", () => {
     metrics = ok(globalMetrics);
     const { container } = render(<DashboardPage />);
 
-    expect(await screen.findByText(/Global overview — all tenants/)).toBeInTheDocument();
+    expect(await screen.findByText(/Global overview: all tenants/)).toBeInTheDocument();
     expect(screen.getByText("Tenants")).toBeInTheDocument();
     expect(screen.getByText("2 active")).toBeInTheDocument();
     expect(screen.getByText("Open Work Orders")).toBeInTheDocument();
@@ -151,7 +151,7 @@ describe("Dashboard page", () => {
     expect(within(suspended).getByText("-")).toBeInTheDocument();
     expect(within(breakdown).getByRole("link", { name: /Manage tenants/ })).toHaveAttribute("href", "/dashboard/tenants");
     // A single trend point has no change to report.
-    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("n/a").length).toBeGreaterThan(0);
     expect(await axeViolations(container)).toEqual([]);
   });
 

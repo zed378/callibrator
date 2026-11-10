@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-10 — antislop audit: landing copy and the dashboard home ([record](./records/2026-11-10-antislop-landing-dashboard.md))
+- Landing: no em dashes in UI text, the hero greeting is a plain line, the footnote no longer breaks mid-word.
+- Dashboard home: three figures an operator acts on lead the page, the rest is a ledger; plain-text quick actions; empty values read `n/a`; four unused decorative components removed.
+
 ### 2026-11-10 — backend coverage gate green again ([record](./records/2026-11-10-coverage-gate-green.md))
 - 1,085 suites, 18,215 tests, 100 % on all four figures. Fixes were test infrastructure only: a restored fixture, a 30 s ceiling, an `emit` on the request double, a clamd timeout, 75 % of the cores.
 
