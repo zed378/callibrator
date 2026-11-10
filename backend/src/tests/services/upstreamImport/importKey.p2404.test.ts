@@ -251,3 +251,58 @@ describe("P24-04 — revoked at cutover (FT-101)", () => {
     expect(await inTenant(A, () => importKey.revokeImportKeys(A, { userId: world.admin.id }))).toEqual([]);
   });
 });
+
+describe("P24-04 — what the operator CLI reads and acts as (`./backend import-key`)", () => {
+  const userRow = (id: string, tenantId: string, name: string, over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id, tenantId, username: name, name, email: `${name}@cli.test`, password: "not-a-hash", status: "ACTIVE", isActive: true, isDeleted: false, ...over,
+  });
+
+  it("importKeyStatus: no key, then a usable one (never the key or its hash), and tenant B's is not A's", async () => {
+    expect(await inTenant(A, () => importKey.importKeyStatus(A))).toEqual({ keys: [], usable: false });
+
+    const { key } = await inTenant(A, () => importKey.provisionImportKey(A, { signOffDate: SIGN_OFF, dataClass: "synthetic" }, { userId: world.admin.id }));
+    await inTenant(B, () => importKey.provisionImportKey(B, { signOffDate: SIGN_OFF, dataClass: "synthetic" }, { userId: world.other.id }));
+    const status = await inTenant(A, () => importKey.importKeyStatus(A));
+    expect(status).toEqual({ keys: [key], usable: true });
+    expect(JSON.stringify(status)).not.toContain(String(keys()[0]?.["keyHash"]));
+  });
+
+  it("importKeyStatus: a live key that cannot record (expired) is listed, but not usable", async () => {
+    mdb.seed("ApiKey", { id: "a9000000-0000-4000-8000-0000000000e1", tenantId: world.tenantA, name: "upstream-import", keyPrefix: "cbk_expired1", keyHash: "e".repeat(64), scopes: ["calibration:write"], expiresAt: new Date("2000-01-01"), isActive: true, isDeleted: false });
+    const status = await inTenant(A, () => importKey.importKeyStatus(A));
+    expect(status.keys).toHaveLength(1);
+    expect(status.usable).toBe(false);
+  });
+
+  it("importKeyStatus: after the cutover's revocation no key is listed", async () => {
+    await inTenant(A, () => importKey.provisionImportKey(A, { signOffDate: SIGN_OFF, dataClass: "synthetic" }, { userId: world.admin.id }));
+    await inTenant(A, () => importKey.revokeImportKeys(A, { userId: world.admin.id }));
+    expect(await inTenant(A, () => importKey.importKeyStatus(A))).toEqual({ keys: [], usable: false });
+  });
+
+  it("importOperator: an active user of the tenant, by e-mail or by username", async () => {
+    mdb.seed("User", userRow("c9000000-0000-4000-8000-0000000000c1", world.tenantA, "cli-operator"));
+    expect(await inTenant(A, () => importKey.importOperator(A, "cli-operator@cli.test"))).toEqual({ userId: "c9000000-0000-4000-8000-0000000000c1" });
+    expect(await inTenant(A, () => importKey.importOperator(A, "cli-operator"))).toEqual({ userId: "c9000000-0000-4000-8000-0000000000c1" });
+  });
+
+  it.each([
+    ["does not exist", "nobody@cli.test", null],
+    ["is deactivated", "off@cli.test", { isActive: false }],
+    ["is not ACTIVE (suspended)", "suspended@cli.test", { status: "SUSPENDED" }],
+  ])("importOperator: refuses (404) a user who %s", async (_why, email, over) => {
+    if (over !== null) {
+      mdb.seed("User", userRow("c9000000-0000-4000-8000-0000000000c2", world.tenantA, email.split("@")[0] as string, over));
+    }
+    const err = await errorOf(inTenant(A, () => importKey.importOperator(A, email)));
+    expect(err.status).toBe(404);
+    expect(err.message).toMatch(/No active user of this tenant/);
+  });
+
+  it("importOperator: a user of tenant B is not found for tenant A (404, the same answer as no user)", async () => {
+    mdb.seed("User", userRow("c9000000-0000-4000-8000-0000000000c3", world.tenantB, "b-operator"));
+    const err = await errorOf(inTenant(A, () => importKey.importOperator(A, "b-operator@cli.test")));
+    expect(err.status).toBe(404);
+    expect(await inTenant(B, () => importKey.importOperator(B, "b-operator"))).toEqual({ userId: "c9000000-0000-4000-8000-0000000000c3" });
+  });
+});

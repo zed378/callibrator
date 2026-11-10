@@ -17,6 +17,9 @@
  *    "Upstream import" for a NULL one). A mapped user that is not found in the tenant is refused,
  *    never replaced by the key: that is a mapping defect, and attributing it would hide it.
  *  - `revokeImportKeys` / `importKeyRevoked`: the cutover's revocation (P30) and its runbook check.
+ *  - `importKeyStatus` / `importOperator`: what the operator CLI (`./backend import-key …`,
+ *    scripts/importKey.ts) reads and acts as. There is still no HTTP route (ADR-133 Am. 4): the
+ *    authority is the database credentials or `docker exec`, as for `rotate-bootstrap-password`.
  *
  * The DPIA gate holds here too: while `UPSTREAM_REAL_DATA_ALLOWED` is off, a run declared real can
  * neither provision the key nor resolve an actor with it (06-DPIA § 5).
@@ -25,7 +28,7 @@
  * Named exports only.
  */
 import { createHash, randomBytes } from "crypto";
-import type { CreationAttributes } from "sequelize";
+import { Op, type CreationAttributes } from "sequelize";
 import models from "../../models";
 import { db } from "../../config";
 import auditService from "../audit.service";
@@ -295,3 +298,37 @@ export const revokeImportKeys = async (tenantId: TenantId, actor: { readonly use
  * @returns true when no live import key remains
  */
 export const importKeyRevoked = async (tenantId: TenantId): Promise<boolean> => (await liveImportKeys(tenantId)).length === 0;
+
+/**
+ * The tenant's live import keys and whether any can still record: what the runbook reads before
+ * a load ("is there a key?") and after the cutover ("is it gone?").
+ *
+ * @param tenantId - the provider tenant
+ * @returns the live keys' public views, and whether one is usable now
+ */
+export const importKeyStatus = async (tenantId: TenantId): Promise<{ keys: ImportKeyView[]; usable: boolean }> => {
+  const now = Date.now();
+  const keys = await liveImportKeys(tenantId);
+  return { keys: keys.map(viewOf), usable: keys.some((k) => usableImportKey(k, now)) };
+};
+
+/**
+ * The operator a CLI run acts as: an ACTIVE user of the tenant, named by e-mail or username. The
+ * lookup runs in the tenant's context AND names the tenant, so a user of another tenant is never
+ * found. The key's `created_by`, and the audit rows, name this person.
+ *
+ * @param tenantId - the provider tenant
+ * @param identifier - the operator's e-mail or username
+ * @returns the operator's id
+ * @throws AppError 404 when no active user of the tenant answers to it
+ */
+export const importOperator = async (tenantId: TenantId, identifier: string): Promise<{ userId: string }> => {
+  const user = await models.User.findOne({
+    where: { tenantId, [Op.or]: [{ email: identifier }, { username: identifier }] },
+    attributes: ["id", "isActive", "status"],
+  });
+  if (!user?.isActive || user.status !== "ACTIVE") {
+    throw new AppError(404, "No active user of this tenant answers to that e-mail or username.");
+  }
+  return { userId: user.id };
+};
