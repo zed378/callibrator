@@ -118,7 +118,18 @@ make psql                    # a shell on the target database, when a count must
 3. Re-confirm the **backup is current** and its restore has been proved.
 4. Confirm the operator has the provider tenant **created** (the transform never creates a tenant)
    with its self facility, and the **import key** provisioned for the calibration records (a missing
-   key fails the transform `IMPORT_KEY_MISSING` — by design, not a bug).
+   key fails the transform `IMPORT_KEY_MISSING` — by design, not a bug). Provision it with the backend's
+   own command (ADR-133 Am. 6), naming an active user of the provider tenant and the planned sign-off day:
+
+   ```
+   docker exec <backend-container> ./backend import-key provision \
+     --tenant <provider tenant id> --user <operator e-mail or username> \
+     --sign-off YYYY-MM-DD --data-class real
+   docker exec <backend-container> ./backend import-key status --tenant <provider tenant id>
+   ```
+
+   `--data-class real` is refused while `UPSTREAM_REAL_DATA_ALLOWED` is off (the DPIA gate). The key
+   expires at the sign-off + 90 days; running `provision` again changes nothing while a usable key exists.
 
 ---
 
@@ -196,8 +207,9 @@ the only complete path.
 ## 10. T+30 d — Decommission (Phase 31, not this card)
 
 Archive the upstream database and files encrypted for the retention period, with **one restore
-tested** (P31-01); then drop `upstream_import`, revoke the import keys and the upstream credentials
-(P31-02); then delete every copy, `mozivid/` on the workstations included (P31-03). `upstream_import`
+tested** (P31-01); then drop `upstream_import`, revoke the import keys
+(`docker exec <backend-container> ./backend import-key revoke --tenant <id> --user <operator>`, which
+ends with the check that none is live) and the upstream credentials (P31-02); then delete every copy, `mozivid/` on the workstations included (P31-03). `upstream_import`
 is kept until the reconciliation sign-off **+ 90 days** (DPIA § 6).
 
 ---

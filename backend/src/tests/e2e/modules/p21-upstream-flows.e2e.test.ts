@@ -20,9 +20,13 @@
  *  8. the invitations (ADR-139): an imported user awaits its invitation; closed until the operator
  *     opens the tenant's switch; the invitation mailed, accepted once, then the user signs in.
  *
- * Env: BASE_URL, E2E_OPERATOR_PASSWORD (+ E2E_BOOTSTRAP_PASSWORD on a fresh stack), E2E_MAILPIT_URL.
+ * Env: BASE_URL, E2E_OPERATOR_PASSWORD (+ E2E_BOOTSTRAP_PASSWORD on a fresh stack), E2E_MAILPIT_URL,
+ * E2E_BACKEND_CONTAINER (the backend container's name: the provider tenant's import key is provisioned
+ * with `docker exec <container> ./backend import-key`, ADR-133 Am. 6).
  * Synthetic values only.
  */
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { environment } from "../../../config/env";
 import { syntheticUpstreamDump } from "../../support/syntheticUpstreamDump";
 import {
@@ -422,6 +426,34 @@ describe("P21-10 the upstream imports and the invitations (ADR-129, ADR-130, ADR
     expect((await call("GET", "/admin/upstream-file-imports/config", { token: operator })).status).toBe(200);
     expect((await call("GET", "/admin/upstream-sql-imports", { token: tenants.a.token })).status).toBe(403);
   });
+
+  /**
+   * The compiled binary's `import-key` command, run inside the backend container. ASYNC on purpose: a
+   * synchronous `docker exec` blocks this process's event loop for seconds, during which the HTTP client cannot
+   * see the server close an idle keep-alive socket (5 s), and the next `fetch` reuses it: "other side closed".
+   */
+  const importKeyCli = async (...args: string[]): Promise<string> => {
+    const container = penv["E2E_BACKEND_CONTAINER"];
+    if (container === undefined || container === "") {
+      throw new Error(
+        "E2E_BACKEND_CONTAINER is not set. The transform needs the provider tenant's import key (since P24-02h), " +
+          "and only `./backend import-key provision` creates it (ADR-133 Am. 6): name the backend container, e.g. 'ft-backend-1'.",
+      );
+    }
+    const { stdout } = await promisify(execFile)("docker", ["exec", container, "./backend", "import-key", ...args], { encoding: "utf8" });
+    return stdout;
+  };
+
+  test("the provider tenant gets its import key from the operator CLI, in the compiled binary; a second run changes nothing", async () => {
+    const signOff = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+    const provision = ["provision", "--tenant", tenants.b.tenantId, "--user", tenants.b.email, "--sign-off", signOff, "--data-class", "synthetic"];
+    // The provider tenant is the same on every run, so its key may already exist from an earlier one.
+    expect(await importKeyCli(...provision)).toMatch(/(Import key created for .*|already has a usable import key): cbk_[0-9a-f]{8}… \(calibration:write\)/);
+    expect(await importKeyCli(...provision)).toMatch(/already has a usable import key: cbk_[0-9a-f]{8}… \(calibration:write\)/);
+    expect(await importKeyCli("status", "--tenant", tenants.b.tenantId)).toMatch(/A usable import key exists./);
+    // Another tenant's administrator cannot be the operator (the lookup is confined to the tenant).
+    await expect(importKeyCli("provision", "--tenant", tenants.b.tenantId, "--user", tenants.a.email, "--sign-off", signOff, "--data-class", "synthetic")).rejects.toThrow(/No active user of this tenant/);
+  }, 60_000);
 
   test("a synthetic dump is uploaded, loaded, and transformed into tenant B", async () => {
     const dump = syntheticUpstreamDump({ facilities: 3, devices: 6, rowsPerInsert: 10 });

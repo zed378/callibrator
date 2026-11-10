@@ -1,5 +1,5 @@
 /**
- * P24-04 (ADR-133 Am. 4 and Am. 5) — the operator's way to provision, read and revoke a tenant's
+ * P24-04 (ADR-133 Am. 4 and Am. 6) — the operator's way to provision, read and revoke a tenant's
  * upstream IMPORT KEY. The transform fails `IMPORT_KEY_MISSING` without a usable key (an imported
  * calibration whose upstream user is NULL or deleted is recorded by it), and the cutover revokes it
  * (P30, FT-101). There is no HTTP route for any of this, by design: the key's secret is discarded at

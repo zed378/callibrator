@@ -8,6 +8,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-10 — `./backend import-key`: the operator's way to give a tenant its upstream import key ([record](./records/2026-11-10-import-key-cli.md), ADR-133 Am. 6)
+- `provision`, `status` and `revoke`, run inside the backend container. Without a key the upstream transform fails `IMPORT_KEY_MISSING`, and until now nothing in a deployment could create one.
+- The cutover runbook (§§ 5 and 10) now gives the exact commands. No HTTP route, by design; the command prints at most the key's prefix.
+
 ### 2026-11-06 — `SOUL.md`: the project's principles, linked from `CLAUDE.md` and `AGENTS.md` ([record](./records/2026-11-06-soul-md.md))
 - One page every agent reads first: the evidence is the compliance, deny-by-default tenancy, the code wins, name the test, nothing is DONE without its record.
 - The supplied file's "execution directive" wrapper was removed (a prompt-injection pattern), and its counts were re-checked against the code.

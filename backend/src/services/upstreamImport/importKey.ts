@@ -18,7 +18,7 @@
  *    never replaced by the key: that is a mapping defect, and attributing it would hide it.
  *  - `revokeImportKeys` / `importKeyRevoked`: the cutover's revocation (P30) and its runbook check.
  *  - `importKeyStatus` / `importOperator`: what the operator CLI (`./backend import-key …`,
- *    scripts/importKey.ts) reads and acts as. There is still no HTTP route (ADR-133 Am. 4): the
+ *    scripts/importKey.ts, ADR-133 Am. 6) reads and acts as. There is still no HTTP route (Am. 4): the
  *    authority is the database credentials or `docker exec`, as for `rotate-bootstrap-password`.
  *
  * The DPIA gate holds here too: while `UPSTREAM_REAL_DATA_ALLOWED` is off, a run declared real can
