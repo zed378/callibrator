@@ -286,6 +286,11 @@ export const call = (router: RouterLike, method: string, url: string, opts: Call
       fresh: false,
       range: () => undefined,
       on: () => req,
+      // A real request is an EventEmitter, and some middleware emits on it: uploadTimeBudget arms a
+      // 15-minute timer that calls req.emit("timeout"), and this double never closes its response, so
+      // the timer outlives the suite. A full run lasts longer than 15 minutes, so it fired in a worker
+      // mid-way through ANOTHER suite and failed it with "req.emit is not a function" (2026-11-10).
+      emit: () => true,
     };
     const handle = (router as { handle: (q: unknown, s: unknown, done: Next) => void }).handle.bind(router);
     handle(req, res, (err?: unknown) => {
