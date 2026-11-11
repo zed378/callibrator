@@ -706,12 +706,9 @@ passed 13/13 twice back to back. The backend log shows 0 × 5xx after the fix.
 **Not run (the exit stays open):**
 
 - PT-04 (exports in a browser);
-- PT-13 (the dashboard cache, live);
-- PT-14 and PT-15 (sockets);
+- PT-13, PT-14, PT-15, PT-19 and PT-20 were run later: § 12.2;
 - PT-17 (storage-key enumeration);
 - PT-18 (notifications);
-- PT-19 (impersonation);
-- PT-20 (API key);
 - PT-21 (SSO JIT and SCIM, live);
 - PT-23 … PT-28 (two real phones, P22-10);
 - PT-29 (CSP, in a browser);
@@ -727,6 +724,44 @@ passed 13/13 twice back to back. The backend log shows 0 × 5xx after the fix.
 
 No Critical finding is open, and no High is open after F-P1707-01's fix. The exit still needs the
 cases not run above.
+
+### 12.2 Run on 2026-11-11 (P17-07 review, sockets and second principals)
+
+**Where it ran.** A disposable production-mode stack (`s1p1707l`, the backend built from the tree of
+2026-11-10), `FACILITY_BINDING_ENABLED=true` in its throwaway env file only, synthetic data. The suite
+is `backend/src/tests/e2e/modules/p1707-facility-live.e2e.test.ts`: **7/7 twice back to back**, 0 × 5xx in
+the backend log (1,186 lines), the stack and its volumes removed afterwards.
+
+**Covered:**
+
+- **PT-13**, the dashboard cache: the provider, then a bound F1 user, then a bound F2 user, then the
+  provider again, inside the 30 s window. Each sees only its own scope (F1 reads 1 device, F2 reads 2, the
+  provider 3 or more); no figure is served to the wrong principal in either order.
+- **PT-14**, socket rooms, with real sockets. A move out of F2 reaches F2's user and the provider's tenant
+  room (the positive controls) and reaches neither F1's user nor another tenant's administrator over a
+  3 s quiet window. `kanban:join` from a bound user is refused (`ok: false`), and forged `join`-style events
+  naming F2's and the tenant's rooms change nothing: a second F2 event still does not reach F1.
+- **PT-15**, a socket after a move: a user moved from F1 to F2 while connected is disconnected by the
+  server's 60 s re-check, inside 130 s, and hears no F1 event after the move; F1's own user hears it.
+- **PT-19**, impersonation: the operator impersonating a bound F1 user sees F1's devices and not F2's;
+  a tenant administrator is refused (403).
+- **PT-20**, an API key: a tenant key reads every facility's devices (as documented), cannot reach key
+  management or the facility binding route (401/403), and T2's administrator gets 404 for T1's device.
+
+**Harness note.** `api_keys` is a business-plan feature and no route sets a tenant's plan (the hierarchy route
+is off; billing's override acts on the caller's own tenant). The suite sets T1's plan in the throwaway
+database (`E2E_POSTGRES_CONTAINER`) and fails, never skips, when that variable is missing.
+
+**Not asserted:** that the impersonation audit rows name the impersonator and F1 (PT-19's last clause); that the
+API key's UI warning is present (PT-20's last clause). Both stay open.
+
+**Findings:** none. No suite defect either, apart from the first draft's choice of event (an IPM void needs a
+submitted session; a device move needs none), which was a test-design error, not a product one.
+
+**Still not run (the exit stays open):** PT-04 (exports in a browser), PT-17 (storage keys), PT-18
+(notifications), PT-21 (SSO JIT and SCIM live), PT-23 … PT-28 (two real phones, P22-10), PT-29 (CSP in a
+browser) and PT-30 (the upstream S-findings). The PT-16 case of the 2026-10-24 suite also needs the
+frontend on port 27131; the stack of this run had none, and that case was not re-run.
 
 ## 13. Open Questions
 

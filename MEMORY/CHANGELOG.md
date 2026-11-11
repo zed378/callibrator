@@ -8,6 +8,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-11 — P17-07: socket and second-principal pentest cases run live ([record](./records/2026-11-11-p17-07-live-sockets.md))
+- PT-13, PT-14, PT-15, PT-19, PT-20 green on a disposable stack, 7/7 twice, no finding. The checklist's exit still needs the browser and real-phone cases.
+
 ### 2026-11-10 — antislop audit: landing copy and the dashboard home ([record](./records/2026-11-10-antislop-landing-dashboard.md))
 - Landing: no em dashes in UI text, the hero greeting is a plain line, the footnote no longer breaks mid-word.
 - Dashboard home: three figures an operator acts on lead the page, the rest is a ledger; plain-text quick actions; empty values read `n/a`; four unused decorative components removed.

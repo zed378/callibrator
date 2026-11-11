@@ -10,6 +10,7 @@ Add a line here as part of writing the record � **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-11-11 | P17-07 (partial) | [live sockets and second principals](./records/2026-11-11-p17-07-live-sockets.md) | **PT-13/14/15/19/20 pass live, no finding.** Real sockets with positive controls; PT-04/17/18/21/29/30 and the phones remain. |
 | 2026-11-10 | antislop audit | [landing and dashboard home](./records/2026-11-10-antislop-landing-dashboard.md) | **Em dashes out of landing copy, hero pill removed, dashboard home rebuilt around overdue / due / compliance.** 202 suites pass; dashboard not seen rendered; screenshots and photos open. |
 | 2026-11-10 | coverage gate | [gate green](./records/2026-11-10-coverage-gate-green.md) | **Full coverage run exits 0**: 1,085 suites, 18,215 tests, 100 %. Fixture, timeout and worker-count fixes only. |
 | 2026-11-10 | P24-04 follow-up; ADR-133 Am. 6 | [`./backend import-key`](./records/2026-11-10-import-key-cli.md) | **Provision / status / revoke the tenant's upstream import key from the binary.** The transform needs it (Am. 5) and no deployment path created it; the P21-10 E2E case failed on this. Tested over memoryDb (30 + 8) and, in the compiled binary, by the E2E spec. |
