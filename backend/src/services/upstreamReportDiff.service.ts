@@ -128,14 +128,15 @@ const stagedUsers = async (context: StepContext): Promise<Map<string, StagedUser
   }
   const rows = await sql<StagedUser & { id: string }>(
     context.runner,
-    `SELECT s."id"::text AS id, to_jsonb(s) ->> 'fullname' AS name, m.legacy_id IS NOT NULL AS imported
+    `SELECT s."id"::text AS id, to_jsonb(s) ->> 'fullname' AS name, u.username, m.legacy_id IS NOT NULL AS imported
        FROM ${stagedTable("users")} s
        LEFT JOIN ${ID_MAP} m ON m.source_table = 'users' AND m.legacy_id = s."id"::text
+       LEFT JOIN users u ON u.id = m.target_id AND u.tenant_id = $2
       WHERE s.import_run_id = $1`,
-    [context.runId],
+    [context.runId, context.tenantId],
     { transaction: context.transaction },
   );
-  return new Map(rows.map(({ id, name, imported }) => [id, { name, imported }]));
+  return new Map(rows.map(({ id, name, username, imported }) => [id, { name, username: username ?? null, imported }]));
 };
 
 /**

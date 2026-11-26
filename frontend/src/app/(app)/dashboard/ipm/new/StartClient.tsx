@@ -24,7 +24,7 @@ import { ipmHistoryService } from "@/api/services/ipmHistory.service";
 import type { RegisterDevice } from "@/api/services/deviceRegister.service";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useI18n } from "@/i18n/MessagesProvider";
-import { QrScanner, canScan } from "../components/QrScanner";
+import { QrScanner, canScan, codeFromScan } from "../components/QrScanner";
 import { FIELD, useIpmText } from "../components/shared";
 
 /** The draft a 409 `IPM_DRAFT_EXISTS` names (top-level `draftId`), else null. */
@@ -41,7 +41,13 @@ const noSubscription = (): (() => void) => () => undefined;
 /** A fresh capture reference (uuid v4). */
 export const newClientRef = (): string => crypto.randomUUID();
 
-export function StartClient({ languageForm }: { languageForm?: React.ReactNode }) {
+export function StartClient({
+  languageForm,
+  initialCode = "",
+}: {
+  languageForm?: React.ReactNode;
+  initialCode?: string;
+}) {
   const { locale } = useI18n();
   const { t } = useIpmText();
   const permissions = usePermissions();
@@ -70,17 +76,17 @@ export function StartClient({ languageForm }: { languageForm?: React.ReactNode }
   return (
     <DashboardLayout>
       <div lang={locale}>
-        <Start languageForm={languageForm} />
+        <Start languageForm={languageForm} initialCode={initialCode} />
       </div>
     </DashboardLayout>
   );
 }
 
-function Start({ languageForm }: { languageForm?: React.ReactNode }) {
+function Start({ languageForm, initialCode }: { languageForm?: React.ReactNode; initialCode: string }) {
   const text = useIpmText();
   const { t } = text;
   const router = useRouter();
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(() => codeFromScan(initialCode));
   const [finding, setFinding] = useState(false);
   const [device, setDevice] = useState<RegisterDevice | null>(null);
   const [findError, setFindError] = useState<string | null>(null);
@@ -93,7 +99,7 @@ function Start({ languageForm }: { languageForm?: React.ReactNode }) {
 
   const find = useCallback(
     async (value: string) => {
-      const sticker = value.trim();
+      const sticker = codeFromScan(value);
       if (!sticker) return;
       setFinding(true);
       setFindError(null);
@@ -167,7 +173,7 @@ function Start({ languageForm }: { languageForm?: React.ReactNode }) {
                 id="ipm-start-qr"
                 className={`${FIELD} min-h-11 flex-1 font-mono uppercase`}
                 value={code}
-                maxLength={64}
+                maxLength={2048}
                 autoComplete="off"
                 aria-describedby="ipm-start-qr-help"
                 onChange={(e) => setCode(e.target.value)}

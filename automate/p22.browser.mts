@@ -17,7 +17,8 @@
  *                                           answered → the outcome and recommendation → Submit.
  *   P22-04  /dashboard/ipm (+ the report)   the history finds the visit by QR; the visit dialog shows
  *                                           it and links the report; the report page renders and
- *                                           its PDF download produces a file (%PDF).
+ *                                           its PDF download produces a file (%PDF). Stored device,
+ *                                           notes and evidence-filename XSS probes remain inert.
  *   P22-05  /dashboard/calibration-dates    the quick entry by typed QR (typed laboratory, certificate
  *                                           number) → saved; the calibration list shows the record.
  *   P22-06  /dashboard/exports              the inventory XLSX and the latest-calibration recap XLSX:
@@ -232,8 +233,8 @@ const nextTotp = async (identifier: string): Promise<string> => {
   }
 };
 
-const signIn = async (page: Page, user: string, password: string): Promise<void> => {
-  await page.goto(`${FRONTEND_URL}/login`, { waitUntil: "networkidle2", timeout: STEP_TIMEOUT });
+const signIn = async (page: Page, user: string, password: string, destination = "/login"): Promise<void> => {
+  await page.goto(`${FRONTEND_URL}${destination}`, { waitUntil: "networkidle2", timeout: STEP_TIMEOUT });
   await page.waitForSelector("#username", { timeout: STEP_TIMEOUT });
   await page.type("#username", user);
   for (let attempt = 1; !(await page.$("#password")); attempt++) {
@@ -595,6 +596,7 @@ interface Run {
   facilityCode: string;
   typeName: string;
   itemLabel: string;
+  xssPayload: string;
   deviceName: string;
   deviceQr: string;
   sessionId: string;
@@ -702,6 +704,8 @@ const p2202Device = async (admin: Session, run: Run): Promise<void> => {
       await choose(page, "#device-condition", /^Good$/);
       const detail = await axe(page, "light device form", dialog);
       await click(page, /^Add device$/, dialog);
+      // The ingress sanitizer removes the probe's handler and invalid URL value.
+      run.deviceName = run.deviceName.replace(run.xssPayload, "<img src>");
       await waitText(page, new RegExp(`Add the photos of ${esc(run.deviceName)}`), dialog);
       return detail;
     });
@@ -778,7 +782,7 @@ const p2203Capture = async (admin: Session, run: Run): Promise<void> => {
       await page.select("#capture-maintenanceOutcome", "pass");
       const rec = await page.$$eval("#capture-recommendation option", (os) => os.map((o) => (o as HTMLOptionElement).value).find((v) => v !== "") ?? "");
       await page.select("#capture-recommendation", rec);
-      await fill(page, "#capture-notes", `P22 browser suite ${run.stamp}`);
+      await fill(page, "#capture-notes", `P22 browser suite ${run.stamp} ${run.xssPayload}`);
       await waitText(page, /Saved at/i, 'main [role="status"]', 20000);
       return `${String(answered)} answers; recommendation ${rec}; autosaved`;
     });
@@ -802,6 +806,28 @@ const p2203Capture = async (admin: Session, run: Run): Promise<void> => {
         currentPage = page;
       }
       return found.join("; ");
+    });
+    await must("P17 PT-30 S-07: upload an IPM evidence photo with a hostile filename", async () => {
+      // File objects can carry quotes and angle brackets even on Windows, where disk paths cannot.
+      const file = await makeJpeg(page, `p17-evidence-${run.stamp}.jpg`, 120);
+      const bytes = [...fs.readFileSync(file)];
+      const filename = `p17-${run.stamp}-\"><img src=x onerror=window.__p17FilenameXss=true>.jpg`;
+      const steps = await page.$$("main nav[aria-label] button");
+      await steps[steps.length - 1]?.click();
+      await page.waitForSelector("#capture-evidence-input", { timeout: STEP_TIMEOUT });
+      await page.$eval("#capture-evidence-input", (input, data, name) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([new Uint8Array(data)], name, { type: "image/jpeg" }));
+        (input as HTMLInputElement).files = transfer.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }, bytes, filename);
+      await page.waitForFunction(() => {
+        const photo = document.querySelector<HTMLImageElement>('section[aria-labelledby="capture-evidence-heading"] img');
+        return photo?.complete && photo.naturalWidth > 0;
+      }, { timeout: 60000 });
+      const alt = await page.$eval('section[aria-labelledby="capture-evidence-heading"] img', (photo) => photo.getAttribute("alt") ?? "");
+      if (alt !== filename) throw new Error(`the filename probe was not persisted intact: ${JSON.stringify(alt)}`);
+      return "real JPEG uploaded; hostile originalName retained as image alternative text";
     });
     await must("P22-03 /capture: the review is complete and Submit records the visit", async () => {
       const buttons = await page.$$("main nav[aria-label] button");
@@ -853,6 +879,36 @@ const p2204History = async (admin: Session, run: Run): Promise<void> => {
       await page.waitForSelector("main article section[aria-labelledby]", { visible: true, timeout: STEP_TIMEOUT });
       if (run.reportNumber) await waitText(page, new RegExp(esc(run.reportNumber)), "main h1");
       return axe(page, "light report");
+    });
+    await check("P17 PT-30 S-07: stored device and note markup stays text in the IPM report", async () => {
+      const result = await page.evaluate(() => {
+        const report = document.querySelector("main article section[aria-labelledby]")?.closest("main");
+        return {
+          text: report?.textContent ?? "",
+          injectedMarkup: Boolean(report?.querySelector("img[onerror], svg[onload], iframe[srcdoc]")),
+          executed: (window as Window & { __p17StoredXss?: boolean }).__p17StoredXss === true,
+        };
+      });
+      if (!result.text.includes(run.deviceName)) throw new Error("the device probe was not rendered as visible text");
+      if (![run.xssPayload, "<img src>"].some((probe) => result.text.includes(`P22 browser suite ${run.stamp} ${probe}`))) throw new Error("the notes probe was not rendered as visible text");
+      if (result.injectedMarkup) throw new Error("stored report data created active markup");
+      if (result.executed) throw new Error("stored report payload executed");
+      return "device name and report notes remain text; no active element or script execution";
+    });
+    await check("P17 PT-30 S-07: stored evidence filename stays an inert attribute in the report", async () => {
+      await page.waitForFunction(() => {
+        const photo = document.querySelector<HTMLImageElement>('section[aria-labelledby="capture-evidence-heading"] img');
+        return photo?.complete && photo.naturalWidth > 0;
+      }, { timeout: STEP_TIMEOUT });
+      const result = await page.$eval('section[aria-labelledby="capture-evidence-heading"]', (section) => ({
+        alts: [...section.querySelectorAll("img")].map((photo) => photo.getAttribute("alt")),
+        active: Boolean(section.querySelector("img[onerror], svg[onload], iframe[srcdoc], script")),
+        executed: (window as Window & { __p17FilenameXss?: boolean }).__p17FilenameXss === true,
+      }));
+      const filename = `p17-${run.stamp}-\"><img src=x onerror=window.__p17FilenameXss=true>.jpg`;
+      if (result.alts.length !== 1 || result.alts[0] !== filename) throw new Error("report did not render the persisted hostile filename as one image alt attribute");
+      if (result.active || result.executed) throw new Error("the stored evidence filename created active markup or executed");
+      return "loaded signed JPEG; exact hostile filename in one alt attribute; no active markup or execution";
     });
     await check("P22-04: the report's PDF download produces a PDF file", async () => {
       const before = new Set(fs.readdirSync(admin.downloads));
@@ -952,6 +1008,107 @@ const p2206Exports = async (admin: Session, run: Run): Promise<void> => {
     await check("P22-06: the exports page is axe-clean after the builds", () => axe(page, "light exports"));
   } finally {
     await page.close();
+  }
+};
+
+/** PT-04: use the same export controls as a facility-bound reader, with a real F2 canary. */
+const boundExports = async (browser: Browser, auth: Record<string, string>, run: Run): Promise<void> => {
+  const facilities = arr(ok(await api.httpGet("/client-facilities?limit=100", auth), "facilities")).map(obj);
+  const own = facilities.find((f) => f["code"] === run.facilityCode);
+  if (!own) throw new Error("PT-04 fixture facility missing");
+  const probeStamp = String(Date.now()).slice(-7);
+  const foreignName = `PT04 foreign ${probeStamp}`;
+  const foreignQr = `PT04F${probeStamp}`;
+  const foreignFacility = obj(ok(await api.httpPost("/client-facilities", { name: foreignName, code: foreignQr }, auth), "foreign facility"));
+  const foreign = obj(ok(await api.httpPost("/calibration-devices", {
+    name: foreignName, qrCode: foreignQr, serialNumber: foreignQr, clientFacilityId: foreignFacility["id"],
+  }, auth), "foreign device"));
+  ok(await api.httpPost(`/calibration-devices/${str(foreign["id"])}/calibration-dates`, {
+    calibrationDate: new Date().toISOString().slice(0, 10), externalLabName: foreignName,
+  }, auth), "foreign calibration canary");
+  const reader = await tenantAdmin(auth, `${probeStamp}b`);
+  try {
+    const response = await fetch(`${api.API_BASE}/users/${reader.id}/client-facility`, {
+      method: "PUT", headers: { ...api.defaultHeaders, ...auth },
+      body: JSON.stringify({ clientFacilityId: own["id"], reason: "P17 PT-04 browser export fixture" }),
+    });
+    if (response.status !== 200) throw new Error(`bind export reader: ${String(response.status)}`);
+    const session = await openSession(browser, reader, "pt04-bound");
+    const page = await newTab(session, "light");
+    const reads: { route: string; body: string; status: number }[] = [];
+    const pending: Promise<void>[] = [];
+    page.on("response", (r) => {
+      const route = new URL(r.url()).pathname;
+      if (!/^\/api\/v1\/(calibration-devices|calibration-records|inspection-sessions|attachments)(\/|$)/.test(route)) return;
+      if (!(r.headers()["content-type"] ?? "").includes("json")) return;
+      pending.push(r.text().then((body) => { reads.push({ route, body, status: r.status() }); }));
+    });
+    const assertReads = async (route: string, since: number): Promise<void> => {
+      await Promise.all(pending);
+      const relevant = reads.slice(since).filter((r) => r.route === route);
+      if (!relevant.some((r) => r.status === 200 && r.body.includes(run.deviceQr))) throw new Error(`no positive F1 read for ${route}`);
+      if (relevant.some((r) => r.status !== 200 || [foreignName, foreignQr, str(foreign["id"]), str(foreignFacility["id"])].some((v) => v && r.body.includes(v)))) throw new Error(`unexpected export response for ${route}`);
+      for (const response of relevant) {
+        for (const row of arr(obj(JSON.parse(response.body) as unknown)["data"]).map(obj)) {
+          if (row["clientFacilityId"] !== own["id"]) throw new Error(`export row outside F1 for ${route}`);
+        }
+      }
+    };
+    const exportClick = async (id: string, name: string): Promise<void> => {
+      const handle = await control(page, new RegExp(`^${name}$`), `main div:has(> #${id}-status)`);
+      await handle.evaluate((el) => (el as HTMLButtonElement).click());
+    };
+    try {
+      await go(page, "/dashboard/exports");
+      await page.waitForNetworkIdle({ idleTime: 1000, timeout: STEP_TIMEOUT });
+      if (await page.$("#inventory-facility, #recap-facility")) throw new Error("bound export exposes a facility selector");
+      for (const format of ["xlsx", "pdf"] as const) {
+        await check(`P17 PT-04: bound F1 inventory ${format.toUpperCase()} captures only F1 API rows`, async () => {
+          await page.$eval(`input[name="inventory-format"][value="${format}"]`, (el) => (el as HTMLInputElement).click());
+          await page.waitForFunction((expected) => {
+            const selected = document.querySelector<HTMLInputElement>('input[name="inventory-format"]:checked');
+            return selected?.value === expected && Boolean(document.querySelector('input[name="inventory-variant"]')) === (expected === "pdf");
+          }, { timeout: STEP_TIMEOUT }, format);
+          const since = reads.length;
+          const before = new Set(fs.readdirSync(session.downloads));
+          await exportClick("inventory", "Check the size");
+          await waitText(page, /row/i, "#inventory-status");
+          await exportClick("inventory", "Build and download");
+          const file = await downloaded(session.downloads, `.${format}`, before);
+          await waitText(page, /Done: the file was handed to your browser/, "#inventory-status");
+          await assertReads("/api/v1/calibration-devices", since);
+          if (format === "xlsx") {
+            const text = xlsxText(file);
+            if (!text.includes(run.deviceQr) || text.includes(foreignQr) || text.includes(foreignName)) throw new Error("inventory XLSX violates F1 canary expectation");
+          } else if (fs.readFileSync(file).subarray(0, 5).toString() !== "%PDF-") throw new Error("inventory is not PDF");
+          return "F1 positive control present; F2 device absent from every captured inventory read";
+        });
+      }
+      for (const latest of [false, true]) {
+        await check(`P17 PT-04: bound F1 recap XLSX (latestOnly=${String(latest)}) captures only F1 API rows`, async () => {
+          await page.evaluate((checked) => {
+            const label = [...document.querySelectorAll("main label")].find((el) => /latest calibration of every device/.test(el.textContent ?? ""));
+            const input = label?.querySelector<HTMLInputElement>("input");
+            if (!input) throw new Error("latest recap checkbox missing");
+            if (input.checked !== checked) input.click();
+          }, latest);
+          await page.waitForFunction((expected) => Boolean(document.querySelector("#recap-date-field")) === !expected, { timeout: STEP_TIMEOUT }, latest);
+          const since = reads.length;
+          const before = new Set(fs.readdirSync(session.downloads));
+          await exportClick("recap", "Check the size");
+          await waitText(page, /row/i, "#recap-status");
+          await exportClick("recap", "Build and download");
+          const file = await downloaded(session.downloads, ".xlsx", before);
+          await waitText(page, /Done: the file was handed to your browser/, "#recap-status");
+          await assertReads("/api/v1/calibration-records", since);
+          const text = xlsxText(file);
+          if (!text.includes(run.deviceQr) || text.includes(foreignQr) || text.includes(foreignName)) throw new Error("recap XLSX violates F1 canary expectation");
+          return "F1 calibration present; F2 canary absent from captured recap reads and XLSX";
+        });
+      }
+    } finally { await page.close(); await session.context.close(); }
+  } finally {
+    await api.httpDelete(`/users/delete?userId=${reader.id}`, auth);
   }
 };
 
@@ -1241,6 +1398,66 @@ const layoutSweep = async (admin: Session, run: Run): Promise<void> => {
 /** CSS.escape for an id read from the page (React's useId ids hold colons). */
 const CSS_ESCAPE = (id: string): string => id.replace(/([^A-Za-z0-9_-])/g, "\\$1");
 
+
+/** P27-02 and P17-07 PT-29 on the production content origin. */
+const legacyInputAndCsp = async (session: Session, run: Run): Promise<void> => {
+  const page = await newTab(session, "light");
+  try {
+    await check("P27-02: legacy query prefill and typed URL resolve the same scoped device", async () => {
+      await go(page, "/dashboard/ipm/new?qr=" + encodeURIComponent(run.deviceQr));
+      const input = await page.waitForSelector("#ipm-start-qr");
+      if (!input) throw new Error("QR field missing");
+      if (await input.evaluate((el) => (el as HTMLInputElement).value) !== run.deviceQr) throw new Error("sticker prefill lost");
+      await fill(page, "#ipm-start-qr", "https://legacy.example/readQr/" + run.deviceQr);
+      await click(page, /^Find$/);
+      await waitText(page, new RegExp(esc(run.deviceName)));
+      return "query prefill and local URL extraction preserved";
+    });
+    await check("P17-07 PT-29: production CSP refuses external/blob workers and WebAssembly compilation", async () => {
+      const response = await page.goto(FRONTEND_URL + "/dashboard/ipm/new", { waitUntil: "networkidle0" });
+      const policy = response?.headers()["content-security-policy"] ?? "";
+      if (!policy.includes("worker-src 'self'")) throw new Error("worker-src is not confined to self");
+      const result = await page.evaluate(async () => {
+        const denied = async (url: string): Promise<boolean> => {
+          try {
+            const worker = new Worker(url);
+            return await new Promise<boolean>((resolve) => {
+              const timer = setTimeout(() => { worker.terminate(); resolve(false); }, 3000);
+              worker.onerror = (event) => { event.preventDefault(); clearTimeout(timer); worker.terminate(); resolve(true); };
+              worker.onmessage = () => { clearTimeout(timer); worker.terminate(); resolve(false); };
+            });
+          } catch { return true; }
+        };
+        const external = await denied("https://example.test/worker.js");
+        const blob = URL.createObjectURL(new Blob(["postMessage('ran')"], { type: "text/javascript" }));
+        let blobDenied = false;
+        try { blobDenied = await denied(blob); } finally { URL.revokeObjectURL(blob); }
+        let wasmDenied = false;
+        try { await WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])); }
+        catch { wasmDenied = true; }
+        return { external, blobDenied, wasmDenied };
+      });
+      if (!result.external || !result.blobDenied || !result.wasmDenied) throw new Error("CSP accepted a forbidden worker or WASM");
+      return "external worker, blob worker and WebAssembly refused";
+    });
+  } finally { await page.close(); }
+};
+
+const legacySignIn = async (browser: Browser, account: Account, run: Run): Promise<void> => {
+  const context = await browser.createBrowserContext();
+  const page = await newTab({ context, downloads: ARTIFACTS }, "light");
+  try {
+    await check("P27-02: signed-out legacy lookup returns after sign-in with the sticker intact", async () => {
+      const destination = "/dashboard/ipm/new?qr=" + encodeURIComponent(run.deviceQr);
+      await signIn(page, account.username, account.password, destination);
+      await page.waitForSelector("#ipm-start-qr");
+      const value = await page.$eval("#ipm-start-qr", (el) => (el as HTMLInputElement).value);
+      if (new URL(page.url()).pathname !== "/dashboard/ipm/new" || value !== run.deviceQr) throw new Error("legacy sign-in destination or sticker lost");
+      return "sign-in returned to the pre-filled lookup";
+    });
+  } finally { await context.close(); }
+};
+
 // ---------------------------------------------------------------- main
 
 const main = async (): Promise<void> => {
@@ -1254,7 +1471,8 @@ const main = async (): Promise<void> => {
     facilityCode: `P22${stamp}`,
     typeName: `Pompa suntik uji ${stamp}`,
     itemLabel: `Uji oklusi P22 ${stamp}`,
-    deviceName: `Pompa suntik P22 ${stamp}`,
+    xssPayload: '<img src=x onerror="window.__p17StoredXss=true">',
+    deviceName: `Pompa suntik P22 ${stamp} <img src=x onerror="window.__p17StoredXss=true">`,
     deviceQr: `P22Q${stamp}`,
     sessionId: "",
     reportNumber: "",
@@ -1276,6 +1494,7 @@ const main = async (): Promise<void> => {
 
   const browser = await puppeteer.launch({
     executablePath: chromePath(),
+    timeout: 120000,
     headless: process.env["HEADFUL"] ? false : true,
     args: ["--no-first-run", "--no-default-browser-check"],
   });
@@ -1286,10 +1505,13 @@ const main = async (): Promise<void> => {
     await p2209Facility(admin, run);
     await p2201Catalogue(operator, run);
     await p2202Device(admin, run);
+    await legacyInputAndCsp(admin, run);
+    await legacySignIn(browser, adminAccount, run);
     await p2203Capture(admin, run);
     await p2204History(admin, run);
     await p2205Dates(admin, run);
     await p2206Exports(admin, run);
+    await boundExports(browser, auth, run);
     await p2207Dashboard(admin, run);
     await p2208PublicPage(browser, admin, adminAccount, run);
     await axeSweep(admin, operator, run);

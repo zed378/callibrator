@@ -299,6 +299,35 @@ describe("U-09 — S3 driver against a live S3-compatible server", () => {
   });
 
   describe("tenant isolation through the façade", () => {
+    it("PT-17: a facility photo key grants no anonymous read, listing or sibling-facility capability", async () => {
+      const facility1 = "f1700000-0000-4000-8000-000000000001";
+      const facility2 = "f1700000-0000-4000-8000-000000000002";
+      const scoped = new storage.ScopedStorage(driver, TENANT_A);
+      const name = `${crypto.randomUUID()}.jpg`;
+      const key1 = scoped.buildKey({ domain: "attachments", clientFacilityId: facility1, name });
+      const key2 = scoped.buildKey({ domain: "attachments", clientFacilityId: facility2, name });
+      const body1 = Buffer.from("synthetic F1 photo");
+      await scoped.put(key1, body1, { contentType: "image/jpeg" });
+      await scoped.put(key2, Buffer.from("synthetic F2 photo"), { contentType: "image/jpeg" });
+      try {
+        const signed = await driver.signedUrl(key1, { ttlSec: 60 });
+        expect(Buffer.from(await (await fetch(signed.url)).arrayBuffer())).toEqual(body1);
+        const unsigned = new URL(signed.url);
+        unsigned.search = "";
+        expect((await fetch(unsigned)).status).toBe(403);
+        const listing = new URL(`${ENDPOINT}/${BUCKET}`);
+        listing.searchParams.set("list-type", "2");
+        listing.searchParams.set("prefix", `t/${TENANT_A}/f/`);
+        expect((await fetch(listing)).status).toBe(403);
+        const sibling = new URL(signed.url);
+        sibling.pathname = sibling.pathname.replace(facility1, facility2);
+        expect((await fetch(sibling)).status).toBe(403);
+      } finally {
+        await scoped.delete(key1);
+        await scoped.delete(key2);
+      }
+    });
+
     it("tenant B can neither read, delete, list nor count tenant A's objects", async () => {
       const scopedA = new storage.ScopedStorage(driver, TENANT_A);
       const scopedB = new storage.ScopedStorage(driver, TENANT_B);

@@ -2446,6 +2446,7 @@ const impersonateUser = async (
     await auditService.logAction(
       {
         tenantId: targetUser.tenantId,
+        clientFacilityId: targetUser.clientFacilityId ?? null,
         userId: superAdmin.id,
         action: "LOGIN",
         resourceType: "Session",

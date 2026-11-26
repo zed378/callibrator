@@ -11,7 +11,7 @@
  * setting's text (the report link's disclosure said); Indonesian; axe.
  */
 import React from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { axeViolations } from "@/tests/a11y/axe";
 import { httpError } from "@/tests/support/httpError";
 import { clearPermissions, grantPermissions, grantSuperAdmin } from "@/tests/support/permissions";
@@ -31,6 +31,7 @@ jest.mock("qrcode", () => ({ __esModule: true, default: { toDataURL: jest.fn(asy
 import { api } from "@/api/client";
 import QRCode from "qrcode";
 import { useMenuStore } from "@/stores/menuStore";
+import { useAuthStore } from "@/stores/authStore";
 import { MessagesProvider } from "@/i18n/MessagesProvider";
 import { en } from "@/i18n/messages/en";
 import { id as idMessages } from "@/i18n/messages/id";
@@ -118,6 +119,29 @@ describe("P22-08 — the row action", () => {
       expect(screen.queryByRole("button", { name: "Public link of Synthetic infusion pump" })).toBeNull();
       unmount();
     }
+  });
+
+  it("the sheet survives closing its dialog, clears on revoke and is discarded when the principal changes", async () => {
+    get.mockImplementation(rows);
+    grantPermissions({ calibration: "write" });
+    renderRegister();
+    const open = async () => fireEvent.click(await screen.findByRole("button", { name: "Public link of Synthetic infusion pump" }));
+    await open();
+    fireEvent.click(await screen.findByRole("button", { name: "Issue a link" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add sticker to A4 sheet" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(await screen.findByRole("region", { name: "Sticker sheet (1)" })).toBeTruthy();
+    await open();
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke the link" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Revoke the link" }).at(-1) as HTMLElement);
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Sticker sheet (1)" })).toBeNull());
+    fireEvent.click(await screen.findByRole("button", { name: "Issue a link" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add sticker to A4 sheet" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(await screen.findByRole("region", { name: "Sticker sheet (1)" })).toBeTruthy();
+    act(() => useAuthStore.setState({ user: { id: "next-user", tenantId: "next-tenant", username: "next", email: "next@example.test", firstName: "Next", lastName: "User" } }));
+    expect(screen.queryByRole("region", { name: "Sticker sheet (1)" })).toBeNull();
+    act(() => useAuthStore.setState({ user: null }));
   });
 });
 

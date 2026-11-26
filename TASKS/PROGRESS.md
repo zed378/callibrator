@@ -2,6 +2,55 @@
 
 **The single status board.** History lives in [`../MEMORY/`](../MEMORY/README.md); this is state.
 
+2026-11-26 parallel continuation (working tree): PT-21 real controller HTTP,
+synthetic IdP and app-role PostgreSQL suite **4/4**
+([record](../MEMORY/records/2026-11-26-p17-oidc-handoff.md)); PT-30 filename
+upload/report evidence included in browser **112/112**
+([record](../MEMORY/records/2026-11-26-p17-filename-rendering.md)).
+P27 sheet print verified in actual Chromium: 19 labels on two A4 pages at
+60 × 40 mm. Frontend build/typecheck/API types/lint pass, with existing lint
+and build warnings ([record](../MEMORY/records/2026-11-26-p27-print-and-frontend-gates.md)).
+P17 exit, production HTTPS/Next SSO bridge, physical checks and cutover remain
+open as specified; no merge or sign-off claimed.
+Frontend full coverage exceeds its gates; the full run had two numeric-copy
+guard failures (411 suites passed, one failed). Added the sheet printing
+instruction's concrete source reference; focused guard rerun **79/79** passed.
+The full run was not repeated after that test-source correction.
+
+2026-11-25 parallel continuation (working tree): PT-30 registration, facility
+identity injection, anonymous QR and JWT claim regressions pass in the complete
+P17 HTTP/socket suite **13/13** ([record](../MEMORY/records/2026-11-25-p17-upstream-exploits.md)).
+PT-21 synthetic OIDC wire/JIT persistence passes **4/4**; production public HTTPS
+IdP/browser handoff remains open ([record](../MEMORY/records/2026-11-25-p17-oidc-wire.md)).
+P30's report collector rejects incomplete field/sample coverage, **11/11**;
+synthetic HTTP retest **16 fields × 5 sessions, 0 differs**
+([record](../MEMORY/records/2026-11-25-p30-sample-evidence-coverage.md)).
+No phase exit, production cutover or merge claimed.
+
+Browser continuation: `automate/p22.browser.mts` now passes **110/110**,
+including PT-30 S-07 device/notes probes (sanitized at ingress, displayed as
+text), PT-04 bound exports, CSP, QR login continuity and the existing axe/layout
+matrix. Filename rendering remains separate. PT-18 opt-in email passes **3/3**
+through real RabbitMQ/SMTP with exact recipients; the actual overdue scan
+retains its realtime-only channel policy
+([record](../MEMORY/records/2026-11-25-p17-live-notification-email.md)).
+
+2026-11-25 continuation (working tree, not merged): P25 report fallback is verified
+through the rebuilt binary, 16 fields × 5 synthetic sessions with 0 differs
+([record](../MEMORY/records/2026-11-25-p25-report-fallback-retest.md)). P17 storage
+capabilities pass 65 unit/route checks and 16 real S3 checks
+([record](../MEMORY/records/2026-11-25-p17-storage-capabilities.md)); email renderer
+and facility recipient regressions pass 3/3
+([record](../MEMORY/records/2026-11-25-p17-notification-email.md)). P17 exit and
+cutover remain open; these focused runs do not replace their remaining evidence.
+
+2026-11-25 update: **P27-01 fact established; P27-02 WIP, implemented in the working tree**.
+Legacy URL extraction, sign-in prefill and old-host notice templates verified by
+29 frontend tests, frontend typecheck/build and disposable nginx HTTP checks.
+Actual browser login journey now green in the 105/105 Phase22 suite.
+Production cutover and merge remain open; P27-04 physical
+scans excluded by owner. [Record](../MEMORY/records/2026-11-25-p27-02-legacy-stickers.md).
+
 Last updated: 2026-09-30 (board reconciliation and the ADR-109 working decisions, `MEMORY/records/2026-09-30-board-hygiene-decisions.md`). Sections not touched that day keep their own dates; a count is a dated snapshot, so re-count before quoting it.
 
 > **What "DONE" means today.** The last commit is `ce74932` (2026-09-29). Everything marked DONE after it is **DONE in the working tree**: recorded, but not yet merged. Under `00-TASK-CONVENTIONS.md`, it is not DONE until committed (`OPEN-WORK-2026-09-30.md` §0).

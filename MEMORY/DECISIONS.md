@@ -12936,6 +12936,38 @@ Any second engine would have to reverse-engineer all of it from Node.
 
 **Implications, including the bad ones.** A browser without named-page support (`page:`) prints the label on its default page size. A name longer than three lines is cut on the label (the page shows it in full). Printing the QR number puts the staff key on the device, as before; anyone at the device can read it, and only a signed-in staff lookup answers it.
 
+### ADR-138 Amendment 6 (2026-11-25, P27-03): an explicit session-only tray prints A4 sticker sheets
+
+**Status:** Accepted under the owner's delegated implementation decision.
+**Spec:** `specs/P27-03-session-sticker-sheets.md`.
+
+**Decision.** The existing one-device issue/replace/revoke operations remain the
+only token mutations. After issuance, staff may explicitly add that label's QR
+image and text to a volatile tray in the register. No token recovery, batch mint,
+server file, localStorage or IndexedDB is added. Closing the dialog preserves
+only labels explicitly added to the tray; register navigation, account/tenant
+change or reload discards it. Re-adding replaces the device's prior entry;
+successful local rotation, revocation or deletion removes its prior label.
+There is no automatic synchronization with token changes made in other tabs.
+
+An A4 portrait sheet holds 3 columns × 6 rows of the unchanged 60 × 40 mm label,
+5 mm gaps, 10 mm left/right and 16 mm top/bottom margins. Each page holds 18
+labels; the next label starts another sheet. Staff use actual size (100%) and
+disable printer headers/footers. The existing thermal print and PNG remain.
+
+**Alternatives considered.** A batch-issue API (unnecessary new mutation and
+partial-failure recovery); persisting clear tokens (contradicts the hash-only
+boundary); recovering existing QR links from the server (impossible by design);
+replacing the thermal label layout (breaks an already verified output).
+
+**Implications, including the bad ones.** This supports manually assembled
+campaign sheets; it does not issue a campaign in one action. Explicitly adding
+labels keeps their bearer QR images in memory longer than the dialog, until the
+tray is cleared or the page/principal changes. Users should clear after print.
+Cross-tab changes can leave a stale label, and the UI says so. Actual paper
+alignment and physical scanning still require the excluded printer/phone run.
+Browser print geometry is a separate verification, never inferred from CSS.
+
 ### ADR-138 Amendment 5 (2026-10-13, Am. 2 § 3's open item): every logged URL loses its query tokens — one redaction for the access log, the activity log and any log record's URL field
 
 **Why an amendment.** Am. 2 § 3 changed only the public device path and left the access log writing query strings as they arrived. That covers the verification links (`?token=` on the API, `?t=` on the printed page), the invitation and activation links (`?token=`), and the signed attachment URLs. The Referer header carries the same tokens on every request a page opened from such a link makes. The activity log redacted sensitive query keys in its request lines, but not `?t=`, not a token under an innocuous key, and not the `url` field that the error handler and the access refusals log through winston.

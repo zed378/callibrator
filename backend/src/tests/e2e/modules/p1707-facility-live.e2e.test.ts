@@ -244,6 +244,49 @@ describe("P17-07 live — PT-13: the dashboard cache", () => {
   });
 });
 
+describe("P17-07 live — PT-18: reminder inboxes", () => {
+  it("overdue F1 and F2 devices notify only their own facility's users", async () => {
+    const container = penv["E2E_POSTGRES_CONTAINER"] ?? "";
+    expect(container).not.toBe("");
+    // Fixture setup only: the scan itself and both inbox reads use the live API.
+    await execFileAsync("docker", ["exec", container, "psql", "-U", penv["E2E_POSTGRES_USER"] ?? "callibrator", "-d", penv["E2E_POSTGRES_DB"] ?? "callibrator", "-v", "ON_ERROR_STOP=1", "-c",
+      `UPDATE calibration_devices SET next_calibration_date = '2020-01-01' WHERE tenant_id = '${t1Id}' AND id IN ('${ids.d1}', '${ids.d2}')`]);
+    const scan = expectOk(await call("POST", "/calibration-scheduler/run", { token: p.admin.token }), 200, "reminder scan");
+    expect(scan["errors"]).toBe(0);
+    expect(scan["notificationsCreated"]).toBe(2);
+    const first = rowsOf(await call("GET", "/notifications?limit=100&type=CALIBRATION", { token: p.hcA1.token }));
+    const second = rowsOf(await call("GET", "/notifications?limit=100&type=CALIBRATION", { token: p.hcA2.token }));
+    expect(first.map((row) => row["actionUrl"])).toContain(`/dashboard/devices/${ids.d1}`);
+    expect(first.map((row) => row["actionUrl"])).not.toContain(`/dashboard/devices/${ids.d2}`);
+    expect(second.map((row) => row["actionUrl"])).toContain(`/dashboard/devices/${ids.d2}`);
+    expect(second.map((row) => row["actionUrl"])).not.toContain(`/dashboard/devices/${ids.d1}`);
+    expect(first.every((row) => row["userId"] === p.hcA1.userId)).toBe(true);
+    expect(second.every((row) => row["userId"] === p.hcA2.userId)).toBe(true);
+  });
+});
+
+describe("P17-07 live — PT-21: SCIM provisioning", () => {
+  it("a newly provisioned identity cannot read devices before administrator confirmation", async () => {
+    const key = str(expectOk(await call("POST", "/api-keys", {
+      token: p.admin.token, body: { name: `p1707 SCIM ${stamp}`, scopes: ["scim:write"] },
+    }), 201, "SCIM key")["key"]);
+    expect(key).not.toBe("");
+    const provisioned = expectOk(await call("POST", "/scim/v2/Users", {
+      headers: { Authorization: `ApiKey ${key}` },
+      body: { schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"], userName: `p1707-scim-${stamp}@example.test`, active: true },
+    }), 201, "SCIM provision");
+    const userId = str(provisioned["id"]);
+    expect(userId).not.toBe("");
+    const impersonated = await call("POST", "/auth/impersonate", { token: operator, body: { tenantId: t1Id, userId } });
+    expect(impersonated.status).toBe(200);
+    const token = str(obj(impersonated.body)["token"]);
+    expect(token).not.toBe("");
+    const refused = await call("GET", "/calibration-devices", { token });
+    expect(refused.status).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain("FACILITY_BINDING_PENDING");
+  });
+});
+
 // PT-19 and PT-20 read the facilities as first set up, so they too run before the moves.
 describe("P17-07 live — PT-19: impersonation", () => {
   it("the operator impersonating a bound F1 user sees F1 only, and not F2's devices", async () => {
@@ -256,6 +299,20 @@ describe("P17-07 live — PT-19: impersonation", () => {
     expect(seen).toContain(ids.d1);
     expect(seen).not.toContain(ids.d2);
     expect(seen).not.toContain(ids.d3);
+    const operatorId = str(expectOk(await call("POST", "/auth/verify", { token: operator }), 200, "operator identity")["id"]);
+    expect(operatorId).not.toBe("");
+    const audit = await call("GET", "/audit?action=LOGIN&resourceType=Session&limit=200", { token: p.admin.token });
+    expectOk(audit, 200, "impersonation audit");
+    const rows = rowsOf(audit).filter((row) => {
+      const changes = obj(row["changes"]);
+      return changes["operation"] === "impersonate" && changes["targetUserId"] === p.hcA1.userId;
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      tenantId: t1Id, clientFacilityId: ids.f1, userId: operatorId,
+      changes: { impersonatorId: operatorId, targetUserId: p.hcA1.userId, targetTenantId: t1Id },
+    });
+
   });
 
   it("a tenant administrator cannot impersonate anyone", async () => {
@@ -291,6 +348,75 @@ describe("P17-07 live — PT-20: an API key", () => {
     // The key belongs to T1: T2's administrator cannot see it, and T1's device is a 404 for T2.
     const otherTenant = await call("GET", `/calibration-devices/${ids.d1}`, { token: p.adminB.token });
     expect(otherTenant.status).toBe(404);
+  });
+});
+
+describe("P17-07 live — PT-30: upstream exploit regressions", () => {
+  it("S-04: self-registration cannot mint a credential or open inventory/recap reads", async () => {
+    const email = `p1730-${stamp}@example.com`;
+    const password = strongPassword("p1730");
+    const registered = await call("POST", "/auth/register", {
+      body: { firstName: "Security", lastName: "Probe", username: `p1730${stamp}`.slice(0, 30), email, password },
+      from: newClientAddress(),
+    });
+    // This checklist targets the disposable production build: registration is absent.
+    expect(registered.status).toBe(404);
+    expect(obj(registered.body)["token"]).toBeUndefined();
+    const login = await call("POST", "/auth/login", { body: { user: email, password }, from: newClientAddress() });
+    expect(login.status).toBe(401);
+    expect(obj(login.body)["token"]).toBeUndefined();
+    for (const path of ["/calibration-devices?limit=10", "/calibration-records?limit=10"]) {
+      expect((await call("GET", path)).status).toBe(401);
+    }
+  });
+
+  it("S-05/S-11: legacy request identity fields cannot widen facility reads or attribute a session", async () => {
+    const own = await call("GET", `/calibration-devices/${ids.d1}`, { token: p.hcA1.token });
+    expect(own.status).toBe(200);
+    expect(str(dataOf(own)["clientFacilityId"])).toBe(ids.f1);
+    const injected = await call("GET", `/calibration-devices?limit=100&id_client=${ids.f2}&id_user=${p.hcA2.userId}`, { token: p.hcA1.token });
+    expect(injected.status).toBe(200);
+    expect(rowsOf(injected).map((row) => str(row["id"]))).toContain(ids.d1);
+    expect(rowsOf(injected).every((row) => row["clientFacilityId"] === ids.f1)).toBe(true);
+    expect(JSON.stringify(injected.body)).not.toContain(ids.d2);
+    expect(JSON.stringify(injected.body)).not.toContain(ids.d3);
+    expect((await call("GET", `/calibration-devices/${ids.d2}?id_client=${ids.f1}&id_user=${p.hcA1.userId}`, { token: p.hcA1.token })).status).toBe(404);
+    const attempted = await call("POST", "/ipm/sessions", {
+      token: p.hcMover.token,
+      headers: { "Idempotency-Key": randomUUID() },
+      body: { deviceId: ids.d1, id_client: ids.f2, id_user: p.hcA2.userId },
+    });
+    expect(attempted.status).toBe(400);
+  });
+
+  it("S-06: sequential QR guesses and real QR/device identifiers do not grant anonymous access", async () => {
+    const own = expectOk(await call("GET", `/calibration-devices/${ids.d1}`, { token: p.admin.token }), 200, "positive device control");
+    const qr = str(own["qrCode"]);
+    expect(qr).not.toBe("");
+    for (const path of [
+      "/calibration-devices/by-qr/0000000000001",
+      `/calibration-devices/by-qr/${qr}`,
+      `/calibration-devices/${ids.d1}`,
+    ]) {
+      expect((await call("GET", path, { from: newClientAddress() })).status).toBe(401);
+    }
+    for (const guess of ["0000000000001", qr, ids.d1]) {
+      expect((await call("GET", `/public/devices/${guess}`, { from: newClientAddress() })).status).toBe(404);
+    }
+  });
+
+  it("S-10: real login access tokens contain only the reviewed identifier/session claims", () => {
+    for (const who of [p.admin, p.hcA1, p.hcMover, p.hcA2, p.adminB]) {
+      const segments = who.token.split(".");
+      expect(segments).toHaveLength(3);
+      const claims = obj(JSON.parse(Buffer.from(segments[1] ?? "", "base64url").toString("utf8")) as unknown);
+      // Independent allow-list catches newly exposed user-row fields, including unknown secrets.
+      expect(Object.keys(claims).sort()).toEqual(["email", "exp", "iat", "id", "sid", "typ"]);
+      expect(claims["id"]).toBe(who.userId);
+      expect(claims["email"]).toBe(who.email);
+      expect(claims["typ"]).toBe("access");
+      expect(typeof claims["sid"]).toBe("string");
+    }
   });
 });
 

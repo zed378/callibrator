@@ -139,6 +139,12 @@ Rationale: a ward behind one NAT scanning a few dozen stickers an hour stays far
 
 ## 11. The Legacy-Sticker Boundary (UD-16; OA-4 chooses)
 
+**P27-03 sheet continuation (2026-11-25, ADR-138 Am. 6):** newly issued labels
+may be explicitly added to the register's session-only A4 tray before closing
+their dialog. This is the sole exception to losing the label on dialog close;
+no server token recovery or browser persistence is added. Details and print
+geometry: `P27-03-session-sticker-sheets.md`.
+
 Legacy stickers never reach `/d/[token]` and never yield public device data.
 
 | OA-4 finds | Branch | Behaviour | Built in |

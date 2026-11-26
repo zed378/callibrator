@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | BLOCKED — 4 BLOCKED |
+| **Status** | Operational execution BLOCKED on Phase 30 and operator evidence. Preparation implemented 2026-11-25: archive/restore rehearsal passed with synthetic data; decommission runbook ready. No real archive, destruction or phase exit claimed |
 | **Goal** | Encrypted archive, drop import schema, revoke, delete copies |
 | **Depends on** | Phase 30 |
 | **Size** | S |
@@ -27,7 +27,7 @@ facility name, free text, file name, credential) enters the repository — in fu
 
 | Card | Title | Status | Depends on |
 |---|---|---|---|
-| P31-01 | Encrypted archive of the upstream DB and files for the retention period; one restore tested | BLOCKED | P30-05 |
-| P31-02 | Drop `upstream_import`; revoke import keys and upstream credentials; retire the host (keep the redirect only if Phase 27 needs it) | BLOCKED | P31-01 |
-| P31-03 | Secure deletion of every copy, `mozivid/` on workstations included; decommission record | BLOCKED | P31-02, OA-3 |
-| P31-04 | Phase exit: `PROGRESS.md`, roadmap; Phase 999 unblocked | BLOCKED | P31-03 |
+| P31-01 | Encrypted archive of the upstream DB and files for the retention period; one restore tested | Preparation verified 2026-11-25: `scripts/upstream/archive-rehearsal.mts` passed encryption, wrong-key/corruption rejection, extracted hashes and synthetic MariaDB restore; real retained archive/restore BLOCKED — [record](../MEMORY/records/2026-11-25-p31-preparation.md) | P30-05 |
+| P31-02 | Drop `upstream_import`; revoke import keys and upstream credentials; retire the host (keep the redirect only if Phase 27 needs it) | Runbook prepared, execution BLOCKED: [decommission runbook](./RUNBOOK-UPSTREAM-DECOMMISSION.md) § 4; staging retained until signed reconciliation +90 days; no real revocation or schema drop | P31-01 |
+| P31-03 | Secure deletion of every copy, `mozivid/` on workstations included; decommission record | Evidence procedure prepared, execution BLOCKED: runbook § 5; no real deletion performed | P31-02, OA-3 |
+| P31-04 | Phase exit: `PROGRESS.md`, roadmap; Phase 999 unblocked | BLOCKED: preparation is not operational completion; Phase 999 stays blocked | P31-03 |

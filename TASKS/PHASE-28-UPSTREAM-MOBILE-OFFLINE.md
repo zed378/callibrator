@@ -29,4 +29,4 @@ facility name, free text, file name, credential) enters the repository — in fu
 |---|---|---|---|
 | P28-01 | Decide PWA vs native | **DONE 2026-10-07 (owner decision UD-14: PWA with offline mode, camera for photos/QR, no native app)** — record: [Phase 12 § 3](./PHASE-12-UPSTREAM-DECISIONS-AND-ADRS.md); ADR in P28-02 | — |
 | P28-02 | ADR: PWA field capture, offline queue, sync and conflict rules, CSP and service-worker constraints, browser support floor | **DONE 2026-10-07 — ADR-127** | P28-01 |
-| P28-03 | APK retirement: announcement, removal from the public folder, upstream API shut down at cutover | BLOCKED | Phase 30 |
+| P28-03 | APK retirement: announcement, removal from the public folder, upstream API shut down at cutover | Prepared 2026-11-25: announcement draft, full-host nginx 410 boundary preserving the legacy sticker notice, real disposable HTTP checks; execution BLOCKED on approved cutover — [runbook](./RUNBOOK-APK-RETIREMENT.md) | Phase 30 |

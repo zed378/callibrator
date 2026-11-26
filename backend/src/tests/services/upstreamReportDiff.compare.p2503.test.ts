@@ -192,6 +192,14 @@ describe("P25-03 reportDiff — the visit and the technician", () => {
     expect(compareTechnician([env({ id: 1, id_user: 7 })], users, "Unnamed user")).toBe("differs");
     expect(compareTechnician([env({ id: 1, id_user: 7 })], users, "Former upstream user #1")).toBe("differs");
   });
+
+  it("an empty upstream name uses the mapped username, including a collision suffix, never an arbitrary substitute", () => {
+    const unnamed = new Map<string, StagedUser>([["8", { name: "  ", username: "synthetic_technician_2", imported: true }]]);
+    const rows = [env({ id: 1, id_user: 8 })];
+    expect(compareTechnician(rows, unnamed, "synthetic_technician_2")).toBe("explained");
+    expect(compareTechnician(rows, unnamed, "synthetic_technician")).toBe("differs");
+    expect(compareTechnician(rows, unnamed, "Unnamed user")).toBe("differs");
+  });
 });
 
 describe("P25-03 reportDiff — one session and the tally", () => {

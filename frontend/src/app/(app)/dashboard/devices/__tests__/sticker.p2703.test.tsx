@@ -225,6 +225,18 @@ describe("P27-03 — the sticker in the dialog", () => {
     expect(download.getAttribute("href")).toBe("data:image/png;base64,UVI=");
   });
 
+  it("adds a successfully issued label to the sheet only on request and invalidates the old tray entry", async () => {
+    const add = jest.fn(); const invalidate = jest.fn();
+    render(<MessagesProvider locale="en" messages={en}><PublicLinkDialog device={device()} onClose={jest.fn()} onAddToSheet={add} onInvalidateSticker={invalidate} /></MessagesProvider>);
+    fireEvent.click(await screen.findByRole("button", { name: "Issue a link" }));
+    const button = await screen.findByRole("button", { name: "Add sticker to A4 sheet" });
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(add).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    expect(add).toHaveBeenCalledWith({ deviceId: device().id, qr: "data:image/png;base64,UVI=", text: { name: device().name, qrNumber: device().qrCode, issued: issueDay(ISSUED_AT) } });
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
   it("print lays the label alone under <body> in .sticker-print-root, and removes it after", async () => {
     const seen: Array<{ cls: boolean; roots: number; label: boolean; parentIsBody: boolean }> = [];
     const print = jest.spyOn(window, "print").mockImplementation(() => {

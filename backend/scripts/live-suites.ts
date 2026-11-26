@@ -100,6 +100,9 @@ interface Suite {
 
 /** Every live suite. A new `*.live.test.*` is added here (liveSuites.a367.guard fails otherwise). */
 export const SUITES: readonly Suite[] = Object.freeze([
+  { id: "p1707email", file: "src/tests/services/notificationEmail.facility.p1707.live.test.ts", db: "scratch", needs: ["rabbitmq"] },
+  { id: "g04facility", file: "src/tests/services/tenantHookless.facility.live.test.ts", db: "scratch" },
+  { id: "p1707jit", file: "src/tests/services/ssoJit.facility.p1707.live.test.ts", db: "scratch" },
   { id: "p6", file: "src/tests/services/dataIntegrity.p6.live.test.ts", db: "scratch" },
   { id: "p613", file: "src/tests/migrations/0090-webhook-secret-rotation-overlap.p613.live.test.ts", db: "scratch" },
   { id: "dba", file: "src/tests/migrations/dataIdentity.dbA.live.test.ts", db: "scratch" },

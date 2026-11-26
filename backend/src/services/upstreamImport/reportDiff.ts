@@ -31,6 +31,8 @@ export interface StagedReportRow {
 /** The staged upstream account behind an `id_user`. */
 export interface StagedUser {
   name: string | null;
+  /** The mapped account's collision-resolved username, used when upstream has no name (07 § 2.1). */
+  username?: string | null;
   imported: boolean;
 }
 
@@ -288,7 +290,8 @@ const UNNAMED = "Unnamed user";
 /**
  * "Teknisi Pelaksana": the user of the first environment row (09 § 2.3), else of any of the key's
  * rows. A person who is no imported account prints a numbered snapshot, a key with no user
- * "Upstream import", an account with no name "Unnamed user" (07 § 3, ADR-139 § 6): explained.
+ * "Upstream import", an account with no upstream name its mapped username (07 § 2.1),
+ * and a person without either name "Unnamed user" (07 § 3, ADR-139 § 6): explained.
  */
 export const compareTechnician = (
   rows: readonly StagedReportRow[],
@@ -306,8 +309,8 @@ export const compareTechnician = (
   if (user?.imported !== true) {
     return stored?.startsWith(FORMER_USER) === true ? "explained" : "differs";
   }
-  if (stored === UNNAMED && cleaned(user.name ?? "") === "") {
-    return "explained";
+  if (cleaned(user.name ?? "") === "") {
+    return stored === (user.username ?? UNNAMED) ? "explained" : "differs";
   }
   return compareText(user.name, stored);
 };

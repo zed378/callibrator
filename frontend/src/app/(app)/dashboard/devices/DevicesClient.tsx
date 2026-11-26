@@ -21,6 +21,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { FileDown, HardDrive, Plus, Search, Shield, Upload } from "lucide-react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { Alert, Button, Card, CardContent, ConfirmDialog, ErrorState } from "@/components/ui";
@@ -38,6 +39,8 @@ import { DeviceFormDialog } from "./components/DeviceFormDialog";
 import { DeviceTable, type RowActions } from "./components/DeviceTable";
 import { PhotosDialog } from "./components/PhotosDialog";
 import { PublicLinkDialog } from "./components/PublicLinkDialog";
+import { StickerSheet, putSticker, type SheetSticker } from "./components/StickerSheet";
+import { useAuthStore } from "@/stores/authStore";
 import { TypePicker } from "./components/TypePicker";
 import { FIELD, Field, Pager, useDeviceText } from "./components/shared";
 
@@ -107,6 +110,8 @@ const rowErrorText = (errors: ImportReport["errors"][number]["errors"]): string 
   typeof errors === "string" ? errors : errors.map((e) => `${e.field}: ${e.message}`).join("; ");
 
 export function DevicesClient({ languageForm, initialCondition = "" }: { languageForm?: React.ReactNode; initialCondition?: Filters["condition"] }) {
+  const principalKey = useAuthStore((s) => `${s.user?.tenantId ?? ""}:${s.user?.id ?? ""}`);
+  const pathname = usePathname();
   const { locale } = useI18n();
   const text = useDeviceText();
   const { t } = text;
@@ -140,7 +145,7 @@ export function DevicesClient({ languageForm, initialCondition = "" }: { languag
   return (
     <DashboardLayout>
       <div lang={locale}>
-        <Register access={access} bound={bound} canPickLab={!bound && permissions.canRead("vendors")} languageForm={languageForm} initialCondition={initialCondition} />
+        <Register key={`${principalKey}:${pathname}:${bound}:${access.rows.publicLink}`} access={access} bound={bound} canPickLab={!bound && permissions.canRead("vendors")} languageForm={languageForm} initialCondition={initialCondition} />
       </div>
     </DashboardLayout>
   );
@@ -164,6 +169,7 @@ function Register({ access, bound, canPickLab, languageForm, initialCondition }:
   const [editing, setEditing] = useState<RegisterDevice | null | undefined>(undefined);
   const [photos, setPhotos] = useState<{ device: RegisterDevice; mode: "register" | "manage" } | null>(null);
   const [publicLink, setPublicLink] = useState<RegisterDevice | null>(null);
+  const [sheet, setSheet] = useState<SheetSticker[]>([]);
   const [deleting, setDeleting] = useState<RegisterDevice | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -208,6 +214,7 @@ function Register({ access, bound, canPickLab, languageForm, initialCondition }:
     setDeleteError(null);
     try {
       await deviceRegisterService.remove(deleting.id);
+      setSheet((labels) => labels.filter((label) => label.deviceId !== deleting.id));
       addToast({ type: "success", title: t("devices.delete.done", { name: deleting.name }) });
       setDeleting(null);
       void reload();
@@ -438,7 +445,10 @@ function Register({ access, bound, canPickLab, languageForm, initialCondition }:
         />
       )}
 
-      {publicLink && <PublicLinkDialog key={publicLink.id} device={publicLink} onClose={() => setPublicLink(null)} />}
+      {access.rows.publicLink && <StickerSheet labels={sheet} onRemove={(id) => setSheet((labels) => labels.filter((label) => label.deviceId !== id))} onClear={() => setSheet([])} />}
+      {publicLink && <PublicLinkDialog key={publicLink.id} device={publicLink} onClose={() => setPublicLink(null)}
+        onAddToSheet={(label) => setSheet((labels) => putSticker(labels, label))}
+        onInvalidateSticker={() => setSheet((labels) => labels.filter((label) => label.deviceId !== publicLink.id))} />}
 
       {iot && <IotDeviceModal key={iot.id} device={iot} onClose={() => setIot(null)} hasWriteAccess={access.write} />}
 

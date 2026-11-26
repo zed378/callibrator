@@ -157,4 +157,20 @@ describe("A-82: impersonation is audited", () => {
     ).rejects.toMatchObject({ status: 403 });
     expect(writes).toEqual([]);
   });
+
+  it("P17-07 PT-19: attributes a bound impersonation to the target facility and the operator", async () => {
+    const facility = "f1707019-0000-4000-8000-000000000001";
+    Users.findOne.mockResolvedValue({ ...target(), clientFacilityId: facility });
+    await authService.impersonateUser(SUPER_ADMIN_ID, TARGET_TENANT, TARGET_ID);
+    expect(AuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TARGET_TENANT,
+        clientFacilityId: facility,
+        userId: SUPER_ADMIN_ID,
+        resourceType: "Session",
+        resourceId: SESSION_ID,
+      }),
+      { transaction: mockTx },
+    );
+  });
 });

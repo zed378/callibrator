@@ -28,6 +28,15 @@ const clearedCookies = (res: Response) =>
     .map((c) => c.split("=")[0]);
 
 describe("proxy (F-08: the only route guard)", () => {
+  it("P27-02: preserves the sticker query through the sign-in callback", () => {
+    const destination = "/dashboard/ipm/new?qr=QR000123";
+    const res = proxy(request(destination));
+    const login = new URL(res.headers.get("location") ?? "");
+    expect(login.origin).toBe("http://localhost");
+    expect(login.pathname).toBe("/login");
+    expect(login.searchParams.get("callbackUrl")).toBe(destination);
+  });
+
   it("a dashboard route with no token → /login with the page to return to", () => {
     const res = proxy(request("/dashboard/devices"));
     expect(res.status).toBe(307);
@@ -111,7 +120,7 @@ describe("proxy (F-08: the only route guard)", () => {
 
   it("P22-10b: /field is protected like the dashboard; /fieldwork is not", () => {
     const res = proxy(request("/field?view=home"));
-    expect(res.headers.get("location")).toBe("http://localhost/login?callbackUrl=%2Ffield");
+    expect(res.headers.get("location")).toBe("http://localhost/login?callbackUrl=%2Ffield%3Fview%3Dhome");
     expect(proxy(request("/field/x")).headers.get("location")).toContain("/login");
     expect(proxy(request("/field", { auth_token: live })).headers.get("location")).toBeNull();
     expect(proxy(request("/fieldwork")).headers.get("location")).toBeNull();

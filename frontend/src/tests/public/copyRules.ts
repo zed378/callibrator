@@ -63,6 +63,7 @@ export const NUMERIC_ALLOW_LIST: Readonly<Record<string, string>> = {
   "access.needsHelp": "the field's 2,000-character limit (spec P10-05 validator)",
   "access.error.max": "a validation limit placeholder, not a claim",
   "access.whatsappHelp": "an example phone number format (+62), not a claim",
+  "devices.sticker.sheet.lead": "print instructions: StickerSheet.tsx SHEET_LABELS=18, StickerLabel.tsx 60x40mm, globals.css A4 page; actual-size geometry verified by scripts/sticker-sheet-print.mts (MEMORY/records/2026-11-26-p27-print-and-frontend-gates.md)",
 };
 
 /** Image hosts of stock faces and stock photos the old page hot-linked or copied. */

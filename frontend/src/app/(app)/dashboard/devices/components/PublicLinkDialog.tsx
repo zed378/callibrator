@@ -13,7 +13,7 @@
  *  - After an issue or a replacement, the STICKER: the link's QR rendered in the browser (`qrcode`,
  *    loaded on demand), the link itself, Print (a print stylesheet shows only the sticker) and
  *    Download (a PNG made in the browser). Nothing is stored (owner rule): closing the dialog loses
- *    the link, and the dialog says so.
+ *    the link unless explicitly added to the register's session-only sheet (ADR-138 Am. 6).
  *  - P27-03 (ADR-138 Am. 4): the sticker is the final 60 × 40 mm label (`StickerLabel`,
  *    `stickerLayout.ts`): Print lays exactly that label on a page of its size, and Download is the
  *    label drawn at 300 dpi (the plain QR when the browser has no canvas). The re-stickering policy
@@ -33,10 +33,13 @@ import { deferEffect } from "@/lib/deferEffect";
 import { useDeviceText } from "./shared";
 import { StickerLabel } from "./StickerLabel";
 import { issueDay, stickerPng, type StickerText } from "./stickerLayout";
+import type { SheetSticker } from "./StickerSheet";
 
 interface Props {
   device: RegisterDevice;
   onClose: () => void;
+  onAddToSheet?: (label: SheetSticker) => void;
+  onInvalidateSticker?: () => void;
 }
 
 /** The QR of a link as a PNG data URL, made in the browser; null when it cannot be. */
@@ -52,7 +55,7 @@ export const qrDataUrl = async (url: string): Promise<string | null> => {
 /** The body class the print stylesheet keys on (globals.css: only `.sticker-print-root` prints). */
 export const PRINT_CLASS = "sticker-print";
 
-export function PublicLinkDialog({ device, onClose }: Props) {
+export function PublicLinkDialog({ device, onClose, onAddToSheet, onInvalidateSticker }: Props) {
   const { t, date } = useDeviceText();
   const [state, setState] = useState<PublicLinkState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,12 +89,16 @@ export function PublicLinkDialog({ device, onClose }: Props) {
     try {
       if (action === "revoke") {
         await publicDeviceService.revoke(device.id);
+        onInvalidateSticker?.();
         setIssued(null);
         setQr(null);
         setLabelPng(null);
       } else {
         const link = action === "issue" ? await publicDeviceService.issue(device.id) : await publicDeviceService.rotate(device.id);
+        onInvalidateSticker?.();
         setIssued(link);
+        setQr(null);
+        setLabelPng(null);
         setQr(await qrDataUrl(link.url));
         setLabelPng(await stickerPng(link.url, stickerText(link)));
       }
@@ -192,6 +199,9 @@ export function PublicLinkDialog({ device, onClose }: Props) {
                 <p className="break-all font-mono text-xs text-foreground">{issued.url}</p>
               </div>
               <div className="flex flex-wrap gap-2 print:hidden">
+                {qr && onAddToSheet && <Button size="sm" variant="outline" disabled={busy} onClick={() => onAddToSheet({ deviceId: device.id, qr, text: stickerText(issued) })}>
+                  {t("devices.sticker.sheet.add")}
+                </Button>}
                 <Button size="sm" variant="outline" leftIcon={<Printer className="h-4 w-4" aria-hidden="true" />} onClick={print}>
                   {t("devices.publicLink.print")}
                 </Button>

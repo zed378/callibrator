@@ -222,6 +222,15 @@ describe("storage façade — signed object resolution", () => {
       storage.openSignedObject("../../etc/passwd", "x.y"),
     ).rejects.toThrow();
   });
+
+  it("PT-17: a facility key alone or another facility's token never opens storage", async () => {
+    const f1 = "t/tenant-1/f/f1700000-0000-4000-8000-000000000001/attachments/photo.jpg";
+    const f2 = "t/tenant-1/f/f1700000-0000-4000-8000-000000000002/attachments/photo.jpg";
+    const { token } = signing.sign(f1, 300, SIGN_SECRET);
+    await expect(storage.openSignedObject(f1, undefined)).rejects.toMatchObject({ status: 403 });
+    await expect(storage.openSignedObject(f2, token)).rejects.toMatchObject({ status: 403 });
+    expect(mockLocalInstances).toHaveLength(0);
+  });
 });
 
 describe("storage façade — driver caching", () => {

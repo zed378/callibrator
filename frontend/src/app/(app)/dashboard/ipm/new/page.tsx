@@ -16,11 +16,17 @@ export async function generateMetadata() {
   return { title: t("ipm.start.title") };
 }
 
-export default async function IpmStartPage() {
+export default async function IpmStartPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ qr?: string | string[] }>;
+} = {}) {
+  const query = await searchParams;
+  const initialCode = typeof query?.qr === "string" && query.qr.length <= 2048 ? query.qr : "";
   const { locale, messages, t } = await getServerI18n();
   return (
     <MessagesProvider locale={locale} messages={pickMessages(messages, IPM_NAMESPACES)}>
-      <StartClient languageForm={<LanguageToggle locale={locale} label={t("ipm.language")} />} />
+      <StartClient initialCode={initialCode} languageForm={<LanguageToggle locale={locale} label={t("ipm.language")} />} />
     </MessagesProvider>
   );
 }

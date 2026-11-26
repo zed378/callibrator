@@ -1,5 +1,11 @@
 # Runbook — Upstream Cutover (P30-01)
 
+2026-11-25 preparation: `scripts/upstream/cutover-evidence.mts` collects the three
+built report APIs read-only, validates their contracts, records elapsed report
+times and emits aggregate-only JSON. It never records a signature or claims
+`readyForCutover=true`. APK/API retirement artefacts and an announcement draft
+are in [RUNBOOK-APK-RETIREMENT.md](./RUNBOOK-APK-RETIREMENT.md).
+
 > **Status: DRAFT, 2026-10-23; mechanisms P25-01/P25-02 PARTIAL 2026-10-24 (ADR-129 Am. 11).** The card's dependency (Phase 25, reconciliation) needs **real
 > upstream data**, which the owner's legal decision gates (**OA-5**, UD-18). This runbook is written
 > ahead of that on purpose — the same way `P29-02`'s "what changed" note was — so that the sequence,
@@ -79,6 +85,39 @@ Nothing below starts until each row is **named in a record**, not "looks fine".
    is a defect in the transform or in the data, not something to accept.
 6. Record the **durations** per step. They are the input to the freeze estimate (§ 7).
 7. Repeat until the reconciliation (P25-01: `GET …/:id/reconciliation` — R-1 … R-8 and RC-F4 per facility, R-8/R-9/R-10/R-11/RC-F1 … RC-F5 at the run level) is green, every `manual` check is recorded by hand (P25-04), and the quarantine is explained.
+
+Collect the report evidence without copying response bodies into a ticket:
+
+```text
+rtk proxy node --import tsx scripts/upstream/cutover-evidence.mts <HTTPS-API-origin> <run-UUID> <new-output.json>
+```
+
+Supply the operator access token through `UPSTREAM_REHEARSAL_TOKEN` in the local
+process environment, never a command-line argument. Loopback HTTP is accepted
+only for disposable rehearsal. Redirects are refused. The output file must not
+already exist; it contains no run/tenant/facility identifier, notes, source-table
+names or response bodies. Keep the run reference in the operator's private
+record. A nonzero exit or `automatedPass=false` requires investigation. Even on
+pass, `readyForCutover` remains false: R-12, legal basis, signatures, UAT,
+security, backup restore and timed freeze/delta evidence remain separate.
+
+For the synthetic P25 compose rehearsal only, verify the actual application
+schema backup/restore boundary independently:
+
+```text
+rtk proxy node scripts/upstream/postgres-rollback-rehearsal.mts callibrator-p25-<digits>-postgres-1 --synthetic-disposable
+```
+
+The script verifies the compose project label, reads the application database
+with `pg_dump`, and makes two separately named scratch databases. All simulated
+post-backup writes occur in its clone. It restores the custom-format backup into
+the second scratch database, compares application counts, checks an independent
+3-row/sum-37 baseline and absence of a post-backup table, then checks public read
+and staging denial as `callibrator_app`. Only its own scratch databases are
+dropped. Its temporary snapshot is held in memory, not committed. Roles are
+already provisioned in that PostgreSQL cluster: this proves the database
+rollback boundary, not a new-host disaster recovery procedure. The real target's
+pre-import backup and its restore still need their own operator evidence.
 
 **Commands that help (read-only):**
 
@@ -183,8 +222,9 @@ promised to anyone.
 
 - Upstream is **read-only**, for lookup by staff who have not yet switched.
 - **No dual writing.** A device's history written in two systems is two histories.
-- **Post-cutover reconciliation** runs again after the first week of real use: the same 9 automated
-  checks plus the 8 `manual` ones, now against live data.
+- **Post-cutover reconciliation** runs after the first week: 16 automated checks
+  plus R-12's app-level smoke recorded separately. Review expected new app writes
+  with the operator; the collector does not waive reconciliation deltas.
 - Invitations still unaccepted are visible on the users page; an account still awaiting 30 days after
   its **first** invitation is deactivated by the nightly job (ADR-139 § 5). An administrator
   reactivates and re-invites.
@@ -221,7 +261,7 @@ Named, so nobody assumes otherwise:
 - **The real timings.** P24-05 measures them; § 7 is an estimate.
 - **Whether the freeze is one hour or four.** Depends on the link speed for the delta and on the
   transform's real cost.
-- **The sticker format** (OA-4), which decides whether staff scan an old sticker into the new app or
-  use the in-app lookup.
+- **The production legacy hostname**. The owner confirmed both bare codes and
+  URLs on 2026-11-25; P27-02's notice template is prepared, not deployed.
 - **Whether the legal basis permits the transfer at all** (OA-5). If it does not, there is no cutover
   and this runbook is archived with the plan.

@@ -28,6 +28,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { environment } from "../../../config/env";
+import { upstreamReconciliationResult } from "@callibrator/contracts/upstreamReconciliation";
+import { upstreamReportDiffResult } from "@callibrator/contracts/upstreamReportDiff";
 import { syntheticUpstreamDump } from "../../support/syntheticUpstreamDump";
 import {
   apiBase,
@@ -483,6 +485,26 @@ describe("P21-10 the upstream imports and the invitations (ADR-129, ADR-130, ADR
     expect({ status: done["transformStatus"], code: done["transformErrorCode"] ?? null }).toEqual({ status: "transformed", code: null });
     const steps = arr(obj(done["transformSummary"])["steps"]).map((s) => str(obj(s)["step"]));
     expect(steps).toHaveLength(13);
+  });
+
+  test("P25-01 R-12: the transformed dry-run data reconciles through the live API and report diff; tenant administrators cannot inspect staging", async () => {
+    const base = `/admin/upstream-sql-imports/${runId}`;
+    const answer = upstreamReconciliationResult.parse(expectOk(await call("GET", `${base}/reconciliation`, { token: operator }), 200, "reconciliation"));
+    expect(answer.providerTenantId).toBe(tenants.b.tenantId);
+    expect(answer.facilities.length).toBeGreaterThan(0);
+    const checks = [...answer.runChecks, ...answer.facilities.flatMap((facility) => facility.checks)];
+    expect(checks.filter((check) => check.check !== "R-12").every((check) => check.status === "pass")).toBe(true);
+    // This HTTP suite is the evidence, not a database row claiming the smoke ran.
+    expect(answer.runChecks.find((check) => check.check === "R-12")?.status).toBe("manual");
+    const diff = upstreamReportDiffResult.parse(expectOk(await call("GET", `${base}/report-diff?sample=2000`, { token: operator }), 200, "report diff"));
+    expect(diff.sample.sessions).toBeGreaterThan(0);
+    expect(diff.fields).toHaveLength(16);
+    expect(diff.fields.every((field) => field.status === "pass" && field.differs === 0)).toBe(true);
+    for (const tenant of [tenants.a, tenants.b]) {
+      for (const suffix of ["reconciliation", "data-quality", "report-diff"]) {
+        expect((await call("GET", `${base}/${suffix}`, { token: tenant.token })).status).toBe(403);
+      }
+    }
   });
 
   test("an imported user awaits its invitation: closed until the operator opens the switch, then mailed, accepted once, signed in", async () => {

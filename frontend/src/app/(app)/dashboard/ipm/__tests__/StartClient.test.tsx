@@ -58,10 +58,10 @@ const device = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const renderPage = () =>
+const renderPage = (initialCode?: string) =>
   render(
     <MessagesProvider locale="en" messages={en}>
-      <StartClient languageForm={<div>language</div>} />
+      <StartClient initialCode={initialCode} languageForm={<div>language</div>} />
     </MessagesProvider>,
   );
 
@@ -232,5 +232,34 @@ describe("P22-03 — the camera scanner", () => {
     unmount();
     await act(async () => release({ getTracks: () => [{ stop: stopTrack }] }));
     expect(stopTrack).toHaveBeenCalled();
+  });
+});
+
+describe("P27-02 - legacy sticker input", () => {
+  it("a pre-filled sticker does not give a read-only user access to the lookup", () => {
+    grantPermissions({ ipm: "read" });
+    renderPage("https://legacy.example/readQr/QR000123");
+    expect(screen.queryByRole("button", { name: "Find" })).not.toBeInTheDocument();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("pre-fills a legacy URL without a request until Find, then resolves only its code", async () => {
+    grantPermissions({ ipm: "write" });
+    renderPage("https://legacy.example/readQr/QR-000123");
+    expect(screen.getByLabelText("QR sticker")).toHaveValue("QR-000123");
+    expect(get).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+    expect(await screen.findByRole("heading", { level: 2, name: "Synthetic pump" })).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith("/api/v1/calibration-devices/by-qr/QR-000123");
+  });
+
+  it("typed and handheld-scanner URLs follow the camera's local extraction", async () => {
+    grantPermissions({ ipm: "write" });
+    renderPage();
+    await find("https://legacy.example/readQr/QR-000123?ignored=1#fragment");
+    expect(await screen.findByRole("heading", { level: 2, name: "Synthetic pump" })).toBeInTheDocument();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith("/api/v1/calibration-devices/by-qr/QR-000123");
+    expect(push).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,25 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-11-26 — Parallel security verification and sticker print check
+- [OIDC controller handoff](./records/2026-11-26-p17-oidc-handoff.md): real HTTP controller, IdP and PostgreSQL checks pass 4/4; Next/production HTTPS and Redis remain separate verification requirements.
+- [Filename renderer](./records/2026-11-26-p17-filename-rendering.md): actual hostile-filename photo upload/report assertions included in the 112/112 browser suite.
+- [Sticker printing](./records/2026-11-26-p27-print-and-frontend-gates.md): reusable Chromium script verifies 19 labels on two A4 pages at 60 × 40 mm. Physical printer/phone verification remains excluded.
+
+### 2026-11-25 — Security checks and operational preparation through Phase 31
+- [Browser S-07](./records/2026-11-25-p17-upstream-exploits.md) final suite **110/110**, including sanitized device/notes probes displayed as text. [Live email](./records/2026-11-25-p17-live-notification-email.md) **3/3** through real RabbitMQ/SMTP; reminder policy stays realtime-only.
+- Parallel continuation: [PT-30 HTTP regressions](./records/2026-11-25-p17-upstream-exploits.md) pass in the 13/13 HTTP/socket suite; [OIDC wire/JIT](./records/2026-11-25-p17-oidc-wire.md) 4/4. The latter uses a synthetic test-mode provider; production browser handoff remains open.
+- [P30 sample collector hardening](./records/2026-11-25-p30-sample-evidence-coverage.md): reject zero/partial field comparisons and inconsistent sample sizes, 11/11 tests. Actual synthetic report collection remains green; no cutover readiness is asserted.
+- Continuation: [report fallback](./records/2026-11-25-p25-report-fallback-retest.md) verified through the rebuilt binary (16 fields × 5 sessions, 0 differs); [storage capabilities](./records/2026-11-25-p17-storage-capabilities.md) pass 65 unit/route and 16 real S3 checks; [email boundary](./records/2026-11-25-p17-notification-email.md) passes 3 captured-transport regressions. P17 exit and cutover remain open.
+- [Security](./records/2026-11-25-p17-browser-security.md): scoped reminder inboxes, pending SCIM access, impersonation audit and production CSP verified with synthetic data; browser suite now 109/109.
+- [PT-04 bound browser exports](./records/2026-11-25-p17-bound-exports.md): inventory XLSX/PDF and both calibration recap XLSX modes capture only F1 rows and exclude the F2 canary. PT-04 remains partial for the untested photo-bearing/multi-page cases; no IPM list export control exists.
+- [Cutover](./records/2026-11-25-p28-p30-cutover-preparation.md): prepared old-host APK/API retirement and aggregate report collection.
+- [Archive](./records/2026-11-25-p31-preparation.md): encrypted synthetic archive and actual logical restore proved; operator decommission runbook added. No production retirement or deletion performed.
+
+### 2026-11-25 — P27-02: legacy sticker lookup ([record](./records/2026-11-25-p27-02-legacy-stickers.md))
+- Typed legacy URLs use the existing local code extraction; sign-in preserves the pre-filled sticker. Find uses the existing authenticated lookup.
+- Added a rate-limited static notice template for the old host and an operator runbook; deployment remains pending.
+
 ### 2026-11-11 — P17-07: socket and second-principal pentest cases run live ([record](./records/2026-11-11-p17-07-live-sockets.md))
 - PT-13, PT-14, PT-15, PT-19, PT-20 green on a disposable stack, 7/7 twice, no finding. The checklist's exit still needs the browser and real-phone cases.
 

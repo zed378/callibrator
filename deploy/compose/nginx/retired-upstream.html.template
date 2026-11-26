@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Aplikasi lama dihentikan / Old application retired</title>
+</head>
+<body>
+  <main>
+    <h1>Aplikasi lama telah dihentikan</h1>
+    <p>APK dan API lama tidak lagi tersedia. Gunakan aplikasi web untuk pekerjaan berikutnya.</p>
+    <p><a href="${APP_ORIGIN}/login">Masuk ke aplikasi web</a></p>
+    <section lang="en" aria-label="English">
+      <h2>The old application has been retired</h2>
+      <p>The old APK and API are no longer available. Use the web application for future work.</p>
+    </section>
+  </main>
+</body>
+</html>

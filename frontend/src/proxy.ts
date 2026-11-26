@@ -87,7 +87,7 @@ export function proxy(request: NextRequest) {
 
   if (isDashboardRoute && !usable) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    loginUrl.searchParams.set("callbackUrl", pathname + request.nextUrl.search);
     const response = NextResponse.redirect(loginUrl);
     // An expired, unrenewable token is cleared on the way out.
     return hasToken ? clearSession(response) : response;

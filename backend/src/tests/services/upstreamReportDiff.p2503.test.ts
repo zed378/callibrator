@@ -167,10 +167,11 @@ describe("P25-03 the report diff", () => {
 
   it("the sample is bound; the staged side is found by the key; counts leave, values do not", async () => {
     seedRun(RUN);
-    db.sessions = [session];
     db.results = [result];
     db.devices = [{ qr: "QR-SINTETIS", row: { nama_alat: "Pompa Sintetis", no_qrcode: "QR-SINTETIS", nama_ruangan: "ICU" }, facilityName: "RS Sintetis", shared: false }];
-    db.users = [{ id: "7", name: "Teknisi Sintetis", imported: true }];
+    db.users = [{ id: "7", name: " ", username: "synthetic_technician_2", imported: true }];
+    const sampledSession = { ...session, performer: { name: "synthetic_technician_2" } };
+    db.sessions = [sampledSession];
     db.stagedRows = [
       { table: "trx_fungsi_alat", key: KEY, row: { id: 1, id_user: 7, description: "Item sintetis", status: "1" }, targetId: R1, quarantined: false },
       { table: "trx_fungsi_alat", key: KEY, row: { id: 2, id_user: 7, description: "Item kedua", status: "9" }, targetId: null, quarantined: true },
@@ -180,7 +181,7 @@ describe("P25-03 the report diff", () => {
     expect(field(answer, "device.name")).toMatchObject({ status: "pass", equal: 1 });
     expect(field(answer, "results.rows")).toMatchObject({ status: "pass", explained: 1 });
     expect(field(answer, "results.values")).toMatchObject({ status: "pass", equal: 1 });
-    expect(field(answer, "technician")).toMatchObject({ status: "pass", equal: 1 });
+    expect(field(answer, "technician")).toMatchObject({ status: "pass", explained: 1 });
     expect(answer.fields.every((f) => f.status === "pass")).toBe(true);
     const calls = query.mock.calls as unknown as [string, { bind: unknown[] }][];
     expect(calls.find(([text]) => text.includes("FROM inspection_sessions s"))?.[1].bind).toEqual([HOME, "Asia/Jakarta", 10]);
@@ -188,6 +189,10 @@ describe("P25-03 the report diff", () => {
     expect(calls.find(([text]) => text.includes("FROM inspection_results r"))?.[1].bind).toEqual([HOME, [S1]]);
     expect(calls.find(([text]) => text.includes("CROSS JOIN LATERAL"))?.[1].bind).toEqual([RUN, expect.any(String), "Asia/Jakarta", expect.any(String), [KEY]]);
     expect(calls.find(([text]) => text.includes("y.shared"))?.[1].bind).toEqual([RUN, ["QR-SINTETIS"]]);
+    const usersCall = calls.find(([text]) => text.includes("to_jsonb(s) ->> 'fullname'"));
+    expect(usersCall?.[0]).toContain("u.username");
+    expect(usersCall?.[0]).toContain("u.tenant_id = $2");
+    expect(usersCall?.[1].bind).toEqual([RUN, HOME]);
     const text = JSON.stringify(answer);
     for (const value of ["QR-SINTETIS", "Pompa", "RS Sintetis", "Teknisi", "Item", "ICU"]) {
       expect(text).not.toContain(value);

@@ -777,11 +777,42 @@ body {
 .sticker-print-root {
   display: none;
 }
+.sticker-sheet-print-root {
+  display: none;
+}
+@page sticker-sheet {
+  size: A4 portrait;
+  margin: 16mm 10mm;
+}
 @page sticker-label {
   size: 60mm 40mm;
   margin: 0;
 }
 @media print {
+  body.sticker-sheet-print > :not(.sticker-sheet-print-root) {
+    display: none !important;
+  }
+  body.sticker-sheet-print > .sticker-sheet-print-root {
+    display: block;
+    page: sticker-sheet;
+  }
+  .sticker-sheet-page {
+    display: grid;
+    grid-template-columns: repeat(3, 60mm);
+    grid-template-rows: repeat(6, 40mm);
+    gap: 5mm;
+    break-after: page;
+    break-inside: avoid;
+  }
+  .sticker-sheet-page:last-child {
+    break-after: auto;
+  }
+  body.sticker-sheet-print .sticker-label {
+    border: none;
+    border-radius: 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
   body.sticker-print > :not(.sticker-print-root) {
     display: none !important;
   }

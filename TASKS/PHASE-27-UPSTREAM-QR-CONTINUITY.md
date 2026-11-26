@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| **Status** | 1 DONE in code (**P27-03**, 2026-10-13, ADR-138 Am. 4) · 3 BLOCKED (P27-01/02 on OA-4, the sticker scan; P27-04 on P27-02) — UD-15 is decided (ADR-138) |
+| **Status** | P27-03 individual labels and session sheets implemented in working tree, Chromium print verified 2026-11-26; P27-01 fact established 2026-11-25 (bare codes and URLs); P27-02 WIP, implemented and focused checks green, not merged/deployed; P27-04 physical checks excluded by owner. UD-15 decided (ADR-138) |
 | **Goal** | Existing stickers keep resolving; new stickers carry a capability token |
 | **Depends on** | Phase 19, Phase 22 |
 | **Size** | S–M |
@@ -27,7 +27,7 @@ facility name, free text, file name, credential) enters the repository — in fu
 
 | Card | Title | Status | Depends on |
 |---|---|---|---|
-| P27-01 | Establish what the stickers encode | BLOCKED (owner) | OA-4 |
-| P27-02 | Legacy resolver: in-app QR lookup for signed-in staff; redirect from the old host if stickers carry URLs (rate-limited, minimal view) | BLOCKED | P27-01, UD-16 |
-| P27-03 | New stickers with capability tokens: print layout, re-stickering policy | **DONE in code 2026-10-13** (ADR-138 Am. 4): the 60 × 40 mm label made in the browser (print on a label-sized page, 300 dpi PNG), bilingual caption, QR number + issue day; the re-stickering policy in the panel — [record](../MEMORY/records/2026-10-13-p27-03-sticker-layout.md). Open: OA-4 / UD-16 (P27-01/02), a batch label sheet, real-phone scans (P27-04) | P22-08 |
-| P27-04 | Sticker-scan test with real phones, legacy and new | BLOCKED | P27-02, 03 |
+| P27-01 | Establish what the stickers encode | Fact established 2026-11-25: owner confirms both bare codes and URLs; production host remains an operator input | OA-4 |
+| P27-02 | Legacy resolver: in-app QR lookup for signed-in staff; replaced-sticker notice from the old host (ADR-138 Am. 1 G-2) | WIP 2026-11-25: implemented, focused checks and actual browser login journey green (105/105 suite); not merged/deployed — [record](../MEMORY/records/2026-11-25-p27-02-legacy-stickers.md) | P27-01, UD-16 |
+| P27-03 | New stickers with capability tokens: print layout, re-stickering policy | Individual label implemented 2026-10-13 (ADR-138 Am. 4); session-only A4 sheet implemented in working tree 2026-11-25 (Am. 6), 52/52 focused tests — [sheet record](../MEMORY/records/2026-11-25-p27-sticker-sheets.md). Actual Chromium print verified 2026-11-26: 19 labels on two A4 pages, 60 × 40 mm each — [print record](../MEMORY/records/2026-11-26-p27-print-and-frontend-gates.md). Not merged; physical alignment/scans unverified (P27-04 excluded). Production legacy host remains an operator input | P22-08 |
+| P27-04 | Sticker-scan test with real phones, legacy and new | Excluded by owner's 2026-11-25 instruction; not verified | P27-02, 03 |
